@@ -90,28 +90,26 @@ const ShakeCalculatorModal = ({ isOpen, onClose, onLog }) => {
     increment, decrement, reset, buildFoodPayload,
   } = useShakeCalculator();
 
-  const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState('');
+  const saveStartedRef = React.useRef(false);
 
   if (!isOpen) return null;
 
-  const handleLog = async () => {
-    if (!hasServings || saving) return;
-    setSaving(true);
-    setError('');
-    try {
-      await onLog(buildFoodPayload());
-      reset();
-      onClose();
-    } catch (err) {
+  const handleLog = () => {
+    if (!hasServings || saveStartedRef.current) return;
+    saveStartedRef.current = true;
+    // Hand off without awaiting network — parent closes classify and saves in background.
+    const payload = buildFoodPayload();
+    reset();
+    onClose();
+    void Promise.resolve(onLog(payload)).catch((err) => {
+      saveStartedRef.current = false;
       setError(err?.message || 'Failed to save shake. Please try again.');
-    } finally {
-      setSaving(false);
-    }
+    });
   };
 
   const handleClose = () => {
-    if (saving) return;
+    if (saveStartedRef.current) return;
     setError('');
     onClose();
   };
@@ -145,9 +143,8 @@ const ShakeCalculatorModal = ({ isOpen, onClose, onLog }) => {
           </div>
           <button
             onClick={handleClose}
-            disabled={saving}
             aria-label="Close shake calculator"
-            className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors disabled:opacity-50"
+            className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
           >
             <X className="w-5 h-5" aria-hidden="true" />
           </button>
@@ -167,7 +164,6 @@ const ShakeCalculatorModal = ({ isOpen, onClose, onLog }) => {
                 count={servings[id]}
                 onIncrement={increment}
                 onDecrement={decrement}
-                disabled={saving}
               />
             ))}
           </div>
@@ -227,29 +223,21 @@ const ShakeCalculatorModal = ({ isOpen, onClose, onLog }) => {
           <div className="flex gap-3">
             <button
               onClick={handleClose}
-              disabled={saving}
-              className="flex-1 px-4 py-3 border-2 border-gray-200 text-gray-600 rounded-xl text-sm font-semibold hover:bg-gray-50 transition-colors disabled:opacity-50"
+              className="flex-1 px-4 py-3 border-2 border-gray-200 text-gray-600 rounded-xl text-sm font-semibold hover:bg-gray-50 transition-colors"
             >
               Cancel
             </button>
             <TouchFeedbackButton
               onClick={handleLog}
-              disabled={!hasServings || saving}
+              disabled={!hasServings}
               className={`flex-1 px-4 py-3 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-colors ${
-                !hasServings || saving
+                !hasServings
                   ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
                   : 'bg-emerald-600 text-white hover:bg-emerald-700 active:bg-emerald-800'
               }`}
-              aria-label={saving ? 'Saving shake...' : 'Log shake to diary'}
+              aria-label="Log shake to diary"
             >
-              {saving ? (
-                <>
-                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" aria-hidden="true" />
-                  <span>Saving...</span>
-                </>
-              ) : (
-                <span>Log Shake to Diary</span>
-              )}
+              <span>Log Shake to Diary</span>
             </TouchFeedbackButton>
           </div>
         </div>

@@ -273,15 +273,20 @@ describe('buildDiaryShareSuffix', () => {
       .toBe('Calories Burnt: 320 kcal so far today');
   });
 
-  test('education suffix includes platform and session', () => {
+  test('education suffix is session · platform without type prefix', () => {
     expect(buildDiaryShareSuffix('education', {
       platform: 'Zoom',
       session: 'Academy',
-    })).toBe('education Academy · Zoom');
+    })).toBe('Academy · Zoom');
+
+    expect(buildDiaryShareSuffix('education', {
+      session: 'Daily Education',
+      platform: 'Zoom',
+    })).toBe('Daily Education · Zoom');
 
     expect(buildDiaryShareSuffix('education', {
       session: 'Academy',
-    })).toBe('education Academy');
+    })).toBe('Academy');
   });
 
   test('shake suffix includes Formula 1, Shakemate, and Protein scoops', () => {

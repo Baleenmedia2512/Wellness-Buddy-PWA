@@ -1,5 +1,9 @@
 import { ValidationError } from '../../shared/lib/ValidationError.js';
 import { DATE_YMD_RE, assertCalendarDateYmd } from '../../shared/lib/datetime/index.js';
+import {
+  normalizeDiaryPagination,
+  DIARY_LIST_DEFAULT_LIMIT,
+} from './domain/diary-pagination.js';
 
 export function validateSave(body) {
   if (!body) throw new ValidationError(400, 'Request body is missing or too large. Maximum size is 10MB.');
@@ -222,9 +226,12 @@ export function validateRetryPromotion(body) {
  *                  member's id; self reads pass the viewer's own id.
  *   - viewerUserId required — the authenticated session user.
  *   - date         required — `YYYY-MM-DD` calendar date in the owner's timezone.
+ *   - limit        optional — page size (default 20, max 50).
+ *   - offset       optional — skip N merged entries (default 0).
+ *   - page         optional — 1-based page; converted to offset when offset omitted.
  */
 export function validateDiaryList(query) {
-  const { ownerUserId, viewerUserId, date } = query || {};
+  const { ownerUserId, viewerUserId, date, limit, offset, page } = query || {};
   if (!ownerUserId) throw new ValidationError(400, 'ownerUserId is required');
   if (!viewerUserId) throw new ValidationError(400, 'viewerUserId is required');
   if (!date) throw new ValidationError(400, 'date is required (YYYY-MM-DD)');
@@ -232,9 +239,30 @@ export function validateDiaryList(query) {
     throw new ValidationError(400, 'date must match YYYY-MM-DD');
   }
   assertCalendarDateYmd(date);
+
+  let resolvedLimit = limit;
+  let resolvedOffset = offset;
+  if ((resolvedOffset == null || resolvedOffset === '') && page != null && page !== '') {
+    const pageNum = Number.parseInt(String(page), 10);
+    if (!Number.isFinite(pageNum) || pageNum < 1) {
+      throw new ValidationError(400, 'page must be a positive integer');
+    }
+    const pageLimit = resolvedLimit != null && resolvedLimit !== ''
+      ? Number.parseInt(String(resolvedLimit), 10)
+      : DIARY_LIST_DEFAULT_LIMIT;
+    const safeLimit = Number.isFinite(pageLimit) && pageLimit > 0
+      ? pageLimit
+      : DIARY_LIST_DEFAULT_LIMIT;
+    resolvedOffset = (pageNum - 1) * safeLimit;
+  }
+
+  const pagination = normalizeDiaryPagination(resolvedLimit, resolvedOffset);
+
   return {
     ownerUserId: ownerUserId.toString(),
     viewerUserId: viewerUserId.toString(),
     date,
+    limit: pagination.limit,
+    offset: pagination.offset,
   };
 }

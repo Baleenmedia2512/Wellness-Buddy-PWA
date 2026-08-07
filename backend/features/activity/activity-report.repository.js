@@ -18,7 +18,7 @@ import {
 import { resolveTimezoneFromMap } from '../user/domain/userTimezone.js';
 
 /** Keep PostgREST IN lists small to avoid statement timeouts on large teams. */
-const IN_CHUNK_SIZE = 40;
+const IN_CHUNK_SIZE = 80;
 
 /**
  * @template T
@@ -176,7 +176,8 @@ export async function fetchWeightRecords(userIds, startDate, endDate, timezoneIa
       .from('weight_records_table')
       .select('UserId, Weight, CreatedAt, City, Village, AttendanceType, CenterName, NutritionCenterId')
       .in('UserId', chunk)
-      .or('IsDeleted.is.null,IsDeleted.eq.0');
+      .or('IsDeleted.is.null,IsDeleted.eq.0')
+      .order('CreatedAt', { ascending: false });
     query = applyDateRangeFilterWidened(query, 'CreatedAt', startDate, endDate, timezoneIana);
     return query;
   });
@@ -198,7 +199,8 @@ export async function fetchEducationRecords(userIds, startDate, endDate, timezon
       .from('education_logs_table')
       .select('"UserId", "Topic", "CreatedAt", attendance_type, center_name, nutrition_center_id, "City", "Village"')
       .in('"UserId"', chunk)
-      .or('"IsDeleted".is.null,"IsDeleted".eq.0');
+      .or('"IsDeleted".is.null,"IsDeleted".eq.0')
+      .order('CreatedAt', { ascending: false });
     query = applyDateRangeFilterWidened(query, '"CreatedAt"', startDate, endDate, timezoneIana);
     return query;
   });
@@ -211,24 +213,59 @@ export async function fetchEducationRecords(userIds, startDate, endDate, timezon
 }
 
 /**
- * Fetch food records for given user IDs and date range
+ * Fetch food records for given user IDs and date range.
+ * AnalysisData is omitted by default — report beverage detection uses ProcessedBy
+ * (water_preset / afresh_preset). Pull AnalysisData only when water volume is needed.
  */
-export async function fetchFoodRecords(userIds, startDate, endDate, timezoneIana = IANA_IST) {
+export async function fetchFoodRecords(
+  userIds,
+  startDate,
+  endDate,
+  timezoneIana = IANA_IST,
+  { includeAnalysisData = false } = {},
+) {
   if (!userIds || userIds.length === 0) return [];
 
   const supabase = getSupabaseClient();
   const userIdsAsString = userIds.map(String);
+  const columns = includeAnalysisData
+    ? 'UserID, CreatedAt, TotalCalories, ProcessedBy, AnalysisData, City, Village, AttendanceType, CenterName, NutritionCenterId'
+    : 'UserID, CreatedAt, TotalCalories, ProcessedBy, City, Village, AttendanceType, CenterName, NutritionCenterId';
   const data = await fetchRowsInChunks(userIdsAsString, (chunk) => {
     let query = supabase
       .from('food_nutrition_data_table')
-      .select('UserID, CreatedAt, TotalCalories, AnalysisData, City, Village, AttendanceType, CenterName, NutritionCenterId')
+      .select(columns)
       .in('UserID', chunk)
-      .or('IsDeleted.is.null,IsDeleted.eq.0');
+      .or('IsDeleted.is.null,IsDeleted.eq.0')
+      .order('CreatedAt', { ascending: false });
     query = applyDateRangeFilterWidened(query, 'CreatedAt', startDate, endDate, timezoneIana);
     return query;
   });
 
   return filterFoodRowsByCalendarDateRange(data, startDate, endDate, timezoneIana, 'CreatedAt');
+}
+
+/**
+ * Hydrate AnalysisData for specific food row IDs (water volume on detail tab).
+ * @param {Array<string|number>} userIds
+ * @param {string} startDate
+ * @param {string} endDate
+ * @param {string} [timezoneIana]
+ */
+export async function fetchFoodAnalysisForUsers(userIds, startDate, endDate, timezoneIana = IANA_IST) {
+  if (!userIds || userIds.length === 0) return [];
+  return fetchFoodRecords(userIds, startDate, endDate, timezoneIana, { includeAnalysisData: true });
+}
+
+/**
+ * True when a food row is beverage-only for meal discipline / report pills.
+ * Prefers ProcessedBy presets so list queries can omit huge AnalysisData payloads.
+ */
+export function isReportBeverageRecord(record) {
+  const by = String(record?.ProcessedBy || '').toLowerCase().trim();
+  if (by === 'water_preset' || by === 'afresh_preset') return true;
+  if (record?.AnalysisData) return isExemptedBeverageOnly(record.AnalysisData);
+  return false;
 }
 
 export async function fetchStepRecords(userIds, startDate, endDate, timezoneIana = IANA_IST) {
@@ -239,7 +276,8 @@ export async function fetchStepRecords(userIds, startDate, endDate, timezoneIana
     let query = supabase
       .from('daily_step_activity')
       .select('UserId, CreatedAt, Steps, CaloriesBurned')
-      .in('UserId', chunk);
+      .in('UserId', chunk)
+      .order('CreatedAt', { ascending: false });
     query = applyDateRangeFilterWidened(query, 'CreatedAt', startDate, endDate, timezoneIana);
     return query;
   });
@@ -368,7 +406,7 @@ export function filterFoodByMealTime(
   if (!window) return [];
 
   return foodRecords.filter((record) => {
-    if (isExemptedBeverageOnly(record.AnalysisData)) return false;
+    if (isReportBeverageRecord(record)) return false;
 
     try {
       const tz = resolveTimezoneFromMap(
@@ -388,9 +426,7 @@ export function filterFoodByMealTime(
  * Filter food records for water/beverage intake
  */
 export function filterWaterRecords(foodRecords) {
-  return foodRecords.filter(record => {
-    return isExemptedBeverageOnly(record.AnalysisData);
-  });
+  return foodRecords.filter((record) => isReportBeverageRecord(record));
 }
 
 /**

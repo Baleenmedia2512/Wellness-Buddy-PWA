@@ -76,9 +76,12 @@ const SingleDayPicker = ({ selectedDate, onSelect, onClose }) => {
   );
 };
 
+const PAGE_SIZE = 20;
+
 const NutritionCentersMap = ({ user, onBack, onEditCenter, onRegisterCenter, embedded = false, tabVisitKey = 0 }) => {
   const [centers, setCenters] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [currentUserId, setCurrentUserId] = useState(null);
   const [error, setError] = useState(null);
   const [teamFilter, setTeamFilter] = useState('self'); // 'self' | 'direct' | 'full'
@@ -86,12 +89,20 @@ const NutritionCentersMap = ({ user, onBack, onEditCenter, onRegisterCenter, emb
   const [customDate, setCustomDate] = useState(null); // single Date object for custom
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [mapLoaded, setMapLoaded] = useState(false);
   const [showStreetView, setShowStreetView] = useState(false);
   const [streetViewLoading, setStreetViewLoading] = useState(false);
   const [selectedCenter, setSelectedCenter] = useState(null);
   const [mapFullscreen, setMapFullscreen] = useState(false);
   const [attendeeModal, setAttendeeModal] = useState({ isOpen: false, center: null });
+  const [pagination, setPagination] = useState({
+    totalRecords: 0,
+    currentPage: 0,
+    hasNextPage: false,
+    totalAttendance: 0,
+    attendedCenters: [],
+  });
 
   const mapRef = useRef(null);
   const googleMapRef = useRef(null);
@@ -102,9 +113,18 @@ const NutritionCentersMap = ({ user, onBack, onEditCenter, onRegisterCenter, emb
   const infoWindowRef = useRef(null);
   const fetchAbortRef = useRef(null);
   const resolvedUserIdRef = useRef(null);
+  /** Cache pages: `${teamFilter}|${start}|${end}|${search}|${page}` → payload */
+  const pageCacheRef = useRef(new Map());
+  const inFlightKeyRef = useRef(null);
+  const listSentinelRef = useRef(null);
 
   const apiBaseUrl = getApiBaseUrl();
   const GOOGLE_MAPS_API_KEY = process.env.REACT_APP_GOOGLE_MAPS_API_KEY || '';
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(searchQuery.trim()), 300);
+    return () => clearTimeout(t);
+  }, [searchQuery]);
 
   // Load Google Maps script
   useEffect(() => {
@@ -208,65 +228,123 @@ const NutritionCentersMap = ({ user, onBack, onEditCenter, onRegisterCenter, emb
     return resolvedUserIdRef.current;
   }, [user]);
 
-  // Fetch nutrition centres (abortable — Full Team was firing 3 overlapping requests)
-  const fetchCenters = useCallback(async ({ signal } = {}) => {
+  // Fetch nutrition centres (abortable + paginated + page cache)
+  const buildDateParams = useCallback(() => {
+    const pad = (n) => String(n).padStart(2, '0');
+    const localDate = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    const now = new Date();
+    const todayStr = localDate(now);
+    const yesterdayDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+    const yesterdayStr = localDate(yesterdayDate);
+
+    let dateParam = dateRange;
+    let startParam = todayStr;
+    let endParam = todayStr;
+    if (dateRange === 'custom' && customDate) {
+      dateParam = 'custom';
+      startParam = localDate(customDate);
+      endParam = localDate(customDate);
+    } else if (dateRange === 'yesterday') {
+      startParam = yesterdayStr;
+      endParam = yesterdayStr;
+    }
+    return { dateParam, startParam, endParam };
+  }, [dateRange, customDate]);
+
+  const fetchCenters = useCallback(async ({
+    signal,
+    page = 1,
+    append = false,
+    bustCache = false,
+  } = {}) => {
     if (!user) return;
 
-    setLoading(true);
+    const { dateParam, startParam, endParam } = buildDateParams();
+    const search = debouncedSearch;
+    const cacheKey = `${teamFilter}|${startParam}|${endParam}|${search}|${page}`;
+
+    if (!bustCache && pageCacheRef.current.has(cacheKey)) {
+      const cached = pageCacheRef.current.get(cacheKey);
+      setPagination(cached.pagination);
+      setCenters((prev) => {
+        if (!append) return cached.data;
+        const seen = new Set(prev.map((c) => c.id));
+        return [...prev, ...cached.data.filter((c) => !seen.has(c.id))];
+      });
+      setLoading(false);
+      setLoadingMore(false);
+      return cached;
+    }
+
+    if (inFlightKeyRef.current === cacheKey) return null;
+    inFlightKeyRef.current = cacheKey;
+
+    if (append) setLoadingMore(true);
+    else setLoading(true);
     setError(null);
 
     try {
       const userId = await resolveUserId();
-      if (signal?.aborted) return;
+      if (signal?.aborted) return null;
 
       const scope = teamFilter === 'all' ? 'all' : 'team';
-      const pad = (n) => String(n).padStart(2, '0');
-      const localDate = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-      const now = new Date();
-      const todayStr = localDate(now);
-      const yesterdayDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
-      const yesterdayStr = localDate(yesterdayDate);
-
-      let dateParam = dateRange;
-      let startParam = '';
-      let endParam = '';
-      if (dateRange === 'custom' && customDate) {
-        dateParam = 'custom';
-        startParam = localDate(customDate);
-        endParam = localDate(customDate);
-      } else if (dateRange === 'yesterday') {
-        startParam = yesterdayStr;
-        endParam = yesterdayStr;
-      } else {
-        startParam = todayStr;
-        endParam = todayStr;
-      }
+      const params = new URLSearchParams({
+        userId: String(userId),
+        teamFilter,
+        scope,
+        dateRange: dateParam,
+        startDate: startParam,
+        endDate: endParam,
+        page: String(page),
+        limit: String(PAGE_SIZE),
+      });
+      if (search) params.set('search', search);
 
       const response = await fetch(
-        `${apiBaseUrl}/api/nutrition-centers?userId=${userId}&teamFilter=${teamFilter}&scope=${scope}&dateRange=${dateParam}&startDate=${startParam}&endDate=${endParam}`,
+        `${apiBaseUrl}/api/nutrition-centers?${params}`,
         { signal },
       );
 
       const result = await response.json();
-      if (signal?.aborted) return;
+      if (signal?.aborted) return null;
 
       if (!response.ok || !result.success) {
         throw new Error(result.message || 'Failed to fetch centers');
       }
 
-      setCenters(result.data || []);
-      const label = dateRange === 'yesterday' ? 'Yesterday' : dateRange === 'custom' && customDate
-        ? customDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-        : 'Today';
-      renderMarkers(result.data || [], label);
+      const pageData = Array.isArray(result.data) ? result.data : [];
+      const meta = result.pagination || {
+        totalRecords: pageData.length,
+        currentPage: page,
+        pageSize: PAGE_SIZE,
+        hasNextPage: false,
+        totalAttendance: pageData.reduce((s, c) => s + (c.todayAttendance || 0), 0),
+        attendedCenters: pageData
+          .filter((c) => (c.todayAttendance || 0) > 0)
+          .map((c) => ({ id: c.id, center_name: c.center_name, todayAttendance: c.todayAttendance })),
+      };
+
+      pageCacheRef.current.set(cacheKey, { data: pageData, pagination: meta });
+      setPagination(meta);
+      setCenters((prev) => {
+        if (!append) return pageData;
+        const seen = new Set(prev.map((c) => c.id));
+        return [...prev, ...pageData.filter((c) => !seen.has(c.id))];
+      });
+      return { data: pageData, pagination: meta };
     } catch (err) {
-      if (err?.name === 'AbortError') return;
+      if (err?.name === 'AbortError') return null;
       console.error('Error fetching centers:', err);
       setError(err.message);
+      return null;
     } finally {
-      if (!signal?.aborted) setLoading(false);
+      if (inFlightKeyRef.current === cacheKey) inFlightKeyRef.current = null;
+      if (!signal?.aborted) {
+        setLoading(false);
+        setLoadingMore(false);
+      }
     }
-  }, [user, teamFilter, dateRange, customDate, apiBaseUrl, resolveUserId]);
+  }, [user, teamFilter, debouncedSearch, apiBaseUrl, resolveUserId, buildDateParams]);
 
   // Open Street View for a center
   const openStreetView = (center) => {
@@ -411,8 +489,8 @@ const NutritionCentersMap = ({ user, onBack, onEditCenter, onRegisterCenter, emb
     }
   };
 
-  // Render markers on map
-  const renderMarkers = (centersData, dateLabel = 'Today') => {
+  // Render markers only for currently loaded (visible list) centres — not the full team set
+  const renderMarkers = useCallback((centersData, dateLabel = 'Today', { fitBounds = true } = {}) => {
     if (!googleMapRef.current || !window.google || !window.google.maps) return;
 
     // Clear existing markers
@@ -424,22 +502,23 @@ const NutritionCentersMap = ({ user, onBack, onEditCenter, onRegisterCenter, emb
     markersRef.current = [];
     markersMapRef.current = {};
 
-    if (centersData.length === 0) {
-      // Default view if no centers
-      googleMapRef.current.setCenter({ lat: 0, lng: 0 });
-      googleMapRef.current.setZoom(2);
+    if (!centersData || centersData.length === 0) {
+      if (fitBounds) {
+        googleMapRef.current.setCenter({ lat: 0, lng: 0 });
+        googleMapRef.current.setZoom(2);
+      }
       return;
     }
 
     const bounds = new window.google.maps.LatLngBounds();
 
     centersData.forEach((center) => {
-      const position = {
-        lat: parseFloat(center.latitude),
-        lng: parseFloat(center.longitude),
-      };
+      const lat = parseFloat(center.latitude);
+      const lng = parseFloat(center.longitude);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
 
-      // Create marker
+      const position = { lat, lng };
+
       const marker = new window.google.maps.Marker({
         position,
         map: googleMapRef.current,
@@ -455,7 +534,6 @@ const NutritionCentersMap = ({ user, onBack, onEditCenter, onRegisterCenter, emb
         },
       });
 
-      // Info window content with Street View button
       const infoContent = `
         <div style="padding: 8px; max-width: 250px;">
           <h3 style="margin: 0 0 8px 0; font-weight: bold; color: #1f2937;">${center.center_name}</h3>
@@ -475,7 +553,7 @@ const NutritionCentersMap = ({ user, onBack, onEditCenter, onRegisterCenter, emb
             ${center.owner_phone ? `
               <div style="display: flex; gap: 8px; justify-content: center;">
                 <a href="tel:${center.owner_phone}" style="padding: 10px; background: #10b981; text-decoration: none; border-radius: 8px; display: flex; align-items: center; justify-content: center;" title="Call"><img src="/call-icon.png" alt="Call" style="width: 24px; height: 24px;"/></a>
-                <button onclick="window.openWhatsAppForCenter('${center.owner_phone.replace(/[^0-9]/g, '')}')" style="padding: 10px; background: #25D366; border: none; border-radius: 8px; display: flex; align-items: center; justify-content: center; cursor: pointer;" title="WhatsApp"><img src="/whatsapp-icon.png" alt="WhatsApp" style="width: 24px; height: 24px;"/></button>
+                <button onclick="window.openWhatsAppForCenter('${String(center.owner_phone).replace(/[^0-9]/g, '')}')" style="padding: 10px; background: #25D366; border: none; border-radius: 8px; display: flex; align-items: center; justify-content: center; cursor: pointer;" title="WhatsApp"><img src="/whatsapp-icon.png" alt="WhatsApp" style="width: 24px; height: 24px;"/></button>
               </div>
             ` : ''}
           </div>
@@ -492,16 +570,25 @@ const NutritionCentersMap = ({ user, onBack, onEditCenter, onRegisterCenter, emb
       bounds.extend(position);
     });
 
-    // Fit map to bounds
-    googleMapRef.current.fitBounds(bounds);
-
-    // Adjust zoom if only one center
-    if (centersData.length === 1) {
-      googleMapRef.current.setZoom(14);
+    if (fitBounds && markersRef.current.length > 0) {
+      googleMapRef.current.fitBounds(bounds);
+      if (centersData.length === 1) {
+        googleMapRef.current.setZoom(14);
+      }
     }
-  };
+  }, []);
 
-  // Debounced fetch — collapses Strict Mode remount + rapid Full Team taps into one call.
+  // Sync map markers to currently loaded centres only
+  useEffect(() => {
+    if (!mapLoaded || !googleMapRef.current) return;
+    const dateLabel = dateRange === 'yesterday' ? 'Yesterday'
+      : dateRange === 'custom' && customDate
+      ? customDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+      : 'Today';
+    renderMarkers(centers, dateLabel, { fitBounds: pagination.currentPage <= 1 });
+  }, [centers, mapLoaded, dateRange, customDate, renderMarkers, pagination.currentPage]);
+
+  // Reset + fetch page 1 when filters change (uses cache when switching My/Direct/Full)
   useEffect(() => {
     if (!mapLoaded || !user) return undefined;
 
@@ -509,8 +596,17 @@ const NutritionCentersMap = ({ user, onBack, onEditCenter, onRegisterCenter, emb
     const controller = new AbortController();
     fetchAbortRef.current = controller;
 
+    setCenters([]);
+    setPagination({
+      totalRecords: 0,
+      currentPage: 0,
+      hasNextPage: false,
+      totalAttendance: 0,
+      attendedCenters: [],
+    });
+
     const timer = setTimeout(() => {
-      fetchCenters({ signal: controller.signal });
+      fetchCenters({ signal: controller.signal, page: 1, append: false });
     }, 50);
 
     return () => {
@@ -518,14 +614,37 @@ const NutritionCentersMap = ({ user, onBack, onEditCenter, onRegisterCenter, emb
       controller.abort();
       if (fetchAbortRef.current === controller) fetchAbortRef.current = null;
     };
-  }, [mapLoaded, user, teamFilter, dateRange, customDate, tabVisitKey, fetchCenters]);
+  }, [mapLoaded, user, teamFilter, dateRange, customDate, debouncedSearch, tabVisitKey, fetchCenters]);
 
   const handleRefresh = useCallback(() => {
+    pageCacheRef.current.clear();
     fetchAbortRef.current?.abort();
     const controller = new AbortController();
     fetchAbortRef.current = controller;
-    fetchCenters({ signal: controller.signal });
+    setCenters([]);
+    fetchCenters({ signal: controller.signal, page: 1, append: false, bustCache: true });
   }, [fetchCenters]);
+
+  const loadMoreCenters = useCallback(() => {
+    if (loading || loadingMore) return;
+    if (!pagination.hasNextPage) return;
+    const nextPage = (pagination.currentPage || 1) + 1;
+    fetchCenters({ page: nextPage, append: true });
+  }, [loading, loadingMore, pagination, fetchCenters]);
+
+  // Infinite scroll for the centres list (page scroll container)
+  useEffect(() => {
+    const sentinel = listSentinelRef.current;
+    if (!sentinel) return undefined;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) loadMoreCenters();
+      },
+      { root: null, rootMargin: '240px', threshold: 0 },
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [loadMoreCenters, centers.length]);
 
   // Set up global functions for info window buttons
   useEffect(() => {
@@ -754,15 +873,9 @@ const NutritionCentersMap = ({ user, onBack, onEditCenter, onRegisterCenter, emb
             {/* Centres List */}
             <div className="mt-4 space-y-2 pb-24">
               {(() => {
-                const q = searchQuery.trim().toLowerCase();
-                const filteredCenters = (q
-                  ? centers.filter(c =>
-                      c.center_name?.toLowerCase().includes(q) ||
-                      c.ownerName?.toLowerCase().includes(q)
-                    )
-                  : centers
-                ).slice().sort((a, b) => (b.todayAttendance || 0) - (a.todayAttendance || 0));
-                const totalAttendance = centers.reduce((sum, c) => sum + (c.todayAttendance || 0), 0);
+                const totalAttendance = pagination.totalAttendance
+                  ?? centers.reduce((sum, c) => sum + (c.todayAttendance || 0), 0);
+                const totalCount = pagination.totalRecords || centers.length;
                 const dateLabel = dateRange === 'yesterday' ? 'Yesterday'
                   : dateRange === 'custom' && customDate
                   ? customDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
@@ -771,9 +884,9 @@ const NutritionCentersMap = ({ user, onBack, onEditCenter, onRegisterCenter, emb
                   <>
                     <div className="flex items-center gap-2 mb-2 flex-wrap">
                       <h2 className="text-lg font-bold text-gray-800">
-                        Centres ({q ? `${filteredCenters.length}/` : ''}{centers.length})
+                        Centres ({debouncedSearch ? `${centers.length}/` : ''}{totalCount})
                       </h2>
-                      {centers.length > 0 && totalAttendance > 0 ? (
+                      {totalCount > 0 && totalAttendance > 0 ? (
                         <button
                           onClick={() => setAttendeeModal({ isOpen: true, center: null })}
                           className="text-xs font-semibold bg-green-100 text-green-700 px-2.5 py-1 rounded-full active:bg-green-200 transition-colors"
@@ -781,19 +894,25 @@ const NutritionCentersMap = ({ user, onBack, onEditCenter, onRegisterCenter, emb
                         >
                           {totalAttendance} attended {dateLabel}
                         </button>
-                      ) : centers.length > 0 ? (
+                      ) : totalCount > 0 ? (
                         <span className="text-xs font-semibold bg-gray-100 text-gray-500 px-2.5 py-1 rounded-full">
                           0 attended {dateLabel}
                         </span>
                       ) : null}
                     </div>
-                    {filteredCenters.length === 0 ? (
+                    {loading && centers.length === 0 ? (
+                      <div className="space-y-2">
+                        {Array.from({ length: 4 }).map((_, i) => (
+                          <div key={i} className="bg-white rounded-2xl border border-gray-200 p-4 animate-pulse h-28" />
+                        ))}
+                      </div>
+                    ) : centers.length === 0 ? (
                       <div className="bg-white rounded-lg p-6 text-center shadow-sm">
                         <MapPin className="h-12 w-12 text-gray-300 mx-auto mb-2" />
-                        <p className="text-gray-500">{centers.length === 0 ? 'No nutrition centres registered yet' : 'No clubs match your search'}</p>
+                        <p className="text-gray-500">{debouncedSearch ? 'No clubs match your search' : 'No nutrition centres registered yet'}</p>
                       </div>
                     ) : (
-                      filteredCenters.map((center) => (
+                      centers.map((center) => (
                   <div
                     key={center.id}
                     onClick={() => viewCenterOnMap(center)}
@@ -876,6 +995,10 @@ const NutritionCentersMap = ({ user, onBack, onEditCenter, onRegisterCenter, emb
                   </div>
                       ))
                     )}
+                    {loadingMore && (
+                      <div className="bg-white rounded-2xl border border-gray-200 p-4 animate-pulse h-20" />
+                    )}
+                    <div ref={listSentinelRef} className="h-6" aria-hidden="true" />
                   </>
                 );
               })()}
@@ -938,7 +1061,7 @@ const NutritionCentersMap = ({ user, onBack, onEditCenter, onRegisterCenter, emb
         isOpen={attendeeModal.isOpen}
         onClose={() => setAttendeeModal({ isOpen: false, center: null })}
         center={attendeeModal.center}
-        allCenters={attendeeModal.center ? null : centers}
+        allCenters={attendeeModal.center ? null : (pagination.attendedCenters || centers)}
         dateLabel={activeDateLabel}
         startDate={activeDateStart}
         endDate={activeDateEnd}

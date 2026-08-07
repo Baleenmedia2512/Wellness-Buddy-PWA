@@ -98,6 +98,7 @@ const WeightCardModal = ({
                   inputMode="decimal"
                   pattern="[0-9]*"
                   autoFocus
+                  data-select-after-decimal="true"
                   value={editWeight}
                   onChange={(e) => setEditWeight(e.target.value)}
                   className="w-full px-3 py-2 border-2 border-emerald-300 rounded-lg focus:border-emerald-500 focus:outline-none text-lg font-bold"

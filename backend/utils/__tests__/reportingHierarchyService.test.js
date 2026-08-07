@@ -162,3 +162,51 @@ describe('buildReportingChildrenIndex', () => {
     assert.deepEqual((index.get(A3) || []).sort((a, b) => a - b), [B1]);
   });
 });
+
+describe('inactive nested leader (Role=user) rollup — coach→a3→b1→c1', () => {
+  const A1 = 501;
+  const A2 = 502;
+  const A3 = 503;
+  const A4 = 504;
+  const B1 = 601;
+  const B2 = 602;
+  const B3 = 603;
+  const C1 = 701;
+
+  function makeTree(b1Status = 'Active') {
+    return [
+      { UserId: X, UserName: 'Coach', Role: 'coach', CoachId: null, Status: 'Active' },
+      { UserId: A1, UserName: 'a1', Role: 'user', CoachId: X, Status: 'Active' },
+      { UserId: A2, UserName: 'a2', Role: 'user', CoachId: X, Status: 'Active' },
+      { UserId: A3, UserName: 'a3', Role: 'user', CoachId: X, Status: 'Active' },
+      { UserId: A4, UserName: 'a4', Role: 'user', CoachId: X, Status: 'Active' },
+      { UserId: B1, UserName: 'b1', Role: 'user', CoachId: A3, Status: b1Status },
+      { UserId: B2, UserName: 'b2', Role: 'user', CoachId: A3, Status: 'Active' },
+      { UserId: B3, UserName: 'b3', Role: 'user', CoachId: A3, Status: 'Active' },
+      { UserId: C1, UserName: 'c1', Role: 'user', CoachId: B1, Status: 'Active' },
+    ];
+  }
+
+  it('b1 inactive → c1 rolls up into a3 direct (aligns to a3)', () => {
+    const context = buildReportingContext(makeTree('Inactive'));
+    const a3Direct = getDirectReportingMembers(A3, context);
+    assert.deepEqual(ids(a3Direct), [B2, B3, C1]);
+    assert.ok(!a3Direct.some((m) => m.UserId === B1), 'inactive b1 hidden from a3 direct');
+  });
+
+  it('b1 active → c1 stays under b1 (not in a3 direct)', () => {
+    const context = buildReportingContext(makeTree('Active'));
+    const a3Direct = getDirectReportingMembers(A3, context);
+    assert.deepEqual(ids(a3Direct), [B1, B2, B3]);
+    const b1Direct = getDirectReportingMembers(B1, context);
+    assert.deepEqual(ids(b1Direct), [C1]);
+  });
+
+  it('coach Full Team includes c1 when b1 is inactive', () => {
+    const context = buildReportingContext(makeTree('Inactive'));
+    const full = getFullReportingMembers(X, context);
+    assert.ok(full.some((m) => m.UserId === C1));
+    assert.ok(!full.some((m) => m.UserId === B1), 'inactive b1 not in Full after Active-style use');
+    // Note: getFullReportingMembers still may include inactive coaches; b1 is user so not included.
+  });
+});

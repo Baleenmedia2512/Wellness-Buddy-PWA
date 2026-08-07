@@ -10,6 +10,7 @@ import {
   Map,
   Trophy,
   FileBarChart,
+  ClipboardList,
 } from 'lucide-react';
 import NavTabButton from './NavTabButton';
 
@@ -23,7 +24,9 @@ export default function AppNavTabs({
   onShowNutritionCentersMap,
   onShowTestimonials,
   onShowReports,
+  onShowWellnessScoreReport,
   reportsEnabled = false,
+  wellnessScoreReportEnabled = false,
 }) {
   return (
     <div
@@ -120,6 +123,21 @@ export default function AppNavTabs({
           labelClass="text-teal-700"
           label="Ideal Weight"
           ariaLabel="Ideal Weight"
+        />
+      )}
+      {wellnessScoreReportEnabled && (
+        <NavTabButton
+          onClick={onShowWellnessScoreReport ?? (() => {})}
+          active={activePage === 'wellness-score-report'}
+          activeBg="bg-teal-100"
+          hoverBg="hover:bg-teal-50"
+          icon={ClipboardList}
+          iconActiveClass="text-teal-700"
+          iconClass="text-teal-600"
+          labelActiveClass="text-teal-900"
+          labelClass="text-teal-700"
+          label="WS Report"
+          ariaLabel="Wellness Score Report"
         />
       )}
     </div>

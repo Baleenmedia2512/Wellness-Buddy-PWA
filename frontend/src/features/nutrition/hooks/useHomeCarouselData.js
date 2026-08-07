@@ -23,6 +23,7 @@ import {
   markWellnessScoreProcessed,
   shouldRefreshHomeDashboard,
 } from '../../../shared/services/homeDashboardActivity';
+import { isCaptureFlowBusy } from '../../../shared/services/captureFlowBusy';
 
 const EMPTY_NUTRITION = {
   dailyStats: EMPTY_DAILY_STATS,
@@ -271,6 +272,8 @@ export function useHomeCarouselData({
     if (nutritionRefreshKey === 0) return;
     // Tab switch alone bumps nothing useful — only refetch after real activity.
     if (!shouldRefreshHomeDashboard()) return;
+    // Do not compete with POST /captures while Manual Log is opening.
+    if (isCaptureFlowBusy()) return;
     const userId = lastUserIdRef.current || resolvedUserIdRef.current;
     if (userId) {
       // Drop cached ranges so the next load (and siblings) see fresh meals.

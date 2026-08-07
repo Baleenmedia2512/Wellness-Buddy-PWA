@@ -187,6 +187,9 @@ import * as Session from "./shared/services/sessionStorage";
 import * as nativeLifecycle from "./shared/services/nativeLifecycle";
 import * as PermissionManager from "./shared/services/permissionManager";
 import { clearHomeDashboardSnapshot } from "./shared/services/homeDashboardActivity";
+import {
+  setCaptureFlowBusy,
+} from "./shared/services/captureFlowBusy";
 import PermissionDeniedModal from "./shared/components/PermissionDeniedModal";
 import PermissionBlockedPage from "./shared/components/PermissionBlockedPage";
 import GpsRequiredModal from "./shared/components/GpsRequiredModal";
@@ -263,6 +266,9 @@ const TestimonialsPage = lazy(() =>
 // Reports � coach-only analytics (e.g. downline weight status)
 const DownlineWeightReport = lazy(() =>
   import("./features/reports").then((m) => ({ default: m.DownlineWeightReport })),
+);
+const WellnessScoreReport = lazy(() =>
+  import("./features/reports").then((m) => ({ default: m.WellnessScoreReport })),
 );
 const WellnessScoreSetup = lazy(() =>
   import("./features/wellness-score-sheet").then((m) => ({ default: m.WellnessScoreSetup })),
@@ -946,6 +952,7 @@ function WellnessValleyApp() {
   const [showTestimonials, setShowTestimonials] = useState(false);
   // Reports page � coach/upline analytics (downline weight status, etc.)
   const [showReports, setShowReports] = useState(false);
+  const [showWellnessScoreReport, setShowWellnessScoreReport] = useState(false);
   const [showWellnessScore, setShowWellnessScore] = useState(false);
   const [showWellnessScoreSetup, setShowWellnessScoreSetup] = useState(false);
   const [showAiCreditsSetup, setShowAiCreditsSetup] = useState(false);
@@ -1021,6 +1028,7 @@ function WellnessValleyApp() {
         setShowActivityTimeReport(false);
         setShowTestimonials(false);
         setShowReports(false);
+        setShowWellnessScoreReport(false);
         setShowProfilePage(false);
         setShowWellnessScoreSetup(false);
         setShowAiCreditsSetup(false);
@@ -1064,7 +1072,13 @@ function WellnessValleyApp() {
         Session.setCurrentPage('main');
       } else if (page === 'reports') {
         bumpTabVisitKeyRef.current('reports');
+        setShowWellnessScoreReport(false);
         startTransition(() => setShowReports(true));
+        Session.setCurrentPage('main');
+      } else if (page === 'wellness-score-report') {
+        bumpTabVisitKeyRef.current('wellness-score-report');
+        setShowReports(false);
+        startTransition(() => setShowWellnessScoreReport(true));
         Session.setCurrentPage('main');
       } else if (page === 'profile') {
         setShowProfilePage(true);
@@ -1297,10 +1311,12 @@ function WellnessValleyApp() {
 
   // Callback passed to <ImageUpload onCameraStateChange={...}>. This is the
   // SINGLE source of truth for "the native camera UI is on/off the screen".
-  const handleCameraStateChange = useCallback((state /*, meta */) => {
+  const handleCameraStateChange = useCallback((state, meta) => {
     if (state === "opened") {
       _cameraInFlightRef.current = true;
       _justClosedCameraRef.current = false;
+      // Pause Home visibility refetches so they do not starve POST /captures.
+      setCaptureFlowBusy(true);
       // DO NOT dismiss the launch overlay here.
       //
       // 'opened' fires synchronously, BEFORE Camera.getPhoto has had a chance
@@ -1316,6 +1332,11 @@ function WellnessValleyApp() {
     } else if (state === "closed") {
       _cameraInFlightRef.current = false;
       _justClosedCameraRef.current = true;
+      // Cancelled picker — release the gate. Successful pick stays busy until
+      // handleImageSelect finishes Phase 1 (captureId ready / Manual Log unlock).
+      if (!meta?.hadResult) {
+        setCaptureFlowBusy(false);
+      }
       // Camera is gone n++ now it is safe to reveal the home screen.
       setShowLaunchOverlay(false);
     }
@@ -2016,6 +2037,13 @@ function WellnessValleyApp() {
       }
       if (showReports) {
         setShowReports(false);
+        setShowWellnessScoreReport(false);
+        const currentWvPage = window.history.state?.wvPage;
+        if (currentWvPage && currentWvPage !== 'main') window.history.back();
+        return true;
+      }
+      if (showWellnessScoreReport) {
+        setShowWellnessScoreReport(false);
         const currentWvPage = window.history.state?.wvPage;
         if (currentWvPage && currentWvPage !== 'main') window.history.back();
         return true;
@@ -2054,7 +2082,7 @@ function WellnessValleyApp() {
     initializeBackButton(
       goBack,
       showToast,
-      !showDashboard && !showWellnessCounselling && !showUniversityEnrollment && !showNutritionCentersMap && !showActivityReport && !showActivityTimeReport && !showTestimonials && !showReports && !showWellnessScoreSetup && !showAiCreditsSetup && !showManualEntry && !showWellnessScore && !showProfilePage,
+      !showDashboard && !showWellnessCounselling && !showUniversityEnrollment && !showNutritionCentersMap && !showActivityReport && !showActivityTimeReport && !showTestimonials && !showReports && !showWellnessScoreReport && !showWellnessScoreSetup && !showAiCreditsSetup && !showManualEntry && !showWellnessScore && !showProfilePage,
     );
     return () => cleanupBackButton();
   // eslint-disable-next-line react-hooks/exhaustive-deps -- showMainPage is useCallback([]) stable; listing it here causes a TDZ crash because it is declared after this effect
@@ -2067,6 +2095,7 @@ function WellnessValleyApp() {
     showActivityTimeReport,
     showTestimonials,
     showReports,
+    showWellnessScoreReport,
     showWellnessScoreSetup,
     showAiCreditsSetup,
     showManualEntry,
@@ -2334,6 +2363,7 @@ function WellnessValleyApp() {
       setShowActivityTimeReport(false);
       setShowTestimonials(false);
       setShowReports(false);
+      setShowWellnessScoreReport(false);
       setShowWellnessScoreSetup(false);
       setShowAiCreditsSetup(false);
       setShowManualEntry(false);
@@ -2364,6 +2394,7 @@ function WellnessValleyApp() {
         setShowActivityTimeReport(false);
         setShowTestimonials(false);
         setShowReports(false);
+        setShowWellnessScoreReport(false);
         setShowWellnessScoreSetup(false);
         setShowAiCreditsSetup(false);
         setShowManualEntry(false);
@@ -2392,6 +2423,7 @@ function WellnessValleyApp() {
     setShowActivityTimeReport(false);
     setShowTestimonials(false);
     setShowReports(false);
+    setShowWellnessScoreReport(false);
     setShowWellnessScoreSetup(false);
     setShowAiCreditsSetup(false);
     setShowManualEntry(false);
@@ -2431,6 +2463,9 @@ function WellnessValleyApp() {
         break;
       case 'reports':
         setShowReports(true);
+        break;
+      case 'wellness-score-report':
+        setShowWellnessScoreReport(true);
         break;
       case 'profile':
         setShowProfilePage(true);
@@ -5485,12 +5520,20 @@ function WellnessValleyApp() {
     }
   };
 
-  const handleImageSelect = async (file, exifTimestamp = null) => {
+  const handleImageSelect = async (file, exifTimestamp = null, selectOptions = {}) => {
     if (imageProcessingInProgress.current) {
       debugLog("Image processing already in progress, skipping duplicate call");
       return;
     }
     imageProcessingInProgress.current = true;
+    // Web file-input path never fires onCameraStateChange — gate Home refetches here too.
+    setCaptureFlowBusy(true);
+
+    const previewDataUrl =
+      typeof selectOptions?.previewDataUrl === "string" &&
+      selectOptions.previewDataUrl.length > 0
+        ? selectOptions.previewDataUrl
+        : null;
 
     // Pre-generate share token/code synchronously so POST /captures can persist
     // the row immediately. Share sheet opens only after Classify photo completes.
@@ -5523,10 +5566,10 @@ function WellnessValleyApp() {
         type: "warning",
       });
       imageProcessingInProgress.current = false;
+      setCaptureFlowBusy(false);
       return;
     }
 
-    // Re-check user status in parallel with reading the image bytes.
     if (file.size > 10 * 1024 * 1024) {
       setAlertModal({
         isOpen: true,
@@ -5536,36 +5579,30 @@ function WellnessValleyApp() {
         type: "error",
       });
       imageProcessingInProgress.current = false;
+      setCaptureFlowBusy(false);
       return;
     }
 
-    // Warm classify chunk while status + decode run.
+    // Warm classify chunk while FileReader runs — do not wait on status/network.
     prefetchManualEntryPage();
 
+    // Status check runs in parallel; Manual Log opens as soon as bytes are readable.
     const statusPromise = checkUserStatus(user);
-    const readPromise = new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = (e) => resolve(e.target.result);
-      reader.onerror = reject;
-      reader.readAsDataURL(file);
-    });
-
-    const isActive = await statusPromise;
-    if (!isActive) {
-      setAlertModal({
-        isOpen: true,
-        title: "Unable to continue",
-        message:
-          "We could not continue with this account right now. Please sign in again and try once more.",
-        type: "warning",
-      });
-      imageProcessingInProgress.current = false;
-      return;
-    }
+    // Native camera/gallery already has Base64 — skip FileReader round-trip so
+    // Android paints the preview immediately.
+    const readPromise = previewDataUrl
+      ? Promise.resolve(previewDataUrl)
+      : new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = (e) => resolve(e.target.result);
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
 
     // ? MANUAL MODE: skip AI entirely, open best manual modal
     if (manualModeActive) {
       imageProcessingInProgress.current = false;
+      setCaptureFlowBusy(false);
       openBestManualModal();
       return;
     }
@@ -5573,7 +5610,7 @@ function WellnessValleyApp() {
     // TODO: Re-enable gallery date restrictions before production release.
     // TEMPORARILY DISABLED: web image freshness validation is commented out to allow users
     // to select images from WhatsApp, older gallery photos, and any available folder.
-    /* GALLERY_DATE_RESTRICTION_ENABLED � begin disabled block
+    /* GALLERY_DATE_RESTRICTION_ENABLED — begin disabled block
     // ?? FRAUD PREVENTION: On web only ? native handles this per-source in ImageUpload
     // (native camera = always live; native gallery = checked via Capacitor photo.exif)
     if (!Capacitor.isNativePlatform()) {
@@ -5589,11 +5626,12 @@ function WellnessValleyApp() {
           type: "error",
         });
         imageProcessingInProgress.current = false;
+        setCaptureFlowBusy(false);
         return;
       }
       debugLog("? Image validated:", validation.message);
     }
-    GALLERY_DATE_RESTRICTION_ENABLED � end disabled block */
+    GALLERY_DATE_RESTRICTION_ENABLED — end disabled block */
 
     setSelectedImage(file);
     setError(null);
@@ -5611,7 +5649,7 @@ function WellnessValleyApp() {
     lastImageFileRef.current = file;
     savePromiseRef.current = null; // Clear any completed prior save
 
-    // Stage 1 � handleImageSelect entered
+    // Stage 1 — handleImageSelect entered
     const _ct1Id = Math.random().toString(36).slice(2, 8).toUpperCase();
     captureTraceRef.current = { id: _ct1Id, t0: Date.now(), traceId: null };
     window.__captureTrace = { id: _ct1Id, t0: Date.now() };
@@ -5628,16 +5666,56 @@ function WellnessValleyApp() {
       const imageBase64 = await readPromise;
       debugLog(`?? [PERF] File reading: ${Date.now() - readStart}ms`);
 
-      // Always compress to ≤800px / quality 0.7 before sending to Gemini.
-      // Gemini tiles images at 768px — sending larger images creates multiple
-      // tiles (4× tokens for a 1280px image vs 1× for 800px), slowing inference
-      // and increasing 503 risk under load.  800px is sufficient for accurate
-      // food / weight / education recognition.
-      const compressStart = Date.now();
+      // Open Manual Log immediately with the raw preview — do not wait for
+      // compress / account status / POST. Compression + upload continue below.
+      setImagePreview(imageBase64);
+      setLoading(false);
+      setLoadingState(null);
+      processedImageRef.current = imageBase64;
+      foodCaptureIdRef.current = null;
+      setFoodShareUrl(null);
+      setDashboardInitialDate(null);
+      imageProcessingInProgress.current = false;
 
+      debugLog(
+        `?? [PERF] Opening Manual Entry ASAP (+${Date.now() - perfStart}ms) — compress + capture POST in background`,
+      );
+
+      manualEntrySessionRef.current = { clientKey: instantToken, abandoned: false };
+      // Open classify sync so Android paints the photo immediately.
+      // Chunk is prefetched above; Suspense only flashes if the import is still pending.
+      setManualEntryPayload({
+        clientKey: instantToken,
+        captureId: null,
+        imageBase64,
+        userId: user?.id ?? null,
+      });
+      setShowManualEntry(true);
+      window.history.pushState({ wvPage: 'manual-entry' }, '');
+
+      // Soft account gate — if inactive, close classify and stop upload.
+      const isActive = await statusPromise;
+      if (!isActive) {
+        setShowManualEntry(false);
+        setManualEntryPayload(null);
+        Session.clearPendingClassifyCapture();
+        setImagePreview(null);
+        setAlertModal({
+          isOpen: true,
+          title: "Unable to continue",
+          message:
+            "We could not continue with this account right now. Please sign in again and try once more.",
+          type: "warning",
+        });
+        setCaptureFlowBusy(false);
+        return;
+      }
+
+      // Always compress to ≤800px / quality 0.7 before AI / storage thumb.
+      // Gemini tiles at 768px — larger images waste tokens and slow inference.
+      const compressStart = Date.now();
       let processedImage = imageBase64;
       let compressionApplied = false;
-
       try {
         processedImage = await compressImage(imageBase64, 0.7, 800);
         compressionApplied = true;
@@ -5647,10 +5725,17 @@ function WellnessValleyApp() {
 
       if (compressionApplied) {
         const origMB = imageBase64.length / (1024 * 1024);
-        const newMB  = processedImage.length / (1024 * 1024);
+        const newMB = processedImage.length / (1024 * 1024);
         debugLog(
           `?? [PERF] Compression: ${Date.now() - compressStart}ms (${origMB.toFixed(2)}MB → ${newMB.toFixed(2)}MB)`,
         );
+        // Swap preview to compressed only if this classify session is still active.
+        setImagePreview(processedImage);
+        processedImageRef.current = processedImage;
+        setManualEntryPayload((prev) => {
+          if (!prev || prev.clientKey !== instantToken) return prev;
+          return { ...prev, imageBase64: processedImage };
+        });
       } else {
         debugLog(`?? [PERF] Compression skipped (fallback to original)`);
       }
@@ -5660,23 +5745,14 @@ function WellnessValleyApp() {
       // Supports continuous shooting — multiple photos can be queued in a row.
       if (!navigator.onLine) {
         const n = captureQueue.enqueue({
-          imageBase64:   processedImage,
-          userId:        user?.id ?? null,
+          imageBase64: processedImage,
+          userId: user?.id ?? null,
           exifTimestamp: exifTimestamp ?? null,
         });
         showToast(`No internet — photo queued${n > 0 ? ` (${n} waiting)` : ''}, will analyse when online`);
+        setCaptureFlowBusy(false);
         return;
       }
-
-      // Set preview immediately — GPS + capture POST run in the background UI
-      // without a "Saving..." spinner (photo-first, no wait affordance).
-      setImagePreview(processedImage);
-      setLoading(false);
-      setLoadingState(null);
-
-      processedImageRef.current = processedImage;
-      foodCaptureIdRef.current = null;
-      setFoodShareUrl(null);
 
       // Instant location from background cache — never wait on GPS at photo time.
       const captureLocation = getCachedLocationFields();
@@ -5738,28 +5814,6 @@ function WellnessValleyApp() {
         });
       }
 
-      // -- Open classify UI immediately; persist capture row in the background --
-      // Waiting on POST /captures was the main reason "What is this image?" felt slow.
-      setDashboardInitialDate(null);
-      imageProcessingInProgress.current = false;
-
-      debugLog(
-        `?? [PERF] ? Opening Manual Entry early (+${Date.now() - perfStart}ms) — capture POST in background`,
-      );
-
-      manualEntrySessionRef.current = { clientKey: instantToken, abandoned: false };
-      // Lazy ManualEntryPage — must not suspend on a sync update (React 18).
-      startTransition(() => {
-        setManualEntryPayload({
-          clientKey: instantToken,
-          captureId: null,
-          imageBase64: processedImage,
-          userId: user?.id ?? null,
-        });
-        setShowManualEntry(true);
-      });
-      window.history.pushState({ wvPage: 'manual-entry' }, '');
-
       let resolvedUserIdForOrchestrate = user?.id;
       if (!resolvedUserIdForOrchestrate) {
         try {
@@ -5775,7 +5829,7 @@ function WellnessValleyApp() {
 
       const captureApiStart = Date.now();
       debugLog(
-        `?? [PERF] ? POST /captures started (+${
+        `?? [PERF] POST /captures started (+${
           captureApiStart - perfStart
         }ms from capture start)`,
       );
@@ -5847,9 +5901,9 @@ function WellnessValleyApp() {
             stripLocationDiagnostics(captureLocationFields),
           );
           debugLog(
-            `?? [PERF] ? POST /captures: ${capDuration}ms (+${
+            `?? [PERF] POST /captures: ${capDuration}ms (+${
               Date.now() - perfStart
-            }ms from capture start) ? token ready (attempt ${capAttempt})`,
+            }ms from capture start) — token ready (attempt ${capAttempt})`,
           );
           _ctLog(2, 'capture row created', {
             captureRowId: captureShare.id,
@@ -5863,7 +5917,7 @@ function WellnessValleyApp() {
           captureLastErr = capErr;
           const retryable = capErr?._retryable !== false && capAttempt < CAPTURE_MAX_ATTEMPTS;
           debugLog(
-            `?? [PERF] ? POST /captures attempt ${capAttempt} FAILED: ${capErr?.message || capErr}${
+            `?? [PERF] POST /captures attempt ${capAttempt} FAILED: ${capErr?.message || capErr}${
               retryable ? ` — retrying in 1s` : ''
             }`,
           );
@@ -5873,7 +5927,7 @@ function WellnessValleyApp() {
       }
       if (!captureShare) {
         debugLog(
-          `?? [PERF] ? POST /captures FAILED after ${
+          `?? [PERF] POST /captures FAILED after ${
             Date.now() - captureApiStart
           }ms: ${captureLastErr?.message || captureLastErr}`,
         );
@@ -5890,6 +5944,7 @@ function WellnessValleyApp() {
         setLoading(false);
         setImagePreview(null);
         imageProcessingInProgress.current = false;
+        setCaptureFlowBusy(false);
         return;
       }
 
@@ -5910,6 +5965,7 @@ function WellnessValleyApp() {
             userId: discardUserId,
           }).catch(() => {});
         }
+        setCaptureFlowBusy(false);
         return;
       }
 
@@ -5924,13 +5980,16 @@ function WellnessValleyApp() {
       setWatchResult(null);
       setError(null);
 
-      triggerNutritionRefresh({ immediate: true, source: "capture-saved" });
+      // Do NOT refresh Home here — nothing is logged yet. A capture-saved
+      // refresh was flooding stats/daily/watch-calories and starving POST.
+      // Home refreshes on classify-saved (onSaved) after the user logs.
 
       setManualEntryPayload((prev) => {
         if (!prev || prev.clientKey !== instantToken) return prev;
         return {
           ...prev,
           captureId: captureShare.id,
+          imageBase64: processedImage,
           userId: prev.userId ?? resolvedUserIdForOrchestrate ?? user?.id ?? null,
         };
       });
@@ -5947,8 +6006,9 @@ function WellnessValleyApp() {
         setTimeout(persistPending, 0);
       }
 
+      setCaptureFlowBusy(false);
       debugLog(
-        `?? [PERF] ? Phase 1 complete (+${Date.now() - perfStart}ms) — captureId ready on Manual Entry`,
+        `?? [PERF] Phase 1 complete (+${Date.now() - perfStart}ms) — captureId ready on Manual Entry`,
       );
 
       return;
@@ -6000,6 +6060,7 @@ function WellnessValleyApp() {
       if (!capturePersisted) {
         setLoading(false);
         imageProcessingInProgress.current = false;
+        setCaptureFlowBusy(false);
       }
       debugLog(
         `?? [PERF] ? TOTAL PROCESSING TIME: ${Date.now() - perfStart}ms`,
@@ -7014,6 +7075,7 @@ function WellnessValleyApp() {
           onShowActivityReport={() => navigateTo('activity-report')}
           onShowTestimonials={() => navigateTo('testimonials')}
           onShowReports={() => navigateTo('reports')}
+          onShowWellnessScoreReport={() => navigateTo('wellness-score-report')}
         />
         <div className="ios-scroll-body">
           <UserProfilePage
@@ -7059,6 +7121,7 @@ function WellnessValleyApp() {
           onShowActivityReport={() => navigateTo('activity-report')}
           onShowTestimonials={() => navigateTo('testimonials')}
           onShowReports={() => navigateTo('reports')}
+          onShowWellnessScoreReport={() => navigateTo('wellness-score-report')}
         />
         <div className="ios-scroll-body">
           <Suspense fallback={null}>
@@ -7099,6 +7162,7 @@ function WellnessValleyApp() {
           onShowActivityReport={() => navigateTo('activity-report')}
           onShowTestimonials={() => navigateTo('testimonials')}
           onShowReports={() => navigateTo('reports')}
+          onShowWellnessScoreReport={() => navigateTo('wellness-score-report')}
         />
         <div className="ios-scroll-body">
           <Suspense fallback={null}>
@@ -7136,6 +7200,7 @@ function WellnessValleyApp() {
           onShowActivityReport={() => navigateTo('activity-report')}
           onShowTestimonials={() => navigateTo('testimonials')}
           onShowReports={() => navigateTo('reports')}
+          onShowWellnessScoreReport={() => navigateTo('wellness-score-report')}
         />
         <div className="ios-scroll-body">
           <Suspense fallback={null}>
@@ -7170,6 +7235,7 @@ function WellnessValleyApp() {
           onShowActivityReport={() => navigateTo('activity-report')}
           onShowTestimonials={() => navigateTo('testimonials')}
           onShowReports={() => navigateTo('reports')}
+          onShowWellnessScoreReport={() => navigateTo('wellness-score-report')}
         />
         <div className="ios-scroll-body">
           <Suspense fallback={null}>
@@ -7204,6 +7270,7 @@ function WellnessValleyApp() {
           onShowActivityReport={() => navigateTo('activity-report')}
           onShowTestimonials={() => navigateTo('testimonials')}
           onShowReports={() => navigateTo('reports')}
+          onShowWellnessScoreReport={() => navigateTo('wellness-score-report')}
         />
         <div className="ios-scroll-body">
           <Suspense fallback={null}>
@@ -7238,6 +7305,7 @@ function WellnessValleyApp() {
             onShowActivityReport={() => navigateTo('activity-report')}
             onShowTestimonials={() => navigateTo('testimonials')}
             onShowReports={() => navigateTo('reports')}
+          onShowWellnessScoreReport={() => navigateTo('wellness-score-report')}
           />
           <div className="ios-scroll-body">
             <Suspense fallback={<LoadingSpinner message="Loading nutrition centers map..." />}>
@@ -7292,6 +7360,7 @@ function WellnessValleyApp() {
           onShowActivityReport={() => navigateTo('activity-report')}
           onShowTestimonials={() => navigateTo('testimonials')}
           onShowReports={() => navigateTo('reports')}
+          onShowWellnessScoreReport={() => navigateTo('wellness-score-report')}
         />
         <div className="ios-scroll-body">
           <Suspense fallback={<LoadingSpinner message="Loading testimonials�" />}>
@@ -7356,6 +7425,7 @@ function WellnessValleyApp() {
               };
             }
             Session.clearPendingClassifyCapture();
+            setCaptureFlowBusy(false);
             setShowManualEntry(false);
             setManualEntryPayload(null);
             setImagePreview(null);
@@ -7418,6 +7488,7 @@ function WellnessValleyApp() {
           onShowActivityReport={() => navigateTo('activity-report')}
           onShowTestimonials={() => navigateTo('testimonials')}
           onShowReports={() => navigateTo('reports')}
+          onShowWellnessScoreReport={() => navigateTo('wellness-score-report')}
         />
         <div className="ios-scroll-body">
           <Suspense fallback={<LoadingSpinner message="Loading reports�" />}>
@@ -7426,6 +7497,44 @@ function WellnessValleyApp() {
               tabVisitKey={tabVisitKeys.reports ?? 0}
               onBack={() => {
                 setShowReports(false);
+                setShowWellnessScoreReport(false);
+                const currentWvPage = window.history.state?.wvPage;
+                if (currentWvPage && currentWvPage !== 'main') window.history.back();
+              }}
+            />
+          </Suspense>
+        </div>
+      </div>
+    );
+  } else if (
+    showWellnessScoreReport
+    && isFlagEnabled('ff.reports-module')
+    && isFlagEnabled('ff.wellness-score-sheet')
+  ) {
+    homeOverlay = (
+      <div className="ios-full-page bg-gray-50">
+        <Header
+          navOnly
+          user={user}
+          userRole={userRole}
+          activePage="wellness-score-report"
+          onShowHome={() => navigateTo('home')}
+          onShowBackgroundHistory={() => navigateTo('dashboard')}
+          onShowWellnessEnrollment={() => navigateTo('enrollment')}
+          onShowWellnessCounselling={() => navigateTo('counselling')}
+          onShowNutritionCentersMap={() => navigateTo('physical-club')}
+          onShowActivityReport={() => navigateTo('activity-report')}
+          onShowTestimonials={() => navigateTo('testimonials')}
+          onShowReports={() => navigateTo('reports')}
+          onShowWellnessScoreReport={() => navigateTo('wellness-score-report')}
+        />
+        <div className="ios-scroll-body">
+          <Suspense fallback={<LoadingSpinner message="Loading Wellness Score Report..." />}>
+            <WellnessScoreReport
+              user={user}
+              tabVisitKey={tabVisitKeys['wellness-score-report'] ?? 0}
+              onBack={() => {
+                setShowWellnessScoreReport(false);
                 const currentWvPage = window.history.state?.wvPage;
                 if (currentWvPage && currentWvPage !== 'main') window.history.back();
               }}
@@ -7749,6 +7858,7 @@ function WellnessValleyApp() {
           onShowActivityReport={() => navigateTo('activity-report')}
           onShowTestimonials={() => navigateTo('testimonials')}
           onShowReports={() => navigateTo('reports')}
+          onShowWellnessScoreReport={() => navigateTo('wellness-score-report')}
           onShowWellnessScoreSetup={() => navigateTo('wellness-score-setup')}
           wellnessScoreSetupEnabled={['admin', 'developer'].includes(userRole) && isFlagEnabled('ff.wellness-score-sheet')}
           activePage={
@@ -7759,6 +7869,7 @@ function WellnessValleyApp() {
             showActivityReport || showActivityTimeReport ? 'activity-report' :
             showTestimonials ? 'testimonials' :
             showReports ? 'reports' :
+            showWellnessScoreReport ? 'wellness-score-report' :
             showWellnessScoreSetup ? 'wellness-score-setup' :
             'home'
           }
