@@ -59,7 +59,7 @@ export async function getCoachMember(coachId) {
   const supabase = getSupabaseClient();
   const { data, error } = await supabase
     .from('team_table')
-    .select('"UserId", "UserName", "Height", "CoachId", "Role"')
+    .select('"UserId", "UserName", "Height", "CoachId", "Role", "Status"')
     .eq('"UserId"', coachId)
     .maybeSingle();
   if (error) throw error;

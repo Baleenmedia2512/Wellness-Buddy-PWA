@@ -4,6 +4,9 @@
  * One snapshot build per coach (cached): hierarchy + latest/previous weights +
  * persisted wellness scores + sponsor/ideal-coach labels. Pagination filters
  * run in memory on that snapshot — no per-row API fan-out.
+ *
+ * Display rows are Active users only (inactive coaches kept in hierarchy for
+ * rollup are excluded from this report).
  */
 import { validateWellnessScoreReport } from './reports.validators.js';
 import {
@@ -14,11 +17,12 @@ import {
 } from './reports.repository.js';
 import { paginateWellnessScoreReportRecords } from './domain/wellness-score-report.pagination.js';
 import { resolveSponsorAndIdealCoachForMembers } from '../../utils/sponsorCoachResolution.js';
+import { isActiveTeamStatus } from '../../utils/teamHierarchyBuilder.js';
 import { todayInTimezone, IANA_IST } from '../../shared/lib/datetime/index.js';
 import { cache } from '../../utils/cache.js';
 
 const REPORT_BUILD_CACHE_TTL_MS = 20_000;
-const REPORT_BUILD_CACHE_PREFIX = 'reports:wellness-score:v1:';
+const REPORT_BUILD_CACHE_PREFIX = 'reports:wellness-score:v2:';
 
 function readWeightPair(weightMap, userId) {
   const entry = weightMap.get(userId);
@@ -62,9 +66,14 @@ async function buildWellnessScoreReportSnapshot(coachId, scoreDate) {
     getCoachMember(coachId),
     getFullTeamMembers(coachId),
   ]);
-  const fullTeamMembers = teamData.rawMembers;
+  // Hierarchy may include inactive coaches for rollup; this report shows Active only.
+  const fullTeamMembers = teamData.rawMembers.filter((m) => isActiveTeamStatus(m.Status));
+  const selfIsActive = !coachMember || isActiveTeamStatus(coachMember.Status);
 
-  const userIds = [coachId, ...fullTeamMembers.map((m) => m.UserId)];
+  const userIds = [
+    ...(selfIsActive ? [coachId] : []),
+    ...fullTeamMembers.map((m) => m.UserId),
+  ];
 
   const [weightMap, scoreMap] = await Promise.all([
     getLatestTwoWeightsForUsers(userIds),
@@ -72,11 +81,13 @@ async function buildWellnessScoreReportSnapshot(coachId, scoreDate) {
   ]);
 
   const sponsorMembers = [
-    {
-      userId: coachId,
-      coachId: coachMember?.CoachId ?? null,
-      role: coachMember?.Role ?? null,
-    },
+    ...(selfIsActive
+      ? [{
+          userId: coachId,
+          coachId: coachMember?.CoachId ?? null,
+          role: coachMember?.Role ?? null,
+        }]
+      : []),
     ...fullTeamMembers.map((m) => ({
       userId: m.UserId,
       coachId: m.CoachId,
@@ -92,15 +103,17 @@ async function buildWellnessScoreReportSnapshot(coachId, scoreDate) {
     isDirectToRoot: false,
   };
 
-  const self = {
-    ...buildMemberRow(
-      { ...selfMember, isDirectToRoot: false },
-      weightMap,
-      scoreMap,
-      sponsorByUser,
-    ),
-    isDirect: false,
-  };
+  const self = selfIsActive
+    ? {
+        ...buildMemberRow(
+          { ...selfMember, isDirectToRoot: false },
+          weightMap,
+          scoreMap,
+          sponsorByUser,
+        ),
+        isDirect: false,
+      }
+    : null;
 
   const members = fullTeamMembers.map((m) =>
     buildMemberRow(m, weightMap, scoreMap, sponsorByUser),
