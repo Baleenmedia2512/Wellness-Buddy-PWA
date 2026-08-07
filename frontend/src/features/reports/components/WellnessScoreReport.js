@@ -33,19 +33,43 @@ import {
   formatReportDateLabel,
 } from '../utils/reportDateFilter.js';
 
-/** Column headers — `lines` render stacked so long labels fit on mobile. */
+/**
+ * Column headers — `lines` / `mobileLines` stack so labels fit.
+ * Widths are fixed so `table-fixed` never lets cells bleed into neighbors.
+ */
 const TABLE_HEADERS = [
-  { key: 'name', lines: ['NAME'] },
-  { key: 'weight', lines: ['WEIGHT'], thClass: 'w-[4.5rem]' },
+  {
+    key: 'name',
+    lines: ['NAME'],
+    colClass: 'w-[7.25rem] min-w-[7.25rem] sm:w-[10rem] sm:min-w-[10rem]',
+  },
+  {
+    key: 'weight',
+    lines: ['WEIGHT'],
+    mobileLines: ['WT'],
+    colClass: 'w-[5rem] min-w-[5rem]',
+  },
   {
     key: 'vsPrevious',
     lines: ['TODAY VS', 'PREVIOUS', 'WEIGHT'],
-    thClass: 'w-[4.5rem] max-w-[4.5rem]',
-    tdClass: 'w-[4.5rem] max-w-[4.5rem] px-1',
+    mobileLines: ['VS', 'PREV'],
+    colClass: 'w-[4.5rem] min-w-[4.5rem]',
   },
-  { key: 'score', lines: ['WELLNESS', 'SCORE'], thClass: 'w-[4.25rem]' },
-  { key: 'sponsor', lines: ['SPONSOR'] },
+  {
+    key: 'score',
+    lines: ['WELLNESS', 'SCORE'],
+    mobileLines: ['WS'],
+    colClass: 'w-[3.5rem] min-w-[3.5rem]',
+  },
+  {
+    key: 'sponsor',
+    lines: ['SPONSOR'],
+    mobileLines: ['SPO'],
+    colClass: 'w-[5.5rem] min-w-[5.5rem] sm:w-[7rem] sm:min-w-[7rem]',
+  },
 ];
+
+const TABLE_MIN_WIDTH = '660px';
 
 function SingleDayPicker({ selectedDate, onSelect, onClose }) {
   const [currentMonth, setCurrentMonth] = useState(selectedDate || new Date());
@@ -149,12 +173,15 @@ function TableBodySkeleton({ rows = 8 }) {
     <>
       {Array.from({ length: rows }).map((_, i) => (
         <tr key={`sk-${i}`} className="animate-pulse">
-          <td className="sticky left-0 z-[5] px-2.5 py-1.5 border-b border-r border-gray-200 bg-gray-50">
-            <div className="h-4 w-24 bg-gray-200 rounded" />
+          <td className={`sticky left-0 z-[5] px-1.5 sm:px-2 py-1.5 border-b border-r border-gray-200 bg-gray-50 overflow-hidden ${TABLE_HEADERS[0].colClass}`}>
+            <div className="h-4 w-20 bg-gray-200 rounded" />
           </td>
-          {Array.from({ length: 4 }).map((__, j) => (
-            <td key={j} className="px-2.5 py-1.5 border-b border-r border-gray-200">
-              <div className="h-4 w-16 bg-gray-100 rounded" />
+          {TABLE_HEADERS.slice(1).map((header) => (
+            <td
+              key={header.key}
+              className={`px-1.5 sm:px-2 py-1.5 border-b border-r border-gray-200 overflow-hidden ${header.colClass}`}
+            >
+              <div className="h-4 w-12 bg-gray-100 rounded" />
             </td>
           ))}
         </tr>
@@ -168,28 +195,34 @@ function WeightChangeCell({ todayWeight, previousWeight, difference }) {
 
   if (change.direction === 'none' || change.direction === 'same') {
     return (
-      <div className="text-xs font-medium text-gray-400 leading-none">—</div>
+      <div className="text-[11px] font-medium text-gray-400 leading-none">—</div>
     );
   }
 
   const isDown = change.direction === 'down';
   return (
     <div
-      className={`text-xs font-semibold whitespace-nowrap leading-none ${
+      className={`text-[11px] font-semibold leading-tight max-w-full overflow-hidden ${
         isDown ? 'text-green-600' : 'text-red-600'
       }`}
+      title={change.comparisonLabel}
     >
-      {isDown ? '⬇' : '⬆'} {change.changeLabel}
+      <span className="block">{isDown ? '⬇' : '⬆'}</span>
+      <span className="block truncate">{change.changeLabel}</span>
     </div>
   );
 }
 
 function MemberNameCell({ name }) {
   const { line1, line2 } = formatReportNameLines(name);
+  const fullName = [line1, line2].filter(Boolean).join(' ');
   return (
-    <div className="text-sm font-semibold text-gray-900 leading-tight">
-      <div>{line1}</div>
-      {line2 ? <div>{line2}</div> : null}
+    <div
+      className="text-[13px] sm:text-sm font-semibold text-gray-900 leading-tight min-w-0 max-w-full"
+      title={fullName}
+    >
+      <div className="truncate">{line1}</div>
+      {line2 ? <div className="truncate">{line2}</div> : null}
     </div>
   );
 }
@@ -373,7 +406,7 @@ export default function WellnessScoreReport({
               ariaLabel="Share Excel"
             >
               <Share2 className="h-3.5 w-3.5" />
-              <span className="hidden xs:inline">Share</span>
+              <span className="hidden sm:inline">Share</span>
             </TouchFeedbackButton>
             <TouchFeedbackButton
               onClick={refresh}
@@ -448,17 +481,25 @@ export default function WellnessScoreReport({
         )}
 
         <div
-          className="flex-1 min-h-[50vh] max-h-[calc(100vh-280px)] overflow-auto overscroll-contain rounded-lg border border-gray-300 bg-white shadow-sm"
+          className="flex-1 min-h-[50vh] max-h-[calc(100vh-280px)] overflow-x-auto overflow-y-auto overscroll-contain rounded-lg border border-gray-300 bg-white shadow-sm"
           style={{ WebkitOverflowScrolling: 'touch' }}
         >
-          <table className="border-collapse text-left table-fixed" style={{ minWidth: '560px', width: '100%' }}>
+          <table
+            className="border-collapse text-left table-fixed w-full"
+            style={{ minWidth: TABLE_MIN_WIDTH }}
+          >
+            <colgroup>
+              {TABLE_HEADERS.map((header) => (
+                <col key={header.key} className={header.colClass} />
+              ))}
+            </colgroup>
             <thead className="sticky top-0 z-10">
               <tr className="bg-gray-100">
                 {TABLE_HEADERS.map((header, idx) => (
                   <th
                     key={header.key}
-                    className={`px-2 py-1.5 text-[10px] sm:text-[11px] font-bold uppercase tracking-wide text-gray-700 border-b border-r border-gray-300 align-middle ${
-                      header.thClass || ''
+                    className={`px-1.5 sm:px-2 py-1.5 text-[10px] sm:text-[11px] font-bold uppercase tracking-wide text-gray-700 border-b border-r border-gray-300 align-middle overflow-hidden ${
+                      header.colClass
                     } ${
                       idx === 0
                         ? 'sticky left-0 z-20 bg-gray-100 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.12)]'
@@ -466,11 +507,18 @@ export default function WellnessScoreReport({
                     }`}
                   >
                     <div className="leading-tight">
-                      {header.lines.map((line) => (
-                        <div key={line}>
+                      {(header.mobileLines || header.lines).map((line) => (
+                        <div key={`m-${line}`} className={header.mobileLines ? 'sm:hidden' : undefined}>
                           {line}
                         </div>
                       ))}
+                      {header.mobileLines
+                        ? header.lines.map((line) => (
+                            <div key={`d-${line}`} className="hidden sm:block">
+                              {line}
+                            </div>
+                          ))
+                        : null}
                     </div>
                   </th>
                 ))}
@@ -491,25 +539,31 @@ export default function WellnessScoreReport({
                   return (
                     <tr key={row.userId} className={`${zebra} hover:bg-teal-50/40`}>
                       <td
-                        className={`sticky left-0 z-[5] px-2 py-1.5 border-b border-r border-gray-200 align-middle shadow-[2px_0_4px_-2px_rgba(0,0,0,0.08)] ${zebra}`}
+                        className={`sticky left-0 z-[5] px-1.5 sm:px-2 py-1.5 border-b border-r border-gray-200 align-middle overflow-hidden shadow-[2px_0_4px_-2px_rgba(0,0,0,0.08)] ${TABLE_HEADERS[0].colClass} ${zebra}`}
                       >
                         <MemberNameCell name={row.name} />
                       </td>
-                      <td className="px-2 py-1.5 text-sm text-gray-800 border-b border-r border-gray-200 whitespace-nowrap align-middle">
-                        {formatWeightKg(row.todayWeight) || '—'}
+                      <td className={`px-1.5 sm:px-2 py-1.5 text-[13px] sm:text-sm text-gray-800 border-b border-r border-gray-200 align-middle overflow-hidden ${TABLE_HEADERS[1].colClass}`}>
+                        <span className="block truncate">
+                          {formatWeightKg(row.todayWeight) || '—'}
+                        </span>
                       </td>
-                      <td className={`py-1.5 border-b border-r border-gray-200 whitespace-nowrap align-middle ${TABLE_HEADERS[2].tdClass || 'px-2'}`}>
+                      <td className={`px-1 sm:px-1.5 py-1.5 border-b border-r border-gray-200 align-middle overflow-hidden ${TABLE_HEADERS[2].colClass}`}>
                         <WeightChangeCell
                           todayWeight={row.todayWeight}
                           previousWeight={row.previousWeight}
                           difference={row.difference}
                         />
                       </td>
-                      <td className="px-2 py-1.5 text-sm font-semibold text-teal-800 border-b border-r border-gray-200 whitespace-nowrap align-middle">
-                        {formatWellnessScore(row.totalEarned ?? row.wellnessScore)}
+                      <td className={`px-1.5 sm:px-2 py-1.5 text-[13px] sm:text-sm font-semibold text-teal-800 border-b border-r border-gray-200 align-middle overflow-hidden tabular-nums ${TABLE_HEADERS[3].colClass}`}>
+                        <span className="block truncate">
+                          {formatWellnessScore(row.totalEarned ?? row.wellnessScore)}
+                        </span>
                       </td>
-                      <td className="px-2 py-1.5 text-sm text-gray-700 border-b border-gray-200 whitespace-nowrap align-middle">
-                        {row.sponsor || '—'}
+                      <td className={`px-1.5 sm:px-2 py-1.5 text-[13px] sm:text-sm text-gray-700 border-b border-gray-200 align-middle overflow-hidden ${TABLE_HEADERS[4].colClass}`}>
+                        <span className="block truncate" title={row.sponsor || undefined}>
+                          {row.sponsor || '—'}
+                        </span>
                       </td>
                     </tr>
                   );
