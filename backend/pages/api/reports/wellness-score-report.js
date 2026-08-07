@@ -20,6 +20,8 @@ export default async function handler(req, res) {
     return res.status(404).json({ success: false, message: 'Feature not enabled' });
   }
 
-  res.setHeader('Cache-Control', 'private, max-age=15, stale-while-revalidate=15');
+  // Avoid browser 304 revalidation (was waiting ~2s on a full origin recompute).
+  // Client + server memory caches own freshness instead.
+  res.setHeader('Cache-Control', 'private, no-store');
   return runService(res, () => getWellnessScoreReport(req.query));
 }

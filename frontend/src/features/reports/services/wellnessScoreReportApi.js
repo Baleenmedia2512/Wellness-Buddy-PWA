@@ -1,6 +1,6 @@
 /**
  * API client for Wellness Score Report — paginated fetch + export-all by date.
- * In-flight request dedupe prevents StrictMode / effect double-fetches.
+ * In-flight + memory cache prevent duplicate network calls (StrictMode / prefetch).
  */
 import { CapacitorHttp } from '@capacitor/core';
 import { getApiBaseUrl } from '../../../config/api.config.js';
@@ -106,6 +106,10 @@ async function requestWellnessScoreReport(coachId, opts, cacheKey) {
 
   const res = await CapacitorHttp.get({
     url: `${base()}/wellness-score-report?${params.toString()}`,
+    headers: {
+      'Cache-Control': 'no-cache',
+      Pragma: 'no-cache',
+    },
   });
   const result = res.data;
   if (!result?.success) {
@@ -167,17 +171,29 @@ export async function fetchWellnessScoreReport(coachId, opts = {}) {
     if (pending) return pending;
   }
 
-  const requestPromise = requestWellnessScoreReport(coachId, opts, cacheKey)
-    .finally(() => {
-      if (inflight.get(cacheKey) === requestPromise) {
-        inflight.delete(cacheKey);
-      }
-    });
-
+  // Register inflight BEFORE I/O so concurrent callers share one request.
+  let resolveFn;
+  let rejectFn;
+  const gate = new Promise((resolve, reject) => {
+    resolveFn = resolve;
+    rejectFn = reject;
+  });
   if (!exportAll) {
-    inflight.set(cacheKey, requestPromise);
+    inflight.set(cacheKey, gate);
   }
-  return requestPromise;
+
+  try {
+    const payload = await requestWellnessScoreReport(coachId, opts, cacheKey);
+    resolveFn(payload);
+    return payload;
+  } catch (err) {
+    rejectFn(err);
+    throw err;
+  } finally {
+    if (inflight.get(cacheKey) === gate) {
+      inflight.delete(cacheKey);
+    }
+  }
 }
 
 export function clearWellnessScoreReportPageCache() {

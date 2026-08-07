@@ -12,6 +12,34 @@ import {
   buildReportingChildrenIndex,
 } from '../../utils/reportingHierarchyService.js';
 
+/**
+ * Batch-resolve UserName for many user ids (one query). Used for report Sponsor/Coach labels.
+ * @param {Array<number|string>} userIds
+ * @returns {Promise<Map<string, string|null>>}
+ */
+export async function getUserNamesByIds(userIds) {
+  const map = new Map();
+  const ids = [...new Set((userIds || [])
+    .map((id) => Number(id))
+    .filter((id) => Number.isFinite(id) && id > 0))];
+  if (ids.length === 0) return map;
+
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from('team_table')
+    .select('"UserId", "UserName"')
+    .in('"UserId"', ids);
+  if (error) throw error;
+
+  for (const row of data || []) {
+    const id = row.UserId != null ? String(row.UserId) : null;
+    if (!id) continue;
+    const name = row.UserName != null ? String(row.UserName).trim() : '';
+    map.set(id, name || null);
+  }
+  return map;
+}
+
 /** Supabase `.in()` URL length safety — batch user id lookups. */
 const WEIGHT_USER_ID_CHUNK = 150;
 
