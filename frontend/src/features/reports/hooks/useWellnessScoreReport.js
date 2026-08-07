@@ -79,7 +79,7 @@ export function useWellnessScoreReport({ coachId, tabVisitKey = 0 }) {
           limit: WELLNESS_SCORE_REPORT_PAGE_SIZE,
           search: debouncedSearch,
           teamFilter: teamScope,
-          sort: 'name',
+          sort: 'score',
           bustCache,
         });
 

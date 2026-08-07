@@ -91,7 +91,7 @@ export async function fetchWellnessScoreReport(coachId, opts = {}) {
   const limit = opts.limit ?? WELLNESS_SCORE_REPORT_PAGE_SIZE;
   const search = String(opts.search || '').trim();
   const teamFilter = opts.teamFilter || 'direct';
-  const sort = opts.sort || 'name';
+  const sort = opts.sort || 'score';
   const exportAll = opts.exportAll === true;
   const bustCache = opts.bustCache === true;
 

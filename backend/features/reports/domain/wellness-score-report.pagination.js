@@ -1,6 +1,6 @@
 /**
  * Wellness Score Report — pure filter / sort / page helpers.
- * Applied after the team snapshot is built (weights + scores + sponsor/coach).
+ * Default order: percentage DESC, computed_at DESC (matches SQL ORDER BY).
  */
 
 export const WELLNESS_SCORE_REPORT_DEFAULT_PAGE_SIZE = 20;
@@ -13,8 +13,8 @@ export const TEAM_FILTERS = Object.freeze({
 });
 
 export const SORT_KEYS = Object.freeze({
-  NAME: 'name',
   SCORE: 'score',
+  NAME: 'name',
   WEIGHT: 'weight',
 });
 
@@ -52,8 +52,9 @@ export function normalizeWellnessScoreReportPagination(raw = {}) {
     .toLowerCase();
   const teamFilter = TEAM_FILTER_ALIASES[teamRaw] || TEAM_FILTERS.DIRECT;
 
-  const sortRaw = String(raw.sort || SORT_KEYS.NAME).trim().toLowerCase();
-  const sort = Object.values(SORT_KEYS).includes(sortRaw) ? sortRaw : SORT_KEYS.NAME;
+  // Always default to highest wellness % first (product requirement).
+  const sortRaw = String(raw.sort || SORT_KEYS.SCORE).trim().toLowerCase();
+  const sort = Object.values(SORT_KEYS).includes(sortRaw) ? sortRaw : SORT_KEYS.SCORE;
 
   const exportAll = raw.exportAll === true
     || raw.exportAll === 'true'
@@ -134,23 +135,31 @@ export function filterRowsBySearch(rows, searchNormalized) {
   });
 }
 
+function scoreValue(row) {
+  const n = row?.percentage ?? row?.wellnessScore;
+  return n == null || n === '' ? null : Number(n);
+}
+
+function computedAtMs(row) {
+  const raw = row?.computedAt ?? row?.computed_at;
+  if (!raw) return 0;
+  const ms = Date.parse(String(raw));
+  return Number.isFinite(ms) ? ms : 0;
+}
+
 /**
+ * percentage DESC, computed_at DESC; null scores last.
  * @template T
  * @param {T[]} rows
  * @param {string} sort
  * @returns {T[]}
  */
-export function sortWellnessScoreReportRows(rows, sort = SORT_KEYS.NAME) {
+export function sortWellnessScoreReportRows(rows, sort = SORT_KEYS.SCORE) {
   const list = Array.isArray(rows) ? [...rows] : [];
-  if (sort === SORT_KEYS.SCORE) {
-    list.sort((a, b) => {
-      const as = a?.wellnessScore;
-      const bs = b?.wellnessScore;
-      if (as == null && bs == null) return 0;
-      if (as == null) return 1;
-      if (bs == null) return -1;
-      return Number(bs) - Number(as);
-    });
+  if (sort === SORT_KEYS.NAME) {
+    list.sort((a, b) =>
+      String(a?.name || a?.userName || '').localeCompare(String(b?.name || b?.userName || '')),
+    );
     return list;
   }
   if (sort === SORT_KEYS.WEIGHT) {
@@ -164,9 +173,17 @@ export function sortWellnessScoreReportRows(rows, sort = SORT_KEYS.NAME) {
     });
     return list;
   }
-  list.sort((a, b) =>
-    String(a?.name || a?.userName || '').localeCompare(String(b?.name || b?.userName || '')),
-  );
+
+  // Default / score: percentage DESC, then computed_at DESC.
+  list.sort((a, b) => {
+    const as = scoreValue(a);
+    const bs = scoreValue(b);
+    if (as == null && bs == null) return 0;
+    if (as == null) return 1;
+    if (bs == null) return -1;
+    if (bs !== as) return bs - as;
+    return computedAtMs(b) - computedAtMs(a);
+  });
   return list;
 }
 
@@ -176,15 +193,19 @@ export function sortWellnessScoreReportRows(rows, sort = SORT_KEYS.NAME) {
  */
 export function toWellnessScoreReportListSummary(row) {
   if (!row) return null;
+  const percentage = row.percentage ?? row.wellnessScore ?? null;
   return {
     userId: row.userId,
     name: row.name ?? row.userName ?? null,
     todayWeight: row.todayWeight ?? null,
     previousWeight: row.previousWeight ?? null,
-    wellnessScore: row.wellnessScore ?? null,
-    wellnessScorePossible: row.wellnessScorePossible ?? null,
+    difference: row.difference ?? null,
+    percentage,
+    wellnessScore: percentage,
+    wellnessScorePossible: percentage != null ? 100 : null,
     sponsor: row.sponsor ?? null,
     coach: row.coach ?? null,
+    computedAt: row.computedAt ?? null,
     isDirect: row.isDirect === true,
   };
 }

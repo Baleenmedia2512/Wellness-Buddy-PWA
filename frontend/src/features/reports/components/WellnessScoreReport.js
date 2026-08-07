@@ -35,46 +35,34 @@ function TableSkeleton() {
   );
 }
 
-function WeightChangeCell({ todayWeight, previousWeight }) {
-  const change = computeWeightChange(todayWeight, previousWeight);
+function WeightChangeCell({ todayWeight, previousWeight, difference }) {
+  const change = computeWeightChange(todayWeight, previousWeight, difference);
 
-  if (change.direction === 'none') {
+  if (change.direction === 'none' || change.direction === 'same') {
     return (
-      <div className="text-xs text-gray-500 leading-snug">
-        <div>{change.comparisonLabel}</div>
-      </div>
-    );
-  }
-
-  if (change.direction === 'same') {
-    return (
-      <div className="text-xs leading-snug">
-        <div className="text-gray-700">{change.comparisonLabel}</div>
-        <div className="mt-0.5 inline-flex items-center gap-1 text-gray-400 font-medium">
-          <Minus className="h-3.5 w-3.5" aria-hidden />
-          <span>Unchanged</span>
-        </div>
-      </div>
+      <span className="inline-flex items-center gap-1 text-sm font-medium text-gray-400">
+        <Minus className="h-3.5 w-3.5" aria-hidden />
+        <span>—</span>
+      </span>
     );
   }
 
   const isDown = change.direction === 'down';
   return (
-    <div className="text-xs leading-snug">
-      <div className="text-gray-700">{change.comparisonLabel}</div>
-      <div
-        className={`mt-0.5 inline-flex items-center gap-1 font-semibold ${
-          isDown ? 'text-green-600' : 'text-red-600'
-        }`}
-      >
-        {isDown ? (
-          <ArrowDown className="h-3.5 w-3.5" aria-hidden />
-        ) : (
-          <ArrowUp className="h-3.5 w-3.5" aria-hidden />
-        )}
-        <span>{change.changeLabel}</span>
-      </div>
-    </div>
+    <span
+      className={`inline-flex items-center gap-1 text-sm font-semibold ${
+        isDown ? 'text-green-600' : 'text-red-600'
+      }`}
+    >
+      {isDown ? (
+        <ArrowDown className="h-3.5 w-3.5" aria-hidden />
+      ) : (
+        <ArrowUp className="h-3.5 w-3.5" aria-hidden />
+      )}
+      <span>
+        {isDown ? '⬇' : '⬆'} {change.changeLabel}
+      </span>
+    </span>
   );
 }
 
@@ -127,7 +115,7 @@ export default function WellnessScoreReport({ user, tabVisitKey = 0 }) {
         const data = await fetchWellnessScoreReport(coachId, {
           teamFilter: teamScope,
           search: searchQuery.trim(),
-          sort: 'name',
+          sort: 'score',
           exportAll: true,
           bustCache: true,
         });
@@ -307,14 +295,15 @@ export default function WellnessScoreReport({ user, tabVisitKey = 0 }) {
                         <td className="px-3 py-2.5 text-sm text-gray-800 border-b border-r border-gray-200 whitespace-nowrap">
                           {formatWeightKg(row.todayWeight) || '—'}
                         </td>
-                        <td className="px-3 py-2.5 border-b border-r border-gray-200 min-w-[11rem]">
+                        <td className="px-3 py-2.5 border-b border-r border-gray-200 whitespace-nowrap">
                           <WeightChangeCell
                             todayWeight={row.todayWeight}
                             previousWeight={row.previousWeight}
+                            difference={row.difference}
                           />
                         </td>
                         <td className="px-3 py-2.5 text-sm font-semibold text-teal-800 border-b border-r border-gray-200 whitespace-nowrap">
-                          {formatWellnessScore(row.wellnessScore, row.wellnessScorePossible ?? 100)}
+                          {formatWellnessScore(row.percentage ?? row.wellnessScore)}
                         </td>
                         <td className="px-3 py-2.5 text-sm text-gray-700 border-b border-r border-gray-200 whitespace-nowrap">
                           {row.sponsor || '—'}

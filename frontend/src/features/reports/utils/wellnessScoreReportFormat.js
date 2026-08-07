@@ -1,54 +1,45 @@
 /**
- * Weight delta display helpers for Wellness Score Report.
- * Frontend calculates difference from todayWeight + previousWeight.
+ * Weight delta + score display helpers for Wellness Score Report.
+ * Prefers API `difference` when present; falls back to today/previous.
  */
 
 /**
  * @param {number|null|undefined} todayWeight
  * @param {number|null|undefined} previousWeight
+ * @param {number|null|undefined} [differenceFromApi]
  * @returns {{
  *   direction: 'down'|'up'|'same'|'none',
  *   deltaKg: number|null,
  *   changeLabel: string,
- *   comparisonLabel: string,
  * }}
  */
-export function computeWeightChange(todayWeight, previousWeight) {
-  const today = todayWeight != null ? Number(todayWeight) : NaN;
-  const prev = previousWeight != null ? Number(previousWeight) : NaN;
-
-  if (!Number.isFinite(today) || !Number.isFinite(prev)) {
-    return {
-      direction: 'none',
-      deltaKg: null,
-      changeLabel: '—',
-      comparisonLabel: formatWeightKg(todayWeight) || '—',
-    };
+export function computeWeightChange(todayWeight, previousWeight, differenceFromApi) {
+  let deltaKg = null;
+  if (differenceFromApi != null && Number.isFinite(Number(differenceFromApi))) {
+    deltaKg = Number(differenceFromApi);
+  } else {
+    const today = todayWeight != null ? Number(todayWeight) : NaN;
+    const prev = previousWeight != null ? Number(previousWeight) : NaN;
+    if (Number.isFinite(today) && Number.isFinite(prev)) {
+      deltaKg = Number((today - prev).toFixed(3));
+    }
   }
 
-  const deltaKg = Number((today - prev).toFixed(3));
-  const comparisonLabel = `${formatWeightKg(prev)} → ${formatWeightKg(today)}`;
+  if (deltaKg == null || !Number.isFinite(deltaKg)) {
+    return { direction: 'none', deltaKg: null, changeLabel: '—' };
+  }
 
   if (Math.abs(deltaKg) < 0.0005) {
-    return {
-      direction: 'same',
-      deltaKg: 0,
-      changeLabel: '—',
-      comparisonLabel,
-    };
+    return { direction: 'same', deltaKg: 0, changeLabel: '—' };
   }
 
   const abs = Math.abs(deltaKg);
   const direction = deltaKg < 0 ? 'down' : 'up';
-  let changeLabel;
-  if (abs < 1) {
-    const grams = Math.round(abs * 1000);
-    changeLabel = `${grams} g`;
-  } else {
-    changeLabel = `${abs.toFixed(2)} kg`;
-  }
+  const changeLabel = abs < 1
+    ? `${Math.round(abs * 1000)} g`
+    : `${abs.toFixed(2)} kg`;
 
-  return { direction, deltaKg, changeLabel, comparisonLabel };
+  return { direction, deltaKg, changeLabel };
 }
 
 /**
@@ -63,17 +54,13 @@ export function formatWeightKg(kg) {
 }
 
 /**
+ * Display percentage / 100 (never earned points).
  * @param {number|null|undefined} score
- * @param {number|null|undefined} possible
  * @returns {string}
  */
-export function formatWellnessScore(score, possible = 100) {
+export function formatWellnessScore(score) {
   if (score == null || score === '') return '—';
   const n = Number(score);
   if (!Number.isFinite(n)) return '—';
-  const rounded = Math.round(n);
-  if (possible != null && Number.isFinite(Number(possible))) {
-    return `${rounded} / ${Math.round(Number(possible))}`;
-  }
-  return String(rounded);
+  return `${Math.round(n)} / 100`;
 }

@@ -10,14 +10,20 @@ import {
 } from '../wellnessScoreReportFormat.js';
 
 describe('computeWeightChange', () => {
-  it('uses grams below 1 kg with green down direction', () => {
+  it('uses grams below 1 kg with down direction — no previous→today label', () => {
     const r = computeWeightChange(72.4, 72.8);
     assert.equal(r.direction, 'down');
     assert.equal(r.changeLabel, '400 g');
-    assert.equal(r.comparisonLabel, '72.80 kg → 72.40 kg');
+    assert.equal(r.comparisonLabel, undefined);
   });
 
-  it('uses kilograms at 1 kg or more with red up direction', () => {
+  it('uses API difference when provided', () => {
+    const r = computeWeightChange(null, null, -0.5);
+    assert.equal(r.direction, 'down');
+    assert.equal(r.changeLabel, '500 g');
+  });
+
+  it('uses kilograms at 1 kg or more with up direction', () => {
     const r = computeWeightChange(81.2, 80);
     assert.equal(r.direction, 'up');
     assert.equal(r.changeLabel, '1.20 kg');
@@ -31,9 +37,9 @@ describe('computeWeightChange', () => {
 });
 
 describe('format helpers', () => {
-  it('formats weight and score', () => {
+  it('formats weight and percentage / 100', () => {
     assert.equal(formatWeightKg(72.4), '72.40 kg');
-    assert.equal(formatWellnessScore(92), '92 / 100');
+    assert.equal(formatWellnessScore(87), '87 / 100');
     assert.equal(formatWellnessScore(null), '—');
   });
 });

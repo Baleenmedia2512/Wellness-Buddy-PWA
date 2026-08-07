@@ -2,11 +2,9 @@
  * wellness-score-report.service.js — Single-request Wellness Score Report.
  *
  * One snapshot build per coach (cached): hierarchy + latest/previous weights +
- * persisted wellness scores + sponsor/ideal-coach labels. Pagination filters
- * run in memory on that snapshot — no per-row API fan-out.
+ * today's wellness_score_daily_table.percentage + sponsor/ideal-coach labels.
  *
- * Display rows are Active users only (inactive coaches kept in hierarchy for
- * rollup are excluded from this report).
+ * Active users only. Ordered percentage DESC, computed_at DESC.
  */
 import { validateWellnessScoreReport } from './reports.validators.js';
 import {
@@ -15,14 +13,18 @@ import {
   getLatestTwoWeightsForUsers,
   getWellnessScoresForUsers,
 } from './reports.repository.js';
-import { paginateWellnessScoreReportRecords } from './domain/wellness-score-report.pagination.js';
+import {
+  paginateWellnessScoreReportRecords,
+  SORT_KEYS,
+} from './domain/wellness-score-report.pagination.js';
+import { computeWeightDifferenceKg } from './domain/wellness-score-report.weight.js';
 import { resolveSponsorAndIdealCoachForMembers } from '../../utils/sponsorCoachResolution.js';
 import { isActiveTeamStatus } from '../../utils/teamHierarchyBuilder.js';
 import { todayInTimezone, IANA_IST } from '../../shared/lib/datetime/index.js';
 import { cache } from '../../utils/cache.js';
 
 const REPORT_BUILD_CACHE_TTL_MS = 20_000;
-const REPORT_BUILD_CACHE_PREFIX = 'reports:wellness-score:v2:';
+const REPORT_BUILD_CACHE_PREFIX = 'reports:wellness-score:v3:';
 
 function readWeightPair(weightMap, userId) {
   const entry = weightMap.get(userId);
@@ -38,14 +40,19 @@ function buildMemberRow(member, weightMap, scoreMap, sponsorByUser) {
   const { todayWeight, previousWeight } = readWeightPair(weightMap, uid);
   const score = scoreMap.get(Number(uid));
   const resolved = sponsorByUser.get(String(uid));
+  const percentage = score != null ? score.percentage : null;
+  const difference = computeWeightDifferenceKg(todayWeight, previousWeight);
 
   return {
     userId: uid,
     name: member.UserName || null,
     todayWeight,
     previousWeight,
-    wellnessScore: score != null ? score.percentage : null,
-    wellnessScorePossible: score != null ? 100 : null,
+    difference,
+    percentage,
+    wellnessScore: percentage,
+    wellnessScorePossible: percentage != null ? 100 : null,
+    computedAt: score?.computedAt ?? null,
     sponsor: resolved?.sponsorName || null,
     coach: resolved?.idealCoachName || null,
     isDirect: member.isDirectToRoot === true,
@@ -66,7 +73,6 @@ async function buildWellnessScoreReportSnapshot(coachId, scoreDate) {
     getCoachMember(coachId),
     getFullTeamMembers(coachId),
   ]);
-  // Hierarchy may include inactive coaches for rollup; this report shows Active only.
   const fullTeamMembers = teamData.rawMembers.filter((m) => isActiveTeamStatus(m.Status));
   const selfIsActive = !coachMember || isActiveTeamStatus(coachMember.Status);
 
@@ -137,11 +143,11 @@ export async function getWellnessScoreReport(rawQuery) {
     limit,
     search,
     teamFilter,
-    sort,
     exportAll,
     scoreDate: requestedDate,
   } = validateWellnessScoreReport(rawQuery);
 
+  // Always today's IST business date unless an explicit date is passed.
   const scoreDate = requestedDate || todayInTimezone(IANA_IST);
   const snapshot = await buildWellnessScoreReportSnapshot(coachId, scoreDate);
 
@@ -155,7 +161,8 @@ export async function getWellnessScoreReport(rawQuery) {
     limit,
     search,
     teamFilter,
-    sort,
+    // Server-owned sort: percentage DESC, computed_at DESC — no client sort.
+    sort: SORT_KEYS.SCORE,
     exportAll,
   });
 

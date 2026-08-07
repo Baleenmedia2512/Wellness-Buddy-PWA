@@ -286,12 +286,13 @@ export async function getLatestTwoWeightsForUsers(userIds) {
 }
 
 /**
- * Batch-fetch persisted daily wellness scores for many users on one score_date.
- * Returns Map<userId, { percentage, totalEarned, totalPossible }>.
+ * Batch-fetch today's persisted wellness scores for many users.
+ * Filters by score_date only (no historical rows). Ordered for tie-breaks:
+ * percentage DESC, computed_at DESC.
  *
  * @param {number[]} userIds
- * @param {string} scoreDate YYYY-MM-DD (IST business date)
- * @returns {Promise<Map<number, { percentage: number, totalEarned: number, totalPossible: number }>>}
+ * @param {string} scoreDate YYYY-MM-DD (IST business date ≈ CURRENT_DATE)
+ * @returns {Promise<Map<number, { percentage: number, totalEarned: number, totalPossible: number, computedAt: string|null }>>}
  */
 export async function getWellnessScoresForUsers(userIds, scoreDate) {
   const map = new Map();
@@ -310,9 +311,11 @@ export async function getWellnessScoresForUsers(userIds, scoreDate) {
     chunks.map(async (chunk) => {
       const { data, error } = await supabase
         .from('wellness_score_daily_table')
-        .select('user_id, percentage, total_earned, total_possible')
+        .select('user_id, percentage, total_earned, total_possible, computed_at')
         .eq('score_date', scoreDate)
-        .in('user_id', chunk);
+        .in('user_id', chunk)
+        .order('percentage', { ascending: false })
+        .order('computed_at', { ascending: false });
       if (error) throw error;
       return data || [];
     }),
@@ -326,6 +329,7 @@ export async function getWellnessScoresForUsers(userIds, scoreDate) {
         percentage: Number(row.percentage) || 0,
         totalEarned: Number(row.total_earned) || 0,
         totalPossible: Number(row.total_possible) || 0,
+        computedAt: row.computed_at ?? null,
       });
     }
   }
