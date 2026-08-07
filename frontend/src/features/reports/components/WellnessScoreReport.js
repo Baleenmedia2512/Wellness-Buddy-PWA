@@ -230,6 +230,7 @@ export default function WellnessScoreReport({ user, tabVisitKey = 0 }) {
     selectYesterday,
     selectCustomDate,
     loading,
+    refreshing,
     error,
     refresh,
     goToPage,
@@ -301,7 +302,8 @@ export default function WellnessScoreReport({ user, tabVisitKey = 0 }) {
   }, [runExport]);
 
   const filtersBusy = loading && rows.length === 0;
-  const pageBusy = loading;
+  const pageBusy = loading && rows.length === 0;
+  const isRefreshing = refreshing || (loading && rows.length > 0);
   const totalRecords = pagination.totalRecords || 0;
   const page = pagination.page || 1;
   const limit = pagination.limit || 10;
@@ -342,11 +344,11 @@ export default function WellnessScoreReport({ user, tabVisitKey = 0 }) {
             </TouchFeedbackButton>
             <TouchFeedbackButton
               onClick={refresh}
-              disabled={loading || exporting}
+              disabled={loading && rows.length === 0}
               className="flex-shrink-0 p-2 rounded-xl hover:bg-gray-100 transition-colors disabled:opacity-40"
               ariaLabel="Refresh"
             >
-              <RefreshCw className={`h-4 w-4 text-gray-600 ${loading ? 'animate-spin' : ''}`} />
+              <RefreshCw className={`h-4 w-4 text-gray-600 ${isRefreshing ? 'animate-spin' : ''}`} />
             </TouchFeedbackButton>
           </div>
 
@@ -483,17 +485,15 @@ export default function WellnessScoreReport({ user, tabVisitKey = 0 }) {
                 ))}
               </tr>
             </thead>
-            <tbody className={pageBusy && rows.length > 0 ? 'opacity-60' : undefined}>
+            <tbody>
               {filtersBusy ? (
                 <TableBodySkeleton rows={Math.min(limit, 10)} />
-              ) : rows.length === 0 && !pageBusy ? (
+              ) : rows.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="px-4 py-10 text-center text-sm text-gray-500">
                     No members found for this filter.
                   </td>
                 </tr>
-              ) : rows.length === 0 && pageBusy ? (
-                <TableBodySkeleton rows={Math.min(limit, 10)} />
               ) : (
                 rows.map((row, index) => {
                   const zebra = index % 2 === 0 ? 'bg-white' : 'bg-gray-50';

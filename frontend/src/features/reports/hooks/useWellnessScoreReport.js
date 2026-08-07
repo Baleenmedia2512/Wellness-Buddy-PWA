@@ -1,10 +1,11 @@
 /**
- * useWellnessScoreReport — server-side pagination + date filter (no full-table load).
- * Effect deps exclude fetchPage identity to avoid duplicate StrictMode / recreate fetches.
+ * useWellnessScoreReport — cache-first UI, background refresh.
+ * Shows cached rows immediately, then silently revalidates.
  */
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   fetchWellnessScoreReport,
+  peekWellnessScoreReportCache,
   clearWellnessScoreReportPageCache,
   WELLNESS_SCORE_REPORT_PAGE_SIZE,
 } from '../services/wellnessScoreReportApi.js';
@@ -15,6 +16,23 @@ import {
 } from '../utils/reportDateFilter.js';
 
 const SEARCH_DEBOUNCE_MS = 300;
+
+function applyPayload(data, date, setters) {
+  const pageMembers = Array.isArray(data?.members) ? data.members : [];
+  setters.setTeamScopeCounts(data?.teamScopeCounts || { mine: 0, direct: 0, full: 0 });
+  setters.setScoreDate(data?.scoreDate || date);
+  setters.setPagination(
+    data?.pagination || {
+      page: 1,
+      limit: WELLNESS_SCORE_REPORT_PAGE_SIZE,
+      totalRecords: pageMembers.length,
+      totalPages: 1,
+      hasNextPage: false,
+      hasPreviousPage: false,
+    },
+  );
+  setters.setRows(pageMembers);
+}
 
 export function useWellnessScoreReport({ coachId, tabVisitKey = 0 }) {
   const [rows, setRows] = useState([]);
@@ -38,6 +56,7 @@ export function useWellnessScoreReport({ coachId, tabVisitKey = 0 }) {
   });
   const [scoreDate, setScoreDate] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
 
   const requestIdRef = useRef(0);
@@ -59,6 +78,13 @@ export function useWellnessScoreReport({ coachId, tabVisitKey = 0 }) {
     paginationPage: pagination.page || 1,
   };
 
+  const setters = {
+    setTeamScopeCounts,
+    setScoreDate,
+    setPagination,
+    setRows,
+  };
+
   useEffect(() => {
     mountedRef.current = true;
     return () => {
@@ -76,7 +102,11 @@ export function useWellnessScoreReport({ coachId, tabVisitKey = 0 }) {
     setSearchQuery('');
   }, [teamScope]);
 
-  const fetchPage = useCallback(async ({ page = 1, bustCache = false, silent = false } = {}) => {
+  const fetchPage = useCallback(async ({
+    page = 1,
+    bustCache = false,
+    background = false,
+  } = {}) => {
     const {
       coachId: id,
       teamScope: scope,
@@ -85,11 +115,45 @@ export function useWellnessScoreReport({ coachId, tabVisitKey = 0 }) {
     } = stateRef.current;
     if (!id) return null;
 
-    const requestId = silent ? requestIdRef.current : ++requestIdRef.current;
-    if (!silent) {
+    const requestId = ++requestIdRef.current;
+
+    const peek = peekWellnessScoreReportCache(id, {
+      page,
+      limit: WELLNESS_SCORE_REPORT_PAGE_SIZE,
+      search,
+      teamFilter: scope,
+      sort: 'score',
+      date,
+    });
+
+    if (peek.payload && !bustCache) {
+      applyPayload(peek.payload, date, setters);
+      setLoading(false);
+      if (peek.fresh && !background) {
+        setRefreshing(false);
+        const nextPage = (peek.payload?.pagination?.page || page) + 1;
+        if (peek.payload?.pagination?.hasNextPage) {
+          window.setTimeout(() => {
+            if (!mountedRef.current) return;
+            fetchWellnessScoreReport(id, {
+              page: nextPage,
+              limit: WELLNESS_SCORE_REPORT_PAGE_SIZE,
+              search,
+              teamFilter: scope,
+              sort: 'score',
+              date,
+            }).catch(() => {});
+          }, 50);
+        }
+        return peek.payload;
+      }
+      setRefreshing(true);
+    } else if (!background) {
       setLoading(true);
-      setError(null);
+    } else {
+      setRefreshing(true);
     }
+    setError(null);
 
     try {
       const data = await fetchWellnessScoreReport(id, {
@@ -99,30 +163,13 @@ export function useWellnessScoreReport({ coachId, tabVisitKey = 0 }) {
         teamFilter: scope,
         sort: 'score',
         date,
-        bustCache,
+        bustCache: bustCache || Boolean(peek.payload),
       });
 
-      if (!mountedRef.current) return null;
-      if (!silent && requestId !== requestIdRef.current) return null;
+      if (!mountedRef.current || requestId !== requestIdRef.current) return null;
 
-      if (silent) return data;
+      applyPayload(data, date, setters);
 
-      const pageMembers = Array.isArray(data?.members) ? data.members : [];
-      setTeamScopeCounts(data?.teamScopeCounts || { mine: 0, direct: 0, full: 0 });
-      setScoreDate(data?.scoreDate || date);
-      setPagination(
-        data?.pagination || {
-          page,
-          limit: WELLNESS_SCORE_REPORT_PAGE_SIZE,
-          totalRecords: pageMembers.length,
-          totalPages: 1,
-          hasNextPage: false,
-          hasPreviousPage: false,
-        },
-      );
-      setRows(pageMembers);
-
-      // Warm next page in background (deduped + cached by API client).
       const nextPage = (data?.pagination?.page || page) + 1;
       if (data?.pagination?.hasNextPage) {
         window.setTimeout(() => {
@@ -140,13 +187,15 @@ export function useWellnessScoreReport({ coachId, tabVisitKey = 0 }) {
 
       return data;
     } catch (err) {
-      if (!mountedRef.current || silent) return null;
-      if (requestId !== requestIdRef.current) return null;
-      setError(err.message || 'Failed to load report');
+      if (!mountedRef.current || requestId !== requestIdRef.current) return null;
+      if (!peek.payload) {
+        setError(err.message || 'Failed to load report');
+      }
       return null;
     } finally {
-      if (!silent && mountedRef.current && requestId === requestIdRef.current) {
+      if (mountedRef.current && requestId === requestIdRef.current) {
         setLoading(false);
+        setRefreshing(false);
       }
     }
   }, []);
@@ -155,25 +204,44 @@ export function useWellnessScoreReport({ coachId, tabVisitKey = 0 }) {
     if (!coachId) return undefined;
 
     requestIdRef.current += 1;
-    setRows([]);
-    setPagination({
+
+    const peek = peekWellnessScoreReportCache(coachId, {
       page: 1,
       limit: WELLNESS_SCORE_REPORT_PAGE_SIZE,
-      totalRecords: 0,
-      totalPages: 0,
-      hasNextPage: false,
-      hasPreviousPage: false,
+      search: debouncedSearch,
+      teamFilter: teamScope,
+      sort: 'score',
+      date: selectedDate,
     });
 
+    if (peek.payload) {
+      applyPayload(peek.payload, selectedDate, {
+        setTeamScopeCounts,
+        setScoreDate,
+        setPagination,
+        setRows,
+      });
+      setLoading(false);
+    } else {
+      setRows([]);
+      setPagination({
+        page: 1,
+        limit: WELLNESS_SCORE_REPORT_PAGE_SIZE,
+        totalRecords: 0,
+        totalPages: 0,
+        hasNextPage: false,
+        hasPreviousPage: false,
+      });
+    }
+
     const timer = setTimeout(() => {
-      fetchPage({ page: 1 });
+      fetchPage({ page: 1, background: Boolean(peek.payload) });
     }, 0);
 
     return () => {
       clearTimeout(timer);
       requestIdRef.current += 1;
     };
-    // Intentionally omit fetchPage — stable via ref'd state.
   }, [coachId, teamScope, debouncedSearch, selectedDate, tabVisitKey, fetchPage]);
 
   const goToPage = useCallback(
@@ -182,9 +250,35 @@ export function useWellnessScoreReport({ coachId, tabVisitKey = 0 }) {
       if (loading) return;
       if (pagination.totalPages > 0 && page > pagination.totalPages) return;
       if (page === pagination.page) return;
-      fetchPage({ page });
+
+      const peek = peekWellnessScoreReportCache(coachId, {
+        page,
+        limit: WELLNESS_SCORE_REPORT_PAGE_SIZE,
+        search: debouncedSearch,
+        teamFilter: teamScope,
+        sort: 'score',
+        date: selectedDate,
+      });
+      if (peek.payload) {
+        applyPayload(peek.payload, selectedDate, {
+          setTeamScopeCounts,
+          setScoreDate,
+          setPagination,
+          setRows,
+        });
+      }
+      fetchPage({ page, background: Boolean(peek.payload) });
     },
-    [loading, pagination.page, pagination.totalPages, fetchPage],
+    [
+      loading,
+      pagination.page,
+      pagination.totalPages,
+      fetchPage,
+      coachId,
+      debouncedSearch,
+      teamScope,
+      selectedDate,
+    ],
   );
 
   const goNext = useCallback(() => {
@@ -232,6 +326,7 @@ export function useWellnessScoreReport({ coachId, tabVisitKey = 0 }) {
     selectToday,
     selectYesterday,
     selectCustomDate,
+    refreshing,
     loading,
     error,
     refresh,

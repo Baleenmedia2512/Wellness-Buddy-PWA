@@ -1,22 +1,33 @@
 /**
- * API client for Wellness Score Report — paginated fetch + export-all by date.
- * In-flight + memory cache prevent duplicate network calls (StrictMode / prefetch).
+ * API client for Wellness Score Report — cache-first + background refresh.
  */
 import { CapacitorHttp } from '@capacitor/core';
 import { getApiBaseUrl } from '../../../config/api.config.js';
 
 export const WELLNESS_SCORE_REPORT_PAGE_SIZE = 10;
 
-const PAGE_CACHE_TTL_MS = 20_000;
+const PAGE_CACHE_TTL_MS = 60_000;
+const STALE_TTL_MS = 5 * 60_000;
 const pageCache = new Map();
 /** @type {Map<string, Promise<object>>} */
 const inflight = new Map();
+
+const SESSION_CACHE_PREFIX = 'wsReport:v1:';
 
 function base() {
   return `${getApiBaseUrl()}/api/reports`;
 }
 
-function buildCacheKey({ coachId, page, limit, search, teamFilter, sort, date, exportAll }) {
+export function buildWellnessScoreReportCacheKey({
+  coachId,
+  page,
+  limit,
+  search,
+  teamFilter,
+  sort,
+  date,
+  exportAll,
+}) {
   return [
     coachId,
     page,
@@ -27,6 +38,64 @@ function buildCacheKey({ coachId, page, limit, search, teamFilter, sort, date, e
     date || '',
     exportAll ? '1' : '0',
   ].join('|');
+}
+
+function readSessionCache(cacheKey) {
+  try {
+    if (typeof sessionStorage === 'undefined') return null;
+    const raw = sessionStorage.getItem(SESSION_CACHE_PREFIX + cacheKey);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed?.payload || !parsed?.savedAt) return null;
+    if (Date.now() - parsed.savedAt > STALE_TTL_MS) return null;
+    return parsed.payload;
+  } catch {
+    return null;
+  }
+}
+
+function writeSessionCache(cacheKey, payload) {
+  try {
+    if (typeof sessionStorage === 'undefined') return;
+    sessionStorage.setItem(
+      SESSION_CACHE_PREFIX + cacheKey,
+      JSON.stringify({ payload, savedAt: Date.now() }),
+    );
+  } catch {
+    /* quota / private mode */
+  }
+}
+
+/**
+ * Sync peek — memory first, then sessionStorage. Does not hit the network.
+ */
+export function peekWellnessScoreReportCache(coachId, opts = {}) {
+  const cacheKey = buildWellnessScoreReportCacheKey({
+    coachId,
+    page: opts.page ?? 1,
+    limit: opts.limit ?? WELLNESS_SCORE_REPORT_PAGE_SIZE,
+    search: String(opts.search || '').trim(),
+    teamFilter: opts.teamFilter || 'direct',
+    sort: opts.sort || 'score',
+    date: opts.date ? String(opts.date) : null,
+    exportAll: false,
+  });
+
+  const mem = pageCache.get(cacheKey);
+  if (mem?.payload) {
+    return {
+      payload: mem.payload,
+      fresh: mem.expiresAt > Date.now(),
+      cacheKey,
+    };
+  }
+
+  const sessionPayload = readSessionCache(cacheKey);
+  if (sessionPayload) {
+    return { payload: sessionPayload, fresh: false, cacheKey };
+  }
+
+  return { payload: null, fresh: false, cacheKey };
 }
 
 /**
@@ -84,6 +153,15 @@ export function normalizeWellnessScoreReportPayload(data, paginationFromRoot = n
   };
 }
 
+function applyPayloadToCache(cacheKey, payload, exportAll) {
+  if (exportAll) return;
+  pageCache.set(cacheKey, {
+    payload,
+    expiresAt: Date.now() + PAGE_CACHE_TTL_MS,
+  });
+  writeSessionCache(cacheKey, payload);
+}
+
 async function requestWellnessScoreReport(coachId, opts, cacheKey) {
   const page = opts.page ?? 1;
   const limit = opts.limit ?? WELLNESS_SCORE_REPORT_PAGE_SIZE;
@@ -103,11 +181,13 @@ async function requestWellnessScoreReport(coachId, opts, cacheKey) {
   if (search) params.set('search', search);
   if (date) params.set('date', date);
   if (exportAll) params.set('exportAll', 'true');
+  // Bust HTTP disk/304 cache — app owns freshness via memory/session cache.
+  params.set('_', String(Date.now()));
 
   const res = await CapacitorHttp.get({
     url: `${base()}/wellness-score-report?${params.toString()}`,
     headers: {
-      'Cache-Control': 'no-cache',
+      'Cache-Control': 'no-cache, no-store',
       Pragma: 'no-cache',
     },
   });
@@ -117,18 +197,11 @@ async function requestWellnessScoreReport(coachId, opts, cacheKey) {
   }
 
   const payload = normalizeWellnessScoreReportPayload(result.data, result.pagination);
-  if (!exportAll) {
-    pageCache.set(cacheKey, {
-      payload,
-      expiresAt: Date.now() + PAGE_CACHE_TTL_MS,
-    });
-  }
+  applyPayloadToCache(cacheKey, payload, exportAll);
   return payload;
 }
 
 /**
- * Fetch one page (or full export) of the Wellness Score Report.
- *
  * @param {number} coachId
  * @param {{
  *   page?: number,
@@ -139,6 +212,7 @@ async function requestWellnessScoreReport(coachId, opts, cacheKey) {
  *   date?: string,
  *   exportAll?: boolean,
  *   bustCache?: boolean,
+ *   allowStale?: boolean,
  * }} [opts]
  */
 export async function fetchWellnessScoreReport(coachId, opts = {}) {
@@ -150,8 +224,9 @@ export async function fetchWellnessScoreReport(coachId, opts = {}) {
   const date = opts.date ? String(opts.date) : null;
   const exportAll = opts.exportAll === true;
   const bustCache = opts.bustCache === true;
+  const allowStale = opts.allowStale === true;
 
-  const cacheKey = buildCacheKey({
+  const cacheKey = buildWellnessScoreReportCacheKey({
     coachId,
     page,
     limit,
@@ -163,15 +238,17 @@ export async function fetchWellnessScoreReport(coachId, opts = {}) {
   });
 
   if (!bustCache && !exportAll) {
-    const cached = pageCache.get(cacheKey);
-    if (cached && cached.expiresAt > Date.now()) {
-      return cached.payload;
+    const mem = pageCache.get(cacheKey);
+    if (mem?.payload && mem.expiresAt > Date.now()) {
+      return mem.payload;
+    }
+    if (allowStale && mem?.payload) {
+      return mem.payload;
     }
     const pending = inflight.get(cacheKey);
     if (pending) return pending;
   }
 
-  // Register inflight BEFORE I/O so concurrent callers share one request.
   let resolveFn;
   let rejectFn;
   const gate = new Promise((resolve, reject) => {
