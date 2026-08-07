@@ -138,8 +138,7 @@ export function filterRowsBySearch(rows, searchNormalized) {
   return list.filter((row) => {
     const name = String(row?.name || row?.userName || '').toLowerCase();
     const sponsor = String(row?.sponsor || '').toLowerCase();
-    const coach = String(row?.coach || '').toLowerCase();
-    return name.includes(q) || sponsor.includes(q) || coach.includes(q);
+    return name.includes(q) || sponsor.includes(q);
   });
 }
 
@@ -215,7 +214,6 @@ export function toWellnessScoreReportListSummary(row) {
     wellnessScore: totalEarned,
     wellnessScorePossible: row.wellnessScorePossible ?? null,
     sponsor: row.sponsor ?? null,
-    coach: row.coach ?? null,
     computedAt: row.computedAt ?? null,
     isDirect: row.isDirect === true,
   };

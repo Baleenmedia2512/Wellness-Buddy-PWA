@@ -25,7 +25,6 @@ function row(partial) {
     wellnessScorePossible: 1000,
     computedAt: partial.computedAt ?? null,
     sponsor: partial.sponsor ?? null,
-    coach: partial.coach ?? null,
     isDirect: partial.isDirect === true,
   };
 }

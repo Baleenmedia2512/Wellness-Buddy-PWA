@@ -14,7 +14,6 @@ const EXCEL_HEADERS = [
   'WEIGHT CHANGE',
   'WELLNESS SCORE',
   'SPONSOR',
-  'COACH',
 ];
 
 /**
@@ -55,7 +54,6 @@ export async function buildWellnessScoreWorkbookBuffer(rows) {
     { header: EXCEL_HEADERS[3], key: 'change', width: 16 },
     { header: EXCEL_HEADERS[4], key: 'score', width: 16 },
     { header: EXCEL_HEADERS[5], key: 'sponsor', width: 18 },
-    { header: EXCEL_HEADERS[6], key: 'coach', width: 18 },
   ];
 
   const headerRow = sheet.getRow(1);
@@ -79,7 +77,6 @@ export async function buildWellnessScoreWorkbookBuffer(rows) {
       change: changeCell,
       score: formatWellnessScore(row.totalEarned ?? row.wellnessScore),
       sponsor: row.sponsor || '',
-      coach: row.coach || '',
     });
   }
 

@@ -40,7 +40,6 @@ const TABLE_HEADERS = [
   'TODAY VS PREVIOUS WEIGHT',
   'WELLNESS SCORE',
   'SPONSOR',
-  'COACH',
 ];
 
 function SingleDayPicker({ selectedDate, onSelect, onClose }) {
@@ -148,7 +147,7 @@ function TableBodySkeleton({ rows = 8 }) {
           <td className="sticky left-0 z-[5] px-3 py-2.5 border-b border-r border-gray-200 bg-gray-50">
             <div className="h-4 w-24 bg-gray-200 rounded" />
           </td>
-          {Array.from({ length: 5 }).map((__, j) => (
+          {Array.from({ length: 4 }).map((__, j) => (
             <td key={j} className="px-3 py-2.5 border-b border-r border-gray-200">
               <div className="h-4 w-16 bg-gray-100 rounded" />
             </td>
@@ -490,7 +489,7 @@ export default function WellnessScoreReport({ user, tabVisitKey = 0 }) {
                 <TableBodySkeleton rows={Math.min(limit, 10)} />
               ) : rows.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-10 text-center text-sm text-gray-500">
+                  <td colSpan={5} className="px-4 py-10 text-center text-sm text-gray-500">
                     No members found for this filter.
                   </td>
                 </tr>
@@ -517,11 +516,8 @@ export default function WellnessScoreReport({ user, tabVisitKey = 0 }) {
                       <td className="px-3 py-2.5 text-sm font-semibold text-teal-800 border-b border-r border-gray-200 whitespace-nowrap">
                         {formatWellnessScore(row.totalEarned ?? row.wellnessScore)}
                       </td>
-                      <td className="px-3 py-2.5 text-sm text-gray-700 border-b border-r border-gray-200 whitespace-nowrap">
-                        {row.sponsor || '—'}
-                      </td>
                       <td className="px-3 py-2.5 text-sm text-gray-700 border-b border-gray-200 whitespace-nowrap">
-                        {row.coach || '—'}
+                        {row.sponsor || '—'}
                       </td>
                     </tr>
                   );

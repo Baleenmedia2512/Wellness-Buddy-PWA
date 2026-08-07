@@ -2,7 +2,7 @@
  * GET /api/reports/wellness-score-report
  *
  * Single optimized request for the Wellness Score Report dashboard.
- * Returns name, today/previous weight, wellness score, sponsor, and coach
+ * Returns name, today/previous weight, wellness score, and sponsor
  * for the coach's reporting hierarchy (Mine / Direct / Full).
  *
  * Query: coachId (required), page, limit, search, teamFilter (mine|direct|full),

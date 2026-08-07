@@ -4,7 +4,7 @@
  * Target: <500ms warm / <1s cold for a page of 10.
  * - Roster + ranked scores cached
  * - Full response cached ~20s (kills duplicate/revalidate cost)
- * - Sponsor/Coach = 1 name lookup (no ideal-coach BMI chain walk on list)
+ * - Sponsor = 1 name lookup
  * - Weights only for current page (limit 2 / user)
  */
 import { validateWellnessScoreReport } from './reports.validators.js';
@@ -39,7 +39,6 @@ const NAME_CACHE_PREFIX = 'reports:wellness-score-name:v3:';
 
 const EMPTY_LABEL = Object.freeze({
   sponsorName: null,
-  idealCoachName: null,
 });
 
 /**
@@ -132,8 +131,7 @@ async function getRankedScoreRows({ coachId, scoreDate, teamFilter, search, user
 }
 
 /**
- * Fast Sponsor/Coach labels: one team_table name lookup for unique CoachIds.
- * Skips ideal-BMI coach chain walks (those were the ~2s bottleneck).
+ * Fast Sponsor labels: one team_table name lookup for unique CoachIds.
  *
  * @param {Array<{ userId: number, coachId?: number|null }>} members
  */
@@ -154,7 +152,6 @@ async function resolveReportLabelsFast(members) {
       const name = cachedName === false ? null : cachedName;
       result.set(mid, {
         sponsorName: name,
-        idealCoachName: name,
       });
     } else {
       neededIds.push(Number(sid));
@@ -177,7 +174,6 @@ async function resolveReportLabelsFast(members) {
       const name = cached === false ? null : (cached || null);
       result.set(mid, {
         sponsorName: name,
-        idealCoachName: name,
       });
     }
   }
@@ -210,7 +206,6 @@ function mergePageRow(rosterRow, pageRow, sponsorByUser) {
     wellnessScorePossible: pageRow?.totalPossible ?? null,
     computedAt: pageRow?.computedAt ?? null,
     sponsor: resolved?.sponsorName || null,
-    coach: resolved?.idealCoachName || null,
     isDirect: rosterRow.isDirect === true,
   });
 }
