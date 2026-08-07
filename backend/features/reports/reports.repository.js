@@ -345,9 +345,7 @@ export async function getWellnessScoresForUsers(userIds, scoreDate) {
         .from('wellness_score_daily_table')
         .select('user_id, percentage, total_earned, total_possible, computed_at')
         .eq('score_date', scoreDate)
-        .in('user_id', chunk)
-        .order('percentage', { ascending: false })
-        .order('computed_at', { ascending: false });
+        .in('user_id', chunk);
       if (error) throw error;
       return data || [];
     }),
@@ -366,63 +364,4 @@ export async function getWellnessScoresForUsers(userIds, scoreDate) {
     }
   }
   return map;
-}
-
-/**
- * Rank scoped users by wellness score for a date, return one page (scores only).
- * Weights/sponsors are enriched by the service in parallel for page ids only.
- *
- * @param {{
- *   userIds: number[],
- *   scoreDate: string,
- *   limit: number,
- *   offset: number,
- *   exportAll?: boolean,
- * }} opts
- */
-export async function fetchWellnessScoreReportPage({
-  userIds,
-  scoreDate,
-  limit,
-  offset,
-  exportAll = false,
-}) {
-  const ids = [...new Set((userIds || [])
-    .map((id) => Number(id))
-    .filter((id) => Number.isFinite(id) && id > 0))];
-  if (ids.length === 0 || !scoreDate) return [];
-
-  const pageLimit = exportAll
-    ? ids.length
-    : Math.max(1, Math.min(Number(limit) || 10, ids.length));
-  const pageOffset = exportAll ? 0 : Math.max(0, Number(offset) || 0);
-
-  const scoreMap = await getWellnessScoresForUsers(ids, scoreDate);
-  const ordered = [...ids]
-    .map((userId) => {
-      const score = scoreMap.get(userId) || null;
-      return {
-        userId,
-        percentage: score?.percentage ?? null,
-        totalEarned: score?.totalEarned ?? null,
-        totalPossible: score?.totalPossible ?? null,
-        computedAt: score?.computedAt ?? null,
-        todayWeight: null,
-        previousWeight: null,
-      };
-    })
-    .sort((a, b) => {
-      const ap = a.percentage;
-      const bp = b.percentage;
-      if (ap == null && bp == null) return a.userId - b.userId;
-      if (ap == null) return 1;
-      if (bp == null) return -1;
-      if (bp !== ap) return bp - ap;
-      const at = a.computedAt ? Date.parse(String(a.computedAt)) : 0;
-      const bt = b.computedAt ? Date.parse(String(b.computedAt)) : 0;
-      if (bt !== at) return bt - at;
-      return a.userId - b.userId;
-    });
-
-  return ordered.slice(pageOffset, pageOffset + pageLimit);
 }

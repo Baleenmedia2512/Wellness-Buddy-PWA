@@ -1,15 +1,16 @@
 /**
- * wellness-score-report.service.js — Paginated Wellness Score Report.
+ * wellness-score-report.service.js — Paginated Wellness Score Report (perf path).
  *
- * Roster cached lightly. Per page:
- *  1) score rank/slice for scoped users
- *  2) weights + sponsor/coach labels in parallel for page ids only
+ * Hot path:
+ *  1) Cached roster
+ *  2) Cached ranked scores for (coach, date, filter, search) — page flips reuse it
+ *  3) Parallel: page weights + unique-sponsor label resolve (cached by sponsorId)
  */
 import { validateWellnessScoreReport } from './reports.validators.js';
 import {
   getCoachMember,
   getFullTeamMembers,
-  fetchWellnessScoreReportPage,
+  getWellnessScoresForUsers,
   getLatestTwoWeightsForUsers,
 } from './reports.repository.js';
 import {
@@ -27,12 +28,20 @@ import { todayInTimezone, IANA_IST } from '../../shared/lib/datetime/index.js';
 import { cache } from '../../utils/cache.js';
 
 const ROSTER_CACHE_TTL_MS = 60_000;
-const ROSTER_CACHE_PREFIX = 'reports:wellness-score-roster:v1:';
-const SPONSOR_CACHE_TTL_MS = 60_000;
-const SPONSOR_CACHE_PREFIX = 'reports:wellness-score-sponsor:v1:';
+const ROSTER_CACHE_PREFIX = 'reports:wellness-score-roster:v2:';
+const RANK_CACHE_TTL_MS = 20_000;
+const RANK_CACHE_PREFIX = 'reports:wellness-score-rank:v2:';
+const SPONSOR_BY_ID_TTL_MS = 120_000;
+const SPONSOR_BY_ID_PREFIX = 'reports:wellness-score-sponsor-id:v2:';
+
+const EMPTY_LABEL = Object.freeze({
+  sponsorId: null,
+  sponsorName: null,
+  idealCoachId: null,
+  idealCoachName: null,
+});
 
 /**
- * Lightweight active-team roster (no scores/weights). Cached per coach.
  * @param {number} coachId
  */
 async function getWellnessScoreReportRoster(coachId) {
@@ -69,37 +78,118 @@ async function getWellnessScoreReportRoster(coachId) {
 }
 
 /**
- * Resolve sponsors with a short per-member cache to avoid repeat chain walks.
- * @param {Array<{ userId: number, coachId?: number|null, role?: string|null }>} members
+ * Build / reuse ranked score rows for a coach scope (no weights/sponsors).
+ * @param {{
+ *   coachId: number,
+ *   scoreDate: string,
+ *   teamFilter: string,
+ *   search: string,
+ *   userIds: number[],
+ * }} args
  */
-async function resolveSponsorsCached(members) {
-  const result = new Map();
-  const missing = [];
+async function getRankedScoreRows({ coachId, scoreDate, teamFilter, search, userIds }) {
+  const cacheKey = `${RANK_CACHE_PREFIX}${coachId}:${scoreDate}:${teamFilter}:${search}`;
+  const cached = cache.get(cacheKey);
+  if (cached) return cached;
 
-  for (const m of members) {
-    const key = `${SPONSOR_CACHE_PREFIX}${m.userId}`;
-    const cached = cache.get(key);
-    if (cached) {
-      result.set(String(m.userId), cached);
+  const ids = [...new Set(userIds.filter((id) => Number.isFinite(id) && id > 0))];
+  const scoreMap = await getWellnessScoresForUsers(ids, scoreDate);
+
+  const scored = [];
+  const unscored = [];
+  for (const userId of ids) {
+    const score = scoreMap.get(userId);
+    if (score) {
+      scored.push({
+        userId,
+        percentage: score.percentage,
+        totalEarned: score.totalEarned,
+        totalPossible: score.totalPossible,
+        computedAt: score.computedAt,
+      });
     } else {
-      missing.push(m);
+      unscored.push({
+        userId,
+        percentage: null,
+        totalEarned: null,
+        totalPossible: null,
+        computedAt: null,
+      });
     }
   }
 
-  if (missing.length === 0) return result;
+  scored.sort((a, b) => {
+    if (b.percentage !== a.percentage) return b.percentage - a.percentage;
+    const at = a.computedAt ? Date.parse(String(a.computedAt)) : 0;
+    const bt = b.computedAt ? Date.parse(String(b.computedAt)) : 0;
+    if (bt !== at) return bt - at;
+    return a.userId - b.userId;
+  });
 
-  const resolved = await resolveSponsorAndIdealCoachForMembers(missing);
-  for (const m of missing) {
-    const mid = String(m.userId);
-    const value = resolved.get(mid) || {
-      sponsorId: null,
-      sponsorName: null,
-      idealCoachId: null,
-      idealCoachName: null,
-    };
-    result.set(mid, value);
-    cache.set(`${SPONSOR_CACHE_PREFIX}${m.userId}`, value, SPONSOR_CACHE_TTL_MS);
+  const ranked = scored.concat(unscored);
+  cache.set(cacheKey, ranked, RANK_CACHE_TTL_MS);
+  return ranked;
+}
+
+/**
+ * Resolve labels once per unique sponsorId (shared across members + pages).
+ * @param {Array<{ userId: number, coachId?: number|null, role?: string|null }>} members
+ */
+async function resolveSponsorsByUniqueCoach(members) {
+  const result = new Map();
+  /** @type {Map<string, Array<{ userId: number, coachId: number|null, role?: string|null }>>} */
+  const bySponsor = new Map();
+
+  for (const m of members) {
+    const mid = m?.userId != null ? String(m.userId) : null;
+    if (!mid) continue;
+    const sid = m.coachId != null ? String(m.coachId) : null;
+    if (!sid) {
+      result.set(mid, EMPTY_LABEL);
+      continue;
+    }
+    if (!bySponsor.has(sid)) bySponsor.set(sid, []);
+    bySponsor.get(sid).push(m);
   }
+
+  const missingProbes = [];
+  /** @type {Map<string, object>} */
+  const labelBySponsor = new Map();
+
+  for (const sid of bySponsor.keys()) {
+    const cached = cache.get(`${SPONSOR_BY_ID_PREFIX}${sid}`);
+    if (cached) {
+      labelBySponsor.set(sid, cached);
+    } else {
+      const probe = bySponsor.get(sid)[0];
+      missingProbes.push(probe);
+    }
+  }
+
+  if (missingProbes.length > 0) {
+    const resolved = await resolveSponsorAndIdealCoachForMembers(missingProbes);
+    for (const probe of missingProbes) {
+      const mid = String(probe.userId);
+      const sid = String(probe.coachId);
+      const value = resolved.get(mid) || EMPTY_LABEL;
+      const label = {
+        sponsorId: value.sponsorId ?? sid,
+        sponsorName: value.sponsorName ?? null,
+        idealCoachId: value.idealCoachId ?? null,
+        idealCoachName: value.idealCoachName ?? null,
+      };
+      labelBySponsor.set(sid, label);
+      cache.set(`${SPONSOR_BY_ID_PREFIX}${sid}`, label, SPONSOR_BY_ID_TTL_MS);
+    }
+  }
+
+  for (const [sid, group] of bySponsor.entries()) {
+    const label = labelBySponsor.get(sid) || EMPTY_LABEL;
+    for (const m of group) {
+      result.set(String(m.userId), label);
+    }
+  }
+
   return result;
 }
 
@@ -166,13 +256,17 @@ export async function getWellnessScoreReport(rawQuery) {
   const pageLimit = exportAll ? Math.max(totalRecords, 1) : pagination.pageSize;
 
   const userIds = searched.map((row) => Number(row.userId)).filter((id) => Number.isFinite(id));
-  const pageScoreRows = await fetchWellnessScoreReportPage({
-    userIds,
+  const ranked = await getRankedScoreRows({
+    coachId,
     scoreDate,
-    limit: pageLimit,
-    offset,
-    exportAll,
+    teamFilter,
+    search,
+    userIds,
   });
+
+  const pageScoreRows = exportAll
+    ? ranked
+    : ranked.slice(offset, offset + pageLimit);
 
   const rosterById = new Map(
     searched.map((row) => [Number(row.userId), row]),
@@ -190,7 +284,7 @@ export async function getWellnessScoreReport(rawQuery) {
 
   const [weightMap, sponsorByUser] = await Promise.all([
     getLatestTwoWeightsForUsers(pageIds),
-    resolveSponsorsCached(sponsorMembers),
+    resolveSponsorsByUniqueCoach(sponsorMembers),
   ]);
 
   const records = pageScoreRows

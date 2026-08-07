@@ -76,7 +76,7 @@ export function useWellnessScoreReport({ coachId, tabVisitKey = 0 }) {
     setSearchQuery('');
   }, [teamScope]);
 
-  const fetchPage = useCallback(async ({ page = 1, bustCache = false } = {}) => {
+  const fetchPage = useCallback(async ({ page = 1, bustCache = false, silent = false } = {}) => {
     const {
       coachId: id,
       teamScope: scope,
@@ -85,9 +85,11 @@ export function useWellnessScoreReport({ coachId, tabVisitKey = 0 }) {
     } = stateRef.current;
     if (!id) return null;
 
-    const requestId = ++requestIdRef.current;
-    setLoading(true);
-    setError(null);
+    const requestId = silent ? requestIdRef.current : ++requestIdRef.current;
+    if (!silent) {
+      setLoading(true);
+      setError(null);
+    }
 
     try {
       const data = await fetchWellnessScoreReport(id, {
@@ -100,7 +102,10 @@ export function useWellnessScoreReport({ coachId, tabVisitKey = 0 }) {
         bustCache,
       });
 
-      if (!mountedRef.current || requestId !== requestIdRef.current) return null;
+      if (!mountedRef.current) return null;
+      if (!silent && requestId !== requestIdRef.current) return null;
+
+      if (silent) return data;
 
       const pageMembers = Array.isArray(data?.members) ? data.members : [];
       setTeamScopeCounts(data?.teamScopeCounts || { mine: 0, direct: 0, full: 0 });
@@ -116,13 +121,31 @@ export function useWellnessScoreReport({ coachId, tabVisitKey = 0 }) {
         },
       );
       setRows(pageMembers);
+
+      // Warm next page in background (deduped + cached by API client).
+      const nextPage = (data?.pagination?.page || page) + 1;
+      if (data?.pagination?.hasNextPage) {
+        window.setTimeout(() => {
+          if (!mountedRef.current) return;
+          fetchWellnessScoreReport(id, {
+            page: nextPage,
+            limit: WELLNESS_SCORE_REPORT_PAGE_SIZE,
+            search,
+            teamFilter: scope,
+            sort: 'score',
+            date,
+          }).catch(() => {});
+        }, 50);
+      }
+
       return data;
     } catch (err) {
-      if (!mountedRef.current || requestId !== requestIdRef.current) return null;
+      if (!mountedRef.current || silent) return null;
+      if (requestId !== requestIdRef.current) return null;
       setError(err.message || 'Failed to load report');
       return null;
     } finally {
-      if (mountedRef.current && requestId === requestIdRef.current) {
+      if (!silent && mountedRef.current && requestId === requestIdRef.current) {
         setLoading(false);
       }
     }
