@@ -20,6 +20,7 @@ import {
   downloadWellnessScoreExcel,
 } from '../utils/wellnessScoreReportExcel.js';
 import { fetchWellnessScoreReport } from '../services/wellnessScoreReportApi.js';
+import Session from '../../../shared/services/sessionStorage';
 
 function TableSkeleton() {
   return (
@@ -71,7 +72,7 @@ function WeightChangeCell({ todayWeight, previousWeight, difference }) {
 }
 
 export default function WellnessScoreReport({ user, tabVisitKey = 0 }) {
-  const coachId = user?.id ?? null;
+  const coachId = user?.id ?? user?.UserId ?? Session.getDbUserId() ?? null;
   const {
     rows,
     teamScope,

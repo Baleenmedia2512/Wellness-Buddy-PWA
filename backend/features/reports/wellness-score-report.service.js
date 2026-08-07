@@ -24,7 +24,7 @@ import { todayInTimezone, IANA_IST } from '../../shared/lib/datetime/index.js';
 import { cache } from '../../utils/cache.js';
 
 const REPORT_BUILD_CACHE_TTL_MS = 20_000;
-const REPORT_BUILD_CACHE_PREFIX = 'reports:wellness-score:v6:';
+const REPORT_BUILD_CACHE_PREFIX = 'reports:wellness-score:v7:';
 
 function readWeightPair(weightMap, userId) {
   const id = Number(userId);
@@ -77,11 +77,12 @@ async function buildWellnessScoreReportSnapshot(coachId, scoreDate) {
     getCoachMember(coachId),
     getFullTeamMembers(coachId),
   ]);
+  // Downline: Active only. The requesting coach is always included so their own
+  // today's score (e.g. user 352 → 660) appears on Mine / Full Team rankings.
   const fullTeamMembers = teamData.rawMembers.filter((m) => isActiveTeamStatus(m.Status));
-  const selfIsActive = !coachMember || isActiveTeamStatus(coachMember.Status);
 
   const userIds = [
-    ...(selfIsActive ? [coachId] : []),
+    coachId,
     ...fullTeamMembers.map((m) => m.UserId),
   ];
 
@@ -91,13 +92,11 @@ async function buildWellnessScoreReportSnapshot(coachId, scoreDate) {
   ]);
 
   const sponsorMembers = [
-    ...(selfIsActive
-      ? [{
-          userId: coachId,
-          coachId: coachMember?.CoachId ?? null,
-          role: coachMember?.Role ?? null,
-        }]
-      : []),
+    {
+      userId: coachId,
+      coachId: coachMember?.CoachId ?? null,
+      role: coachMember?.Role ?? null,
+    },
     ...fullTeamMembers.map((m) => ({
       userId: m.UserId,
       coachId: m.CoachId,
@@ -113,17 +112,15 @@ async function buildWellnessScoreReportSnapshot(coachId, scoreDate) {
     isDirectToRoot: false,
   };
 
-  const self = selfIsActive
-    ? {
-        ...buildMemberRow(
-          { ...selfMember, isDirectToRoot: false },
-          weightMap,
-          scoreMap,
-          sponsorByUser,
-        ),
-        isDirect: false,
-      }
-    : null;
+  const self = {
+    ...buildMemberRow(
+      { ...selfMember, UserId: coachMember?.UserId ?? coachId, isDirectToRoot: false },
+      weightMap,
+      scoreMap,
+      sponsorByUser,
+    ),
+    isDirect: false,
+  };
 
   const members = fullTeamMembers.map((m) =>
     buildMemberRow(m, weightMap, scoreMap, sponsorByUser),
