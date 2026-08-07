@@ -1,10 +1,10 @@
 /**
- * API client for Wellness Score Report — single endpoint, page cache, export-all.
+ * API client for Wellness Score Report — paginated fetch + export-all by date.
  */
 import { CapacitorHttp } from '@capacitor/core';
 import { getApiBaseUrl } from '../../../config/api.config.js';
 
-export const WELLNESS_SCORE_REPORT_PAGE_SIZE = 20;
+export const WELLNESS_SCORE_REPORT_PAGE_SIZE = 10;
 
 const PAGE_CACHE_TTL_MS = 20_000;
 const pageCache = new Map();
@@ -13,8 +13,17 @@ function base() {
   return `${getApiBaseUrl()}/api/reports`;
 }
 
-function buildCacheKey({ coachId, page, limit, search, teamFilter, sort, exportAll }) {
-  return [coachId, page, limit, search || '', teamFilter || '', sort || '', exportAll ? '1' : '0'].join('|');
+function buildCacheKey({ coachId, page, limit, search, teamFilter, sort, date, exportAll }) {
+  return [
+    coachId,
+    page,
+    limit,
+    search || '',
+    teamFilter || '',
+    sort || '',
+    date || '',
+    exportAll ? '1' : '0',
+  ].join('|');
 }
 
 /**
@@ -82,6 +91,7 @@ export function normalizeWellnessScoreReportPayload(data, paginationFromRoot = n
  *   search?: string,
  *   teamFilter?: string,
  *   sort?: string,
+ *   date?: string,
  *   exportAll?: boolean,
  *   bustCache?: boolean,
  * }} [opts]
@@ -92,6 +102,7 @@ export async function fetchWellnessScoreReport(coachId, opts = {}) {
   const search = String(opts.search || '').trim();
   const teamFilter = opts.teamFilter || 'direct';
   const sort = opts.sort || 'score';
+  const date = opts.date ? String(opts.date) : null;
   const exportAll = opts.exportAll === true;
   const bustCache = opts.bustCache === true;
 
@@ -102,6 +113,7 @@ export async function fetchWellnessScoreReport(coachId, opts = {}) {
     search,
     teamFilter,
     sort,
+    date,
     exportAll,
   });
 
@@ -120,6 +132,7 @@ export async function fetchWellnessScoreReport(coachId, opts = {}) {
     sort,
   });
   if (search) params.set('search', search);
+  if (date) params.set('date', date);
   if (exportAll) params.set('exportAll', 'true');
 
   const res = await CapacitorHttp.get({

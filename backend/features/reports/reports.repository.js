@@ -3,6 +3,7 @@
  * Owns: team_table (hierarchy lookup) + weight_records_table (latest weight).
  */
 import { getSupabaseClient } from '../../utils/supabaseClient.js';
+import { query as dbQuery } from '../../utils/dbPool.js';
 import logger from '../../shared/lib/logger.js';
 import {
   loadReportingContext,
@@ -320,7 +321,7 @@ export async function getWellnessScoresForUsers(userIds, scoreDate) {
         .select('user_id, percentage, total_earned, total_possible, computed_at')
         .eq('score_date', scoreDate)
         .in('user_id', chunk)
-        .order('total_earned', { ascending: false })
+        .order('percentage', { ascending: false })
         .order('computed_at', { ascending: false });
       if (error) throw error;
       return data || [];
@@ -340,4 +341,193 @@ export async function getWellnessScoresForUsers(userIds, scoreDate) {
     }
   }
   return map;
+}
+
+/**
+ * SQL-paginated Wellness Score Report page.
+ * One query: LEFT JOIN scores for score_date + latest/previous weights for the page only.
+ * Sort: percentage DESC NULLS LAST, computed_at DESC NULLS LAST.
+ *
+ * Falls back to Supabase score fetch + in-memory page + weight enrich if pg is unavailable.
+ *
+ * @param {{
+ *   userIds: number[],
+ *   scoreDate: string,
+ *   limit: number,
+ *   offset: number,
+ *   exportAll?: boolean,
+ * }} opts
+ * @returns {Promise<Array<{
+ *   userId: number,
+ *   percentage: number|null,
+ *   totalEarned: number|null,
+ *   totalPossible: number|null,
+ *   computedAt: string|null,
+ *   todayWeight: number|null,
+ *   previousWeight: number|null,
+ * }>>}
+ */
+export async function fetchWellnessScoreReportPage({
+  userIds,
+  scoreDate,
+  limit,
+  offset,
+  exportAll = false,
+}) {
+  const ids = [...new Set((userIds || [])
+    .map((id) => Number(id))
+    .filter((id) => Number.isFinite(id) && id > 0))];
+  if (ids.length === 0 || !scoreDate) return [];
+
+  const pageLimit = exportAll
+    ? ids.length
+    : Math.max(1, Math.min(Number(limit) || 10, ids.length));
+  const pageOffset = exportAll ? 0 : Math.max(0, Number(offset) || 0);
+
+  try {
+    return await fetchWellnessScoreReportPageSql({
+      ids,
+      scoreDate,
+      pageLimit,
+      pageOffset,
+    });
+  } catch (err) {
+    logger.warn('[reports] SQL wellness-score page failed; using Supabase fallback', {
+      message: err?.message || String(err),
+      scoreDate,
+      idCount: ids.length,
+    });
+    return fetchWellnessScoreReportPageFallback({
+      ids,
+      scoreDate,
+      pageLimit,
+      pageOffset,
+    });
+  }
+}
+
+async function fetchWellnessScoreReportPageSql({ ids, scoreDate, pageLimit, pageOffset }) {
+  const sql = `
+    WITH scoped AS (
+      SELECT unnest(?::int[]) AS user_id
+    ),
+    page AS (
+      SELECT
+        sc.user_id,
+        s.percentage,
+        s.total_earned,
+        s.total_possible,
+        s.computed_at
+      FROM scoped sc
+      LEFT JOIN wellness_score_daily_table s
+        ON s.user_id = sc.user_id
+       AND s.score_date = ?::date
+      ORDER BY s.percentage DESC NULLS LAST,
+               s.computed_at DESC NULLS LAST,
+               sc.user_id ASC
+      LIMIT ?
+      OFFSET ?
+    ),
+    ranked_weights AS (
+      SELECT
+        wr."UserId" AS user_id,
+        wr."Weight" AS weight,
+        ROW_NUMBER() OVER (
+          PARTITION BY wr."UserId"
+          ORDER BY wr."CreatedAt" DESC
+        ) AS rn
+      FROM weight_records_table wr
+      INNER JOIN page p ON p.user_id = wr."UserId"
+      WHERE wr."IsDeleted" IS NULL
+         OR wr."IsDeleted"::text IN ('false', '0', 'f')
+    )
+    SELECT
+      p.user_id,
+      p.percentage,
+      p.total_earned,
+      p.total_possible,
+      p.computed_at,
+      w1.weight AS today_weight,
+      w2.weight AS previous_weight
+    FROM page p
+    LEFT JOIN ranked_weights w1
+      ON w1.user_id = p.user_id AND w1.rn = 1
+    LEFT JOIN ranked_weights w2
+      ON w2.user_id = p.user_id AND w2.rn = 2
+    ORDER BY p.percentage DESC NULLS LAST,
+             p.computed_at DESC NULLS LAST,
+             p.user_id ASC
+  `;
+
+  const [rows] = await dbQuery(sql, [ids, scoreDate, pageLimit, pageOffset]);
+  return mapWellnessScoreReportPageRows(rows);
+}
+
+/**
+ * Supabase fallback: scores for scoped ids → sort → slice → weights for page only.
+ * Still never enriches weights for the full team on a normal page request.
+ */
+async function fetchWellnessScoreReportPageFallback({
+  ids,
+  scoreDate,
+  pageLimit,
+  pageOffset,
+}) {
+  const scoreMap = await getWellnessScoresForUsers(ids, scoreDate);
+  const ordered = [...ids]
+    .map((userId) => {
+      const score = scoreMap.get(userId) || null;
+      return {
+        userId,
+        percentage: score?.percentage ?? null,
+        totalEarned: score?.totalEarned ?? null,
+        totalPossible: score?.totalPossible ?? null,
+        computedAt: score?.computedAt ?? null,
+      };
+    })
+    .sort((a, b) => {
+      const ap = a.percentage;
+      const bp = b.percentage;
+      if (ap == null && bp == null) return a.userId - b.userId;
+      if (ap == null) return 1;
+      if (bp == null) return -1;
+      if (bp !== ap) return bp - ap;
+      const at = a.computedAt ? Date.parse(String(a.computedAt)) : 0;
+      const bt = b.computedAt ? Date.parse(String(b.computedAt)) : 0;
+      if (bt !== at) return bt - at;
+      return a.userId - b.userId;
+    });
+
+  const pageRows = ordered.slice(pageOffset, pageOffset + pageLimit);
+  const pageIds = pageRows.map((r) => r.userId);
+  const weightMap = await getLatestTwoWeightsForUsers(pageIds);
+
+  return pageRows.map((row) => {
+    const weights = weightMap.get(row.userId) || {};
+    return {
+      ...row,
+      todayWeight: weights.todayWeight ?? null,
+      previousWeight: weights.previousWeight ?? null,
+    };
+  });
+}
+
+function mapWellnessScoreReportPageRows(rows) {
+  return (rows || []).map((row) => {
+    const uid = Number(row.user_id);
+    const todayRaw = row.today_weight != null ? parseFloat(row.today_weight) : null;
+    const prevRaw = row.previous_weight != null ? parseFloat(row.previous_weight) : null;
+    const percentage = row.percentage != null ? Number(row.percentage) : null;
+    const totalEarned = row.total_earned != null ? Number(row.total_earned) : null;
+    const totalPossible = row.total_possible != null ? Number(row.total_possible) : null;
+    return {
+      userId: uid,
+      percentage: Number.isFinite(percentage) ? percentage : null,
+      totalEarned: Number.isFinite(totalEarned) ? totalEarned : null,
+      totalPossible: Number.isFinite(totalPossible) ? totalPossible : null,
+      computedAt: row.computed_at ?? null,
+      todayWeight: Number.isFinite(todayRaw) ? todayRaw : null,
+      previousWeight: Number.isFinite(prevRaw) ? prevRaw : null,
+    };
+  });
 }

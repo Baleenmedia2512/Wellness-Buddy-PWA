@@ -1,9 +1,10 @@
 /**
  * Wellness Score Report — pure filter / sort / page helpers.
  * Default order: percentage DESC, computed_at DESC (matches SQL ORDER BY).
+ * Default page size: 10.
  */
 
-export const WELLNESS_SCORE_REPORT_DEFAULT_PAGE_SIZE = 20;
+export const WELLNESS_SCORE_REPORT_DEFAULT_PAGE_SIZE = 10;
 export const WELLNESS_SCORE_REPORT_MAX_PAGE_SIZE = 100;
 
 export const TEAM_FILTERS = Object.freeze({
@@ -143,9 +144,8 @@ export function filterRowsBySearch(rows, searchNormalized) {
 }
 
 function scoreValue(row) {
-  // Sort by the same value shown in WELLNESS SCORE (total_earned).
-  // Sorting by percentage caused mismatches (e.g. 510 vs 506 both round to ~51%).
-  const n = row?.totalEarned ?? row?.wellnessScore ?? row?.percentage;
+  // Matches SQL ORDER BY: percentage DESC, computed_at DESC.
+  const n = row?.percentage ?? row?.totalEarned ?? row?.wellnessScore;
   return n == null || n === '' ? null : Number(n);
 }
 
@@ -183,7 +183,7 @@ export function sortWellnessScoreReportRows(rows, sort = SORT_KEYS.SCORE) {
     return list;
   }
 
-  // Default / score: total_earned DESC, then computed_at DESC.
+  // Default / score: percentage DESC, then computed_at DESC (SQL pagination contract).
   list.sort((a, b) => {
     const as = scoreValue(a);
     const bs = scoreValue(b);

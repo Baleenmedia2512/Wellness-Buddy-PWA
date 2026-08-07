@@ -31,17 +31,18 @@ function row(partial) {
 }
 
 describe('normalizeWellnessScoreReportPagination', () => {
-  it('defaults to page 1, limit 20, direct team, score sort', () => {
+  it('defaults to page 1, limit 10, direct team, score sort', () => {
     const p = normalizeWellnessScoreReportPagination({});
     assert.equal(p.page, 1);
     assert.equal(p.limit, WELLNESS_SCORE_REPORT_DEFAULT_PAGE_SIZE);
+    assert.equal(p.limit, 10);
     assert.equal(p.teamFilter, TEAM_FILTERS.DIRECT);
     assert.equal(p.sort, SORT_KEYS.SCORE);
     assert.equal(p.exportAll, false);
   });
 });
 
-describe('paginateWellnessScoreReportRecords — total_earned order', () => {
+describe('paginateWellnessScoreReportRecords — percentage order', () => {
   const self = row({
     userId: 352,
     name: 'CoachTop',
@@ -76,31 +77,56 @@ describe('paginateWellnessScoreReportRecords — total_earned order', () => {
     }),
   ];
 
-  it('Full Team includes self so coach 660 ranks above downline 550', () => {
+  it('Full Team includes self so coach 66% ranks above downline 55%', () => {
     const { records, teamScopeCounts } = paginateWellnessScoreReportRecords(self, members, {
       teamFilter: 'full',
       exportAll: true,
     });
     assert.equal(teamScopeCounts.full, 4);
     assert.equal(records[0].name, 'CoachTop');
-    assert.equal(records[0].totalEarned, 660);
+    assert.equal(records[0].percentage, 66);
     assert.equal(records[1].name, 'Rekha');
-    assert.equal(records[1].totalEarned, 550);
+    assert.equal(records[1].percentage, 55);
   });
 
-  it('orders downline by total_earned DESC even when percentage ties', () => {
+  it('orders by percentage DESC then computed_at DESC on ties', () => {
     const { records } = paginateWellnessScoreReportRecords(self, members, {
       teamFilter: 'direct',
       exportAll: true,
     });
     assert.deepEqual(
-      records.map((r) => [r.name, r.totalEarned]),
+      records.map((r) => [r.name, r.percentage]),
       [
-        ['Rekha', 550],
-        ['bharathi', 510],
-        ['Priya', 506],
+        ['Rekha', 55],
+        ['Priya', 51],
+        ['bharathi', 51],
       ],
     );
+  });
+
+  it('pages 10 records with SQL-style meta', () => {
+    const many = Array.from({ length: 25 }, (_, i) =>
+      row({
+        userId: i + 1,
+        name: `M${i + 1}`,
+        percentage: 100 - i,
+        totalEarned: 1000 - i * 10,
+        isDirect: true,
+      }),
+    );
+    const { records, pagination } = paginateWellnessScoreReportRecords(self, many, {
+      teamFilter: 'direct',
+      page: 2,
+      limit: 10,
+    });
+    assert.equal(pagination.page, 2);
+    assert.equal(pagination.limit, 10);
+    assert.equal(pagination.totalRecords, 25);
+    assert.equal(pagination.totalPages, 3);
+    assert.equal(records.length, 10);
+    assert.equal(records[0].percentage, 90);
+    assert.equal(pagination.hasNextPage, true);
+    assert.equal(pagination.hasPreviousPage, true);
   });
 });
 

@@ -1,21 +1,23 @@
 /**
- * wellness-score-report.service.js — Single-request Wellness Score Report.
+ * wellness-score-report.service.js — Paginated Wellness Score Report.
  *
- * One snapshot build per coach (cached): hierarchy + latest/previous weights +
- * today's wellness_score_daily_table.percentage + sponsor/ideal-coach labels.
- *
- * Active users only. Ordered percentage DESC, computed_at DESC.
+ * Roster (hierarchy) is cached lightly. Each page runs one SQL query that
+ * returns score + weight for LIMIT/OFFSET rows only (sorted percentage DESC,
+ * computed_at DESC). Sponsor/coach labels are resolved for the page only.
  */
 import { validateWellnessScoreReport } from './reports.validators.js';
 import {
   getCoachMember,
   getFullTeamMembers,
-  getLatestTwoWeightsForUsers,
-  getWellnessScoresForUsers,
+  fetchWellnessScoreReportPage,
 } from './reports.repository.js';
 import {
-  paginateWellnessScoreReportRecords,
-  SORT_KEYS,
+  applyTeamFilter,
+  countRowsByTeamFilter,
+  filterRowsBySearch,
+  buildWellnessScoreReportPaginationMeta,
+  toWellnessScoreReportListSummary,
+  TEAM_FILTERS,
 } from './domain/wellness-score-report.pagination.js';
 import { computeWeightDifferenceKg } from './domain/wellness-score-report.weight.js';
 import { resolveSponsorAndIdealCoachForMembers } from '../../utils/sponsorCoachResolution.js';
@@ -23,53 +25,15 @@ import { isActiveTeamStatus } from '../../utils/teamHierarchyBuilder.js';
 import { todayInTimezone, IANA_IST } from '../../shared/lib/datetime/index.js';
 import { cache } from '../../utils/cache.js';
 
-const REPORT_BUILD_CACHE_TTL_MS = 20_000;
-const REPORT_BUILD_CACHE_PREFIX = 'reports:wellness-score:v7:';
-
-function readWeightPair(weightMap, userId) {
-  const id = Number(userId);
-  const entry = weightMap.get(id) || weightMap.get(userId);
-  if (!entry) return { todayWeight: null, previousWeight: null };
-  return {
-    todayWeight: entry.todayWeight ?? null,
-    previousWeight: entry.previousWeight ?? null,
-  };
-}
-
-function buildMemberRow(member, weightMap, scoreMap, sponsorByUser) {
-  const uid = member.UserId;
-  const uidNum = Number(uid);
-  const { todayWeight, previousWeight } = readWeightPair(weightMap, uid);
-  const score = scoreMap.get(uidNum) || scoreMap.get(uid) || null;
-  const resolved = sponsorByUser.get(String(uid));
-  const percentage = score != null ? score.percentage : null;
-  const totalEarned = score != null ? score.totalEarned : null;
-  const difference = computeWeightDifferenceKg(todayWeight, previousWeight);
-
-  return {
-    userId: uid,
-    name: member.UserName || null,
-    todayWeight,
-    previousWeight,
-    difference,
-    percentage,
-    totalEarned,
-    wellnessScore: totalEarned,
-    wellnessScorePossible: score?.totalPossible ?? null,
-    computedAt: score?.computedAt ?? null,
-    sponsor: resolved?.sponsorName || null,
-    coach: resolved?.idealCoachName || null,
-    isDirect: member.isDirectToRoot === true,
-  };
-}
+const ROSTER_CACHE_TTL_MS = 60_000;
+const ROSTER_CACHE_PREFIX = 'reports:wellness-score-roster:v1:';
 
 /**
- * Build enriched report once per coach + score date (cached ~20s).
+ * Lightweight active-team roster (no scores/weights). Cached per coach.
  * @param {number} coachId
- * @param {string} scoreDate
  */
-async function buildWellnessScoreReportSnapshot(coachId, scoreDate) {
-  const cacheKey = `${REPORT_BUILD_CACHE_PREFIX}${coachId}:${scoreDate}`;
+async function getWellnessScoreReportRoster(coachId) {
+  const cacheKey = `${ROSTER_CACHE_PREFIX}${coachId}`;
   const cached = cache.get(cacheKey);
   if (cached) return cached;
 
@@ -77,58 +41,58 @@ async function buildWellnessScoreReportSnapshot(coachId, scoreDate) {
     getCoachMember(coachId),
     getFullTeamMembers(coachId),
   ]);
-  // Downline: Active only. The requesting coach is always included so their own
-  // today's score (e.g. user 352 → 660) appears on Mine / Full Team rankings.
+
   const fullTeamMembers = teamData.rawMembers.filter((m) => isActiveTeamStatus(m.Status));
 
-  const userIds = [
-    coachId,
-    ...fullTeamMembers.map((m) => m.UserId),
-  ];
-
-  const [weightMap, scoreMap] = await Promise.all([
-    getLatestTwoWeightsForUsers(userIds),
-    getWellnessScoresForUsers(userIds, scoreDate),
-  ]);
-
-  const sponsorMembers = [
-    {
-      userId: coachId,
-      coachId: coachMember?.CoachId ?? null,
-      role: coachMember?.Role ?? null,
-    },
-    ...fullTeamMembers.map((m) => ({
-      userId: m.UserId,
-      coachId: m.CoachId,
-      role: m.Role,
-    })),
-  ];
-  const sponsorByUser = await resolveSponsorAndIdealCoachForMembers(sponsorMembers);
-
-  const selfMember = coachMember || {
-    UserId: coachId,
-    UserName: 'You',
-    CoachId: null,
-    isDirectToRoot: false,
-  };
-
   const self = {
-    ...buildMemberRow(
-      { ...selfMember, UserId: coachMember?.UserId ?? coachId, isDirectToRoot: false },
-      weightMap,
-      scoreMap,
-      sponsorByUser,
-    ),
+    userId: coachMember?.UserId ?? coachId,
+    name: coachMember?.UserName || 'You',
+    coachId: coachMember?.CoachId ?? null,
+    role: coachMember?.Role ?? null,
     isDirect: false,
   };
 
-  const members = fullTeamMembers.map((m) =>
-    buildMemberRow(m, weightMap, scoreMap, sponsorByUser),
-  );
+  const members = fullTeamMembers.map((m) => ({
+    userId: m.UserId,
+    name: m.UserName || null,
+    coachId: m.CoachId ?? null,
+    role: m.Role ?? null,
+    isDirect: m.isDirectToRoot === true,
+  }));
 
-  const snapshot = { self, members, scoreDate };
-  cache.set(cacheKey, snapshot, REPORT_BUILD_CACHE_TTL_MS);
-  return snapshot;
+  const roster = { self, members };
+  cache.set(cacheKey, roster, ROSTER_CACHE_TTL_MS);
+  return roster;
+}
+
+/**
+ * @param {object} rosterRow
+ * @param {object} pageRow
+ * @param {Map} sponsorByUser
+ */
+function mergePageRow(rosterRow, pageRow, sponsorByUser) {
+  const uid = rosterRow.userId;
+  const resolved = sponsorByUser.get(String(uid));
+  const todayWeight = pageRow?.todayWeight ?? null;
+  const previousWeight = pageRow?.previousWeight ?? null;
+  const percentage = pageRow?.percentage ?? null;
+  const totalEarned = pageRow?.totalEarned ?? null;
+
+  return toWellnessScoreReportListSummary({
+    userId: uid,
+    name: rosterRow.name || null,
+    todayWeight,
+    previousWeight,
+    difference: computeWeightDifferenceKg(todayWeight, previousWeight),
+    percentage,
+    totalEarned,
+    wellnessScore: totalEarned,
+    wellnessScorePossible: pageRow?.totalPossible ?? null,
+    computedAt: pageRow?.computedAt ?? null,
+    sponsor: resolved?.sponsorName || null,
+    coach: resolved?.idealCoachName || null,
+    isDirect: rosterRow.isDirect === true,
+  });
 }
 
 /**
@@ -148,24 +112,52 @@ export async function getWellnessScoreReport(rawQuery) {
     scoreDate: requestedDate,
   } = validateWellnessScoreReport(rawQuery);
 
-  // Always today's IST business date unless an explicit date is passed.
   const scoreDate = requestedDate || todayInTimezone(IANA_IST);
-  const snapshot = await buildWellnessScoreReportSnapshot(coachId, scoreDate);
+  const roster = await getWellnessScoreReportRoster(coachId);
 
-  const {
-    records,
-    pagination,
-    teamScopeCounts,
-    teamFilter: resolvedTeamFilter,
-  } = paginateWellnessScoreReportRecords(snapshot.self, snapshot.members, {
-    page,
-    limit,
-    search,
-    teamFilter,
-    // Server-owned sort: percentage DESC, computed_at DESC — no client sort.
-    sort: SORT_KEYS.SCORE,
+  const teamScopeCounts = countRowsByTeamFilter(roster.self, roster.members);
+  const scopeRows = applyTeamFilter(roster.self, roster.members, teamFilter);
+  // Search is name-first (Search member…). Sponsor/coach match when present on row.
+  const searched = filterRowsBySearch(scopeRows, search);
+  const totalRecords = searched.length;
+
+  const pagination = exportAll
+    ? buildWellnessScoreReportPaginationMeta(totalRecords, 1, totalRecords || limit)
+    : buildWellnessScoreReportPaginationMeta(totalRecords, page, limit);
+
+  const offset = exportAll ? 0 : (pagination.currentPage - 1) * pagination.pageSize;
+  const pageLimit = exportAll ? Math.max(totalRecords, 1) : pagination.pageSize;
+
+  const userIds = searched.map((row) => Number(row.userId)).filter((id) => Number.isFinite(id));
+  const pageScoreRows = await fetchWellnessScoreReportPage({
+    userIds,
+    scoreDate,
+    limit: pageLimit,
+    offset,
     exportAll,
   });
+
+  const rosterById = new Map(
+    searched.map((row) => [Number(row.userId), row]),
+  );
+
+  const sponsorMembers = pageScoreRows.map((row) => {
+    const rosterRow = rosterById.get(Number(row.userId));
+    return {
+      userId: row.userId,
+      coachId: rosterRow?.coachId ?? null,
+      role: rosterRow?.role ?? null,
+    };
+  });
+  const sponsorByUser = await resolveSponsorAndIdealCoachForMembers(sponsorMembers);
+
+  const records = pageScoreRows
+    .map((pageRow) => {
+      const rosterRow = rosterById.get(Number(pageRow.userId));
+      if (!rosterRow) return null;
+      return mergePageRow(rosterRow, pageRow, sponsorByUser);
+    })
+    .filter(Boolean);
 
   return {
     httpStatus: 200,
@@ -174,13 +166,14 @@ export async function getWellnessScoreReport(rawQuery) {
       data: {
         members: records,
         teamScopeCounts,
-        teamFilter: resolvedTeamFilter,
-        scoreDate: snapshot.scoreDate,
+        teamFilter: teamFilter || TEAM_FILTERS.DIRECT,
+        scoreDate,
         page: pagination.page,
         limit: pagination.limit,
         totalRecords: pagination.totalRecords,
         totalPages: pagination.totalPages,
         hasNextPage: pagination.hasNextPage,
+        hasPreviousPage: pagination.hasPreviousPage,
       },
       pagination,
     },
