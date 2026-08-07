@@ -53,13 +53,13 @@ function mapReportingMembersToRaw(reportingMembers, coachId, parentByUserId, dir
  * Fetch the coach's own team_table row (for the "Mine" scope).
  *
  * @param {number} coachId
- * @returns {Promise<{ UserId: number, UserName: string, Height: string|null }|null>}
+ * @returns {Promise<{ UserId: number, UserName: string, Height: string|null, CoachId?: number|null, Role?: string|null }|null>}
  */
 export async function getCoachMember(coachId) {
   const supabase = getSupabaseClient();
   const { data, error } = await supabase
     .from('team_table')
-    .select('"UserId", "UserName", "Height"')
+    .select('"UserId", "UserName", "Height", "CoachId", "Role"')
     .eq('"UserId"', coachId)
     .maybeSingle();
   if (error) throw error;
@@ -214,6 +214,120 @@ export async function getLatestWeightsForUsers(userIds) {
 
   for (const rows of results) {
     mergeLatestWeightRows(rows, map);
+  }
+  return map;
+}
+
+/**
+ * Merge chunked weight rows into Map keyed by UserId with latest + previous.
+ * Rows must be ordered CreatedAt DESC; first = today/latest, second = previous.
+ *
+ * @param {Array<{ UserId: number, Weight: number|null, CreatedAt?: string }>|null|undefined} rows
+ * @param {Map<number, { todayWeight: number|null, previousWeight: number|null, lastUpdated: string|null }>} map
+ */
+function mergeLatestTwoWeightRows(rows, map) {
+  for (const row of rows || []) {
+    const uid = row.UserId;
+    const weight =
+      row.Weight !== null && row.Weight !== undefined ? parseFloat(row.Weight) : null;
+    const parsed = Number.isFinite(weight) ? weight : null;
+    const existing = map.get(uid);
+    if (!existing) {
+      map.set(uid, {
+        todayWeight: parsed,
+        previousWeight: null,
+        lastUpdated: row.CreatedAt ?? null,
+      });
+      continue;
+    }
+    if (existing.previousWeight == null && parsed != null) {
+      existing.previousWeight = parsed;
+    }
+  }
+}
+
+/**
+ * Fetch latest + previous weight for each userId (single batched query path).
+ * Returns Map<userId, { todayWeight, previousWeight, lastUpdated }>.
+ *
+ * @param {number[]} userIds
+ * @returns {Promise<Map<number, { todayWeight: number|null, previousWeight: number|null, lastUpdated: string|null }>>}
+ */
+export async function getLatestTwoWeightsForUsers(userIds) {
+  const map = new Map();
+  if (!userIds || userIds.length === 0) return map;
+
+  const uniqueIds = [...new Set(userIds.filter((id) => Number.isFinite(Number(id))))];
+  if (uniqueIds.length === 0) return map;
+
+  const supabase = getSupabaseClient();
+  const chunks = [];
+  for (let i = 0; i < uniqueIds.length; i += WEIGHT_USER_ID_CHUNK) {
+    chunks.push(uniqueIds.slice(i, i + WEIGHT_USER_ID_CHUNK));
+  }
+
+  const results = await Promise.all(
+    chunks.map(async (chunk) => {
+      const { data, error } = await supabase
+        .from('weight_records_table')
+        .select('"UserId", "Weight", "CreatedAt"')
+        .in('"UserId"', chunk)
+        .or('"IsDeleted".is.null,"IsDeleted".eq.false,"IsDeleted".eq.0')
+        .order('"CreatedAt"', { ascending: false });
+      if (error) throw error;
+      return data || [];
+    }),
+  );
+
+  for (const rows of results) {
+    mergeLatestTwoWeightRows(rows, map);
+  }
+  return map;
+}
+
+/**
+ * Batch-fetch persisted daily wellness scores for many users on one score_date.
+ * Returns Map<userId, { percentage, totalEarned, totalPossible }>.
+ *
+ * @param {number[]} userIds
+ * @param {string} scoreDate YYYY-MM-DD (IST business date)
+ * @returns {Promise<Map<number, { percentage: number, totalEarned: number, totalPossible: number }>>}
+ */
+export async function getWellnessScoresForUsers(userIds, scoreDate) {
+  const map = new Map();
+  if (!userIds?.length || !scoreDate) return map;
+
+  const uniqueIds = [...new Set(userIds.filter((id) => Number.isFinite(Number(id))))];
+  if (uniqueIds.length === 0) return map;
+
+  const supabase = getSupabaseClient();
+  const chunks = [];
+  for (let i = 0; i < uniqueIds.length; i += WEIGHT_USER_ID_CHUNK) {
+    chunks.push(uniqueIds.slice(i, i + WEIGHT_USER_ID_CHUNK));
+  }
+
+  const results = await Promise.all(
+    chunks.map(async (chunk) => {
+      const { data, error } = await supabase
+        .from('wellness_score_daily_table')
+        .select('user_id, percentage, total_earned, total_possible')
+        .eq('score_date', scoreDate)
+        .in('user_id', chunk);
+      if (error) throw error;
+      return data || [];
+    }),
+  );
+
+  for (const rows of results) {
+    for (const row of rows) {
+      const uid = Number(row.user_id);
+      if (!Number.isFinite(uid)) continue;
+      map.set(uid, {
+        percentage: Number(row.percentage) || 0,
+        totalEarned: Number(row.total_earned) || 0,
+        totalPossible: Number(row.total_possible) || 0,
+      });
+    }
   }
   return map;
 }

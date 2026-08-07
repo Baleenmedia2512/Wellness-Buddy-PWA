@@ -6,6 +6,7 @@ import AppNavTabs from "./AppNavTabs";
 import wellnessValleyIcon from "../../assets/wellness-valley-icon.png";
 import { getProfile } from "../../features/user/services/user.api";
 import { fetchHasTeamMembers } from "../../features/team/services/teamSearchService";
+import { isFlagEnabled } from "../../config/featureFlags";
 
 /** Roles that always see the Ideal Weight Report nav tab (ff.reports-module). */
 const REPORTS_TAB_ROLES = ['coach', 'coccoach', 'upline', 'admin', 'developer'];
@@ -26,6 +27,7 @@ const Header = ({
   onShowActivityReport,
   onShowTestimonials,
   onShowReports,
+  onShowWellnessScoreReport,
   onShowWellnessScoreSetup,
   wellnessScoreSetupEnabled = false,
   onShowRegisterCenter,
@@ -43,7 +45,11 @@ const Header = ({
   const [hasTeamMembers, setHasTeamMembers] = useState(false);
   const prevProfileKeyRef = useRef(profileKey);
 
-  const reportsEnabled = canAccessReportsTab(userRole, hasTeamMembers);
+  const reportsEnabled = isFlagEnabled('ff.reports-module')
+    && canAccessReportsTab(userRole, hasTeamMembers);
+  const wellnessScoreReportEnabled = reportsEnabled
+    && isFlagEnabled('ff.wellness-score-sheet');
+
 
   // Grant report tab to downline leaders even when Role is still "user" (e.g. u2, a3).
   useEffect(() => {
@@ -116,7 +122,9 @@ const Header = ({
           onShowNutritionCentersMap={onShowNutritionCentersMap}
           onShowTestimonials={onShowTestimonials}
           onShowReports={onShowReports}
+          onShowWellnessScoreReport={onShowWellnessScoreReport}
           reportsEnabled={reportsEnabled}
+          wellnessScoreReportEnabled={wellnessScoreReportEnabled}
         />
       </nav>
     );
@@ -200,7 +208,9 @@ const Header = ({
           onShowNutritionCentersMap={onShowNutritionCentersMap}
           onShowTestimonials={onShowTestimonials}
           onShowReports={onShowReports}
+          onShowWellnessScoreReport={onShowWellnessScoreReport}
           reportsEnabled={reportsEnabled}
+          wellnessScoreReportEnabled={wellnessScoreReportEnabled}
         />
       </nav>
     </header>
