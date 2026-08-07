@@ -101,6 +101,12 @@ export function applyTeamFilter(self, members, teamFilter) {
   if (teamFilter === TEAM_FILTERS.DIRECT) {
     return list.filter((row) => row?.isDirect === true);
   }
+  // Full Team = coach + entire active downline (leaderboard must include self,
+  // otherwise the coach's own top score e.g. 660 never appears on Full Team).
+  if (self) {
+    const selfId = Number(self.userId);
+    return [self, ...list.filter((row) => Number(row?.userId) !== selfId)];
+  }
   return list;
 }
 
@@ -110,10 +116,11 @@ export function applyTeamFilter(self, members, teamFilter) {
  */
 export function countRowsByTeamFilter(self, members) {
   const list = Array.isArray(members) ? members : [];
+  const directCount = list.filter((row) => row?.isDirect === true).length;
   return {
     [TEAM_FILTERS.MINE]: self ? 1 : 0,
-    [TEAM_FILTERS.DIRECT]: list.filter((row) => row?.isDirect === true).length,
-    [TEAM_FILTERS.FULL]: list.length,
+    [TEAM_FILTERS.DIRECT]: directCount,
+    [TEAM_FILTERS.FULL]: list.length + (self ? 1 : 0),
   };
 }
 
@@ -136,7 +143,9 @@ export function filterRowsBySearch(rows, searchNormalized) {
 }
 
 function scoreValue(row) {
-  const n = row?.percentage ?? row?.wellnessScore;
+  // Sort by the same value shown in WELLNESS SCORE (total_earned).
+  // Sorting by percentage caused mismatches (e.g. 510 vs 506 both round to ~51%).
+  const n = row?.totalEarned ?? row?.wellnessScore ?? row?.percentage;
   return n == null || n === '' ? null : Number(n);
 }
 
@@ -148,7 +157,7 @@ function computedAtMs(row) {
 }
 
 /**
- * percentage DESC, computed_at DESC; null scores last.
+ * total_earned DESC, computed_at DESC; null scores last.
  * @template T
  * @param {T[]} rows
  * @param {string} sort
@@ -174,7 +183,7 @@ export function sortWellnessScoreReportRows(rows, sort = SORT_KEYS.SCORE) {
     return list;
   }
 
-  // Default / score: percentage DESC, then computed_at DESC.
+  // Default / score: total_earned DESC, then computed_at DESC.
   list.sort((a, b) => {
     const as = scoreValue(a);
     const bs = scoreValue(b);

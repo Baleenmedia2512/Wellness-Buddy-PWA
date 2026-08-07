@@ -282,13 +282,19 @@ export async function getLatestTwoWeightsForUsers(userIds) {
   for (const rows of results) {
     mergeLatestTwoWeightRows(rows, map);
   }
-  return map;
+  // Normalize keys to Number for consistent joins with score map / member ids.
+  const normalized = new Map();
+  for (const [key, value] of map.entries()) {
+    const id = Number(key);
+    if (Number.isFinite(id)) normalized.set(id, value);
+  }
+  return normalized;
 }
 
 /**
  * Batch-fetch today's persisted wellness scores for many users.
  * Filters by score_date only (no historical rows). Ordered for tie-breaks:
- * percentage DESC, computed_at DESC.
+ * total_earned DESC, computed_at DESC (matches displayed WELLNESS SCORE).
  *
  * @param {number[]} userIds
  * @param {string} scoreDate YYYY-MM-DD (IST business date ≈ CURRENT_DATE)
@@ -314,7 +320,7 @@ export async function getWellnessScoresForUsers(userIds, scoreDate) {
         .select('user_id, percentage, total_earned, total_possible, computed_at')
         .eq('score_date', scoreDate)
         .in('user_id', chunk)
-        .order('percentage', { ascending: false })
+        .order('total_earned', { ascending: false })
         .order('computed_at', { ascending: false });
       if (error) throw error;
       return data || [];
