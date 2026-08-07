@@ -91,7 +91,7 @@ const BRAND = {
 
 /** Shared Log-as button chrome — fills one cell in the 3×3 grid. */
 const LOG_AS_BTN_BASE =
-  'log-as-btn flex h-full min-h-[4.75rem] w-full min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 py-2 text-center cursor-pointer select-none transition-[transform,box-shadow,background-color,border-color] duration-150 ease-out disabled:pointer-events-none disabled:opacity-50 min-[380px]:min-h-[5rem] min-[380px]:gap-1.5 sm:min-h-[5.25rem]';
+  'log-as-btn flex h-full min-h-[3.75rem] w-full min-w-0 flex-col items-center justify-center gap-0.5 rounded-xl px-0.5 py-1.5 text-center cursor-pointer select-none transition-[transform,box-shadow,background-color,border-color] duration-150 ease-out disabled:pointer-events-none disabled:opacity-50 min-[360px]:min-h-[4.25rem] min-[360px]:gap-1 min-[360px]:px-1 min-[360px]:py-2 min-[400px]:min-h-[4.75rem] sm:min-h-[5.25rem] sm:gap-1.5';
 
 const LOG_AS_BTN_IDLE = [
   LOG_AS_BTN_BASE,
@@ -114,8 +114,8 @@ function LogAsIconWrap({ selected = false, muted = false, compact = false, child
       className={[
         'flex shrink-0 items-center justify-center',
         compact
-          ? 'h-8 w-8 min-[380px]:h-9 min-[380px]:w-9 sm:h-10 sm:w-10'
-          : 'h-9 w-9 min-[380px]:h-10 min-[380px]:w-10 sm:h-11 sm:w-11',
+          ? 'h-7 w-7 min-[360px]:h-8 min-[360px]:w-8 min-[400px]:h-9 min-[400px]:w-9 sm:h-10 sm:w-10'
+          : 'h-8 w-8 min-[360px]:h-9 min-[360px]:w-9 min-[400px]:h-10 min-[400px]:w-10 sm:h-11 sm:w-11',
         selected
           ? 'rounded-full bg-white/15 ring-1 ring-white/25'
           : muted
@@ -691,23 +691,25 @@ export default function ManualEntryPage({
     <div className="fixed inset-0 z-40 flex flex-col" style={{ background: BRAND.pageBg }}>
       {/* Header — white bar like Home */}
       <header className="safe-top shrink-0 border-b border-green-100 bg-white shadow-sm">
-        <div className="mx-auto max-w-lg px-3 py-2.5">
-          <h1 className="truncate text-base font-extrabold text-green-700">What is this image?</h1>
-          <p className="truncate text-xs text-green-600">
-            Select one button from below — e.g. Weight, Afresh, Food…
+        <div className="mx-auto max-w-lg px-3 py-2 min-[360px]:py-2.5">
+          <h1 className="text-sm font-extrabold text-green-700 min-[360px]:text-base">
+            What is this image?
+          </h1>
+          <p className="text-[11px] leading-snug text-green-600 min-[360px]:text-xs">
+            Select one button below — Weight, Afresh, Food…
           </p>
         </div>
       </header>
 
-      {/* Body — medium photo on top; Log as grid fills remaining space */}
-      <main className="mx-auto flex w-full max-w-lg flex-1 flex-col gap-3 overflow-hidden px-3 pb-3 pt-3">
-        {/* Photo preview — medium size, tap to open full-screen */}
+      {/* Body — photo shrinks on short phones; grid + cancel stay reachable */}
+      <main className="mx-auto flex w-full max-w-lg min-h-0 flex-1 flex-col gap-2 overflow-y-auto overscroll-contain px-2.5 pb-2.5 pt-2 min-[360px]:gap-3 min-[360px]:px-3 min-[360px]:pb-3 min-[360px]:pt-3">
+        {/* Photo preview — tap to open full-screen; height scales with viewport */}
         <section className="shrink-0">
           {previewSrc ? (
             <button
               type="button"
               onClick={() => setPreviewExpanded(true)}
-              className="flex h-52 w-full cursor-zoom-in items-center justify-center overflow-hidden rounded-2xl border border-green-100 shadow-sm transition-opacity active:opacity-90 sm:h-60"
+              className="flex h-[min(28vh,10.5rem)] w-full max-h-52 cursor-zoom-in items-center justify-center overflow-hidden rounded-2xl border border-green-100 shadow-sm transition-opacity active:opacity-90 min-[360px]:h-[min(30vh,12rem)] sm:h-60 sm:max-h-none"
               style={{ background: BRAND.mint }}
               aria-label="View photo full screen"
             >
@@ -720,7 +722,7 @@ export default function ManualEntryPage({
             </button>
           ) : (
             <div
-              className="h-52 w-full rounded-2xl sm:h-60"
+              className="h-[min(28vh,10.5rem)] w-full max-h-52 rounded-2xl min-[360px]:h-[min(30vh,12rem)] sm:h-60 sm:max-h-none"
               style={{ background: BRAND.mint }}
             />
           )}
@@ -734,12 +736,12 @@ export default function ManualEntryPage({
 
         {/* Type grid — large Log-as tiles matching original layout */}
         <section className="flex min-h-0 flex-1 flex-col">
-          <div className="mb-2.5 flex shrink-0 items-center justify-between gap-2">
-            <p className="shrink-0 text-[11px] font-bold uppercase tracking-[0.14em] text-emerald-700/70">
+          <div className="mb-1.5 flex shrink-0 items-center justify-between gap-2 min-[360px]:mb-2.5">
+            <p className="shrink-0 text-[10px] font-bold uppercase tracking-[0.14em] text-emerald-700/70 min-[360px]:text-[11px]">
               Log as
             </p>
           </div>
-          <div className="grid h-full min-h-0 w-full flex-1 grid-cols-3 grid-rows-3 gap-2 sm:gap-2.5">
+          <div className="grid h-full min-h-[11.5rem] w-full flex-1 grid-cols-3 grid-rows-3 gap-1.5 min-[360px]:min-h-[13.5rem] min-[360px]:gap-2 sm:min-h-0 sm:gap-2.5">
             {CATEGORIES.map(({ id, Icon, src, label, isImgIcon, wrapLabel }) => {
               // iOS WebView often blanks custom emoji SVGs — use Lucide for Workout.
               const useLucideOnIos = id === MANUAL_LOG_CATEGORY.SMARTWATCH && isIOS() && Icon;
@@ -756,7 +758,7 @@ export default function ManualEntryPage({
                 <LogAsIconWrap>
                   {isPending ? (
                     <Loader2
-                      className="h-8 w-8 animate-spin min-[380px]:h-9 min-[380px]:w-9 sm:h-10 sm:w-10"
+                      className="h-7 w-7 animate-spin min-[360px]:h-8 min-[360px]:w-8 min-[400px]:h-9 min-[400px]:w-9 sm:h-10 sm:w-10"
                       aria-hidden
                     />
                   ) : useLucideOnIos ? (
@@ -764,12 +766,12 @@ export default function ManualEntryPage({
                   ) : isImgIcon ? (
                     <PublicIcon
                       src={src}
-                      className="h-8 w-8 min-[380px]:h-9 min-[380px]:w-9 sm:h-10 sm:w-10"
+                      className="h-7 w-7 min-[360px]:h-8 min-[360px]:w-8 min-[400px]:h-9 min-[400px]:w-9 sm:h-10 sm:w-10"
                       alt=""
                     />
                   ) : (
                     <Icon
-                      className="h-8 w-8 min-[380px]:h-9 min-[380px]:w-9 sm:h-10 sm:w-10"
+                      className="h-7 w-7 min-[360px]:h-8 min-[360px]:w-8 min-[400px]:h-9 min-[400px]:w-9 sm:h-10 sm:w-10"
                       strokeWidth={2}
                       aria-hidden
                     />
@@ -779,8 +781,8 @@ export default function ManualEntryPage({
                   className={[
                     'max-w-full px-0.5 font-bold leading-tight text-emerald-900',
                     wrapLabel
-                      ? 'line-clamp-2 whitespace-normal text-[9px] min-[380px]:text-[10px] sm:text-[11px]'
-                      : 'truncate text-[11px] min-[380px]:text-[12px] sm:text-[13px]',
+                      ? 'line-clamp-2 whitespace-normal text-[8px] min-[360px]:text-[9px] min-[400px]:text-[10px] sm:text-[11px]'
+                      : 'truncate text-[10px] min-[360px]:text-[11px] min-[400px]:text-[12px] sm:text-[13px]',
                   ].join(' ')}
                 >
                   {label}
@@ -798,17 +800,17 @@ export default function ManualEntryPage({
                 >
                   <LogAsIconWrap compact>
                     <Lock
-                      className="h-7 w-7 min-[380px]:h-8 min-[380px]:w-8 sm:h-9 sm:w-9"
+                      className="h-6 w-6 min-[360px]:h-7 min-[360px]:w-7 min-[400px]:h-8 min-[400px]:w-8 sm:h-9 sm:w-9"
                       aria-hidden
                     />
                   </LogAsIconWrap>
-                  <span className="max-w-full truncate whitespace-nowrap px-0.5 text-[10px] font-semibold leading-none text-emerald-800 min-[380px]:text-[11px] sm:text-[12px]">
+                  <span className="max-w-full truncate whitespace-nowrap px-0.5 text-[9px] font-semibold leading-none text-emerald-800 min-[360px]:text-[10px] min-[400px]:text-[11px] sm:text-[12px]">
                     Unlock on
                   </span>
                   {showCreditsPanel && (
                     <LogAsUnlockDate
                       timezoneIana={credits?.timezoneIana}
-                      className="text-[11px] font-medium text-amber-600 min-[380px]:text-[12px] sm:text-[13px]"
+                      className="text-[10px] font-medium text-amber-600 min-[360px]:text-[11px] min-[400px]:text-[12px] sm:text-[13px]"
                     />
                   )}
                 </div>
@@ -824,16 +826,16 @@ export default function ManualEntryPage({
                 >
                   <LogAsIconWrap selected compact={Boolean(showCreditsPanel)}>
                     {aiStarting || pendingAi ? (
-                      <Loader2 className="h-8 w-8 animate-spin text-white min-[380px]:h-9 min-[380px]:w-9 sm:h-10 sm:w-10" />
+                      <Loader2 className="h-7 w-7 animate-spin text-white min-[360px]:h-8 min-[360px]:w-8 min-[400px]:h-9 min-[400px]:w-9 sm:h-10 sm:w-10" />
                     ) : (
-                      <Sparkles className="h-8 w-8 text-white min-[380px]:h-9 min-[380px]:w-9 sm:h-10 sm:w-10" />
+                      <Sparkles className="h-7 w-7 text-white min-[360px]:h-8 min-[360px]:w-8 min-[400px]:h-9 min-[400px]:w-9 sm:h-10 sm:w-10" />
                     )}
                   </LogAsIconWrap>
-                  <span className="max-w-full truncate whitespace-nowrap px-0.5 text-[11px] font-semibold leading-tight text-white min-[380px]:text-[12px] sm:text-[13px]">
+                  <span className="max-w-full truncate whitespace-nowrap px-0.5 text-[10px] font-semibold leading-tight text-white min-[360px]:text-[11px] min-[400px]:text-[12px] sm:text-[13px]">
                     {aiStarting || pendingAi ? 'Starting…' : 'Auto Detect'}
                   </span>
                   {showCreditsPanel && credits && (
-                    <p className="max-w-full truncate whitespace-nowrap text-[8px] font-semibold tabular-nums text-emerald-100/90 min-[380px]:text-[9px] sm:text-[10px]">
+                    <p className="max-w-full truncate whitespace-nowrap text-[7px] font-semibold tabular-nums text-emerald-100/90 min-[360px]:text-[8px] min-[400px]:text-[9px] sm:text-[10px]">
                       <span className="text-white">
                         {Math.max(0, Number(credits.remaining) ?? 0)}
                       </span>
@@ -842,7 +844,7 @@ export default function ManualEntryPage({
                     </p>
                   )}
                   {showCreditsPanel && creditsLoading && !credits && (
-                    <p className="text-[8px] text-emerald-100/80 min-[380px]:text-[9px] sm:text-[10px]">
+                    <p className="text-[7px] text-emerald-100/80 min-[360px]:text-[8px] min-[400px]:text-[9px] sm:text-[10px]">
                       Checking…
                     </p>
                   )}
@@ -857,7 +859,7 @@ export default function ManualEntryPage({
           type="button"
           onClick={handleCloseWithoutLog}
           disabled={closingWithoutLog || (aiStarting && !pendingAi)}
-          className="safe-bottom log-as-btn log-as-btn--idle inline-flex w-full shrink-0 items-center justify-center gap-2 rounded-xl border-2 border-red-200 bg-gradient-to-b from-white to-red-50/40 py-3.5 text-sm font-bold text-red-600 shadow-[0_3px_0_0_rgba(220,38,38,0.2)] transition-[transform,box-shadow] duration-150 active:translate-y-[2px] active:shadow-[0_1px_0_0_rgba(220,38,38,0.18)] disabled:opacity-50"
+          className="safe-bottom log-as-btn log-as-btn--idle inline-flex w-full shrink-0 items-center justify-center gap-2 rounded-xl border-2 border-red-200 bg-gradient-to-b from-white to-red-50/40 py-3 text-sm font-bold text-red-600 shadow-[0_3px_0_0_rgba(220,38,38,0.2)] transition-[transform,box-shadow] duration-150 active:translate-y-[2px] active:shadow-[0_1px_0_0_rgba(220,38,38,0.18)] disabled:opacity-50 min-[360px]:py-3.5"
         >
           {closingWithoutLog && (
             <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
