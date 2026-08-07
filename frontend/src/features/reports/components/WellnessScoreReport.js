@@ -19,6 +19,7 @@ import {
   computeWeightChange,
   formatWeightKg,
   formatWellnessScore,
+  formatReportNameLines,
 } from '../utils/wellnessScoreReportFormat.js';
 import {
   buildWellnessScoreReportFileName,
@@ -32,12 +33,18 @@ import {
   formatReportDateLabel,
 } from '../utils/reportDateFilter.js';
 
+/** Column headers — `lines` render stacked so long labels fit on mobile. */
 const TABLE_HEADERS = [
-  'NAME',
-  'TODAY WEIGHT',
-  'TODAY VS PREVIOUS WEIGHT',
-  'WELLNESS SCORE',
-  'SPONSOR',
+  { key: 'name', lines: ['NAME'] },
+  { key: 'weight', lines: ['WEIGHT'], thClass: 'w-[4.5rem]' },
+  {
+    key: 'vsPrevious',
+    lines: ['TODAY VS', 'PREVIOUS', 'WEIGHT'],
+    thClass: 'w-[4.5rem] max-w-[4.5rem]',
+    tdClass: 'w-[4.5rem] max-w-[4.5rem] px-1',
+  },
+  { key: 'score', lines: ['WELLNESS', 'SCORE'], thClass: 'w-[4.25rem]' },
+  { key: 'sponsor', lines: ['SPONSOR'] },
 ];
 
 function SingleDayPicker({ selectedDate, onSelect, onClose }) {
@@ -142,11 +149,11 @@ function TableBodySkeleton({ rows = 8 }) {
     <>
       {Array.from({ length: rows }).map((_, i) => (
         <tr key={`sk-${i}`} className="animate-pulse">
-          <td className="sticky left-0 z-[5] px-3 py-2.5 border-b border-r border-gray-200 bg-gray-50">
+          <td className="sticky left-0 z-[5] px-2.5 py-1.5 border-b border-r border-gray-200 bg-gray-50">
             <div className="h-4 w-24 bg-gray-200 rounded" />
           </td>
           {Array.from({ length: 4 }).map((__, j) => (
-            <td key={j} className="px-3 py-2.5 border-b border-r border-gray-200">
+            <td key={j} className="px-2.5 py-1.5 border-b border-r border-gray-200">
               <div className="h-4 w-16 bg-gray-100 rounded" />
             </td>
           ))}
@@ -159,34 +166,30 @@ function TableBodySkeleton({ rows = 8 }) {
 function WeightChangeCell({ todayWeight, previousWeight, difference }) {
   const change = computeWeightChange(todayWeight, previousWeight, difference);
 
-  if (change.direction === 'none') {
+  if (change.direction === 'none' || change.direction === 'same') {
     return (
-      <div className="text-xs leading-snug text-gray-500">
-        {change.comparisonLabel}
-      </div>
-    );
-  }
-
-  if (change.direction === 'same') {
-    return (
-      <div className="text-xs leading-snug">
-        <div className="text-gray-700">{change.comparisonLabel}</div>
-        <div className="mt-0.5 text-gray-400 font-medium">—</div>
-      </div>
+      <div className="text-xs font-medium text-gray-400 leading-none">—</div>
     );
   }
 
   const isDown = change.direction === 'down';
   return (
-    <div className="text-xs leading-snug">
-      <div className="text-gray-700">{change.comparisonLabel}</div>
-      <div
-        className={`mt-0.5 font-semibold ${
-          isDown ? 'text-green-600' : 'text-red-600'
-        }`}
-      >
-        {isDown ? '⬇' : '⬆'} {change.changeLabel}
-      </div>
+    <div
+      className={`text-xs font-semibold whitespace-nowrap leading-none ${
+        isDown ? 'text-green-600' : 'text-red-600'
+      }`}
+    >
+      {isDown ? '⬇' : '⬆'} {change.changeLabel}
+    </div>
+  );
+}
+
+function MemberNameCell({ name }) {
+  const { line1, line2 } = formatReportNameLines(name);
+  return (
+    <div className="text-sm font-semibold text-gray-900 leading-tight">
+      <div>{line1}</div>
+      {line2 ? <div>{line2}</div> : null}
     </div>
   );
 }
@@ -209,7 +212,12 @@ function buildPageNumbers(currentPage, totalPages) {
   return withGaps;
 }
 
-export default function WellnessScoreReport({ user, tabVisitKey = 0 }) {
+export default function WellnessScoreReport({
+  user,
+  tabVisitKey = 0,
+  hidePageTitle = false,
+  embeddedStickyClass = 'sticky top-[6.5rem] z-20',
+}) {
   const coachId = user?.id ?? user?.UserId ?? getDbUserId() ?? null;
   const {
     rows,
@@ -302,36 +310,16 @@ export default function WellnessScoreReport({ user, tabVisitKey = 0 }) {
 
   return (
     <div className="min-h-full bg-gray-50 flex flex-col">
-      <div className="sticky top-0 z-20 bg-white border-b border-gray-200">
-        <div className="max-w-6xl mx-auto w-full px-3 sm:px-4 py-3">
-          <div className="flex items-center gap-2">
-            <div className="flex-1 min-w-0">
-              <h1 className="text-base sm:text-lg font-bold text-gray-900 leading-tight truncate">
-                Wellness Score Report
-              </h1>
-            </div>
-            <TouchFeedbackButton
-              onClick={handleShare}
-              disabled={exporting || filtersBusy}
-              className="flex-shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-teal-50 text-teal-800 border border-teal-200 disabled:opacity-40"
-              ariaLabel="Share Excel"
-            >
-              <Share2 className="h-3.5 w-3.5" />
-              <span className="hidden xs:inline">Share</span>
-            </TouchFeedbackButton>
-            <TouchFeedbackButton
-              onClick={refresh}
-              disabled={loading && rows.length === 0}
-              className="flex-shrink-0 p-2 rounded-xl hover:bg-gray-100 transition-colors disabled:opacity-40"
-              ariaLabel="Refresh"
-            >
-              <RefreshCw className={`h-4 w-4 text-gray-600 ${isRefreshing ? 'animate-spin' : ''}`} />
-            </TouchFeedbackButton>
-          </div>
-
-          <div className="mt-3 relative">
+      <div className={`${hidePageTitle ? embeddedStickyClass : 'sticky top-0 z-20'} bg-white border-b border-gray-200`}>
+        <div className="max-w-6xl mx-auto w-full px-3 sm:px-4 py-2.5 relative">
+          {!hidePageTitle && (
+            <h1 className="text-base sm:text-lg font-bold text-gray-900 leading-tight truncate mb-2">
+              Wellness Score Report
+            </h1>
+          )}
+          <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
             <div
-              className="flex gap-1.5 overflow-x-auto scrollbar-hide justify-start sm:justify-center flex-wrap"
+              className="flex-1 min-w-0 flex items-center gap-1 sm:gap-1.5 overflow-x-auto scrollbar-hide"
               role="group"
               aria-label="Date filter"
             >
@@ -341,7 +329,7 @@ export default function WellnessScoreReport({ user, tabVisitKey = 0 }) {
                   setShowDatePicker(false);
                 }}
                 disabled={pageBusy && datePreset === DATE_PRESETS.TODAY}
-                className={`whitespace-nowrap px-3.5 py-1.5 rounded-full text-xs font-medium transition-all border ${
+                className={`flex-shrink-0 whitespace-nowrap px-2.5 sm:px-3.5 py-1.5 rounded-full text-[11px] sm:text-xs font-medium transition-all border ${
                   datePreset === DATE_PRESETS.TODAY
                     ? 'bg-teal-700 text-white border-teal-700 shadow-sm'
                     : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
@@ -355,7 +343,7 @@ export default function WellnessScoreReport({ user, tabVisitKey = 0 }) {
                   selectYesterday();
                   setShowDatePicker(false);
                 }}
-                className={`whitespace-nowrap px-3.5 py-1.5 rounded-full text-xs font-medium transition-all border ${
+                className={`flex-shrink-0 whitespace-nowrap px-2.5 sm:px-3.5 py-1.5 rounded-full text-[11px] sm:text-xs font-medium transition-all border ${
                   datePreset === DATE_PRESETS.YESTERDAY
                     ? 'bg-teal-700 text-white border-teal-700 shadow-sm'
                     : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
@@ -366,34 +354,52 @@ export default function WellnessScoreReport({ user, tabVisitKey = 0 }) {
               </TouchFeedbackButton>
               <TouchFeedbackButton
                 onClick={() => setShowDatePicker((v) => !v)}
-                className={`whitespace-nowrap px-3.5 py-1.5 rounded-full text-xs font-medium transition-all border inline-flex items-center gap-1.5 ${
+                className={`flex-shrink-0 whitespace-nowrap px-2.5 sm:px-3.5 py-1.5 rounded-full text-[11px] sm:text-xs font-medium transition-all border inline-flex items-center gap-1 sm:gap-1.5 ${
                   datePreset === DATE_PRESETS.CUSTOM
                     ? 'bg-teal-700 text-white border-teal-700 shadow-sm'
                     : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
                 }`}
                 ariaLabel="Custom Date"
               >
-                <CalendarIcon className="h-3.5 w-3.5" />
-                {customLabel}
+                <CalendarIcon className="h-3.5 w-3.5 flex-shrink-0" />
+                <span className="truncate max-w-[5.5rem] sm:max-w-none">{customLabel}</span>
               </TouchFeedbackButton>
             </div>
 
-            <AnimatePresence>
-              {showDatePicker && (
-                <SingleDayPicker
-                  selectedDate={
-                    customDate
-                    || (scoreDate ? new Date(`${scoreDate}T12:00:00`) : new Date())
-                  }
-                  onSelect={(date) => {
-                    selectCustomDate(date);
-                    setShowDatePicker(false);
-                  }}
-                  onClose={() => setShowDatePicker(false)}
-                />
-              )}
-            </AnimatePresence>
+            <TouchFeedbackButton
+              onClick={handleShare}
+              disabled={exporting || filtersBusy}
+              className="flex-shrink-0 inline-flex items-center gap-1 sm:gap-1.5 px-2 sm:px-2.5 py-1.5 rounded-lg text-[11px] sm:text-xs font-semibold bg-teal-50 text-teal-800 border border-teal-200 disabled:opacity-40"
+              ariaLabel="Share Excel"
+            >
+              <Share2 className="h-3.5 w-3.5" />
+              <span className="hidden xs:inline">Share</span>
+            </TouchFeedbackButton>
+            <TouchFeedbackButton
+              onClick={refresh}
+              disabled={loading && rows.length === 0}
+              className="flex-shrink-0 p-1.5 sm:p-2 rounded-xl hover:bg-gray-100 transition-colors disabled:opacity-40"
+              ariaLabel="Refresh"
+            >
+              <RefreshCw className={`h-4 w-4 text-gray-600 ${isRefreshing ? 'animate-spin' : ''}`} />
+            </TouchFeedbackButton>
           </div>
+
+          <AnimatePresence>
+            {showDatePicker && (
+              <SingleDayPicker
+                selectedDate={
+                  customDate
+                  || (scoreDate ? new Date(`${scoreDate}T12:00:00`) : new Date())
+                }
+                onSelect={(date) => {
+                  selectCustomDate(date);
+                  setShowDatePicker(false);
+                }}
+                onClose={() => setShowDatePicker(false)}
+              />
+            )}
+          </AnimatePresence>
         </div>
       </div>
 
@@ -445,19 +451,27 @@ export default function WellnessScoreReport({ user, tabVisitKey = 0 }) {
           className="flex-1 min-h-[50vh] max-h-[calc(100vh-280px)] overflow-auto overscroll-contain rounded-lg border border-gray-300 bg-white shadow-sm"
           style={{ WebkitOverflowScrolling: 'touch' }}
         >
-          <table className="border-collapse text-left" style={{ minWidth: '720px', width: '100%' }}>
+          <table className="border-collapse text-left table-fixed" style={{ minWidth: '560px', width: '100%' }}>
             <thead className="sticky top-0 z-10">
               <tr className="bg-gray-100">
-                {TABLE_HEADERS.map((label, idx) => (
+                {TABLE_HEADERS.map((header, idx) => (
                   <th
-                    key={label}
-                    className={`px-3 py-2.5 text-[10px] sm:text-xs font-bold uppercase tracking-wide text-gray-700 border-b border-r border-gray-300 whitespace-nowrap ${
+                    key={header.key}
+                    className={`px-2 py-1.5 text-[10px] sm:text-[11px] font-bold uppercase tracking-wide text-gray-700 border-b border-r border-gray-300 align-middle ${
+                      header.thClass || ''
+                    } ${
                       idx === 0
                         ? 'sticky left-0 z-20 bg-gray-100 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.12)]'
                         : 'bg-gray-100'
                     }`}
                   >
-                    {label}
+                    <div className="leading-tight">
+                      {header.lines.map((line) => (
+                        <div key={line}>
+                          {line}
+                        </div>
+                      ))}
+                    </div>
                   </th>
                 ))}
               </tr>
@@ -467,7 +481,7 @@ export default function WellnessScoreReport({ user, tabVisitKey = 0 }) {
                 <TableBodySkeleton rows={Math.min(limit, 10)} />
               ) : rows.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-4 py-10 text-center text-sm text-gray-500">
+                  <td colSpan={5} className="px-4 py-8 text-center text-sm text-gray-500">
                     No members found for this filter.
                   </td>
                 </tr>
@@ -477,24 +491,24 @@ export default function WellnessScoreReport({ user, tabVisitKey = 0 }) {
                   return (
                     <tr key={row.userId} className={`${zebra} hover:bg-teal-50/40`}>
                       <td
-                        className={`sticky left-0 z-[5] px-3 py-2.5 text-sm font-semibold text-gray-900 border-b border-r border-gray-200 whitespace-nowrap shadow-[2px_0_4px_-2px_rgba(0,0,0,0.08)] ${zebra}`}
+                        className={`sticky left-0 z-[5] px-2 py-1.5 border-b border-r border-gray-200 align-middle shadow-[2px_0_4px_-2px_rgba(0,0,0,0.08)] ${zebra}`}
                       >
-                        {row.name || '—'}
+                        <MemberNameCell name={row.name} />
                       </td>
-                      <td className="px-3 py-2.5 text-sm text-gray-800 border-b border-r border-gray-200 whitespace-nowrap">
+                      <td className="px-2 py-1.5 text-sm text-gray-800 border-b border-r border-gray-200 whitespace-nowrap align-middle">
                         {formatWeightKg(row.todayWeight) || '—'}
                       </td>
-                      <td className="px-3 py-2.5 border-b border-r border-gray-200 whitespace-nowrap">
+                      <td className={`py-1.5 border-b border-r border-gray-200 whitespace-nowrap align-middle ${TABLE_HEADERS[2].tdClass || 'px-2'}`}>
                         <WeightChangeCell
                           todayWeight={row.todayWeight}
                           previousWeight={row.previousWeight}
                           difference={row.difference}
                         />
                       </td>
-                      <td className="px-3 py-2.5 text-sm font-semibold text-teal-800 border-b border-r border-gray-200 whitespace-nowrap">
+                      <td className="px-2 py-1.5 text-sm font-semibold text-teal-800 border-b border-r border-gray-200 whitespace-nowrap align-middle">
                         {formatWellnessScore(row.totalEarned ?? row.wellnessScore)}
                       </td>
-                      <td className="px-3 py-2.5 text-sm text-gray-700 border-b border-gray-200 whitespace-nowrap">
+                      <td className="px-2 py-1.5 text-sm text-gray-700 border-b border-gray-200 whitespace-nowrap align-middle">
                         {row.sponsor || '—'}
                       </td>
                     </tr>

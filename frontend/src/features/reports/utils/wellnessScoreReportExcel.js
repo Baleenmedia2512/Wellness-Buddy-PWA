@@ -9,7 +9,7 @@ import { computeWeightChange, formatWeightKg, formatWellnessScore } from './well
 
 const EXCEL_HEADERS = [
   'NAME',
-  'TODAY WEIGHT',
+  'WEIGHT',
   'TODAY VS PREVIOUS WEIGHT',
   'WEIGHT CHANGE',
   'WELLNESS SCORE',

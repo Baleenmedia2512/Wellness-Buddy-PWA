@@ -11,6 +11,7 @@ import {
   getDirectReportingMembers,
   buildReportingChildrenIndex,
 } from '../../utils/reportingHierarchyService.js';
+import { shiftDateYmd, IANA_IST } from '../../shared/lib/datetime/index.js';
 
 /**
  * Batch-resolve UserName for many user ids (one query). Used for report Sponsor/Coach labels.
@@ -276,29 +277,44 @@ function mergeLatestTwoWeightRows(rows, map) {
 
 /**
  * Fetch latest + previous weight for each userId.
+ * When `asOfDateYmd` is set, only rows on/before that IST business day count
+ * (so Yesterday / Custom Date show that day's weight, not always "now").
+ *
  * For small page-sized sets, uses parallel per-user limit(2) queries
  * (never downloads full weight history).
  *
  * @param {number[]} userIds
+ * @param {string|null} [asOfDateYmd] YYYY-MM-DD IST business date
  * @returns {Promise<Map<number, { todayWeight: number|null, previousWeight: number|null, lastUpdated: string|null }>>}
  */
-export async function getLatestTwoWeightsForUsers(userIds) {
+export async function getLatestTwoWeightsForUsers(userIds, asOfDateYmd = null) {
   const map = new Map();
   if (!userIds || userIds.length === 0) return map;
 
   const uniqueIds = [...new Set(userIds.filter((id) => Number.isFinite(Number(id))).map(Number))];
   if (uniqueIds.length === 0) return map;
 
+  const asOf =
+    typeof asOfDateYmd === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(asOfDateYmd)
+      ? asOfDateYmd
+      : null;
+  // Legacy CreatedAt is IST wall-clock; exclusive next-day start keeps that day inclusive.
+  const asOfExclusiveUpper = asOf ? `${shiftDateYmd(asOf, 1, IANA_IST)} 00:00:00` : null;
+
   // Page-sized lookups: 2 rows/user only — avoids full history download.
   if (uniqueIds.length <= 40) {
     const supabase = getSupabaseClient();
     const results = await Promise.all(
       uniqueIds.map(async (uid) => {
-        const { data, error } = await supabase
+        let query = supabase
           .from('weight_records_table')
           .select('"UserId", "Weight", "CreatedAt"')
           .eq('"UserId"', uid)
-          .or('"IsDeleted".is.null,"IsDeleted".eq.false,"IsDeleted".eq.0')
+          .or('"IsDeleted".is.null,"IsDeleted".eq.false,"IsDeleted".eq.0');
+        if (asOfExclusiveUpper) {
+          query = query.lt('"CreatedAt"', asOfExclusiveUpper);
+        }
+        const { data, error } = await query
           .order('"CreatedAt"', { ascending: false })
           .limit(2);
         if (error) throw error;
@@ -319,12 +335,15 @@ export async function getLatestTwoWeightsForUsers(userIds) {
 
   const results = await Promise.all(
     chunks.map(async (chunk) => {
-      const { data, error } = await supabase
+      let query = supabase
         .from('weight_records_table')
         .select('"UserId", "Weight", "CreatedAt"')
         .in('"UserId"', chunk)
-        .or('"IsDeleted".is.null,"IsDeleted".eq.false,"IsDeleted".eq.0')
-        .order('"CreatedAt"', { ascending: false });
+        .or('"IsDeleted".is.null,"IsDeleted".eq.false,"IsDeleted".eq.0');
+      if (asOfExclusiveUpper) {
+        query = query.lt('"CreatedAt"', asOfExclusiveUpper);
+      }
+      const { data, error } = await query.order('"CreatedAt"', { ascending: false });
       if (error) throw error;
       return data || [];
     }),

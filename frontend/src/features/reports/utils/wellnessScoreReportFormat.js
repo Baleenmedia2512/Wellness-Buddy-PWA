@@ -72,6 +72,24 @@ export function formatWeightKg(kg) {
 }
 
 /**
+ * Split a display name onto two lines: first word, then the rest.
+ * Single-token names stay on one line.
+ *
+ * @param {string|null|undefined} name
+ * @returns {{ line1: string, line2: string|null }}
+ */
+export function formatReportNameLines(name) {
+  const trimmed = String(name || '').trim().replace(/\s+/g, ' ');
+  if (!trimmed) return { line1: '—', line2: null };
+  const spaceIdx = trimmed.indexOf(' ');
+  if (spaceIdx < 0) return { line1: trimmed, line2: null };
+  return {
+    line1: trimmed.slice(0, spaceIdx),
+    line2: trimmed.slice(spaceIdx + 1),
+  };
+}
+
+/**
  * Display total_earned points only (e.g. 660, 550).
  * @param {number|null|undefined} totalEarned
  * @returns {string}

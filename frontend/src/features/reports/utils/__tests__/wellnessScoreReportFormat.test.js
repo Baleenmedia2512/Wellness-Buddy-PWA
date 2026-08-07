@@ -7,6 +7,7 @@ import {
   computeWeightChange,
   formatWeightKg,
   formatWellnessScore,
+  formatReportNameLines,
 } from '../wellnessScoreReportFormat.js';
 
 describe('computeWeightChange', () => {
@@ -45,5 +46,24 @@ describe('format helpers', () => {
     assert.equal(formatWellnessScore(660), '660');
     assert.equal(formatWellnessScore(550), '550');
     assert.equal(formatWellnessScore(null), '—');
+  });
+
+  it('splits multi-word names onto two lines', () => {
+    assert.deepEqual(formatReportNameLines('bharathi pradeepan'), {
+      line1: 'bharathi',
+      line2: 'pradeepan',
+    });
+    assert.deepEqual(formatReportNameLines('Sathiya Priya'), {
+      line1: 'Sathiya',
+      line2: 'Priya',
+    });
+    assert.deepEqual(formatReportNameLines('Single'), {
+      line1: 'Single',
+      line2: null,
+    });
+    assert.deepEqual(formatReportNameLines(''), {
+      line1: '—',
+      line2: null,
+    });
   });
 });

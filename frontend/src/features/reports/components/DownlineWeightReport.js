@@ -47,7 +47,12 @@ function MemberRowSkeleton() {
   );
 }
 
-export default function DownlineWeightReport({ user, tabVisitKey = 0 }) {
+export default function DownlineWeightReport({
+  user,
+  tabVisitKey = 0,
+  hidePageTitle = false,
+  embeddedStickyClass = 'sticky top-[6.5rem] z-20',
+}) {
   const coachId = user?.id ?? null;
   const {
     teamScope,
@@ -89,14 +94,17 @@ export default function DownlineWeightReport({ user, tabVisitKey = 0 }) {
   return (
     <div className="min-h-full bg-gray-50">
       {/* Page header */}
-      <div className="sticky top-0 z-10 bg-white border-b border-gray-200">
+      <div className={`${hidePageTitle ? embeddedStickyClass : 'sticky top-0 z-10'} bg-white border-b border-gray-200`}>
         <div className="max-w-lg mx-auto w-full px-4 sm:px-6 py-3">
           <div className="flex items-center gap-2 sm:gap-3">
-            <div className="flex-1 min-w-0">
-              <h1 className="text-base sm:text-lg font-bold text-gray-900 leading-tight truncate">
-                Ideal Weight Report
-              </h1>
-            </div>
+            {!hidePageTitle && (
+              <div className="flex-1 min-w-0">
+                <h1 className="text-base sm:text-lg font-bold text-gray-900 leading-tight truncate">
+                  Ideal Weight Report
+                </h1>
+              </div>
+            )}
+            {hidePageTitle && <div className="flex-1 min-w-0" />}
             <TouchFeedbackButton
               onClick={refresh}
               disabled={loading}

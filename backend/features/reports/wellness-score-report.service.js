@@ -37,7 +37,7 @@ const RESPONSE_CACHE_PREFIX = 'reports:wellness-score-resp:v4:';
 const NAME_CACHE_TTL_MS = 120_000;
 const NAME_CACHE_PREFIX = 'reports:wellness-score-name:v3:';
 const WEIGHT_CACHE_TTL_MS = 60_000;
-const WEIGHT_CACHE_PREFIX = 'reports:wellness-score-weight:v1:';
+const WEIGHT_CACHE_PREFIX = 'reports:wellness-score-weight:v2:';
 
 const EMPTY_LABEL = Object.freeze({
   sponsorName: null,
@@ -213,15 +213,17 @@ function mergePageRow(rosterRow, pageRow, sponsorByUser) {
 }
 
 /**
- * Latest/previous weights with per-user memory cache (shared across dates).
+ * Latest/previous weights as of scoreDate, with per-user+date memory cache.
  * @param {number[]} pageIds
+ * @param {string} scoreDate YYYY-MM-DD
  */
-async function getWeightsCached(pageIds) {
+async function getWeightsCached(pageIds, scoreDate) {
   const result = new Map();
   const missing = [];
+  const dateKey = scoreDate || 'latest';
 
   for (const id of pageIds) {
-    const cached = cache.get(`${WEIGHT_CACHE_PREFIX}${id}`);
+    const cached = cache.get(`${WEIGHT_CACHE_PREFIX}${id}:${dateKey}`);
     if (cached) {
       result.set(id, cached);
     } else {
@@ -231,7 +233,7 @@ async function getWeightsCached(pageIds) {
 
   if (missing.length === 0) return result;
 
-  const fetched = await getLatestTwoWeightsForUsers(missing);
+  const fetched = await getLatestTwoWeightsForUsers(missing, scoreDate);
   for (const id of missing) {
     const value = fetched.get(id) || {
       todayWeight: null,
@@ -239,7 +241,7 @@ async function getWeightsCached(pageIds) {
       lastUpdated: null,
     };
     result.set(id, value);
-    cache.set(`${WEIGHT_CACHE_PREFIX}${id}`, value, WEIGHT_CACHE_TTL_MS);
+    cache.set(`${WEIGHT_CACHE_PREFIX}${id}:${dateKey}`, value, WEIGHT_CACHE_TTL_MS);
   }
   return result;
 }
@@ -318,7 +320,7 @@ async function buildWellnessScoreReport(rawQuery) {
   });
 
   const [weightMap, sponsorByUser] = await Promise.all([
-    getWeightsCached(pageIds),
+    getWeightsCached(pageIds, scoreDate),
     resolveReportLabelsFast(labelMembers),
   ]);
 

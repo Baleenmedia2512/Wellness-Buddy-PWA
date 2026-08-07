@@ -263,13 +263,14 @@ const ActivityTimeReport = lazy(() =>
 const TestimonialsPage = lazy(() =>
   import("./features/testimonials").then((m) => ({ default: m.TestimonialsPage })),
 );
-// Reports � coach-only analytics (e.g. downline weight status)
-const DownlineWeightReport = lazy(() =>
-  import("./features/reports").then((m) => ({ default: m.DownlineWeightReport })),
+// Reports Dashboard — Ideal Weight + Wellness Score Report tabs
+const ReportsDashboard = lazy(() =>
+  import("./features/reports").then((m) => ({ default: m.ReportsDashboard })),
 );
-const WellnessScoreReport = lazy(() =>
-  import("./features/reports").then((m) => ({ default: m.WellnessScoreReport })),
-);
+const REPORT_DASHBOARD_TABS = {
+  IDEAL_WEIGHT: 'ideal-weight',
+  WELLNESS_SCORE: 'wellness-score',
+};
 const WellnessScoreSetup = lazy(() =>
   import("./features/wellness-score-sheet").then((m) => ({ default: m.WellnessScoreSetup })),
 );
@@ -952,7 +953,7 @@ function WellnessValleyApp() {
   const [showTestimonials, setShowTestimonials] = useState(false);
   // Reports page � coach/upline analytics (downline weight status, etc.)
   const [showReports, setShowReports] = useState(false);
-  const [showWellnessScoreReport, setShowWellnessScoreReport] = useState(false);
+  const [reportsDashboardTab, setReportsDashboardTab] = useState(REPORT_DASHBOARD_TABS.IDEAL_WEIGHT);
   const [showWellnessScore, setShowWellnessScore] = useState(false);
   const [showWellnessScoreSetup, setShowWellnessScoreSetup] = useState(false);
   const [showAiCreditsSetup, setShowAiCreditsSetup] = useState(false);
@@ -1028,7 +1029,6 @@ function WellnessValleyApp() {
         setShowActivityTimeReport(false);
         setShowTestimonials(false);
         setShowReports(false);
-        setShowWellnessScoreReport(false);
         setShowProfilePage(false);
         setShowWellnessScoreSetup(false);
         setShowAiCreditsSetup(false);
@@ -1070,15 +1070,14 @@ function WellnessValleyApp() {
         bumpTabVisitKeyRef.current('testimonials');
         startTransition(() => setShowTestimonials(true));
         Session.setCurrentPage('main');
-      } else if (page === 'reports') {
+      } else if (page === 'reports' || page === 'wellness-score-report') {
         bumpTabVisitKeyRef.current('reports');
-        setShowWellnessScoreReport(false);
+        setReportsDashboardTab(
+          page === 'wellness-score-report'
+            ? REPORT_DASHBOARD_TABS.WELLNESS_SCORE
+            : REPORT_DASHBOARD_TABS.IDEAL_WEIGHT,
+        );
         startTransition(() => setShowReports(true));
-        Session.setCurrentPage('main');
-      } else if (page === 'wellness-score-report') {
-        bumpTabVisitKeyRef.current('wellness-score-report');
-        setShowReports(false);
-        startTransition(() => setShowWellnessScoreReport(true));
         Session.setCurrentPage('main');
       } else if (page === 'profile') {
         setShowProfilePage(true);
@@ -2037,13 +2036,7 @@ function WellnessValleyApp() {
       }
       if (showReports) {
         setShowReports(false);
-        setShowWellnessScoreReport(false);
-        const currentWvPage = window.history.state?.wvPage;
-        if (currentWvPage && currentWvPage !== 'main') window.history.back();
-        return true;
-      }
-      if (showWellnessScoreReport) {
-        setShowWellnessScoreReport(false);
+        setReportsDashboardTab(REPORT_DASHBOARD_TABS.IDEAL_WEIGHT);
         const currentWvPage = window.history.state?.wvPage;
         if (currentWvPage && currentWvPage !== 'main') window.history.back();
         return true;
@@ -2082,7 +2075,7 @@ function WellnessValleyApp() {
     initializeBackButton(
       goBack,
       showToast,
-      !showDashboard && !showWellnessCounselling && !showUniversityEnrollment && !showNutritionCentersMap && !showActivityReport && !showActivityTimeReport && !showTestimonials && !showReports && !showWellnessScoreReport && !showWellnessScoreSetup && !showAiCreditsSetup && !showManualEntry && !showWellnessScore && !showProfilePage,
+      !showDashboard && !showWellnessCounselling && !showUniversityEnrollment && !showNutritionCentersMap && !showActivityReport && !showActivityTimeReport && !showTestimonials && !showReports && !showWellnessScoreSetup && !showAiCreditsSetup && !showManualEntry && !showWellnessScore && !showProfilePage,
     );
     return () => cleanupBackButton();
   // eslint-disable-next-line react-hooks/exhaustive-deps -- showMainPage is useCallback([]) stable; listing it here causes a TDZ crash because it is declared after this effect
@@ -2095,7 +2088,6 @@ function WellnessValleyApp() {
     showActivityTimeReport,
     showTestimonials,
     showReports,
-    showWellnessScoreReport,
     showWellnessScoreSetup,
     showAiCreditsSetup,
     showManualEntry,
@@ -2363,7 +2355,6 @@ function WellnessValleyApp() {
       setShowActivityTimeReport(false);
       setShowTestimonials(false);
       setShowReports(false);
-      setShowWellnessScoreReport(false);
       setShowWellnessScoreSetup(false);
       setShowAiCreditsSetup(false);
       setShowManualEntry(false);
@@ -2394,7 +2385,6 @@ function WellnessValleyApp() {
         setShowActivityTimeReport(false);
         setShowTestimonials(false);
         setShowReports(false);
-        setShowWellnessScoreReport(false);
         setShowWellnessScoreSetup(false);
         setShowAiCreditsSetup(false);
         setShowManualEntry(false);
@@ -2423,7 +2413,6 @@ function WellnessValleyApp() {
     setShowActivityTimeReport(false);
     setShowTestimonials(false);
     setShowReports(false);
-    setShowWellnessScoreReport(false);
     setShowWellnessScoreSetup(false);
     setShowAiCreditsSetup(false);
     setShowManualEntry(false);
@@ -2432,12 +2421,13 @@ function WellnessValleyApp() {
     setShowProfilePage(false);
     enrollmentHistoryPushedRef.current = false;
 
-    bumpTabVisitKey(targetPage);
+    const historyPage = targetPage === 'wellness-score-report' ? 'reports' : targetPage;
+    bumpTabVisitKey(historyPage);
 
     if (isOnSubPage) {
-      window.history.replaceState({ wvPage: targetPage }, '');
+      window.history.replaceState({ wvPage: historyPage }, '');
     } else {
-      window.history.pushState({ wvPage: targetPage }, '');
+      window.history.pushState({ wvPage: historyPage }, '');
     }
 
     switch (targetPage) {
@@ -2462,10 +2452,13 @@ function WellnessValleyApp() {
         setShowTestimonials(true);
         break;
       case 'reports':
+        setReportsDashboardTab(REPORT_DASHBOARD_TABS.IDEAL_WEIGHT);
         setShowReports(true);
         break;
       case 'wellness-score-report':
-        setShowWellnessScoreReport(true);
+        // Legacy history key → Reports Dashboard / Wellness Score tab
+        setReportsDashboardTab(REPORT_DASHBOARD_TABS.WELLNESS_SCORE);
+        setShowReports(true);
         break;
       case 'profile':
         setShowProfilePage(true);
@@ -7075,7 +7068,6 @@ function WellnessValleyApp() {
           onShowActivityReport={() => navigateTo('activity-report')}
           onShowTestimonials={() => navigateTo('testimonials')}
           onShowReports={() => navigateTo('reports')}
-          onShowWellnessScoreReport={() => navigateTo('wellness-score-report')}
         />
         <div className="ios-scroll-body">
           <UserProfilePage
@@ -7121,7 +7113,6 @@ function WellnessValleyApp() {
           onShowActivityReport={() => navigateTo('activity-report')}
           onShowTestimonials={() => navigateTo('testimonials')}
           onShowReports={() => navigateTo('reports')}
-          onShowWellnessScoreReport={() => navigateTo('wellness-score-report')}
         />
         <div className="ios-scroll-body">
           <Suspense fallback={null}>
@@ -7162,7 +7153,6 @@ function WellnessValleyApp() {
           onShowActivityReport={() => navigateTo('activity-report')}
           onShowTestimonials={() => navigateTo('testimonials')}
           onShowReports={() => navigateTo('reports')}
-          onShowWellnessScoreReport={() => navigateTo('wellness-score-report')}
         />
         <div className="ios-scroll-body">
           <Suspense fallback={null}>
@@ -7200,7 +7190,6 @@ function WellnessValleyApp() {
           onShowActivityReport={() => navigateTo('activity-report')}
           onShowTestimonials={() => navigateTo('testimonials')}
           onShowReports={() => navigateTo('reports')}
-          onShowWellnessScoreReport={() => navigateTo('wellness-score-report')}
         />
         <div className="ios-scroll-body">
           <Suspense fallback={null}>
@@ -7235,7 +7224,6 @@ function WellnessValleyApp() {
           onShowActivityReport={() => navigateTo('activity-report')}
           onShowTestimonials={() => navigateTo('testimonials')}
           onShowReports={() => navigateTo('reports')}
-          onShowWellnessScoreReport={() => navigateTo('wellness-score-report')}
         />
         <div className="ios-scroll-body">
           <Suspense fallback={null}>
@@ -7270,7 +7258,6 @@ function WellnessValleyApp() {
           onShowActivityReport={() => navigateTo('activity-report')}
           onShowTestimonials={() => navigateTo('testimonials')}
           onShowReports={() => navigateTo('reports')}
-          onShowWellnessScoreReport={() => navigateTo('wellness-score-report')}
         />
         <div className="ios-scroll-body">
           <Suspense fallback={null}>
@@ -7305,7 +7292,6 @@ function WellnessValleyApp() {
             onShowActivityReport={() => navigateTo('activity-report')}
             onShowTestimonials={() => navigateTo('testimonials')}
             onShowReports={() => navigateTo('reports')}
-          onShowWellnessScoreReport={() => navigateTo('wellness-score-report')}
           />
           <div className="ios-scroll-body">
             <Suspense fallback={<LoadingSpinner message="Loading nutrition centers map..." />}>
@@ -7360,7 +7346,6 @@ function WellnessValleyApp() {
           onShowActivityReport={() => navigateTo('activity-report')}
           onShowTestimonials={() => navigateTo('testimonials')}
           onShowReports={() => navigateTo('reports')}
-          onShowWellnessScoreReport={() => navigateTo('wellness-score-report')}
         />
         <div className="ios-scroll-body">
           <Suspense fallback={<LoadingSpinner message="Loading testimonials�" />}>
@@ -7488,56 +7473,13 @@ function WellnessValleyApp() {
           onShowActivityReport={() => navigateTo('activity-report')}
           onShowTestimonials={() => navigateTo('testimonials')}
           onShowReports={() => navigateTo('reports')}
-          onShowWellnessScoreReport={() => navigateTo('wellness-score-report')}
         />
         <div className="ios-scroll-body">
-          <Suspense fallback={<LoadingSpinner message="Loading reports�" />}>
-            <DownlineWeightReport
+          <Suspense fallback={<LoadingSpinner message="Loading reports…" />}>
+            <ReportsDashboard
               user={user}
               tabVisitKey={tabVisitKeys.reports ?? 0}
-              onBack={() => {
-                setShowReports(false);
-                setShowWellnessScoreReport(false);
-                const currentWvPage = window.history.state?.wvPage;
-                if (currentWvPage && currentWvPage !== 'main') window.history.back();
-              }}
-            />
-          </Suspense>
-        </div>
-      </div>
-    );
-  } else if (
-    showWellnessScoreReport
-    && isFlagEnabled('ff.reports-module')
-    && isFlagEnabled('ff.wellness-score-sheet')
-  ) {
-    homeOverlay = (
-      <div className="ios-full-page bg-gray-50">
-        <Header
-          navOnly
-          user={user}
-          userRole={userRole}
-          activePage="wellness-score-report"
-          onShowHome={() => navigateTo('home')}
-          onShowBackgroundHistory={() => navigateTo('dashboard')}
-          onShowWellnessEnrollment={() => navigateTo('enrollment')}
-          onShowWellnessCounselling={() => navigateTo('counselling')}
-          onShowNutritionCentersMap={() => navigateTo('physical-club')}
-          onShowActivityReport={() => navigateTo('activity-report')}
-          onShowTestimonials={() => navigateTo('testimonials')}
-          onShowReports={() => navigateTo('reports')}
-          onShowWellnessScoreReport={() => navigateTo('wellness-score-report')}
-        />
-        <div className="ios-scroll-body">
-          <Suspense fallback={<LoadingSpinner message="Loading Wellness Score Report..." />}>
-            <WellnessScoreReport
-              user={user}
-              tabVisitKey={tabVisitKeys['wellness-score-report'] ?? 0}
-              onBack={() => {
-                setShowWellnessScoreReport(false);
-                const currentWvPage = window.history.state?.wvPage;
-                if (currentWvPage && currentWvPage !== 'main') window.history.back();
-              }}
+              initialTab={reportsDashboardTab}
             />
           </Suspense>
         </div>
@@ -7858,7 +7800,6 @@ function WellnessValleyApp() {
           onShowActivityReport={() => navigateTo('activity-report')}
           onShowTestimonials={() => navigateTo('testimonials')}
           onShowReports={() => navigateTo('reports')}
-          onShowWellnessScoreReport={() => navigateTo('wellness-score-report')}
           onShowWellnessScoreSetup={() => navigateTo('wellness-score-setup')}
           wellnessScoreSetupEnabled={['admin', 'developer'].includes(userRole) && isFlagEnabled('ff.wellness-score-sheet')}
           activePage={
@@ -7869,7 +7810,6 @@ function WellnessValleyApp() {
             showActivityReport || showActivityTimeReport ? 'activity-report' :
             showTestimonials ? 'testimonials' :
             showReports ? 'reports' :
-            showWellnessScoreReport ? 'wellness-score-report' :
             showWellnessScoreSetup ? 'wellness-score-setup' :
             'home'
           }
