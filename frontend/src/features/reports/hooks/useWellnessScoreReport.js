@@ -1,6 +1,6 @@
 /**
- * useWellnessScoreReport — cache-first UI, background refresh.
- * Shows cached rows immediately, then silently revalidates.
+ * useWellnessScoreReport — cache-first UI, background refresh, fast date switches.
+ * Prefetches Yesterday after Today loads so date taps feel instant.
  */
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
@@ -13,6 +13,8 @@ import { TEAM_SCOPES } from '../utils/reportFilters.js';
 import {
   DATE_PRESETS,
   resolveReportScoreDate,
+  yesterdayBusinessDate,
+  dateToBusinessYmd,
 } from '../utils/reportDateFilter.js';
 
 const SEARCH_DEBOUNCE_MS = 300;
@@ -32,6 +34,27 @@ function applyPayload(data, date, setters) {
     },
   );
   setters.setRows(pageMembers);
+}
+
+function prefetchReportPage(coachId, { page, search, teamFilter, date }) {
+  if (!coachId || !date) return;
+  const peek = peekWellnessScoreReportCache(coachId, {
+    page,
+    limit: WELLNESS_SCORE_REPORT_PAGE_SIZE,
+    search,
+    teamFilter,
+    sort: 'score',
+    date,
+  });
+  if (peek.fresh) return;
+  fetchWellnessScoreReport(coachId, {
+    page,
+    limit: WELLNESS_SCORE_REPORT_PAGE_SIZE,
+    search,
+    teamFilter,
+    sort: 'score',
+    date,
+  }).catch(() => {});
 }
 
 export function useWellnessScoreReport({ coachId, tabVisitKey = 0 }) {
@@ -61,6 +84,7 @@ export function useWellnessScoreReport({ coachId, tabVisitKey = 0 }) {
 
   const requestIdRef = useRef(0);
   const mountedRef = useRef(true);
+  const rowsLenRef = useRef(0);
   const stateRef = useRef({
     coachId,
     teamScope,
@@ -77,6 +101,7 @@ export function useWellnessScoreReport({ coachId, tabVisitKey = 0 }) {
     selectedDate,
     paginationPage: pagination.page || 1,
   };
+  rowsLenRef.current = rows.length;
 
   const setters = {
     setTeamScopeCounts,
@@ -101,6 +126,29 @@ export function useWellnessScoreReport({ coachId, tabVisitKey = 0 }) {
   useEffect(() => {
     setSearchQuery('');
   }, [teamScope]);
+
+  const schedulePrefetchNeighbors = useCallback((id, scope, search, date) => {
+    if (!id || !date) return;
+    window.setTimeout(() => {
+      if (!mountedRef.current) return;
+      const yesterday = yesterdayBusinessDate();
+      if (date !== yesterday) {
+        prefetchReportPage(id, {
+          page: 1,
+          search,
+          teamFilter: scope,
+          date: yesterday,
+        });
+      }
+      // Prefetch page 2 of current date
+      prefetchReportPage(id, {
+        page: 2,
+        search,
+        teamFilter: scope,
+        date,
+      });
+    }, 80);
+  }, []);
 
   const fetchPage = useCallback(async ({
     page = 1,
@@ -131,24 +179,12 @@ export function useWellnessScoreReport({ coachId, tabVisitKey = 0 }) {
       setLoading(false);
       if (peek.fresh && !background) {
         setRefreshing(false);
-        const nextPage = (peek.payload?.pagination?.page || page) + 1;
-        if (peek.payload?.pagination?.hasNextPage) {
-          window.setTimeout(() => {
-            if (!mountedRef.current) return;
-            fetchWellnessScoreReport(id, {
-              page: nextPage,
-              limit: WELLNESS_SCORE_REPORT_PAGE_SIZE,
-              search,
-              teamFilter: scope,
-              sort: 'score',
-              date,
-            }).catch(() => {});
-          }, 50);
-        }
+        schedulePrefetchNeighbors(id, scope, search, date);
         return peek.payload;
       }
       setRefreshing(true);
-    } else if (!background) {
+    } else if (!background && rowsLenRef.current === 0) {
+      // First paint only — keep existing rows visible when switching dates.
       setLoading(true);
     } else {
       setRefreshing(true);
@@ -169,26 +205,11 @@ export function useWellnessScoreReport({ coachId, tabVisitKey = 0 }) {
       if (!mountedRef.current || requestId !== requestIdRef.current) return null;
 
       applyPayload(data, date, setters);
-
-      const nextPage = (data?.pagination?.page || page) + 1;
-      if (data?.pagination?.hasNextPage) {
-        window.setTimeout(() => {
-          if (!mountedRef.current) return;
-          fetchWellnessScoreReport(id, {
-            page: nextPage,
-            limit: WELLNESS_SCORE_REPORT_PAGE_SIZE,
-            search,
-            teamFilter: scope,
-            sort: 'score',
-            date,
-          }).catch(() => {});
-        }, 50);
-      }
-
+      schedulePrefetchNeighbors(id, scope, search, date);
       return data;
     } catch (err) {
       if (!mountedRef.current || requestId !== requestIdRef.current) return null;
-      if (!peek.payload) {
+      if (!peek.payload && rowsLenRef.current === 0) {
         setError(err.message || 'Failed to load report');
       }
       return null;
@@ -198,7 +219,7 @@ export function useWellnessScoreReport({ coachId, tabVisitKey = 0 }) {
         setRefreshing(false);
       }
     }
-  }, []);
+  }, [schedulePrefetchNeighbors]);
 
   useEffect(() => {
     if (!coachId) return undefined;
@@ -222,20 +243,14 @@ export function useWellnessScoreReport({ coachId, tabVisitKey = 0 }) {
         setRows,
       });
       setLoading(false);
-    } else {
-      setRows([]);
-      setPagination({
-        page: 1,
-        limit: WELLNESS_SCORE_REPORT_PAGE_SIZE,
-        totalRecords: 0,
-        totalPages: 0,
-        hasNextPage: false,
-        hasPreviousPage: false,
-      });
     }
+    // If no cache: do NOT clear rows — keep previous date visible while new date loads.
 
     const timer = setTimeout(() => {
-      fetchPage({ page: 1, background: Boolean(peek.payload) });
+      fetchPage({
+        page: 1,
+        background: Boolean(peek.payload) || rowsLenRef.current > 0,
+      });
     }, 0);
 
     return () => {
@@ -267,7 +282,7 @@ export function useWellnessScoreReport({ coachId, tabVisitKey = 0 }) {
           setRows,
         });
       }
-      fetchPage({ page, background: Boolean(peek.payload) });
+      fetchPage({ page, background: Boolean(peek.payload) || rowsLenRef.current > 0 });
     },
     [
       loading,
@@ -302,14 +317,32 @@ export function useWellnessScoreReport({ coachId, tabVisitKey = 0 }) {
   }, []);
 
   const selectYesterday = useCallback(() => {
+    // Kick prefetch immediately so data may be ready when effect runs.
+    if (coachId) {
+      prefetchReportPage(coachId, {
+        page: 1,
+        search: debouncedSearch,
+        teamFilter: teamScope,
+        date: yesterdayBusinessDate(),
+      });
+    }
     setDatePreset(DATE_PRESETS.YESTERDAY);
     setCustomDate(null);
-  }, []);
+  }, [coachId, debouncedSearch, teamScope]);
 
   const selectCustomDate = useCallback((date) => {
+    const ymd = dateToBusinessYmd(date);
+    if (coachId && ymd) {
+      prefetchReportPage(coachId, {
+        page: 1,
+        search: debouncedSearch,
+        teamFilter: teamScope,
+        date: ymd,
+      });
+    }
     setCustomDate(date);
     setDatePreset(DATE_PRESETS.CUSTOM);
-  }, []);
+  }, [coachId, debouncedSearch, teamScope]);
 
   return {
     rows,

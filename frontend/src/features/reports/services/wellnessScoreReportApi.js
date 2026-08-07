@@ -12,7 +12,7 @@ const pageCache = new Map();
 /** @type {Map<string, Promise<object>>} */
 const inflight = new Map();
 
-const SESSION_CACHE_PREFIX = 'wsReport:v1:';
+const SESSION_CACHE_PREFIX = 'wsReport:v2:';
 
 function base() {
   return `${getApiBaseUrl()}/api/reports`;

@@ -102,12 +102,8 @@ export function applyTeamFilter(self, members, teamFilter) {
   if (teamFilter === TEAM_FILTERS.DIRECT) {
     return list.filter((row) => row?.isDirect === true);
   }
-  // Full Team = coach + entire active downline (leaderboard must include self,
-  // otherwise the coach's own top score e.g. 660 never appears on Full Team).
-  if (self) {
-    const selfId = Number(self.userId);
-    return [self, ...list.filter((row) => Number(row?.userId) !== selfId)];
-  }
+  // Full Team = active downline only (same as Ideal Weight Report).
+  // Logged-in coach appears under Mine, not Full Team.
   return list;
 }
 
@@ -121,7 +117,7 @@ export function countRowsByTeamFilter(self, members) {
   return {
     [TEAM_FILTERS.MINE]: self ? 1 : 0,
     [TEAM_FILTERS.DIRECT]: directCount,
-    [TEAM_FILTERS.FULL]: list.length + (self ? 1 : 0),
+    [TEAM_FILTERS.FULL]: list.length,
   };
 }
 

@@ -25,17 +25,19 @@ import {
 } from './domain/wellness-score-report.pagination.js';
 import { computeWeightDifferenceKg } from './domain/wellness-score-report.weight.js';
 import { isActiveTeamStatus } from '../../utils/teamHierarchyBuilder.js';
-import { todayInTimezone, IANA_IST } from '../../shared/lib/datetime/index.js';
+import { todayInTimezone, shiftDateYmd, IANA_IST } from '../../shared/lib/datetime/index.js';
 import { cache } from '../../utils/cache.js';
 
 const ROSTER_CACHE_TTL_MS = 60_000;
-const ROSTER_CACHE_PREFIX = 'reports:wellness-score-roster:v3:';
+const ROSTER_CACHE_PREFIX = 'reports:wellness-score-roster:v4:';
 const RANK_CACHE_TTL_MS = 20_000;
-const RANK_CACHE_PREFIX = 'reports:wellness-score-rank:v3:';
+const RANK_CACHE_PREFIX = 'reports:wellness-score-rank:v4:';
 const RESPONSE_CACHE_TTL_MS = 20_000;
-const RESPONSE_CACHE_PREFIX = 'reports:wellness-score-resp:v3:';
+const RESPONSE_CACHE_PREFIX = 'reports:wellness-score-resp:v4:';
 const NAME_CACHE_TTL_MS = 120_000;
 const NAME_CACHE_PREFIX = 'reports:wellness-score-name:v3:';
+const WEIGHT_CACHE_TTL_MS = 60_000;
+const WEIGHT_CACHE_PREFIX = 'reports:wellness-score-weight:v1:';
 
 const EMPTY_LABEL = Object.freeze({
   sponsorName: null,
@@ -211,8 +213,57 @@ function mergePageRow(rosterRow, pageRow, sponsorByUser) {
 }
 
 /**
+ * Latest/previous weights with per-user memory cache (shared across dates).
+ * @param {number[]} pageIds
+ */
+async function getWeightsCached(pageIds) {
+  const result = new Map();
+  const missing = [];
+
+  for (const id of pageIds) {
+    const cached = cache.get(`${WEIGHT_CACHE_PREFIX}${id}`);
+    if (cached) {
+      result.set(id, cached);
+    } else {
+      missing.push(id);
+    }
+  }
+
+  if (missing.length === 0) return result;
+
+  const fetched = await getLatestTwoWeightsForUsers(missing);
+  for (const id of missing) {
+    const value = fetched.get(id) || {
+      todayWeight: null,
+      previousWeight: null,
+      lastUpdated: null,
+    };
+    result.set(id, value);
+    cache.set(`${WEIGHT_CACHE_PREFIX}${id}`, value, WEIGHT_CACHE_TTL_MS);
+  }
+  return result;
+}
+
+/**
+ * Warm yesterday page-1 response in background after Today (non-blocking).
+ */
+function warmYesterdayReport(rawQuery, todayYmd) {
+  try {
+    const yesterday = shiftDateYmd(todayYmd, -1, IANA_IST);
+    void getWellnessScoreReport({
+      ...rawQuery,
+      date: yesterday,
+      page: '1',
+      exportAll: undefined,
+    }).catch(() => {});
+  } catch {
+    /* ignore warm failures */
+  }
+}
+
+/**
  * @param {object} rawQuery
- * @returns {{ httpStatus: number, body: object }}
+ * @returns {Promise<{ httpStatus: number, body: object }>}
  */
 async function buildWellnessScoreReport(rawQuery) {
   const {
@@ -267,7 +318,7 @@ async function buildWellnessScoreReport(rawQuery) {
   });
 
   const [weightMap, sponsorByUser] = await Promise.all([
-    getLatestTwoWeightsForUsers(pageIds),
+    getWeightsCached(pageIds),
     resolveReportLabelsFast(labelMembers),
   ]);
 
@@ -345,6 +396,10 @@ export async function getWellnessScoreReport(rawQuery) {
   const result = await buildWellnessScoreReport(rawQuery);
   if (!exportAll) {
     cache.set(responseKey, result, RESPONSE_CACHE_TTL_MS);
+    // After Today page 1, warm Yesterday in background so the date pill is instant.
+    if (Number(page) === 1 && scoreDate === todayInTimezone(IANA_IST)) {
+      warmYesterdayReport(rawQuery, scoreDate);
+    }
   }
   return result;
 }
