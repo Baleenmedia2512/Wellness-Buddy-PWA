@@ -1,5 +1,6 @@
 /**
  * API client for Wellness Score Report — paginated fetch + export-all by date.
+ * In-flight request dedupe prevents StrictMode / effect double-fetches.
  */
 import { CapacitorHttp } from '@capacitor/core';
 import { getApiBaseUrl } from '../../../config/api.config.js';
@@ -8,6 +9,8 @@ export const WELLNESS_SCORE_REPORT_PAGE_SIZE = 10;
 
 const PAGE_CACHE_TTL_MS = 20_000;
 const pageCache = new Map();
+/** @type {Map<string, Promise<object>>} */
+const inflight = new Map();
 
 function base() {
   return `${getApiBaseUrl()}/api/reports`;
@@ -81,6 +84,44 @@ export function normalizeWellnessScoreReportPayload(data, paginationFromRoot = n
   };
 }
 
+async function requestWellnessScoreReport(coachId, opts, cacheKey) {
+  const page = opts.page ?? 1;
+  const limit = opts.limit ?? WELLNESS_SCORE_REPORT_PAGE_SIZE;
+  const search = String(opts.search || '').trim();
+  const teamFilter = opts.teamFilter || 'direct';
+  const sort = opts.sort || 'score';
+  const date = opts.date ? String(opts.date) : null;
+  const exportAll = opts.exportAll === true;
+
+  const params = new URLSearchParams({
+    coachId: String(coachId),
+    page: String(page),
+    limit: String(limit),
+    teamFilter,
+    sort,
+  });
+  if (search) params.set('search', search);
+  if (date) params.set('date', date);
+  if (exportAll) params.set('exportAll', 'true');
+
+  const res = await CapacitorHttp.get({
+    url: `${base()}/wellness-score-report?${params.toString()}`,
+  });
+  const result = res.data;
+  if (!result?.success) {
+    throw new Error(result?.message || 'Failed to fetch wellness score report');
+  }
+
+  const payload = normalizeWellnessScoreReportPayload(result.data, result.pagination);
+  if (!exportAll) {
+    pageCache.set(cacheKey, {
+      payload,
+      expiresAt: Date.now() + PAGE_CACHE_TTL_MS,
+    });
+  }
+  return payload;
+}
+
 /**
  * Fetch one page (or full export) of the Wellness Score Report.
  *
@@ -122,37 +163,24 @@ export async function fetchWellnessScoreReport(coachId, opts = {}) {
     if (cached && cached.expiresAt > Date.now()) {
       return cached.payload;
     }
+    const pending = inflight.get(cacheKey);
+    if (pending) return pending;
   }
 
-  const params = new URLSearchParams({
-    coachId: String(coachId),
-    page: String(page),
-    limit: String(limit),
-    teamFilter,
-    sort,
-  });
-  if (search) params.set('search', search);
-  if (date) params.set('date', date);
-  if (exportAll) params.set('exportAll', 'true');
-
-  const res = await CapacitorHttp.get({
-    url: `${base()}/wellness-score-report?${params.toString()}`,
-  });
-  const result = res.data;
-  if (!result?.success) {
-    throw new Error(result?.message || 'Failed to fetch wellness score report');
-  }
-
-  const payload = normalizeWellnessScoreReportPayload(result.data, result.pagination);
-  if (!exportAll) {
-    pageCache.set(cacheKey, {
-      payload,
-      expiresAt: Date.now() + PAGE_CACHE_TTL_MS,
+  const requestPromise = requestWellnessScoreReport(coachId, opts, cacheKey)
+    .finally(() => {
+      if (inflight.get(cacheKey) === requestPromise) {
+        inflight.delete(cacheKey);
+      }
     });
+
+  if (!exportAll) {
+    inflight.set(cacheKey, requestPromise);
   }
-  return payload;
+  return requestPromise;
 }
 
 export function clearWellnessScoreReportPageCache() {
   pageCache.clear();
+  inflight.clear();
 }

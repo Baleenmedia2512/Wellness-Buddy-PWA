@@ -191,16 +191,21 @@ export async function loadAncestorProfiles(userIds, supabase = getSupabaseClient
     });
   }
 
-  // One batched query — CreatedAt DESC so first sighting per user is latest record.
-  const { data: weights, error: wErr } = await supabase
-    .from('weight_records_table')
-    .select('"UserId", "Weight", "CreatedAt"')
-    .in('UserId', ids)
-    .or('"IsDeleted".is.null,"IsDeleted".eq.false,"IsDeleted".eq.0')
-    .order('"CreatedAt"', { ascending: false });
-  if (wErr) throw wErr;
-
-  const latestByUser = pickLatestWeightKgByCreatedAt(weights);
+  // Latest weight only per ancestor — never download full history.
+  const weightRows = await Promise.all(
+    ids.map(async (uid) => {
+      const { data, error: wErr } = await supabase
+        .from('weight_records_table')
+        .select('"UserId", "Weight", "CreatedAt"')
+        .eq('UserId', uid)
+        .or('"IsDeleted".is.null,"IsDeleted".eq.false,"IsDeleted".eq.0')
+        .order('"CreatedAt"', { ascending: false })
+        .limit(1);
+      if (wErr) throw wErr;
+      return data?.[0] || null;
+    }),
+  );
+  const latestByUser = pickLatestWeightKgByCreatedAt(weightRows.filter(Boolean));
   for (const [id, kg] of latestByUser.entries()) {
     const profile = map.get(id);
     if (!profile) continue;

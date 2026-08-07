@@ -1,15 +1,16 @@
 /**
  * wellness-score-report.service.js — Paginated Wellness Score Report.
  *
- * Roster (hierarchy) is cached lightly. Each page runs one SQL query that
- * returns score + weight for LIMIT/OFFSET rows only (sorted percentage DESC,
- * computed_at DESC). Sponsor/coach labels are resolved for the page only.
+ * Roster cached lightly. Per page:
+ *  1) score rank/slice for scoped users
+ *  2) weights + sponsor/coach labels in parallel for page ids only
  */
 import { validateWellnessScoreReport } from './reports.validators.js';
 import {
   getCoachMember,
   getFullTeamMembers,
   fetchWellnessScoreReportPage,
+  getLatestTwoWeightsForUsers,
 } from './reports.repository.js';
 import {
   applyTeamFilter,
@@ -27,6 +28,8 @@ import { cache } from '../../utils/cache.js';
 
 const ROSTER_CACHE_TTL_MS = 60_000;
 const ROSTER_CACHE_PREFIX = 'reports:wellness-score-roster:v1:';
+const SPONSOR_CACHE_TTL_MS = 60_000;
+const SPONSOR_CACHE_PREFIX = 'reports:wellness-score-sponsor:v1:';
 
 /**
  * Lightweight active-team roster (no scores/weights). Cached per coach.
@@ -63,6 +66,41 @@ async function getWellnessScoreReportRoster(coachId) {
   const roster = { self, members };
   cache.set(cacheKey, roster, ROSTER_CACHE_TTL_MS);
   return roster;
+}
+
+/**
+ * Resolve sponsors with a short per-member cache to avoid repeat chain walks.
+ * @param {Array<{ userId: number, coachId?: number|null, role?: string|null }>} members
+ */
+async function resolveSponsorsCached(members) {
+  const result = new Map();
+  const missing = [];
+
+  for (const m of members) {
+    const key = `${SPONSOR_CACHE_PREFIX}${m.userId}`;
+    const cached = cache.get(key);
+    if (cached) {
+      result.set(String(m.userId), cached);
+    } else {
+      missing.push(m);
+    }
+  }
+
+  if (missing.length === 0) return result;
+
+  const resolved = await resolveSponsorAndIdealCoachForMembers(missing);
+  for (const m of missing) {
+    const mid = String(m.userId);
+    const value = resolved.get(mid) || {
+      sponsorId: null,
+      sponsorName: null,
+      idealCoachId: null,
+      idealCoachName: null,
+    };
+    result.set(mid, value);
+    cache.set(`${SPONSOR_CACHE_PREFIX}${m.userId}`, value, SPONSOR_CACHE_TTL_MS);
+  }
+  return result;
 }
 
 /**
@@ -117,7 +155,6 @@ export async function getWellnessScoreReport(rawQuery) {
 
   const teamScopeCounts = countRowsByTeamFilter(roster.self, roster.members);
   const scopeRows = applyTeamFilter(roster.self, roster.members, teamFilter);
-  // Search is name-first (Search member…). Sponsor/coach match when present on row.
   const searched = filterRowsBySearch(scopeRows, search);
   const totalRecords = searched.length;
 
@@ -141,6 +178,7 @@ export async function getWellnessScoreReport(rawQuery) {
     searched.map((row) => [Number(row.userId), row]),
   );
 
+  const pageIds = pageScoreRows.map((row) => Number(row.userId));
   const sponsorMembers = pageScoreRows.map((row) => {
     const rosterRow = rosterById.get(Number(row.userId));
     return {
@@ -149,13 +187,26 @@ export async function getWellnessScoreReport(rawQuery) {
       role: rosterRow?.role ?? null,
     };
   });
-  const sponsorByUser = await resolveSponsorAndIdealCoachForMembers(sponsorMembers);
+
+  const [weightMap, sponsorByUser] = await Promise.all([
+    getLatestTwoWeightsForUsers(pageIds),
+    resolveSponsorsCached(sponsorMembers),
+  ]);
 
   const records = pageScoreRows
     .map((pageRow) => {
       const rosterRow = rosterById.get(Number(pageRow.userId));
       if (!rosterRow) return null;
-      return mergePageRow(rosterRow, pageRow, sponsorByUser);
+      const weights = weightMap.get(Number(pageRow.userId)) || {};
+      return mergePageRow(
+        rosterRow,
+        {
+          ...pageRow,
+          todayWeight: weights.todayWeight ?? null,
+          previousWeight: weights.previousWeight ?? null,
+        },
+        sponsorByUser,
+      );
     })
     .filter(Boolean);
 
