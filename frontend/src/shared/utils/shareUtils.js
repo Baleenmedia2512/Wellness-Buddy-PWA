@@ -21,7 +21,7 @@ export function buildQuickShareText(displayName, versionString) {
 
 /**
  * Branding line + optional compact activity suffix.
- * Example: "YASHEER · Wellness Valley v 3.4.0, water 1 L"
+ * Example: "YASHEER · Wellness Valley v 3.4.0, Consumed: 1 L water so far today"
  */
 export function composeQuickShareCaption(brandLine, activitySuffix = null) {
   const brand = String(brandLine || '').trim();

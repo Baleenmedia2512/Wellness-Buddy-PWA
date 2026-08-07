@@ -225,11 +225,17 @@ describe('diary share builders', () => {
 });
 
 describe('buildDiaryShareSuffix', () => {
-  test('water suffix is compact for quick share', () => {
-    expect(buildDiaryShareSuffix('water', { volumeMl: 1000 })).toBe('water 1 L');
-    expect(buildDiaryShareSuffix('water', { volumeMl: 500 })).toBe('water 500 mL');
-    expect(buildDiaryShareSuffix('afresh', { scoops: 2 })).toBe('afresh 2 scoops');
-    expect(buildDiaryShareSuffix('afresh', { scoops: 2, calories: 7 })).toBe('afresh 2 scoops · 7 kcal');
+  test('water and afresh suffixes show total consumed so far today', () => {
+    expect(buildDiaryShareSuffix('water', { volumeMl: 1000 }))
+      .toBe('Consumed: 1 L water so far today');
+    expect(buildDiaryShareSuffix('water', { volumeMl: 2500 }))
+      .toBe('Consumed: 2.5 L water so far today');
+    expect(buildDiaryShareSuffix('water', { volumeMl: 500 }))
+      .toBe('Consumed: 500 mL water so far today');
+    expect(buildDiaryShareSuffix('afresh', { scoops: 2 }))
+      .toBe('Consumed: 2 scoops Afresh so far today');
+    expect(buildDiaryShareSuffix('afresh', { scoops: 1 }))
+      .toBe('Consumed: 1 scoop Afresh so far today');
   });
 
   test('food suffix includes macros and GI', () => {
@@ -323,7 +329,7 @@ describe('resolveFoodRowPresentation', () => {
     expect(view.showMealBadge).toBe(false);
     expect(view.primaryValue).toBe('1');
     expect(view.primaryUnit).toBe('L');
-    expect(view.shareText).toBe('water 1 L');
+    expect(view.shareText).toBe('Consumed: 1 L water so far today');
     expect(view.thumbFallback).toBe('💧');
   });
 
@@ -343,7 +349,7 @@ describe('resolveFoodRowPresentation', () => {
     expect(view.primaryValue).toBe('7');
     expect(view.primaryUnit).toBe('kcal');
     expect(view.secondaryLabel).toBe('2 scoops');
-    expect(view.shareText).toBe('afresh 2 scoops · 7 kcal');
+    expect(view.shareText).toBe('Consumed: 2 scoops Afresh so far today');
     expect(view.thumbFallback).toBe('🥤');
   });
 });
