@@ -86,6 +86,24 @@ function withOptimisticRestores(entries, optimisticEntries) {
 
 const SKELETON_ROWS = 6;
 
+/**
+ * Map each weight entry id → chronologically previous weight value.
+ * Used for share captions + delta chrome on WeightRow.
+ */
+function buildPreviousWeightById(entries) {
+  const map = new Map();
+  if (!Array.isArray(entries) || entries.length === 0) return map;
+  const weights = entries
+    .filter((e) => e?.kind === 'weight' && !e.isUndoPlaceholder && e.payload?.id != null)
+    .slice()
+    .sort((a, b) => new Date(a.capturedAt).getTime() - new Date(b.capturedAt).getTime());
+  for (let i = 0; i < weights.length; i += 1) {
+    const id = String(weights[i].payload.id);
+    map.set(id, i > 0 ? (weights[i - 1].payload?.weight ?? null) : null);
+  }
+  return map;
+}
+
 /** Hide stale or duplicate "Analyzing…" rows in the diary feed. */
 function dedupePendingDiaryEntries(entries) {
   if (!Array.isArray(entries) || entries.length === 0) return entries;
@@ -371,7 +389,7 @@ export default function DiaryFeed({
     }
 
     let cancelled = false;
-    getProfile(email, { cacheBust: true })
+    getProfile(email)
       .then((res) => {
         if (cancelled) return;
         const tz = res?.data?.timezone || res?.data?.timezoneIana || null;
@@ -406,6 +424,11 @@ export default function DiaryFeed({
   const scopedPendingCaptureMeta = useMemo(
     () => filterPendingCaptureMetaForOwner(pendingCaptureMeta, ownerUserId, viewerUserId),
     [pendingCaptureMeta, ownerUserId, viewerUserId],
+  );
+
+  const previousWeightById = useMemo(
+    () => buildPreviousWeightById(data?.entries),
+    [data?.entries],
   );
 
   // Pre-bind onClick and onDelete once per entry kind to keep child renders cheap.
@@ -465,6 +488,9 @@ export default function DiaryFeed({
       const captureMeta = (isAnalyzing || isBackgroundPending) && captureIdStr !== ''
         ? (scopedPendingCaptureMeta?.get(captureIdStr) ?? null)
         : null;
+      const weightId = entry.kind === 'weight' && entry.payload?.id != null
+        ? String(entry.payload.id)
+        : null;
       return (
         <Row
           key={`${entry.kind}-${entry.payload?.id ?? entry.capturedAt}`}
@@ -474,6 +500,9 @@ export default function DiaryFeed({
           canDelete={canDelete}
           hideTime={hideTime}
           timezoneIana={ownerTimezoneIana}
+          {...(entry.kind === 'weight'
+            ? { previousWeight: weightId ? (previousWeightById.get(weightId) ?? null) : null }
+            : {})}
           {...(entry.kind === 'unknown'
             ? {
                 isAnalyzing,
@@ -493,6 +522,7 @@ export default function DiaryFeed({
       analyzingCaptureIds,
       scopedPendingCaptureMeta,
       ownerTimezoneIana,
+      previousWeightById,
       handleUndoRestore,
       handleUndoExpire,
     ],

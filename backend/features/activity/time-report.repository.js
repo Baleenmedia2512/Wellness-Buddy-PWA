@@ -40,17 +40,12 @@ export async function fetchTimeReportData(targetUserIds, startDate, endDate, tim
     .or('"IsDeleted".is.null,"IsDeleted".eq.0');
   educationRangeQuery = applyDateRangeFilter(educationRangeQuery, '"CreatedAt"', startDate, endDate, timezoneIana);
 
-  let foodCalorieRangeQuery = supabase.from('food_nutrition_data_table')
+  // Single food fetch — previously duplicated as calorie + analysis queries against the same table
+  let foodRangeQuery = supabase.from('food_nutrition_data_table')
     .select('UserID, CreatedAt, TotalCalories, AnalysisData')
     .in('UserID', targetIdsAsString)
     .or('IsDeleted.is.null,IsDeleted.eq.0');
-  foodCalorieRangeQuery = applyDateRangeFilter(foodCalorieRangeQuery, 'CreatedAt', startDate, endDate, timezoneIana);
-
-  let foodAnalysisRangeQuery = supabase.from('food_nutrition_data_table')
-    .select('UserID, CreatedAt, AnalysisData')
-    .in('UserID', targetIdsAsString)
-    .or('IsDeleted.is.null,IsDeleted.eq.0');
-  foodAnalysisRangeQuery = applyDateRangeFilter(foodAnalysisRangeQuery, 'CreatedAt', startDate, endDate, timezoneIana);
+  foodRangeQuery = applyDateRangeFilter(foodRangeQuery, 'CreatedAt', startDate, endDate, timezoneIana);
 
   let stepRangeQuery = supabase.from('daily_step_activity')
     .select('UserId, CreatedAt, CaloriesBurned, Steps')
@@ -63,8 +58,7 @@ export async function fetchTimeReportData(targetUserIds, startDate, endDate, tim
       .is('EffectiveToDate', null),
     weightRangeQuery,
     educationRangeQuery,
-    foodCalorieRangeQuery,
-    foodAnalysisRangeQuery,
+    foodRangeQuery,
     stepRangeQuery,
     supabase.from('weight_records_table')
       .select('UserId, Weight, Bmr, CreatedAt')

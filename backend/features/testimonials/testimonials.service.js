@@ -166,9 +166,12 @@ async function sendHealthIssueOtpEmail({
 /**
  * Build API testimonial payload with signed photo/video URLs.
  * Video-only rows (placeholder before image) still return video URLs when present.
+ * @param {object|null} testimonial
+ * @param {{ includeVideos?: boolean }} [opts]
  */
-async function enrichTestimonialForDisplay(testimonial) {
+async function enrichTestimonialForDisplay(testimonial, opts = {}) {
   if (!testimonial) return null;
+  const includeVideos = opts.includeVideos !== false;
 
   const videoOnly = repo.isVideoOnlyPlaceholder(testimonial.before_image_path);
   const hasVideos = !!(testimonial.health_video_path || testimonial.business_video_path);
@@ -178,8 +181,12 @@ async function enrichTestimonialForDisplay(testimonial) {
   const [beforeUrl, afterUrl, healthVideoUrl, businessVideoUrl] = await Promise.all([
     videoOnly ? Promise.resolve(null) : repo.getSignedUrl(testimonial.before_image_path),
     videoOnly ? Promise.resolve(null) : repo.getSignedUrl(testimonial.after_image_path),
-    testimonial.health_video_path   ? repo.getSignedUrl(testimonial.health_video_path)   : Promise.resolve(null),
-    testimonial.business_video_path ? repo.getSignedUrl(testimonial.business_video_path) : Promise.resolve(null),
+    includeVideos && testimonial.health_video_path
+      ? repo.getSignedUrl(testimonial.health_video_path)
+      : Promise.resolve(null),
+    includeVideos && testimonial.business_video_path
+      ? repo.getSignedUrl(testimonial.business_video_path)
+      : Promise.resolve(null),
   ]);
 
   return {
@@ -612,10 +619,12 @@ export async function listForCoach(rawQuery) {
   const { coachId, scope } = validateListForCoach(rawQuery);
   const rows = await repo.listForCoach(coachId, scope);
 
-  // Generate signed URLs in parallel for members who have testimonials
+  // List cards need photos only — skip video signed URLs (halves storage round-trips).
   const enriched = await Promise.all(
     rows.map(async ({ user, testimonial }) => {
-      const enrichedTestimonial = await enrichTestimonialForDisplay(testimonial);
+      const enrichedTestimonial = await enrichTestimonialForDisplay(testimonial, {
+        includeVideos: false,
+      });
       return { user: sanitizeUser(user), testimonial: enrichedTestimonial };
     }),
   );
@@ -630,7 +639,8 @@ function sanitizeUser(user) {
   return {
     userId:       user.UserId,
     userName:     user.UserName,
-    profileImage: user.ProfileImage ?? null,
+    // Avatars via /api/user/avatar — never embed base64 in list payloads.
+    profileImage: null,
     phoneNumber:  user.PhoneNumber ?? null,
   };
 }
@@ -939,7 +949,7 @@ function buildTeamUploadStats(uploaded, notUploaded) {
 export async function getTeamTestimonialReport(rawQuery) {
   const { coachId } = validateTeamReport(rawQuery);
 
-  const reportingContext = await repo.loadTeamReportingContext();
+  const reportingContext = await repo.loadTeamReportingContext(coachId);
 
   const [
     photoDirect,

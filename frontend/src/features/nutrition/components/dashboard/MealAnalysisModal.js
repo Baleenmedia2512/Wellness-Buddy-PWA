@@ -26,6 +26,7 @@ function MealAnalysisModal({
   handleCloseModal,
   handleDeleteMeal,
   user,
+  apiBaseUrl,
   timezoneIana,
   persistMealItems,
   setLocalDetailedItems,
@@ -52,6 +53,7 @@ function MealAnalysisModal({
       handleCloseModal={handleCloseModal}
       handleDeleteMeal={handleDeleteMeal}
       user={user}
+      apiBaseUrl={apiBaseUrl}
       timezoneIana={timezoneIana}
       persistMealItems={persistMealItems}
       setLocalDetailedItems={setLocalDetailedItems}

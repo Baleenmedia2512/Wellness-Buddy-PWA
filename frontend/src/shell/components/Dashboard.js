@@ -17,6 +17,7 @@ import TeamMemberProfileModal from '../../shared/components/TeamMemberProfileMod
 import { isFlagEnabled } from '../../config/featureFlags';
 import { useNutritionRefresh } from '../../shared/context/NutritionRefreshContext';
 import { DIARY_ANALYZING_POLL_MS } from '../../shared/constants/limits';
+import { setVisibilityAwareInterval } from '../../shared/utils/visibilityAwareInterval';
 import DashboardTabs from './DashboardTabs';
 // ADR-0003 — delete-only unknown captures still use UnknownEntryFlow; classify/manual
 // log for Other / Needs logging reuses ManualEntryPage (same as post-capture).
@@ -411,10 +412,10 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
 
   // Poll the diary feed while background AI is in flight so the card
   // auto-upgrades from "Analyzing…" to food / weight / education rows.
+  // Pauses while the tab/app is hidden to avoid wasted /api/diary/list traffic.
   useEffect(() => {
     if (!backgroundAnalyzingKey) return undefined;
-    const intervalId = setInterval(() => reloadDiary(), DIARY_ANALYZING_POLL_MS);
-    return () => clearInterval(intervalId);
+    return setVisibilityAwareInterval(() => reloadDiary(), DIARY_ANALYZING_POLL_MS);
   // eslint-disable-next-line react-hooks/exhaustive-deps -- reloadDiary is stable
   }, [backgroundAnalyzingKey]);
 
@@ -1114,6 +1115,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
                   hideHeader
                   hideDateStrip
                   hideOverview
+                  deferDataFetch
                   selectedDate={selectedDate}
                   setSelectedDate={applySelectedDate}
                   bmrUpdateKey={bmrUpdateKey}
@@ -1127,6 +1129,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
                   apiBaseUrl={apiBaseUrl}
                   hideHeader
                   hideOverview
+                  deferDataFetch
                   selectedDate={selectedDate}
                   refreshKey={weightReloadKey}
                   initialEntryId={initialMealId}
@@ -1140,6 +1143,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
                   apiBaseUrl={apiBaseUrl}
                   hideHeader
                   hideOverview
+                  deferDataFetch
                   selectedDate={selectedDate}
                   refreshKey={educationRefreshKey + diaryEducationRefreshKey}
                   initialEntryId={initialMealId}

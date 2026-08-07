@@ -472,7 +472,7 @@ export async function listVideoReportForCoach(coachId, scope = 'direct') {
   return members.map((m) => {
     const t = testimonialMap[m.UserId];
     return {
-      user: { userId: m.UserId, userName: m.UserName, email: m.Email, profileImage: m.ProfileImage },
+      user: { userId: m.UserId, userName: m.UserName, email: m.Email, profileImage: null },
       videoStatus:      t?.video_status      ?? 'none',
       hasHealthVideo:   !!(t?.health_video_path),
       hasBusinessVideo: !!(t?.business_video_path),
@@ -482,13 +482,15 @@ export async function listVideoReportForCoach(coachId, scope = 'direct') {
 }
 
 /**
- * Load team rows once for reporting hierarchy resolution (direct/full scopes).
+ * Load reporting context for one coach subtree (indexed CoachId walk + 60s cache).
+ * Avoids full team_table scan used by legacy loadReportingContext().
+ * @param {number} coachId
  * @returns {Promise<import('../../utils/reportingHierarchyService.js').ReportingContext>}
  */
-export async function loadTeamReportingContext() {
+export async function loadTeamReportingContext(coachId) {
   const supabase = getSupabaseClient();
-  const { loadReportingContext } = await import('../../utils/reportingHierarchyService.js');
-  return loadReportingContext(supabase);
+  const { loadReportingContextForCoach } = await import('../../utils/reportingHierarchyService.js');
+  return loadReportingContextForCoach(supabase, coachId);
 }
 
 /**
@@ -500,7 +502,7 @@ export async function loadTeamReportingContext() {
  * @returns {Promise<Array<{ UserId: number, UserName: string, Email?: string, ProfileImage?: string|null, PhoneNumber?: string|null }>>}
  */
 async function fetchReportingTeamMembers(coachId, scope = 'direct', context = null) {
-  const resolvedContext = context ?? await loadTeamReportingContext();
+  const resolvedContext = context ?? await loadTeamReportingContext(coachId);
   const { getReportingMembers } = await import('../../utils/reportingHierarchyService.js');
   const members = getReportingMembers(coachId, scope, resolvedContext);
   return members
@@ -682,7 +684,7 @@ export async function buildTeamUploadPerformanceByUserId(rootCoachId, context = 
   } = await import('../../utils/reportingHierarchyService.js');
   const { isActiveTeamStatus } = await import('../../utils/teamHierarchyBuilder.js');
 
-  const resolvedContext = context ?? await loadTeamReportingContext();
+  const resolvedContext = context ?? await loadTeamReportingContext(rootCoachId);
   const reportingMembers = getFullReportingMembers(rootCoachId, resolvedContext);
 
   const activeMemberIds = new Set(

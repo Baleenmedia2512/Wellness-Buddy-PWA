@@ -4,6 +4,7 @@ import {
   applyDayFilter,
   applyDayFilterWidened,
   applyDateRangeFilter,
+  applyDateRangeFilterWidened,
 } from '../../shared/lib/datetime/applyDayFilter.js';
 import { IANA_IST } from '../../shared/lib/datetime/index.js';
 import { filterWatchCalorieRowsForDate } from './domain/watch-calories.helpers.js';
@@ -72,6 +73,24 @@ export async function fetchWatchCalorieRows(userId, targetDate, timezoneIana = I
   const { data, error } = await query.order('"CreatedAt"', { ascending: false });
   if (error) throw error;
   return filterWatchCalorieRowsForDate(data, targetDate, timezoneIana);
+}
+
+/**
+ * Watch calorie rows for an inclusive calendar range (home carousel).
+ * Widened SQL + caller groups/filters by calendar day.
+ */
+export async function fetchWatchCalorieRowsForRange(userId, startDate, endDate, timezoneIana = IANA_IST) {
+  const supabase = getSupabaseClient();
+  let query = supabase
+    .from('education_logs_table')
+    .select('"Id", "Topic", "CreatedAt"')
+    .eq('"UserId"', String(userId))
+    .or('IsDeleted.is.null,IsDeleted.eq.0')
+    .ilike('"Topic"', 'Calories Burned:%');
+  query = applyDateRangeFilterWidened(query, '"CreatedAt"', startDate, endDate, timezoneIana);
+  const { data, error } = await query.order('"CreatedAt"', { ascending: false });
+  if (error) throw error;
+  return data || [];
 }
 
 export async function touchLastActive(userId) {

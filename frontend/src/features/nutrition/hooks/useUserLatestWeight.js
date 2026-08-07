@@ -9,12 +9,12 @@
 import { useState, useEffect } from 'react';
 import { fetchUserMacroProfile } from '../services/nutritionDashboard/userProfileApi';
 
-export function useUserLatestWeight({ user, apiBaseUrl }) {
+export function useUserLatestWeight({ user, apiBaseUrl, enabled = true }) {
   const [latestWeight, setLatestWeight] = useState(null);
   const [gender, setGender] = useState(null);
 
   useEffect(() => {
-    if (!user?.email) return undefined;
+    if (!enabled || !user?.email) return undefined;
 
     let cancelled = false;
     const load = async () => {
@@ -36,7 +36,7 @@ export function useUserLatestWeight({ user, apiBaseUrl }) {
       cancelled = true;
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [user?.email, apiBaseUrl]);
+  }, [user?.email, apiBaseUrl, enabled]);
 
   return { latestWeight, gender };
 }

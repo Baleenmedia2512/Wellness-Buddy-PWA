@@ -6,6 +6,7 @@ import { SplashScreen } from '@capacitor/splash-screen';
 import { Capacitor } from '@capacitor/core';
 import { debugLog } from './shared/utils/logger.js';
 import { installNativeInputModeSync } from './shared/utils/nativeInputMode.js';
+import { installSelectAllOnTextFocus } from './shared/utils/textSelectionFix.js';
 
 // ✅ PERFORMANCE: Suppress all console output in production
 // In iOS WKWebView, every console.log bridges to native — very expensive
@@ -25,6 +26,8 @@ if (Capacitor.isNativePlatform()) {
 
 // Sync type="tel" + inputmode onto DOM before mobile IME opens.
 installNativeInputModeSync();
+// Text / search / numeric fields: tap → select full value (type over easily).
+installSelectAllOnTextFocus();
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
 

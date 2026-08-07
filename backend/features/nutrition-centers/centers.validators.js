@@ -7,6 +7,8 @@ export function validateCheckName(query) {
 
 export function validateGetCenters(query) {
   if (!query?.userId) throw new ValidationError(400, 'Missing required parameter: userId');
+  const metricsRaw = String(query.metrics ?? query.includeMetrics ?? '1').toLowerCase();
+  const includeMetrics = !(metricsRaw === '0' || metricsRaw === 'false' || metricsRaw === 'no');
   return {
     userId: query.userId,
     teamFilter: query.teamFilter || 'direct',
@@ -14,6 +16,7 @@ export function validateGetCenters(query) {
     dateRange: query.dateRange || 'today',
     startDate: query.startDate,
     endDate: query.endDate,
+    includeMetrics,
   };
 }
 

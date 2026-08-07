@@ -487,8 +487,7 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
       try {
         // Fetch hierarchy first to determine if this user has team members.
         // If they do, treat them as "coach" for the activity report API so that
-        // all downline member data is returned ΓÇö matching the behaviour of
-        // DisciplineReport and AttendanceReport.
+        // all downline member data is returned.
         const hierarchyRes = await teamHierarchyService
           .getTeamHierarchy(user.id, false)
           .catch(() => null);
