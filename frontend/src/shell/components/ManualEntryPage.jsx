@@ -226,10 +226,15 @@ export default function ManualEntryPage({
   // True after light watch-calories has returned once (prefetch or open).
   const workoutSummaryReadyRef = useRef(false);
 
-  // Capture row must exist before LOG AS / AI. Prefer upload bandwidth until then.
+  // Capture row must exist before LOG AS / AI can finish. Upload runs in the
+  // background — UI stays interactive; taps are queued until captureId arrives.
   const captureReady = Boolean(captureId);
+  const [pendingLogAsId, setPendingLogAsId] = useState(null);
+  const [pendingAi, setPendingAi] = useState(false);
 
   // New capture while this screen stays mounted — close any open sub-form.
+  // Do not clear pendingLogAsId / pendingAi here: captureId often flips null → id
+  // on the same mount, and those pending taps must flush once ready.
   useEffect(() => {
     setActiveForm(null);
     setFoodEntryMeta(null);
@@ -368,7 +373,12 @@ export default function ManualEntryPage({
 
   /** Discard capture and leave — must not remain in Diary as unknown/Other. */
   const handleCloseWithoutLog = () => {
-    if (closingWithoutLog || aiStarting) return;
+    if (closingWithoutLog) return;
+    // Allow cancel while Auto Detect is only queued (photo still saving).
+    if (aiStarting && !pendingAi) return;
+    setPendingLogAsId(null);
+    setPendingAi(false);
+    setAiStarting(false);
     setClosingWithoutLog(true);
     const id = captureId;
     const uid = userId;
@@ -395,8 +405,20 @@ export default function ManualEntryPage({
     exit(activityCaption ? { activityCaption } : null);
   };
 
-  const handleAiAnalyze = async () => {
-    if (!userId || !imageBase64 || aiStarting) return;
+  const openCategory = useCallback((id) => {
+    const next = resolveManualLogCategoryClick(id);
+    if (!next) return;
+    if (next.kind === 'healthy-snacks-picker') {
+      setFoodEntryMeta(null);
+      setActiveForm(MANUAL_LOG_CATEGORY.HEALTHY_SNACKS);
+      return;
+    }
+    setFoodEntryMeta(null);
+    setActiveForm(next.formId);
+  }, []);
+
+  const startAiAnalyze = useCallback(async () => {
+    if (!userId || !imageBase64) return;
     setHint(null);
     setAiStarting(true);
     try {
@@ -421,20 +443,48 @@ export default function ManualEntryPage({
       setHint(err?.message || 'Could not start AI — pick a type below.');
       setAiStarting(false);
     }
+  // exit / onStartBackgroundAi are stable enough for this screen lifetime
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId, imageBase64, creditsEnabled, apiBaseUrl]);
+
+  const handleAiAnalyze = () => {
+    if (!userId || !imageBase64 || aiStarting || closingWithoutLog) return;
+    if (!captureReady) {
+      setPendingAi(true);
+      setPendingLogAsId(null);
+      setAiStarting(true);
+      return;
+    }
+    void startAiAnalyze();
   };
 
   const handleCategoryClick = (id) => {
-    if (!captureReady || aiStarting) return;
-    const next = resolveManualLogCategoryClick(id);
-    if (!next) return;
-    if (next.kind === 'healthy-snacks-picker') {
-      setFoodEntryMeta(null);
-      setActiveForm(MANUAL_LOG_CATEGORY.HEALTHY_SNACKS);
+    if (closingWithoutLog) return;
+    // Queued Auto Detect can still be switched to a Log-as type.
+    if (aiStarting && !pendingAi) return;
+    if (!captureReady) {
+      setPendingLogAsId(id);
+      setPendingAi(false);
+      setAiStarting(false);
       return;
     }
-    setFoodEntryMeta(null);
-    setActiveForm(next.formId);
+    openCategory(id);
   };
+
+  // Flush queued Log-as / Auto Detect once the background capture POST finishes.
+  useEffect(() => {
+    if (!captureReady) return;
+    if (pendingLogAsId) {
+      const id = pendingLogAsId;
+      setPendingLogAsId(null);
+      openCategory(id);
+      return;
+    }
+    if (pendingAi) {
+      setPendingAi(false);
+      void startAiAnalyze();
+    }
+  }, [captureReady, pendingLogAsId, pendingAi, openCategory, startAiAnalyze]);
 
   const handleHealthySnacksPick = (subtypeId) => {
     const next = resolveHealthySnacksSubtypeClick(subtypeId);
@@ -634,8 +684,8 @@ export default function ManualEntryPage({
   const showCreditsPanel = creditsEnabled && credits != null && credits.enabled === true;
   const showAiButton = !creditsEnabled || (credits != null && credits.enabled === true);
   const aiDisabled =
-    !captureReady || aiStarting || outOfCredits || creditsChecking || closingWithoutLog;
-  const logAsDisabled = !captureReady || closingWithoutLog;
+    (aiStarting && !pendingAi) || outOfCredits || creditsChecking || closingWithoutLog;
+  const logAsDisabled = closingWithoutLog || (aiStarting && !pendingAi);
 
   return (
     <div className="fixed inset-0 z-40 flex flex-col" style={{ background: BRAND.pageBg }}>
@@ -665,6 +715,7 @@ export default function ManualEntryPage({
                 src={previewSrc}
                 alt="Captured"
                 className="h-full w-full object-contain"
+                decoding="async"
               />
             </button>
           ) : (
@@ -681,13 +732,6 @@ export default function ManualEntryPage({
           </p>
         )}
 
-        {!captureReady && (
-          <p className="shrink-0 flex items-center gap-2 rounded-xl border border-emerald-100 bg-white/80 px-3 py-2 text-xs text-emerald-800">
-            <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" aria-hidden />
-            Saving photo…
-          </p>
-        )}
-
         {/* Type grid — large Log-as tiles matching original layout */}
         <section className="flex min-h-0 flex-1 flex-col">
           <div className="mb-2.5 flex shrink-0 items-center justify-between gap-2">
@@ -699,6 +743,7 @@ export default function ManualEntryPage({
             {CATEGORIES.map(({ id, Icon, src, label, isImgIcon, wrapLabel }) => {
               // iOS WebView often blanks custom emoji SVGs — use Lucide for Workout.
               const useLucideOnIos = id === MANUAL_LOG_CATEGORY.SMARTWATCH && isIOS() && Icon;
+              const isPending = pendingLogAsId === id;
               return (
               <button
                 key={id}
@@ -706,9 +751,15 @@ export default function ManualEntryPage({
                 disabled={logAsDisabled}
                 onClick={() => handleCategoryClick(id)}
                 className={LOG_AS_BTN_IDLE}
+                aria-busy={isPending || undefined}
               >
                 <LogAsIconWrap>
-                  {useLucideOnIos ? (
+                  {isPending ? (
+                    <Loader2
+                      className="h-8 w-8 animate-spin min-[380px]:h-9 min-[380px]:w-9 sm:h-10 sm:w-10"
+                      aria-hidden
+                    />
+                  ) : useLucideOnIos ? (
                     <Icon className="h-5 w-5" strokeWidth={2.1} aria-hidden />
                   ) : isImgIcon ? (
                     <PublicIcon
@@ -772,14 +823,14 @@ export default function ManualEntryPage({
                   ].join(' ')}
                 >
                   <LogAsIconWrap selected compact={Boolean(showCreditsPanel)}>
-                    {aiStarting ? (
+                    {aiStarting || pendingAi ? (
                       <Loader2 className="h-8 w-8 animate-spin text-white min-[380px]:h-9 min-[380px]:w-9 sm:h-10 sm:w-10" />
                     ) : (
                       <Sparkles className="h-8 w-8 text-white min-[380px]:h-9 min-[380px]:w-9 sm:h-10 sm:w-10" />
                     )}
                   </LogAsIconWrap>
                   <span className="max-w-full truncate whitespace-nowrap px-0.5 text-[11px] font-semibold leading-tight text-white min-[380px]:text-[12px] sm:text-[13px]">
-                    {aiStarting ? 'Starting…' : 'Auto Detect'}
+                    {aiStarting || pendingAi ? 'Starting…' : 'Auto Detect'}
                   </span>
                   {showCreditsPanel && credits && (
                     <p className="max-w-full truncate whitespace-nowrap text-[8px] font-semibold tabular-nums text-emerald-100/90 min-[380px]:text-[9px] sm:text-[10px]">
@@ -805,7 +856,7 @@ export default function ManualEntryPage({
         <button
           type="button"
           onClick={handleCloseWithoutLog}
-          disabled={aiStarting || closingWithoutLog}
+          disabled={closingWithoutLog || (aiStarting && !pendingAi)}
           className="safe-bottom log-as-btn log-as-btn--idle inline-flex w-full shrink-0 items-center justify-center gap-2 rounded-xl border-2 border-red-200 bg-gradient-to-b from-white to-red-50/40 py-3.5 text-sm font-bold text-red-600 shadow-[0_3px_0_0_rgba(220,38,38,0.2)] transition-[transform,box-shadow] duration-150 active:translate-y-[2px] active:shadow-[0_1px_0_0_rgba(220,38,38,0.18)] disabled:opacity-50"
         >
           {closingWithoutLog && (

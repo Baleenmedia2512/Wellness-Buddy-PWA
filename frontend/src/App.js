@@ -5520,7 +5520,7 @@ function WellnessValleyApp() {
     }
   };
 
-  const handleImageSelect = async (file, exifTimestamp = null) => {
+  const handleImageSelect = async (file, exifTimestamp = null, selectOptions = {}) => {
     if (imageProcessingInProgress.current) {
       debugLog("Image processing already in progress, skipping duplicate call");
       return;
@@ -5528,6 +5528,12 @@ function WellnessValleyApp() {
     imageProcessingInProgress.current = true;
     // Web file-input path never fires onCameraStateChange — gate Home refetches here too.
     setCaptureFlowBusy(true);
+
+    const previewDataUrl =
+      typeof selectOptions?.previewDataUrl === "string" &&
+      selectOptions.previewDataUrl.length > 0
+        ? selectOptions.previewDataUrl
+        : null;
 
     // Pre-generate share token/code synchronously so POST /captures can persist
     // the row immediately. Share sheet opens only after Classify photo completes.
@@ -5582,12 +5588,16 @@ function WellnessValleyApp() {
 
     // Status check runs in parallel; Manual Log opens as soon as bytes are readable.
     const statusPromise = checkUserStatus(user);
-    const readPromise = new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = (e) => resolve(e.target.result);
-      reader.onerror = reject;
-      reader.readAsDataURL(file);
-    });
+    // Native camera/gallery already has Base64 — skip FileReader round-trip so
+    // Android paints the preview immediately.
+    const readPromise = previewDataUrl
+      ? Promise.resolve(previewDataUrl)
+      : new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = (e) => resolve(e.target.result);
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
 
     // ? MANUAL MODE: skip AI entirely, open best manual modal
     if (manualModeActive) {
@@ -5672,16 +5682,15 @@ function WellnessValleyApp() {
       );
 
       manualEntrySessionRef.current = { clientKey: instantToken, abandoned: false };
-      // Lazy ManualEntryPage — must not suspend on a sync update (React 18).
-      startTransition(() => {
-        setManualEntryPayload({
-          clientKey: instantToken,
-          captureId: null,
-          imageBase64,
-          userId: user?.id ?? null,
-        });
-        setShowManualEntry(true);
+      // Open classify sync so Android paints the photo immediately.
+      // Chunk is prefetched above; Suspense only flashes if the import is still pending.
+      setManualEntryPayload({
+        clientKey: instantToken,
+        captureId: null,
+        imageBase64,
+        userId: user?.id ?? null,
       });
+      setShowManualEntry(true);
       window.history.pushState({ wvPage: 'manual-entry' }, '');
 
       // Soft account gate — if inactive, close classify and stop upload.
