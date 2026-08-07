@@ -1,12 +1,11 @@
 /**
  * WellnessScoreReport — Excel-style coach dashboard.
- * Date filter + server-side pagination (10/page); Share / Download Excel for selected date.
+ * Date filter + server-side pagination (10/page); Share Excel for selected date.
  */
 import React, { useState, useCallback, startTransition } from 'react';
 import {
   RefreshCw,
   Share2,
-  Download,
   Calendar as CalendarIcon,
   ChevronLeft,
   ChevronRight,
@@ -25,7 +24,6 @@ import {
   buildWellnessScoreReportFileName,
   buildWellnessScoreWorkbookBuffer,
   shareWellnessScoreExcel,
-  downloadWellnessScoreExcel,
 } from '../utils/wellnessScoreReportExcel.js';
 import { fetchWellnessScoreReport } from '../services/wellnessScoreReportApi.js';
 import { getDbUserId } from '../../../shared/services/sessionStorage';
@@ -247,7 +245,7 @@ export default function WellnessScoreReport({ user, tabVisitKey = 0 }) {
   }, []);
 
   const runExport = useCallback(
-    async (mode) => {
+    async () => {
       if (!coachId || exporting) return;
       setExporting(true);
       try {
@@ -271,13 +269,8 @@ export default function WellnessScoreReport({ user, tabVisitKey = 0 }) {
         const fileName = buildWellnessScoreReportFileName(exportDate);
         const buffer = await buildWellnessScoreWorkbookBuffer(members);
 
-        if (mode === 'share') {
-          await shareWellnessScoreExcel(buffer, fileName);
-          showToast('Report ready to share');
-        } else {
-          await downloadWellnessScoreExcel(buffer, fileName);
-          showToast('Excel saved successfully');
-        }
+        await shareWellnessScoreExcel(buffer, fileName);
+        showToast('Report ready to share');
       } catch (err) {
         console.error('Wellness Score Report export failed:', err);
         showToast(err?.message || 'Export failed. Please try again.');
@@ -290,13 +283,7 @@ export default function WellnessScoreReport({ user, tabVisitKey = 0 }) {
 
   const handleShare = useCallback(() => {
     startTransition(() => {
-      void runExport('share');
-    });
-  }, [runExport]);
-
-  const handleDownload = useCallback(() => {
-    startTransition(() => {
-      void runExport('download');
+      void runExport();
     });
   }, [runExport]);
 
@@ -331,15 +318,6 @@ export default function WellnessScoreReport({ user, tabVisitKey = 0 }) {
             >
               <Share2 className="h-3.5 w-3.5" />
               <span className="hidden xs:inline">Share</span>
-            </TouchFeedbackButton>
-            <TouchFeedbackButton
-              onClick={handleDownload}
-              disabled={exporting || filtersBusy}
-              className="flex-shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-green-600 text-white disabled:opacity-40"
-              ariaLabel="Download Excel"
-            >
-              <Download className="h-3.5 w-3.5" />
-              <span className="hidden xs:inline">Download</span>
             </TouchFeedbackButton>
             <TouchFeedbackButton
               onClick={refresh}
