@@ -439,7 +439,7 @@ const NutritionCenterRegistration = ({ user, onBack, initialCenter }) => {
     try {
       const userId = await getUserId(user.email);
       const response = await fetch(
-        `${apiBaseUrl}/api/nutrition-centers?userId=${userId}&teamFilter=self`,
+        `${apiBaseUrl}/api/nutrition-centers?userId=${userId}&teamFilter=self&paginate=0`,
         {
           cache: 'no-store',
           headers: {

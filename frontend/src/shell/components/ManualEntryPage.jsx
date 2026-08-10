@@ -27,7 +27,7 @@ import {
   buildAnalysisFromManualFood as buildManualFoodAnalysis,
   fetchWatchBurnedCalories,
 } from '../../features/nutrition';
-import { ManualWeightEntryModal, saveWeight, warmLatestWeightCache, getCachedLatestWeight, fetchLatestWeightEntry } from '../../features/weight';
+import { ManualWeightEntryModal, saveWeight, warmLatestWeightCache, getCachedLatestWeight } from '../../features/weight';
 import { ManualEducationEntryModal, saveLog } from '../../features/education';
 import { ManualWatchEntryModal } from '../../features/activity';
 import {
@@ -91,7 +91,7 @@ const BRAND = {
 
 /** Shared Log-as button chrome — fills one cell in the 3×3 grid. */
 const LOG_AS_BTN_BASE =
-  'log-as-btn flex h-full min-h-[4.75rem] w-full min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 py-2 text-center cursor-pointer select-none transition-[transform,box-shadow,background-color,border-color] duration-150 ease-out disabled:pointer-events-none disabled:opacity-50 min-[380px]:min-h-[5rem] min-[380px]:gap-1.5 sm:min-h-[5.25rem]';
+  'log-as-btn flex h-full min-h-[3.75rem] w-full min-w-0 flex-col items-center justify-center gap-0.5 rounded-xl px-0.5 py-1.5 text-center cursor-pointer select-none transition-[transform,box-shadow,background-color,border-color] duration-150 ease-out disabled:pointer-events-none disabled:opacity-50 min-[360px]:min-h-[4.25rem] min-[360px]:gap-1 min-[360px]:px-1 min-[360px]:py-2 min-[400px]:min-h-[4.75rem] sm:min-h-[5.25rem] sm:gap-1.5';
 
 const LOG_AS_BTN_IDLE = [
   LOG_AS_BTN_BASE,
@@ -114,8 +114,8 @@ function LogAsIconWrap({ selected = false, muted = false, compact = false, child
       className={[
         'flex shrink-0 items-center justify-center',
         compact
-          ? 'h-8 w-8 min-[380px]:h-9 min-[380px]:w-9 sm:h-10 sm:w-10'
-          : 'h-9 w-9 min-[380px]:h-10 min-[380px]:w-10 sm:h-11 sm:w-11',
+          ? 'h-7 w-7 min-[360px]:h-8 min-[360px]:w-8 min-[400px]:h-9 min-[400px]:w-9 sm:h-10 sm:w-10'
+          : 'h-8 w-8 min-[360px]:h-9 min-[360px]:w-9 min-[400px]:h-10 min-[400px]:w-10 sm:h-11 sm:w-11',
         selected
           ? 'rounded-full bg-white/15 ring-1 ring-white/25'
           : muted
@@ -210,7 +210,6 @@ export default function ManualEntryPage({
   const [activeForm, setActiveForm] = useState(null);
   /** When food search opened from Snacks & Soups subtypes. */
   const [foodEntryMeta, setFoodEntryMeta] = useState(null);
-  const [saving, setSaving] = useState(false);
   const [closingWithoutLog, setClosingWithoutLog] = useState(false);
   /** Full-screen preview of the captured photo. */
   const [previewExpanded, setPreviewExpanded] = useState(false);
@@ -227,7 +226,15 @@ export default function ManualEntryPage({
   // True after light watch-calories has returned once (prefetch or open).
   const workoutSummaryReadyRef = useRef(false);
 
+  // Capture row must exist before LOG AS / AI can finish. Upload runs in the
+  // background — UI stays interactive; taps are queued until captureId arrives.
+  const captureReady = Boolean(captureId);
+  const [pendingLogAsId, setPendingLogAsId] = useState(null);
+  const [pendingAi, setPendingAi] = useState(false);
+
   // New capture while this screen stays mounted — close any open sub-form.
+  // Do not clear pendingLogAsId / pendingAi here: captureId often flips null → id
+  // on the same mount, and those pending taps must flush once ready.
   useEffect(() => {
     setActiveForm(null);
     setFoodEntryMeta(null);
@@ -257,9 +264,11 @@ export default function ManualEntryPage({
     }
   }, [creditsEnabled, userId, apiBaseUrl]);
 
+  // Defer credits fetch until photo is saved — frees connections for POST /captures.
   useEffect(() => {
+    if (!captureReady) return;
     refreshCredits();
-  }, [refreshCredits]);
+  }, [captureReady, refreshCredits]);
 
   // Light beverage summary (AnalysisData only — no images). Powers water ml + Afresh scoops.
   const loadBeverageToday = useCallback((opts = {}) => {
@@ -311,9 +320,9 @@ export default function ManualEntryPage({
     return () => { cancelled = true; };
   }, [userId, apiBaseUrl]);
 
-  // Prefetch beverage / workout summaries during idle so first paint stays snappy.
+  // Prefetch beverage / workout summaries only after capture is saved (idle).
   useEffect(() => {
-    if (!userId) return undefined;
+    if (!userId || !captureReady) return undefined;
     beverageSummaryReadyRef.current = false;
     workoutSummaryReadyRef.current = false;
     let cancelled = false;
@@ -337,7 +346,7 @@ export default function ManualEntryPage({
       }
       if (timeoutId != null) clearTimeout(timeoutId);
     };
-  }, [userId, loadBeverageToday, loadWorkoutToday]);
+  }, [userId, captureReady, loadBeverageToday, loadWorkoutToday]);
 
   // Refresh when stepper opens. Spinner only if prefetch has not finished yet.
   useEffect(() => {
@@ -355,8 +364,6 @@ export default function ManualEntryPage({
     return loadWorkoutToday({ showLoading: !workoutSummaryReadyRef.current });
   }, [activeForm, loadWorkoutToday]);
 
-  const captureReady = Boolean(captureId);
-
   const exit = (shareMeta = null) => {
     // Leave classify immediately — share sheet opens from App in the background.
     // onSaved must read imageBase64 synchronously before onBack clears the payload.
@@ -366,7 +373,12 @@ export default function ManualEntryPage({
 
   /** Discard capture and leave — must not remain in Diary as unknown/Other. */
   const handleCloseWithoutLog = () => {
-    if (closingWithoutLog || saving || aiStarting) return;
+    if (closingWithoutLog) return;
+    // Allow cancel while Auto Detect is only queued (photo still saving).
+    if (aiStarting && !pendingAi) return;
+    setPendingLogAsId(null);
+    setPendingAi(false);
+    setAiStarting(false);
     setClosingWithoutLog(true);
     const id = captureId;
     const uid = userId;
@@ -379,19 +391,34 @@ export default function ManualEntryPage({
     }
   };
 
-  const saveFoodAnalysis = async (analysisResult, toastMsg, activityCaption = null) => {
-    await promoteUnknownToFood({
+  const saveFoodAnalysis = (analysisResult, toastMsg, activityCaption = null) => {
+    // Close classify immediately — promote runs in background (same as Food).
+    onToast?.(toastMsg);
+    void promoteUnknownToFood({
       captureId,
       viewerUserId: userId,
       analysisResult,
       originalCapturedAt: originalCapturedAt || null,
+    }).catch((err) => {
+      onToast?.(err?.message || "Couldn't save — check Diary.");
     });
-    onToast?.(toastMsg);
     exit(activityCaption ? { activityCaption } : null);
   };
 
-  const handleAiAnalyze = async () => {
-    if (!userId || !imageBase64 || aiStarting) return;
+  const openCategory = useCallback((id) => {
+    const next = resolveManualLogCategoryClick(id);
+    if (!next) return;
+    if (next.kind === 'healthy-snacks-picker') {
+      setFoodEntryMeta(null);
+      setActiveForm(MANUAL_LOG_CATEGORY.HEALTHY_SNACKS);
+      return;
+    }
+    setFoodEntryMeta(null);
+    setActiveForm(next.formId);
+  }, []);
+
+  const startAiAnalyze = useCallback(async () => {
+    if (!userId || !imageBase64) return;
     setHint(null);
     setAiStarting(true);
     try {
@@ -416,20 +443,48 @@ export default function ManualEntryPage({
       setHint(err?.message || 'Could not start AI — pick a type below.');
       setAiStarting(false);
     }
+  // exit / onStartBackgroundAi are stable enough for this screen lifetime
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId, imageBase64, creditsEnabled, apiBaseUrl]);
+
+  const handleAiAnalyze = () => {
+    if (!userId || !imageBase64 || aiStarting || closingWithoutLog) return;
+    if (!captureReady) {
+      setPendingAi(true);
+      setPendingLogAsId(null);
+      setAiStarting(true);
+      return;
+    }
+    void startAiAnalyze();
   };
 
   const handleCategoryClick = (id) => {
-    if (!captureReady || saving || aiStarting) return;
-    const next = resolveManualLogCategoryClick(id);
-    if (!next) return;
-    if (next.kind === 'healthy-snacks-picker') {
-      setFoodEntryMeta(null);
-      setActiveForm(MANUAL_LOG_CATEGORY.HEALTHY_SNACKS);
+    if (closingWithoutLog) return;
+    // Queued Auto Detect can still be switched to a Log-as type.
+    if (aiStarting && !pendingAi) return;
+    if (!captureReady) {
+      setPendingLogAsId(id);
+      setPendingAi(false);
+      setAiStarting(false);
       return;
     }
-    setFoodEntryMeta(null);
-    setActiveForm(next.formId);
+    openCategory(id);
   };
+
+  // Flush queued Log-as / Auto Detect once the background capture POST finishes.
+  useEffect(() => {
+    if (!captureReady) return;
+    if (pendingLogAsId) {
+      const id = pendingLogAsId;
+      setPendingLogAsId(null);
+      openCategory(id);
+      return;
+    }
+    if (pendingAi) {
+      setPendingAi(false);
+      void startAiAnalyze();
+    }
+  }, [captureReady, pendingLogAsId, pendingAi, openCategory, startAiAnalyze]);
 
   const handleHealthySnacksPick = (subtypeId) => {
     const next = resolveHealthySnacksSubtypeClick(subtypeId);
@@ -492,74 +547,63 @@ export default function ManualEntryPage({
     exit(activityCaption ? { activityCaption } : null);
   };
 
-  const handleWeightSave = async ({ weightValue, unit, bmr }) => {
-    setSaving(true);
-    try {
-      // Capture previous BEFORE saveWeight updates the latest-weight cache.
-      let previousWeight = getCachedLatestWeight(userId)?.value ?? null;
-      if (previousWeight == null && userId) {
-        try {
-          previousWeight = (await fetchLatestWeightEntry(userId))?.value ?? null;
-        } catch {
-          previousWeight = null;
-        }
-      }
+  const handleWeightSave = ({ weightValue, unit, bmr }) => {
+    // Share caption uses cache only — do not block Save on a network round-trip.
+    const previousWeight = getCachedLatestWeight(userId)?.value ?? null;
+    const capId = captureId;
+    const uid = userId;
+    const img = imageBase64;
 
-      await saveWeight({
-        userId,
-        weightValue,
-        unit: unit || 'kg',
-        bmr,
-        captureId,
-        imageBase64ToSave: imageBase64,
-      });
-      setActiveForm(null);
-      onToast?.('Weight saved to Diary');
-      exit({
-        activityCaption: buildDiaryShareSuffix('weight', {
-          previousWeight,
-          currentWeight: weightValue,
-        }),
-      });
-    } catch (err) {
-      const msg = err?.message || 'Failed to save weight';
-      setHint(msg);
-      throw new Error(msg);
-    } finally {
-      setSaving(false);
-    }
+    setActiveForm(null);
+    onToast?.('Weight saved to Diary');
+    exit({
+      activityCaption: buildDiaryShareSuffix('weight', {
+        previousWeight,
+        currentWeight: weightValue,
+      }),
+    });
+
+    void saveWeight({
+      userId: uid,
+      weightValue,
+      unit: unit || 'kg',
+      bmr,
+      captureId: capId,
+      imageBase64ToSave: img,
+    }).catch((err) => {
+      onToast?.(err?.message || "Couldn't save weight — check Diary.");
+    });
   };
 
-  const handleWatchSave = async ({ caloriesBurned, source }) => {
-    setSaving(true);
-    try {
-      await saveLog({
-        userId,
-        platform: source || 'Smartwatch',
-        topic: `Calories Burned: ${caloriesBurned} kcal`,
-        captureId,
-        imageBase64,
-      });
-      setActiveForm(null);
-      onToast?.('Activity saved to Diary');
-      exit({
-        activityCaption: buildDiaryShareSuffix('workout', {
-          caloriesBurned,
-        }),
-      });
-    } catch (err) {
-      const msg = err?.message || 'Failed to save activity';
-      setHint(msg);
-      throw new Error(msg);
-    } finally {
-      setSaving(false);
-    }
+  const handleWatchSave = ({ caloriesBurned, source }) => {
+    const capId = captureId;
+    const uid = userId;
+    const img = imageBase64;
+
+    setActiveForm(null);
+    onToast?.('Activity saved to Diary');
+    exit({
+      activityCaption: buildDiaryShareSuffix('workout', {
+        caloriesBurned,
+      }),
+    });
+
+    void saveLog({
+      userId: uid,
+      platform: source || 'Smartwatch',
+      topic: `Calories Burned: ${caloriesBurned} kcal`,
+      captureId: capId,
+      imageBase64: img,
+    }).catch((err) => {
+      onToast?.(err?.message || "Couldn't save activity — check Diary.");
+    });
   };
 
-  const handleShakeLog = async (payload) => {
+  const handleShakeLog = (payload) => {
     const analysis = shakePayloadToAnalysis(payload);
     const shakeName = analysis?.foods?.[0]?.name || 'Protein Shake';
-    await saveFoodAnalysis(
+    setActiveForm(null);
+    saveFoodAnalysis(
       analysis,
       'Shake saved to Diary',
       buildDiaryShareSuffix('shake', {
@@ -568,10 +612,9 @@ export default function ManualEntryPage({
         shakeProducts: analysis.shakeProducts,
       }),
     );
-    setActiveForm(null);
   };
 
-  const handleAfreshConfirm = async (targetScoops) => {
+  const handleAfreshConfirm = (targetScoops) => {
     const target = Math.max(0, Math.round(Number(targetScoops) || 0));
     const current = Math.max(0, Math.round(Number(afreshTodayScoops) || 0));
     const delta = target - current;
@@ -582,16 +625,16 @@ export default function ManualEntryPage({
     }
     const analysis = buildAfreshAnalysisResult(delta);
     const calories = analysis?.total?.calories ?? 0;
+    setActiveForm(null);
     // Share today's running total (after this log), not just the delta — same as water.
-    await saveFoodAnalysis(
+    saveFoodAnalysis(
       analysis,
       `+${delta} scoop${delta === 1 ? '' : 's'} Afresh logged (today ${target})`,
       buildDiaryShareSuffix('afresh', { scoops: target, calories }),
     );
-    setActiveForm(null);
   };
 
-  const handleWaterConfirm = async (targetMl) => {
+  const handleWaterConfirm = (targetMl) => {
     const target = Math.max(0, Math.round(Number(targetMl) || 0));
     const current = Math.max(0, Math.round(Number(waterTodayMl) || 0));
     const delta = target - current;
@@ -600,39 +643,38 @@ export default function ManualEntryPage({
       setActiveForm(null);
       return;
     }
+    setActiveForm(null);
     // Share today's running total (after this log), not just the delta.
-    await saveFoodAnalysis(
+    saveFoodAnalysis(
       buildWaterAnalysisResult(delta),
       `+${delta} ml water logged (today ${target} ml)`,
       buildDiaryShareSuffix('water', { volumeMl: target }),
     );
   };
 
-  const handleEducationSave = async ({ platform, topic }) => {
-    setSaving(true);
-    try {
-      await saveLog({
-        userId,
+  const handleEducationSave = ({ platform, topic }) => {
+    const capId = captureId;
+    const uid = userId;
+    const img = imageBase64;
+
+    setActiveForm(null);
+    onToast?.('Education saved to Diary');
+    exit({
+      activityCaption: buildDiaryShareSuffix('education', {
         platform,
-        topic,
-        captureId,
-        imageBase64,
-      });
-      setActiveForm(null);
-      onToast?.('Education saved to Diary');
-      exit({
-        activityCaption: buildDiaryShareSuffix('education', {
-          platform,
-          session: topic,
-        }),
-      });
-    } catch (err) {
-      const msg = err?.message || 'Failed to save education';
-      setHint(msg);
-      throw new Error(msg);
-    } finally {
-      setSaving(false);
-    }
+        session: topic,
+      }),
+    });
+
+    void saveLog({
+      userId: uid,
+      platform,
+      topic,
+      captureId: capId,
+      imageBase64: img,
+    }).catch((err) => {
+      onToast?.(err?.message || "Couldn't save education — check Diary.");
+    });
   };
 
   // Don't treat credits as available until status has loaded — avoids green CTA flash then lock.
@@ -642,30 +684,32 @@ export default function ManualEntryPage({
   const showCreditsPanel = creditsEnabled && credits != null && credits.enabled === true;
   const showAiButton = !creditsEnabled || (credits != null && credits.enabled === true);
   const aiDisabled =
-    !captureReady || aiStarting || outOfCredits || creditsChecking || closingWithoutLog;
-  const logAsDisabled = !captureReady || saving || closingWithoutLog;
+    (aiStarting && !pendingAi) || outOfCredits || creditsChecking || closingWithoutLog;
+  const logAsDisabled = closingWithoutLog || (aiStarting && !pendingAi);
 
   return (
     <div className="fixed inset-0 z-40 flex flex-col" style={{ background: BRAND.pageBg }}>
       {/* Header — white bar like Home */}
       <header className="safe-top shrink-0 border-b border-green-100 bg-white shadow-sm">
-        <div className="mx-auto max-w-lg px-3 py-2.5">
-          <h1 className="truncate text-base font-extrabold text-green-700">What is this image?</h1>
-          <p className="truncate text-xs text-green-600">
-            Select one button from below — e.g. Weight, Afresh, Food…
+        <div className="mx-auto max-w-lg px-3 py-2 min-[360px]:py-2.5">
+          <h1 className="text-sm font-extrabold text-green-700 min-[360px]:text-base">
+            What is this image?
+          </h1>
+          <p className="text-[11px] leading-snug text-green-600 min-[360px]:text-xs">
+            Select one button below — Weight, Afresh, Food…
           </p>
         </div>
       </header>
 
-      {/* Body — medium photo on top; Log as grid fills remaining space */}
-      <main className="mx-auto flex w-full max-w-lg flex-1 flex-col gap-3 overflow-hidden px-3 pb-3 pt-3">
-        {/* Photo preview — medium size, tap to open full-screen */}
+      {/* Body — photo shrinks on short phones; grid + cancel stay reachable */}
+      <main className="mx-auto flex w-full max-w-lg min-h-0 flex-1 flex-col gap-2 overflow-y-auto overscroll-contain px-2.5 pb-2.5 pt-2 min-[360px]:gap-3 min-[360px]:px-3 min-[360px]:pb-3 min-[360px]:pt-3">
+        {/* Photo preview — tap to open full-screen; height scales with viewport */}
         <section className="shrink-0">
           {previewSrc ? (
             <button
               type="button"
               onClick={() => setPreviewExpanded(true)}
-              className="flex h-52 w-full cursor-zoom-in items-center justify-center overflow-hidden rounded-2xl border border-green-100 shadow-sm transition-opacity active:opacity-90 sm:h-60"
+              className="flex h-[min(28vh,10.5rem)] w-full max-h-52 cursor-zoom-in items-center justify-center overflow-hidden rounded-2xl border border-green-100 shadow-sm transition-opacity active:opacity-90 min-[360px]:h-[min(30vh,12rem)] sm:h-60 sm:max-h-none"
               style={{ background: BRAND.mint }}
               aria-label="View photo full screen"
             >
@@ -673,11 +717,12 @@ export default function ManualEntryPage({
                 src={previewSrc}
                 alt="Captured"
                 className="h-full w-full object-contain"
+                decoding="async"
               />
             </button>
           ) : (
             <div
-              className="h-52 w-full rounded-2xl sm:h-60"
+              className="h-[min(28vh,10.5rem)] w-full max-h-52 rounded-2xl min-[360px]:h-[min(30vh,12rem)] sm:h-60 sm:max-h-none"
               style={{ background: BRAND.mint }}
             />
           )}
@@ -689,24 +734,18 @@ export default function ManualEntryPage({
           </p>
         )}
 
-        {!captureReady && (
-          <p className="shrink-0 flex items-center gap-2 rounded-xl border border-emerald-100 bg-white/80 px-3 py-2 text-xs text-emerald-800">
-            <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" aria-hidden />
-            Saving photo…
-          </p>
-        )}
-
         {/* Type grid — large Log-as tiles matching original layout */}
         <section className="flex min-h-0 flex-1 flex-col">
-          <div className="mb-2.5 flex shrink-0 items-center justify-between gap-2">
-            <p className="shrink-0 text-[11px] font-bold uppercase tracking-[0.14em] text-emerald-700/70">
+          <div className="mb-1.5 flex shrink-0 items-center justify-between gap-2 min-[360px]:mb-2.5">
+            <p className="shrink-0 text-[10px] font-bold uppercase tracking-[0.14em] text-emerald-700/70 min-[360px]:text-[11px]">
               Log as
             </p>
           </div>
-          <div className="grid h-full min-h-0 w-full flex-1 grid-cols-3 grid-rows-3 gap-2 sm:gap-2.5">
+          <div className="grid h-full min-h-[11.5rem] w-full flex-1 grid-cols-3 grid-rows-3 gap-1.5 min-[360px]:min-h-[13.5rem] min-[360px]:gap-2 sm:min-h-0 sm:gap-2.5">
             {CATEGORIES.map(({ id, Icon, src, label, isImgIcon, wrapLabel }) => {
               // iOS WebView often blanks custom emoji SVGs — use Lucide for Workout.
               const useLucideOnIos = id === MANUAL_LOG_CATEGORY.SMARTWATCH && isIOS() && Icon;
+              const isPending = pendingLogAsId === id;
               return (
               <button
                 key={id}
@@ -714,19 +753,25 @@ export default function ManualEntryPage({
                 disabled={logAsDisabled}
                 onClick={() => handleCategoryClick(id)}
                 className={LOG_AS_BTN_IDLE}
+                aria-busy={isPending || undefined}
               >
                 <LogAsIconWrap>
-                  {useLucideOnIos ? (
+                  {isPending ? (
+                    <Loader2
+                      className="h-7 w-7 animate-spin min-[360px]:h-8 min-[360px]:w-8 min-[400px]:h-9 min-[400px]:w-9 sm:h-10 sm:w-10"
+                      aria-hidden
+                    />
+                  ) : useLucideOnIos ? (
                     <Icon className="h-5 w-5" strokeWidth={2.1} aria-hidden />
                   ) : isImgIcon ? (
                     <PublicIcon
                       src={src}
-                      className="h-8 w-8 min-[380px]:h-9 min-[380px]:w-9 sm:h-10 sm:w-10"
+                      className="h-7 w-7 min-[360px]:h-8 min-[360px]:w-8 min-[400px]:h-9 min-[400px]:w-9 sm:h-10 sm:w-10"
                       alt=""
                     />
                   ) : (
                     <Icon
-                      className="h-8 w-8 min-[380px]:h-9 min-[380px]:w-9 sm:h-10 sm:w-10"
+                      className="h-7 w-7 min-[360px]:h-8 min-[360px]:w-8 min-[400px]:h-9 min-[400px]:w-9 sm:h-10 sm:w-10"
                       strokeWidth={2}
                       aria-hidden
                     />
@@ -736,8 +781,8 @@ export default function ManualEntryPage({
                   className={[
                     'max-w-full px-0.5 font-bold leading-tight text-emerald-900',
                     wrapLabel
-                      ? 'line-clamp-2 whitespace-normal text-[9px] min-[380px]:text-[10px] sm:text-[11px]'
-                      : 'truncate text-[11px] min-[380px]:text-[12px] sm:text-[13px]',
+                      ? 'line-clamp-2 whitespace-normal text-[8px] min-[360px]:text-[9px] min-[400px]:text-[10px] sm:text-[11px]'
+                      : 'truncate text-[10px] min-[360px]:text-[11px] min-[400px]:text-[12px] sm:text-[13px]',
                   ].join(' ')}
                 >
                   {label}
@@ -755,17 +800,17 @@ export default function ManualEntryPage({
                 >
                   <LogAsIconWrap compact>
                     <Lock
-                      className="h-7 w-7 min-[380px]:h-8 min-[380px]:w-8 sm:h-9 sm:w-9"
+                      className="h-6 w-6 min-[360px]:h-7 min-[360px]:w-7 min-[400px]:h-8 min-[400px]:w-8 sm:h-9 sm:w-9"
                       aria-hidden
                     />
                   </LogAsIconWrap>
-                  <span className="max-w-full truncate whitespace-nowrap px-0.5 text-[10px] font-semibold leading-none text-emerald-800 min-[380px]:text-[11px] sm:text-[12px]">
+                  <span className="max-w-full truncate whitespace-nowrap px-0.5 text-[9px] font-semibold leading-none text-emerald-800 min-[360px]:text-[10px] min-[400px]:text-[11px] sm:text-[12px]">
                     Unlock on
                   </span>
                   {showCreditsPanel && (
                     <LogAsUnlockDate
                       timezoneIana={credits?.timezoneIana}
-                      className="text-[11px] font-medium text-amber-600 min-[380px]:text-[12px] sm:text-[13px]"
+                      className="text-[10px] font-medium text-amber-600 min-[360px]:text-[11px] min-[400px]:text-[12px] sm:text-[13px]"
                     />
                   )}
                 </div>
@@ -780,17 +825,17 @@ export default function ManualEntryPage({
                   ].join(' ')}
                 >
                   <LogAsIconWrap selected compact={Boolean(showCreditsPanel)}>
-                    {aiStarting ? (
-                      <Loader2 className="h-8 w-8 animate-spin text-white min-[380px]:h-9 min-[380px]:w-9 sm:h-10 sm:w-10" />
+                    {aiStarting || pendingAi ? (
+                      <Loader2 className="h-7 w-7 animate-spin text-white min-[360px]:h-8 min-[360px]:w-8 min-[400px]:h-9 min-[400px]:w-9 sm:h-10 sm:w-10" />
                     ) : (
-                      <Sparkles className="h-8 w-8 text-white min-[380px]:h-9 min-[380px]:w-9 sm:h-10 sm:w-10" />
+                      <Sparkles className="h-7 w-7 text-white min-[360px]:h-8 min-[360px]:w-8 min-[400px]:h-9 min-[400px]:w-9 sm:h-10 sm:w-10" />
                     )}
                   </LogAsIconWrap>
-                  <span className="max-w-full truncate whitespace-nowrap px-0.5 text-[11px] font-semibold leading-tight text-white min-[380px]:text-[12px] sm:text-[13px]">
-                    {aiStarting ? 'Starting…' : 'Auto Detect'}
+                  <span className="max-w-full truncate whitespace-nowrap px-0.5 text-[10px] font-semibold leading-tight text-white min-[360px]:text-[11px] min-[400px]:text-[12px] sm:text-[13px]">
+                    {aiStarting || pendingAi ? 'Starting…' : 'Auto Detect'}
                   </span>
                   {showCreditsPanel && credits && (
-                    <p className="max-w-full truncate whitespace-nowrap text-[8px] font-semibold tabular-nums text-emerald-100/90 min-[380px]:text-[9px] sm:text-[10px]">
+                    <p className="max-w-full truncate whitespace-nowrap text-[7px] font-semibold tabular-nums text-emerald-100/90 min-[360px]:text-[8px] min-[400px]:text-[9px] sm:text-[10px]">
                       <span className="text-white">
                         {Math.max(0, Number(credits.remaining) ?? 0)}
                       </span>
@@ -799,7 +844,7 @@ export default function ManualEntryPage({
                     </p>
                   )}
                   {showCreditsPanel && creditsLoading && !credits && (
-                    <p className="text-[8px] text-emerald-100/80 min-[380px]:text-[9px] sm:text-[10px]">
+                    <p className="text-[7px] text-emerald-100/80 min-[360px]:text-[8px] min-[400px]:text-[9px] sm:text-[10px]">
                       Checking…
                     </p>
                   )}
@@ -813,8 +858,8 @@ export default function ManualEntryPage({
         <button
           type="button"
           onClick={handleCloseWithoutLog}
-          disabled={saving || aiStarting || closingWithoutLog}
-          className="safe-bottom log-as-btn log-as-btn--idle inline-flex w-full shrink-0 items-center justify-center gap-2 rounded-xl border-2 border-red-200 bg-gradient-to-b from-white to-red-50/40 py-3.5 text-sm font-bold text-red-600 shadow-[0_3px_0_0_rgba(220,38,38,0.2)] transition-[transform,box-shadow] duration-150 active:translate-y-[2px] active:shadow-[0_1px_0_0_rgba(220,38,38,0.18)] disabled:opacity-50"
+          disabled={closingWithoutLog || (aiStarting && !pendingAi)}
+          className="safe-bottom log-as-btn log-as-btn--idle inline-flex w-full shrink-0 items-center justify-center gap-2 rounded-xl border-2 border-red-200 bg-gradient-to-b from-white to-red-50/40 py-3 text-sm font-bold text-red-600 shadow-[0_3px_0_0_rgba(220,38,38,0.2)] transition-[transform,box-shadow] duration-150 active:translate-y-[2px] active:shadow-[0_1px_0_0_rgba(220,38,38,0.18)] disabled:opacity-50 min-[360px]:py-3.5"
         >
           {closingWithoutLog && (
             <Loader2 className="h-4 w-4 animate-spin" aria-hidden />

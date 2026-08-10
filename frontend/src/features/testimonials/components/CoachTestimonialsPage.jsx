@@ -21,7 +21,7 @@ import NativeInput from '../../../shared/components/NativeInput.jsx';
 import LoadingSpinner from '../../../shared/components/LoadingSpinner';
 import {
   listForCoach, getMyTestimonial, getMyVideoTestimonial, getTeamTestimonialReport,
-  submitAllEdits, verifyUnifiedOtp, prepareTestimonialVideoUpload,
+  getTestimonialDetail, submitAllEdits, verifyUnifiedOtp, prepareTestimonialVideoUpload,
 } from '../services/testimonialApi.js';
 import { uploadTestimonialVideoInChunks } from '../services/testimonialVideoUpload.js';
 import TestimonialSearchBar from './TestimonialSearchBar.jsx';
@@ -29,18 +29,16 @@ import OtpInline from './OtpInline.jsx';
 import VideoThumbnailCard from './VideoThumbnailCard.jsx';
 import DiseaseMultiSelect from './DiseaseMultiSelect.jsx';
 import TransformationShareCard from './TransformationShareCard.jsx';
+import { compressImage } from '../hooks/useTestimonial.js';
+import { setCaptureFlowBusy } from '../../../shared/services/captureFlowBusy';
 import {
   UPLOAD_FILTERS,
   TEAM_SCOPES,
   computeMemberCompleteness,
-  filterRowsByUpload,
-  countRowsByUpload,
-  countRowsByTeamScope,
   toggleStatusFilter,
 } from '../utils/testimonialFilters.js';
 import {
   buildSearchSuggestions,
-  filterRowsBySearch,
   normalizeSearchQuery,
 } from '../utils/testimonialSearch.js';
 import { PORTRAIT_IMAGE_CLASS_SM } from '../services/testimonialFormUtils.js';
@@ -395,14 +393,52 @@ function MemberCard({
   teamStats,
   editable = false,
   userId = null,
+  coachId = null,
   onOtpVerified,
 }) {
-  const { user, testimonial } = row;
-  const { level, filledCount, totalSlots } = computeMemberCompleteness(row);
+  const { user } = row;
+  const [detailTestimonial, setDetailTestimonial] = useState(null);
+  const detailInFlightRef = useRef(null);
+  const testimonial = detailTestimonial || row.testimonial;
+  const { level, filledCount, totalSlots } = computeMemberCompleteness({
+    ...row,
+    testimonial,
+  });
+
+  const ensureDetail = useCallback(async () => {
+    if (detailTestimonial) return detailTestimonial;
+    if (editable) return row.testimonial; // Mine already has full my-testimonial payload
+    const memberId = row.user?.userId;
+    if (!memberId) return row.testimonial;
+    if (detailInFlightRef.current) return detailInFlightRef.current;
+    const promise = getTestimonialDetail(memberId, coachId)
+      .then((data) => {
+        const full = data?.testimonial || null;
+        setDetailTestimonial(full);
+        return full;
+      })
+      .finally(() => {
+        detailInFlightRef.current = null;
+      });
+    detailInFlightRef.current = promise;
+    return promise;
+  }, [detailTestimonial, editable, row, coachId]);
+
+  // Lazy-load full media when list row only has thumbs / video paths.
+  useEffect(() => {
+    if (editable) return undefined;
+    const t = row.testimonial;
+    if (!t) return undefined;
+    const needsVideo = (t.healthVideoPath || t.businessVideoPath)
+      && !t.healthVideoUrl && !t.businessVideoUrl;
+    if (needsVideo) {
+      void ensureDetail();
+    }
+    return undefined;
+  }, [editable, row.testimonial, ensureDetail]);
 
   const [expandedPhoto, setExpandedPhoto] = useState(null);
   const hasAfter  = testimonial?.afterImageUrl  && testimonial?.status !== 'incomplete';
-  const diff      = testimonial ? Math.abs((testimonial.afterWeightKg ?? 0) - (testimonial.beforeWeightKg ?? 0)).toFixed(1) : null;
   const issues    = testimonial?.recoveredHealthIssues ?? [];
 
   // ── Inline editing state (Mine card only) ────────────────────────────────
@@ -414,6 +450,9 @@ function MemberCard({
   const [draftHealthPreview,   setDraftHealthPreview]   = useState(null);
   const [draftBusinessPreview, setDraftBusinessPreview] = useState(null);
   const [draftIssues,   setDraftIssues]   = useState(null);
+  // Local text while weight field is open — needed for Android WebView typing
+  const [beforeWeightText, setBeforeWeightText] = useState(null);
+  const [afterWeightText,  setAfterWeightText]  = useState(null);
   const [uploadingHealth,   setUploadingHealth]   = useState(false);
   const [uploadingBusiness, setUploadingBusiness] = useState(false);
   const [pickerSlot,        setPickerSlot]         = useState(null); // 'before' | 'after' | null
@@ -444,6 +483,79 @@ function MemberCard({
   const hasDirtySlots = dirtySlots.length > 0 || !!draftBefore || !!draftAfter;
   const anyVideoUploading = uploadingHealth || uploadingBusiness;
 
+  // Prefer draft edits so the "Lost/Gained X kgs" badge updates live while editing
+  const displayBeforeKg = Number(draftBefore?.weightKg ?? testimonial?.beforeWeightKg ?? 0);
+  const displayAfterKg  = Number(draftAfter?.weightKg ?? (hasAfter ? testimonial?.afterWeightKg : 0) ?? 0);
+  const displayGoalType = draftBefore?.goalType ?? testimonial?.goalType;
+  const displayDuration = draftBefore?.durationText ?? testimonial?.durationText;
+  const diff = testimonial && hasAfter && displayBeforeKg > 0 && displayAfterKg > 0
+    ? Math.abs(displayAfterKg - displayBeforeKg).toFixed(1)
+    : null;
+
+  // Photo-only drafts — weight/duration edits must NOT open this strip (Android focus loss)
+  const hasPhotoDraft = Boolean(
+    draftBefore?.previewUrl || draftBefore?.imageBase64
+    || draftAfter?.previewUrl || draftAfter?.imageBase64
+  );
+
+  const parseWeightInput = useCallback((raw) => {
+    const v = parseFloat(String(raw ?? '').trim().replace(',', '.'));
+    return Number.isFinite(v) && v > 0 ? v : null;
+  }, []);
+
+  const commitBeforeWeight = useCallback((raw) => {
+    const v = parseWeightInput(raw);
+    if (v == null) return;
+    setDraftBefore((prev) => ({
+      ...(prev || { goalType: testimonial?.goalType, durationText: testimonial?.durationText }),
+      weightKg: v,
+    }));
+  }, [parseWeightInput, testimonial?.goalType, testimonial?.durationText]);
+
+  const commitAfterWeight = useCallback((raw) => {
+    const v = parseWeightInput(raw);
+    if (v == null) return;
+    setDraftAfter((prev) => ({ ...(prev || {}), weightKg: v }));
+  }, [parseWeightInput]);
+
+  const openBeforeWeightEdit = useCallback(() => {
+    setBeforeWeightText(String(draftBefore?.weightKg ?? testimonial?.beforeWeightKg ?? ''));
+    setExpandedSlots((prev) => {
+      const next = new Set(prev);
+      next.add('beforeWeight');
+      return next;
+    });
+  }, [draftBefore?.weightKg, testimonial?.beforeWeightKg]);
+
+  const closeBeforeWeightEdit = useCallback((raw) => {
+    if (raw != null) commitBeforeWeight(raw);
+    setBeforeWeightText(null);
+    setExpandedSlots((prev) => {
+      const next = new Set(prev);
+      next.delete('beforeWeight');
+      return next;
+    });
+  }, [commitBeforeWeight]);
+
+  const openAfterWeightEdit = useCallback(() => {
+    setAfterWeightText(String(draftAfter?.weightKg ?? (hasAfter ? testimonial?.afterWeightKg : '') ?? ''));
+    setExpandedSlots((prev) => {
+      const next = new Set(prev);
+      next.add('afterWeight');
+      return next;
+    });
+  }, [draftAfter?.weightKg, hasAfter, testimonial?.afterWeightKg]);
+
+  const closeAfterWeightEdit = useCallback((raw) => {
+    if (raw != null) commitAfterWeight(raw);
+    setAfterWeightText(null);
+    setExpandedSlots((prev) => {
+      const next = new Set(prev);
+      next.delete('afterWeight');
+      return next;
+    });
+  }, [commitAfterWeight]);
+
   const toggleSlot = useCallback((slot) => {
     setExpandedSlots(prev => {
       const next = new Set(prev);
@@ -453,17 +565,59 @@ function MemberCard({
   }, []);
 
   const handleImageFile = useCallback((slot, file) => {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const full = e.target.result;
-      const b64 = full.replace(/^data:image\/[a-z]+;base64,/, '');
-      if (slot === 'before') {
-        setDraftBefore(prev => ({ ...(prev || { weightKg: testimonial?.beforeWeightKg, goalType: testimonial?.goalType, durationText: testimonial?.durationText }), imageBase64: b64, previewUrl: full }));
-      } else {
-        setDraftAfter(prev => ({ ...(prev || { weightKg: testimonial?.afterWeightKg }), imageBase64: b64, previewUrl: full }));
-      }
+    if (!file) return;
+    // Instant local preview — do not wait for FileReader / compression.
+    const objectUrl = URL.createObjectURL(file);
+    const beforeBase = {
+      weightKg: testimonial?.beforeWeightKg,
+      goalType: testimonial?.goalType,
+      durationText: testimonial?.durationText,
     };
-    reader.readAsDataURL(file);
+    const afterBase = { weightKg: testimonial?.afterWeightKg };
+
+    if (slot === 'before') {
+      setDraftBefore((prev) => ({
+        ...(prev || beforeBase),
+        previewUrl: objectUrl,
+        imageBase64: null,
+        compressing: true,
+      }));
+    } else {
+      setDraftAfter((prev) => ({
+        ...(prev || afterBase),
+        previewUrl: objectUrl,
+        imageBase64: null,
+        compressing: true,
+      }));
+    }
+    setPickerSlot(null);
+    setSubmitError(null);
+    setCaptureFlowBusy(true);
+
+    void compressImage(file)
+      .then(({ base64, preview }) => {
+        if (slot === 'before') {
+          setDraftBefore((prev) => {
+            if (!prev) return prev;
+            return { ...prev, imageBase64: base64, previewUrl: preview, compressing: false };
+          });
+        } else {
+          setDraftAfter((prev) => {
+            if (!prev) return prev;
+            return { ...prev, imageBase64: base64, previewUrl: preview, compressing: false };
+          });
+        }
+        URL.revokeObjectURL(objectUrl);
+      })
+      .catch((err) => {
+        URL.revokeObjectURL(objectUrl);
+        if (slot === 'before') setDraftBefore(null);
+        else setDraftAfter(null);
+        setSubmitError(err?.message || 'Could not read that photo. Please try another.');
+      })
+      .finally(() => {
+        setCaptureFlowBusy(false);
+      });
   }, [testimonial]);
 
   const handleVideoFile = useCallback(async (slot, file) => {
@@ -505,48 +659,84 @@ function MemberCard({
     }
   }, [userId]);
 
-  const handleSubmitAll = useCallback(async () => {
-    setIsSubmitting(true);
-    setSubmitError(null);
-    try {
-      const payload = {
-        userId,
-        dirtySlots,
-        ...(draftBefore ? {
-          // Only send image when actually changed
-          ...(draftBefore.imageBase64 ? { beforeImageBase64: draftBefore.imageBase64 } : {}),
-          ...(draftBefore.weightKg    !== undefined ? { beforeWeightKg: draftBefore.weightKg }   : {}),
-          ...(draftBefore.goalType                  ? { goalType: draftBefore.goalType }          : {}),
-          ...(draftBefore.durationText              ? { durationText: draftBefore.durationText }  : {}),
-        } : {}),
-        ...(draftAfter ? {
-          // Only send image when actually changed
-          ...(draftAfter.imageBase64 ? { afterImageBase64: draftAfter.imageBase64 } : {}),
-          ...(draftAfter.weightKg !== undefined ? { afterWeightKg: draftAfter.weightKg } : {}),
-        } : {}),
-        ...(draftHealthPath   ? { healthVideoPath:   draftHealthPath }   : {}),
-        ...(draftBusinessPath ? { businessVideoPath: draftBusinessPath } : {}),
-        ...(draftIssues !== null ? { recoveredHealthIssues: draftIssues } : {}),
-      };
-      await submitAllEdits(payload);
-      // Issues-only OR weight/meta-only = silent save; anything with photo/video needs OTP
-      const needsOtp = dirtySlots.some((s) => ['before','after','health','business'].includes(s));
-      if (!needsOtp) {
-        onOtpVerified?.();
-      } else {
-        setSubmitDone(true);
-      }
-      setDraftBefore(null); setDraftAfter(null);
-      setDraftHealthPath(null); setDraftBusinessPath(null);
-      setDraftHealthPreview(null); setDraftBusinessPreview(null);
+  const handleSubmitAll = useCallback(() => {
+    const needsOtp = dirtySlots.some((s) => ['before', 'after', 'health', 'business'].includes(s));
+    // Photos still compressing — wait so we do not submit without image bytes.
+    if (draftBefore?.compressing || draftAfter?.compressing) {
+      setSubmitError('Photo is still preparing — try Submit again in a moment.');
+      return;
+    }
+    if (draftBefore?.previewUrl && draftBefore.imageBase64 == null && !draftBefore.compressing) {
+      setSubmitError('Before photo failed to prepare. Please pick it again.');
+      return;
+    }
+    if (draftAfter?.previewUrl && draftAfter.imageBase64 == null && !draftAfter.compressing) {
+      setSubmitError('After photo failed to prepare. Please pick it again.');
+      return;
+    }
+
+    const payload = {
+      userId,
+      dirtySlots,
+      ...(draftBefore ? {
+        ...(draftBefore.imageBase64 ? { beforeImageBase64: draftBefore.imageBase64 } : {}),
+        ...(draftBefore.weightKg !== undefined ? { beforeWeightKg: draftBefore.weightKg } : {}),
+        ...(draftBefore.goalType ? { goalType: draftBefore.goalType } : {}),
+        ...(draftBefore.durationText ? { durationText: draftBefore.durationText } : {}),
+      } : {}),
+      ...(draftAfter ? {
+        ...(draftAfter.imageBase64 ? { afterImageBase64: draftAfter.imageBase64 } : {}),
+        ...(draftAfter.weightKg !== undefined ? { afterWeightKg: draftAfter.weightKg } : {}),
+      } : {}),
+      ...(draftHealthPath ? { healthVideoPath: draftHealthPath } : {}),
+      ...(draftBusinessPath ? { businessVideoPath: draftBusinessPath } : {}),
+      ...(draftIssues !== null ? { recoveredHealthIssues: draftIssues } : {}),
+    };
+
+    const clearDrafts = () => {
+      setDraftBefore(null);
+      setDraftAfter(null);
+      setDraftHealthPath(null);
+      setDraftBusinessPath(null);
+      setDraftHealthPreview(null);
+      setDraftBusinessPreview(null);
       setDraftIssues(null);
       setExpandedSlots(new Set());
-    } catch (err) {
-      setSubmitError(err.message || 'Failed to submit. Please try again.');
-    } finally {
-      setIsSubmitting(false);
+    };
+
+    setSubmitError(null);
+
+    // Weight / issues only — close dirty UI immediately; save in background.
+    if (!needsOtp) {
+      clearDrafts();
+      void submitAllEdits(payload)
+        .then(() => {
+          onOtpVerified?.();
+        })
+        .catch((err) => {
+          setSubmitError(err?.message || 'Failed to save. Please try again.');
+        });
+      return;
     }
+
+    // Photo / video changes need server ack before OTP UI.
+    setIsSubmitting(true);
+    setCaptureFlowBusy(true);
+    void submitAllEdits(payload)
+      .then(() => {
+        clearDrafts();
+        setSubmitDone(true);
+      })
+      .catch((err) => {
+        setSubmitError(err?.message || 'Failed to submit. Please try again.');
+      })
+      .finally(() => {
+        setIsSubmitting(false);
+        setCaptureFlowBusy(false);
+      });
   }, [userId, dirtySlots, draftBefore, draftAfter, draftHealthPath, draftBusinessPath, draftIssues, onOtpVerified]);
+
+  const anyPhotoCompressing = Boolean(draftBefore?.compressing || draftAfter?.compressing);
 
   const handleUnifiedOtpVerified = useCallback(() => {
     setSubmitDone(false);
@@ -642,18 +832,31 @@ function MemberCard({
               {editable && expandedSlots.has('beforeWeight') ? (
                 <div className="flex items-center justify-center gap-1 mt-1">
                   <input
-                    type="text" inputMode="decimal" pattern="[0-9]*" step="0.1" min="1" max="500" autoFocus
-                    defaultValue={draftBefore?.weightKg ?? testimonial?.beforeWeightKg ?? ''}
-                    onBlur={(e) => {
-                      const v = parseFloat(e.target.value);
-                      if (v > 0) setDraftBefore(prev => ({ ...(prev || { goalType: testimonial?.goalType, durationText: testimonial?.durationText }), weightKg: v }));
-                      toggleSlot('beforeWeight');
+                    type="text"
+                    inputMode="decimal"
+                    enterKeyHint="done"
+                    autoComplete="off"
+                    autoFocus
+                    value={beforeWeightText ?? ''}
+                    onChange={(e) => {
+                      const raw = e.target.value;
+                      setBeforeWeightText(raw);
+                      commitBeforeWeight(raw);
                     }}
-                    onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); if (e.key === 'Escape') toggleSlot('beforeWeight'); }}
+                    onBlur={(e) => closeBeforeWeightEdit(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') e.currentTarget.blur();
+                      if (e.key === 'Escape') closeBeforeWeightEdit(null);
+                    }}
                     className="w-20 border border-gray-300 rounded-xl px-2 py-1.5 text-sm text-center focus:outline-none focus:ring-2 focus:ring-green-400"
                   />
                   <span className="text-xs text-gray-400">kg</span>
-                  <button type="button" onClick={() => toggleSlot('beforeWeight')} className="text-gray-400 hover:text-gray-600">
+                  <button
+                    type="button"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => closeBeforeWeightEdit(beforeWeightText)}
+                    className="text-gray-400 hover:text-gray-600"
+                  >
                     <X className="h-3.5 w-3.5" />
                   </button>
                 </div>
@@ -664,7 +867,7 @@ function MemberCard({
                     {(draftBefore?.weightKg ?? testimonial?.beforeWeightKg) && <span className="text-xs font-normal text-gray-400"> kg</span>}
                   </p>
                   {editable && (
-                    <button type="button" onClick={() => toggleSlot('beforeWeight')}
+                    <button type="button" onClick={openBeforeWeightEdit}
                       className="p-0.5 rounded-full text-gray-300 hover:text-green-600 transition-colors" aria-label="Edit before weight">
                       <Pencil className="h-2.5 w-2.5" />
                     </button>
@@ -733,18 +936,31 @@ function MemberCard({
               {editable && expandedSlots.has('afterWeight') ? (
                 <div className="flex items-center justify-center gap-1 mt-1">
                   <input
-                    type="text" inputMode="decimal" pattern="[0-9]*" step="0.1" min="1" max="500" autoFocus
-                    defaultValue={draftAfter?.weightKg ?? (hasAfter ? testimonial?.afterWeightKg : '') ?? ''}
-                    onBlur={(e) => {
-                      const v = parseFloat(e.target.value);
-                      if (v > 0) setDraftAfter(prev => ({ ...(prev || {}), weightKg: v }));
-                      toggleSlot('afterWeight');
+                    type="text"
+                    inputMode="decimal"
+                    enterKeyHint="done"
+                    autoComplete="off"
+                    autoFocus
+                    value={afterWeightText ?? ''}
+                    onChange={(e) => {
+                      const raw = e.target.value;
+                      setAfterWeightText(raw);
+                      commitAfterWeight(raw);
                     }}
-                    onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); if (e.key === 'Escape') toggleSlot('afterWeight'); }}
+                    onBlur={(e) => closeAfterWeightEdit(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') e.currentTarget.blur();
+                      if (e.key === 'Escape') closeAfterWeightEdit(null);
+                    }}
                     className="w-20 border border-purple-300 rounded-xl px-2 py-1.5 text-sm text-center focus:outline-none focus:ring-2 focus:ring-purple-400"
                   />
                   <span className="text-xs text-gray-400">kg</span>
-                  <button type="button" onClick={() => toggleSlot('afterWeight')} className="text-gray-400 hover:text-gray-600">
+                  <button
+                    type="button"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => closeAfterWeightEdit(afterWeightText)}
+                    className="text-gray-400 hover:text-gray-600"
+                  >
                     <X className="h-3.5 w-3.5" />
                   </button>
                 </div>
@@ -755,7 +971,7 @@ function MemberCard({
                     {(draftAfter?.weightKg ?? (hasAfter ? testimonial?.afterWeightKg : null)) && <span className="text-xs font-normal text-gray-400"> kg</span>}
                   </p>
                   {editable && (
-                    <button type="button" onClick={() => toggleSlot('afterWeight')}
+                    <button type="button" onClick={openAfterWeightEdit}
                       className="p-0.5 rounded-full text-gray-300 hover:text-purple-600 transition-colors" aria-label="Edit after weight">
                       <Pencil className="h-2.5 w-2.5" />
                     </button>
@@ -767,8 +983,8 @@ function MemberCard({
         </div>
       )}
 
-      {/* Compact metadata strip — visible when editable and photos are being edited */}
-      {editable && (draftBefore || draftAfter) && (
+      {/* Compact metadata strip — only when a new photo is being edited (not weight-only) */}
+      {editable && hasPhotoDraft && (
         <div className="grid grid-cols-2 gap-2 px-1">
           {draftBefore && (
             <>
@@ -831,13 +1047,13 @@ function MemberCard({
           {/* "Lost X kgs in Y duration" sentence */}
           {diff && hasAfter && (
             <div className="flex items-center gap-2 flex-wrap">
-              <span className={`inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-sm font-bold border-2 ${testimonial.goalType === 'loss' ? 'bg-green-600 text-white border-green-700' : 'bg-blue-600 text-white border-blue-700'} shadow-sm`}>
-                {testimonial.goalType === 'loss'
+              <span className={`inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-sm font-bold border-2 ${displayGoalType === 'loss' ? 'bg-green-600 text-white border-green-700' : 'bg-blue-600 text-white border-blue-700'} shadow-sm`}>
+                {displayGoalType === 'loss'
                   ? <TrendingDown className="h-3 w-3 shrink-0" />
                   : <TrendingUp   className="h-3 w-3 shrink-0" />
                 }
-                {testimonial.goalType === 'loss' ? 'Lost' : 'Gained'} {diff} kgs
-                {testimonial.durationText ? ` in ${testimonial.durationText}` : ''}
+                {displayGoalType === 'loss' ? 'Lost' : 'Gained'} {diff} kgs
+                {displayDuration ? ` in ${displayDuration}` : ''}
               </span>
               {/* Pencil/Plus for duration edit (Mine only) */}
               {editable && (
@@ -877,9 +1093,9 @@ function MemberCard({
             </div>
           )}
           {/* No diff yet — show before weight or add prompt */}
-          {(!diff || !hasAfter) && testimonial.beforeWeightKg && (
+          {(!diff || !hasAfter) && displayBeforeKg > 0 && (
             <span className="inline-flex items-center gap-1 bg-gray-50 border border-gray-200 rounded-full px-3 py-1 text-[11px] text-gray-600 font-medium">
-              {testimonial.beforeWeightKg} kg → ?
+              {displayBeforeKg} kg → ?
             </span>
           )}
           {/* Status badge */}
@@ -1096,10 +1312,12 @@ function MemberCard({
           <button
             type="button"
             onClick={handleSubmitAll}
-            disabled={isSubmitting || anyVideoUploading}
+            disabled={isSubmitting || anyVideoUploading || anyPhotoCompressing}
             className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl bg-green-600 hover:bg-green-700 text-white text-sm font-bold shadow-sm disabled:opacity-60 transition-colors"
           >
-            {isSubmitting
+            {anyPhotoCompressing
+              ? <><div className="h-4 w-4 rounded-full border-2 border-white/40 border-t-white animate-spin" /> Preparing photo…</>
+              : isSubmitting
               ? <><div className="h-4 w-4 rounded-full border-2 border-white/40 border-t-white animate-spin" /> Submitting…</>
               : anyVideoUploading
               ? <><Upload className="h-4 w-4 animate-bounce" /> Uploading video…</>
@@ -1163,7 +1381,19 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
   const [fullTeamMemberCount, setFullTeamMemberCount] = useState(null);
   const [fullLoading, setFullLoading] = useState(false);
   const [fullLoaded, setFullLoaded] = useState(false);
+  const [directPagination, setDirectPagination] = useState({ page: 1, hasMore: false, total: 0 });
+  const [fullPagination, setFullPagination] = useState({ page: 1, hasMore: false, total: 0 });
+  const [directUploadCounts, setDirectUploadCounts] = useState({
+    fully_uploaded: 0, partial_upload: 0, not_uploaded: 0,
+  });
+  const [fullUploadCounts, setFullUploadCounts] = useState({
+    fully_uploaded: 0, partial_upload: 0, not_uploaded: 0,
+  });
+  const [loadingMore, setLoadingMore] = useState(false);
+  const loadMoreSentinelRef = useRef(null);
   const loadGenerationRef = useRef(0);
+  const pageCacheRef = useRef(new Map());
+  const inFlightRef = useRef(new Map());
 
   const coachId = user?.userId || user?.id;
 
@@ -1211,18 +1441,23 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
     setFullLoaded(false);
     setFullTeamMemberCount(null);
     try {
-      // Critical path only — do not block the list on slow team-report.
+      // First page only (limit 10) — never hydrate the full team on open.
       const [directResult, mine] = await Promise.all([
-        listForCoach(coachId, TEAM_SCOPES.DIRECT),
+        listForCoach(coachId, { scope: 'direct', page: 1, limit: 10 }),
         buildMineRow(),
       ]);
       if (generation !== loadGenerationRef.current) return;
 
-      const direct = Array.isArray(directResult) ? directResult : [];
+      const direct = Array.isArray(directResult?.data) ? directResult.data : [];
       setDirectRows(direct);
+      setDirectPagination(directResult?.pagination || { page: 1, hasMore: false, total: direct.length });
+      setDirectUploadCounts(directResult?.uploadCounts || {
+        fully_uploaded: 0, partial_upload: 0, not_uploaded: 0,
+      });
       setMineRow(mine);
-      setHasDownline(direct.length > 0);
-      if (direct.length === 0) setTeamScope(TEAM_SCOPES.MINE);
+      const total = directResult?.pagination?.total ?? direct.length;
+      setHasDownline(total > 0);
+      if (total === 0) setTeamScope(TEAM_SCOPES.MINE);
     } catch (err) {
       if (generation !== loadGenerationRef.current) return;
       setError(err.message || 'Failed to load testimonials');
@@ -1261,9 +1496,19 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
     setFullLoading(true);
     setError(null);
     try {
-      const fullResult = await listForCoach(coachId, TEAM_SCOPES.FULL);
+      const fullResult = await listForCoach(coachId, {
+        scope: 'full',
+        page: 1,
+        limit: 10,
+        search: normalizeSearchQuery(searchQuery),
+        uploadFilter,
+      });
       if (generation !== loadGenerationRef.current) return;
-      setFullRows(Array.isArray(fullResult) ? fullResult : []);
+      setFullRows(Array.isArray(fullResult?.data) ? fullResult.data : []);
+      setFullPagination(fullResult?.pagination || { page: 1, hasMore: false, total: 0 });
+      setFullUploadCounts(fullResult?.uploadCounts || {
+        fully_uploaded: 0, partial_upload: 0, not_uploaded: 0,
+      });
       setFullLoaded(true);
     } catch (err) {
       if (generation !== loadGenerationRef.current) return;
@@ -1273,7 +1518,7 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
         setFullLoading(false);
       }
     }
-  }, [coachId, fullLoaded, fullLoading]);
+  }, [coachId, fullLoaded, fullLoading, searchQuery, uploadFilter]);
 
   useEffect(() => { loadDirectAndMine(); }, [loadDirectAndMine, tabVisitKey]);
 
@@ -1316,37 +1561,144 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
 
   // ── Derived state ──────────────────────────────────────────────────────────
 
+  const isMineScope = !hasDownline || teamScope === TEAM_SCOPES.MINE;
+
   const scopeRows = useMemo(() => {
     if (!hasDownline || teamScope === TEAM_SCOPES.MINE) return mineRow ? [mineRow] : [];
     if (teamScope === TEAM_SCOPES.FULL) return fullRows;
     return directRows;
   }, [hasDownline, teamScope, mineRow, directRows, fullRows]);
 
-  const teamScopeCounts = useMemo(() => {
-    const counts = countRowsByTeamScope(mineRow, directRows, fullRows);
-    // Full list is lazy-loaded — use team-report member total until rows arrive.
-    if (!fullLoaded && fullTeamMemberCount != null) {
-      return { ...counts, [TEAM_SCOPES.FULL]: fullTeamMemberCount };
-    }
-    return counts;
-  }, [mineRow, directRows, fullRows, fullLoaded, fullTeamMemberCount]);
+  const teamScopeCounts = useMemo(() => ({
+    [TEAM_SCOPES.MINE]: mineRow ? 1 : 0,
+    [TEAM_SCOPES.DIRECT]: directPagination.total || directRows.length,
+    [TEAM_SCOPES.FULL]: fullTeamMemberCount ?? fullPagination.total ?? fullRows.length,
+  }), [mineRow, directPagination.total, directRows.length, fullTeamMemberCount, fullPagination.total, fullRows.length]);
 
-  const uploadCounts = useMemo(() => countRowsByUpload(scopeRows), [scopeRows]);
+  // Server-provided completeness counts (search-scoped); avoid recounting only the loaded page.
+  const uploadCounts = teamScope === TEAM_SCOPES.FULL ? fullUploadCounts : directUploadCounts;
 
-  const uploadFilteredRows = useMemo(
-    () => filterRowsByUpload(scopeRows, uploadFilter),
-    [scopeRows, uploadFilter],
-  );
+  // Server already filtered — use scopeRows as filteredRows for team scopes.
+  const filteredRows = scopeRows;
 
   const suggestions = useMemo(
-    () => buildSearchSuggestions(uploadFilteredRows, searchQuery),
-    [uploadFilteredRows, searchQuery],
+    () => buildSearchSuggestions(filteredRows, searchQuery),
+    [filteredRows, searchQuery],
   );
 
-  const filteredRows = useMemo(
-    () => filterRowsBySearch(uploadFilteredRows, searchQuery),
-    [uploadFilteredRows, searchQuery],
-  );
+  const activePagination = teamScope === TEAM_SCOPES.FULL ? fullPagination : directPagination;
+
+  const loadMoreTeam = useCallback(async () => {
+    if (isMineScope || loadingMore || loading || fullLoading) return;
+    if (!activePagination.hasMore) return;
+    const scope = teamScope === TEAM_SCOPES.FULL ? 'full' : 'direct';
+    const nextPage = (activePagination.page || 1) + 1;
+    const cacheKey = `${scope}|${normalizeSearchQuery(searchQuery)}|${uploadFilter}|${nextPage}`;
+    if (pageCacheRef.current.has(cacheKey)) {
+      const cached = pageCacheRef.current.get(cacheKey);
+      if (scope === 'full') {
+        setFullRows((prev) => [...prev, ...cached.data]);
+        setFullPagination(cached.pagination);
+      } else {
+        setDirectRows((prev) => [...prev, ...cached.data]);
+        setDirectPagination(cached.pagination);
+      }
+      return;
+    }
+    if (inFlightRef.current.has(cacheKey)) return;
+
+    setLoadingMore(true);
+    const promise = listForCoach(coachId, {
+      scope,
+      page: nextPage,
+      limit: 10,
+      search: normalizeSearchQuery(searchQuery),
+      uploadFilter,
+    });
+    inFlightRef.current.set(cacheKey, promise);
+    try {
+      const result = await promise;
+      pageCacheRef.current.set(cacheKey, result);
+      const pageData = Array.isArray(result?.data) ? result.data : [];
+      if (scope === 'full') {
+        setFullRows((prev) => [...prev, ...pageData]);
+        setFullPagination(result.pagination || { page: nextPage, hasMore: false });
+        if (result.uploadCounts) setFullUploadCounts(result.uploadCounts);
+      } else {
+        setDirectRows((prev) => [...prev, ...pageData]);
+        setDirectPagination(result.pagination || { page: nextPage, hasMore: false });
+        if (result.uploadCounts) setDirectUploadCounts(result.uploadCounts);
+      }
+    } catch (err) {
+      setError(err.message || 'Failed to load more');
+    } finally {
+      inFlightRef.current.delete(cacheKey);
+      setLoadingMore(false);
+    }
+  }, [
+    isMineScope, loadingMore, loading, fullLoading, activePagination,
+    teamScope, searchQuery, uploadFilter, coachId,
+  ]);
+
+  // Refetch page 1 when search / upload filter changes (server-side).
+  // Skip the first run — bootstrap / loadFullTeam already loaded page 1.
+  const skipFilterFetchRef = useRef(true);
+  useEffect(() => {
+    if (!coachId || !hasDownline || isMineScope) return undefined;
+    if (skipFilterFetchRef.current) {
+      skipFilterFetchRef.current = false;
+      return undefined;
+    }
+    const scope = teamScope === TEAM_SCOPES.FULL ? 'full' : 'direct';
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      try {
+        const result = await listForCoach(coachId, {
+          scope,
+          page: 1,
+          limit: 10,
+          search: normalizeSearchQuery(searchQuery),
+          uploadFilter,
+        });
+        if (cancelled) return;
+        const pageData = Array.isArray(result?.data) ? result.data : [];
+        if (scope === 'full') {
+          setFullRows(pageData);
+          setFullPagination(result.pagination || { page: 1, hasMore: false, total: 0 });
+          if (result.uploadCounts) setFullUploadCounts(result.uploadCounts);
+          setFullLoaded(true);
+        } else {
+          setDirectRows(pageData);
+          setDirectPagination(result.pagination || { page: 1, hasMore: false, total: 0 });
+          if (result.uploadCounts) setDirectUploadCounts(result.uploadCounts);
+        }
+      } catch {
+        // keep current rows
+      }
+    }, 300);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: refetch on search/filter/scope
+  }, [searchQuery, uploadFilter, teamScope, coachId, hasDownline, isMineScope]);
+
+  // Reset skip flag when leaving Mine so Direct/Full get a clean first paint from their loaders.
+  useEffect(() => {
+    if (!isMineScope) skipFilterFetchRef.current = true;
+  }, [teamScope]);
+
+  // Infinite scroll sentinel
+  useEffect(() => {
+    if (isMineScope || !activePagination.hasMore) return undefined;
+    const node = loadMoreSentinelRef.current;
+    if (!node) return undefined;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries[0]?.isIntersecting) void loadMoreTeam();
+    }, { rootMargin: '240px' });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [isMineScope, activePagination.hasMore, loadMoreTeam, filteredRows.length]);
 
   // ── Handlers ───────────────────────────────────────────────────────────────
 
@@ -1400,10 +1752,9 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
     }
   }, [searchQuery, suggestions, highlightedSuggestion, handleSelectSuggestion]);
 
-  const hasScopeData    = scopeRows.length > 0;
+  const hasScopeData    = scopeRows.length > 0 || (activePagination.total > 0 && !isMineScope);
   const hasActiveSearch = normalizeSearchQuery(searchQuery).length > 0;
   const showTeamChrome  = hasDownline;
-  const isMineScope     = !hasDownline || teamScope === TEAM_SCOPES.MINE;
 
   return (
     <div className="max-w-lg mx-auto px-4 pt-4 pb-24 space-y-4">
@@ -1540,9 +1891,20 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
           })}
           editable={isMineScope}
           userId={isMineScope ? coachId : null}
+          coachId={coachId}
           onOtpVerified={isMineScope ? () => { loadDirectAndMine(); } : undefined}
         />
       ))}
+
+      {!loading && !fullLoading && !isMineScope && activePagination.hasMore && (
+        <div ref={loadMoreSentinelRef} className="py-4 flex justify-center">
+          {loadingMore ? (
+            <LoadingSpinner context="normal" />
+          ) : (
+            <p className="text-xs text-gray-400">Scroll for more</p>
+          )}
+        </div>
+      )}
     </div>
   );
 }

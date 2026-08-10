@@ -24,10 +24,10 @@ import { formatBusinessTime, DEFAULT_BUSINESS_TIMEZONE } from '../../../../share
 import { DIARY_FOOD_ACTIVITY } from '../../domain/activityType';
 import { resolveFoodRowPresentation } from '../../domain/foodRowDisplay';
 import {
-  buildDiaryShareText,
   buildDiaryShareSuffix,
   resolveWeightDeltaDisplay,
 } from '../../domain/share';
+import { resolveDiaryThumbSource } from '../../utils/diaryThumbUrl';
 
 /** Red up / green down arrow for weight delta (SVG — avoids blue emoji squares). */
 function WeightDeltaArrow({ direction, className = '' }) {
@@ -107,13 +107,60 @@ function getMealLabel(iso, timezoneIana = DEFAULT_BUSINESS_TIMEZONE) {
   return MEAL_BADGE_BY_CATEGORY[category] || MEAL_BADGE_BY_CATEGORY['late-night'];
 }
 
-function Thumb({ imageBase64, imagePath, fallback, hasImage = false }) {
+function Thumb({
+  imageBase64,
+  imagePath,
+  imageUrl = null,
+  imageUrlFormat = null,
+  fallback,
+  hasImage = false,
+}) {
+  const [lazySrc, setLazySrc] = useState(null);
+
+  useEffect(() => {
+    if (imageBase64 && String(imageBase64).trim() !== '') {
+      setLazySrc(null);
+      return undefined;
+    }
+    if (imagePath && (String(imagePath).startsWith('http') || String(imagePath).startsWith('data:'))) {
+      setLazySrc(null);
+      return undefined;
+    }
+    if (!imageUrl) {
+      setLazySrc(null);
+      return undefined;
+    }
+
+    if (imageUrlFormat === 'raw' || imageUrlFormat === 'data') {
+      setLazySrc(imageUrl);
+      return undefined;
+    }
+
+    // weight / education return JSON { image | imageBase64 }
+    let cancelled = false;
+    setLazySrc(null);
+    fetch(imageUrl)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((json) => {
+        if (cancelled || !json) return;
+        const b64 = json.image || json.imageBase64 || json?.data?.imageBase64;
+        if (!b64 || String(b64).trim() === '') return;
+        const raw = String(b64);
+        setLazySrc(raw.startsWith('data:image') ? raw : `data:image/jpeg;base64,${raw}`);
+      })
+      .catch(() => { /* non-critical thumb */ });
+    return () => { cancelled = true; };
+  }, [imageBase64, imagePath, imageUrl, imageUrlFormat]);
+
   const src =
-    imageBase64 && imageBase64.trim() !== ''
-      ? imageBase64.startsWith('data:image')
+    imageBase64 && String(imageBase64).trim() !== ''
+      ? (String(imageBase64).startsWith('data:image')
         ? imageBase64
-        : `data:image/jpeg;base64,${imageBase64}`
-      : imagePath || null;
+        : `data:image/jpeg;base64,${imageBase64}`)
+      : (lazySrc
+        || (imagePath && (String(imagePath).startsWith('http') || String(imagePath).startsWith('data:'))
+          ? imagePath
+          : null));
   const showPlaceholder = !src && hasImage;
 
   return (
@@ -134,6 +181,19 @@ function Thumb({ imageBase64, imagePath, fallback, hasImage = false }) {
       )}
     </div>
   );
+}
+
+/** Build Thumb props from a diary entry + owner context. */
+function thumbPropsFromEntry(entry, { ownerUserId, viewerUserId } = {}) {
+  const p = entry?.payload || {};
+  const { src, format } = resolveDiaryThumbSource(entry, { ownerUserId, viewerUserId });
+  return {
+    imageBase64: p.imageBase64 || null,
+    imagePath: p.imagePath || null,
+    imageUrl: src,
+    imageUrlFormat: format,
+    hasImage: Boolean(p.hasImage || p.imageBase64 || p.imagePath || src),
+  };
 }
 
 /**
@@ -173,20 +233,60 @@ function swipeCardStyle(swipe, { enabled = true } = {}) {
 
 // ─── kind: food ─────────────────────────────────────────────────────────────
 
-export function FoodRow({ entry, onOpen, onDelete, canDelete = true, hideTime = false, timezoneIana = DEFAULT_BUSINESS_TIMEZONE }) {
+export function FoodRow({
+  entry,
+  onOpen,
+  onDelete,
+  canDelete = true,
+  hideTime = false,
+  timezoneIana = DEFAULT_BUSINESS_TIMEZONE,
+  ownerUserId = null,
+  viewerUserId = null,
+}) {
   const p = entry.payload || {};
   const cal = p.totals?.calories ?? 0;
   const { swipe, swipeEnabled } = useDiaryRowSwipe({ canDelete, onDelete, entry });
   const [isSharing, setIsSharing] = useState(false);
+  const [shareImgSrc, setShareImgSrc] = useState(null);
   const shareCardRef = useRef(null);
+  const thumb = thumbPropsFromEntry(entry, { ownerUserId, viewerUserId });
 
-  // Parse analysisData to extract meal name and item details
-  const foodData = parseAnalysisData(p.analysisData);
-  const mealName = foodData.name || 'Food';
+  // Prefer lean listSummary from paginated API; fall back to legacy analysisData.
+  const listSummary = p.listSummary || null;
+  const foodData = listSummary
+    ? {
+        name: listSummary.name || 'Food',
+        nutrition: {
+          calories: cal,
+          protein: p.totals?.protein ?? 0,
+          carbs: p.totals?.carbs ?? 0,
+          fat: p.totals?.fat ?? 0,
+          fiber: p.totals?.fiber ?? 0,
+          sugar: p.totals?.sugar ?? null,
+          sodium: p.totals?.sodium ?? null,
+          cholesterol: p.totals?.cholesterol ?? null,
+          glycemic_index: p.totals?.glycemicIndex ?? null,
+        },
+        detailedItems: Array.isArray(listSummary.items)
+          ? listSummary.items.map((item) => ({
+              name: item.name,
+              calories: item.calories,
+              volume_ml: listSummary.volumeMl,
+              scoops: listSummary.scoops,
+            }))
+          : [],
+      }
+    : parseAnalysisData(p.analysisData);
+  const mealName = foodData.name || listSummary?.name || 'Food';
   const meal = getMealLabel(entry.capturedAt, timezoneIana);
+  const processedByForType = p.processedBy
+    || (listSummary?.activityType === 'water' ? 'water_preset'
+      : listSummary?.activityType === 'afresh' ? 'afresh_preset'
+        : listSummary?.activityType === 'shake' ? 'shake_calculator'
+          : null);
   const presentation = resolveFoodRowPresentation({
-    processedBy: p.processedBy,
-    analysisData: p.analysisData,
+    processedBy: processedByForType,
+    analysisData: listSummary ? null : p.analysisData,
     foodData,
     calories: cal,
     mealLabel: meal?.label || null,
@@ -206,14 +306,38 @@ export function FoodRow({ entry, onOpen, onDelete, canDelete = true, hideTime = 
   const isAfresh = activityType === DIARY_FOOD_ACTIVITY.AFRESH;
   const isShake = activityType === DIARY_FOOD_ACTIVITY.SHAKE;
   const showNutritionShare = !isWater && !isAfresh;
-  // Individual food items for the share card
   const foodItems = Array.isArray(foodData.detailedItems) ? foodData.detailedItems : [];
 
-  // Resolve image src for share card
-  const imgSrc = p.imageBase64 && p.imageBase64.trim() !== ''
-    ? (p.imageBase64.startsWith('data:image') ? p.imageBase64 : `data:image/jpeg;base64,${p.imageBase64}`)
-    : (p.imagePath || null);
+  // Lazy-hydrate share card image once (on share or when thumb URL is raw).
+  useEffect(() => {
+    if (thumb.imageBase64) {
+      const raw = String(thumb.imageBase64);
+      setShareImgSrc(raw.startsWith('data:image') ? raw : `data:image/jpeg;base64,${raw}`);
+      return undefined;
+    }
+    if (thumb.imageUrlFormat === 'raw' && thumb.imageUrl) {
+      setShareImgSrc(thumb.imageUrl);
+      return undefined;
+    }
+    if (thumb.imageUrlFormat === 'json' && thumb.imageUrl) {
+      let cancelled = false;
+      fetch(thumb.imageUrl)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((json) => {
+          if (cancelled || !json) return;
+          const b64 = json.image || json.imageBase64;
+          if (!b64) return;
+          const raw = String(b64);
+          setShareImgSrc(raw.startsWith('data:image') ? raw : `data:image/jpeg;base64,${raw}`);
+        })
+        .catch(() => {});
+      return () => { cancelled = true; };
+    }
+    setShareImgSrc(thumb.imagePath || null);
+    return undefined;
+  }, [thumb.imageBase64, thumb.imageUrl, thumb.imageUrlFormat, thumb.imagePath]);
 
+  const imgSrc = shareImgSrc;
   const t = resolveFoodShareTotals(p, foodData);
   const macros = [
     { label: 'Calories', value: Math.round(t.calories ?? 0), unit: 'kcal', color: '#f97316' },
@@ -370,7 +494,7 @@ export function FoodRow({ entry, onOpen, onDelete, canDelete = true, hideTime = 
             style={{ width: `${swipe.progress * 100}%`, transition: swipe.dragging ? 'none' : 'width 180ms ease', opacity: swipe.progress > 0 ? 1 : 0 }} />
         )}
 
-        <Thumb imageBase64={p.imageBase64} imagePath={p.imagePath} hasImage={p.hasImage} fallback={thumbFallback} />
+        <Thumb {...thumb} fallback={thumbFallback} />
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5 flex-wrap">
             <h4 className="font-semibold text-gray-900 truncate">{mealName}</h4>
@@ -416,11 +540,22 @@ export function FoodRow({ entry, onOpen, onDelete, canDelete = true, hideTime = 
 
 // ─── kind: weight ───────────────────────────────────────────────────────────
 
-export function WeightRow({ entry, onOpen, onDelete, canDelete = true, hideTime = false, timezoneIana = DEFAULT_BUSINESS_TIMEZONE, previousWeight = null }) {
+export function WeightRow({
+  entry,
+  onOpen,
+  onDelete,
+  canDelete = true,
+  hideTime = false,
+  timezoneIana = DEFAULT_BUSINESS_TIMEZONE,
+  previousWeight = null,
+  ownerUserId = null,
+  viewerUserId = null,
+}) {
   const p = entry.payload || {};
   const { swipe, swipeEnabled } = useDiaryRowSwipe({ canDelete, onDelete, entry });
   const [isSharing, setIsSharing] = useState(false);
   const shareCardRef = useRef(null);
+  const thumb = thumbPropsFromEntry(entry, { ownerUserId, viewerUserId });
   const delta = resolveWeightDeltaDisplay(previousWeight, p.weight);
   const shareText = buildDiaryShareSuffix('weight', {
     previousWeight,
@@ -538,7 +673,7 @@ export function WeightRow({ entry, onOpen, onDelete, canDelete = true, hideTime 
             style={{ width: `${swipe.progress * 100}%`, transition: swipe.dragging ? 'none' : 'width 180ms ease', opacity: swipe.progress > 0 ? 1 : 0 }} />
         )}
 
-        <Thumb imageBase64={p.imageBase64} hasImage={p.hasImage} fallback={<WeighingScaleIcon className="w-6 h-6 text-emerald-600" />} />
+        <Thumb {...thumb} fallback={<WeighingScaleIcon className="w-6 h-6 text-emerald-600" />} />
         <div className="flex-1 min-w-0">
           <h4 className="font-semibold text-gray-900 truncate">Weight</h4>
           {!hideTime && (
@@ -575,9 +710,19 @@ export function WeightRow({ entry, onOpen, onDelete, canDelete = true, hideTime 
 
 // ─── kind: education ────────────────────────────────────────────────────────
 
-export function EducationRow({ entry, onOpen, onDelete, canDelete = true, hideTime = false, timezoneIana = DEFAULT_BUSINESS_TIMEZONE }) {
+export function EducationRow({
+  entry,
+  onOpen,
+  onDelete,
+  canDelete = true,
+  hideTime = false,
+  timezoneIana = DEFAULT_BUSINESS_TIMEZONE,
+  ownerUserId = null,
+  viewerUserId = null,
+}) {
   const p = entry.payload || {};
   const { swipe, swipeEnabled } = useDiaryRowSwipe({ canDelete, onDelete, entry });
+  const thumb = thumbPropsFromEntry(entry, { ownerUserId, viewerUserId });
   const [isSharing, setIsSharing] = useState(false);
   const shareText = buildDiaryShareSuffix('education', {
     platform: p.platform,
@@ -645,7 +790,7 @@ export function EducationRow({ entry, onOpen, onDelete, canDelete = true, hideTi
             style={{ width: `${swipe.progress * 100}%`, transition: swipe.dragging ? 'none' : 'width 180ms ease', opacity: swipe.progress > 0 ? 1 : 0 }} />
         )}
 
-        <Thumb imageBase64={p.imageBase64} hasImage={p.hasImage} fallback={<GraduationCap className="w-6 h-6 text-indigo-600" />} />
+        <Thumb {...thumb} fallback={<GraduationCap className="w-6 h-6 text-indigo-600" />} />
         <div className="flex-1 min-w-0">
           <h4 className="font-semibold text-gray-900 truncate">{p.topic || 'Education'}</h4>
           {!hideTime && (
@@ -765,8 +910,23 @@ function formatRemaining(secs) {
  */
 const TOTAL_BUDGET_SECS = 140;
 
-export function OtherRow({ entry, onOpen, onDelete, canDelete = true, isAnalyzing = false, isBackgroundPending = false, needsClassify = false, hideTime = false, timezoneIana = DEFAULT_BUSINESS_TIMEZONE, currentAttempt = null, totalAttempts = null }) {
+export function OtherRow({
+  entry,
+  onOpen,
+  onDelete,
+  canDelete = true,
+  isAnalyzing = false,
+  isBackgroundPending = false,
+  needsClassify = false,
+  hideTime = false,
+  timezoneIana = DEFAULT_BUSINESS_TIMEZONE,
+  currentAttempt = null,
+  totalAttempts = null,
+  ownerUserId = null,
+  viewerUserId = null,
+}) {
   const p = entry.payload || {};
+  const thumb = thumbPropsFromEntry(entry, { ownerUserId, viewerUserId });
   const { swipe, swipeEnabled: canSwipeDelete } = useDiaryRowSwipe({ canDelete, onDelete, entry });
   const swipeEnabled = canSwipeDelete && !isAnalyzing;
   const showBackgroundHint = isBackgroundPending && !isAnalyzing;
@@ -870,7 +1030,7 @@ export function OtherRow({ entry, onOpen, onDelete, canDelete = true, isAnalyzin
           </div>
         )}
 
-        <Thumb imageBase64={p.imageBase64} imagePath={p.imagePath} hasImage={p.hasImage} fallback={<HelpCircle className="w-6 h-6 text-gray-500" />} />
+        <Thumb {...thumb} fallback={<HelpCircle className="w-6 h-6 text-gray-500" />} />
 
         <div className="flex-1 min-w-0">
           {isAnalyzing ? (

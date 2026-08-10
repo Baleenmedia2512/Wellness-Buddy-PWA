@@ -1,4 +1,4 @@
-// Eight-tab app navigation — responsive from iPhone SE (320px) to Pro Max.
+// App top navigation — responsive from iPhone SE (320px) to Pro Max.
 // The container uses overflow-x-auto so extra tabs scroll naturally on small screens.
 import React from 'react';
 import {
@@ -118,8 +118,8 @@ export default function AppNavTabs({
           iconClass="text-teal-600"
           labelActiveClass="text-teal-900"
           labelClass="text-teal-700"
-          label="Ideal Weight"
-          ariaLabel="Ideal Weight"
+          label="Reports"
+          ariaLabel="Reports Dashboard"
         />
       )}
     </div>

@@ -14,6 +14,7 @@ import {
   findTeamPhoneByUserId,
   linkCardToUser,
   enforceBpcLeadNoCoachUntilOnboarding,
+  invalidateBpcListCache,
 } from '../data/card.repo.js';
 import { syncCardToProfileAfterSave } from '../data/sync.repo.js';
 import { ValidationError } from '../../../shared/lib/ValidationError.js';
@@ -104,6 +105,8 @@ export async function handleCreateCard(body) {
       type_created_by: typeof card.created_by
     });
   }
+
+  invalidateBpcListCache(payload.createdBy ?? card.created_by);
 
   const linkPayload = {
     phoneNumber:   payload.phoneNumber,

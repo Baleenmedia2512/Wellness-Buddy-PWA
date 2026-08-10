@@ -178,14 +178,14 @@ export async function attendanceForCenters(centerIds, startDate, endDate, timezo
     .from('education_logs_table')
     .select('"UserId", nutrition_center_id')
     .in('nutrition_center_id', ids)
-    .eq('"IsDeleted"', 0);
+    .eq('"IsDeleted"', false);
   eduQuery = applyDateRangeFilter(eduQuery, '"CreatedAt"', startDate, endDate, timezoneIana);
 
   let weightQuery = supabase
     .from('weight_records_table')
     .select('"UserId", "NutritionCenterId"')
     .in('"NutritionCenterId"', ids)
-    .eq('"IsDeleted"', 0);
+    .eq('"IsDeleted"', false);
   weightQuery = applyDateRangeFilter(weightQuery, '"CreatedAt"', startDate, endDate, timezoneIana);
 
   let foodQuery = supabase
@@ -221,14 +221,14 @@ export async function getAttendeeList(centerId, startDate, endDate, timezoneIana
     .from('education_logs_table')
     .select('"UserId", "CreatedAt"')
     .eq('nutrition_center_id', centerId)
-    .eq('"IsDeleted"', 0);
+    .eq('"IsDeleted"', false);
   eduQuery = applyDateRangeFilter(eduQuery, '"CreatedAt"', startDate, endDate, timezoneIana);
 
   let weightQuery = supabase
     .from('weight_records_table')
     .select('"UserId", "CreatedAt"')
     .eq('"NutritionCenterId"', centerId)
-    .eq('"IsDeleted"', 0);
+    .eq('"IsDeleted"', false);
   weightQuery = applyDateRangeFilter(weightQuery, '"CreatedAt"', startDate, endDate, timezoneIana);
 
   let foodQuery = supabase

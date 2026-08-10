@@ -6,8 +6,9 @@ import AppNavTabs from "./AppNavTabs";
 import wellnessValleyIcon from "../../assets/wellness-valley-icon.png";
 import { getProfile } from "../../features/user/services/user.api";
 import { fetchHasTeamMembers } from "../../features/team/services/teamSearchService";
+import { isFlagEnabled } from "../../config/featureFlags";
 
-/** Roles that always see the Ideal Weight Report nav tab (ff.reports-module). */
+/** Roles that always see the Reports Dashboard nav tab (ff.reports-module). */
 const REPORTS_TAB_ROLES = ['coach', 'coccoach', 'upline', 'admin', 'developer'];
 
 function canAccessReportsTab(role, hasTeamMembers) {
@@ -43,7 +44,8 @@ const Header = ({
   const [hasTeamMembers, setHasTeamMembers] = useState(false);
   const prevProfileKeyRef = useRef(profileKey);
 
-  const reportsEnabled = canAccessReportsTab(userRole, hasTeamMembers);
+  const reportsEnabled = isFlagEnabled('ff.reports-module')
+    && canAccessReportsTab(userRole, hasTeamMembers);
 
   // Grant report tab to downline leaders even when Role is still "user" (e.g. u2, a3).
   useEffect(() => {

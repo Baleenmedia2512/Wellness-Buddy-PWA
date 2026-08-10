@@ -43,12 +43,13 @@ export function buildDiaryShareSuffix(activityType, payload = {}) {
       return `${name}, serving ${count}`;
     }
     case 'education': {
+      // Session first, then platform — no "education" type prefix (redundant with session names like "Daily Education").
       const platform = (payload.platform || '').trim();
       const session = (payload.session || payload.topic || '').trim();
-      if (platform && session) return `education ${session} · ${platform}`;
-      if (session) return `education ${session}`;
-      if (platform) return `education ${platform}`;
-      return 'education';
+      if (platform && session) return `${session} · ${platform}`;
+      if (session) return session;
+      if (platform) return platform;
+      return null;
     }
     case 'weight': {
       const current = formatShareKg(payload.currentWeight);
