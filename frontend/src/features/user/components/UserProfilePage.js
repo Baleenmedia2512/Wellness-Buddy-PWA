@@ -93,6 +93,10 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
         physicalActivityLevel: data?.physicalActivityLevel || '',
         weightGoalMode: data?.weightGoalMode || 'loss',
         communityId: data?.communityId || '',
+        bodyFat: data?.latestWeightBodyFat != null
+          ? String(data.latestWeightBodyFat)
+          : (data?.bodyFat != null ? String(data.bodyFat) : ''),
+        needsBodyFat: Boolean(data?.needsBodyFat),
         email: data?.email || user?.email || '',
         bodyMetrics: data?.bodyMetrics || null,
       };
@@ -201,7 +205,8 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
 
   const saveDisabled = isSaving || !form.nameValid ||
     !form.height || form.height.trim() === '' ||
-    !form.phone || form.phone.trim() === '';
+    !form.phone || form.phone.trim() === '' ||
+    (form.needsBodyFat && !form.bodyFatValid);
 
   const derivedWeightGoalMode = useMemo(
     () => deriveWeightGoalMode({ heightCm: form.height, currentWeightKg: latestWeight }),
@@ -328,6 +333,8 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
                   physicalActivityLevel={form.physicalActivityLevel}
                   setPhysicalActivityLevel={form.setPhysicalActivityLevel}
                   communityId={form.communityId} setCommunityId={form.setCommunityId}
+                  bodyFat={form.bodyFat} setBodyFat={form.setBodyFat}
+                  showBodyFat={form.needsBodyFat}
                 />
                 <UserProfileBodyMetrics bodyMetrics={form.bodyMetrics} />
                 <IdealWeightCards height={form.height} latestWeight={latestWeight} />

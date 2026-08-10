@@ -1,9 +1,13 @@
-// Name, email, gender, height, diet — used by CompleteProfilePage (unified onboarding).
+// Name, email, gender, height, diet, optional community ID, conditional body fat.
 import React from 'react';
-import { Mail, Ruler, User } from 'lucide-react';
+import { Hash, Mail, Percent, Ruler, User } from 'lucide-react';
 import { DIET_OPTIONS } from '../../services/dietOptions';
 import DietIcon from '../../../../shared/components/icons/DietIcon';
-import { VALID_GENDERS } from '../../domain/profileCompleteness';
+import {
+  VALID_GENDERS,
+  MIN_BODY_FAT_PCT,
+  MAX_BODY_FAT_PCT,
+} from '../../domain/profileCompleteness';
 
 const inputCls = (invalid) =>
   `w-full pl-10 pr-4 py-3 border-2 rounded-xl focus:outline-none text-base bg-white ${
@@ -16,6 +20,8 @@ const CompleteRequiredFields = ({
   gender, setGender, showGender,
   height, setHeight, heightValid,
   dietType, setDietType,
+  communityId, setCommunityId,
+  bodyFat, setBodyFat, showBodyFat, bodyFatValid,
 }) => (
   <>
     <div>
@@ -130,6 +136,49 @@ const CompleteRequiredFields = ({
         ))}
       </div>
     </div>
+
+    <div>
+      <label className="flex items-center gap-1.5 text-sm font-semibold text-gray-700 mb-2">
+        <Hash className="w-4 h-4 text-blue-500" />
+        Community ID
+        <span className="text-gray-400 text-xs font-normal">(optional)</span>
+      </label>
+      <div className="relative">
+        <Hash className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" />
+        <input
+          type="text"
+          value={communityId || ''}
+          onChange={(e) => setCommunityId(e.target.value)}
+          placeholder="Enter your community ID"
+          maxLength={100}
+          className={inputCls(false)}
+          style={{ fontSize: '16px' }}
+        />
+      </div>
+    </div>
+
+    {showBodyFat && (
+      <div>
+        <label className="block text-sm font-semibold text-gray-700 mb-2">
+          Body Fat (%) <span className="text-red-500">*</span>
+        </label>
+        <div className="relative">
+          <Percent className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" />
+          <input
+            type="text"
+            inputMode="decimal"
+            value={bodyFat || ''}
+            onChange={(e) => setBodyFat(e.target.value)}
+            placeholder="e.g. 22"
+            className={inputCls(bodyFat && !bodyFatValid)}
+            style={{ fontSize: '16px' }}
+          />
+        </div>
+        <p className="text-xs text-gray-400 mt-1">
+          Required for BMR. Range: {MIN_BODY_FAT_PCT}–{MAX_BODY_FAT_PCT}%
+        </p>
+      </div>
+    )}
   </>
 );
 

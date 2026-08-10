@@ -12,7 +12,10 @@ import CompletePictureSection from './complete/CompletePictureSection';
 import {
   hasValidProfileName,
   hasValidProfileGender,
+  hasValidBodyFatPercent,
   VALID_GENDERS,
+  MIN_BODY_FAT_PCT,
+  MAX_BODY_FAT_PCT,
 } from '../domain/profileCompleteness';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -26,6 +29,9 @@ const CompleteProfilePage = ({ user, apiBaseUrl, onComplete, showPictureSection 
   const [showGender, setShowGender] = useState(true);
   const [height, setHeight] = useState('');
   const [dietType, setDietType] = useState('');
+  const [communityId, setCommunityId] = useState('');
+  const [bodyFat, setBodyFat] = useState('');
+  const [showBodyFat, setShowBodyFat] = useState(true);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -92,6 +98,19 @@ const CompleteProfilePage = ({ user, apiBaseUrl, onComplete, showPictureSection 
           setDietType(profile.dietType);
         }
 
+        if (profile.communityId) setCommunityId(String(profile.communityId));
+        // Ask for body fat only when weight / BPC has none.
+        const needsBodyFat = profile.needsBodyFat !== false
+          && !(typeof profile.bodyFat === 'number' && hasValidBodyFatPercent(profile.bodyFat))
+          && !(typeof profile.latestWeightBodyFat === 'number'
+            && hasValidBodyFatPercent(profile.latestWeightBodyFat))
+          && !hasValidBodyFatPercent(profile.bodyMetrics?.fatPercent);
+        setShowBodyFat(needsBodyFat);
+        const existingBf = hasValidBodyFatPercent(profile.latestWeightBodyFat)
+          ? profile.latestWeightBodyFat
+          : (hasValidBodyFatPercent(profile.bodyFat) ? profile.bodyFat : null);
+        if (existingBf != null) setBodyFat(String(existingBf));
+
         if (profile.profileImage && (
           profile.profileImage.startsWith('data:image/')
           || profile.profileImage.startsWith('https://')
@@ -123,10 +142,12 @@ const CompleteProfilePage = ({ user, apiBaseUrl, onComplete, showPictureSection 
   const genderValid = !showGender || hasValidProfileGender(gender, null);
   const heightValid = !Number.isNaN(heightNum) && heightNum >= 50 && heightNum <= 250;
   const dietValid = !!dietType;
+  const bodyFatValid = !showBodyFat || hasValidBodyFatPercent(bodyFat);
   const pictureValid = !showPictureSection
     || hasExistingPhoto
     || !!profileImage;
-  const formValid = nameValid && emailValid && genderValid && heightValid && dietValid && pictureValid;
+  const formValid = nameValid && emailValid && genderValid && heightValid && dietValid
+    && bodyFatValid && pictureValid;
 
   const checks = [
     { label: 'Name', done: nameValid },
@@ -134,6 +155,7 @@ const CompleteProfilePage = ({ user, apiBaseUrl, onComplete, showPictureSection 
     ...(showGender ? [{ label: 'Gender', done: genderValid }] : []),
     { label: 'Height', done: heightValid },
     { label: 'Diet Preference', done: dietValid },
+    ...(showBodyFat ? [{ label: 'Body Fat', done: bodyFatValid }] : []),
   ];
   if (showPictureSection) {
     checks.push({ label: 'Profile Picture', done: pictureValid });
@@ -147,6 +169,9 @@ const CompleteProfilePage = ({ user, apiBaseUrl, onComplete, showPictureSection 
       else if (!genderValid) setError('Please select Male or Female.');
       else if (!heightValid) setError('Please enter a valid height (50 - 250 cm).');
       else if (!dietValid) setError('Please select a diet preference.');
+      else if (showBodyFat && !bodyFatValid) {
+        setError(`Please enter body fat (${MIN_BODY_FAT_PCT}–${MAX_BODY_FAT_PCT}%).`);
+      }
       else if (showPictureSection && !pictureValid) {
         setError('Profile picture is required.');
       }
@@ -188,6 +213,11 @@ const CompleteProfilePage = ({ user, apiBaseUrl, onComplete, showPictureSection 
       };
       if (showGender && gender) payload.gender = gender;
       if (showPictureSection && profileImage) payload.profileImage = profileImage;
+      const trimmedCommunityId = communityId.trim();
+      if (trimmedCommunityId) payload.communityId = trimmedCommunityId;
+      if (showBodyFat && hasValidBodyFatPercent(bodyFat)) {
+        payload.bodyFat = parseFloat(bodyFat);
+      }
 
       await saveProfile(payload);
 
@@ -198,6 +228,7 @@ const CompleteProfilePage = ({ user, apiBaseUrl, onComplete, showPictureSection 
         dietType,
         gender: showGender ? gender : undefined,
         profileImage: profileImage || previewUrl || undefined,
+        bodyFat: showBodyFat && hasValidBodyFatPercent(bodyFat) ? parseFloat(bodyFat) : undefined,
       });
     } catch (e) {
       setError(e.message || 'Failed to save. Please try again.');
@@ -205,9 +236,10 @@ const CompleteProfilePage = ({ user, apiBaseUrl, onComplete, showPictureSection 
       setSaving(false);
     }
   }, [
-    formValid, nameValid, emailValid, genderValid, heightValid, dietValid, pictureValid,
+    formValid, nameValid, emailValid, genderValid, heightValid, dietValid, bodyFatValid, pictureValid,
     showPictureSection, profileImage, user, apiBaseUrl,
     trimmedName, trimmedEmail, heightNum, dietType, showGender, gender, previewUrl, onComplete,
+    showBodyFat, bodyFat, communityId,
   ]);
 
   return (
@@ -243,6 +275,12 @@ const CompleteProfilePage = ({ user, apiBaseUrl, onComplete, showPictureSection 
             heightValid={heightValid}
             dietType={dietType}
             setDietType={setDietType}
+            communityId={communityId}
+            setCommunityId={setCommunityId}
+            bodyFat={bodyFat}
+            setBodyFat={setBodyFat}
+            showBodyFat={showBodyFat}
+            bodyFatValid={bodyFatValid}
           />
           {error && (
             <div className="p-3 bg-red-50 border border-red-200 rounded-lg">

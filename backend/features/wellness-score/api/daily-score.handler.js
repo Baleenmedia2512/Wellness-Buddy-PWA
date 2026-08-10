@@ -47,7 +47,7 @@ function pickBmr({ userGoal, latestWeightRow, historicalBodyFat, bodyMetricsCard
   const resolved = resolveBmrForDisplay({
     storedBmr: userGoal?.Bmr ?? latestWeightRow?.Bmr,
     weightKg: latestWeightRow?.Weight,
-    bodyFatPercent: latestWeightRow?.BodyFat ?? historicalBodyFat,
+    bodyFatPercent: latestWeightRow?.BodyFat ?? historicalBodyFat ?? userGoal?.BodyFat,
     cardWeightKg: bodyMetricsCard?.weight_kg,
     cardFatPercent: bodyMetricsCard?.fat_percent,
     cardBmr: bodyMetricsCard?.bmr,
@@ -154,6 +154,7 @@ export async function computeDailyScoreForDate({ userId, date, timezoneIana }) {
   const needsBodyFatFallback =
     !(Number.isFinite(storedBmr) && storedBmr > 0)
     && latestWeightRow?.BodyFat == null
+    && userGoal?.BodyFat == null
     && bodyMetricsCard?.fat_percent == null
     && bodyMetricsCard?.bmr == null;
   if (needsBodyFatFallback) {

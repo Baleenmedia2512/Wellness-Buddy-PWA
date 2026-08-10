@@ -5,6 +5,8 @@
 
 const PLACEHOLDER_PHONE_USER_RE = /^user_\d+$/i;
 const VALID_GENDERS = ['Male', 'Female'];
+const MIN_BODY_FAT_PCT = 1;
+const MAX_BODY_FAT_PCT = 70;
 
 function emailLocalPart(email) {
   const local = String(email || '').split('@')[0]?.trim().toLowerCase();
@@ -52,9 +54,45 @@ export function hasValidProfileGender(gender, bodyMetrics = null) {
 }
 
 /**
+ * Body fat % in the Katch-McArdle valid range (1–70).
+ * @param {unknown} value
+ * @returns {boolean}
+ */
+export function hasValidBodyFatPercent(value) {
+  if (value === undefined || value === null || value === '') return false;
+  const n = parseFloat(value);
+  return Number.isFinite(n) && n >= MIN_BODY_FAT_PCT && n <= MAX_BODY_FAT_PCT;
+}
+
+/**
+ * Body fat is satisfied from weight_records_table.BodyFat or BPC fat%.
+ * Users who already have any source are not prompted again.
+ *
+ * @param {{
+ *   bodyFat?: unknown,
+ *   latestWeightBodyFat?: unknown,
+ *   bodyMetrics?: object|null,
+ * }} input
+ * @returns {boolean}
+ */
+export function hasValidBodyFatSource({
+  bodyFat = null,
+  latestWeightBodyFat = null,
+  bodyMetrics = null,
+} = {}) {
+  // `bodyFat` kept as alias for weight BodyFat (API / form payload).
+  if (hasValidBodyFatPercent(bodyFat)) return true;
+  if (hasValidBodyFatPercent(latestWeightBodyFat)) return true;
+  if (hasValidBodyFatPercent(bodyMetrics?.fatPercent)) return true;
+  return false;
+}
+
+/**
  * Profile gate fields for unified onboarding (phone is not blocking).
  * Photo is enforced on the CompleteProfile UI; when profileImage is passed,
  * a custom data-URL image is required for completeness.
+ * Body fat is required only when `bodyFatRequired` is true (caller sets this
+ * when a weight record exists and no weight/BPC fat % is present).
  */
 export function isProfileComplete({
   height,
@@ -65,17 +103,22 @@ export function isProfileComplete({
   gender = null,
   bodyMetrics = null,
   profileImage = undefined,
+  bodyFat = null,
+  latestWeightBodyFat = null,
+  bodyFatRequired = true,
 }) {
   const hasHeight = typeof height === 'number' && height >= 50 && height <= 250;
   const hasDiet = typeof dietType === 'string' && dietType.trim() !== '';
   const hasEmail = typeof email === 'string' && email.trim() !== '' && email.includes('@');
   const hasName = hasValidProfileName(userName, { email, phoneNumber });
   const hasGender = hasValidProfileGender(gender, bodyMetrics);
+  const hasBodyFat = !bodyFatRequired
+    || hasValidBodyFatSource({ bodyFat, latestWeightBodyFat, bodyMetrics });
   const hasPhoto = profileImage === undefined
     ? true
     : typeof profileImage === 'string'
       && (profileImage.startsWith('data:image/') || profileImage.startsWith('https://'));
-  return !!(hasHeight && hasDiet && hasEmail && hasName && hasGender && hasPhoto);
+  return !!(hasHeight && hasDiet && hasEmail && hasName && hasGender && hasBodyFat && hasPhoto);
 }
 
-export { VALID_GENDERS };
+export { VALID_GENDERS, MIN_BODY_FAT_PCT, MAX_BODY_FAT_PCT };

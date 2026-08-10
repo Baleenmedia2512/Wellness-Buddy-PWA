@@ -1,8 +1,13 @@
 // Profile form state + validation.
-// Owns name/height/phone/dietType/bmr/gender; derives validity flags and a `payload`
+// Owns name/height/phone/dietType/bmr/gender/bodyFat; derives validity flags and a `payload`
 // helper. Caller passes initial values from the loaded profile.
 import { useEffect, useState } from 'react';
-import { VALID_GENDERS } from '../domain/profileCompleteness';
+import {
+  VALID_GENDERS,
+  hasValidBodyFatPercent,
+  MIN_BODY_FAT_PCT,
+  MAX_BODY_FAT_PCT,
+} from '../domain/profileCompleteness';
 
 const cleanPhone = (s) => s.trim().replace(/[\s\-()]/g, '');
 
@@ -17,6 +22,8 @@ export default function useProfileForm(initial = {}) {
   const [weightGoalMode, setWeightGoalMode] = useState(initial.weightGoalMode || 'loss');
   const [communityId, setCommunityId] = useState(initial.communityId || '');
   const [loadedCommunityId, setLoadedCommunityId] = useState(initial.communityId || '');
+  const [bodyFat, setBodyFat] = useState(initial.bodyFat || '');
+  const [needsBodyFat, setNeedsBodyFat] = useState(Boolean(initial.needsBodyFat));
   const [email, setEmail] = useState(initial.email || '');
   const [bodyMetrics, setBodyMetrics] = useState(null);
 
@@ -35,6 +42,8 @@ export default function useProfileForm(initial = {}) {
     setWeightGoalMode(p.weightGoalMode ?? 'loss');
     setCommunityId(p.communityId ?? '');
     setLoadedCommunityId(p.communityId ?? '');
+    setBodyFat(p.bodyFat != null && p.bodyFat !== '' ? String(p.bodyFat) : '');
+    setNeedsBodyFat(Boolean(p.needsBodyFat));
     setEmail(p.email ?? '');
     setBodyMetrics(p.bodyMetrics ?? null);
   };
@@ -53,6 +62,7 @@ export default function useProfileForm(initial = {}) {
   const nameValid = name.trim() !== '';
   const dietValid = !!dietType;
   const genderValid = VALID_GENDERS.includes(String(gender || '').trim());
+  const bodyFatValid = !needsBodyFat || hasValidBodyFatPercent(bodyFat);
 
   const validate = ({ requireDiet = true, maxHeight = 250 } = {}) => {
     if (!nameValid) return 'Name is required';
@@ -62,6 +72,9 @@ export default function useProfileForm(initial = {}) {
     if (!phoneValid) return 'Please enter a valid phone number (10-15 digits).';
     if (!genderValid) return 'Please select Male or Female.';
     if (requireDiet && !dietValid) return 'Please select a diet preference.';
+    if (needsBodyFat && !hasValidBodyFatPercent(bodyFat)) {
+      return `Please enter body fat (${MIN_BODY_FAT_PCT}–${MAX_BODY_FAT_PCT}%).`;
+    }
     const trimmedCommunityId = communityId.trim();
     if (trimmedCommunityId) {
       if (trimmedCommunityId.length > 100) return 'Community ID must be at most 100 characters.';
@@ -85,7 +98,7 @@ export default function useProfileForm(initial = {}) {
       bmr: bmr && bmr.trim() !== '' ? parseFloat(bmr) : undefined,
       physicalActivityLevel: physicalActivityLevel || undefined,
       dietType: dietType || undefined,
-    gender: genderValid ? gender : undefined,
+      gender: genderValid ? gender : undefined,
       phoneNumber: phone.trim() || undefined,
       weightGoalMode: weightGoalMode || 'loss',
       ...extras,
@@ -94,6 +107,10 @@ export default function useProfileForm(initial = {}) {
     // Optional — only send when the user changed it (set value or cleared a saved one).
     if (normalizedCommunityId !== normalizedLoadedCommunityId) {
       body.communityId = normalizedCommunityId;
+    }
+
+    if (needsBodyFat && hasValidBodyFatPercent(bodyFat)) {
+      body.bodyFat = parseFloat(bodyFat);
     }
 
     return body;
@@ -105,9 +122,11 @@ export default function useProfileForm(initial = {}) {
     physicalActivityLevel, setPhysicalActivityLevel,
     weightGoalMode, setWeightGoalMode,
     communityId, setCommunityId,
+    bodyFat, setBodyFat,
+    needsBodyFat,
     email, setEmail,
     bodyMetrics,
-    heightNum, heightValid, phoneValid, nameValid, dietValid, genderValid,
+    heightNum, heightValid, phoneValid, nameValid, dietValid, genderValid, bodyFatValid,
     validate, payload, reload,
   };
 }
