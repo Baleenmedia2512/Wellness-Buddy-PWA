@@ -32,5 +32,6 @@ export {
   buildEducationShareText,
   buildWeightShareText,
   buildDiaryShareSuffix,
+  resolveBeverageDayShareText,
   resolveWeightDeltaDisplay,
 } from './domain/share';

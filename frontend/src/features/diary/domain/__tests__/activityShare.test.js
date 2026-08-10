@@ -22,6 +22,7 @@ import {
   buildEducationShareText,
   buildWeightShareText,
   buildDiaryShareSuffix,
+  resolveBeverageDayShareText,
   resolveWeightDeltaDisplay,
 } from '../share';
 
@@ -299,6 +300,33 @@ describe('buildDiaryShareSuffix', () => {
       shakeName: 'Herbalife Shake',
       servings: 1,
     })).toBe('Herbalife Shake, serving 1');
+  });
+});
+
+describe('resolveBeverageDayShareText', () => {
+  test('water prefers day total over this-card fallback', () => {
+    expect(resolveBeverageDayShareText({
+      activityType: 'water',
+      totalMl: 3500,
+      fallbackVolumeMl: 2000,
+    })).toBe('Consumed: 3.5 L water so far today');
+  });
+
+  test('water falls back to card volume when day total missing', () => {
+    expect(resolveBeverageDayShareText({
+      activityType: 'water',
+      totalMl: null,
+      fallbackVolumeMl: 2000,
+    })).toBe('Consumed: 2 L water so far today');
+  });
+
+  test('afresh prefers day scoops over this-card fallback', () => {
+    expect(resolveBeverageDayShareText({
+      activityType: 'afresh',
+      totalAfreshScoops: 4,
+      fallbackScoops: 2,
+      calories: 14,
+    })).toBe('Consumed: 4 scoops Afresh so far today');
   });
 });
 
