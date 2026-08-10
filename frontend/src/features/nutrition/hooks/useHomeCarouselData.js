@@ -20,10 +20,12 @@ import { fetchDailyWellnessScore, fetchWellnessScoreHistory } from '../../wellne
 import {
   getLatestActivityLogId,
   markHomeDashboardProcessed,
-  markWellnessScoreProcessed,
   shouldRefreshHomeDashboard,
 } from '../../../shared/services/homeDashboardActivity';
-import { isCaptureFlowBusy } from '../../../shared/services/captureFlowBusy';
+import {
+  isCaptureFlowBusy,
+  subscribeCaptureFlowBusy,
+} from '../../../shared/services/captureFlowBusy';
 
 const EMPTY_NUTRITION = {
   dailyStats: EMPTY_DAILY_STATS,
@@ -184,13 +186,16 @@ export function useHomeCarouselData({
 
       lastUserIdRef.current = userId;
 
-      const cached = !force ? readCache(userId, range.startDate, range.endDate) : null;
+      // Serve cache only when it is still fresh relative to the activity log.
+      // If a newer activity exists, fall through and refetch — otherwise
+      // Yesterday → Today can paint a stale Today payload forever.
+      const cached = !force && !shouldRefreshHomeDashboard()
+        ? readCache(userId, range.startDate, range.endDate)
+        : null;
       if (cached) {
         applyPayload(cached);
         setLoading(false);
-        const activityLogId = getLatestActivityLogId();
-        markHomeDashboardProcessed(activityLogId);
-        markWellnessScoreProcessed(activityLogId);
+        markHomeDashboardProcessed(getLatestActivityLogId());
         return;
       }
 
@@ -224,9 +229,10 @@ export function useHomeCarouselData({
       const payload = { nutrition: nextNutrition, wellnessScore: nextWellness };
       writeCache(userId, range.startDate, range.endDate, payload);
       applyPayload(payload);
-      const activityLogId = getLatestActivityLogId();
-      markHomeDashboardProcessed(activityLogId);
-      markWellnessScoreProcessed(activityLogId);
+      // Home owns only the Home watermark. Wellness Score sheet/hook own
+      // markWellnessScoreProcessed + wellnessScoreSnapshot — marking wellness
+      // here from a Home fetch (or worse, a stale cache hit) silenced the sheet.
+      markHomeDashboardProcessed(getLatestActivityLogId());
 
       // Warm Yesterday after Today so the common switch is cache-hit instant.
       if (!range.isMultiDay && range.endDate === today) {
@@ -268,21 +274,35 @@ export function useHomeCarouselData({
     loadData({ force: false });
   }, [loadData]);
 
+  const invalidateUserRangeCache = useCallback(() => {
+    const userId = lastUserIdRef.current || resolvedUserIdRef.current;
+    if (!userId) return;
+    for (const key of [...rangeCache.keys()]) {
+      if (key.startsWith(`${userId}|`)) rangeCache.delete(key);
+    }
+  }, []);
+
+  const refreshAfterActivity = useCallback(() => {
+    if (!shouldRefreshHomeDashboard()) return;
+    invalidateUserRangeCache();
+    // Do not compete with POST /captures while Manual Log is opening — cache is
+    // already dropped so the retry below (or next key bump) cannot serve stale.
+    if (isCaptureFlowBusy()) return;
+    loadData({ force: true });
+  }, [invalidateUserRangeCache, loadData]);
+
   useEffect(() => {
     if (nutritionRefreshKey === 0) return;
-    // Tab switch alone bumps nothing useful — only refetch after real activity.
-    if (!shouldRefreshHomeDashboard()) return;
-    // Do not compete with POST /captures while Manual Log is opening.
-    if (isCaptureFlowBusy()) return;
-    const userId = lastUserIdRef.current || resolvedUserIdRef.current;
-    if (userId) {
-      // Drop cached ranges so the next load (and siblings) see fresh meals.
-      for (const key of [...rangeCache.keys()]) {
-        if (key.startsWith(`${userId}|`)) rangeCache.delete(key);
-      }
-    }
-    loadData({ force: true });
+    refreshAfterActivity();
   }, [nutritionRefreshKey]); // eslint-disable-line react-hooks/exhaustive-deps -- only on meal refresh
+
+  // When capture upload finishes, retry any refresh skipped while busy.
+  useEffect(() => {
+    return subscribeCaptureFlowBusy((busy) => {
+      if (busy) return;
+      refreshAfterActivity();
+    });
+  }, [refreshAfterActivity]);
 
   const periodContext = useMemo(
     () => getCarouselPeriodContext({

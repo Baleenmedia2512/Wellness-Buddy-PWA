@@ -8,14 +8,29 @@ import WellnessScoreSheet from './WellnessScoreSheet';
 
 /**
  * Full-page wellness score view for members (no configuration UI).
+ *
+ * Always opens on Today. Home carousel date pills are independent — selecting
+ * Yesterday on Home must not leave this sheet stuck on Yesterday.
  */
-export default function WellnessScorePage({ user, apiBaseUrl, onBack, nutritionRefreshKey = 0 }) {
+export default function WellnessScorePage({
+  user,
+  apiBaseUrl,
+  onBack,
+  nutritionRefreshKey = 0,
+  initialDateRange = 'today',
+}) {
   const today = useBusinessToday(user);
   const timeWindows = useTimeWindows();
-  const [dateRange, setDateRange] = useState('today');
+  const [dateRange, setDateRange] = useState(initialDateRange || 'today');
   const [customStartDate, setCustomStartDate] = useState(null);
   const [customEndDate, setCustomEndDate] = useState(null);
-  const [selectedDate, setSelectedDate] = useState(today);
+  const [selectedDate, setSelectedDate] = useState(() => {
+    const initial = resolveWellnessDateRange({
+      preset: initialDateRange || 'today',
+      today,
+    });
+    return initial.endDate;
+  });
   const [resolvedUserId, setResolvedUserId] = useState(user?.id || null);
 
   useEffect(() => {

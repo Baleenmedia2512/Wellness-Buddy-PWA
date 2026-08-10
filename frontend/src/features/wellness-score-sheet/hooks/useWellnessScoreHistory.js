@@ -134,8 +134,24 @@ export function useWellnessScoreHistory({
   }, [startDate, endDate, user?.id]);
 
   useEffect(() => {
-    reload({ force: shouldRefreshWellnessScore() });
-  }, [reload, nutritionRefreshKey]);
+    // Force when the requested window differs from the in-memory snapshot
+    // (Yesterday → Today) or when newer activity exists. Same-window reopen
+    // with a matching snapshot stays a soft reload.
+    const snapshot = getWellnessScoreSnapshot();
+    const rangeChanged = !snapshotMatches({
+      snapshot,
+      userId: user?.id,
+      startDate,
+      endDate,
+    });
+    reload({ force: rangeChanged || shouldRefreshWellnessScore() });
+  }, [reload, user?.id, startDate, endDate]);
+
+  useEffect(() => {
+    if (nutritionRefreshKey === 0) return;
+    if (!shouldRefreshWellnessScore()) return;
+    reload({ force: true });
+  }, [nutritionRefreshKey, reload]);
 
   useEffect(() => {
     const onVisible = () => {
@@ -150,9 +166,9 @@ export function useWellnessScoreHistory({
   }, [reload]);
 
   const selectedData = useMemo(() => {
-    if (!historyDays.length) return null;
-    const match = historyDays.find((d) => d.date === selectedDate);
-    return match || historyDays[historyDays.length - 1];
+    if (!historyDays.length || !selectedDate) return null;
+    // Strict match only — never show Yesterday's row while Today is selected.
+    return historyDays.find((d) => d.date === selectedDate) || null;
   }, [historyDays, selectedDate]);
 
   return { loading, error, historyDays, data: selectedData, reload: () => reload({ force: true }) };

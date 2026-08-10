@@ -8,7 +8,7 @@ import { cache, cacheKeys } from '../../utils/cache.js';
 import logger from '../../shared/lib/logger.js';
 import { nowUtc, addUtcDays } from '../../shared/lib/datetime/index.js';
 import { VALID_DIETS, VALID_GOAL_MODES } from './user.validators.js';
-import { computeKatchMcArdleBmr } from '../../utils/bmrCalculations.js';
+import { resolveBmrForDisplay } from '../../utils/bmrCalculations.js';
 import {
   buildTdeeBreakdown,
   isValidPhysicalActivityLevel,
@@ -57,7 +57,14 @@ export async function getProfile({ email }) {
     || (bodyGender === 'Male' || bodyGender === 'Female' ? bodyGender : null)
     || null;
   const profileImage = user.ProfileImage || null;
-  const latestBmr = user.Bmr ? parseFloat(user.Bmr) : null;
+  const latestBmr = resolveBmrForDisplay({
+    storedBmr: user.Bmr,
+    weightKg: latestWeightKg,
+    bodyFatPercent: latestWeight?.BodyFat ?? bodyMetricsMapped?.fatPercent,
+    cardWeightKg: latestBodyMetricsCard?.weight_kg,
+    cardFatPercent: latestBodyMetricsCard?.fat_percent,
+    cardBmr: latestBodyMetricsCard?.bmr,
+  });
   const physicalActivityLevel = user.PhysicalActivityLevel || null;
   const calorieTarget = resolveCalorieTargetFromProfile({
     bmr: latestBmr,
@@ -232,10 +239,11 @@ export async function updateProfile(input) {
       savedBmr = bmrValue;
     }
   } else {
-    const calculatedBmr = computeKatchMcArdleBmr(
-      latestWeightRow?.Weight ? parseFloat(latestWeightRow.Weight) : null,
-      latestWeightRow?.BodyFat ? parseFloat(latestWeightRow.BodyFat) : null,
-    );
+    const calculatedBmr = resolveBmrForDisplay({
+      storedBmr: null,
+      weightKg: latestWeightRow?.Weight ? parseFloat(latestWeightRow.Weight) : null,
+      bodyFatPercent: latestWeightRow?.BodyFat ? parseFloat(latestWeightRow.BodyFat) : null,
+    });
     if (calculatedBmr !== null) {
       await repo.updateUserById(userId, { Bmr: calculatedBmr });
       savedBmr = calculatedBmr;

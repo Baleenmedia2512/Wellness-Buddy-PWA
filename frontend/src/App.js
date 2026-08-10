@@ -956,6 +956,8 @@ function WellnessValleyApp() {
   const [reportsDashboardTab, setReportsDashboardTab] = useState(REPORT_DASHBOARD_TABS.IDEAL_WEIGHT);
   const [showWellnessScore, setShowWellnessScore] = useState(false);
   const [showWellnessScoreSetup, setShowWellnessScoreSetup] = useState(false);
+  /** Remount key so each open starts on Today (no leftover Yesterday state). */
+  const [wellnessScoreSession, setWellnessScoreSession] = useState(0);
   const [showAiCreditsSetup, setShowAiCreditsSetup] = useState(false);
   const [showManualEntry, setShowManualEntry] = useState(() => {
     const pending = Session.getPendingClassifyCapture();
@@ -2464,6 +2466,7 @@ function WellnessValleyApp() {
         setShowProfilePage(true);
         break;
       case 'wellness-score':
+        setWellnessScoreSession((n) => n + 1);
         setShowWellnessScore(true);
         break;
       case 'wellness-score-setup':
@@ -7371,6 +7374,7 @@ function WellnessValleyApp() {
           apiBaseUrl={apiBaseUrl}
           onBack={() => {
             setShowWellnessScoreSetup(false);
+            refreshOnTabFocus();
             const currentWvPage = window.history.state?.wvPage;
             if (currentWvPage && currentWvPage !== 'main') window.history.back();
           }}
@@ -7446,11 +7450,16 @@ function WellnessValleyApp() {
     homeOverlay = (
       <Suspense fallback={<LoadingSpinner message="Loading Wellness Score..." />}>
         <WellnessScorePage
+          key={wellnessScoreSession}
           user={user}
           apiBaseUrl={apiBaseUrl}
           nutritionRefreshKey={nutritionRefreshKey}
+          initialDateRange="today"
           onBack={() => {
             setShowWellnessScore(false);
+            // If food/config activity left Home's watermark dirty (e.g. busy gate),
+            // pick it up when returning from the score sheet — no page reload.
+            refreshOnTabFocus();
             const currentWvPage = window.history.state?.wvPage;
             if (currentWvPage && currentWvPage !== 'main') window.history.back();
           }}

@@ -98,24 +98,22 @@ export default function HomeNutritionCarousel({
 
 
   const handleDateRangeChange = useCallback((nextRange) => {
-
     setDateRange(nextRange);
-
   }, []);
-
-
 
   const handleCustomDateSelect = useCallback((start, end) => {
-
     setCustomStartDate(start);
-
     setCustomEndDate(end);
-
     setDateRange('custom');
-
   }, []);
 
-
+  /** Open full sheet on Today — Home "Yesterday" must not stick into the sheet. */
+  const handleOpenWellnessScore = useCallback(() => {
+    setDateRange('today');
+    setCustomStartDate(null);
+    setCustomEndDate(null);
+    onOpenWellnessScore?.();
+  }, [onOpenWellnessScore]);
 
   const hasLoadedOnce = useRef(false);
 
@@ -123,53 +121,31 @@ export default function HomeNutritionCarousel({
 
   if (!isLoading) hasLoadedOnce.current = true;
 
-
-
   const wellnessScoreCard = useMemo(() => {
-
     if (!user || !isFlagEnabled('ff.wellness-score-sheet') || !onOpenWellnessScore) return null;
 
     return (
-
       <WellnessScoreCarouselCard
-
         key="wellness-score"
-
         user={user}
-
         scoreData={carouselData.wellnessScore}
-
         loading={carouselData.wellnessLoading}
-
         scoreSubtitle={carouselData.wellnessSubtitle}
-
         periodContext={carouselData.periodContext}
-
-        onOpen={onOpenWellnessScore}
-
+        onOpen={handleOpenWellnessScore}
         onOpenSetup={onOpenWellnessScoreSetup}
         nutritionRefreshKey={nutritionRefreshKey}
-
       />
-
     );
-
   }, [
-
     user,
-
+    handleOpenWellnessScore,
     onOpenWellnessScore,
-
     onOpenWellnessScoreSetup, nutritionRefreshKey,
-
     carouselData.wellnessScore,
-
     carouselData.wellnessLoading,
-
     carouselData.wellnessSubtitle,
-
     carouselData.periodContext,
-
   ]);
 
 
