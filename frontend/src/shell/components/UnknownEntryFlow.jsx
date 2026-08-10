@@ -26,6 +26,7 @@ import {
 } from '../../features/captures';
 import { SmartFoodSearchModal } from '../../features/nutrition';
 import { buildAnalysisFromManualFood as buildManualFoodAnalysis } from '../../features/nutrition';
+import { seedMealAfterPromotion } from '../../features/nutrition/services/seedMealAfterPromotion';
 import { ManualWeightEntryModal, saveWeight, warmLatestWeightCache } from '../../features/weight';
 import { ManualEducationEntryModal, saveLog } from '../../features/education';
 import { ManualWatchEntryModal } from '../../features/activity';
@@ -411,20 +412,35 @@ export default function UnknownEntryFlow({
       viewerUserId: userId,
       analysisResult,
       originalCapturedAt,
-    }).catch(() => {
-      // Modal already closed — diary refresh will show if promotion failed.
-    });
+    })
+      .then((result) => {
+        seedMealAfterPromotion({
+          ownerUserId: userId,
+          result,
+          analysisResult,
+          capturedAt: originalCapturedAt,
+        });
+      })
+      .catch(() => {
+        // Modal already closed — diary refresh will show if promotion failed.
+      });
   };
 
   /** Saves the AI-detected food result that the user confirmed on the review screen. */
   const handleAiFoodConfirm = async () => {
     if (!aiFood?.analysisResult) return;
     try {
-      await promoteUnknownToFood({
+      const result = await promoteUnknownToFood({
         captureId,
         viewerUserId: userId,
         analysisResult: aiFood.analysisResult,
         originalCapturedAt,
+      });
+      seedMealAfterPromotion({
+        ownerUserId: userId,
+        result,
+        analysisResult: aiFood.analysisResult,
+        capturedAt: originalCapturedAt,
       });
       finish({ kind: 'food', captureId });
     } catch {

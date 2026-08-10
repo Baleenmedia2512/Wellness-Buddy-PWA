@@ -27,6 +27,7 @@ import {
   buildAnalysisFromManualFood as buildManualFoodAnalysis,
   fetchWatchBurnedCalories,
 } from '../../features/nutrition';
+import { seedMealAfterPromotion } from '../../features/nutrition/services/seedMealAfterPromotion';
 import { ManualWeightEntryModal, saveWeight, warmLatestWeightCache, getCachedLatestWeight } from '../../features/weight';
 import { ManualEducationEntryModal, saveLog } from '../../features/education';
 import { ManualWatchEntryModal } from '../../features/activity';
@@ -428,9 +429,18 @@ export default function ManualEntryPage({
       viewerUserId: userId,
       analysisResult,
       originalCapturedAt: originalCapturedAt || null,
-    }).catch((err) => {
-      onToast?.(err?.message || "Couldn't save — check Diary.");
-    });
+    })
+      .then((result) => {
+        seedMealAfterPromotion({
+          ownerUserId: userId,
+          result,
+          analysisResult,
+          capturedAt: originalCapturedAt || null,
+        });
+      })
+      .catch((err) => {
+        onToast?.(err?.message || "Couldn't save — check Diary.");
+      });
     exit(activityCaption ? { activityCaption } : null);
   };
 
@@ -564,9 +574,18 @@ export default function ManualEntryPage({
       viewerUserId: userId,
       analysisResult: analysis,
       originalCapturedAt: originalCapturedAt || null,
-    }).catch((err) => {
-      onToast?.(err?.message || "Couldn't save food — check Diary.");
-    });
+    })
+      .then((result) => {
+        seedMealAfterPromotion({
+          ownerUserId: userId,
+          result,
+          analysisResult: analysis,
+          capturedAt: originalCapturedAt || null,
+        });
+      })
+      .catch((err) => {
+        onToast?.(err?.message || "Couldn't save food — check Diary.");
+      });
 
     exit(activityCaption ? { activityCaption } : null);
   };

@@ -14,6 +14,7 @@ export function mealFromDiaryRow(diaryEntry) {
     AnalysisData: p.analysisData ?? null,
     ImageBase64: p.imageBase64 ?? null,
     ImagePath: p.imagePath ?? null,
+    listSummary: p.listSummary ?? null,
     TotalCalories: t.calories ?? null,
     TotalProtein: t.protein ?? null,
     TotalCarbs: t.carbs ?? null,

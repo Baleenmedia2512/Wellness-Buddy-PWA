@@ -146,6 +146,7 @@ import { validateImageFreshness } from "./shared/utils/imageValidator";
 import { toStorageThumbnail } from "./shared/utils/storageThumbnail";
 import { ManualWeightEntryModal, saveWeight } from "./features/weight";
 import { SmartFoodSearchModal, buildAnalysisFromManualFood as buildManualFoodAnalysis } from "./features/nutrition";
+import { seedMealAfterPromotion } from "./features/nutrition/services/seedMealAfterPromotion";
 import { ManualEducationEntryModal, saveLog } from "./features/education";
 // VSA-compliant barrel imports (helpers exported via features/captures/index.js)
 import {
@@ -4415,11 +4416,17 @@ function WellnessValleyApp() {
           return;
         }
         const analysisResult = buildAnalysisFromGeminiAnalysis(analysis);
-        await promoteUnknownToFood({
+        const promoteResult = await promoteUnknownToFood({
           captureId,
           viewerUserId: user.id,
           analysisResult,
           originalCapturedAt: unknownShareView.createdAt ?? null,
+        });
+        seedMealAfterPromotion({
+          ownerUserId: user.id,
+          result: promoteResult,
+          analysisResult,
+          capturedAt: unknownShareView.createdAt ?? null,
         });
         setUnknownShareView((v) => ({ ...v, open: false, retrying: false }));
         showToast("Saved to your diary");
@@ -4530,7 +4537,13 @@ function WellnessValleyApp() {
       analysisResult,
       originalCapturedAt: unknownShareView.createdAt ?? null,
     })
-      .then(() => {
+      .then((result) => {
+        seedMealAfterPromotion({
+          ownerUserId: user.id,
+          result,
+          analysisResult,
+          capturedAt: unknownShareView.createdAt ?? null,
+        });
         triggerNutritionRefresh({ immediate: true, source: "unknown-edit" });
       })
       .catch(() => {
@@ -4693,11 +4706,16 @@ function WellnessValleyApp() {
           if (foodOk) {
             await settleCredit();
             const analysisResult = buildAnalysisFromGeminiAnalysis(detectedType.details);
-            await promoteUnknownToFood({
+            const promoteResult = await promoteUnknownToFood({
               captureId,
               viewerUserId: ownerUserId,
               analysisResult,
               originalCapturedAt: null,
+            });
+            seedMealAfterPromotion({
+              ownerUserId,
+              result: promoteResult,
+              analysisResult,
             });
             clearCaptureAnalyzing(captureId);
             triggerNutritionRefresh({ immediate: true, source: 'capture-food-saved' });

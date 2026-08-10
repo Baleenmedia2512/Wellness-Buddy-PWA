@@ -73,3 +73,30 @@ export function validateMealImageInput(query) {
   if (!query?.id) throw new ValidationError(400, 'id is required');
   return { userId: query.userId, id: query.id };
 }
+
+export function validateMealDetailInput(query) {
+  if (!query?.userId) throw new ValidationError(400, 'userId is required');
+  if (!query?.id) throw new ValidationError(400, 'id is required');
+  return { userId: String(query.userId), id: String(query.id) };
+}
+
+const MAX_BATCH_MEAL_IDS = 20;
+
+export function validateMealsBatchInput(query) {
+  if (!query?.userId) throw new ValidationError(400, 'userId is required');
+  const raw = query?.ids;
+  if (!raw || String(raw).trim() === '') {
+    throw new ValidationError(400, 'ids is required');
+  }
+  const ids = String(raw)
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (ids.length === 0) {
+    throw new ValidationError(400, 'ids must contain at least one meal id');
+  }
+  if (ids.length > MAX_BATCH_MEAL_IDS) {
+    throw new ValidationError(400, `ids cannot exceed ${MAX_BATCH_MEAL_IDS} meals per request`);
+  }
+  return { userId: String(query.userId), ids };
+}
