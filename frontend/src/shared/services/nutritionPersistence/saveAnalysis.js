@@ -5,6 +5,7 @@ import { transformToBackgroundServiceFormat } from './transformAnalysisFormat';
 import { resolveTeamUserId } from './userIdLookup';
 import { isDemoUser, saveDemoMeal } from './demoMealStore';
 import { debugLog } from '../../utils/logger.js';
+import { toStorageThumbnail } from '../../utils/storageThumbnail.js';
 
 const parseSaveResponse = async (res) => {
   const ct = res.headers.get('content-type');
@@ -26,21 +27,28 @@ export async function saveNutritionAnalysis({
 }) {
   const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
   try {
+    // Persist a tiny thumb in DB; callers keep the analysis-size image in memory for AI/share.
+    const storageImage = imageBase64
+      ? await toStorageThumbnail(imageBase64)
+      : null;
+
     if (isDemoUser(userId, userEmail)) {
       debugLog('ℹ️ [saveNutritionAnalysis] Demo account — saving to localStorage');
-      return saveDemoMeal({ imageBase64, analysisResult, captureTimestamp });
+      return saveDemoMeal({ imageBase64: storageImage, analysisResult, captureTimestamp });
     }
 
     const actualUserId = await resolveTeamUserId(userId);
     const transformed = transformToBackgroundServiceFormat(analysisResult);
 
-    // 🔍 DEBUG: Log what's being sent to backend
     console.log('🚀 [saveAnalysis] Data being sent to backend:', {
       hasFoods: !!transformed.foods,
       foodCount: transformed.foods?.length || 0,
       total: transformed.total,
       firstFood: transformed.foods?.[0],
       allFoods: transformed.foods,
+      storageImageKb: storageImage
+        ? Math.round(storageImage.length / 1024)
+        : 0,
     });
 
     const res = await fetch(`${apiBaseUrl}/api/background-analysis`, {
@@ -49,7 +57,7 @@ export async function saveNutritionAnalysis({
       body: JSON.stringify({
         userId: actualUserId,
         imagePath,
-        ImageBase64: imageBase64,
+        ImageBase64: storageImage,
         analysisResult: transformed,
         deviceInfo,
         userEmail,

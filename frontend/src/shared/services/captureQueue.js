@@ -9,7 +9,10 @@
  * Supports continuous shooting — multiple photos can be queued in a row.
  *
  * Storage: localStorage.
- * A compressed 800px JPEG is ~150–200 KB of base64 text; 5 MB localStorage
+ * A compressed 800px JPEG is ~150–200 KB of base64 text for AI; DB persistence
+ * uses toStorageThumbnail (~22 KB). Offline queue keeps the AI-size image so
+ * analysis quality is preserved when the device comes back online. 5 MB
+ * localStorage leaves room for ~20 queued photos.
  * allows ~25 photos. MAX_SIZE caps at 20 to leave headroom.
  * ---------------------------------------------------------------------------
  */

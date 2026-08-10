@@ -19,6 +19,18 @@ export function buildQuickShareText(displayName, versionString) {
   return `${name} ${SHARE_TEXT_SEPARATOR} Wellness Valley ${version}`.replace(/\uFFFD/g, '');
 }
 
+/**
+ * Branding line + optional compact activity suffix.
+ * Example: "YASHEER · Wellness Valley v 3.4.0, Consumed: 1 L water so far today"
+ */
+export function composeQuickShareCaption(brandLine, activitySuffix = null) {
+  const brand = String(brandLine || '').trim();
+  const suffix = typeof activitySuffix === 'string' ? activitySuffix.trim() : '';
+  if (!brand) return suffix;
+  if (!suffix) return brand;
+  return `${brand}, ${suffix}`;
+}
+
 function getUserPhone(user) {
   return (user?.phoneNumber || user?.PhoneNumber || '').trim() || null;
 }
@@ -97,13 +109,35 @@ async function fetchProfileUserName(email, apiBaseUrl) {
 }
 
 /**
- * Resolve share display name for Quick Share — always reads fresh UserName
- * from /api/user/profile so instant share never uses a stale cache or email
- * prefix when the profile has a real name. Falls back to resolveShareDisplayName
- * only when the profile fetch fails (offline / error).
+ * Resolve share display name for Quick Share.
+ *
+ * Fast path (default): return the sync name immediately (saved / cached /
+ * session) so the native share sheet is not blocked on a profile round-trip.
+ * Optionally refresh `/api/user/profile` in the background to keep the cache warm.
+ *
+ * Pass `{ fresh: true }` when a caller must wait for a live profile fetch
+ * (e.g. after the user just edited their name).
  */
-export async function ensureShareDisplayName(savedUserName, user, apiBaseUrl) {
+export async function ensureShareDisplayName(
+  savedUserName,
+  user,
+  apiBaseUrl,
+  { fresh = false } = {},
+) {
   const email = getUserEmail(user);
+  const syncName = resolveShareDisplayName(savedUserName, user);
+
+  if (!fresh && hasValidProfileName(syncName, { email, phoneNumber: getUserPhone(user) })) {
+    if (email && apiBaseUrl) {
+      // Keep cache fresh without blocking the share sheet.
+      void fetchProfileUserName(email, apiBaseUrl)
+        .then((fetched) => {
+          if (fetched) cacheProfileUserName(email, fetched);
+        })
+        .catch(() => {});
+    }
+    return syncName;
+  }
 
   if (email && apiBaseUrl) {
     try {
@@ -117,7 +151,7 @@ export async function ensureShareDisplayName(savedUserName, user, apiBaseUrl) {
     }
   }
 
-  return resolveShareDisplayName(savedUserName, user);
+  return syncName;
 }
 
 /**

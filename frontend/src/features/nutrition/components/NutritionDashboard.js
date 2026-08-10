@@ -102,6 +102,11 @@ const NutritionDashboard = ({
   openRef = null,
   /** Owner IANA TZ from diary API (preferred over user object fallback). */
   timezoneIana: timezoneIanaProp = null,
+  /**
+   * Timeline modal-host mode: skip list/overview network until first openRef
+   * call. Meal open still works via mealFromDiaryRow from the diary payload.
+   */
+  deferDataFetch = false,
 }) => {
   const isIOS = Capacitor.getPlatform() === "ios";
   // Use parent's selectedDate if provided, otherwise use local state
@@ -113,6 +118,7 @@ const NutritionDashboard = ({
   const [selectedMeal, setSelectedMeal] = useState(null);
   const [isClosingModal, setIsClosingModal] = useState(false);
   const [profileTimezoneIana, setProfileTimezoneIana] = useState(null);
+  const [dataFetchEnabled, setDataFetchEnabled] = useState(!deferDataFetch);
 
   // Hydrate owner timezone when `user` lacks timezone (common for selectedMember / session user).
   useEffect(() => {
@@ -127,7 +133,7 @@ const NutritionDashboard = ({
       return undefined;
     }
     let cancelled = false;
-    getProfile(email, { cacheBust: true })
+    getProfile(email)
       .then((res) => {
         if (cancelled) return;
         const tz = res?.data?.timezone || res?.data?.timezoneIana || getDeviceTimezoneIana() || null;
@@ -170,6 +176,9 @@ const NutritionDashboard = ({
   const shakeCalculatorEnabled = isFlagEnabled('ff.shake-calculator');
   const [shakeOpen, setShakeOpen] = useState(false);
 
+  // Overview panels are hidden in diary timeline host — skip their network fan-out.
+  const overviewFetchEnabled = dataFetchEnabled && !hideOverview;
+
   // Stage 17 — NutritionDashboard mounted (logged via useEffect for mount-only semantics)
   React.useEffect(() => {
     const tr = window.__captureTrace;
@@ -197,10 +206,22 @@ const NutritionDashboard = ({
     setError,
     fetchDayAnalyses,
     applyDailyDelta,
-  } = useDayAnalyses({ user, selectedDate, apiBaseUrl, resolveUserId, nutritionRefreshKey });
+  } = useDayAnalyses({
+    user,
+    selectedDate,
+    apiBaseUrl,
+    resolveUserId,
+    nutritionRefreshKey,
+    enabled: dataFetchEnabled,
+  });
 
   // Calorie target from user's BMR (fallback handled inside the hook)
-  const { calorieTarget } = useUserCalorieTarget({ user, apiBaseUrl, bmrUpdateKey });
+  const { calorieTarget } = useUserCalorieTarget({
+    user,
+    apiBaseUrl,
+    bmrUpdateKey,
+    enabled: overviewFetchEnabled,
+  });
 
   // Burn-to-Balance: today's calories burned (steps disabled, watch-derived only)
   const { burnedCalories, watchBurned, stepsBurned } = useBurnedCalories({
@@ -210,10 +231,15 @@ const NutritionDashboard = ({
     resolveUserId,
     watchBurnedCalories,
     nutritionRefreshKey,
+    enabled: overviewFetchEnabled,
   });
 
   // Latest body weight + gender for personalised macro targets on the summary panel.
-  const { latestWeight, gender } = useUserLatestWeight({ user, apiBaseUrl });
+  const { latestWeight, gender } = useUserLatestWeight({
+    user,
+    apiBaseUrl,
+    enabled: overviewFetchEnabled,
+  });
   const { proteinTarget, fatTarget, carbsTarget } = computeMacroTargets({
     latestWeight,
     calorieTarget,
@@ -228,6 +254,7 @@ const NutritionDashboard = ({
     apiBaseUrl,
     resolveUserId,
     calorieTarget,
+    enabled: overviewFetchEnabled,
   });
 
   // Overview panel swipe + dynamic height (re-measure when content changes).
@@ -433,10 +460,19 @@ const NutritionDashboard = ({
   // Accepts a diary food entry (preferred) or legacy mealId string.
   if (openRef) {
     openRef.current = (entryOrId) => {
+      if (deferDataFetch && !dataFetchEnabled) {
+        setDataFetchEnabled(true);
+      }
       if (entryOrId && typeof entryOrId === 'object' && entryOrId.kind === 'food') {
         const p = entryOrId.payload || {};
+        const fromDiary = mealFromDiaryRow(entryOrId);
         const found = (analyses || []).find((m) => m.ID && String(m.ID) === String(p.id));
-        const meal = found || mealFromDiaryRow(entryOrId);
+        const meal = found
+          ? {
+            ...found,
+            ProcessedBy: fromDiary?.ProcessedBy ?? found.ProcessedBy,
+          }
+          : fromDiary;
         if (meal) {
           pendingOpenRef.current = null;
           setSelectedMeal(meal);
@@ -823,6 +859,7 @@ const NutritionDashboard = ({
                 handleOptimisticDelete={handleOptimisticDelete}
                 isIOS={isIOS}
                 user={user}
+                apiBaseUrl={apiBaseUrl}
                 timezoneIana={ownerTimezoneIana}
                 setAnalyses={setAnalyses}
                 setUndoState={setUndoState}
@@ -854,6 +891,7 @@ const NutritionDashboard = ({
         handleCloseModal={handleCloseModal}
         handleDeleteMeal={handleDeleteMeal}
         user={user}
+        apiBaseUrl={apiBaseUrl}
         timezoneIana={ownerTimezoneIana}
         persistMealItems={persistMealItems}
         setLocalDetailedItems={setLocalDetailedItems}

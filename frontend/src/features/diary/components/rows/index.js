@@ -16,12 +16,29 @@
  */
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Smartphone, GraduationCap, HelpCircle, Share2 } from 'lucide-react';
+import { Smartphone, GraduationCap, HelpCircle, Share2, ArrowUp, ArrowDown } from 'lucide-react';
 import { useSwipeToDelete } from '../../../../shared/hooks/useSwipeToDelete';
 import { parseAnalysisData, recalculateTotals, getMealCategory } from '../../../nutrition/services/nutritionDashboard/analysisHelpers';
 import { captureAndShare } from '../../../../shared/utils/shareUtils';
 import { formatBusinessTime, DEFAULT_BUSINESS_TIMEZONE } from '../../../../shared/utils/datetimeUtils';
+import { DIARY_FOOD_ACTIVITY } from '../../domain/activityType';
+import { resolveFoodRowPresentation } from '../../domain/foodRowDisplay';
+import {
+  buildDiaryShareSuffix,
+  resolveWeightDeltaDisplay,
+} from '../../domain/share';
+import { resolveDiaryThumbSource } from '../../utils/diaryThumbUrl';
 
+/** Red up / green down arrow for weight delta (SVG — avoids blue emoji squares). */
+function WeightDeltaArrow({ direction, className = '' }) {
+  if (direction === 'up') {
+    return <ArrowUp className={`inline-block w-3 h-3 shrink-0 ${className}`} aria-hidden="true" strokeWidth={2.5} />;
+  }
+  if (direction === 'down') {
+    return <ArrowDown className={`inline-block w-3 h-3 shrink-0 ${className}`} aria-hidden="true" strokeWidth={2.5} />;
+  }
+  return null;
+}
 /** Swipe-to-delete affordance; disabled when parent passes canDelete={false}. */
 function useDiaryRowSwipe({ canDelete = true, onDelete, entry }) {
   const swipeEnabled = canDelete !== false;
@@ -90,13 +107,61 @@ function getMealLabel(iso, timezoneIana = DEFAULT_BUSINESS_TIMEZONE) {
   return MEAL_BADGE_BY_CATEGORY[category] || MEAL_BADGE_BY_CATEGORY['late-night'];
 }
 
-function Thumb({ imageBase64, imagePath, fallback }) {
+function Thumb({
+  imageBase64,
+  imagePath,
+  imageUrl = null,
+  imageUrlFormat = null,
+  fallback,
+  hasImage = false,
+}) {
+  const [lazySrc, setLazySrc] = useState(null);
+
+  useEffect(() => {
+    if (imageBase64 && String(imageBase64).trim() !== '') {
+      setLazySrc(null);
+      return undefined;
+    }
+    if (imagePath && (String(imagePath).startsWith('http') || String(imagePath).startsWith('data:'))) {
+      setLazySrc(null);
+      return undefined;
+    }
+    if (!imageUrl) {
+      setLazySrc(null);
+      return undefined;
+    }
+
+    if (imageUrlFormat === 'raw' || imageUrlFormat === 'data') {
+      setLazySrc(imageUrl);
+      return undefined;
+    }
+
+    // weight / education return JSON { image | imageBase64 }
+    let cancelled = false;
+    setLazySrc(null);
+    fetch(imageUrl)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((json) => {
+        if (cancelled || !json) return;
+        const b64 = json.image || json.imageBase64 || json?.data?.imageBase64;
+        if (!b64 || String(b64).trim() === '') return;
+        const raw = String(b64);
+        setLazySrc(raw.startsWith('data:image') ? raw : `data:image/jpeg;base64,${raw}`);
+      })
+      .catch(() => { /* non-critical thumb */ });
+    return () => { cancelled = true; };
+  }, [imageBase64, imagePath, imageUrl, imageUrlFormat]);
+
   const src =
-    imageBase64 && imageBase64.trim() !== ''
-      ? imageBase64.startsWith('data:image')
+    imageBase64 && String(imageBase64).trim() !== ''
+      ? (String(imageBase64).startsWith('data:image')
         ? imageBase64
-        : `data:image/jpeg;base64,${imageBase64}`
-      : imagePath || null;
+        : `data:image/jpeg;base64,${imageBase64}`)
+      : (lazySrc
+        || (imagePath && (String(imagePath).startsWith('http') || String(imagePath).startsWith('data:'))
+          ? imagePath
+          : null));
+  const showPlaceholder = !src && hasImage;
 
   return (
     <div className="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center overflow-hidden shrink-0">
@@ -106,13 +171,29 @@ function Thumb({ imageBase64, imagePath, fallback }) {
           alt=""
           className="w-full h-full object-cover"
           loading="lazy"
+          decoding="async"
           onError={(e) => { e.currentTarget.style.display = 'none'; }}
         />
+      ) : showPlaceholder ? (
+        <span className="w-full h-full bg-gray-200 animate-pulse" aria-hidden="true" />
       ) : (
         <span aria-hidden="true">{fallback}</span>
       )}
     </div>
   );
+}
+
+/** Build Thumb props from a diary entry + owner context. */
+function thumbPropsFromEntry(entry, { ownerUserId, viewerUserId } = {}) {
+  const p = entry?.payload || {};
+  const { src, format } = resolveDiaryThumbSource(entry, { ownerUserId, viewerUserId });
+  return {
+    imageBase64: p.imageBase64 || null,
+    imagePath: p.imagePath || null,
+    imageUrl: src,
+    imageUrlFormat: format,
+    hasImage: Boolean(p.hasImage || p.imageBase64 || p.imagePath || src),
+  };
 }
 
 /**
@@ -152,25 +233,111 @@ function swipeCardStyle(swipe, { enabled = true } = {}) {
 
 // ─── kind: food ─────────────────────────────────────────────────────────────
 
-export function FoodRow({ entry, onOpen, onDelete, canDelete = true, hideTime = false, timezoneIana = DEFAULT_BUSINESS_TIMEZONE }) {
+export function FoodRow({
+  entry,
+  onOpen,
+  onDelete,
+  canDelete = true,
+  hideTime = false,
+  timezoneIana = DEFAULT_BUSINESS_TIMEZONE,
+  ownerUserId = null,
+  viewerUserId = null,
+}) {
   const p = entry.payload || {};
   const cal = p.totals?.calories ?? 0;
   const { swipe, swipeEnabled } = useDiaryRowSwipe({ canDelete, onDelete, entry });
   const [isSharing, setIsSharing] = useState(false);
+  const [shareImgSrc, setShareImgSrc] = useState(null);
   const shareCardRef = useRef(null);
+  const thumb = thumbPropsFromEntry(entry, { ownerUserId, viewerUserId });
 
-  // Parse analysisData to extract meal name and item details
-  const foodData = parseAnalysisData(p.analysisData);
-  const mealName = foodData.name || 'Food';
+  // Prefer lean listSummary from paginated API; fall back to legacy analysisData.
+  const listSummary = p.listSummary || null;
+  const foodData = listSummary
+    ? {
+        name: listSummary.name || 'Food',
+        nutrition: {
+          calories: cal,
+          protein: p.totals?.protein ?? 0,
+          carbs: p.totals?.carbs ?? 0,
+          fat: p.totals?.fat ?? 0,
+          fiber: p.totals?.fiber ?? 0,
+          sugar: p.totals?.sugar ?? null,
+          sodium: p.totals?.sodium ?? null,
+          cholesterol: p.totals?.cholesterol ?? null,
+          glycemic_index: p.totals?.glycemicIndex ?? null,
+        },
+        detailedItems: Array.isArray(listSummary.items)
+          ? listSummary.items.map((item) => ({
+              name: item.name,
+              calories: item.calories,
+              volume_ml: listSummary.volumeMl,
+              scoops: listSummary.scoops,
+            }))
+          : [],
+      }
+    : parseAnalysisData(p.analysisData);
+  const mealName = foodData.name || listSummary?.name || 'Food';
   const meal = getMealLabel(entry.capturedAt, timezoneIana);
-  // Individual food items for the share card
+  const processedByForType = p.processedBy
+    || (listSummary?.activityType === 'water' ? 'water_preset'
+      : listSummary?.activityType === 'afresh' ? 'afresh_preset'
+        : listSummary?.activityType === 'shake' ? 'shake_calculator'
+          : null);
+  const presentation = resolveFoodRowPresentation({
+    processedBy: processedByForType,
+    analysisData: listSummary ? null : p.analysisData,
+    foodData,
+    calories: cal,
+    mealLabel: meal?.label || null,
+    glycemicIndex: p.totals?.glycemicIndex ?? foodData?.nutrition?.glycemic_index ?? null,
+  });
+  const {
+    activityType,
+    showMealBadge,
+    thumbFallback,
+    primaryValue,
+    primaryUnit,
+    ariaValue,
+    secondaryLabel,
+    shareText,
+  } = presentation;
+  const isWater = activityType === DIARY_FOOD_ACTIVITY.WATER;
+  const isAfresh = activityType === DIARY_FOOD_ACTIVITY.AFRESH;
+  const isShake = activityType === DIARY_FOOD_ACTIVITY.SHAKE;
+  const showNutritionShare = !isWater && !isAfresh;
   const foodItems = Array.isArray(foodData.detailedItems) ? foodData.detailedItems : [];
 
-  // Resolve image src for share card
-  const imgSrc = p.imageBase64 && p.imageBase64.trim() !== ''
-    ? (p.imageBase64.startsWith('data:image') ? p.imageBase64 : `data:image/jpeg;base64,${p.imageBase64}`)
-    : (p.imagePath || null);
+  // Lazy-hydrate share card image once (on share or when thumb URL is raw).
+  useEffect(() => {
+    if (thumb.imageBase64) {
+      const raw = String(thumb.imageBase64);
+      setShareImgSrc(raw.startsWith('data:image') ? raw : `data:image/jpeg;base64,${raw}`);
+      return undefined;
+    }
+    if (thumb.imageUrlFormat === 'raw' && thumb.imageUrl) {
+      setShareImgSrc(thumb.imageUrl);
+      return undefined;
+    }
+    if (thumb.imageUrlFormat === 'json' && thumb.imageUrl) {
+      let cancelled = false;
+      fetch(thumb.imageUrl)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((json) => {
+          if (cancelled || !json) return;
+          const b64 = json.image || json.imageBase64;
+          if (!b64) return;
+          const raw = String(b64);
+          setShareImgSrc(raw.startsWith('data:image') ? raw : `data:image/jpeg;base64,${raw}`);
+        })
+        .catch(() => {});
+      return () => { cancelled = true; };
+    }
+    setShareImgSrc(thumb.imagePath || null);
+    return undefined;
+  }, [thumb.imageBase64, thumb.imageUrl, thumb.imageUrlFormat, thumb.imagePath]);
 
+  const imgSrc = shareImgSrc;
   const t = resolveFoodShareTotals(p, foodData);
   const macros = [
     { label: 'Calories', value: Math.round(t.calories ?? 0), unit: 'kcal', color: '#f97316' },
@@ -194,7 +361,8 @@ export function FoodRow({ entry, onOpen, onDelete, canDelete = true, hideTime = 
     try {
       await captureAndShare(target, {
         title: mealName,
-        fileName: `wellness-food-${Date.now()}.png`,
+        text: shareText,
+        fileName: `wellness-${activityType}-${Date.now()}.png`,
       });
     } catch (err) {
       if (!err?.message?.toLowerCase().includes('cancel')) {
@@ -217,36 +385,68 @@ export function FoodRow({ entry, onOpen, onDelete, canDelete = true, hideTime = 
         <div style={{ background: 'linear-gradient(135deg, #16a34a 0%, #15803d 100%)', padding: '16px 20px 12px' }}>
           <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.7)', margin: 0, letterSpacing: 0.3 }}>WELLNESS VALLEY · {shareTime}</p>
           <p style={{ fontSize: 20, fontWeight: 700, color: '#fff', margin: '4px 0 0', lineHeight: 1.2 }}>{mealName}</p>
-          {meal && <span style={{ display: 'inline-block', marginTop: 5, fontSize: 11, fontWeight: 600, padding: '2px 9px', borderRadius: 20, background: 'rgba(255,255,255,0.2)', color: '#fff' }}>{meal.label}</span>}
+          {showMealBadge && meal && (
+            <span style={{ display: 'inline-block', marginTop: 5, fontSize: 11, fontWeight: 600, padding: '2px 9px', borderRadius: 20, background: 'rgba(255,255,255,0.2)', color: '#fff' }}>
+              {meal.label}
+            </span>
+          )}
         </div>
-        {/* Food photo — full natural aspect ratio, no crop */}
+        {/* Food photo — include whenever available (water / afresh / food) */}
         {imgSrc && (
           <img src={imgSrc} alt="" style={{ width: '100%', height: 'auto', display: 'block', maxHeight: 420, objectFit: 'contain', background: '#f9fafb' }} />
         )}
-        {/* Macro grid */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, padding: '14px 14px 8px' }}>
-          {macros.map((m) => (
-            <div key={m.label} style={{ background: '#f9fafb', borderRadius: 10, padding: '10px 6px', textAlign: 'center', border: '1px solid #f3f4f6' }}>
-              <p style={{ fontSize: 17, fontWeight: 700, color: m.color, margin: 0, lineHeight: 1 }}>
-                {m.value}<span style={{ fontSize: 10, fontWeight: 500, color: '#9ca3af' }}> {m.unit}</span>
-              </p>
-              <p style={{ fontSize: 9, color: '#6b7280', margin: '3px 0 0', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.4 }}>{m.label}</p>
-            </div>
-          ))}
-        </div>
-        {/* Food items */}
-        {foodItems.length > 0 && (
-          <div style={{ padding: '0 14px 14px' }}>
-            <p style={{ fontSize: 10, fontWeight: 700, color: '#374151', margin: '0 0 6px', textTransform: 'uppercase', letterSpacing: 0.5 }}>Foods Detected</p>
-            {foodItems.slice(0, 8).map((item, i) => (
-              <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 0', borderBottom: '1px solid #f3f4f6' }}>
-                <p style={{ fontSize: 12, color: '#374151', margin: 0, flex: 1 }}>{item.name || 'Item'}</p>
-                <p style={{ fontSize: 11, color: '#6b7280', margin: 0, fontWeight: 500 }}>
-                  {Math.round(item.calories ?? item.nutrition?.calories ?? 0)} kcal
-                </p>
-              </div>
-            ))}
+        {/* Activity-specific body */}
+        {isWater && (
+          <div style={{ padding: '28px 20px', textAlign: 'center' }}>
+            <p style={{ fontSize: 40, margin: 0 }} aria-hidden="true">💧</p>
+            <p style={{ fontSize: 28, fontWeight: 700, color: '#0ea5e9', margin: '8px 0 0' }}>
+              {primaryValue}{primaryUnit ? ` ${primaryUnit}` : ''}
+            </p>
+            <p style={{ fontSize: 12, color: '#6b7280', margin: '6px 0 0', fontWeight: 600 }}>Water Intake</p>
           </div>
+        )}
+        {isAfresh && (
+          <div style={{ padding: '28px 20px', textAlign: 'center' }}>
+            <p style={{ fontSize: 40, margin: 0 }} aria-hidden="true">🥤</p>
+            <p style={{ fontSize: 28, fontWeight: 700, color: '#ea580c', margin: '8px 0 0' }}>
+              {primaryValue}{primaryUnit ? ` ${primaryUnit}` : ''}
+            </p>
+            {secondaryLabel ? (
+              <p style={{ fontSize: 13, color: '#6b7280', margin: '6px 0 0', fontWeight: 600 }}>{secondaryLabel}</p>
+            ) : null}
+            <p style={{ fontSize: 12, color: '#6b7280', margin: '4px 0 0', fontWeight: 600 }}>Afresh</p>
+          </div>
+        )}
+        {showNutritionShare && (
+          <>
+            {/* Macro grid */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, padding: '14px 14px 8px' }}>
+              {macros.map((m) => (
+                <div key={m.label} style={{ background: '#f9fafb', borderRadius: 10, padding: '10px 6px', textAlign: 'center', border: '1px solid #f3f4f6' }}>
+                  <p style={{ fontSize: 17, fontWeight: 700, color: m.color, margin: 0, lineHeight: 1 }}>
+                    {m.value}<span style={{ fontSize: 10, fontWeight: 500, color: '#9ca3af' }}> {m.unit}</span>
+                  </p>
+                  <p style={{ fontSize: 9, color: '#6b7280', margin: '3px 0 0', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.4 }}>{m.label}</p>
+                </div>
+              ))}
+            </div>
+            {/* Food items */}
+            {foodItems.length > 0 && (
+              <div style={{ padding: '0 14px 14px' }}>
+                <p style={{ fontSize: 10, fontWeight: 700, color: '#374151', margin: '0 0 6px', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                  {isShake ? 'Shake' : 'Foods Detected'}
+                </p>
+                {foodItems.slice(0, 8).map((item, i) => (
+                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 0', borderBottom: '1px solid #f3f4f6' }}>
+                    <p style={{ fontSize: 12, color: '#374151', margin: 0, flex: 1 }}>{item.name || 'Item'}</p>
+                    <p style={{ fontSize: 11, color: '#6b7280', margin: 0, fontWeight: 500 }}>
+                      {Math.round(item.calories ?? item.nutrition?.calories ?? 0)} kcal
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
         )}
         {/* Footer */}
         <div style={{ background: '#f0fdf4', padding: '8px 14px', borderTop: '1px solid #dcfce7' }}>
@@ -276,8 +476,9 @@ export function FoodRow({ entry, onOpen, onDelete, canDelete = true, hideTime = 
         ref={swipe.elRef}
         role="button"
         tabIndex={0}
-        aria-label={`${mealName}, ${Math.round(cal)} kilocalories`}
+        aria-label={`${mealName}, ${ariaValue}`}
         data-testid="diary-row-food"
+        data-activity={activityType}
         {...(swipeEnabled ? swipe.touchHandlers : {})}
         {...(swipeEnabled ? swipe.pointerHandlers : {})}
         onKeyDown={(e) => {
@@ -293,11 +494,11 @@ export function FoodRow({ entry, onOpen, onDelete, canDelete = true, hideTime = 
             style={{ width: `${swipe.progress * 100}%`, transition: swipe.dragging ? 'none' : 'width 180ms ease', opacity: swipe.progress > 0 ? 1 : 0 }} />
         )}
 
-        <Thumb imageBase64={p.imageBase64} imagePath={p.imagePath} fallback="🍽️" />
+        <Thumb {...thumb} fallback={thumbFallback} />
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5 flex-wrap">
             <h4 className="font-semibold text-gray-900 truncate">{mealName}</h4>
-            {meal && (
+            {showMealBadge && meal && (
               <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full shrink-0 ${meal.cls}`}>
                 {meal.label}
               </span>
@@ -306,19 +507,24 @@ export function FoodRow({ entry, onOpen, onDelete, canDelete = true, hideTime = 
           {!hideTime && (
             <p className="text-xs text-gray-500">{formatTime(entry.capturedAt, timezoneIana)}</p>
           )}
-          {(p.totals?.protein > 0 || p.totals?.carbs > 0 || p.totals?.fat > 0) && (
+          {secondaryLabel && (
+            <p className="text-[10px] text-gray-400 mt-0.5">{secondaryLabel}</p>
+          )}
+          {!isWater && !isAfresh && (p.totals?.protein > 0 || p.totals?.carbs > 0 || p.totals?.fat > 0) && (
             <p className="text-[10px] text-gray-400 mt-0.5">
               P {Math.round(p.totals?.protein ?? 0)}g · C {Math.round(p.totals?.carbs ?? 0)}g · F {Math.round(p.totals?.fat ?? 0)}g
             </p>
           )}
         </div>
         <div className="text-right">
-          <p className="font-bold text-base text-gray-900">{Math.round(cal)}</p>
-          <p className="text-[11px] text-gray-500 -mt-0.5">kcal</p>
+          <p className="font-bold text-base text-gray-900">{primaryValue}</p>
+          {primaryUnit ? (
+            <p className="text-[11px] text-gray-500 -mt-0.5">{primaryUnit}</p>
+          ) : null}
         </div>
         {/* Share button — stopPropagation prevents opening the detail modal */}
         <button
-          aria-label="Share this food entry"
+          aria-label={`Share this ${activityType} entry`}
           onClick={handleShare}
           disabled={isSharing}
           className="shrink-0 ml-1 p-1.5 rounded-lg text-gray-400 hover:text-green-600 hover:bg-green-50 transition-colors disabled:opacity-50"
@@ -334,18 +540,41 @@ export function FoodRow({ entry, onOpen, onDelete, canDelete = true, hideTime = 
 
 // ─── kind: weight ───────────────────────────────────────────────────────────
 
-export function WeightRow({ entry, onOpen, onDelete, canDelete = true, hideTime = false, timezoneIana = DEFAULT_BUSINESS_TIMEZONE }) {
+export function WeightRow({
+  entry,
+  onOpen,
+  onDelete,
+  canDelete = true,
+  hideTime = false,
+  timezoneIana = DEFAULT_BUSINESS_TIMEZONE,
+  previousWeight = null,
+  ownerUserId = null,
+  viewerUserId = null,
+}) {
   const p = entry.payload || {};
   const { swipe, swipeEnabled } = useDiaryRowSwipe({ canDelete, onDelete, entry });
   const [isSharing, setIsSharing] = useState(false);
+  const shareCardRef = useRef(null);
+  const thumb = thumbPropsFromEntry(entry, { ownerUserId, viewerUserId });
+  const delta = resolveWeightDeltaDisplay(previousWeight, p.weight);
+  const shareText = buildDiaryShareSuffix('weight', {
+    previousWeight,
+    currentWeight: p.weight,
+  });
+  const shareTime = entry.capturedAt
+    ? new Date(entry.capturedAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })
+    : '';
 
   const handleShare = async (e) => {
     e.stopPropagation();
-    if (swipe.dragging || swipe.leaving || isSharing || !swipe.elRef.current) return;
+    if (swipe.dragging || swipe.leaving || isSharing) return;
+    const target = shareCardRef.current || swipe.elRef.current;
+    if (!target) return;
     setIsSharing(true);
     try {
-      await captureAndShare(swipe.elRef.current, {
+      await captureAndShare(target, {
         title: `Weight ${p.weight} kg`,
+        text: shareText,
         fileName: `wellness-weight-${Date.now()}.png`,
       });
     } catch (err) {
@@ -359,6 +588,51 @@ export function WeightRow({ entry, onOpen, onDelete, canDelete = true, hideTime 
 
   return (
     <SwipeDeleteShell swipe={swipe} enabled={swipeEnabled}>
+      {/* Off-screen weight share card */}
+      <div
+        ref={shareCardRef}
+        aria-hidden="true"
+        style={{ position: 'fixed', left: '-9999px', top: 0, width: 420, background: '#ffffff', fontFamily: '-apple-system, BlinkMacSystemFont, sans-serif' }}
+      >
+        <div style={{ background: 'linear-gradient(135deg, #16a34a 0%, #15803d 100%)', padding: '16px 20px 12px' }}>
+          <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.7)', margin: 0, letterSpacing: 0.3 }}>WELLNESS VALLEY · {shareTime}</p>
+          <p style={{ fontSize: 20, fontWeight: 700, color: '#fff', margin: '4px 0 0', lineHeight: 1.2 }}>⚖️ Weight Update</p>
+        </div>
+        <div style={{ padding: '18px 20px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10 }}>
+            <span style={{ fontSize: 13, color: '#6b7280' }}>Previous Weight</span>
+            <span style={{ fontSize: 15, fontWeight: 700, color: '#111827' }}>
+              {previousWeight != null && Number.isFinite(Number(previousWeight))
+                ? `${Number(previousWeight)} kg`
+                : '—'}
+            </span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 14 }}>
+            <span style={{ fontSize: 13, color: '#6b7280' }}>Current Weight</span>
+            <span style={{ fontSize: 15, fontWeight: 700, color: '#111827' }}>{p.weight} kg</span>
+          </div>
+          {delta.label && (
+            <p style={{
+              margin: 0,
+              textAlign: 'center',
+              fontSize: 14,
+              fontWeight: 700,
+              color: delta.color,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 4,
+            }}>
+              <WeightDeltaArrow direction={delta.direction} className="" />
+              <span style={{ color: delta.color }}>{delta.label}</span>
+            </p>
+          )}
+        </div>
+        <div style={{ background: '#f0fdf4', padding: '8px 14px', borderTop: '1px solid #dcfce7' }}>
+          <p style={{ fontSize: 9, color: '#16a34a', margin: 0, textAlign: 'center', fontWeight: 600, letterSpacing: 0.3 }}>Track your wellness journey • Wellness Valley</p>
+        </div>
+      </div>
+
       {swipeEnabled && (
         <div aria-hidden className="absolute inset-0 z-0 flex items-center justify-end pr-5 overflow-hidden rounded-xl">
           <div
@@ -399,12 +673,18 @@ export function WeightRow({ entry, onOpen, onDelete, canDelete = true, hideTime 
             style={{ width: `${swipe.progress * 100}%`, transition: swipe.dragging ? 'none' : 'width 180ms ease', opacity: swipe.progress > 0 ? 1 : 0 }} />
         )}
 
-        <Thumb imageBase64={p.imageBase64} fallback={<WeighingScaleIcon className="w-6 h-6 text-emerald-600" />} />
+        <Thumb {...thumb} fallback={<WeighingScaleIcon className="w-6 h-6 text-emerald-600" />} />
         <div className="flex-1 min-w-0">
           <h4 className="font-semibold text-gray-900 truncate">Weight</h4>
           {!hideTime && (
             <p className="text-xs text-gray-500">
               {formatTime(entry.capturedAt, timezoneIana)}
+            </p>
+          )}
+          {delta.label && (
+            <p className={`text-[10px] mt-0.5 font-medium ${delta.className} flex items-center gap-0.5`}>
+              <WeightDeltaArrow direction={delta.direction} className={delta.className} />
+              <span>{delta.label}</span>
             </p>
           )}
         </div>
@@ -430,9 +710,43 @@ export function WeightRow({ entry, onOpen, onDelete, canDelete = true, hideTime 
 
 // ─── kind: education ────────────────────────────────────────────────────────
 
-export function EducationRow({ entry, onOpen, onDelete, canDelete = true, hideTime = false, timezoneIana = DEFAULT_BUSINESS_TIMEZONE }) {
+export function EducationRow({
+  entry,
+  onOpen,
+  onDelete,
+  canDelete = true,
+  hideTime = false,
+  timezoneIana = DEFAULT_BUSINESS_TIMEZONE,
+  ownerUserId = null,
+  viewerUserId = null,
+}) {
   const p = entry.payload || {};
   const { swipe, swipeEnabled } = useDiaryRowSwipe({ canDelete, onDelete, entry });
+  const thumb = thumbPropsFromEntry(entry, { ownerUserId, viewerUserId });
+  const [isSharing, setIsSharing] = useState(false);
+  const shareText = buildDiaryShareSuffix('education', {
+    platform: p.platform,
+    session: p.topic,
+  });
+
+  const handleShare = async (e) => {
+    e.stopPropagation();
+    if (swipe.dragging || swipe.leaving || isSharing || !swipe.elRef.current) return;
+    setIsSharing(true);
+    try {
+      await captureAndShare(swipe.elRef.current, {
+        title: `Education - ${p.topic || 'Session'}`,
+        text: shareText,
+        fileName: `wellness-education-${Date.now()}.png`,
+      });
+    } catch (err) {
+      if (!err?.message?.toLowerCase().includes('cancel')) {
+        console.error('[EducationRow] Share failed:', err);
+      }
+    } finally {
+      setIsSharing(false);
+    }
+  };
 
   return (
     <SwipeDeleteShell swipe={swipe} enabled={swipeEnabled}>
@@ -476,7 +790,7 @@ export function EducationRow({ entry, onOpen, onDelete, canDelete = true, hideTi
             style={{ width: `${swipe.progress * 100}%`, transition: swipe.dragging ? 'none' : 'width 180ms ease', opacity: swipe.progress > 0 ? 1 : 0 }} />
         )}
 
-        <Thumb imageBase64={p.imageBase64} fallback={<GraduationCap className="w-6 h-6 text-indigo-600" />} />
+        <Thumb {...thumb} fallback={<GraduationCap className="w-6 h-6 text-indigo-600" />} />
         <div className="flex-1 min-w-0">
           <h4 className="font-semibold text-gray-900 truncate">{p.topic || 'Education'}</h4>
           {!hideTime && (
@@ -486,6 +800,16 @@ export function EducationRow({ entry, onOpen, onDelete, canDelete = true, hideTi
             </p>
           )}
         </div>
+        <button
+          aria-label="Share this education entry"
+          onClick={handleShare}
+          disabled={isSharing}
+          className="shrink-0 ml-1 p-1.5 rounded-lg text-gray-400 hover:text-green-600 hover:bg-green-50 transition-colors disabled:opacity-50"
+        >
+          {isSharing
+            ? <div className="w-4 h-4 border-2 border-green-500 border-t-transparent rounded-full animate-spin" aria-hidden="true" />
+            : <Share2 className="w-4 h-4" aria-hidden="true" />}
+        </button>
       </div>
     </SwipeDeleteShell>
   );
@@ -539,7 +863,7 @@ export function WatchRow({ entry, onOpen, onDelete, canDelete = true, hideTime =
             style={{ width: `${swipe.progress * 100}%`, transition: swipe.dragging ? 'none' : 'width 180ms ease', opacity: swipe.progress > 0 ? 1 : 0 }} />
         )}
 
-        <Thumb imageBase64={p.imageBase64} imagePath={p.imagePath} fallback={<Smartphone className="w-6 h-6 text-amber-600" aria-hidden="true" />} />
+        <Thumb imageBase64={p.imageBase64} imagePath={p.imagePath} hasImage={p.hasImage} fallback={<Smartphone className="w-6 h-6 text-amber-600" aria-hidden="true" />} />
         <div className="flex-1 min-w-0">
           <h4 className="font-semibold text-gray-900 truncate">Smartwatch</h4>
           {!hideTime && (
@@ -586,8 +910,23 @@ function formatRemaining(secs) {
  */
 const TOTAL_BUDGET_SECS = 140;
 
-export function OtherRow({ entry, onOpen, onDelete, canDelete = true, isAnalyzing = false, isBackgroundPending = false, needsClassify = false, hideTime = false, timezoneIana = DEFAULT_BUSINESS_TIMEZONE, currentAttempt = null, totalAttempts = null }) {
+export function OtherRow({
+  entry,
+  onOpen,
+  onDelete,
+  canDelete = true,
+  isAnalyzing = false,
+  isBackgroundPending = false,
+  needsClassify = false,
+  hideTime = false,
+  timezoneIana = DEFAULT_BUSINESS_TIMEZONE,
+  currentAttempt = null,
+  totalAttempts = null,
+  ownerUserId = null,
+  viewerUserId = null,
+}) {
   const p = entry.payload || {};
+  const thumb = thumbPropsFromEntry(entry, { ownerUserId, viewerUserId });
   const { swipe, swipeEnabled: canSwipeDelete } = useDiaryRowSwipe({ canDelete, onDelete, entry });
   const swipeEnabled = canSwipeDelete && !isAnalyzing;
   const showBackgroundHint = isBackgroundPending && !isAnalyzing;
@@ -691,7 +1030,7 @@ export function OtherRow({ entry, onOpen, onDelete, canDelete = true, isAnalyzin
           </div>
         )}
 
-        <Thumb imageBase64={p.imageBase64} imagePath={p.imagePath} fallback={<HelpCircle className="w-6 h-6 text-gray-500" />} />
+        <Thumb {...thumb} fallback={<HelpCircle className="w-6 h-6 text-gray-500" />} />
 
         <div className="flex-1 min-w-0">
           {isAnalyzing ? (

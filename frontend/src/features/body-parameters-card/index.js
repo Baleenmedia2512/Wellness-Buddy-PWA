@@ -8,7 +8,7 @@ export { default as BodyParamsForm } from './components/BodyParamsForm';
 export { default as BodyParamsShareSheet } from './components/BodyParamsShareSheet';
 
 // API services
-export { fetchPublicCard, listBodyParamsCards } from './services/bodyParamsCardApi';
+export { fetchPublicCard, listBodyParamsCards, getBodyParamsCard } from './services/bodyParamsCardApi';
 
 // Domain logic
 export { buildOnboardingShareUrl } from './domain/platform-store.rules';

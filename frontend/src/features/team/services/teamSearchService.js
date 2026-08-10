@@ -3,7 +3,9 @@
  * Owns the network call(s) and any list normalisation. No React.
  */
 import { teamHierarchyService } from '../../../shared/services/teamHierarchyService';
+import cacheManager from '../../../shared/services/cacheManager.js';
 import { hasValidProfileName } from '../../user/domain/profileCompleteness';
+import { getProfile } from '../../user/services/user.api.js';
 
 /** Coach-like roles that may search/view other team members. */
 const COACH_ROLES = new Set(['coach', 'coccoach', 'upline', 'admin', 'developer']);
@@ -20,14 +22,20 @@ export function canUseTeamSearch(role, hasTeamMembers) {
 /** Check team_table: does any user list this userId as their CoachId? */
 export async function fetchHasTeamMembers(userId) {
   if (!userId) return false;
-  const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
-  const res = await fetch(
-    `${apiBaseUrl}/api/team/has-members?userId=${encodeURIComponent(userId)}`,
-    { cache: 'no-store', headers: { 'Cache-Control': 'no-cache', Pragma: 'no-cache' } },
+  const key = cacheManager.generateKey('hasTeamMembers', String(userId));
+  return cacheManager.execute(
+    key,
+    async () => {
+      const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
+      const res = await fetch(
+        `${apiBaseUrl}/api/team/has-members?userId=${encodeURIComponent(userId)}`,
+      );
+      if (!res.ok) return false;
+      const data = await res.json();
+      return Boolean(data?.hasTeamMembers);
+    },
+    cacheManager.ttls.hasTeamMembers,
   );
-  if (!res.ok) return false;
-  const data = await res.json();
-  return Boolean(data?.hasTeamMembers);
 }
 
 /**
@@ -36,24 +44,21 @@ export async function fetchHasTeamMembers(userId) {
  */
 export async function fetchSavedUserName(email) {
   if (!email) return '';
-  const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
-  const cacheBuster = Date.now();
-  const res = await fetch(
-    `${apiBaseUrl}/api/user/profile?email=${encodeURIComponent(email)}&_t=${cacheBuster}`,
-    { cache: 'no-store', headers: { 'Cache-Control': 'no-cache', Pragma: 'no-cache' } },
-  );
-  if (!res.ok) return '';
-  const data = await res.json();
-  if (!data?.success || !data?.data) return '';
-  const name = String(data.data.userName || '').trim();
-  const profileEmail = data.data.email || email;
-  if (!hasValidProfileName(name, {
-    email: profileEmail,
-    phoneNumber: data.data.phoneNumber,
-  })) {
+  try {
+    const data = await getProfile(email);
+    if (!data?.success || !data?.data) return '';
+    const name = String(data.data.userName || '').trim();
+    const profileEmail = data.data.email || email;
+    if (!hasValidProfileName(name, {
+      email: profileEmail,
+      phoneNumber: data.data.phoneNumber,
+    })) {
+      return '';
+    }
+    return name;
+  } catch {
     return '';
   }
-  return name;
 }
 
 /**

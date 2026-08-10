@@ -7,12 +7,17 @@
  */
 import { useState, useEffect } from 'react';
 import { fetchUserCalorieTarget, DEFAULT_CALORIE_TARGET } from '../services/nutritionDashboard';
+import { isCaptureFlowBusy } from '../../../shared/services/captureFlowBusy';
 
-export function useUserCalorieTarget({ user, apiBaseUrl, bmrUpdateKey = 0 }) {
+export function useUserCalorieTarget({ user, apiBaseUrl, bmrUpdateKey = 0, enabled = true }) {
   const [calorieTarget, setCalorieTarget] = useState(DEFAULT_CALORIE_TARGET);
   const [bmrLoading, setBmrLoading] = useState(true);
 
   useEffect(() => {
+    if (!enabled) {
+      setBmrLoading(false);
+      return undefined;
+    }
     if (!user?.email) {
       setBmrLoading(false);
       return undefined;
@@ -31,7 +36,8 @@ export function useUserCalorieTarget({ user, apiBaseUrl, bmrUpdateKey = 0 }) {
     load();
 
     const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') load();
+      // Skip while Gallery/Camera → capture upload is in flight (connection budget).
+      if (document.visibilityState === 'visible' && !isCaptureFlowBusy()) load();
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
@@ -39,7 +45,7 @@ export function useUserCalorieTarget({ user, apiBaseUrl, bmrUpdateKey = 0 }) {
       cancelled = true;
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [user?.email, apiBaseUrl, bmrUpdateKey]);
+  }, [user?.email, apiBaseUrl, bmrUpdateKey, enabled]);
 
   return { calorieTarget, bmrLoading };
 }

@@ -1,30 +1,17 @@
 // Profile REST helpers — fetch, save, snooze profile picture reminder.
 import { getApiBaseUrl } from '../../../config/api.config.js';
+import { getProfile } from './user.api.js';
+import cacheManager from '../../../shared/services/cacheManager.js';
 
 const DEMO_ACCOUNTS = ['testereasywork@gmail.com'];
 export const isDemoAccount = (email) =>
   DEMO_ACCOUNTS.includes((email || '').toLowerCase().trim());
 export const demoStorageKey = (email) => `demo_profile_${email}`;
 
-const PROFILE_FETCH_TIMEOUT_MS = 12000;
-
 export const fetchProfile = async (email) => {
-  const apiBase = getApiBaseUrl();
-  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
-  const timer = controller
-    ? setTimeout(() => controller.abort(), PROFILE_FETCH_TIMEOUT_MS)
-    : null;
   try {
-    const res = await fetch(
-      `${apiBase}/api/user/profile?email=${encodeURIComponent(email)}&_t=${Date.now()}`,
-      {
-        cache: 'no-store',
-        headers: { 'Cache-Control': 'no-cache', Pragma: 'no-cache' },
-        signal: controller?.signal,
-      },
-    );
-    if (!res.ok) throw new Error('Failed to load profile.');
-    const data = await res.json();
+    // Shared getProfile cache/dedup — avoids parallel Home profile storms.
+    const data = await getProfile(email);
     // Demo accounts: API returns top-level fields with no `data` wrapper.
     if (data.success && !data.data && isDemoAccount(email)) {
       const stored = localStorage.getItem(demoStorageKey(email));
@@ -36,12 +23,7 @@ export const fetchProfile = async (email) => {
     }
     return data;
   } catch (err) {
-    if (err?.name === 'AbortError') {
-      throw new Error('Profile is taking too long to load. Please try again.');
-    }
-    throw err;
-  } finally {
-    if (timer) clearTimeout(timer);
+    throw err instanceof Error ? err : new Error('Failed to load profile.');
   }
 };
 
@@ -62,6 +44,9 @@ export const saveProfile = async (payload) => {
     const raw = data.message || '';
     const isDbInternals = /PGRST|JSON object requested|multiple.*rows|no rows returned|relation.*does not exist|violates check constraint|check constraint/i.test(raw);
     throw new Error(isDbInternals ? 'Failed to save profile. Please try again.' : raw || 'Failed to save profile.');
+  }
+  if (payload?.email) {
+    cacheManager.clear(cacheManager.generateKey('userProfile', String(payload.email).toLowerCase()));
   }
   // Persist demo-account profiles locally since backend skips demo writes.
   if (isDemoAccount(payload.email)) {

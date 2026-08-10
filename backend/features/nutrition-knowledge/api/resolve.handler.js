@@ -12,6 +12,7 @@ import {
   pickNutrition,
   shouldAutoPromote,
   AUTO_PROMOTE_SIGHTINGS,
+  sortByFoodNameMatch,
 } from '../domain/nutrition.rules.js';
 
 async function loadApprovedProfile(name) {
@@ -66,8 +67,9 @@ export async function searchMaster({ searchTerm }) {
   let rows = await repo.searchProfiles(searchTerm, { status: 'approved', limit: 20 });
   if (rows === null) {
     rows = searchSeedProfiles(searchTerm);
-  } else if (rows.length === 0) {
-    // Also include seed hits not yet migrated.
+  } else {
+    // Always union in-code seeds so common foods (and typo aliases) appear
+    // even when the master table has unrelated prefix hits.
     const seedHits = searchSeedProfiles(searchTerm);
     const have = new Set(rows.map((r) => r.normalized_name));
     for (const s of seedHits) {
@@ -75,7 +77,10 @@ export async function searchMaster({ searchTerm }) {
     }
   }
 
-  const items = rows.map((row) => profileToSearchItem(row));
+  const items = sortByFoodNameMatch(
+    rows.map((row) => profileToSearchItem(row)),
+    searchTerm,
+  );
   return {
     httpStatus: 200,
     body: { ok: true, data: { items } },

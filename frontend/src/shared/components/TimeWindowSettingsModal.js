@@ -463,7 +463,7 @@ const TimeWindowSettingsModal = ({ isOpen, onClose, onUpdate, userEmail }) => {
       // Reset form
       handleCancelEdit();
 
-      // Notify parent to refresh discipline report
+      // Notify parent after time-window update
       if (onUpdate) {
         onUpdate(true);
       }

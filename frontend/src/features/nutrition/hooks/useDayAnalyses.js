@@ -85,6 +85,8 @@ export function useDayAnalyses({
   nutritionRefreshKey = 0,
   /** Home-only: skip refetch when no newer activity log exists (see homeDashboardActivity). */
   enableActivityLogGate = false,
+  /** When false, skip auto-fetch (timeline modal-host mount). */
+  enabled = true,
 }) {
   // Restore last Home snapshot instantly when remounting with no new activity log.
   const cachedSnapshot = enableActivityLogGate ? getHomeDashboardSnapshot() : null;
@@ -227,12 +229,13 @@ export function useDayAnalyses({
 
   // Auto-refresh when user, date, or nutritionRefreshKey (activity log) changes.
   // Diary / NutritionDashboard always force-fetch; Home uses the activity gate.
+  // Timeline modal-host mounts pass enabled=false until first open.
   useEffect(() => {
-    if (!user) return;
+    if (!user || !enabled) return;
     fetchDayAnalyses(selectedDate, {
       force: enableActivityLogGate ? shouldRefreshHomeDashboard() : true,
     });
-  }, [user, selectedDate, fetchDayAnalyses, nutritionRefreshKey, enableActivityLogGate]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [user, selectedDate, fetchDayAnalyses, nutritionRefreshKey, enableActivityLogGate, enabled]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Apply optimistic deltas to daily totals (used by mutations).
   const applyDailyDelta = useCallback(

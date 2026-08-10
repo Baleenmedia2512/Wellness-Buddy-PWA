@@ -191,16 +191,21 @@ export async function loadAncestorProfiles(userIds, supabase = getSupabaseClient
     });
   }
 
-  // One batched query — CreatedAt DESC so first sighting per user is latest record.
-  const { data: weights, error: wErr } = await supabase
-    .from('weight_records_table')
-    .select('"UserId", "Weight", "CreatedAt"')
-    .in('UserId', ids)
-    .or('"IsDeleted".is.null,"IsDeleted".eq.false,"IsDeleted".eq.0')
-    .order('"CreatedAt"', { ascending: false });
-  if (wErr) throw wErr;
-
-  const latestByUser = pickLatestWeightKgByCreatedAt(weights);
+  // Latest weight only per ancestor — never download full history.
+  const weightRows = await Promise.all(
+    ids.map(async (uid) => {
+      const { data, error: wErr } = await supabase
+        .from('weight_records_table')
+        .select('"UserId", "Weight", "CreatedAt"')
+        .eq('UserId', uid)
+        .or('"IsDeleted".is.null,"IsDeleted".eq.false,"IsDeleted".eq.0')
+        .order('"CreatedAt"', { ascending: false })
+        .limit(1);
+      if (wErr) throw wErr;
+      return data?.[0] || null;
+    }),
+  );
+  const latestByUser = pickLatestWeightKgByCreatedAt(weightRows.filter(Boolean));
   for (const [id, kg] of latestByUser.entries()) {
     const profile = map.get(id);
     if (!profile) continue;
@@ -306,22 +311,27 @@ export async function resolveSponsorAndIdealCoachForMembers(members, opts = {}) 
     m?.userId != null ? String(m.userId) : null
   )).filter(Boolean))];
   const memberRoleById = new Map();
-  if (allMemberIds.length > 0) {
+  const missingRoleIds = [];
+  for (const m of list) {
+    const mid = m?.userId != null ? String(m.userId) : null;
+    if (!mid) continue;
+    if (m.role != null || m.Role != null) {
+      memberRoleById.set(mid, normalizeUserRole(m.role ?? m.Role));
+    } else {
+      missingRoleIds.push(mid);
+    }
+  }
+  if (missingRoleIds.length > 0) {
     const { data: memberRows, error: memberRoleErr } = await supabase
       .from('team_table')
       .select('"UserId", "Role"')
-      .in('UserId', allMemberIds);
+      .in('UserId', missingRoleIds);
     if (memberRoleErr) throw memberRoleErr;
     for (const row of memberRows || []) {
       const mid = row.UserId != null ? String(row.UserId) : null;
       if (!mid) continue;
       memberRoleById.set(mid, normalizeUserRole(row.Role));
     }
-  }
-  for (const m of list) {
-    const mid = m?.userId != null ? String(m.userId) : null;
-    if (!mid || memberRoleById.has(mid)) continue;
-    if (m.role != null) memberRoleById.set(mid, normalizeUserRole(m.role));
   }
 
   const uniqueSponsors = [...new Set([...memberSponsor.values()].filter(Boolean))];

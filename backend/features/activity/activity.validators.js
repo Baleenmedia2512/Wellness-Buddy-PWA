@@ -40,7 +40,17 @@ export function validateWatchCalories(query) {
   if (!query?.userId) throw new ValidationError(400, 'userId is required');
   const targetDate = query.date && DATE_YMD_RE.test(String(query.date))
     ? String(query.date) : null;
-  return { userId: query.userId, targetDate };
+  const startDate = query.startDate && DATE_YMD_RE.test(String(query.startDate))
+    ? String(query.startDate) : null;
+  const endDate = query.endDate && DATE_YMD_RE.test(String(query.endDate))
+    ? String(query.endDate) : null;
+  if ((startDate && !endDate) || (!startDate && endDate)) {
+    throw new ValidationError(400, 'startDate and endDate must both be provided');
+  }
+  if (startDate && endDate && startDate > endDate) {
+    throw new ValidationError(400, 'startDate must be on or before endDate');
+  }
+  return { userId: query.userId, targetDate, startDate, endDate };
 }
 
 const VALID_TIME_REPORT_DATE_RANGES = new Set(['today', 'yesterday', 'last7days', 'last30days', 'custom']);

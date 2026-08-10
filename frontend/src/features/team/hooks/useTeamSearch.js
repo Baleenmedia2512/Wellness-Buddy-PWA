@@ -57,6 +57,8 @@ export function useTeamSearch({ user, userRole, selectedMember, onMemberSelect }
   }, [user?.id, userRole]);
 
   // Fetch the coach's flat team list once it becomes possible.
+  // Intentionally omit savedUserName from deps — name is resolved at fetch time
+  // so profile-name load does not re-download the full team-hierarchy payload.
   useEffect(() => {
     if (!isCoach || !user?.id) return undefined;
     let cancelled = false;
@@ -71,7 +73,8 @@ export function useTeamSearch({ user, userRole, selectedMember, onMemberSelect }
       .catch((err) => console.error('Error loading team members:', err))
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [user?.id, user?.name, user?.email, isCoach, userRole, savedUserName]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- savedUserName intentionally excluded
+  }, [user?.id, user?.name, user?.email, isCoach, userRole]);
 
   const suggestions = useMemo(
     () => filterMembers(allTeamMembers, searchQuery),

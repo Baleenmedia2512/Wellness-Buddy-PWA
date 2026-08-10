@@ -2,13 +2,15 @@
  * CaptureClassifyPage — full-screen post-capture: pick type or run AI in background.
  * AI does not populate this screen; results appear in Diary.
  */
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Dumbbell,
   Loader2,
   Lock,
+  Salad,
   Sparkles,
   UtensilsCrossed,
+  X,
 } from 'lucide-react';
 import { isFlagEnabled } from '../../config/featureFlags';
 import {
@@ -23,17 +25,24 @@ import {
   buildAfreshAnalysisResult,
   AFRESH_PRODUCT,
   buildAnalysisFromManualFood as buildManualFoodAnalysis,
+  fetchWatchBurnedCalories,
 } from '../../features/nutrition';
-import { ManualWeightEntryModal, saveWeight, warmLatestWeightCache } from '../../features/weight';
+import { ManualWeightEntryModal, saveWeight, warmLatestWeightCache, getCachedLatestWeight } from '../../features/weight';
 import { ManualEducationEntryModal, saveLog } from '../../features/education';
 import { ManualWatchEntryModal } from '../../features/activity';
-import { fetchWatchBurnedCalories } from '../../features/nutrition/services/nutritionDashboard/burnedCaloriesApi';
 import {
   fetchAiCreditsStatus,
   reserveAiCredit,
 } from '../../features/ai-credits';
 import { fetchWaterIntake, todayLocal } from '../../features/water';
 import { isIOS } from '../../shared/utils/platform';
+import { buildDiaryShareSuffix } from '../../features/diary';
+import HealthySnacksSubSelectModal from './HealthySnacksSubSelectModal';
+import {
+  MANUAL_LOG_CATEGORY,
+  resolveManualLogCategoryClick,
+  resolveHealthySnacksSubtypeClick,
+} from '../domain/manualLogCategories';
 
 /** PNG/SVG from `frontend/public` — same pattern as BathroomScaleIcon. */
 function PublicIcon({ src, className = '', alt = '' }) {
@@ -49,14 +58,26 @@ function PublicIcon({ src, className = '', alt = '' }) {
 }
 
 const CATEGORIES = [
-  { id: 'weight', src: '/scale.png', label: 'Weight', isImgIcon: true },
-  { id: 'afresh', src: '/coffee.png', label: 'Afresh', isImgIcon: true },
-  { id: 'education', src: '/education.svg', label: 'Education', isImgIcon: true },
-  { id: 'shake', src: '/bottle.png', label: 'Shake', isImgIcon: true },
-  { id: 'water', src: '/water.svg', label: 'Water', isImgIcon: true },
-  { id: 'food', Icon: UtensilsCrossed, label: 'Food' },
+  { id: MANUAL_LOG_CATEGORY.WEIGHT, src: '/scale.png', label: 'Weight', isImgIcon: true },
+  { id: MANUAL_LOG_CATEGORY.AFRESH, src: '/coffee.png', label: 'Afresh', isImgIcon: true },
+  { id: MANUAL_LOG_CATEGORY.EDUCATION, src: '/education.svg', label: 'Education', isImgIcon: true },
+  { id: MANUAL_LOG_CATEGORY.SHAKE, src: '/bottle.png', label: 'Shake', isImgIcon: true },
+  { id: MANUAL_LOG_CATEGORY.WATER, src: '/water.svg', label: 'Water', isImgIcon: true },
+  { id: MANUAL_LOG_CATEGORY.FOOD, Icon: UtensilsCrossed, label: 'Food' },
+  {
+    id: MANUAL_LOG_CATEGORY.HEALTHY_SNACKS,
+    Icon: Salad,
+    label: 'Snacks & Soups',
+    wrapLabel: true,
+  },
   // smartwatch flow = calories burned; label is Workout (green weightlifter / Lucide on iOS)
-  { id: 'smartwatch', src: '/emoji/1f3cb-green.svg', label: 'Workout', isImgIcon: true, Icon: Dumbbell },
+  {
+    id: MANUAL_LOG_CATEGORY.SMARTWATCH,
+    src: '/emoji/1f3cb-green.svg',
+    label: 'Workout',
+    isImgIcon: true,
+    Icon: Dumbbell,
+  },
 ];
 
 /** Home hero banner greens — keep classify screen on-brand with Take Photo card. */
@@ -70,7 +91,7 @@ const BRAND = {
 
 /** Shared Log-as button chrome — fills one cell in the 3×3 grid. */
 const LOG_AS_BTN_BASE =
-  'log-as-btn flex h-full min-h-[4.75rem] w-full min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 py-2 text-center cursor-pointer select-none transition-[transform,box-shadow,background-color,border-color] duration-150 ease-out disabled:pointer-events-none disabled:opacity-50 min-[380px]:min-h-[5rem] min-[380px]:gap-1.5 sm:min-h-[5.25rem]';
+  'log-as-btn flex h-full min-h-[3.75rem] w-full min-w-0 flex-col items-center justify-center gap-0.5 rounded-xl px-0.5 py-1.5 text-center cursor-pointer select-none transition-[transform,box-shadow,background-color,border-color] duration-150 ease-out disabled:pointer-events-none disabled:opacity-50 min-[360px]:min-h-[4.25rem] min-[360px]:gap-1 min-[360px]:px-1 min-[360px]:py-2 min-[400px]:min-h-[4.75rem] sm:min-h-[5.25rem] sm:gap-1.5';
 
 const LOG_AS_BTN_IDLE = [
   LOG_AS_BTN_BASE,
@@ -93,8 +114,8 @@ function LogAsIconWrap({ selected = false, muted = false, compact = false, child
       className={[
         'flex shrink-0 items-center justify-center',
         compact
-          ? 'h-8 w-8 min-[380px]:h-9 min-[380px]:w-9 sm:h-10 sm:w-10'
-          : 'h-9 w-9 min-[380px]:h-10 min-[380px]:w-10 sm:h-11 sm:w-11',
+          ? 'h-7 w-7 min-[360px]:h-8 min-[360px]:w-8 min-[400px]:h-9 min-[400px]:w-9 sm:h-10 sm:w-10'
+          : 'h-8 w-8 min-[360px]:h-9 min-[360px]:w-9 min-[400px]:h-10 min-[400px]:w-10 sm:h-11 sm:w-11',
         selected
           ? 'rounded-full bg-white/15 ring-1 ring-white/25'
           : muted
@@ -149,6 +170,7 @@ function buildAnalysisFromManualFood(m) {
 
 /** Shake calculator payload → promoteUnknownToFood analysis shape (same as AI). */
 function shakePayloadToAnalysis(payload) {
+  const shakeProducts = payload?.shakeProducts || null;
   const foods = (payload?.detailedItems || []).map((item) => ({
     name: item.name,
     nutrition: item.nutrition || {},
@@ -157,12 +179,14 @@ function shakePayloadToAnalysis(payload) {
     volume_ml: item.volume_ml,
     unit: item.unit,
     isLiquid: item.isLiquid,
+    shakeProducts: item.shakeProducts || shakeProducts || null,
   }));
   return {
     foods,
     total: payload?.nutrition || {},
     confidence: payload?.confidence || 'high',
     processedBy: payload?.processedBy || 'shake_calculator',
+    shakeProducts,
   };
 }
 
@@ -184,17 +208,37 @@ export default function ManualEntryPage({
   const [aiStarting, setAiStarting] = useState(false);
   const [hint, setHint] = useState(null);
   const [activeForm, setActiveForm] = useState(null);
-  const [saving, setSaving] = useState(false);
+  /** When food search opened from Snacks & Soups subtypes. */
+  const [foodEntryMeta, setFoodEntryMeta] = useState(null);
   const [closingWithoutLog, setClosingWithoutLog] = useState(false);
+  /** Full-screen preview of the captured photo. */
+  const [previewExpanded, setPreviewExpanded] = useState(false);
   // Today's hydration total (all exempted beverages) — water stepper tracks this.
   const [waterTodayMl, setWaterTodayMl] = useState(0);
   const [waterTodayLoading, setWaterTodayLoading] = useState(false);
+  // Today's Afresh scoops only — independent of water ml total.
+  const [afreshTodayScoops, setAfreshTodayScoops] = useState(0);
+  const [afreshTodayLoading, setAfreshTodayLoading] = useState(false);
+  // True after light /api/water/intake has returned once (prefetch or open).
+  const beverageSummaryReadyRef = useRef(false);
   const [workoutTodayKcal, setWorkoutTodayKcal] = useState(0);
   const [workoutTodayLoading, setWorkoutTodayLoading] = useState(false);
+  // True after light watch-calories has returned once (prefetch or open).
+  const workoutSummaryReadyRef = useRef(false);
+
+  // Capture row must exist before LOG AS / AI can finish. Upload runs in the
+  // background — UI stays interactive; taps are queued until captureId arrives.
+  const captureReady = Boolean(captureId);
+  const [pendingLogAsId, setPendingLogAsId] = useState(null);
+  const [pendingAi, setPendingAi] = useState(false);
 
   // New capture while this screen stays mounted — close any open sub-form.
+  // Do not clear pendingLogAsId / pendingAi here: captureId often flips null → id
+  // on the same mount, and those pending taps must flush once ready.
   useEffect(() => {
     setActiveForm(null);
+    setFoodEntryMeta(null);
+    setPreviewExpanded(false);
   }, [captureId]);
 
   const previewSrc = useMemo(() => {
@@ -220,87 +264,161 @@ export default function ManualEntryPage({
     }
   }, [creditsEnabled, userId, apiBaseUrl]);
 
+  // Defer credits fetch until photo is saved — frees connections for POST /captures.
   useEffect(() => {
+    if (!captureReady) return;
     refreshCredits();
-  }, [refreshCredits]);
+  }, [captureReady, refreshCredits]);
 
-  // Load today's consumed water whenever the water stepper opens (diary edits reflect here).
-  useEffect(() => {
-    if (activeForm !== 'water' || !userId) return undefined;
+  // Light beverage summary (AnalysisData only — no images). Powers water ml + Afresh scoops.
+  const loadBeverageToday = useCallback((opts = {}) => {
+    const { showWaterLoading = false, showAfreshLoading = false } = opts;
+    if (!userId) return () => {};
     let cancelled = false;
-    setWaterTodayLoading(true);
+    if (showWaterLoading) setWaterTodayLoading(true);
+    if (showAfreshLoading) setAfreshTodayLoading(true);
     fetchWaterIntake(userId, todayLocal())
       .then((data) => {
         if (cancelled) return;
-        const total = Math.max(0, Math.round(Number(data?.totalMl) || 0));
-        setWaterTodayMl(total);
+        setWaterTodayMl(Math.max(0, Math.round(Number(data?.totalMl) || 0)));
+        setAfreshTodayScoops(Math.max(0, Math.round(Number(data?.totalAfreshScoops) || 0)));
+        beverageSummaryReadyRef.current = true;
       })
       .catch(() => {
-        if (!cancelled) setWaterTodayMl(0);
+        if (cancelled) return;
+        if (showWaterLoading) setWaterTodayMl(0);
+        if (showAfreshLoading) setAfreshTodayScoops(0);
       })
       .finally(() => {
-        if (!cancelled) setWaterTodayLoading(false);
+        if (cancelled) return;
+        if (showWaterLoading) setWaterTodayLoading(false);
+        if (showAfreshLoading) setAfreshTodayLoading(false);
       });
     return () => { cancelled = true; };
-  }, [activeForm, userId]);
+  }, [userId]);
 
-  // Load today's watch calories whenever the workout modal opens.
-  useEffect(() => {
-    if (activeForm !== 'smartwatch' || !userId) return undefined;
+  // Light watch-calories summary — prefetch so Workout opens without a spinner wait.
+  const loadWorkoutToday = useCallback((opts = {}) => {
+    const { showLoading = false } = opts;
+    if (!userId) return () => {};
     let cancelled = false;
-    setWorkoutTodayLoading(true);
+    if (showLoading) setWorkoutTodayLoading(true);
     fetchWatchBurnedCalories({ apiBaseUrl, userId, date: todayLocal() })
       .then((total) => {
         if (cancelled) return;
         setWorkoutTodayKcal(Math.max(0, Math.round(Number(total) || 0)));
+        workoutSummaryReadyRef.current = true;
       })
       .catch(() => {
-        if (!cancelled) setWorkoutTodayKcal(0);
+        if (cancelled) return;
+        if (showLoading) setWorkoutTodayKcal(0);
       })
       .finally(() => {
-        if (!cancelled) setWorkoutTodayLoading(false);
+        if (cancelled) return;
+        if (showLoading) setWorkoutTodayLoading(false);
       });
     return () => { cancelled = true; };
-  }, [activeForm, userId, apiBaseUrl]);
+  }, [userId, apiBaseUrl]);
+
+  // Prefetch beverage / workout summaries only after capture is saved (idle).
+  useEffect(() => {
+    if (!userId || !captureReady) return undefined;
+    beverageSummaryReadyRef.current = false;
+    workoutSummaryReadyRef.current = false;
+    let cancelled = false;
+    let idleId = null;
+    let timeoutId = null;
+    const start = () => {
+      if (cancelled) return;
+      loadBeverageToday();
+      loadWorkoutToday();
+      warmLatestWeightCache(userId);
+    };
+    if (typeof window.requestIdleCallback === 'function') {
+      idleId = window.requestIdleCallback(start, { timeout: 1200 });
+    } else {
+      timeoutId = setTimeout(start, 120);
+    }
+    return () => {
+      cancelled = true;
+      if (idleId != null && typeof window.cancelIdleCallback === 'function') {
+        window.cancelIdleCallback(idleId);
+      }
+      if (timeoutId != null) clearTimeout(timeoutId);
+    };
+  }, [userId, captureReady, loadBeverageToday, loadWorkoutToday]);
+
+  // Refresh when stepper opens. Spinner only if prefetch has not finished yet.
+  useEffect(() => {
+    if (activeForm === 'water') {
+      return loadBeverageToday({ showWaterLoading: !beverageSummaryReadyRef.current });
+    }
+    if (activeForm === 'afresh') {
+      return loadBeverageToday({ showAfreshLoading: !beverageSummaryReadyRef.current });
+    }
+    return undefined;
+  }, [activeForm, loadBeverageToday]);
 
   useEffect(() => {
-    if (userId) warmLatestWeightCache(userId);
-  }, [userId]);
+    if (activeForm !== 'smartwatch') return undefined;
+    return loadWorkoutToday({ showLoading: !workoutSummaryReadyRef.current });
+  }, [activeForm, loadWorkoutToday]);
 
-  const exit = async () => {
-    await onSaved?.();
-    // Share sheet was shown — return to main whether user shared or dismissed.
+  const exit = (shareMeta = null) => {
+    // Leave classify immediately — share sheet opens from App in the background.
+    // onSaved must read imageBase64 synchronously before onBack clears the payload.
+    onSaved?.(shareMeta);
     onBack?.();
   };
 
   /** Discard capture and leave — must not remain in Diary as unknown/Other. */
-  const handleCloseWithoutLog = async () => {
-    if (closingWithoutLog || saving || aiStarting) return;
+  const handleCloseWithoutLog = () => {
+    if (closingWithoutLog) return;
+    // Allow cancel while Auto Detect is only queued (photo still saving).
+    if (aiStarting && !pendingAi) return;
+    setPendingLogAsId(null);
+    setPendingAi(false);
+    setAiStarting(false);
     setClosingWithoutLog(true);
-    try {
-      if (captureId && userId) {
-        await deleteCapture({ captureId, userId });
-      }
-      onBack?.();
-    } catch {
-      onToast?.("Couldn't discard photo — try again.");
-      setClosingWithoutLog(false);
+    const id = captureId;
+    const uid = userId;
+    // Leave immediately — awaiting delete felt like a hang under network load.
+    onBack?.();
+    if (id && uid) {
+      void deleteCapture({ captureId: id, userId: uid }).catch(() => {
+        onToast?.("Couldn't discard photo — it may still appear in Diary.");
+      });
     }
   };
 
-  const saveFoodAnalysis = async (analysisResult, toastMsg) => {
-    await promoteUnknownToFood({
+  const saveFoodAnalysis = (analysisResult, toastMsg, activityCaption = null) => {
+    // Close classify immediately — promote runs in background (same as Food).
+    onToast?.(toastMsg);
+    void promoteUnknownToFood({
       captureId,
       viewerUserId: userId,
       analysisResult,
       originalCapturedAt: originalCapturedAt || null,
+    }).catch((err) => {
+      onToast?.(err?.message || "Couldn't save — check Diary.");
     });
-    onToast?.(toastMsg);
-    await exit();
+    exit(activityCaption ? { activityCaption } : null);
   };
 
-  const handleAiAnalyze = async () => {
-    if (!userId || !imageBase64 || aiStarting) return;
+  const openCategory = useCallback((id) => {
+    const next = resolveManualLogCategoryClick(id);
+    if (!next) return;
+    if (next.kind === 'healthy-snacks-picker') {
+      setFoodEntryMeta(null);
+      setActiveForm(MANUAL_LOG_CATEGORY.HEALTHY_SNACKS);
+      return;
+    }
+    setFoodEntryMeta(null);
+    setActiveForm(next.formId);
+  }, []);
+
+  const startAiAnalyze = useCallback(async () => {
+    if (!userId || !imageBase64) return;
     setHint(null);
     setAiStarting(true);
     try {
@@ -320,88 +438,203 @@ export default function ManualEntryPage({
         reservationId = reserved.reservationId;
       }
       onStartBackgroundAi?.({ reservationId });
-      await exit();
+      exit();
     } catch (err) {
       setHint(err?.message || 'Could not start AI — pick a type below.');
       setAiStarting(false);
     }
+  // exit / onStartBackgroundAi are stable enough for this screen lifetime
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId, imageBase64, creditsEnabled, apiBaseUrl]);
+
+  const handleAiAnalyze = () => {
+    if (!userId || !imageBase64 || aiStarting || closingWithoutLog) return;
+    if (!captureReady) {
+      setPendingAi(true);
+      setPendingLogAsId(null);
+      setAiStarting(true);
+      return;
+    }
+    void startAiAnalyze();
   };
 
   const handleCategoryClick = (id) => {
-    if (saving || aiStarting) return;
-    setActiveForm(id);
+    if (closingWithoutLog) return;
+    // Queued Auto Detect can still be switched to a Log-as type.
+    if (aiStarting && !pendingAi) return;
+    if (!captureReady) {
+      setPendingLogAsId(id);
+      setPendingAi(false);
+      setAiStarting(false);
+      return;
+    }
+    openCategory(id);
+  };
+
+  // Flush queued Log-as / Auto Detect once the background capture POST finishes.
+  useEffect(() => {
+    if (!captureReady) return;
+    if (pendingLogAsId) {
+      const id = pendingLogAsId;
+      setPendingLogAsId(null);
+      openCategory(id);
+      return;
+    }
+    if (pendingAi) {
+      setPendingAi(false);
+      void startAiAnalyze();
+    }
+  }, [captureReady, pendingLogAsId, pendingAi, openCategory, startAiAnalyze]);
+
+  const handleHealthySnacksPick = (subtypeId) => {
+    const next = resolveHealthySnacksSubtypeClick(subtypeId);
+    if (!next) return;
+    setFoodEntryMeta({
+      fromHealthySnacks: true,
+      subtypeId: next.subtype.id,
+      headerTitle: next.subtype.headerTitle,
+      headerSubtitle: 'Type the food item below',
+      initialQuery: next.subtype.searchHint || '',
+    });
+    setActiveForm(next.formId);
+  };
+
+  const closeFoodSearch = () => {
+    if (foodEntryMeta?.fromHealthySnacks) {
+      setFoodEntryMeta(null);
+      setActiveForm(MANUAL_LOG_CATEGORY.HEALTHY_SNACKS);
+      return;
+    }
+    setFoodEntryMeta(null);
+    setActiveForm(null);
   };
 
   const handleFoodSave = async (manualData) => {
-    setSaving(true);
-    try {
-      await saveFoodAnalysis(buildAnalysisFromManualFood(manualData), 'Food saved to Diary');
-      setActiveForm(null);
-    } catch (err) {
-      const msg = err?.message || 'Failed to save food';
-      setHint(msg);
-      throw new Error(msg);
-    } finally {
-      setSaving(false);
-    }
-  };
+    const analysis = buildAnalysisFromManualFood(manualData);
+    const foodName = analysis?.foods?.[0]?.name || manualData?.name || 'Food';
+    const n = analysis?.total || analysis?.foods?.[0]?.nutrition || {};
+    // Snacks & Soups: name + kcal only (no P/C/F/Fiber/GI). Full food keeps macros.
+    const fromSnacks = Boolean(foodEntryMeta?.fromHealthySnacks);
+    const activityCaption = fromSnacks
+      ? buildDiaryShareSuffix('food', {
+          foodName,
+          calories: n.calories ?? 0,
+        })
+      : buildDiaryShareSuffix('food', {
+          foodName,
+          calories: n.calories ?? 0,
+          protein: n.protein ?? 0,
+          carbs: n.carbs ?? 0,
+          fat: n.fat ?? 0,
+          fiber: n.fiber ?? 0,
+          glycemicIndex: n.glycemic_index ?? n.glycemicIndex ?? null,
+        });
 
-  const handleWeightSave = async ({ weightValue, unit, bmr }) => {
-    setSaving(true);
-    try {
-      await saveWeight({
-        userId,
-        weightValue,
-        unit: unit || 'kg',
-        bmr,
-        captureId,
-        imageBase64ToSave: imageBase64,
-      });
-      setActiveForm(null);
-      onToast?.('Weight saved to Diary');
-      await exit();
-    } catch (err) {
-      const msg = err?.message || 'Failed to save weight';
-      setHint(msg);
-      throw new Error(msg);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleWatchSave = async ({ caloriesBurned, source }) => {
-    setSaving(true);
-    try {
-      await saveLog({
-        userId,
-        platform: source || 'Smartwatch',
-        topic: `Calories Burned: ${caloriesBurned} kcal`,
-        captureId,
-        imageBase64,
-      });
-      setActiveForm(null);
-      onToast?.('Activity saved to Diary');
-      await exit();
-    } catch (err) {
-      const msg = err?.message || 'Failed to save activity';
-      setHint(msg);
-      throw new Error(msg);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleShakeLog = async (payload) => {
-    await saveFoodAnalysis(shakePayloadToAnalysis(payload), 'Shake saved to Diary');
+    // Close search UI immediately — promote runs in background (same as Cancel discard).
+    setFoodEntryMeta(null);
     setActiveForm(null);
+    onToast?.('Food saved to Diary');
+
+    void promoteUnknownToFood({
+      captureId,
+      viewerUserId: userId,
+      analysisResult: analysis,
+      originalCapturedAt: originalCapturedAt || null,
+    }).catch((err) => {
+      onToast?.(err?.message || "Couldn't save food — check Diary.");
+    });
+
+    exit(activityCaption ? { activityCaption } : null);
   };
 
-  const handleAfreshConfirm = async (scoops) => {
-    await saveFoodAnalysis(buildAfreshAnalysisResult(scoops), 'Afresh saved to Diary');
+  const handleWeightSave = ({ weightValue, unit, bmr }) => {
+    // Share caption uses cache only — do not block Save on a network round-trip.
+    const previousWeight = getCachedLatestWeight(userId)?.value ?? null;
+    const capId = captureId;
+    const uid = userId;
+    const img = imageBase64;
+
     setActiveForm(null);
+    onToast?.('Weight saved to Diary');
+    exit({
+      activityCaption: buildDiaryShareSuffix('weight', {
+        previousWeight,
+        currentWeight: weightValue,
+      }),
+    });
+
+    void saveWeight({
+      userId: uid,
+      weightValue,
+      unit: unit || 'kg',
+      bmr,
+      captureId: capId,
+      imageBase64ToSave: img,
+    }).catch((err) => {
+      onToast?.(err?.message || "Couldn't save weight — check Diary.");
+    });
   };
 
-  const handleWaterConfirm = async (targetMl) => {
+  const handleWatchSave = ({ caloriesBurned, source }) => {
+    const capId = captureId;
+    const uid = userId;
+    const img = imageBase64;
+
+    setActiveForm(null);
+    onToast?.('Activity saved to Diary');
+    exit({
+      activityCaption: buildDiaryShareSuffix('workout', {
+        caloriesBurned,
+      }),
+    });
+
+    void saveLog({
+      userId: uid,
+      platform: source || 'Smartwatch',
+      topic: `Calories Burned: ${caloriesBurned} kcal`,
+      captureId: capId,
+      imageBase64: img,
+    }).catch((err) => {
+      onToast?.(err?.message || "Couldn't save activity — check Diary.");
+    });
+  };
+
+  const handleShakeLog = (payload) => {
+    const analysis = shakePayloadToAnalysis(payload);
+    const shakeName = analysis?.foods?.[0]?.name || 'Protein Shake';
+    setActiveForm(null);
+    saveFoodAnalysis(
+      analysis,
+      'Shake saved to Diary',
+      buildDiaryShareSuffix('shake', {
+        shakeName,
+        servings: 1,
+        shakeProducts: analysis.shakeProducts,
+      }),
+    );
+  };
+
+  const handleAfreshConfirm = (targetScoops) => {
+    const target = Math.max(0, Math.round(Number(targetScoops) || 0));
+    const current = Math.max(0, Math.round(Number(afreshTodayScoops) || 0));
+    const delta = target - current;
+    if (delta <= 0) {
+      // Already at/above target — reductions happen via Diary edit/delete.
+      setActiveForm(null);
+      return;
+    }
+    const analysis = buildAfreshAnalysisResult(delta);
+    const calories = analysis?.total?.calories ?? 0;
+    setActiveForm(null);
+    // Share today's running total (after this log), not just the delta — same as water.
+    saveFoodAnalysis(
+      analysis,
+      `+${delta} scoop${delta === 1 ? '' : 's'} Afresh logged (today ${target})`,
+      buildDiaryShareSuffix('afresh', { scoops: target, calories }),
+    );
+  };
+
+  const handleWaterConfirm = (targetMl) => {
     const target = Math.max(0, Math.round(Number(targetMl) || 0));
     const current = Math.max(0, Math.round(Number(waterTodayMl) || 0));
     const delta = target - current;
@@ -410,32 +643,38 @@ export default function ManualEntryPage({
       setActiveForm(null);
       return;
     }
-    await saveFoodAnalysis(
+    setActiveForm(null);
+    // Share today's running total (after this log), not just the delta.
+    saveFoodAnalysis(
       buildWaterAnalysisResult(delta),
       `+${delta} ml water logged (today ${target} ml)`,
+      buildDiaryShareSuffix('water', { volumeMl: target }),
     );
   };
 
-  const handleEducationSave = async ({ platform, topic }) => {
-    setSaving(true);
-    try {
-      await saveLog({
-        userId,
+  const handleEducationSave = ({ platform, topic }) => {
+    const capId = captureId;
+    const uid = userId;
+    const img = imageBase64;
+
+    setActiveForm(null);
+    onToast?.('Education saved to Diary');
+    exit({
+      activityCaption: buildDiaryShareSuffix('education', {
         platform,
-        topic,
-        captureId,
-        imageBase64,
-      });
-      setActiveForm(null);
-      onToast?.('Education saved to Diary');
-      await exit();
-    } catch (err) {
-      const msg = err?.message || 'Failed to save education';
-      setHint(msg);
-      throw new Error(msg);
-    } finally {
-      setSaving(false);
-    }
+        session: topic,
+      }),
+    });
+
+    void saveLog({
+      userId: uid,
+      platform,
+      topic,
+      captureId: capId,
+      imageBase64: img,
+    }).catch((err) => {
+      onToast?.(err?.message || "Couldn't save education — check Diary.");
+    });
   };
 
   // Don't treat credits as available until status has loaded — avoids green CTA flash then lock.
@@ -444,43 +683,47 @@ export default function ManualEntryPage({
   // Only show AI CTA / credits when mode is confirmed on — never surface “AI off” to users.
   const showCreditsPanel = creditsEnabled && credits != null && credits.enabled === true;
   const showAiButton = !creditsEnabled || (credits != null && credits.enabled === true);
-  const aiDisabled = aiStarting || outOfCredits || creditsChecking || closingWithoutLog;
+  const aiDisabled =
+    (aiStarting && !pendingAi) || outOfCredits || creditsChecking || closingWithoutLog;
+  const logAsDisabled = closingWithoutLog || (aiStarting && !pendingAi);
 
   return (
     <div className="fixed inset-0 z-40 flex flex-col" style={{ background: BRAND.pageBg }}>
       {/* Header — white bar like Home */}
       <header className="safe-top shrink-0 border-b border-green-100 bg-white shadow-sm">
-        <div className="mx-auto max-w-lg px-3 py-2.5">
-          <h1 className="truncate text-base font-extrabold text-green-700">What is this image?</h1>
-          <p className="truncate text-xs text-green-600">
-            Select one button from below — e.g. Weight, Afresh, Food…
+        <div className="mx-auto max-w-lg px-3 py-2 min-[360px]:py-2.5">
+          <h1 className="text-sm font-extrabold text-green-700 min-[360px]:text-base">
+            What is this image?
+          </h1>
+          <p className="text-[11px] leading-snug text-green-600 min-[360px]:text-xs">
+            Select one button below — Weight, Afresh, Food…
           </p>
         </div>
       </header>
 
-      {/* Body — flex layout, no page scroll */}
-      <main className="mx-auto flex w-full max-w-lg flex-1 flex-col gap-3 overflow-hidden px-3 pb-3 pt-3">
-        {/* Photo preview */}
+      {/* Body — photo shrinks on short phones; grid + cancel stay reachable */}
+      <main className="mx-auto flex w-full max-w-lg min-h-0 flex-1 flex-col gap-2 overflow-y-auto overscroll-contain px-2.5 pb-2.5 pt-2 min-[360px]:gap-3 min-[360px]:px-3 min-[360px]:pb-3 min-[360px]:pt-3">
+        {/* Photo preview — tap to open full-screen; height scales with viewport */}
         <section className="shrink-0">
           {previewSrc ? (
-            <div
-              className="flex w-full items-center justify-center overflow-hidden rounded-2xl border border-green-100 shadow-sm"
-              style={{
-                background: BRAND.mint,
-                maxHeight: showAiButton ? '6.5rem' : '11rem',
-                minHeight: showAiButton ? '4.5rem' : '7.5rem',
-              }}
+            <button
+              type="button"
+              onClick={() => setPreviewExpanded(true)}
+              className="flex h-[min(28vh,10.5rem)] w-full max-h-52 cursor-zoom-in items-center justify-center overflow-hidden rounded-2xl border border-green-100 shadow-sm transition-opacity active:opacity-90 min-[360px]:h-[min(30vh,12rem)] sm:h-60 sm:max-h-none"
+              style={{ background: BRAND.mint }}
+              aria-label="View photo full screen"
             >
               <img
                 src={previewSrc}
                 alt="Captured"
-                className={`w-full object-contain ${showAiButton ? 'max-h-24' : 'max-h-44'}`}
+                className="h-full w-full object-contain"
+                decoding="async"
               />
-            </div>
+            </button>
           ) : (
             <div
-              className="w-full rounded-2xl"
-              style={{ background: BRAND.mint, height: showAiButton ? '4.5rem' : '7.5rem' }}
+              className="h-[min(28vh,10.5rem)] w-full max-h-52 rounded-2xl min-[360px]:h-[min(30vh,12rem)] sm:h-60 sm:max-h-none"
+              style={{ background: BRAND.mint }}
             />
           )}
         </section>
@@ -491,43 +734,57 @@ export default function ManualEntryPage({
           </p>
         )}
 
-        {/* Type grid — premium compact Log-as buttons */}
+        {/* Type grid — large Log-as tiles matching original layout */}
         <section className="flex min-h-0 flex-1 flex-col">
-          <div className="mb-2.5 flex shrink-0 items-center justify-between gap-2">
-            <p className="shrink-0 text-[11px] font-bold uppercase tracking-[0.14em] text-emerald-700/70">
+          <div className="mb-1.5 flex shrink-0 items-center justify-between gap-2 min-[360px]:mb-2.5">
+            <p className="shrink-0 text-[10px] font-bold uppercase tracking-[0.14em] text-emerald-700/70 min-[360px]:text-[11px]">
               Log as
             </p>
           </div>
-          <div className="grid h-full min-h-0 w-full flex-1 grid-cols-3 grid-rows-3 gap-2 sm:gap-2.5">
-            {CATEGORIES.map(({ id, Icon, src, label, isImgIcon }) => {
+          <div className="grid h-full min-h-[11.5rem] w-full flex-1 grid-cols-3 grid-rows-3 gap-1.5 min-[360px]:min-h-[13.5rem] min-[360px]:gap-2 sm:min-h-0 sm:gap-2.5">
+            {CATEGORIES.map(({ id, Icon, src, label, isImgIcon, wrapLabel }) => {
               // iOS WebView often blanks custom emoji SVGs — use Lucide for Workout.
-              const useLucideOnIos = id === 'smartwatch' && isIOS() && Icon;
+              const useLucideOnIos = id === MANUAL_LOG_CATEGORY.SMARTWATCH && isIOS() && Icon;
+              const isPending = pendingLogAsId === id;
               return (
               <button
                 key={id}
                 type="button"
-                disabled={saving || closingWithoutLog}
+                disabled={logAsDisabled}
                 onClick={() => handleCategoryClick(id)}
                 className={LOG_AS_BTN_IDLE}
+                aria-busy={isPending || undefined}
               >
                 <LogAsIconWrap>
-                  {useLucideOnIos ? (
+                  {isPending ? (
+                    <Loader2
+                      className="h-7 w-7 animate-spin min-[360px]:h-8 min-[360px]:w-8 min-[400px]:h-9 min-[400px]:w-9 sm:h-10 sm:w-10"
+                      aria-hidden
+                    />
+                  ) : useLucideOnIos ? (
                     <Icon className="h-5 w-5" strokeWidth={2.1} aria-hidden />
                   ) : isImgIcon ? (
                     <PublicIcon
                       src={src}
-                      className="h-8 w-8 min-[380px]:h-9 min-[380px]:w-9 sm:h-10 sm:w-10"
+                      className="h-7 w-7 min-[360px]:h-8 min-[360px]:w-8 min-[400px]:h-9 min-[400px]:w-9 sm:h-10 sm:w-10"
                       alt=""
                     />
                   ) : (
                     <Icon
-                      className="h-8 w-8 min-[380px]:h-9 min-[380px]:w-9 sm:h-10 sm:w-10"
+                      className="h-7 w-7 min-[360px]:h-8 min-[360px]:w-8 min-[400px]:h-9 min-[400px]:w-9 sm:h-10 sm:w-10"
                       strokeWidth={2}
                       aria-hidden
                     />
                   )}
                 </LogAsIconWrap>
-                <span className="max-w-full truncate px-0.5 text-[11px] font-bold leading-tight text-emerald-900 min-[380px]:text-[12px] sm:text-[13px]">
+                <span
+                  className={[
+                    'max-w-full px-0.5 font-bold leading-tight text-emerald-900',
+                    wrapLabel
+                      ? 'line-clamp-2 whitespace-normal text-[8px] min-[360px]:text-[9px] min-[400px]:text-[10px] sm:text-[11px]'
+                      : 'truncate text-[10px] min-[360px]:text-[11px] min-[400px]:text-[12px] sm:text-[13px]',
+                  ].join(' ')}
+                >
                   {label}
                 </span>
               </button>
@@ -543,17 +800,17 @@ export default function ManualEntryPage({
                 >
                   <LogAsIconWrap compact>
                     <Lock
-                      className="h-7 w-7 min-[380px]:h-8 min-[380px]:w-8 sm:h-9 sm:w-9"
+                      className="h-6 w-6 min-[360px]:h-7 min-[360px]:w-7 min-[400px]:h-8 min-[400px]:w-8 sm:h-9 sm:w-9"
                       aria-hidden
                     />
                   </LogAsIconWrap>
-                  <span className="max-w-full truncate whitespace-nowrap px-0.5 text-[10px] font-semibold leading-none text-emerald-800 min-[380px]:text-[11px] sm:text-[12px]">
+                  <span className="max-w-full truncate whitespace-nowrap px-0.5 text-[9px] font-semibold leading-none text-emerald-800 min-[360px]:text-[10px] min-[400px]:text-[11px] sm:text-[12px]">
                     Unlock on
                   </span>
                   {showCreditsPanel && (
                     <LogAsUnlockDate
                       timezoneIana={credits?.timezoneIana}
-                      className="text-[11px] font-medium text-amber-600 min-[380px]:text-[12px] sm:text-[13px]"
+                      className="text-[10px] font-medium text-amber-600 min-[360px]:text-[11px] min-[400px]:text-[12px] sm:text-[13px]"
                     />
                   )}
                 </div>
@@ -568,17 +825,17 @@ export default function ManualEntryPage({
                   ].join(' ')}
                 >
                   <LogAsIconWrap selected compact={Boolean(showCreditsPanel)}>
-                    {aiStarting ? (
-                      <Loader2 className="h-8 w-8 animate-spin text-white min-[380px]:h-9 min-[380px]:w-9 sm:h-10 sm:w-10" />
+                    {aiStarting || pendingAi ? (
+                      <Loader2 className="h-7 w-7 animate-spin text-white min-[360px]:h-8 min-[360px]:w-8 min-[400px]:h-9 min-[400px]:w-9 sm:h-10 sm:w-10" />
                     ) : (
-                      <Sparkles className="h-8 w-8 text-white min-[380px]:h-9 min-[380px]:w-9 sm:h-10 sm:w-10" />
+                      <Sparkles className="h-7 w-7 text-white min-[360px]:h-8 min-[360px]:w-8 min-[400px]:h-9 min-[400px]:w-9 sm:h-10 sm:w-10" />
                     )}
                   </LogAsIconWrap>
-                  <span className="max-w-full truncate whitespace-nowrap px-0.5 text-[11px] font-semibold leading-tight text-white min-[380px]:text-[12px] sm:text-[13px]">
-                    {aiStarting ? 'Starting…' : 'Auto Detect'}
+                  <span className="max-w-full truncate whitespace-nowrap px-0.5 text-[10px] font-semibold leading-tight text-white min-[360px]:text-[11px] min-[400px]:text-[12px] sm:text-[13px]">
+                    {aiStarting || pendingAi ? 'Starting…' : 'Auto Detect'}
                   </span>
                   {showCreditsPanel && credits && (
-                    <p className="max-w-full truncate whitespace-nowrap text-[8px] font-semibold tabular-nums text-emerald-100/90 min-[380px]:text-[9px] sm:text-[10px]">
+                    <p className="max-w-full truncate whitespace-nowrap text-[7px] font-semibold tabular-nums text-emerald-100/90 min-[360px]:text-[8px] min-[400px]:text-[9px] sm:text-[10px]">
                       <span className="text-white">
                         {Math.max(0, Number(credits.remaining) ?? 0)}
                       </span>
@@ -587,7 +844,7 @@ export default function ManualEntryPage({
                     </p>
                   )}
                   {showCreditsPanel && creditsLoading && !credits && (
-                    <p className="text-[8px] text-emerald-100/80 min-[380px]:text-[9px] sm:text-[10px]">
+                    <p className="text-[7px] text-emerald-100/80 min-[360px]:text-[8px] min-[400px]:text-[9px] sm:text-[10px]">
                       Checking…
                     </p>
                   )}
@@ -601,8 +858,8 @@ export default function ManualEntryPage({
         <button
           type="button"
           onClick={handleCloseWithoutLog}
-          disabled={saving || aiStarting || closingWithoutLog}
-          className="safe-bottom log-as-btn log-as-btn--idle inline-flex w-full shrink-0 items-center justify-center gap-2 rounded-xl border-2 border-red-200 bg-gradient-to-b from-white to-red-50/40 py-3.5 text-sm font-bold text-red-600 shadow-[0_3px_0_0_rgba(220,38,38,0.2)] transition-[transform,box-shadow] duration-150 active:translate-y-[2px] active:shadow-[0_1px_0_0_rgba(220,38,38,0.18)] disabled:opacity-50"
+          disabled={closingWithoutLog || (aiStarting && !pendingAi)}
+          className="safe-bottom log-as-btn log-as-btn--idle inline-flex w-full shrink-0 items-center justify-center gap-2 rounded-xl border-2 border-red-200 bg-gradient-to-b from-white to-red-50/40 py-3 text-sm font-bold text-red-600 shadow-[0_3px_0_0_rgba(220,38,38,0.2)] transition-[transform,box-shadow] duration-150 active:translate-y-[2px] active:shadow-[0_1px_0_0_rgba(220,38,38,0.18)] disabled:opacity-50 min-[360px]:py-3.5"
         >
           {closingWithoutLog && (
             <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
@@ -612,15 +869,26 @@ export default function ManualEntryPage({
       </main>
 
       <SmartFoodSearchModal
-        isOpen={activeForm === 'food'}
-        onClose={() => setActiveForm(null)}
+        isOpen={activeForm === MANUAL_LOG_CATEGORY.FOOD}
+        onClose={closeFoodSearch}
         onSave={handleFoodSave}
         apiBaseUrl={apiBaseUrl}
         userId={userId}
         skipTypeSelect
+        headerTitle={foodEntryMeta?.headerTitle}
+        headerSubtitle={foodEntryMeta?.headerSubtitle}
+        initialQuery={foodEntryMeta?.initialQuery || ''}
+      />
+      <HealthySnacksSubSelectModal
+        isOpen={activeForm === MANUAL_LOG_CATEGORY.HEALTHY_SNACKS}
+        onClose={() => {
+          setFoodEntryMeta(null);
+          setActiveForm(null);
+        }}
+        onPick={handleHealthySnacksPick}
       />
       <ManualWeightEntryModal
-        isOpen={activeForm === 'weight'}
+        isOpen={activeForm === MANUAL_LOG_CATEGORY.WEIGHT}
         onClose={() => setActiveForm(null)}
         onSave={handleWeightSave}
         onBack={() => setActiveForm(null)}
@@ -631,7 +899,7 @@ export default function ManualEntryPage({
       <ManualWatchEntryModal
         key={captureId}
         formKey={captureId}
-        isOpen={activeForm === 'smartwatch'}
+        isOpen={activeForm === MANUAL_LOG_CATEGORY.SMARTWATCH}
         onClose={() => setActiveForm(null)}
         onSave={handleWatchSave}
         onBack={() => setActiveForm(null)}
@@ -639,7 +907,7 @@ export default function ManualEntryPage({
         loading={workoutTodayLoading}
       />
       <ManualEducationEntryModal
-        isOpen={activeForm === 'education'}
+        isOpen={activeForm === MANUAL_LOG_CATEGORY.EDUCATION}
         onClose={() => setActiveForm(null)}
         onSave={handleEducationSave}
         skipTypeSelect
@@ -647,26 +915,29 @@ export default function ManualEntryPage({
         formSubtitle="Choose platform and meeting session"
       />
       <ShakeCalculatorModal
-        isOpen={activeForm === 'shake'}
+        isOpen={activeForm === MANUAL_LOG_CATEGORY.SHAKE}
         onClose={() => setActiveForm(null)}
         onLog={handleShakeLog}
       />
       <ServingStepperModal
-        isOpen={activeForm === 'afresh'}
+        isOpen={activeForm === MANUAL_LOG_CATEGORY.AFRESH}
         title="Afresh"
-        subtitle="Log number of scoops consumed so far"
+        subtitle="Scoops consumed so far today"
         unitLabel="Scoops"
         iconSrc="/coffee.png"
-        min={1}
-        max={8}
+        min={afreshTodayScoops}
+        max={Math.max(AFRESH_PRODUCT.maxScoops, afreshTodayScoops + AFRESH_PRODUCT.maxScoops)}
         step={1}
-        defaultValue={AFRESH_PRODUCT.defaultScoops}
+        defaultValue={afreshTodayScoops}
+        baseline={afreshTodayScoops}
+        loading={afreshTodayLoading}
+        formatValue={(n) => `${n} ${n === 1 ? 'scoop' : 'scoops'}`}
         onClose={() => setActiveForm(null)}
         onConfirm={handleAfreshConfirm}
         confirmLabel="Log Afresh"
       />
       <ServingStepperModal
-        isOpen={activeForm === 'water'}
+        isOpen={activeForm === MANUAL_LOG_CATEGORY.WATER}
         title="Water"
         subtitle="How much you drank so far today"
         iconSrc="/water.svg"
@@ -686,6 +957,32 @@ export default function ManualEntryPage({
         onConfirm={handleWaterConfirm}
         confirmLabel="Log Water"
       />
+
+      {/* Full-screen captured photo */}
+      {previewExpanded && previewSrc && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 p-3"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Full screen photo"
+          onClick={() => setPreviewExpanded(false)}
+        >
+          <button
+            type="button"
+            onClick={() => setPreviewExpanded(false)}
+            className="absolute right-3 top-3 z-[101] rounded-full bg-white/15 p-2.5 text-white backdrop-blur-sm transition-colors active:bg-white/25"
+            aria-label="Close full screen photo"
+          >
+            <X className="h-6 w-6" strokeWidth={2.5} aria-hidden />
+          </button>
+          <img
+            src={previewSrc}
+            alt="Captured full size"
+            className="max-h-full max-w-full object-contain"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      )}
     </div>
   );
 }

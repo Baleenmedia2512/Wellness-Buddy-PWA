@@ -15,6 +15,7 @@ import {
   validateEditTestimonial,
   validateListForCoach,
   validateMyTestimonial,
+  validateTestimonialDetail,
   validatePrepareVideoUpload,
   validateSubmitVideo,
   validateUploadVideoChunk,
@@ -24,6 +25,13 @@ import {
   validateSubmitAllEdits,
   validateVerifyUnifiedOtp,
 } from './testimonials.validators.js';
+import {
+  mapTestimonialsListLeanFields,
+  filterTestimonialsListBySearch,
+  filterTestimonialsListByUpload,
+  paginateTestimonialsList,
+  countTestimonialsUploadLevels,
+} from './domain/testimonials-list.pagination.js';
 import { nowUtc } from '../../shared/lib/datetime/index.js';
 import {
   buildTestimonialCoachEmailHtml,
@@ -166,9 +174,12 @@ async function sendHealthIssueOtpEmail({
 /**
  * Build API testimonial payload with signed photo/video URLs.
  * Video-only rows (placeholder before image) still return video URLs when present.
+ * @param {object|null} testimonial
+ * @param {{ includeVideos?: boolean }} [opts]
  */
-async function enrichTestimonialForDisplay(testimonial) {
+async function enrichTestimonialForDisplay(testimonial, opts = {}) {
   if (!testimonial) return null;
+  const includeVideos = opts.includeVideos !== false;
 
   const videoOnly = repo.isVideoOnlyPlaceholder(testimonial.before_image_path);
   const hasVideos = !!(testimonial.health_video_path || testimonial.business_video_path);
@@ -178,8 +189,12 @@ async function enrichTestimonialForDisplay(testimonial) {
   const [beforeUrl, afterUrl, healthVideoUrl, businessVideoUrl] = await Promise.all([
     videoOnly ? Promise.resolve(null) : repo.getSignedUrl(testimonial.before_image_path),
     videoOnly ? Promise.resolve(null) : repo.getSignedUrl(testimonial.after_image_path),
-    testimonial.health_video_path   ? repo.getSignedUrl(testimonial.health_video_path)   : Promise.resolve(null),
-    testimonial.business_video_path ? repo.getSignedUrl(testimonial.business_video_path) : Promise.resolve(null),
+    includeVideos && testimonial.health_video_path
+      ? repo.getSignedUrl(testimonial.health_video_path)
+      : Promise.resolve(null),
+    includeVideos && testimonial.business_video_path
+      ? repo.getSignedUrl(testimonial.business_video_path)
+      : Promise.resolve(null),
   ]);
 
   return {
@@ -605,24 +620,164 @@ export async function getMyVideoTestimonial(rawQuery) {
 }
 
 /**
- * List direct-downline testimonials for a coach.
- * Members with no testimonial are included (testimonial = null â†’ red in UI).
+ * Paginated lean team list for a coach.
+ * Signs thumbnail URLs only for the current page (not the full hierarchy).
+ * No Base64. No full video URLs — use getTestimonialDetail for media.
  */
 export async function listForCoach(rawQuery) {
-  const { coachId, scope } = validateListForCoach(rawQuery);
-  const rows = await repo.listForCoach(coachId, scope);
+  const apiStarted = Date.now();
+  const { coachId, scope, page, limit, search, uploadFilter } = validateListForCoach(rawQuery);
 
-  // Generate signed URLs in parallel for members who have testimonials
-  const enriched = await Promise.all(
-    rows.map(async ({ user, testimonial }) => {
-      const enrichedTestimonial = await enrichTestimonialForDisplay(testimonial);
-      return { user: sanitizeUser(user), testimonial: enrichedTestimonial };
+  const sqlStarted = Date.now();
+  const rows = await repo.listForCoach(coachId, scope);
+  const sqlMs = Date.now() - sqlStarted;
+  let queryCount = 2; // hierarchy context + testimonials batch (best-effort)
+
+  // Map to lean fields (paths only) before filter/paginate — no signed URLs yet.
+  const leanJoined = rows.map((row) => {
+    const lean = mapTestimonialsListLeanFields(row);
+    return {
+      ...lean,
+      user: { UserId: lean.userId, UserName: lean.userName, userName: lean.userName },
+      testimonialRaw: row.testimonial,
+      uploadLevel: lean.uploadLevel,
+    };
+  });
+
+  const searched = filterTestimonialsListBySearch(leanJoined, search);
+  const filtered = filterTestimonialsListByUpload(searched, uploadFilter);
+  const uploadCounts = countTestimonialsUploadLevels(searched);
+  const { pageRows, pagination } = paginateTestimonialsList(filtered, { page, limit });
+
+  // Sign photo thumbs only for this page (≤ 2 × limit storage calls).
+  const signStarted = Date.now();
+  const data = await Promise.all(
+    pageRows.map(async (lean) => {
+      const [beforeThumb, afterThumb] = await Promise.all([
+        lean.beforeImagePath ? repo.getSignedUrl(lean.beforeImagePath) : null,
+        lean.afterImagePath ? repo.getSignedUrl(lean.afterImagePath) : null,
+      ]);
+      if (lean.beforeImagePath) queryCount += 1;
+      if (lean.afterImagePath) queryCount += 1;
+
+      // Shape matches existing MemberCard contract; thumbs stand in for list display.
+      const testimonial = lean.testimonialId == null && !lean.healthVideoPath && !lean.businessVideoPath
+        ? null
+        : {
+            id: lean.testimonialId,
+            beforeWeightKg: lean.beforeWeightKg,
+            afterWeightKg: lean.afterWeightKg,
+            goalType: lean.goalType,
+            durationText: lean.durationText,
+            status: lean.status,
+            verifiedAt: lean.verifiedAt,
+            createdAt: lean.createdAt,
+            updatedAt: lean.lastUpdated,
+            beforeImageUrl: beforeThumb,
+            afterImageUrl: afterThumb,
+            beforeImageThumbUrl: beforeThumb,
+            afterImageThumbUrl: afterThumb,
+            healthVideoPath: lean.healthVideoPath,
+            businessVideoPath: lean.businessVideoPath,
+            healthVideoUrl: null,
+            businessVideoUrl: null,
+            videoStatus: lean.videoStatus,
+            videoVerifiedAt: null,
+            recoveredHealthIssues: lean.recoveredHealthIssues,
+            uploadStatus: lean.uploadStatus,
+            progress: lean.progress,
+          };
+
+      return {
+        user: {
+          userId: lean.userId,
+          userName: lean.userName,
+          profileImage: null,
+          phoneNumber: lean.phoneNumber,
+        },
+        testimonial,
+        lastUpdated: lean.lastUpdated,
+        uploadStatus: lean.uploadStatus,
+        progress: lean.progress,
+      };
     }),
   );
+  const signMs = Date.now() - signStarted;
+
+  const body = {
+    success: true,
+    data,
+    pagination,
+    uploadCounts,
+  };
+  const payloadBytes = Buffer.byteLength(JSON.stringify(body), 'utf8');
+  const apiMs = Date.now() - apiStarted;
+
+  logger.info('[testimonials.listForCoach] perf', {
+    coachId,
+    scope,
+    page: pagination.page,
+    limit: pagination.limit,
+    total: pagination.total,
+    search: search || null,
+    uploadFilter,
+    sqlMs,
+    signMs,
+    apiMs,
+    queryCount,
+    payloadBytes,
+    pageSize: data.length,
+  });
 
   return {
     httpStatus: 200,
-    body: { success: true, data: enriched },
+    body,
+  };
+}
+
+/**
+ * Full member testimonial detail — photos, videos, share fields.
+ * Call only when opening / editing / sharing a card.
+ */
+export async function getTestimonialDetail(rawQuery) {
+  const apiStarted = Date.now();
+  const { userId, coachId } = validateTestimonialDetail(rawQuery);
+
+  const sqlStarted = Date.now();
+  const row = await repo.findByUserId(userId);
+  const sqlMs = Date.now() - sqlStarted;
+
+  // Optional coach-tree gate when coachId provided (hierarchy only — no SELECT *)
+  if (coachId != null && coachId !== userId) {
+    const allowed = await repo.isReportingMember(coachId, userId, 'full');
+    if (!allowed) {
+      throw new ValidationError(403, 'Member is not in your team hierarchy');
+    }
+  }
+
+  const enriched = await enrichTestimonialForDisplay(row, { includeVideos: true });
+  const body = {
+    success: true,
+    data: {
+      userId,
+      testimonial: enriched,
+    },
+  };
+  const payloadBytes = Buffer.byteLength(JSON.stringify(body), 'utf8');
+  const apiMs = Date.now() - apiStarted;
+
+  logger.info('[testimonials.getTestimonialDetail] perf', {
+    userId,
+    coachId,
+    sqlMs,
+    apiMs,
+    payloadBytes,
+    hasTestimonial: !!enriched,
+  });
+
+  return {
+    httpStatus: 200,
+    body,
   };
 }
 
@@ -630,7 +785,8 @@ function sanitizeUser(user) {
   return {
     userId:       user.UserId,
     userName:     user.UserName,
-    profileImage: user.ProfileImage ?? null,
+    // Avatars via /api/user/avatar — never embed base64 in list payloads.
+    profileImage: null,
     phoneNumber:  user.PhoneNumber ?? null,
   };
 }
@@ -939,7 +1095,7 @@ function buildTeamUploadStats(uploaded, notUploaded) {
 export async function getTeamTestimonialReport(rawQuery) {
   const { coachId } = validateTeamReport(rawQuery);
 
-  const reportingContext = await repo.loadTeamReportingContext();
+  const reportingContext = await repo.loadTeamReportingContext(coachId);
 
   const [
     photoDirect,

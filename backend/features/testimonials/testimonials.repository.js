@@ -374,6 +374,14 @@ export async function updateTestimonialVideos(id, payload) {
  * @param {'direct'|'full'} [scope='direct']
  * @returns {Array<{ user: object, testimonial: object|null }>}
  */
+/**
+ * List reporting members + latest testimonial rows (narrow columns — no SELECT *).
+ * Does NOT sign URLs — caller paginates then signs only the page.
+ *
+ * @param {number} coachId
+ * @param {'direct'|'full'} [scope='direct']
+ * @returns {Promise<Array<{ user: object, testimonial: object|null }>>}
+ */
 export async function listForCoach(coachId, scope = 'direct') {
   const members = await fetchReportingTeamMembers(coachId, scope);
 
@@ -382,16 +390,35 @@ export async function listForCoach(coachId, scope = 'direct') {
   const memberIds = members.map((m) => m.UserId);
   const supabase = getSupabaseClient();
 
-  // 2. Fetch testimonials for those members (non-deleted, most recent per user)
+  // Narrow select — never pull otp_hash / unused columns into list payloads.
+  const LIST_COLUMNS = [
+    'id',
+    'user_id',
+    'before_image_path',
+    'after_image_path',
+    'before_weight_kg',
+    'after_weight_kg',
+    'goal_type',
+    'duration_text',
+    'status',
+    'verified_at',
+    'created_at',
+    'updated_at',
+    'health_video_path',
+    'business_video_path',
+    'video_status',
+    'video_verified_at',
+    'recovered_health_issues',
+  ].join(', ');
+
   const { data: testimonials, error: testErr } = await supabase
     .from(TABLE)
-    .select('*')
+    .select(LIST_COLUMNS)
     .in('user_id', memberIds)
     .eq('is_deleted', false)
     .order('id', { ascending: false });
   if (testErr) throw testErr;
 
-  // 3. Build a map: userId → latest testimonial
   const testimonialMap = {};
   for (const t of (testimonials || [])) {
     if (!testimonialMap[t.user_id]) {
@@ -472,7 +499,7 @@ export async function listVideoReportForCoach(coachId, scope = 'direct') {
   return members.map((m) => {
     const t = testimonialMap[m.UserId];
     return {
-      user: { userId: m.UserId, userName: m.UserName, email: m.Email, profileImage: m.ProfileImage },
+      user: { userId: m.UserId, userName: m.UserName, email: m.Email, profileImage: null },
       videoStatus:      t?.video_status      ?? 'none',
       hasHealthVideo:   !!(t?.health_video_path),
       hasBusinessVideo: !!(t?.business_video_path),
@@ -482,13 +509,15 @@ export async function listVideoReportForCoach(coachId, scope = 'direct') {
 }
 
 /**
- * Load team rows once for reporting hierarchy resolution (direct/full scopes).
+ * Load reporting context for one coach subtree (indexed CoachId walk + 60s cache).
+ * Avoids full team_table scan used by legacy loadReportingContext().
+ * @param {number} coachId
  * @returns {Promise<import('../../utils/reportingHierarchyService.js').ReportingContext>}
  */
-export async function loadTeamReportingContext() {
+export async function loadTeamReportingContext(coachId) {
   const supabase = getSupabaseClient();
-  const { loadReportingContext } = await import('../../utils/reportingHierarchyService.js');
-  return loadReportingContext(supabase);
+  const { loadReportingContextForCoach } = await import('../../utils/reportingHierarchyService.js');
+  return loadReportingContextForCoach(supabase, coachId);
 }
 
 /**
@@ -500,12 +529,24 @@ export async function loadTeamReportingContext() {
  * @returns {Promise<Array<{ UserId: number, UserName: string, Email?: string, ProfileImage?: string|null, PhoneNumber?: string|null }>>}
  */
 async function fetchReportingTeamMembers(coachId, scope = 'direct', context = null) {
-  const resolvedContext = context ?? await loadTeamReportingContext();
+  const resolvedContext = context ?? await loadTeamReportingContext(coachId);
   const { getReportingMembers } = await import('../../utils/reportingHierarchyService.js');
   const members = getReportingMembers(coachId, scope, resolvedContext);
   return members
     .filter((member) => member.UserId !== Number(coachId))
     .sort((a, b) => String(a.UserName || '').localeCompare(String(b.UserName || '')));
+}
+
+/**
+ * True when userId is in coach's reporting hierarchy (no testimonial query).
+ * @param {number} coachId
+ * @param {number} userId
+ * @param {'direct'|'full'} [scope='full']
+ */
+export async function isReportingMember(coachId, userId, scope = 'full') {
+  if (Number(coachId) === Number(userId)) return true;
+  const members = await fetchReportingTeamMembers(coachId, scope);
+  return members.some((m) => Number(m.UserId) === Number(userId));
 }
 
 /**
@@ -682,7 +723,7 @@ export async function buildTeamUploadPerformanceByUserId(rootCoachId, context = 
   } = await import('../../utils/reportingHierarchyService.js');
   const { isActiveTeamStatus } = await import('../../utils/teamHierarchyBuilder.js');
 
-  const resolvedContext = context ?? await loadTeamReportingContext();
+  const resolvedContext = context ?? await loadTeamReportingContext(rootCoachId);
   const reportingMembers = getFullReportingMembers(rootCoachId, resolvedContext);
 
   const activeMemberIds = new Set(

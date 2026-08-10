@@ -47,7 +47,7 @@ export function useEducationEntry({
     if (onBack) onBack();
   }, [reset]);
 
-  const handleSave = useCallback(async () => {
+  const handleSave = useCallback(() => {
     setError('');
     if (!platform) {
       setError('Please select a platform');
@@ -57,19 +57,11 @@ export function useEducationEntry({
       setError('Please select a meeting session');
       return;
     }
-    setIsSaving(true);
-    try {
-      await onSave?.({
-        platform,
-        topic: topic.trim(),
-      });
-      reset();
-      if (onClose) onClose();
-    } catch (err) {
-      setError(err?.message || 'Failed to save education log');
-    } finally {
-      setIsSaving(false);
-    }
+    // Hand off without awaiting network — parent closes classify and saves in background.
+    const payload = { platform, topic: topic.trim() };
+    reset();
+    if (onClose) onClose();
+    void Promise.resolve(onSave?.(payload));
   }, [platform, topic, onSave, onClose, reset]);
 
   return {

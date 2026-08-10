@@ -203,25 +203,8 @@ export default async function handler(req, res) {
 
     logger.debug('✅ [update-enrollment] Enrollment upserted successfully:', { enrollmentId: enrollment.Id });
 
-    // Notify coach via email (non-fatal)
-    if (user.CoachId) {
-      const { data: coachRow } = await supabase
-        .from('team_table')
-        .select('"UserName", "Email", "CoachName"')
-        .eq('UserId', user.CoachId)
-        .maybeSingle();
-      if (coachRow?.Email) {
-        await sendUpdateNotification({
-          coachEmail: coachRow.Email,
-          coachName: coachRow.CoachName || coachRow.UserName,
-          memberName: user.UserName,
-          memberEmail: user.Email,
-          programs: Object.keys(newMap),
-        });
-      }
-    }
-
-    return res.status(200).json({
+    // Respond immediately — coach email must not block the client (~2–4s SMTP).
+    res.status(200).json({
       success: true,
       message: 'Enrollment updated successfully',
       enrollment: {
@@ -229,6 +212,28 @@ export default async function handler(req, res) {
         programs: Object.keys(newMap),
       },
     });
+
+    if (user.CoachId) {
+      void (async () => {
+        try {
+          const { data: coachRow } = await supabase
+            .from('team_table')
+            .select('"UserName", "Email", "CoachName"')
+            .eq('UserId', user.CoachId)
+            .maybeSingle();
+          if (!coachRow?.Email) return;
+          await sendUpdateNotification({
+            coachEmail: coachRow.Email,
+            coachName: coachRow.CoachName || coachRow.UserName,
+            memberName: user.UserName,
+            memberEmail: user.Email,
+            programs: Object.keys(newMap),
+          });
+        } catch (err) {
+          logger.warn('[update-enrollment] Background coach notify failed:', err?.message || err);
+        }
+      })();
+    }
   } catch (error) {
     console.error('❌ [update-enrollment] Server error:', error);
     return res.status(500).json({

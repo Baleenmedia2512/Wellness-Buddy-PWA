@@ -27,8 +27,10 @@ const UserProfileModal = ({ isOpen, onClose, user, userRole = 'user', onProfileU
   const cropper = useImageCropper({
     onError: setError,
     onCropped: (img) => {
-      setProfileImage(img); setProfileImagePreview(img); face.reset();
-      setShowToast(true);
+      setError('');
+      setProfileImage(img);
+      setProfileImagePreview(img);
+      face.reset();
       // Accept any photo (no AI face check) — mark ready for auto-save.
       face.run(img, user?.id ?? null);
     },

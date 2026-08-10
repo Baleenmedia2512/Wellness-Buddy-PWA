@@ -17,6 +17,27 @@ export const MAX_IMAGE_DIMENSION_PX = 1600;
 /** JPEG quality used by client-side image compression. */
 export const IMAGE_JPEG_QUALITY = 0.82;
 
+/** Profile avatar: max side length (px) after crop — keeps saved size ~50–80 KB. */
+export const PROFILE_IMAGE_MAX_DIMENSION_PX = 320;
+
+/** Profile avatar: starting JPEG quality (may step down to hit target bytes). */
+export const PROFILE_IMAGE_JPEG_QUALITY = 0.8;
+
+/** Profile avatar: max decoded JPEG size before base64 (~80 KB). */
+export const PROFILE_IMAGE_TARGET_BYTES = 80 * 1024;
+
+/**
+ * Diary / capture storage thumb after AI (or on pending capture write).
+ * Analysis still uses ≤800px / q0.7 in memory; only DB persistence is tiny.
+ */
+export const STORAGE_IMAGE_MAX_DIMENSION_PX = 256;
+
+/** Storage thumb: starting JPEG quality (steps down to hit target bytes). */
+export const STORAGE_IMAGE_JPEG_QUALITY = 0.65;
+
+/** Storage thumb: max decoded JPEG size (~22 KB). */
+export const STORAGE_IMAGE_TARGET_BYTES = 22 * 1024;
+
 /** Default network request timeout (ms). */
 export const DEFAULT_FETCH_TIMEOUT_MS = 15_000;
 

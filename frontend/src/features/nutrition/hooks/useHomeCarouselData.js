@@ -4,11 +4,11 @@
  * Single day: daily achieved vs daily goal.
  * Multi-day: period total achieved vs period total goal (daily goal × days in range).
  *
- * Speed: all network work for a range runs in parallel; results are cached by
- * range so Today ↔ Yesterday / Last 10 Days switches are instant on revisit.
+ * Speed: multi-day ranges use 2 batch APIs (meals + watch) instead of 2×N
+ * per-day calls; results are cached so Today ↔ Last 10 Days is instant on revisit.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { fetchDayAnalyses, fetchWatchBurnedCalories } from '../services/nutritionDashboard';
+import { fetchDayAnalyses, fetchWatchBurnedCalories, fetchRangeMealTotals, fetchWatchBurnedCaloriesRange } from '../services/nutritionDashboard';
 import { computeDailyStatsFromAnalyses, EMPTY_DAILY_STATS } from '../domain/dailyStatsRules';
 import {
   aggregateWellnessPeriodScore,
@@ -17,6 +17,13 @@ import {
 } from '../domain/carouselPeriodProgress';
 import { enumerateDatesYmd, resolveWellnessDateRange, ymdToLocalDate } from '../../wellness-score-sheet/domain/dateRange';
 import { fetchDailyWellnessScore, fetchWellnessScoreHistory } from '../../wellness-score-sheet/services/wellnessScore.api';
+import {
+  getLatestActivityLogId,
+  markHomeDashboardProcessed,
+  markWellnessScoreProcessed,
+  shouldRefreshHomeDashboard,
+} from '../../../shared/services/homeDashboardActivity';
+import { isCaptureFlowBusy } from '../../../shared/services/captureFlowBusy';
 
 const EMPTY_NUTRITION = {
   dailyStats: EMPTY_DAILY_STATS,
@@ -41,6 +48,16 @@ function writeCache(userId, startDate, endDate, payload) {
   rangeCache.set(cacheKey(userId, startDate, endDate), payload);
 }
 
+function dailyTotalsToStats(totals) {
+  if (!totals || typeof totals !== 'object') return { ...EMPTY_DAILY_STATS };
+  return {
+    ...EMPTY_DAILY_STATS,
+    ...totals,
+    averageGlycemicIndex: totals.averageGlycemicIndex ?? null,
+    mealCount: Number(totals.mealCount) || 0,
+  };
+}
+
 async function loadDayNutrition({ apiBaseUrl, userId, dayYmd }) {
   const [dayResult, burned] = await Promise.all([
     fetchDayAnalyses({ apiBaseUrl, userId, date: dayYmd }),
@@ -56,29 +73,26 @@ async function loadDayNutrition({ apiBaseUrl, userId, dayYmd }) {
   };
 }
 
-async function loadRangeNutrition({ apiBaseUrl, userId, dates }) {
-  // One parallel wave: every day's meals + burned calories together (not two sequential waves).
-  const dayPayloads = await Promise.all(
-    dates.map(async (ymd) => {
-      const [dayResult, burned] = await Promise.all([
-        fetchDayAnalyses({ apiBaseUrl, userId, date: ymd }),
-        fetchWatchBurnedCalories({ apiBaseUrl, userId, date: ymd }),
-      ]);
-      return {
-        list: dayResult.list || [],
-        stats: computeDailyStatsFromAnalyses(dayResult.list),
-        burned,
-      };
-    }),
-  );
+async function loadRangeNutrition({ apiBaseUrl, userId, startDate, endDate, dates }) {
+  // Two range calls instead of 2×N per-day requests (Last 10 Days was ~20 HTTP).
+  const [mealsResult, burnByDate] = await Promise.all([
+    fetchRangeMealTotals({ apiBaseUrl, userId, startDate, endDate }),
+    fetchWatchBurnedCaloriesRange({ apiBaseUrl, userId, startDate, endDate }),
+  ]);
 
-  const dailyStatsList = dayPayloads.map((d) => d.stats);
+  const byDate = mealsResult.byDate || {};
+  const dailyStatsList = dates.map((ymd) => dailyTotalsToStats(byDate[ymd]));
   const loggedDayCount = dailyStatsList.filter((stats) => (stats.mealCount ?? 0) > 0).length;
+  const burnedCalories = dates.reduce(
+    (sum, ymd) => sum + (Number(burnByDate?.[ymd]) || 0),
+    0,
+  );
 
   return {
     dailyStats: sumDailyStatsForPeriod(dailyStatsList),
-    burnedCalories: dayPayloads.reduce((sum, d) => sum + d.burned, 0),
-    analyses: dayPayloads.flatMap((d) => d.list),
+    burnedCalories,
+    // Multi-day carousel uses totals only — meal breakdown stays for single-day.
+    analyses: [],
     loggedDayCount,
     dayCount: dates.length,
   };
@@ -174,6 +188,9 @@ export function useHomeCarouselData({
       if (cached) {
         applyPayload(cached);
         setLoading(false);
+        const activityLogId = getLatestActivityLogId();
+        markHomeDashboardProcessed(activityLogId);
+        markWellnessScoreProcessed(activityLogId);
         return;
       }
 
@@ -183,7 +200,13 @@ export function useHomeCarouselData({
       setLoading(true);
 
       const nutritionPromise = range.isMultiDay
-        ? loadRangeNutrition({ apiBaseUrl, userId, dates }).catch(() => placeholderNutrition)
+        ? loadRangeNutrition({
+          apiBaseUrl,
+          userId,
+          startDate: range.startDate,
+          endDate: range.endDate,
+          dates,
+        }).catch(() => placeholderNutrition)
         : loadDayNutrition({ apiBaseUrl, userId, dayYmd: range.endDate }).catch(() => EMPTY_NUTRITION);
 
       const wellnessPromise = loadWellness({
@@ -201,6 +224,9 @@ export function useHomeCarouselData({
       const payload = { nutrition: nextNutrition, wellnessScore: nextWellness };
       writeCache(userId, range.startDate, range.endDate, payload);
       applyPayload(payload);
+      const activityLogId = getLatestActivityLogId();
+      markHomeDashboardProcessed(activityLogId);
+      markWellnessScoreProcessed(activityLogId);
 
       // Warm Yesterday after Today so the common switch is cache-hit instant.
       if (!range.isMultiDay && range.endDate === today) {
@@ -244,6 +270,10 @@ export function useHomeCarouselData({
 
   useEffect(() => {
     if (nutritionRefreshKey === 0) return;
+    // Tab switch alone bumps nothing useful — only refetch after real activity.
+    if (!shouldRefreshHomeDashboard()) return;
+    // Do not compete with POST /captures while Manual Log is opening.
+    if (isCaptureFlowBusy()) return;
     const userId = lastUserIdRef.current || resolvedUserIdRef.current;
     if (userId) {
       // Drop cached ranges so the next load (and siblings) see fresh meals.

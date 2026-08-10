@@ -10,6 +10,7 @@ import {
   validateDurationFields,
   validateWeightKg,
 } from '../services/testimonialFormUtils.js';
+import { setCaptureFlowBusy } from '../../../shared/services/captureFlowBusy';
 
 const INITIAL_FORM = {
   beforeWeightKg: '',
@@ -31,7 +32,7 @@ const MAX_DIM = 1200;
  * @param {File} file
  * @returns {Promise<{ base64: string, preview: string }>}
  */
-function compressImage(file) {
+export function compressImage(file) {
   return new Promise((resolve, reject) => {
     const img = new Image();
     const objectUrl = URL.createObjectURL(file);
@@ -129,19 +130,28 @@ export function useTestimonial({ userId, healthIssues = [] }) {
     setError(null);
   }, []);
 
-  /** Shared handler for any image input change event */
-  const makeImageHandler = useCallback((setter) => async (e) => {
+  /** Instant preview, then compress in background (same feel as Manual Log / Mine card). */
+  const makeImageHandler = useCallback((setter) => (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    // Reset input so the same file can be re-selected after retake
     e.target.value = '';
-    try {
-      const result = await compressImage(file);
-      setter(result);
-      setError(null);
-    } catch (err) {
-      setError(err.message);
-    }
+    const objectUrl = URL.createObjectURL(file);
+    setter({ base64: null, preview: objectUrl, compressing: true });
+    setError(null);
+    setCaptureFlowBusy(true);
+    void compressImage(file)
+      .then((result) => {
+        URL.revokeObjectURL(objectUrl);
+        setter({ ...result, compressing: false });
+      })
+      .catch((err) => {
+        URL.revokeObjectURL(objectUrl);
+        setter(null);
+        setError(err.message);
+      })
+      .finally(() => {
+        setCaptureFlowBusy(false);
+      });
   }, []);
 
   const handleBeforeImageChange = useCallback(makeImageHandler(setBeforeImage), [makeImageHandler]);
@@ -151,6 +161,19 @@ export function useTestimonial({ userId, healthIssues = [] }) {
   const handleSubmit = useCallback(async () => {
     setError(null);
     setSuccess(null);
+
+    if (beforeImage?.compressing || afterImage?.compressing) {
+      setError('Photo is still preparing — try again in a moment.');
+      return false;
+    }
+    if (beforeImage && !beforeImage.base64) {
+      setError('Before photo failed to prepare. Please pick it again.');
+      return false;
+    }
+    if (afterImage && !afterImage.base64) {
+      setError('After photo failed to prepare. Please pick it again.');
+      return false;
+    }
 
     const isCompleting = isCompletingMode;
     const isEditing    = isEditMode;
