@@ -7437,8 +7437,9 @@ function WellnessValleyApp() {
           }}
           onSaved={(shareMeta) => {
             // Read image before onBack clears payload (exit calls onSaved then onBack).
+            // Do NOT refresh score here — ManualEntryPage refreshes after DB promote/save
+            // so Home + sheet do not lock in a pre-save total.
             const image = manualEntryPayload?.imageBase64;
-            triggerNutritionRefresh({ immediate: true, source: 'capture-classify-saved' });
             void shareCaptureAfterClassify(image, {
               activityCaption: shareMeta?.activityCaption || null,
             });

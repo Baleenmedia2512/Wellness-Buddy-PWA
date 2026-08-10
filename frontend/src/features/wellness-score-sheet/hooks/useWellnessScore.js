@@ -94,6 +94,9 @@ export function useWellnessScore({ user, apiBaseUrl, date, nutritionRefreshKey =
       activityRefreshMounted.current = true;
       return;
     }
+    // Drop session cache before refetch so we never paint a pre-save total
+    // while /daily is in flight (invalidate is otherwise unused on save paths).
+    invalidateDailyWellnessScoreCache();
     // Always refetch on key bump — do not gate on shouldRefreshWellnessScore().
     // The sheet may have already marked wellness processed while Home was stale.
     reload({ background: true, force: true });

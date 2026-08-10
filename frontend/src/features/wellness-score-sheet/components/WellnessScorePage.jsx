@@ -87,6 +87,15 @@ export default function WellnessScorePage({
     setSelectedDate(dateFromPickerValue(end));
   }, []);
 
+  const { loading, error, historyDays, data, reload } = useWellnessScoreHistory({
+    user,
+    apiBaseUrl,
+    startDate: range.startDate,
+    endDate: range.endDate,
+    selectedDate,
+    nutritionRefreshKey,
+  });
+
   const handleBack = useCallback(() => {
     onBack?.({
       dateRange,
@@ -99,15 +108,6 @@ export default function WellnessScorePage({
       isMultiDay: range.isMultiDay,
     });
   }, [onBack, dateRange, customStartDate, customEndDate, data, selectedDate, range.endDate, range.isMultiDay, resolvedUserId]);
-
-  const { loading, error, historyDays, data, reload } = useWellnessScoreHistory({
-    user,
-    apiBaseUrl,
-    startDate: range.startDate,
-    endDate: range.endDate,
-    selectedDate,
-    nutritionRefreshKey,
-  });
 
   return (
     <WellnessScoreSheet

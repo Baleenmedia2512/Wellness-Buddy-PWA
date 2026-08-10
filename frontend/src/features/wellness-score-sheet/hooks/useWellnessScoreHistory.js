@@ -104,7 +104,11 @@ export function useWellnessScoreHistory({
         days,
         activityLogId: activityLogAtFetch,
       });
-      markWellnessScoreProcessed(activityLogAtFetch);
+      // Only mark processed if nothing newer landed mid-fetch (food-save race).
+      // Matches useWellnessScore so a stale /history response cannot lock out Home.
+      if (getLatestActivityLogId() === activityLogAtFetch) {
+        markWellnessScoreProcessed(activityLogAtFetch);
+      }
     } catch (err) {
       setError(err?.message || 'Failed to load wellness score');
       setHistoryDays([]);
@@ -149,7 +153,9 @@ export function useWellnessScoreHistory({
 
   useEffect(() => {
     if (nutritionRefreshKey === 0) return;
-    if (!shouldRefreshWellnessScore()) return;
+    // Always refetch on key bump — do not gate on shouldRefreshWellnessScore().
+    // Home's live daily hook may have already marked wellness processed while
+    // this sheet still holds a stale snapshot (or the reverse).
     reload({ force: true });
   }, [nutritionRefreshKey, reload]);
 
