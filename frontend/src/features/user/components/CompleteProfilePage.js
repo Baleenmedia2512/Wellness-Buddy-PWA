@@ -54,6 +54,7 @@ const CompleteProfilePage = ({ user, apiBaseUrl, onComplete, showPictureSection 
           // Phone-OTP user with no email yet — empty form, email editable.
           if (mounted) {
             setEmailLocked(false);
+            setShowBodyFat(true);
             setLoading(false);
           }
           return;
@@ -65,6 +66,7 @@ const CompleteProfilePage = ({ user, apiBaseUrl, onComplete, showPictureSection 
         if (!profile) {
           setEmail(loginEmail);
           setEmailLocked(true);
+          setShowBodyFat(true);
           return;
         }
 
@@ -96,17 +98,19 @@ const CompleteProfilePage = ({ user, apiBaseUrl, onComplete, showPictureSection 
         if (typeof profile.dietType === 'string' && profile.dietType.trim()) {
           setDietType(profile.dietType);
         }
-        // Ask for body fat only when team / weight / BPC has none.
-        const needsBodyFat = profile.needsBodyFat === true
-          && !(typeof profile.bodyFat === 'number' && hasValidBodyFatPercent(profile.bodyFat))
-          && !(typeof profile.latestWeightBodyFat === 'number'
-            && hasValidBodyFatPercent(profile.latestWeightBodyFat))
-          && !hasValidBodyFatPercent(profile.bodyMetrics?.fatPercent);
-        setShowBodyFat(needsBodyFat);
-        const existingBf = hasValidBodyFatPercent(profile.bodyFat)
-          ? profile.bodyFat
-          : (hasValidBodyFatPercent(profile.latestWeightBodyFat) ? profile.latestWeightBodyFat : null);
-        if (existingBf != null) setBodyFat(String(existingBf));
+        // Ask whenever team / weight / BPC has no body fat (saved on team_table).
+        const hasExistingSource = hasValidBodyFatPercent(profile.bodyFat)
+          || hasValidBodyFatPercent(profile.latestWeightBodyFat)
+          || hasValidBodyFatPercent(profile.bodyMetrics?.fatPercent);
+        setShowBodyFat(!hasExistingSource);
+        if (hasExistingSource) {
+          const existingBf = hasValidBodyFatPercent(profile.bodyFat)
+            ? profile.bodyFat
+            : (hasValidBodyFatPercent(profile.latestWeightBodyFat)
+              ? profile.latestWeightBodyFat
+              : profile.bodyMetrics?.fatPercent);
+          if (existingBf != null) setBodyFat(String(existingBf));
+        }
 
         if (profile.profileImage && (
           profile.profileImage.startsWith('data:image/')
