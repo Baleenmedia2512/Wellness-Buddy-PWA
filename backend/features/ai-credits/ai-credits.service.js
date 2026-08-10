@@ -11,6 +11,7 @@ import {
   canReserve,
   normalizeConfig,
   shouldDeductAiCredit,
+  STALE_PENDING_RESERVATION_MS,
 } from './domain/credits.rules.js';
 import * as repo from './data/ai-credits.repo.js';
 
@@ -35,6 +36,7 @@ async function loadDayContext(userId) {
   const config = repo.configOrDefault(configRow);
   // Syncs credits_limit_snapshot to live admin config (mid-day changes take effect).
   const usage = await repo.ensureUsageRow(userId, usageDate, config.dailyAiCredits);
+  await repo.expireStalePendingReservations(userId, usageDate, STALE_PENDING_RESERVATION_MS);
   const pending = await repo.countPendingReservations(userId, usageDate);
   // Prefer live config so admin Save is reflected even if snapshot update races.
   const limit = config.dailyAiCredits;
@@ -50,19 +52,24 @@ async function loadDayContext(userId) {
   };
 }
 
+function statusFromContext(ctx) {
+  return buildStatus({
+    enabled: ctx.config.aiModeEnabled,
+    dailyLimit: ctx.limit,
+    used: ctx.used,
+    usageDate: ctx.usageDate,
+    timezoneIana: ctx.timezoneIana,
+    pendingReservations: ctx.pending,
+  });
+}
+
 export async function getStatus({ userId }) {
   const uid = Number.parseInt(String(userId), 10);
   if (!Number.isFinite(uid) || uid <= 0) {
     throw new ValidationError(400, 'userId is required');
   }
   const ctx = await loadDayContext(uid);
-  const status = buildStatus({
-    enabled: ctx.config.aiModeEnabled,
-    dailyLimit: ctx.limit,
-    used: ctx.used,
-    usageDate: ctx.usageDate,
-    timezoneIana: ctx.timezoneIana,
-  });
+  const status = statusFromContext(ctx);
   return {
     httpStatus: 200,
     body: { ok: true, data: status },
@@ -82,13 +89,7 @@ export async function reserveCredit({ userId }) {
     pendingReservations: ctx.pending,
   });
   if (!gate.allowed) {
-    const status = buildStatus({
-      enabled: ctx.config.aiModeEnabled,
-      dailyLimit: ctx.limit,
-      used: ctx.used,
-      usageDate: ctx.usageDate,
-      timezoneIana: ctx.timezoneIana,
-    });
+    const status = statusFromContext(ctx);
     return {
       httpStatus: 200,
       body: {
@@ -107,13 +108,7 @@ export async function reserveCredit({ userId }) {
     userId: uid,
     usageDate: ctx.usageDate,
   });
-  const status = buildStatus({
-    enabled: ctx.config.aiModeEnabled,
-    dailyLimit: ctx.limit,
-    used: ctx.used,
-    usageDate: ctx.usageDate,
-    timezoneIana: ctx.timezoneIana,
-  });
+  const status = statusFromContext(ctx);
   return {
     httpStatus: 200,
     body: {
@@ -123,7 +118,7 @@ export async function reserveCredit({ userId }) {
         reason: null,
         reservationId: reservation.id,
         ...status,
-        // remaining display includes this hold for UX
+        // Reserve just created — reflect the new hold in remaining.
         remaining: Math.max(0, status.remaining - 1),
       },
     },
@@ -153,13 +148,7 @@ export async function confirmCredit({ userId, reservationId, analysisResult = nu
         data: {
           deducted: false,
           alreadyConfirmed: true,
-          ...buildStatus({
-            enabled: ctx.config.aiModeEnabled,
-            dailyLimit: ctx.limit,
-            used: ctx.used,
-            usageDate: ctx.usageDate,
-            timezoneIana: ctx.timezoneIana,
-          }),
+          ...statusFromContext(ctx),
         },
       },
     };
@@ -181,13 +170,7 @@ export async function confirmCredit({ userId, reservationId, analysisResult = nu
         data: {
           deducted: false,
           reason: 'technical_failure',
-          ...buildStatus({
-            enabled: ctx.config.aiModeEnabled,
-            dailyLimit: ctx.limit,
-            used: ctx.used,
-            usageDate: ctx.usageDate,
-            timezoneIana: ctx.timezoneIana,
-          }),
+          ...statusFromContext(ctx),
         },
       },
     };
@@ -206,13 +189,7 @@ export async function confirmCredit({ userId, reservationId, analysisResult = nu
           data: {
             deducted: false,
             alreadyConfirmed: true,
-            ...buildStatus({
-              enabled: ctx.config.aiModeEnabled,
-              dailyLimit: ctx.limit,
-              used: ctx.used,
-              usageDate: ctx.usageDate,
-              timezoneIana: ctx.timezoneIana,
-            }),
+            ...statusFromContext(ctx),
           },
         },
       };
@@ -228,13 +205,7 @@ export async function confirmCredit({ userId, reservationId, analysisResult = nu
       ok: true,
       data: {
         deducted: true,
-        ...buildStatus({
-          enabled: ctx.config.aiModeEnabled,
-          dailyLimit: ctx.limit,
-          used: ctx.used,
-          usageDate: ctx.usageDate,
-          timezoneIana: ctx.timezoneIana,
-        }),
+        ...statusFromContext(ctx),
       },
     },
   };
@@ -252,23 +223,74 @@ export async function releaseCredit({ userId, reservationId }) {
   if (!reservation || Number(reservation.user_id) !== uid) {
     throw new ValidationError(404, 'Reservation not found');
   }
-  if (reservation.status === 'pending') {
-    await repo.resolveReservation(reservationId, 'released');
+
+  const priorStatus = reservation.status;
+
+  // Consumed credits cannot be released — only pending holds are refundable.
+  if (priorStatus === 'confirmed') {
+    const ctx = await loadDayContext(uid);
+    return {
+      httpStatus: 200,
+      body: {
+        ok: true,
+        data: {
+          released: false,
+          alreadyConsumed: true,
+          alreadyReleased: false,
+          ...statusFromContext(ctx),
+        },
+      },
+    };
   }
+
+  if (priorStatus === 'pending') {
+    const updated = await repo.resolveReservation(reservationId, 'released');
+    if (!updated) {
+      // Concurrent release or confirm won the race — re-read for idempotent response.
+      const again = await repo.getReservation(reservationId);
+      const ctx = await loadDayContext(uid);
+      if (again?.status === 'released') {
+        return {
+          httpStatus: 200,
+          body: {
+            ok: true,
+            data: {
+              released: true,
+              alreadyReleased: true,
+              alreadyConsumed: false,
+              ...statusFromContext(ctx),
+            },
+          },
+        };
+      }
+      if (again?.status === 'confirmed') {
+        return {
+          httpStatus: 200,
+          body: {
+            ok: true,
+            data: {
+              released: false,
+              alreadyConsumed: true,
+              alreadyReleased: false,
+              ...statusFromContext(ctx),
+            },
+          },
+        };
+      }
+      throw new ValidationError(409, 'Reservation could not be released');
+    }
+  }
+
   const ctx = await loadDayContext(uid);
   return {
     httpStatus: 200,
     body: {
       ok: true,
       data: {
-        released: reservation.status === 'pending' || reservation.status === 'released',
-        ...buildStatus({
-          enabled: ctx.config.aiModeEnabled,
-          dailyLimit: ctx.limit,
-          used: ctx.used,
-          usageDate: ctx.usageDate,
-          timezoneIana: ctx.timezoneIana,
-        }),
+        released: true,
+        alreadyReleased: priorStatus === 'released',
+        alreadyConsumed: false,
+        ...statusFromContext(ctx),
       },
     },
   };

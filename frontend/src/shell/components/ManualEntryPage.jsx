@@ -33,6 +33,10 @@ import { ManualWatchEntryModal } from '../../features/activity';
 import {
   fetchAiCreditsStatus,
   reserveAiCredit,
+  getAiCreditUiState,
+  reserveFailureMessage,
+  autoDetectCreditsBadge,
+  isAutoDetectEnabled,
 } from '../../features/ai-credits';
 import { fetchWaterIntake, todayLocal } from '../../features/water';
 import { isIOS } from '../../shared/utils/platform';
@@ -91,7 +95,17 @@ const BRAND = {
 
 /** Shared Log-as button chrome — fills one cell in the 3×3 grid. */
 const LOG_AS_BTN_BASE =
-  'log-as-btn flex h-full min-h-[3.75rem] w-full min-w-0 flex-col items-center justify-center gap-0.5 rounded-xl px-0.5 py-1.5 text-center cursor-pointer select-none transition-[transform,box-shadow,background-color,border-color] duration-150 ease-out disabled:pointer-events-none disabled:opacity-50 min-[360px]:min-h-[4.25rem] min-[360px]:gap-1 min-[360px]:px-1 min-[360px]:py-2 min-[400px]:min-h-[4.75rem] sm:min-h-[5.25rem] sm:gap-1.5';
+  'log-as-btn flex h-full min-h-0 w-full min-w-0 flex-col items-center justify-center gap-0.5 overflow-hidden rounded-xl px-1 py-1.5 text-center cursor-pointer select-none transition-[transform,box-shadow,background-color,border-color] duration-150 ease-out disabled:pointer-events-none disabled:opacity-50 min-[360px]:gap-1 min-[360px]:px-1.5 min-[360px]:py-2';
+
+/** Label under icon — wraps up to 2 lines in grid cells. */
+const LOG_AS_LABEL =
+  'w-full min-w-0 max-w-full px-0.5 text-center font-bold leading-[1.15] text-emerald-900 line-clamp-2 whitespace-normal text-[9px] min-[360px]:text-[10px] min-[400px]:text-[11px] sm:text-[12px]';
+
+const LOG_AS_LABEL_ON_DARK =
+  'w-full min-w-0 max-w-full px-0.5 text-center font-bold leading-[1.15] text-white line-clamp-1 whitespace-normal text-[9px] min-[360px]:text-[10px] min-[400px]:text-[11px] sm:text-[12px]';
+
+const LOG_AS_META_ON_DARK =
+  'w-full min-w-0 max-w-full px-0.5 text-center font-medium leading-[1.1] text-emerald-100/90 line-clamp-1 whitespace-normal text-[7px] min-[360px]:text-[8px] min-[400px]:text-[9px]';
 
 const LOG_AS_BTN_IDLE = [
   LOG_AS_BTN_BASE,
@@ -101,6 +115,12 @@ const LOG_AS_BTN_IDLE = [
   'active:translate-y-[2px] active:shadow-[0_1px_0_0_rgba(6,95,70,0.18)]',
 ].join(' ');
 
+const LOG_AS_BTN_IDLE_MUTED = [
+  LOG_AS_BTN_BASE,
+  'log-as-btn--idle-muted border-2 border-amber-200/90 bg-gradient-to-b from-white to-amber-50/50',
+  'text-amber-900 shadow-[0_3px_0_0_rgba(217,119,6,0.18)]',
+].join(' ');
+
 const LOG_AS_BTN_SELECTED = [
   LOG_AS_BTN_BASE,
   'log-as-btn--selected border-2 border-emerald-800 bg-gradient-to-b from-emerald-600 to-emerald-700 text-white',
@@ -108,13 +128,13 @@ const LOG_AS_BTN_SELECTED = [
   'active:translate-y-[2px] active:shadow-[0_1px_0_0_#064e3b]',
 ].join(' ');
 
-function LogAsIconWrap({ selected = false, muted = false, compact = false, children }) {
+function LogAsIconWrap({ selected = false, muted = false, compact = true, children }) {
   return (
     <span
       className={[
         'flex shrink-0 items-center justify-center',
         compact
-          ? 'h-7 w-7 min-[360px]:h-8 min-[360px]:w-8 min-[400px]:h-9 min-[400px]:w-9 sm:h-10 sm:w-10'
+          ? 'h-6 w-6 min-[360px]:h-7 min-[360px]:w-7 min-[400px]:h-8 min-[400px]:w-8 sm:h-9 sm:w-9'
           : 'h-8 w-8 min-[360px]:h-9 min-[360px]:w-9 min-[400px]:h-10 min-[400px]:w-10 sm:h-11 sm:w-11',
         selected
           ? 'rounded-full bg-white/15 ring-1 ring-white/25'
@@ -270,6 +290,15 @@ export default function ManualEntryPage({
     refreshCredits();
   }, [captureReady, refreshCredits]);
 
+  const creditUi = useMemo(() => getAiCreditUiState(credits), [credits]);
+
+  // When slots are temporarily held (pending), poll quietly — no scary lock UI.
+  useEffect(() => {
+    if (!captureReady || creditUi.phase !== 'busy') return undefined;
+    const id = setInterval(() => refreshCredits(), 15_000);
+    return () => clearInterval(id);
+  }, [captureReady, creditUi.phase, refreshCredits]);
+
   // Light beverage summary (AnalysisData only — no images). Powers water ml + Afresh scoops.
   const loadBeverageToday = useCallback((opts = {}) => {
     const { showWaterLoading = false, showAfreshLoading = false } = opts;
@@ -418,7 +447,7 @@ export default function ManualEntryPage({
   }, []);
 
   const startAiAnalyze = useCallback(async () => {
-    if (!userId || !imageBase64) return;
+    if (!userId || !imageBase64 || !captureId) return;
     setHint(null);
     setAiStarting(true);
     try {
@@ -427,25 +456,20 @@ export default function ManualEntryPage({
         const reserved = await reserveAiCredit({ userId, apiBaseUrl });
         setCredits(reserved);
         if (!reserved?.allowed || !reserved.reservationId) {
-          setHint(
-            reserved?.reason === 'limit_reached'
-              ? 'Daily AI limit reached — pick a type below to log manually.'
-              : 'Could not start AI — pick a type below to log manually.',
-          );
+          setHint(reserveFailureMessage(reserved?.reason));
           setAiStarting(false);
           return;
         }
         reservationId = reserved.reservationId;
       }
-      onStartBackgroundAi?.({ reservationId });
+      // Pass ids directly — App must not re-read manualEntryPayload (stale closure).
+      onStartBackgroundAi?.({ reservationId, captureId, imageBase64, userId });
       exit();
     } catch (err) {
       setHint(err?.message || 'Could not start AI — pick a type below.');
       setAiStarting(false);
     }
-  // exit / onStartBackgroundAi are stable enough for this screen lifetime
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId, imageBase64, creditsEnabled, apiBaseUrl]);
+  }, [userId, imageBase64, captureId, creditsEnabled, apiBaseUrl, onStartBackgroundAi, exit]);
 
   const handleAiAnalyze = () => {
     if (!userId || !imageBase64 || aiStarting || closingWithoutLog) return;
@@ -679,12 +703,15 @@ export default function ManualEntryPage({
 
   // Don't treat credits as available until status has loaded — avoids green CTA flash then lock.
   const creditsChecking = creditsEnabled && creditsLoading;
-  const outOfCredits = creditsEnabled && credits != null && (credits.remaining ?? 0) <= 0;
-  // Only show AI CTA / credits when mode is confirmed on — never surface “AI off” to users.
+  const outOfCredits = creditsEnabled && creditUi.phase === 'exhausted';
+  const aiTemporarilyBusy = creditsEnabled && creditUi.phase === 'busy';
   const showCreditsPanel = creditsEnabled && credits != null && credits.enabled === true;
   const showAiButton = !creditsEnabled || (credits != null && credits.enabled === true);
   const aiDisabled =
-    (aiStarting && !pendingAi) || outOfCredits || creditsChecking || closingWithoutLog;
+    !isAutoDetectEnabled(creditUi, {
+      running: aiStarting && !pendingAi,
+      closing: closingWithoutLog,
+    }) || creditsChecking;
   const logAsDisabled = closingWithoutLog || (aiStarting && !pendingAi);
 
   return (
@@ -734,6 +761,12 @@ export default function ManualEntryPage({
           </p>
         )}
 
+        {aiTemporarilyBusy && !hint && (
+          <p className="shrink-0 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+            AI detect is temporarily unavailable. Try again in a few minutes — your credits are not used yet.
+          </p>
+        )}
+
         {/* Type grid — large Log-as tiles matching original layout */}
         <section className="flex min-h-0 flex-1 flex-col">
           <div className="mb-1.5 flex shrink-0 items-center justify-between gap-2 min-[360px]:mb-2.5">
@@ -741,8 +774,8 @@ export default function ManualEntryPage({
               Log as
             </p>
           </div>
-          <div className="grid h-full min-h-[11.5rem] w-full flex-1 grid-cols-3 grid-rows-3 gap-1.5 min-[360px]:min-h-[13.5rem] min-[360px]:gap-2 sm:min-h-0 sm:gap-2.5">
-            {CATEGORIES.map(({ id, Icon, src, label, isImgIcon, wrapLabel }) => {
+          <div className="grid w-full flex-1 grid-cols-3 auto-rows-[minmax(4.25rem,1fr)] gap-1.5 min-h-[12.5rem] min-[360px]:min-h-[14rem] min-[360px]:gap-2 sm:min-h-[15rem] sm:gap-2.5">
+            {CATEGORIES.map(({ id, Icon, src, label, isImgIcon }) => {
               // iOS WebView often blanks custom emoji SVGs — use Lucide for Workout.
               const useLucideOnIos = id === MANUAL_LOG_CATEGORY.SMARTWATCH && isIOS() && Icon;
               const isPending = pendingLogAsId === id;
@@ -758,7 +791,7 @@ export default function ManualEntryPage({
                 <LogAsIconWrap>
                   {isPending ? (
                     <Loader2
-                      className="h-7 w-7 animate-spin min-[360px]:h-8 min-[360px]:w-8 min-[400px]:h-9 min-[400px]:w-9 sm:h-10 sm:w-10"
+                      className="h-5 w-5 animate-spin min-[360px]:h-6 min-[360px]:w-6 min-[400px]:h-7 min-[400px]:w-7 sm:h-8 sm:w-8"
                       aria-hidden
                     />
                   ) : useLucideOnIos ? (
@@ -766,25 +799,18 @@ export default function ManualEntryPage({
                   ) : isImgIcon ? (
                     <PublicIcon
                       src={src}
-                      className="h-7 w-7 min-[360px]:h-8 min-[360px]:w-8 min-[400px]:h-9 min-[400px]:w-9 sm:h-10 sm:w-10"
+                      className="h-5 w-5 min-[360px]:h-6 min-[360px]:w-6 min-[400px]:h-7 min-[400px]:w-7 sm:h-8 sm:w-8"
                       alt=""
                     />
                   ) : (
                     <Icon
-                      className="h-7 w-7 min-[360px]:h-8 min-[360px]:w-8 min-[400px]:h-9 min-[400px]:w-9 sm:h-10 sm:w-10"
+                      className="h-5 w-5 min-[360px]:h-6 min-[360px]:w-6 min-[400px]:h-7 min-[400px]:w-7 sm:h-8 sm:w-8"
                       strokeWidth={2}
                       aria-hidden
                     />
                   )}
                 </LogAsIconWrap>
-                <span
-                  className={[
-                    'max-w-full px-0.5 font-bold leading-tight text-emerald-900',
-                    wrapLabel
-                      ? 'line-clamp-2 whitespace-normal text-[8px] min-[360px]:text-[9px] min-[400px]:text-[10px] sm:text-[11px]'
-                      : 'truncate text-[10px] min-[360px]:text-[11px] min-[400px]:text-[12px] sm:text-[13px]',
-                  ].join(' ')}
-                >
+                <span className={LOG_AS_LABEL}>
                   {label}
                 </span>
               </button>
@@ -796,57 +822,74 @@ export default function ManualEntryPage({
                 <div
                   className={`${LOG_AS_BTN_IDLE} cursor-default`}
                   aria-disabled="true"
-                  title="Daily AI limit reached — unlocks at midnight"
+                  title="Today's AI detections used — more unlock at midnight"
                 >
-                  <LogAsIconWrap compact>
+                  <LogAsIconWrap>
                     <Lock
-                      className="h-6 w-6 min-[360px]:h-7 min-[360px]:w-7 min-[400px]:h-8 min-[400px]:w-8 sm:h-9 sm:w-9"
+                      className="h-5 w-5 min-[360px]:h-6 min-[360px]:w-6 min-[400px]:h-7 min-[400px]:w-7 sm:h-8 sm:w-8"
                       aria-hidden
                     />
                   </LogAsIconWrap>
-                  <span className="max-w-full truncate whitespace-nowrap px-0.5 text-[9px] font-semibold leading-none text-emerald-800 min-[360px]:text-[10px] min-[400px]:text-[11px] sm:text-[12px]">
+                  <span className={LOG_AS_LABEL}>
                     Unlock on
                   </span>
                   {showCreditsPanel && (
                     <LogAsUnlockDate
                       timezoneIana={credits?.timezoneIana}
-                      className="text-[10px] font-medium text-amber-600 min-[360px]:text-[11px] min-[400px]:text-[12px] sm:text-[13px]"
+                      className="w-full min-w-0 max-w-full truncate px-0.5 text-center text-[9px] font-medium text-amber-600 min-[360px]:text-[10px] min-[400px]:text-[11px] sm:text-[12px]"
                     />
                   )}
                 </div>
+              ) : aiTemporarilyBusy ? (
+                <button
+                  type="button"
+                  onClick={handleAiAnalyze}
+                  disabled={creditsChecking}
+                  className={LOG_AS_BTN_IDLE_MUTED}
+                  title="AI detect is temporarily unavailable — try again later"
+                >
+                  <LogAsIconWrap muted>
+                    <Sparkles
+                      className="h-5 w-5 text-amber-600 min-[360px]:h-6 min-[360px]:w-6 min-[400px]:h-7 min-[400px]:w-7 sm:h-8 sm:w-8"
+                      aria-hidden
+                    />
+                  </LogAsIconWrap>
+                  <span className={`${LOG_AS_LABEL} text-amber-900`}>
+                    Auto Detect
+                  </span>
+                </button>
               ) : (
                 <button
                   type="button"
                   onClick={handleAiAnalyze}
                   disabled={aiDisabled}
-                  className={[
-                    LOG_AS_BTN_SELECTED,
-                    creditsChecking ? 'opacity-80' : '',
-                  ].join(' ')}
+                  className={[LOG_AS_BTN_SELECTED, creditsChecking ? 'opacity-80' : ''].join(' ')}
                 >
-                  <LogAsIconWrap selected compact={Boolean(showCreditsPanel)}>
+                  <LogAsIconWrap selected>
                     {aiStarting || pendingAi ? (
-                      <Loader2 className="h-7 w-7 animate-spin text-white min-[360px]:h-8 min-[360px]:w-8 min-[400px]:h-9 min-[400px]:w-9 sm:h-10 sm:w-10" />
+                      <Loader2
+                        className="h-5 w-5 animate-spin text-white min-[360px]:h-6 min-[360px]:w-6 min-[400px]:h-7 min-[400px]:w-7 sm:h-8 sm:w-8"
+                        aria-hidden
+                      />
                     ) : (
-                      <Sparkles className="h-7 w-7 text-white min-[360px]:h-8 min-[360px]:w-8 min-[400px]:h-9 min-[400px]:w-9 sm:h-10 sm:w-10" />
+                      <Sparkles
+                        className="h-5 w-5 text-white min-[360px]:h-6 min-[360px]:w-6 min-[400px]:h-7 min-[400px]:w-7 sm:h-8 sm:w-8"
+                        aria-hidden
+                      />
                     )}
                   </LogAsIconWrap>
-                  <span className="max-w-full truncate whitespace-nowrap px-0.5 text-[10px] font-semibold leading-tight text-white min-[360px]:text-[11px] min-[400px]:text-[12px] sm:text-[13px]">
+                  <span className={LOG_AS_LABEL_ON_DARK}>
                     {aiStarting || pendingAi ? 'Starting…' : 'Auto Detect'}
                   </span>
-                  {showCreditsPanel && credits && (
-                    <p className="max-w-full truncate whitespace-nowrap text-[7px] font-semibold tabular-nums text-emerald-100/90 min-[360px]:text-[8px] min-[400px]:text-[9px] sm:text-[10px]">
-                      <span className="text-white">
-                        {Math.max(0, Number(credits.remaining) ?? 0)}
-                      </span>
-                      {' of '}
-                      {Math.max(0, Number(credits.dailyLimit) || 0)}
-                    </p>
+                  {showCreditsPanel && credits && autoDetectCreditsBadge(creditUi) && (
+                    <span className={LOG_AS_META_ON_DARK}>
+                      {autoDetectCreditsBadge(creditUi)}
+                    </span>
                   )}
                   {showCreditsPanel && creditsLoading && !credits && (
-                    <p className="text-[7px] text-emerald-100/80 min-[360px]:text-[8px] min-[400px]:text-[9px] sm:text-[10px]">
+                    <span className={LOG_AS_META_ON_DARK}>
                       Checking…
-                    </p>
+                    </span>
                   )}
                 </button>
               )

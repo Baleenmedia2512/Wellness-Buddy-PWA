@@ -119,6 +119,27 @@ export async function updateUsageLimitSnapshot(usageRowId, limitSnapshot) {
   return data;
 }
 
+export async function expireStalePendingReservations(userId, usageDate, maxAgeMs) {
+  const uid = Number.parseInt(String(userId), 10);
+  if (!Number.isFinite(uid) || uid <= 0) return 0;
+  const ageMs = Math.max(60_000, Number(maxAgeMs) || 0);
+  const cutoff = new Date(Date.now() - ageMs).toISOString();
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from('ai_credits_reservations_table')
+    .update({ status: 'released', resolved_at: nowUtc() })
+    .eq('user_id', uid)
+    .eq('usage_date', usageDate)
+    .eq('status', 'pending')
+    .lt('created_at', cutoff)
+    .select('id');
+  if (error) {
+    logger.error('[ai-credits.repo] stale pending release failed', { err: error.message });
+    return 0;
+  }
+  return data?.length || 0;
+}
+
 export async function countPendingReservations(userId, usageDate) {
   const uid = Number.parseInt(String(userId), 10);
   const supabase = getSupabaseClient();
