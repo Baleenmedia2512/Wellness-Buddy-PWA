@@ -112,18 +112,36 @@ export async function getProfile(email) {
   }
 }
 
+function isMissingIsDeletedColumn(error) {
+  const msg = String(error?.message || error || '');
+  return /IsDeleted/i.test(msg) && /column/i.test(msg) && /does not exist|not find|unknown/i.test(msg);
+}
+
 export async function getLatestWeight(userId) {
   const uid = Number.parseInt(String(userId), 10);
   if (!Number.isFinite(uid) || uid < 1) return null;
 
   const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const selectCols = 'ID, Weight, BodyFat, Bmi, Bmr, CreatedAt';
+
+  let query = supabase
     .from('weight_records_table')
-    .select('ID, Weight, BodyFat, Bmi, Bmr, CreatedAt')
+    .select(selectCols)
     .eq('UserId', uid)
     .or('IsDeleted.is.null,IsDeleted.eq.false,IsDeleted.eq.0')
     .order('CreatedAt', { ascending: false })
     .limit(1);
+
+  let { data, error } = await query;
+  if (error && isMissingIsDeletedColumn(error)) {
+    console.warn('[user.repo] getLatestWeight: IsDeleted missing — retrying without soft-delete filter');
+    ({ data, error } = await supabase
+      .from('weight_records_table')
+      .select(selectCols)
+      .eq('UserId', uid)
+      .order('CreatedAt', { ascending: false })
+      .limit(1));
+  }
   if (error) {
     console.warn('[user.repo] getLatestWeight failed:', error.message);
     return null;
@@ -141,15 +159,22 @@ export async function getLatestWeightBodyFat(userId) {
   if (!Number.isFinite(uid) || uid < 1) return null;
 
   const supabase = getSupabaseClient();
-  const { data, error } = await supabase
-    .from('weight_records_table')
-    .select('BodyFat')
-    .eq('UserId', uid)
-    .not('BodyFat', 'is', null)
-    .or('IsDeleted.is.null,IsDeleted.eq.false,IsDeleted.eq.0')
-    .order('CreatedAt', { ascending: false })
-    .limit(1)
-    .maybeSingle();
+  const run = (withDeletedFilter) => {
+    let q = supabase
+      .from('weight_records_table')
+      .select('BodyFat')
+      .eq('UserId', uid)
+      .not('BodyFat', 'is', null);
+    if (withDeletedFilter) {
+      q = q.or('IsDeleted.is.null,IsDeleted.eq.false,IsDeleted.eq.0');
+    }
+    return q.order('CreatedAt', { ascending: false }).limit(1).maybeSingle();
+  };
+
+  let { data, error } = await run(true);
+  if (error && isMissingIsDeletedColumn(error)) {
+    ({ data, error } = await run(false));
+  }
   if (error || data?.BodyFat == null) return null;
   const bf = parseFloat(data.BodyFat);
   return Number.isFinite(bf) ? bf : null;
@@ -173,14 +198,22 @@ export async function updateLatestWeightBodyFat(userId, bodyFat, bmr = null) {
   if (bmr != null) updates.Bmr = bmr;
 
   const supabase = getSupabaseClient();
-  const { data, error } = await supabase
-    .from('weight_records_table')
-    .update(updates)
-    .eq('ID', latest.ID)
-    .eq('UserId', uid)
-    .or('IsDeleted.is.null,IsDeleted.eq.false,IsDeleted.eq.0')
-    .select('ID, Weight, BodyFat, Bmr')
-    .maybeSingle();
+  const runUpdate = (withDeletedFilter) => {
+    let q = supabase
+      .from('weight_records_table')
+      .update(updates)
+      .eq('ID', latest.ID)
+      .eq('UserId', uid);
+    if (withDeletedFilter) {
+      q = q.or('IsDeleted.is.null,IsDeleted.eq.false,IsDeleted.eq.0');
+    }
+    return q.select('ID, Weight, BodyFat, Bmr').maybeSingle();
+  };
+
+  let { data, error } = await runUpdate(true);
+  if (error && isMissingIsDeletedColumn(error)) {
+    ({ data, error } = await runUpdate(false));
+  }
   if (error) throw error;
   return data || null;
 }
