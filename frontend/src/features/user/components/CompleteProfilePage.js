@@ -30,7 +30,7 @@ const CompleteProfilePage = ({ user, apiBaseUrl, onComplete, showPictureSection 
   const [height, setHeight] = useState('');
   const [dietType, setDietType] = useState('');
   const [bodyFat, setBodyFat] = useState('');
-  const [showBodyFat, setShowBodyFat] = useState(true);
+  const [showBodyFat, setShowBodyFat] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -96,16 +96,16 @@ const CompleteProfilePage = ({ user, apiBaseUrl, onComplete, showPictureSection 
         if (typeof profile.dietType === 'string' && profile.dietType.trim()) {
           setDietType(profile.dietType);
         }
-        // Ask for body fat only when weight / BPC has none.
-        const needsBodyFat = profile.needsBodyFat !== false
+        // Ask for body fat only when team / weight / BPC has none.
+        const needsBodyFat = profile.needsBodyFat === true
           && !(typeof profile.bodyFat === 'number' && hasValidBodyFatPercent(profile.bodyFat))
           && !(typeof profile.latestWeightBodyFat === 'number'
             && hasValidBodyFatPercent(profile.latestWeightBodyFat))
           && !hasValidBodyFatPercent(profile.bodyMetrics?.fatPercent);
         setShowBodyFat(needsBodyFat);
-        const existingBf = hasValidBodyFatPercent(profile.latestWeightBodyFat)
-          ? profile.latestWeightBodyFat
-          : (hasValidBodyFatPercent(profile.bodyFat) ? profile.bodyFat : null);
+        const existingBf = hasValidBodyFatPercent(profile.bodyFat)
+          ? profile.bodyFat
+          : (hasValidBodyFatPercent(profile.latestWeightBodyFat) ? profile.latestWeightBodyFat : null);
         if (existingBf != null) setBodyFat(String(existingBf));
 
         if (profile.profileImage && (

@@ -51,9 +51,8 @@ export function hasValidBodyFatPercent(value) {
 }
 
 /**
- * Body fat is satisfied from weight_records_table.BodyFat or BPC fat%.
+ * Body fat is satisfied from team_table.BodyFat, latest weight BodyFat, or BPC fat%.
  * Users who already have any source are not prompted again.
- * `bodyFat` is an alias for weight BodyFat (API / form payload).
  */
 export function hasValidBodyFatSource({
   bodyFat = null,

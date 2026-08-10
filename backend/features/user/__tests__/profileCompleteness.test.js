@@ -53,7 +53,7 @@ describe('hasValidProfileGender', () => {
 });
 
 describe('hasValidBodyFatSource', () => {
-  it('accepts weight or BPC body fat', () => {
+  it('accepts profile, weight, or BPC body fat', () => {
     assert.equal(hasValidBodyFatSource({ bodyFat: 22 }), true);
     assert.equal(hasValidBodyFatSource({ latestWeightBodyFat: 18 }), true);
     assert.equal(hasValidBodyFatSource({ bodyMetrics: { fatPercent: 20 } }), true);
