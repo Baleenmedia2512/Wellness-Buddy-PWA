@@ -131,6 +131,14 @@ export function clearWellnessScoreSnapshot() {
   lastProcessedWellnessScoreActivityLogId = null;
 }
 
+/**
+ * Drop the painted sheet snapshot without resetting the processed watermark.
+ * Call when a newer activity is recorded so remounts cannot restore a stale total.
+ */
+export function invalidateWellnessScoreSnapshot() {
+  wellnessScoreSnapshot = null;
+}
+
 /** @internal test helper */
 export function __resetHomeDashboardActivityForTests() {
   latestActivityLogId = 0;

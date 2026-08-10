@@ -17,6 +17,22 @@ export const SORT_KEYS = Object.freeze({
   SCORE: 'score',
   NAME: 'name',
   WEIGHT: 'weight',
+  VS_PREVIOUS: 'vsPrevious',
+  SPONSOR: 'sponsor',
+});
+
+export const SORT_DIRS = Object.freeze({
+  ASC: 'asc',
+  DESC: 'desc',
+});
+
+/** First-click / default direction per column. */
+export const DEFAULT_SORT_DIR_BY_KEY = Object.freeze({
+  [SORT_KEYS.SCORE]: SORT_DIRS.DESC,
+  [SORT_KEYS.NAME]: SORT_DIRS.ASC,
+  [SORT_KEYS.WEIGHT]: SORT_DIRS.ASC,
+  [SORT_KEYS.VS_PREVIOUS]: SORT_DIRS.DESC,
+  [SORT_KEYS.SPONSOR]: SORT_DIRS.ASC,
 });
 
 const TEAM_FILTER_ALIASES = Object.freeze({
@@ -27,6 +43,41 @@ const TEAM_FILTER_ALIASES = Object.freeze({
   full: TEAM_FILTERS.FULL,
   'full-team': TEAM_FILTERS.FULL,
 });
+
+const SORT_KEY_ALIASES = Object.freeze({
+  score: SORT_KEYS.SCORE,
+  percentage: SORT_KEYS.SCORE,
+  name: SORT_KEYS.NAME,
+  weight: SORT_KEYS.WEIGHT,
+  vsprevious: SORT_KEYS.VS_PREVIOUS,
+  vs_previous: SORT_KEYS.VS_PREVIOUS,
+  difference: SORT_KEYS.VS_PREVIOUS,
+  delta: SORT_KEYS.VS_PREVIOUS,
+  sponsor: SORT_KEYS.SPONSOR,
+  sponsorname: SORT_KEYS.SPONSOR,
+  sponsor_name: SORT_KEYS.SPONSOR,
+});
+
+/**
+ * @param {string|null|undefined} raw
+ * @returns {string}
+ */
+export function normalizeWellnessScoreReportSortKey(raw) {
+  const key = String(raw || SORT_KEYS.SCORE).trim().toLowerCase().replace(/[\s-]+/g, '_');
+  const compact = key.replace(/_/g, '');
+  return SORT_KEY_ALIASES[key] || SORT_KEY_ALIASES[compact] || SORT_KEYS.SCORE;
+}
+
+/**
+ * @param {string|null|undefined} raw
+ * @param {string} [sortKey]
+ * @returns {'asc'|'desc'}
+ */
+export function normalizeWellnessScoreReportSortDir(raw, sortKey = SORT_KEYS.SCORE) {
+  const dir = String(raw || '').trim().toLowerCase();
+  if (dir === SORT_DIRS.ASC || dir === SORT_DIRS.DESC) return dir;
+  return DEFAULT_SORT_DIR_BY_KEY[sortKey] || SORT_DIRS.DESC;
+}
 
 /**
  * @param {object} raw
@@ -53,16 +104,19 @@ export function normalizeWellnessScoreReportPagination(raw = {}) {
     .toLowerCase();
   const teamFilter = TEAM_FILTER_ALIASES[teamRaw] || TEAM_FILTERS.DIRECT;
 
-  // Always default to highest wellness % first (product requirement).
-  const sortRaw = String(raw.sort || SORT_KEYS.SCORE).trim().toLowerCase();
-  const sort = Object.values(SORT_KEYS).includes(sortRaw) ? sortRaw : SORT_KEYS.SCORE;
+  // Default: highest wellness % first (product requirement).
+  const sort = normalizeWellnessScoreReportSortKey(raw.sort);
+  const sortDir = normalizeWellnessScoreReportSortDir(
+    raw.sortDir ?? raw.sortOrder ?? raw.dir,
+    sort,
+  );
 
   const exportAll = raw.exportAll === true
     || raw.exportAll === 'true'
     || raw.exportAll === '1'
     || raw.exportAll === 1;
 
-  return { page, limit, search, teamFilter, sort, exportAll };
+  return { page, limit, search, teamFilter, sort, sortDir, exportAll };
 }
 
 /**
@@ -141,7 +195,9 @@ export function filterRowsBySearch(rows, searchNormalized) {
 function scoreValue(row) {
   // Matches SQL ORDER BY: percentage DESC, computed_at DESC.
   const n = row?.percentage ?? row?.totalEarned ?? row?.wellnessScore;
-  return n == null || n === '' ? null : Number(n);
+  if (n == null || n === '') return null;
+  const num = Number(n);
+  return Number.isFinite(num) ? num : null;
 }
 
 function computedAtMs(row) {
@@ -151,42 +207,102 @@ function computedAtMs(row) {
   return Number.isFinite(ms) ? ms : 0;
 }
 
+function numericOrNull(value) {
+  if (value == null || value === '') return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
 /**
- * total_earned DESC, computed_at DESC; null scores last.
+ * Compare nullable numbers. Missing values always sort last (both asc & desc).
+ * @param {number|null} a
+ * @param {number|null} b
+ * @param {'asc'|'desc'} sortDir
+ * @returns {number}
+ */
+function compareNullableNumber(a, b, sortDir) {
+  if (a == null && b == null) return 0;
+  if (a == null) return 1;
+  if (b == null) return -1;
+  const delta = a - b;
+  return sortDir === SORT_DIRS.ASC ? delta : -delta;
+}
+
+/**
+ * Compare strings; empty values last.
+ * @param {string} a
+ * @param {string} b
+ * @param {'asc'|'desc'} sortDir
+ * @returns {number}
+ */
+function compareText(a, b, sortDir) {
+  const aEmpty = !a;
+  const bEmpty = !b;
+  if (aEmpty && bEmpty) return 0;
+  if (aEmpty) return 1;
+  if (bEmpty) return -1;
+  const cmp = a.localeCompare(b, undefined, { sensitivity: 'base' });
+  return sortDir === SORT_DIRS.ASC ? cmp : -cmp;
+}
+
+/**
+ * Sort report rows. Null / "—" numeric values always sink to the bottom.
+ * Default score order: percentage DESC, then computed_at DESC.
+ *
  * @template T
  * @param {T[]} rows
- * @param {string} sort
+ * @param {string} [sort]
+ * @param {'asc'|'desc'} [sortDir]
  * @returns {T[]}
  */
-export function sortWellnessScoreReportRows(rows, sort = SORT_KEYS.SCORE) {
+export function sortWellnessScoreReportRows(
+  rows,
+  sort = SORT_KEYS.SCORE,
+  sortDir = DEFAULT_SORT_DIR_BY_KEY[SORT_KEYS.SCORE],
+) {
   const list = Array.isArray(rows) ? [...rows] : [];
-  if (sort === SORT_KEYS.NAME) {
+  const dir = normalizeWellnessScoreReportSortDir(sortDir, sort);
+  const key = normalizeWellnessScoreReportSortKey(sort);
+
+  if (key === SORT_KEYS.NAME) {
     list.sort((a, b) =>
-      String(a?.name || a?.userName || '').localeCompare(String(b?.name || b?.userName || '')),
+      compareText(
+        String(a?.name || a?.userName || '').trim(),
+        String(b?.name || b?.userName || '').trim(),
+        dir,
+      ),
     );
     return list;
   }
-  if (sort === SORT_KEYS.WEIGHT) {
-    list.sort((a, b) => {
-      const aw = a?.todayWeight;
-      const bw = b?.todayWeight;
-      if (aw == null && bw == null) return 0;
-      if (aw == null) return 1;
-      if (bw == null) return -1;
-      return Number(bw) - Number(aw);
-    });
+
+  if (key === SORT_KEYS.SPONSOR) {
+    list.sort((a, b) =>
+      compareText(String(a?.sponsor || '').trim(), String(b?.sponsor || '').trim(), dir),
+    );
     return list;
   }
 
-  // Default / score: percentage DESC, then computed_at DESC (SQL pagination contract).
+  if (key === SORT_KEYS.WEIGHT) {
+    list.sort((a, b) =>
+      compareNullableNumber(numericOrNull(a?.todayWeight), numericOrNull(b?.todayWeight), dir),
+    );
+    return list;
+  }
+
+  if (key === SORT_KEYS.VS_PREVIOUS) {
+    list.sort((a, b) =>
+      compareNullableNumber(numericOrNull(a?.difference), numericOrNull(b?.difference), dir),
+    );
+    return list;
+  }
+
+  // Default / score: percentage, then computed_at; null scores last.
   list.sort((a, b) => {
-    const as = scoreValue(a);
-    const bs = scoreValue(b);
-    if (as == null && bs == null) return 0;
-    if (as == null) return 1;
-    if (bs == null) return -1;
-    if (bs !== as) return bs - as;
-    return computedAtMs(b) - computedAtMs(a);
+    const primary = compareNullableNumber(scoreValue(a), scoreValue(b), dir);
+    if (primary !== 0) return primary;
+    const at = computedAtMs(a);
+    const bt = computedAtMs(b);
+    return dir === SORT_DIRS.ASC ? at - bt : bt - at;
   });
   return list;
 }
@@ -226,17 +342,18 @@ export function toWellnessScoreReportListSummary(row) {
  *   search?: string,
  *   teamFilter?: string,
  *   sort?: string,
+ *   sortDir?: string,
  *   exportAll?: boolean,
  * }} opts
  */
 export function paginateWellnessScoreReportRecords(self, members, opts = {}) {
-  const { page, limit, search, teamFilter, sort, exportAll } =
+  const { page, limit, search, teamFilter, sort, sortDir, exportAll } =
     normalizeWellnessScoreReportPagination(opts);
 
   const teamScopeCounts = countRowsByTeamFilter(self, members);
   const scopeRows = applyTeamFilter(self, members, teamFilter);
   const searched = filterRowsBySearch(scopeRows, search);
-  const prepared = sortWellnessScoreReportRows(searched, sort);
+  const prepared = sortWellnessScoreReportRows(searched, sort, sortDir);
 
   if (exportAll) {
     const records = prepared.map(toWellnessScoreReportListSummary).filter(Boolean);

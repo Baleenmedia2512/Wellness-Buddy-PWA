@@ -1,6 +1,7 @@
 /**
  * WellnessScoreReport — Excel-style coach dashboard.
  * Date filter + server-side pagination (10/page); Share Excel for selected date.
+ * Interactive column sorting (asc/desc) with visual indicators.
  */
 import React, { useState, useCallback, startTransition } from 'react';
 import {
@@ -9,6 +10,9 @@ import {
   Calendar as CalendarIcon,
   ChevronLeft,
   ChevronRight,
+  ArrowUp,
+  ArrowDown,
+  ArrowUpDown,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useWellnessScoreReport } from '../hooks/useWellnessScoreReport';
@@ -32,45 +36,131 @@ import {
   DATE_PRESETS,
   formatReportDateLabel,
 } from '../utils/reportDateFilter.js';
+import {
+  REPORT_SORT_KEYS,
+  REPORT_SORT_DIRS,
+} from '../utils/wellnessScoreReportSort.js';
 
 /**
  * Column headers — `lines` / `mobileLines` stack so labels fit.
  * Widths are fixed so `table-fixed` never lets cells bleed into neighbors.
+ * @type {Array<{
+ *   key: string,
+ *   sortKey: string,
+ *   lines: string[],
+ *   mobileLines?: string[],
+ *   colClass: string,
+ * }>}
  */
 const TABLE_HEADERS = [
   {
     key: 'name',
+    sortKey: REPORT_SORT_KEYS.NAME,
     lines: ['NAME'],
     colClass: 'w-[7.25rem] min-w-[7.25rem] sm:w-[10rem] sm:min-w-[10rem]',
   },
   {
     key: 'weight',
+    sortKey: REPORT_SORT_KEYS.WEIGHT,
     lines: ['WEIGHT'],
     mobileLines: ['WT'],
     colClass: 'w-[5rem] min-w-[5rem]',
   },
   {
     key: 'vsPrevious',
+    sortKey: REPORT_SORT_KEYS.VS_PREVIOUS,
     lines: ['TODAY VS', 'PREVIOUS', 'WEIGHT'],
     mobileLines: ['VS', 'PREV'],
     colClass: 'w-[4.5rem] min-w-[4.5rem]',
   },
   {
     key: 'score',
+    sortKey: REPORT_SORT_KEYS.SCORE,
     lines: ['WELLNESS', 'SCORE'],
     mobileLines: ['WS'],
     colClass: 'w-[3.5rem] min-w-[3.5rem]',
   },
   {
     key: 'sponsor',
-    lines: ['SPONSOR'],
-    mobileLines: ['SPO'],
+    sortKey: REPORT_SORT_KEYS.SPONSOR,
+    lines: ['SPONSOR', 'NAME'],
+    mobileLines: ['SPONSOR', 'NAME'],
     colClass: 'w-[5.5rem] min-w-[5.5rem] sm:w-[7rem] sm:min-w-[7rem]',
   },
 ];
 
 const TABLE_MIN_WIDTH = '660px';
 
+/**
+ * @param {object} props
+ * @param {typeof TABLE_HEADERS[number]} props.header
+ * @param {number} props.idx
+ * @param {string} props.sort
+ * @param {string} props.sortDir
+ * @param {(key: string) => void} props.onSort
+ * @param {boolean} [props.disabled]
+ */
+function SortableHeaderCell({ header, idx, sort, sortDir, onSort, disabled }) {
+  const isActive = sort === header.sortKey;
+  const ariaSort = isActive
+    ? (sortDir === REPORT_SORT_DIRS.ASC ? 'ascending' : 'descending')
+    : 'none';
+
+  return (
+    <th
+      className={`px-1 sm:px-1.5 py-1.5 text-[10px] sm:text-[11px] font-bold uppercase tracking-wide text-gray-700 border-b border-r border-gray-300 align-middle overflow-hidden ${
+        header.colClass
+      } ${
+        idx === 0
+          ? 'sticky left-0 z-20 bg-gray-100 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.12)]'
+          : 'bg-gray-100'
+      }`}
+      aria-sort={ariaSort}
+    >
+      <button
+        type="button"
+        onClick={() => onSort(header.sortKey)}
+        disabled={disabled}
+        className={`group w-full min-w-0 flex items-start gap-0.5 text-left rounded-md -mx-0.5 px-0.5 py-0.5 transition-colors disabled:opacity-50 ${
+          isActive ? 'text-teal-800' : 'hover:text-teal-800 hover:bg-teal-50/60'
+        }`}
+        aria-label={`Sort by ${header.lines.join(' ')}`}
+      >
+        <div className="leading-tight min-w-0 flex-1">
+          {(header.mobileLines || header.lines).map((line, lineIdx) => (
+            <div
+              key={`m-${header.key}-${lineIdx}`}
+              className={header.mobileLines ? 'sm:hidden' : undefined}
+            >
+              {line}
+            </div>
+          ))}
+          {header.mobileLines
+            ? header.lines.map((line, lineIdx) => (
+                <div key={`d-${header.key}-${lineIdx}`} className="hidden sm:block">
+                  {line}
+                </div>
+              ))
+            : null}
+        </div>
+        <span
+          className={`flex-shrink-0 mt-0.5 transition-opacity ${
+            isActive ? 'opacity-100 text-teal-700' : 'opacity-40 group-hover:opacity-80'
+          }`}
+          aria-hidden="true"
+        >
+          {isActive && sortDir === REPORT_SORT_DIRS.ASC ? (
+            <ArrowUp className="h-3 w-3" strokeWidth={2.5} />
+          ) : isActive && sortDir === REPORT_SORT_DIRS.DESC ? (
+            <ArrowDown className="h-3 w-3" strokeWidth={2.5} />
+          ) : (
+            <ArrowUpDown className="h-3 w-3" strokeWidth={2} />
+          )}
+        </span>
+      </button>
+    </th>
+  );
+}
 function SingleDayPicker({ selectedDate, onSelect, onClose }) {
   const [currentMonth, setCurrentMonth] = useState(selectedDate || new Date());
 
@@ -267,6 +357,9 @@ export default function WellnessScoreReport({
     selectToday,
     selectYesterday,
     selectCustomDate,
+    sort,
+    sortDir,
+    setSortColumn,
     loading,
     refreshing,
     error,
@@ -293,7 +386,8 @@ export default function WellnessScoreReport({
         const data = await fetchWellnessScoreReport(coachId, {
           teamFilter: teamScope,
           search: searchQuery.trim(),
-          sort: 'score',
+          sort,
+          sortDir,
           date: selectedDate,
           exportAll: true,
           bustCache: true,
@@ -319,7 +413,7 @@ export default function WellnessScoreReport({
         setExporting(false);
       }
     },
-    [coachId, exporting, teamScope, searchQuery, selectedDate, showToast],
+    [coachId, exporting, teamScope, searchQuery, selectedDate, sort, sortDir, showToast],
   );
 
   const handleShare = useCallback(() => {
@@ -496,31 +590,15 @@ export default function WellnessScoreReport({
             <thead className="sticky top-0 z-10">
               <tr className="bg-gray-100">
                 {TABLE_HEADERS.map((header, idx) => (
-                  <th
+                  <SortableHeaderCell
                     key={header.key}
-                    className={`px-1.5 sm:px-2 py-1.5 text-[10px] sm:text-[11px] font-bold uppercase tracking-wide text-gray-700 border-b border-r border-gray-300 align-middle overflow-hidden ${
-                      header.colClass
-                    } ${
-                      idx === 0
-                        ? 'sticky left-0 z-20 bg-gray-100 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.12)]'
-                        : 'bg-gray-100'
-                    }`}
-                  >
-                    <div className="leading-tight">
-                      {(header.mobileLines || header.lines).map((line) => (
-                        <div key={`m-${line}`} className={header.mobileLines ? 'sm:hidden' : undefined}>
-                          {line}
-                        </div>
-                      ))}
-                      {header.mobileLines
-                        ? header.lines.map((line) => (
-                            <div key={`d-${line}`} className="hidden sm:block">
-                              {line}
-                            </div>
-                          ))
-                        : null}
-                    </div>
-                  </th>
+                    header={header}
+                    idx={idx}
+                    sort={sort}
+                    sortDir={sortDir}
+                    onSort={setSortColumn}
+                    disabled={filtersBusy}
+                  />
                 ))}
               </tr>
             </thead>

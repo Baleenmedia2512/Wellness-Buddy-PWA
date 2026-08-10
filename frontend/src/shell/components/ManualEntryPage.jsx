@@ -42,6 +42,7 @@ import {
 import { fetchWaterIntake, todayLocal } from '../../features/water';
 import { isIOS } from '../../shared/utils/platform';
 import { buildDiaryShareSuffix } from '../../features/diary';
+import { useNutritionRefreshOptional } from '../../shared/context/NutritionRefreshContext';
 import HealthySnacksSubSelectModal from './HealthySnacksSubSelectModal';
 import {
   MANUAL_LOG_CATEGORY,
@@ -227,6 +228,12 @@ export default function ManualEntryPage({
   onStartBackgroundAi,
   onToast,
 }) {
+  const nutritionRefresh = useNutritionRefreshOptional();
+  const refreshAfterPersist = useCallback((source) => {
+    // Fire only after DB write — early refresh locks in a stale Home/sheet total.
+    nutritionRefresh?.triggerRefresh({ immediate: true, source });
+  }, [nutritionRefresh]);
+
   const creditsEnabled = isFlagEnabled('ff.ai-credits');
   const [credits, setCredits] = useState(null);
   // Start loading=true so first paint never flashes green "Analyze" before status returns.
@@ -290,9 +297,9 @@ export default function ManualEntryPage({
     }
   }, [creditsEnabled, userId, apiBaseUrl]);
 
-  // Defer credits fetch until photo is saved — frees connections for POST /captures.
+  // Fetch credits on mount (parallel with capture upload) so Auto Detect
+  // fills the 9th LOG AS cell immediately instead of after photo save.
   useEffect(() => {
-    if (!captureReady) return;
     refreshCredits();
   }, [captureReady, refreshCredits]);
 
@@ -618,6 +625,8 @@ export default function ManualEntryPage({
       bmr,
       captureId: capId,
       imageBase64ToSave: img,
+    }).then(() => {
+      refreshAfterPersist('manual-weight-persisted');
     }).catch((err) => {
       onToast?.(err?.message || "Couldn't save weight — check Diary.");
     });
@@ -642,6 +651,8 @@ export default function ManualEntryPage({
       topic: `Calories Burned: ${caloriesBurned} kcal`,
       captureId: capId,
       imageBase64: img,
+    }).then(() => {
+      refreshAfterPersist('manual-workout-persisted');
     }).catch((err) => {
       onToast?.(err?.message || "Couldn't save activity — check Diary.");
     });
@@ -720,6 +731,8 @@ export default function ManualEntryPage({
       topic,
       captureId: capId,
       imageBase64: img,
+    }).then(() => {
+      refreshAfterPersist('manual-education-persisted');
     }).catch((err) => {
       onToast?.(err?.message || "Couldn't save education — check Diary.");
     });
@@ -730,7 +743,10 @@ export default function ManualEntryPage({
   const outOfCredits = creditsEnabled && creditUi.phase === 'exhausted';
   const aiTemporarilyBusy = creditsEnabled && creditUi.phase === 'busy';
   const showCreditsPanel = creditsEnabled && credits != null && credits.enabled === true;
-  const showAiButton = !creditsEnabled || (credits != null && credits.enabled === true);
+  const showAiButton =
+    !creditsEnabled ||
+    creditsChecking ||
+    (credits != null && credits.enabled === true);
   const aiDisabled =
     !isAutoDetectEnabled(creditUi, {
       running: aiStarting && !pendingAi,

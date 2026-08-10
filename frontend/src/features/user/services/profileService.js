@@ -62,6 +62,7 @@ export const saveProfile = async (payload) => {
       if (payload.profileImage !== undefined) merged.profileImage = payload.profileImage;
       if (payload.physicalActivityLevel !== undefined) merged.physicalActivityLevel = payload.physicalActivityLevel;
       if (payload.communityId !== undefined) merged.communityId = payload.communityId;
+      if (payload.bodyFat !== undefined) merged.bodyFat = payload.bodyFat;
       localStorage.setItem(demoStorageKey(payload.email), JSON.stringify(merged));
     } catch { /* ignore */ }
   }
