@@ -12,7 +12,7 @@ const pageCache = new Map();
 /** @type {Map<string, Promise<object>>} */
 const inflight = new Map();
 
-const SESSION_CACHE_PREFIX = 'wsReport:v2:';
+const SESSION_CACHE_PREFIX = 'wsReport:v3:';
 
 function base() {
   return `${getApiBaseUrl()}/api/reports`;
@@ -25,6 +25,7 @@ export function buildWellnessScoreReportCacheKey({
   search,
   teamFilter,
   sort,
+  sortDir,
   date,
   exportAll,
 }) {
@@ -35,6 +36,7 @@ export function buildWellnessScoreReportCacheKey({
     search || '',
     teamFilter || '',
     sort || '',
+    sortDir || '',
     date || '',
     exportAll ? '1' : '0',
   ].join('|');
@@ -77,6 +79,7 @@ export function peekWellnessScoreReportCache(coachId, opts = {}) {
     search: String(opts.search || '').trim(),
     teamFilter: opts.teamFilter || 'direct',
     sort: opts.sort || 'score',
+    sortDir: opts.sortDir || 'desc',
     date: opts.date ? String(opts.date) : null,
     exportAll: false,
   });
@@ -168,6 +171,7 @@ async function requestWellnessScoreReport(coachId, opts, cacheKey) {
   const search = String(opts.search || '').trim();
   const teamFilter = opts.teamFilter || 'direct';
   const sort = opts.sort || 'score';
+  const sortDir = opts.sortDir || 'desc';
   const date = opts.date ? String(opts.date) : null;
   const exportAll = opts.exportAll === true;
 
@@ -177,6 +181,7 @@ async function requestWellnessScoreReport(coachId, opts, cacheKey) {
     limit: String(limit),
     teamFilter,
     sort,
+    sortDir,
   });
   if (search) params.set('search', search);
   if (date) params.set('date', date);
@@ -209,6 +214,7 @@ async function requestWellnessScoreReport(coachId, opts, cacheKey) {
  *   search?: string,
  *   teamFilter?: string,
  *   sort?: string,
+ *   sortDir?: string,
  *   date?: string,
  *   exportAll?: boolean,
  *   bustCache?: boolean,
@@ -221,6 +227,7 @@ export async function fetchWellnessScoreReport(coachId, opts = {}) {
   const search = String(opts.search || '').trim();
   const teamFilter = opts.teamFilter || 'direct';
   const sort = opts.sort || 'score';
+  const sortDir = opts.sortDir || 'desc';
   const date = opts.date ? String(opts.date) : null;
   const exportAll = opts.exportAll === true;
   const bustCache = opts.bustCache === true;
@@ -233,6 +240,7 @@ export async function fetchWellnessScoreReport(coachId, opts = {}) {
     search,
     teamFilter,
     sort,
+    sortDir,
     date,
     exportAll,
   });

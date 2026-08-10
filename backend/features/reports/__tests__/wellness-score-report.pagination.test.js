@@ -7,6 +7,7 @@ import {
   WELLNESS_SCORE_REPORT_DEFAULT_PAGE_SIZE,
   normalizeWellnessScoreReportPagination,
   paginateWellnessScoreReportRecords,
+  sortWellnessScoreReportRows,
   TEAM_FILTERS,
   SORT_KEYS,
 } from '../domain/wellness-score-report.pagination.js';
@@ -30,14 +31,78 @@ function row(partial) {
 }
 
 describe('normalizeWellnessScoreReportPagination', () => {
-  it('defaults to page 1, limit 10, direct team, score sort', () => {
+  it('defaults to page 1, limit 10, direct team, score sort desc', () => {
     const p = normalizeWellnessScoreReportPagination({});
     assert.equal(p.page, 1);
     assert.equal(p.limit, WELLNESS_SCORE_REPORT_DEFAULT_PAGE_SIZE);
     assert.equal(p.limit, 10);
     assert.equal(p.teamFilter, TEAM_FILTERS.DIRECT);
     assert.equal(p.sort, SORT_KEYS.SCORE);
+    assert.equal(p.sortDir, 'desc');
     assert.equal(p.exportAll, false);
+  });
+
+  it('accepts all column sort keys and directions', () => {
+    const nameAsc = normalizeWellnessScoreReportPagination({ sort: 'name', sortDir: 'asc' });
+    assert.equal(nameAsc.sort, SORT_KEYS.NAME);
+    assert.equal(nameAsc.sortDir, 'asc');
+
+    const weight = normalizeWellnessScoreReportPagination({ sort: 'weight' });
+    assert.equal(weight.sort, SORT_KEYS.WEIGHT);
+    assert.equal(weight.sortDir, 'asc');
+
+    const vs = normalizeWellnessScoreReportPagination({ sort: 'difference', sortDir: 'desc' });
+    assert.equal(vs.sort, SORT_KEYS.VS_PREVIOUS);
+    assert.equal(vs.sortDir, 'desc');
+
+    const sponsor = normalizeWellnessScoreReportPagination({ sort: 'sponsor_name' });
+    assert.equal(sponsor.sort, SORT_KEYS.SPONSOR);
+    assert.equal(sponsor.sortDir, 'asc');
+  });
+});
+
+describe('sortWellnessScoreReportRows', () => {
+  it('sorts name A-Z / Z-A', () => {
+    const rows = [
+      row({ userId: 1, name: 'Priya', isDirect: true }),
+      row({ userId: 2, name: 'Asha', isDirect: true }),
+      row({ userId: 3, name: 'Zara', isDirect: true }),
+    ];
+    const asc = sortWellnessScoreReportRows(rows, SORT_KEYS.NAME, 'asc').map((r) => r.name);
+    assert.deepEqual(asc, ['Asha', 'Priya', 'Zara']);
+    const desc = sortWellnessScoreReportRows(rows, SORT_KEYS.NAME, 'desc').map((r) => r.name);
+    assert.deepEqual(desc, ['Zara', 'Priya', 'Asha']);
+  });
+
+  it('sorts weight with nulls last in both directions', () => {
+    const rows = [
+      row({ userId: 1, name: 'A', todayWeight: 80, isDirect: true }),
+      row({ userId: 2, name: 'B', todayWeight: null, isDirect: true }),
+      row({ userId: 3, name: 'C', todayWeight: 70, isDirect: true }),
+    ];
+    const lightestFirst = sortWellnessScoreReportRows(rows, SORT_KEYS.WEIGHT, 'asc');
+    assert.deepEqual(
+      lightestFirst.map((r) => r.todayWeight),
+      [70, 80, null],
+    );
+    const heaviestFirst = sortWellnessScoreReportRows(rows, SORT_KEYS.WEIGHT, 'desc');
+    assert.deepEqual(
+      heaviestFirst.map((r) => r.todayWeight),
+      [80, 70, null],
+    );
+  });
+
+  it('sorts by weight difference with nulls last', () => {
+    const rows = [
+      row({ userId: 1, difference: -0.4, isDirect: true }),
+      row({ userId: 2, difference: null, isDirect: true }),
+      row({ userId: 3, difference: 1.2, isDirect: true }),
+    ];
+    const desc = sortWellnessScoreReportRows(rows, SORT_KEYS.VS_PREVIOUS, 'desc');
+    assert.deepEqual(
+      desc.map((r) => r.difference),
+      [1.2, -0.4, null],
+    );
   });
 });
 

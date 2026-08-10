@@ -117,7 +117,7 @@ export default function ReportsDashboard({
                 }`}
               >
                 <span className="hidden sm:inline truncate">Wellness Score Report</span>
-                <span className="sm:hidden truncate">WS Report</span>
+                <span className="sm:hidden truncate">Wellness Score</span>
               </button>
             </div>
           )}
