@@ -105,7 +105,7 @@ import {
   saveNutritionAnalysis,
   deleteNutritionAnalysis,
 } from "./features/nutrition";
-import { seedDailyWellnessScoreCache } from "./features/wellness-score-sheet/hooks/useWellnessScore";
+import { seedDailyWellnessScoreCache } from "./features/wellness-score-sheet/services/dailyWellnessScoreCache";
 import { analyzeImage as orchestrateAnalyzeImage } from "./shared/services/orchestratorService";
 import {
   reserveAiCredit,
@@ -7526,8 +7526,10 @@ function WellnessValleyApp() {
               setHomeCarouselDateRange(next);
               setWellnessScoreInitialRange(next);
             }
-            // Push sheet score into Home's daily cache so the carousel card
-            // cannot stay on an older total (e.g. Home 334 vs sheet 349).
+            // Record activity first, then seed with that watermark so the
+            // Home invalidate+refetch restores this pin instead of wiping it
+            // (old order seeded then refresh cleared the seed → Home stayed stale).
+            triggerNutritionRefresh({ immediate: true, source: 'wellness-score-closed' });
             if (
               rangeOpts.scoreData
               && rangeOpts.userId
@@ -7540,8 +7542,6 @@ function WellnessValleyApp() {
                 rangeOpts.scoreData,
               );
             }
-            // Force Home live score hook to refetch / pick up seeded cache.
-            triggerNutritionRefresh({ immediate: true, source: 'wellness-score-closed' });
             const currentWvPage = window.history.state?.wvPage;
             if (currentWvPage && currentWvPage !== 'main') window.history.back();
           }}
