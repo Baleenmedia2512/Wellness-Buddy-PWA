@@ -110,7 +110,8 @@ import { analyzeImage as orchestrateAnalyzeImage } from "./shared/services/orche
 import {
   reserveAiCredit,
   confirmAiCredit,
-  releaseAiCredit,
+  releaseReservedAiCredit,
+  reserveFailureMessage,
 } from "./features/ai-credits";
 import * as captureQueue from './shared/services/captureQueue';
 import { useOfflineCaptureQueue } from './hooks/useOfflineCaptureQueue';
@@ -146,6 +147,7 @@ import { validateImageFreshness } from "./shared/utils/imageValidator";
 import { toStorageThumbnail } from "./shared/utils/storageThumbnail";
 import { ManualWeightEntryModal, saveWeight } from "./features/weight";
 import { SmartFoodSearchModal, buildAnalysisFromManualFood as buildManualFoodAnalysis } from "./features/nutrition";
+import { seedMealAfterPromotion } from "./features/nutrition/services/seedMealAfterPromotion";
 import { ManualEducationEntryModal, saveLog } from "./features/education";
 // VSA-compliant barrel imports (helpers exported via features/captures/index.js)
 import {
@@ -4378,10 +4380,7 @@ function WellnessValleyApp() {
           setUnknownShareView((v) => ({
             ...v,
             retrying: false,
-            error:
-              reserved?.reason === 'limit_reached'
-                ? 'Daily AI limit reached'
-                : 'AI Mode is unavailable right now',
+            error: reserveFailureMessage(reserved?.reason),
           }));
           return;
         }
@@ -4397,7 +4396,7 @@ function WellnessValleyApp() {
         userName: user?.userName || user?.username || user?.name || null,
         userEmail: user?.email || user?.Email || null,
         reservationId,
-        creditGated: Boolean(creditsEnabled && reservationId),
+        creditGated: Boolean(creditsEnabled && !!reservationId),
       });
 
       const creditPayload = {
@@ -4432,11 +4431,17 @@ function WellnessValleyApp() {
           return;
         }
         const analysisResult = buildAnalysisFromGeminiAnalysis(analysis);
-        await promoteUnknownToFood({
+        const promoteResult = await promoteUnknownToFood({
           captureId,
           viewerUserId: user.id,
           analysisResult,
           originalCapturedAt: unknownShareView.createdAt ?? null,
+        });
+        seedMealAfterPromotion({
+          ownerUserId: user.id,
+          result: promoteResult,
+          analysisResult,
+          capturedAt: unknownShareView.createdAt ?? null,
         });
         setUnknownShareView((v) => ({ ...v, open: false, retrying: false }));
         showToast("Saved to your diary");
@@ -4480,8 +4485,13 @@ function WellnessValleyApp() {
         }));
       }
     } catch (e) {
-      if (creditsEnabled && reservationId) {
-        await releaseAiCredit({ userId: user.id, reservationId, apiBaseUrl }).catch(() => {});
+      if (creditsEnabled && !!reservationId) {
+        await releaseReservedAiCredit({
+          userId: user.id,
+          reservationId,
+          apiBaseUrl,
+          reason: 'unknown_share_retry_failed',
+        });
       }
       setUnknownShareView((v) => ({
         ...v,
@@ -4542,7 +4552,13 @@ function WellnessValleyApp() {
       analysisResult,
       originalCapturedAt: unknownShareView.createdAt ?? null,
     })
-      .then(() => {
+      .then((result) => {
+        seedMealAfterPromotion({
+          ownerUserId: user.id,
+          result,
+          analysisResult,
+          capturedAt: unknownShareView.createdAt ?? null,
+        });
         triggerNutritionRefresh({ immediate: true, source: "unknown-edit" });
       })
       .catch(() => {
@@ -4592,9 +4608,24 @@ function WellnessValleyApp() {
    */
   const startBackgroundCaptureAi = useCallback(
     ({ captureId, imageBase64, userId: uid, reservationId = null }) => {
-      if (!captureId || !imageBase64) return;
-      const creditsOn = isFlagEnabled('ff.ai-credits') && reservationId;
       const ownerUserId = uid || user?.id || null;
+      const hasReservedCredit = isFlagEnabled('ff.ai-credits') && !!reservationId;
+      if (!captureId || !imageBase64) {
+        if (hasReservedCredit && ownerUserId) {
+          void releaseReservedAiCredit({
+            userId: ownerUserId,
+            reservationId,
+            apiBaseUrl,
+            reason: 'missing_capture_inputs',
+          });
+        }
+        console.error('[Background AI] missing captureId or imageBase64 — orchestrate skipped', {
+          hasReservedCredit,
+          ownerUserId,
+          reservationId,
+        });
+        return;
+      }
 
       markCaptureAnalyzing(captureId, {
         ownerUserId,
@@ -4612,8 +4643,13 @@ function WellnessValleyApp() {
           file = base64ToImageFile(imageBase64);
         } catch (err) {
           console.error('[Background AI] file build failed:', err);
-          if (creditsOn) {
-            await releaseAiCredit({ userId: ownerUserId, reservationId, apiBaseUrl }).catch(() => {});
+          if (hasReservedCredit && ownerUserId) {
+            await releaseReservedAiCredit({
+              userId: ownerUserId,
+              reservationId,
+              apiBaseUrl,
+              reason: 'image_file_build_failed',
+            });
           }
           updatePendingCaptureType(pendingSharePromise, 'unknown');
           clearCaptureAnalyzing(captureId);
@@ -4632,7 +4668,7 @@ function WellnessValleyApp() {
             userEmail: user?.email || user?.Email || null,
             captureId: String(captureId),
             reservationId,
-            creditGated: Boolean(creditsOn),
+            creditGated: hasReservedCredit,
             onAttempt: ({ attempt, total }) => {
               markCaptureAnalyzing(captureId, {
                 ownerUserId,
@@ -4643,8 +4679,13 @@ function WellnessValleyApp() {
           });
         } catch (orchErr) {
           console.error('[Background AI] orchestrate failed:', orchErr);
-          if (creditsOn) {
-            await releaseAiCredit({ userId: ownerUserId, reservationId, apiBaseUrl }).catch(() => {});
+          if (hasReservedCredit && ownerUserId) {
+            await releaseReservedAiCredit({
+              userId: ownerUserId,
+              reservationId,
+              apiBaseUrl,
+              reason: 'orchestrate_failed',
+            });
           }
           updatePendingCaptureType(pendingSharePromise, 'unknown');
           clearCaptureAnalyzing(captureId);
@@ -4665,7 +4706,7 @@ function WellnessValleyApp() {
           detectedType?.type === 'food' && hasRecognizedFood(detectedType.details);
 
         const settleCredit = async () => {
-          if (!creditsOn) return;
+          if (!hasReservedCredit || !ownerUserId) return;
           // Confirm with result — backend deducts for completed classifications
           // (including other) and releases only on technical-failure shaped payloads.
           await confirmAiCredit({
@@ -4680,11 +4721,16 @@ function WellnessValleyApp() {
           if (foodOk) {
             await settleCredit();
             const analysisResult = buildAnalysisFromGeminiAnalysis(detectedType.details);
-            await promoteUnknownToFood({
+            const promoteResult = await promoteUnknownToFood({
               captureId,
               viewerUserId: ownerUserId,
               analysisResult,
               originalCapturedAt: null,
+            });
+            seedMealAfterPromotion({
+              ownerUserId,
+              result: promoteResult,
+              analysisResult,
             });
             clearCaptureAnalyzing(captureId);
             triggerNutritionRefresh({ immediate: true, source: 'capture-food-saved' });
@@ -7446,13 +7492,11 @@ function WellnessValleyApp() {
           }}
           onToast={(msg) => showToast(msg)}
           originalCapturedAt={manualEntryPayload.originalCapturedAt ?? null}
-          onStartBackgroundAi={({ reservationId }) => {
-            const p = manualEntryPayload;
-            if (!p) return;
+          onStartBackgroundAi={({ reservationId, captureId, imageBase64, userId: uid }) => {
             startBackgroundCaptureAi({
-              captureId: p.captureId,
-              imageBase64: p.imageBase64,
-              userId: p.userId,
+              captureId,
+              imageBase64,
+              userId: uid,
               reservationId: reservationId || null,
             });
           }}

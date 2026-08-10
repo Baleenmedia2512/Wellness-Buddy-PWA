@@ -16,6 +16,11 @@ import {
 import { formatWaterVolume } from '../../../diary/domain/formatVolume';
 import { resolveMealImageSrc } from '../../services/nutritionDashboard/mealImageSrc';
 
+function mealHasDisplayItems(localDetailedItems, foodData) {
+  if (localDetailedItems?.length > 0) return true;
+  return Array.isArray(foodData?.detailedItems) && foodData.detailedItems.length > 0;
+}
+
 const GIPill = ({ value }) => {
   if (value == null) return null;
   const label = value <= 55 ? 'Low GI' : value <= 69 ? 'Mid GI' : 'High GI';
@@ -36,6 +41,9 @@ const MacroPill = ({ icon: Icon, value }) => (
 
 const NutritionAnalysisPanel = ({
   selectedMeal,
+  mealDetailStatus = 'ready',
+  mealDetailError = null,
+  onRetryMealDetail,
   isClosingModal,
   isEditing,
   isSaving,
@@ -66,7 +74,14 @@ const NutritionAnalysisPanel = ({
   })();
 
   if (!selectedMeal) return null;
+
+  const isLoadingDetails = mealDetailStatus === 'loading';
+  const isDetailError = mealDetailStatus === 'error';
   const foodData = parseAnalysisData(selectedMeal.AnalysisData, 'text-white');
+  const fallbackTitle = selectedMeal.listSummary?.name || null;
+  const displayTitle = (isLoadingDetails || isDetailError) && !mealHasDisplayItems(localDetailedItems, foodData)
+    ? (fallbackTitle || (isLoadingDetails ? 'Loading food details...' : foodData.name))
+    : foodData.name;
   // Prefer explicit owner TZ (diary API / parent). Do not fall back to IST when
   // the logged-in `user` object is missing timezone — that caused "Logged at"
   // to show Kolkata time for Qatar/US/UK members.
@@ -150,7 +165,7 @@ const NutritionAnalysisPanel = ({
             <div className={`absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/40 to-transparent transition-all ${isEditing ? 'p-3 space-y-1' : 'p-5 space-y-3'}`}>
               <div className="flex justify-between items-start">
                 <div>
-                  <h2 className={`font-bold text-white leading-tight ${isEditing ? 'text-lg' : 'text-xl'}`}>{foodData.name}</h2>
+                  <h2 className={`font-bold text-white leading-tight ${isEditing ? 'text-lg' : 'text-xl'}`}>{displayTitle}</h2>
                   <p className={`text-white/70 mt-0.5 ${isEditing ? 'text-[10px]' : 'text-xs'}`}>Logged at {mealTime}</p>
                 </div>
                 <div className="text-right">
@@ -184,7 +199,24 @@ const NutritionAnalysisPanel = ({
           </div>
 
           <div className="p-4 overflow-y-auto flex-1 min-h-0" style={{ maxHeight: isEditing ? '60vh' : '40vh' }}>
-            {localDetailedItems?.length > 0 ? (
+            {isLoadingDetails && !mealHasDisplayItems(localDetailedItems, foodData) ? (
+              <div className="flex flex-col items-center justify-center py-10 text-gray-500" data-testid="meal-detail-loading">
+                <div className="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin mb-3" />
+                <p className="text-sm font-medium">Loading food details...</p>
+              </div>
+            ) : isDetailError && !mealHasDisplayItems(localDetailedItems, foodData) ? (
+              <div className="flex flex-col items-center justify-center py-10 text-center" data-testid="meal-detail-error">
+                <p className="text-sm font-medium text-gray-700 mb-3">
+                  {mealDetailError || 'Unable to load food details.'}
+                </p>
+                <TouchFeedbackButton
+                  className="rounded-xl bg-emerald-600 text-white text-sm font-semibold px-4 py-2.5 shadow-sm hover:bg-emerald-700 active:scale-95"
+                  onClick={() => onRetryMealDetail?.()}
+                >
+                  Retry
+                </TouchFeedbackButton>
+              </div>
+            ) : localDetailedItems?.length > 0 ? (
               <div className="space-y-3">
                 <h3 className="font-semibold text-gray-900 text-sm">
                   {isWater ? 'Water' : isAfresh ? 'Afresh' : 'Food Items'}
@@ -204,6 +236,21 @@ const NutritionAnalysisPanel = ({
                       </div>
                     ))}
                 </div>
+              </div>
+            ) : isLoadingDetails ? (
+              <div className="flex flex-col items-center justify-center py-6 text-gray-500" data-testid="meal-detail-loading-inline">
+                <div className="w-6 h-6 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin mb-2" />
+                <p className="text-sm">Loading food details...</p>
+              </div>
+            ) : isDetailError ? (
+              <div className="text-center py-6" data-testid="meal-detail-error-inline">
+                <p className="text-sm text-gray-600 mb-3">{mealDetailError || 'Unable to load food details.'}</p>
+                <TouchFeedbackButton
+                  className="rounded-xl bg-emerald-600 text-white text-sm font-semibold px-4 py-2 shadow-sm"
+                  onClick={() => onRetryMealDetail?.()}
+                >
+                  Retry
+                </TouchFeedbackButton>
               </div>
             ) : (
               <p className="text-sm text-gray-500">No items yet. Tap Add Item below.</p>

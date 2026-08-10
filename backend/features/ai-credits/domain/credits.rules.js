@@ -1,21 +1,32 @@
 /**
  * ai-credits domain — pure rules (no I/O).
  */
+/** Pending holds older than this are auto-released (orphaned reserve without orchestrate). */
+export const STALE_PENDING_RESERVATION_MS = 15 * 60 * 1000;
 export const DEFAULT_DAILY_AI_CREDITS = 3;
 export const DEFAULT_AI_MODE_ENABLED = true;
 
 /**
- * @param {{ enabled: boolean, dailyLimit: number, used: number, usageDate: string, timezoneIana: string }}
+ * @param {{ enabled: boolean, dailyLimit: number, used: number, usageDate: string, timezoneIana: string, pendingReservations?: number }}
  */
-export function buildStatus({ enabled, dailyLimit, used, usageDate, timezoneIana }) {
+export function buildStatus({
+  enabled,
+  dailyLimit,
+  used,
+  usageDate,
+  timezoneIana,
+  pendingReservations = 0,
+}) {
   const limit = Math.max(0, Number(dailyLimit) || 0);
   const usedSafe = Math.max(0, Number(used) || 0);
-  const remaining = Math.max(0, limit - usedSafe);
+  const pending = Math.max(0, Number(pendingReservations) || 0);
+  const remaining = Math.max(0, limit - usedSafe - pending);
   const modeOn = Boolean(enabled) && limit > 0;
   return {
     enabled: modeOn,
     dailyLimit: limit,
     used: usedSafe,
+    pending,
     remaining,
     usageDate: usageDate || null,
     timezoneIana: timezoneIana || null,
@@ -31,8 +42,11 @@ export function canReserve({ enabled, dailyLimit, used, pendingReservations = 0 
   }
   const usedSafe = Math.max(0, Number(used) || 0);
   const pending = Math.max(0, Number(pendingReservations) || 0);
+  if (usedSafe >= dailyLimit) {
+    return { allowed: false, reason: 'daily_exhausted' };
+  }
   if (usedSafe + pending >= dailyLimit) {
-    return { allowed: false, reason: 'limit_reached' };
+    return { allowed: false, reason: 'pending_holds' };
   }
   return { allowed: true };
 }
