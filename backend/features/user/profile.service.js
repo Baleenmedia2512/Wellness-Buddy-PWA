@@ -230,6 +230,7 @@ export async function updateProfile(input) {
   }
 
   const latestWeightRow = await repo.getLatestWeight(userId);
+  const latestBodyMetricsCard = await findLatestLinkedBodyMetricsCard(userId);
 
   let savedBmr = null;
   if (bmr != null) {
@@ -243,6 +244,9 @@ export async function updateProfile(input) {
       storedBmr: null,
       weightKg: latestWeightRow?.Weight ? parseFloat(latestWeightRow.Weight) : null,
       bodyFatPercent: latestWeightRow?.BodyFat ? parseFloat(latestWeightRow.BodyFat) : null,
+      cardWeightKg: latestBodyMetricsCard?.weight_kg,
+      cardFatPercent: latestBodyMetricsCard?.fat_percent,
+      cardBmr: latestBodyMetricsCard?.bmr,
     });
     if (calculatedBmr !== null) {
       await repo.updateUserById(userId, { Bmr: calculatedBmr });
