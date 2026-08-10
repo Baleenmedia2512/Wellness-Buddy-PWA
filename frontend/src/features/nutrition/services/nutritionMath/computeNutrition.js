@@ -5,14 +5,18 @@
  * macros are rounded UP (Math.ceil) — preserved exactly from the legacy
  * inline implementation.
  *
- * @param {{calories:number, protein:number, carbs:number, fat:number, fiber?:number, sugar?:number|null, sodium?:number|null, cholesterol?:number|null}|null|undefined} per100g
+ * Glycemic index is intrinsic to the food (not portion-dependent) and is
+ * copied as-is — never scaled with grams.
+ *
+ * @param {{calories:number, protein:number, carbs:number, fat:number, fiber?:number, sugar?:number|null, sodium?:number|null, cholesterol?:number|null, glycemic_index?:number|null}|null|undefined} per100g
  * @param {number|string|null|undefined} grams
- * @returns {{calories:number, protein:number, carbs:number, fat:number, fiber:number, sugar:number|null, sodium:number|null, cholesterol:number|null}|null}
+ * @returns {{calories:number, protein:number, carbs:number, fat:number, fiber:number, sugar:number|null, sodium:number|null, cholesterol:number|null, glycemic_index:number|null}|null}
  */
 export function computeNutrition(per100g, grams) {
   if (!per100g || !grams) return null;
 
   const multiplier = parseFloat(grams) / 100;
+  const gi = per100g.glycemic_index;
 
   return {
     calories: Math.round(per100g.calories * multiplier),
@@ -23,5 +27,7 @@ export function computeNutrition(per100g, grams) {
     sugar: per100g.sugar != null ? Math.ceil(per100g.sugar * multiplier) : null,
     sodium: per100g.sodium != null ? Math.ceil(per100g.sodium * multiplier) : null,
     cholesterol: per100g.cholesterol != null ? Math.ceil(per100g.cholesterol * multiplier) : null,
+    // GI is a food property — preserve, do not scale with portion size
+    glycemic_index: gi != null && Number.isFinite(Number(gi)) ? Math.round(Number(gi)) : null,
   };
 }

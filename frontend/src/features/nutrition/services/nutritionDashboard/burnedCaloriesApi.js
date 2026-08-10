@@ -20,3 +20,28 @@ export async function fetchWatchBurnedCalories({ apiBaseUrl, userId, date }) {
     return 0;
   }
 }
+
+/**
+ * Inclusive range watch burn map for home carousel (1 request instead of N days).
+ * Returns { 'YYYY-MM-DD': number }.
+ */
+export async function fetchWatchBurnedCaloriesRange({ apiBaseUrl, userId, startDate, endDate }) {
+  if (!userId || !startDate || !endDate) return {};
+  try {
+    const params = new URLSearchParams({
+      userId: String(userId),
+      startDate: String(startDate),
+      endDate: String(endDate),
+      _t: String(Date.now()),
+    });
+    const res = await fetch(
+      `${apiBaseUrl}/api/activity/watch-calories?${params.toString()}`,
+    );
+    const json = await res.json();
+    if (!json?.success) return {};
+    return json.byDate && typeof json.byDate === 'object' ? json.byDate : {};
+  } catch (err) {
+    console.warn('[fetchWatchBurnedCaloriesRange] failed:', err);
+    return {};
+  }
+}

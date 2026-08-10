@@ -96,18 +96,13 @@ export default function ServingStepperModal({
     setValue((v) => Math.min(max, Math.max(min, v + amount)));
   };
 
-  const handleConfirm = async () => {
+  const handleConfirm = () => {
     if (confirmDisabled) return;
-    setSaving(true);
-    setError('');
-    try {
-      await onConfirm(value);
-      onClose();
-    } catch (err) {
+    // Hand off without awaiting network — parent closes classify and saves in background.
+    onClose();
+    void Promise.resolve(onConfirm(value)).catch((err) => {
       setError(err?.message || 'Failed to save');
-    } finally {
-      setSaving(false);
-    }
+    });
   };
 
   return (

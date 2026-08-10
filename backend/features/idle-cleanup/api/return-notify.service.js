@@ -2,7 +2,7 @@
  * return-notify.service.js — Notify coach when a member returns after idle.
  *
  * Called from user lookup on login/status check. Never changes Status.
- * Dedupes by refreshing LastActiveAt after a notify attempt (or skip).
+ * Dedupes by refreshing LastActiveAt only after a successful notify.
  *
  * @module backend/features/idle-cleanup/api/return-notify.service
  */
@@ -21,18 +21,16 @@ function escapeHtml(value) {
     .replace(/"/g, '&quot;');
 }
 
-function buildEmailHtml({ coachName, memberName, idleDays }) {
+function buildEmailHtml({ coachName, memberName }) {
   const safeCoach = escapeHtml(coachName || 'Coach');
   const safeMember = escapeHtml(memberName || 'Your team member');
-  const daysLabel = idleDays === 1 ? '1 day' : `${idleDays} days`;
 
   return `
     <div style="font-family: Arial, sans-serif; max-width: 560px; margin: 0 auto; color: #1f2937;">
       <h2 style="color: #047857; margin-bottom: 8px;">Member returned to the app</h2>
       <p style="margin: 0 0 16px;">Hi ${safeCoach},</p>
       <p style="margin: 0 0 16px;">
-        <strong>${safeMember}</strong> just opened Wellness Valley again after being inactive for
-        <strong>${daysLabel}</strong>.
+        <strong>${safeMember}</strong> just came back to Wellness Valley.
       </p>
       <p style="margin: 24px 0 0; font-size: 12px; color: #9ca3af;">
         Wellness Valley · idle return notice
@@ -70,13 +68,11 @@ export async function notifyCoachIfReturningIdleUser({
   try {
     const { coachId, memberName } = await repo.findMemberCoachContext(userId);
     if (!coachId) {
-      await repo.touchLastActive(userId);
       return { notified: false, reason: 'no_coach' };
     }
 
     const coach = await repo.findCoachContact(coachId);
     if (!coach.email) {
-      await repo.touchLastActive(userId);
       return { notified: false, reason: 'no_coach_email' };
     }
 
@@ -84,7 +80,6 @@ export async function notifyCoachIfReturningIdleUser({
     const html = buildEmailHtml({
       coachName: coach.name,
       memberName,
-      idleDays,
     });
 
     const sent = await repo.sendCoachEmail({
@@ -92,9 +87,6 @@ export async function notifyCoachIfReturningIdleUser({
       subject,
       html,
     });
-
-    // Always refresh activity after an idle return so we do not re-spam on every lookup.
-    await repo.touchLastActive(userId);
 
     if (!sent.success) {
       logger.warn('[return-notify] coach email failed', {
@@ -105,6 +97,10 @@ export async function notifyCoachIfReturningIdleUser({
       });
       return { notified: false, reason: 'email_failed' };
     }
+
+    // Refresh activity only after a successful send so skipped/failed attempts
+    // can retry on the next login instead of being consumed silently.
+    await repo.touchLastActive(userId);
 
     logger.info('[return-notify] coach notified of idle return', {
       userId,
@@ -117,11 +113,6 @@ export async function notifyCoachIfReturningIdleUser({
       userId,
       error: err?.message || String(err),
     });
-    try {
-      await repo.touchLastActive(userId);
-    } catch {
-      /* non-fatal */
-    }
     return { notified: false, reason: 'error' };
   }
 }

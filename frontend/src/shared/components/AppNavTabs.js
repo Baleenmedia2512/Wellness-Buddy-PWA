@@ -1,4 +1,4 @@
-// Eight-tab app navigation — responsive from iPhone SE (320px) to Pro Max.
+// App top navigation — responsive from iPhone SE (320px) to Pro Max.
 // The container uses overflow-x-auto so extra tabs scroll naturally on small screens.
 import React from 'react';
 import {
@@ -97,13 +97,13 @@ export default function AppNavTabs({
       <NavTabButton
         onClick={onShowTestimonials ?? (() => {})}
         active={activePage === 'testimonials'}
-        activeBg="bg-yellow-100"
-        hoverBg="hover:bg-yellow-50"
+        activeBg="bg-teal-100"
+        hoverBg="hover:bg-teal-50"
         icon={Trophy}
-        iconActiveClass="text-yellow-700"
-        iconClass="text-yellow-600"
-        labelActiveClass="text-yellow-900"
-        labelClass="text-yellow-800"
+        iconActiveClass="text-teal-700"
+        iconClass="text-teal-600"
+        labelActiveClass="text-teal-900"
+        labelClass="text-teal-700"
         label="Transformation"
         ariaLabel="Testimonials"
       />
@@ -111,15 +111,15 @@ export default function AppNavTabs({
         <NavTabButton
           onClick={onShowReports ?? (() => {})}
           active={activePage === 'reports'}
-          activeBg="bg-indigo-100"
-          hoverBg="hover:bg-indigo-50"
+          activeBg="bg-teal-100"
+          hoverBg="hover:bg-teal-50"
           icon={FileBarChart}
-          iconActiveClass="text-indigo-700"
-          iconClass="text-indigo-600"
-          labelActiveClass="text-indigo-900"
-          labelClass="text-indigo-800"
-          label="Ideal Weight"
-          ariaLabel="Ideal Weight"
+          iconActiveClass="text-teal-700"
+          iconClass="text-teal-600"
+          labelActiveClass="text-teal-900"
+          labelClass="text-teal-700"
+          label="Reports"
+          ariaLabel="Reports Dashboard"
         />
       )}
     </div>

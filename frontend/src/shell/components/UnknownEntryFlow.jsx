@@ -106,6 +106,8 @@ export default function UnknownEntryFlow({
   deleteOnly = false,
   canMutate = true,
   userId,
+  userName = null,
+  userEmail = null,
   apiBaseUrl,
   onClose,
   onChanged,
@@ -270,6 +272,8 @@ export default function UnknownEntryFlow({
       // Do NOT pass captureId — avoids idempotency guard returning cached "other"
       const detectedType = await analyzeImage(file, {
         userId,
+        userName,
+        userEmail,
         reservationId,
         creditGated: Boolean(creditsEnabled && reservationId),
       });
@@ -390,20 +394,24 @@ export default function UnknownEntryFlow({
     }
   };
 
-  const handleFoodSave = async (manualData) => {
+  const handleFoodSave = (manualData) => {
+    let analysisResult;
     try {
-      const analysisResult = buildAnalysisFromManualFood(manualData);
-      await promoteUnknownToFood({
-        captureId,
-        viewerUserId: userId,
-        analysisResult,
-        originalCapturedAt,
-      });
-      finish({ kind: 'food', captureId });
+      analysisResult = buildAnalysisFromManualFood(manualData);
     } catch {
       setError("Couldn't save — please try again.");
-      setStage('view');
+      return;
     }
+    // Close immediately; promote continues in background.
+    finish({ kind: 'food', captureId });
+    void promoteUnknownToFood({
+      captureId,
+      viewerUserId: userId,
+      analysisResult,
+      originalCapturedAt,
+    }).catch(() => {
+      // Modal already closed — diary refresh will show if promotion failed.
+    });
   };
 
   /** Saves the AI-detected food result that the user confirmed on the review screen. */

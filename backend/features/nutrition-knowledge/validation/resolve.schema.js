@@ -21,8 +21,8 @@ export function validateResolve(query = {}) {
 
 export function validateSearch(query = {}) {
   const searchTerm = String(query.query || query.searchTerm || '').trim();
-  if (searchTerm.length < 2) {
-    throw new ValidationError(400, 'query must be at least 2 characters');
+  if (searchTerm.length < 1) {
+    throw new ValidationError(400, 'query is required');
   }
   const userId = query.userId != null ? String(query.userId) : null;
   return { searchTerm, userId };

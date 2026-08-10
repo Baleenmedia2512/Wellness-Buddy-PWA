@@ -5,8 +5,19 @@
 import { ValidationError } from '../../shared/lib/ValidationError.js';
 import * as repo from './activity-report.repository.js';
 import { resolveActivityReportUserIds } from './domain/activity-report.scope.js';
-import { getUserTimezoneIana } from '../user/domain/userTimezone.js';
 import {
+  approxJsonBytes,
+  createActivityReportPerf,
+} from './domain/activity-report.perf.js';
+import {
+  ACTIVITY_REPORT_DEFAULT_PAGE_SIZE,
+  buildActivityReportPaginationMeta,
+  paginateActivityReportRecords,
+  slicePreparedActivityReportRows,
+} from './domain/activity-report.pagination.js';
+import { getUserTimezoneIana, getUserTimezonesIanaMap, resolveTimezoneFromMap } from '../user/domain/userTimezone.js';
+import {
+  IANA_IST,
   parseRelativeDateRangeYmd,
   normalizeStoredTimestampToUtcIso,
   timestampToCalendarYmd,
@@ -15,6 +26,10 @@ import {
 import { resolveFoodTimestamp } from '../../shared/lib/datetime/foodTimestamp.js';
 import { resolveSponsorAndIdealCoachForMembers } from '../../utils/sponsorCoachResolution.js';
 import { filterPublicAggregateUsers } from '../user/domain/aggregate-eligibility.rules.js';
+
+function emptyPagination(page = 1, limit = ACTIVITY_REPORT_DEFAULT_PAGE_SIZE) {
+  return buildActivityReportPaginationMeta(0, page, limit);
+}
 
 /**
  * Attach sponsor + ideal-coach fields onto a member info object (ADR-0007).
@@ -42,7 +57,8 @@ function sponsorCoachRowFields(member) {
 }
 
 /**
- * Resolve date range for activity reports using the requesting user's timezone.
+ * Resolve date range using the requesting user's timezone (coach calendar for
+ * relative presets). Per-member wall clocks / meal windows use owner TZ maps.
  */
 async function resolveReportDateRange(userId, dateRange, customStart, customEnd) {
   const timezoneIana = await getUserTimezoneIana(userId);
@@ -53,34 +69,84 @@ async function resolveReportDateRange(userId, dateRange, customStart, customEnd)
 }
 
 /**
- * Extract date and time from a stored timestamp in the requester's timezone.
+ * Extract date and time from a stored timestamp in the record owner's timezone.
  */
 function extractDateTime(timestamp, timezoneIana, { food = false } = {}) {
   if (food) {
     const { calendarYmd, timeOfDay } = resolveFoodTimestamp(timestamp, timezoneIana);
     return { date: calendarYmd, time: timeOfDay };
   }
-  const utcIso = normalizeStoredTimestampToUtcIso(timestamp, timezoneIana);
+  // Legacy weight/education CreatedAt is IST wall-clock; display in owner TZ.
+  const utcIso = normalizeStoredTimestampToUtcIso(timestamp, IANA_IST);
   return {
     date: timestampToCalendarYmd(utcIso, timezoneIana),
     time: timeOfDayInTimezone(utcIso, timezoneIana),
   };
 }
 
-function buildSummaryCounts({ weightRecords, educationRecords, foodRecords, stepRecords, timeWindows, timezoneIana }) {
+function ownerTz(timezoneByUserId, userId, fallback) {
+  return resolveTimezoneFromMap(timezoneByUserId, userId, fallback);
+}
+
+function buildSummaryCounts({
+  weightRecords, educationRecords, foodRecords, stepRecords, timeWindows, timezoneIana, timezoneByUserId,
+}) {
+  const breakfast = new Set();
+  const lunch = new Set();
+  const dinner = new Set();
+  const water = new Set();
+
+  const breakfastWindow = timeWindows?.breakfast;
+  const lunchWindow = timeWindows?.lunch;
+  const dinnerWindow = timeWindows?.dinner;
+
+  for (const record of foodRecords || []) {
+    const uid = parseInt(record.UserID, 10);
+    if (!Number.isFinite(uid)) continue;
+
+    if (repo.isReportBeverageRecord(record)) {
+      water.add(uid);
+      continue;
+    }
+
+    try {
+      const tz = resolveTimezoneFromMap(
+        timezoneByUserId,
+        record.UserID ?? record.UserId,
+        timezoneIana,
+      );
+      const { timeOfDay } = resolveFoodTimestamp(record.CreatedAt, tz);
+      if (breakfastWindow && timeOfDay >= breakfastWindow.start && timeOfDay <= breakfastWindow.end) {
+        breakfast.add(uid);
+      }
+      if (lunchWindow && timeOfDay >= lunchWindow.start && timeOfDay <= lunchWindow.end) {
+        lunch.add(uid);
+      }
+      if (dinnerWindow && timeOfDay >= dinnerWindow.start && timeOfDay <= dinnerWindow.end) {
+        dinner.add(uid);
+      }
+    } catch {
+      /* skip malformed timestamps */
+    }
+  }
+
   return {
     weight: new Set(weightRecords.map((r) => r.UserId)).size,
     education: new Set(educationRecords.map((r) => parseInt(r.UserId, 10))).size,
-    breakfast: new Set(repo.filterFoodByMealTime(foodRecords, 'breakfast', timeWindows, timezoneIana).map((r) => parseInt(r.UserID, 10))).size,
-    lunch: new Set(repo.filterFoodByMealTime(foodRecords, 'lunch', timeWindows, timezoneIana).map((r) => parseInt(r.UserID, 10))).size,
-    dinner: new Set(repo.filterFoodByMealTime(foodRecords, 'dinner', timeWindows, timezoneIana).map((r) => parseInt(r.UserID, 10))).size,
-    water: new Set(repo.filterWaterRecords(foodRecords).map((r) => parseInt(r.UserID, 10))).size,
+    breakfast: breakfast.size,
+    lunch: lunch.size,
+    dinner: dinner.size,
+    water: water.size,
     calories: new Set(stepRecords.filter((r) => (r.Steps || 0) > 0 || (r.CaloriesBurned || 0) > 0).map((r) => r.UserId)).size,
   };
 }
 
-function buildMemberSummaryList(userIds, memberMap, educationRecords, timezoneIana) {
-  const dedupedEducation = repo.dedupeFirstLogPerMemberPerDay(educationRecords, timezoneIana);
+function buildMemberSummaryList(userIds, memberMap, educationRecords, timezoneIana, timezoneByUserId) {
+  const dedupedEducation = repo.dedupeFirstLogPerMemberPerDay(
+    educationRecords,
+    timezoneIana,
+    { timezoneByUserId },
+  );
   const countMap = {};
   dedupedEducation.forEach((record) => {
     const key = String(record.UserId);
@@ -149,10 +215,128 @@ function buildDetailMemberMap(members, sponsorByUser) {
   return memberMap;
 }
 
+/** AnalysisData is large — only water volume needs it. Meals use ProcessedBy + time windows. */
+function needsFoodAnalysisData(activityType) {
+  return activityType === 'water';
+}
+
+function collectTimezoneUserIds(weightRecords, educationRecords, foodRecords, stepRecords) {
+  return [...new Set([
+    ...(weightRecords || []).map((r) => r.UserId).filter(Boolean),
+    ...(educationRecords || []).map((r) => r.UserId).filter(Boolean),
+    ...(foodRecords || []).map((r) => r.UserID || r.UserId).filter(Boolean),
+    ...(stepRecords || []).map((r) => r.UserId).filter(Boolean),
+  ].map(String))];
+}
+
+/**
+ * Attach sponsor / ideal-coach labels onto an already-built page of rows.
+ * Avoids walking the full hierarchy for every member in the filtered set.
+ */
+async function attachSponsorsToRecords(records, { viewerUserId, membersById }) {
+  const list = Array.isArray(records) ? records : [];
+  if (list.length === 0) return list;
+
+  const pageMembers = [];
+  const seen = new Set();
+  for (const row of list) {
+    const uid = row?.userId;
+    if (uid == null || seen.has(String(uid))) continue;
+    seen.add(String(uid));
+    const member = membersById.get(String(uid));
+    if (member) {
+      pageMembers.push({
+        userId: member.UserId,
+        coachId: member.CoachId,
+        role: member.Role,
+      });
+    } else {
+      pageMembers.push({ userId: uid, coachId: null, role: 'member' });
+    }
+  }
+
+  const sponsorByUser = await resolveSponsorAndIdealCoachForMembers(pageMembers, {
+    viewerUserId,
+  });
+
+  return list.map((row) => {
+    const resolved = sponsorByUser.get(String(row.userId));
+    if (!resolved) return row;
+    return {
+      ...row,
+      coachName: resolved.sponsorName || row.coachName || 'N/A',
+      sponsorName: resolved.sponsorName || row.sponsorName || 'N/A',
+      idealCoachId: resolved.idealCoachId || null,
+      idealCoachName: resolved.idealCoachName || null,
+    };
+  });
+}
+
+/**
+ * Build → (optional full sponsor enrich for coach search) → paginate →
+ * page-only sponsor enrich when search is empty.
+ */
+async function buildPagedActivityRecords({
+  activityType,
+  members,
+  viewerUserId,
+  timezoneIana,
+  timezoneByUserId,
+  weightRecords,
+  educationRecords,
+  foodRecords,
+  stepRecords,
+  timeWindows,
+  paginationOpts,
+}) {
+  const search = String(paginationOpts.search || '').trim();
+  // Coach/sponsor search needs full enrichment before filter; default path
+  // enriches only the returned page (major win for teamScope=full).
+  const needsFullSponsorPass = Boolean(search) || Boolean(paginationOpts.exportAll);
+
+  let sponsorByUser = null;
+  if (needsFullSponsorPass) {
+    sponsorByUser = await resolveSponsorAndIdealCoachForMembers(
+      members.map((m) => ({ userId: m.UserId, coachId: m.CoachId, role: m.Role })),
+      { viewerUserId },
+    );
+  }
+
+  const memberMap = buildDetailMemberMap(members, sponsorByUser);
+  const allRecords = await buildDetailRecordsFromBundle({
+    activityType,
+    memberMap,
+    timezoneIana,
+    timezoneByUserId,
+    weightRecords,
+    educationRecords,
+    foodRecords,
+    stepRecords,
+    timeWindows,
+  });
+
+  const paged = paginateActivityReportRecords(allRecords, paginationOpts);
+
+  if (needsFullSponsorPass) {
+    return paged;
+  }
+
+  const membersById = new Map(members.map((m) => [String(m.UserId), m]));
+  const enrichedPage = await attachSponsorsToRecords(paged.records, {
+    viewerUserId,
+    membersById,
+  });
+  return {
+    ...paged,
+    records: enrichedPage,
+  };
+}
+
 async function buildDetailRecordsFromBundle({
   activityType,
   memberMap,
   timezoneIana,
+  timezoneByUserId,
   weightRecords,
   educationRecords,
   foodRecords,
@@ -161,14 +345,19 @@ async function buildDetailRecordsFromBundle({
 }) {
   switch (activityType) {
     case 'weight': {
-      const dedupedWeight = repo.dedupeFirstLogPerMemberPerDay(weightRecords, timezoneIana);
+      const dedupedWeight = repo.dedupeFirstLogPerMemberPerDay(
+        weightRecords,
+        timezoneIana,
+        { timezoneByUserId },
+      );
       const centerIds = [...new Set(
         dedupedWeight.filter((r) => !r.CenterName && r.NutritionCenterId).map((r) => r.NutritionCenterId),
       )];
       const centerMap = centerIds.length > 0 ? await repo.fetchNutritionCenters(centerIds) : {};
       return dedupedWeight.map((record) => {
         const member = memberMap[record.UserId] || {};
-        const { date, time } = extractDateTime(record.CreatedAt, timezoneIana);
+        const tz = ownerTz(timezoneByUserId, record.UserId, timezoneIana);
+        const { date, time } = extractDateTime(record.CreatedAt, tz);
         return {
           userId: record.UserId,
           memberName: member.name,
@@ -184,7 +373,11 @@ async function buildDetailRecordsFromBundle({
       });
     }
     case 'education': {
-      const dedupedEducation = repo.dedupeFirstLogPerMemberPerDay(educationRecords, timezoneIana);
+      const dedupedEducation = repo.dedupeFirstLogPerMemberPerDay(
+        educationRecords,
+        timezoneIana,
+        { timezoneByUserId },
+      );
       const centerIds = [...new Set(
         dedupedEducation.filter((r) => !r.center_name && r.nutrition_center_id).map((r) => r.nutrition_center_id),
       )];
@@ -192,7 +385,8 @@ async function buildDetailRecordsFromBundle({
       return dedupedEducation.map((record) => {
         const uidKey = String(record.UserId);
         const member = memberMap[uidKey] || {};
-        const { date, time } = extractDateTime(record.CreatedAt, timezoneIana);
+        const tz = ownerTz(timezoneByUserId, record.UserId, timezoneIana);
+        const { date, time } = extractDateTime(record.CreatedAt, tz);
         return {
           userId: uidKey,
           memberName: member.name || 'N/A',
@@ -211,8 +405,14 @@ async function buildDetailRecordsFromBundle({
     case 'breakfast':
     case 'lunch':
     case 'dinner': {
-      const mealRecords = repo.filterFoodByMealTime(foodRecords, activityType, timeWindows, timezoneIana);
-      const dedupedMeals = repo.dedupeFirstLogPerMemberPerDay(mealRecords, timezoneIana, { foodTimestamp: true });
+      const mealRecords = repo.filterFoodByMealTime(
+        foodRecords, activityType, timeWindows, timezoneIana, timezoneByUserId,
+      );
+      const dedupedMeals = repo.dedupeFirstLogPerMemberPerDay(
+        mealRecords,
+        timezoneIana,
+        { foodTimestamp: true, timezoneByUserId },
+      );
       const centerIds = [...new Set(
         dedupedMeals.filter((r) => !r.CenterName && r.NutritionCenterId).map((r) => r.NutritionCenterId),
       )];
@@ -220,7 +420,8 @@ async function buildDetailRecordsFromBundle({
       return dedupedMeals.map((record) => {
         const memberUserId = parseInt(record.UserID, 10);
         const member = memberMap[memberUserId] || {};
-        const { date, time } = extractDateTime(record.CreatedAt, timezoneIana, { food: true });
+        const tz = ownerTz(timezoneByUserId, memberUserId, timezoneIana);
+        const { date, time } = extractDateTime(record.CreatedAt, tz, { food: true });
         return {
           userId: memberUserId,
           memberName: member.name,
@@ -245,7 +446,8 @@ async function buildDetailRecordsFromBundle({
       return waterRecords.map((record) => {
         const memberUserId = parseInt(record.UserID, 10);
         const member = memberMap[memberUserId] || {};
-        const { date, time } = extractDateTime(record.CreatedAt, timezoneIana, { food: true });
+        const tz = ownerTz(timezoneByUserId, memberUserId, timezoneIana);
+        const { date, time } = extractDateTime(record.CreatedAt, tz, { food: true });
         return {
           userId: memberUserId,
           memberName: member.name,
@@ -263,7 +465,8 @@ async function buildDetailRecordsFromBundle({
     case 'calories':
       return stepRecords.map((record) => {
         const member = memberMap[record.UserId] || {};
-        const { date, time } = extractDateTime(record.CreatedAt, timezoneIana);
+        const tz = ownerTz(timezoneByUserId, record.UserId, timezoneIana);
+        const { date, time } = extractDateTime(record.CreatedAt, tz);
         return {
           userId: record.UserId,
           memberName: member.name,
@@ -291,10 +494,158 @@ const EMPTY_STATS = {
 };
 
 /**
+ * User IDs that would appear in the selected detail tab — used to skip
+ * member/sponsor enrichment when the table would be empty.
+ */
+function collectDetailRecordUserIds({
+  activityType,
+  weightRecords,
+  educationRecords,
+  foodRecords,
+  stepRecords,
+  timeWindows,
+  timezoneIana,
+  timezoneByUserId,
+}) {
+  switch (activityType) {
+    case 'weight':
+      return [...new Set(
+        repo.dedupeFirstLogPerMemberPerDay(weightRecords, timezoneIana, { timezoneByUserId })
+          .map((r) => r.UserId)
+          .filter(Boolean),
+      )];
+    case 'education':
+      return [...new Set(
+        repo.dedupeFirstLogPerMemberPerDay(educationRecords, timezoneIana, { timezoneByUserId })
+          .map((r) => parseInt(r.UserId, 10))
+          .filter((id) => Number.isFinite(id)),
+      )];
+    case 'breakfast':
+    case 'lunch':
+    case 'dinner': {
+      const meals = repo.filterFoodByMealTime(
+        foodRecords, activityType, timeWindows, timezoneIana, timezoneByUserId,
+      );
+      return [...new Set(
+        repo.dedupeFirstLogPerMemberPerDay(meals, timezoneIana, { foodTimestamp: true, timezoneByUserId })
+          .map((r) => parseInt(r.UserID, 10))
+          .filter((id) => Number.isFinite(id)),
+      )];
+    }
+    case 'water':
+      return [...new Set(
+        repo.filterWaterRecords(foodRecords)
+          .map((r) => parseInt(r.UserID, 10))
+          .filter((id) => Number.isFinite(id)),
+      )];
+    case 'calories':
+      return [...new Set(
+        stepRecords.map((r) => r.UserId).filter(Boolean),
+      )];
+    default:
+      return [];
+  }
+}
+
+/**
+ * Absorb Strict Mode / double-mount duplicate bootstraps on a warm lambda.
+ */
+const bootstrapResultCache = new Map();
+const BOOTSTRAP_CACHE_TTL_MS = 20_000;
+
+/**
+ * Cache fully built+filtered detail rows so page flips avoid re-querying.
+ * Key excludes page/limit; value is the post-search/sort list.
+ */
+const detailRowsCache = new Map();
+const DETAIL_ROWS_CACHE_TTL_MS = 30_000;
+
+function detailRowsCacheKey(input) {
+  return [
+    input.userId,
+    input.role,
+    input.teamScope,
+    input.dateRange,
+    input.startDate || '',
+    input.endDate || '',
+    input.activityType,
+    input.search || '',
+    input.sort || 'date',
+    input.sortDir || 'desc',
+  ].join('|');
+}
+
+function getCachedDetailRows(key) {
+  const hit = detailRowsCache.get(key);
+  if (!hit) return null;
+  if (hit.expiresAt <= Date.now()) {
+    detailRowsCache.delete(key);
+    return null;
+  }
+  return hit.rows;
+}
+
+function setCachedDetailRows(key, rows) {
+  detailRowsCache.set(key, {
+    rows,
+    expiresAt: Date.now() + DETAIL_ROWS_CACHE_TTL_MS,
+  });
+  // Bound cache size for warm lambdas with many coaches
+  if (detailRowsCache.size > 40) {
+    const oldest = detailRowsCache.keys().next().value;
+    detailRowsCache.delete(oldest);
+  }
+}
+
+function bootstrapCacheKey(input) {
+  return [
+    input.userId,
+    input.role,
+    input.teamScope,
+    input.dateRange,
+    input.startDate || '',
+    input.endDate || '',
+    input.detailActivity || 'education',
+    input.includeRecords ? '1' : '0',
+    input.page || 1,
+    input.limit || ACTIVITY_REPORT_DEFAULT_PAGE_SIZE,
+    input.search || '',
+    input.sort || 'date',
+    input.sortDir || 'desc',
+    input.exportAll ? 'export' : 'page',
+  ].join('|');
+}
+
+/**
  * Single round-trip bootstrap: team scope + summary + member summary + one detail tab.
  * Resolves hierarchy once and fetches all activity tables in parallel.
  */
-export async function getActivityReportBootstrap({
+export async function getActivityReportBootstrap(params) {
+  const cacheKey = bootstrapCacheKey(params);
+  const cached = bootstrapResultCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) {
+    const perf = createActivityReportPerf('bootstrap');
+    perf.done({
+      cache: 'hit',
+      payloadBytes: approxJsonBytes(cached.value?.body),
+      recordCount: Array.isArray(cached.value?.body?.records)
+        ? cached.value.body.records.length
+        : 0,
+    });
+    return cached.value;
+  }
+
+  const result = await getActivityReportBootstrapUncached(params);
+  if (result?.httpStatus === 200) {
+    bootstrapResultCache.set(cacheKey, {
+      value: result,
+      expiresAt: Date.now() + BOOTSTRAP_CACHE_TTL_MS,
+    });
+  }
+  return result;
+}
+
+async function getActivityReportBootstrapUncached({
   userId,
   role,
   teamScope,
@@ -303,11 +654,20 @@ export async function getActivityReportBootstrap({
   endDate: customEnd,
   detailActivity = 'education',
   includeRecords = true,
+  page = 1,
+  limit = ACTIVITY_REPORT_DEFAULT_PAGE_SIZE,
+  search = '',
+  sort = 'date',
+  sortDir = 'desc',
+  exportAll = false,
 }) {
+  const paginationOpts = { page, limit, search, sort, sortDir, exportAll };
+  const perf = createActivityReportPerf('bootstrap');
   const [{ timezoneIana, startDate: startStr, endDate: endStr }, scope] = await Promise.all([
     resolveReportDateRange(userId, dateRange, customStart, customEnd),
     resolveActivityReportUserIds({ userId, role, teamScope }),
   ]);
+  perf.mark('scope_and_dates');
 
   const { userIds, teamScope: resolvedScope, teamScopeCounts } = scope;
   const baseBody = {
@@ -321,7 +681,7 @@ export async function getActivityReportBootstrap({
   };
 
   if (userIds.length === 0) {
-    return {
+    const empty = {
       httpStatus: 200,
       body: {
         ...baseBody,
@@ -329,66 +689,119 @@ export async function getActivityReportBootstrap({
         members: [],
         stats: EMPTY_STATS,
         records: [],
+        pagination: emptyPagination(page, limit),
       },
     };
+    perf.done({
+      userCount: 0,
+      recordCount: 0,
+      payloadBytes: approxJsonBytes(empty.body),
+      cache: 'miss',
+    });
+    return empty;
   }
 
-  const activityFetches = [
+  // Activity tables in one wave. Skip AnalysisData unless returning water detail rows
+  // (volume). Summary beverage detection uses ProcessedBy presets.
+  const wantAnalysis = includeRecords && needsFoodAnalysisData(detailActivity);
+  const [
+    weightRecords,
+    educationRecords,
+    stepRecords,
+    timeWindows,
+    foodRecords,
+  ] = await Promise.all([
     repo.fetchWeightRecords(userIds, startStr, endStr, timezoneIana),
     repo.fetchEducationRecords(userIds, startStr, endStr, timezoneIana),
     repo.fetchStepRecords(userIds, startStr, endStr, timezoneIana),
     repo.fetchTimeWindows(),
-  ];
-  if (includeRecords) {
-    activityFetches.unshift(repo.fetchMemberDetails(userIds));
-  }
-
-  const fetchResults = await Promise.all(activityFetches);
-  const members = filterPublicAggregateUsers(
-    includeRecords ? fetchResults[0] : [],
-    { viewerUserId: userId },
+    repo.fetchFoodRecords(userIds, startStr, endStr, timezoneIana, {
+      includeAnalysisData: wantAnalysis,
+    }),
+  ]);
+  // Timezones only for users who actually logged — not the entire full-scope tree.
+  const tzUserIds = collectTimezoneUserIds(
+    weightRecords, educationRecords, foodRecords, stepRecords,
   );
-  const weightRecords = fetchResults[includeRecords ? 1 : 0];
-  const educationRecords = fetchResults[includeRecords ? 2 : 1];
-  const stepRecords = fetchResults[includeRecords ? 3 : 2];
-  const timeWindows = fetchResults[includeRecords ? 4 : 3];
-
-  // Food rows carry large AnalysisData JSON ? fetch after lighter tables to reduce parallel DB load.
-  const foodRecords = await repo.fetchFoodRecords(userIds, startStr, endStr, timezoneIana);
+  const timezoneByUserId = tzUserIds.length > 0
+    ? await getUserTimezonesIanaMap(tzUserIds)
+    : {};
+  perf.mark('activity_tables');
 
   const summary = buildSummaryCounts({
-    weightRecords, educationRecords, foodRecords, stepRecords, timeWindows, timezoneIana,
+    weightRecords, educationRecords, foodRecords, stepRecords, timeWindows, timezoneIana, timezoneByUserId,
   });
+  perf.mark('summary_counts');
 
   let records = [];
+  let pagination = emptyPagination(page, limit);
   if (includeRecords) {
-    const sponsorByUser = await resolveSponsorAndIdealCoachForMembers(
-      members.map((m) => ({ userId: m.UserId, coachId: m.CoachId, role: m.Role })),
-      { viewerUserId: userId },
-    );
-    const detailMemberMap = buildDetailMemberMap(members, sponsorByUser);
-    records = await buildDetailRecordsFromBundle({
+    const detailUserIds = collectDetailRecordUserIds({
       activityType: detailActivity,
-      memberMap: detailMemberMap,
-      timezoneIana,
       weightRecords,
       educationRecords,
       foodRecords,
       stepRecords,
       timeWindows,
+      timezoneIana,
+      timezoneByUserId,
     });
+
+    // Empty detail tab → skip member fetch + sponsor/ideal-coach chain walks.
+    if (detailUserIds.length > 0) {
+      const members = filterPublicAggregateUsers(
+        await repo.fetchMemberDetails(detailUserIds),
+        { viewerUserId: userId },
+      );
+      const paged = await buildPagedActivityRecords({
+        activityType: detailActivity,
+        members,
+        viewerUserId: userId,
+        timezoneIana,
+        timezoneByUserId,
+        weightRecords,
+        educationRecords,
+        foodRecords,
+        stepRecords,
+        timeWindows,
+        paginationOpts,
+      });
+      records = paged.records;
+      pagination = paged.pagination;
+      setCachedDetailRows(detailRowsCacheKey({
+        userId,
+        role,
+        teamScope: resolvedScope,
+        dateRange,
+        startDate: startStr,
+        endDate: endStr,
+        activityType: detailActivity,
+        search,
+        sort,
+        sortDir,
+      }), paged.preparedRows);
+    }
+    perf.mark('detail_enrichment');
   }
 
-  return {
-    httpStatus: 200,
-    body: {
-      ...baseBody,
-      summary,
-      members: [],
-      stats: EMPTY_STATS,
-      records,
-    },
+  const body = {
+    ...baseBody,
+    summary,
+    members: [],
+    stats: EMPTY_STATS,
+    records,
+    pagination,
   };
+  perf.done({
+    userCount: userIds.length,
+    recordCount: records.length,
+    totalRecords: pagination.totalRecords,
+    foodRows: foodRecords.length,
+    detailActivity,
+    payloadBytes: approxJsonBytes(body),
+    cache: 'miss',
+  });
+  return { httpStatus: 200, body };
 }
 
 /**
@@ -426,26 +839,25 @@ export async function getActivitySummary({ userId, role, teamScope, dateRange, s
     };
   }
   
-  const [weightRecords, educationRecords, stepRecords] = await Promise.all([
+  const [weightRecords, educationRecords, stepRecords, foodRecords, timeWindows] = await Promise.all([
     repo.fetchWeightRecords(userIds, startStr, endStr, timezoneIana),
     repo.fetchEducationRecords(userIds, startStr, endStr, timezoneIana),
     repo.fetchStepRecords(userIds, startStr, endStr, timezoneIana),
+    repo.fetchFoodRecords(userIds, startStr, endStr, timezoneIana, {
+      includeAnalysisData: false,
+    }),
+    repo.fetchTimeWindows(),
   ]);
-  const foodRecords = await repo.fetchFoodRecords(userIds, startStr, endStr, timezoneIana);
-  
-  // Get time windows for meal filtering
-  const timeWindows = await repo.fetchTimeWindows();
-  
-  // Count unique members per activity type
-  const counts = {
-    weight: new Set(weightRecords.map(r => r.UserId)).size,
-    education: new Set(educationRecords.map(r => parseInt(r.UserId, 10))).size,
-    breakfast: new Set(repo.filterFoodByMealTime(foodRecords, 'breakfast', timeWindows, timezoneIana).map(r => parseInt(r.UserID, 10))).size,
-    lunch: new Set(repo.filterFoodByMealTime(foodRecords, 'lunch', timeWindows, timezoneIana).map(r => parseInt(r.UserID, 10))).size,
-    dinner: new Set(repo.filterFoodByMealTime(foodRecords, 'dinner', timeWindows, timezoneIana).map(r => parseInt(r.UserID, 10))).size,
-    water: new Set(repo.filterWaterRecords(foodRecords).map(r => parseInt(r.UserID, 10))).size,
-    calories: new Set(stepRecords.filter(r => (r.Steps || 0) > 0 || (r.CaloriesBurned || 0) > 0).map(r => r.UserId)).size,
-  };
+  const tzUserIds = collectTimezoneUserIds(
+    weightRecords, educationRecords, foodRecords, stepRecords,
+  );
+  const timezoneByUserId = tzUserIds.length > 0
+    ? await getUserTimezonesIanaMap(tzUserIds)
+    : {};
+
+  const counts = buildSummaryCounts({
+    weightRecords, educationRecords, foodRecords, stepRecords, timeWindows, timezoneIana, timezoneByUserId,
+  });
   
   return {
     httpStatus: 200,
@@ -512,8 +924,15 @@ export async function getActivityMemberSummary({ userId, role, teamScope, dateRa
   });
 
   // Fetch education records ? count first log per member per day only
-  const educationRecords = await repo.fetchEducationRecords(userIds, startStr, endStr, timezoneIana);
-  const dedupedEducation = repo.dedupeFirstLogPerMemberPerDay(educationRecords, timezoneIana);
+  const [educationRecords, timezoneByUserId] = await Promise.all([
+    repo.fetchEducationRecords(userIds, startStr, endStr, timezoneIana),
+    getUserTimezonesIanaMap(userIds),
+  ]);
+  const dedupedEducation = repo.dedupeFirstLogPerMemberPerDay(
+    educationRecords,
+    timezoneIana,
+    { timezoneByUserId },
+  );
   const countMap = {};
   dedupedEducation.forEach(record => {
     const key = String(record.UserId);
@@ -564,17 +983,45 @@ export async function getActivityMemberSummary({ userId, role, teamScope, dateRa
 /**
  * Get detailed activity records for a specific activity type
  */
-export async function getActivityDetails({ userId, role, teamScope, activityType, dateRange, startDate: customStart, endDate: customEnd }) {
-  const { timezoneIana, startDate: startStr, endDate: endStr } = await resolveReportDateRange(
-    userId, dateRange, customStart, customEnd,
-  );
+export async function getActivityDetails({
+  userId,
+  role,
+  teamScope,
+  activityType,
+  dateRange,
+  startDate: customStart,
+  endDate: customEnd,
+  page = 1,
+  limit = ACTIVITY_REPORT_DEFAULT_PAGE_SIZE,
+  search = '',
+  sort = 'date',
+  sortDir = 'desc',
+  exportAll = false,
+}) {
+  const paginationOpts = { page, limit, search, sort, sortDir, exportAll };
+  const perf = createActivityReportPerf('details');
+  const [{ timezoneIana, startDate: startStr, endDate: endStr }, scope] = await Promise.all([
+    resolveReportDateRange(userId, dateRange, customStart, customEnd),
+    resolveActivityReportUserIds({ userId, role, teamScope }),
+  ]);
+  perf.mark('scope_and_dates');
 
-  const { userIds, teamScope: resolvedScope, teamScopeCounts } = await resolveActivityReportUserIds({
-    userId, role, teamScope,
+  const { userIds, teamScope: resolvedScope, teamScopeCounts } = scope;
+  const rowsCacheKey = detailRowsCacheKey({
+    userId,
+    role,
+    teamScope: resolvedScope,
+    dateRange,
+    startDate: startStr,
+    endDate: endStr,
+    activityType,
+    search,
+    sort,
+    sortDir,
   });
-  
+
   if (userIds.length === 0) {
-    return {
+    const empty = {
       httpStatus: 200,
       body: {
         success: true,
@@ -585,216 +1032,22 @@ export async function getActivityDetails({ userId, role, teamScope, activityType
         teamScope: resolvedScope,
         teamScopeCounts,
         records: [],
+        pagination: emptyPagination(page, limit),
       },
     };
+    perf.done({ userCount: 0, recordCount: 0, payloadBytes: approxJsonBytes(empty.body) });
+    return empty;
   }
-  
-  // Fetch member details + sponsor / ideal coach (ADR-0007)
-  const members = filterPublicAggregateUsers(
-    await repo.fetchMemberDetails(userIds),
-    { viewerUserId: userId },
-  );
-  const sponsorByUser = await resolveSponsorAndIdealCoachForMembers(
-    members.map((m) => ({ userId: m.UserId, coachId: m.CoachId, role: m.Role })),
-    { viewerUserId: userId },
-  );
 
-  // Build member info map ? keyed by both numeric and string UserId
-  const memberMap = {};
-  members.forEach(member => {
-    const info = applySponsorFields({
-      name: member.UserName || 'N/A',
-      phone: member.PhoneNumber || 'N/A',
-      email: member.Email || '',
-      city: 'N/A',
-      village: 'N/A',
-      role: member.Role || 'member',
-    }, sponsorByUser.get(String(member.UserId)));
-    memberMap[member.UserId] = info;
-    memberMap[String(member.UserId)] = info;
-  });
-  
-  let records = [];
-  
-  // Fetch activity-specific records
-  switch (activityType) {
-    case 'weight':
-      {
-        const weightRecords = await repo.fetchWeightRecords(userIds, startStr, endStr, timezoneIana);
-        const dedupedWeight = repo.dedupeFirstLogPerMemberPerDay(weightRecords, timezoneIana);
-
-        const centerIds = [...new Set(
-          dedupedWeight
-            .filter(r => !r.CenterName && r.NutritionCenterId)
-            .map(r => r.NutritionCenterId)
-        )];
-        const centerMap = centerIds.length > 0 ? await repo.fetchNutritionCenters(centerIds) : {};
-
-        records = dedupedWeight.map(record => {
-          const member = memberMap[record.UserId] || {};
-          const { date, time } = extractDateTime(record.CreatedAt, timezoneIana);
-          const clubName = record.CenterName || centerMap[record.NutritionCenterId] || 'N/A';
-          return {
-            userId: record.UserId,
-            memberName: member.name,
-            city: record.City || member.city || 'N/A',
-            village: record.Village || member.village || 'N/A',
-            phone: member.phone,
-            ...sponsorCoachRowFields(member),
-            date,
-            time,
-           clubName: record.CenterName || 'N/A',
-            weight: record.Weight || 'N/A',
-          };
-        });
-      }
-      break;
-      
-    case 'education':
-      {
-        const educationRecords = await repo.fetchEducationRecords(userIds, startStr, endStr, timezoneIana);
-        const dedupedEducation = repo.dedupeFirstLogPerMemberPerDay(educationRecords, timezoneIana);
-
-        // Fetch nutrition center names for records that don't have center_name stored
-        const centerIds = [...new Set(
-          dedupedEducation
-            .filter(r => !r.center_name && r.nutrition_center_id)
-            .map(r => r.nutrition_center_id)
-        )];
-        const centerMap = centerIds.length > 0 ? await repo.fetchNutritionCenters(centerIds) : {};
-
-        records = dedupedEducation.map(record => {
-          // UserId in education_logs_table is stored as string
-          const uidKey = String(record.UserId);
-          const member = memberMap[uidKey] || {};
-          const { date, time } = extractDateTime(record.CreatedAt, timezoneIana);
-          // Prefer the stored center_name; fall back to looked-up center name
-          const clubName = record.center_name || centerMap[record.nutrition_center_id] || 'N/A';
-
-          return {
-            userId: uidKey,
-            memberName: member.name || 'N/A',
-            city: record.City || member.city || 'N/A',
-            village: record.Village || member.village || 'N/A',
-            phone: member.phone || 'N/A',
-            ...sponsorCoachRowFields(member),
-            date,
-            time,
-            clubName,
-            attendanceType: record.attendance_type || 'N/A',
-            topic: record.Topic || 'N/A',
-          };
-        });
-      }
-      break;
-      
-    case 'breakfast':
-    case 'lunch':
-    case 'dinner':
-      {
-        const foodRecords = await repo.fetchFoodRecords(userIds, startStr, endStr, timezoneIana);
-        const timeWindows = await repo.fetchTimeWindows();
-        const mealRecords = repo.filterFoodByMealTime(foodRecords, activityType, timeWindows, timezoneIana);
-        // One row per member per day ? first meal log only (matches summary counts)
-        const dedupedMeals = repo.dedupeFirstLogPerMemberPerDay(mealRecords, timezoneIana, { foodTimestamp: true });
-
-        const centerIds = [...new Set(
-          dedupedMeals
-            .filter(r => !r.CenterName && r.NutritionCenterId)
-            .map(r => r.NutritionCenterId)
-        )];
-        const centerMap = centerIds.length > 0 ? await repo.fetchNutritionCenters(centerIds) : {};
-
-        records = dedupedMeals.map(record => {
-          const memberUserId = parseInt(record.UserID, 10);
-          const member = memberMap[memberUserId] || {};
-          const { date, time } = extractDateTime(record.CreatedAt, timezoneIana, { food: true });
-          const clubName = record.CenterName || centerMap[record.NutritionCenterId] || 'N/A';
-
-          return {
-            userId: memberUserId,
-            memberName: member.name,
-            city: record.City || member.city || 'N/A',
-            village: record.Village || member.village || 'N/A',
-            phone: member.phone,
-            ...sponsorCoachRowFields(member),
-            date,
-            time,
-            clubName,
-            calories: record.TotalCalories || 0,
-            mealType: activityType,
-          };
-        });
-      }
-      break;
-      
-    case 'water':
-      {
-        const foodRecords = await repo.fetchFoodRecords(userIds, startStr, endStr, timezoneIana);
-        const waterRecords = repo.filterWaterRecords(foodRecords);
-
-        const centerIds = [...new Set(
-          waterRecords
-            .filter(r => !r.CenterName && r.NutritionCenterId)
-            .map(r => r.NutritionCenterId)
-        )];
-        const centerMap = centerIds.length > 0 ? await repo.fetchNutritionCenters(centerIds) : {};
-
-        records = waterRecords.map(record => {
-          const memberUserId = parseInt(record.UserID, 10);
-          const member = memberMap[memberUserId] || {};
-          const { date, time } = extractDateTime(record.CreatedAt, timezoneIana, { food: true });
-          const volumeLiters = repo.calculateWaterVolume(record);
-          const clubName = record.CenterName || centerMap[record.NutritionCenterId] || 'N/A';
-
-          return {
-            userId: memberUserId,
-            memberName: member.name,
-            city: record.City || member.city || 'N/A',
-            village: record.Village || member.village || 'N/A',
-            phone: member.phone,
-            ...sponsorCoachRowFields(member),
-            date,
-            time,
-            clubName,
-            waterLiters: volumeLiters,
-          };
-        });
-      }
-      break;
-      
-    case 'calories':
-      {
-        const stepRecords = await repo.fetchStepRecords(userIds, startStr, endStr, timezoneIana);
-        
-        records = stepRecords.map(record => {
-          const member = memberMap[record.UserId] || {};
-          const { date, time } = extractDateTime(record.CreatedAt, timezoneIana);
-          
-          return {
-            userId: record.UserId,
-            memberName: member.name,
-            city: member.city,
-            village: member.village,
-            phone: member.phone,
-            ...sponsorCoachRowFields(member),
-            date,
-            time,
-            clubName: 'N/A',
-            caloriesBurned: record.CaloriesBurned || 0,
-            steps: record.Steps || 0,
-          };
-        });
-      }
-      break;
-      
-    default:
-      throw new ValidationError(400, `Invalid activityType: ${activityType}`);
-  }
-  
-  return {
-    httpStatus: 200,
-    body: {
+  const cachedPrepared = getCachedDetailRows(rowsCacheKey);
+  if (cachedPrepared) {
+    const paged = slicePreparedActivityReportRows(cachedPrepared, paginationOpts);
+    // Prepared cache may omit sponsors (page-only enrich path) — attach for this page.
+    const records = await attachSponsorsToRecords(paged.records, {
+      viewerUserId: userId,
+      membersById: new Map(),
+    });
+    const body = {
       success: true,
       activityType,
       dateRange,
@@ -803,6 +1056,119 @@ export async function getActivityDetails({ userId, role, teamScope, activityType
       teamScope: resolvedScope,
       teamScopeCounts,
       records,
-    },
+      pagination: paged.pagination,
+    };
+    perf.done({
+      userCount: userIds.length,
+      recordCount: records.length,
+      totalRecords: paged.pagination.totalRecords,
+      payloadBytes: approxJsonBytes(body),
+      cache: 'rows-hit',
+    });
+    return { httpStatus: 200, body };
+  }
+
+  // Fetch only the activity table for this tab (+ time windows) before member enrichment.
+  const needsFood = ['breakfast', 'lunch', 'dinner', 'water'].includes(activityType);
+  const [weightRecords, educationRecords, foodRecords, stepRecords, timeWindows] = await Promise.all([
+    activityType === 'weight' ? repo.fetchWeightRecords(userIds, startStr, endStr, timezoneIana) : Promise.resolve([]),
+    activityType === 'education' ? repo.fetchEducationRecords(userIds, startStr, endStr, timezoneIana) : Promise.resolve([]),
+    needsFood
+      ? repo.fetchFoodRecords(userIds, startStr, endStr, timezoneIana, {
+          includeAnalysisData: needsFoodAnalysisData(activityType),
+        })
+      : Promise.resolve([]),
+    activityType === 'calories' ? repo.fetchStepRecords(userIds, startStr, endStr, timezoneIana) : Promise.resolve([]),
+    repo.fetchTimeWindows(),
+  ]);
+  perf.mark('activity_table');
+
+  // Timezones only for users appearing in fetched activity rows (smaller map).
+  const tzUserIds = collectTimezoneUserIds(
+    weightRecords, educationRecords, foodRecords, stepRecords,
+  );
+  const timezoneByUserId = tzUserIds.length > 0
+    ? await getUserTimezonesIanaMap(tzUserIds)
+    : {};
+  perf.mark('timezones');
+
+  const detailUserIds = collectDetailRecordUserIds({
+    activityType,
+    weightRecords,
+    educationRecords,
+    foodRecords,
+    stepRecords,
+    timeWindows,
+    timezoneIana,
+    timezoneByUserId,
+  });
+
+  if (detailUserIds.length === 0) {
+    const empty = {
+      httpStatus: 200,
+      body: {
+        success: true,
+        activityType,
+        dateRange,
+        startDate: startStr,
+        endDate: endStr,
+        teamScope: resolvedScope,
+        teamScopeCounts,
+        records: [],
+        pagination: emptyPagination(page, limit),
+      },
+    };
+    setCachedDetailRows(rowsCacheKey, []);
+    perf.done({
+      userCount: userIds.length,
+      recordCount: 0,
+      detailUserCount: 0,
+      payloadBytes: approxJsonBytes(empty.body),
+    });
+    return empty;
+  }
+
+  // Enrich only members who appear in this tab — not the full team.
+  const members = filterPublicAggregateUsers(
+    await repo.fetchMemberDetails(detailUserIds),
+    { viewerUserId: userId },
+  );
+  perf.mark('member_fetch');
+
+  const { records, pagination, preparedRows } = await buildPagedActivityRecords({
+    activityType,
+    members,
+    viewerUserId: userId,
+    timezoneIana,
+    timezoneByUserId,
+    weightRecords,
+    educationRecords,
+    foodRecords,
+    stepRecords,
+    timeWindows,
+    paginationOpts,
+  });
+  setCachedDetailRows(rowsCacheKey, preparedRows);
+  perf.mark('build_and_paginate');
+
+  const body = {
+    success: true,
+    activityType,
+    dateRange,
+    startDate: startStr,
+    endDate: endStr,
+    teamScope: resolvedScope,
+    teamScopeCounts,
+    records,
+    pagination,
   };
+  perf.done({
+    userCount: userIds.length,
+    detailUserCount: detailUserIds.length,
+    recordCount: records.length,
+    totalRecords: pagination.totalRecords,
+    payloadBytes: approxJsonBytes(body),
+    cache: 'miss',
+  });
+  return { httpStatus: 200, body };
 }

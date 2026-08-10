@@ -8,13 +8,14 @@
  */
 import { useState, useEffect } from 'react';
 import { fetchUserMacroProfile } from '../services/nutritionDashboard/userProfileApi';
+import { isCaptureFlowBusy } from '../../../shared/services/captureFlowBusy';
 
-export function useUserLatestWeight({ user, apiBaseUrl }) {
+export function useUserLatestWeight({ user, apiBaseUrl, enabled = true }) {
   const [latestWeight, setLatestWeight] = useState(null);
   const [gender, setGender] = useState(null);
 
   useEffect(() => {
-    if (!user?.email) return undefined;
+    if (!enabled || !user?.email) return undefined;
 
     let cancelled = false;
     const load = async () => {
@@ -28,7 +29,8 @@ export function useUserLatestWeight({ user, apiBaseUrl }) {
     load();
 
     const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') load();
+      // Skip while Gallery/Camera → capture upload is in flight (connection budget).
+      if (document.visibilityState === 'visible' && !isCaptureFlowBusy()) load();
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
@@ -36,7 +38,7 @@ export function useUserLatestWeight({ user, apiBaseUrl }) {
       cancelled = true;
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [user?.email, apiBaseUrl]);
+  }, [user?.email, apiBaseUrl, enabled]);
 
   return { latestWeight, gender };
 }

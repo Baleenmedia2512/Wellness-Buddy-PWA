@@ -16,6 +16,8 @@ import { TeamMemberSearch } from '../../features/team';
 import TeamMemberProfileModal from '../../shared/components/TeamMemberProfileModal';
 import { isFlagEnabled } from '../../config/featureFlags';
 import { useNutritionRefresh } from '../../shared/context/NutritionRefreshContext';
+import { DIARY_ANALYZING_POLL_MS } from '../../shared/constants/limits';
+import { setVisibilityAwareInterval } from '../../shared/utils/visibilityAwareInterval';
 import DashboardTabs from './DashboardTabs';
 // ADR-0003 — delete-only unknown captures still use UnknownEntryFlow; classify/manual
 // log for Other / Needs logging reuses ManualEntryPage (same as post-capture).
@@ -251,6 +253,11 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
   // Determine which user's data to display (selected member or coach)
   const displayUser = selectedMember || user;
 
+  // Clear diary-owned TZ when switching members so we don't flash the previous owner's zone.
+  useEffect(() => {
+    setDiaryOwnerTimezoneIana(null);
+  }, [displayUser?.id, displayUser?.userId, selectedMember?.id, selectedMember?.userId]);
+
   // Label for the shell-level date-picker button: "Today" when the
   // selected day is the current day, otherwise a short date (e.g. "Jun 9").
   const dateButtonLabel =
@@ -350,10 +357,14 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
     setDiaryOptimisticEntries({});
   }, []);
 
-  // Drop in-flight undo/restore UI when the selected day changes.
+  // Drop in-flight undo/restore UI when the selected day or diary subject changes.
   useEffect(() => {
     clearAllDiaryUndos();
   }, [diaryTimelineDate, clearAllDiaryUndos]);
+
+  useEffect(() => {
+    clearAllDiaryUndos();
+  }, [ownerId, clearAllDiaryUndos]);
 
   const diaryUndoList = useMemo(() => Object.values(diaryUndos), [diaryUndos]);
   const diaryOptimisticList = useMemo(
@@ -369,6 +380,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
   // When a timeline row is tapped, the shell calls the matching ref to open
   // the existing modal inside the relevant dashboard component.
   const nutritionOpenRef = useRef(null);
+  const [diaryOwnerTimezoneIana, setDiaryOwnerTimezoneIana] = useState(null);
   const weightOpenRef    = useRef(null);
   const educationOpenRef = useRef(null);
 
@@ -400,10 +412,10 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
 
   // Poll the diary feed while background AI is in flight so the card
   // auto-upgrades from "Analyzing…" to food / weight / education rows.
+  // Pauses while the tab/app is hidden to avoid wasted /api/diary/list traffic.
   useEffect(() => {
     if (!backgroundAnalyzingKey) return undefined;
-    const intervalId = setInterval(() => reloadDiary(), 2500);
-    return () => clearInterval(intervalId);
+    return setVisibilityAwareInterval(() => reloadDiary(), DIARY_ANALYZING_POLL_MS);
   // eslint-disable-next-line react-hooks/exhaustive-deps -- reloadDiary is stable
   }, [backgroundAnalyzingKey]);
 
@@ -664,12 +676,10 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
   }, [removeDiaryUndo]);
 
   // Swipe-to-delete for timeline rows including unknown ("Other") rows.
+  // Allowed for self and for coaches viewing a downline member (same as
+  // NutritionDashboard meal deletes — APIs receive ownerId = diary subject).
   const handleEntryDelete = async (entry) => {
     if (!entry || !ownerId) return;
-    if (!viewingSelf) {
-      reloadDiary();
-      return;
-    }
     const entryId = entry.payload?.id;
     if (!entryId) return;
 
@@ -1053,6 +1063,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
               })()}
               <div className="w-full md:max-w-2xl lg:max-w-4xl md:mx-auto px-3 md:px-4 pb-40 mt-2">
                 <DiaryFeed
+                  key={ownerId || 'self'}
                   showTimeline
                   refreshKey={diaryReloadKey}
                   ownerUserId={ownerId}
@@ -1061,7 +1072,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
                   date={diaryTimelineDate}
                   onEntryOpen={handleEntryOpen}
                   onEntryDelete={handleEntryDelete}
-                  canDelete={viewingSelf}
+                  canDelete
                   pendingUndos={diaryUndoList}
                   optimisticEntries={diaryOptimisticList}
                   onOptimisticEntryConsumed={(entry) => {
@@ -1078,6 +1089,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
                   onUndoExpire={handleDiaryUndoExpire}
                   analyzingCaptureIds={mergedAnalyzingCaptureIds}
                   pendingCaptureMeta={pendingCaptureMeta}
+                  onOwnerTimezoneChange={setDiaryOwnerTimezoneIana}
                 />
               </div>
 
@@ -1103,18 +1115,21 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
                   hideHeader
                   hideDateStrip
                   hideOverview
+                  deferDataFetch
                   selectedDate={selectedDate}
                   setSelectedDate={applySelectedDate}
                   bmrUpdateKey={bmrUpdateKey}
                   watchBurnedCalories={watchBurnedCalories}
                   initialMealId={initialMealId}
                   openRef={nutritionOpenRef}
+                  timezoneIana={diaryOwnerTimezoneIana}
                 />
                 <WeightDashboard
                   user={displayUser}
                   apiBaseUrl={apiBaseUrl}
                   hideHeader
                   hideOverview
+                  deferDataFetch
                   selectedDate={selectedDate}
                   refreshKey={weightReloadKey}
                   initialEntryId={initialMealId}
@@ -1128,6 +1143,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
                   apiBaseUrl={apiBaseUrl}
                   hideHeader
                   hideOverview
+                  deferDataFetch
                   selectedDate={selectedDate}
                   refreshKey={educationRefreshKey + diaryEducationRefreshKey}
                   initialEntryId={initialMealId}
@@ -1160,6 +1176,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
                 bmrUpdateKey={bmrUpdateKey}
                 watchBurnedCalories={watchBurnedCalories}
                 initialMealId={initialMealId}
+                timezoneIana={diaryOwnerTimezoneIana}
               />
 
               <WeightDashboard
@@ -1193,6 +1210,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
               <div className="w-full md:max-w-2xl lg:max-w-4xl md:mx-auto px-3 md:px-4 pb-40 mt-2">
                 <h2 className="text-sm font-semibold text-gray-500 px-1 mb-2 mt-4">Other</h2>
                 <DiaryFeed
+                  key={`other-${ownerId || 'self'}`}
                   refreshKey={diaryReloadKey}
                   ownerUserId={ownerId}
                   viewerUserId={user?.id || user?.userId}
@@ -1201,7 +1219,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
                   filterKinds={['unknown']}
                   onEntryOpen={handleEntryOpen}
                   onEntryDelete={handleEntryDelete}
-                  canDelete={viewingSelf}
+                  canDelete
                   pendingUndos={diaryUndoList.filter((u) => u.kind === 'unknown')}
                   optimisticEntries={diaryOptimisticList.filter((e) => e.kind === 'unknown')}
                   onOptimisticEntryConsumed={(entry) => {
@@ -1238,6 +1256,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
               bmrUpdateKey={bmrUpdateKey}
               watchBurnedCalories={watchBurnedCalories}
               initialMealId={initialMealId}
+              timezoneIana={diaryOwnerTimezoneIana}
             />
           )}
 
@@ -1343,6 +1362,8 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
         deleteOnly={unknownFlow.deleteOnly ?? false}
         canMutate={viewingSelf}
         userId={ownerId}
+        userName={user?.userName || user?.username || user?.name || null}
+        userEmail={user?.email || user?.Email || null}
         apiBaseUrl={apiBaseUrl}
         onClose={() => setUnknownFlow(null)}
         onChanged={handleUnknownChanged}

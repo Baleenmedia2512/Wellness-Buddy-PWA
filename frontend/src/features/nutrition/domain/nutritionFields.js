@@ -2,6 +2,8 @@
  * frontend/src/features/nutrition/domain/nutritionFields.js
  * Shared nutrition field list for manual / search scaling (ADR-0005).
  */
+import { computeMealGlycemicIndex } from './mealGlycemicIndex';
+
 export const NUTRITION_KEYS = Object.freeze([
   'calories', 'protein', 'carbs', 'fat', 'fiber',
   'sugar', 'sodium', 'cholesterol', 'glycemic_index',
@@ -35,6 +37,11 @@ export function scaleNutritionFields(item, ratio) {
   const base = pickNutrition(item.nutrition || item);
   const out = {};
   for (const [key, value] of Object.entries(base)) {
+    // GI is intrinsic to the food — never scale with portion ratio
+    if (key === 'glycemic_index') {
+      out[key] = Math.round(Number(value));
+      continue;
+    }
     out[key] = Math.round(Number(value) * ratio * 100) / 100;
   }
   // Keep integer kcal for display consistency with older UI.
@@ -44,18 +51,24 @@ export function scaleNutritionFields(item, ratio) {
 
 /**
  * Sum nutrition objects across items.
+ * Glycemic index is NEVER summed — use available-carb weighted meal GI.
  * @param {Array<object>} nutritions
  */
 export function sumNutrition(nutritions) {
   const total = {};
   for (const n of nutritions) {
     for (const key of NUTRITION_KEYS) {
+      if (key === 'glycemic_index') continue;
       const v = Number(n?.[key]);
       if (!Number.isFinite(v)) continue;
       total[key] = (total[key] || 0) + v;
     }
   }
   if (total.calories != null) total.calories = Math.round(total.calories);
+  const mealGi = computeMealGlycemicIndex(
+    (nutritions || []).map((n) => ({ nutrition: n })),
+  );
+  if (mealGi != null) total.glycemic_index = mealGi;
   return total;
 }
 
@@ -119,8 +132,9 @@ export function formatServingPortion(item, servings) {
  * Deduplicate search buckets: master > my history > community (exact name).
  * Keeps distinct foods (Banana Chips stays even if Banana is in master).
  * @param {{ masterItems?: object[], myItems?: object[], communityItems?: object[] }} parts
+ * @param {string} [query] when set, each bucket is ranked by match position (prefix first)
  */
-export function dedupeSearchBuckets({ masterItems = [], myItems = [], communityItems = [] }) {
+export function dedupeSearchBuckets({ masterItems = [], myItems = [], communityItems = [] }, query = '') {
   const keyOf = (item) => String(item?.name || '').toLowerCase().trim();
   const master = [];
   const seen = new Set();
@@ -144,7 +158,34 @@ export function dedupeSearchBuckets({ masterItems = [], myItems = [], communityI
     seen.add(k);
     community.push(item);
   }
-  return { masterItems: master, myItems: my, communityItems: community };
+  return {
+    masterItems: sortFoodSearchByMatchPosition(master, query),
+    myItems: sortFoodSearchByMatchPosition(my, query),
+    communityItems: sortFoodSearchByMatchPosition(community, query),
+  };
+}
+
+/**
+ * Rank typeahead hits by earliest character index of `query` in the name.
+ * "o" → Onion (0) before Boiled (1) before Beetroot (4).
+ * @param {object[]} items
+ * @param {string} query
+ * @returns {object[]}
+ */
+export function sortFoodSearchByMatchPosition(items, query) {
+  if (!Array.isArray(items) || items.length < 2) return items || [];
+  const q = String(query || '').toLowerCase().trim();
+  if (!q) return items;
+  return items.slice().sort((a, b) => {
+    const na = String(a?.name || '').toLowerCase();
+    const nb = String(b?.name || '').toLowerCase();
+    const ia = na.indexOf(q);
+    const ib = nb.indexOf(q);
+    const ra = ia < 0 ? 9999 : ia;
+    const rb = ib < 0 ? 9999 : ib;
+    if (ra !== rb) return ra - rb;
+    return na.localeCompare(nb);
+  });
 }
 
 /**

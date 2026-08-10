@@ -1,4 +1,8 @@
 import { ValidationError } from '../../shared/lib/ValidationError.js';
+import {
+  CENTERS_LIST_DEFAULT_PAGE_SIZE,
+  normalizeCentersListPagination,
+} from './domain/centers.pagination.js';
 
 export function validateCheckName(query) {
   // Empty / short names → service responds available:true; we still pass through
@@ -7,6 +11,16 @@ export function validateCheckName(query) {
 
 export function validateGetCenters(query) {
   if (!query?.userId) throw new ValidationError(400, 'Missing required parameter: userId');
+  const metricsRaw = String(query.metrics ?? query.includeMetrics ?? '1').toLowerCase();
+  const includeMetrics = !(metricsRaw === '0' || metricsRaw === 'false' || metricsRaw === 'no');
+  const pagination = normalizeCentersListPagination({
+    page: query.page,
+    limit: query.limit ?? CENTERS_LIST_DEFAULT_PAGE_SIZE,
+    search: query.search,
+  });
+  // paginate=0 skips slicing (legacy / GPS callers that need the full geo set)
+  const paginateRaw = String(query.paginate ?? '1').toLowerCase();
+  const paginate = !(paginateRaw === '0' || paginateRaw === 'false' || paginateRaw === 'no');
   return {
     userId: query.userId,
     teamFilter: query.teamFilter || 'direct',
@@ -14,6 +28,9 @@ export function validateGetCenters(query) {
     dateRange: query.dateRange || 'today',
     startDate: query.startDate,
     endDate: query.endDate,
+    includeMetrics,
+    paginate,
+    ...pagination,
   };
 }
 
@@ -49,6 +66,7 @@ export function validateGetAttendees(query) {
   if (!Number.isFinite(id) || id <= 0) throw new ValidationError(400, 'centerId must be a positive integer');
   return {
     centerId: id,
+    userId: query.userId || null,
     startDate: query.startDate || null,
     endDate: query.endDate || null,
   };

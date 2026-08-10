@@ -11,6 +11,6 @@
  *   POST /api/nutrition-knowledge/approve  (promote draft → approved)
  *
  * Migration: backend/migrations/create_nutrition_master_profiles_table.sql
- * In-code seeds (Banana, Apple, Idli, Herbalife Shake, Afresh) apply when the
- * table is missing so local/dev still returns master hits.
+ * In-code seeds (Banana, Apple, Idli, Herbalife Shake, Afresh, Omelette, Onion)
+ * apply when the table is missing so local/dev still returns master hits.
  */

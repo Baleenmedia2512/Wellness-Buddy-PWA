@@ -1,31 +1,64 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { getUserId } from '../../../shared/services/userIdentity';
+import {
+  getLatestActivityLogId,
+  markWellnessScoreProcessed,
+  shouldRefreshWellnessScore,
+} from '../../../shared/services/homeDashboardActivity';
 import { fetchDailyWellnessScore } from '../services/wellnessScore.api';
+
+/** Session cache for daily score — survives Home remounts without a network hit. */
+const dailyScoreCache = new Map();
+
+function dailyKey(userId, date) {
+  return `${userId || ''}|${date || ''}`;
+}
 
 /**
  * Loads daily wellness score from the backend API.
- * Clears stale data when `date` changes and refetches on app resume.
- * When `nutritionRefreshKey` bumps (food/weight/camera saves), refetches in the
- * background so the home carousel score stays in sync with nutrition cards.
+ *
+ * Refetch rules (matches Home activity log):
+ * - First load / date change → fetch
+ * - `nutritionRefreshKey` bump after AI analysis / manual log / meal save → fetch
+ * - Tab switch / app resume with no new activity → keep cached score (no API call)
  */
 export function useWellnessScore({ user, apiBaseUrl, date, nutritionRefreshKey = 0 }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [data, setData] = useState(null);
+  const userIdRef = useRef(null);
 
-  const reload = useCallback(async ({ background = false } = {}) => {
+  const reload = useCallback(async ({ background = false, force = false } = {}) => {
     if (!user) {
       setLoading(false);
       setData(null);
       return;
     }
-    if (!background) setLoading(true);
-    setError(null);
+
     try {
-      const userId = user.id || (await getUserId(user));
+      const userId = user.id || userIdRef.current || (await getUserId(user));
       if (!userId) throw new Error('Unable to resolve user');
+      userIdRef.current = userId;
+
+      const key = dailyKey(userId, date);
+      const cached = dailyScoreCache.get(key);
+
+      // Skip network when nothing dashboard-affecting happened since last fetch.
+      if (!force && cached && !shouldRefreshWellnessScore()) {
+        setData(cached);
+        setError(null);
+        setLoading(false);
+        return;
+      }
+
+      if (!background) setLoading(true);
+      setError(null);
+
+      const activityLogAtFetch = getLatestActivityLogId();
       const score = await fetchDailyWellnessScore({ userId, date, apiBaseUrl });
+      dailyScoreCache.set(key, score);
       setData(score);
+      markWellnessScoreProcessed(activityLogAtFetch);
     } catch (err) {
       setError(err?.message || 'Failed to load wellness score');
       if (!background) setData(null);
@@ -41,27 +74,30 @@ export function useWellnessScore({ user, apiBaseUrl, date, nutritionRefreshKey =
   }, [date]);
 
   useEffect(() => {
-    reload();
+    reload({ force: shouldRefreshWellnessScore() });
   }, [reload]);
 
-  // Food/weight/camera saves bump nutritionRefreshKey via NutritionRefreshContext.
+  // Food/weight/camera / manual log bump nutritionRefreshKey via NutritionRefreshContext.
   const activityRefreshMounted = useRef(false);
   useEffect(() => {
     if (!activityRefreshMounted.current) {
       activityRefreshMounted.current = true;
       return;
     }
-    reload({ background: true });
+    if (!shouldRefreshWellnessScore()) return;
+    reload({ background: true, force: true });
   }, [nutritionRefreshKey, reload]);
 
-  // Foreground resume — pick up new IST day without requiring a full reload.
+  // Foreground resume — only refetch when a newer activity log exists.
   useEffect(() => {
     const onVisible = () => {
-      if (document.visibilityState === 'visible') reload();
+      if (document.visibilityState !== 'visible') return;
+      if (!shouldRefreshWellnessScore()) return;
+      reload({ background: true, force: true });
     };
     document.addEventListener('visibilitychange', onVisible);
     return () => document.removeEventListener('visibilitychange', onVisible);
   }, [reload]);
 
-  return { loading, error, data, reload };
+  return { loading, error, data, reload: () => reload({ force: true }) };
 }

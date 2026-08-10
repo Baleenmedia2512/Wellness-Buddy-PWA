@@ -22,6 +22,7 @@ export {
   resolveFoodTimestamp,
   filterFoodRowsByCalendarDay,
   filterFoodRowsByCalendarDateRange,
+  LEGACY_STORAGE_TIMEZONE,
 } from './foodTimestamp.js';
 
 export {

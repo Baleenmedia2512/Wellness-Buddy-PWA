@@ -21,6 +21,7 @@ export default function WeightFormFields({ weight, unit, onWeightChange, onToggl
           onChange={(e) => onWeightChange(e.target.value)}
           placeholder="e.g., 72.5"
           autoFocus
+          data-select-after-decimal="true"
           className="flex-1 min-w-0 px-3 py-2.5 border-2 border-gray-300 rounded-xl focus:border-emerald-400 focus:outline-none text-sm font-semibold bg-white"
           style={{ fontSize: '16px' }}
         />

@@ -40,11 +40,13 @@ export default function WellnessScoreCarouselCard({
   periodContext,
 }) {
   const today = useBusinessToday(user);
+  // Parent (home carousel) owns score fetch — never double-hit /daily while loading=null.
+  const parentOwnsScore = loadingProp !== undefined;
   const internal = useWellnessScore({
-    user: scoreDataProp == null ? user : null,
+    user: parentOwnsScore ? null : user,
     apiBaseUrl,
     date: today,
-    nutritionRefreshKey,
+    nutritionRefreshKey: parentOwnsScore ? 0 : nutritionRefreshKey,
   });
   const { size: ringSize, strokeWidth } = useResponsiveRing();
 

@@ -71,6 +71,7 @@ const AttendeeListModal = ({
   endDate,
   apiBaseUrl,
   timezoneIana,
+  userId,
 }) => {
   const formatTime = (timestamp) => formatBusinessTime(timestamp, timezoneIana);
   const [attendees, setAttendees] = useState([]);
@@ -92,6 +93,7 @@ const AttendeeListModal = ({
       const params = new URLSearchParams({ centerId: centreId });
       if (startDate) params.set('startDate', startDate);
       if (endDate) params.set('endDate', endDate);
+      if (userId) params.set('userId', userId);
       return fetch(`${apiBaseUrl}/api/nutrition-centers/attendees?${params}`, {
         cache: 'no-store',
         headers: { 'Cache-Control': 'no-cache' },

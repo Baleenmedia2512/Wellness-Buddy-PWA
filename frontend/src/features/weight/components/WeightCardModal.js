@@ -16,10 +16,12 @@ import {
 import { useWeightDetailImage } from '../hooks/useWeightDetailImage';
 import WeightDetailHeader from './WeightDetailHeader';
 import { captureAndShare } from '../../../shared/utils/shareUtils';
+import { DEFAULT_BUSINESS_TIMEZONE } from '../../../shared/utils/datetimeUtils';
 
 const WeightCardModal = ({
   data, onClose, onDelete, onUpdate, apiBaseUrl, userId = null,
   previousWeight = null, previousEntry = null, idealWeight = null,
+  timezoneIana = DEFAULT_BUSINESS_TIMEZONE,
 }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [editWeight, setEditWeight] = useState('');
@@ -59,7 +61,7 @@ const WeightCardModal = ({
   const changeInfo = formatWeightChangeLabel(displayWeight, previousWeight);
   const idealDisplay = pickIdealWeightDisplay(parseFloat(displayWeight), idealWeight);
   const previousDateLabel = previousEntry?.CreatedAt
-    ? formatHistoryDate(previousEntry.CreatedAt)
+    ? formatHistoryDate(previousEntry.CreatedAt, timezoneIana)
     : null;
 
   return (
@@ -75,6 +77,7 @@ const WeightCardModal = ({
           imageLoading={imageLoading}
           displayWeight={displayWeight}
           onClose={onClose}
+          timezoneIana={timezoneIana}
         />
 
         <div className="flex-1 overflow-y-auto p-5 space-y-4">
@@ -95,6 +98,7 @@ const WeightCardModal = ({
                   inputMode="decimal"
                   pattern="[0-9]*"
                   autoFocus
+                  data-select-after-decimal="true"
                   value={editWeight}
                   onChange={(e) => setEditWeight(e.target.value)}
                   className="w-full px-3 py-2 border-2 border-emerald-300 rounded-lg focus:border-emerald-500 focus:outline-none text-lg font-bold"

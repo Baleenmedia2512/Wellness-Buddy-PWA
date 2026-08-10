@@ -7,6 +7,8 @@
  * Business rules:
  * - Active coach → direct list = own DB downline; active child coaches manage their teams.
  * - Inactive coach → shown in parent's direct list; their active members roll up to parent.
+ * - Inactive nested leader (Role=user with a CoachId downline) → hidden from lists; their
+ *   active members roll up to the nearest active parent (same as inactive-coach rollup).
  * - Full scope → direct members + every descendant under them at all CoachId levels
  *   (not limited to Role=coach — nested leaders still expand).
  */
@@ -69,7 +71,7 @@ export function buildReportingContext(allUsers) {
 export async function loadReportingContext(supabase) {
   const { data: allUsers, error } = await supabase
     .from('team_table')
-    .select('UserId, UserName, Email, Role, CoachId, CoachTeamId, Status, ProfileImage, PhoneNumber, Height');
+    .select('UserId, UserName, Email, Role, CoachId, CoachTeamId, Status, PhoneNumber, Height');
 
   if (error) throw new Error('Failed to fetch team data: ' + error.message);
   return buildReportingContext(allUsers || []);
@@ -116,17 +118,18 @@ export function resolveEffectiveCoachId(coachId, context) {
 }
 
 /**
- * Collect active members rolled up from under an inactive coach subtree.
- * @param {number} inactiveCoachId
+ * Collect active members rolled up from under an inactive parent subtree
+ * (inactive coach OR inactive nested leader with a downline).
+ * @param {number} inactiveParentId
  * @param {ReportingContext} context
  * @param {Set<number>} [visited]
  * @returns {TeamUser[]}
  */
-export function collectRolledUpDescendants(inactiveCoachId, context, visited = new Set()) {
-  if (visited.has(inactiveCoachId)) return [];
-  visited.add(inactiveCoachId);
+export function collectRolledUpDescendants(inactiveParentId, context, visited = new Set()) {
+  if (visited.has(inactiveParentId)) return [];
+  visited.add(inactiveParentId);
 
-  const children = context.dbChildrenByCoachId.get(inactiveCoachId) || [];
+  const children = context.dbChildrenByCoachId.get(inactiveParentId) || [];
   const result = [];
 
   for (const child of children) {
@@ -140,6 +143,9 @@ export function collectRolledUpDescendants(inactiveCoachId, context, visited = n
       result.push(...collectRolledUpDescendants(child.UserId, context, visited));
     } else if (childIsActive) {
       result.push(child);
+    } else {
+      // Inactive nested leader (Role=user): keep rolling their downline upward.
+      result.push(...collectRolledUpDescendants(child.UserId, context, visited));
     }
   }
 
@@ -181,7 +187,17 @@ export function collectFullSubtreeUnderActiveCoach(coachUserId, context) {
       continue;
     }
 
-    if (!childIsActive) continue;
+    if (!childIsActive) {
+      // Inactive nested leader (Role=user): hide them, roll active descendants up.
+      for (const rolled of collectRolledUpDescendants(child.UserId, context)) {
+        result.set(rolled.UserId, rolled);
+        if (isActiveTeamStatus(rolled.Status)) {
+          const rolledKids = context.dbChildrenByCoachId.get(Number(rolled.UserId)) || [];
+          if (rolledKids.length) queue.push(...rolledKids);
+        }
+      }
+      continue;
+    }
 
     result.set(child.UserId, child);
 
@@ -224,6 +240,11 @@ export function getDirectReportingMembers(coachId, context) {
       }
     } else if (childIsActive) {
       result.set(child.UserId, child);
+    } else {
+      // Inactive nested leader (Role=user with downline): roll active kids to parent.
+      for (const rolled of collectRolledUpDescendants(child.UserId, context)) {
+        result.set(rolled.UserId, rolled);
+      }
     }
   }
 
@@ -321,10 +342,12 @@ export function buildReportingChildrenIndex(context, rootCoachId) {
 }
 
 const TEAM_USER_SELECT =
-  'UserId, UserName, Email, Role, CoachId, CoachTeamId, Status, ProfileImage, PhoneNumber, Height';
+  // Never select ProfileImage here — base64 avatars made list-for-coach ~14MB for ~35 members.
+  'UserId, UserName, Email, Role, CoachId, CoachTeamId, Status, PhoneNumber, Height';
 const MAX_SUBTREE_DEPTH = 12;
 const SUBTREE_CONTEXT_CACHE = new Map();
 const SUBTREE_CONTEXT_TTL_MS = 60_000;
+const SUBTREE_CACHE_KEY_PREFIX = 'v3:'; // bump when select columns or rollup rules change
 
 /**
  * @param {object} supabase
@@ -392,7 +415,7 @@ export async function loadReportingContextForCoach(supabase, rootCoachId) {
   const rootId = Number(rootCoachId);
   if (!Number.isFinite(rootId)) return buildReportingContext([]);
 
-  const cacheKey = String(rootId);
+  const cacheKey = `${SUBTREE_CACHE_KEY_PREFIX}${rootId}`;
   const now = Date.now();
   const cached = SUBTREE_CONTEXT_CACHE.get(cacheKey);
   if (cached && cached.expiresAt > now) return cached.value;

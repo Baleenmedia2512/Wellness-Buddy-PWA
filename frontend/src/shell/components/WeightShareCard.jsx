@@ -395,10 +395,10 @@ export const WeightShareCard = forwardRef(function WeightShareCard(
                               }}
                             >
                               {weightDiff.change > 0
-                                ? "?"
+                                ? "↑"
                                 : weightDiff.change < 0
-                                ? "?"
-                                : "�"}{" "}
+                                ? "↓"
+                                : "·"}{" "}
                               {weightDiff.change === 0
                                 ? "No change"
                                 : Math.abs(weightDiff.change) < 1

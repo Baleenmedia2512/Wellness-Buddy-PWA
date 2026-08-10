@@ -7,6 +7,10 @@ import {
   isBusinessYesterday,
   DEFAULT_BUSINESS_TIMEZONE,
 } from '../../../shared/utils/datetimeUtils';
+import {
+  fetchEducationLogImage,
+  peekEducationLogImage,
+} from '../services/educationImageCache';
 
 const MAX_SWIPE_DISTANCE = 140;
 const DELETE_THRESHOLD = 100;
@@ -36,27 +40,24 @@ const getPlatformColor = (platform) => {
   return 'from-indigo-500 to-purple-600';
 };
 
-/** Format date with day and time in the business timezone. */
-const formatDate = (dateString) => {
+/** Format date with day and time in the owner's business timezone. */
+const formatDate = (dateString, timezoneIana = DEFAULT_BUSINESS_TIMEZONE) => {
   if (!dateString) return '';
-
-  if (isBusinessToday(dateString, DEFAULT_BUSINESS_TIMEZONE)) {
-    return `Today ${formatBusinessTime(dateString, DEFAULT_BUSINESS_TIMEZONE)}`;
+  if (isBusinessToday(dateString, timezoneIana)) {
+    return `Today ${formatBusinessTime(dateString, timezoneIana)}`;
   }
-
-  if (isBusinessYesterday(dateString, DEFAULT_BUSINESS_TIMEZONE)) {
-    return `Yesterday ${formatBusinessTime(dateString, DEFAULT_BUSINESS_TIMEZONE)}`;
+  if (isBusinessYesterday(dateString, timezoneIana)) {
+    return `Yesterday ${formatBusinessTime(dateString, timezoneIana)}`;
   }
-
   return formatUtcDate(dateString, {
     month: 'short',
     day: 'numeric',
     year: 'numeric',
-    timeZone: DEFAULT_BUSINESS_TIMEZONE,
+    timeZone: timezoneIana,
   });
 };
 
-const EducationCard = React.memo(({ data, onDelete, onClick, index = 0, apiBaseUrl, userId }) => {
+const EducationCard = React.memo(({ data, onDelete, onClick, index = 0, apiBaseUrl, userId, timezoneIana = DEFAULT_BUSINESS_TIMEZONE }) => {
   const [dx, setDx] = useState(0);
   const [dragging, setDragging] = useState(false);
   const [animating, setAnimating] = useState(false);
@@ -103,26 +104,34 @@ const EducationCard = React.memo(({ data, onDelete, onClick, index = 0, apiBaseU
     return () => observer.disconnect();
   }, []);
 
-  // Lazy-load thumbnail: fetch full image from API and use it as thumbnail
+  // Lazy-load thumbnail: fetch full image from API (shared cache with detail modal)
   useEffect(() => {
     if (!imageVisible) return;
     if (!data?.hasFullImage || !apiBaseUrl || !userId || !data?.Id) return;
     if (thumbnailSrc) return;
 
+    const cached = peekEducationLogImage(apiBaseUrl, userId, data.Id);
+    if (cached) {
+      setThumbnailSrc(cached);
+      return undefined;
+    }
+
     let cancelled = false;
-    fetch(`${apiBaseUrl}/api/education/log-image?logId=${data.Id}&userId=${userId}`)
-      .then((r) => r.json())
-      .then((res) => {
-        if (cancelled) return;
-        if (res.success && res.imageBase64) {
-          const src = res.imageBase64.startsWith('data:')
-            ? res.imageBase64
-            : `data:image/jpeg;base64,${res.imageBase64}`;
-          setThumbnailSrc(src);
-        }
+    const controller = new AbortController();
+    fetchEducationLogImage({
+      apiBaseUrl,
+      userId,
+      logId: data.Id,
+      signal: controller.signal,
+    })
+      .then((src) => {
+        if (!cancelled && src) setThumbnailSrc(src);
       })
       .catch(() => {/* silently ignore */});
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
   }, [imageVisible, data?.Id, data?.hasFullImage, apiBaseUrl, userId, thumbnailSrc]);
 
   if (!data || !data.CreatedAt) {
@@ -340,7 +349,7 @@ const EducationCard = React.memo(({ data, onDelete, onClick, index = 0, apiBaseU
 
             {/* Platform & Date */}
             <p className="text-xs sm:text-sm text-gray-500 truncate mt-0.5">
-              {data.Platform || 'Online Meeting'} • {formatDate(data.CreatedAt)}
+              {data.Platform || 'Online Meeting'} • {formatDate(data.CreatedAt, timezoneIana)}
             </p>
           </div>
         </div>
