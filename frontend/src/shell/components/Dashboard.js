@@ -1340,6 +1340,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
           captureId={classifyFlow.captureId}
           imageBase64={classifyFlow.imageBase64}
           originalCapturedAt={classifyFlow.originalCapturedAt}
+          discardCaptureOnCancel={false}
           onBack={() => {
             setClassifyFlow(null);
             reloadDiary();

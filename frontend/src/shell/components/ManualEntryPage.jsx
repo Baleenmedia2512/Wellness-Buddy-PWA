@@ -217,6 +217,11 @@ export default function ManualEntryPage({
   captureId,
   imageBase64,
   originalCapturedAt = null,
+  /**
+   * Post-camera/gallery: Cancel removes the orphan capture (Don't Log).
+   * Diary re-classify: Cancel only closes — the existing diary row must stay.
+   */
+  discardCaptureOnCancel = true,
   onBack,
   onSaved,
   onStartBackgroundAi,
@@ -401,7 +406,7 @@ export default function ManualEntryPage({
     onBack?.();
   };
 
-  /** Discard capture and leave — must not remain in Diary as unknown/Other. */
+  /** Close classify — optionally discard a new capture (not when opened from Diary). */
   const handleCloseWithoutLog = () => {
     if (closingWithoutLog) return;
     // Allow cancel while Auto Detect is only queued (photo still saving).
@@ -414,7 +419,7 @@ export default function ManualEntryPage({
     const uid = userId;
     // Leave immediately — awaiting delete felt like a hang under network load.
     onBack?.();
-    if (id && uid) {
+    if (discardCaptureOnCancel && id && uid) {
       void deleteCapture({ captureId: id, userId: uid }).catch(() => {
         onToast?.("Couldn't discard photo — it may still appear in Diary.");
       });
@@ -916,17 +921,21 @@ export default function ManualEntryPage({
           </div>
         </section>
 
-        {/* Footer — discard capture (not saved to Diary) and return */}
+        {/* Footer — new capture: discard row; diary re-classify: close only */}
         <button
           type="button"
           onClick={handleCloseWithoutLog}
           disabled={closingWithoutLog || (aiStarting && !pendingAi)}
-          className="safe-bottom log-as-btn log-as-btn--idle inline-flex w-full shrink-0 items-center justify-center gap-2 rounded-xl border-2 border-red-200 bg-gradient-to-b from-white to-red-50/40 py-3 text-sm font-bold text-red-600 shadow-[0_3px_0_0_rgba(220,38,38,0.2)] transition-[transform,box-shadow] duration-150 active:translate-y-[2px] active:shadow-[0_1px_0_0_rgba(220,38,38,0.18)] disabled:opacity-50 min-[360px]:py-3.5"
+          className={`safe-bottom log-as-btn log-as-btn--idle inline-flex w-full shrink-0 items-center justify-center gap-2 rounded-xl border-2 py-3 text-sm font-bold shadow-[0_3px_0_0_rgba(0,0,0,0.08)] transition-[transform,box-shadow] duration-150 active:translate-y-[2px] disabled:opacity-50 min-[360px]:py-3.5 ${
+            discardCaptureOnCancel
+              ? 'border-red-200 bg-gradient-to-b from-white to-red-50/40 text-red-600 shadow-[0_3px_0_0_rgba(220,38,38,0.2)] active:shadow-[0_1px_0_0_rgba(220,38,38,0.18)]'
+              : 'border-gray-200 bg-white text-gray-700 active:shadow-[0_1px_0_0_rgba(0,0,0,0.06)]'
+          }`}
         >
           {closingWithoutLog && (
             <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
           )}
-          Cancel, Don't Log
+          {discardCaptureOnCancel ? "Cancel, Don't Log" : 'Cancel'}
         </button>
       </main>
 
