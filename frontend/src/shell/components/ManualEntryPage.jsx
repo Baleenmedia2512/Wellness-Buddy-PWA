@@ -271,11 +271,11 @@ export default function ManualEntryPage({
     }
   }, [creditsEnabled, userId, apiBaseUrl]);
 
-  // Defer credits fetch until photo is saved — frees connections for POST /captures.
+  // Fetch credits on mount (parallel with capture upload) so Auto Detect
+  // fills the 9th LOG AS cell immediately instead of after photo save.
   useEffect(() => {
-    if (!captureReady) return;
     refreshCredits();
-  }, [captureReady, refreshCredits]);
+  }, [refreshCredits]);
 
   // Light beverage summary (AnalysisData only — no images). Powers water ml + Afresh scoops.
   const loadBeverageToday = useCallback((opts = {}) => {
@@ -695,11 +695,15 @@ export default function ManualEntryPage({
   };
 
   // Don't treat credits as available until status has loaded — avoids green CTA flash then lock.
-  const creditsChecking = creditsEnabled && creditsLoading;
+  const creditsChecking = creditsEnabled && creditsLoading && !credits;
   const outOfCredits = creditsEnabled && credits != null && (credits.remaining ?? 0) <= 0;
-  // Only show AI CTA / credits when mode is confirmed on — never surface “AI off” to users.
+  // Show AI CTA when confirmed on; while status loads, reserve the grid cell with a checking tile.
+  // Hide only after status returns with AI mode off — never leave a permanent “AI off” label.
   const showCreditsPanel = creditsEnabled && credits != null && credits.enabled === true;
-  const showAiButton = !creditsEnabled || (credits != null && credits.enabled === true);
+  const showAiButton =
+    !creditsEnabled ||
+    creditsChecking ||
+    (credits != null && credits.enabled === true);
   const aiDisabled =
     (aiStarting && !pendingAi) || outOfCredits || creditsChecking || closingWithoutLog;
   const logAsDisabled = closingWithoutLog || (aiStarting && !pendingAi);
@@ -831,15 +835,33 @@ export default function ManualEntryPage({
                     />
                   )}
                 </div>
+              ) : creditsChecking ? (
+                <div
+                  className={`${LOG_AS_BTN_SELECTED} cursor-default opacity-80`}
+                  aria-busy="true"
+                  aria-label="Auto Detect — checking credits"
+                >
+                  <LogAsIconWrap selected compact>
+                    <Loader2 className="h-7 w-7 animate-spin text-white min-[360px]:h-8 min-[360px]:w-8 min-[400px]:h-9 min-[400px]:w-9 sm:h-10 sm:w-10" />
+                  </LogAsIconWrap>
+                  <span className="max-w-full truncate whitespace-nowrap px-0.5 text-[10px] font-semibold leading-tight text-white min-[360px]:text-[11px] min-[400px]:text-[12px] sm:text-[13px]">
+                    Auto Detect
+                  </span>
+                  <p className="max-w-full truncate whitespace-nowrap text-[7px] font-semibold text-emerald-100/80 min-[360px]:text-[8px] min-[400px]:text-[9px] sm:text-[10px]">
+                    Checking…
+                  </p>
+                </div>
               ) : (
                 <button
                   type="button"
                   onClick={handleAiAnalyze}
                   disabled={aiDisabled}
-                  className={[
-                    LOG_AS_BTN_SELECTED,
-                    creditsChecking ? 'opacity-80' : '',
-                  ].join(' ')}
+                  className={LOG_AS_BTN_SELECTED}
+                  aria-label={
+                    showCreditsPanel && credits
+                      ? `Auto Detect ${Math.max(0, Number(credits.remaining) ?? 0)} of ${Math.max(0, Number(credits.dailyLimit) || 0)} Left`
+                      : 'Auto Detect'
+                  }
                 >
                   <LogAsIconWrap selected compact={Boolean(showCreditsPanel)}>
                     {aiStarting || pendingAi ? (
@@ -858,11 +880,7 @@ export default function ManualEntryPage({
                       </span>
                       {' of '}
                       {Math.max(0, Number(credits.dailyLimit) || 0)}
-                    </p>
-                  )}
-                  {showCreditsPanel && creditsLoading && !credits && (
-                    <p className="text-[7px] text-emerald-100/80 min-[360px]:text-[8px] min-[400px]:text-[9px] sm:text-[10px]">
-                      Checking…
+                      {' Left'}
                     </p>
                   )}
                 </button>
