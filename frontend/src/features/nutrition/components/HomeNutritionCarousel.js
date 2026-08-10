@@ -39,81 +39,83 @@ import NutritionCarousel from './dashboard/NutritionCarousel';
 
 
 export default function HomeNutritionCarousel({
-
   user,
-
   apiBaseUrl,
-
   bmrUpdateKey = 0,
-
   nutritionRefreshKey = 0,
-
   watchBurnedCalories = 0,
-
   onOpenWellnessScore,
-
   onOpenWellnessScoreSetup,
-
+  /** Controlled date range from App — keeps Home ↔ Wellness Score sheet in sync. */
+  dateRange: dateRangeProp,
+  customStartDate: customStartDateProp,
+  customEndDate: customEndDateProp,
+  onDateRangeChange: onDateRangeChangeProp,
 }) {
-
   const today = useBusinessToday(user);
+  const [dateRangeLocal, setDateRangeLocal] = useState('today');
+  const [customStartDateLocal, setCustomStartDateLocal] = useState(null);
+  const [customEndDateLocal, setCustomEndDateLocal] = useState(null);
 
-  const [dateRange, setDateRange] = useState('today');
-
-  const [customStartDate, setCustomStartDate] = useState(null);
-
-  const [customEndDate, setCustomEndDate] = useState(null);
-
-
+  const isControlled = dateRangeProp !== undefined;
+  const dateRange = isControlled ? dateRangeProp : dateRangeLocal;
+  const customStartDate = isControlled ? (customStartDateProp ?? null) : customStartDateLocal;
+  const customEndDate = isControlled ? (customEndDateProp ?? null) : customEndDateLocal;
 
   const resolveUserId = useResolveUserId({ user, apiBaseUrl });
-
   const { calorieTarget, bmrLoading } = useUserCalorieTarget({ user, apiBaseUrl, bmrUpdateKey });
-
   const { latestWeight, gender } = useUserLatestWeight({ user, apiBaseUrl });
 
-
-
   const carouselData = useHomeCarouselData({
-
     user,
-
     apiBaseUrl,
-
     resolveUserId,
-
     nutritionRefreshKey,
     watchBurnedCalories,
-
     dateRange,
-
     customStartDate,
-
     customEndDate,
-
     today,
-
   });
 
-
-
   const handleDateRangeChange = useCallback((nextRange) => {
-    setDateRange(nextRange);
-  }, []);
+    if (isControlled) {
+      onDateRangeChangeProp?.({
+        dateRange: nextRange,
+        customStartDate: nextRange === 'custom' ? customStartDate : null,
+        customEndDate: nextRange === 'custom' ? customEndDate : null,
+      });
+      return;
+    }
+    setDateRangeLocal(nextRange);
+    if (nextRange !== 'custom') {
+      setCustomStartDateLocal(null);
+      setCustomEndDateLocal(null);
+    }
+  }, [isControlled, onDateRangeChangeProp, customStartDate, customEndDate]);
 
   const handleCustomDateSelect = useCallback((start, end) => {
-    setCustomStartDate(start);
-    setCustomEndDate(end);
-    setDateRange('custom');
-  }, []);
+    if (isControlled) {
+      onDateRangeChangeProp?.({
+        dateRange: 'custom',
+        customStartDate: start,
+        customEndDate: end,
+      });
+      return;
+    }
+    setCustomStartDateLocal(start);
+    setCustomEndDateLocal(end);
+    setDateRangeLocal('custom');
+  }, [isControlled, onDateRangeChangeProp]);
 
-  /** Open full sheet on Today — Home "Yesterday" must not stick into the sheet. */
+  /** Open full sheet on the same date range currently selected on Home. */
   const handleOpenWellnessScore = useCallback(() => {
-    setDateRange('today');
-    setCustomStartDate(null);
-    setCustomEndDate(null);
-    onOpenWellnessScore?.();
-  }, [onOpenWellnessScore]);
+    onOpenWellnessScore?.({
+      dateRange,
+      customStartDate,
+      customEndDate,
+    });
+  }, [onOpenWellnessScore, dateRange, customStartDate, customEndDate]);
 
   const hasLoadedOnce = useRef(false);
 
@@ -128,8 +130,11 @@ export default function HomeNutritionCarousel({
       <WellnessScoreCarouselCard
         key="wellness-score"
         user={user}
+        apiBaseUrl={apiBaseUrl}
         scoreData={carouselData.wellnessScore}
         loading={carouselData.wellnessLoading}
+        // Single-day (Today/Yesterday): live /daily fetch so Home stays in sync with sheet.
+        liveScoreDate={carouselData.isMultiDay ? null : carouselData.rangeKey}
         scoreSubtitle={carouselData.wellnessSubtitle}
         periodContext={carouselData.periodContext}
         onOpen={handleOpenWellnessScore}
@@ -139,6 +144,7 @@ export default function HomeNutritionCarousel({
     );
   }, [
     user,
+    apiBaseUrl,
     handleOpenWellnessScore,
     onOpenWellnessScore,
     onOpenWellnessScoreSetup, nutritionRefreshKey,
@@ -146,6 +152,8 @@ export default function HomeNutritionCarousel({
     carouselData.wellnessLoading,
     carouselData.wellnessSubtitle,
     carouselData.periodContext,
+    carouselData.isMultiDay,
+    carouselData.rangeKey,
   ]);
 
 

@@ -151,6 +151,7 @@ export function useHomeCarouselData({
   const requestIdRef = useRef(0);
   const lastUserIdRef = useRef(null);
   const resolvedUserIdRef = useRef(null);
+  const loadDataRef = useRef(null);
 
   const applyPayload = useCallback((payload) => {
     setNutrition(payload.nutrition);
@@ -165,6 +166,7 @@ export function useHomeCarouselData({
     }
 
     const requestId = ++requestIdRef.current;
+    const activityLogAtFetch = getLatestActivityLogId();
     const dates = enumerateDatesYmd(range.startDate, range.endDate);
     const placeholderNutrition = { ...EMPTY_NUTRITION, dayCount: dates.length };
 
@@ -195,7 +197,7 @@ export function useHomeCarouselData({
       if (cached) {
         applyPayload(cached);
         setLoading(false);
-        markHomeDashboardProcessed(getLatestActivityLogId());
+        markHomeDashboardProcessed(activityLogAtFetch);
         return;
       }
 
@@ -227,12 +229,22 @@ export function useHomeCarouselData({
       if (requestId !== requestIdRef.current) return;
 
       const payload = { nutrition: nextNutrition, wellnessScore: nextWellness };
+
+      // If food/AI finished while this request was in flight, a newer activity
+      // log exists — paint what we have but do NOT mark Home processed or the
+      // post-save refresh will be skipped and the main-page score stays stale.
+      if (getLatestActivityLogId() !== activityLogAtFetch) {
+        applyPayload(payload);
+        queueMicrotask(() => {
+          if (!shouldRefreshHomeDashboard() || isCaptureFlowBusy()) return;
+          loadDataRef.current?.({ force: true });
+        });
+        return;
+      }
+
       writeCache(userId, range.startDate, range.endDate, payload);
       applyPayload(payload);
-      // Home owns only the Home watermark. Wellness Score sheet/hook own
-      // markWellnessScoreProcessed + wellnessScoreSnapshot — marking wellness
-      // here from a Home fetch (or worse, a stale cache hit) silenced the sheet.
-      markHomeDashboardProcessed(getLatestActivityLogId());
+      markHomeDashboardProcessed(activityLogAtFetch);
 
       // Warm Yesterday after Today so the common switch is cache-hit instant.
       if (!range.isMultiDay && range.endDate === today) {
@@ -269,6 +281,8 @@ export function useHomeCarouselData({
     today,
   ]);
 
+  loadDataRef.current = loadData;
+
   // Range change: prefer cache (instant). Force refresh only when meals change.
   useEffect(() => {
     loadData({ force: false });
@@ -282,8 +296,14 @@ export function useHomeCarouselData({
     }
   }, []);
 
-  const refreshAfterActivity = useCallback(() => {
-    if (!shouldRefreshHomeDashboard()) return;
+  /**
+   * @param {{ force?: boolean }} [opts]
+   * force=true: always refetch (nutritionRefreshKey bump is intentional).
+   * force=false: only when activity watermark is dirty (busy-clear retry).
+   */
+  const refreshAfterActivity = useCallback((opts = {}) => {
+    const { force = false } = opts;
+    if (!force && !shouldRefreshHomeDashboard()) return;
     invalidateUserRangeCache();
     // Do not compete with POST /captures while Manual Log is opening — cache is
     // already dropped so the retry below (or next key bump) cannot serve stale.
@@ -293,14 +313,16 @@ export function useHomeCarouselData({
 
   useEffect(() => {
     if (nutritionRefreshKey === 0) return;
-    refreshAfterActivity();
+    // Key bump always means a mutation completed — never skip via watermark.
+    // (Watermark race with capture-ai-started used to swallow capture-food-saved.)
+    refreshAfterActivity({ force: true });
   }, [nutritionRefreshKey]); // eslint-disable-line react-hooks/exhaustive-deps -- only on meal refresh
 
   // When capture upload finishes, retry any refresh skipped while busy.
   useEffect(() => {
     return subscribeCaptureFlowBusy((busy) => {
       if (busy) return;
-      refreshAfterActivity();
+      refreshAfterActivity({ force: false });
     });
   }, [refreshAfterActivity]);
 

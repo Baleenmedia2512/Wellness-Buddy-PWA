@@ -105,6 +105,7 @@ import {
   saveNutritionAnalysis,
   deleteNutritionAnalysis,
 } from "./features/nutrition";
+import { seedDailyWellnessScoreCache } from "./features/wellness-score-sheet/hooks/useWellnessScore";
 import { analyzeImage as orchestrateAnalyzeImage } from "./shared/services/orchestratorService";
 import {
   reserveAiCredit,
@@ -956,8 +957,19 @@ function WellnessValleyApp() {
   const [reportsDashboardTab, setReportsDashboardTab] = useState(REPORT_DASHBOARD_TABS.IDEAL_WEIGHT);
   const [showWellnessScore, setShowWellnessScore] = useState(false);
   const [showWellnessScoreSetup, setShowWellnessScoreSetup] = useState(false);
-  /** Remount key so each open starts on Today (no leftover Yesterday state). */
+  /** Remount key so each open picks up the Home date-range selection cleanly. */
   const [wellnessScoreSession, setWellnessScoreSession] = useState(0);
+  const [wellnessScoreInitialRange, setWellnessScoreInitialRange] = useState({
+    dateRange: 'today',
+    customStartDate: null,
+    customEndDate: null,
+  });
+  /** Shared Home ↔ Wellness Score date filter (Today / Yesterday / …). */
+  const [homeCarouselDateRange, setHomeCarouselDateRange] = useState({
+    dateRange: 'today',
+    customStartDate: null,
+    customEndDate: null,
+  });
   const [showAiCreditsSetup, setShowAiCreditsSetup] = useState(false);
   const [showManualEntry, setShowManualEntry] = useState(() => {
     const pending = Session.getPendingClassifyCapture();
@@ -7454,12 +7466,37 @@ function WellnessValleyApp() {
           user={user}
           apiBaseUrl={apiBaseUrl}
           nutritionRefreshKey={nutritionRefreshKey}
-          initialDateRange="today"
-          onBack={() => {
+          initialDateRange={wellnessScoreInitialRange.dateRange}
+          initialCustomStartDate={wellnessScoreInitialRange.customStartDate}
+          initialCustomEndDate={wellnessScoreInitialRange.customEndDate}
+          onBack={(rangeOpts = {}) => {
             setShowWellnessScore(false);
-            // If food/config activity left Home's watermark dirty (e.g. busy gate),
-            // pick it up when returning from the score sheet — no page reload.
-            refreshOnTabFocus();
+            // Sync sheet date filter back to Home (e.g. Yesterday → Today).
+            if (rangeOpts.dateRange) {
+              const next = {
+                dateRange: rangeOpts.dateRange,
+                customStartDate: rangeOpts.customStartDate ?? null,
+                customEndDate: rangeOpts.customEndDate ?? null,
+              };
+              setHomeCarouselDateRange(next);
+              setWellnessScoreInitialRange(next);
+            }
+            // Push sheet score into Home's daily cache so the carousel card
+            // cannot stay on an older total (e.g. Home 334 vs sheet 349).
+            if (
+              rangeOpts.scoreData
+              && rangeOpts.userId
+              && rangeOpts.scoreDate
+              && !rangeOpts.isMultiDay
+            ) {
+              seedDailyWellnessScoreCache(
+                rangeOpts.userId,
+                rangeOpts.scoreDate,
+                rangeOpts.scoreData,
+              );
+            }
+            // Force Home live score hook to refetch / pick up seeded cache.
+            triggerNutritionRefresh({ immediate: true, source: 'wellness-score-closed' });
             const currentWvPage = window.history.state?.wvPage;
             if (currentWvPage && currentWvPage !== 'main') window.history.back();
           }}
@@ -7957,7 +7994,26 @@ function WellnessValleyApp() {
               bmrUpdateKey={bmrUpdateKey}
               nutritionRefreshKey={nutritionRefreshKey}
               watchBurnedCalories={watchBurnedCalories}
-              onOpenWellnessScore={() => navigateTo('wellness-score')}
+              dateRange={homeCarouselDateRange.dateRange}
+              customStartDate={homeCarouselDateRange.customStartDate}
+              customEndDate={homeCarouselDateRange.customEndDate}
+              onDateRangeChange={(next) => {
+                setHomeCarouselDateRange({
+                  dateRange: next.dateRange || 'today',
+                  customStartDate: next.customStartDate ?? null,
+                  customEndDate: next.customEndDate ?? null,
+                });
+              }}
+              onOpenWellnessScore={(rangeOpts = {}) => {
+                const next = {
+                  dateRange: rangeOpts.dateRange || homeCarouselDateRange.dateRange || 'today',
+                  customStartDate: rangeOpts.customStartDate ?? homeCarouselDateRange.customStartDate ?? null,
+                  customEndDate: rangeOpts.customEndDate ?? homeCarouselDateRange.customEndDate ?? null,
+                };
+                setWellnessScoreInitialRange(next);
+                setHomeCarouselDateRange(next);
+                navigateTo('wellness-score');
+              }}
               onOpenWellnessScoreSetup={
                 ['admin', 'developer'].includes(userRole)
                   ? () => navigateTo('wellness-score-setup')
