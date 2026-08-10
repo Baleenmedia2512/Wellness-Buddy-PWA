@@ -1,6 +1,7 @@
 /**
  * useWellnessScoreReport — cache-first UI, background refresh, fast date switches.
  * Prefetches Yesterday after Today loads so date taps feel instant.
+ * Supports interactive column sort (sort + sortDir) with server pagination.
  */
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
@@ -16,6 +17,11 @@ import {
   yesterdayBusinessDate,
   dateToBusinessYmd,
 } from '../utils/reportDateFilter.js';
+import {
+  REPORT_SORT_KEYS,
+  REPORT_SORT_DIRS,
+  nextReportSortState,
+} from '../utils/wellnessScoreReportSort.js';
 
 const SEARCH_DEBOUNCE_MS = 300;
 
@@ -36,14 +42,15 @@ function applyPayload(data, date, setters) {
   setters.setRows(pageMembers);
 }
 
-function prefetchReportPage(coachId, { page, search, teamFilter, date }) {
+function prefetchReportPage(coachId, { page, search, teamFilter, date, sort, sortDir }) {
   if (!coachId || !date) return;
   const peek = peekWellnessScoreReportCache(coachId, {
     page,
     limit: WELLNESS_SCORE_REPORT_PAGE_SIZE,
     search,
     teamFilter,
-    sort: 'score',
+    sort,
+    sortDir,
     date,
   });
   if (peek.fresh) return;
@@ -52,18 +59,22 @@ function prefetchReportPage(coachId, { page, search, teamFilter, date }) {
     limit: WELLNESS_SCORE_REPORT_PAGE_SIZE,
     search,
     teamFilter,
-    sort: 'score',
+    sort,
+    sortDir,
     date,
   }).catch(() => {});
 }
 
 export function useWellnessScoreReport({ coachId, tabVisitKey = 0 }) {
+  /** @type {[import('../utils/wellnessScoreReportSort.js').WellnessScoreReportRow[], Function]} */
   const [rows, setRows] = useState([]);
   const [teamScope, setTeamScope] = useState(TEAM_SCOPES.DIRECT);
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [datePreset, setDatePreset] = useState(DATE_PRESETS.TODAY);
   const [customDate, setCustomDate] = useState(null);
+  const [sort, setSort] = useState(REPORT_SORT_KEYS.SCORE);
+  const [sortDir, setSortDir] = useState(REPORT_SORT_DIRS.DESC);
   const [teamScopeCounts, setTeamScopeCounts] = useState({
     mine: 0,
     direct: 0,
@@ -90,6 +101,8 @@ export function useWellnessScoreReport({ coachId, tabVisitKey = 0 }) {
     teamScope,
     debouncedSearch,
     selectedDate: resolveReportScoreDate(datePreset, customDate),
+    sort,
+    sortDir,
     paginationPage: 1,
   });
 
@@ -99,6 +112,8 @@ export function useWellnessScoreReport({ coachId, tabVisitKey = 0 }) {
     teamScope,
     debouncedSearch,
     selectedDate,
+    sort,
+    sortDir,
     paginationPage: pagination.page || 1,
   };
   rowsLenRef.current = rows.length;
@@ -127,7 +142,7 @@ export function useWellnessScoreReport({ coachId, tabVisitKey = 0 }) {
     setSearchQuery('');
   }, [teamScope]);
 
-  const schedulePrefetchNeighbors = useCallback((id, scope, search, date) => {
+  const schedulePrefetchNeighbors = useCallback((id, scope, search, date, sortKey, sortDirection) => {
     if (!id || !date) return;
     window.setTimeout(() => {
       if (!mountedRef.current) return;
@@ -138,14 +153,17 @@ export function useWellnessScoreReport({ coachId, tabVisitKey = 0 }) {
           search,
           teamFilter: scope,
           date: yesterday,
+          sort: sortKey,
+          sortDir: sortDirection,
         });
       }
-      // Prefetch page 2 of current date
       prefetchReportPage(id, {
         page: 2,
         search,
         teamFilter: scope,
         date,
+        sort: sortKey,
+        sortDir: sortDirection,
       });
     }, 80);
   }, []);
@@ -160,6 +178,8 @@ export function useWellnessScoreReport({ coachId, tabVisitKey = 0 }) {
       teamScope: scope,
       debouncedSearch: search,
       selectedDate: date,
+      sort: sortKey,
+      sortDir: sortDirection,
     } = stateRef.current;
     if (!id) return null;
 
@@ -170,7 +190,8 @@ export function useWellnessScoreReport({ coachId, tabVisitKey = 0 }) {
       limit: WELLNESS_SCORE_REPORT_PAGE_SIZE,
       search,
       teamFilter: scope,
-      sort: 'score',
+      sort: sortKey,
+      sortDir: sortDirection,
       date,
     });
 
@@ -179,12 +200,11 @@ export function useWellnessScoreReport({ coachId, tabVisitKey = 0 }) {
       setLoading(false);
       if (peek.fresh && !background) {
         setRefreshing(false);
-        schedulePrefetchNeighbors(id, scope, search, date);
+        schedulePrefetchNeighbors(id, scope, search, date, sortKey, sortDirection);
         return peek.payload;
       }
       setRefreshing(true);
     } else if (!background && rowsLenRef.current === 0) {
-      // First paint only — keep existing rows visible when switching dates.
       setLoading(true);
     } else {
       setRefreshing(true);
@@ -197,7 +217,8 @@ export function useWellnessScoreReport({ coachId, tabVisitKey = 0 }) {
         limit: WELLNESS_SCORE_REPORT_PAGE_SIZE,
         search,
         teamFilter: scope,
-        sort: 'score',
+        sort: sortKey,
+        sortDir: sortDirection,
         date,
         bustCache: bustCache || Boolean(peek.payload),
       });
@@ -205,7 +226,7 @@ export function useWellnessScoreReport({ coachId, tabVisitKey = 0 }) {
       if (!mountedRef.current || requestId !== requestIdRef.current) return null;
 
       applyPayload(data, date, setters);
-      schedulePrefetchNeighbors(id, scope, search, date);
+      schedulePrefetchNeighbors(id, scope, search, date, sortKey, sortDirection);
       return data;
     } catch (err) {
       if (!mountedRef.current || requestId !== requestIdRef.current) return null;
@@ -231,7 +252,8 @@ export function useWellnessScoreReport({ coachId, tabVisitKey = 0 }) {
       limit: WELLNESS_SCORE_REPORT_PAGE_SIZE,
       search: debouncedSearch,
       teamFilter: teamScope,
-      sort: 'score',
+      sort,
+      sortDir,
       date: selectedDate,
     });
 
@@ -244,7 +266,6 @@ export function useWellnessScoreReport({ coachId, tabVisitKey = 0 }) {
       });
       setLoading(false);
     }
-    // If no cache: do NOT clear rows — keep previous date visible while new date loads.
 
     const timer = setTimeout(() => {
       fetchPage({
@@ -257,7 +278,7 @@ export function useWellnessScoreReport({ coachId, tabVisitKey = 0 }) {
       clearTimeout(timer);
       requestIdRef.current += 1;
     };
-  }, [coachId, teamScope, debouncedSearch, selectedDate, tabVisitKey, fetchPage]);
+  }, [coachId, teamScope, debouncedSearch, selectedDate, sort, sortDir, tabVisitKey, fetchPage]);
 
   const goToPage = useCallback(
     (nextPage) => {
@@ -271,7 +292,8 @@ export function useWellnessScoreReport({ coachId, tabVisitKey = 0 }) {
         limit: WELLNESS_SCORE_REPORT_PAGE_SIZE,
         search: debouncedSearch,
         teamFilter: teamScope,
-        sort: 'score',
+        sort,
+        sortDir,
         date: selectedDate,
       });
       if (peek.payload) {
@@ -293,6 +315,8 @@ export function useWellnessScoreReport({ coachId, tabVisitKey = 0 }) {
       debouncedSearch,
       teamScope,
       selectedDate,
+      sort,
+      sortDir,
     ],
   );
 
@@ -317,18 +341,19 @@ export function useWellnessScoreReport({ coachId, tabVisitKey = 0 }) {
   }, []);
 
   const selectYesterday = useCallback(() => {
-    // Kick prefetch immediately so data may be ready when effect runs.
     if (coachId) {
       prefetchReportPage(coachId, {
         page: 1,
         search: debouncedSearch,
         teamFilter: teamScope,
         date: yesterdayBusinessDate(),
+        sort,
+        sortDir,
       });
     }
     setDatePreset(DATE_PRESETS.YESTERDAY);
     setCustomDate(null);
-  }, [coachId, debouncedSearch, teamScope]);
+  }, [coachId, debouncedSearch, teamScope, sort, sortDir]);
 
   const selectCustomDate = useCallback((date) => {
     const ymd = dateToBusinessYmd(date);
@@ -338,11 +363,19 @@ export function useWellnessScoreReport({ coachId, tabVisitKey = 0 }) {
         search: debouncedSearch,
         teamFilter: teamScope,
         date: ymd,
+        sort,
+        sortDir,
       });
     }
     setCustomDate(date);
     setDatePreset(DATE_PRESETS.CUSTOM);
-  }, [coachId, debouncedSearch, teamScope]);
+  }, [coachId, debouncedSearch, teamScope, sort, sortDir]);
+
+  const setSortColumn = useCallback((columnKey) => {
+    const next = nextReportSortState(columnKey, sort, sortDir);
+    setSort(next.sort);
+    setSortDir(next.sortDir);
+  }, [sort, sortDir]);
 
   return {
     rows,
@@ -359,6 +392,9 @@ export function useWellnessScoreReport({ coachId, tabVisitKey = 0 }) {
     selectToday,
     selectYesterday,
     selectCustomDate,
+    sort,
+    sortDir,
+    setSortColumn,
     refreshing,
     loading,
     error,

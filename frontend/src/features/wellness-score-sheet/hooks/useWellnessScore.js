@@ -51,6 +51,12 @@ export function useWellnessScore({ user, apiBaseUrl, date, nutritionRefreshKey =
         return;
       }
 
+      // Paint seeded/cached score immediately on forced refresh (sheet → Home sync)
+      // so Home does not keep an older total while /daily is in flight.
+      if (force && cached) {
+        setData(cached);
+      }
+
       if (!background) setLoading(true);
       setError(null);
 
@@ -58,7 +64,11 @@ export function useWellnessScore({ user, apiBaseUrl, date, nutritionRefreshKey =
       const score = await fetchDailyWellnessScore({ userId, date, apiBaseUrl });
       dailyScoreCache.set(key, score);
       setData(score);
-      markWellnessScoreProcessed(activityLogAtFetch);
+
+      // Only mark processed if nothing newer landed mid-fetch (food-save race).
+      if (getLatestActivityLogId() === activityLogAtFetch) {
+        markWellnessScoreProcessed(activityLogAtFetch);
+      }
     } catch (err) {
       setError(err?.message || 'Failed to load wellness score');
       if (!background) setData(null);
@@ -84,11 +94,15 @@ export function useWellnessScore({ user, apiBaseUrl, date, nutritionRefreshKey =
       activityRefreshMounted.current = true;
       return;
     }
-    if (!shouldRefreshWellnessScore()) return;
+    // Drop session cache before refetch so we never paint a pre-save total
+    // while /daily is in flight (invalidate is otherwise unused on save paths).
+    invalidateDailyWellnessScoreCache();
+    // Always refetch on key bump — do not gate on shouldRefreshWellnessScore().
+    // The sheet may have already marked wellness processed while Home was stale.
     reload({ background: true, force: true });
   }, [nutritionRefreshKey, reload]);
 
-  // Foreground resume — only refetch when a newer activity log exists.
+  // Foreground resume — only refetch when a newer async activity log exists.
   useEffect(() => {
     const onVisible = () => {
       if (document.visibilityState !== 'visible') return;
@@ -100,4 +114,18 @@ export function useWellnessScore({ user, apiBaseUrl, date, nutritionRefreshKey =
   }, [reload]);
 
   return { loading, error, data, reload: () => reload({ force: true }) };
+}
+
+/** Seed / replace the session daily-score cache (e.g. sync from score sheet → Home). */
+export function seedDailyWellnessScoreCache(userId, date, score) {
+  if (userId == null || !date || !score) return;
+  dailyScoreCache.set(dailyKey(userId, date), score);
+}
+
+export function invalidateDailyWellnessScoreCache(userId, date) {
+  if (userId == null || !date) {
+    dailyScoreCache.clear();
+    return;
+  }
+  dailyScoreCache.delete(dailyKey(userId, date));
 }

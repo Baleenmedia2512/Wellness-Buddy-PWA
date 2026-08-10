@@ -1,9 +1,16 @@
-// Name, email, gender, height, diet — used by CompleteProfilePage (unified onboarding).
+// Name, email, gender, height, diet, conditional weight + body fat.
 import React from 'react';
-import { Mail, Ruler, User } from 'lucide-react';
+import { Mail, Percent, Ruler, Scale, User } from 'lucide-react';
 import { DIET_OPTIONS } from '../../services/dietOptions';
 import DietIcon from '../../../../shared/components/icons/DietIcon';
-import { VALID_GENDERS } from '../../domain/profileCompleteness';
+import {
+  VALID_GENDERS,
+  MIN_BODY_FAT_PCT,
+  MAX_BODY_FAT_PCT,
+} from '../../domain/profileCompleteness';
+
+const MIN_WEIGHT_KG = 20;
+const MAX_WEIGHT_KG = 300;
 
 const inputCls = (invalid) =>
   `w-full pl-10 pr-4 py-3 border-2 rounded-xl focus:outline-none text-base bg-white ${
@@ -16,6 +23,8 @@ const CompleteRequiredFields = ({
   gender, setGender, showGender,
   height, setHeight, heightValid,
   dietType, setDietType,
+  currentWeight, setCurrentWeight, showCurrentWeight, currentWeightValid,
+  bodyFat, setBodyFat, showBodyFat, bodyFatValid,
 }) => (
   <>
     <div>
@@ -130,7 +139,54 @@ const CompleteRequiredFields = ({
         ))}
       </div>
     </div>
+
+    {showCurrentWeight && (
+      <div>
+        <label className="block text-sm font-semibold text-gray-700 mb-2">
+          Current Weight (kg) <span className="text-red-500">*</span>
+        </label>
+        <div className="relative">
+          <Scale className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" />
+          <input
+            type="text"
+            inputMode="decimal"
+            value={currentWeight || ''}
+            onChange={(e) => setCurrentWeight(e.target.value)}
+            placeholder="e.g. 72.5"
+            className={inputCls(currentWeight && !currentWeightValid)}
+            style={{ fontSize: '16px' }}
+          />
+        </div>
+        <p className="text-xs text-gray-400 mt-1">
+          Saved to your weight log. Range: {MIN_WEIGHT_KG}–{MAX_WEIGHT_KG} kg
+        </p>
+      </div>
+    )}
+
+    {showBodyFat && (
+      <div>
+        <label className="block text-sm font-semibold text-gray-700 mb-2">
+          Body Fat (%) <span className="text-red-500">*</span>
+        </label>
+        <div className="relative">
+          <Percent className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" />
+          <input
+            type="text"
+            inputMode="decimal"
+            value={bodyFat || ''}
+            onChange={(e) => setBodyFat(e.target.value)}
+            placeholder="e.g. 22"
+            className={inputCls(bodyFat && !bodyFatValid)}
+            style={{ fontSize: '16px' }}
+          />
+        </div>
+        <p className="text-xs text-gray-400 mt-1">
+          Saved on the same weight log as current weight. Range: {MIN_BODY_FAT_PCT}–{MAX_BODY_FAT_PCT}%
+        </p>
+      </div>
+    )}
   </>
 );
 
 export default CompleteRequiredFields;
+export { MIN_WEIGHT_KG, MAX_WEIGHT_KG };

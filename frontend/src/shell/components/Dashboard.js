@@ -1330,7 +1330,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
           onSaved={() => {
             setClassifyFlow(null);
             reloadDiary();
-            triggerNutritionRefresh({ immediate: true, source: 'diary-classify-saved' });
+            // Score refresh runs from ManualEntryPage after promote/save completes.
             setWeightReloadKey((k) => k + 1);
             setDiaryEducationRefreshKey((k) => k + 1);
           }}

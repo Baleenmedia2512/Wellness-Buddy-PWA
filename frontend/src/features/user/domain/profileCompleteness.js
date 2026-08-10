@@ -5,6 +5,8 @@
 
 const PLACEHOLDER_PHONE_USER_RE = /^user_\d+$/i;
 export const VALID_GENDERS = ['Male', 'Female'];
+export const MIN_BODY_FAT_PCT = 1;
+export const MAX_BODY_FAT_PCT = 70;
 
 function emailLocalPart(email) {
   const local = String(email || '').split('@')[0]?.trim().toLowerCase();
@@ -42,6 +44,28 @@ export function hasValidProfileGender(gender, bodyMetrics = null) {
   return VALID_GENDERS.includes(fromCard);
 }
 
+export function hasValidBodyFatPercent(value) {
+  if (value === undefined || value === null || value === '') return false;
+  const n = parseFloat(value);
+  return Number.isFinite(n) && n >= MIN_BODY_FAT_PCT && n <= MAX_BODY_FAT_PCT;
+}
+
+/**
+ * Body fat is satisfied from weight_records_table.BodyFat or BPC fat%.
+ * Users who already have any source are not prompted again.
+ * `bodyFat` is an alias for weight BodyFat (API / form payload).
+ */
+export function hasValidBodyFatSource({
+  bodyFat = null,
+  latestWeightBodyFat = null,
+  bodyMetrics = null,
+} = {}) {
+  if (hasValidBodyFatPercent(bodyFat)) return true;
+  if (hasValidBodyFatPercent(latestWeightBodyFat)) return true;
+  if (hasValidBodyFatPercent(bodyMetrics?.fatPercent)) return true;
+  return false;
+}
+
 export function isProfileComplete({
   height,
   dietType,
@@ -51,15 +75,20 @@ export function isProfileComplete({
   gender = null,
   bodyMetrics = null,
   profileImage = undefined,
+  bodyFat = null,
+  latestWeightBodyFat = null,
+  bodyFatRequired = true,
 }) {
   const hasHeight = typeof height === 'number' && height >= 50 && height <= 250;
   const hasDiet = typeof dietType === 'string' && dietType.trim() !== '';
   const hasEmail = typeof email === 'string' && email.trim() !== '' && email.includes('@');
   const hasName = hasValidProfileName(userName, { email, phoneNumber });
   const hasGender = hasValidProfileGender(gender, bodyMetrics);
+  const hasBodyFat = !bodyFatRequired
+    || hasValidBodyFatSource({ bodyFat, latestWeightBodyFat, bodyMetrics });
   const hasPhoto = profileImage === undefined
     ? true
     : typeof profileImage === 'string'
       && (profileImage.startsWith('data:image/') || profileImage.startsWith('https://'));
-  return !!(hasHeight && hasDiet && hasEmail && hasName && hasGender && hasPhoto);
+  return !!(hasHeight && hasDiet && hasEmail && hasName && hasGender && hasBodyFat && hasPhoto);
 }
