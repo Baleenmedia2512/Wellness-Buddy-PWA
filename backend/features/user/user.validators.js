@@ -109,6 +109,22 @@ export function validateUpdateProfile(body) {
     }
   }
 
+  let currentWeight;
+  if ('currentWeight' in body || 'weight' in body || 'Weight' in body) {
+    const raw = body.currentWeight !== undefined
+      ? body.currentWeight
+      : (body.weight !== undefined ? body.weight : body.Weight);
+    if (raw === null || raw === '') {
+      currentWeight = null;
+    } else {
+      const n = parseFloat(raw);
+      if (!Number.isFinite(n) || n < 20 || n > 300) {
+        throw new ValidationError(400, 'Invalid currentWeight. Must be a number between 20 and 300 kg.');
+      }
+      currentWeight = n;
+    }
+  }
+
   let timezoneIana;
   if ('timezone' in body || 'timezoneIana' in body || 'timezone_iana' in body) {
     const timezoneRaw = body.timezone !== undefined
@@ -132,6 +148,7 @@ export function validateUpdateProfile(body) {
     physicalActivityLevel: physicalActivityLevel || undefined,
     communityId,
     bodyFat,
+    currentWeight,
     timezoneIana,
   };
 }

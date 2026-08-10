@@ -6,9 +6,9 @@
  */
 import { cache, cacheKeys } from '../../utils/cache.js';
 import logger from '../../shared/lib/logger.js';
-import { nowUtc, addUtcDays } from '../../shared/lib/datetime/index.js';
+import { nowUtc, addUtcDays, utcInstantToLegacyIstWallStorage, IANA_IST } from '../../shared/lib/datetime/index.js';
 import { VALID_DIETS, VALID_GOAL_MODES } from './user.validators.js';
-import { resolveBmrForDisplay } from '../../utils/bmrCalculations.js';
+import { resolveBmrForDisplay, isValidWeightKg, computeKatchMcArdleBmr } from '../../utils/bmrCalculations.js';
 import {
   buildTdeeBreakdown,
   isValidPhysicalActivityLevel,
@@ -22,6 +22,7 @@ import {
   isProfileComplete,
 } from './domain/profileCompleteness.js';
 import { buildProfileCardSyncPayload } from '../body-parameters-card/domain/sync.rules.js';
+import { computeBmiFromHeightWeight } from '../body-parameters-card/domain/card.rules.js';
 import { deriveWeightGoalMode } from '../../utils/weightValidation.js';
 import { resolveProfileTimezone } from './domain/profileTimezone.js';
 import { mapCardToProfileBodyMetrics, hasCoachRecordedBodyMetrics } from './domain/profileBodyMetrics.rules.js';
@@ -29,6 +30,7 @@ import { findLatestLinkedBodyMetricsCard } from '../body-parameters-card/data/ca
 import { isEnabled } from '../../shared/lib/feature-flags.js';
 import { isConsentRecorded } from '../auth/domain/consent.rules.js';
 import { resolveSponsorAndIdealCoach } from '../../utils/sponsorCoachResolution.js';
+import * as weightRepo from '../weight/weight.repository.js';
 
 const notFound = () => ({ httpStatus: 404, body: { success: false, message: 'User not found' } });
 
@@ -122,6 +124,7 @@ export async function getProfile({ email }) {
           phoneNumber,
         }),
         needsBodyFat,
+        needsCurrentWeight: latestWeightKg == null,
         profileImage,
         coachId: user.CoachId || null,
         coachName,
@@ -220,12 +223,14 @@ export async function updateProfile(input) {
   const {
     email, name, height, bmr, dietType, profileImage, phoneNumber, gender,
     weightGoalMode, physicalActivityLevel, communityId, timezoneIana, bodyFat,
+    currentWeight,
   } = input;
 
   logger.info('[profile/update] incoming request', {
     email,
     receivedCommunityId: communityId !== undefined,
     receivedBodyFat: bodyFat !== undefined,
+    receivedCurrentWeight: currentWeight !== undefined,
   });
   if (communityId !== undefined) {
     logger.info('[profile/update] CommunityId validation result', {
@@ -273,6 +278,65 @@ export async function updateProfile(input) {
   } else if (latestWeightRow?.BodyFat != null) {
     const existing = parseFloat(latestWeightRow.BodyFat);
     if (hasValidBodyFatPercent(existing)) savedBodyFat = existing;
+  }
+
+  // Current weight from complete-profile → weight_records_table (first log only).
+  let savedCurrentWeight = null;
+  if (currentWeight !== undefined && currentWeight !== null && isValidWeightKg(currentWeight)) {
+    const weightKg = parseFloat(currentWeight);
+    if (!latestWeightRow?.ID) {
+      const profileHeightRow = height == null
+        ? await repo.findByUserId(userId, '"Height"')
+        : null;
+      const effectiveHeight = height != null
+        ? parseFloat(height)
+        : (profileHeightRow?.Height ? parseFloat(profileHeightRow.Height) : null);
+      const bmi = computeBmiFromHeightWeight(effectiveHeight, weightKg);
+      const weightBmr = computeKatchMcArdleBmr(weightKg, savedBodyFat);
+      const wallNow = utcInstantToLegacyIstWallStorage(nowUtc(), IANA_IST);
+      try {
+        const inserted = await weightRepo.insertEntry({
+          UserId: parseInt(userId, 10),
+          Weight: weightKg,
+          Bmi: bmi,
+          BodyFat: savedBodyFat,
+          Bmr: weightBmr,
+          CreatedAt: wallNow,
+          UpdatedAt: wallNow,
+        });
+        latestWeightRow = {
+          ID: inserted?.ID,
+          Weight: weightKg,
+          BodyFat: savedBodyFat,
+          Bmi: bmi,
+          Bmr: weightBmr,
+          CreatedAt: wallNow,
+        };
+        savedCurrentWeight = weightKg;
+        if (weightBmr != null) {
+          await repo.updateUserById(userId, { Bmr: weightBmr });
+        }
+        logger.info('[profile/update] created weight record from profile currentWeight', {
+          userId,
+          weightId: inserted?.ID,
+          weightKg,
+          bodyFat: savedBodyFat,
+        });
+      } catch (weightErr) {
+        logger.error('[profile/update] failed to save currentWeight to weight_records_table', {
+          userId,
+          message: weightErr?.message,
+        });
+        throw weightErr;
+      }
+    } else {
+      // Already has a weight log — do not create a duplicate from profile.
+      savedCurrentWeight = parseFloat(latestWeightRow.Weight);
+      logger.info('[profile/update] currentWeight ignored; weight record already exists', {
+        userId,
+        existingWeightId: latestWeightRow.ID,
+      });
+    }
   }
 
   let savedBmr = null;
@@ -388,6 +452,7 @@ export async function updateProfile(input) {
       profileImageUpdated: !!profileImage,
       bodyFat: savedBodyFat
         ?? (hasValidBodyFatPercent(refreshedUser?.BodyFat) ? parseFloat(refreshedUser.BodyFat) : undefined),
+      currentWeight: savedCurrentWeight || undefined,
     },
   };
 
