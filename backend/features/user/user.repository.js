@@ -95,43 +95,20 @@ export async function findByUsername(username) {
 }
 
 export async function getProfile(email) {
-  // Consent / BodyFat columns are optional until migrations are applied — never block profile load.
+  // Consent columns are optional until migrations are applied — never block profile load.
+  // Body fat is stored on weight_records_table, not team_table.
   const fullCols =
-    '"UserId", "UserName", "Email", "Height", "DietType", "ProfileImage", "CoachId", "PhoneNumber", "Gender", "Bmr", "BodyFat", profile_pic_snooze, "WeightGoalMode", "PhysicalActivityLevel", "CommunityId", timezone_iana, "ConsentAcceptedAt", "ConsentVersion"';
-  const noBodyFatCols =
     '"UserId", "UserName", "Email", "Height", "DietType", "ProfileImage", "CoachId", "PhoneNumber", "Gender", "Bmr", profile_pic_snooze, "WeightGoalMode", "PhysicalActivityLevel", "CommunityId", timezone_iana, "ConsentAcceptedAt", "ConsentVersion"';
   const noConsentCols =
-    '"UserId", "UserName", "Email", "Height", "DietType", "ProfileImage", "CoachId", "PhoneNumber", "Gender", "Bmr", "BodyFat", profile_pic_snooze, "WeightGoalMode", "PhysicalActivityLevel", "CommunityId", timezone_iana';
-  const minimalCols =
     '"UserId", "UserName", "Email", "Height", "DietType", "ProfileImage", "CoachId", "PhoneNumber", "Gender", "Bmr", profile_pic_snooze, "WeightGoalMode", "PhysicalActivityLevel", "CommunityId", timezone_iana';
 
   try {
     return await findByEmail(email, fullCols);
   } catch (err) {
     const msg = String(err?.message || err || '');
-    const missingBodyFat = /BodyFat/i.test(msg) && /column/i.test(msg);
     const missingConsent = /ConsentAcceptedAt|ConsentVersion/i.test(msg) && /column/i.test(msg);
-    if (!missingBodyFat && !missingConsent && !/column/i.test(msg)) throw err;
-
-    if (missingBodyFat && missingConsent) {
-      return findByEmail(email, minimalCols);
-    }
-    if (missingBodyFat) {
-      try {
-        return await findByEmail(email, noBodyFatCols);
-      } catch (err2) {
-        const msg2 = String(err2?.message || err2 || '');
-        if (!/ConsentAcceptedAt|ConsentVersion|column/i.test(msg2)) throw err2;
-        return findByEmail(email, minimalCols);
-      }
-    }
-    try {
-      return await findByEmail(email, noConsentCols);
-    } catch (err3) {
-      const msg3 = String(err3?.message || err3 || '');
-      if (!/BodyFat|column/i.test(msg3)) throw err3;
-      return findByEmail(email, minimalCols);
-    }
+    if (!missingConsent && !/column/i.test(msg)) throw err;
+    return findByEmail(email, noConsentCols);
   }
 }
 

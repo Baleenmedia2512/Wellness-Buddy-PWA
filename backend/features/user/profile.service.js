@@ -53,13 +53,11 @@ export async function getProfile({ email }) {
   const bodyMetricsMapped = mapCardToProfileBodyMetrics(latestBodyMetricsCard);
   const bodyMetrics = hasCoachRecordedBodyMetrics(bodyMetricsMapped) ? bodyMetricsMapped : null;
   const height = user.Height ? parseFloat(user.Height) : null;
-  const profileBodyFat = user.BodyFat != null ? parseFloat(user.BodyFat) : null;
   const latestWeightKg = latestWeight?.Weight ? parseFloat(latestWeight.Weight) : null;
   const latestWeightBodyFat = hasValidBodyFatPercent(latestWeightBodyFatResolved)
     ? latestWeightBodyFatResolved
     : (latestWeight?.BodyFat != null ? parseFloat(latestWeight.BodyFat) : null);
   const resolvedWeightBodyFat = hasValidBodyFatPercent(latestWeightBodyFat) ? latestWeightBodyFat : null;
-  const resolvedProfileBodyFat = hasValidBodyFatPercent(profileBodyFat) ? profileBodyFat : null;
   const derivedGoalMode = deriveWeightGoalMode({ heightCm: height, currentWeightKg: latestWeightKg });
   const dietType = user.DietType || null;
   const phoneNumber = user.PhoneNumber || null;
@@ -68,11 +66,9 @@ export async function getProfile({ email }) {
     || (bodyGender === 'Male' || bodyGender === 'Female' ? bodyGender : null)
     || null;
   const profileImage = user.ProfileImage || null;
-  const resolvedBodyFatForBmr = hasValidBodyFatPercent(resolvedProfileBodyFat)
-    ? resolvedProfileBodyFat
-    : (hasValidBodyFatPercent(resolvedWeightBodyFat)
-      ? resolvedWeightBodyFat
-      : (bodyMetricsMapped?.fatPercent ?? null));
+  const resolvedBodyFatForBmr = hasValidBodyFatPercent(resolvedWeightBodyFat)
+    ? resolvedWeightBodyFat
+    : (bodyMetricsMapped?.fatPercent ?? null);
   const latestBmr = resolveBmrForDisplay({
     storedBmr: user.Bmr,
     weightKg: latestWeightKg,
@@ -82,7 +78,6 @@ export async function getProfile({ email }) {
     cardBmr: latestBodyMetricsCard?.bmr,
   });
   const needsBodyFat = !hasValidBodyFatSource({
-    bodyFat: resolvedProfileBodyFat,
     latestWeightBodyFat: resolvedWeightBodyFat,
     bodyMetrics,
   });
@@ -116,8 +111,9 @@ export async function getProfile({ email }) {
           gender,
           bodyMetrics,
           profileImage,
-          bodyFat: resolvedProfileBodyFat,
           latestWeightBodyFat: resolvedWeightBodyFat,
+          // Body fat lives on weight rows; only require it once a weight exists (or will be collected with weight).
+          bodyFatRequired: true,
         }),
         needsName: !hasValidProfileName(user.UserName, {
           email: user.Email,
@@ -134,7 +130,7 @@ export async function getProfile({ email }) {
         profilePicSnooze: user.profile_pic_snooze || null,
         latestWeight: latestWeightKg,
         latestWeightBodyFat: resolvedWeightBodyFat,
-        bodyFat: resolvedProfileBodyFat ?? resolvedWeightBodyFat,
+        bodyFat: resolvedWeightBodyFat,
         latestBmr,
         physicalActivityLevel,
         communityId: user.CommunityId ?? null,
@@ -156,7 +152,7 @@ export async function getProfile({ email }) {
 }
 
 function buildProfileUpdate({
-  name, height, dietType, phoneNumber, profileImage, gender, weightGoalMode, physicalActivityLevel, communityId, timezoneIana, bodyFat,
+  name, height, dietType, phoneNumber, profileImage, gender, weightGoalMode, physicalActivityLevel, communityId, timezoneIana,
 }) {
   const updateData = {};
   let cleanedPhoneNumber;
@@ -174,13 +170,6 @@ function buildProfileUpdate({
   }
   if (communityId !== undefined) updateData.CommunityId = communityId;
   if (timezoneIana !== undefined) updateData.timezone_iana = timezoneIana;
-  if (bodyFat !== undefined) {
-    if (bodyFat === null || bodyFat === '') {
-      updateData.BodyFat = null;
-    } else if (hasValidBodyFatPercent(bodyFat)) {
-      updateData.BodyFat = parseFloat(bodyFat);
-    }
-  }
   if (phoneNumber != null && String(phoneNumber).trim() !== '') {
     const cleaned = String(phoneNumber).trim().replace(/[\s\-()]/g, '');
     if (/^\+?[0-9]{10,15}$/.test(cleaned)) { updateData.PhoneNumber = cleaned; cleanedPhoneNumber = cleaned; }
@@ -269,74 +258,102 @@ export async function updateProfile(input) {
   let latestWeightRow = await repo.getLatestWeight(userId);
   const latestBodyMetricsCard = await findLatestLinkedBodyMetricsCard(userId);
 
-  // Profile body fat is stored on team_table.BodyFat (works with or without a weight log).
-  let savedBodyFat = null;
-  if (bodyFat !== undefined && hasValidBodyFatPercent(bodyFat)) {
-    savedBodyFat = parseFloat(bodyFat);
-  } else if (hasValidBodyFatPercent(updateData.BodyFat)) {
-    savedBodyFat = parseFloat(updateData.BodyFat);
-  } else if (latestWeightRow?.BodyFat != null) {
-    const existing = parseFloat(latestWeightRow.BodyFat);
-    if (hasValidBodyFatPercent(existing)) savedBodyFat = existing;
-  }
+  // Body fat + current weight both live on weight_records_table (same row). Never team_table.
+  const incomingBodyFat = bodyFat !== undefined && hasValidBodyFatPercent(bodyFat)
+    ? parseFloat(bodyFat)
+    : null;
+  const incomingWeight = currentWeight !== undefined && currentWeight !== null && isValidWeightKg(currentWeight)
+    ? parseFloat(currentWeight)
+    : null;
 
-  // Current weight from complete-profile → weight_records_table (first log only).
+  let savedBodyFat = incomingBodyFat;
   let savedCurrentWeight = null;
-  if (currentWeight !== undefined && currentWeight !== null && isValidWeightKg(currentWeight)) {
-    const weightKg = parseFloat(currentWeight);
-    if (!latestWeightRow?.ID) {
-      const profileHeightRow = height == null
-        ? await repo.findByUserId(userId, '"Height"')
-        : null;
-      const effectiveHeight = height != null
-        ? parseFloat(height)
-        : (profileHeightRow?.Height ? parseFloat(profileHeightRow.Height) : null);
-      const bmi = computeBmiFromHeightWeight(effectiveHeight, weightKg);
-      const weightBmr = computeKatchMcArdleBmr(weightKg, savedBodyFat);
-      const wallNow = utcInstantToLegacyIstWallStorage(nowUtc(), IANA_IST);
-      try {
-        const inserted = await weightRepo.insertEntry({
-          UserId: parseInt(userId, 10),
-          Weight: weightKg,
-          Bmi: bmi,
-          BodyFat: savedBodyFat,
-          Bmr: weightBmr,
-          CreatedAt: wallNow,
-          UpdatedAt: wallNow,
-        });
-        latestWeightRow = {
-          ID: inserted?.ID,
-          Weight: weightKg,
-          BodyFat: savedBodyFat,
-          Bmi: bmi,
-          Bmr: weightBmr,
-          CreatedAt: wallNow,
-        };
-        savedCurrentWeight = weightKg;
-        if (weightBmr != null) {
-          await repo.updateUserById(userId, { Bmr: weightBmr });
-        }
-        logger.info('[profile/update] created weight record from profile currentWeight', {
-          userId,
-          weightId: inserted?.ID,
-          weightKg,
-          bodyFat: savedBodyFat,
-        });
-      } catch (weightErr) {
-        logger.error('[profile/update] failed to save currentWeight to weight_records_table', {
-          userId,
-          message: weightErr?.message,
-        });
-        throw weightErr;
+
+  if (incomingWeight != null && !latestWeightRow?.ID) {
+    const profileHeightRow = height == null
+      ? await repo.findByUserId(userId, '"Height"')
+      : null;
+    const effectiveHeightForBmi = height != null
+      ? parseFloat(height)
+      : (profileHeightRow?.Height ? parseFloat(profileHeightRow.Height) : null);
+    const bmi = computeBmiFromHeightWeight(effectiveHeightForBmi, incomingWeight);
+    const weightBmr = computeKatchMcArdleBmr(incomingWeight, incomingBodyFat);
+    const wallNow = utcInstantToLegacyIstWallStorage(nowUtc(), IANA_IST);
+    try {
+      const inserted = await weightRepo.insertEntry({
+        UserId: parseInt(userId, 10),
+        Weight: incomingWeight,
+        Bmi: bmi,
+        BodyFat: incomingBodyFat,
+        Bmr: weightBmr,
+        CreatedAt: wallNow,
+        UpdatedAt: wallNow,
+      });
+      latestWeightRow = {
+        ID: inserted?.ID,
+        Weight: incomingWeight,
+        BodyFat: incomingBodyFat,
+        Bmi: bmi,
+        Bmr: weightBmr,
+        CreatedAt: wallNow,
+      };
+      savedCurrentWeight = incomingWeight;
+      savedBodyFat = incomingBodyFat;
+      if (weightBmr != null) {
+        await repo.updateUserById(userId, { Bmr: weightBmr });
       }
-    } else {
-      // Already has a weight log — do not create a duplicate from profile.
+      logger.info('[profile/update] created weight record (Weight + BodyFat)', {
+        userId,
+        weightId: inserted?.ID,
+        weightKg: incomingWeight,
+        bodyFat: incomingBodyFat,
+      });
+    } catch (weightErr) {
+      logger.error('[profile/update] failed to save weight record', {
+        userId,
+        message: weightErr?.message,
+      });
+      throw weightErr;
+    }
+  } else if (incomingBodyFat != null && latestWeightRow?.ID) {
+    // Weight already exists — attach body fat onto that same latest record.
+    const weightKg = latestWeightRow.Weight ? parseFloat(latestWeightRow.Weight) : null;
+    const weightBmr = weightKg != null
+      ? computeKatchMcArdleBmr(weightKg, incomingBodyFat)
+      : null;
+    const updated = await repo.updateLatestWeightBodyFat(userId, incomingBodyFat, weightBmr);
+    if (updated) {
+      savedBodyFat = incomingBodyFat;
+      latestWeightRow = {
+        ...latestWeightRow,
+        BodyFat: incomingBodyFat,
+        Bmr: weightBmr ?? latestWeightRow.Bmr ?? null,
+      };
+      if (weightBmr != null) {
+        await repo.updateUserById(userId, { Bmr: weightBmr });
+      }
+      logger.info('[profile/update] saved BodyFat on existing weight record', {
+        userId,
+        weightId: updated.ID,
+        bodyFat: incomingBodyFat,
+      });
+    }
+    if (incomingWeight != null) {
       savedCurrentWeight = parseFloat(latestWeightRow.Weight);
       logger.info('[profile/update] currentWeight ignored; weight record already exists', {
         userId,
         existingWeightId: latestWeightRow.ID,
       });
     }
+  } else if (incomingBodyFat != null && !latestWeightRow?.ID) {
+    logger.warn('[profile/update] bodyFat ignored; no weight record to attach it to', {
+      userId,
+      bodyFat: incomingBodyFat,
+    });
+    savedBodyFat = null;
+  } else if (latestWeightRow?.BodyFat != null) {
+    const existing = parseFloat(latestWeightRow.BodyFat);
+    if (hasValidBodyFatPercent(existing)) savedBodyFat = existing;
   }
 
   let savedBmr = null;
@@ -450,8 +467,7 @@ export async function updateProfile(input) {
       timezone: resolveProfileTimezone(refreshedUser?.timezone_iana),
       calorieTarget: calorieTarget || undefined,
       profileImageUpdated: !!profileImage,
-      bodyFat: savedBodyFat
-        ?? (hasValidBodyFatPercent(refreshedUser?.BodyFat) ? parseFloat(refreshedUser.BodyFat) : undefined),
+      bodyFat: savedBodyFat || undefined,
       currentWeight: savedCurrentWeight || undefined,
     },
   };

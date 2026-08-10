@@ -65,8 +65,9 @@ export function hasValidBodyFatPercent(value) {
 }
 
 /**
- * Body fat is satisfied from team_table.BodyFat, latest weight BodyFat, or BPC fat%.
+ * Body fat is satisfied from weight_records_table.BodyFat or BPC fat%.
  * Users who already have any source are not prompted again.
+ * `bodyFat` is an alias for weight BodyFat (API / form payload).
  *
  * @param {{
  *   bodyFat?: unknown,
@@ -90,7 +91,7 @@ export function hasValidBodyFatSource({
  * Profile gate fields for unified onboarding (phone is not blocking).
  * Photo is enforced on the CompleteProfile UI; when profileImage is passed,
  * a custom data-URL image is required for completeness.
- * Body fat is required when no team / weight / BPC source exists.
+ * Body fat is required when no weight / BPC source exists.
  */
 export function isProfileComplete({
   height,

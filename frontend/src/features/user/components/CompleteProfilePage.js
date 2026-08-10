@@ -111,18 +111,20 @@ const CompleteProfilePage = ({ user, apiBaseUrl, onComplete, showPictureSection 
 
         const hasWeight = profile.latestWeight != null
           && Number.isFinite(Number(profile.latestWeight));
-        setShowCurrentWeight(profile.needsCurrentWeight === true || !hasWeight);
+        const needsWeight = profile.needsCurrentWeight === true || !hasWeight;
+        setShowCurrentWeight(needsWeight);
         if (hasWeight) setCurrentWeight(String(profile.latestWeight));
 
+        // Body fat is stored on the same weight row — ask when missing from weight/BPC.
         const hasExistingSource = hasValidBodyFatPercent(profile.bodyFat)
           || hasValidBodyFatPercent(profile.latestWeightBodyFat)
           || hasValidBodyFatPercent(profile.bodyMetrics?.fatPercent);
         setShowBodyFat(!hasExistingSource);
         if (hasExistingSource) {
-          const existingBf = hasValidBodyFatPercent(profile.bodyFat)
-            ? profile.bodyFat
-            : (hasValidBodyFatPercent(profile.latestWeightBodyFat)
-              ? profile.latestWeightBodyFat
+          const existingBf = hasValidBodyFatPercent(profile.latestWeightBodyFat)
+            ? profile.latestWeightBodyFat
+            : (hasValidBodyFatPercent(profile.bodyFat)
+              ? profile.bodyFat
               : profile.bodyMetrics?.fatPercent);
           if (existingBf != null) setBodyFat(String(existingBf));
         }

@@ -181,7 +181,7 @@ const CompleteRequiredFields = ({
           />
         </div>
         <p className="text-xs text-gray-400 mt-1">
-          Required for BMR. Range: {MIN_BODY_FAT_PCT}–{MAX_BODY_FAT_PCT}%
+          Saved on the same weight log as current weight. Range: {MIN_BODY_FAT_PCT}–{MAX_BODY_FAT_PCT}%
         </p>
       </div>
     )}
