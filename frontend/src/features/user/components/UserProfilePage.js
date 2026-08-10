@@ -92,7 +92,6 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
         bmr: data?.latestBmr ? String(Math.round(data.latestBmr)) : '',
         physicalActivityLevel: data?.physicalActivityLevel || '',
         weightGoalMode: data?.weightGoalMode || 'loss',
-        communityId: data?.communityId || '',
         bodyFat: data?.latestWeightBodyFat != null
           ? String(data.latestWeightBodyFat)
           : (data?.bodyFat != null ? String(data.bodyFat) : ''),
@@ -332,7 +331,6 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
                   bmrReadOnly
                   physicalActivityLevel={form.physicalActivityLevel}
                   setPhysicalActivityLevel={form.setPhysicalActivityLevel}
-                  communityId={form.communityId} setCommunityId={form.setCommunityId}
                   bodyFat={form.bodyFat} setBodyFat={form.setBodyFat}
                   showBodyFat={form.needsBodyFat}
                 />

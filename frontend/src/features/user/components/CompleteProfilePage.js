@@ -29,7 +29,6 @@ const CompleteProfilePage = ({ user, apiBaseUrl, onComplete, showPictureSection 
   const [showGender, setShowGender] = useState(true);
   const [height, setHeight] = useState('');
   const [dietType, setDietType] = useState('');
-  const [communityId, setCommunityId] = useState('');
   const [bodyFat, setBodyFat] = useState('');
   const [showBodyFat, setShowBodyFat] = useState(true);
   const [loading, setLoading] = useState(true);
@@ -97,8 +96,6 @@ const CompleteProfilePage = ({ user, apiBaseUrl, onComplete, showPictureSection 
         if (typeof profile.dietType === 'string' && profile.dietType.trim()) {
           setDietType(profile.dietType);
         }
-
-        if (profile.communityId) setCommunityId(String(profile.communityId));
         // Ask for body fat only when weight / BPC has none.
         const needsBodyFat = profile.needsBodyFat !== false
           && !(typeof profile.bodyFat === 'number' && hasValidBodyFatPercent(profile.bodyFat))
@@ -213,8 +210,6 @@ const CompleteProfilePage = ({ user, apiBaseUrl, onComplete, showPictureSection 
       };
       if (showGender && gender) payload.gender = gender;
       if (showPictureSection && profileImage) payload.profileImage = profileImage;
-      const trimmedCommunityId = communityId.trim();
-      if (trimmedCommunityId) payload.communityId = trimmedCommunityId;
       if (showBodyFat && hasValidBodyFatPercent(bodyFat)) {
         payload.bodyFat = parseFloat(bodyFat);
       }
@@ -239,7 +234,7 @@ const CompleteProfilePage = ({ user, apiBaseUrl, onComplete, showPictureSection 
     formValid, nameValid, emailValid, genderValid, heightValid, dietValid, bodyFatValid, pictureValid,
     showPictureSection, profileImage, user, apiBaseUrl,
     trimmedName, trimmedEmail, heightNum, dietType, showGender, gender, previewUrl, onComplete,
-    showBodyFat, bodyFat, communityId,
+    showBodyFat, bodyFat,
   ]);
 
   return (
@@ -275,8 +270,6 @@ const CompleteProfilePage = ({ user, apiBaseUrl, onComplete, showPictureSection 
             heightValid={heightValid}
             dietType={dietType}
             setDietType={setDietType}
-            communityId={communityId}
-            setCommunityId={setCommunityId}
             bodyFat={bodyFat}
             setBodyFat={setBodyFat}
             showBodyFat={showBodyFat}

@@ -1,6 +1,6 @@
-// Name, email, gender, height, diet, optional community ID, conditional body fat.
+// Name, email, gender, height, diet, conditional body fat.
 import React from 'react';
-import { Hash, Mail, Percent, Ruler, User } from 'lucide-react';
+import { Mail, Percent, Ruler, User } from 'lucide-react';
 import { DIET_OPTIONS } from '../../services/dietOptions';
 import DietIcon from '../../../../shared/components/icons/DietIcon';
 import {
@@ -20,7 +20,6 @@ const CompleteRequiredFields = ({
   gender, setGender, showGender,
   height, setHeight, heightValid,
   dietType, setDietType,
-  communityId, setCommunityId,
   bodyFat, setBodyFat, showBodyFat, bodyFatValid,
 }) => (
   <>
@@ -134,26 +133,6 @@ const CompleteRequiredFields = ({
             {opt.label}
           </button>
         ))}
-      </div>
-    </div>
-
-    <div>
-      <label className="flex items-center gap-1.5 text-sm font-semibold text-gray-700 mb-2">
-        <Hash className="w-4 h-4 text-blue-500" />
-        Community ID
-        <span className="text-gray-400 text-xs font-normal">(optional)</span>
-      </label>
-      <div className="relative">
-        <Hash className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" />
-        <input
-          type="text"
-          value={communityId || ''}
-          onChange={(e) => setCommunityId(e.target.value)}
-          placeholder="Enter your community ID"
-          maxLength={100}
-          className={inputCls(false)}
-          style={{ fontSize: '16px' }}
-        />
       </div>
     </div>
 

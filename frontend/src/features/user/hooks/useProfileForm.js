@@ -20,8 +20,6 @@ export default function useProfileForm(initial = {}) {
   const [bmr, setBmr] = useState(initial.bmr || '');
   const [physicalActivityLevel, setPhysicalActivityLevel] = useState(initial.physicalActivityLevel || '');
   const [weightGoalMode, setWeightGoalMode] = useState(initial.weightGoalMode || 'loss');
-  const [communityId, setCommunityId] = useState(initial.communityId || '');
-  const [loadedCommunityId, setLoadedCommunityId] = useState(initial.communityId || '');
   const [bodyFat, setBodyFat] = useState(initial.bodyFat || '');
   const [needsBodyFat, setNeedsBodyFat] = useState(Boolean(initial.needsBodyFat));
   const [email, setEmail] = useState(initial.email || '');
@@ -40,8 +38,6 @@ export default function useProfileForm(initial = {}) {
     setBmr(p.bmr ?? '');
     setPhysicalActivityLevel(p.physicalActivityLevel ?? '');
     setWeightGoalMode(p.weightGoalMode ?? 'loss');
-    setCommunityId(p.communityId ?? '');
-    setLoadedCommunityId(p.communityId ?? '');
     setBodyFat(p.bodyFat != null && p.bodyFat !== '' ? String(p.bodyFat) : '');
     setNeedsBodyFat(Boolean(p.needsBodyFat));
     setEmail(p.email ?? '');
@@ -75,22 +71,10 @@ export default function useProfileForm(initial = {}) {
     if (needsBodyFat && !hasValidBodyFatPercent(bodyFat)) {
       return `Please enter body fat (${MIN_BODY_FAT_PCT}–${MAX_BODY_FAT_PCT}%).`;
     }
-    const trimmedCommunityId = communityId.trim();
-    if (trimmedCommunityId) {
-      if (trimmedCommunityId.length > 100) return 'Community ID must be at most 100 characters.';
-      if (!/^[a-zA-Z0-9]+$/.test(trimmedCommunityId)) {
-        return 'Community ID may only contain letters and numbers.';
-      }
-    }
     return '';
   };
 
   const payload = (email, extras = {}) => {
-    const trimmedCommunityId = communityId.trim();
-    const trimmedLoadedCommunityId = String(loadedCommunityId || '').trim();
-    const normalizedCommunityId = trimmedCommunityId === '' ? null : trimmedCommunityId;
-    const normalizedLoadedCommunityId = trimmedLoadedCommunityId === '' ? null : trimmedLoadedCommunityId;
-
     const body = {
       email,
       name: name || undefined,
@@ -104,11 +88,6 @@ export default function useProfileForm(initial = {}) {
       ...extras,
     };
 
-    // Optional — only send when the user changed it (set value or cleared a saved one).
-    if (normalizedCommunityId !== normalizedLoadedCommunityId) {
-      body.communityId = normalizedCommunityId;
-    }
-
     if (needsBodyFat && hasValidBodyFatPercent(bodyFat)) {
       body.bodyFat = parseFloat(bodyFat);
     }
@@ -121,7 +100,6 @@ export default function useProfileForm(initial = {}) {
     dietType, setDietType, gender, setGender, bmr, setBmr,
     physicalActivityLevel, setPhysicalActivityLevel,
     weightGoalMode, setWeightGoalMode,
-    communityId, setCommunityId,
     bodyFat, setBodyFat,
     needsBodyFat,
     email, setEmail,

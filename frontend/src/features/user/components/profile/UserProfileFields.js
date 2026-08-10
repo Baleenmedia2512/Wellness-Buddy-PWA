@@ -1,8 +1,8 @@
-// Editable name / height / phone / gender / communityId / bodyFat fields + email.
+// Editable name / height / phone / gender / bodyFat fields + email.
 // BMR is display-only when bmrReadOnly (profile page) — calculated from weight/formula.
-// Body fat is shown under Community ID only when the user has no existing source.
+// Body fat is shown only when the user has no existing weight/BPC source.
 import React from 'react';
-import { Flame, Hash, Mail, Percent } from 'lucide-react';
+import { Flame, Mail, Percent } from 'lucide-react';
 import PhysicalActivityField from './PhysicalActivityField';
 import {
   VALID_GENDERS,
@@ -28,7 +28,6 @@ const UserProfileFields = ({
   bmrReadOnly = false,
   gender, setGender,
   physicalActivityLevel, setPhysicalActivityLevel,
-  communityId, setCommunityId,
   bodyFat, setBodyFat,
   showBodyFat = false,
 }) => (
@@ -117,22 +116,6 @@ const UserProfileFields = ({
       value={physicalActivityLevel}
       onChange={setPhysicalActivityLevel}
     />
-
-    <div>
-      <label className="flex items-center gap-1 text-sm font-medium text-gray-700 mb-1">
-        <Hash className="w-4 h-4 text-blue-500" /> Community ID
-        <span className="text-gray-400 text-xs font-normal ml-1">(optional)</span>
-      </label>
-      <input
-        type="text"
-        value={communityId || ''}
-        onChange={(e) => setCommunityId(e.target.value)}
-        placeholder="Enter your community ID"
-        maxLength={100}
-        className={inputCls}
-        style={{ fontSize: '16px' }}
-      />
-    </div>
 
     {showBodyFat && (
       <Field label="Body Fat (%)" required>
