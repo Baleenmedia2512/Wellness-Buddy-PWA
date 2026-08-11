@@ -10,6 +10,7 @@ import { getUserId } from '../../../shared/services/userIdentity';
 import { useWellnessScoreHistory } from '../hooks/useWellnessScoreHistory';
 import { useTimeWindows } from '../hooks/useTimeWindows';
 import { dateFromPickerValue, resolveWellnessDateRange } from '../domain/dateRange';
+import { seedDailyWellnessScoreCache } from '../services/dailyWellnessScoreCache';
 import WellnessScoreSheet from './WellnessScoreSheet';
 
 export default function WellnessScorePage({
@@ -95,6 +96,15 @@ export default function WellnessScorePage({
     selectedDate,
     nutritionRefreshKey,
   });
+
+  // Push the sheet's selected-day total into Home as soon as it loads so the
+  // carousel card cannot stay on an older number after back.
+  useEffect(() => {
+    if (!data || !resolvedUserId || range.isMultiDay) return;
+    const scoreDate = selectedDate || range.endDate;
+    if (!scoreDate) return;
+    seedDailyWellnessScoreCache(resolvedUserId, scoreDate, data);
+  }, [data, resolvedUserId, selectedDate, range.endDate, range.isMultiDay]);
 
   const handleBack = useCallback(() => {
     onBack?.({
