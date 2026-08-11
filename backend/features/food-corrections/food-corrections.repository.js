@@ -211,6 +211,47 @@ export async function fetchMealTotalsForRange(userId, startDate, endDate, timezo
   return filterFoodRowsByCalendarDateRange(data || [], startDate, endDate, timezoneIana, 'CreatedAt');
 }
 
+/** Columns for single/batch meal detail — includes AnalysisData, omits ImageBase64. */
+const MEAL_DETAIL_COLUMNS = [
+  'ID, ImagePath, AnalysisData, ConfidenceScore',
+  'TotalCalories, TotalProtein, TotalCarbs, TotalFat, TotalFiber',
+  'TotalSugar, TotalSodium, TotalCholesterol, GlycemicIndex',
+  'TotalVitaminA, TotalVitaminC, TotalVitaminD, TotalVitaminE, TotalVitaminK',
+  'TotalVitaminB1, TotalVitaminB2, TotalVitaminB3, TotalVitaminB6, TotalVitaminB9, TotalVitaminB12',
+  'TotalCalcium, TotalIron, TotalMagnesium, TotalPotassium, TotalZinc, TotalPhosphorus',
+  'ProcessedBy, DeviceInfo, CreatedAt',
+].join(', ');
+
+/** Full meal row by ID — indexed lookup, no day scan. */
+export async function fetchMealById(userId, id) {
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from('food_nutrition_data_table')
+    .select(MEAL_DETAIL_COLUMNS)
+    .eq('ID', id)
+    .eq('UserID', String(userId))
+    .eq('IsDeleted', 0)
+    .not('AnalysisData', 'is', null)
+    .maybeSingle();
+  if (error) throw error;
+  return data || null;
+}
+
+/** Batch meal rows by IDs — one query for prefetch (max ids enforced in validator). */
+export async function fetchMealsByIds(userId, ids) {
+  if (!Array.isArray(ids) || ids.length === 0) return [];
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from('food_nutrition_data_table')
+    .select(MEAL_DETAIL_COLUMNS)
+    .eq('UserID', String(userId))
+    .eq('IsDeleted', 0)
+    .not('AnalysisData', 'is', null)
+    .in('ID', ids);
+  if (error) throw error;
+  return data || [];
+}
+
 /** Image bytes only — for lazy thumbnails / detail modal (keeps list payloads small). */
 export async function getMealImageById(userId, id) {
   const supabase = getSupabaseClient();

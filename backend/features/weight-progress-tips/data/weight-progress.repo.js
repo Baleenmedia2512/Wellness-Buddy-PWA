@@ -14,12 +14,12 @@ import { isExemptedFood } from '../../../utils/foodTypeDetection.js';
 export async function getUserWeightGoal(userId) {
   const supabase = getSupabaseClient();
   console.log('🗄️ [repo:getUserWeightGoal] Querying team_table for userId:', userId);
-  
+  const uid = parseInt(userId, 10);
   try {
     const { data, error } = await supabase
       .from('team_table')
       .select('"WeightGoalMode", "Height", "Bmr", "CoachId", "PhysicalActivityLevel", "Gender"')
-      .eq('UserId', parseInt(userId, 10))
+      .eq('UserId', uid)
       .maybeSingle();
 
     if (error) {

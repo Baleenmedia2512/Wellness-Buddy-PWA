@@ -116,8 +116,8 @@ export default function ReportsDashboard({
                     : 'text-teal-900 hover:bg-teal-50'
                 }`}
               >
-                <span className="hidden sm:inline truncate">Wellness Score Report</span>
-                <span className="sm:hidden truncate">WS Report</span>
+                <span className="hidden sm:inline truncate">Wellness Score</span>
+                <span className="sm:hidden truncate">Wellness Score</span>
               </button>
             </div>
           )}

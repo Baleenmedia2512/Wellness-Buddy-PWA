@@ -105,11 +105,13 @@ import {
   saveNutritionAnalysis,
   deleteNutritionAnalysis,
 } from "./features/nutrition";
+import { seedDailyWellnessScoreCache } from "./features/wellness-score-sheet/services/dailyWellnessScoreCache";
 import { analyzeImage as orchestrateAnalyzeImage } from "./shared/services/orchestratorService";
 import {
   reserveAiCredit,
   confirmAiCredit,
-  releaseAiCredit,
+  releaseReservedAiCredit,
+  reserveFailureMessage,
 } from "./features/ai-credits";
 import * as captureQueue from './shared/services/captureQueue';
 import { useOfflineCaptureQueue } from './hooks/useOfflineCaptureQueue';
@@ -145,6 +147,7 @@ import { validateImageFreshness } from "./shared/utils/imageValidator";
 import { toStorageThumbnail } from "./shared/utils/storageThumbnail";
 import { ManualWeightEntryModal, saveWeight } from "./features/weight";
 import { SmartFoodSearchModal, buildAnalysisFromManualFood as buildManualFoodAnalysis } from "./features/nutrition";
+import { seedMealAfterPromotion } from "./features/nutrition/services/seedMealAfterPromotion";
 import { ManualEducationEntryModal, saveLog } from "./features/education";
 // VSA-compliant barrel imports (helpers exported via features/captures/index.js)
 import {
@@ -956,6 +959,19 @@ function WellnessValleyApp() {
   const [reportsDashboardTab, setReportsDashboardTab] = useState(REPORT_DASHBOARD_TABS.IDEAL_WEIGHT);
   const [showWellnessScore, setShowWellnessScore] = useState(false);
   const [showWellnessScoreSetup, setShowWellnessScoreSetup] = useState(false);
+  /** Remount key so each open picks up the Home date-range selection cleanly. */
+  const [wellnessScoreSession, setWellnessScoreSession] = useState(0);
+  const [wellnessScoreInitialRange, setWellnessScoreInitialRange] = useState({
+    dateRange: 'today',
+    customStartDate: null,
+    customEndDate: null,
+  });
+  /** Shared Home ↔ Wellness Score date filter (Today / Yesterday / …). */
+  const [homeCarouselDateRange, setHomeCarouselDateRange] = useState({
+    dateRange: 'today',
+    customStartDate: null,
+    customEndDate: null,
+  });
   const [showAiCreditsSetup, setShowAiCreditsSetup] = useState(false);
   const [showManualEntry, setShowManualEntry] = useState(() => {
     const pending = Session.getPendingClassifyCapture();
@@ -2464,6 +2480,7 @@ function WellnessValleyApp() {
         setShowProfilePage(true);
         break;
       case 'wellness-score':
+        setWellnessScoreSession((n) => n + 1);
         setShowWellnessScore(true);
         break;
       case 'wellness-score-setup':
@@ -4363,10 +4380,7 @@ function WellnessValleyApp() {
           setUnknownShareView((v) => ({
             ...v,
             retrying: false,
-            error:
-              reserved?.reason === 'limit_reached'
-                ? 'Daily AI limit reached'
-                : 'AI Mode is unavailable right now',
+            error: reserveFailureMessage(reserved?.reason),
           }));
           return;
         }
@@ -4382,7 +4396,7 @@ function WellnessValleyApp() {
         userName: user?.userName || user?.username || user?.name || null,
         userEmail: user?.email || user?.Email || null,
         reservationId,
-        creditGated: Boolean(creditsEnabled && reservationId),
+        creditGated: Boolean(creditsEnabled && !!reservationId),
       });
 
       const creditPayload = {
@@ -4417,11 +4431,17 @@ function WellnessValleyApp() {
           return;
         }
         const analysisResult = buildAnalysisFromGeminiAnalysis(analysis);
-        await promoteUnknownToFood({
+        const promoteResult = await promoteUnknownToFood({
           captureId,
           viewerUserId: user.id,
           analysisResult,
           originalCapturedAt: unknownShareView.createdAt ?? null,
+        });
+        seedMealAfterPromotion({
+          ownerUserId: user.id,
+          result: promoteResult,
+          analysisResult,
+          capturedAt: unknownShareView.createdAt ?? null,
         });
         setUnknownShareView((v) => ({ ...v, open: false, retrying: false }));
         showToast("Saved to your diary");
@@ -4465,8 +4485,13 @@ function WellnessValleyApp() {
         }));
       }
     } catch (e) {
-      if (creditsEnabled && reservationId) {
-        await releaseAiCredit({ userId: user.id, reservationId, apiBaseUrl }).catch(() => {});
+      if (creditsEnabled && !!reservationId) {
+        await releaseReservedAiCredit({
+          userId: user.id,
+          reservationId,
+          apiBaseUrl,
+          reason: 'unknown_share_retry_failed',
+        });
       }
       setUnknownShareView((v) => ({
         ...v,
@@ -4527,7 +4552,13 @@ function WellnessValleyApp() {
       analysisResult,
       originalCapturedAt: unknownShareView.createdAt ?? null,
     })
-      .then(() => {
+      .then((result) => {
+        seedMealAfterPromotion({
+          ownerUserId: user.id,
+          result,
+          analysisResult,
+          capturedAt: unknownShareView.createdAt ?? null,
+        });
         triggerNutritionRefresh({ immediate: true, source: "unknown-edit" });
       })
       .catch(() => {
@@ -4577,9 +4608,24 @@ function WellnessValleyApp() {
    */
   const startBackgroundCaptureAi = useCallback(
     ({ captureId, imageBase64, userId: uid, reservationId = null }) => {
-      if (!captureId || !imageBase64) return;
-      const creditsOn = isFlagEnabled('ff.ai-credits') && reservationId;
       const ownerUserId = uid || user?.id || null;
+      const hasReservedCredit = isFlagEnabled('ff.ai-credits') && !!reservationId;
+      if (!captureId || !imageBase64) {
+        if (hasReservedCredit && ownerUserId) {
+          void releaseReservedAiCredit({
+            userId: ownerUserId,
+            reservationId,
+            apiBaseUrl,
+            reason: 'missing_capture_inputs',
+          });
+        }
+        console.error('[Background AI] missing captureId or imageBase64 — orchestrate skipped', {
+          hasReservedCredit,
+          ownerUserId,
+          reservationId,
+        });
+        return;
+      }
 
       markCaptureAnalyzing(captureId, {
         ownerUserId,
@@ -4597,8 +4643,13 @@ function WellnessValleyApp() {
           file = base64ToImageFile(imageBase64);
         } catch (err) {
           console.error('[Background AI] file build failed:', err);
-          if (creditsOn) {
-            await releaseAiCredit({ userId: ownerUserId, reservationId, apiBaseUrl }).catch(() => {});
+          if (hasReservedCredit && ownerUserId) {
+            await releaseReservedAiCredit({
+              userId: ownerUserId,
+              reservationId,
+              apiBaseUrl,
+              reason: 'image_file_build_failed',
+            });
           }
           updatePendingCaptureType(pendingSharePromise, 'unknown');
           clearCaptureAnalyzing(captureId);
@@ -4617,7 +4668,7 @@ function WellnessValleyApp() {
             userEmail: user?.email || user?.Email || null,
             captureId: String(captureId),
             reservationId,
-            creditGated: Boolean(creditsOn),
+            creditGated: hasReservedCredit,
             onAttempt: ({ attempt, total }) => {
               markCaptureAnalyzing(captureId, {
                 ownerUserId,
@@ -4628,8 +4679,13 @@ function WellnessValleyApp() {
           });
         } catch (orchErr) {
           console.error('[Background AI] orchestrate failed:', orchErr);
-          if (creditsOn) {
-            await releaseAiCredit({ userId: ownerUserId, reservationId, apiBaseUrl }).catch(() => {});
+          if (hasReservedCredit && ownerUserId) {
+            await releaseReservedAiCredit({
+              userId: ownerUserId,
+              reservationId,
+              apiBaseUrl,
+              reason: 'orchestrate_failed',
+            });
           }
           updatePendingCaptureType(pendingSharePromise, 'unknown');
           clearCaptureAnalyzing(captureId);
@@ -4650,7 +4706,7 @@ function WellnessValleyApp() {
           detectedType?.type === 'food' && hasRecognizedFood(detectedType.details);
 
         const settleCredit = async () => {
-          if (!creditsOn) return;
+          if (!hasReservedCredit || !ownerUserId) return;
           // Confirm with result — backend deducts for completed classifications
           // (including other) and releases only on technical-failure shaped payloads.
           await confirmAiCredit({
@@ -4665,11 +4721,16 @@ function WellnessValleyApp() {
           if (foodOk) {
             await settleCredit();
             const analysisResult = buildAnalysisFromGeminiAnalysis(detectedType.details);
-            await promoteUnknownToFood({
+            const promoteResult = await promoteUnknownToFood({
               captureId,
               viewerUserId: ownerUserId,
               analysisResult,
               originalCapturedAt: null,
+            });
+            seedMealAfterPromotion({
+              ownerUserId,
+              result: promoteResult,
+              analysisResult,
             });
             clearCaptureAnalyzing(captureId);
             triggerNutritionRefresh({ immediate: true, source: 'capture-food-saved' });
@@ -7371,6 +7432,7 @@ function WellnessValleyApp() {
           apiBaseUrl={apiBaseUrl}
           onBack={() => {
             setShowWellnessScoreSetup(false);
+            refreshOnTabFocus();
             const currentWvPage = window.history.state?.wvPage;
             if (currentWvPage && currentWvPage !== 'main') window.history.back();
           }}
@@ -7421,21 +7483,20 @@ function WellnessValleyApp() {
           }}
           onSaved={(shareMeta) => {
             // Read image before onBack clears payload (exit calls onSaved then onBack).
+            // Do NOT refresh score here — ManualEntryPage refreshes after DB promote/save
+            // so Home + sheet do not lock in a pre-save total.
             const image = manualEntryPayload?.imageBase64;
-            triggerNutritionRefresh({ immediate: true, source: 'capture-classify-saved' });
             void shareCaptureAfterClassify(image, {
               activityCaption: shareMeta?.activityCaption || null,
             });
           }}
           onToast={(msg) => showToast(msg)}
           originalCapturedAt={manualEntryPayload.originalCapturedAt ?? null}
-          onStartBackgroundAi={({ reservationId }) => {
-            const p = manualEntryPayload;
-            if (!p) return;
+          onStartBackgroundAi={({ reservationId, captureId, imageBase64, userId: uid }) => {
             startBackgroundCaptureAi({
-              captureId: p.captureId,
-              imageBase64: p.imageBase64,
-              userId: p.userId,
+              captureId,
+              imageBase64,
+              userId: uid,
               reservationId: reservationId || null,
             });
           }}
@@ -7446,11 +7507,41 @@ function WellnessValleyApp() {
     homeOverlay = (
       <Suspense fallback={<LoadingSpinner message="Loading Wellness Score..." />}>
         <WellnessScorePage
+          key={wellnessScoreSession}
           user={user}
           apiBaseUrl={apiBaseUrl}
           nutritionRefreshKey={nutritionRefreshKey}
-          onBack={() => {
+          initialDateRange={wellnessScoreInitialRange.dateRange}
+          initialCustomStartDate={wellnessScoreInitialRange.customStartDate}
+          initialCustomEndDate={wellnessScoreInitialRange.customEndDate}
+          onBack={(rangeOpts = {}) => {
             setShowWellnessScore(false);
+            // Sync sheet date filter back to Home (e.g. Yesterday → Today).
+            if (rangeOpts.dateRange) {
+              const next = {
+                dateRange: rangeOpts.dateRange,
+                customStartDate: rangeOpts.customStartDate ?? null,
+                customEndDate: rangeOpts.customEndDate ?? null,
+              };
+              setHomeCarouselDateRange(next);
+              setWellnessScoreInitialRange(next);
+            }
+            // Record activity first, then seed with that watermark so the
+            // Home invalidate+refetch restores this pin instead of wiping it
+            // (old order seeded then refresh cleared the seed → Home stayed stale).
+            triggerNutritionRefresh({ immediate: true, source: 'wellness-score-closed' });
+            if (
+              rangeOpts.scoreData
+              && rangeOpts.userId
+              && rangeOpts.scoreDate
+              && !rangeOpts.isMultiDay
+            ) {
+              seedDailyWellnessScoreCache(
+                rangeOpts.userId,
+                rangeOpts.scoreDate,
+                rangeOpts.scoreData,
+              );
+            }
             const currentWvPage = window.history.state?.wvPage;
             if (currentWvPage && currentWvPage !== 'main') window.history.back();
           }}
@@ -7948,7 +8039,26 @@ function WellnessValleyApp() {
               bmrUpdateKey={bmrUpdateKey}
               nutritionRefreshKey={nutritionRefreshKey}
               watchBurnedCalories={watchBurnedCalories}
-              onOpenWellnessScore={() => navigateTo('wellness-score')}
+              dateRange={homeCarouselDateRange.dateRange}
+              customStartDate={homeCarouselDateRange.customStartDate}
+              customEndDate={homeCarouselDateRange.customEndDate}
+              onDateRangeChange={(next) => {
+                setHomeCarouselDateRange({
+                  dateRange: next.dateRange || 'today',
+                  customStartDate: next.customStartDate ?? null,
+                  customEndDate: next.customEndDate ?? null,
+                });
+              }}
+              onOpenWellnessScore={(rangeOpts = {}) => {
+                const next = {
+                  dateRange: rangeOpts.dateRange || homeCarouselDateRange.dateRange || 'today',
+                  customStartDate: rangeOpts.customStartDate ?? homeCarouselDateRange.customStartDate ?? null,
+                  customEndDate: rangeOpts.customEndDate ?? homeCarouselDateRange.customEndDate ?? null,
+                };
+                setWellnessScoreInitialRange(next);
+                setHomeCarouselDateRange(next);
+                navigateTo('wellness-score');
+              }}
               onOpenWellnessScoreSetup={
                 ['admin', 'developer'].includes(userRole)
                   ? () => navigateTo('wellness-score-setup')

@@ -63,6 +63,36 @@ export async function releaseAiCredit({ userId, reservationId, apiBaseUrl } = {}
   return parseJson(res);
 }
 
+/**
+ * Release a credit hold created by reserveAiCredit().
+ * No-op when reservationId or userId is missing.
+ * Logs failures (does not throw) so background capture flows can continue.
+ *
+ * @param {{ userId: string|number, reservationId: string|number|null|undefined, apiBaseUrl?: string, reason?: string }}
+ */
+export async function releaseReservedAiCredit({
+  userId,
+  reservationId,
+  apiBaseUrl,
+  reason = 'unspecified',
+} = {}) {
+  if (!reservationId || !userId) {
+    return { skipped: true, reason: 'no_reservation' };
+  }
+  try {
+    return await releaseAiCredit({ userId, reservationId, apiBaseUrl });
+  } catch (err) {
+    console.error('[ai-credits] releaseReservedAiCredit failed', {
+      reservationId,
+      ownerUserId: userId,
+      reason,
+      message: err?.message || String(err),
+      status: err?.status ?? null,
+    });
+    return { failed: true, reason };
+  }
+}
+
 export async function fetchAiCreditsAdminConfig({
   requesterUserId,
   requesterEmail,

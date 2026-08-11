@@ -8,6 +8,9 @@ import NutritionAnalysisPanel from './NutritionAnalysisPanel';
  */
 function MealAnalysisModal({
   selectedMeal,
+  mealDetailStatus,
+  mealDetailError,
+  onRetryMealDetail,
   isClosingModal,
   isEditing,
   isSaving,
@@ -35,6 +38,9 @@ function MealAnalysisModal({
   return (
     <NutritionAnalysisPanel
       selectedMeal={selectedMeal}
+      mealDetailStatus={mealDetailStatus}
+      mealDetailError={mealDetailError}
+      onRetryMealDetail={onRetryMealDetail}
       isClosingModal={isClosingModal}
       isEditing={isEditing}
       isSaving={isSaving}

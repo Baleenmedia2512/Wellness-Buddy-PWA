@@ -16,14 +16,16 @@ import { IANA_IST, filterFoodRowsByCalendarDay } from '../../../shared/lib/datet
 
 /**
  * Returns the user's most-recent non-deleted weight row, or null.
+ * BodyFat / Bmr are included so Wellness Score can resolve Katch-McArdle BMR
+ * when team_table.Bmr was never synced.
  * @param {string|number} userId
- * @returns {Promise<{ Weight: number|string, CreatedAt: string } | null>}
+ * @returns {Promise<{ Weight: number|string, BodyFat?: number|string|null, Bmr?: number|string|null, CreatedAt: string } | null>}
  */
 export async function getLatestWeight(userId) {
   const supabase = getSupabaseClient();
   const { data, error } = await supabase
     .from('weight_records_table')
-    .select('Weight, CreatedAt')
+    .select('Weight, BodyFat, Bmr, CreatedAt')
     .eq('UserId', userId)
     .or('IsDeleted.is.null,IsDeleted.eq.0,IsDeleted.eq.false')
     .order('CreatedAt', { ascending: false })

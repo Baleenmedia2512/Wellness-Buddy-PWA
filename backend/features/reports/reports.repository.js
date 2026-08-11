@@ -12,6 +12,7 @@ import {
   buildReportingChildrenIndex,
 } from '../../utils/reportingHierarchyService.js';
 import { shiftDateYmd, IANA_IST } from '../../shared/lib/datetime/index.js';
+import { classifyWeightsForScoreDate } from './domain/wellness-score-report.weight.js';
 
 /**
  * Batch-resolve UserName for many user ids (one query). Used for report Sponsor/Coach labels.
@@ -248,46 +249,46 @@ export async function getLatestWeightsForUsers(userIds) {
 }
 
 /**
- * Merge chunked weight rows into Map keyed by UserId with latest + previous.
- * Rows must be ordered CreatedAt DESC; first = today/latest, second = previous.
+ * Merge chunked weight rows into Map keyed by UserId.
+ * When scoreDateYmd is set: todayWeight is the exact-day log only (else null);
+ * previousWeight is the next-latest entry before that.
+ * Without scoreDateYmd: first = latest, second = previous (legacy).
  *
  * @param {Array<{ UserId: number, Weight: number|null, CreatedAt?: string }>|null|undefined} rows
  * @param {Map<number, { todayWeight: number|null, previousWeight: number|null, lastUpdated: string|null }>} map
+ * @param {string|null} [scoreDateYmd]
  */
-function mergeLatestTwoWeightRows(rows, map) {
+function mergeLatestTwoWeightRows(rows, map, scoreDateYmd = null) {
+  /** @type {Map<number, Array<{ UserId: number, Weight: number|null, CreatedAt?: string }>>} */
+  const byUser = new Map();
   for (const row of rows || []) {
     const uid = row.UserId;
-    const weight =
-      row.Weight !== null && row.Weight !== undefined ? parseFloat(row.Weight) : null;
-    const parsed = Number.isFinite(weight) ? weight : null;
-    const existing = map.get(uid);
-    if (!existing) {
-      map.set(uid, {
-        todayWeight: parsed,
-        previousWeight: null,
-        lastUpdated: row.CreatedAt ?? null,
-      });
-      continue;
-    }
-    if (existing.previousWeight == null && parsed != null) {
-      existing.previousWeight = parsed;
-    }
+    if (uid == null) continue;
+    const list = byUser.get(uid);
+    if (list) list.push(row);
+    else byUser.set(uid, [row]);
+  }
+
+  for (const [uid, userRows] of byUser.entries()) {
+    map.set(uid, classifyWeightsForScoreDate(userRows, scoreDateYmd));
   }
 }
 
 /**
- * Fetch latest + previous weight for each userId.
- * When `asOfDateYmd` is set, only rows on/before that IST business day count
- * (so Yesterday / Custom Date show that day's weight, not always "now").
+ * Fetch weight for each userId for the selected score date.
+ * When `scoreDateYmd` is set:
+ *   - todayWeight = weight logged ON that IST business day only (null → UI "—")
+ *   - previousWeight = next-latest weight before that day's entry
+ * When unset: latest two overall (legacy).
  *
- * For small page-sized sets, uses parallel per-user limit(2) queries
+ * For small page-sized sets, uses parallel per-user queries
  * (never downloads full weight history).
  *
  * @param {number[]} userIds
- * @param {string|null} [asOfDateYmd] YYYY-MM-DD IST business date
+ * @param {string|null} [scoreDateYmd] YYYY-MM-DD IST business date
  * @returns {Promise<Map<number, { todayWeight: number|null, previousWeight: number|null, lastUpdated: string|null }>>}
  */
-export async function getLatestTwoWeightsForUsers(userIds, asOfDateYmd = null) {
+export async function getLatestTwoWeightsForUsers(userIds, scoreDateYmd = null) {
   const map = new Map();
   if (!userIds || userIds.length === 0) return map;
 
@@ -295,13 +296,15 @@ export async function getLatestTwoWeightsForUsers(userIds, asOfDateYmd = null) {
   if (uniqueIds.length === 0) return map;
 
   const asOf =
-    typeof asOfDateYmd === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(asOfDateYmd)
-      ? asOfDateYmd
+    typeof scoreDateYmd === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(scoreDateYmd)
+      ? scoreDateYmd
       : null;
   // Legacy CreatedAt is IST wall-clock; exclusive next-day start keeps that day inclusive.
   const asOfExclusiveUpper = asOf ? `${shiftDateYmd(asOf, 1, IANA_IST)} 00:00:00` : null;
+  // Fetch a few recent rows so same-day earlier logs can fill previousWeight.
+  const perUserLimit = asOf ? 8 : 2;
 
-  // Page-sized lookups: 2 rows/user only — avoids full history download.
+  // Page-sized lookups: few rows/user only — avoids full history download.
   if (uniqueIds.length <= 40) {
     const supabase = getSupabaseClient();
     const results = await Promise.all(
@@ -316,13 +319,13 @@ export async function getLatestTwoWeightsForUsers(userIds, asOfDateYmd = null) {
         }
         const { data, error } = await query
           .order('"CreatedAt"', { ascending: false })
-          .limit(2);
+          .limit(perUserLimit);
         if (error) throw error;
         return data || [];
       }),
     );
     for (const rows of results) {
-      mergeLatestTwoWeightRows(rows, map);
+      mergeLatestTwoWeightRows(rows, map, asOf);
     }
     return normalizeWeightMapKeys(map);
   }
@@ -350,7 +353,7 @@ export async function getLatestTwoWeightsForUsers(userIds, asOfDateYmd = null) {
   );
 
   for (const rows of results) {
-    mergeLatestTwoWeightRows(rows, map);
+    mergeLatestTwoWeightRows(rows, map, asOf);
   }
   return normalizeWeightMapKeys(map);
 }
@@ -359,7 +362,12 @@ function normalizeWeightMapKeys(map) {
   const normalized = new Map();
   for (const [key, value] of map.entries()) {
     const id = Number(key);
-    if (Number.isFinite(id)) normalized.set(id, value);
+    if (!Number.isFinite(id)) continue;
+    normalized.set(id, {
+      todayWeight: value?.todayWeight ?? null,
+      previousWeight: value?.previousWeight ?? null,
+      lastUpdated: value?.lastUpdated ?? null,
+    });
   }
   return normalized;
 }

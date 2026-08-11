@@ -2,6 +2,7 @@
 // Wraps mealMutationsApi.updateMealNutrition so React state (analyses,
 // selectedMeal, dailyStats) stays consistent with the DB write.
 import { updateMealNutrition } from './mealMutationsApi';
+import { updateMealDetailCache } from '../mealDetailCache';
 
 const round = (n) => Math.round(n || 0);
 
@@ -39,6 +40,12 @@ export async function persistMealItems({
     if (markAutoSave) markAutoSave();
     setSelectedMeal((prev) => ({ ...prev, AnalysisData: analysisDataString, ...totalsPatch }));
   }
+
+  updateMealDetailCache(userId, mealId, {
+    ID: mealId,
+    AnalysisData: analysisDataString,
+    ...totalsPatch,
+  });
 
   if (refresh) {
     refresh(selectedDate).catch((e) => console.error('Error reloading stats:', e));

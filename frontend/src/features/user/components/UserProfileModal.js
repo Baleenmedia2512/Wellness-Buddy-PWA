@@ -50,7 +50,10 @@ const UserProfileModal = ({ isOpen, onClose, user, userRole = 'user', onProfileU
           bmr: data.latestBmr ? String(Math.round(data.latestBmr)) : '',
           physicalActivityLevel: data.physicalActivityLevel || '',
           weightGoalMode: data.weightGoalMode || null,
-          communityId: data.communityId || '',
+          bodyFat: data.latestWeightBodyFat != null
+            ? String(data.latestWeightBodyFat)
+            : (data.bodyFat != null ? String(data.bodyFat) : ''),
+          needsBodyFat: Boolean(data.needsBodyFat),
           email: data.email || user?.email || '',
           bodyMetrics: data.bodyMetrics || null,
         });
