@@ -10,6 +10,11 @@
  */
 
 export { getUserId, clearUserIdCache, lookupUserByEmail } from './getUserId.js';
+export {
+  verifyAccountSession,
+  verifyAndAttachDbUserId,
+  invalidateLocalAccountSession,
+} from './verifyAccountSession.js';
 
 export {
   getUserContext,

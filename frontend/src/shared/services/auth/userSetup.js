@@ -55,12 +55,24 @@ export async function fetchUserStatus({ apiBaseUrl, email }) {
       }),
     });
 
-    if (!response.ok) {
-      // Legacy threw and caught → fail-open. Preserve.
-      return { result: "active" };
+    let data = {};
+    try {
+      data = await response.json();
+    } catch {
+      data = {};
     }
 
-    const data = await response.json();
+    // Account hard-deleted — must NOT fail-open (404 previously treated as active).
+    if (response.status === 404 || data.userNotFound || data.success === false) {
+      if (data.userNotFound || response.status === 404) {
+        return { result: "userNotFound" };
+      }
+    }
+
+    if (!response.ok) {
+      // Legacy threw and caught → fail-open for transient errors only.
+      return { result: "active" };
+    }
 
     if (!data.success || data.userNotFound) {
       return { result: "userNotFound" };
