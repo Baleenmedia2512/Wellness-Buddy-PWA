@@ -100,6 +100,10 @@ import {
 } from "./shared/utils/backButtonHandler";
 import { getUserId, clearUserIdCache, verifyAndAttachDbUserId, verifyAccountSession } from "./shared/services/userIdentity";
 import { getVersionString } from "./config/version";
+import { useAppVersionPolicy } from "./shared/hooks/useAppVersionPolicy";
+import AppVersionHardBlock, {
+  AppVersionUpdateBanner,
+} from "./shared/components/AppVersionGate";
 import { getApiBaseUrl } from "./config/api.config";
 import {
   saveNutritionAnalysis,
@@ -292,6 +296,7 @@ const prefetchManualEntryPage = () => {
 };
 function WellnessValleyApp() {
   const apiBaseUrl = getApiBaseUrl();
+  const versionPolicy = useAppVersionPolicy();
   const [selectedImage, setSelectedImage] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
   const [nutritionData, setNutritionData] = useState(null);
@@ -6910,6 +6915,10 @@ function WellnessValleyApp() {
     return authBridgeScreen;
   }
 
+  if (versionPolicy.blocked) {
+    return <AppVersionHardBlock policy={versionPolicy.policy} />;
+  }
+
   if (authLoading) {
     // On native, show the logo overlay instead of a blank screen.
     if (Capacitor.isNativePlatform()) {
@@ -7121,6 +7130,12 @@ function WellnessValleyApp() {
   // dashboard API reloads unless a newer async activity log exists
   // (see homeDashboardActivity + NutritionRefreshContext.triggerRefresh).
   let homeOverlay = null;
+  const versionSoftBanner = versionPolicy.showSoftBanner ? (
+    <AppVersionUpdateBanner
+      policy={versionPolicy.policy}
+      onDismiss={versionPolicy.dismissRecommended}
+    />
+  ) : null;
 
   // Inline Profile Page — full-screen, below nav bar (no modal overlay)
   // Never show during onboarding (My Profile is not part of the setup wizard).
@@ -9136,6 +9151,7 @@ function WellnessValleyApp() {
     </LocationGuard>
       </div>
       {homeOverlay}
+      {versionSoftBanner}
     </>
   );
 }
