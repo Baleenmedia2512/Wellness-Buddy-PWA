@@ -31,7 +31,6 @@ jobs:
 
     timeout-minutes: 30
 
-
     steps:
 
       # ============================================================
@@ -54,7 +53,7 @@ jobs:
 
 
       # ============================================================
-      # 3. Install root dependencies
+      # 3. Install ROOT dependencies
       # ============================================================
 
       - name: Install root dependencies
@@ -62,7 +61,7 @@ jobs:
 
 
       # ============================================================
-      # 4. Install frontend dependencies
+      # 4. Install FRONTEND dependencies
       # ============================================================
 
       - name: Install frontend dependencies
@@ -71,7 +70,7 @@ jobs:
 
 
       # ============================================================
-      # 5. Install backend dependencies
+      # 5. Install BACKEND dependencies
       # ============================================================
 
       - name: Install backend dependencies
@@ -80,7 +79,7 @@ jobs:
 
 
       # ============================================================
-      # 6. Create frontend .env
+      # 6. Create FRONTEND .env
       # ============================================================
 
       - name: Create frontend environment
@@ -88,22 +87,20 @@ jobs:
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           REACT_APP_GOOGLE_MAPS_API_KEY: ${{ secrets.REACT_APP_GOOGLE_MAPS_API_KEY }}
-          REACT_APP_API_BASE_URL: ${{ secrets.REACT_APP_API_BASE_URL }}
-          DISABLE_ESLINT_PLUGIN: ${{ secrets.DISABLE_ESLINT_PLUGIN }}
 
         run: |
           cat > frontend/.env <<EOF
           GEMINI_API_KEY=$GEMINI_API_KEY
           REACT_APP_GOOGLE_MAPS_API_KEY=$REACT_APP_GOOGLE_MAPS_API_KEY
-          REACT_APP_API_BASE_URL=$REACT_APP_API_BASE_URL
-          DISABLE_ESLINT_PLUGIN=$DISABLE_ESLINT_PLUGIN
+          REACT_APP_API_BASE_URL=http://127.0.0.1:3000
+          DISABLE_ESLINT_PLUGIN=true
           EOF
 
           echo "Frontend .env created."
 
 
       # ============================================================
-      # 7. Create backend .env
+      # 7. Create BACKEND .env
       # ============================================================
 
       - name: Create backend environment
@@ -192,7 +189,7 @@ jobs:
 
 
       # ============================================================
-      # 10. Verify frontend dependencies
+      # 10. Verify react-scripts
       # ============================================================
 
       - name: Verify React Scripts
@@ -204,15 +201,13 @@ jobs:
             echo "react-scripts is installed."
           else
             echo "ERROR: react-scripts was not found."
-            echo ""
-            echo "Contents of node_modules/.bin:"
             ls -la node_modules/.bin || true
             exit 1
           fi
 
 
       # ============================================================
-      # 11. Start backend
+      # 11. Start BACKEND
       # ============================================================
 
       - name: Start Backend
@@ -220,7 +215,7 @@ jobs:
         shell: bash
         run: |
           echo "=========================================="
-          echo "Starting backend"
+          echo "Starting backend on port 3000"
           echo "=========================================="
 
           npm run dev:local > ../backend.log 2>&1 &
@@ -232,9 +227,9 @@ jobs:
 
 
       # ============================================================
-      # 12. Wait for backend
+      # 12. Wait for BACKEND
       #
-      # Backend / returns 404, therefore check TCP port.
+      # We use TCP because GET / returns 404.
       # ============================================================
 
       - name: Wait for Backend
@@ -250,10 +245,10 @@ jobs:
 
 
       # ============================================================
-      # 13. Verify backend process
+      # 13. Verify BACKEND process
       # ============================================================
 
-      - name: Verify Backend
+      - name: Verify Backend Process
         shell: bash
         run: |
           echo "Checking backend process..."
@@ -273,21 +268,32 @@ jobs:
 
 
       # ============================================================
-      # 14. Start frontend
+      # 14. Start FRONTEND
       #
-      # This is Create React App.
-      # It uses react-scripts, NOT Vite.
+      # IMPORTANT:
+      # Create React App normally uses port 3000.
+      #
+      # Backend is already using 3000.
+      #
+      # Therefore explicitly set:
+      #
+      # PORT=3001
       # ============================================================
 
       - name: Start Frontend
         working-directory: ./frontend
         shell: bash
+        env:
+          PORT: 3001
+
         run: |
           echo "=========================================="
-          echo "Starting Create React App frontend"
+          echo "Starting frontend on port 3001"
           echo "=========================================="
 
-          npm start -- --port 3001 > ../frontend.log 2>&1 &
+          echo "PORT=$PORT"
+
+          npm start > ../frontend.log 2>&1 &
 
           echo $! > ../frontend.pid
 
@@ -296,13 +302,13 @@ jobs:
 
 
       # ============================================================
-      # 15. Wait 10 seconds and show frontend log
+      # 15. Give FRONTEND time to start
       # ============================================================
 
       - name: Check Frontend Startup
         shell: bash
         run: |
-          echo "Waiting 10 seconds for frontend startup..."
+          echo "Waiting 10 seconds for frontend..."
 
           sleep 10
 
@@ -313,7 +319,7 @@ jobs:
 
 
       # ============================================================
-      # 16. Check frontend process
+      # 16. Verify FRONTEND process
       # ============================================================
 
       - name: Verify Frontend Process
@@ -336,7 +342,7 @@ jobs:
 
 
       # ============================================================
-      # 17. Wait for frontend HTTP server
+      # 17. Wait for FRONTEND
       # ============================================================
 
       - name: Wait for Frontend
@@ -352,7 +358,7 @@ jobs:
 
 
       # ============================================================
-      # 18. Verify frontend HTTP response
+      # 18. Verify FRONTEND HTTP response
       # ============================================================
 
       - name: Verify Frontend
@@ -376,7 +382,7 @@ jobs:
 
 
       # ============================================================
-      # 20. Show backend log
+      # 20. Show backend logs
       # ============================================================
 
       - name: Show Backend Logs
@@ -392,7 +398,7 @@ jobs:
 
 
       # ============================================================
-      # 21. Show frontend log
+      # 21. Show frontend logs
       # ============================================================
 
       - name: Show Frontend Logs
@@ -408,7 +414,7 @@ jobs:
 
 
       # ============================================================
-      # 22. Upload Playwright HTML report
+      # 22. Upload Playwright report
       # ============================================================
 
       - name: Upload Playwright Report
