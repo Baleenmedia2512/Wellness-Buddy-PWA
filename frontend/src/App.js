@@ -98,19 +98,20 @@ import {
   initializeBackButton,
   cleanupBackButton,
 } from "./shared/utils/backButtonHandler";
-import { getUserId, clearUserIdCache } from "./shared/services/userIdentity";
+import { getUserId, clearUserIdCache, verifyAndAttachDbUserId, verifyAccountSession } from "./shared/services/userIdentity";
 import { getVersionString } from "./config/version";
 import { getApiBaseUrl } from "./config/api.config";
 import {
   saveNutritionAnalysis,
   deleteNutritionAnalysis,
 } from "./features/nutrition";
-import { seedDailyWellnessScoreCache } from "./features/wellness-score-sheet/hooks/useWellnessScore";
+import { seedDailyWellnessScoreCache } from "./features/wellness-score-sheet/services/dailyWellnessScoreCache";
 import { analyzeImage as orchestrateAnalyzeImage } from "./shared/services/orchestratorService";
 import {
   reserveAiCredit,
   confirmAiCredit,
-  releaseAiCredit,
+  releaseReservedAiCredit,
+  reserveFailureMessage,
 } from "./features/ai-credits";
 import * as captureQueue from './shared/services/captureQueue';
 import { useOfflineCaptureQueue } from './hooks/useOfflineCaptureQueue';
@@ -146,6 +147,7 @@ import { validateImageFreshness } from "./shared/utils/imageValidator";
 import { toStorageThumbnail } from "./shared/utils/storageThumbnail";
 import { ManualWeightEntryModal, saveWeight } from "./features/weight";
 import { SmartFoodSearchModal, buildAnalysisFromManualFood as buildManualFoodAnalysis } from "./features/nutrition";
+import { seedMealAfterPromotion } from "./features/nutrition/services/seedMealAfterPromotion";
 import { ManualEducationEntryModal, saveLog } from "./features/education";
 // VSA-compliant barrel imports (helpers exported via features/captures/index.js)
 import {
@@ -2117,6 +2119,8 @@ function WellnessValleyApp() {
 
   // Add a ref to track if sign-out is in progress
   const signOutInProgress = useRef(false);
+  const handleSignOutRef = useRef(null);
+  const revokeDeletedAccountSessionRef = useRef(null);
 
   // Add a ref to track if image processing is in progress (prevents React StrictMode double-calls)
   const imageProcessingInProgress = useRef(false);
@@ -2153,7 +2157,27 @@ function WellnessValleyApp() {
         statusCheckInProgress.current = true;
 
         const userEmail = user.email || user.Email;
-        if (!userEmail) return true;
+        if (!userEmail) {
+          const phone = user.phone || user.PhoneNumber || null;
+          const cachedId = user.id || user.UserId || Session.getDbUserId() || null;
+          if (phone || cachedId) {
+            const verified = await verifyAccountSession({
+              userId: cachedId,
+              phone: phone || undefined,
+            });
+            if (verified.userNotFound) {
+              setIsUserActive(false);
+              await revokeDeletedAccountSessionRef.current?.();
+              return false;
+            }
+            if (verified.ok && verified.userId) {
+              user.id = verified.userId;
+              user.UserId = verified.userId;
+              Session.setDbUserId(verified.userId);
+            }
+          }
+          return true;
+        }
 
         // Phase 3b: HTTP + response mapping moved into shared/services/auth/userSetup.
         // Fail-open semantics preserved by the helper (network errors ? 'active').
@@ -2166,8 +2190,9 @@ function WellnessValleyApp() {
         authFsm.send({ type: authFsm.E.USER_STATUS_RESOLVED, result, role });
 
         if (result === "userNotFound") {
-          setShowUserNotFoundModal(true);
+          setShowUserNotFoundModal(false);
           setIsUserActive(false);
+          await revokeDeletedAccountSessionRef.current?.();
           return false;
         }
 
@@ -3231,28 +3256,14 @@ function WellnessValleyApp() {
       }
 
       if (user) {
-        // Get database UserId if not already attached
-        if (!user.id) {
-          // Warm-start fast path: reuse the cached DB userId to avoid a
-          // network round-trip on every app open for returning users.
-          const cachedId = Session.getDbUserId();
-          if (cachedId) {
-            user.id = cachedId;
-            debugLog(
-              "? [Auth State] Restored database UserId from cache:",
-              user.id,
-            );
-          } else {
-            const dbUserId = await getUserId(user);
-            if (dbUserId) {
-              user.id = dbUserId;
-              Session.setDbUserId(dbUserId);
-              debugLog(
-                "? [Auth State] Attached database UserId to user object:",
-                user.id,
-              );
-            }
-          }
+        const attachResult = await verifyAndAttachDbUserId(user);
+        if (attachResult.userNotFound) {
+          await revokeDeletedAccountSessionRef.current?.();
+          return;
+        }
+        if (attachResult.ok && attachResult.user) {
+          user.id = attachResult.user.id;
+          user.UserId = attachResult.user.id;
         }
 
         // Store user email in localStorage for API calls
@@ -3439,17 +3450,15 @@ function WellnessValleyApp() {
           try {
             const parsedUser = JSON.parse(otpUserRaw);
 
-            // Get database UserId if not already attached
-            if (!parsedUser.id) {
-              const dbUserId = await getUserId(parsedUser);
-              if (dbUserId) {
-                parsedUser.id = dbUserId;
-                Session.setDbUserId(dbUserId);
-                debugLog(
-                  "? [OTP Restore] Attached database UserId to user object:",
-                  parsedUser.id,
-                );
-              }
+            // Verify account still exists before trusting cached otpUser / dbUserId.
+            const attachResult = await verifyAndAttachDbUserId(parsedUser);
+            if (attachResult.userNotFound) {
+              await revokeDeletedAccountSessionRef.current?.();
+              setPostAuthBridge(false);
+              return;
+            }
+            if (attachResult.ok && attachResult.user) {
+              Object.assign(parsedUser, attachResult.user);
             }
 
             // Store user email in localStorage for API calls
@@ -3566,18 +3575,16 @@ function WellnessValleyApp() {
     otpCacheRestoredRef.current = false; // run exactly once
     (async () => {
       try {
-        // Attach DB userId if not yet present
-        if (!user.id) {
-          const cachedId = Session.getDbUserId();
-          if (cachedId) {
-            user.id = cachedId;
-          } else {
-            const dbId = await getUserId(user);
-            if (dbId) {
-              user.id = dbId;
-              Session.setDbUserId(dbId);
-            }
-          }
+        // Verify session before trusting cached ids (hard-deleted accounts).
+        const attachResult = await verifyAndAttachDbUserId(user);
+        if (attachResult.userNotFound) {
+          await revokeDeletedAccountSessionRef.current?.();
+          return;
+        }
+        if (attachResult.ok && attachResult.user) {
+          user.id = attachResult.user.id;
+          user.UserId = attachResult.user.id;
+          setUser({ ...user, id: attachResult.user.id, UserId: attachResult.user.id });
         }
         // Status check ? shows inactive modal if account was deactivated.
         await checkUserStatus(user, isInactiveReactivationFlow);
@@ -4378,10 +4385,7 @@ function WellnessValleyApp() {
           setUnknownShareView((v) => ({
             ...v,
             retrying: false,
-            error:
-              reserved?.reason === 'limit_reached'
-                ? 'Daily AI limit reached'
-                : 'AI Mode is unavailable right now',
+            error: reserveFailureMessage(reserved?.reason),
           }));
           return;
         }
@@ -4397,7 +4401,7 @@ function WellnessValleyApp() {
         userName: user?.userName || user?.username || user?.name || null,
         userEmail: user?.email || user?.Email || null,
         reservationId,
-        creditGated: Boolean(creditsEnabled && reservationId),
+        creditGated: Boolean(creditsEnabled && !!reservationId),
       });
 
       const creditPayload = {
@@ -4432,11 +4436,17 @@ function WellnessValleyApp() {
           return;
         }
         const analysisResult = buildAnalysisFromGeminiAnalysis(analysis);
-        await promoteUnknownToFood({
+        const promoteResult = await promoteUnknownToFood({
           captureId,
           viewerUserId: user.id,
           analysisResult,
           originalCapturedAt: unknownShareView.createdAt ?? null,
+        });
+        seedMealAfterPromotion({
+          ownerUserId: user.id,
+          result: promoteResult,
+          analysisResult,
+          capturedAt: unknownShareView.createdAt ?? null,
         });
         setUnknownShareView((v) => ({ ...v, open: false, retrying: false }));
         showToast("Saved to your diary");
@@ -4480,8 +4490,13 @@ function WellnessValleyApp() {
         }));
       }
     } catch (e) {
-      if (creditsEnabled && reservationId) {
-        await releaseAiCredit({ userId: user.id, reservationId, apiBaseUrl }).catch(() => {});
+      if (creditsEnabled && !!reservationId) {
+        await releaseReservedAiCredit({
+          userId: user.id,
+          reservationId,
+          apiBaseUrl,
+          reason: 'unknown_share_retry_failed',
+        });
       }
       setUnknownShareView((v) => ({
         ...v,
@@ -4542,7 +4557,13 @@ function WellnessValleyApp() {
       analysisResult,
       originalCapturedAt: unknownShareView.createdAt ?? null,
     })
-      .then(() => {
+      .then((result) => {
+        seedMealAfterPromotion({
+          ownerUserId: user.id,
+          result,
+          analysisResult,
+          capturedAt: unknownShareView.createdAt ?? null,
+        });
         triggerNutritionRefresh({ immediate: true, source: "unknown-edit" });
       })
       .catch(() => {
@@ -4592,9 +4613,24 @@ function WellnessValleyApp() {
    */
   const startBackgroundCaptureAi = useCallback(
     ({ captureId, imageBase64, userId: uid, reservationId = null }) => {
-      if (!captureId || !imageBase64) return;
-      const creditsOn = isFlagEnabled('ff.ai-credits') && reservationId;
       const ownerUserId = uid || user?.id || null;
+      const hasReservedCredit = isFlagEnabled('ff.ai-credits') && !!reservationId;
+      if (!captureId || !imageBase64) {
+        if (hasReservedCredit && ownerUserId) {
+          void releaseReservedAiCredit({
+            userId: ownerUserId,
+            reservationId,
+            apiBaseUrl,
+            reason: 'missing_capture_inputs',
+          });
+        }
+        console.error('[Background AI] missing captureId or imageBase64 — orchestrate skipped', {
+          hasReservedCredit,
+          ownerUserId,
+          reservationId,
+        });
+        return;
+      }
 
       markCaptureAnalyzing(captureId, {
         ownerUserId,
@@ -4612,8 +4648,13 @@ function WellnessValleyApp() {
           file = base64ToImageFile(imageBase64);
         } catch (err) {
           console.error('[Background AI] file build failed:', err);
-          if (creditsOn) {
-            await releaseAiCredit({ userId: ownerUserId, reservationId, apiBaseUrl }).catch(() => {});
+          if (hasReservedCredit && ownerUserId) {
+            await releaseReservedAiCredit({
+              userId: ownerUserId,
+              reservationId,
+              apiBaseUrl,
+              reason: 'image_file_build_failed',
+            });
           }
           updatePendingCaptureType(pendingSharePromise, 'unknown');
           clearCaptureAnalyzing(captureId);
@@ -4632,7 +4673,7 @@ function WellnessValleyApp() {
             userEmail: user?.email || user?.Email || null,
             captureId: String(captureId),
             reservationId,
-            creditGated: Boolean(creditsOn),
+            creditGated: hasReservedCredit,
             onAttempt: ({ attempt, total }) => {
               markCaptureAnalyzing(captureId, {
                 ownerUserId,
@@ -4643,8 +4684,13 @@ function WellnessValleyApp() {
           });
         } catch (orchErr) {
           console.error('[Background AI] orchestrate failed:', orchErr);
-          if (creditsOn) {
-            await releaseAiCredit({ userId: ownerUserId, reservationId, apiBaseUrl }).catch(() => {});
+          if (hasReservedCredit && ownerUserId) {
+            await releaseReservedAiCredit({
+              userId: ownerUserId,
+              reservationId,
+              apiBaseUrl,
+              reason: 'orchestrate_failed',
+            });
           }
           updatePendingCaptureType(pendingSharePromise, 'unknown');
           clearCaptureAnalyzing(captureId);
@@ -4665,7 +4711,7 @@ function WellnessValleyApp() {
           detectedType?.type === 'food' && hasRecognizedFood(detectedType.details);
 
         const settleCredit = async () => {
-          if (!creditsOn) return;
+          if (!hasReservedCredit || !ownerUserId) return;
           // Confirm with result — backend deducts for completed classifications
           // (including other) and releases only on technical-failure shaped payloads.
           await confirmAiCredit({
@@ -4680,11 +4726,16 @@ function WellnessValleyApp() {
           if (foodOk) {
             await settleCredit();
             const analysisResult = buildAnalysisFromGeminiAnalysis(detectedType.details);
-            await promoteUnknownToFood({
+            const promoteResult = await promoteUnknownToFood({
               captureId,
               viewerUserId: ownerUserId,
               analysisResult,
               originalCapturedAt: null,
+            });
+            seedMealAfterPromotion({
+              ownerUserId,
+              result: promoteResult,
+              analysisResult,
             });
             clearCaptureAnalyzing(captureId);
             triggerNutritionRefresh({ immediate: true, source: 'capture-food-saved' });
@@ -6623,6 +6674,12 @@ function WellnessValleyApp() {
     }
   };
 
+  handleSignOutRef.current = handleSignOut;
+  revokeDeletedAccountSessionRef.current = async () => {
+    setShowUserNotFoundModal(false);
+    await handleSignOut();
+  };
+
   const handleOtpVerified = async (isNewUser = false) => {
     debugLog("?? [handleOtpVerified] Called with isNewUser:", isNewUser);
 
@@ -7446,13 +7503,11 @@ function WellnessValleyApp() {
           }}
           onToast={(msg) => showToast(msg)}
           originalCapturedAt={manualEntryPayload.originalCapturedAt ?? null}
-          onStartBackgroundAi={({ reservationId }) => {
-            const p = manualEntryPayload;
-            if (!p) return;
+          onStartBackgroundAi={({ reservationId, captureId, imageBase64, userId: uid }) => {
             startBackgroundCaptureAi({
-              captureId: p.captureId,
-              imageBase64: p.imageBase64,
-              userId: p.userId,
+              captureId,
+              imageBase64,
+              userId: uid,
               reservationId: reservationId || null,
             });
           }}
@@ -7482,8 +7537,10 @@ function WellnessValleyApp() {
               setHomeCarouselDateRange(next);
               setWellnessScoreInitialRange(next);
             }
-            // Push sheet score into Home's daily cache so the carousel card
-            // cannot stay on an older total (e.g. Home 334 vs sheet 349).
+            // Record activity first, then seed with that watermark so the
+            // Home invalidate+refetch restores this pin instead of wiping it
+            // (old order seeded then refresh cleared the seed → Home stayed stale).
+            triggerNutritionRefresh({ immediate: true, source: 'wellness-score-closed' });
             if (
               rangeOpts.scoreData
               && rangeOpts.userId
@@ -7496,8 +7553,6 @@ function WellnessValleyApp() {
                 rangeOpts.scoreData,
               );
             }
-            // Force Home live score hook to refetch / pick up seeded cache.
-            triggerNutritionRefresh({ immediate: true, source: 'wellness-score-closed' });
             const currentWvPage = window.history.state?.wvPage;
             if (currentWvPage && currentWvPage !== 'main') window.history.back();
           }}

@@ -18,6 +18,10 @@ import {
 import { enumerateDatesYmd, resolveWellnessDateRange, ymdToLocalDate } from '../../wellness-score-sheet/domain/dateRange';
 import { fetchDailyWellnessScore, fetchWellnessScoreHistory } from '../../wellness-score-sheet/services/wellnessScore.api';
 import {
+  getPinnedDailyWellnessScore,
+  subscribeDailyWellnessScoreSeed,
+} from '../../wellness-score-sheet/services/dailyWellnessScoreCache';
+import {
   getLatestActivityLogId,
   markHomeDashboardProcessed,
   shouldRefreshHomeDashboard,
@@ -48,6 +52,18 @@ function readCache(userId, startDate, endDate) {
 
 function writeCache(userId, startDate, endDate, payload) {
   rangeCache.set(cacheKey(userId, startDate, endDate), payload);
+}
+
+/** Keep single-day carousel cache aligned with the sheet total. */
+function patchRangeCacheWellness(userId, dateYmd, score) {
+  if (userId == null || !dateYmd || !score) return;
+  const key = cacheKey(userId, dateYmd, dateYmd);
+  const existing = rangeCache.get(key);
+  if (!existing) {
+    rangeCache.set(key, { nutrition: EMPTY_NUTRITION, wellnessScore: score });
+    return;
+  }
+  rangeCache.set(key, { ...existing, wellnessScore: score });
 }
 
 function dailyTotalsToStats(totals) {
@@ -225,8 +241,21 @@ export function useHomeCarouselData({
       }).catch(() => null);
 
       // Nutrition + wellness in parallel (was sequential before).
-      const [nextNutrition, nextWellness] = await Promise.all([nutritionPromise, wellnessPromise]);
+      const [nextNutrition, nextWellnessRaw] = await Promise.all([nutritionPromise, wellnessPromise]);
       if (requestId !== requestIdRef.current) return;
+
+      // Prefer sheet→Home pin for single-day so carousel matches the sheet total.
+      let nextWellness = nextWellnessRaw;
+      const pin = getPinnedDailyWellnessScore();
+      if (
+        !range.isMultiDay
+        && pin
+        && String(pin.userId) === String(userId)
+        && String(pin.date) === String(range.endDate)
+        && pin.activityLogId === getLatestActivityLogId()
+      ) {
+        nextWellness = pin.score;
+      }
 
       const payload = { nutrition: nextNutrition, wellnessScore: nextWellness };
 
@@ -287,6 +316,18 @@ export function useHomeCarouselData({
   useEffect(() => {
     loadData({ force: false });
   }, [loadData]);
+
+  // Sheet published today's (or yesterday's) score — keep Home carousel in sync.
+  useEffect(() => {
+    if (range.isMultiDay) return undefined;
+    return subscribeDailyWellnessScoreSeed(({ userId, date: seedDate, score }) => {
+      const uid = resolvedUserIdRef.current || lastUserIdRef.current;
+      if (!uid || String(uid) !== String(userId)) return;
+      if (String(seedDate) !== String(range.endDate)) return;
+      patchRangeCacheWellness(uid, seedDate, score);
+      setWellnessScore(score);
+    });
+  }, [range.isMultiDay, range.endDate]);
 
   const invalidateUserRangeCache = useCallback(() => {
     const userId = lastUserIdRef.current || resolvedUserIdRef.current;

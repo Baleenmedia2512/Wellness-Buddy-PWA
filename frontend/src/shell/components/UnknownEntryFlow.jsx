@@ -26,6 +26,7 @@ import {
 } from '../../features/captures';
 import { SmartFoodSearchModal } from '../../features/nutrition';
 import { buildAnalysisFromManualFood as buildManualFoodAnalysis } from '../../features/nutrition';
+import { seedMealAfterPromotion } from '../../features/nutrition/services/seedMealAfterPromotion';
 import { ManualWeightEntryModal, saveWeight, warmLatestWeightCache } from '../../features/weight';
 import { ManualEducationEntryModal, saveLog } from '../../features/education';
 import { ManualWatchEntryModal } from '../../features/activity';
@@ -37,7 +38,8 @@ import { isFlagEnabled } from '../../config/featureFlags';
 import {
   reserveAiCredit,
   confirmAiCredit,
-  releaseAiCredit,
+  releaseReservedAiCredit,
+  reserveFailureMessage,
 } from '../../features/ai-credits';
 
 function base64ToImageFile(b64, filename = 'capture.jpg') {
@@ -257,11 +259,7 @@ export default function UnknownEntryFlow({
         const reserved = await reserveAiCredit({ userId, apiBaseUrl });
         if (!reserved?.allowed || !reserved.reservationId) {
           setRetrying(false);
-          setError(
-            reserved?.reason === 'limit_reached'
-              ? 'Daily AI limit reached'
-              : 'AI Mode is unavailable right now',
-          );
+          setError(reserveFailureMessage(reserved?.reason));
           setStage('view');
           return;
         }
@@ -275,7 +273,7 @@ export default function UnknownEntryFlow({
         userName,
         userEmail,
         reservationId,
-        creditGated: Boolean(creditsEnabled && reservationId),
+        creditGated: Boolean(creditsEnabled && !!reservationId),
       });
 
       const creditPayload = {
@@ -352,8 +350,13 @@ export default function UnknownEntryFlow({
         setStage('view');
       }
     } catch {
-      if (creditsEnabled && reservationId) {
-        await releaseAiCredit({ userId, reservationId, apiBaseUrl }).catch(() => {});
+      if (creditsEnabled && !!reservationId) {
+        await releaseReservedAiCredit({
+          userId,
+          reservationId,
+          apiBaseUrl,
+          reason: 'unknown_entry_retry_failed',
+        });
       }
       setRetrying(false);
       setStage('view');
@@ -409,20 +412,35 @@ export default function UnknownEntryFlow({
       viewerUserId: userId,
       analysisResult,
       originalCapturedAt,
-    }).catch(() => {
-      // Modal already closed — diary refresh will show if promotion failed.
-    });
+    })
+      .then((result) => {
+        seedMealAfterPromotion({
+          ownerUserId: userId,
+          result,
+          analysisResult,
+          capturedAt: originalCapturedAt,
+        });
+      })
+      .catch(() => {
+        // Modal already closed — diary refresh will show if promotion failed.
+      });
   };
 
   /** Saves the AI-detected food result that the user confirmed on the review screen. */
   const handleAiFoodConfirm = async () => {
     if (!aiFood?.analysisResult) return;
     try {
-      await promoteUnknownToFood({
+      const result = await promoteUnknownToFood({
         captureId,
         viewerUserId: userId,
         analysisResult: aiFood.analysisResult,
         originalCapturedAt,
+      });
+      seedMealAfterPromotion({
+        ownerUserId: userId,
+        result,
+        analysisResult: aiFood.analysisResult,
+        capturedAt: originalCapturedAt,
       });
       finish({ kind: 'food', captureId });
     } catch {

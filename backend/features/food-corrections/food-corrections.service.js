@@ -554,6 +554,37 @@ export async function getStats({
 }
 
 /**
+ * Single meal detail — full AnalysisData for one indexed row.
+ */
+export async function getMealDetail({ userId, id }) {
+  if (userId === 'DEMO_USER') {
+    return { httpStatus: 404, body: { success: false, message: 'Not found' } };
+  }
+  const row = await repo.fetchMealById(userId, id);
+  if (!row) {
+    return { httpStatus: 404, body: { success: false, message: 'Not found' } };
+  }
+  return {
+    httpStatus: 200,
+    body: { success: true, data: row },
+  };
+}
+
+/**
+ * Batch meal details — one indexed query for prefetch (ids capped in validator).
+ */
+export async function getMealsBatch({ userId, ids }) {
+  if (userId === 'DEMO_USER') {
+    return { httpStatus: 200, body: { success: true, data: [] } };
+  }
+  const rows = await repo.fetchMealsByIds(userId, ids);
+  return {
+    httpStatus: 200,
+    body: { success: true, data: rows },
+  };
+}
+
+/**
  * Lazy meal photo — returns JSON { image } like weight/image for modal/card hydration.
  */
 export async function getMealImage({ userId, id }) {

@@ -26,6 +26,7 @@ import UnknownCaptureUndoBanner, { UNDO_SECONDS } from './UnknownCaptureUndoBann
 import { undoDeleteCapture } from '../../features/captures';
 import { deleteMealById, undoMealDelete } from '../../features/nutrition';
 import { parseAnalysisData } from '../../features/nutrition/services/nutritionDashboard/analysisHelpers';
+import { prefetchMealDetails } from '../../features/nutrition/services/mealDetailCache';
 import { deleteWeight, undoDeleteWeight } from '../../features/weight';
 import {
   deleteEducationLog,
@@ -280,6 +281,21 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
   // unrecognised ("unknown") capture flow here. `diaryReloadKey` re-fetches
   // the Other feed after a retry / delete / undo.
   const ownerId = displayUser?.id || displayUser?.userId;
+
+  const handleFoodEntriesLoaded = useCallback((entries) => {
+    if (!ownerId) return;
+    const foodIds = (entries || [])
+      .filter((e) => e.kind === 'food' && !e.isUndoPlaceholder && e.payload?.id != null)
+      .slice(0, 8)
+      .map((e) => e.payload.id);
+    if (foodIds.length === 0) return;
+    void prefetchMealDetails({
+      userId: ownerId,
+      mealIds: foodIds,
+      apiBaseUrl,
+      concurrency: 3,
+    });
+  }, [ownerId, apiBaseUrl]);
   // Safety ref: prevents setState calls after Dashboard unmounts (e.g. user
   // navigates Home while an async AI retry is still in flight).
   const isMountedRef = useRef(true);
@@ -1090,6 +1106,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
                   analyzingCaptureIds={mergedAnalyzingCaptureIds}
                   pendingCaptureMeta={pendingCaptureMeta}
                   onOwnerTimezoneChange={setDiaryOwnerTimezoneIana}
+                  onFoodEntriesLoaded={handleFoodEntriesLoaded}
                 />
               </div>
 
@@ -1323,6 +1340,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
           captureId={classifyFlow.captureId}
           imageBase64={classifyFlow.imageBase64}
           originalCapturedAt={classifyFlow.originalCapturedAt}
+          discardCaptureOnCancel={false}
           onBack={() => {
             setClassifyFlow(null);
             reloadDiary();
