@@ -1,7 +1,6 @@
 name: Playwright Login Tests
 
 on:
-  # Run on every push to important branches
   push:
     branches:
       - main
@@ -11,7 +10,6 @@ on:
       - Development
       - Nitheesh_test
 
-  # Run when a PR targets any important branch
   pull_request:
     branches:
       - main
@@ -24,72 +22,29 @@ on:
 jobs:
   playwright-auth:
     name: Playwright Login Tests
-
     runs-on: ubuntu-latest
 
     steps:
 
-      # ----------------------------------------
-      # 1. Checkout repository
-      # ----------------------------------------
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # ----------------------------------------
-      # 2. Setup Node.js
-      # ----------------------------------------
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
 
-      # ----------------------------------------
-      # 3. Install dependencies
-      # ----------------------------------------
       - name: Install dependencies
         run: npm ci
 
-      # ----------------------------------------
-      # 4. Install Playwright Chromium
-      # ----------------------------------------
-      - name: Install Playwright
+      - name: Install Playwright Chromium
         run: npx playwright install --with-deps chromium
 
-      # ----------------------------------------
-      # 5. Start Backend
-      # ----------------------------------------
-      - name: Start Backend
-        working-directory: ./backend
-        run: |
-          npm run dev:local > backend.log 2>&1 &
-
-      # ----------------------------------------
-      # 6. Start Frontend
-      # ----------------------------------------
-      - name: Start Frontend
-        working-directory: ./frontend
-        run: |
-          npm run dev -- --port 3001 > frontend.log 2>&1 &
-
-      # ----------------------------------------
-      # 7. Wait for Backend and Frontend
-      # ----------------------------------------
-      - name: Wait for applications
-        run: |
-          npx wait-on http://127.0.0.1:3000
-          npx wait-on http://127.0.0.1:3001
-
-      # ----------------------------------------
-      # 8. Run Login Playwright Tests
-      # ----------------------------------------
-      - name: Run Login Playwright Tests
+      - name: Run Login Tests
         run: |
           npx playwright test tests/frontend/auth/login.spec.js
 
-      # ----------------------------------------
-      # 9. Upload HTML Playwright Report
-      # ----------------------------------------
       - name: Upload Playwright HTML Report
         if: always()
         uses: actions/upload-artifact@v4
@@ -98,26 +53,10 @@ jobs:
           path: playwright-report/
           retention-days: 7
 
-      # ----------------------------------------
-      # 10. Upload failure artifacts
-      # ----------------------------------------
-      - name: Upload Playwright Test Results
+      - name: Upload Test Results
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: test-results
           path: test-results/
-          retention-days: 7
-
-      # ----------------------------------------
-      # 11. Upload server logs if CI fails
-      # ----------------------------------------
-      - name: Upload application logs
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: application-logs
-          path: |
-            backend/backend.log
-            frontend/frontend.log
           retention-days: 7
