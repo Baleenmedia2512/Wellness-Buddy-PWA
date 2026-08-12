@@ -8,6 +8,7 @@ import { filterFoodRowsByCalendarDateRange } from '../../../shared/lib/datetime/
 import {
   dedupeFirstLogPerMemberPerDay,
   filterFoodByMealTime,
+  isReportBeverageRecord,
 } from '../activity-report.repository.js';
 
 const DINNER_WINDOWS = {
@@ -49,5 +50,13 @@ describe('activity report food date filtering', () => {
     const deduped = dedupeFirstLogPerMemberPerDay(rows, IANA_IST, { foodTimestamp: true });
     assert.equal(deduped.length, 1);
     assert.equal(deduped[0].CreatedAt, '2026-07-30 18:00:00');
+  });
+});
+
+describe('isReportBeverageRecord', () => {
+  it('treats water_preset / afresh_preset as beverages without AnalysisData', () => {
+    assert.equal(isReportBeverageRecord({ ProcessedBy: 'water_preset' }), true);
+    assert.equal(isReportBeverageRecord({ ProcessedBy: 'afresh_preset' }), true);
+    assert.equal(isReportBeverageRecord({ ProcessedBy: null, AnalysisData: null }), false);
   });
 });

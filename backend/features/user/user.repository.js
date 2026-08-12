@@ -3,12 +3,16 @@
  * needed for account removal.
  */
 import { getSupabaseClient } from '../../utils/supabaseClient.js';
-import { nowUtc } from '../../shared/lib/datetime/index.js';
+import { nowUtc, utcInstantToLegacyIstWallStorage, IANA_IST } from '../../shared/lib/datetime/index.js';
 import { buildCardPatchFromProfile } from '../body-parameters-card/domain/sync.rules.js';
 import { findLatestCardForProfileSync } from '../body-parameters-card/data/card.repo.js';
 
 const TEAM = 'team_table';
 const APPROVALS = 'approval_requests_table';
+
+function legacyIstWallNow() {
+  return utcInstantToLegacyIstWallStorage(nowUtc(), IANA_IST);
+}
 
 export async function findByEmail(email, columns = '"UserId", "UserName", "Email"') {
   const supabase = getSupabaseClient();
@@ -91,33 +95,127 @@ export async function findByUsername(username) {
 }
 
 export async function getProfile(email) {
-  // Consent columns are optional until migration is applied — never block profile load.
+  // Consent columns are optional until migrations are applied — never block profile load.
+  // Body fat is stored on weight_records_table, not team_table.
+  const fullCols =
+    '"UserId", "UserName", "Email", "Height", "DietType", "ProfileImage", "CoachId", "PhoneNumber", "Gender", "Bmr", profile_pic_snooze, "WeightGoalMode", "PhysicalActivityLevel", "CommunityId", timezone_iana, "ConsentAcceptedAt", "ConsentVersion"';
+  const noConsentCols =
+    '"UserId", "UserName", "Email", "Height", "DietType", "ProfileImage", "CoachId", "PhoneNumber", "Gender", "Bmr", profile_pic_snooze, "WeightGoalMode", "PhysicalActivityLevel", "CommunityId", timezone_iana';
+
   try {
-    return await findByEmail(
-      email,
-      '"UserId", "UserName", "Email", "Height", "DietType", "ProfileImage", "CoachId", "PhoneNumber", "Gender", "Bmr", profile_pic_snooze, "WeightGoalMode", "PhysicalActivityLevel", "CommunityId", timezone_iana, "ConsentAcceptedAt", "ConsentVersion"',
-    );
+    return await findByEmail(email, fullCols);
   } catch (err) {
     const msg = String(err?.message || err || '');
-    if (!/ConsentAcceptedAt|ConsentVersion|column/i.test(msg)) throw err;
-    return findByEmail(
-      email,
-      '"UserId", "UserName", "Email", "Height", "DietType", "ProfileImage", "CoachId", "PhoneNumber", "Gender", "Bmr", profile_pic_snooze, "WeightGoalMode", "PhysicalActivityLevel", "CommunityId", timezone_iana',
-    );
+    const missingConsent = /ConsentAcceptedAt|ConsentVersion/i.test(msg) && /column/i.test(msg);
+    if (!missingConsent && !/column/i.test(msg)) throw err;
+    return findByEmail(email, noConsentCols);
   }
 }
 
+function isMissingIsDeletedColumn(error) {
+  const msg = String(error?.message || error || '');
+  return /IsDeleted/i.test(msg) && /column/i.test(msg) && /does not exist|not find|unknown/i.test(msg);
+}
+
 export async function getLatestWeight(userId) {
+  const uid = Number.parseInt(String(userId), 10);
+  if (!Number.isFinite(uid) || uid < 1) return null;
+
   const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const selectCols = 'ID, Weight, BodyFat, Bmi, Bmr, CreatedAt';
+
+  let query = supabase
     .from('weight_records_table')
-    .select('"Weight", "BodyFat", "Bmi", "CreatedAt"')
-    .eq('"UserId"', userId)
-    .or('"IsDeleted".is.null,"IsDeleted".eq.false,"IsDeleted".eq.0')
-    .order('"CreatedAt"', { ascending: false })
+    .select(selectCols)
+    .eq('UserId', uid)
+    .or('IsDeleted.is.null,IsDeleted.eq.false,IsDeleted.eq.0')
+    .order('CreatedAt', { ascending: false })
     .limit(1);
-  if (error) return null;
+
+  let { data, error } = await query;
+  if (error && isMissingIsDeletedColumn(error)) {
+    console.warn('[user.repo] getLatestWeight: IsDeleted missing — retrying without soft-delete filter');
+    ({ data, error } = await supabase
+      .from('weight_records_table')
+      .select(selectCols)
+      .eq('UserId', uid)
+      .order('CreatedAt', { ascending: false })
+      .limit(1));
+  }
+  if (error) {
+    console.warn('[user.repo] getLatestWeight failed:', error.message);
+    return null;
+  }
   return Array.isArray(data) && data.length > 0 ? data[0] : null;
+}
+
+/**
+ * Latest non-null BodyFat % from any weight record (most recent first).
+ * @param {number|string} userId
+ * @returns {Promise<number|null>}
+ */
+export async function getLatestWeightBodyFat(userId) {
+  const uid = Number.parseInt(String(userId), 10);
+  if (!Number.isFinite(uid) || uid < 1) return null;
+
+  const supabase = getSupabaseClient();
+  const run = (withDeletedFilter) => {
+    let q = supabase
+      .from('weight_records_table')
+      .select('BodyFat')
+      .eq('UserId', uid)
+      .not('BodyFat', 'is', null);
+    if (withDeletedFilter) {
+      q = q.or('IsDeleted.is.null,IsDeleted.eq.false,IsDeleted.eq.0');
+    }
+    return q.order('CreatedAt', { ascending: false }).limit(1).maybeSingle();
+  };
+
+  let { data, error } = await run(true);
+  if (error && isMissingIsDeletedColumn(error)) {
+    ({ data, error } = await run(false));
+  }
+  if (error || data?.BodyFat == null) return null;
+  const bf = parseFloat(data.BodyFat);
+  return Number.isFinite(bf) ? bf : null;
+}
+
+/**
+ * Persist body fat % onto the user's latest weight record.
+ * @param {number|string} userId
+ * @param {number} bodyFat
+ * @param {number|null} [bmr]
+ * @returns {Promise<{ ID: number, Weight: *, BodyFat: *, Bmr: * }|null>}
+ */
+export async function updateLatestWeightBodyFat(userId, bodyFat, bmr = null) {
+  const uid = Number.parseInt(String(userId), 10);
+  if (!Number.isFinite(uid) || uid < 1) return null;
+
+  const latest = await getLatestWeight(uid);
+  if (!latest?.ID) return null;
+
+  const updates = { BodyFat: bodyFat, UpdatedAt: legacyIstWallNow() };
+  if (bmr != null) updates.Bmr = bmr;
+
+  const supabase = getSupabaseClient();
+  const runUpdate = (withDeletedFilter) => {
+    let q = supabase
+      .from('weight_records_table')
+      .update(updates)
+      .eq('ID', latest.ID)
+      .eq('UserId', uid);
+    if (withDeletedFilter) {
+      q = q.or('IsDeleted.is.null,IsDeleted.eq.false,IsDeleted.eq.0');
+    }
+    return q.select('ID, Weight, BodyFat, Bmr').maybeSingle();
+  };
+
+  let { data, error } = await runUpdate(true);
+  if (error && isMissingIsDeletedColumn(error)) {
+    ({ data, error } = await runUpdate(false));
+  }
+  if (error) throw error;
+  return data || null;
 }
 
 export async function updateUserByEmail(email, updateData) {

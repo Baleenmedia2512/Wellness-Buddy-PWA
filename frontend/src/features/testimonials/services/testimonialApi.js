@@ -92,21 +92,71 @@ export async function verifyTestimonialOtp(payload) {
 }
 
 /**
- * Coach: list direct-downline testimonials.
+ * Coach: paginated lean team list (thumbs only — no Base64, no video URLs).
  * @param {number} coachId
- * @param {'direct'|'full'} [scope='direct']
+ * @param {{
+ *   scope?: 'direct'|'full',
+ *   page?: number,
+ *   limit?: number,
+ *   search?: string,
+ *   uploadFilter?: string,
+ * }} [opts]
+ * @returns {Promise<{ data: Array, pagination: object, uploadCounts: object }>}
  */
-export async function listForCoach(coachId, scope = 'direct') {
+export async function listForCoach(coachId, opts = {}) {
+  const scope = typeof opts === 'string' ? opts : (opts.scope || 'direct');
+  const page = typeof opts === 'object' ? (opts.page ?? 1) : 1;
+  const limit = typeof opts === 'object' ? (opts.limit ?? 10) : 10;
+  const search = typeof opts === 'object' ? (opts.search || '') : '';
+  const uploadFilter = typeof opts === 'object' ? (opts.uploadFilter || 'all') : 'all';
+
   const params = new URLSearchParams({
     coachId: String(coachId),
+    page: String(page),
+    limit: String(limit),
   });
   if (scope === 'full') params.set('scope', 'full');
+  if (search) params.set('search', search);
+  if (uploadFilter && uploadFilter !== 'all') params.set('uploadFilter', uploadFilter);
+
   const res = await CapacitorHttp.get({
     url: `${base()}/list-for-coach?${params.toString()}`,
   });
   const result = res.data;
   if (!result?.success) throw new Error(result?.message || 'Failed to fetch team testimonials');
-  return result.data; // Array<{ user, testimonial }>
+
+  // Backward-compatible: older callers expected a bare array — still expose .data
+  return {
+    data: Array.isArray(result.data) ? result.data : [],
+    pagination: result.pagination || {
+      page: 1,
+      limit,
+      total: Array.isArray(result.data) ? result.data.length : 0,
+      totalPages: 1,
+      hasMore: false,
+    },
+    uploadCounts: result.uploadCounts || {
+      fully_uploaded: 0,
+      partial_upload: 0,
+      not_uploaded: 0,
+    },
+  };
+}
+
+/**
+ * Full member detail (photos + videos + share fields). Lazy — not for list.
+ * @param {number} userId
+ * @param {number} [coachId]
+ */
+export async function getTestimonialDetail(userId, coachId) {
+  const params = new URLSearchParams({ userId: String(userId) });
+  if (coachId) params.set('coachId', String(coachId));
+  const res = await CapacitorHttp.get({
+    url: `${base()}/detail?${params.toString()}`,
+  });
+  const result = res.data;
+  if (!result?.success) throw new Error(result?.message || 'Failed to fetch testimonial detail');
+  return result.data; // { userId, testimonial }
 }
 
 /**

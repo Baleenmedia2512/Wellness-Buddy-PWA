@@ -192,9 +192,9 @@ const NutritionCarousel = ({
   );
 
   return (
-    <div className="px-2 md:px-3 mb-1.5">
+    <div className="mb-1.5 px-2 md:mb-1.5 md:px-3">
       <div
-        className="w-full max-w-md mx-auto bg-white/70 backdrop-blur-xl rounded-xl shadow-md border border-gray-100 overflow-hidden"
+        className="mx-auto w-full max-w-md overflow-hidden rounded-xl border border-gray-100 bg-white/70 shadow-md backdrop-blur-xl"
         {...swipeHandlers}
         style={{ touchAction: 'pan-y' }}
       >
@@ -209,7 +209,7 @@ const NutritionCarousel = ({
             {cards.map((card, i) => (
               <div
                 key={i}
-                className={`${i === cards.length - 1 ? 'w-full' : 'w-[85%]'} flex-shrink-0 min-h-[148px] px-2`}
+                className={`${i === cards.length - 1 ? 'w-full' : 'w-[85%]'} min-h-[148px] flex-shrink-0 px-1.5 min-[360px]:px-2`}
               >
                 {card}
               </div>

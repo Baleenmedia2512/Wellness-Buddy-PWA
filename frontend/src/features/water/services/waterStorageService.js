@@ -86,6 +86,7 @@ export async function logWaterIntake({ userId, ml, userEmail, source = 'WaterTra
     ],
     total: { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0 },
     confidence: 'high',
+    processedBy: 'water_preset',
   };
   return saveNutritionAnalysis({
     userId,

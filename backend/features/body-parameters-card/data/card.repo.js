@@ -443,7 +443,10 @@ export async function findLatestLinkedBodyMetricsCard(userId) {
   if (!Number.isFinite(uid) || uid < 1) return null;
 
   const supabase = getSupabaseClient();
-  const cardSelect = 'id, user_id, age, gender, fat_percent, visceral_fat, bmi, body_age, chest_cm, waist_cm, hip_cm';
+  // Include weight_kg / fat_percent / bmr so Wellness Score + profile can resolve
+  // BMR when team_table.Bmr is null but a linked BPC has composition data.
+  const cardSelect =
+    'id, user_id, age, gender, height_cm, weight_kg, fat_percent, bmr, visceral_fat, bmi, body_age, chest_cm, waist_cm, hip_cm';
 
   const { data, error } = await supabase
     .from(TABLE)
@@ -553,101 +556,214 @@ export async function findPreviousCardByUserId(userId, excludeCardId) {
   };
 }
 
-/**
- * List all body parameter cards for a coach's team members
- * Returns cards sorted by created_at DESC (latest first)
- *
- * @param {string} coachId - UUID of the coach
- * @returns {Promise<Array>}
- */
-export async function listCardsForCoach(coachId) {
-  const supabase = getSupabaseClient();
-  
-  logger.info('[listCardsForCoach] 🔍 QUERYING DATABASE', { coachId, type: typeof coachId });
-  
-  // Directly query cards created by this coach
-  const { data: cards, error: cardsError } = await supabase
-    .from(TABLE)
-    .select('*')
-    .eq('created_by', coachId)
-    .eq('is_deleted', false)
-    .order('created_at', { ascending: false });
+/** Columns needed for the BCM grid list (no SELECT *). */
+const LIST_SUMMARY_COLS = [
+  'id',
+  'user_id',
+  'name',
+  'age',
+  'gender',
+  'height_cm',
+  'weight_kg',
+  'bmi',
+  'recorded_date',
+  'created_at',
+  'created_by',
+].join(', ');
 
-  if (cardsError) {
-    logger.error('[listCardsForCoach] 💥 DATABASE ERROR:', cardsError);
-    throw cardsError;
-  }
-  if (!cards) {
-    logger.warn('[listCardsForCoach] ⚠️ No cards returned (null/undefined)');
-    return [];
-  }
-  
-  logger.info('[listCardsForCoach] 🎯 RAW QUERY RESULT', { 
-    coachId, 
-    cardCount: cards.length,
-    cards: cards.map(c => ({ 
-      id: c.id, 
-      name: c.name, 
-      created_by: c.created_by,
-      user_id: c.user_id,
-      visceral_fat: c.visceral_fat
-    }))
-  });
+/** Full card columns for edit / detail. */
+const LIST_DETAIL_COLS = [
+  'id',
+  'user_id',
+  'name',
+  'age',
+  'gender',
+  'height_cm',
+  'weight_kg',
+  'bmi',
+  'fat_percent',
+  'bmr',
+  'body_age',
+  'visceral_fat',
+  'chest_cm',
+  'waist_cm',
+  'hip_cm',
+  'recorded_date',
+  'location_name',
+  'created_at',
+  'created_by',
+].join(', ');
 
-  // Get team member info for phone numbers (optional - card has name already)
-  const userIds = cards.map(c => c.user_id).filter(Boolean);
-  let teamMembersMap = {};
-  
-  if (userIds.length > 0) {
-    logger.info('[listCardsForCoach] 📞 Fetching phone numbers for userIds:', userIds);
+const BPC_LIST_CACHE_TTL_MS = 20 * 1000;
+const bpcListCache = new Map();
+const bpcListInflight = new Map();
+
+function bpcListCacheKey(coachId) {
+  return `bpc:list:${coachId}`;
+}
+
+function mapCardSummary(card, phone) {
+  return {
+    id: card.id,
+    userId: card.user_id,
+    name: card.name,
+    phoneNumber: phone,
+    age: card.age,
+    gender: card.gender,
+    heightCm: card.height_cm,
+    weightKg: card.weight_kg,
+    bmi: card.bmi,
+    recordedDate: card.recorded_date,
+    createdAt: card.created_at,
+    createdBy: card.created_by,
+  };
+}
+
+function mapCardDetail(card, phone) {
+  return {
+    ...mapCardSummary(card, phone),
+    fatPercent: card.fat_percent,
+    bmr: card.bmr,
+    bodyAge: card.body_age,
+    visceralFat: card.visceral_fat,
+    chestCm: card.chest_cm,
+    waistCm: card.waist_cm,
+    hipCm: card.hip_cm,
+    locationName: card.location_name,
+  };
+}
+
+async function fetchPhonesByUserIds(supabase, userIds) {
+  const teamMembersMap = {};
+  if (!userIds.length) return teamMembersMap;
+
+  const CHUNK = 200;
+  for (let i = 0; i < userIds.length; i += CHUNK) {
+    const chunk = userIds.slice(i, i + CHUNK);
     const { data: teamMembers } = await supabase
       .from('team_table')
       .select('UserId, PhoneNumber')
-      .in('UserId', userIds);
-    
+      .in('UserId', chunk);
+
     if (teamMembers) {
       for (const m of teamMembers) {
-        const key = String(m.UserId);
-        teamMembersMap[key] = m;
+        teamMembersMap[String(m.UserId)] = m;
       }
-      logger.info('[listCardsForCoach] ✅ Phone numbers fetched', { count: teamMembers.length });
     }
   }
+  return teamMembersMap;
+}
 
-  // Map cards with optional phone number from team_table
-  const mappedCards = cards.map(card => {
-    const member = teamMembersMap[String(card.user_id)];
-    const phone = member?.PhoneNumber && String(member.PhoneNumber).trim()
+/**
+ * Invalidate the slim list cache for a coach (call after create/update).
+ * @param {number|string} coachId
+ */
+export function invalidateBpcListCache(coachId) {
+  if (coachId == null) return;
+  bpcListCache.delete(bpcListCacheKey(coachId));
+}
+
+/**
+ * Load all slim summary cards for a coach (cached ~20s). Used for search + pagination.
+ * @param {number|string} coachId
+ * @returns {Promise<Array>}
+ */
+async function loadSlimCardsForCoach(coachId) {
+  const key = bpcListCacheKey(coachId);
+  const cached = bpcListCache.get(key);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.rows;
+  }
+
+  if (bpcListInflight.has(key)) {
+    return bpcListInflight.get(key);
+  }
+
+  const promise = (async () => {
+    const supabase = getSupabaseClient();
+    logger.info('[listCardsForCoach] querying slim columns', { coachId });
+
+    const { data: cards, error: cardsError } = await supabase
+      .from(TABLE)
+      .select(LIST_SUMMARY_COLS)
+      .eq('created_by', coachId)
+      .eq('is_deleted', false)
+      .order('created_at', { ascending: false });
+
+    if (cardsError) {
+      logger.error('[listCardsForCoach] database error:', cardsError);
+      throw cardsError;
+    }
+
+    const rows = cards || [];
+    const userIds = [...new Set(rows.map((c) => c.user_id).filter(Boolean))];
+    const teamMembersMap = await fetchPhonesByUserIds(supabase, userIds);
+
+    const mapped = rows.map((card) => {
+      const member = teamMembersMap[String(card.user_id)];
+      const phone = member?.PhoneNumber && String(member.PhoneNumber).trim()
+        ? String(member.PhoneNumber).trim()
+        : null;
+      return mapCardSummary(card, phone);
+    });
+
+    bpcListCache.set(key, { rows: mapped, expiresAt: Date.now() + BPC_LIST_CACHE_TTL_MS });
+    return mapped;
+  })().finally(() => {
+    bpcListInflight.delete(key);
+  });
+
+  bpcListInflight.set(key, promise);
+  return promise;
+}
+
+/**
+ * List body-parameter cards for a coach with server-side search + pagination.
+ * Returns only summary fields for the grid.
+ *
+ * @param {number|string} coachId
+ * @param {{ page?: number, limit?: number, search?: string }} [opts]
+ * @returns {Promise<{ cards: Array, pagination: object }>}
+ */
+export async function listCardsForCoach(coachId, opts = {}) {
+  const { paginateBpcListRecords } = await import('../domain/list.pagination.js');
+  const allCards = await loadSlimCardsForCoach(coachId);
+  const { records, pagination } = paginateBpcListRecords(allCards, opts);
+  logger.info('[listCardsForCoach] page ready', {
+    coachId,
+    total: pagination.totalRecords,
+    page: pagination.currentPage,
+    returned: records.length,
+  });
+  return { cards: records, pagination };
+}
+
+/**
+ * Full card detail for edit — single row, coach-scoped.
+ * @param {number|string} coachId
+ * @param {number|string} cardId
+ * @returns {Promise<object|null>}
+ */
+export async function getCardByIdForCoach(coachId, cardId) {
+  const supabase = getSupabaseClient();
+  const { data: card, error } = await supabase
+    .from(TABLE)
+    .select(LIST_DETAIL_COLS)
+    .eq('id', cardId)
+    .eq('created_by', coachId)
+    .eq('is_deleted', false)
+    .maybeSingle();
+
+  if (error) throw error;
+  if (!card) return null;
+
+  let phone = null;
+  if (card.user_id) {
+    const map = await fetchPhonesByUserIds(supabase, [card.user_id]);
+    const member = map[String(card.user_id)];
+    phone = member?.PhoneNumber && String(member.PhoneNumber).trim()
       ? String(member.PhoneNumber).trim()
       : null;
-    return {
-      id:           card.id,
-      userId:       card.user_id,
-      name:         card.name,
-      phoneNumber:  phone,
-      age:          card.age,
-      gender:       card.gender,
-      heightCm:     card.height_cm,
-      weightKg:     card.weight_kg,
-      bmi:          card.bmi,
-      fatPercent:   card.fat_percent,
-      bmr:          card.bmr,
-      bodyAge:      card.body_age,
-      visceralFat:  card.visceral_fat,
-      chestCm:      card.chest_cm,
-      waistCm:      card.waist_cm,
-      hipCm:        card.hip_cm,
-      recordedDate: card.recorded_date,
-      locationName: card.location_name,
-      createdAt:    card.created_at,
-      createdBy:    card.created_by,
-    };
-  });
-  
-  logger.info('[listCardsForCoach] 📦 RETURNING MAPPED CARDS', { 
-    count: mappedCards.length,
-    sample: mappedCards[0] 
-  });
-  
-  return mappedCards;
+  }
+  return mapCardDetail(card, phone);
 }

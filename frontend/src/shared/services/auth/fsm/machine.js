@@ -169,7 +169,6 @@ export function transition(state, event) {
           case "userNotFound":
             return go(S.BLOCKED_USER_NOT_FOUND, ctx);
           case "inactive":
-            return go(S.BLOCKED_INACTIVE, ctx);
           case "newUser":
           case "active":
             return go(

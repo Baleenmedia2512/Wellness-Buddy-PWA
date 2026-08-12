@@ -7,6 +7,19 @@ import StatusOverlay from './StatusOverlay';
 import { parseAnalysisData, recalculateTotals } from '../../services/nutritionDashboard/analysisHelpers';
 import { computeMealGlycemicIndex } from '../../domain/mealGlycemicIndex';
 import { formatBusinessTime, resolveBusinessTimezone } from '../../../../shared/utils/datetimeUtils';
+import {
+  DIARY_FOOD_ACTIVITY,
+  resolveFoodActivityType,
+  extractVolumeMl,
+  extractScoops,
+} from '../../../diary/domain/activityType';
+import { formatWaterVolume } from '../../../diary/domain/formatVolume';
+import { resolveMealImageSrc } from '../../services/nutritionDashboard/mealImageSrc';
+
+function mealHasDisplayItems(localDetailedItems, foodData) {
+  if (localDetailedItems?.length > 0) return true;
+  return Array.isArray(foodData?.detailedItems) && foodData.detailedItems.length > 0;
+}
 
 const GIPill = ({ value }) => {
   if (value == null) return null;
@@ -28,6 +41,9 @@ const MacroPill = ({ icon: Icon, value }) => (
 
 const NutritionAnalysisPanel = ({
   selectedMeal,
+  mealDetailStatus = 'ready',
+  mealDetailError = null,
+  onRetryMealDetail,
   isClosingModal,
   isEditing,
   isSaving,
@@ -46,6 +62,7 @@ const NutritionAnalysisPanel = ({
   handleCloseModal,
   handleDeleteMeal,
   user,
+  apiBaseUrl,
   timezoneIana: timezoneIanaProp,
   persistMealItems,
   setLocalDetailedItems,
@@ -57,7 +74,14 @@ const NutritionAnalysisPanel = ({
   })();
 
   if (!selectedMeal) return null;
+
+  const isLoadingDetails = mealDetailStatus === 'loading';
+  const isDetailError = mealDetailStatus === 'error';
   const foodData = parseAnalysisData(selectedMeal.AnalysisData, 'text-white');
+  const fallbackTitle = selectedMeal.listSummary?.name || null;
+  const displayTitle = (isLoadingDetails || isDetailError) && !mealHasDisplayItems(localDetailedItems, foodData)
+    ? (fallbackTitle || (isLoadingDetails ? 'Loading food details...' : foodData.name))
+    : foodData.name;
   // Prefer explicit owner TZ (diary API / parent). Do not fall back to IST when
   // the logged-in `user` object is missing timezone — that caused "Logged at"
   // to show Kolkata time for Qatar/US/UK members.
@@ -80,6 +104,31 @@ const NutritionAnalysisPanel = ({
         ? localNutrition.glycemicIndex
         : (selectedMeal.GlycemicIndex ?? foodData.nutrition.glycemic_index ?? null)));
 
+  const activityType = resolveFoodActivityType({
+    processedBy: selectedMeal.ProcessedBy,
+    analysisData: selectedMeal.AnalysisData,
+    foodData: {
+      name: foodData.name,
+      detailedItems: localDetailedItems?.length ? localDetailedItems : foodData.detailedItems,
+    },
+  });
+  const isWater = activityType === DIARY_FOOD_ACTIVITY.WATER;
+  const isAfresh = activityType === DIARY_FOOD_ACTIVITY.AFRESH;
+  const hideMacroHeader = isWater || isAfresh;
+  const volumeMl = extractVolumeMl(
+    { detailedItems: localDetailedItems?.length ? localDetailedItems : foodData.detailedItems },
+    selectedMeal.AnalysisData,
+  );
+  const scoops = extractScoops(
+    { detailedItems: localDetailedItems?.length ? localDetailedItems : foodData.detailedItems },
+    selectedMeal.AnalysisData,
+  );
+  const headerPrimary = isWater
+    ? (volumeMl != null ? formatWaterVolume(volumeMl) : '—')
+    : isAfresh
+      ? `${scoops ?? 1} ${(scoops ?? 1) === 1 ? 'scoop' : 'scoops'}`
+      : null;
+
   const handleAddItem = async (newItem) => {
     const newItems = [...(localDetailedItems || []), newItem];
     const newTotals = recalculateTotals(newItems);
@@ -87,9 +136,10 @@ const NutritionAnalysisPanel = ({
     setLocalNutrition(newTotals);
     await persistMealItems(newItems, newTotals);
   };
-  const imgSrc = selectedMeal.ImageBase64 && selectedMeal.ImageBase64.trim() !== ''
-    ? (selectedMeal.ImageBase64.startsWith('data:image') ? selectedMeal.ImageBase64 : `data:image/jpeg;base64,${selectedMeal.ImageBase64}`)
-    : selectedMeal.ImagePath;
+  const imgSrc = resolveMealImageSrc(selectedMeal, {
+    userId: user?.id || user?.userId || user?.UserId,
+    apiBaseUrl,
+  });
 
   return (
     <div
@@ -115,21 +165,29 @@ const NutritionAnalysisPanel = ({
             <div className={`absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/40 to-transparent transition-all ${isEditing ? 'p-3 space-y-1' : 'p-5 space-y-3'}`}>
               <div className="flex justify-between items-start">
                 <div>
-                  <h2 className={`font-bold text-white leading-tight ${isEditing ? 'text-lg' : 'text-xl'}`}>{foodData.name}</h2>
+                  <h2 className={`font-bold text-white leading-tight ${isEditing ? 'text-lg' : 'text-xl'}`}>{displayTitle}</h2>
                   <p className={`text-white/70 mt-0.5 ${isEditing ? 'text-[10px]' : 'text-xs'}`}>Logged at {mealTime}</p>
                 </div>
                 <div className="text-right">
-                  <span className={`font-bold text-white ${isEditing ? 'text-2xl' : 'text-3xl'}`}>{Math.round(calories)}</span>
-                  <span className={`text-white/70 ml-1 ${isEditing ? 'text-[10px]' : 'text-xs'}`}>kcal</span>
+                  {headerPrimary ? (
+                    <span className={`font-bold text-white ${isEditing ? 'text-2xl' : 'text-3xl'}`}>{headerPrimary}</span>
+                  ) : (
+                    <>
+                      <span className={`font-bold text-white ${isEditing ? 'text-2xl' : 'text-3xl'}`}>{Math.round(calories)}</span>
+                      <span className={`text-white/70 ml-1 ${isEditing ? 'text-[10px]' : 'text-xs'}`}>kcal</span>
+                    </>
+                  )}
                 </div>
               </div>
-              <div className={`flex flex-wrap gap-2 pt-1 overflow-hidden transition-all ${isEditing ? 'max-h-0 opacity-0' : 'max-h-20 opacity-100'}`}>
-                <MacroPill icon={Beef} value={protein} />
-                <MacroPill icon={Wheat} value={carbs} />
-                <MacroPill icon={Droplet} value={fat} />
-                <MacroPill icon={Leaf} value={fiber} />
-                <GIPill value={glycemicIndex} />
-              </div>
+              {!hideMacroHeader && (
+                <div className={`flex flex-wrap gap-2 pt-1 overflow-hidden transition-all ${isEditing ? 'max-h-0 opacity-0' : 'max-h-20 opacity-100'}`}>
+                  <MacroPill icon={Beef} value={protein} />
+                  <MacroPill icon={Wheat} value={carbs} />
+                  <MacroPill icon={Droplet} value={fat} />
+                  <MacroPill icon={Leaf} value={fiber} />
+                  <GIPill value={glycemicIndex} />
+                </div>
+              )}
             </div>
 
             <button onClick={handleCloseModal} disabled={isSaving || saveStatus}
@@ -141,9 +199,28 @@ const NutritionAnalysisPanel = ({
           </div>
 
           <div className="p-4 overflow-y-auto flex-1 min-h-0" style={{ maxHeight: isEditing ? '60vh' : '40vh' }}>
-            {localDetailedItems?.length > 0 ? (
+            {isLoadingDetails && !mealHasDisplayItems(localDetailedItems, foodData) ? (
+              <div className="flex flex-col items-center justify-center py-10 text-gray-500" data-testid="meal-detail-loading">
+                <div className="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin mb-3" />
+                <p className="text-sm font-medium">Loading food details...</p>
+              </div>
+            ) : isDetailError && !mealHasDisplayItems(localDetailedItems, foodData) ? (
+              <div className="flex flex-col items-center justify-center py-10 text-center" data-testid="meal-detail-error">
+                <p className="text-sm font-medium text-gray-700 mb-3">
+                  {mealDetailError || 'Unable to load food details.'}
+                </p>
+                <TouchFeedbackButton
+                  className="rounded-xl bg-emerald-600 text-white text-sm font-semibold px-4 py-2.5 shadow-sm hover:bg-emerald-700 active:scale-95"
+                  onClick={() => onRetryMealDetail?.()}
+                >
+                  Retry
+                </TouchFeedbackButton>
+              </div>
+            ) : localDetailedItems?.length > 0 ? (
               <div className="space-y-3">
-                <h3 className="font-semibold text-gray-900 text-sm">Food Items</h3>
+                <h3 className="font-semibold text-gray-900 text-sm">
+                  {isWater ? 'Water' : isAfresh ? 'Afresh' : 'Food Items'}
+                </h3>
                 <div className="space-y-2">
                   {[...localDetailedItems]
                     .map((item, originalIndex) => ({ item, originalIndex, calories: item?.nutrition?.calories || item?.calories || 0 }))
@@ -160,28 +237,55 @@ const NutritionAnalysisPanel = ({
                     ))}
                 </div>
               </div>
+            ) : isLoadingDetails ? (
+              <div className="flex flex-col items-center justify-center py-6 text-gray-500" data-testid="meal-detail-loading-inline">
+                <div className="w-6 h-6 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin mb-2" />
+                <p className="text-sm">Loading food details...</p>
+              </div>
+            ) : isDetailError ? (
+              <div className="text-center py-6" data-testid="meal-detail-error-inline">
+                <p className="text-sm text-gray-600 mb-3">{mealDetailError || 'Unable to load food details.'}</p>
+                <TouchFeedbackButton
+                  className="rounded-xl bg-emerald-600 text-white text-sm font-semibold px-4 py-2 shadow-sm"
+                  onClick={() => onRetryMealDetail?.()}
+                >
+                  Retry
+                </TouchFeedbackButton>
+              </div>
             ) : (
               <p className="text-sm text-gray-500">No items yet. Tap Add Item below.</p>
             )}
           </div>
 
           {!isEditing && (
-            <MealAddItemForm
-              layout="footer"
-              user={user}
-              disabled={isSaving || editingIndex !== null}
-              isSaving={isSaving}
-              onAdd={handleAddItem}
-              footerExtra={
+            isWater || isAfresh ? (
+              <div className="p-4 border-t border-gray-100 shrink-0 bg-white">
                 <TouchFeedbackButton
                   disabled={deletingId === selectedMeal?.ID}
-                  className={`flex-1 flex items-center justify-center gap-2 rounded-xl text-white text-sm font-semibold px-4 py-3 shadow-sm ${deletingId === selectedMeal?.ID ? 'bg-red-400 cursor-not-allowed' : 'bg-red-500 hover:bg-red-600 active:scale-95'}`}
+                  className={`w-full flex items-center justify-center gap-2 rounded-xl text-white text-sm font-semibold px-4 py-3 shadow-sm ${deletingId === selectedMeal?.ID ? 'bg-red-400 cursor-not-allowed' : 'bg-red-500 hover:bg-red-600 active:scale-95'}`}
                   onClick={() => handleDeleteMeal(selectedMeal)}
                 >
                   {deletingId === selectedMeal?.ID ? 'Deleting…' : 'Delete'}
                 </TouchFeedbackButton>
-              }
-            />
+              </div>
+            ) : (
+              <MealAddItemForm
+                layout="footer"
+                user={user}
+                disabled={isSaving || editingIndex !== null}
+                isSaving={isSaving}
+                onAdd={handleAddItem}
+                footerExtra={
+                  <TouchFeedbackButton
+                    disabled={deletingId === selectedMeal?.ID}
+                    className={`flex-1 flex items-center justify-center gap-2 rounded-xl text-white text-sm font-semibold px-4 py-3 shadow-sm ${deletingId === selectedMeal?.ID ? 'bg-red-400 cursor-not-allowed' : 'bg-red-500 hover:bg-red-600 active:scale-95'}`}
+                    onClick={() => handleDeleteMeal(selectedMeal)}
+                  >
+                    {deletingId === selectedMeal?.ID ? 'Deleting…' : 'Delete'}
+                  </TouchFeedbackButton>
+                }
+              />
+            )
           )}
         </div>
       </div>

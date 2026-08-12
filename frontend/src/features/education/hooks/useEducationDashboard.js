@@ -19,14 +19,15 @@ export function useEducationDashboard({
   user, apiBaseUrl, refreshKey = 0, selectedDate = null,
   onDeleteWithUndo = null,
   onDeleteUndoCancel = null,
+  enabled = true,
 }) {
   const timezoneIana = resolveBusinessTimezone(user);
   const [educationLogs, setEducationLogs] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(Boolean(enabled));
   const [error, setError] = useState(null);
   const [undoState, setUndoState] = useState({});
   const [summary, setSummary] = useState(null);
-  const [summaryLoading, setSummaryLoading] = useState(true);
+  const [summaryLoading, setSummaryLoading] = useState(Boolean(enabled));
   const [trendRangeDays, setTrendRangeDays] = useState(7);
   const [hasMoreLogs, setHasMoreLogs] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -84,23 +85,29 @@ export function useEducationDashboard({
   }, [apiBaseUrl, user]);
 
   useEffect(() => {
+    if (!enabled) {
+      setLoading(false);
+      setSummaryLoading(false);
+      return;
+    }
     if (!user?.id) return;
     userIdRef.current = null;
     setEducationLogs([]); setHasMoreLogs(false);
     offsetRef.current = 0; hasMoreRef.current = false;
     loadPage({ reset: true });
-  }, [user?.id, user?.email, refreshKey, loadPage]);
+  }, [user?.id, user?.email, refreshKey, loadPage, enabled]);
 
   useEffect(() => {
+    if (!enabled) return undefined;
     const el = loadMoreSentinelRef.current;
-    if (!el) return;
+    if (!el) return undefined;
     const observer = new IntersectionObserver((entries) => {
       const e = entries[0];
       if (e?.isIntersecting && hasMoreRef.current && !loadingMoreRef.current) loadPage({ reset: false });
     }, { rootMargin: '300px', threshold: 0 });
     observer.observe(el);
     return () => observer.disconnect();
-  }, [hasMoreLogs, loading, loadPage]);
+  }, [hasMoreLogs, loading, loadPage, enabled]);
 
   const undoActions = useEducationUndoActions({
     apiBaseUrl, user, userIdRef, setEducationLogs, setUndoState, refreshSummary,

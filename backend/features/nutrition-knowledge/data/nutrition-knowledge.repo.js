@@ -3,7 +3,7 @@
  */
 import { getSupabaseClient } from '../../../utils/supabaseClient.js';
 import logger from '../../../shared/lib/logger.js';
-import { normalizeFoodName } from '../domain/nutrition.rules.js';
+import { foodNameMatchesQuery, normalizeFoodName, sortByFoodNameMatch } from '../domain/nutrition.rules.js';
 
 const TABLE = 'nutrition_master_profiles_table';
 
@@ -30,15 +30,19 @@ function mapRow(row) {
 /**
  * @param {string} term
  * @param {{ status?: string, limit?: number }} [opts]
- * @returns {Promise<object[]>}
+ * @returns {Promise<object[]|null>} null when table/query failed (caller uses seeds)
  */
 export async function searchProfiles(term, { status = 'approved', limit = 20 } = {}) {
   const supabase = getSupabaseClient();
   const q = String(term || '').trim();
-  if (q.length < 2) return [];
+  if (q.length < 1) return [];
 
   const safe = q.replace(/[%_,]/g, ' ').trim();
-  if (safe.length < 2) return [];
+  if (safe.length < 1) return [];
+
+  // Wider fetch, then rank by match position (prefix first). Plain A→Z + limit
+  // would bury "Onion" behind many mid-string "o" hits.
+  const fetchLimit = Math.max(limit * 4, 80);
 
   const { data, error } = await supabase
     .from(TABLE)
@@ -46,14 +50,40 @@ export async function searchProfiles(term, { status = 'approved', limit = 20 } =
     .eq('status', status)
     .or(`canonical_name.ilike.%${safe}%,normalized_name.ilike.%${safe}%`)
     .order('canonical_name', { ascending: true })
-    .limit(limit);
+    .limit(fetchLimit);
 
   if (error) {
     // Table missing / not migrated — caller falls back to in-code seeds.
     logger.warn('[nutrition-knowledge.repo] searchProfiles failed', { err: error.message });
     return null;
   }
-  return (data || []).map(mapRow);
+
+  let rows = (data || []).map(mapRow);
+
+  // Typo / alias recall: broaden with a short prefix, then filter in memory.
+  if (rows.length === 0 && safe.length >= 3) {
+    const prefix = safe.slice(0, 2).replace(/[%_,]/g, ' ').trim();
+    if (prefix.length >= 1) {
+      const broad = await supabase
+        .from(TABLE)
+        .select('*')
+        .eq('status', status)
+        .or(`canonical_name.ilike.%${prefix}%,normalized_name.ilike.%${prefix}%`)
+        .order('canonical_name', { ascending: true })
+        .limit(Math.max(fetchLimit, 60));
+      if (broad.error) {
+        logger.warn('[nutrition-knowledge.repo] searchProfiles broad failed', {
+          err: broad.error.message,
+        });
+      } else {
+        rows = (broad.data || [])
+          .map(mapRow)
+          .filter((row) => foodNameMatchesQuery(row.canonical_name, safe, row.aliases));
+      }
+    }
+  }
+
+  return sortByFoodNameMatch(rows, safe).slice(0, limit);
 }
 
 /**

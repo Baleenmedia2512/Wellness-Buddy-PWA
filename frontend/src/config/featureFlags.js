@@ -90,7 +90,7 @@ const REGISTRY = Object.freeze({
     envKey:         'REACT_APP_FF_REPORTS_MODULE',
     storageKey:     'ff.reports-module',
     defaultEnabled: true,
-    description:    'Reports module with downline weight status report for coaches.',
+    description:    'Reports module: Ideal Weight + Wellness Score Report for coaches.',
   },
 
   // Wellness Score Sheet — home tile + 34-parameter score view + coach config.
@@ -100,7 +100,7 @@ const REGISTRY = Object.freeze({
     envKey:         'REACT_APP_FF_WELLNESS_SCORE_SHEET',
     storageKey:     'ff.wellness-score-sheet',
     defaultEnabled: true,
-    description:    'Wellness Score home tile, daily score API, and admin Wellness Score Setup configuration.',
+    description:    'Wellness Score home tile, daily score API, admin setup, and Wellness Score Report.',
   },
 
   // AI Credits — Manual Entry AI Mode + Diary Retry AI credit gate.

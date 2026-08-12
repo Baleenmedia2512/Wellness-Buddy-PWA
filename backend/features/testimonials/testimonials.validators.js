@@ -7,6 +7,7 @@
  *   - Adding afterImageBase64 + afterWeightKg (on submit or edit)  â†’ status: 'pending' + email coach
  */
 import { ValidationError } from '../../shared/lib/ValidationError.js';
+import { normalizeTestimonialsListPagination } from './domain/testimonials-list.pagination.js';
 
 const GOAL_TYPES = ['loss', 'gain'];
 const MAX_DURATION_LEN = 100;
@@ -203,14 +204,40 @@ export function validateEditTestimonial(body) {
 
 /**
  * Validate query params for GET /api/testimonials/list-for-coach
+ * Supports page/limit/search/scope/uploadFilter for server-side pagination.
  */
 export function validateListForCoach(query) {
-  const { coachId, scope } = query || {};
-  if (!coachId) throw new ValidationError(400, 'coachId is required');
-  const coachIdN = parseInt(coachId, 10);
-  if (isNaN(coachIdN) || coachIdN < 1) throw new ValidationError(400, 'coachId must be a valid integer');
-  const normalizedScope = scope === 'full' ? 'full' : 'direct';
-  return { coachId: coachIdN, scope: normalizedScope };
+  const normalized = normalizeTestimonialsListPagination(query || {});
+  if (!normalized.coachId) throw new ValidationError(400, 'coachId is required');
+  // Mine scope is frontend-only (my-testimonial); list API treats it as direct empty-safe.
+  const scope = normalized.scope === 'full' ? 'full' : 'direct';
+  return {
+    coachId: normalized.coachId,
+    scope,
+    page: normalized.page,
+    limit: normalized.limit,
+    search: normalized.search,
+    uploadFilter: normalized.uploadFilter,
+  };
+}
+
+/**
+ * Validate query params for GET /api/testimonials/detail
+ */
+export function validateTestimonialDetail(query) {
+  const { userId, coachId } = query || {};
+  if (!userId) throw new ValidationError(400, 'userId is required');
+  const userIdN = parseInt(userId, 10);
+  if (isNaN(userIdN) || userIdN < 1) throw new ValidationError(400, 'userId must be a valid integer');
+
+  let coachIdN = null;
+  if (coachId != null && coachId !== '') {
+    coachIdN = parseInt(coachId, 10);
+    if (isNaN(coachIdN) || coachIdN < 1) {
+      throw new ValidationError(400, 'coachId must be a valid integer');
+    }
+  }
+  return { userId: userIdN, coachId: coachIdN };
 }
 
 /**

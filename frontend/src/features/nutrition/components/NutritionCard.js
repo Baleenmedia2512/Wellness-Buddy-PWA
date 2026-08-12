@@ -8,7 +8,14 @@ import { searchFoods } from "../services/foodCorrectionService";
 import { captureAndShare, shareImageDirectly, precaptureShareImage, shareCachedDataUrl } from "../../../shared/utils/shareUtils";
 import { debugLog } from '../../../shared/utils/logger.js';
 import { computeMealGlycemicIndex } from "../domain/mealGlycemicIndex";
-
+import {
+  DIARY_FOOD_ACTIVITY,
+  resolveFoodActivityType,
+  extractVolumeMl,
+  extractScoops,
+  extractShakeProducts,
+} from "../../diary/domain/activityType";
+import { buildDiaryShareSuffix } from "../../diary/domain/share/suffixes";
 const NutritionCard = ({
   data,
   onDataUpdate,
@@ -806,58 +813,49 @@ const NutritionCard = ({
     try {
       const mealName = generateMealName();
       const calories = localNutrition?.calories || 0;
-
-      // Build detailed breakdown text
-      let breakdownText = `My ${mealName}\n`;
-      breakdownText += `${Math.round(calories)} kcal ðŸŽ\n\n`;
-
-      // Add nutrition summary
-      breakdownText += `📊 Nutrition Summary:\n`;
-      breakdownText += `• Calories: ${Math.round(
-        localNutrition.calories,
-      )} kcal\n`;
-      breakdownText += `• Protein: ${localNutrition.protein}g\n`;
-      breakdownText += `• Carbs: ${localNutrition.carbs}g\n`;
-      breakdownText += `• Fat: ${localNutrition.fat}g\n`;
-      breakdownText += `• Fiber: ${localNutrition.fiber}g\n\n`;
-
-      // Add food breakdown if multiple items
-      if (localDetailedItems.length > 0) {
-        breakdownText += `ðŸ½ï¸ Food Breakdown:\n`;
-        localDetailedItems.forEach((item, index) => {
-          const itemCals = item.nutrition?.calories || item.calories || 0;
-          const portion =
-            item.serving?.description ||
-            item.portionDescription ||
-            item.portion ||
-            "";
-          breakdownText += `${index + 1}. ${item.name}`;
-          if (portion) {
-            breakdownText += ` (${portion})`;
-          }
-          breakdownText += `\n   ${Math.round(itemCals)} kcal`;
-          breakdownText += ` • Protein: ${Math.round(
-            item.nutrition?.protein || item.protein || 0,
-          )}g`;
-          breakdownText += ` • Carbs: ${Math.round(
-            item.nutrition?.carbs || item.carbs || 0,
-          )}g`;
-          breakdownText += ` • Fat: ${Math.round(
-            item.nutrition?.fat || item.fat || 0,
-          )}g`;
-          if ((item.nutrition?.fiber || item.fiber || 0) > 0) {
-            breakdownText += ` • Fiber: ${Math.round(
-              item.nutrition?.fiber || item.fiber || 0,
-            )}g`;
-          }
-          breakdownText += `\n`;
+      const activityType = resolveFoodActivityType({
+        processedBy: data?.processedBy,
+        foodData: {
+          name: mealName,
+          detailedItems: localDetailedItems,
+          nutrition: localNutrition,
+        },
+      });
+      let activityCaption;
+      if (activityType === DIARY_FOOD_ACTIVITY.WATER) {
+        activityCaption = buildDiaryShareSuffix('water', {
+          volumeMl: extractVolumeMl({ detailedItems: localDetailedItems }),
         });
-        breakdownText += `\n`;
+      } else if (activityType === DIARY_FOOD_ACTIVITY.AFRESH) {
+        activityCaption = buildDiaryShareSuffix('afresh', {
+          scoops: extractScoops({ detailedItems: localDetailedItems }) ?? 1,
+          calories,
+        });
+      } else if (activityType === DIARY_FOOD_ACTIVITY.SHAKE) {
+        activityCaption = buildDiaryShareSuffix('shake', {
+          shakeName: mealName,
+          servings: 1,
+          shakeProducts: extractShakeProducts({ detailedItems: localDetailedItems }),
+        });
+      } else {
+        activityCaption = buildDiaryShareSuffix('food', {
+          foodName: mealName,
+          calories,
+          protein: localNutrition?.protein ?? 0,
+          carbs: localNutrition?.carbs ?? 0,
+          fat: localNutrition?.fat ?? 0,
+          fiber: localNutrition?.fiber ?? 0,
+          glycemicIndex: localNutrition?.glycemic_index
+            ?? localNutrition?.glycemicIndex
+            ?? computeMealGlycemicIndex(localDetailedItems)
+            ?? null,
+        });
       }
 
       // Capture and share the complete nutrition card (food image + all nutrition details)
       const shareOpts = {
         title: `${mealName} - Wellness Valley`,
+        text: activityCaption,
         fileName: `wellness-valley-${mealName
           .toLowerCase()
           .replace(/\s+/g, "-")}.png`,

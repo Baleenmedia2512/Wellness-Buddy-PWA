@@ -9,6 +9,12 @@ import {
   getLatestWeightsForUsers,
 } from './reports.repository.js';
 import { computeIdealWeightRange } from '../../utils/weightValidation.js';
+import { paginateDownlineWeightRecords } from './domain/downline-weight.pagination.js';
+import { cache } from '../../utils/cache.js';
+
+/** Short TTL so page/filter changes reuse the expensive hierarchy+weight build. */
+const REPORT_BUILD_CACHE_TTL_MS = 20_000;
+const REPORT_BUILD_CACHE_PREFIX = 'reports:downline-weight:v1:';
 
 /**
  * Classify a member's weight status relative to their ideal range.
@@ -24,7 +30,6 @@ function classifyStatus(currentWeight, idealRange) {
   return 'on_track';
 }
 
-const STATUS_ORDER = { above_ideal: 0, below_ideal: 1, on_track: 2, no_weight: 3, no_height: 4 };
 const OFF_TRACK_STATUSES = new Set(['above_ideal', 'below_ideal']);
 const NO_DATA_STATUSES = new Set(['no_weight', 'no_height']);
 
@@ -148,33 +153,45 @@ function buildTeamPerformanceByCoachId(rawMembers, weightRows, childrenByParentI
   return performanceById;
 }
 
+function readWeightEntry(weightMap, userId) {
+  const entry = weightMap.get(userId);
+  if (entry == null) return { currentWeight: null, lastUpdated: null };
+  if (typeof entry === 'object' && !Array.isArray(entry)) {
+    return {
+      currentWeight: entry.weight ?? null,
+      lastUpdated: entry.lastUpdated ?? null,
+    };
+  }
+  return { currentWeight: entry, lastUpdated: null };
+}
+
 function buildWeightRow(member, weightMap) {
-  const currentWeight = weightMap.get(member.UserId) ?? null;
+  const { currentWeight, lastUpdated } = readWeightEntry(weightMap, member.UserId);
   const idealRange = computeIdealWeightRange(member.Height);
   const status = classifyStatus(currentWeight, idealRange);
 
   return {
     userId: member.UserId,
     userName: member.UserName,
-    heightCm: member.Height ? parseFloat(member.Height) : null,
     currentWeight,
     idealMin: idealRange?.idealMin ?? null,
     idealMax: idealRange?.idealMax ?? null,
     status,
+    lastUpdated,
   };
 }
 
 /**
- * GET /api/reports/downline-weight-status
+ * Build the full enriched report once per coach (cached ~20s).
+ * Pagination/filters are applied in memory on top of this snapshot.
  *
- * Returns the coach's own row plus every descendant's weight status so the
- * client can filter by Mine / Direct Team / Full Team without extra requests.
- *
- * @param {{ coachId: string }} rawQuery
- * @returns {{ httpStatus: number, body: object }}
+ * @param {number} coachId
+ * @returns {Promise<{ self: object, members: object[] }>}
  */
-export async function getDownlineWeightStatus(rawQuery) {
-  const { coachId } = validateDownlineWeightStatus(rawQuery);
+async function buildDownlineWeightSnapshot(coachId) {
+  const cacheKey = `${REPORT_BUILD_CACHE_PREFIX}${coachId}`;
+  const cached = cache.get(cacheKey);
+  if (cached) return cached;
 
   const [coachMember, teamData] = await Promise.all([
     getCoachMember(coachId),
@@ -194,7 +211,7 @@ export async function getDownlineWeightStatus(rawQuery) {
     UserName: 'You',
     Height: null,
   };
-  const self = buildWeightRow(selfMember, weightMap);
+  const selfBase = buildWeightRow(selfMember, weightMap);
 
   const members = fullTeamMembers.map((m) => ({
     ...buildWeightRow(m, weightMap),
@@ -203,29 +220,118 @@ export async function getDownlineWeightStatus(rawQuery) {
     reportsToCoachId: m.CoachId,
   }));
 
-  members.sort((a, b) => (STATUS_ORDER[a.status] ?? 99) - (STATUS_ORDER[b.status] ?? 99));
-
   const teamPerformanceByUserId = buildTeamPerformanceByCoachId(
     fullTeamMembers,
     members,
     childrenByParentId,
   );
+
   const membersWithPerformance = members.map((m) => ({
     ...m,
     teamPerformance: teamPerformanceByUserId[Number(m.userId)] ?? null,
   }));
+
+  const snapshot = {
+    self: {
+      ...selfBase,
+      isDirect: false,
+      coachId: null,
+      reportsToCoachId: null,
+      teamPerformance: teamPerformanceByUserId[coachId] ?? null,
+    },
+    members: membersWithPerformance,
+  };
+
+  cache.set(cacheKey, snapshot, REPORT_BUILD_CACHE_TTL_MS);
+  return snapshot;
+}
+
+/**
+ * GET /api/reports/downline-weight-status
+ *
+ * Returns a paginated page of weight-status rows for the selected team/status/
+ * search filters. Aggregate chip counts always reflect the full scoped set.
+ *
+ * @param {object} rawQuery
+ * @returns {{ httpStatus: number, body: object }}
+ */
+export async function getDownlineWeightStatus(rawQuery) {
+  const {
+    coachId,
+    page,
+    limit,
+    search,
+    teamFilter,
+    statusFilter,
+    sort,
+  } = validateDownlineWeightStatus(rawQuery);
+
+  const snapshot = await buildDownlineWeightSnapshot(coachId);
+  const {
+    records,
+    pagination,
+    statusCounts,
+    teamScopeCounts,
+    teamFilter: resolvedTeamFilter,
+    statusFilter: resolvedStatusFilter,
+  } = paginateDownlineWeightRecords(snapshot.self, snapshot.members, {
+    page,
+    limit,
+    search,
+    teamFilter,
+    statusFilter,
+    sort,
+  });
+
+  // Slim self for Mine tab / team-performance header (always present, not paginated away).
+  const selfSummary = {
+    userId: snapshot.self.userId,
+    userName: snapshot.self.userName,
+    currentWeight: snapshot.self.currentWeight,
+    idealMin: snapshot.self.idealMin,
+    idealMax: snapshot.self.idealMax,
+    status: snapshot.self.status,
+    difference: null,
+    lastUpdated: snapshot.self.lastUpdated ?? null,
+    teamPerformance: snapshot.self.teamPerformance ?? null,
+  };
+  if (
+    selfSummary.currentWeight != null
+    && selfSummary.idealMin != null
+    && selfSummary.idealMax != null
+  ) {
+    if (selfSummary.status === 'above_ideal') {
+      selfSummary.difference = Number(
+        (selfSummary.currentWeight - selfSummary.idealMax).toFixed(1),
+      );
+    } else if (selfSummary.status === 'below_ideal') {
+      selfSummary.difference = Number(
+        (selfSummary.idealMin - selfSummary.currentWeight).toFixed(1),
+      );
+    } else {
+      selfSummary.difference = 0;
+    }
+  }
 
   return {
     httpStatus: 200,
     body: {
       success: true,
       data: {
-        self: {
-          ...self,
-          teamPerformance: teamPerformanceByUserId[coachId] ?? null,
-        },
-        members: membersWithPerformance,
+        self: selfSummary,
+        members: records,
+        statusCounts,
+        teamScopeCounts,
+        teamFilter: resolvedTeamFilter,
+        statusFilter: resolvedStatusFilter,
+        // Flat pagination fields (client + docs convenience)
+        page: pagination.page,
+        limit: pagination.limit,
+        totalRecords: pagination.totalRecords,
+        totalPages: pagination.totalPages,
+        hasNextPage: pagination.hasNextPage,
       },
+      pagination,
     },
   };
 }

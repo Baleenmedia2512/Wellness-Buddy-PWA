@@ -53,7 +53,7 @@ const macros = (src) => ({
 const detailedItemToFood = (item) => {
   const n = item.nutrition || {};
   const { weight_g, volume_ml } = resolveWeightAndVolume(item);
-  return {
+  const food = {
     name: item.name || 'Unknown Food',
     // 🔴 Preserve correction metadata for DB persistence.
     originalAiName: item.originalAiName || item.name,
@@ -80,10 +80,31 @@ const detailedItemToFood = (item) => {
       ...pickMicros({ ...n, ...item }),
     },
   };
+  if (item.shakeProducts && typeof item.shakeProducts === 'object') {
+    food.shakeProducts = item.shakeProducts;
+  }
+  return food;
 };
 
 export function transformToBackgroundServiceFormat(analysisResult) {
   try {
+    if (!analysisResult || typeof analysisResult !== 'object') return analysisResult;
+
+    // Already canonical ({ foods, total }) — water tracker, orchestrator, retries, etc.
+    if (Array.isArray(analysisResult.foods) && analysisResult.foods.length > 0) {
+      const total = analysisResult.total
+        ? macros(analysisResult.total)
+        : macros(analysisResult.nutrition || {});
+      return {
+        foods: analysisResult.foods,
+        total,
+        confidence: analysisResult.confidence || 'medium',
+        ...(analysisResult.processedBy ? { processedBy: analysisResult.processedBy } : {}),
+        ...(analysisResult.category ? { category: analysisResult.category } : {}),
+        ...(analysisResult.shakeProducts ? { shakeProducts: analysisResult.shakeProducts } : {}),
+      };
+    }
+
     const { nutrition, detailedItems = [], confidence, category } = analysisResult;
     const foods = detailedItems.length > 0
       ? detailedItems.map(detailedItemToFood)
@@ -93,7 +114,13 @@ export function transformToBackgroundServiceFormat(analysisResult) {
           weight_g: 100,
           nutrition: macros(nutrition),
         }];
-    return { foods, total: macros(nutrition), confidence: confidence || 'medium' };
+    return {
+      foods,
+      total: macros(nutrition),
+      confidence: confidence || 'medium',
+      ...(analysisResult.processedBy ? { processedBy: analysisResult.processedBy } : {}),
+      ...(analysisResult.shakeProducts ? { shakeProducts: analysisResult.shakeProducts } : {}),
+    };
   } catch (error) {
     console.error('[transformToBackgroundServiceFormat] Error transforming data:', error);
     return analysisResult;

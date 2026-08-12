@@ -10,6 +10,10 @@
  */
 import React, { useEffect, useRef, useState } from 'react';
 import { Play, Video, X } from 'lucide-react';
+import {
+  getCachedVideoThumbnail,
+  setCachedVideoThumbnail,
+} from '../utils/videoThumbnailCache';
 
 // ─── Full-screen player (reused from CoachTestimonialsPage pattern) ───────────
 
@@ -55,6 +59,7 @@ function VideoPlayerModal({ url, title, onClose }) {
           controls
           playsInline
           autoPlay
+          preload="none"
           className="max-h-full max-w-full object-contain rounded-xl"
           style={{ maxHeight: 'calc(100vh - 120px)' }}
         />
@@ -133,30 +138,61 @@ export default function VideoThumbnailCard({
   compact = false,
   localPreviewUrl = null,
 }) {
-  const [thumbnail, setThumbnail] = useState(null);
-  const [loading,   setLoading]   = useState(true);
-  const [playing,   setPlaying]   = useState(false);
-
   const videoUrl = localPreviewUrl || url;
+  const [thumbnail, setThumbnail] = useState(() => getCachedVideoThumbnail(videoUrl));
+  const [loading, setLoading] = useState(() => Boolean(videoUrl) && !getCachedVideoThumbnail(videoUrl));
+  const [playing, setPlaying] = useState(false);
+  const [visible, setVisible] = useState(() => Boolean(getCachedVideoThumbnail(videoUrl)));
+  const rootRef = useRef(null);
+
+  // Only generate thumbnails when the card is near the viewport.
+  useEffect(() => {
+    const el = rootRef.current;
+    if (!el || !videoUrl) return undefined;
+    if (getCachedVideoThumbnail(videoUrl)) {
+      setVisible(true);
+      return undefined;
+    }
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setVisible(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: '200px', threshold: 0 },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [videoUrl]);
 
   useEffect(() => {
     if (!videoUrl) {
       setLoading(false);
-      return;
+      return undefined;
     }
+    if (!visible) return undefined;
+
+    const cached = getCachedVideoThumbnail(videoUrl);
+    if (cached) {
+      setThumbnail(cached);
+      setLoading(false);
+      return undefined;
+    }
+
     let cancelled = false;
     setLoading(true);
     setThumbnail(null);
 
     captureVideoThumbnail(videoUrl).then((dataUrl) => {
-      if (!cancelled) {
-        setThumbnail(dataUrl);
-        setLoading(false);
-      }
+      if (cancelled) return;
+      if (dataUrl) setCachedVideoThumbnail(videoUrl, dataUrl);
+      setThumbnail(dataUrl);
+      setLoading(false);
     });
 
     return () => { cancelled = true; };
-  }, [videoUrl]);
+  }, [videoUrl, visible]);
 
   if (!videoUrl) {
     if (compact) {
@@ -173,6 +209,7 @@ export default function VideoThumbnailCard({
     return (
       <>
         <button
+          ref={rootRef}
           type="button"
           onClick={() => setPlaying(true)}
           className={`relative inline-flex items-center gap-1.5 overflow-hidden rounded-xl border border-gray-200 bg-gray-900 shadow-sm hover:shadow transition-all active:scale-95 ${className}`}
@@ -198,6 +235,7 @@ export default function VideoThumbnailCard({
   return (
     <>
       <button
+        ref={rootRef}
         type="button"
         onClick={() => setPlaying(true)}
         className={`relative w-full overflow-hidden rounded-xl border border-gray-200 bg-gray-900 shadow-sm hover:shadow-md transition-all active:scale-[0.98] group ${className}`}

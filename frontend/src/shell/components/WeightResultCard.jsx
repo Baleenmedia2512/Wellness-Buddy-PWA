@@ -70,6 +70,7 @@ export function WeightResultCard({
                             min="20"
                             max="300"
                             autoFocus
+                            data-select-after-decimal="true"
                           />
                           <span className="text-sm text-purple-600">
                             {weightResult.unit}

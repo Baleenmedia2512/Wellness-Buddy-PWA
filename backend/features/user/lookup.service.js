@@ -18,6 +18,11 @@ export async function lookupUser({ email, timezoneIana }) {
     return { httpStatus: 404, body: { success: false, message: 'User not found', userNotFound: true } };
   }
 
+  if (user.Status === 'Inactive') {
+    await repo.setUserStatus(user.UserId, 'Active');
+    user.Status = 'Active';
+  }
+
   // Active + idle ≥7d → coach email (non-blocking). Never auto-set Inactive.
   if (user.Status === 'Active') {
     const lastActivityStr = user.LastActiveAt || user.EntryDateTime;

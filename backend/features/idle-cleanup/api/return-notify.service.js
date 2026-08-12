@@ -2,7 +2,7 @@
  * return-notify.service.js — Notify coach when a member returns after idle.
  *
  * Called from user lookup on login/status check. Never changes Status.
- * Dedupes by refreshing LastActiveAt after a notify attempt (or skip).
+ * Dedupes by refreshing LastActiveAt only after a successful notify.
  *
  * @module backend/features/idle-cleanup/api/return-notify.service
  */
@@ -68,13 +68,11 @@ export async function notifyCoachIfReturningIdleUser({
   try {
     const { coachId, memberName } = await repo.findMemberCoachContext(userId);
     if (!coachId) {
-      await repo.touchLastActive(userId);
       return { notified: false, reason: 'no_coach' };
     }
 
     const coach = await repo.findCoachContact(coachId);
     if (!coach.email) {
-      await repo.touchLastActive(userId);
       return { notified: false, reason: 'no_coach_email' };
     }
 
@@ -90,9 +88,6 @@ export async function notifyCoachIfReturningIdleUser({
       html,
     });
 
-    // Always refresh activity after an idle return so we do not re-spam on every lookup.
-    await repo.touchLastActive(userId);
-
     if (!sent.success) {
       logger.warn('[return-notify] coach email failed', {
         userId,
@@ -102,6 +97,10 @@ export async function notifyCoachIfReturningIdleUser({
       });
       return { notified: false, reason: 'email_failed' };
     }
+
+    // Refresh activity only after a successful send so skipped/failed attempts
+    // can retry on the next login instead of being consumed silently.
+    await repo.touchLastActive(userId);
 
     logger.info('[return-notify] coach notified of idle return', {
       userId,
@@ -114,11 +113,6 @@ export async function notifyCoachIfReturningIdleUser({
       userId,
       error: err?.message || String(err),
     });
-    try {
-      await repo.touchLastActive(userId);
-    } catch {
-      /* non-fatal */
-    }
     return { notified: false, reason: 'error' };
   }
 }

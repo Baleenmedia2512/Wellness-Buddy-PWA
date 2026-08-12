@@ -8,6 +8,7 @@ import { resolveDailyExerciseCalories } from '../../activity/domain/watch-calori
 import { deriveWeightGoalMode } from '../../../utils/weightValidation.js';
 import { normalizeParameterConfig, DEFAULT_PARAMETER_CONFIG } from '../domain/parameter-registry.js';
 import { resolveCalorieTargetFromProfile } from '../../../utils/tdeeCalculations.js';
+import { resolveBmrForDisplay } from '../../../utils/bmrCalculations.js';
 import { computeNutritionTargets } from '../domain/nutrition-targets.js';
 import {
   aggregateDailyFoodStats,
@@ -17,6 +18,7 @@ import { enumerateScoreDates } from '../domain/date-range.js';
 import * as repo from '../data/wellness-score.repo.js';
 import { getUserTimezoneIana } from '../../user/domain/userTimezone.js';
 import { findLatestLinkedBodyMetricsCard } from '../../body-parameters-card/data/card.repo.js';
+import { findLatestBodyFat } from '../../weight/weight.repository.js';
 import {
   resolveRequestedDateYmd,
   assertNotFutureDateYmd,
@@ -36,9 +38,21 @@ function mapStoredDailyScoreRow(row, userId) {
   };
 }
 
-function pickBmr(userGoal) {
-  const b = parseFloat(userGoal?.Bmr);
-  return Number.isFinite(b) && b > 0 ? b : 0;
+/**
+ * Resolve BMR for Physical Activity scoring.
+ * Prefer team_table.Bmr; fall back to Katch-McArdle from weight + body fat
+ * (latest weight row, historical body fat, or linked body-parameters card).
+ */
+function pickBmr({ userGoal, latestWeightRow, historicalBodyFat, bodyMetricsCard }) {
+  const resolved = resolveBmrForDisplay({
+    storedBmr: userGoal?.Bmr ?? latestWeightRow?.Bmr,
+    weightKg: latestWeightRow?.Weight,
+    bodyFatPercent: latestWeightRow?.BodyFat ?? historicalBodyFat ?? userGoal?.BodyFat,
+    cardWeightKg: bodyMetricsCard?.weight_kg,
+    cardFatPercent: bodyMetricsCard?.fat_percent,
+    cardBmr: bodyMetricsCard?.bmr,
+  });
+  return resolved != null ? resolved : 0;
 }
 
 function parseWeightKg(row) {
@@ -133,7 +147,26 @@ export async function computeDailyScoreForDate({ userId, date, timezoneIana }) {
     foodRows: waterFoodRows,
   });
 
-  const bmr = pickBmr(userGoal);
+  // Historical body-fat lookup only when no stored BMR and no composition on
+  // the latest weight row or linked BPC — mirrors weight.service resolveEffectiveBodyFat.
+  let historicalBodyFat = null;
+  const storedBmr = parseFloat(userGoal?.Bmr);
+  const needsBodyFatFallback =
+    !(Number.isFinite(storedBmr) && storedBmr > 0)
+    && latestWeightRow?.BodyFat == null
+    && userGoal?.BodyFat == null
+    && bodyMetricsCard?.fat_percent == null
+    && bodyMetricsCard?.bmr == null;
+  if (needsBodyFatFallback) {
+    historicalBodyFat = await findLatestBodyFat(userId);
+  }
+
+  const bmr = pickBmr({
+    userGoal,
+    latestWeightRow,
+    historicalBodyFat,
+    bodyMetricsCard,
+  });
   const calorieTarget = resolveCalorieTargetFromProfile({
     bmr,
     physicalActivityLevel: userGoal?.PhysicalActivityLevel,

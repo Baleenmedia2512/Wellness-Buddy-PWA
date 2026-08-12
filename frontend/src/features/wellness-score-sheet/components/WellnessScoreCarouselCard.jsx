@@ -27,6 +27,10 @@ function useResponsiveRing() {
 
 /**
  * Home carousel card — large ring + score hero, fills carousel slide height.
+ *
+ * For single-day ranges (Today / Yesterday), keeps a live `useWellnessScore` fetch
+ * so food-save refresh updates this card even when the parent carousel cache is stale.
+ * Multi-day ranges keep using parent-aggregated `scoreData`.
  */
 export default function WellnessScoreCarouselCard({
   user,
@@ -38,13 +42,16 @@ export default function WellnessScoreCarouselCard({
   loading: loadingProp,
   scoreSubtitle = 'Daily Score',
   periodContext,
+  /** YYYY-MM-DD for Today/Yesterday live fetch; null for multi-day parent totals */
+  liveScoreDate = null,
 }) {
   const today = useBusinessToday(user);
-  const internal = useWellnessScore({
-    user: scoreDataProp == null ? user : null,
+  const liveEnabled = Boolean(liveScoreDate);
+  const live = useWellnessScore({
+    user: liveEnabled ? user : null,
     apiBaseUrl,
-    date: today,
-    nutritionRefreshKey,
+    date: liveScoreDate || today,
+    nutritionRefreshKey: liveEnabled ? nutritionRefreshKey : 0,
   });
   const { size: ringSize, strokeWidth } = useResponsiveRing();
 
@@ -54,8 +61,12 @@ export default function WellnessScoreCarouselCard({
     prefetchTimeWindows();
   }, []);
 
-  const loading = loadingProp ?? internal.loading;
-  const data = scoreDataProp ?? internal.data;
+  // Prefer live daily score when enabled (fixes Home stuck behind sheet).
+  // Fall back to parent payload while live is still loading on first paint.
+  const data = (liveEnabled && live.data) ? live.data : (scoreDataProp ?? live.data);
+  const loading = liveEnabled
+    ? (Boolean(live.loading) && !data)
+    : (loadingProp ?? live.loading);
 
   const progressPct = data?.percentage ?? 0;
   const earned = Math.round(data?.totalEarned ?? 0);

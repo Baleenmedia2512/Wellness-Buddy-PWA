@@ -92,30 +92,63 @@ export async function searchPhonesByPrefix({ prefix, coachId }) {
 }
 
 /**
- * List all body parameter cards for a coach's team
- * @param {string} coachId - UUID of the coach
- * @returns {Promise<Array>} Array of body parameter cards
+ * List body parameter cards for a coach (paginated).
+ * @param {string|number} coachId
+ * @param {{ page?: number, limit?: number, search?: string, signal?: AbortSignal }} [opts]
+ * @returns {Promise<{ cards: Array, pagination: object }>}
  */
-export async function listBodyParamsCards(coachId) {
-  const url = `${getApiBaseUrl()}/api/body-parameters-card/list?coachId=${encodeURIComponent(coachId)}`;
-  console.log('🌐 [API] listBodyParamsCards - Request URL:', url);
-  console.log('🌐 [API] listBodyParamsCards - CoachId:', coachId, 'Type:', typeof coachId);
-  
+export async function listBodyParamsCards(coachId, opts = {}) {
+  const page = opts.page ?? 1;
+  const limit = opts.limit ?? 20;
+  const search = opts.search ? String(opts.search).trim() : '';
+  const params = new URLSearchParams({
+    coachId: String(coachId),
+    page: String(page),
+    limit: String(limit),
+  });
+  if (search) params.set('search', search);
+
+  const url = `${getApiBaseUrl()}/api/body-parameters-card/list?${params}`;
   const response = await CapacitorHttp.get({
     url,
     headers: { 'Cache-Control': 'no-cache' },
   });
-  
-  console.log('🌐 [API] listBodyParamsCards - Response status:', response.status);
-  console.log('🌐 [API] listBodyParamsCards - Response data:', JSON.stringify(response.data, null, 2));
-  
+
   const result = response.data;
   if (!result?.ok) {
-    console.error('❌ [API] listBodyParamsCards - API returned error:', result?.error);
     throw new Error(result?.error?.message || 'Failed to list cards');
   }
-  
+
   const cards = Array.isArray(result.data) ? result.data : [];
-  console.log('✅ [API] listBodyParamsCards - Returning', cards.length, 'cards');
-  return cards;
+  const pagination = result.pagination || {
+    totalRecords: cards.length,
+    totalPages: 1,
+    currentPage: page,
+    pageSize: limit,
+    hasNextPage: false,
+    hasPreviousPage: false,
+  };
+  return { cards, pagination };
+}
+
+/**
+ * Fetch a single full card for edit (all metric fields).
+ * @param {string|number} coachId
+ * @param {string|number} cardId
+ * @returns {Promise<object>}
+ */
+export async function getBodyParamsCard(coachId, cardId) {
+  const params = new URLSearchParams({
+    coachId: String(coachId),
+    cardId: String(cardId),
+  });
+  const response = await CapacitorHttp.get({
+    url: `${getApiBaseUrl()}/api/body-parameters-card/list?${params}`,
+    headers: { 'Cache-Control': 'no-cache' },
+  });
+  const result = response.data;
+  if (!result?.ok) {
+    throw new Error(result?.error?.message || 'Failed to load card');
+  }
+  return result.data;
 }

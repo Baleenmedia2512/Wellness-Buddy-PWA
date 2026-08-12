@@ -86,6 +86,24 @@ function withOptimisticRestores(entries, optimisticEntries) {
 
 const SKELETON_ROWS = 6;
 
+/**
+ * Map each weight entry id → chronologically previous weight value.
+ * Used for share captions + delta chrome on WeightRow.
+ */
+function buildPreviousWeightById(entries) {
+  const map = new Map();
+  if (!Array.isArray(entries) || entries.length === 0) return map;
+  const weights = entries
+    .filter((e) => e?.kind === 'weight' && !e.isUndoPlaceholder && e.payload?.id != null)
+    .slice()
+    .sort((a, b) => new Date(a.capturedAt).getTime() - new Date(b.capturedAt).getTime());
+  for (let i = 0; i < weights.length; i += 1) {
+    const id = String(weights[i].payload.id);
+    map.set(id, i > 0 ? (weights[i - 1].payload?.weight ?? null) : null);
+  }
+  return map;
+}
+
 /** Hide stale or duplicate "Analyzing…" rows in the diary feed. */
 function dedupePendingDiaryEntries(entries) {
   if (!Array.isArray(entries) || entries.length === 0) return entries;
@@ -336,6 +354,8 @@ export default function DiaryFeed({
   analyzingCaptureIds = null,
   pendingCaptureMeta = null,
   onOwnerTimezoneChange = null,
+  /** Called when diary entries load — used for background meal detail prefetch. */
+  onFoodEntriesLoaded = null,
 }) {
   const pendingUndoList = useMemo(() => {
     if (Array.isArray(pendingUndos)) return pendingUndos.filter((u) => u?.entryId != null);
@@ -371,7 +391,7 @@ export default function DiaryFeed({
     }
 
     let cancelled = false;
-    getProfile(email, { cacheBust: true })
+    getProfile(email)
       .then((res) => {
         if (cancelled) return;
         const tz = res?.data?.timezone || res?.data?.timezoneIana || null;
@@ -384,7 +404,15 @@ export default function DiaryFeed({
     return () => { cancelled = true; };
   }, [timezoneSource?.email, timezoneSource?.Email, ownerUserId, viewerUserId]);
 
-  const { loading, error, data, refresh } = useDiary({
+  const {
+    loading,
+    loadingMore,
+    error,
+    data,
+    hasMore,
+    loadMoreSentinelRef,
+    refresh,
+  } = useDiary({
     ownerUserId,
     viewerUserId,
     date,
@@ -402,10 +430,20 @@ export default function DiaryFeed({
     }
   }, [ownerTimezoneIana, onOwnerTimezoneChange]);
 
+  useEffect(() => {
+    if (loading || !data?.entries || typeof onFoodEntriesLoaded !== 'function') return;
+    onFoodEntriesLoaded(data.entries);
+  }, [loading, data?.entries, onFoodEntriesLoaded]);
+
   /** In-flight captures scoped to this diary owner (coach uploads must not leak). */
   const scopedPendingCaptureMeta = useMemo(
     () => filterPendingCaptureMetaForOwner(pendingCaptureMeta, ownerUserId, viewerUserId),
     [pendingCaptureMeta, ownerUserId, viewerUserId],
+  );
+
+  const previousWeightById = useMemo(
+    () => buildPreviousWeightById(data?.entries),
+    [data?.entries],
   );
 
   // Pre-bind onClick and onDelete once per entry kind to keep child renders cheap.
@@ -465,6 +503,9 @@ export default function DiaryFeed({
       const captureMeta = (isAnalyzing || isBackgroundPending) && captureIdStr !== ''
         ? (scopedPendingCaptureMeta?.get(captureIdStr) ?? null)
         : null;
+      const weightId = entry.kind === 'weight' && entry.payload?.id != null
+        ? String(entry.payload.id)
+        : null;
       return (
         <Row
           key={`${entry.kind}-${entry.payload?.id ?? entry.capturedAt}`}
@@ -474,6 +515,11 @@ export default function DiaryFeed({
           canDelete={canDelete}
           hideTime={hideTime}
           timezoneIana={ownerTimezoneIana}
+          ownerUserId={ownerUserId}
+          viewerUserId={viewerUserId}
+          {...(entry.kind === 'weight'
+            ? { previousWeight: weightId ? (previousWeightById.get(weightId) ?? null) : null }
+            : {})}
           {...(entry.kind === 'unknown'
             ? {
                 isAnalyzing,
@@ -493,8 +539,11 @@ export default function DiaryFeed({
       analyzingCaptureIds,
       scopedPendingCaptureMeta,
       ownerTimezoneIana,
+      previousWeightById,
       handleUndoRestore,
       handleUndoExpire,
+      ownerUserId,
+      viewerUserId,
     ],
   );
 
@@ -616,12 +665,31 @@ export default function DiaryFeed({
                   ? `undo-${entry.undo?.kind}-${entry.undo?.entryId}`
                   : `${entry.kind}-${entry.payload?.id ?? entry.capturedAt}`
               }
-              isLast={idx === visibleEntries.length - 1}
+              isLast={idx === visibleEntries.length - 1 && !hasMore}
             >
               {renderRow(entry)}
             </TimelineEntryWrapper>
           ))}
         </div>
+
+        <div ref={loadMoreSentinelRef} className="h-4" aria-hidden="true" />
+        {loadingMore && (
+          <div className="flex justify-center py-3" data-testid="diary-loading-more">
+            <div className="w-5 h-5 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" aria-label="Loading more" />
+          </div>
+        )}
+        {error && data && (
+          <div className="px-2 py-3 text-center">
+            <p className="text-xs text-red-600 mb-2">{error.message || 'Failed to load more'}</p>
+            <button
+              type="button"
+              onClick={refresh}
+              className="text-xs font-semibold text-emerald-700"
+            >
+              Retry
+            </button>
+          </div>
+        )}
       </div>
     );
   }
@@ -632,6 +700,24 @@ export default function DiaryFeed({
       <div className="space-y-3">
         {visibleEntries.map(renderRow)}
       </div>
+      <div ref={loadMoreSentinelRef} className="h-4" aria-hidden="true" />
+      {loadingMore && (
+        <div className="flex justify-center py-3" data-testid="diary-loading-more">
+          <div className="w-5 h-5 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" aria-label="Loading more" />
+        </div>
+      )}
+      {error && data && (
+        <div className="px-2 py-3 text-center">
+          <p className="text-xs text-red-600 mb-2">{error.message || 'Failed to load more'}</p>
+          <button
+            type="button"
+            onClick={refresh}
+            className="text-xs font-semibold text-emerald-700"
+          >
+            Retry
+          </button>
+        </div>
+      )}
     </div>
   );
 }

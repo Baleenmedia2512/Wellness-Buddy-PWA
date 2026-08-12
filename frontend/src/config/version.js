@@ -74,32 +74,41 @@
 
 export const APP_VERSION = {
   // Current version number (displayed to users)
-  VERSION: '3.4.0',
+  VERSION: '3.4.3',
   
   // Version code (for Android builds - must match build.gradle)
   // Also used as CFBundleVersion for iOS builds - must match Info.plist
   // NOTE: versionCode must never decrease for Play Store compatibility.
-  VERSION_CODE: 59,
+  VERSION_CODE: 62,
   
   // iOS build number (CFBundleVersion in Info.plist) - must match Info.plist / pbxproj
-  IOS_BUILD_NUMBER: 60,
+  IOS_BUILD_NUMBER: 63,
   
   // Release name (for Play Store / App Store)
-  RELEASE_NAME: 'Version  3.4.0',
+  RELEASE_NAME: 'Version  3.4.3',
   
   // Build date
-  BUILD_DATE: '2026-08-04',
+  BUILD_DATE: '2026-08-10',
   
   // Platform release notes..
   PLATFORMS: {
-    ANDROID: { versionCode: 59, versionName: '3.4.0' },
-    IOS: { buildNumber: 60, versionName: '3.4.0' },
+    ANDROID: { versionCode: 62, versionName: '3.4.3' },
+    IOS: { buildNumber: 63, versionName: '3.4.3' },
   },
 };
 
 /**
  * 📋 CHANGE LOG
  * 
+ * Version 3.4.3 (Code 62 / iOS build 63) - 2026-08-10 [ANDROID + iOS RELEASE]
+ *   🐛 Patch release — bug fixes and stability improvements
+ *
+ * Version 3.4.2 (Code 61 / iOS build 62) - 2026-08-07 [ANDROID + iOS RELEASE]
+ *   🐛 Patch release — bug fixes and stability improvements
+ *
+ * Version 3.4.1 (Code 60 / iOS build 61) - 2026-08-06 [ANDROID + iOS RELEASE]
+ *   🐛 Patch release — bug fixes and stability improvements
+ *
  * Version 3.4.0 (Code 59 / iOS build 60) - 2026-08-04 [ANDROID + iOS RELEASE]
  *   🚀 Minor version bump — version sync across all platforms
  *

@@ -1,31 +1,89 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { getUserId } from '../../../shared/services/userIdentity';
+import {
+  getLatestActivityLogId,
+  markWellnessScoreProcessed,
+  shouldRefreshWellnessScore,
+} from '../../../shared/services/homeDashboardActivity';
 import { fetchDailyWellnessScore } from '../services/wellnessScore.api';
+import {
+  clearPinnedDailyWellnessScore,
+  getDailyWellnessScoreCached,
+  getPinnedDailyWellnessScore,
+  invalidateDailyWellnessScoreCache,
+  seedDailyWellnessScoreCache,
+  setDailyWellnessScoreCached,
+  subscribeDailyWellnessScoreSeed,
+} from '../services/dailyWellnessScoreCache';
+
+export { seedDailyWellnessScoreCache, invalidateDailyWellnessScoreCache };
 
 /**
  * Loads daily wellness score from the backend API.
- * Clears stale data when `date` changes and refetches on app resume.
- * When `nutritionRefreshKey` bumps (food/weight/camera saves), refetches in the
- * background so the home carousel score stays in sync with nutrition cards.
+ *
+ * Refetch rules (matches Home activity log):
+ * - First load / date change → fetch
+ * - `nutritionRefreshKey` bump after AI analysis / manual log / meal save → fetch
+ * - Tab switch / app resume with no new activity → keep cached score (no API call)
+ * - Sheet seed → paint immediately so Home matches the sheet total
  */
 export function useWellnessScore({ user, apiBaseUrl, date, nutritionRefreshKey = 0 }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [data, setData] = useState(null);
+  const userIdRef = useRef(null);
 
-  const reload = useCallback(async ({ background = false } = {}) => {
+  const reload = useCallback(async ({ background = false, force = false } = {}) => {
     if (!user) {
       setLoading(false);
       setData(null);
       return;
     }
-    if (!background) setLoading(true);
-    setError(null);
+
     try {
-      const userId = user.id || (await getUserId(user));
+      const userId = user.id || userIdRef.current || (await getUserId(user));
       if (!userId) throw new Error('Unable to resolve user');
+      userIdRef.current = userId;
+
+      const cached = getDailyWellnessScoreCached(userId, date);
+
+      // Skip network when nothing dashboard-affecting happened since last fetch.
+      if (!force && cached && !shouldRefreshWellnessScore()) {
+        setData(cached);
+        setError(null);
+        setLoading(false);
+        return;
+      }
+
+      // Paint seeded/cached score immediately on forced refresh (sheet → Home sync)
+      // so Home does not keep an older total while /daily is in flight.
+      if (force && cached) {
+        setData(cached);
+      }
+
+      if (!background) setLoading(true);
+      setError(null);
+
+      const activityLogAtFetch = getLatestActivityLogId();
       const score = await fetchDailyWellnessScore({ userId, date, apiBaseUrl });
-      setData(score);
+
+      // After sheet → Home sync, keep the sheet total for this watermark so a
+      // racing /daily response cannot put Home back on an older/different number.
+      const pin = getPinnedDailyWellnessScore();
+      const pinMatches = Boolean(
+        pin
+        && pin.key === `${userId || ''}|${date || ''}`
+        && pin.activityLogId === getLatestActivityLogId(),
+      );
+      const nextScore = pinMatches ? pin.score : score;
+      setDailyWellnessScoreCached(userId, date, nextScore);
+      if (!pinMatches) clearPinnedDailyWellnessScore(userId, date);
+      setData(nextScore);
+
+      // Only mark processed if nothing newer landed mid-fetch (food-save race).
+      if (getLatestActivityLogId() === activityLogAtFetch) {
+        markWellnessScoreProcessed(activityLogAtFetch);
+      }
     } catch (err) {
       setError(err?.message || 'Failed to load wellness score');
       if (!background) setData(null);
@@ -40,28 +98,47 @@ export function useWellnessScore({ user, apiBaseUrl, date, nutritionRefreshKey =
     setError(null);
   }, [date]);
 
+  // Sheet (or setup) published a day score — paint Home immediately.
   useEffect(() => {
-    reload();
+    return subscribeDailyWellnessScoreSeed(({ userId, date: seedDate, score }) => {
+      const uid = userIdRef.current || user?.id;
+      if (!uid || String(uid) !== String(userId)) return;
+      if (String(seedDate) !== String(date)) return;
+      setData(score);
+      setError(null);
+      setLoading(false);
+    });
+  }, [user?.id, date]);
+
+  useEffect(() => {
+    reload({ force: shouldRefreshWellnessScore() });
   }, [reload]);
 
-  // Food/weight/camera saves bump nutritionRefreshKey via NutritionRefreshContext.
+  // Food/weight/camera / manual log bump nutritionRefreshKey via NutritionRefreshContext.
   const activityRefreshMounted = useRef(false);
   useEffect(() => {
     if (!activityRefreshMounted.current) {
       activityRefreshMounted.current = true;
       return;
     }
-    reload({ background: true });
+    // Drop session cache before refetch so we never paint a pre-save total
+    // while /daily is in flight — but restore a same-watermark sheet pin.
+    invalidateDailyWellnessScoreCache();
+    // Always refetch on key bump — do not gate on shouldRefreshWellnessScore().
+    // The sheet may have already marked wellness processed while Home was stale.
+    reload({ background: true, force: true });
   }, [nutritionRefreshKey, reload]);
 
-  // Foreground resume — pick up new IST day without requiring a full reload.
+  // Foreground resume — only refetch when a newer async activity log exists.
   useEffect(() => {
     const onVisible = () => {
-      if (document.visibilityState === 'visible') reload();
+      if (document.visibilityState !== 'visible') return;
+      if (!shouldRefreshWellnessScore()) return;
+      reload({ background: true, force: true });
     };
     document.addEventListener('visibilitychange', onVisible);
     return () => document.removeEventListener('visibilitychange', onVisible);
   }, [reload]);
 
-  return { loading, error, data, reload };
+  return { loading, error, data, reload: () => reload({ force: true }) };
 }

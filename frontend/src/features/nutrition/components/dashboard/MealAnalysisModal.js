@@ -8,6 +8,9 @@ import NutritionAnalysisPanel from './NutritionAnalysisPanel';
  */
 function MealAnalysisModal({
   selectedMeal,
+  mealDetailStatus,
+  mealDetailError,
+  onRetryMealDetail,
   isClosingModal,
   isEditing,
   isSaving,
@@ -26,6 +29,7 @@ function MealAnalysisModal({
   handleCloseModal,
   handleDeleteMeal,
   user,
+  apiBaseUrl,
   timezoneIana,
   persistMealItems,
   setLocalDetailedItems,
@@ -34,6 +38,9 @@ function MealAnalysisModal({
   return (
     <NutritionAnalysisPanel
       selectedMeal={selectedMeal}
+      mealDetailStatus={mealDetailStatus}
+      mealDetailError={mealDetailError}
+      onRetryMealDetail={onRetryMealDetail}
       isClosingModal={isClosingModal}
       isEditing={isEditing}
       isSaving={isSaving}
@@ -52,6 +59,7 @@ function MealAnalysisModal({
       handleCloseModal={handleCloseModal}
       handleDeleteMeal={handleDeleteMeal}
       user={user}
+      apiBaseUrl={apiBaseUrl}
       timezoneIana={timezoneIana}
       persistMealItems={persistMealItems}
       setLocalDetailedItems={setLocalDetailedItems}

@@ -92,23 +92,38 @@ const ImageUpload = forwardRef(
     // immediately after the user dismissed the camera (cancel loop guard).
     const lastCameraCloseRef = useRef(0);
 
-    // Helper to convert base64 to File
-    const base64ToFile = async (base64String, filename = "image.jpg") => {
+    // Helper: Capacitor Base64 → File (sync). Avoids fetch(dataUrl) which is
+    // slow on Android WebView and delayed the classify preview.
+    const base64ToFile = (base64String, filename = "image.jpg") => {
       try {
-        const dataUrl = base64String.startsWith("data:")
-          ? base64String
-          : `data:image/jpeg;base64,${base64String}`;
-        const response = await fetch(dataUrl);
-        const blob = await response.blob();
-        return new File([blob], filename, { type: "image/jpeg" });
+        const pure = base64String.includes(",")
+          ? base64String.split(",")[1]
+          : base64String;
+        const binary = atob(pure);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i += 1) {
+          bytes[i] = binary.charCodeAt(i);
+        }
+        return new File([bytes], filename, { type: "image/jpeg" });
       } catch (error) {
         console.error("Error converting base64 to file:", error);
         throw new Error("Failed to process image data");
       }
     };
 
+    const toJpegDataUrl = (base64String) =>
+      base64String.startsWith("data:")
+        ? base64String
+        : `data:image/jpeg;base64,${base64String}`;
+
     const handleFileChange = async (event) => {
       const file = event.target.files[0];
+      const source =
+        event.target === galleryInputRef.current ? 'gallery' : 'camera';
+      if (!file) {
+        try { onCameraStateChange?.('closed', { source, hadResult: false }); } catch (_) {}
+        return;
+      }
       if (file) {
         if (!file.type.startsWith("image/")) {
           setAlertModal({
@@ -117,6 +132,7 @@ const ImageUpload = forwardRef(
             message: "Please select an image file",
             type: "error",
           });
+          try { onCameraStateChange?.('closed', { source, hadResult: false }); } catch (_) {}
           return;
         }
         if (file.size > 10 * 1024 * 1024) {
@@ -126,6 +142,7 @@ const ImageUpload = forwardRef(
             message: "Image size should be less than 10MB",
             type: "error",
           });
+          try { onCameraStateChange?.('closed', { source, hadResult: false }); } catch (_) {}
           return;
         }
 
@@ -141,6 +158,7 @@ const ImageUpload = forwardRef(
               type: "info",
             });
             event.target.value = "";
+            try { onCameraStateChange?.('closed', { source, hadResult: false }); } catch (_) {}
             return;
           }
           // Use education time window passed from App.js (fetched live from DB)
@@ -158,6 +176,7 @@ const ImageUpload = forwardRef(
             });
             // Clear the input
             event.target.value = "";
+            try { onCameraStateChange?.('closed', { source, hadResult: false }); } catch (_) {}
             return;
           }
 
@@ -166,6 +185,7 @@ const ImageUpload = forwardRef(
 
           // Pass both file and timestamp to parent
           // Fall back to file.lastModified if EXIF timestamp unavailable
+          try { onCameraStateChange?.('closed', { source, hadResult: true }); } catch (_) {}
           onImageSelect(
             file,
             validation.imageTimestamp ||
@@ -177,6 +197,7 @@ const ImageUpload = forwardRef(
         // Non-education: EXIF shutter time when present; otherwise upload time.
         // Do NOT use file.lastModified — it is when the file was saved, not when eaten.
         const captureTimestamp = await resolveUploadCaptureTimestamp(file);
+        try { onCameraStateChange?.('closed', { source, hadResult: true }); } catch (_) {}
         onImageSelect(file, captureTimestamp);
       }
     };
@@ -202,7 +223,8 @@ const ImageUpload = forwardRef(
           });
 
           if (photo.base64String) {
-            const file = await base64ToFile(
+            const previewDataUrl = toJpegDataUrl(photo.base64String);
+            const file = base64ToFile(
               photo.base64String,
               `photo-${Date.now()}.jpg`,
             );
@@ -247,7 +269,7 @@ const ImageUpload = forwardRef(
               );
             }
 
-            onImageSelect(file, captureTimestamp);
+            onImageSelect(file, captureTimestamp, { previewDataUrl });
             hadResult = true;
           }
         } catch (err) {
@@ -266,6 +288,7 @@ const ImageUpload = forwardRef(
           try { onCameraStateChange?.('closed', { source: 'camera', hadResult }); } catch (_) {}
         }
       } else {
+        try { onCameraStateChange?.('opened', { source: 'camera' }); } catch (_) {}
         cameraInputRef.current?.click();
       }
     };
@@ -288,10 +311,12 @@ const ImageUpload = forwardRef(
           });
 
           if (photo.base64String) {
-            const file = await base64ToFile(
+            const previewDataUrl = toJpegDataUrl(photo.base64String);
+            const file = base64ToFile(
               photo.base64String,
               `gallery-${Date.now()}.jpg`,
             );
+            const selectOpts = { previewDataUrl };
 
             // 🚨 Native gallery: use Capacitor's photo.exif for reliable date check
             // (base64ToFile always gives lastModified=now, so file date is useless here)
@@ -363,7 +388,7 @@ const ImageUpload = forwardRef(
                   "Gallery image validated via EXIF:",
                   toLocalISOString(photoDate),
                 );
-                onImageSelect(file, toLocalISOString(photoDate));
+                onImageSelect(file, toLocalISOString(photoDate), selectOpts);
                 return;
               }
 
@@ -424,7 +449,7 @@ const ImageUpload = forwardRef(
                   "✅ Education gallery image validated via Filesystem.stat:",
                   toLocalISOString(fileDate),
                 );
-                onImageSelect(file, toLocalISOString(fileDate));
+                onImageSelect(file, toLocalISOString(fileDate), selectOpts);
                 return;
               } catch (fsError) {
                 console.error("❌ Filesystem.stat failed:", fsError);
@@ -550,7 +575,7 @@ const ImageUpload = forwardRef(
               );
             }
 
-            onImageSelect(file, galleryTimestamp);
+            onImageSelect(file, galleryTimestamp, selectOpts);
             hadResult = true;
           }
         } catch (err) {
@@ -567,6 +592,9 @@ const ImageUpload = forwardRef(
           try { onCameraStateChange?.('closed', { source: 'gallery', hadResult }); } catch (_) {}
         }
       } else {
+        try { onCameraStateChange?.('opened', { source: 'gallery' }); } catch (_) {}
+        // Web file picker: closed fires from handleFileChange (or cancel leaves busy
+        // until App clears it — cancel often has no change event).
         galleryInputRef.current?.click();
       }
     };

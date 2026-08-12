@@ -21,7 +21,11 @@
  *   triggerRefresh({ immediate: true, source: 'meal-edit' });
  */
 import React, { createContext, useContext, useState, useCallback, useRef, startTransition } from 'react';
-import { recordDashboardActivity } from '../services/homeDashboardActivity';
+import {
+  invalidateWellnessScoreSnapshot,
+  recordDashboardActivity,
+  shouldRefreshHomeDashboard,
+} from '../services/homeDashboardActivity';
 import { STALE_PENDING_MS } from '../../features/diary/utils/stalePending';
 
 const NutritionRefreshContext = createContext(null);
@@ -140,6 +144,8 @@ export function NutritionRefreshProvider({ children }) {
 
     // Async activity log: durable watermark for "did anything change?"
     recordDashboardActivity(source);
+    // Drop sheet paint cache so reopen cannot restore a pre-save total.
+    invalidateWellnessScoreSnapshot();
 
     if (process.env.NODE_ENV !== 'production') {
       // Use the functional-update form below, so we do NOT need refreshKey
@@ -178,10 +184,12 @@ export function NutritionRefreshProvider({ children }) {
   }, []); // stable — uses functional-update form for setRefreshKey, no stale closure risk
 
   /**
-   * Refetch Home dashboard data when the user returns from a nav tab overlay.
-   * Does not advance the async activity log — navigation alone is enough to reload.
+   * Called when the user returns to Home from a nav tab.
+   * Only bumps refreshKey when a real mutation advanced the activity log
+   * (AI analysis, manual log, meal edit, etc.). Plain tab switches do nothing.
    */
   const refreshOnTabFocus = useCallback(() => {
+    if (!shouldRefreshHomeDashboard()) return;
     startTransition(() => {
       setRefreshKey((prev) => prev + 1);
     });

@@ -1,15 +1,88 @@
 // src/pages/WellnessCounsellingCards.js
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback, memo } from "react";
 import { Search, Plus, RefreshCw, FileHeart, Edit2 } from "lucide-react";
 import {
   BodyParamsForm,
   BodyParamsShareSheet,
   preloadBodyParamsShareAssets,
-  listBodyParamsCards
+  listBodyParamsCards,
+  getBodyParamsCard,
 } from "../features/body-parameters-card";
 import { CapacitorHttp } from '@capacitor/core';
 import { debugLog } from '../shared/utils/logger.js';
 import { format } from 'date-fns';
+
+const PAGE_SIZE = 20;
+
+/** Skeleton placeholder matching the card grid tile. */
+function CardSkeleton() {
+  return (
+    <div className="bg-white rounded-xl shadow-sm overflow-hidden animate-pulse">
+      <div className="p-4">
+        <div className="h-4 bg-gray-200 rounded w-2/3 mb-2" />
+        <div className="h-3 bg-gray-100 rounded w-1/2 mb-4" />
+        <div className="grid grid-cols-2 gap-2 mb-3">
+          {[0, 1, 2, 3].map((i) => (
+            <div key={i} className="bg-gray-50 rounded-lg p-2 h-12" />
+          ))}
+        </div>
+        <div className="h-3 bg-gray-100 rounded w-full" />
+      </div>
+    </div>
+  );
+}
+
+/** Memoized grid tile — avoids re-rendering unchanged cards on load-more. */
+const BodyParamsCardTile = memo(function BodyParamsCardTile({ card, onEdit }) {
+  return (
+    <div
+      onClick={() => onEdit(card)}
+      className="bg-white rounded-xl shadow-sm hover:shadow-md transition-shadow cursor-pointer overflow-hidden"
+    >
+      <div className="p-4">
+        <div className="flex items-start justify-between mb-3">
+          <div className="flex-1 min-w-0">
+            <h3 className="font-semibold text-gray-900 truncate">{card.name}</h3>
+            <p className="text-sm text-gray-500">{card.phoneNumber}</p>
+          </div>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onEdit(card);
+            }}
+            className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
+          >
+            <Edit2 size={16} className="text-gray-400" />
+          </button>
+        </div>
+
+        <div className="grid grid-cols-2 gap-2 mb-3">
+          <div className="bg-blue-50 rounded-lg p-2">
+            <p className="text-xs text-blue-600 font-medium">Height</p>
+            <p className="text-sm font-semibold text-blue-900">{card.heightCm} cm</p>
+          </div>
+          <div className="bg-green-50 rounded-lg p-2">
+            <p className="text-xs text-green-600 font-medium">Weight</p>
+            <p className="text-sm font-semibold text-green-900">{card.weightKg} kg</p>
+          </div>
+          <div className="bg-purple-50 rounded-lg p-2">
+            <p className="text-xs text-purple-600 font-medium">BMI</p>
+            <p className="text-sm font-semibold text-purple-900">{card.bmi}</p>
+          </div>
+          <div className="bg-orange-50 rounded-lg p-2">
+            <p className="text-xs text-orange-600 font-medium">Age</p>
+            <p className="text-sm font-semibold text-orange-900">{card.age} yrs</p>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between text-xs text-gray-500 pt-2 border-t border-gray-100">
+          <span>{card.gender}</span>
+          <span>{card.recordedDate ? format(new Date(card.recordedDate), 'MMM d, yyyy') : 'N/A'}</span>
+        </div>
+      </div>
+    </div>
+  );
+});
 
 /**
  * Wellness Counselling - Body Parameters Cards View
@@ -17,139 +90,226 @@ import { format } from 'date-fns';
  */
 const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = null }) => {
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState(null);
   const [bodyParamsCards, setBodyParamsCards] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [refreshing, setRefreshing] = useState(false);
+  const [pagination, setPagination] = useState({
+    totalRecords: 0,
+    currentPage: 0,
+    hasNextPage: false,
+  });
 
-  // Body Parameters Card states
   const [isBodyParamsFormOpen, setIsBodyParamsFormOpen] = useState(false);
-  const [selectedCard, setSelectedCard] = useState(null); // for editing
+  const [selectedCard, setSelectedCard] = useState(null);
   const [bodyParamsShareData, setBodyParamsShareData] = useState(null);
   const [bodyParamsPreCapCard, setBodyParamsPreCapCard] = useState(null);
 
-  // Fetch generation counter — incremented before every new fetch, checked
-  // inside async bodies before calling setState so that an older in-flight
-  // request that resolves after a newer one never overwrites fresh data.
-  const fetchGenerationRef = useRef(0);
+  const coachIdRef = useRef(null);
+  /** Cache: `${search}::${page}` → { cards, pagination } */
+  const pageCacheRef = useRef(new Map());
+  const scrollRef = useRef(null);
+  const sentinelRef = useRef(null);
+  /** Monotonic request id — only the latest request may write state. */
+  const requestIdRef = useRef(0);
+  /** Keys currently fetching — prevents duplicate load-more, not remount. */
+  const inFlightPagesRef = useRef(new Set());
 
-  // Warm share-card images
   useEffect(() => {
     if (!isBodyParamsFormOpen) return;
     preloadBodyParamsShareAssets();
   }, [isBodyParamsFormOpen]);
 
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(searchQuery.trim()), 300);
+    return () => clearTimeout(t);
+  }, [searchQuery]);
+
   const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
 
-  const getUserId = async (email) => {
+  const getUserId = useCallback(async (email) => {
     if (!email) throw new Error("User email is required");
-    
+    if (coachIdRef.current) return coachIdRef.current;
+
     const response = await CapacitorHttp.get({
       url: `${apiBaseUrl}/api/user/lookup?email=${encodeURIComponent(email)}`
     });
     const data = response.data;
-    
-    if (!data.success) throw new Error(data.message || "User not found");
-    return data.userId;
-  };
 
-  const fetchData = async (isBackground = false) => {
+    if (!data.success) throw new Error(data.message || "User not found");
+    coachIdRef.current = data.userId;
+    return data.userId;
+  }, [apiBaseUrl]);
+
+  const applyPageResult = useCallback((page, append, cards, meta) => {
+    setPagination(meta);
+    setBodyParamsCards((prev) => {
+      if (!append) return cards;
+      const seen = new Set(prev.map((c) => c.id));
+      return [...prev, ...cards.filter((c) => !seen.has(c.id))];
+    });
+  }, []);
+
+  const fetchPage = useCallback(async ({
+    page,
+    search,
+    append,
+    isBackground = false,
+    bustCache = false,
+  }) => {
     if (!user?.email) {
       setError("User information not available. Please log in again.");
+      setLoading(false);
+      setLoadingMore(false);
+      setRefreshing(false);
       return;
     }
 
-    // Capture this fetch's generation. Any concurrent or older fetch that resolves
-    // after us will see its generation doesn't match and will silently bail out,
-    // preventing it from overwriting the fresh data we are about to write.
-    const myGeneration = ++fetchGenerationRef.current;
+    const key = `${search || ''}::${page}`;
 
-    if (!isBackground) setLoading(true);
+    if (!bustCache && pageCacheRef.current.has(key)) {
+      const cached = pageCacheRef.current.get(key);
+      applyPageResult(page, append, cached.cards, cached.pagination);
+      setLoading(false);
+      setLoadingMore(false);
+      setRefreshing(false);
+      return;
+    }
+
+    // Block duplicate load-more for the same page only (never block a fresh page-1 remount)
+    if (append && inFlightPagesRef.current.has(key)) return;
+
+    const requestId = ++requestIdRef.current;
+    inFlightPagesRef.current.add(key);
+
+    if (append) setLoadingMore(true);
+    else if (!isBackground) setLoading(true);
     else setRefreshing(true);
     setError(null);
 
     try {
-      console.log('🔍 [WellnessCounselling] Step 1: Getting userId for email:', user.email);
       const userId = await getUserId(user.email);
+      if (requestId !== requestIdRef.current) return;
 
-      // Guard: bail out if a newer fetch has already started (component navigated
-      // away and back, or the user hit Refresh while this was in-flight).
-      if (myGeneration !== fetchGenerationRef.current) return;
+      const { cards, pagination: meta } = await listBodyParamsCards(userId, {
+        page,
+        limit: PAGE_SIZE,
+        search,
+      });
 
-      console.log('✅ [WellnessCounselling] Step 2: Got userId:', userId, 'Type:', typeof userId);
-      
-      debugLog('📋 [WellnessCounselling] Step 3: Fetching body params cards for coach:', userId);
-      console.log('📋 [WellnessCounselling] Step 3: Calling listBodyParamsCards with userId:', userId);
-      
-      const cards = await listBodyParamsCards(userId);
+      if (requestId !== requestIdRef.current) return;
 
-      // Guard again after second await — another fetch may have fired in between.
-      if (myGeneration !== fetchGenerationRef.current) return;
-
-      console.log('🎯 [WellnessCounselling] Step 4: Received cards:', cards.length, 'cards');
-      debugLog('✅ [WellnessCounselling] Fetched cards:', cards.length);
-      
-      setBodyParamsCards(cards || []);
-      console.log('✅ [WellnessCounselling] Step 5: State updated with', (cards || []).length, 'cards');
+      pageCacheRef.current.set(key, { cards, pagination: meta });
+      applyPageResult(page, append, cards, meta);
+      debugLog('[WellnessCounselling] page loaded', {
+        page,
+        count: cards.length,
+        total: meta.totalRecords,
+      });
     } catch (err) {
-      if (myGeneration !== fetchGenerationRef.current) return; // stale — discard error
-      console.error("💥 [WellnessCounselling] Error fetching cards:", err);
-      console.error("💥 Error details:", err.message, err.stack);
+      if (requestId !== requestIdRef.current) return;
+      console.error("[WellnessCounselling] Error fetching cards:", err);
       setError(err.message || "Failed to load body parameter cards.");
     } finally {
-      if (myGeneration !== fetchGenerationRef.current) return; // stale — skip loading state
-      if (!isBackground) setLoading(false);
-      else setRefreshing(false);
+      inFlightPagesRef.current.delete(key);
+      // Always clear loading for the latest request; stale requests leave loading alone
+      // so the active request can finish the UI transition.
+      if (requestId === requestIdRef.current) {
+        setLoading(false);
+        setLoadingMore(false);
+        setRefreshing(false);
+      }
     }
+  }, [user?.email, getUserId, applyPageResult]);
+
+  // Reset + load page 1 when user / search / refreshKey changes
+  useEffect(() => {
+    pageCacheRef.current.clear();
+    inFlightPagesRef.current.clear();
+    setBodyParamsCards([]);
+    setPagination({ totalRecords: 0, currentPage: 0, hasNextPage: false });
+    setLoading(true);
+    setError(null);
+
+    let cancelled = false;
+    const run = async () => {
+      await fetchPage({ page: 1, search: debouncedSearch, append: false });
+      if (cancelled) return;
+    };
+    run();
+
+    return () => {
+      cancelled = true;
+      // Invalidate in-flight writers without blocking the next mount's fetch
+      requestIdRef.current += 1;
+    };
+  }, [user, refreshKey, debouncedSearch, fetchPage]);
+
+  const handleRefresh = () => {
+    pageCacheRef.current.clear();
+    inFlightPagesRef.current.clear();
+    fetchPage({
+      page: 1,
+      search: debouncedSearch,
+      append: false,
+      isBackground: true,
+      bustCache: true,
+    });
   };
+
+  const loadMore = useCallback(() => {
+    if (loading || loadingMore || refreshing) return;
+    if (!pagination.hasNextPage) return;
+    const nextPage = (pagination.currentPage || 1) + 1;
+    fetchPage({ page: nextPage, search: debouncedSearch, append: true });
+  }, [loading, loadingMore, refreshing, pagination, debouncedSearch, fetchPage]);
 
   useEffect(() => {
-    fetchData();
-    // Cancel any in-flight fetch when the component unmounts or user changes.
-    // Incrementing the generation makes every pending setBodyParamsCards a no-op.
-    return () => { fetchGenerationRef.current++; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- fetchData reads user via closure; user + refreshKey are the meaningful deps
-  }, [user, refreshKey]);
+    const root = scrollRef.current;
+    const sentinel = sentinelRef.current;
+    if (!root || !sentinel) return undefined;
 
-  const handleRefresh = () => fetchData(true);
-
-  // Filter cards by search query
-  const filteredCards = bodyParamsCards.filter(card => {
-    if (!searchQuery) return true;
-    const query = searchQuery.toLowerCase();
-    return (
-      card.name?.toLowerCase().includes(query) ||
-      card.phoneNumber?.toLowerCase().includes(query)
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) loadMore();
+      },
+      { root, rootMargin: '200px', threshold: 0 },
     );
-  });
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [loadMore, bodyParamsCards.length]);
 
-  const fetchFreshCard = async (cardId) => {
-    if (!user?.email || !cardId) return null;
+  const handleEditCard = async (card) => {
     try {
       const userId = await getUserId(user.email);
-      const cards = await listBodyParamsCards(userId);
-      setBodyParamsCards(cards || []);
-      return (cards || []).find((c) => c.id === cardId) ?? null;
+      const fresh = await getBodyParamsCard(userId, card.id);
+      const merged = {
+        ...fresh,
+        phoneNumber: fresh.phoneNumber ?? card.phoneNumber ?? null,
+      };
+      setSelectedCard(merged);
+      setIsBodyParamsFormOpen(true);
     } catch {
-      return null;
+      setSelectedCard(card);
+      setIsBodyParamsFormOpen(true);
     }
   };
 
-  const handleEditCard = async (card) => {
-    const fresh = await fetchFreshCard(card.id);
-    const merged = fresh
-      ? { ...fresh, phoneNumber: fresh.phoneNumber ?? card.phoneNumber ?? null }
-      : card;
-    setSelectedCard(merged);
-    setIsBodyParamsFormOpen(true);
-  };
-
-  if (loading) {
+  if (loading && bodyParamsCards.length === 0 && !error) {
     return (
-      <div className="h-screen bg-gradient-to-br from-green-50 to-blue-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading body parameters...</p>
+      <div className="h-screen bg-gradient-to-br from-green-50 to-blue-50 overflow-hidden flex flex-col">
+        <div className="flex-shrink-0 bg-white shadow-sm px-4 py-3">
+          <h1 className="text-lg font-bold text-gray-900">Body Composition Metrics</h1>
+          <p className="text-xs text-gray-500">Loading...</p>
+        </div>
+        <div className="flex-1 overflow-y-auto px-4 py-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 pb-20">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <CardSkeleton key={i} />
+            ))}
+          </div>
         </div>
       </div>
     );
@@ -157,13 +317,12 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
 
   return (
     <div className="h-screen bg-gradient-to-br from-green-50 to-blue-50 overflow-hidden flex flex-col">
-      {/* Header */}
       <div className="flex-shrink-0 bg-white shadow-sm">
         <div className="px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div>
               <h1 className="text-lg font-bold text-gray-900">Body Composition Metrics</h1>
-              <p className="text-xs text-gray-500">{filteredCards.length} Cards</p>
+              <p className="text-xs text-gray-500">{pagination.totalRecords || bodyParamsCards.length} Cards</p>
             </div>
           </div>
           <button
@@ -175,7 +334,6 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
           </button>
         </div>
 
-        {/* Search Bar */}
         <div className="px-4 pb-3">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
@@ -190,8 +348,7 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
         </div>
       </div>
 
-      {/* Content Area */}
-      <div className="flex-1 overflow-y-auto px-4 py-4">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4">
         {error ? (
           <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
             <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mb-4">
@@ -200,85 +357,45 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
             <h3 className="text-lg font-semibold text-gray-900 mb-2">Error Loading Cards</h3>
             <p className="text-sm text-gray-500 mb-4">{error}</p>
             <button
-              onClick={() => fetchData()}
+              onClick={() => fetchPage({ page: 1, search: debouncedSearch, append: false, bustCache: true })}
               className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
             >
               Try Again
             </button>
           </div>
-        ) : filteredCards.length === 0 ? (
+        ) : bodyParamsCards.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
             <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
               <FileHeart className="w-8 h-8 text-gray-400" />
             </div>
             <h3 className="text-lg font-semibold text-gray-900 mb-2">
-              {searchQuery ? 'No matching cards' : 'No body parameters yet'}
+              {debouncedSearch ? 'No matching cards' : 'No body parameters yet'}
             </h3>
             <p className="text-sm text-gray-500 mb-4">
-              {searchQuery
-                ? `No cards match "${searchQuery}"`
+              {debouncedSearch
+                ? `No cards match "${debouncedSearch}"`
                 : 'Create your first body parameters card using the + button below'}
             </p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 pb-20">
-            {filteredCards.map((card) => (
-              <div
-                key={card.id}
-                onClick={() => handleEditCard(card)}
-                className="bg-white rounded-xl shadow-sm hover:shadow-md transition-shadow cursor-pointer overflow-hidden"
-              >
-                <div className="p-4">
-                  {/* Header */}
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="flex-1 min-w-0">
-                      <h3 className="font-semibold text-gray-900 truncate">{card.name}</h3>
-                      <p className="text-sm text-gray-500">{card.phoneNumber}</p>
-                    </div>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleEditCard(card);
-                      }}
-                      className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
-                    >
-                      <Edit2 size={16} className="text-gray-400" />
-                    </button>
-                  </div>
-
-                  {/* Stats Grid */}
-                  <div className="grid grid-cols-2 gap-2 mb-3">
-                    <div className="bg-blue-50 rounded-lg p-2">
-                      <p className="text-xs text-blue-600 font-medium">Height</p>
-                      <p className="text-sm font-semibold text-blue-900">{card.heightCm} cm</p>
-                    </div>
-                    <div className="bg-green-50 rounded-lg p-2">
-                      <p className="text-xs text-green-600 font-medium">Weight</p>
-                      <p className="text-sm font-semibold text-green-900">{card.weightKg} kg</p>
-                    </div>
-                    <div className="bg-purple-50 rounded-lg p-2">
-                      <p className="text-xs text-purple-600 font-medium">BMI</p>
-                      <p className="text-sm font-semibold text-purple-900">{card.bmi}</p>
-                    </div>
-                    <div className="bg-orange-50 rounded-lg p-2">
-                      <p className="text-xs text-orange-600 font-medium">Age</p>
-                      <p className="text-sm font-semibold text-orange-900">{card.age} yrs</p>
-                    </div>
-                  </div>
-
-                  {/* Footer */}
-                  <div className="flex items-center justify-between text-xs text-gray-500 pt-2 border-t border-gray-100">
-                    <span>{card.gender}</span>
-                    <span>{card.recordedDate ? format(new Date(card.recordedDate), 'MMM d, yyyy') : 'N/A'}</span>
-                  </div>
-                </div>
+          <>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 pb-4">
+              {bodyParamsCards.map((card) => (
+                <BodyParamsCardTile key={card.id} card={card} onEdit={handleEditCard} />
+              ))}
+            </div>
+            {loadingMore && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 pb-4">
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <CardSkeleton key={`more-${i}`} />
+                ))}
               </div>
-            ))}
-          </div>
+            )}
+            <div ref={sentinelRef} className="h-8 pb-20" aria-hidden="true" />
+          </>
         )}
       </div>
 
-      {/* Floating Action Button */}
       <button
         onClick={() => {
           setSelectedCard(null);
@@ -290,7 +407,6 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
         <Plus size={28} />
       </button>
 
-      {/* Body Parameters Card Form */}
       <BodyParamsForm
         isOpen={isBodyParamsFormOpen}
         onClose={() => {
@@ -307,13 +423,7 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
           setIsBodyParamsFormOpen(false);
           onCardSaved?.(card);
 
-          // Optimistic update — new card appears in the grid immediately.
-          // Do NOT call fetchData here: a background fetch that completes while
-          // the native share sheet is open can overwrite this optimistic state
-          // with a server snapshot that may not yet include the new record,
-          // causing the card to disappear from the UI mid-share.
-          // The authoritative re-sync happens in BodyParamsShareSheet.onClose
-          // below, once the user is back and looking at the grid.
+          pageCacheRef.current.clear();
           setBodyParamsCards((prevCards) => {
             const idx = prevCards.findIndex((c) => c.id === card.id);
             const merged = {
@@ -334,17 +444,19 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
         }}
       />
 
-      {/* Body Parameters Share Sheet */}
       <BodyParamsShareSheet
         isOpen={!!bodyParamsShareData}
         onClose={() => {
           setBodyParamsShareData(null);
           setBodyParamsPreCapCard(null);
-          // Re-fetch from server when the share sheet closes so the grid
-          // always shows confirmed server data the moment it becomes visible
-          // (the background fetch started in onSaveSuccess may have been
-          // interrupted if the app went to WhatsApp and back on Android).
-          fetchData(true);
+          pageCacheRef.current.clear();
+          fetchPage({
+            page: 1,
+            search: debouncedSearch,
+            append: false,
+            isBackground: true,
+            bustCache: true,
+          });
         }}
         card={bodyParamsShareData?.card}
         shareUrl={bodyParamsShareData?.shareUrl}
