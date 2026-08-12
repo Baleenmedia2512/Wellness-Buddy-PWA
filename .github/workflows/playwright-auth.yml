@@ -4,7 +4,7 @@ on:
   push:
     branches:
       - main
-      - 'TM/Nitheesh'
+      - TM/Nitheesh
       - phase1_Release
       - PH1_BACKUP
       - Development
@@ -13,30 +13,36 @@ on:
   pull_request:
     branches:
       - main
-      - 'TM/Nitheesh'
+      - TM/Nitheesh
       - phase1_Release
       - PH1_BACKUP
       - Development
       - Nitheesh_test
 
+  workflow_dispatch:
 
 jobs:
   playwright-auth:
-    name: Playwright Login Tests
+    name: Playwright Authentication Tests
+
     runs-on: ubuntu-latest
+
+    timeout-minutes: 30
 
     steps:
 
-      # ==========================================
+      # ============================================================
       # 1. Checkout repository
-      # ==========================================
+      # ============================================================
+
       - name: Checkout repository
         uses: actions/checkout@v4
 
 
-      # ==========================================
+      # ============================================================
       # 2. Setup Node.js
-      # ==========================================
+      # ============================================================
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -44,113 +50,236 @@ jobs:
           cache: npm
 
 
-      # ==========================================
+      # ============================================================
       # 3. Install root dependencies
-      # ==========================================
+      # ============================================================
+
       - name: Install root dependencies
         run: npm ci
 
 
-      # ==========================================
+      # ============================================================
       # 4. Install frontend dependencies
-      # ==========================================
+      # ============================================================
+
       - name: Install frontend dependencies
         working-directory: ./frontend
         run: npm ci
 
 
-      # ==========================================
+      # ============================================================
       # 5. Install backend dependencies
-      # ==========================================
+      # ============================================================
+
       - name: Install backend dependencies
         working-directory: ./backend
         run: npm ci
 
 
-      # ==========================================
-      # 6. Create frontend .env
-      # ==========================================
+      # ============================================================
+      # 6. Create FRONTEND .env
+      # ============================================================
+
       - name: Create frontend environment
         shell: bash
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          REACT_APP_GOOGLE_MAPS_API_KEY: ${{ secrets.REACT_APP_GOOGLE_MAPS_API_KEY }}
+          REACT_APP_API_BASE_URL: ${{ secrets.REACT_APP_API_BASE_URL }}
+          DISABLE_ESLINT_PLUGIN: ${{ secrets.DISABLE_ESLINT_PLUGIN }}
         run: |
-          cat > frontend/.env <<EOF
-          GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
-          REACT_APP_GOOGLE_MAPS_API_KEY=${{ secrets.REACT_APP_GOOGLE_MAPS_API_KEY }}
-          REACT_APP_API_BASE_URL=http://localhost:3000
-          DISABLE_ESLINT_PLUGIN=true
-          EOF
+          printf '%s\n' \
+            "GEMINI_API_KEY=$GEMINI_API_KEY" \
+            "REACT_APP_GOOGLE_MAPS_API_KEY=$REACT_APP_GOOGLE_MAPS_API_KEY" \
+            "REACT_APP_API_BASE_URL=$REACT_APP_API_BASE_URL" \
+            "DISABLE_ESLINT_PLUGIN=$DISABLE_ESLINT_PLUGIN" \
+            > frontend/.env
+
+          echo "Frontend .env created."
 
 
-      # ==========================================
-      # 7. Create backend .env
-      # ==========================================
+      # ============================================================
+      # 7. Create BACKEND .env
+      # ============================================================
+
       - name: Create backend environment
         shell: bash
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+
+          MDT_SMS_API_KEY: ${{ secrets.MDT_SMS_API_KEY }}
+          MDT_SMS_SENDER_ID: ${{ secrets.MDT_SMS_SENDER_ID }}
+          MDT_SMS_TEMPLATE_ID: ${{ secrets.MDT_SMS_TEMPLATE_ID }}
+          MDT_SMS_API_URL: ${{ secrets.MDT_SMS_API_URL }}
+
+          AI_MONITOR_SDK_KEY: ${{ secrets.AI_MONITOR_SDK_KEY }}
+          AI_MONITOR_BASE_URL: ${{ secrets.AI_MONITOR_BASE_URL }}
+
+          DB_CONNECTION_TYPE: ${{ secrets.DB_CONNECTION_TYPE }}
+
+          DB_HOST: ${{ secrets.DB_HOST }}
+          DB_PORT: ${{ secrets.DB_PORT }}
+          DB_USER: ${{ secrets.DB_USER }}
+          DB_PASS: ${{ secrets.DB_PASS }}
+          DB_NAME: ${{ secrets.DB_NAME }}
+          DB_SSL: ${{ secrets.DB_SSL }}
+
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+
         run: |
-          cat > backend/.env <<EOF
-          GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
+          printf '%s\n' \
+            "GEMINI_API_KEY=$GEMINI_API_KEY" \
+            "SMTP_USER=$SMTP_USER" \
+            "SMTP_PASS=$SMTP_PASS" \
+            "MDT_SMS_API_KEY=$MDT_SMS_API_KEY" \
+            "MDT_SMS_SENDER_ID=$MDT_SMS_SENDER_ID" \
+            "MDT_SMS_TEMPLATE_ID=$MDT_SMS_TEMPLATE_ID" \
+            "MDT_SMS_API_URL=$MDT_SMS_API_URL" \
+            "AI_MONITOR_SDK_KEY=$AI_MONITOR_SDK_KEY" \
+            "AI_MONITOR_BASE_URL=$AI_MONITOR_BASE_URL" \
+            "DB_CONNECTION_TYPE=$DB_CONNECTION_TYPE" \
+            "DB_HOST=$DB_HOST" \
+            "DB_PORT=$DB_PORT" \
+            "DB_USER=$DB_USER" \
+            "DB_PASS=$DB_PASS" \
+            "DB_NAME=$DB_NAME" \
+            "DB_SSL=$DB_SSL" \
+            "DATABASE_URL=$DATABASE_URL" \
+            "SUPABASE_URL=$SUPABASE_URL" \
+            "SUPABASE_ANON_KEY=$SUPABASE_ANON_KEY" \
+            "SUPABASE_SERVICE_KEY=$SUPABASE_SERVICE_KEY" \
+            "CRON_SECRET=$CRON_SECRET" \
+            > backend/.env
 
-          SMTP_USER=${{ secrets.SMTP_USER }}
-          SMTP_PASS=${{ secrets.SMTP_PASS }}
-
-          MDT_SMS_API_KEY=${{ secrets.MDT_SMS_API_KEY }}
-          MDT_SMS_SENDER_ID=${{ secrets.MDT_SMS_SENDER_ID }}
-          MDT_SMS_TEMPLATE_ID=${{ secrets.MDT_SMS_TEMPLATE_ID }}
-          MDT_SMS_API_URL=${{ secrets.MDT_SMS_API_URL }}
-
-          AI_MONITOR_SDK_KEY=${{ secrets.AI_MONITOR_SDK_KEY }}
-          AI_MONITOR_BASE_URL=${{ secrets.AI_MONITOR_BASE_URL }}
-
-          DB_CONNECTION_TYPE=${{ secrets.DB_CONNECTION_TYPE }}
-
-          DB_HOST=${{ secrets.DB_HOST }}
-          DB_PORT=${{ secrets.DB_PORT }}
-          DB_USER=${{ secrets.DB_USER }}
-          DB_PASS=${{ secrets.DB_PASS }}
-          DB_NAME=${{ secrets.DB_NAME }}
-          DB_SSL=${{ secrets.DB_SSL }}
-
-          DATABASE_URL=${{ secrets.DATABASE_URL }}
-
-          SUPABASE_URL=${{ secrets.SUPABASE_URL }}
-          SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
-          SUPABASE_SERVICE_KEY=${{ secrets.SUPABASE_SERVICE_KEY }}
-
-          CRON_SECRET=${{ secrets.CRON_SECRET }}
-          EOF
+          echo "Backend .env created."
 
 
-      # ==========================================
-      # 8. Verify env files exist
-      # ==========================================
-      - name: Verify environment files
-        shell: bash
-        run: |
-          test -f frontend/.env
-          test -f backend/.env
+      # ============================================================
+      # 8. Install wait-on
+      # ============================================================
 
-          echo "Frontend .env created successfully"
-          echo "Backend .env created successfully"
+      - name: Install wait-on
+        run: npm install --no-save wait-on
 
 
-      # ==========================================
+      # ============================================================
       # 9. Install Playwright browsers
-      # ==========================================
+      # ============================================================
+
       - name: Install Playwright Chromium
         run: npx playwright install --with-deps chromium
 
 
-      # ==========================================
-      # 10. Run authentication tests
-      # ==========================================
-      - name: Run Playwright Login Tests
+      # ============================================================
+      # 10. Start Backend
+      # ============================================================
+
+      - name: Start Backend
+        working-directory: ./backend
+        run: |
+          npm run dev:local > ../backend.log 2>&1 &
+
+
+      # ============================================================
+      # 11. Wait for Backend
+      # ============================================================
+
+      - name: Wait for Backend
+        run: |
+          echo "Waiting for backend on port 3000..."
+          npx wait-on --timeout 120000 http://127.0.0.1:3000
+          echo "Backend is ready."
+
+
+      # ============================================================
+      # 12. Start Frontend
+      # ============================================================
+
+      - name: Start Frontend
+        working-directory: ./frontend
+        run: |
+          npm start -- --port 3001 > ../frontend.log 2>&1 &
+
+
+      # ============================================================
+      # 13. Wait for Frontend
+      # ============================================================
+
+      - name: Wait for Frontend
+        run: |
+          echo "Waiting for frontend on port 3001..."
+          npx wait-on --timeout 120000 http://127.0.0.1:3001
+          echo "Frontend is ready."
+
+
+      # ============================================================
+      # 14. Check Backend
+      # ============================================================
+
+      - name: Check Backend
+        run: |
+          echo "Checking backend..."
+          curl -I http://127.0.0.1:3000 || true
+
+
+      # ============================================================
+      # 15. Check Frontend
+      # ============================================================
+
+      - name: Check Frontend
+        run: |
+          echo "Checking frontend..."
+          curl -I http://127.0.0.1:3001 || true
+
+
+      # ============================================================
+      # 16. Run Playwright Authentication Tests
+      # ============================================================
+
+      - name: Run Playwright Authentication Tests
         run: |
           npx playwright test tests/frontend/auth/login.spec.js
 
 
-      # ==========================================
-      # 11. Upload Playwright HTML report
-      # ==========================================
+      # ============================================================
+      # 17. Show Backend Logs if anything fails
+      # ============================================================
+
+      - name: Show Backend Logs
+        if: always()
+        run: |
+          echo "================================================"
+          echo "BACKEND LOG"
+          echo "================================================"
+          cat backend.log || true
+
+
+      # ============================================================
+      # 18. Show Frontend Logs if anything fails
+      # ============================================================
+
+      - name: Show Frontend Logs
+        if: always()
+        run: |
+          echo "================================================"
+          echo "FRONTEND LOG"
+          echo "================================================"
+          cat frontend.log || true
+
+
+      # ============================================================
+      # 19. Upload Playwright HTML Report
+      # ============================================================
+
       - name: Upload Playwright Report
         if: always()
         uses: actions/upload-artifact@v4
@@ -160,10 +289,11 @@ jobs:
           retention-days: 7
 
 
-      # ==========================================
-      # 12. Upload failure results
-      # ==========================================
-      - name: Upload Test Results
+      # ============================================================
+      # 20. Upload Playwright Test Results
+      # ============================================================
+
+      - name: Upload Playwright Test Results
         if: failure()
         uses: actions/upload-artifact@v4
         with:
