@@ -1,75 +1,102 @@
 const { defineConfig, devices } = require('@playwright/test');
 
 module.exports = defineConfig({
+
   // ============================================================
-  // Test directory
+  // TEST DIRECTORY
   // ============================================================
 
   testDir: './tests',
 
+
   // ============================================================
-  // Global timeout
+  // GLOBAL TEST TIMEOUT
   // ============================================================
 
   timeout: 60 * 1000,
 
+
   // ============================================================
-  // Assertion timeout
+  // EXPECT / ASSERTION TIMEOUT
   // ============================================================
 
   expect: {
     timeout: 10 * 1000,
   },
 
+
   // ============================================================
-  // Run tests sequentially
+  // PARALLEL EXECUTION
+  //
+  // Authentication tests use OTP/API/database state.
+  // Therefore keep them sequential for stability.
   // ============================================================
 
-  // Authentication tests depend on OTP/login state and
-  // external services, so keep CI execution stable.
   fullyParallel: false,
 
+
   // ============================================================
-  // Prevent test.only from accidentally being committed
+  // PREVENT test.only IN CI
   // ============================================================
 
   forbidOnly: !!process.env.CI,
 
+
   // ============================================================
-  // Retry failed tests in CI
+  // RETRIES
+  //
+  // Local:
+  //   0 retries
+  //
+  // GitHub Actions:
+  //   2 retries
   // ============================================================
 
   retries: process.env.CI ? 2 : 0,
 
+
   // ============================================================
-  // Workers
+  // WORKERS
+  //
+  // CI:
+  //   1 worker
+  //
+  // Local:
+  //   Playwright default
   // ============================================================
 
   workers: process.env.CI ? 1 : undefined,
 
+
   // ============================================================
-  // Reporters
+  // REPORTERS
   // ============================================================
 
   reporter: [
     ['list'],
-    ['html', {
-      open: 'never',
-    }],
+
+    [
+      'html',
+      {
+        open: 'never',
+      },
+    ],
   ],
 
+
   // ============================================================
-  // Common settings
+  // COMMON PLAYWRIGHT SETTINGS
   // ============================================================
 
   use: {
-    // Frontend runs on port 3001
+
+    // Frontend application
     baseURL: 'http://127.0.0.1:3001',
 
-    // CI runs headless
+    // GitHub Actions runs headless
     headless: true,
 
-    // Capture screenshot only when test fails
+    // Take screenshot only when test fails
     screenshot: 'only-on-failure',
 
     // Keep video when test fails
@@ -82,15 +109,16 @@ module.exports = defineConfig({
     locale: 'en-US',
   },
 
+
   // ============================================================
-  // Projects
+  // PROJECTS
   // ============================================================
 
   projects: [
 
-    // ------------------------------------------------------------
-    // Frontend tests
-    // ------------------------------------------------------------
+    // ==========================================================
+    // FRONTEND PROJECT
+    // ==========================================================
 
     {
       name: 'frontend',
@@ -104,9 +132,10 @@ module.exports = defineConfig({
       },
     },
 
-    // ------------------------------------------------------------
-    // Backend tests
-    // ------------------------------------------------------------
+
+    // ==========================================================
+    // BACKEND PROJECT
+    // ==========================================================
 
     {
       name: 'backend',
@@ -121,11 +150,17 @@ module.exports = defineConfig({
     },
   ],
 
+
   // ============================================================
-  // IMPORTANT:
+  // IMPORTANT
   //
-  // Do NOT put webServer here.
+  // There is intentionally NO webServer section here.
   //
-  // GitHub Actions starts the backend and frontend itself.
+  // GitHub Actions starts:
+  //
+  // Backend  -> port 3000
+  // Frontend -> port 3001
+  //
+  // before Playwright starts.
   // ============================================================
 });

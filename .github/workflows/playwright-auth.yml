@@ -1,6 +1,7 @@
 name: Playwright Login Tests
 
 on:
+  # Run on every push to these important branches
   push:
     branches:
       - main
@@ -10,6 +11,7 @@ on:
       - Development
       - Nitheesh_test
 
+  # Run when a PR targets these branches
   pull_request:
     branches:
       - main
@@ -19,15 +21,20 @@ on:
       - Development
       - Nitheesh_test
 
+  # Allows you to manually run the workflow
   workflow_dispatch:
+
 
 jobs:
   playwright-auth:
+
     name: Playwright Authentication Tests
 
     runs-on: ubuntu-latest
 
+    # Prevent the workflow from running forever
     timeout-minutes: 30
+
 
     steps:
 
@@ -51,7 +58,7 @@ jobs:
 
 
       # ============================================================
-      # 3. Install root dependencies
+      # 3. Install ROOT dependencies
       # ============================================================
 
       - name: Install root dependencies
@@ -59,7 +66,7 @@ jobs:
 
 
       # ============================================================
-      # 4. Install frontend dependencies
+      # 4. Install FRONTEND dependencies
       # ============================================================
 
       - name: Install frontend dependencies
@@ -68,7 +75,7 @@ jobs:
 
 
       # ============================================================
-      # 5. Install backend dependencies
+      # 5. Install BACKEND dependencies
       # ============================================================
 
       - name: Install backend dependencies
@@ -87,13 +94,14 @@ jobs:
           REACT_APP_GOOGLE_MAPS_API_KEY: ${{ secrets.REACT_APP_GOOGLE_MAPS_API_KEY }}
           REACT_APP_API_BASE_URL: ${{ secrets.REACT_APP_API_BASE_URL }}
           DISABLE_ESLINT_PLUGIN: ${{ secrets.DISABLE_ESLINT_PLUGIN }}
+
         run: |
-          printf '%s\n' \
-            "GEMINI_API_KEY=$GEMINI_API_KEY" \
-            "REACT_APP_GOOGLE_MAPS_API_KEY=$REACT_APP_GOOGLE_MAPS_API_KEY" \
-            "REACT_APP_API_BASE_URL=$REACT_APP_API_BASE_URL" \
-            "DISABLE_ESLINT_PLUGIN=$DISABLE_ESLINT_PLUGIN" \
-            > frontend/.env
+          cat > frontend/.env <<EOF
+          GEMINI_API_KEY=$GEMINI_API_KEY
+          REACT_APP_GOOGLE_MAPS_API_KEY=$REACT_APP_GOOGLE_MAPS_API_KEY
+          REACT_APP_API_BASE_URL=$REACT_APP_API_BASE_URL
+          DISABLE_ESLINT_PLUGIN=$DISABLE_ESLINT_PLUGIN
+          EOF
 
           echo "Frontend .env created."
 
@@ -136,29 +144,37 @@ jobs:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
 
         run: |
-          printf '%s\n' \
-            "GEMINI_API_KEY=$GEMINI_API_KEY" \
-            "SMTP_USER=$SMTP_USER" \
-            "SMTP_PASS=$SMTP_PASS" \
-            "MDT_SMS_API_KEY=$MDT_SMS_API_KEY" \
-            "MDT_SMS_SENDER_ID=$MDT_SMS_SENDER_ID" \
-            "MDT_SMS_TEMPLATE_ID=$MDT_SMS_TEMPLATE_ID" \
-            "MDT_SMS_API_URL=$MDT_SMS_API_URL" \
-            "AI_MONITOR_SDK_KEY=$AI_MONITOR_SDK_KEY" \
-            "AI_MONITOR_BASE_URL=$AI_MONITOR_BASE_URL" \
-            "DB_CONNECTION_TYPE=$DB_CONNECTION_TYPE" \
-            "DB_HOST=$DB_HOST" \
-            "DB_PORT=$DB_PORT" \
-            "DB_USER=$DB_USER" \
-            "DB_PASS=$DB_PASS" \
-            "DB_NAME=$DB_NAME" \
-            "DB_SSL=$DB_SSL" \
-            "DATABASE_URL=$DATABASE_URL" \
-            "SUPABASE_URL=$SUPABASE_URL" \
-            "SUPABASE_ANON_KEY=$SUPABASE_ANON_KEY" \
-            "SUPABASE_SERVICE_KEY=$SUPABASE_SERVICE_KEY" \
-            "CRON_SECRET=$CRON_SECRET" \
-            > backend/.env
+          cat > backend/.env <<EOF
+          GEMINI_API_KEY=$GEMINI_API_KEY
+
+          SMTP_USER=$SMTP_USER
+          SMTP_PASS=$SMTP_PASS
+
+          MDT_SMS_API_KEY=$MDT_SMS_API_KEY
+          MDT_SMS_SENDER_ID=$MDT_SMS_SENDER_ID
+          MDT_SMS_TEMPLATE_ID=$MDT_SMS_TEMPLATE_ID
+          MDT_SMS_API_URL=$MDT_SMS_API_URL
+
+          AI_MONITOR_SDK_KEY=$AI_MONITOR_SDK_KEY
+          AI_MONITOR_BASE_URL=$AI_MONITOR_BASE_URL
+
+          DB_CONNECTION_TYPE=$DB_CONNECTION_TYPE
+
+          DB_HOST=$DB_HOST
+          DB_PORT=$DB_PORT
+          DB_USER=$DB_USER
+          DB_PASS=$DB_PASS
+          DB_NAME=$DB_NAME
+          DB_SSL=$DB_SSL
+
+          DATABASE_URL=$DATABASE_URL
+
+          SUPABASE_URL=$SUPABASE_URL
+          SUPABASE_ANON_KEY=$SUPABASE_ANON_KEY
+          SUPABASE_SERVICE_KEY=$SUPABASE_SERVICE_KEY
+
+          CRON_SECRET=$CRON_SECRET
+          EOF
 
           echo "Backend .env created."
 
@@ -172,7 +188,7 @@ jobs:
 
 
       # ============================================================
-      # 9. Install Playwright browsers
+      # 9. Install Playwright browser
       # ============================================================
 
       - name: Install Playwright Chromium
@@ -180,69 +196,160 @@ jobs:
 
 
       # ============================================================
-      # 10. Start Backend
+      # 10. Start BACKEND
       # ============================================================
 
       - name: Start Backend
         working-directory: ./backend
+        shell: bash
         run: |
+          echo "Starting backend..."
+
           npm run dev:local > ../backend.log 2>&1 &
+
+          echo $! > ../backend.pid
+
+          echo "Backend process started."
 
 
       # ============================================================
-      # 11. Wait for Backend
+      # 11. Wait for BACKEND PORT
+      #
+      # IMPORTANT:
+      #
+      # Do NOT use:
+      #
+      # http://127.0.0.1:3000
+      #
+      # because your backend / route returns 404.
+      #
+      # Instead check whether port 3000 is listening.
       # ============================================================
 
       - name: Wait for Backend
+        shell: bash
         run: |
           echo "Waiting for backend on port 3000..."
-          npx wait-on --timeout 120000 http://127.0.0.1:3000
-          echo "Backend is ready."
+
+          npx wait-on \
+            --timeout 120000 \
+            tcp:3000
+
+          echo "Backend port 3000 is ready."
 
 
       # ============================================================
-      # 12. Start Frontend
+      # 12. Verify BACKEND process
+      # ============================================================
+
+      - name: Verify Backend
+        shell: bash
+        run: |
+          echo "Checking backend process..."
+
+          if kill -0 $(cat backend.pid) 2>/dev/null; then
+            echo "Backend process is running."
+          else
+            echo "Backend process is NOT running."
+
+            echo ""
+            echo "================ BACKEND LOG ================"
+            cat backend.log || true
+            echo "=============================================="
+
+            exit 1
+          fi
+
+
+      # ============================================================
+      # 13. Start FRONTEND
       # ============================================================
 
       - name: Start Frontend
         working-directory: ./frontend
+        shell: bash
         run: |
+          echo "Starting frontend..."
+
           npm start -- --port 3001 > ../frontend.log 2>&1 &
+
+          echo $! > ../frontend.pid
+
+          echo "Frontend process started."
 
 
       # ============================================================
-      # 13. Wait for Frontend
+      # 14. Wait for FRONTEND
       # ============================================================
 
       - name: Wait for Frontend
+        shell: bash
         run: |
           echo "Waiting for frontend on port 3001..."
-          npx wait-on --timeout 120000 http://127.0.0.1:3001
+
+          npx wait-on \
+            --timeout 120000 \
+            http://127.0.0.1:3001
+
           echo "Frontend is ready."
 
 
       # ============================================================
-      # 14. Check Backend
+      # 15. Verify FRONTEND process
+      # ============================================================
+
+      - name: Verify Frontend
+        shell: bash
+        run: |
+          echo "Checking frontend process..."
+
+          if kill -0 $(cat frontend.pid) 2>/dev/null; then
+            echo "Frontend process is running."
+          else
+            echo "Frontend process is NOT running."
+
+            echo ""
+            echo "================ FRONTEND LOG ================"
+            cat frontend.log || true
+            echo "================================================"
+
+            exit 1
+          fi
+
+
+      # ============================================================
+      # 16. Check BACKEND
       # ============================================================
 
       - name: Check Backend
+        shell: bash
         run: |
-          echo "Checking backend..."
-          curl -I http://127.0.0.1:3000 || true
+          echo "Checking port 3000..."
+
+          if nc -z 127.0.0.1 3000; then
+            echo "Backend is listening on port 3000."
+          else
+            echo "Backend is NOT listening on port 3000."
+            exit 1
+          fi
 
 
       # ============================================================
-      # 15. Check Frontend
+      # 17. Check FRONTEND
       # ============================================================
 
       - name: Check Frontend
+        shell: bash
         run: |
           echo "Checking frontend..."
-          curl -I http://127.0.0.1:3001 || true
+
+          curl -I http://127.0.0.1:3001
+
+          echo "Frontend HTTP check completed."
 
 
       # ============================================================
-      # 16. Run Playwright Authentication Tests
+      # 18. Run Playwright Authentication Tests
       # ============================================================
 
       - name: Run Playwright Authentication Tests
@@ -251,33 +358,47 @@ jobs:
 
 
       # ============================================================
-      # 17. Show Backend Logs if anything fails
+      # 19. Show BACKEND logs
+      #
+      # always() means logs are shown even if Playwright fails.
       # ============================================================
 
       - name: Show Backend Logs
         if: always()
+        shell: bash
         run: |
+          echo ""
           echo "================================================"
-          echo "BACKEND LOG"
+          echo "                 BACKEND LOG"
           echo "================================================"
+
           cat backend.log || true
+
+          echo ""
+          echo "================================================"
 
 
       # ============================================================
-      # 18. Show Frontend Logs if anything fails
+      # 20. Show FRONTEND logs
       # ============================================================
 
       - name: Show Frontend Logs
         if: always()
+        shell: bash
         run: |
+          echo ""
           echo "================================================"
-          echo "FRONTEND LOG"
+          echo "                FRONTEND LOG"
           echo "================================================"
+
           cat frontend.log || true
+
+          echo ""
+          echo "================================================"
 
 
       # ============================================================
-      # 19. Upload Playwright HTML Report
+      # 21. Upload Playwright HTML Report
       # ============================================================
 
       - name: Upload Playwright Report
@@ -290,10 +411,10 @@ jobs:
 
 
       # ============================================================
-      # 20. Upload Playwright Test Results
+      # 22. Upload failed test results
       # ============================================================
 
-      - name: Upload Playwright Test Results
+      - name: Upload Test Results
         if: failure()
         uses: actions/upload-artifact@v4
         with:
