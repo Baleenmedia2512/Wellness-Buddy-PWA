@@ -424,6 +424,53 @@ async function handleDemoVerify({ recipient, otp, purpose }) {
   };
 }
 
+export async function verifyOtp(input) {
+  const { recipient, otp, contactType, purpose } = input;
+
+  if (DEMO_ACCOUNTS.includes(recipient)) {
+    const result = await handleDemoVerify({ recipient, otp, purpose });
+    if (result.httpStatus === 200 && result.body?.user?.id) {
+      await syncUserTimezoneIfChanged(result.body.user.id, input.timezoneIana);
+    }
+    return result;
+  }
+
+  const otpData = await repo.fetchActiveOtp(recipient, contactType);
+  if (!otpData) {
+    return { httpStatus: 404, body: { success: false, message: 'No active OTP found' } };
+  }
+
+  // Compare current IST time with stored expiry time (both in IST)
+  const now = new Date();
+  const istOffset = 5.5 * 60 * 60 * 1000;
+  const currentIST = new Date(now.getTime() + istOffset);
+  const expiresAt = new Date(otpData.ExpiresAt + 'Z');
+  if (currentIST > expiresAt) {
+    return { httpStatus: 400, body: { success: false, message: 'OTP expired' } };
+  }
+
+  const valid = await bcrypt.compare(otp, otpData.OTPHash);
+  if (!valid) {
+    return { httpStatus: 400, body: { success: false, message: 'Invalid OTP' } };
+  }
+
+  await repo.markOtpVerified(otpData.ID);
+
+  const resolved = await resolveUserAfterOtp({ recipient, contactType });
+  const { isNewUser, user } = resolved;
+
+  await syncUserTimezoneIfChanged(user.id, input.timezoneIana);
+
+  return {
+    httpStatus: 200,
+    body: {
+      success: true,
+      message: 'OTP verified successfully',
+      isNewUser,
+      user,
+    },
+  };
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Firebase Phone Auth has been removed (no Firebase Admin SDK configured).
