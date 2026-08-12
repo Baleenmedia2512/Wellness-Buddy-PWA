@@ -1,0 +1,18 @@
+{
+  "cookies": [],
+  "origins": [
+    {
+      "origin": "http://localhost:3001",
+      "localStorage": [
+        {
+          "name": "otpUser",
+          "value": "{\"isNewUser\":false}"
+        },
+        {
+          "name": "isOtpVerified",
+          "value": "true"
+        }
+      ]
+    }
+  ]
+}
