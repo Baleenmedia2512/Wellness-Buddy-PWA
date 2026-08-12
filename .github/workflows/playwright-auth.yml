@@ -19,6 +19,7 @@ on:
       - Development
       - Nitheesh_test
 
+
 jobs:
   playwright-auth:
     name: Playwright Login Tests
@@ -26,41 +27,131 @@ jobs:
 
     steps:
 
-      # 1. Checkout
+      # ==========================================
+      # 1. Checkout repository
+      # ==========================================
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2. Setup Node
+
+      # ==========================================
+      # 2. Setup Node.js
+      # ==========================================
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: npm
 
+
+      # ==========================================
       # 3. Install root dependencies
+      # ==========================================
       - name: Install root dependencies
         run: npm ci
 
+
+      # ==========================================
       # 4. Install frontend dependencies
+      # ==========================================
       - name: Install frontend dependencies
         working-directory: ./frontend
         run: npm ci
 
+
+      # ==========================================
       # 5. Install backend dependencies
+      # ==========================================
       - name: Install backend dependencies
         working-directory: ./backend
         run: npm ci
 
-      # 6. Install Playwright browser
+
+      # ==========================================
+      # 6. Create frontend .env
+      # ==========================================
+      - name: Create frontend environment
+        shell: bash
+        run: |
+          cat > frontend/.env <<EOF
+          GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
+          REACT_APP_GOOGLE_MAPS_API_KEY=${{ secrets.REACT_APP_GOOGLE_MAPS_API_KEY }}
+          REACT_APP_API_BASE_URL=http://localhost:3000
+          DISABLE_ESLINT_PLUGIN=true
+          EOF
+
+
+      # ==========================================
+      # 7. Create backend .env
+      # ==========================================
+      - name: Create backend environment
+        shell: bash
+        run: |
+          cat > backend/.env <<EOF
+          GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
+
+          SMTP_USER=${{ secrets.SMTP_USER }}
+          SMTP_PASS=${{ secrets.SMTP_PASS }}
+
+          MDT_SMS_API_KEY=${{ secrets.MDT_SMS_API_KEY }}
+          MDT_SMS_SENDER_ID=${{ secrets.MDT_SMS_SENDER_ID }}
+          MDT_SMS_TEMPLATE_ID=${{ secrets.MDT_SMS_TEMPLATE_ID }}
+          MDT_SMS_API_URL=${{ secrets.MDT_SMS_API_URL }}
+
+          AI_MONITOR_SDK_KEY=${{ secrets.AI_MONITOR_SDK_KEY }}
+          AI_MONITOR_BASE_URL=${{ secrets.AI_MONITOR_BASE_URL }}
+
+          DB_CONNECTION_TYPE=${{ secrets.DB_CONNECTION_TYPE }}
+
+          DB_HOST=${{ secrets.DB_HOST }}
+          DB_PORT=${{ secrets.DB_PORT }}
+          DB_USER=${{ secrets.DB_USER }}
+          DB_PASS=${{ secrets.DB_PASS }}
+          DB_NAME=${{ secrets.DB_NAME }}
+          DB_SSL=${{ secrets.DB_SSL }}
+
+          DATABASE_URL=${{ secrets.DATABASE_URL }}
+
+          SUPABASE_URL=${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_KEY=${{ secrets.SUPABASE_SERVICE_KEY }}
+
+          CRON_SECRET=${{ secrets.CRON_SECRET }}
+          EOF
+
+
+      # ==========================================
+      # 8. Verify env files exist
+      # ==========================================
+      - name: Verify environment files
+        shell: bash
+        run: |
+          test -f frontend/.env
+          test -f backend/.env
+
+          echo "Frontend .env created successfully"
+          echo "Backend .env created successfully"
+
+
+      # ==========================================
+      # 9. Install Playwright browsers
+      # ==========================================
       - name: Install Playwright Chromium
         run: npx playwright install --with-deps chromium
 
-      # 7. Run Playwright
-      - name: Run Login Tests
+
+      # ==========================================
+      # 10. Run authentication tests
+      # ==========================================
+      - name: Run Playwright Login Tests
         run: |
           npx playwright test tests/frontend/auth/login.spec.js
 
-      # 8. Upload HTML report
-      - name: Upload Playwright HTML Report
+
+      # ==========================================
+      # 11. Upload Playwright HTML report
+      # ==========================================
+      - name: Upload Playwright Report
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -68,7 +159,10 @@ jobs:
           path: playwright-report/
           retention-days: 7
 
-      # 9. Upload failure artifacts
+
+      # ==========================================
+      # 12. Upload failure results
+      # ==========================================
       - name: Upload Test Results
         if: failure()
         uses: actions/upload-artifact@v4

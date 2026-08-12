@@ -9,13 +9,13 @@ module.exports = defineConfig({
     timeout: 10 * 1000,
   },
 
-  fullyParallel: true,
+  fullyParallel: false,
 
   forbidOnly: !!process.env.CI,
 
   retries: process.env.CI ? 2 : 0,
 
-  workers: process.env.CI ? 2 : undefined,
+  workers: 1,
 
   reporter: [
     ['list'],
@@ -23,6 +23,8 @@ module.exports = defineConfig({
   ],
 
   use: {
+    baseURL: 'http://localhost:3001',
+
     headless: true,
 
     screenshot: 'only-on-failure',
@@ -33,69 +35,16 @@ module.exports = defineConfig({
   },
 
   projects: [
-
-    // ==========================================
-    // AUTHENTICATION SETUP
-    // ==========================================
     {
-      name: 'setup',
+      name: 'frontend',
 
-      testMatch: 'auth.setup.js',
-
-      use: {
-        baseURL: 'http://localhost:3001',
-      },
-    },
-
-
-    // ==========================================
-    // FRONTEND - GUEST USERS
-    // Login / Signup / Public Pages
-    // ==========================================
-    {
-      name: 'frontend-guest',
-
-      testMatch: 'frontend/auth/**/*.spec.js',
+      testMatch: 'frontend/**/*.spec.js',
 
       use: {
         ...devices['Desktop Chrome'],
-
-        baseURL: 'http://localhost:3001',
       },
     },
 
-
-    // ==========================================
-    // FRONTEND - AUTHENTICATED USERS
-    // Chat / Dashboard / Profile / Logout etc.
-    // ==========================================
-    {
-      name: 'frontend-authenticated',
-
-      testMatch: [
-        'frontend/chat/**/*.spec.js',
-        'frontend/dashboard/**/*.spec.js',
-        'frontend/profile/**/*.spec.js',
-        'frontend/logout/**/*.spec.js',
-        'frontend/authenticated/**/*.spec.js',
-      ],
-
-      use: {
-        ...devices['Desktop Chrome'],
-
-        baseURL: 'http://localhost:3001',
-
-        storageState: 'playwright/.auth/user.json',
-      },
-
-      dependencies: ['setup'],
-    },
-
-
-    // ==========================================
-    // BACKEND
-    // Next.js API Tests
-    // ==========================================
     {
       name: 'backend',
 
@@ -107,17 +56,25 @@ module.exports = defineConfig({
     },
   ],
 
-
-  // ==========================================
-  // FRONTEND WEBSERVER
-  // ==========================================
   webServer: [
+    {
+      command: 'npm run dev:local',
+
+      cwd: './backend',
+
+      url: 'http://127.0.0.1:3000',
+
+      reuseExistingServer: true,
+
+      timeout: 120 * 1000,
+    },
+
     {
       command: 'npm start -- --port 3001',
 
       cwd: './frontend',
 
-      url: 'http://localhost:3001',
+      url: 'http://127.0.0.1:3001',
 
       reuseExistingServer: true,
 
