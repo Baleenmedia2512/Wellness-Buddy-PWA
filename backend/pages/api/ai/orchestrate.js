@@ -111,9 +111,11 @@ export default async function handler(req, res) {
     const userName   = sanitiseString(fields.userName);
     const userEmail  = sanitiseString(fields.userEmail);
     const foodRowId  = sanitiseInt(fields.foodRowId);
-    // modelTier: 'pro' signals the frontend is on its 3rd (escalation) attempt
-    // and wants Gemini Pro instead of Flash for better accuracy.
+    // modelTier: 'pro' = frontend escalation after Flash failed (attempt 2).
     const modelTier  = sanitiseString(fields.modelTier);
+    // fresh=1 bypasses idempotency so retries with the same captureId re-run AI.
+    const fresh = sanitiseString(fields.fresh) === '1'
+      || sanitiseString(fields.fresh) === 'true';
     // Credit gate: when ff.ai-credits is ON and client sends creditGated=1,
     // require a valid pending reservationId (never trust client dailyLimit).
     const creditGated = sanitiseString(fields.creditGated) === '1'
@@ -172,6 +174,8 @@ export default async function handler(req, res) {
       userName:  userName  ?? null,
       userEmail: userEmail ?? null,
       foodRowId: foodRowId ?? null,
+      modelTier: modelTier ?? 'flash',
+      fresh,
       mimeType,
       sizeBytes: imageBuffer.length,
     });
@@ -187,6 +191,7 @@ export default async function handler(req, res) {
         imageBase64,
         foodRowId,
         usePro: modelTier === 'pro',
+        fresh,
         module,
       });
 

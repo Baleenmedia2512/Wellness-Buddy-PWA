@@ -1,4 +1,3 @@
-import { largeBodyConfig as config } from '../../../utils/apiConfig.js';
 import { methodNotAllowed, runService } from '../../../shared/lib/handler.js';
 import {
   validateCreateCapture,
@@ -9,7 +8,14 @@ import {
   updateCaptureType,
 } from '../../../features/background-analysis/analysis.service.js';
 
-export { config };
+// Must be a literal export — Next.js cannot statically parse re-exported config.
+export const config = {
+  api: {
+    bodyParser: {
+      sizeLimit: '10mb',
+    },
+  },
+};
 
 export default async function handler(req, res) {
   // Set CORS before OPTIONS early-return so preflight sees the full allow-list.

@@ -29,13 +29,14 @@
 import logger from '../logger.js';
 import {
   generateContent,
+  reportAiCallTelemetry,
   imageInlinePart,
   SchemaType,
   MODEL_NAME,
   FALLBACK_MODEL_NAME,
 } from '../gemini/geminiClient.js';
 import { safeParseJson, validateShape } from '../gemini/safeJson.js';
-import { withEnterpriseRetry } from './RetryPolicy.js';
+import { withEnterpriseRetry, DEFAULT_TIMEOUT_MS } from './RetryPolicy.js';
 
 const SERVICE = 'gemini';
 
@@ -792,31 +793,39 @@ async function callModel(
 
   try {
     ({ result, attempts, totalLatencyMs } = await withEnterpriseRetry(
-      () =>
-        generateContent(
+      async () => {
+        const { result: genResult, latencyMs } = await generateContent(
           configKey,
           parts,
           schema,
           modelOverride,
-          trace
-        ),
+          trace,
+        );
+        // Attach for post-timeout telemetry on the success path
+        genResult.__latencyMs = latencyMs;
+        return genResult;
+      },
       {
         label,
         service: circuitService,
 
-        // Primary model (Flash): 1 attempt only — frontend drives all retries.
-        // Previously 2 silently doubled wait time before the caller knew it
-        // failed. Retry budget: attempt 1 = Flash, attempt 2+ = Pro (see
-        // orchestratorService.js usePro logic).
-        //
-        // Fallback model (Pro): cap at 2 backend attempts.
-        // Each backend attempt has a 30 s hard timeout (DEFAULT_TIMEOUT_MS).
-        // 2 × 30 s = 60 s, which exactly fits the Vercel maxDuration for
-        // pages/api/ai/orchestrate.js. A third attempt would hit the 504.
-        ...(modelOverride ? { maxAttempts: 2 } : { maxAttempts: 1 }),
+        // One Gemini call per Vercel invocation (maxDuration 60s).
+        // Timeout covers the model call only — telemetry is reported after.
+        maxAttempts: 1,
+        timeoutMs: DEFAULT_TIMEOUT_MS,
       },
     ));
   } catch (err) {
+    // Record failed/timed-out attempts so the token monitor still sees them.
+    await reportAiCallTelemetry({
+      status: 'FAILED',
+      modelOverride,
+      usage: {},
+      latency: err.latencyMs ?? totalLatencyMs ?? DEFAULT_TIMEOUT_MS,
+      errorMessage: err.message,
+      trace,
+    }).catch(() => {});
+
     // Primary model saturated, circuit open, or quota exceeded → try fallback once
     if (!modelOverride && isPrimaryOverloadedError(err)) {
       const status = Number(err.status);
@@ -854,6 +863,15 @@ async function callModel(
 
     throw err;
   }
+
+  // Telemetry OUTSIDE the attempt timeout — never races the model budget.
+  await reportAiCallTelemetry({
+    status: 'SUCCESS',
+    modelOverride,
+    usage: result.response?.usageMetadata ?? {},
+    latency: result.__latencyMs ?? totalLatencyMs,
+    trace,
+  });
 
   // Propagate retries into trace
   if (trace && attempts > 1) {
