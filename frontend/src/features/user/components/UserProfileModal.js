@@ -17,6 +17,7 @@ const UserProfileModal = ({ isOpen, onClose, user, userRole = 'user', onProfileU
   const [profileImage, setProfileImage] = useState(null);
   const [latestWeight, setLatestWeight] = useState(null);
   const [initialWeight, setInitialWeight] = useState(null);
+  const [initialWeightDate, setInitialWeightDate] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState('');
@@ -60,6 +61,7 @@ const UserProfileModal = ({ isOpen, onClose, user, userRole = 'user', onProfileU
         });
         setLatestWeight(data.latestWeight ? parseFloat(data.latestWeight) : null);
         setInitialWeight(data.initialWeight != null ? parseFloat(data.initialWeight) : null);
+        setInitialWeightDate(data.initialWeightDate || null);
         if (data.profileImage) setProfileImagePreview(data.profileImage);
       }
     } catch (e) { setError(e.message || 'Failed to load profile.'); }
@@ -133,6 +135,7 @@ const UserProfileModal = ({ isOpen, onClose, user, userRole = 'user', onProfileU
           onChange={(e) => cropper.selectFile(e.target.files?.[0])} />
         <UserProfileBody isLoading={isLoading} form={form} email={form.email}
           latestWeight={latestWeight} initialWeight={initialWeight}
+          initialWeightDate={initialWeightDate}
           error={error} successMessage={successMessage} />
         {!isLoading && (
           <UserProfileFooter isSaving={isSaving} hasSaved={hasSaved} disabled={saveDisabled}

@@ -132,6 +132,7 @@ export async function getProfile({ email }) {
         profilePicSnooze: user.profile_pic_snooze || null,
         latestWeight: latestWeightKg,
         initialWeight: Number.isFinite(initialWeightKg) ? initialWeightKg : null,
+        initialWeightDate: initialWeightRow?.CreatedAt || null,
         latestWeightBodyFat: resolvedWeightBodyFat,
         bodyFat: resolvedWeightBodyFat,
         latestBmr,
