@@ -167,6 +167,8 @@ export default async function handler(req, res) {
     }
 
     const mimeType = imageFile.mimetype ?? 'image/jpeg';
+    const reqStarted = Date.now();
+    const resolvedTier = modelTier === 'pro' ? 'pro' : 'flash';
 
     logger.info('orchestrate: request received', {
       captureId: captureId ?? null,
@@ -174,7 +176,8 @@ export default async function handler(req, res) {
       userName:  userName  ?? null,
       userEmail: userEmail ?? null,
       foodRowId: foodRowId ?? null,
-      modelTier: modelTier ?? 'flash',
+      reservationId: reservationId ?? null,
+      modelTier: resolvedTier,
       fresh,
       mimeType,
       sizeBytes: imageBuffer.length,
@@ -190,9 +193,24 @@ export default async function handler(req, res) {
         userEmail,
         imageBase64,
         foodRowId,
-        usePro: modelTier === 'pro',
+        usePro: resolvedTier === 'pro',
         fresh,
         module,
+      });
+
+      logger.info('orchestrate: request complete', {
+        captureId: captureId ?? null,
+        reservationId: reservationId ?? null,
+        modelTier: resolvedTier,
+        fresh,
+        traceId: result.traceId ?? null,
+        imageType: result.imageType ?? null,
+        defaulted: result.defaulted === true,
+        analysisStatus: result.analysisStatus ?? null,
+        durationMs: Date.now() - reqStarted,
+        status: result.defaulted === true || result.analysisStatus === 'FAILED'
+          ? 'FAIL'
+          : 'SUCCESS',
       });
 
       return res.status(200).json({ ok: true, ...result });
@@ -202,6 +220,9 @@ export default async function handler(req, res) {
         code:      err.code  ?? null,
         status:    err.status ?? null,
         captureId: captureId ?? null,
+        reservationId: reservationId ?? null,
+        modelTier: resolvedTier,
+        durationMs: Date.now() - reqStarted,
       });
 
       const status = err.status ?? 500;

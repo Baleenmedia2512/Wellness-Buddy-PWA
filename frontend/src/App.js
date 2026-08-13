@@ -4807,12 +4807,12 @@ function WellnessValleyApp() {
             return;
           }
 
-          // Real "other" / unknown — or technical failure after all retries.
-          if (detectedType?.details?.defaulted === true) {
-            await releaseCredit('orchestrate_defaulted');
-          } else {
-            await settleCredit();
-          }
+          // No domain save for unknown/other — do not permanently consume credit.
+          await releaseCredit(
+            detectedType?.details?.defaulted === true
+              ? 'orchestrate_defaulted'
+              : 'capture_unidentified',
+          );
           updatePendingCaptureType(pendingSharePromise, 'unknown');
           clearCaptureAnalyzing(captureId);
           triggerNutritionRefresh({ immediate: true, source: 'capture-unknown' });

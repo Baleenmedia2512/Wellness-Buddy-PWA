@@ -28,33 +28,36 @@ const ORCHESTRATE_URL    = `${API_BASE}/api/ai/orchestrate`;
 
 // ── Retry budget — PHASE 1: fast unified call (type + macros) ─────────────────
 //
-// Phone drives escalation; backend runs exactly one Gemini call per HTTP request.
+// SINGLE OWNER of Flash→Pro escalation: this frontend module.
+// Backend runs exactly ONE Gemini call per /api/ai/orchestrate request and does
+// NOT auto-switch Flash→Pro (that previously caused 1 Flash + 2 Pro).
 //
-// Attempt allocation (Flash → Pro):
-//   Attempt 1 → Gemini Flash  (backend: 1 try, 55 s hard cap)
-//   Attempt 2 → Gemini Pro    (escalation after Flash failure; 1.5 s back-off)
+// Attempt allocation:
+//   Attempt 1 → Gemini Flash
+//   Attempt 2 → Gemini Pro (only after genuine Flash failure)
 //
-// Why only 2 phone attempts / 1 backend attempt:
-//   Gemini p95 ≈ 43 s and Vercel maxDuration = 60 s. Nested Pro retries
-//   (2 × 30 s) previously killed late SUCCESS responses and burned 5–6 calls.
-//   Worst case now: ~55 s + 1.5 s + ~55 s ≈ 111 s across two HTTP requests.
+// Gemini p95 ≈ 43 s; Vercel maxDuration = 60 s; backend timeout ≈ 58 s
+// (AI_CALL_TIMEOUT_MS). Frontend abort must stay above backend timeout.
 //
 // ── PHASE 2: background enrichment job (21 micronutrients) ───────────────────
-//
-// After a successful Phase 1 the backend enqueues an enrichment job
-// (JobQueue → JobWorker) with its own independent retry budget (MAX_RETRIES
-// in JobQueue.js). No frontend involvement in Phase 2.
 //
 /** Maximum Phase 1 frontend attempts (Flash then Pro). */
 const MAX_ATTEMPTS    = 2;
 /**
  * Per-attempt frontend abort timeout.
- * Backend model timeout defaults to 58s; leave ~1s for JSON + telemetry after success.
- * Must stay at/under Vercel orchestrate maxDuration (60 s).
+ * Backend model timeout defaults to 58s; leave headroom under Vercel 60s.
  */
 const REQUEST_TIMEOUT_MS = 59_500;
 /** Back-off before Pro escalation (ms). */
 const RETRY_DELAY_MS  = 1_500;
+
+/**
+ * In-flight analyzeImage promises keyed by captureId.
+ * Prevents duplicate App.js / StrictMode triggers from starting parallel
+ * orchestrate requests for the same capture (Case G / 01:18:26 class bugs).
+ * @type {Map<string, Promise<object>>}
+ */
+const _inflightByCapture = new Map();
 
 /**
  * Confidence threshold above which an AI "other" result is treated as
@@ -106,12 +109,71 @@ export async function analyzeImage(
     creditGated = false,
   } = {},
 ) {
+  const captureKey = captureId != null && captureId !== '' ? String(captureId) : null;
+
+  if (captureKey && _inflightByCapture.has(captureKey)) {
+    _trace('DEDUP_JOIN', {
+      captureId: captureKey,
+      reservationId,
+      note: 'joining in-flight analyzeImage for same captureId',
+    });
+    return _inflightByCapture.get(captureKey);
+  }
+
+  const run = _analyzeImageInner(imageFile, {
+    captureId,
+    userId,
+    userName,
+    userEmail,
+    foodRowId,
+    onAttempt,
+    reservationId,
+    creditGated,
+  });
+
+  if (captureKey) {
+    _inflightByCapture.set(captureKey, run);
+    run.finally(() => {
+      if (_inflightByCapture.get(captureKey) === run) {
+        _inflightByCapture.delete(captureKey);
+      }
+    });
+  }
+
+  return run;
+}
+
+/**
+ * @private
+ */
+async function _analyzeImageInner(
+  imageFile,
+  {
+    captureId = null,
+    userId = null,
+    userName = null,
+    userEmail = null,
+    foodRowId = null,
+    onAttempt = null,
+    reservationId = null,
+    creditGated = false,
+  } = {},
+) {
   /** @type {AbortController | null} */
   let activeController = null;
+  const sessionStart = Date.now();
+
+  _trace('SESSION_START', {
+    captureId,
+    reservationId,
+    creditGated,
+    size: imageFile?.size ?? 0,
+  });
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     // Attempt 1 = Flash (fast, cheap). Attempt 2 = Pro (escalation).
     const usePro = attempt >= 2;
+    const modelTier = usePro ? 'pro' : 'flash';
 
     // Abort any in-flight attempt before starting the next (prevents overlapping Pro calls).
     if (activeController) {
@@ -124,6 +186,14 @@ export async function analyzeImage(
 
     const controller = new AbortController();
     activeController = controller;
+
+    _trace('ATTEMPT_START', {
+      captureId,
+      reservationId,
+      attempt,
+      modelTier,
+      totalAttempts: MAX_ATTEMPTS,
+    });
 
     const result = await _singleAttempt(imageFile, {
       captureId,
@@ -140,31 +210,84 @@ export async function analyzeImage(
 
     if (activeController === controller) activeController = null;
 
+    const attemptOk = !result.details?.defaulted && result.type !== 'other';
+    _trace('ATTEMPT_END', {
+      captureId,
+      reservationId,
+      attempt,
+      modelTier,
+      status: attemptOk ? 'SUCCESS' : 'FAIL',
+      type: result.type,
+      defaulted: result.details?.defaulted === true,
+      error: result.details?.error ?? null,
+      durationMs: result.duration ?? null,
+    });
+
     // ── Valid classification — return immediately ──────────────────────────
-    if (!result.details?.defaulted && result.type !== 'other') return result;
+    if (attemptOk) {
+      _trace('SESSION_END', {
+        captureId,
+        reservationId,
+        status: 'SUCCESS',
+        type: result.type,
+        attemptsUsed: attempt,
+        totalDurationMs: Date.now() - sessionStart,
+      });
+      return result;
+    }
 
     // ── "Obviously other": AI is highly confident it's none of the 4 types ─
     // Retrying would waste tokens. Surface immediately so the UI shows Manual Log.
     if (result.type === 'other' && !result.details?.defaulted &&
         (result.confidence ?? 0) >= OBVIOUSLY_OTHER_CONFIDENCE) {
       _trace('OBVIOUSLY_OTHER', { attempt, confidence: result.confidence, captureId });
+      _trace('SESSION_END', {
+        captureId,
+        reservationId,
+        status: 'OBVIOUSLY_OTHER',
+        attemptsUsed: attempt,
+        totalDurationMs: Date.now() - sessionStart,
+      });
       return { ...result, details: { ...result.details, obviouslyOther: true } };
     }
 
     // ── Non-retryable client error (4xx) ──────────────────────────────────
     if (result.details?._retryable === false) {
+      _trace('SESSION_END', {
+        captureId,
+        reservationId,
+        status: 'NON_RETRYABLE',
+        attemptsUsed: attempt,
+        totalDurationMs: Date.now() - sessionStart,
+      });
       return { ...result, details: { ...result.details } };
     }
 
     // ── All attempts exhausted ────────────────────────────────────────────
     if (attempt === MAX_ATTEMPTS) {
       _trace('EXHAUSTED', { attempt, captureId });
+      _trace('SESSION_END', {
+        captureId,
+        reservationId,
+        status: 'EXHAUSTED',
+        attemptsUsed: attempt,
+        totalDurationMs: Date.now() - sessionStart,
+      });
       return result;
     }
 
     // ── Wait before Pro escalation ────────────────────────────────────────
     const delay = RETRY_DELAY_MS;
-    _trace('RETRY', { attempt, nextAttempt: attempt + 1, delayMs: delay, usePro: true, captureId });
+    _trace('RETRY', {
+      attempt,
+      nextAttempt: attempt + 1,
+      delayMs: delay,
+      usePro: true,
+      modelTier: 'pro',
+      captureId,
+      reservationId,
+      reason: result.details?.error ?? 'flash_failed',
+    });
     await new Promise((r) => setTimeout(r, delay));
   }
   /* unreachable — loop always returns before this */
