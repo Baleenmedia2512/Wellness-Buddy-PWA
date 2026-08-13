@@ -144,11 +144,12 @@ export function buildFoodActivityShareText({
   const nutrition = foodData?.nutrition || {};
   switch (activityType) {
     case DIARY_FOOD_ACTIVITY.WATER:
-      return buildDiaryShareSuffix('water', { volumeMl });
+      return buildDiaryShareSuffix('water', { volumeMl, soFarToday: false });
     case DIARY_FOOD_ACTIVITY.AFRESH:
       return buildDiaryShareSuffix('afresh', {
         scoops: scoops ?? 1,
         calories: nutrition.calories ?? calories,
+        soFarToday: false,
       });
     case DIARY_FOOD_ACTIVITY.SHAKE:
       return buildDiaryShareSuffix('shake', {

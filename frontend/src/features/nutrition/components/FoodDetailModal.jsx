@@ -130,12 +130,13 @@ function buildShareText({
   itemNames = null,
 }) {
   if (activityType === 'water') {
-    return buildDiaryShareSuffix('water', { volumeMl });
+    return buildDiaryShareSuffix('water', { volumeMl, soFarToday: false });
   }
   if (activityType === 'afresh') {
     return buildDiaryShareSuffix('afresh', {
       scoops: scoops ?? 1,
       calories,
+      soFarToday: false,
     });
   }
   if (activityType === 'shake') {

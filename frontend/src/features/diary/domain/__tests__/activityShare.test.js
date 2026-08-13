@@ -256,6 +256,10 @@ describe('buildDiaryShareSuffix', () => {
       .toBe('Consumed: 2 scoops Afresh so far today');
     expect(buildDiaryShareSuffix('afresh', { scoops: 1 }))
       .toBe('Consumed: 1 scoop Afresh so far today');
+    expect(buildDiaryShareSuffix('afresh', { scoops: 1, soFarToday: false }))
+      .toBe('Consumed: 1 scoop Afresh');
+    expect(buildDiaryShareSuffix('water', { volumeMl: 200, soFarToday: false }))
+      .toBe('Consumed: 200 mL water');
   });
 
   test('food suffix is item names and total kcal only', () => {
@@ -389,7 +393,7 @@ describe('resolveFoodRowPresentation', () => {
     expect(view.showMealBadge).toBe(false);
     expect(view.primaryValue).toBe('1');
     expect(view.primaryUnit).toBe('L');
-    expect(view.shareText).toBe('Consumed: 1 L water so far today');
+    expect(view.shareText).toBe('Consumed: 1 L water');
     expect(view.thumbFallback).toBe('💧');
   });
 
@@ -403,7 +407,7 @@ describe('resolveFoodRowPresentation', () => {
       },
       calories: 0,
     });
-    expect(view.shareText).toBe('Consumed: 200 mL water so far today');
+    expect(view.shareText).toBe('Consumed: 200 mL water');
   });
 
   test('afresh row shows kcal with scoops secondary and hides meal badge', () => {
@@ -422,7 +426,7 @@ describe('resolveFoodRowPresentation', () => {
     expect(view.primaryValue).toBe('7');
     expect(view.primaryUnit).toBe('kcal');
     expect(view.secondaryLabel).toBe('2 scoops');
-    expect(view.shareText).toBe('Consumed: 2 scoops Afresh so far today');
+    expect(view.shareText).toBe('Consumed: 2 scoops Afresh');
     expect(view.thumbFallback).toBe('🥤');
   });
 
@@ -436,7 +440,7 @@ describe('resolveFoodRowPresentation', () => {
       },
       calories: 4,
     });
-    expect(view.shareText).toBe('Consumed: 1 scoop Afresh so far today');
+    expect(view.shareText).toBe('Consumed: 1 scoop Afresh');
   });
 
   test('food row share caption lists every item and total kcal', () => {

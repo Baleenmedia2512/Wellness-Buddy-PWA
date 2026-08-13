@@ -22,16 +22,17 @@ export function buildDiaryShareSuffix(activityType, payload = {}) {
     case 'water': {
       const consumed = payload.volumeLabel
         || (payload.volumeMl != null ? formatWaterVolume(payload.volumeMl) : null);
+      const day = dayTotalSuffix(payload);
       return consumed
-        ? `Consumed: ${consumed} water so far today`
-        : 'Consumed water so far today';
+        ? `Consumed: ${consumed} water${day}`
+        : `Consumed water${day}`;
     }
     case DIARY_FOOD_ACTIVITY.AFRESH:
     case 'afresh': {
       const scoops = Number(payload.scoops);
       const count = Number.isFinite(scoops) && scoops > 0 ? scoops : 1;
       const scoopWord = count === 1 ? 'scoop' : 'scoops';
-      return `Consumed: ${count} ${scoopWord} Afresh so far today`;
+      return `Consumed: ${count} ${scoopWord} Afresh${dayTotalSuffix(payload)}`;
     }
     case DIARY_FOOD_ACTIVITY.SHAKE:
     case 'shake': {
@@ -109,6 +110,14 @@ function resolveFoodShareNames(payload) {
   }
   const foodName = (payload.foodName || '').trim();
   return foodName ? [foodName] : [];
+}
+
+/**
+ * Manual Log / day-total share keeps "so far today".
+ * Diary card share passes soFarToday: false (this entry only).
+ */
+function dayTotalSuffix(payload) {
+  return payload.soFarToday === false ? '' : ' so far today';
 }
 
 /** Weight kg for share captions (2 decimal places max). */

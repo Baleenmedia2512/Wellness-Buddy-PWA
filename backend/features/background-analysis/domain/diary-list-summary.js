@@ -74,13 +74,18 @@ function parseRaw(analysisData) {
 }
 
 function formatFoodsTitle(foods) {
-  const names = foods
-    .map((f) => String(f?.name || '').trim())
-    .filter(Boolean);
+  const seen = new Set();
+  const names = [];
+  for (const food of foods) {
+    const name = String(food?.name || food?.foodName || '').trim();
+    if (!name) continue;
+    const key = name.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    names.push(name);
+  }
   if (names.length === 0) return null;
-  if (names.length === 1) return names[0];
-  if (names.length === 2) return `${names[0]} / ${names[1]}`;
-  return `${names[0]} +${names.length - 1}`;
+  return names.join(', ');
 }
 
 function resolveActivityType(processedBy, raw, foods, title) {
