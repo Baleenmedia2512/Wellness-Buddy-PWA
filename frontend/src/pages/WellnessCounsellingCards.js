@@ -77,7 +77,7 @@ const BodyParamsCardTile = memo(function BodyParamsCardTile({ card, onEdit }) {
           </div>
         </div>
 
-        <div className="pt-2 border-t border-gray-100">
+        <div className="pt-2 border-t border-gray-100 space-y-1">
           <div className="flex items-center justify-between text-xs text-gray-500">
             <span>{card.gender || '—'}</span>
             <span>
@@ -85,6 +85,11 @@ const BodyParamsCardTile = memo(function BodyParamsCardTile({ card, onEdit }) {
               {card.recordedDate ? format(new Date(card.recordedDate), 'd MMM yyyy') : 'N/A'}
             </span>
           </div>
+          {card.locationName ? (
+            <p className="text-xs text-gray-600 truncate">
+              Venue: <span className="font-medium text-gray-800">{card.locationName}</span>
+            </p>
+          ) : null}
         </div>
       </div>
     </div>
@@ -309,18 +314,16 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
       const merged = {
         ...fresh,
         phoneNumber: fresh.phoneNumber ?? card.phoneNumber ?? null,
+        locationName: fresh.locationName ?? card.locationName ?? null,
       };
-      if (merged.locationName) {
-        headerVenueInitializedRef.current = true;
-        setHeaderVenue(String(merged.locationName));
-      }
+      // Sync header to THIS card's venue so header doesn't force an old value.
+      headerVenueInitializedRef.current = true;
+      setHeaderVenue(String(merged.locationName || '').trim());
       setSelectedCard(merged);
       setIsBodyParamsFormOpen(true);
     } catch {
-      if (card.locationName) {
-        headerVenueInitializedRef.current = true;
-        setHeaderVenue(String(card.locationName));
-      }
+      headerVenueInitializedRef.current = true;
+      setHeaderVenue(String(card.locationName || '').trim());
       setSelectedCard(card);
       setIsBodyParamsFormOpen(true);
     }
@@ -465,20 +468,27 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
         selectedMember={null}
         existingCard={selectedCard}
         externalVenue={headerVenue}
-        hideVenueField
+        onVenueChange={(venue) => {
+          headerVenueInitializedRef.current = true;
+          setHeaderVenue(venue);
+        }}
         onSaveStart={(formData) => {
+          const venue = String(formData.locationName || '').trim();
+          if (venue) {
+            headerVenueInitializedRef.current = true;
+            setHeaderVenue(venue);
+          }
           setBodyParamsPreCapCard({
             ...formData,
-            locationName: headerVenue.trim() || formData.locationName || '',
+            locationName: venue,
           });
         }}
         onSaveSuccess={(card, shareUrl, previousCard) => {
           setIsBodyParamsFormOpen(false);
           onCardSaved?.(card);
-          if (card?.locationName) {
-            headerVenueInitializedRef.current = true;
-            setHeaderVenue(String(card.locationName));
-          }
+          const savedVenue = String(card?.locationName || '').trim();
+          headerVenueInitializedRef.current = true;
+          setHeaderVenue(savedVenue);
 
           pageCacheRef.current.clear();
           setBodyParamsCards((prevCards) => {
@@ -487,7 +497,7 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
               ...(idx >= 0 ? prevCards[idx] : {}),
               ...card,
               phoneNumber: card.phoneNumber ?? (idx >= 0 ? prevCards[idx].phoneNumber : null),
-              locationName: headerVenue.trim() || card.locationName || null,
+              locationName: savedVenue || null,
             };
             if (idx >= 0) {
               const next = [...prevCards];
@@ -501,7 +511,7 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
           setBodyParamsShareData({
             card: {
               ...card,
-              locationName: headerVenue.trim() || card.locationName || '',
+              locationName: savedVenue,
             },
             shareUrl,
             previousCard: previousCard || null,

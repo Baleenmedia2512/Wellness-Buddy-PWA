@@ -824,7 +824,12 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
                     >
                       {(() => {
                         const mail = String(selectedMember.email || '').trim();
-                        const cid = String(selectedMember.communityId || '').trim();
+                        // Downline header shows direct coach's Community ID (not the member's own).
+                        const cid = String(
+                          selectedMember.directCoachCommunityId
+                            || selectedMember.communityId
+                            || '',
+                        ).trim();
                         const subtitle = mail && cid ? `${mail} | ${cid}` : (mail || cid);
                         return subtitle
                           ? subtitle

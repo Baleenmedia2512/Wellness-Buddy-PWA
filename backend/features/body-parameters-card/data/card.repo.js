@@ -21,29 +21,45 @@ const APPROVALS = 'approval_requests_table';
  */
 export async function insertCard(payload) {
   const supabase = getSupabaseClient();
-  const { data, error } = await supabase
-    .from(TABLE)
-    .insert({
-      created_by:   payload.createdBy,
-      user_id:      payload.userId,
-      name:         payload.name,
-      age:          payload.age,
-      gender:       payload.gender,
-      height_cm:    payload.heightCm,
-      weight_kg:    payload.weightKg,
-      bmi:          payload.bmi,
-      fat_percent:  payload.fatPercent,
-      bmr:          payload.bmr,
-      body_age:     payload.bodyAge,
-      visceral_fat: payload.visceralFat,
-      chest_cm:     payload.chestCm,
-      waist_cm:     payload.waistCm,
-      hip_cm:       payload.hipCm,
-      recorded_date: payload.recordedDate,
-      location_name: payload.locationName,
-    })
-    .select()
-    .single();
+  const locationName = payload.locationName != null && String(payload.locationName).trim() !== ''
+    ? String(payload.locationName).trim().substring(0, 200)
+    : null;
+
+  const row = {
+    created_by:    payload.createdBy,
+    user_id:       payload.userId,
+    name:          payload.name,
+    age:           payload.age,
+    gender:        payload.gender,
+    height_cm:     payload.heightCm,
+    weight_kg:     payload.weightKg,
+    bmi:           payload.bmi,
+    fat_percent:   payload.fatPercent,
+    bmr:           payload.bmr,
+    body_age:      payload.bodyAge,
+    visceral_fat:  payload.visceralFat,
+    chest_cm:      payload.chestCm,
+    waist_cm:      payload.waistCm,
+    hip_cm:        payload.hipCm,
+    location_name: locationName,
+  };
+  // Only set recorded_date when provided — otherwise DB DEFAULT CURRENT_DATE applies.
+  if (payload.recordedDate) {
+    row.recorded_date = payload.recordedDate;
+  }
+
+  const { data, error } = await supabase.from(TABLE).insert(row).select().single();
+
+  if (error && /location_name/i.test(String(error.message || ''))) {
+    logger.error('[body-params-card] location_name column missing — Venue cannot be saved. Run migration add_location_name_to_body_parameters_cards.sql', {
+      message: error.message,
+    });
+    throw new Error(
+      'Venue cannot be saved: database column location_name is missing. '
+      + 'Run backend/migrations/add_location_name_to_body_parameters_cards.sql in Supabase.',
+    );
+  }
+
   if (error) throw error;
   return data;
 }
@@ -56,29 +72,46 @@ export async function insertCard(payload) {
  */
 export async function updateCard(id, payload) {
   const supabase = getSupabaseClient();
+  const locationName = payload.locationName != null && String(payload.locationName).trim() !== ''
+    ? String(payload.locationName).trim().substring(0, 200)
+    : null;
+
+  const patch = {
+    name:          payload.name,
+    age:           payload.age,
+    gender:        payload.gender,
+    height_cm:     payload.heightCm,
+    weight_kg:     payload.weightKg,
+    bmi:           payload.bmi,
+    fat_percent:   payload.fatPercent,
+    bmr:           payload.bmr,
+    body_age:      payload.bodyAge,
+    visceral_fat:  payload.visceralFat,
+    chest_cm:      payload.chestCm,
+    waist_cm:      payload.waistCm,
+    hip_cm:        payload.hipCm,
+    recorded_date: payload.recordedDate,
+    location_name: locationName,
+  };
+
   const { data, error } = await supabase
     .from(TABLE)
-    .update({
-      name:          payload.name,
-      age:           payload.age,
-      gender:        payload.gender,
-      height_cm:     payload.heightCm,
-      weight_kg:     payload.weightKg,
-      bmi:           payload.bmi,
-      fat_percent:   payload.fatPercent,
-      bmr:           payload.bmr,
-      body_age:      payload.bodyAge,
-      visceral_fat:  payload.visceralFat,
-      chest_cm:      payload.chestCm,
-      waist_cm:      payload.waistCm,
-      hip_cm:        payload.hipCm,
-      recorded_date: payload.recordedDate,
-      location_name: payload.locationName,
-    })
+    .update(patch)
     .eq('id', id)
     .eq('is_deleted', false)
     .select()
     .single();
+
+  if (error && /location_name/i.test(String(error.message || ''))) {
+    logger.error('[body-params-card] location_name column missing — Venue cannot be saved. Run migration add_location_name_to_body_parameters_cards.sql', {
+      message: error.message,
+    });
+    throw new Error(
+      'Venue cannot be saved: database column location_name is missing. '
+      + 'Run backend/migrations/add_location_name_to_body_parameters_cards.sql in Supabase.',
+    );
+  }
+
   if (error) throw error;
   return data;
 }
@@ -701,12 +734,29 @@ async function loadSlimCardsForCoach(coachId) {
     const supabase = getSupabaseClient();
     logger.info('[listCardsForCoach] querying slim columns', { coachId });
 
-    const { data: cards, error: cardsError } = await supabase
+    let { data: cards, error: cardsError } = await supabase
       .from(TABLE)
       .select(LIST_SUMMARY_COLS)
       .eq('created_by', coachId)
       .eq('is_deleted', false)
       .order('created_at', { ascending: false });
+
+    if (cardsError && /location_name/i.test(String(cardsError.message || ''))) {
+      logger.error('[listCardsForCoach] location_name missing — retrying without it; run migration', {
+        message: cardsError.message,
+      });
+      const colsWithoutVenue = LIST_SUMMARY_COLS
+        .split(',')
+        .map((c) => c.trim())
+        .filter((c) => c !== 'location_name')
+        .join(', ');
+      ({ data: cards, error: cardsError } = await supabase
+        .from(TABLE)
+        .select(colsWithoutVenue)
+        .eq('created_by', coachId)
+        .eq('is_deleted', false)
+        .order('created_at', { ascending: false }));
+    }
 
     if (cardsError) {
       logger.error('[listCardsForCoach] database error:', cardsError);

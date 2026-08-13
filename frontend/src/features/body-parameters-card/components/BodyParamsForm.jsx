@@ -76,11 +76,11 @@ const SelectField = ({ label, value, onChange, options, inputRef, onEnter }) => 
 };
 
 /**
- * @param {{ isOpen, onClose, user, selectedMember, onSaveSuccess, existingCard, onSaveStart, externalVenue, hideVenueField }} props
+ * @param {{ isOpen, onClose, user, selectedMember, onSaveSuccess, existingCard, onSaveStart, externalVenue, onVenueChange, hideVenueField }} props
  */
 const BodyParamsForm = ({
   isOpen, onClose, user, selectedMember, onSaveSuccess, existingCard = null, onSaveStart = null,
-  externalVenue = null, hideVenueField = false,
+  externalVenue = null, onVenueChange = null, hideVenueField = false,
 }) => {
   const vm = useBodyParamsCard({
     user, selectedMember, onSaveSuccess, existingCard, onSaveStart, isOpen,
@@ -183,12 +183,15 @@ const BodyParamsForm = ({
             onEnter={() => focusNextField(hideVenueField ? nameRef : venueRef)}
           />
 
-          {/* Venue — skip when parent provides an editable header Venue */}
+          {/* Venue — editable; prefilled from header when provided */}
           {!hideVenueField && (
             <InputField
               label="Venue"
               value={vm.form.locationName}
-              onChange={(v) => vm.setField('locationName', v)}
+              onChange={(v) => {
+                vm.setField('locationName', v);
+                if (onVenueChange) onVenueChange(v);
+              }}
               placeholder="e.g. Chennai"
               inputRef={venueRef}
               onEnter={() => focusNextField(nameRef)}

@@ -115,33 +115,28 @@ export function useBodyParamsCard({
   // Flat list of all team members — loaded once when coachUserId is available.
   // Used for client-side phone prefix filtering (no backend round-trip needed).
   const [allTeamMembers, setAllTeamMembers] = useState([]);
+  /** Always-current Venue string — avoids stale form state on Save. */
+  const venueRef = useRef('');
 
   const targetUserId = selectedMember?.userId || selectedMember?.id || null;
 
-  // Reload form every time the modal opens (fixes phone/fields missing after save+reopen).
+  // Reload form only when the modal opens (or the card being edited changes).
+  // Create: prefill Venue from header. Edit: use the card's saved Venue.
   useEffect(() => {
     if (!isOpen) return;
     const next = cardToFormState(existingCard);
-    if (externalVenue != null && String(externalVenue).trim() !== '') {
-      next.locationName = String(externalVenue).trim();
-    } else if (!isEditMode && externalVenue != null) {
-      next.locationName = String(externalVenue || '').trim();
+    if (!isEditMode) {
+      const fromHeader = externalVenue != null ? String(externalVenue).trim() : '';
+      if (fromHeader) next.locationName = fromHeader;
     }
+    venueRef.current = String(next.locationName || '').trim();
     setForm(next);
     setBmiUserEdited(false);
     setBmrUserEdited(false);
     setError('');
-  }, [isOpen, existingCard, externalVenue, isEditMode]);
-
-  // Keep form venue in sync with editable header Venue while the modal is open.
-  useEffect(() => {
-    if (!isOpen || externalVenue == null) return;
-    setForm((prev) => {
-      const nextVenue = String(externalVenue || '');
-      if (prev.locationName === nextVenue) return prev;
-      return { ...prev, locationName: nextVenue };
-    });
-  }, [isOpen, externalVenue]);
+    // externalVenue intentionally omitted from deps — only seed on open / card change
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, existingCard?.id, isEditMode]);
 
   // Resolve counsellor database UserId (team_table.UserId) — required for card createdBy only.
   useEffect(() => {
@@ -259,6 +254,9 @@ export function useBodyParamsCard({
 
   const setField = useCallback((field, value) => {
     const nextValue = field === 'name' ? normalizeName(value) : value;
+    if (field === 'locationName') {
+      venueRef.current = String(nextValue || '').trim();
+    }
     setForm((prev) => ({ ...prev, [field]: nextValue }));
     if (field === 'weightKg' || field === 'fatPercent') {
       setBmrUserEdited(false);
@@ -423,6 +421,14 @@ export function useBodyParamsCard({
     setError('');
     setIsSaving(true);
 
+    // Venue from form ref (typed in modal), else header Venue — never drop on save.
+    const locationNameToSave = (
+      String(venueRef.current || '').trim()
+      || String(form.locationName || '').trim()
+      || String(externalVenue || '').trim()
+      || null
+    );
+
     // ⚡ Notify parent immediately with form data so it can start
     // pre-rendering + pre-capturing the card image in parallel with the API call.
     const creatorName = String(
@@ -445,7 +451,7 @@ export function useBodyParamsCard({
         waistCm:      toOptionalNum(form.waistCm),
         hipCm:        toOptionalNum(form.hipCm),
         recordedDate: form.recordedDate,
-        locationName: form.locationName,
+        locationName: locationNameToSave || '',
         creatorName,
       });
     }
@@ -470,8 +476,10 @@ export function useBodyParamsCard({
         waistCm:     toOptionalNum(form.waistCm),
         hipCm:       toOptionalNum(form.hipCm),
         recordedDate: form.recordedDate || undefined,
-        locationName: form.locationName || undefined,
+        locationName: locationNameToSave,
       };
+
+      debugLog('📍 [BodyParamsCard] saving Venue:', locationNameToSave);
 
       const card = isEditMode
         ? await updateBodyParamsCard(existingCard.id, payload)
@@ -500,7 +508,8 @@ export function useBodyParamsCard({
         waistCm:      pickSavedField(cardCore.waistCm, form.waistCm),
         hipCm:        pickSavedField(cardCore.hipCm, form.hipCm),
         recordedDate: pickSavedField(cardCore.recordedDate, form.recordedDate),
-        locationName: pickSavedField(cardCore.locationName, form.locationName),
+        // Prefer what we sent if API omits it (e.g. older deploy / missing column read).
+        locationName: pickSavedField(cardCore.locationName, locationNameToSave),
         creatorName,
       };
 
@@ -513,7 +522,7 @@ export function useBodyParamsCard({
     } finally {
       setIsSaving(false);
     }
-  }, [isValid, form, coachUserId, targetUserId, onSaveSuccess, onSaveStart, isEditMode, existingCard, user, bmrUserEdited]);
+  }, [isValid, form, coachUserId, targetUserId, onSaveSuccess, onSaveStart, isEditMode, existingCard, user, bmrUserEdited, externalVenue]);
 
   return {
     form, setField,

@@ -1,4 +1,9 @@
-import { resolveTeamSearchDisplayName, formatMemberSubtitle, filterMembers } from './teamSearchService';
+import {
+  resolveTeamSearchDisplayName,
+  formatMemberSubtitle,
+  filterMembers,
+  withDirectCoachCommunityIds,
+} from './teamSearchService';
 
 describe('resolveTeamSearchDisplayName', () => {
   const user = {
@@ -48,12 +53,43 @@ describe('formatMemberSubtitle', () => {
   });
 });
 
+describe('withDirectCoachCommunityIds', () => {
+  it('shows root coach CID on direct downline; a2 CID on a2 children', () => {
+    const members = withDirectCoachCommunityIds([
+      { userId: 10, userName: 'You', email: 'you@x.com', communityId: 'C0', isSelf: true },
+      { userId: 1, userName: 'a1', email: 'a1@x.com', communityId: null, coachId: 10 },
+      { userId: 2, userName: 'a2', email: 'a2@x.com', communityId: 'A2CID', coachId: 10 },
+      { userId: 21, userName: 'a2-child-1', email: 'c1@x.com', communityId: null, coachId: 2 },
+      { userId: 22, userName: 'a2-child-2', email: 'c2@x.com', communityId: 'OWN', coachId: 2 },
+      { userId: 3, userName: 'a3', email: 'a3@x.com', communityId: null, coachId: 10 },
+    ]);
+
+    const byId = Object.fromEntries(members.map((m) => [m.userId, m]));
+    expect(byId[1].directCoachCommunityId).toBe('C0');
+    expect(byId[2].directCoachCommunityId).toBe('C0');
+    expect(byId[3].directCoachCommunityId).toBe('C0');
+    expect(byId[21].directCoachCommunityId).toBe('A2CID');
+    expect(byId[22].directCoachCommunityId).toBe('A2CID');
+    expect(byId[10].directCoachCommunityId).toBeNull();
+  });
+});
+
 describe('filterMembers', () => {
   const members = [
-    { userId: 1, userName: 'Mohamed Yasheer', email: 'yasheer@gmail.com', communityId: 'WB12345' },
+    {
+      userId: 1,
+      userName: 'Mohamed Yasheer',
+      email: 'yasheer@gmail.com',
+      communityId: 'WB12345',
+      directCoachCommunityId: 'C0',
+    },
   ];
 
-  it('matches community id', () => {
+  it('matches own community id', () => {
     expect(filterMembers(members, 'wb12')).toHaveLength(1);
+  });
+
+  it('matches direct coach community id', () => {
+    expect(filterMembers(members, 'c0')).toHaveLength(1);
   });
 });
