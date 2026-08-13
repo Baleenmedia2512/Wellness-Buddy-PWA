@@ -29,13 +29,14 @@
 import logger from '../logger.js';
 import {
   generateContent,
+  reportAiCallTelemetry,
   imageInlinePart,
   SchemaType,
   MODEL_NAME,
   FALLBACK_MODEL_NAME,
 } from '../gemini/geminiClient.js';
 import { safeParseJson, validateShape } from '../gemini/safeJson.js';
-import { withEnterpriseRetry } from './RetryPolicy.js';
+import { withEnterpriseRetry, DEFAULT_TIMEOUT_MS } from './RetryPolicy.js';
 
 const SERVICE = 'gemini';
 
@@ -727,45 +728,14 @@ For any other food, use USDA FoodData Central.
 JSON only. No markdown.`;
 }
 
-/**
- * Returns true when the primary model should be abandoned in favour of the
- * fallback model.  Triggers on:
- *   1. Circuit breaker opened after N consecutive failures — the primary is
- *      saturated; bypass immediately without waiting for more retries.
- *   2. All retries exhausted with 503 / service-unavailable errors.
- *   3. All retries exhausted with 429 / quota-exceeded / rate-limit errors.
- *      Google's API returns 429 with "Resource has been exhausted" when the
- *      per-model quota is hit; switching to the fallback model (a separate
- *      quota bucket) is the correct recovery action.
- */
-function isPrimaryOverloadedError(err) {
-  if (!err) return false;
-  // Circuit opened for the primary → the primary service is considered down
-  if (err.code === 'CIRCUIT_OPEN') return true;
-  const status = Number(err.status);
-  // 502 = bad gateway (upstream Gemini infrastructure failure)
-  // 503 = service unavailable (overloaded)
-  // 429 = quota exceeded / rate limited (separate quota on fallback model)
-  if (status === 502 || status === 503 || status === 429) return true;
-  const msg = (err.message ?? '').toLowerCase();
-  return (
-    msg.includes('503')                       ||
-    msg.includes('service unavailable')       ||
-    msg.includes('high demand')               ||
-    msg.includes('429')                       ||
-    msg.includes('quota')                     ||
-    msg.includes('rate limit')                ||
-    msg.includes('resource has been exhausted') ||
-    msg.includes('too many requests')
-  );
-}
-
 // ── Internal call helper ──────────────────────────────────────────────────────
 
 /**
  * Call a Gemini model with enterprise retry + optional trace instrumentation.
- * On persistent 503 overload the call is automatically retried once on
- * FALLBACK_MODEL_NAME so callers remain resilient during peak load spikes.
+ *
+ * Flash→Pro escalation is owned by the frontend (orchestratorService Flash then Pro).
+ * This helper intentionally does NOT auto-switch to FALLBACK_MODEL_NAME on 503/429 —
+ * that previously caused 1 Flash + 2 Pro (backend Pro + frontend Pro) for one photo.
  *
  * @param {'classify'|'nutrition'|'unified'} configKey
  * @param {Array}   parts        [imagePart, promptString]
@@ -773,7 +743,7 @@ function isPrimaryOverloadedError(err) {
  * @param {object}  opts
  * @param {string}  opts.label
  * @param {import('./ObservabilityTracer.js').TraceContext|null} [opts.trace]
- * @param {string|null} [opts.modelOverride]  Internal: set by fallback path.
+ * @param {string|null} [opts.modelOverride]  Explicit model (e.g. Pro when frontend escalates).
  * @returns {Promise<{ rawText: string, attempts: number, latencyMs: number }>}
  */
 async function callModel(
@@ -782,78 +752,100 @@ async function callModel(
   schema,
   { label, trace = null, modelOverride = null },
 ) {
-  // The fallback model uses its own independent circuit breaker so an opened
-  // primary breaker does not also block the fallback.
+  // Pro (frontend escalation) uses a separate breaker so Flash failures do not
+  // also block an intentional Pro request.
   const circuitService = modelOverride
     ? `${SERVICE}-fallback`
     : SERVICE;
+
+  const modelName = modelOverride ?? MODEL_NAME;
+  const modelTier = modelOverride ? 'pro' : 'flash';
+  const callStart = Date.now();
+
+  logger.info('AIGateway.callModel: start', {
+    label,
+    model: modelName,
+    modelTier,
+    captureId: trace?.captureId ?? null,
+    traceId: trace?.traceId ?? null,
+  });
 
   let result, attempts, totalLatencyMs;
 
   try {
     ({ result, attempts, totalLatencyMs } = await withEnterpriseRetry(
-      () =>
-        generateContent(
+      async () => {
+        const { result: genResult, latencyMs } = await generateContent(
           configKey,
           parts,
           schema,
           modelOverride,
-          trace
-        ),
+          trace,
+        );
+        // Attach for post-timeout telemetry on the success path
+        genResult.__latencyMs = latencyMs;
+        return genResult;
+      },
       {
         label,
         service: circuitService,
-
-        // Primary model (Flash): 1 attempt only — frontend drives all retries.
-        // Previously 2 silently doubled wait time before the caller knew it
-        // failed. Retry budget: attempt 1 = Flash, attempt 2+ = Pro (see
-        // orchestratorService.js usePro logic).
-        //
-        // Fallback model (Pro): cap at 2 backend attempts.
-        // Each backend attempt has a 30 s hard timeout (DEFAULT_TIMEOUT_MS).
-        // 2 × 30 s = 60 s, which exactly fits the Vercel maxDuration for
-        // pages/api/ai/orchestrate.js. A third attempt would hit the 504.
-        ...(modelOverride ? { maxAttempts: 2 } : { maxAttempts: 1 }),
+        // One Gemini call per Vercel invocation (maxDuration 60s).
+        // Timeout covers the model call only — telemetry is reported after.
+        maxAttempts: 1,
+        timeoutMs: DEFAULT_TIMEOUT_MS,
       },
     ));
   } catch (err) {
-    // Primary model saturated, circuit open, or quota exceeded → try fallback once
-    if (!modelOverride && isPrimaryOverloadedError(err)) {
-      const status = Number(err.status);
+    const failStatus = err.code === 'TIMEOUT' ? 'TIMEOUT' : 'FAILED';
+    logger.warn('AIGateway.callModel: failed', {
+      label,
+      model: modelName,
+      modelTier,
+      captureId: trace?.captureId ?? null,
+      traceId: trace?.traceId ?? null,
+      status: failStatus,
+      errorCode: err.code ?? null,
+      httpStatus: err.status ?? null,
+      durationMs: Date.now() - callStart,
+      message: err.message,
+    });
 
-      const reason =
-        err.code === 'CIRCUIT_OPEN'
-          ? 'circuit_open'
-          : status === 502
-            ? '502_bad_gateway'
-            : (
-                status === 429 ||
-                (err.message ?? '').toLowerCase().includes('quota') ||
-                (err.message ?? '').toLowerCase().includes('rate limit') ||
-                (err.message ?? '').toLowerCase().includes('too many requests')
-              )
-              ? '429_quota_exceeded'
-              : '503_overload';
+    // Record failed/timed-out attempts so the token monitor still sees them.
+    // Fire-and-forget: must not delay the failure response path.
+    void reportAiCallTelemetry({
+      status: failStatus === 'TIMEOUT' ? 'FAILED' : 'FAILED',
+      modelOverride,
+      usage: {},
+      latency: err.latencyMs ?? totalLatencyMs ?? DEFAULT_TIMEOUT_MS,
+      errorMessage: err.code === 'TIMEOUT'
+        ? `TIMEOUT: ${err.message}`
+        : err.message,
+      trace,
+    });
 
-      logger.warn(
-        'AIGateway.callModel: primary model unavailable, switching to fallback',
-        {
-          label,
-          fallbackModel: FALLBACK_MODEL_NAME,
-          reason,
-          primaryError: err.message,
-        },
-      );
-
-      return callModel(configKey, parts, schema, {
-        label,
-        trace,
-        modelOverride: FALLBACK_MODEL_NAME,
-      });
-    }
-
+    // No backend Flash→Pro auto-fallback. Frontend owns escalation.
     throw err;
   }
+
+  // Telemetry OUTSIDE the attempt timeout — never races the model budget.
+  // Await briefly (sendMonitorTelemetry has its own 2s cap) so SUCCESS is usually
+  // persisted before the HTTP response returns, without being inside withTimeout.
+  await reportAiCallTelemetry({
+    status: 'SUCCESS',
+    modelOverride,
+    usage: result.response?.usageMetadata ?? {},
+    latency: result.__latencyMs ?? totalLatencyMs,
+    trace,
+  });
+
+  logger.info('AIGateway.callModel: success', {
+    label,
+    model: modelName,
+    modelTier,
+    captureId: trace?.captureId ?? null,
+    traceId: trace?.traceId ?? null,
+    durationMs: result.__latencyMs ?? totalLatencyMs,
+  });
 
   // Propagate retries into trace
   if (trace && attempts > 1) {

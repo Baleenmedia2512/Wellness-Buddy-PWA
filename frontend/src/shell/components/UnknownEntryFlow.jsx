@@ -267,8 +267,9 @@ export default function UnknownEntryFlow({
       }
 
       const file = base64ToImageFile(imageBase64);
-      // Do NOT pass captureId — avoids idempotency guard returning cached "other"
+      // Pass captureId + fresh retries handled inside analyzeImage (attempt>1).
       const detectedType = await analyzeImage(file, {
+        captureId: captureId ? String(captureId) : null,
         userId,
         userName,
         userEmail,
@@ -297,14 +298,22 @@ export default function UnknownEntryFlow({
 
       if (detectedType.type === 'food') {
         const analysis = detectedType.details;
-        await settleRetryCredit();
         if (!hasRecognizedFood(analysis)) {
+          if (creditsEnabled && !!reservationId) {
+            await releaseReservedAiCredit({
+              userId,
+              reservationId,
+              apiBaseUrl,
+              reason: 'unknown_entry_food_unrecognized',
+            });
+          }
           setRetrying(false);
           setStage('view');
           return;
         }
-        // Success: transition to AI review stage so the user can inspect and
-        // confirm the detected food before it is saved.
+        // Success: transition to AI review — charge after user confirms save
+        // would be ideal; charge here only once recognized food is ready for save.
+        await settleRetryCredit();
         setRetrying(false);
         setAiFood({
           analysisResult: buildAnalysisFromGeminiAnalysis(analysis),
