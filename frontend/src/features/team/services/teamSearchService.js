@@ -108,7 +108,7 @@ export async function fetchTeamMembers({ coachId, coachName, coachEmail, coachRo
 }
 
 /**
- * Case-insensitive name/email substring filter over the Active-only member list.
+ * Case-insensitive name/email/communityId substring filter over the Active-only member list.
  * Empty query returns [] (dropdown stays closed until the user types).
  */
 export function filterMembers(members, query) {
@@ -117,8 +117,22 @@ export function filterMembers(members, query) {
   return members.filter(
     (m) =>
       (m.userName || '').toLowerCase().includes(q) ||
-      (m.email || '').toLowerCase().includes(q),
+      (m.email || '').toLowerCase().includes(q) ||
+      String(m.communityId || '').toLowerCase().includes(q),
   );
+}
+
+/**
+ * Second line for team search / downline rows:
+ * "email | communityId", or whichever side is present (never an empty "|").
+ */
+export function formatMemberSubtitle(email, communityId) {
+  const mail = String(email || '').trim();
+  const cid = String(communityId || '').trim();
+  if (mail && cid) return `${mail} | ${cid}`;
+  if (mail) return mail;
+  if (cid) return cid;
+  return '';
 }
 
 /** Map the slim DB shape into the user-object shape the rest of the app expects. */
@@ -129,6 +143,7 @@ export function toSelectedUser(member) {
     name: member.userName,
     userName: member.userName,
     email: member.email,
+    communityId: member.communityId || null,
     role: member.role,
     isSelf: member.isSelf,
   };

@@ -564,6 +564,18 @@ const HierarchicalNode = ({
                         </span>
                       )}
                     </div>
+                    {/* Email | Community ID — downline identity line */}
+                    {(() => {
+                      const mail = String(node.userEmail || node.email || '').trim();
+                      const cid = String(node.communityId || '').trim();
+                      const subtitle = mail && cid ? `${mail} | ${cid}` : (mail || cid);
+                      if (!subtitle) return null;
+                      return (
+                        <div className="text-[10px] text-gray-500 mt-0.5 truncate" title={subtitle}>
+                          {subtitle}
+                        </div>
+                      );
+                    })()}
                     {/* Reports to - Coach and Co-Coach */}
                     {(node.uplineCoachName || node.uplineCoCoachName) && (
                       <div className="text-[10px] text-gray-500 mt-0.5">

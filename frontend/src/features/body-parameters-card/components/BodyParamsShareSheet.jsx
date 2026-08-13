@@ -34,7 +34,9 @@ const BodyParamsShareSheet = ({ isOpen, onClose, card, shareUrl, preCapCard, pre
   const firedRef          = useRef(false);
 
   const doShare = useCallback(async () => {
-    const caption = buildShareCaptionForImage(card?.name, shareUrl);
+    const coachName = card?.creatorName || card?.coachName || preCapCard?.creatorName || '';
+    const venue = card?.locationName || preCapCard?.locationName || '';
+    const caption = buildShareCaptionForImage(coachName, venue, shareUrl);
     try {
       const dataUrl = preCapRef.current;
       if (dataUrl) {
@@ -55,7 +57,7 @@ const BodyParamsShareSheet = ({ isOpen, onClose, card, shareUrl, preCapCard, pre
     } finally {
       onClose();
     }
-  }, [shareUrl, card, onClose]);
+  }, [shareUrl, card, preCapCard, onClose]);
 
   // Pre-capture when form data or saved card is available (web + native).
   useEffect(() => {

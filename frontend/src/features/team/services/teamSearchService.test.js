@@ -1,4 +1,4 @@
-import { resolveTeamSearchDisplayName } from './teamSearchService';
+import { resolveTeamSearchDisplayName, formatMemberSubtitle, filterMembers } from './teamSearchService';
 
 describe('resolveTeamSearchDisplayName', () => {
   const user = {
@@ -26,5 +26,34 @@ describe('resolveTeamSearchDisplayName', () => {
       userName: 'Adithya K',
       username: 'adhithya5518',
     })).toBe('Adithya K');
+  });
+});
+
+describe('formatMemberSubtitle', () => {
+  it('joins email and community id with a pipe', () => {
+    expect(formatMemberSubtitle('yasheer@gmail.com', 'WB12345'))
+      .toBe('yasheer@gmail.com | WB12345');
+  });
+
+  it('shows only community id when email is missing', () => {
+    expect(formatMemberSubtitle('', 'WB12345')).toBe('WB12345');
+  });
+
+  it('shows only email when community id is missing', () => {
+    expect(formatMemberSubtitle('yasheer@gmail.com', null)).toBe('yasheer@gmail.com');
+  });
+
+  it('never returns a bare pipe', () => {
+    expect(formatMemberSubtitle('  ', '  ')).toBe('');
+  });
+});
+
+describe('filterMembers', () => {
+  const members = [
+    { userId: 1, userName: 'Mohamed Yasheer', email: 'yasheer@gmail.com', communityId: 'WB12345' },
+  ];
+
+  it('matches community id', () => {
+    expect(filterMembers(members, 'wb12')).toHaveLength(1);
   });
 });

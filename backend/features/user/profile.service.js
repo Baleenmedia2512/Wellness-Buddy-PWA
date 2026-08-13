@@ -44,8 +44,9 @@ export async function getProfile({ email }) {
   const user = await repo.getProfile(email);
   if (!user) return notFound();
 
-  const [latestWeight, latestBodyMetricsCard, sponsorIdeal, latestWeightBodyFatResolved] = await Promise.all([
+  const [latestWeight, initialWeightRow, latestBodyMetricsCard, sponsorIdeal, latestWeightBodyFatResolved] = await Promise.all([
     repo.getLatestWeight(user.UserId),
+    repo.getInitialWeight(user.UserId),
     findLatestLinkedBodyMetricsCard(user.UserId),
     resolveSponsorAndIdealCoach(user.UserId, { viewerUserId: user.UserId }),
     repo.getLatestWeightBodyFat(user.UserId),
@@ -54,6 +55,7 @@ export async function getProfile({ email }) {
   const bodyMetrics = hasCoachRecordedBodyMetrics(bodyMetricsMapped) ? bodyMetricsMapped : null;
   const height = user.Height ? parseFloat(user.Height) : null;
   const latestWeightKg = latestWeight?.Weight ? parseFloat(latestWeight.Weight) : null;
+  const initialWeightKg = initialWeightRow?.Weight != null ? parseFloat(initialWeightRow.Weight) : null;
   const latestWeightBodyFat = hasValidBodyFatPercent(latestWeightBodyFatResolved)
     ? latestWeightBodyFatResolved
     : (latestWeight?.BodyFat != null ? parseFloat(latestWeight.BodyFat) : null);
@@ -129,6 +131,7 @@ export async function getProfile({ email }) {
         idealCoachName: sponsorIdeal.idealCoachName || null,
         profilePicSnooze: user.profile_pic_snooze || null,
         latestWeight: latestWeightKg,
+        initialWeight: Number.isFinite(initialWeightKg) ? initialWeightKg : null,
         latestWeightBodyFat: resolvedWeightBodyFat,
         bodyFat: resolvedWeightBodyFat,
         latestBmr,

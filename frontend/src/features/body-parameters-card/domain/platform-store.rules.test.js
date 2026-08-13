@@ -18,14 +18,24 @@ describe('platform-store.rules', () => {
   });
 
   describe('buildShareCaptionForImage', () => {
-    it('includes member first name and host-only app path (no https)', () => {
+    it('uses coach name and venue dynamically', () => {
       const text = buildShareCaptionForImage(
-        'Priya Sharma',
+        'Rahul Sharma',
+        'Coimbatore',
         'https://api.example.com/share',
       );
-      expect(text).toContain('Priya');
+      expect(text).toContain('Hi, this is Rahul.');
+      expect(text).toContain('fat camp in Coimbatore');
+      expect(text).toContain('body composition metrics here with');
       expect(text).toContain('api.example.com/share');
       expect(text).not.toContain('https://');
+    });
+
+    it('omits venue phrase when venue is empty', () => {
+      const text = buildShareCaptionForImage('Yasheer', '');
+      expect(text).toContain('Hi, this is Yasheer.');
+      expect(text).toContain('at the fat camp.');
+      expect(text).not.toContain('fat camp in ');
     });
   });
 

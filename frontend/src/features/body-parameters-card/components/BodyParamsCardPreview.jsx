@@ -438,6 +438,9 @@ const BodyParamsCardPreview = React.forwardRef(({ card, previousCard = null }, r
         <div style={{ background: '#fff', padding: '18px 22px 12px' }}>
 
           <InfoRow icon="📅" label="Date"     value={fmtDate(card.recordedDate)} />
+          {card.locationName ? (
+            <InfoRow icon="📍" label="Venue" value={card.locationName} />
+          ) : null}
           <InfoRow icon="👤" label="Name"     value={(card.name || '—').toUpperCase()} />
           <InfoRow icon="🎂" label="Age"      value={card.age ? card.age + ' Yrs' : '—'} />
           <InfoRow icon={<HeightIcon />} label="Height"   value={fmt(card.heightCm, ' cm')} />

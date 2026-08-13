@@ -406,6 +406,9 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
 
     // ⚡ Notify parent immediately with form data so it can start
     // pre-rendering + pre-capturing the card image in parallel with the API call.
+    const creatorName = String(
+      user?.userName || user?.name || user?.username || user?.displayName || ''
+    ).trim();
     if (onSaveStart) {
       onSaveStart({
         name:         form.name.trim(),
@@ -424,6 +427,7 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
         hipCm:        toOptionalNum(form.hipCm),
         recordedDate: form.recordedDate,
         locationName: form.locationName,
+        creatorName,
       });
     }
 
@@ -478,6 +482,7 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
         hipCm:        pickSavedField(cardCore.hipCm, form.hipCm),
         recordedDate: pickSavedField(cardCore.recordedDate, form.recordedDate),
         locationName: pickSavedField(cardCore.locationName, form.locationName),
+        creatorName,
       };
 
       setSavedCard(fullCard);

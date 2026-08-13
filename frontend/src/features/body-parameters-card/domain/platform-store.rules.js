@@ -37,20 +37,26 @@ export function buildOnboardingShareUrl(apiBaseUrl) {
 
 /**
  * Caption for WhatsApp when the body-parameters card IMAGE is the attachment.
- * Omits a full https:// URL so WhatsApp does not replace the image with an OG link card.
+ * Uses the creating coach's name and the card Venue (locationName).
  *
- * @param {string} memberName
- * @param {string|null} shareUrl - generic /app link (host/path only in caption)
+ * @param {string} coachName - coach who created the BCP
+ * @param {string} [venue] - venue / location entered on the card
+ * @param {string|null} [shareUrl] - optional app link (host/path only in caption)
  * @returns {string}
  */
-export function buildShareCaptionForImage(memberName, shareUrl) {
-  const firstName = memberName?.trim().split(/\s+/)[0] || 'there';
+export function buildShareCaptionForImage(coachName, venue, shareUrl) {
+  const shortName = String(coachName || '').trim().split(/\s+/).filter(Boolean)[0] || 'your coach';
+  const place = String(venue || '').trim();
+  const meetLine = place
+    ? `It was good to meet you at the fat camp in ${place}. I'm enclosing your body composition metrics here with.`
+    : `It was good to meet you at the fat camp. I'm enclosing your body composition metrics here with.`;
   const lines = [
-    `Hey ${firstName}! Your sponsor shared your body parameters.`,
-    'Install or open Wellness Valley app.',
+    `Hi, this is ${shortName}.`,
+    '',
+    meetLine,
   ];
   if (shareUrl) {
-    lines.push(shareUrl.replace(/^https?:\/\//i, ''));
+    lines.push('', String(shareUrl).replace(/^https?:\/\//i, ''));
   }
   return lines.join('\n');
 }
@@ -59,9 +65,10 @@ export function buildShareCaptionForImage(memberName, shareUrl) {
  * Build plain-text WhatsApp message (text-only fallback — no image).
  *
  * @param {string|null} shareUrl
- * @param {string} memberName
+ * @param {string} coachName
+ * @param {string} [venue]
  * @returns {string}
  */
-export function buildShareText(shareUrl, memberName) {
-  return buildShareCaptionForImage(memberName, shareUrl);
+export function buildShareText(shareUrl, coachName, venue) {
+  return buildShareCaptionForImage(coachName, venue, shareUrl);
 }

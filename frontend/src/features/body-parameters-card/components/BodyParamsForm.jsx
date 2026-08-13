@@ -3,7 +3,7 @@
  *
  * Modal form for creating a Body Parameters Card.
  * Pure presentational — all logic in useBodyParamsCard hook.
- * Fields: Date, Name, Age, Height, Phone, Gender, Weight, BMI, Fat%, BMR, Body Age, Chest, Waist, Hip.
+ * Fields: Date, Venue, Name, Age, Height, Phone, Gender, Weight, BMI, Fat%, BMR, Body Age, Chest, Waist, Hip.
  */
 import React, { useRef } from 'react';
 import { X, AlertCircle } from 'lucide-react';
@@ -82,6 +82,7 @@ const BodyParamsForm = ({ isOpen, onClose, user, selectedMember, onSaveSuccess, 
   const vm = useBodyParamsCard({ user, selectedMember, onSaveSuccess, existingCard, onSaveStart, isOpen });
 
   // Refs for all input fields
+  const venueRef = useRef(null);
   const phoneRef = useRef(null);
   const nameRef = useRef(null);
   const ageRef = useRef(null);
@@ -173,6 +174,16 @@ const BodyParamsForm = ({ isOpen, onClose, user, selectedMember, onSaveSuccess, 
             value={vm.form.recordedDate} 
             onChange={(v) => vm.setField('recordedDate', v)} 
             type="date"
+            onEnter={() => focusNextField(venueRef)}
+          />
+
+          {/* Venue — free-text location entered by coach (saved as locationName) */}
+          <InputField
+            label="Venue"
+            value={vm.form.locationName}
+            onChange={(v) => vm.setField('locationName', v)}
+            placeholder="e.g. Chennai"
+            inputRef={venueRef}
             onEnter={() => focusNextField(nameRef)}
           />
 

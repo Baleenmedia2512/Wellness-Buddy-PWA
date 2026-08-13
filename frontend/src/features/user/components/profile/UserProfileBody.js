@@ -6,7 +6,7 @@ import UserProfileBodyMetrics from './UserProfileBodyMetrics';
 import IdealWeightCards from './IdealWeightCards';
 import DietDropdown from './DietDropdown';
 
-const UserProfileBody = ({ isLoading, form, email, latestWeight, error, successMessage }) => (
+const UserProfileBody = ({ isLoading, form, email, latestWeight, initialWeight, error, successMessage }) => (
   <div className="p-6 space-y-5">
     {isLoading ? (
       <div className="flex items-center justify-center py-12">
@@ -28,7 +28,11 @@ const UserProfileBody = ({ isLoading, form, email, latestWeight, error, successM
           showBodyFat={form.needsBodyFat}
         />
         <UserProfileBodyMetrics bodyMetrics={form.bodyMetrics} />
-        <IdealWeightCards height={form.height} latestWeight={latestWeight} />
+        <IdealWeightCards
+          height={form.height}
+          latestWeight={latestWeight}
+          initialWeight={initialWeight}
+        />
         <DietDropdown value={form.dietType} onChange={form.setDietType} />
         {error && <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm font-medium">{error}</div>}
         {successMessage && (

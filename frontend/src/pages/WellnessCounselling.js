@@ -243,7 +243,9 @@ const WellnessCounselling = ({ user, onBack, tabVisitKey = 0, refreshKey = 0 }) 
     // Check current node
     if (
       node.userName?.toLowerCase().includes(lowerQuery) ||
-      node.userEmail?.toLowerCase().includes(lowerQuery)
+      node.userEmail?.toLowerCase().includes(lowerQuery) ||
+      node.email?.toLowerCase().includes(lowerQuery) ||
+      String(node.communityId || '').toLowerCase().includes(lowerQuery)
     ) {
       return true;
     }

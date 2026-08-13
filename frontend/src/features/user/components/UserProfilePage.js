@@ -46,6 +46,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
   const [profileImagePreview, setProfileImagePreview] = useState(null);
   const [profileImage, setProfileImage] = useState(null);
   const [latestWeight, setLatestWeight] = useState(null);
+  const [initialWeight, setInitialWeight] = useState(null);
   const [coachName, setCoachName] = useState('');
   const [idealCoachName, setIdealCoachName] = useState('');
   const [isLoading, setIsLoading] = useState(true);
@@ -102,6 +103,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
 
       form.reload(profileData);
       setLatestWeight(data?.latestWeight ? parseFloat(data.latestWeight) : null);
+      setInitialWeight(data?.initialWeight != null ? parseFloat(data.initialWeight) : null);
       setCoachName(
         (data?.sponsorName || data?.coachName)
           ? String(data.sponsorName || data.coachName).trim()
@@ -335,7 +337,11 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
                   showBodyFat={form.needsBodyFat}
                 />
                 <UserProfileBodyMetrics bodyMetrics={form.bodyMetrics} />
-                <IdealWeightCards height={form.height} latestWeight={latestWeight} />
+                <IdealWeightCards
+                  height={form.height}
+                  latestWeight={latestWeight}
+                  initialWeight={initialWeight}
+                />
                 <DietDropdown value={form.dietType} onChange={form.setDietType} />
                 <WeightModeSelector
                   height={form.height}

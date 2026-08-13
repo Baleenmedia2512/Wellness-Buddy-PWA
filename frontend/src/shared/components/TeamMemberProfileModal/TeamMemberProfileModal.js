@@ -154,6 +154,14 @@ const TeamMemberProfileModal = ({ isOpen, onClose, memberEmail, apiBaseUrl }) =>
                 }
                 highlight
               />
+              {/* Initial Weight — first upload, read-only */}
+              {profile.initialWeight != null && Number.isFinite(Number(profile.initialWeight)) && (
+                <ProfileRow
+                  icon={<span className="text-base">🏁</span>}
+                  label="Initial Weight"
+                  value={`${parseFloat(profile.initialWeight).toFixed(1)} kg`}
+                />
+              )}
               {/* Current Weight */}
               {profile.latestWeight && (
                 <ProfileRow
