@@ -125,13 +125,7 @@ const LoginEmailEntry = ({
       {errorMessage && (
         <p className="text-sm text-red-600 text-center">{errorMessage}</p>
       )}
-      <button
-        type="submit"
-        disabled={loading || !email}
-        className="w-full flex items-center justify-center px-4 xs:px-6 py-3 xs:py-3.5 bg-gradient-to-r from-green-400 to-teal-400 text-white rounded-xl shadow-sm hover:shadow-md hover:from-green-500 hover:to-teal-500 transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-400 disabled:opacity-50 min-h-[48px]"
-      >
-        {loading ? <span className="flex items-center"><Spinner />Sending OTP...</span> : 'Send OTP'}
-      </button>
+      
     </form>
   );
 };
