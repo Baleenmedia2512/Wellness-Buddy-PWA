@@ -5,11 +5,11 @@
  *
  * Display:
  *   Line 1 — User Name
- *   Line 2 — Email | direct coach's Community ID (omit empty sides / bare "|")
+ *   Line 2 — Email | member's own Community ID (omit empty sides / bare "|")
  */
 import React from 'react';
 import { User } from 'lucide-react';
-import { formatMemberSubtitle } from '../services/teamSearchService';
+import { formatMemberSubtitle, subtitleCommunityId } from '../services/teamSearchService';
 
 export default function TeamSearchResults({
   dropdownRef, loading, suggestions,
@@ -30,7 +30,7 @@ export default function TeamSearchResults({
           {suggestions.map((member, index) => {
             const subtitle = formatMemberSubtitle(
               member.email,
-              member.isSelf ? member.communityId : member.directCoachCommunityId,
+              subtitleCommunityId(member),
             );
             return (
             <li key={`${member.userId}-${index}`}>

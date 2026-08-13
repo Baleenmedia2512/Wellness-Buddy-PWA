@@ -152,8 +152,19 @@ export async function fetchTeamMembers({
 }
 
 /**
+ * Community ID shown on a search / downline row.
+ * Always the person's own ID (including downline coaches).
+ * Hidden on the searching coach's own "Me" row — never the direct coach's ID.
+ */
+export function subtitleCommunityId(member) {
+  if (!member || member.isSelf) return null;
+  const cid = String(member.communityId || '').trim();
+  return cid || null;
+}
+
+/**
  * Case-insensitive name/email/communityId substring filter over the Active-only member list.
- * Matches own Community ID and direct-coach Community ID (the one shown in the subtitle).
+ * Community ID matches the value shown in the subtitle (the member's own ID).
  * Empty query returns [] (dropdown stays closed until the user types).
  */
 export function filterMembers(members, query) {
@@ -163,15 +174,14 @@ export function filterMembers(members, query) {
     (m) =>
       (m.userName || '').toLowerCase().includes(q) ||
       (m.email || '').toLowerCase().includes(q) ||
-      String(m.communityId || '').toLowerCase().includes(q) ||
-      String(m.directCoachCommunityId || '').toLowerCase().includes(q),
+      String(subtitleCommunityId(m) || '').toLowerCase().includes(q),
   );
 }
 
 /**
  * Second line for team search / downline rows:
  * "email | communityId", or whichever side is present (never an empty "|").
- * Callers pass the *direct coach's* Community ID for downline rows.
+ * Callers pass the *member's own* Community ID (not the viewing coach's).
  */
 export function formatMemberSubtitle(email, communityId) {
   const mail = String(email || '').trim();
