@@ -21,6 +21,8 @@ import {
   filterRowsBySearch,
   buildWellnessScoreReportPaginationMeta,
   toWellnessScoreReportListSummary,
+  sortWellnessScoreReportRows,
+  SORT_KEYS,
   TEAM_FILTERS,
 } from './domain/wellness-score-report.pagination.js';
 import { computeWeightDifferenceKg } from './domain/wellness-score-report.weight.js';
@@ -33,11 +35,11 @@ const ROSTER_CACHE_PREFIX = 'reports:wellness-score-roster:v4:';
 const RANK_CACHE_TTL_MS = 20_000;
 const RANK_CACHE_PREFIX = 'reports:wellness-score-rank:v4:';
 const RESPONSE_CACHE_TTL_MS = 20_000;
-const RESPONSE_CACHE_PREFIX = 'reports:wellness-score-resp:v4:';
+const RESPONSE_CACHE_PREFIX = 'reports:wellness-score-resp:v5:';
 const NAME_CACHE_TTL_MS = 120_000;
 const NAME_CACHE_PREFIX = 'reports:wellness-score-name:v3:';
 const WEIGHT_CACHE_TTL_MS = 60_000;
-const WEIGHT_CACHE_PREFIX = 'reports:wellness-score-weight:v2:';
+const WEIGHT_CACHE_PREFIX = 'reports:wellness-score-weight:v3:';
 
 const EMPTY_LABEL = Object.freeze({
   sponsorName: null,
@@ -213,7 +215,8 @@ function mergePageRow(rosterRow, pageRow, sponsorByUser) {
 }
 
 /**
- * Latest/previous weights as of scoreDate, with per-user+date memory cache.
+ * Latest/previous weights for scoreDate, with per-user+date memory cache.
+ * Exact-day semantics: missing day log → todayWeight null (UI "—").
  * @param {number[]} pageIds
  * @param {string} scoreDate YYYY-MM-DD
  */
@@ -247,23 +250,6 @@ async function getWeightsCached(pageIds, scoreDate) {
 }
 
 /**
- * Warm yesterday page-1 response in background after Today (non-blocking).
- */
-function warmYesterdayReport(rawQuery, todayYmd) {
-  try {
-    const yesterday = shiftDateYmd(todayYmd, -1, IANA_IST);
-    void getWellnessScoreReport({
-      ...rawQuery,
-      date: yesterday,
-      page: '1',
-      exportAll: undefined,
-    }).catch(() => {});
-  } catch {
-    /* ignore warm failures */
-  }
-}
-
-/**
  * @param {object} rawQuery
  * @returns {Promise<{ httpStatus: number, body: object }>}
  */
@@ -274,6 +260,8 @@ async function buildWellnessScoreReport(rawQuery) {
     limit,
     search,
     teamFilter,
+    sort,
+    sortDir,
     exportAll,
     scoreDate: requestedDate,
   } = validateWellnessScoreReport(rawQuery);
@@ -302,39 +290,120 @@ async function buildWellnessScoreReport(rawQuery) {
     userIds,
   });
 
-  const pageScoreRows = exportAll
-    ? ranked
-    : ranked.slice(offset, offset + pageLimit);
-
+  const scoreById = new Map(ranked.map((row) => [Number(row.userId), row]));
   const rosterById = new Map(
     searched.map((row) => [Number(row.userId), row]),
   );
 
-  const pageIds = pageScoreRows.map((row) => Number(row.userId));
-  const labelMembers = pageScoreRows.map((row) => {
-    const rosterRow = rosterById.get(Number(row.userId));
-    return {
-      userId: row.userId,
-      coachId: rosterRow?.coachId ?? null,
-    };
-  });
+  const needsWeightSort =
+    sort === SORT_KEYS.WEIGHT || sort === SORT_KEYS.VS_PREVIOUS;
+  const needsSponsorSort = sort === SORT_KEYS.SPONSOR;
+
+  // Fast path: default score DESC — rank then attach page-only weights/sponsors.
+  const useScoreFastPath =
+    sort === SORT_KEYS.SCORE
+    && String(sortDir).toLowerCase() === 'desc'
+    && !needsWeightSort
+    && !needsSponsorSort;
+
+  /** @type {object[]} */
+  let orderedRosterRows;
+
+  if (useScoreFastPath) {
+    orderedRosterRows = ranked
+      .map((scoreRow) => rosterById.get(Number(scoreRow.userId)))
+      .filter(Boolean);
+  } else {
+    /** @type {object[]} */
+    let enriched = searched.map((rosterRow) => {
+      const scoreRow = scoreById.get(Number(rosterRow.userId)) || {};
+      return {
+        ...rosterRow,
+        percentage: scoreRow.percentage ?? null,
+        totalEarned: scoreRow.totalEarned ?? null,
+        totalPossible: scoreRow.totalPossible ?? null,
+        computedAt: scoreRow.computedAt ?? null,
+        todayWeight: null,
+        previousWeight: null,
+        difference: null,
+        sponsor: null,
+      };
+    });
+
+    if (needsSponsorSort) {
+      const sponsorByUser = await resolveReportLabelsFast(
+        enriched.map((row) => ({ userId: row.userId, coachId: row.coachId ?? null })),
+      );
+      enriched = enriched.map((row) => ({
+        ...row,
+        sponsor: sponsorByUser.get(String(row.userId))?.sponsorName || null,
+      }));
+    }
+
+    if (needsWeightSort) {
+      const weightMap = await getWeightsCached(
+        enriched.map((row) => Number(row.userId)),
+        scoreDate,
+      );
+      enriched = enriched.map((row) => {
+        const weights = weightMap.get(Number(row.userId)) || {};
+        const todayWeight = weights.todayWeight ?? null;
+        const previousWeight = weights.previousWeight ?? null;
+        return {
+          ...row,
+          todayWeight,
+          previousWeight,
+          difference: computeWeightDifferenceKg(todayWeight, previousWeight),
+        };
+      });
+    }
+
+    orderedRosterRows = sortWellnessScoreReportRows(enriched, sort, sortDir);
+  }
+
+  const pageRosterRows = exportAll
+    ? orderedRosterRows
+    : orderedRosterRows.slice(offset, offset + pageLimit);
+
+  const pageIds = pageRosterRows.map((row) => Number(row.userId));
+  const labelMembers = pageRosterRows.map((row) => ({
+    userId: row.userId,
+    coachId: row.coachId ?? null,
+  }));
+
+  // Fetch page weights/sponsors unless already loaded for sorting.
+  const weightsAlreadyLoaded = needsWeightSort;
+  const sponsorsAlreadyLoaded = needsSponsorSort;
 
   const [weightMap, sponsorByUser] = await Promise.all([
-    getWeightsCached(pageIds, scoreDate),
-    resolveReportLabelsFast(labelMembers),
+    weightsAlreadyLoaded
+      ? Promise.resolve(new Map(pageRosterRows.map((row) => [
+        Number(row.userId),
+        {
+          todayWeight: row.todayWeight ?? null,
+          previousWeight: row.previousWeight ?? null,
+          lastUpdated: null,
+        },
+      ])))
+      : getWeightsCached(pageIds, scoreDate),
+    sponsorsAlreadyLoaded
+      ? Promise.resolve(new Map(pageRosterRows.map((row) => [
+        String(row.userId),
+        { sponsorName: row.sponsor ?? null },
+      ])))
+      : resolveReportLabelsFast(labelMembers),
   ]);
 
-  const records = pageScoreRows
-    .map((pageRow) => {
-      const rosterRow = rosterById.get(Number(pageRow.userId));
-      if (!rosterRow) return null;
-      const weights = weightMap.get(Number(pageRow.userId)) || {};
+  const records = pageRosterRows
+    .map((rosterRow) => {
+      const scoreRow = scoreById.get(Number(rosterRow.userId)) || {};
+      const weights = weightMap.get(Number(rosterRow.userId)) || {};
       return mergePageRow(
         rosterRow,
         {
-          ...pageRow,
-          todayWeight: weights.todayWeight ?? null,
-          previousWeight: weights.previousWeight ?? null,
+          ...scoreRow,
+          todayWeight: weights.todayWeight ?? rosterRow.todayWeight ?? null,
+          previousWeight: weights.previousWeight ?? rosterRow.previousWeight ?? null,
         },
         sponsorByUser,
       );
@@ -350,6 +419,8 @@ async function buildWellnessScoreReport(rawQuery) {
         teamScopeCounts,
         teamFilter: teamFilter || TEAM_FILTERS.DIRECT,
         scoreDate,
+        sort,
+        sortDir,
         page: pagination.page,
         limit: pagination.limit,
         totalRecords: pagination.totalRecords,
@@ -360,6 +431,23 @@ async function buildWellnessScoreReport(rawQuery) {
       pagination,
     },
   };
+}
+
+/**
+ * Warm yesterday page-1 response in background after Today (non-blocking).
+ */
+function warmYesterdayReport(rawQuery, todayYmd) {
+  try {
+    const yesterday = shiftDateYmd(todayYmd, -1, IANA_IST);
+    void getWellnessScoreReport({
+      ...rawQuery,
+      date: yesterday,
+      page: '1',
+      exportAll: undefined,
+    }).catch(() => {});
+  } catch {
+    /* ignore warm failures */
+  }
 }
 
 /**
@@ -375,6 +463,8 @@ export async function getWellnessScoreReport(rawQuery) {
     limit,
     search,
     teamFilter,
+    sort,
+    sortDir,
     exportAll,
     scoreDate: requestedDate,
   } = validateWellnessScoreReport(rawQuery);
@@ -386,6 +476,8 @@ export async function getWellnessScoreReport(rawQuery) {
     scoreDate,
     teamFilter,
     search,
+    sort,
+    sortDir,
     exportAll ? 'all' : page,
     exportAll ? 'all' : limit,
   ].join(':');

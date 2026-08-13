@@ -1,5 +1,5 @@
 // CompleteProfilePage — unified onboarding screen (before activity / coach / OTP).
-// Collects: name, email, gender, height, diet preference, profile photo.
+// Collects: name, email, gender, height, diet, weight, body fat, profile photo.
 import React, { useEffect, useState, useCallback } from 'react';
 import { User } from 'lucide-react';
 import { fetchProfile, saveProfile } from '../services/profileService';
@@ -7,16 +7,27 @@ import useImageCropper from '../hooks/useImageCropper';
 import useFaceDetection from '../hooks/useFaceDetection';
 import CropOverlay from './shared/CropOverlay';
 import CompleteProfileChecklist from './complete/CompleteProfileChecklist';
-import CompleteRequiredFields from './complete/CompleteRequiredFields';
+import CompleteRequiredFields, {
+  MIN_WEIGHT_KG,
+  MAX_WEIGHT_KG,
+} from './complete/CompleteRequiredFields';
 import CompletePictureSection from './complete/CompletePictureSection';
 import {
   hasValidProfileName,
   hasValidProfileGender,
+  hasValidBodyFatPercent,
   VALID_GENDERS,
+  MIN_BODY_FAT_PCT,
+  MAX_BODY_FAT_PCT,
 } from '../domain/profileCompleteness';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const API = process.env.REACT_APP_API_BASE_URL;
+
+function isValidCurrentWeight(value) {
+  const n = parseFloat(value);
+  return Number.isFinite(n) && n >= MIN_WEIGHT_KG && n <= MAX_WEIGHT_KG;
+}
 
 const CompleteProfilePage = ({ user, apiBaseUrl, onComplete, showPictureSection = true }) => {
   const [name, setName] = useState('');
@@ -26,6 +37,10 @@ const CompleteProfilePage = ({ user, apiBaseUrl, onComplete, showPictureSection 
   const [showGender, setShowGender] = useState(true);
   const [height, setHeight] = useState('');
   const [dietType, setDietType] = useState('');
+  const [currentWeight, setCurrentWeight] = useState('');
+  const [showCurrentWeight, setShowCurrentWeight] = useState(false);
+  const [bodyFat, setBodyFat] = useState('');
+  const [showBodyFat, setShowBodyFat] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -46,9 +61,10 @@ const CompleteProfilePage = ({ user, apiBaseUrl, onComplete, showPictureSection 
       const loginEmail = (user?.email || user?.Email || '').trim();
       try {
         if (!loginEmail) {
-          // Phone-OTP user with no email yet — empty form, email editable.
           if (mounted) {
             setEmailLocked(false);
+            setShowCurrentWeight(true);
+            setShowBodyFat(true);
             setLoading(false);
           }
           return;
@@ -60,6 +76,8 @@ const CompleteProfilePage = ({ user, apiBaseUrl, onComplete, showPictureSection 
         if (!profile) {
           setEmail(loginEmail);
           setEmailLocked(true);
+          setShowCurrentWeight(true);
+          setShowBodyFat(true);
           return;
         }
 
@@ -79,7 +97,6 @@ const CompleteProfilePage = ({ user, apiBaseUrl, onComplete, showPictureSection 
             ? String(profile.gender).trim()
             : String(bpcGender).trim();
           setGender(resolved);
-          // Hide gender field when BPC already recorded it and team gender empty / same.
           if (hasValidProfileGender(null, profile.bodyMetrics) && !profile.gender) {
             setShowGender(false);
           }
@@ -90,6 +107,26 @@ const CompleteProfilePage = ({ user, apiBaseUrl, onComplete, showPictureSection 
 
         if (typeof profile.dietType === 'string' && profile.dietType.trim()) {
           setDietType(profile.dietType);
+        }
+
+        const hasWeight = profile.latestWeight != null
+          && Number.isFinite(Number(profile.latestWeight));
+        const needsWeight = profile.needsCurrentWeight === true || !hasWeight;
+        setShowCurrentWeight(needsWeight);
+        if (hasWeight) setCurrentWeight(String(profile.latestWeight));
+
+        // Body fat is stored on the same weight row — ask when missing from weight/BPC.
+        const hasExistingSource = hasValidBodyFatPercent(profile.bodyFat)
+          || hasValidBodyFatPercent(profile.latestWeightBodyFat)
+          || hasValidBodyFatPercent(profile.bodyMetrics?.fatPercent);
+        setShowBodyFat(!hasExistingSource);
+        if (hasExistingSource) {
+          const existingBf = hasValidBodyFatPercent(profile.latestWeightBodyFat)
+            ? profile.latestWeightBodyFat
+            : (hasValidBodyFatPercent(profile.bodyFat)
+              ? profile.bodyFat
+              : profile.bodyMetrics?.fatPercent);
+          if (existingBf != null) setBodyFat(String(existingBf));
         }
 
         if (profile.profileImage && (
@@ -123,10 +160,13 @@ const CompleteProfilePage = ({ user, apiBaseUrl, onComplete, showPictureSection 
   const genderValid = !showGender || hasValidProfileGender(gender, null);
   const heightValid = !Number.isNaN(heightNum) && heightNum >= 50 && heightNum <= 250;
   const dietValid = !!dietType;
+  const currentWeightValid = !showCurrentWeight || isValidCurrentWeight(currentWeight);
+  const bodyFatValid = !showBodyFat || hasValidBodyFatPercent(bodyFat);
   const pictureValid = !showPictureSection
     || hasExistingPhoto
     || !!profileImage;
-  const formValid = nameValid && emailValid && genderValid && heightValid && dietValid && pictureValid;
+  const formValid = nameValid && emailValid && genderValid && heightValid && dietValid
+    && currentWeightValid && bodyFatValid && pictureValid;
 
   const checks = [
     { label: 'Name', done: nameValid },
@@ -134,6 +174,8 @@ const CompleteProfilePage = ({ user, apiBaseUrl, onComplete, showPictureSection 
     ...(showGender ? [{ label: 'Gender', done: genderValid }] : []),
     { label: 'Height', done: heightValid },
     { label: 'Diet Preference', done: dietValid },
+    ...(showCurrentWeight ? [{ label: 'Current Weight', done: currentWeightValid }] : []),
+    ...(showBodyFat ? [{ label: 'Body Fat', done: bodyFatValid }] : []),
   ];
   if (showPictureSection) {
     checks.push({ label: 'Profile Picture', done: pictureValid });
@@ -147,6 +189,12 @@ const CompleteProfilePage = ({ user, apiBaseUrl, onComplete, showPictureSection 
       else if (!genderValid) setError('Please select Male or Female.');
       else if (!heightValid) setError('Please enter a valid height (50 - 250 cm).');
       else if (!dietValid) setError('Please select a diet preference.');
+      else if (showCurrentWeight && !currentWeightValid) {
+        setError(`Please enter current weight (${MIN_WEIGHT_KG}–${MAX_WEIGHT_KG} kg).`);
+      }
+      else if (showBodyFat && !bodyFatValid) {
+        setError(`Please enter body fat (${MIN_BODY_FAT_PCT}–${MAX_BODY_FAT_PCT}%).`);
+      }
       else if (showPictureSection && !pictureValid) {
         setError('Profile picture is required.');
       }
@@ -157,7 +205,6 @@ const CompleteProfilePage = ({ user, apiBaseUrl, onComplete, showPictureSection 
       const uid = user?.id || user?.UserId;
       const hadEmail = !!(user?.email || user?.Email);
 
-      // Phone users: assign email + name via save-email before profile update.
       if (!hadEmail) {
         if (!uid) {
           setError('Unable to identify your account. Please re-login.');
@@ -188,6 +235,12 @@ const CompleteProfilePage = ({ user, apiBaseUrl, onComplete, showPictureSection 
       };
       if (showGender && gender) payload.gender = gender;
       if (showPictureSection && profileImage) payload.profileImage = profileImage;
+      if (showCurrentWeight && isValidCurrentWeight(currentWeight)) {
+        payload.currentWeight = parseFloat(currentWeight);
+      }
+      if (showBodyFat && hasValidBodyFatPercent(bodyFat)) {
+        payload.bodyFat = parseFloat(bodyFat);
+      }
 
       await saveProfile(payload);
 
@@ -198,6 +251,10 @@ const CompleteProfilePage = ({ user, apiBaseUrl, onComplete, showPictureSection 
         dietType,
         gender: showGender ? gender : undefined,
         profileImage: profileImage || previewUrl || undefined,
+        currentWeight: showCurrentWeight && isValidCurrentWeight(currentWeight)
+          ? parseFloat(currentWeight)
+          : undefined,
+        bodyFat: showBodyFat && hasValidBodyFatPercent(bodyFat) ? parseFloat(bodyFat) : undefined,
       });
     } catch (e) {
       setError(e.message || 'Failed to save. Please try again.');
@@ -205,9 +262,11 @@ const CompleteProfilePage = ({ user, apiBaseUrl, onComplete, showPictureSection 
       setSaving(false);
     }
   }, [
-    formValid, nameValid, emailValid, genderValid, heightValid, dietValid, pictureValid,
+    formValid, nameValid, emailValid, genderValid, heightValid, dietValid,
+    currentWeightValid, bodyFatValid, pictureValid,
     showPictureSection, profileImage, user, apiBaseUrl,
     trimmedName, trimmedEmail, heightNum, dietType, showGender, gender, previewUrl, onComplete,
+    showCurrentWeight, currentWeight, showBodyFat, bodyFat,
   ]);
 
   return (
@@ -243,6 +302,14 @@ const CompleteProfilePage = ({ user, apiBaseUrl, onComplete, showPictureSection 
             heightValid={heightValid}
             dietType={dietType}
             setDietType={setDietType}
+            currentWeight={currentWeight}
+            setCurrentWeight={setCurrentWeight}
+            showCurrentWeight={showCurrentWeight}
+            currentWeightValid={currentWeightValid}
+            bodyFat={bodyFat}
+            setBodyFat={setBodyFat}
+            showBodyFat={showBodyFat}
+            bodyFatValid={bodyFatValid}
           />
           {error && (
             <div className="p-3 bg-red-50 border border-red-200 rounded-lg">

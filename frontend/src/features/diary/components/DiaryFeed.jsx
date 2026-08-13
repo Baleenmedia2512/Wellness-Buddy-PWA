@@ -354,6 +354,8 @@ export default function DiaryFeed({
   analyzingCaptureIds = null,
   pendingCaptureMeta = null,
   onOwnerTimezoneChange = null,
+  /** Called when diary entries load — used for background meal detail prefetch. */
+  onFoodEntriesLoaded = null,
 }) {
   const pendingUndoList = useMemo(() => {
     if (Array.isArray(pendingUndos)) return pendingUndos.filter((u) => u?.entryId != null);
@@ -427,6 +429,11 @@ export default function DiaryFeed({
       onOwnerTimezoneChange(ownerTimezoneIana);
     }
   }, [ownerTimezoneIana, onOwnerTimezoneChange]);
+
+  useEffect(() => {
+    if (loading || !data?.entries || typeof onFoodEntriesLoaded !== 'function') return;
+    onFoodEntriesLoaded(data.entries);
+  }, [loading, data?.entries, onFoodEntriesLoaded]);
 
   /** In-flight captures scoped to this diary owner (coach uploads must not leak). */
   const scopedPendingCaptureMeta = useMemo(

@@ -13,6 +13,7 @@ import {
 } from '../services/wellnessScore.api';
 import WellnessScoreSetupRow from './WellnessScoreSetupRow';
 import { useTimeWindows } from '../hooks/useTimeWindows';
+import { useNutritionRefreshOptional } from '../../../shared/context/NutritionRefreshContext';
 
 /**
  * Admin / developer Wellness Score Setup — enterprise layout.
@@ -24,6 +25,7 @@ export default function WellnessScoreSetup({ user, apiBaseUrl, onBack }) {
   const [savedFlash, setSavedFlash] = useState(false);
   const [error, setError] = useState(null);
   const timeWindows = useTimeWindows();
+  const nutritionRefresh = useNutritionRefreshOptional();
 
   useEffect(() => {
     let cancelled = false;
@@ -77,6 +79,8 @@ export default function WellnessScoreSetup({ user, apiBaseUrl, onBack }) {
       if (data?.parameters) setConfig(data.parameters);
       setSavedFlash(true);
       setTimeout(() => setSavedFlash(false), 2500);
+      // Sync Home carousel + open score sheet without requiring a page reload.
+      nutritionRefresh?.triggerRefresh?.({ immediate: true, source: 'wellness-score-setup-saved' });
     } catch (err) {
       setError(err?.message || 'Failed to save');
     } finally {

@@ -10,17 +10,37 @@ function legacyIstWallNow() {
 }
 
 const TABLE = 'weight_records_table';
+const ACTIVE_WEIGHT_FILTER = 'IsDeleted.is.null,IsDeleted.eq.false,IsDeleted.eq.0';
+const WEIGHT_ROW_SELECT =
+  'ID, UserId, Weight, Bmi, BodyFat, MuscleMass, Bmr, WeightImageBase64, CreatedAt, UpdatedAt, CaptureID, City, Village, CenterName, NutritionCenterId, AttendanceType, Latitude, Longitude, ReverseProgressReview';
+
+function isMissingIsDeletedColumn(error) {
+  const msg = String(error?.message || error || '');
+  return /IsDeleted/i.test(msg) && /column|does not exist|not find|unknown/i.test(msg);
+}
+
+async function withOptionalIsDeletedFilter(buildQuery) {
+  let result = await buildQuery(true);
+  if (result.error && isMissingIsDeletedColumn(result.error)) {
+    console.warn('[weight.repository] IsDeleted missing — retrying without soft-delete filter');
+    result = await buildQuery(false);
+  }
+  return result;
+}
 
 export async function findPreviousEntry(userId, excludeId = null) {
   const supabase = getSupabaseClient();
-  let q = supabase
-    .from(TABLE)
-    .select('ID, Weight, CreatedAt')
-    .eq('UserId', parseInt(userId))
-    .or('IsDeleted.is.null,IsDeleted.eq.0')
-    .order('CreatedAt', { ascending: false });
-  if (excludeId) q = q.neq('ID', excludeId);
-  const { data } = await q.limit(1).maybeSingle();
+  const run = (withDeletedFilter) => {
+    let q = supabase
+      .from(TABLE)
+      .select('ID, Weight, CreatedAt')
+      .eq('UserId', parseInt(userId));
+    if (withDeletedFilter) q = q.or(ACTIVE_WEIGHT_FILTER);
+    q = q.order('CreatedAt', { ascending: false });
+    if (excludeId) q = q.neq('ID', excludeId);
+    return q.limit(1).maybeSingle();
+  };
+  const { data } = await withOptionalIsDeletedFilter(run);
   return data || null;
 }
 
@@ -41,15 +61,16 @@ export async function findEntryById(entryId) {
  */
 export async function findLatestBodyFat(userId) {
   const supabase = getSupabaseClient();
-  const { data, error } = await supabase
-    .from(TABLE)
-    .select('BodyFat')
-    .eq('UserId', parseInt(userId))
-    .not('BodyFat', 'is', null)
-    .or('IsDeleted.is.null,IsDeleted.eq.0')
-    .order('CreatedAt', { ascending: false })
-    .limit(1)
-    .maybeSingle();
+  const run = (withDeletedFilter) => {
+    let q = supabase
+      .from(TABLE)
+      .select('BodyFat')
+      .eq('UserId', parseInt(userId))
+      .not('BodyFat', 'is', null);
+    if (withDeletedFilter) q = q.or(ACTIVE_WEIGHT_FILTER);
+    return q.order('CreatedAt', { ascending: false }).limit(1).maybeSingle();
+  };
+  const { data, error } = await withOptionalIsDeletedFilter(run);
   if (error || !data?.BodyFat) return null;
   const bf = parseFloat(data.BodyFat);
   return Number.isFinite(bf) ? bf : null;
@@ -66,10 +87,11 @@ export async function syncBmrToTeamTable(userId, bmrValue) {
 
 export async function insertEntry(payload) {
   const supabase = getSupabaseClient();
+  // Explicit column list avoids RETURNING IsDeleted when that column is absent in some envs.
   const { data, error } = await supabase
     .from(TABLE)
     .insert(payload)
-    .select()
+    .select(WEIGHT_ROW_SELECT)
     .single();
   if (error) throw error;
   return data;
@@ -84,14 +106,16 @@ export async function updateEntry(entryId, userId, updates) {
   const safeUpdates = Object.fromEntries(
     Object.entries(updates).filter(([key]) => !IMMUTABLE_TIMESTAMP_FIELDS.has(key)),
   );
-  const { data, error } = await supabase
-    .from(TABLE)
-    .update({ ...safeUpdates, UpdatedAt: legacyIstWallNow() })
-    .eq('ID', entryId)
-    .eq('UserId', parseInt(userId))
-    .or('IsDeleted.is.null,IsDeleted.eq.0')
-    .select()
-    .single();
+  const run = (withDeletedFilter) => {
+    let q = supabase
+      .from(TABLE)
+      .update({ ...safeUpdates, UpdatedAt: legacyIstWallNow() })
+      .eq('ID', entryId)
+      .eq('UserId', parseInt(userId));
+    if (withDeletedFilter) q = q.or(ACTIVE_WEIGHT_FILTER);
+    return q.select(WEIGHT_ROW_SELECT).single();
+  };
+  const { data, error } = await withOptionalIsDeletedFilter(run);
   if (error) throw error;
   return data;
 }
@@ -101,56 +125,66 @@ export async function listHistory(userId, includeImage, { limit = null, offset =
   const selectFields = includeImage
     ? 'ID, UserId, Weight, Bmi, BodyFat, MuscleMass, Bmr, WeightImageBase64, CreatedAt'
     : 'ID, UserId, Weight, Bmi, BodyFat, MuscleMass, Bmr, CreatedAt';
-  let query = supabase
-    .from(TABLE)
-    .select(selectFields)
-    .eq('UserId', userId)
-    .or('IsDeleted.is.null,IsDeleted.eq.0')
-    .order('CreatedAt', { ascending: false });
-  if (Number.isFinite(limit) && limit > 0) {
-    const from = Number.isFinite(offset) && offset >= 0 ? offset : 0;
-    query = query.range(from, from + limit - 1);
-  }
-  const { data, error } = await query;
+  const run = (withDeletedFilter) => {
+    let query = supabase
+      .from(TABLE)
+      .select(selectFields)
+      .eq('UserId', userId);
+    if (withDeletedFilter) query = query.or(ACTIVE_WEIGHT_FILTER);
+    query = query.order('CreatedAt', { ascending: false });
+    if (Number.isFinite(limit) && limit > 0) {
+      const from = Number.isFinite(offset) && offset >= 0 ? offset : 0;
+      query = query.range(from, from + limit - 1);
+    }
+    return query;
+  };
+  const { data, error } = await withOptionalIsDeletedFilter(run);
   if (error) throw error;
   return data || [];
 }
 
 export async function listLatestImages(userId, count = 10) {
   const supabase = getSupabaseClient();
-  const { data, error } = await supabase
-    .from(TABLE)
-    .select('ID, WeightImageBase64')
-    .eq('UserId', userId)
-    .or('IsDeleted.is.null,IsDeleted.eq.0')
-    .order('CreatedAt', { ascending: false })
-    .limit(count);
+  const run = (withDeletedFilter) => {
+    let q = supabase
+      .from(TABLE)
+      .select('ID, WeightImageBase64')
+      .eq('UserId', userId);
+    if (withDeletedFilter) q = q.or(ACTIVE_WEIGHT_FILTER);
+    return q.order('CreatedAt', { ascending: false }).limit(count);
+  };
+  const { data, error } = await withOptionalIsDeletedFilter(run);
   if (error) throw error;
   return data || [];
 }
 
 export async function listAllWeightsForStats(userId) {
   const supabase = getSupabaseClient();
-  const { data, error } = await supabase
-    .from(TABLE)
-    .select('Weight, CreatedAt')
-    .eq('UserId', userId)
-    .or('IsDeleted.is.null,IsDeleted.eq.0')
-    .order('CreatedAt', { ascending: false });
+  const run = (withDeletedFilter) => {
+    let q = supabase
+      .from(TABLE)
+      .select('Weight, CreatedAt')
+      .eq('UserId', userId);
+    if (withDeletedFilter) q = q.or(ACTIVE_WEIGHT_FILTER);
+    return q.order('CreatedAt', { ascending: false });
+  };
+  const { data, error } = await withOptionalIsDeletedFilter(run);
   if (error) throw error;
   return data || [];
 }
 
 export async function getImageById(userId, id) {
   const supabase = getSupabaseClient();
-  const { data, error } = await supabase
-    .from(TABLE)
-    .select('ID, WeightImageBase64')
-    .eq('UserId', userId)
-    .eq('ID', id)
-    .or('IsDeleted.is.null,IsDeleted.eq.0')
-    .limit(1)
-    .maybeSingle();
+  const run = (withDeletedFilter) => {
+    let q = supabase
+      .from(TABLE)
+      .select('ID, WeightImageBase64')
+      .eq('UserId', userId)
+      .eq('ID', id);
+    if (withDeletedFilter) q = q.or(ACTIVE_WEIGHT_FILTER);
+    return q.limit(1).maybeSingle();
+  };
+  const { data, error } = await withOptionalIsDeletedFilter(run);
   if (error) throw error;
   return data || null;
 }

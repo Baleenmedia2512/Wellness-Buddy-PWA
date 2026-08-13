@@ -21,7 +21,11 @@
  *   triggerRefresh({ immediate: true, source: 'meal-edit' });
  */
 import React, { createContext, useContext, useState, useCallback, useRef, startTransition } from 'react';
-import { recordDashboardActivity, shouldRefreshHomeDashboard } from '../services/homeDashboardActivity';
+import {
+  invalidateWellnessScoreSnapshot,
+  recordDashboardActivity,
+  shouldRefreshHomeDashboard,
+} from '../services/homeDashboardActivity';
 import { STALE_PENDING_MS } from '../../features/diary/utils/stalePending';
 
 const NutritionRefreshContext = createContext(null);
@@ -140,6 +144,8 @@ export function NutritionRefreshProvider({ children }) {
 
     // Async activity log: durable watermark for "did anything change?"
     recordDashboardActivity(source);
+    // Drop sheet paint cache so reopen cannot restore a pre-save total.
+    invalidateWellnessScoreSnapshot();
 
     if (process.env.NODE_ENV !== 'production') {
       // Use the functional-update form below, so we do NOT need refreshKey
