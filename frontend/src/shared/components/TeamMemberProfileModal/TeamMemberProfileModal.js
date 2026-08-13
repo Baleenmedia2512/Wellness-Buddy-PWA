@@ -130,6 +130,13 @@ const TeamMemberProfileModal = ({ isOpen, onClose, memberEmail, apiBaseUrl }) =>
                 label="Email"
                 value={profile.email || '—'}
               />
+              {profile.communityId ? (
+                <ProfileRow
+                  icon={<User className="h-4 w-4 text-green-600" />}
+                  label="Community ID"
+                  value={String(profile.communityId)}
+                />
+              ) : null}
               <ProfileRow
                 icon={<Ruler className="h-4 w-4 text-green-600" />}
                 label="Height"

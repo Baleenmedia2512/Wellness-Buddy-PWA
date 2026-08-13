@@ -567,6 +567,7 @@ const LIST_SUMMARY_COLS = [
   'weight_kg',
   'bmi',
   'recorded_date',
+  'location_name',
   'created_at',
   'created_by',
 ].join(', ');
@@ -614,6 +615,7 @@ function mapCardSummary(card, phone) {
     weightKg: card.weight_kg,
     bmi: card.bmi,
     recordedDate: card.recorded_date,
+    locationName: card.location_name || null,
     createdAt: card.created_at,
     createdBy: card.created_by,
   };

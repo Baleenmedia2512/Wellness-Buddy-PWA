@@ -75,12 +75,19 @@ const BodyParamsCardTile = memo(function BodyParamsCardTile({ card, onEdit }) {
           </div>
         </div>
 
-        <div className="flex items-center justify-between text-xs text-gray-500 pt-2 border-t border-gray-100">
-          <span>{card.gender}</span>
-          <span className="text-right">
-            {card.recordedDate ? format(new Date(card.recordedDate), 'MMM d, yyyy') : 'N/A'}
-            {card.locationName ? ` · ${card.locationName}` : ''}
-          </span>
+        <div className="pt-2 border-t border-gray-100 space-y-1">
+          <div className="flex items-center justify-between text-xs text-gray-500">
+            <span>{card.gender || '—'}</span>
+            <span>
+              Date:{' '}
+              {card.recordedDate ? format(new Date(card.recordedDate), 'd MMM yyyy') : 'N/A'}
+            </span>
+          </div>
+          {card.locationName ? (
+            <p className="text-xs text-gray-600 truncate">
+              Venue: <span className="font-medium text-gray-800">{card.locationName}</span>
+            </p>
+          ) : null}
         </div>
       </div>
     </div>

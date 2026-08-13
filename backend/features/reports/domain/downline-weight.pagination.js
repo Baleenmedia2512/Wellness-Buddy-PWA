@@ -204,7 +204,12 @@ export function filterRowsBySearch(rows, searchNormalized) {
   const list = Array.isArray(rows) ? rows : [];
   if (!searchNormalized) return list;
   const q = searchNormalized;
-  return list.filter((row) => String(row?.userName || '').toLowerCase().includes(q));
+  return list.filter((row) => {
+    const name = String(row?.userName || '').toLowerCase();
+    const email = String(row?.email || '').toLowerCase();
+    const communityId = String(row?.communityId || '').toLowerCase();
+    return name.includes(q) || email.includes(q) || communityId.includes(q);
+  });
 }
 
 /**
@@ -253,6 +258,8 @@ export function toDownlineWeightListSummary(row) {
   return {
     userId: row.userId,
     userName: row.userName,
+    email: row.email ?? null,
+    communityId: row.communityId ?? null,
     currentWeight,
     idealMin,
     idealMax,

@@ -822,7 +822,14 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
                       onClick={() => setShowMemberProfile(true)}
                       className="text-blue-600 active:text-green-600 hover:underline"
                     >
-                      {`Viewing ${selectedMember.userName}'s data`}
+                      {(() => {
+                        const mail = String(selectedMember.email || '').trim();
+                        const cid = String(selectedMember.communityId || '').trim();
+                        const subtitle = mail && cid ? `${mail} | ${cid}` : (mail || cid);
+                        return subtitle
+                          ? subtitle
+                          : `Viewing ${selectedMember.userName}'s data`;
+                      })()}
                     </button>
                   )
                   : 'Track your wellness journey'
