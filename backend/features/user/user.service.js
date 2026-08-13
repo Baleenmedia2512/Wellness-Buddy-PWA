@@ -8,6 +8,7 @@
 export { getProfile, updateProfile, snoozeProfilePic, deleteAccount } from './profile.service.js';
 export { saveGoogleUser } from './google-auth.service.js';
 export { lookupUser } from './lookup.service.js';
+export { verifyUserSession } from './verify-session.service.js';
 export { skipSetup } from './setup.service.js';
 export { getStatus } from './status.service.js';
 export { getContext } from './context.service.js';

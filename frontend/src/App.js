@@ -98,7 +98,7 @@ import {
   initializeBackButton,
   cleanupBackButton,
 } from "./shared/utils/backButtonHandler";
-import { getUserId, clearUserIdCache } from "./shared/services/userIdentity";
+import { getUserId, clearUserIdCache, verifyAndAttachDbUserId, verifyAccountSession } from "./shared/services/userIdentity";
 import { getVersionString } from "./config/version";
 import { getApiBaseUrl } from "./config/api.config";
 import {
@@ -2119,6 +2119,8 @@ function WellnessValleyApp() {
 
   // Add a ref to track if sign-out is in progress
   const signOutInProgress = useRef(false);
+  const handleSignOutRef = useRef(null);
+  const revokeDeletedAccountSessionRef = useRef(null);
 
   // Add a ref to track if image processing is in progress (prevents React StrictMode double-calls)
   const imageProcessingInProgress = useRef(false);
@@ -2155,7 +2157,27 @@ function WellnessValleyApp() {
         statusCheckInProgress.current = true;
 
         const userEmail = user.email || user.Email;
-        if (!userEmail) return true;
+        if (!userEmail) {
+          const phone = user.phone || user.PhoneNumber || null;
+          const cachedId = user.id || user.UserId || Session.getDbUserId() || null;
+          if (phone || cachedId) {
+            const verified = await verifyAccountSession({
+              userId: cachedId,
+              phone: phone || undefined,
+            });
+            if (verified.userNotFound) {
+              setIsUserActive(false);
+              await revokeDeletedAccountSessionRef.current?.();
+              return false;
+            }
+            if (verified.ok && verified.userId) {
+              user.id = verified.userId;
+              user.UserId = verified.userId;
+              Session.setDbUserId(verified.userId);
+            }
+          }
+          return true;
+        }
 
         // Phase 3b: HTTP + response mapping moved into shared/services/auth/userSetup.
         // Fail-open semantics preserved by the helper (network errors ? 'active').
@@ -2168,8 +2190,9 @@ function WellnessValleyApp() {
         authFsm.send({ type: authFsm.E.USER_STATUS_RESOLVED, result, role });
 
         if (result === "userNotFound") {
-          setShowUserNotFoundModal(true);
+          setShowUserNotFoundModal(false);
           setIsUserActive(false);
+          await revokeDeletedAccountSessionRef.current?.();
           return false;
         }
 
@@ -3233,28 +3256,14 @@ function WellnessValleyApp() {
       }
 
       if (user) {
-        // Get database UserId if not already attached
-        if (!user.id) {
-          // Warm-start fast path: reuse the cached DB userId to avoid a
-          // network round-trip on every app open for returning users.
-          const cachedId = Session.getDbUserId();
-          if (cachedId) {
-            user.id = cachedId;
-            debugLog(
-              "? [Auth State] Restored database UserId from cache:",
-              user.id,
-            );
-          } else {
-            const dbUserId = await getUserId(user);
-            if (dbUserId) {
-              user.id = dbUserId;
-              Session.setDbUserId(dbUserId);
-              debugLog(
-                "? [Auth State] Attached database UserId to user object:",
-                user.id,
-              );
-            }
-          }
+        const attachResult = await verifyAndAttachDbUserId(user);
+        if (attachResult.userNotFound) {
+          await revokeDeletedAccountSessionRef.current?.();
+          return;
+        }
+        if (attachResult.ok && attachResult.user) {
+          user.id = attachResult.user.id;
+          user.UserId = attachResult.user.id;
         }
 
         // Store user email in localStorage for API calls
@@ -3441,17 +3450,15 @@ function WellnessValleyApp() {
           try {
             const parsedUser = JSON.parse(otpUserRaw);
 
-            // Get database UserId if not already attached
-            if (!parsedUser.id) {
-              const dbUserId = await getUserId(parsedUser);
-              if (dbUserId) {
-                parsedUser.id = dbUserId;
-                Session.setDbUserId(dbUserId);
-                debugLog(
-                  "? [OTP Restore] Attached database UserId to user object:",
-                  parsedUser.id,
-                );
-              }
+            // Verify account still exists before trusting cached otpUser / dbUserId.
+            const attachResult = await verifyAndAttachDbUserId(parsedUser);
+            if (attachResult.userNotFound) {
+              await revokeDeletedAccountSessionRef.current?.();
+              setPostAuthBridge(false);
+              return;
+            }
+            if (attachResult.ok && attachResult.user) {
+              Object.assign(parsedUser, attachResult.user);
             }
 
             // Store user email in localStorage for API calls
@@ -3568,18 +3575,16 @@ function WellnessValleyApp() {
     otpCacheRestoredRef.current = false; // run exactly once
     (async () => {
       try {
-        // Attach DB userId if not yet present
-        if (!user.id) {
-          const cachedId = Session.getDbUserId();
-          if (cachedId) {
-            user.id = cachedId;
-          } else {
-            const dbId = await getUserId(user);
-            if (dbId) {
-              user.id = dbId;
-              Session.setDbUserId(dbId);
-            }
-          }
+        // Verify session before trusting cached ids (hard-deleted accounts).
+        const attachResult = await verifyAndAttachDbUserId(user);
+        if (attachResult.userNotFound) {
+          await revokeDeletedAccountSessionRef.current?.();
+          return;
+        }
+        if (attachResult.ok && attachResult.user) {
+          user.id = attachResult.user.id;
+          user.UserId = attachResult.user.id;
+          setUser({ ...user, id: attachResult.user.id, UserId: attachResult.user.id });
         }
         // Status check ? shows inactive modal if account was deactivated.
         await checkUserStatus(user, isInactiveReactivationFlow);
@@ -6667,6 +6672,12 @@ function WellnessValleyApp() {
         signOutInProgress.current = false;
       }, 3000);
     }
+  };
+
+  handleSignOutRef.current = handleSignOut;
+  revokeDeletedAccountSessionRef.current = async () => {
+    setShowUserNotFoundModal(false);
+    await handleSignOut();
   };
 
   const handleOtpVerified = async (isNewUser = false) => {
