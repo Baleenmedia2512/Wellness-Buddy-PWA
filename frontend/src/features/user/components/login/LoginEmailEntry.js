@@ -71,53 +71,7 @@ const LoginEmailEntry = ({
             </button>
           )}
         </div>
-        <div className="flex w-full rounded-lg border border-gray-200 focus-within:ring-2 focus-within:ring-green-400 focus-within:border-transparent transition-all duration-300 overflow-hidden">
-          <div className="flex items-center bg-gray-50 border-r border-gray-200 flex-shrink-0">
-            {ios && (
-              <CountryFlagIcon code={selectedCountry.code} className="w-5 h-4 ml-2" />
-            )}
-            <select
-              aria-label="Country code"
-              value={countryDial}
-              onChange={(e) => setCountryDial && setCountryDial(e.target.value)}
-              className="bg-transparent px-2 py-3 text-sm text-gray-700 focus:outline-none cursor-pointer"
-              style={{ minWidth: ios ? '72px' : '90px' }}
-            >
-              {COUNTRY_CODES.map((c) => (
-                <option key={`${c.code}-${c.dial}`} value={c.dial}>
-                  {ios ? c.dial : `${c.flag} ${c.dial}`}
-                </option>
-              ))}
-            </select>
-          </div>
-          <NativeInput
-            ref={inputRef}
-            id="recipient"
-            type="tel"
-            inputMode="numeric"
-            pattern="[0-9]*"
-            autoComplete="off"
-            name="tel"
-            value={email}
-            onChange={(e) => {
-              // Strip any non-numeric characters (except leading +) so only
-              // digits reach the normalizer. This matches the E.164 expectation
-              // in contactIdentifier.normalizePhone.
-              const raw = e.target.value;
-              const cleaned = raw.replace(/[^\d+]/g, '');
-              setEmail(cleaned);
-            }}
-            onPaste={(e) => {
-              e.preventDefault();
-              const pasted = (e.clipboardData || window.clipboardData).getData('text');
-              setEmail(pasted.replace(/[^\d+]/g, ''));
-            }}
-            required
-            disabled={loading}
-            placeholder="Enter mobile number"
-            className="flex-1 px-4 py-3 focus:outline-none text-base min-w-0"
-          />
-        </div>
+       
         <p className="mt-1.5 text-xs text-gray-500">
           We&apos;ll send a 6-digit code via SMS to verify your number.
         </p>
