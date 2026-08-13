@@ -19,7 +19,7 @@ import AIClient from "ai-token-monitor";
 // bundled chunk lives under .next/server/chunks, so that path becomes
 // /vercel/path0/package.json and throws ENOENT. Keep fallback in sync with
 // backend/package.json "version".
-const APP_VERSION = process.env.npm_package_version || '3.4.0';
+const APP_VERSION = process.env.npm_package_version || '3.4.4';
 
 // Hardcoded enum since the SDK doesn't export it
 const ANALYSIS_MODULES = {
