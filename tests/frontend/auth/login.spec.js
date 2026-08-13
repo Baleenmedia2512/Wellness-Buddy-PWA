@@ -2,8 +2,15 @@ const { test, expect } = require('@playwright/test');
 
 const TEST_PHONE = '7695834209';
 const TEST_OTP = '123456';
+
 const TEST_EMAIL = 'existinguser@test.com';
 const NEW_USER_EMAIL = 'newuser@test.com';
+
+// ============================================================
+// One real authenticated state for the entire login.spec.js run
+// ============================================================
+
+let realAuthenticatedStorage = null;
 
 /**
  * Common OTP mocks.
@@ -337,6 +344,75 @@ async function performOtpLogin(page, phone = TEST_PHONE) {
   }
 }
 test.describe('Login', () => {
+
+
+// ============================================================
+// Reuse authenticated state without sending another OTP
+// ============================================================
+
+async function restoreAuthenticatedState(page, {
+  isNewUser,
+  email = '',
+}) {
+
+  if (!realAuthenticatedStorage) {
+    throw new Error(
+      'Real authenticated state was not created by beforeAll.'
+    );
+  }
+
+  const storedOtpUser =
+    JSON.parse(
+      realAuthenticatedStorage.otpUser || '{}'
+    );
+
+  const restoredUser = {
+    ...storedOtpUser,
+
+    isNewUser,
+
+    email,
+    phone: `+91${TEST_PHONE}`,
+
+    UserId:
+      storedOtpUser.UserId || 999999,
+
+    id:
+      storedOtpUser.id ||
+      storedOtpUser.UserId ||
+      999999,
+
+    username:
+      isNewUser
+        ? 'newuser'
+        : 'existinguser',
+
+    consentRequired:
+      isNewUser,
+  };
+
+  await page.addInitScript(
+    ({ isOtpVerified, otpUser }) => {
+
+      localStorage.setItem(
+        'isOtpVerified',
+        isOtpVerified
+      );
+
+      localStorage.setItem(
+        'otpUser',
+        JSON.stringify(otpUser)
+      );
+
+    },
+    {
+      isOtpVerified:
+        realAuthenticatedStorage.isOtpVerified,
+
+      otpUser: restoredUser,
+    }
+  );
+}
 
   test('AUTH-001 login page is displayed', async ({ page }) => {
 
@@ -946,1175 +1022,1214 @@ test('AUTH-018 successful login stores authenticated user state', async ({ page 
 
 });
 
-async function mockSendOtp(page) {
-  await page.route('**/api/auth/send-otp', async route => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({
-        success: true,
-      }),
-    });
-  });
-}
+});
 
-async function enterOtp(page) {
+// ============================================================
+// POST-LOGIN FLOWS
+//
+// IMPORTANT:
+// Every test performs the REAL UI login flow.
+//
+// /api/auth/send-otp      -> mocked
+// /api/auth/verify-otp    -> mocked
+//
+// Therefore:
+// - NO real SMS
+// - NO OTP provider cost
+// - REAL React OTP success handling
+// - REAL consent/profile/home routing
+// ============================================================
+
+test.describe('Post-login flows', () => {
+
+  test.describe.configure({
+    mode: 'serial',
+    retries: 0,
+  });
+
+
+  // ============================================================
+  // Shared helper
+  // ============================================================
+async function loginWithMockedOtp(
+  page,
+  {
+    isNewUser,
+    email = '',
+    userId = 999999,
+  }
+) {
+
+  // ==========================================================
+  // Mock SEND OTP
+  //
+  // NO SMS is sent.
+  // ==========================================================
+
+  await page.route(
+    '**/api/auth/send-otp',
+    async route => {
+
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+
+        body: JSON.stringify({
+          success: true,
+        }),
+      });
+
+    }
+  );
+
+
+  // ==========================================================
+  // Mock VERIFY OTP
+  //
+  // IMPORTANT:
+  // The post-login flow requires the FULL user object.
+  // ==========================================================
+
+  await page.route(
+    '**/api/auth/verify-otp',
+    async route => {
+
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+
+        body: JSON.stringify({
+
+          success: true,
+
+          message:
+            'OTP verified successfully',
+
+          isNewUser,
+
+          user: {
+
+            id:
+              userId,
+
+            UserId:
+              userId,
+
+            username:
+              isNewUser
+                ? 'newuser'
+                : 'existinguser',
+
+            email,
+
+            phone:
+              '+917695834209',
+
+            status:
+              'Active',
+
+            consentRequired:
+              isNewUser,
+
+          },
+
+        }),
+      });
+
+    }
+  );
+
+
+  // ==========================================================
+  // Open login
+  // ==========================================================
+
+  await page.goto('/');
+
+
+  // ==========================================================
+  // Enter mobile number
+  // ==========================================================
+
   await expect(
-    page.getByText('Enter OTP', { exact: true })
+    page.getByLabel('Mobile Number')
+  ).toBeVisible();
+
+
+  await page
+    .getByLabel('Mobile Number')
+    .fill(TEST_PHONE);
+
+
+  // ==========================================================
+  // Send OTP
+  // ==========================================================
+
+  await page
+    .getByRole('button', {
+      name: 'Send OTP',
+    })
+    .click();
+
+
+  // ==========================================================
+  // OTP screen
+  // ==========================================================
+
+  await expect(
+    page.getByText(
+      'Enter OTP',
+      {
+        exact: true,
+      }
+    )
   ).toBeVisible({
     timeout: 15000,
   });
 
-  const otpInputs = page.locator('input[type="tel"]');
 
-  await expect(otpInputs).toHaveCount(6, {
-    timeout: 15000,
-  });
+  const otpInputs =
+    page.locator(
+      'input[type="tel"]'
+    );
 
-  const otp = '123456';
 
-  for (let i = 0; i < otp.length; i++) {
-    await otpInputs.nth(i).fill(otp[i]);
+  await expect(
+    otpInputs
+  ).toHaveCount(6);
+
+
+  // ==========================================================
+  // Enter OTP
+  // ==========================================================
+
+  for (
+    let i = 0;
+    i < TEST_OTP.length;
+    i++
+  ) {
+
+    await otpInputs
+      .nth(i)
+      .fill(TEST_OTP[i]);
+
   }
+
+
+  // ==========================================================
+  // Wait for the actual application authentication handling
+  // ==========================================================
 
   await expect
     .poll(
-      async () =>
-        await page.evaluate(() =>
-          localStorage.getItem('isOtpVerified')
-        ),
+      async () => {
+
+        return await page.evaluate(() => ({
+
+          isOtpVerified:
+            localStorage.getItem(
+              'isOtpVerified'
+            ),
+
+          otpUser:
+            localStorage.getItem(
+              'otpUser'
+            ),
+
+        }));
+
+      },
       {
         timeout: 15000,
+
+        intervals:
+          [200, 500, 1000],
       }
     )
-    .toBe('true');
-}
-
-// ============================================================
-// Shared helper for AUTH-020 through AUTH-023
-// ============================================================
-
-async function completeOtpLogin(page, {
-  isNewUser,
-  consentRequired,
-  userId = 999999,
-  email = '',
-}) {
-
-  // ----------------------------------------------------------
-  // Send OTP is intentionally NOT mocked.
-  //
-  // We want to exercise the real /api/auth/send-otp endpoint.
-  // ----------------------------------------------------------
-
-  // ----------------------------------------------------------
-  // Only verify-otp is controlled so this test can explicitly
-  // represent an existing user or a new user.
-  // ----------------------------------------------------------
-
-  await page.route('**/api/auth/verify-otp', async route => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({
-        success: true,
-        message: 'OTP verified successfully',
-        isNewUser,
-
-        user: {
-          id: userId,
-          UserId: userId,
-          username: isNewUser ? 'newuser' : 'existinguser',
-          email,
-          phone: '+917695834209',
-          status: 'Active',
-          consentRequired,
-        },
-      }),
-    });
-  });
-
-  // ----------------------------------------------------------
-  // Open login
-  // ----------------------------------------------------------
-
-  await page.goto('/');
-
-  // ----------------------------------------------------------
-  // Enter phone number
-  // ----------------------------------------------------------
-
-  await page
-    .getByLabel('Mobile Number')
-    .fill('7695834209');
-
-  // ----------------------------------------------------------
-  // Send OTP using the REAL backend
-  // ----------------------------------------------------------
-
-  await page
-    .getByRole('button', {
-      name: 'Send OTP',
-    })
-    .click();
-
-  // ----------------------------------------------------------
-  // OTP screen
-  // ----------------------------------------------------------
-
-  await expect(
-    page.getByText('Enter OTP', {
-      exact: true,
-    })
-  ).toBeVisible();
-
-  const otpInputs = page.locator(
-    'input[type="tel"]'
-  );
-
-  await expect(
-    otpInputs
-  ).toHaveCount(6);
-
-  // ----------------------------------------------------------
-  // Enter OTP
-  // ----------------------------------------------------------
-
-  const otp = '123456';
-
-  for (let i = 0; i < otp.length; i++) {
-    await otpInputs
-      .nth(i)
-      .fill(otp[i]);
-  }
-
-  // ----------------------------------------------------------
-  // Wait for the application's success message.
-  //
-  // This is a better synchronization point than simply
-  // waiting for localStorage.
-  // ----------------------------------------------------------
-
-  await expect(
-    page.getByText(
-      'OTP verified successfully!',
-      {
-        exact: true,
-      }
-    )
-  ).toBeVisible();
-
-  // ----------------------------------------------------------
-  // Confirm the application stored authentication state.
-  // ----------------------------------------------------------
-
-  await expect
-    .poll(async () => {
-      return await page.evaluate(() => {
-        const raw = localStorage.getItem('otpUser');
-
-        if (!raw) {
-          return null;
-        }
-
-        try {
-          return JSON.parse(raw);
-        } catch {
-          return null;
-        }
-      });
-    })
     .toMatchObject({
-      isNewUser,
+      isOtpVerified:
+        'true',
     });
 
-  await expect
-    .poll(async () => {
-      return await page.evaluate(() =>
-        localStorage.getItem('isOtpVerified')
-      );
-    })
-    .toBe('true');
-}
 
-
-// ============================================================
-// AUTH-020
-// New user -> Consent Form
-// ============================================================
-// ============================================================
-// Shared helper for AUTH-020 through AUTH-023
-// ============================================================
-
-async function completeOtpLogin(page, {
-  isNewUser,
-  consentRequired,
-  userId = 999999,
-  email = '',
-}) {
-
-  // ----------------------------------------------------------
-  // Send OTP is intentionally NOT mocked.
+  // ==========================================================
+  // Verify that the application stored the user classification.
   //
-  // We want to exercise the real /api/auth/send-otp endpoint.
-  // ----------------------------------------------------------
-
-  // ----------------------------------------------------------
-  // Only verify-otp is controlled so this test can explicitly
-  // represent an existing user or a new user.
-  // ----------------------------------------------------------
-
-  await page.route('**/api/auth/verify-otp', async route => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({
-        success: true,
-        message: 'OTP verified successfully',
-        isNewUser,
-
-        user: {
-          id: userId,
-          UserId: userId,
-          username: isNewUser ? 'newuser' : 'existinguser',
-          email,
-          phone: '+917695834209',
-          status: 'Active',
-          consentRequired,
-        },
-      }),
-    });
-  });
-
-  // ----------------------------------------------------------
-  // Open login
-  // ----------------------------------------------------------
-
-  await page.goto('/');
-
-  // ----------------------------------------------------------
-  // Enter phone number
-  // ----------------------------------------------------------
-
-  await page
-    .getByLabel('Mobile Number')
-    .fill('7695834209');
-
-  // ----------------------------------------------------------
-  // Send OTP using the REAL backend
-  // ----------------------------------------------------------
-
-  await page
-    .getByRole('button', {
-      name: 'Send OTP',
-    })
-    .click();
-
-  // ----------------------------------------------------------
-  // OTP screen
-  // ----------------------------------------------------------
-
-  await expect(
-    page.getByText('Enter OTP', {
-      exact: true,
-    })
-  ).toBeVisible();
-
-  const otpInputs = page.locator(
-    'input[type="tel"]'
-  );
-
-  await expect(
-    otpInputs
-  ).toHaveCount(6);
-
-  // ----------------------------------------------------------
-  // Enter OTP
-  // ----------------------------------------------------------
-
-  const otp = '123456';
-
-  for (let i = 0; i < otp.length; i++) {
-    await otpInputs
-      .nth(i)
-      .fill(otp[i]);
-  }
-
-  // ----------------------------------------------------------
-  // Wait for the application's success message.
-  //
-  // This is a better synchronization point than simply
-  // waiting for localStorage.
-  // ----------------------------------------------------------
-
-  await expect(
-    page.getByText(
-      'OTP verified successfully!',
-      {
-        exact: true,
-      }
-    )
-  ).toBeVisible();
-
-  // ----------------------------------------------------------
-  // Confirm the application stored authentication state.
-  // ----------------------------------------------------------
+  // We don't require an exact otpUser string because the
+  // application's shape may contain additional fields.
+  // ==========================================================
 
   await expect
-    .poll(async () => {
-      return await page.evaluate(() => {
-        const raw = localStorage.getItem('otpUser');
+    .poll(
+      async () => {
 
-        if (!raw) {
-          return null;
-        }
+        return await page.evaluate(() => {
 
-        try {
-          return JSON.parse(raw);
-        } catch {
-          return null;
-        }
-      });
-    })
-    .toMatchObject({
-      isNewUser,
-    });
+          const raw =
+            localStorage.getItem(
+              'otpUser'
+            );
 
-  await expect
-    .poll(async () => {
-      return await page.evaluate(() =>
-        localStorage.getItem('isOtpVerified')
-      );
-    })
-    .toBe('true');
-}
+          if (!raw) {
+            return null;
+          }
 
+          try {
+            return JSON.parse(raw);
+          } catch {
+            return null;
+          }
 
-// ============================================================
-// AUTH-020
-// New user -> Consent Form
-// ============================================================
-
-test('AUTH-020 new user is shown consent form after login', async ({ page }) => {
-
-  // ----------------------------------------------------------
-  // A new user must still be considered as requiring consent.
-  //
-  // The application also performs a real GET /api/user/consent
-  // after OTP. We control only that state.
-  // ----------------------------------------------------------
-
-  await page.route(
-    '**/api/user/consent*',
-    async route => {
-
-      if (route.request().method() === 'GET') {
-        await route.fulfill({
-          status: 200,
-          contentType: 'application/json',
-          body: JSON.stringify({
-            success: true,
-            consentRequired: true,
-            consentAccepted: false,
-          }),
         });
 
-        return;
-      }
-
-      await route.continue();
-    }
-  );
-
-  await completeOtpLogin(page, {
-    isNewUser: true,
-    consentRequired: true,
-    email: '',
-  });
-
-  // ----------------------------------------------------------
-  // Verify actual Consent Form
-  // ----------------------------------------------------------
-
-  await expect(
-    page.getByRole('heading', {
-      name: 'User Consent Form',
-    })
-  ).toBeVisible();
-
-  await expect(
-    page.getByText(
-      'Consent to Collect and Use Personal and Health Information',
+      },
       {
-        exact: true,
+        timeout: 15000,
+
+        intervals:
+          [200, 500, 1000],
       }
     )
-  ).toBeVisible();
+    .toMatchObject({
 
-  await expect(
-    page.getByText('I Agree', {
-      exact: true,
-    }).last()
-  ).toBeVisible();
+      isNewUser,
 
-  await expect(
-    page.getByText("I Don't Agree", {
-      exact: true,
-    }).last()
-  ).toBeVisible();
+    });
 
-  await expect(
-    page.getByRole('button', {
-      name: 'Continue',
-    })
-  ).toBeVisible();
-
-  // ----------------------------------------------------------
-  // Login page must no longer be displayed
-  // ----------------------------------------------------------
-
-  await expect(
-    page.getByLabel('Mobile Number')
-  ).not.toBeVisible();
-});
+}
 
 
-// ============================================================
+  // ============================================================
+  // AUTH-020
+  //
+  // New User
+  // ->
+  // Consent Form
+  // ============================================================
+
+test(
+  'AUTH-020 new user is shown consent form after login',
+  async ({ page }) => {
+
+    await page.route(
+      '**/api/user/consent*',
+      async route => {
+
+        if (
+          route.request().method()
+          === 'GET'
+        ) {
+
+          await route.fulfill({
+            status: 200,
+            contentType:
+              'application/json',
+
+            body: JSON.stringify({
+              success: true,
+              consentRequired: true,
+              consentAccepted: false,
+            }),
+          });
+
+          return;
+        }
+
+        await route.continue();
+      }
+    );
+
+
+    await loginWithMockedOtp(
+      page,
+      {
+        isNewUser: true,
+        email: '',
+      }
+    );
+
+
+    await expect(
+      page.getByRole(
+        'heading',
+        {
+          name:
+            'User Consent Form',
+        }
+      )
+    ).toBeVisible({
+      timeout: 15000,
+    });
+
+
+    await expect(
+      page.getByText(
+        'Consent to Collect and Use Personal and Health Information',
+        {
+          exact: true,
+        }
+      )
+    ).toBeVisible();
+
+
+    await expect(
+      page.getByText(
+        'I Agree',
+        {
+          exact: true,
+        }
+      ).last()
+    ).toBeVisible();
+
+
+    await expect(
+      page.getByText(
+        "I Don't Agree",
+        {
+          exact: true,
+        }
+      ).last()
+    ).toBeVisible();
+
+
+    await expect(
+      page.getByRole(
+        'button',
+        {
+          name:
+            'Continue',
+        }
+      )
+    ).toBeVisible();
+
+  }
+);
+
+
+  // ============================================================
+  // AUTH-021
+  //
+  // Existing User
+  // ->
+  // Home
+  // ============================================================
+
+  // ============================================================
 // AUTH-021
 // Existing user -> Home
 // ============================================================
 
-test('AUTH-021 existing user is shown home after login', async ({ page }) => {
+test(
+  'AUTH-021 existing user is shown home after login',
+  async ({ page }) => {
+
+    // ----------------------------------------------------------
+    // IMPORTANT:
+    // Existing users with an email go through /api/user/lookup
+    // after OTP verification.
+    //
+    // This route must be registered BEFORE loginWithMockedOtp().
+    // ----------------------------------------------------------
+
+    await page.route(
+      '**/api/user/lookup',
+      async route => {
+
+        const body =
+          route.request().postDataJSON();
+
+        console.log(
+          'AUTH-021 /api/user/lookup BODY:',
+          body
+        );
 
-  // ==========================================================
-  // 1. Verify OTP as EXISTING USER
-  // ==========================================================
-
-  await page.route('**/api/auth/verify-otp', async route => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({
-        success: true,
-        isNewUser: false,
-
-        user: {
-          id: 999999,
-          UserId: 999999,
-          username: 'existinguser',
-          email: 'existinguser@test.com',
-          phone: '+917695834209',
-          status: 'Active',
-          consentRequired: false,
-        },
-      }),
-    });
-  });
-
-
-  // ==========================================================
-  // 2. REAL application flow checks /api/user/lookup
-  //    Return an ACTIVE existing user.
-  // ==========================================================
-
-  await page.route('**/api/user/lookup', async route => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({
-        success: true,
-        isNewUser: false,
-        isActive: true,
-        role: 'user',
-      }),
-    });
-  });
-
-
-  // ==========================================================
-  // 3. Existing user already accepted consent
-  // ==========================================================
-
-  await page.route('**/api/user/consent*', async route => {
-
-    if (route.request().method() === 'GET') {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          success: true,
-          consentRequired: false,
-          consentAccepted: true,
-        }),
-      });
-
-      return;
-    }
-
-    await route.continue();
-  });
-
-
-  // ==========================================================
-  // 4. Existing user's profile is complete
-  // ==========================================================
-
-  await page.route('**/api/user/profile*', async route => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({
-        success: true,
-
-        data: {
-          userId: 999999,
-
-          userName: 'Existing User',
-          email: 'existinguser@test.com',
-          phoneNumber: '+917695834209',
-
-          gender: 'Male',
-          height: 170,
-          dietType: 'Non-Vegetarian',
-
-          latestWeight: 70,
-          latestWeightBodyFat: 20,
-          bodyFat: 20,
-
-          physicalActivityLevel: 'moderate',
-
-          profileImage: 'https://example.com/profile.jpg',
-
-          profileComplete: true,
-
-          profilePicSnooze: null,
-        },
-      }),
-    });
-  });
-
-
-  // ==========================================================
-  // 5. Setup is already complete
-  //
-  // This prevents the application from opening the coach/setup
-  // wizard after the profile gate is cleared.
-  // ==========================================================
-
-  await page.route('**/api/user/status?email=*', async route => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({
-        success: true,
-
-        setupComplete: true,
-        hasTeamId: true,
-        hasUpline: true,
-        setupSkipped: true,
-
-        teamId: 1,
-        uplineCoachId: 1,
-        role: 'user',
-
-        pendingRequest: null,
-        redirectTo: '/dashboard',
-      }),
-    });
-  });
-
-
-  // ==========================================================
-  // 6. Open login
-  // ==========================================================
-
-  await page.goto('/');
-
-
-  // ==========================================================
-  // 7. Enter mobile number
-  // ==========================================================
-
-  await page
-    .getByLabel('Mobile Number')
-    .fill('7695834209');
-
-
-  // ==========================================================
-  // 8. Send OTP
-  //
-  // NOT mocked.
-  // This keeps the test connected to the real send-otp flow.
-  // ==========================================================
-
-  await page
-    .getByRole('button', {
-      name: 'Send OTP',
-    })
-    .click();
-
-
-  // ==========================================================
-  // 9. OTP screen
-  // ==========================================================
-
-  const otpInputs =
-    page.locator('input[type="tel"]');
-
-  await expect(
-    otpInputs
-  ).toHaveCount(6);
-
-
-  // ==========================================================
-  // 10. Enter OTP
-  // ==========================================================
-
-  const otp = '123456';
-
-  for (let i = 0; i < otp.length; i++) {
-    await otpInputs
-      .nth(i)
-      .fill(otp[i]);
-  }
-
-
-  // ==========================================================
-  // 11. Wait for OTP success
-  // ==========================================================
-
-  await expect(
-    page.getByText(
-      'OTP verified successfully!',
-      {
-        exact: true,
-      }
-    )
-  ).toBeVisible();
-
-
-  // ==========================================================
-  // 12. Wait for the ACTUAL Home screen
-  // ==========================================================
-
-  await expect(
-    page.getByText(
-      'Tracking Wellness with Ease',
-      {
-        exact: true,
-      }
-    )
-  ).toBeVisible({
-    timeout: 20000,
-  });
-
-
-  // ==========================================================
-  // 13. Consent must NOT be displayed
-  // ==========================================================
-
-  await expect(
-    page.getByRole('heading', {
-      name: 'User Consent Form',
-    })
-  ).not.toBeVisible();
-
-
-  // ==========================================================
-  // 14. Complete Profile must NOT be displayed
-  // ==========================================================
-
-  await expect(
-    page.getByRole('heading', {
-      name: 'Complete Your Profile',
-    })
-  ).not.toBeVisible();
-
-
-  // ==========================================================
-  // 15. Verify Home navigation
-  // ==========================================================
-
-  await expect(
-    page.getByText('Home', {
-      exact: true,
-    })
-  ).toBeVisible();
-
-  await expect(
-    page.getByText('Diary', {
-      exact: true,
-    })
-  ).toBeVisible();
-
-  await expect(
-    page.getByText('Activity', {
-      exact: true,
-    })
-  ).toBeVisible();
-
-  await expect(
-    page.getByText('Programs', {
-      exact: true,
-    })
-  ).toBeVisible();
-
-
-  // ==========================================================
-  // 16. Verify Home actions
-  // ==========================================================
-
-  await expect(
-    page.getByRole('button', {
-      name: 'Open camera',
-    })
-  ).toBeVisible();
-
-  await expect(
-    page.getByRole('button', {
-      name: 'Choose from gallery',
-    })
-  ).toBeVisible();
-
-});
-
-// ============================================================
-// AUTH-022
-// New user -> Disagree -> Login
-// ============================================================
-
-test('AUTH-022 new user is returned to login after disagreeing with consent', async ({ page }) => {
-
-  // ----------------------------------------------------------
-  // New user must have consent pending.
-  // ----------------------------------------------------------
-
-  await page.route(
-    '**/api/user/consent*',
-    async route => {
-
-      const method = route.request().method();
-
-      // Initial consent-status check
-      if (method === 'GET') {
         await route.fulfill({
           status: 200,
           contentType: 'application/json',
+
           body: JSON.stringify({
             success: true,
-            consentRequired: true,
-            consentAccepted: false,
+            isActive: true,
+            isNewUser: false,
           }),
         });
 
-        return;
       }
+    );
 
-      // IMPORTANT:
-      // Do not mock DELETE.
-      //
-      // The test should detect if the application stops making
-      // the discard request in the future.
-      //
-      await route.continue();
+
+    // ----------------------------------------------------------
+    // Existing user already accepted consent.
+    // ----------------------------------------------------------
+
+    await page.route(
+      '**/api/user/consent*',
+      async route => {
+
+        if (
+          route.request().method() === 'GET'
+        ) {
+
+          await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+
+            body: JSON.stringify({
+              success: true,
+              consentRequired: false,
+              consentAccepted: true,
+            }),
+          });
+
+          return;
+        }
+
+        await route.continue();
+      }
+    );
+
+
+    // ----------------------------------------------------------
+    // Existing user has a complete profile.
+    // ----------------------------------------------------------
+
+    await page.route(
+      '**/api/user/profile*',
+      async route => {
+
+        if (
+          route.request().method() === 'GET'
+        ) {
+
+          await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+
+            body: JSON.stringify({
+              success: true,
+
+              data: {
+                profileComplete: true,
+
+                userName:
+                  'Existing User',
+
+                email:
+                  TEST_EMAIL,
+
+                height:
+                  170,
+
+                dietType:
+                  'Non-Vegetarian',
+
+                gender:
+                  'Male',
+
+                currentWeight:
+                  70,
+
+                bodyFat:
+                  20,
+
+                profileImage:
+                  'https://example.com/profile.jpg',
+
+                physicalActivityLevel:
+                  'moderate',
+              },
+            }),
+          });
+
+          return;
+        }
+
+        await route.continue();
+      }
+    );
+
+
+    // ----------------------------------------------------------
+    // Setup is already complete.
+    // ----------------------------------------------------------
+
+    await page.route(
+      '**/api/user/status*',
+      async route => {
+
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+
+          body: JSON.stringify({
+            success: true,
+
+            setupSkipped: true,
+            setupComplete: true,
+
+            pendingRequest: false,
+          }),
+        });
+
+      }
+    );
+
+
+    // ----------------------------------------------------------
+    // Home leaderboard data.
+    // ----------------------------------------------------------
+
+    await page.route(
+      '**/api/leaderboard/get-global-leaderboard**',
+      async route => {
+
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+
+          body: JSON.stringify({
+            success: true,
+
+            data: [
+              {
+                userId: 1,
+                userName: 'Test User',
+                email: TEST_EMAIL,
+
+                coachName:
+                  'Test Coach',
+
+                sponsorName:
+                  'Test Sponsor',
+
+                weightLoss: 0.5,
+                rank: 1,
+              },
+            ],
+          }),
+        });
+
+      }
+    );
+
+
+    await page.route(
+      '**/api/leaderboard/get-wellness-score-leaderboard**',
+      async route => {
+
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+
+          body: JSON.stringify({
+            success: true,
+
+            data: [
+              {
+                userId: 1,
+                userName: 'Test User',
+                email: TEST_EMAIL,
+
+                wellnessPercentage:
+                  85,
+
+                totalEarned:
+                  850,
+
+                totalPossible:
+                  1000,
+
+                rank: 1,
+              },
+            ],
+          }),
+        });
+
+      }
+    );
+
+
+    // ----------------------------------------------------------
+    // Perform the REAL UI OTP flow.
+    //
+    // send-otp and verify-otp are mocked, so NO SMS is sent.
+    // ----------------------------------------------------------
+
+    await loginWithMockedOtp(
+      page,
+      {
+        isNewUser: false,
+        email: TEST_EMAIL,
+      }
+    );
+
+
+    // ----------------------------------------------------------
+    // Verify authentication state.
+    // ----------------------------------------------------------
+
+    await expect
+      .poll(
+        async () => {
+
+          return await page.evaluate(() => {
+
+            const raw =
+              localStorage.getItem(
+                'otpUser'
+              );
+
+            if (!raw) {
+              return null;
+            }
+
+            try {
+              return JSON.parse(raw);
+            } catch {
+              return null;
+            }
+
+          });
+
+        },
+        {
+          timeout: 15000,
+          intervals: [200, 500, 1000],
+        }
+      )
+      .toMatchObject({
+        isNewUser: false,
+      });
+
+
+    // ----------------------------------------------------------
+    // Existing user should reach Home.
+    // ----------------------------------------------------------
+
+    await expect(
+      page.getByText(
+        'Tracking Wellness with Ease',
+        {
+          exact: true,
+        }
+      )
+    ).toBeVisible({
+      timeout: 20000,
+    });
+
+
+    // ----------------------------------------------------------
+    // Consent should NOT appear.
+    // ----------------------------------------------------------
+
+    await expect(
+      page.getByRole(
+        'heading',
+        {
+          name:
+            'User Consent Form',
+        }
+      )
+    ).not.toBeVisible();
+
+
+    // ----------------------------------------------------------
+    // Complete Profile should NOT appear.
+    // ----------------------------------------------------------
+
+    await expect(
+      page.getByRole(
+        'heading',
+        {
+          name:
+            'Complete Your Profile',
+        }
+      )
+    ).not.toBeVisible();
+
+
+    // ----------------------------------------------------------
+    // Home navigation.
+    // ----------------------------------------------------------
+
+    await expect(
+      page.getByText(
+        'Home',
+        {
+          exact: true,
+        }
+      )
+    ).toBeVisible();
+
+    await expect(
+      page.getByText(
+        'Diary',
+        {
+          exact: true,
+        }
+      )
+    ).toBeVisible();
+
+    await expect(
+      page.getByText(
+        'Activity',
+        {
+          exact: true,
+        }
+      )
+    ).toBeVisible();
+
+    await expect(
+      page.getByText(
+        'Programs',
+        {
+          exact: true,
+        }
+      )
+    ).toBeVisible();
+
+
+    // ----------------------------------------------------------
+    // Home actions.
+    // ----------------------------------------------------------
+
+    await expect(
+      page.getByRole(
+        'button',
+        {
+          name:
+            'Open camera',
+        }
+      )
+    ).toBeVisible();
+
+    await expect(
+      page.getByRole(
+        'button',
+        {
+          name:
+            'Choose from gallery',
+        }
+      )
+    ).toBeVisible();
+
+  }
+);
+
+  // ============================================================
+  // AUTH-022
+  //
+  // New User
+  // ->
+  // Don't Agree
+  // ->
+  // Login
+  // ============================================================
+
+  test(
+    'AUTH-022 new user is returned to login after disagreeing with consent',
+    async ({ page }) => {
+
+      // --------------------------------------------------------
+      // Consent required
+      // --------------------------------------------------------
+
+      await page.route(
+        '**/api/user/consent*',
+        async route => {
+
+          if (
+            route.request().method()
+            === 'GET'
+          ) {
+
+            await route.fulfill({
+              status: 200,
+              contentType:
+                'application/json',
+
+              body: JSON.stringify({
+                success: true,
+                consentRequired: true,
+                consentAccepted: false,
+              }),
+            });
+
+            return;
+          }
+
+          // DELETE remains real.
+          await route.continue();
+        }
+      );
+
+
+      // --------------------------------------------------------
+      // REAL UI LOGIN
+      // NO REAL SMS
+      // --------------------------------------------------------
+
+      await loginWithMockedOtp(page, {
+        isNewUser: true,
+        email: '',
+      });
+
+
+      await expect(
+        page.getByRole(
+          'heading',
+          {
+            name:
+              'User Consent Form',
+          }
+        )
+      ).toBeVisible({
+        timeout: 15000,
+      });
+
+
+      // --------------------------------------------------------
+      // Don't Agree
+      // --------------------------------------------------------
+
+      await page.getByText(
+        "I Don't Agree",
+        {
+          exact: true,
+        }
+      ).last().click();
+
+
+      const continueButton =
+        page.getByRole(
+          'button',
+          {
+            name:
+              'Continue',
+          }
+        );
+
+
+      await expect(
+        continueButton
+      ).toBeEnabled();
+
+
+      const deleteRequest =
+        page.waitForRequest(
+          request =>
+            request.url()
+              .includes(
+                '/api/user/consent'
+              ) &&
+            request.method()
+              === 'DELETE'
+        );
+
+
+      await continueButton.click();
+
+
+      await deleteRequest;
+
+
+      // --------------------------------------------------------
+      // Consent disappears
+      // --------------------------------------------------------
+
+      await expect(
+        page.getByRole(
+          'heading',
+          {
+            name:
+              'User Consent Form',
+          }
+        )
+      ).not.toBeVisible();
+
+
+      // --------------------------------------------------------
+      // Login page returns
+      // --------------------------------------------------------
+
+      await expect(
+        page.getByLabel(
+          'Mobile Number'
+        )
+      ).toBeVisible();
+
+
+      await expect(
+        page.getByRole(
+          'button',
+          {
+            name:
+              'Send OTP',
+          }
+        )
+      ).toBeVisible();
+
+
+      await expect(
+        page.getByText(
+          'Enter OTP',
+          {
+            exact: true,
+          }
+        )
+      ).not.toBeVisible();
     }
   );
 
-  // ----------------------------------------------------------
-  // Login as new user.
-  // ----------------------------------------------------------
 
-  await completeOtpLogin(page, {
-    isNewUser: true,
-    consentRequired: true,
-    userId: 999999,
-    email: '',
-  });
-
-  // ----------------------------------------------------------
-  // Consent form
-  // ----------------------------------------------------------
-
-  await expect(
-    page.getByRole('heading', {
-      name: 'User Consent Form',
-    })
-  ).toBeVisible();
-
-  // ----------------------------------------------------------
-  // Select "I Don't Agree"
-  // ----------------------------------------------------------
-
-  await page.getByText(
-    "I Don't Agree",
-    {
-      exact: true,
-    }
-  ).last().click();
-
-  // ----------------------------------------------------------
-  // Continue should now be enabled.
-  // ----------------------------------------------------------
-
-  const continueButton =
-    page.getByRole('button', {
-      name: 'Continue',
-    });
-
-  await expect(
-    continueButton
-  ).toBeEnabled();
-
-  // ----------------------------------------------------------
-  // Wait for the REAL DELETE request.
+  // ============================================================
+  // AUTH-023
   //
-  // We are not mocking the DELETE.
-  // ----------------------------------------------------------
+  // New User
+  // ->
+  // Agree
+  // ->
+  // Complete Profile
+  // ============================================================
 
-  const deleteConsentRequest =
-    page.waitForRequest(request =>
-      request.url().includes('/api/user/consent') &&
-      request.method() === 'DELETE'
-    );
+  test(
+    'AUTH-023 new user agrees to consent and is shown complete profile page',
+    async ({ page }) => {
 
-  await continueButton.click();
+      // --------------------------------------------------------
+      // Consent API
+      // --------------------------------------------------------
 
-  await deleteConsentRequest;
+      await page.route(
+        '**/api/user/consent*',
+        async route => {
 
-  // ----------------------------------------------------------
-  // Consent form must disappear.
-  // ----------------------------------------------------------
-
-  await expect(
-    page.getByRole('heading', {
-      name: 'User Consent Form',
-    })
-  ).not.toBeVisible();
-
-  // ----------------------------------------------------------
-  // Login page should return.
-  // ----------------------------------------------------------
-
-  await expect(
-    page.getByLabel('Mobile Number')
-  ).toBeVisible();
-
-  await expect(
-    page.getByRole('button', {
-      name: 'Send OTP',
-    })
-  ).toBeVisible();
-
-  // ----------------------------------------------------------
-  // OTP screen should be gone.
-  // ----------------------------------------------------------
-
-  await expect(
-    page.getByText('Enter OTP', {
-      exact: true,
-    })
-  ).not.toBeVisible();
-});
+          const method =
+            route.request()
+              .method();
 
 
-// ============================================================
-// AUTH-023
-// New user -> Agree -> Complete Profile
-// ============================================================
+          if (
+            method === 'GET'
+          ) {
 
-test('AUTH-023 new user agrees to consent and is shown complete profile page', async ({ page }) => {
+            await route.fulfill({
+              status: 200,
+              contentType:
+                'application/json',
 
-  // ==========================================================
-  // 1. Verify OTP as NEW PHONE USER
-  //
-  // IMPORTANT:
-  // email is intentionally EMPTY.
-  //
-  // Your actual application uses this state to open the
-  // Complete Your Profile page for a phone-only new user.
-  // ==========================================================
+              body: JSON.stringify({
+                success: true,
+                consentRequired: true,
+                consentAccepted: false,
+              }),
+            });
 
-  await page.route('**/api/auth/verify-otp', async route => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({
-        success: true,
+            return;
+          }
+
+
+          if (
+            method === 'POST'
+          ) {
+
+            const body =
+              route.request()
+                .postDataJSON();
+
+
+            // Detect changes to API contract.
+            expect(body).toMatchObject({
+              consentAccepted: true,
+            });
+
+
+            await route.fulfill({
+              status: 200,
+              contentType:
+                'application/json',
+
+              body: JSON.stringify({
+                success: true,
+                consentRequired: false,
+                consentAccepted: true,
+              }),
+            });
+
+            return;
+          }
+
+
+          await route.continue();
+        }
+      );
+
+
+      // --------------------------------------------------------
+      // New user has incomplete profile
+      // --------------------------------------------------------
+
+      await page.route(
+        '**/api/user/profile*',
+        async route => {
+
+          if (
+            route.request().method()
+            === 'GET'
+          ) {
+
+            await route.fulfill({
+              status: 200,
+              contentType:
+                'application/json',
+
+              body: JSON.stringify({
+                success: true,
+
+                data: {
+                  profileComplete:
+                    false,
+
+                  userName:
+                    null,
+
+                  email:
+                    '',
+
+                  height:
+                    null,
+
+                  dietType:
+                    null,
+
+                  gender:
+                    null,
+
+                  currentWeight:
+                    null,
+
+                  bodyFat:
+                    null,
+
+                  profileImage:
+                    null,
+
+                  physicalActivityLevel:
+                    null,
+                },
+              }),
+            });
+
+            return;
+          }
+
+          await route.continue();
+        }
+      );
+
+
+      // --------------------------------------------------------
+      // REAL UI LOGIN
+      // NO REAL SMS
+      // --------------------------------------------------------
+
+      await loginWithMockedOtp(page, {
         isNewUser: true,
-
-        user: {
-          id: 999999,
-          UserId: 999999,
-
-          username: 'newuser',
-
-          email: '',
-
-          phone: '+917695834209',
-
-          status: 'Active',
-
-          consentRequired: true,
-        },
-      }),
-    });
-  });
-
-
-  // ==========================================================
-  // 2. New user is active
-  // ==========================================================
-
-  await page.route('**/api/user/lookup', async route => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({
-        success: true,
-        isNewUser: true,
-        isActive: true,
-        role: 'user',
-      }),
-    });
-  });
-
-
-  // ==========================================================
-  // 3. Consent is required
-  // ==========================================================
-
-  await page.route('**/api/user/consent*', async route => {
-
-    const method =
-      route.request().method();
-
-
-    // --------------------------------------------------------
-    // Initial consent check
-    // --------------------------------------------------------
-
-    if (method === 'GET') {
-
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          success: true,
-          consentRequired: true,
-          consentAccepted: false,
-        }),
+        email: '',
       });
 
-      return;
-    }
 
+      // --------------------------------------------------------
+      // Consent
+      // --------------------------------------------------------
 
-    // --------------------------------------------------------
-    // Accept consent
-    // --------------------------------------------------------
-
-    if (method === 'POST') {
-
-      const body =
-        route.request().postDataJSON();
-
-      // Verify the application really sends consentAccepted=true
-      expect(body).toMatchObject({
-        consentAccepted: true,
+      await expect(
+        page.getByRole(
+          'heading',
+          {
+            name:
+              'User Consent Form',
+          }
+        )
+      ).toBeVisible({
+        timeout: 15000,
       });
 
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          success: true,
-          consentAccepted: true,
-        }),
+
+      // --------------------------------------------------------
+      // I Agree
+      // --------------------------------------------------------
+
+      await page.getByText(
+        'I Agree',
+        {
+          exact: true,
+        }
+      ).last().click();
+
+
+      const continueButton =
+        page.getByRole(
+          'button',
+          {
+            name:
+              'Continue',
+          }
+        );
+
+
+      await expect(
+        continueButton
+      ).toBeEnabled();
+
+
+      await continueButton.click();
+
+
+      // --------------------------------------------------------
+      // Consent disappears
+      // --------------------------------------------------------
+
+      await expect(
+        page.getByRole(
+          'heading',
+          {
+            name:
+              'User Consent Form',
+          }
+        )
+      ).not.toBeVisible({
+        timeout: 10000,
       });
 
-      return;
+
+      // --------------------------------------------------------
+      // Complete Profile
+      // --------------------------------------------------------
+
+      await expect(
+        page.getByRole(
+          'heading',
+          {
+            name:
+              'Complete Your Profile',
+          }
+        )
+      ).toBeVisible({
+        timeout: 15000,
+      });
+
+
+      await expect(
+        page.getByText(
+          'Name, email, gender, height, diet preference, and photo — all in one place.',
+          {
+            exact: true,
+          }
+        )
+      ).toBeVisible();
+
     }
-
-
-    await route.continue();
-  });
-
-
-  // ==========================================================
-  // 4. Open login
-  // ==========================================================
-
-  await page.goto('/');
-
-
-  // ==========================================================
-  // 5. Enter mobile number
-  // ==========================================================
-
-  await page
-    .getByLabel('Mobile Number')
-    .fill('7695834209');
-
-
-  // ==========================================================
-  // 6. Send OTP
-  // ==========================================================
-
-  await page
-    .getByRole('button', {
-      name: 'Send OTP',
-    })
-    .click();
-
-
-  // ==========================================================
-  // 7. OTP screen
-  // ==========================================================
-
-  const otpInputs =
-    page.locator('input[type="tel"]');
-
-  await expect(
-    otpInputs
-  ).toHaveCount(6);
-
-
-  // ==========================================================
-  // 8. Enter OTP
-  // ==========================================================
-
-  const otp = '123456';
-
-  for (let i = 0; i < otp.length; i++) {
-    await otpInputs
-      .nth(i)
-      .fill(otp[i]);
-  }
-
-
-  // ==========================================================
-  // 9. OTP successfully verified
-  // ==========================================================
-
-  await expect(
-    page.getByText(
-      'OTP verified successfully!',
-      {
-        exact: true,
-      }
-    )
-  ).toBeVisible();
-
-
-  // ==========================================================
-  // 10. Consent Form should appear
-  // ==========================================================
-
-  await expect(
-    page.getByRole('heading', {
-      name: 'User Consent Form',
-    })
-  ).toBeVisible({
-    timeout: 15000,
-  });
-
-
-  // ==========================================================
-  // 11. Verify consent choices
-  // ==========================================================
-
-  await expect(
-    page.getByText(
-      'I Agree',
-      {
-        exact: true,
-      }
-    ).last()
-  ).toBeVisible();
-
-  await expect(
-    page.getByText(
-      "I Don't Agree",
-      {
-        exact: true,
-      }
-    ).last()
-  ).toBeVisible();
-
-
-  // ==========================================================
-  // 12. Select I Agree
-  // ==========================================================
-
-  await page.getByText(
-    'I Agree',
-    {
-      exact: true,
-    }
-  ).last().click();
-
-
-  // ==========================================================
-  // 13. Continue
-  // ==========================================================
-
-  const continueButton =
-    page.getByRole('button', {
-      name: 'Continue',
-    });
-
-  await expect(
-    continueButton
-  ).toBeEnabled();
-
-  await continueButton.click();
-
-
-  // ==========================================================
-  // 14. Consent form disappears
-  // ==========================================================
-
-  await expect(
-    page.getByRole('heading', {
-      name: 'User Consent Form',
-    })
-  ).not.toBeVisible({
-    timeout: 10000,
-  });
-
-
-  // ==========================================================
-  // 15. Complete Profile must appear
-  //
-  // This is now driven by the application's actual
-  // phone-only new-user logic.
-  // ==========================================================
-
-  await expect(
-    page.getByRole('heading', {
-      name: 'Complete Your Profile',
-    })
-  ).toBeVisible({
-    timeout: 15000,
-  });
-
-
-  // ==========================================================
-  // 16. Verify Complete Profile content
-  // ==========================================================
-
-  await expect(
-    page.getByText(
-      'Name, email, gender, height, diet preference, and photo — all in one place.',
-      {
-        exact: true,
-      }
-    )
-  ).toBeVisible();
-
-
+  );
 
 });
-
-});
-
