@@ -28,39 +28,36 @@ const ORCHESTRATE_URL    = `${API_BASE}/api/ai/orchestrate`;
 
 // ── Retry budget — PHASE 1: fast unified call (type + macros) ─────────────────
 //
-// The frontend retries POST /api/ai/orchestrate up to MAX_ATTEMPTS times before
-// returning imageType:'other' to the caller.
+// SINGLE OWNER of Flash→Pro escalation: this frontend module.
+// Backend runs exactly ONE Gemini call per /api/ai/orchestrate request and does
+// NOT auto-switch Flash→Pro (that previously caused 1 Flash + 2 Pro).
 //
-// Attempt allocation (Flash → Pro → Pro):
-//   Attempt 1 → Gemini Flash  (fast, cheap; backend: 1 try, 25 s hard cap)
-//   Attempt 2 → Gemini Pro    (escalation after Flash failure; 1.5 s back-off)
-//   Attempt 3 → Gemini Pro    (final Pro retry; 3 s back-off)
+// Attempt allocation:
+//   Attempt 1 → Gemini Flash
+//   Attempt 2 → Gemini Pro (only after genuine Flash failure)
 //
-// Why Flash only on attempt 1:
-//   Flash previously had 2 silent backend retries (30 s each), meaning the
-//   frontend could wait 60 s per attempt before knowing Flash had failed.
-//   Now Flash gets one 25 s shot; Pro takes over from attempt 2 onward.
-//   Worst case: 25 s + 1.5 s + 25 s + 3 s + 25 s = ~80 s  (was ~185 s).
-//
-// Inside each attempt the backend has its own per-call retry policy
-// (RetryPolicy.js): Flash = 1 backend retry (AIGateway.js maxAttempts:1),
-// Pro = up to 3 backend retries (DEFAULT_MAX_ATTEMPTS).
+// Gemini p95 ≈ 43 s; Vercel maxDuration = 60 s; backend timeout ≈ 58 s
+// (AI_CALL_TIMEOUT_MS). Frontend abort must stay above backend timeout.
 //
 // ── PHASE 2: background enrichment job (21 micronutrients) ───────────────────
 //
-// After a successful Phase 1 the backend enqueues an enrichment job
-// (JobQueue → JobWorker) with its own independent retry budget (MAX_RETRIES
-// in JobQueue.js). No frontend involvement in Phase 2.
-//
-/** Maximum Phase 1 frontend attempts. */
-const MAX_ATTEMPTS    = 3;
-/** Per-attempt frontend abort timeout.
- * Must be less than the Vercel maxDuration (60 s) for orchestrate.js so the
- * frontend always gets a clean AbortError rather than a Vercel 504. 40 s gives
- * Gemini Pro (8–20 s typical) a comfortable margin while still failing fast. */
-const REQUEST_TIMEOUT_MS = 40_000;
-/** Base back-off between Phase 1 retries (ms). Doubles per attempt: 1.5 s → 3 s. */
+/** Maximum Phase 1 frontend attempts (Flash then Pro). */
+const MAX_ATTEMPTS    = 2;
+/**
+ * Per-attempt frontend abort timeout.
+ * Backend model timeout defaults to 58s; leave headroom under Vercel 60s.
+ */
+const REQUEST_TIMEOUT_MS = 59_500;
+/** Back-off before Pro escalation (ms). */
 const RETRY_DELAY_MS  = 1_500;
+
+/**
+ * In-flight analyzeImage promises keyed by captureId.
+ * Prevents duplicate App.js / StrictMode triggers from starting parallel
+ * orchestrate requests for the same capture (Case G / 01:18:26 class bugs).
+ * @type {Map<string, Promise<object>>}
+ */
+const _inflightByCapture = new Map();
 
 /**
  * Confidence threshold above which an AI "other" result is treated as
@@ -112,12 +109,91 @@ export async function analyzeImage(
     creditGated = false,
   } = {},
 ) {
+  const captureKey = captureId != null && captureId !== '' ? String(captureId) : null;
+
+  if (captureKey && _inflightByCapture.has(captureKey)) {
+    _trace('DEDUP_JOIN', {
+      captureId: captureKey,
+      reservationId,
+      note: 'joining in-flight analyzeImage for same captureId',
+    });
+    return _inflightByCapture.get(captureKey);
+  }
+
+  const run = _analyzeImageInner(imageFile, {
+    captureId,
+    userId,
+    userName,
+    userEmail,
+    foodRowId,
+    onAttempt,
+    reservationId,
+    creditGated,
+  });
+
+  if (captureKey) {
+    _inflightByCapture.set(captureKey, run);
+    run.finally(() => {
+      if (_inflightByCapture.get(captureKey) === run) {
+        _inflightByCapture.delete(captureKey);
+      }
+    });
+  }
+
+  return run;
+}
+
+/**
+ * @private
+ */
+async function _analyzeImageInner(
+  imageFile,
+  {
+    captureId = null,
+    userId = null,
+    userName = null,
+    userEmail = null,
+    foodRowId = null,
+    onAttempt = null,
+    reservationId = null,
+    creditGated = false,
+  } = {},
+) {
+  /** @type {AbortController | null} */
+  let activeController = null;
+  const sessionStart = Date.now();
+
+  _trace('SESSION_START', {
+    captureId,
+    reservationId,
+    creditGated,
+    size: imageFile?.size ?? 0,
+  });
+
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-    // Attempt 1 = Flash (fast, cheap). Attempts 2+ = Pro (better accuracy).
+    // Attempt 1 = Flash (fast, cheap). Attempt 2 = Pro (escalation).
     const usePro = attempt >= 2;
+    const modelTier = usePro ? 'pro' : 'flash';
+
+    // Abort any in-flight attempt before starting the next (prevents overlapping Pro calls).
+    if (activeController) {
+      try { activeController.abort(); } catch (_) { /* ignore */ }
+      activeController = null;
+    }
 
     // Notify the caller before the request so the UI badge updates immediately.
     onAttempt?.({ attempt, total: MAX_ATTEMPTS, usePro });
+
+    const controller = new AbortController();
+    activeController = controller;
+
+    _trace('ATTEMPT_START', {
+      captureId,
+      reservationId,
+      attempt,
+      modelTier,
+      totalAttempts: MAX_ATTEMPTS,
+    });
 
     const result = await _singleAttempt(imageFile, {
       captureId,
@@ -129,35 +205,89 @@ export async function analyzeImage(
       usePro,
       reservationId,
       creditGated,
+      controller,
+    });
+
+    if (activeController === controller) activeController = null;
+
+    const attemptOk = !result.details?.defaulted && result.type !== 'other';
+    _trace('ATTEMPT_END', {
+      captureId,
+      reservationId,
+      attempt,
+      modelTier,
+      status: attemptOk ? 'SUCCESS' : 'FAIL',
+      type: result.type,
+      defaulted: result.details?.defaulted === true,
+      error: result.details?.error ?? null,
+      durationMs: result.duration ?? null,
     });
 
     // ── Valid classification — return immediately ──────────────────────────
-    if (!result.details?.defaulted && result.type !== 'other') return result;
+    if (attemptOk) {
+      _trace('SESSION_END', {
+        captureId,
+        reservationId,
+        status: 'SUCCESS',
+        type: result.type,
+        attemptsUsed: attempt,
+        totalDurationMs: Date.now() - sessionStart,
+      });
+      return result;
+    }
 
     // ── "Obviously other": AI is highly confident it's none of the 4 types ─
     // Retrying would waste tokens. Surface immediately so the UI shows Manual Log.
     if (result.type === 'other' && !result.details?.defaulted &&
         (result.confidence ?? 0) >= OBVIOUSLY_OTHER_CONFIDENCE) {
       _trace('OBVIOUSLY_OTHER', { attempt, confidence: result.confidence, captureId });
+      _trace('SESSION_END', {
+        captureId,
+        reservationId,
+        status: 'OBVIOUSLY_OTHER',
+        attemptsUsed: attempt,
+        totalDurationMs: Date.now() - sessionStart,
+      });
       return { ...result, details: { ...result.details, obviouslyOther: true } };
     }
 
     // ── Non-retryable client error (4xx) ──────────────────────────────────
     if (result.details?._retryable === false) {
+      _trace('SESSION_END', {
+        captureId,
+        reservationId,
+        status: 'NON_RETRYABLE',
+        attemptsUsed: attempt,
+        totalDurationMs: Date.now() - sessionStart,
+      });
       return { ...result, details: { ...result.details } };
     }
 
     // ── All attempts exhausted ────────────────────────────────────────────
     if (attempt === MAX_ATTEMPTS) {
       _trace('EXHAUSTED', { attempt, captureId });
+      _trace('SESSION_END', {
+        captureId,
+        reservationId,
+        status: 'EXHAUSTED',
+        attemptsUsed: attempt,
+        totalDurationMs: Date.now() - sessionStart,
+      });
       return result;
     }
 
-    // ── Wait before next attempt ──────────────────────────────────────────
-    // Since attempt 2+ already switches to Pro (separate quota), no special
-    // 503 penalty is needed — the overloaded Flash quota won't affect Pro.
-    const delay = RETRY_DELAY_MS * attempt;
-    _trace('RETRY', { attempt, nextAttempt: attempt + 1, delayMs: delay, usePro: attempt + 1 >= 2, captureId });
+    // ── Wait before Pro escalation ────────────────────────────────────────
+    const delay = RETRY_DELAY_MS;
+    _trace('RETRY', {
+      attempt,
+      nextAttempt: attempt + 1,
+      delayMs: delay,
+      usePro: true,
+      modelTier: 'pro',
+      captureId,
+      reservationId,
+      reason: result.details?.error ?? 'flash_failed',
+    });
     await new Promise((r) => setTimeout(r, delay));
   }
   /* unreachable — loop always returns before this */
@@ -183,29 +313,32 @@ async function _singleAttempt(
     usePro = false,
     reservationId = null,
     creditGated = false,
+    controller = null,
   }
 ) {
-  const startTime  = Date.now();
-  const controller = new AbortController();
-  const timeoutId  = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const startTime = Date.now();
+  const owned = controller ?? new AbortController();
+  const timeoutId = setTimeout(() => {
+    try { owned.abort(); } catch (_) { /* ignore */ }
+  }, REQUEST_TIMEOUT_MS);
 
   _trace('START', { attempt, captureId, userId, usePro, size: imageFile?.size ?? 0 });
 
   try {
     const formData = new FormData();
     formData.append('image', imageFile);
-    // captureId is only sent on attempt 1 to register the capture in the DB
-    // and idempotency guard. Retry attempts (2, 3) intentionally omit it so
-    // the backend performs a FRESH classification instead of returning the
-    // cached 'other' result from the previous attempt.
-    if (captureId && attempt === 1) formData.append('captureId', String(captureId));
+    // Always send captureId so retries can update the same diary capture.
+    // fresh=1 on attempt 2+ bypasses idempotency (FAILED / hung PROCESSING).
+    if (captureId) {
+      formData.append('captureId', String(captureId));
+      if (attempt > 1) formData.append('fresh', '1');
+    }
     if (userId)     formData.append('userId',    String(userId));
     if (userName)   formData.append('userName',  String(userName));
     if (userEmail)  formData.append('userEmail', String(userEmail));
     if (foodRowId)  formData.append('foodRowId', String(foodRowId));
     // Signal backend to use Gemini Pro on this attempt (escalation).
     if (usePro)     formData.append('modelTier', 'pro');
-    if (foodRowId)  formData.append('foodRowId',   String(foodRowId));
     if (creditGated && reservationId) {
       formData.append('creditGated', '1');
       formData.append('reservationId', String(reservationId));
@@ -214,7 +347,7 @@ async function _singleAttempt(
     const response = await fetch(ORCHESTRATE_URL, {
       method: 'POST',
       body:   formData,
-      signal: controller.signal,
+      signal: owned.signal,
     });
 
     clearTimeout(timeoutId);

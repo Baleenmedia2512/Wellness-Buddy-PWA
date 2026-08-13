@@ -1,9 +1,15 @@
-import { largeBodyConfig as config } from '../../../../utils/apiConfig.js';
 import { applyCors, methodNotAllowed, runService } from '../../../../shared/lib/handler.js';
 import { validateRetryPromotion } from '../../../../features/background-analysis/analysis.validators.js';
 import { retryPromotionToFood } from '../../../../features/background-analysis/diary.service.js';
 
-export { config };
+// Must be a literal export — Next.js cannot statically parse re-exported config.
+export const config = {
+  api: {
+    bodyParser: {
+      sizeLimit: '10mb',
+    },
+  },
+};
 
 /**
  * POST /api/background-analysis/captures/retry-promotion
