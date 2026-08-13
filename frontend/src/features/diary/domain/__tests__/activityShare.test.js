@@ -107,6 +107,23 @@ describe('diary activityType', () => {
         { name: 'Sambar' },
       ],
     })).toEqual(['White Rice', 'Sambar']);
+
+    expect(extractFoodItemDisplayNames({
+      foods: [{ name: 'Masala Dosa' }],
+      detailedItems: [
+        { name: 'Masala Dosa' },
+        { name: 'Dosa with Onion' },
+        { name: 'Dosa batter' },
+        { name: 'Egg Dosa' },
+        { name: 'Ragi Dosa' },
+      ],
+    })).toEqual([
+      'Masala Dosa',
+      'Dosa with Onion',
+      'Dosa batter',
+      'Egg Dosa',
+      'Ragi Dosa',
+    ]);
   });
 
   test('sums afresh scoops across day analyses without counting water', () => {

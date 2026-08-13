@@ -37,11 +37,29 @@ export function useNutritionAnalysis({
   const isAutoSaveUpdateRef = useRef(false);
 
   // Load editable items whenever the selected meal changes.
+  // Lean diary rows have listSummary but no AnalysisData until detail fetch.
   useEffect(() => {
     if (!selectedMeal) return;
     const foodData = parseAnalysisData(selectedMeal.AnalysisData);
-    setLocalDetailedItems((foodData.detailedItems || []).map((it) => transformDbItemToEditable(it, true)));
-    setLocalNutrition(foodData.nutrition || {});
+    let items = foodData.detailedItems || [];
+    if (items.length === 0 && Array.isArray(selectedMeal.listSummary?.items)) {
+      items = selectedMeal.listSummary.items.map((item) => ({
+        name: item.name,
+        calories: item.calories,
+        nutrition: { calories: item.calories || 0 },
+      }));
+    }
+    setLocalDetailedItems(items.map((it) => transformDbItemToEditable(it, true)));
+    const fromParse = foodData.nutrition || {};
+    const hasParsedCalories = Number(fromParse.calories) > 0;
+    setLocalNutrition(hasParsedCalories ? fromParse : {
+      calories: selectedMeal.TotalCalories ?? fromParse.calories ?? 0,
+      protein: selectedMeal.TotalProtein ?? fromParse.protein ?? 0,
+      carbs: selectedMeal.TotalCarbs ?? fromParse.carbs ?? 0,
+      fat: selectedMeal.TotalFat ?? fromParse.fat ?? 0,
+      fiber: selectedMeal.TotalFiber ?? fromParse.fiber ?? 0,
+      glycemic_index: selectedMeal.GlycemicIndex ?? fromParse.glycemic_index ?? null,
+    });
     if (!isAutoSaveUpdateRef.current) { setIsEditing(false); setEditingStates({}); }
     isAutoSaveUpdateRef.current = false;
   }, [selectedMeal]);

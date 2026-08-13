@@ -26,7 +26,7 @@ const ACTIVITY = Object.freeze({
  */
 export function extractFoodListSummary(analysisData, processedBy = null) {
   const raw = parseRaw(analysisData);
-  const foods = Array.isArray(raw?.foods) ? raw.foods : [];
+  const foods = collectAnalysisFoods(raw);
   const name = formatFoodsTitle(foods) || 'Food';
   const activityType = resolveActivityType(processedBy, raw, foods, name);
   const volumeMl = sumVolumeMl(foods);
@@ -35,8 +35,8 @@ export function extractFoodListSummary(analysisData, processedBy = null) {
   const shakeProducts = activityType === ACTIVITY.SHAKE
     ? extractShakeProducts(foods)
     : null;
-  const items = foods.slice(0, 8).map((item) => ({
-    name: String(item?.name || 'Item'),
+  const items = foods.slice(0, 20).map((item) => ({
+    name: String(item?.name || item?.foodName || 'Item'),
     calories: Math.round(Number(item?.calories ?? item?.nutrition?.calories ?? 0) || 0),
   }));
 
@@ -71,6 +71,15 @@ function parseRaw(analysisData) {
   } catch {
     return null;
   }
+}
+
+/** Prefer the longer of foods[] / detailedItems[] so share captions keep every dish. */
+function collectAnalysisFoods(raw) {
+  const foods = Array.isArray(raw?.foods) ? raw.foods : [];
+  const detailed = Array.isArray(raw?.detailedItems) ? raw.detailedItems : [];
+  if (detailed.length > foods.length) return detailed;
+  if (foods.length > 0) return foods;
+  return detailed;
 }
 
 function formatFoodsTitle(foods) {
