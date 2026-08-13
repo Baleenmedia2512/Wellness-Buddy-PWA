@@ -34,6 +34,10 @@ function CardSkeleton() {
 
 /** Memoized grid tile — avoids re-rendering unchanged cards on load-more. */
 const BodyParamsCardTile = memo(function BodyParamsCardTile({ card, onEdit }) {
+  const mail = String(card.email || '').trim();
+  const cid = String(card.communityId || '').trim();
+  const identityLine = mail && cid ? `${mail} | ${cid}` : (mail || cid || card.phoneNumber || '');
+
   return (
     <div
       onClick={() => onEdit(card)}
@@ -43,7 +47,9 @@ const BodyParamsCardTile = memo(function BodyParamsCardTile({ card, onEdit }) {
         <div className="flex items-start justify-between mb-3">
           <div className="flex-1 min-w-0">
             <h3 className="font-semibold text-gray-900 truncate">{card.name}</h3>
-            <p className="text-sm text-gray-500">{card.phoneNumber}</p>
+            {identityLine ? (
+              <p className="text-sm text-gray-500 truncate">{identityLine}</p>
+            ) : null}
           </div>
           <button
             onClick={(e) => {
@@ -349,7 +355,7 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
             <input
               type="text"
-              placeholder="Search by name or phone..."
+              placeholder="Search by name, phone, email or Community ID..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"

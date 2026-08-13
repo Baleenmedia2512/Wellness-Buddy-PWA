@@ -600,15 +600,18 @@ const bpcListCache = new Map();
 const bpcListInflight = new Map();
 
 function bpcListCacheKey(coachId) {
-  return `bpc:list:${coachId}`;
+  return `bpc:list:v2:${coachId}`;
 }
 
-function mapCardSummary(card, phone) {
+function mapCardSummary(card, memberMeta = null) {
+  const phone = memberMeta?.phoneNumber || null;
   return {
     id: card.id,
     userId: card.user_id,
     name: card.name,
     phoneNumber: phone,
+    email: memberMeta?.email || null,
+    communityId: memberMeta?.communityId || null,
     age: card.age,
     gender: card.gender,
     heightCm: card.height_cm,
@@ -621,9 +624,9 @@ function mapCardSummary(card, phone) {
   };
 }
 
-function mapCardDetail(card, phone) {
+function mapCardDetail(card, memberMeta = null) {
   return {
-    ...mapCardSummary(card, phone),
+    ...mapCardSummary(card, memberMeta),
     fatPercent: card.fat_percent,
     bmr: card.bmr,
     bodyAge: card.body_age,
@@ -635,7 +638,7 @@ function mapCardDetail(card, phone) {
   };
 }
 
-async function fetchPhonesByUserIds(supabase, userIds) {
+async function fetchTeamMemberMetaByUserIds(supabase, userIds) {
   const teamMembersMap = {};
   if (!userIds.length) return teamMembersMap;
 
@@ -644,16 +647,29 @@ async function fetchPhonesByUserIds(supabase, userIds) {
     const chunk = userIds.slice(i, i + CHUNK);
     const { data: teamMembers } = await supabase
       .from('team_table')
-      .select('UserId, PhoneNumber')
+      .select('UserId, PhoneNumber, Email, CommunityId')
       .in('UserId', chunk);
 
     if (teamMembers) {
       for (const m of teamMembers) {
-        teamMembersMap[String(m.UserId)] = m;
+        teamMembersMap[String(m.UserId)] = {
+          phoneNumber: m.PhoneNumber && String(m.PhoneNumber).trim()
+            ? String(m.PhoneNumber).trim()
+            : null,
+          email: m.Email && String(m.Email).trim() ? String(m.Email).trim() : null,
+          communityId: m.CommunityId && String(m.CommunityId).trim()
+            ? String(m.CommunityId).trim()
+            : null,
+        };
       }
     }
   }
   return teamMembersMap;
+}
+
+/** @deprecated use fetchTeamMemberMetaByUserIds */
+async function fetchPhonesByUserIds(supabase, userIds) {
+  return fetchTeamMemberMetaByUserIds(supabase, userIds);
 }
 
 /**
@@ -699,14 +715,11 @@ async function loadSlimCardsForCoach(coachId) {
 
     const rows = cards || [];
     const userIds = [...new Set(rows.map((c) => c.user_id).filter(Boolean))];
-    const teamMembersMap = await fetchPhonesByUserIds(supabase, userIds);
+    const teamMembersMap = await fetchTeamMemberMetaByUserIds(supabase, userIds);
 
     const mapped = rows.map((card) => {
-      const member = teamMembersMap[String(card.user_id)];
-      const phone = member?.PhoneNumber && String(member.PhoneNumber).trim()
-        ? String(member.PhoneNumber).trim()
-        : null;
-      return mapCardSummary(card, phone);
+      const member = teamMembersMap[String(card.user_id)] || null;
+      return mapCardSummary(card, member);
     });
 
     bpcListCache.set(key, { rows: mapped, expiresAt: Date.now() + BPC_LIST_CACHE_TTL_MS });
@@ -759,13 +772,10 @@ export async function getCardByIdForCoach(coachId, cardId) {
   if (error) throw error;
   if (!card) return null;
 
-  let phone = null;
+  let memberMeta = null;
   if (card.user_id) {
-    const map = await fetchPhonesByUserIds(supabase, [card.user_id]);
-    const member = map[String(card.user_id)];
-    phone = member?.PhoneNumber && String(member.PhoneNumber).trim()
-      ? String(member.PhoneNumber).trim()
-      : null;
+    const map = await fetchTeamMemberMetaByUserIds(supabase, [card.user_id]);
+    memberMeta = map[String(card.user_id)] || null;
   }
-  return mapCardDetail(card, phone);
+  return mapCardDetail(card, memberMeta);
 }
