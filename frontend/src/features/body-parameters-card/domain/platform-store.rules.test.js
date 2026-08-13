@@ -18,17 +18,13 @@ describe('platform-store.rules', () => {
   });
 
   describe('buildShareCaptionForImage', () => {
-    it('uses coach name and venue dynamically', () => {
-      const text = buildShareCaptionForImage(
-        'Rahul Sharma',
-        'Coimbatore',
-        'https://api.example.com/share',
-      );
+    it('uses coach name and venue dynamically without a share URL', () => {
+      const text = buildShareCaptionForImage('Rahul Sharma', 'Coimbatore');
       expect(text).toContain('Hi, this is Rahul.');
       expect(text).toContain('fat camp in Coimbatore');
       expect(text).toContain('body composition metrics here with');
-      expect(text).toContain('api.example.com/share');
-      expect(text).not.toContain('https://');
+      expect(text).not.toContain('/share');
+      expect(text).not.toContain('http');
     });
 
     it('omits venue phrase when venue is empty', () => {

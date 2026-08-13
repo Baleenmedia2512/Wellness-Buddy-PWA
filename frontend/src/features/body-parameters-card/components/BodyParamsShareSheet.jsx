@@ -27,21 +27,23 @@ const waitForPaint = () => new Promise((resolve) => {
 /**
  * @param {{ isOpen, onClose, card, shareUrl, preCapCard, previousCard }} props
  */
-const BodyParamsShareSheet = ({ isOpen, onClose, card, shareUrl, preCapCard, previousCard = null }) => {
+const BodyParamsShareSheet = ({ isOpen, onClose, card, preCapCard, previousCard = null }) => {
   const cardRef           = useRef(null);
   const preCapRef         = useRef(null);
   const capturePromiseRef = useRef(null);
+  const captureGenRef     = useRef(0);
+  const capturedWithPrev  = useRef(false);
   const firedRef          = useRef(false);
 
   const doShare = useCallback(async () => {
     const coachName = card?.creatorName || card?.coachName || preCapCard?.creatorName || '';
     const venue = card?.locationName || preCapCard?.locationName || '';
-    const caption = buildShareCaptionForImage(coachName, venue, shareUrl);
+    const caption = buildShareCaptionForImage(coachName, venue);
     try {
       const dataUrl = preCapRef.current;
       if (dataUrl) {
         const result = await shareViaCapacitorAPI(dataUrl, {
-          title:    `${card?.name || 'Body'} Parameters`,
+          title:    `${card?.name || preCapCard?.name || 'Body'} Parameters`,
           text:     caption,
           fileName: `wellness-body-params-${Date.now()}.jpg`,
         });
@@ -57,26 +59,39 @@ const BodyParamsShareSheet = ({ isOpen, onClose, card, shareUrl, preCapCard, pre
     } finally {
       onClose();
     }
-  }, [shareUrl, card, preCapCard, onClose]);
+  }, [card, preCapCard, onClose]);
 
-  // Pre-capture when form data or saved card is available (web + native).
+  // Pre-capture as soon as form data is available. Reuse that image after save
+  // unless previous metrics arrived and changed the card layout.
   useEffect(() => {
     if (!preCapCard && !card) return;
 
+    const needsPreviousLayout = Boolean(previousCard);
+    if (!needsPreviousLayout && (preCapRef.current || capturePromiseRef.current)) {
+      return;
+    }
+    if (needsPreviousLayout && capturedWithPrev.current) {
+      return;
+    }
+
+    const gen = ++captureGenRef.current;
     preCapRef.current = null;
+    capturedWithPrev.current = false;
     capturePromiseRef.current = (async () => {
       await waitForPaint();
-      if (!cardRef.current) return null;
+      if (gen !== captureGenRef.current || !cardRef.current) return null;
       const dataUrl = await precaptureShareImage(cardRef.current, CAPTURE_OPTS);
+      if (gen !== captureGenRef.current) return null;
       preCapRef.current = dataUrl;
+      capturedWithPrev.current = needsPreviousLayout;
       debugLog('⚡ [BodyParamsShare] Pre-capture ready');
       return dataUrl;
     })();
-  }, [preCapCard, card]);
+  }, [preCapCard, card, previousCard]);
 
-  // Once isOpen + shareUrl arrive, share immediately.
+  // Share as soon as save succeeds and the (already running) capture is ready.
   useEffect(() => {
-    if (!isOpen || !card || !shareUrl) return;
+    if (!isOpen || !card) return;
     firedRef.current = false;
     let cancelled = false;
 
@@ -95,13 +110,15 @@ const BodyParamsShareSheet = ({ isOpen, onClose, card, shareUrl, preCapCard, pre
 
     run();
     return () => { cancelled = true; };
-  }, [isOpen, card, shareUrl, doShare]);
+  }, [isOpen, card, previousCard, doShare]);
 
   // Reset capture state when closed
   useEffect(() => {
     if (!isOpen && !preCapCard) {
+      captureGenRef.current += 1;
       capturePromiseRef.current = null;
       preCapRef.current = null;
+      capturedWithPrev.current = false;
     }
   }, [isOpen, preCapCard]);
 
