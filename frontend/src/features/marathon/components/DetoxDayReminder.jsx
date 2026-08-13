@@ -1,5 +1,6 @@
 /**
- * Home-hero banner shown only on marathon Days 3 and 8.
+ * Home-hero banner for marathon reminders near Take Photo / Gallery:
+ * eve of Day 0, and Days 3 / 8 (eve of Detox Days).
  * Calendar rules live in domain/marathonCalendar.js.
  */
 import React from 'react';
