@@ -233,4 +233,25 @@ export function validateStatus(query) {
   return { email };
 }
 
+export function validateVerifySession(req) {
+  const isGet = req.method === 'GET';
+  const source = isGet ? req.query : req.body;
+  const email = source?.email ? normalizeEmail(source.email) : null;
+  const phoneRaw = source?.phone ?? source?.phoneNumber ?? source?.PhoneNumber;
+  const phone = phoneRaw != null && String(phoneRaw).trim() !== ''
+    ? String(phoneRaw).trim()
+    : null;
+  const userIdRaw = source?.userId ?? source?.UserId;
+  const userId = userIdRaw != null && String(userIdRaw).trim() !== ''
+    ? String(userIdRaw).trim()
+    : null;
+  if (!email && !phone && !userId) {
+    throw new ValidationError(400, 'At least one of userId, email, or phone is required');
+  }
+  const timezoneRaw = isGet
+    ? (source?.timezoneIana ?? source?.timezone)
+    : (source?.timezoneIana ?? source?.timezone);
+  return { userId, email, phone, timezoneIana: timezoneRaw };
+}
+
 export { VALID_DIETS, VALID_GENDERS };
