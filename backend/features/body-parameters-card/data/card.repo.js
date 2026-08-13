@@ -706,6 +706,28 @@ async function fetchPhonesByUserIds(supabase, userIds) {
 }
 
 /**
+ * Soft-delete a body-parameters card owned by the coach.
+ * Sets `is_deleted = true`. Returns null when missing or not owned.
+ *
+ * @param {{ id: number, coachId: number }} opts
+ * @returns {Promise<{ id: number, created_by: number }|null>}
+ */
+export async function softDeleteCard({ id, coachId }) {
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from(TABLE)
+    .update({ is_deleted: true })
+    .eq('id', id)
+    .eq('created_by', coachId)
+    .eq('is_deleted', false)
+    .select('id, created_by')
+    .maybeSingle();
+
+  if (error) throw error;
+  return data || null;
+}
+
+/**
  * Invalidate the slim list cache for a coach (call after create/update).
  * @param {number|string} coachId
  */

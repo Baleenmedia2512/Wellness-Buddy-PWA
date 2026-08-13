@@ -1,12 +1,15 @@
 // src/pages/WellnessCounsellingCards.js
-import React, { useState, useEffect, useRef, useCallback, memo } from "react";
-import { Search, Plus, RefreshCw, FileHeart, Edit2 } from "lucide-react";
+import React, { useState, useEffect, useRef, useCallback, useMemo, memo } from "react";
+import { Plus, RefreshCw, FileHeart, Edit2, Trash2 } from "lucide-react";
 import {
   BodyParamsForm,
   BodyParamsShareSheet,
+  BodyParamsSearchBar,
   preloadBodyParamsShareAssets,
   listBodyParamsCards,
   getBodyParamsCard,
+  deleteBodyParamsCard,
+  buildBpcSearchSuggestions,
 } from "../features/body-parameters-card";
 import { CapacitorHttp } from '@capacitor/core';
 import { debugLog } from '../shared/utils/logger.js';
@@ -33,7 +36,12 @@ function CardSkeleton() {
 }
 
 /** Memoized grid tile — avoids re-rendering unchanged cards on load-more. */
-const BodyParamsCardTile = memo(function BodyParamsCardTile({ card, onEdit }) {
+const BodyParamsCardTile = memo(function BodyParamsCardTile({
+  card,
+  onEdit,
+  onDelete,
+  isDeleting = false,
+}) {
   return (
     <div
       onClick={() => onEdit(card)}
@@ -47,15 +55,31 @@ const BodyParamsCardTile = memo(function BodyParamsCardTile({ card, onEdit }) {
               <p className="text-sm text-gray-500 truncate">{card.phoneNumber}</p>
             ) : null}
           </div>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onEdit(card);
-            }}
-            className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
-          >
-            <Edit2 size={16} className="text-gray-400" />
-          </button>
+          <div className="flex items-center gap-0.5 flex-shrink-0">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onEdit(card);
+              }}
+              className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
+              aria-label={`Edit ${card.name || 'card'}`}
+            >
+              <Edit2 size={16} className="text-gray-400" />
+            </button>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete(card);
+              }}
+              disabled={isDeleting}
+              className="p-1.5 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
+              aria-label={`Delete ${card.name || 'card'}`}
+            >
+              <Trash2 size={16} className={isDeleting ? 'text-red-300' : 'text-red-400'} />
+            </button>
+          </div>
         </div>
 
         <div className="grid grid-cols-2 gap-2 mb-3">
@@ -107,7 +131,10 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
   const [bodyParamsCards, setBodyParamsCards] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [highlightedSuggestion, setHighlightedSuggestion] = useState(-1);
   const [refreshing, setRefreshing] = useState(false);
+  const [deletingCardId, setDeletingCardId] = useState(null);
   const [pagination, setPagination] = useState({
     totalRecords: 0,
     currentPage: 0,
@@ -125,6 +152,8 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
   const coachIdRef = useRef(null);
   /** Cache: `${search}::${page}` → { cards, pagination } */
   const pageCacheRef = useRef(new Map());
+  /** Accumulated cards for autocomplete (survives paginated / filtered list swaps). */
+  const [suggestionPool, setSuggestionPool] = useState([]);
   const scrollRef = useRef(null);
   const sentinelRef = useRef(null);
   /** Monotonic request id — only the latest request may write state. */
@@ -152,6 +181,83 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
     const t = setTimeout(() => setDebouncedSearch(searchQuery.trim()), 300);
     return () => clearTimeout(t);
   }, [searchQuery]);
+
+  // Grow autocomplete pool whenever cards load (page 1, load-more, or search hits).
+  useEffect(() => {
+    setSuggestionPool((prev) => {
+      const map = new Map(prev.map((c) => [c.id, c]));
+      let changed = false;
+      for (const card of bodyParamsCards) {
+        if (card?.id == null) continue;
+        const next = {
+          id: card.id,
+          name: card.name,
+          phoneNumber: card.phoneNumber,
+        };
+        const existing = map.get(card.id);
+        if (
+          existing
+          && existing.name === next.name
+          && existing.phoneNumber === next.phoneNumber
+        ) {
+          continue;
+        }
+        map.set(card.id, next);
+        changed = true;
+      }
+      return changed ? Array.from(map.values()) : prev;
+    });
+  }, [bodyParamsCards]);
+
+  const suggestions = useMemo(
+    () => buildBpcSearchSuggestions(suggestionPool, searchQuery),
+    [suggestionPool, searchQuery],
+  );
+
+  const handleSelectSuggestion = useCallback((suggestion) => {
+    setSearchQuery(suggestion?.term || '');
+    setIsSearchOpen(false);
+    setHighlightedSuggestion(-1);
+  }, []);
+
+  const handleSearchKeyDown = useCallback((e) => {
+    if (!searchQuery.trim()) return;
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      if (!suggestions.length) return;
+      setIsSearchOpen(true);
+      setHighlightedSuggestion((prev) => (prev < suggestions.length - 1 ? prev + 1 : 0));
+      return;
+    }
+    if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (!suggestions.length) return;
+      setIsSearchOpen(true);
+      setHighlightedSuggestion((prev) => (prev > 0 ? prev - 1 : suggestions.length - 1));
+      return;
+    }
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (highlightedSuggestion >= 0 && suggestions[highlightedSuggestion]) {
+        handleSelectSuggestion(suggestions[highlightedSuggestion]);
+      } else {
+        setIsSearchOpen(false);
+        setHighlightedSuggestion(-1);
+      }
+      return;
+    }
+    if (e.key === 'Escape') {
+      setIsSearchOpen(false);
+      setHighlightedSuggestion(-1);
+    }
+  }, [searchQuery, suggestions, highlightedSuggestion, handleSelectSuggestion]);
+
+  const handleSearchChange = useCallback((value) => {
+    setSearchQuery(value);
+    setIsSearchOpen(true);
+    setHighlightedSuggestion(-1);
+  }, []);
 
   const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
 
@@ -212,7 +318,6 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
 
     if (append) setLoadingMore(true);
     else if (!isBackground) setLoading(true);
-    else setRefreshing(true);
     setError(null);
 
     try {
@@ -250,19 +355,42 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
     }
   }, [user?.email, getUserId, applyPageResult]);
 
-  // Reset + load page 1 when user / search / refreshKey changes
+  /** True after the first successful page-1 load for the current user/refreshKey. */
+  const hasLoadedOnceRef = useRef(false);
+  const prevListDriversRef = useRef({ user, refreshKey, debouncedSearch });
+
+  // Load page 1 when user / search / refreshKey changes.
+  // Search-only changes soft-update in the background so typing does not flash
+  // the full-page Loading skeleton or unmount the search bar.
   useEffect(() => {
+    const prev = prevListDriversRef.current;
+    const hardReset = prev.user !== user || prev.refreshKey !== refreshKey;
+    prevListDriversRef.current = { user, refreshKey, debouncedSearch };
+
     pageCacheRef.current.clear();
     inFlightPagesRef.current.clear();
-    setBodyParamsCards([]);
-    setPagination({ totalRecords: 0, currentPage: 0, hasNextPage: false });
-    setLoading(true);
     setError(null);
+
+    if (hardReset) {
+      hasLoadedOnceRef.current = false;
+      setBodyParamsCards([]);
+      setPagination({ totalRecords: 0, currentPage: 0, hasNextPage: false });
+      setLoading(true);
+    }
+
+    const softSearch = hasLoadedOnceRef.current && !hardReset;
 
     let cancelled = false;
     const run = async () => {
-      await fetchPage({ page: 1, search: debouncedSearch, append: false });
+      await fetchPage({
+        page: 1,
+        search: debouncedSearch,
+        append: false,
+        // Keep current cards + search UI visible while filtered results load.
+        isBackground: softSearch,
+      });
       if (cancelled) return;
+      hasLoadedOnceRef.current = true;
     };
     run();
 
@@ -273,9 +401,16 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
     };
   }, [user, refreshKey, debouncedSearch, fetchPage]);
 
+  // Clear suggestion pool when the coach or external refresh key changes.
+  useEffect(() => {
+    setSuggestionPool([]);
+  }, [user, refreshKey]);
+
   const handleRefresh = () => {
     pageCacheRef.current.clear();
     inFlightPagesRef.current.clear();
+    setSuggestionPool([]);
+    setRefreshing(true);
     fetchPage({
       page: 1,
       search: debouncedSearch,
@@ -328,6 +463,31 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
       setIsBodyParamsFormOpen(true);
     }
   };
+
+  const handleDeleteCard = useCallback(async (card) => {
+    if (!card?.id || deletingCardId != null) return;
+    const label = String(card.name || 'this card').trim() || 'this card';
+    if (!window.confirm(`Delete ${label}? This cannot be undone.`)) return;
+
+    setDeletingCardId(card.id);
+    try {
+      const coachId = await getUserId(user.email);
+      await deleteBodyParamsCard({ id: card.id, coachId });
+      pageCacheRef.current.clear();
+      setBodyParamsCards((prev) => prev.filter((c) => c.id !== card.id));
+      setSuggestionPool((prev) => prev.filter((c) => c.id !== card.id));
+      setPagination((prev) => ({
+        ...prev,
+        totalRecords: Math.max(0, (prev.totalRecords || 1) - 1),
+      }));
+      debugLog('[WellnessCounselling] card deleted', { id: card.id });
+    } catch (err) {
+      console.error('[WellnessCounselling] Error deleting card:', err);
+      window.alert(err.message || 'Failed to delete card. Please try again.');
+    } finally {
+      setDeletingCardId(null);
+    }
+  }, [deletingCardId, getUserId, user?.email]);
 
   if (loading && bodyParamsCards.length === 0 && !error) {
     return (
@@ -386,16 +546,17 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
         </div>
 
         <div className="px-4 pb-3">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-            <input
-              type="text"
-              placeholder="Search by name or phone..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
-            />
-          </div>
+          <BodyParamsSearchBar
+            value={searchQuery}
+            onChange={handleSearchChange}
+            suggestions={suggestions}
+            isOpen={isSearchOpen}
+            onOpenChange={setIsSearchOpen}
+            highlightedIndex={highlightedSuggestion}
+            onHighlightChange={setHighlightedSuggestion}
+            onSelectSuggestion={handleSelectSuggestion}
+            onKeyDown={handleSearchKeyDown}
+          />
         </div>
       </div>
 
@@ -432,7 +593,13 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
           <>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 pb-4">
               {bodyParamsCards.map((card) => (
-                <BodyParamsCardTile key={card.id} card={card} onEdit={handleEditCard} />
+                <BodyParamsCardTile
+                  key={card.id}
+                  card={card}
+                  onEdit={handleEditCard}
+                  onDelete={handleDeleteCard}
+                  isDeleting={deletingCardId === card.id}
+                />
               ))}
             </div>
             {loadingMore && (
