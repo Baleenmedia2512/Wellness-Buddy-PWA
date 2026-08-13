@@ -34,10 +34,6 @@ function CardSkeleton() {
 
 /** Memoized grid tile — avoids re-rendering unchanged cards on load-more. */
 const BodyParamsCardTile = memo(function BodyParamsCardTile({ card, onEdit }) {
-  const mail = String(card.email || '').trim();
-  const cid = String(card.communityId || '').trim();
-  const identityLine = mail && cid ? `${mail} | ${cid}` : (mail || cid || card.phoneNumber || '');
-
   return (
     <div
       onClick={() => onEdit(card)}
@@ -47,8 +43,8 @@ const BodyParamsCardTile = memo(function BodyParamsCardTile({ card, onEdit }) {
         <div className="flex items-start justify-between mb-3">
           <div className="flex-1 min-w-0">
             <h3 className="font-semibold text-gray-900 truncate">{card.name}</h3>
-            {identityLine ? (
-              <p className="text-sm text-gray-500 truncate">{identityLine}</p>
+            {card.phoneNumber ? (
+              <p className="text-sm text-gray-500 truncate">{card.phoneNumber}</p>
             ) : null}
           </div>
           <button
@@ -81,7 +77,7 @@ const BodyParamsCardTile = memo(function BodyParamsCardTile({ card, onEdit }) {
           </div>
         </div>
 
-        <div className="pt-2 border-t border-gray-100 space-y-1">
+        <div className="pt-2 border-t border-gray-100">
           <div className="flex items-center justify-between text-xs text-gray-500">
             <span>{card.gender || '—'}</span>
             <span>
@@ -89,11 +85,6 @@ const BodyParamsCardTile = memo(function BodyParamsCardTile({ card, onEdit }) {
               {card.recordedDate ? format(new Date(card.recordedDate), 'd MMM yyyy') : 'N/A'}
             </span>
           </div>
-          {card.locationName ? (
-            <p className="text-xs text-gray-600 truncate">
-              Venue: <span className="font-medium text-gray-800">{card.locationName}</span>
-            </p>
-          ) : null}
         </div>
       </div>
     </div>
@@ -122,6 +113,9 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
   const [selectedCard, setSelectedCard] = useState(null);
   const [bodyParamsShareData, setBodyParamsShareData] = useState(null);
   const [bodyParamsPreCapCard, setBodyParamsPreCapCard] = useState(null);
+  /** Editable page-level Venue — shown in header only, applied when saving a card. */
+  const [headerVenue, setHeaderVenue] = useState('');
+  const headerVenueInitializedRef = useRef(false);
 
   const coachIdRef = useRef(null);
   /** Cache: `${search}::${page}` → { cards, pagination } */
@@ -137,6 +131,17 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
     if (!isBodyParamsFormOpen) return;
     preloadBodyParamsShareAssets();
   }, [isBodyParamsFormOpen]);
+
+  // Seed editable header Venue once from the newest card that has one.
+  useEffect(() => {
+    if (headerVenueInitializedRef.current) return;
+    const venue = bodyParamsCards
+      .map((c) => String(c.locationName || '').trim())
+      .find(Boolean);
+    if (!venue) return;
+    headerVenueInitializedRef.current = true;
+    setHeaderVenue(venue);
+  }, [bodyParamsCards]);
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(searchQuery.trim()), 300);
@@ -305,8 +310,21 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
         ...fresh,
         phoneNumber: fresh.phoneNumber ?? card.phoneNumber ?? null,
       };
+      if (merged.locationName) {
+        headerVenueInitializedRef.current = true;
+        setHeaderVenue(String(merged.locationName));
+      }
       setSelectedCard(merged);
       setIsBodyParamsFormOpen(true);
+    } catch {
+      if (card.locationName) {
+        headerVenueInitializedRef.current = true;
+        setHeaderVenue(String(card.locationName));
+      }
+      setSelectedCard(card);
+      setIsBodyParamsFormOpen(true);
+    }
+  };
     } catch {
       setSelectedCard(card);
       setIsBodyParamsFormOpen(true);
@@ -335,16 +353,35 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
     <div className="h-screen bg-gradient-to-br from-green-50 to-blue-50 overflow-hidden flex flex-col">
       <div className="flex-shrink-0 bg-white shadow-sm">
         <div className="px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div>
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="min-w-0 flex-1">
               <h1 className="text-lg font-bold text-gray-900">Body Composition Metrics</h1>
-              <p className="text-xs text-gray-500">{pagination.totalRecords || bodyParamsCards.length} Cards</p>
+              <div className="flex items-center gap-2 mt-0.5 min-w-0">
+                <p className="text-xs text-gray-500 flex-shrink-0">
+                  {pagination.totalRecords || bodyParamsCards.length} Cards
+                </p>
+                <span className="text-xs text-gray-400 flex-shrink-0">·</span>
+                <label className="text-xs text-gray-500 flex-shrink-0" htmlFor="bpc-header-venue">
+                  Venue:
+                </label>
+                <input
+                  id="bpc-header-venue"
+                  type="text"
+                  value={headerVenue}
+                  onChange={(e) => {
+                    headerVenueInitializedRef.current = true;
+                    setHeaderVenue(e.target.value);
+                  }}
+                  placeholder="e.g. Chennai"
+                  className="min-w-0 flex-1 text-xs text-gray-800 border border-gray-200 rounded-md px-2 py-0.5 focus:outline-none focus:ring-1 focus:ring-green-500 bg-white"
+                />
+              </div>
             </div>
           </div>
           <button
             onClick={handleRefresh}
             disabled={refreshing}
-            className="p-2 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50"
+            className="p-2 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50 flex-shrink-0"
           >
             <RefreshCw size={20} className={refreshing ? 'animate-spin' : ''} />
           </button>
@@ -355,7 +392,7 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
             <input
               type="text"
-              placeholder="Search by name, phone, email or Community ID..."
+              placeholder="Search by name or phone..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
@@ -432,12 +469,21 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
         user={user}
         selectedMember={null}
         existingCard={selectedCard}
+        externalVenue={headerVenue}
+        hideVenueField
         onSaveStart={(formData) => {
-          setBodyParamsPreCapCard(formData);
+          setBodyParamsPreCapCard({
+            ...formData,
+            locationName: headerVenue.trim() || formData.locationName || '',
+          });
         }}
         onSaveSuccess={(card, shareUrl, previousCard) => {
           setIsBodyParamsFormOpen(false);
           onCardSaved?.(card);
+          if (card?.locationName) {
+            headerVenueInitializedRef.current = true;
+            setHeaderVenue(String(card.locationName));
+          }
 
           pageCacheRef.current.clear();
           setBodyParamsCards((prevCards) => {
@@ -446,6 +492,7 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
               ...(idx >= 0 ? prevCards[idx] : {}),
               ...card,
               phoneNumber: card.phoneNumber ?? (idx >= 0 ? prevCards[idx].phoneNumber : null),
+              locationName: headerVenue.trim() || card.locationName || null,
             };
             if (idx >= 0) {
               const next = [...prevCards];
@@ -456,7 +503,14 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
           });
 
           setSelectedCard(null);
-          setBodyParamsShareData({ card, shareUrl, previousCard: previousCard || null });
+          setBodyParamsShareData({
+            card: {
+              ...card,
+              locationName: headerVenue.trim() || card.locationName || '',
+            },
+            shareUrl,
+            previousCard: previousCard || null,
+          });
         }}
       />
 

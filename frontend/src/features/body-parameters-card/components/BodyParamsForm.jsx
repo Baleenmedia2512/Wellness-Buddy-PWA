@@ -76,10 +76,16 @@ const SelectField = ({ label, value, onChange, options, inputRef, onEnter }) => 
 };
 
 /**
- * @param {{ isOpen, onClose, user, selectedMember, onSaveSuccess, existingCard, onSaveStart }} props
+ * @param {{ isOpen, onClose, user, selectedMember, onSaveSuccess, existingCard, onSaveStart, externalVenue, hideVenueField }} props
  */
-const BodyParamsForm = ({ isOpen, onClose, user, selectedMember, onSaveSuccess, existingCard = null, onSaveStart = null }) => {
-  const vm = useBodyParamsCard({ user, selectedMember, onSaveSuccess, existingCard, onSaveStart, isOpen });
+const BodyParamsForm = ({
+  isOpen, onClose, user, selectedMember, onSaveSuccess, existingCard = null, onSaveStart = null,
+  externalVenue = null, hideVenueField = false,
+}) => {
+  const vm = useBodyParamsCard({
+    user, selectedMember, onSaveSuccess, existingCard, onSaveStart, isOpen,
+    externalVenue,
+  });
 
   // Refs for all input fields
   const venueRef = useRef(null);
@@ -174,18 +180,20 @@ const BodyParamsForm = ({ isOpen, onClose, user, selectedMember, onSaveSuccess, 
             value={vm.form.recordedDate} 
             onChange={(v) => vm.setField('recordedDate', v)} 
             type="date"
-            onEnter={() => focusNextField(venueRef)}
+            onEnter={() => focusNextField(hideVenueField ? nameRef : venueRef)}
           />
 
-          {/* Venue — free-text location entered by coach (saved as locationName) */}
-          <InputField
-            label="Venue"
-            value={vm.form.locationName}
-            onChange={(v) => vm.setField('locationName', v)}
-            placeholder="e.g. Chennai"
-            inputRef={venueRef}
-            onEnter={() => focusNextField(nameRef)}
-          />
+          {/* Venue — skip when parent provides an editable header Venue */}
+          {!hideVenueField && (
+            <InputField
+              label="Venue"
+              value={vm.form.locationName}
+              onChange={(v) => vm.setField('locationName', v)}
+              placeholder="e.g. Chennai"
+              inputRef={venueRef}
+              onEnter={() => focusNextField(nameRef)}
+            />
+          )}
 
           {/* Name */}
           <InputField 

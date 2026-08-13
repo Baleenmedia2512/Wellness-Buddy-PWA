@@ -83,9 +83,12 @@ function cardToFormState(card) {
 }
 
 /**
- * @param {{ user: object, selectedMember: object|null, onSaveSuccess: function, existingCard: object|null, onSaveStart: function|null, isOpen: boolean }} opts
+ * @param {{ user: object, selectedMember: object|null, onSaveSuccess: function, existingCard: object|null, onSaveStart: function|null, isOpen: boolean, externalVenue?: string|null }} opts
  */
-export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existingCard = null, onSaveStart = null, isOpen = false } = {}) {
+export function useBodyParamsCard({
+  user, selectedMember, onSaveSuccess, existingCard = null, onSaveStart = null, isOpen = false,
+  externalVenue = null,
+} = {}) {
   const isEditMode = Boolean(existingCard?.id);
 
   const [form, setForm] = useState(() => cardToFormState(existingCard));
@@ -118,11 +121,27 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
   // Reload form every time the modal opens (fixes phone/fields missing after save+reopen).
   useEffect(() => {
     if (!isOpen) return;
-    setForm(cardToFormState(existingCard));
+    const next = cardToFormState(existingCard);
+    if (externalVenue != null && String(externalVenue).trim() !== '') {
+      next.locationName = String(externalVenue).trim();
+    } else if (!isEditMode && externalVenue != null) {
+      next.locationName = String(externalVenue || '').trim();
+    }
+    setForm(next);
     setBmiUserEdited(false);
     setBmrUserEdited(false);
     setError('');
-  }, [isOpen, existingCard]);
+  }, [isOpen, existingCard, externalVenue, isEditMode]);
+
+  // Keep form venue in sync with editable header Venue while the modal is open.
+  useEffect(() => {
+    if (!isOpen || externalVenue == null) return;
+    setForm((prev) => {
+      const nextVenue = String(externalVenue || '');
+      if (prev.locationName === nextVenue) return prev;
+      return { ...prev, locationName: nextVenue };
+    });
+  }, [isOpen, externalVenue]);
 
   // Resolve counsellor database UserId (team_table.UserId) — required for card createdBy only.
   useEffect(() => {
