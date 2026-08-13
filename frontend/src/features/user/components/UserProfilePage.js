@@ -5,7 +5,7 @@
 //
 // Sections:
 //   1. Avatar / photo picker
-//   2. Profile fields (name, height, phone, email, diet, BMR, PAL)
+//   2. Profile fields (name, height, phone, community ID, email, diet, BMR, PAL)
 //   3. Weight goal mode
 //   4. Settings  (auto camera toggle)
 //   5. Account actions (sign out, delete account)
@@ -99,6 +99,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
           : (data?.bodyFat != null ? String(data.bodyFat) : ''),
         needsBodyFat: Boolean(data?.needsBodyFat),
         email: data?.email || user?.email || '',
+        communityId: data?.communityId != null ? String(data.communityId) : '',
         bodyMetrics: data?.bodyMetrics || null,
       };
 
@@ -186,6 +187,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
         height: form.height ? parseFloat(form.height) : null,
         physicalActivityLevel: form.physicalActivityLevel || null,
         dietType: form.dietType || null,
+        communityId: form.communityId || null,
         profileImage: profileImagePreview || null,
       });
       if (user?.id) getUserContext(user.id).catch(() => {});
@@ -337,6 +339,8 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
                   setPhysicalActivityLevel={form.setPhysicalActivityLevel}
                   bodyFat={form.bodyFat} setBodyFat={form.setBodyFat}
                   showBodyFat={form.needsBodyFat}
+                  communityId={form.communityId}
+                  setCommunityId={form.setCommunityId}
                 />
                 <UserProfileBodyMetrics bodyMetrics={form.bodyMetrics} />
                 <IdealWeightCards

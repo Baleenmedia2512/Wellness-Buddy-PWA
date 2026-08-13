@@ -57,6 +57,7 @@ const UserProfileModal = ({ isOpen, onClose, user, userRole = 'user', onProfileU
             : (data.bodyFat != null ? String(data.bodyFat) : ''),
           needsBodyFat: Boolean(data.needsBodyFat),
           email: data.email || user?.email || '',
+          communityId: data.communityId != null ? String(data.communityId) : '',
           bodyMetrics: data.bodyMetrics || null,
         });
         setLatestWeight(data.latestWeight ? parseFloat(data.latestWeight) : null);
@@ -97,6 +98,7 @@ const UserProfileModal = ({ isOpen, onClose, user, userRole = 'user', onProfileU
         bmr: form.bmr ? parseFloat(form.bmr) : null,
         physicalActivityLevel: form.physicalActivityLevel || null,
         dietType: form.dietType || null,
+        communityId: form.communityId || null,
         profileImage: profileImagePreview || null,
       });
       if (user?.id) getUserContext(user.id).catch(() => {});

@@ -26,6 +26,8 @@ const UserProfileBody = ({ isLoading, form, email, latestWeight, initialWeight, 
           setPhysicalActivityLevel={form.setPhysicalActivityLevel}
           bodyFat={form.bodyFat} setBodyFat={form.setBodyFat}
           showBodyFat={form.needsBodyFat}
+          communityId={form.communityId}
+          setCommunityId={form.setCommunityId}
         />
         <UserProfileBodyMetrics bodyMetrics={form.bodyMetrics} />
         <IdealWeightCards
