@@ -42,16 +42,24 @@ const TELEMETRY_TIMEOUT_MS = 2_000;
 const DEFAULT_AI_MONITOR_BASE_URL =
   'https://e2-w-ai-token-monitor.vercel.app/api';
 
+/**
+ * Resolve the token-monitor base URL.
+ * If AI_MONITOR_BASE_URL points at this Wellness app (:3000), ignore it and
+ * use the production monitor — otherwise POST /api/sdk/log 404s here.
+ */
 function resolveAiMonitorBaseUrl() {
-  const raw = (process.env.AI_MONITOR_BASE_URL || DEFAULT_AI_MONITOR_BASE_URL).trim();
-  // Common local misconfig: same host as Wellness Buddy (no /api/sdk/log here).
+  const raw = (process.env.AI_MONITOR_BASE_URL || '').trim();
+  if (!raw) return DEFAULT_AI_MONITOR_BASE_URL;
+
   if (/localhost:3000/i.test(raw) || /127\.0\.0\.1:3000/i.test(raw)) {
     logger.warn(
       'geminiClient: AI_MONITOR_BASE_URL points at this Next.js app — '
-      + 'telemetry will 404. Use the token-monitor service URL instead.',
-      { configured: raw, expected: DEFAULT_AI_MONITOR_BASE_URL },
+      + 'ignoring and using token-monitor service URL',
+      { configured: raw, using: DEFAULT_AI_MONITOR_BASE_URL },
     );
+    return DEFAULT_AI_MONITOR_BASE_URL;
   }
+
   return raw;
 }
 
