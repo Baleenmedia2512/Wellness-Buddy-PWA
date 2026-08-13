@@ -2,7 +2,8 @@
  * diary/domain/share/beverageDayShare.js
  *
  * Resolve water / Afresh WhatsApp suffixes from day-level totals
- * (matching ManualEntry share), with per-entry fallbacks.
+ * (Manual Entry share after save). Diary card share uses this-entry
+ * volume / scoops via resolveFoodRowPresentation, not this helper.
  * Pure — zero I/O.
  */
 

@@ -76,40 +76,39 @@ export function buildDiaryShareSuffix(activityType, payload = {}) {
     case DIARY_FOOD_ACTIVITY.FOOD:
     case 'food':
     default: {
-      const foodName = (payload.foodName || '').trim();
+      const names = resolveFoodShareNames(payload);
       const calories = Math.round(Number(payload.calories) || 0);
       const parts = [];
-      if (foodName) parts.push(foodName);
+      if (names.length > 0) parts.push(names.join(', '));
       if (calories > 0) parts.push(`${calories} kcal`);
-
-      const protein = roundMacro(payload.protein);
-      const carbs = roundMacro(payload.carbs);
-      const fat = roundMacro(payload.fat);
-      const fiber = roundMacro(payload.fiber);
-      const gi = roundMacro(payload.glycemicIndex ?? payload.glycemic_index);
-
-      const facts = [];
-      if (protein != null) facts.push(`P ${protein}g`);
-      if (carbs != null) facts.push(`C ${carbs}g`);
-      if (fat != null) facts.push(`F ${fat}g`);
-      if (fiber != null) facts.push(`Fiber ${fiber}g`);
-      if (gi != null) facts.push(`GI ${gi}`);
-
-      if (facts.length > 0) {
-        const head = parts.length > 0 ? `${parts.join(', ')} · ` : '';
-        return `${head}${facts.join(' · ')}`;
-      }
-      if (parts.length > 0) return parts.join(', ');
-      return null;
+      return parts.length > 0 ? parts.join(', ') : null;
     }
   }
 }
 
-/** Round macro/GI for share text; null when missing or zero. */
-function roundMacro(value) {
-  const n = Number(value);
-  if (!Number.isFinite(n) || n <= 0) return null;
-  return Math.round(n);
+/**
+ * Prefer the full item list for food captions.
+ * Falls back to compact foodName ("White Rice+4more") when items are missing.
+ * @param {{ itemNames?: unknown[], foodName?: string }} payload
+ * @returns {string[]}
+ */
+function resolveFoodShareNames(payload) {
+  const fromItems = Array.isArray(payload.itemNames)
+    ? payload.itemNames.map((n) => String(n || '').trim()).filter(Boolean)
+    : [];
+  if (fromItems.length > 0) {
+    const seen = new Set();
+    const names = [];
+    for (const name of fromItems) {
+      const key = name.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      names.push(name);
+    }
+    return names;
+  }
+  const foodName = (payload.foodName || '').trim();
+  return foodName ? [foodName] : [];
 }
 
 /** Weight kg for share captions (2 decimal places max). */

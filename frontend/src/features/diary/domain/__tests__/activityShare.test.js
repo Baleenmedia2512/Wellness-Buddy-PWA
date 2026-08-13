@@ -10,6 +10,7 @@ import {
   extractShakeServings,
   extractShakeProducts,
   sumAfreshScoopsFromDayAnalyses,
+  extractFoodItemDisplayNames,
 } from '../activityType';
 import { formatWaterVolume } from '../formatVolume';
 import { resolveFoodRowPresentation } from '../foodRowDisplay';
@@ -88,6 +89,24 @@ describe('diary activityType', () => {
     expect(extractShakeServings({
       detailedItems: [{ name: 'Herbalife Shake', portion: '1 serving (300ml)' }],
     })).toBe(1);
+  });
+
+  test('extracts every food item display name for share captions', () => {
+    expect(extractFoodItemDisplayNames({
+      detailedItems: [
+        { name: 'White Rice' },
+        { name: 'Sambar' },
+        { name: 'Onion' },
+      ],
+    })).toEqual(['White Rice', 'Sambar', 'Onion']);
+
+    expect(extractFoodItemDisplayNames({
+      detailedItems: [
+        { name: 'White Rice' },
+        { name: 'white rice' },
+        { name: 'Sambar' },
+      ],
+    })).toEqual(['White Rice', 'Sambar']);
   });
 
   test('sums afresh scoops across day analyses without counting water', () => {
@@ -239,7 +258,7 @@ describe('buildDiaryShareSuffix', () => {
       .toBe('Consumed: 1 scoop Afresh so far today');
   });
 
-  test('food suffix includes macros and GI', () => {
+  test('food suffix is item names and total kcal only', () => {
     expect(buildDiaryShareSuffix('food', {
       foodName: 'White Rice+4more',
       calories: 875,
@@ -248,7 +267,20 @@ describe('buildDiaryShareSuffix', () => {
       fat: 12,
       fiber: 16,
       glycemicIndex: 66,
-    })).toBe('White Rice+4more, 875 kcal · P 28g · C 160g · F 12g · Fiber 16g · GI 66');
+    })).toBe('White Rice+4more, 875 kcal');
+  });
+
+  test('food suffix lists every item name plus total kcal', () => {
+    expect(buildDiaryShareSuffix('food', {
+      foodName: 'White Rice+2more',
+      itemNames: ['White Rice', 'Sambar', 'Onion'],
+      calories: 875,
+      protein: 28,
+      carbs: 160,
+      fat: 12,
+      fiber: 16,
+      glycemicIndex: 66,
+    })).toBe('White Rice, Sambar, Onion, 875 kcal');
   });
 
   test('weight suffix includes previous, current, and arrow', () => {
@@ -361,6 +393,19 @@ describe('resolveFoodRowPresentation', () => {
     expect(view.thumbFallback).toBe('💧');
   });
 
+  test('water diary caption uses this card volume, not a day total', () => {
+    const view = resolveFoodRowPresentation({
+      processedBy: 'water_preset',
+      foodData: {
+        name: 'Plain Water',
+        detailedItems: [{ name: 'Plain Water', volume_ml: 200 }],
+        nutrition: { calories: 0 },
+      },
+      calories: 0,
+    });
+    expect(view.shareText).toBe('Consumed: 200 mL water so far today');
+  });
+
   test('afresh row shows kcal with scoops secondary and hides meal badge', () => {
     const view = resolveFoodRowPresentation({
       processedBy: 'afresh_preset',
@@ -379,5 +424,34 @@ describe('resolveFoodRowPresentation', () => {
     expect(view.secondaryLabel).toBe('2 scoops');
     expect(view.shareText).toBe('Consumed: 2 scoops Afresh so far today');
     expect(view.thumbFallback).toBe('🥤');
+  });
+
+  test('afresh diary caption uses this card scoops, not a day total', () => {
+    const view = resolveFoodRowPresentation({
+      processedBy: 'afresh_preset',
+      foodData: {
+        name: 'Herbalife Afresh Energy Drink',
+        detailedItems: [{ name: 'Herbalife Afresh Energy Drink', scoops: 1 }],
+        nutrition: { calories: 4 },
+      },
+      calories: 4,
+    });
+    expect(view.shareText).toBe('Consumed: 1 scoop Afresh so far today');
+  });
+
+  test('food row share caption lists every item and total kcal', () => {
+    const view = resolveFoodRowPresentation({
+      foodData: {
+        name: 'White Rice+2more',
+        detailedItems: [
+          { name: 'White Rice', calories: 200 },
+          { name: 'Sambar', calories: 80 },
+          { name: 'Onion', calories: 20 },
+        ],
+        nutrition: { calories: 300, protein: 8, carbs: 50, fat: 4, fiber: 3, glycemic_index: 70 },
+      },
+      calories: 300,
+    });
+    expect(view.shareText).toBe('White Rice, Sambar, Onion, 300 kcal');
   });
 });

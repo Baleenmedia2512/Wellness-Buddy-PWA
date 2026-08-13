@@ -22,17 +22,14 @@ import { parseAnalysisData, recalculateTotals, getMealCategory } from '../../../
 import { captureAndShare } from '../../../../shared/utils/shareUtils';
 import {
   formatBusinessTime,
-  timestampToBusinessYmd,
   DEFAULT_BUSINESS_TIMEZONE,
 } from '../../../../shared/utils/datetimeUtils';
 import { DIARY_FOOD_ACTIVITY } from '../../domain/activityType';
 import { resolveFoodRowPresentation } from '../../domain/foodRowDisplay';
 import {
   buildDiaryShareSuffix,
-  resolveBeverageDayShareText,
   resolveWeightDeltaDisplay,
 } from '../../domain/share';
-import { fetchDayBeverageIntake } from '../../api/beverageIntakeClient';
 import { resolveDiaryThumbSource } from '../../utils/diaryThumbUrl';
 
 /** Red up / green down arrow for weight delta (SVG — avoids blue emoji squares). */
@@ -307,8 +304,6 @@ export function FoodRow({
     ariaValue,
     secondaryLabel,
     shareText,
-    volumeMl: entryVolumeMl,
-    scoops: entryScoops,
   } = presentation;
   const isWater = activityType === DIARY_FOOD_ACTIVITY.WATER;
   const isAfresh = activityType === DIARY_FOOD_ACTIVITY.AFRESH;
@@ -360,8 +355,8 @@ export function FoodRow({
     : '';
 
   // Share taps the full off-screen nutrition card, not the compact row.
-  // Water / Afresh captions use the day's running total (same as upload share),
-  // not this card's volume alone.
+  // Water / Afresh captions use THIS card's volume / scoops.
+  // Day totals ("so far today") belong to Manual Entry share after save.
   const handleShare = async (e) => {
     e.stopPropagation();
     if (swipe.dragging || swipe.leaving || isSharing) return;
@@ -369,29 +364,9 @@ export function FoodRow({
     if (!target) return;
     setIsSharing(true);
     try {
-      let text = shareText;
-      if (isWater || isAfresh) {
-        const userId = ownerUserId || viewerUserId;
-        const ymd = timestampToBusinessYmd(entry.capturedAt, timezoneIana);
-        if (userId && ymd) {
-          try {
-            const intake = await fetchDayBeverageIntake(userId, ymd);
-            text = resolveBeverageDayShareText({
-              activityType,
-              totalMl: isWater ? intake.totalMl : null,
-              totalAfreshScoops: isAfresh ? intake.totalAfreshScoops : null,
-              fallbackVolumeMl: entryVolumeMl,
-              fallbackScoops: entryScoops,
-              calories: cal,
-            }) || shareText;
-          } catch (intakeErr) {
-            console.error('[FoodRow] Day beverage intake for share failed:', intakeErr);
-          }
-        }
-      }
       await captureAndShare(target, {
         title: mealName,
-        text,
+        text: shareText,
         fileName: `wellness-${activityType}-${Date.now()}.png`,
       });
     } catch (err) {
