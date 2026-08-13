@@ -45,7 +45,10 @@ describe('dailyWellnessScoreCache sheet→Home pin', () => {
     expect(getDailyWellnessScoreCached('42', '2026-08-10')).toBeNull();
   });
 
-  test('notifies subscribers on seed', () => {
+  test('reads a date match when userId is not ready yet', () => {
+    seedDailyWellnessScoreCache('339', '2026-08-13', { totalEarned: 496 });
+    expect(getDailyWellnessScoreCached(null, '2026-08-13').totalEarned).toBe(496);
+  });
     const seen = [];
     const unsub = subscribeDailyWellnessScoreSeed((payload) => seen.push(payload));
     seedDailyWellnessScoreCache('7', '2026-08-10', { totalEarned: 10 });

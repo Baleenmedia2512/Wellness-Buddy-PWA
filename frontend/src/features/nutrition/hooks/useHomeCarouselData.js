@@ -19,13 +19,16 @@ import { enumerateDatesYmd, resolveWellnessDateRange, ymdToLocalDate } from '../
 import { fetchDailyWellnessScore, fetchWellnessScoreHistory } from '../../wellness-score-sheet/services/wellnessScore.api';
 import {
   getPinnedDailyWellnessScore,
+  setDailyWellnessScoreCached,
   subscribeDailyWellnessScoreSeed,
 } from '../../wellness-score-sheet/services/dailyWellnessScoreCache';
 import {
   getLatestActivityLogId,
+  getActivityLogDebug,
   markHomeDashboardProcessed,
   shouldRefreshHomeDashboard,
 } from '../../../shared/services/homeDashboardActivity';
+import { shouldSkipWellnessScoreRefresh } from '../../wellness-score-sheet/domain/skipWellnessScoreRefresh';
 import {
   isCaptureFlowBusy,
   subscribeCaptureFlowBusy,
@@ -273,6 +276,9 @@ export function useHomeCarouselData({
 
       writeCache(userId, range.startDate, range.endDate, payload);
       applyPayload(payload);
+      if (!range.isMultiDay && payload.wellnessScore) {
+        setDailyWellnessScoreCached(userId, range.endDate, payload.wellnessScore);
+      }
       markHomeDashboardProcessed(activityLogAtFetch);
 
       // Warm Yesterday after Today so the common switch is cache-hit instant.
@@ -354,6 +360,7 @@ export function useHomeCarouselData({
 
   useEffect(() => {
     if (nutritionRefreshKey === 0) return;
+    if (shouldSkipWellnessScoreRefresh(getActivityLogDebug().lastSource)) return;
     // Key bump always means a mutation completed — never skip via watermark.
     // (Watermark race with capture-ai-started used to swallow capture-food-saved.)
     refreshAfterActivity({ force: true });

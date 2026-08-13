@@ -43,6 +43,7 @@ import { fetchWaterIntake, todayLocal } from '../../features/water';
 import { isIOS } from '../../shared/utils/platform';
 import { buildDiaryShareSuffix, extractFoodItemDisplayNames } from '../../features/diary';
 import { useNutritionRefreshOptional } from '../../shared/context/NutritionRefreshContext';
+import { refreshDailyWellnessScoreAfterSave } from '../../features/wellness-score-sheet/services/refreshDailyWellnessScoreNow';
 import HealthySnacksSubSelectModal from './HealthySnacksSubSelectModal';
 import {
   MANUAL_LOG_CATEGORY,
@@ -232,7 +233,8 @@ export default function ManualEntryPage({
   const refreshAfterPersist = useCallback((source) => {
     // Fire only after DB write — early refresh locks in a stale Home/sheet total.
     nutritionRefresh?.triggerRefresh({ immediate: true, source });
-  }, [nutritionRefresh]);
+    void refreshDailyWellnessScoreAfterSave({ userId, apiBaseUrl });
+  }, [nutritionRefresh, userId, apiBaseUrl]);
 
   const creditsEnabled = isFlagEnabled('ff.ai-credits');
   const [credits, setCredits] = useState(null);
@@ -449,6 +451,7 @@ export default function ManualEntryPage({
           analysisResult,
           capturedAt: originalCapturedAt || null,
         });
+        refreshAfterPersist('manual-log-persisted');
       })
       .catch((err) => {
         onToast?.(err?.message || "Couldn't save — check Diary.");
@@ -597,6 +600,7 @@ export default function ManualEntryPage({
           analysisResult: analysis,
           capturedAt: originalCapturedAt || null,
         });
+        refreshAfterPersist('manual-food-persisted');
       })
       .catch((err) => {
         onToast?.(err?.message || "Couldn't save food — check Diary.");
