@@ -325,11 +325,6 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
       setIsBodyParamsFormOpen(true);
     }
   };
-    } catch {
-      setSelectedCard(card);
-      setIsBodyParamsFormOpen(true);
-    }
-  };
 
   if (loading && bodyParamsCards.length === 0 && !error) {
     return (
