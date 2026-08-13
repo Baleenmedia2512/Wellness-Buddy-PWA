@@ -13,6 +13,7 @@ import {
 } from "../features/body-parameters-card";
 import { CapacitorHttp } from '@capacitor/core';
 import { debugLog } from '../shared/utils/logger.js';
+import CustomAlertModal from '../shared/components/CustomAlertModal';
 import { format } from 'date-fns';
 
 const PAGE_SIZE = 20;
@@ -135,6 +136,8 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
   const [highlightedSuggestion, setHighlightedSuggestion] = useState(-1);
   const [refreshing, setRefreshing] = useState(false);
   const [deletingCardId, setDeletingCardId] = useState(null);
+  const [cardPendingDelete, setCardPendingDelete] = useState(null);
+  const [deleteErrorMessage, setDeleteErrorMessage] = useState(null);
   const [pagination, setPagination] = useState({
     totalRecords: 0,
     currentPage: 0,
@@ -464,11 +467,17 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
     }
   };
 
-  const handleDeleteCard = useCallback(async (card) => {
+  const handleDeleteCard = useCallback((card) => {
     if (!card?.id || deletingCardId != null) return;
-    const label = String(card.name || 'this card').trim() || 'this card';
-    if (!window.confirm(`Delete ${label}? This cannot be undone.`)) return;
+    setDeleteErrorMessage(null);
+    setCardPendingDelete(card);
+  }, [deletingCardId]);
 
+  const confirmDeleteCard = useCallback(async () => {
+    const card = cardPendingDelete;
+    if (!card?.id || deletingCardId != null) return;
+
+    setCardPendingDelete(null);
     setDeletingCardId(card.id);
     try {
       const coachId = await getUserId(user.email);
@@ -483,11 +492,11 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
       debugLog('[WellnessCounselling] card deleted', { id: card.id });
     } catch (err) {
       console.error('[WellnessCounselling] Error deleting card:', err);
-      window.alert(err.message || 'Failed to delete card. Please try again.');
+      setDeleteErrorMessage(err.message || 'Failed to delete card. Please try again.');
     } finally {
       setDeletingCardId(null);
     }
-  }, [deletingCardId, getUserId, user?.email]);
+  }, [cardPendingDelete, deletingCardId, getUserId, user?.email]);
 
   if (loading && bodyParamsCards.length === 0 && !error) {
     return (
@@ -704,6 +713,27 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
         shareUrl={bodyParamsShareData?.shareUrl}
         preCapCard={bodyParamsPreCapCard}
         previousCard={bodyParamsShareData?.previousCard ?? null}
+      />
+
+      <CustomAlertModal
+        isOpen={!!cardPendingDelete}
+        onClose={() => setCardPendingDelete(null)}
+        title="Delete card?"
+        message={`Delete ${String(cardPendingDelete?.name || 'this card').trim() || 'this card'}? This cannot be undone.`}
+        type="warning"
+        confirmText="Delete"
+        cancelText="Cancel"
+        onConfirm={confirmDeleteCard}
+        onCancel={() => setCardPendingDelete(null)}
+      />
+
+      <CustomAlertModal
+        isOpen={!!deleteErrorMessage}
+        onClose={() => setDeleteErrorMessage(null)}
+        title="Delete failed"
+        message={deleteErrorMessage || ''}
+        type="error"
+        confirmText="OK"
       />
     </div>
   );
