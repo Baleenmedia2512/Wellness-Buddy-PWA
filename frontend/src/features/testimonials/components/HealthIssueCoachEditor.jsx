@@ -247,14 +247,19 @@ export default function HealthIssueCoachEditor({
         )}
       </div>
 
-      <p className="text-[11px] text-gray-600">
-        Current Health Issue:{' '}
-        {displayedIssues.length > 0 ? (
-          <span className="font-bold text-gray-900">{displayedIssues.join(', ')}</span>
-        ) : (
+      <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-gray-600">
+        <span>Current Health Issue:</span>
+        {displayedIssues.length > 0 ? displayedIssues.map((issue) => (
+          <span
+            key={issue}
+            className="inline-block bg-red-50 border border-red-200 text-red-800 rounded-full px-2.5 py-0.5 font-semibold"
+          >
+            {issue}
+          </span>
+        )) : (
           <span className="italic text-gray-400">Not added yet</span>
         )}
-      </p>
+      </div>
 
       {error && (
         <p className="text-xs text-red-600 bg-red-50 rounded-xl px-3 py-2">{error}</p>

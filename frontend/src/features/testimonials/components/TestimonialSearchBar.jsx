@@ -52,8 +52,8 @@ export default function TestimonialSearchBar({
   const items = Array.isArray(suggestions) ? suggestions : [];
 
   return (
-    <div ref={containerRef} className="relative z-30">
-      <div className="relative">
+    <div ref={containerRef} className={`relative ${showSuggestions ? 'z-50' : 'z-10'}`}>
+      <div className="relative z-10">
         <Search
           className={`absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 pointer-events-none ${
             isIssue ? 'text-green-600' : 'text-gray-400'
@@ -93,7 +93,7 @@ export default function TestimonialSearchBar({
         <ul
           id={listId}
           role="listbox"
-          className={`absolute z-[80] w-full mt-2 bg-white rounded-xl shadow-lg max-h-64 overflow-y-auto ${
+          className={`absolute left-0 right-0 top-full z-50 mt-1 bg-white rounded-xl shadow-lg max-h-64 overflow-y-auto isolate ${
             isIssue ? 'border border-green-200' : 'border border-gray-200'
           }`}
         >

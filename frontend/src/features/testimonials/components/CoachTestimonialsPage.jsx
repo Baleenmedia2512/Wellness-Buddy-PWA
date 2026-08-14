@@ -33,7 +33,7 @@ import {
   TransformationShareActions,
 } from './TransformationShareCard.jsx';
 import { getCachedVideoThumbnail } from '../utils/videoThumbnailCache.js';
-import { resolveResultVideoUrl } from '../utils/downloadVideo.js';
+import { resolveResultVideoUrl, prefetchNativeResultVideos } from '../utils/downloadVideo.js';
 import { compressImage } from '../hooks/useTestimonial.js';
 import { setCaptureFlowBusy } from '../../../shared/services/captureFlowBusy';
 import {
@@ -444,6 +444,13 @@ function MemberCard({
     return undefined;
   }, [editable, row.testimonial, ensureDetail]);
 
+  // Download result videos to cache in the background so Share Video is instant.
+  useEffect(() => {
+    if (!testimonial?.healthVideoUrl && !testimonial?.businessVideoUrl) return undefined;
+    void prefetchNativeResultVideos(testimonial);
+    return undefined;
+  }, [testimonial?.healthVideoUrl, testimonial?.businessVideoUrl]);
+
   const [expandedPhoto, setExpandedPhoto] = useState(null);
   const hasAfter  = testimonial?.afterImageUrl  && testimonial?.status !== 'incomplete';
   const issues    = testimonial?.recoveredHealthIssues ?? [];
@@ -761,13 +768,23 @@ function MemberCard({
 
   const prepareShareCard = useCallback(async () => {
     const full = await ensureDetail();
-    await new Promise((resolve) => setTimeout(resolve, 80));
     return full;
   }, [ensureDetail]);
 
   const isVerified = testimonial?.status === 'verified';
   const resultVideoUrl = resolveResultVideoUrl(testimonial);
-  const shareVideoThumb = getCachedVideoThumbnail(resultVideoUrl);
+  const healthVideoThumb = getCachedVideoThumbnail(testimonial?.healthVideoUrl);
+  const businessVideoThumb = getCachedVideoThumbnail(testimonial?.businessVideoUrl);
+
+  const loadHealthVideoUrl = useCallback(async () => {
+    const full = await ensureDetail();
+    return full?.healthVideoUrl || testimonial?.healthVideoUrl || null;
+  }, [ensureDetail, testimonial?.healthVideoUrl]);
+
+  const loadBusinessVideoUrl = useCallback(async () => {
+    const full = await ensureDetail();
+    return full?.businessVideoUrl || testimonial?.businessVideoUrl || null;
+  }, [ensureDetail, testimonial?.businessVideoUrl]);
 
 
   const borderCls =
@@ -1164,6 +1181,14 @@ function MemberCard({
             persist={Boolean(testimonial?.id)}
             onSaved={handleHealthIssuesSaved}
           />
+          {testimonial && (testimonial.beforeImageUrl || hasAfter) && (
+            <TransformationShareActions
+              kind="photo"
+              cardRef={shareCardRef}
+              userName={user.userName}
+              testimonial={testimonial}
+            />
+          )}
         </div>
       )}
 
@@ -1191,6 +1216,7 @@ function MemberCard({
                         localPreviewUrl={draftHealthPreview}
                         label="Health Results"
                         accentColor="bg-green-600"
+                        onNeedUrl={!testimonial?.healthVideoUrl && testimonial?.healthVideoPath ? loadHealthVideoUrl : undefined}
                       />
                       {!uploadingHealth && (
                         <button type="button" onClick={() => healthVidRef.current?.click()}
@@ -1223,6 +1249,7 @@ function MemberCard({
                   url={testimonial?.healthVideoUrl ?? null}
                   label="Health Results"
                   accentColor="bg-green-600"
+                  onNeedUrl={!testimonial?.healthVideoUrl && testimonial?.healthVideoPath ? loadHealthVideoUrl : undefined}
                 />
               )}
             </div>
@@ -1237,6 +1264,7 @@ function MemberCard({
                         localPreviewUrl={draftBusinessPreview}
                         label="Business Results"
                         accentColor="bg-blue-600"
+                        onNeedUrl={!testimonial?.businessVideoUrl && testimonial?.businessVideoPath ? loadBusinessVideoUrl : undefined}
                       />
                       {!uploadingBusiness && (
                         <button type="button" onClick={() => businessVidRef.current?.click()}
@@ -1269,6 +1297,7 @@ function MemberCard({
                   url={testimonial?.businessVideoUrl ?? null}
                   label="Business Results"
                   accentColor="bg-blue-600"
+                  onNeedUrl={!testimonial?.businessVideoUrl && testimonial?.businessVideoPath ? loadBusinessVideoUrl : undefined}
                 />
               )}
             </div>
@@ -1299,18 +1328,15 @@ function MemberCard({
               <Clock className="h-3 w-3 shrink-0" /> Videos pending — share OTP with {user.userName}
             </p>
           )}
+          {Boolean(resultVideoUrl || testimonial?.healthVideoPath || testimonial?.businessVideoPath) && (
+            <TransformationShareActions
+              kind="video"
+              userName={user.userName}
+              testimonial={testimonial}
+              onBeforeAction={prepareShareCard}
+            />
+          )}
         </div>
-      )}
-
-      {/* Share / Download — captures the off-screen card, never the page */}
-      {testimonial && (testimonial.beforeImageUrl || hasAfter || resultVideoUrl) && (
-        <TransformationShareActions
-          cardRef={shareCardRef}
-          userName={user.userName}
-          videoUrl={resultVideoUrl}
-          hasVideo={Boolean(resultVideoUrl || testimonial?.healthVideoPath || testimonial?.businessVideoPath)}
-          onBeforeAction={prepareShareCard}
-        />
       )}
 
       {/* ── Submit for Approval button (Mine, when any slot has draft changes) ── */}
@@ -1360,18 +1386,32 @@ function MemberCard({
         <PhotoModal url={expandedPhoto.url} label={expandedPhoto.label} onClose={() => setExpandedPhoto(null)} />
       )}
 
-      {/* Off-screen share card — same pattern as Diary Food Card */}
+      {/* Hidden share card — kept in the viewport (opacity 0) so photos are
+          already decoded when Share is tapped. Off-screen -9999px made html2canvas slow. */}
       {testimonial && (
         <div
           aria-hidden="true"
-          style={{ position: 'fixed', left: '-9999px', top: 0, width: 360, pointerEvents: 'none' }}
+          style={{
+            position: 'fixed',
+            left: 0,
+            top: 0,
+            width: 360,
+            opacity: 0,
+            pointerEvents: 'none',
+            zIndex: -1,
+          }}
         >
           <TransformationCardContent
             ref={shareCardRef}
-            testimonial={testimonial}
+            testimonial={{
+              ...testimonial,
+              beforeImageUrl: draftBefore?.previewUrl || testimonial.beforeImageUrl,
+              afterImageUrl: draftAfter?.previewUrl || testimonial.afterImageUrl,
+              beforeWeightKg: displayBeforeKg || testimonial.beforeWeightKg,
+              afterWeightKg: displayAfterKg || testimonial.afterWeightKg,
+              recoveredHealthIssues: draftIssues ?? testimonial.recoveredHealthIssues,
+            }}
             userName={user.userName}
-            hasAfter={hasAfter}
-            videoThumbnailUrl={shareVideoThumb}
           />
         </div>
       )}
@@ -1392,8 +1432,10 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
   const [teamScope,             setTeamScope]             = useState(TEAM_SCOPES.MINE);
   const [searchQuery,           setSearchQuery]           = useState('');
   const [healthIssueQuery,      setHealthIssueQuery]      = useState('');
+  const [committedHealthIssue,  setCommittedHealthIssue]  = useState('');
   const [isSearchOpen,          setIsSearchOpen]          = useState(false);
   const [isIssueSearchOpen,     setIsIssueSearchOpen]     = useState(false);
+  const [listReloadKey,         setListReloadKey]         = useState(0);
   const [highlightedSuggestion, setHighlightedSuggestion] = useState(-1);
   const [highlightedIssue,      setHighlightedIssue]      = useState(-1);
 
@@ -1460,6 +1502,7 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
     setFullRows([]);
     setFullLoaded(false);
     setFullTeamMemberCount(null);
+    setListReloadKey((key) => key + 1);
     try {
       // First page only (limit 10) — never hydrate the full team on open.
       const [directResult, mine] = await Promise.all([
@@ -1510,44 +1553,7 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
       .catch(() => {});
   }, [coachId, buildMineRow]);
 
-  const loadFullTeam = useCallback(async () => {
-    if (!coachId || fullLoaded || fullLoading) return;
-    const generation = loadGenerationRef.current;
-    setFullLoading(true);
-    setError(null);
-    try {
-      const fullResult = await listForCoach(coachId, {
-        scope: 'full',
-        page: 1,
-        limit: 10,
-        search: normalizeSearchQuery(searchQuery),
-        healthIssue: normalizeSearchQuery(healthIssueQuery),
-        uploadFilter,
-      });
-      if (generation !== loadGenerationRef.current) return;
-      setFullRows(Array.isArray(fullResult?.data) ? fullResult.data : []);
-      setFullPagination(fullResult?.pagination || { page: 1, hasMore: false, total: 0 });
-      setFullUploadCounts(fullResult?.uploadCounts || {
-        fully_uploaded: 0, partial_upload: 0, not_uploaded: 0,
-      });
-      setFullLoaded(true);
-    } catch (err) {
-      if (generation !== loadGenerationRef.current) return;
-      setError(err.message || 'Failed to load full team');
-    } finally {
-      if (generation === loadGenerationRef.current) {
-        setFullLoading(false);
-      }
-    }
-  }, [coachId, fullLoaded, fullLoading, searchQuery, healthIssueQuery, uploadFilter]);
-
   useEffect(() => { loadDirectAndMine(); }, [loadDirectAndMine, tabVisitKey]);
-
-  useEffect(() => {
-    if (teamScope === TEAM_SCOPES.FULL && hasDownline && !fullLoaded && !fullLoading) {
-      loadFullTeam();
-    }
-  }, [teamScope, hasDownline, fullLoaded, fullLoading, loadFullTeam]);
 
   // Soft-refresh Mine after edit modal so pending OTP UI appears (no full loading flash)
   useEffect(() => {
@@ -1573,15 +1579,23 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
     return () => { cancelled = true; };
   }, [reloadSignal, buildMineRow, hasDownline, coachId]);
 
-  useEffect(() => {
+  const resetTeamSearch = useCallback(() => {
     setSearchQuery('');
     setHealthIssueQuery('');
+    setCommittedHealthIssue('');
     setIsSearchOpen(false);
     setIsIssueSearchOpen(false);
     setHighlightedSuggestion(-1);
     setHighlightedIssue(-1);
     setUploadFilter(UPLOAD_FILTERS.ALL);
-  }, [teamScope]);
+  }, []);
+
+  const handleTeamScopeChange = useCallback((value) => {
+    if (value === teamScope) return;
+    resetTeamSearch();
+    if (value === TEAM_SCOPES.FULL) setFullLoaded(false);
+    setTeamScope(value);
+  }, [teamScope, resetTeamSearch]);
 
   // ── Derived state ──────────────────────────────────────────────────────────
 
@@ -1639,7 +1653,7 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
     if (!activePagination.hasMore) return;
     const scope = teamScope === TEAM_SCOPES.FULL ? 'full' : 'direct';
     const nextPage = (activePagination.page || 1) + 1;
-    const cacheKey = `${scope}|${normalizeSearchQuery(searchQuery)}|${normalizeSearchQuery(healthIssueQuery)}|${uploadFilter}|${nextPage}`;
+    const cacheKey = `${scope}|${normalizeSearchQuery(searchQuery)}|${normalizeSearchQuery(committedHealthIssue)}|${uploadFilter}|${nextPage}`;
     if (pageCacheRef.current.has(cacheKey)) {
       const cached = pageCacheRef.current.get(cacheKey);
       if (scope === 'full') {
@@ -1659,7 +1673,7 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
       page: nextPage,
       limit: 10,
       search: normalizeSearchQuery(searchQuery),
-      healthIssue: normalizeSearchQuery(healthIssueQuery),
+      healthIssue: normalizeSearchQuery(committedHealthIssue),
       uploadFilter,
     });
     inFlightRef.current.set(cacheKey, promise);
@@ -1684,20 +1698,29 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
     }
   }, [
     isMineScope, loadingMore, loading, fullLoading, activePagination,
-    teamScope, searchQuery, healthIssueQuery, uploadFilter, coachId,
+    teamScope, searchQuery, committedHealthIssue, uploadFilter, coachId,
   ]);
 
-  // Refetch page 1 when search / upload filter changes (server-side).
-  // Skip the first run — bootstrap / loadFullTeam already loaded page 1.
-  const skipFilterFetchRef = useRef(true);
+  // Load / refetch page 1 when scope, name search, committed health issue, or upload filter changes.
+  const prevTeamFetchRef = useRef({ teamScope, listReloadKey });
+  const fullRowsCountRef = useRef(0);
+  fullRowsCountRef.current = fullRows.length;
   useEffect(() => {
-    if (!coachId || !hasDownline || isMineScope) return undefined;
-    if (skipFilterFetchRef.current) {
-      skipFilterFetchRef.current = false;
+    if (!coachId || !hasDownline || isMineScope) {
+      prevTeamFetchRef.current = { teamScope, listReloadKey };
       return undefined;
     }
     const scope = teamScope === TEAM_SCOPES.FULL ? 'full' : 'direct';
+    const scopeOrReloadChanged = prevTeamFetchRef.current.teamScope !== teamScope
+      || prevTeamFetchRef.current.listReloadKey !== listReloadKey;
+    prevTeamFetchRef.current = { teamScope, listReloadKey };
+
     let cancelled = false;
+    const delay = scopeOrReloadChanged ? 0 : 300;
+    if (scope === 'full' && (scopeOrReloadChanged || fullRowsCountRef.current === 0)) {
+      setFullLoading(true);
+    }
+
     const timer = setTimeout(async () => {
       try {
         const result = await listForCoach(coachId, {
@@ -1705,7 +1728,7 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
           page: 1,
           limit: 10,
           search: normalizeSearchQuery(searchQuery),
-          healthIssue: normalizeSearchQuery(healthIssueQuery),
+          healthIssue: normalizeSearchQuery(committedHealthIssue),
           uploadFilter,
         });
         if (cancelled) return;
@@ -1720,21 +1743,20 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
           setDirectPagination(result.pagination || { page: 1, hasMore: false, total: 0 });
           if (result.uploadCounts) setDirectUploadCounts(result.uploadCounts);
         }
-      } catch {
-        // keep current rows
+      } catch (err) {
+        if (!cancelled) setError(err?.message || 'Failed to load team');
+      } finally {
+        if (!cancelled) setFullLoading(false);
       }
-    }, 300);
+    }, delay);
     return () => {
       cancelled = true;
       clearTimeout(timer);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: refetch on search/filter/scope
-  }, [searchQuery, healthIssueQuery, uploadFilter, teamScope, coachId, hasDownline, isMineScope]);
-
-  // Reset skip flag when leaving Mine so Direct/Full get a clean first paint from their loaders.
-  useEffect(() => {
-    if (!isMineScope) skipFilterFetchRef.current = true;
-  }, [teamScope]);
+  }, [
+    searchQuery, committedHealthIssue, uploadFilter, teamScope, coachId,
+    hasDownline, isMineScope, listReloadKey,
+  ]);
 
   // Infinite scroll sentinel
   useEffect(() => {
@@ -1764,7 +1786,12 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
     setHealthIssueQuery(value);
     setIsIssueSearchOpen(true);
     setHighlightedIssue(-1);
-  }, []);
+    if (!value.trim()) {
+      setCommittedHealthIssue('');
+    } else if (normalizeSearchQuery(value) !== normalizeSearchQuery(committedHealthIssue)) {
+      setCommittedHealthIssue('');
+    }
+  }, [committedHealthIssue]);
 
   const handleSelectNameSuggestion = useCallback((row) => {
     setSearchQuery(row?.user?.userName || '');
@@ -1773,7 +1800,9 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
   }, []);
 
   const handleSelectIssueSuggestion = useCallback((issue) => {
-    setHealthIssueQuery(typeof issue === 'string' ? issue : (issue?.label || ''));
+    const label = typeof issue === 'string' ? issue : (issue?.label || '');
+    setHealthIssueQuery(label);
+    setCommittedHealthIssue(label);
     setIsIssueSearchOpen(false);
     setHighlightedIssue(-1);
   }, []);
@@ -1835,6 +1864,7 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
       if (highlightedIssue >= 0 && issueSuggestions[highlightedIssue]) {
         handleSelectIssueSuggestion(issueSuggestions[highlightedIssue]);
       } else {
+        setCommittedHealthIssue(healthIssueQuery.trim());
         setIsIssueSearchOpen(false);
         setHighlightedIssue(-1);
       }
@@ -1846,9 +1876,9 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
     }
   }, [healthIssueQuery, issueSuggestions, highlightedIssue, handleSelectIssueSuggestion]);
 
-  const hasScopeData    = scopeRows.length > 0 || (activePagination.total > 0 && !isMineScope);
   const hasActiveSearch = normalizeSearchQuery(searchQuery).length > 0
-    || normalizeSearchQuery(healthIssueQuery).length > 0;
+    || normalizeSearchQuery(committedHealthIssue).length > 0;
+  const hasActiveUploadFilter = uploadFilter && uploadFilter !== UPLOAD_FILTERS.ALL;
   const showTeamChrome  = hasDownline;
 
   return (
@@ -1883,7 +1913,7 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
               <button
                 key={value}
                 type="button"
-                onClick={() => setTeamScope(value)}
+                onClick={() => handleTeamScopeChange(value)}
                 aria-pressed={isActive}
                 className={`flex-1 py-2 rounded-lg text-[11px] sm:text-xs font-semibold transition-all duration-150 cursor-pointer min-w-0 px-1 ${
                   isActive ? 'bg-green-600 text-white shadow-sm' : 'text-green-800 hover:bg-green-50'
@@ -1898,10 +1928,10 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
       )}
 
       {/* Search + upload filters — team scopes only (not Mine / not leaf members) */}
-      {!loading && showTeamChrome && hasScopeData && !isMineScope && (
+      {!loading && showTeamChrome && !isMineScope && (
         <>
           <div className="space-y-3">
-            <div>
+            <div className="relative">
               <p className="text-xs font-semibold text-gray-600 mb-1.5">Search health issue</p>
               <TestimonialSearchBar
                 variant="issue"
@@ -1909,14 +1939,20 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
                 onChange={handleIssueSearchChange}
                 suggestions={issueSuggestions}
                 isOpen={isIssueSearchOpen}
-                onOpenChange={setIsIssueSearchOpen}
+                onOpenChange={(open) => {
+                  setIsIssueSearchOpen(open);
+                  if (open) {
+                    setIsSearchOpen(false);
+                    setHighlightedSuggestion(-1);
+                  }
+                }}
                 highlightedIndex={highlightedIssue}
                 onHighlightChange={setHighlightedIssue}
                 onSelectSuggestion={handleSelectIssueSuggestion}
                 onKeyDown={handleIssueSearchKeyDown}
               />
             </div>
-            <div>
+            <div className="relative">
               <p className="text-xs font-semibold text-gray-600 mb-1.5">Search user name</p>
               <TestimonialSearchBar
                 variant="name"
@@ -1924,7 +1960,13 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
                 onChange={handleSearchChange}
                 suggestions={nameSuggestions}
                 isOpen={isSearchOpen}
-                onOpenChange={setIsSearchOpen}
+                onOpenChange={(open) => {
+                  setIsSearchOpen(open);
+                  if (open) {
+                    setIsIssueSearchOpen(false);
+                    setHighlightedIssue(-1);
+                  }
+                }}
                 highlightedIndex={highlightedSuggestion}
                 onHighlightChange={setHighlightedSuggestion}
                 onSelectSuggestion={handleSelectNameSuggestion}
@@ -1976,20 +2018,25 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
         </div>
       )}
 
-      {!loading && !fullLoading && !error && !hasScopeData && (
+      {!loading && !fullLoading && !error && filteredRows.length === 0 && (
         <div className="text-center py-12 text-gray-400">
           <Users className="h-12 w-12 mx-auto mb-3 opacity-30" />
           <p className="font-medium">
-            {showTeamChrome ? 'No team members found' : 'Unable to load your transformation'}
+            {hasActiveSearch
+              ? 'No matching members found.'
+              : hasActiveUploadFilter
+                ? 'No records match the selected filter.'
+                : (showTeamChrome ? 'No team members found' : 'Unable to load your transformation')}
           </p>
-        </div>
-      )}
-
-      {!loading && !fullLoading && !error && hasScopeData && filteredRows.length === 0 && (
-        <div className="text-center py-8 text-gray-400">
-          <p className="font-medium text-sm">
-            {hasActiveSearch ? 'No matching members found.' : 'No records match the selected filter.'}
-          </p>
+          {(hasActiveSearch || hasActiveUploadFilter) ? (
+            <button
+              type="button"
+              onClick={resetTeamSearch}
+              className="mt-3 text-sm font-semibold text-green-700 hover:text-green-800"
+            >
+              Clear search
+            </button>
+          ) : null}
         </div>
       )}
 
