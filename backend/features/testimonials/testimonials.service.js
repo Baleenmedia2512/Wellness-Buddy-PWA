@@ -25,6 +25,8 @@ import {
   validateSubmitAllEdits,
   validateVerifyUnifiedOtp,
   validateUpdateMemberHealthIssues,
+  MAX_HEALTH_VIDEO_BYTES,
+  MAX_BUSINESS_VIDEO_BYTES,
 } from './testimonials.validators.js';
 import {
   mapTestimonialsListLeanFields,
@@ -892,6 +894,16 @@ function tmpChunkPath(userId, sessionId, chunkIndex) {
   return `${userId}/tmp_${sessionId}_chunk_${chunkIndex}.part`;
 }
 
+function assertAssembledVideoSize(buffer, slot) {
+  const maxBytes = slot === 'health' ? MAX_HEALTH_VIDEO_BYTES : MAX_BUSINESS_VIDEO_BYTES;
+  if (buffer.length > maxBytes) {
+    throw new ValidationError(
+      422,
+      `Video exceeds ${Math.round(maxBytes / (1024 * 1024))} MB limit. Please compress or trim and try again.`,
+    );
+  }
+}
+
 /**
  * Accept one chunk of a video upload, assemble on the final chunk, and store in Supabase.
  */
@@ -915,6 +927,7 @@ export async function uploadVideoChunk(rawBody) {
 
   // Single-chunk videos upload directly — avoids tmp write/read race on small files.
   if (payload.totalChunks === 1) {
+    assertAssembledVideoSize(buffer, payload.slot);
     await repo.uploadBuffer(payload.finalPath, buffer, 'video/mp4');
     return {
       httpStatus: 200,
@@ -940,7 +953,9 @@ export async function uploadVideoChunk(rawBody) {
     parts.push(await repo.downloadBuffer(chunkPath));
   }
 
-  await repo.uploadBuffer(payload.finalPath, Buffer.concat(parts), 'video/mp4');
+  const assembled = Buffer.concat(parts);
+  assertAssembledVideoSize(assembled, payload.slot);
+  await repo.uploadBuffer(payload.finalPath, assembled, 'video/mp4');
   await repo.removePaths(tmpPaths);
 
   return {
