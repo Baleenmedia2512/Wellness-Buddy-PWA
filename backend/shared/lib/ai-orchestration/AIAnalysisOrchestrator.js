@@ -113,6 +113,8 @@ const FAST_FALLBACK = Object.freeze({
  * @param {string} [params.userId]       Caller user ID (for tracing + job context).
  * @param {string} [params.imageBase64]  Base64 image for queuing the enrichment job.
  * @param {number} [params.foodRowId]    food_nutrition_data_table PK (for enrichment write-back).
+ * @param {boolean} [params.usePro]      Force Gemini Pro for this request.
+ * @param {boolean} [params.fresh]       Bypass idempotency cache (frontend retry).
  *
  * @returns {Promise<OrchestratorResult>}
  */
@@ -127,9 +129,9 @@ export async function analyse(params) {
     appVersion   = null,
     imageBase64  = null,
     foodRowId    = null,
-    // usePro: true forces Gemini Pro on this request (used by frontend
-    // attempt-3 escalation when Flash failed twice to classify the image).
+    // usePro: true forces Gemini Pro (frontend attempt-2 escalation after Flash).
     usePro       = false,
+    fresh        = false,
     module       = ANALYSIS_MODULES.FOOD_IMAGE_ANALYSIS,
   } = params;
 
@@ -137,7 +139,7 @@ export async function analyse(params) {
 
   // ── Step 1: Idempotency guard ──────────────────────────────────────────────
   if (captureId) {
-    const check = idempotencyGuard.check(captureId);
+    const check = idempotencyGuard.check(captureId, { fresh });
     if (check.duplicate) {
       logger.info('orchestrator: returning cached result for duplicate capture', {
         captureId,

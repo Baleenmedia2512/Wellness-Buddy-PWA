@@ -74,32 +74,35 @@
 
 export const APP_VERSION = {
   // Current version number (displayed to users)
-  VERSION: '3.4.3',
+  VERSION: '3.4.4',
   
   // Version code (for Android builds - must match build.gradle)
   // Also used as CFBundleVersion for iOS builds - must match Info.plist
   // NOTE: versionCode must never decrease for Play Store compatibility.
-  VERSION_CODE: 62,
+  VERSION_CODE: 63,
   
   // iOS build number (CFBundleVersion in Info.plist) - must match Info.plist / pbxproj
-  IOS_BUILD_NUMBER: 63,
+  IOS_BUILD_NUMBER: 64,
   
   // Release name (for Play Store / App Store)
-  RELEASE_NAME: 'Version  3.4.3',
+  RELEASE_NAME: 'Version  3.4.4',
   
   // Build date
-  BUILD_DATE: '2026-08-10',
+  BUILD_DATE: '2026-08-13',
   
   // Platform release notes..
   PLATFORMS: {
-    ANDROID: { versionCode: 62, versionName: '3.4.3' },
-    IOS: { buildNumber: 63, versionName: '3.4.3' },
+    ANDROID: { versionCode: 63, versionName: '3.4.4' },
+    IOS: { buildNumber: 64, versionName: '3.4.4' },
   },
 };
 
 /**
  * 📋 CHANGE LOG
  * 
+ * Version 3.4.4 (Code 63 / iOS build 64) - 2026-08-13 [ANDROID + iOS RELEASE]
+ *   🐛 Patch — Gemini Flash→Pro retry ownership, timeout/telemetry, credit-after-save
+ *
  * Version 3.4.3 (Code 62 / iOS build 63) - 2026-08-10 [ANDROID + iOS RELEASE]
  *   🐛 Patch release — bug fixes and stability improvements
  *

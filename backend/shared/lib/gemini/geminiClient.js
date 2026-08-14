@@ -20,7 +20,7 @@ import { waitUntil } from '@vercel/functions';
 // bundled chunk lives under .next/server/chunks, so that path becomes
 // /vercel/path0/package.json and throws ENOENT. Keep fallback in sync with
 // backend/package.json "version".
-const APP_VERSION = process.env.npm_package_version || '3.4.0';
+const APP_VERSION = process.env.npm_package_version || '3.4.4';
 
 // Hardcoded enum since the SDK doesn't export it
 const ANALYSIS_MODULES = {
@@ -39,6 +39,31 @@ const _endUserCache = new Map();
 const END_USER_CACHE_TTL_MS = 60_000;
 /** Hard cap so a slow/unreachable monitor never holds a Vercel function open. */
 const TELEMETRY_TIMEOUT_MS = 2_000;
+
+/** Production AI token-monitor API (not this Wellness Next.js app). */
+const DEFAULT_AI_MONITOR_BASE_URL =
+  'https://e2-w-ai-token-monitor.vercel.app/api';
+
+/**
+ * Resolve the token-monitor base URL.
+ * If AI_MONITOR_BASE_URL points at this Wellness app (:3000), ignore it and
+ * use the production monitor — otherwise POST /api/sdk/log 404s here.
+ */
+function resolveAiMonitorBaseUrl() {
+  const raw = (process.env.AI_MONITOR_BASE_URL || '').trim();
+  if (!raw) return DEFAULT_AI_MONITOR_BASE_URL;
+
+  if (/localhost:3000/i.test(raw) || /127\.0\.0\.1:3000/i.test(raw)) {
+    logger.warn(
+      'geminiClient: AI_MONITOR_BASE_URL points at this Next.js app — '
+      + 'ignoring and using token-monitor service URL',
+      { configured: raw, using: DEFAULT_AI_MONITOR_BASE_URL },
+    );
+    return DEFAULT_AI_MONITOR_BASE_URL;
+  }
+
+  return raw;
+}
 
 /**
  * Resolve end-user name/email for ai-token-monitor from trace.userId.
@@ -95,13 +120,34 @@ async function resolveEndUserForMonitor(userId) {
 /**
  * Send monitor telemetry to ai-token-monitor.
  * Runs identity lookup + SDK call with a hard timeout.
- * Awaited in generateContent to ensure reliable delivery in Vercel.
+ * Called by reportAiCallTelemetry (outside the model timeout budget).
  *
  * @param {object} basePayload
  * @param {object|null} trace
  */
 async function sendMonitorTelemetry(basePayload, trace) {
-  if (!process.env.AI_MONITOR_SDK_KEY) return;
+  if (!process.env.AI_MONITOR_SDK_KEY) {
+    logger.warn('geminiClient: telemetry skipped — AI_MONITOR_SDK_KEY is not set', {
+      status: basePayload?.status ?? null,
+      model: basePayload?.model ?? null,
+      latency: basePayload?.latency ?? null,
+    });
+    return;
+  }
+
+  // Ensure SDK initialize() has run (happens inside getGenAI on first model use).
+  try {
+    getGenAI();
+  } catch (_) {
+    /* GEMINI key missing — still attempt monitor if SDK was inited elsewhere */
+  }
+
+  logger.info('geminiClient: sending token-monitor telemetry', {
+    status: basePayload?.status ?? null,
+    model: basePayload?.model ?? null,
+    latency: basePayload?.latency ?? null,
+    baseURL: resolveAiMonitorBaseUrl(),
+  });
 
   const run = async () => {
     let endUserName = trace?.userName ?? null;
@@ -138,6 +184,9 @@ async function sendMonitorTelemetry(basePayload, trace) {
 
   try {
     await timed;
+    logger.info('geminiClient: token-monitor telemetry sent', {
+      status: basePayload?.status ?? null,
+    });
   } catch (sdkErr) {
     logger.warn('geminiClient: telemetry skipped or failed', {
       status: basePayload?.status ?? null,
@@ -266,9 +315,7 @@ function getGenAI() {
     try {
   if (process.env.AI_MONITOR_SDK_KEY) {
     AIClient.initialize({
-      baseURL:
-        process.env.AI_MONITOR_BASE_URL ||
-        "http://localhost:5000/api",
+      baseURL: resolveAiMonitorBaseUrl(),
 
       sdkKey: process.env.AI_MONITOR_SDK_KEY,
 
@@ -286,7 +333,9 @@ function getGenAI() {
          process.env.NODE_ENV === 'production' ? 'production' : 'localhost'),
     });
 
-    logger.info("AI Token Monitor SDK initialized");
+    logger.info("AI Token Monitor SDK initialized", {
+      baseURL: resolveAiMonitorBaseUrl(),
+    });
   }
 } catch (sdkInitErr) {
   logger.warn("geminiClient: AI monitor SDK init skipped", {
@@ -367,14 +416,89 @@ export function imageInlinePart(buffer, mimeType) {
   };
 }
 
+/**
+ * Report one Gemini call to ai-token-monitor.
+ * Call this OUTSIDE the RetryPolicy timeout so monitor I/O never steals
+ * budget from the model call (and so SUCCESS is recorded before the HTTP response).
+ *
+ * @param {object} opts
+ * @param {'SUCCESS'|'FAILED'} opts.status
+ * @param {string|null} [opts.modelOverride]
+ * @param {object|null} [opts.usage]
+ * @param {number} opts.latency
+ * @param {string|null} [opts.errorMessage]
+ * @param {object|null} [opts.trace]
+ * @param {Array|null} [opts.parts]
+ */
+export async function reportAiCallTelemetry({
+  status,
+  modelOverride = null,
+  usage = {},
+  latency,
+  errorMessage = null,
+  trace = null,
+  parts = null,
+}) {
+  waitUntil(
+    (async () => {
+      let telemetryPrompt = '[Complex Prompt]';
+      let telemetryImage = trace?.imageUrl;
 
+      if (parts) {
+        try {
+          telemetryPrompt = JSON.stringify(parts).replace(
+            /"data":"[^"]+"/g, 
+            '"data":"[BASE64_IMAGE_REMOVED_FOR_LOGGING]"'
+          );
+        } catch (e) {
+          logger.error("geminiClient: Telemetry prompt sanitization error", { error: e.message });
+        }
 
+        if (!telemetryImage) {
+          const inlineData = parts.find(p => p.inlineData)?.inlineData;
+          if (inlineData?.data) {
+            try {
+              const buffer = Buffer.from(inlineData.data, 'base64');
+              const compressedBuffer = await sharp(buffer)
+                .resize({ width: 256, withoutEnlargement: true })
+                .jpeg({ quality: 60 })
+                .toBuffer();
+              telemetryImage = `data:image/jpeg;base64,${compressedBuffer.toString('base64')}`;
+            } catch (e) {
+              telemetryImage = trace?.captureId ? `capture_${trace.captureId}` : null;
+            }
+          } else {
+            telemetryImage = trace?.captureId ? `capture_${trace.captureId}` : null;
+          }
+        }
+      }
+
+      await sendMonitorTelemetry({
+        provider: 'Gemini',
+        model: modelOverride ?? MODEL_NAME,
+        usage: usage ?? {},
+        latency,
+        status,
+        errorMessage,
+        prompt: telemetryPrompt,
+        imageName: telemetryImage,
+      }, trace).catch(err => logger.error("geminiClient: Telemetry error", { error: err.message }));
+    })()
+  );
+}
+
+/**
+ * Run a Gemini generateContent call only (no telemetry).
+ * Telemetry must be reported by the caller after the timed retry wrapper.
+ *
+ * @returns {Promise<{ result: object, latencyMs: number }>}
+ */
 export async function generateContent(
   configKey,
   parts,
   responseSchema = null,
   modelOverride = null,
-  trace = null
+  _trace = null,
 ) {
   const model = getModel(
     configKey,
@@ -382,118 +506,13 @@ export async function generateContent(
     modelOverride
   );
 
-  // 1. Sanitize your prompt to prevent massive JSON payloads
-  let telemetryPrompt = '[Complex Prompt]';
+  const start = Date.now();
   try {
-    telemetryPrompt = JSON.stringify(parts).replace(
-      /"data":"[^"]+"/g, 
-      '"data":"[BASE64_IMAGE_REMOVED_FOR_LOGGING]"'
-    );
-  } catch (e) {
-    console.error("Telemetry error:", e);
-  }
-
-  // We will handle telemetry image compression in the background later so we don't block.
-
-  const maxAttempts = 2; // Retry loop
-
-  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    const start = Date.now();
-
-    try {
-      const result = await model.generateContent(parts);
-      const latency = Date.now() - start;
-
-      let responseText = null;
-      try {
-        responseText = result.response.text();
-      } catch (e) {
-        responseText = JSON.stringify(result.response.candidates);
-      }
-
-      // 3. FIRE AND FORGET LOGGING
-      waitUntil(
-        (async () => {
-          let telemetryImage = trace?.imageUrl;
-          if (!telemetryImage) {
-            const inlineData = parts.find(p => p.inlineData)?.inlineData;
-            if (inlineData?.data) {
-              try {
-                const buffer = Buffer.from(inlineData.data, 'base64');
-                const compressedBuffer = await sharp(buffer)
-                  .resize({ width: 256, withoutEnlargement: true })
-                  .jpeg({ quality: 60 })
-                  .toBuffer();
-                telemetryImage = `data:image/jpeg;base64,${compressedBuffer.toString('base64')}`;
-              } catch (e) {
-                telemetryImage = trace?.captureId ? `capture_${trace.captureId}` : null;
-              }
-            } else {
-              telemetryImage = trace?.captureId ? `capture_${trace.captureId}` : null;
-            }
-          }
-
-          return sendMonitorTelemetry({
-            provider: 'Gemini',
-            model: modelOverride ?? MODEL_NAME,
-            usage: {
-              ...(result.response.usageMetadata || {}),
-              candidateMetadata: result.response.candidates?.[0] || {},
-            },
-            latency,
-            status: 'SUCCESS',
-            prompt: telemetryPrompt,
-            imageName: telemetryImage,
-            responseText: responseText,
-          }, { ...trace, traceId: trace?.traceId ? `${trace.traceId}-${attempt}` : undefined }).catch(err => logger.error("geminiClient: Telemetry error", { error: err.message }));
-        })()
-      );
-
-      return result;
-    } catch (err) {
-      const latency = Date.now() - start;
-
-      // 3. FIRE AND FORGET LOGGING (failure case)
-      waitUntil(
-        (async () => {
-          let telemetryImage = trace?.imageUrl;
-          if (!telemetryImage) {
-            const inlineData = parts.find(p => p.inlineData)?.inlineData;
-            if (inlineData?.data) {
-              try {
-                const buffer = Buffer.from(inlineData.data, 'base64');
-                const compressedBuffer = await sharp(buffer)
-                  .resize({ width: 256, withoutEnlargement: true })
-                  .jpeg({ quality: 60 })
-                  .toBuffer();
-                telemetryImage = `data:image/jpeg;base64,${compressedBuffer.toString('base64')}`;
-              } catch (e) {
-                telemetryImage = trace?.captureId ? `capture_${trace.captureId}` : null;
-              }
-            } else {
-              telemetryImage = trace?.captureId ? `capture_${trace.captureId}` : null;
-            }
-          }
-
-          return sendMonitorTelemetry({
-            provider: 'Gemini',
-            model: modelOverride ?? MODEL_NAME,
-            usage: {},
-            latency,
-            status: 'FAILED',
-            errorMessage: err.message,
-            prompt: telemetryPrompt,
-            imageName: telemetryImage,
-          }, { ...trace, traceId: trace?.traceId ? `${trace.traceId}-${attempt}` : undefined }).catch(telemetryErr => logger.error("geminiClient: Telemetry error", { error: telemetryErr.message }));
-        })()
-      );
-
-      if (attempt === maxAttempts) {
-        throw err;
-      }
-      
-      logger.warn(`geminiClient: generateContent attempt ${attempt} failed. Retrying...`, { error: err.message });
-    }
+    const result = await model.generateContent(parts);
+    return { result, latencyMs: Date.now() - start };
+  } catch (err) {
+    err.latencyMs = Date.now() - start;
+    throw err;
   }
 }
 

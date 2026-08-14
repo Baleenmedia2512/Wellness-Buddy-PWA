@@ -4,10 +4,10 @@
  * Keeps each request under Vercel's serverless body limit (~4.5 MB).
  */
 import { applyCors, methodNotAllowed, runService } from '../../../shared/lib/handler.js';
-// Inline config for Next.js 15
 import { uploadVideoChunk } from '../../../features/testimonials/testimonials.service.js';
 import logger from '../../../shared/lib/logger.js';
 
+// Must be a literal export — Next.js cannot statically parse re-exported config.
 export const config = {
   api: {
     bodyParser: {

@@ -66,13 +66,31 @@ export class IdempotencyGuard {
   // ── Public API ──────────────────────────────────────────────────────────────
 
   /**
+   * Drop a cached entry so a client retry can re-run analysis for the same
+   * captureId (e.g. after FAILED soft-fallback or a hung PROCESSING slot).
+   *
+   * @param {string | null | undefined} captureId
+   */
+  invalidate(captureId) {
+    if (!captureId) return;
+    this._store.delete(String(captureId));
+    logger.info('idempotency: invalidated', { captureId: String(captureId) });
+  }
+
+  /**
    * Check whether captureId is already in-flight or recently completed.
    *
    * @param {string | null | undefined} captureId
+   * @param {{ fresh?: boolean }} [opts]
    * @returns {{ duplicate: false } | { duplicate: true, entry: object }}
    */
-  check(captureId) {
+  check(captureId, { fresh = false } = {}) {
     if (!captureId) return { duplicate: false };
+
+    if (fresh) {
+      this.invalidate(captureId);
+      return { duplicate: false };
+    }
 
     this._evict();
 
