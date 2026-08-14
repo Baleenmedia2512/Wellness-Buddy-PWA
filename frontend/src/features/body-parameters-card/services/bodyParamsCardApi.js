@@ -92,6 +92,24 @@ export async function searchPhonesByPrefix({ prefix, coachId }) {
 }
 
 /**
+ * Soft-delete a body-parameters card owned by the coach.
+ * @param {{ id: string|number, coachId: string|number }} opts
+ * @returns {Promise<{ id: number }>}
+ */
+export async function deleteBodyParamsCard({ id, coachId }) {
+  const response = await CapacitorHttp.delete({
+    url: `${getApiBaseUrl()}/api/body-parameters-card/delete`,
+    headers: { 'Content-Type': 'application/json' },
+    data: { id, coachId },
+  });
+  const result = response.data;
+  if (!result?.success) {
+    throw new Error(result?.message || result?.error?.message || 'Failed to delete card');
+  }
+  return result.data;
+}
+
+/**
  * List body parameter cards for a coach (paginated).
  * @param {string|number} coachId
  * @param {{ page?: number, limit?: number, search?: string, signal?: AbortSignal }} [opts]

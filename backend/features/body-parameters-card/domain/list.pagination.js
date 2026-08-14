@@ -51,7 +51,7 @@ export function buildBpcListPaginationMeta(totalRecords, page, pageSize) {
 }
 
 /**
- * Filter slim card rows by name or phone.
+ * Filter slim card rows by name, phone, email, community ID, or venue.
  * @template T
  * @param {T[]} records
  * @param {string} searchNormalized
@@ -64,7 +64,16 @@ export function filterBpcListRecords(records, searchNormalized) {
   return list.filter((card) => {
     const name = String(card?.name || '').toLowerCase();
     const phone = String(card?.phoneNumber || '').toLowerCase();
-    return name.includes(q) || phone.includes(q);
+    const email = String(card?.email || '').toLowerCase();
+    const communityId = String(card?.communityId || '').toLowerCase();
+    const venue = String(card?.locationName || '').toLowerCase();
+    return (
+      name.includes(q)
+      || phone.includes(q)
+      || email.includes(q)
+      || communityId.includes(q)
+      || venue.includes(q)
+    );
   });
 }
 

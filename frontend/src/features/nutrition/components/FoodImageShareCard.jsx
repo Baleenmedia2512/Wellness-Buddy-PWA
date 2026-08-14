@@ -164,7 +164,7 @@ const FoodImageShareCard = forwardRef(function FoodImageShareCard(
           }}
         >
           {foodNames && foodNames.length > 0
-            ? foodNames.slice(0, 3).join(" • ")
+            ? foodNames.join(" • ")
             : "Food Log"}
         </div>
       </div>

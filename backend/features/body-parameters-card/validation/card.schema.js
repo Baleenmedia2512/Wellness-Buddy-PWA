@@ -186,6 +186,32 @@ function _optionalPhone(val) {
 }
 
 /**
+ * Validate the payload for DELETE /api/body-parameters-card/delete.
+ * Requires card `id` and owning coach (`coachId` or `createdBy`).
+ *
+ * @param {object} body
+ * @returns {{ id: number, coachId: number }}
+ * @throws {ValidationError}
+ */
+export function validateDeleteCard(body) {
+  if (!body) throw new ValidationError(400, 'Request body is missing');
+
+  const { id, coachId, createdBy } = body;
+  if (!id) throw new ValidationError(400, 'id is required');
+  const idN = parseInt(id, 10);
+  if (isNaN(idN) || idN < 1) throw new ValidationError(422, 'id must be a positive integer');
+
+  const rawCoach = coachId ?? createdBy;
+  if (!rawCoach) throw new ValidationError(400, 'coachId is required');
+  const coachIdN = parseInt(rawCoach, 10);
+  if (isNaN(coachIdN) || coachIdN < 1) {
+    throw new ValidationError(400, 'coachId must be a valid UserId');
+  }
+
+  return { id: idN, coachId: coachIdN };
+}
+
+/**
  * Validate the query params for GET /api/body-parameters-card/phone-search.
  *
  * @param {{ prefix: string, coachId: string }} query

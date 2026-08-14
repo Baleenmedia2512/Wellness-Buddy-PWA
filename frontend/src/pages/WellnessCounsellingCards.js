@@ -1,15 +1,19 @@
 // src/pages/WellnessCounsellingCards.js
-import React, { useState, useEffect, useRef, useCallback, memo } from "react";
-import { Search, Plus, RefreshCw, FileHeart, Edit2 } from "lucide-react";
+import React, { useState, useEffect, useRef, useCallback, useMemo, memo } from "react";
+import { Plus, RefreshCw, FileHeart, Edit2, Trash2 } from "lucide-react";
 import {
   BodyParamsForm,
   BodyParamsShareSheet,
+  BodyParamsSearchBar,
   preloadBodyParamsShareAssets,
   listBodyParamsCards,
   getBodyParamsCard,
+  deleteBodyParamsCard,
+  buildBpcSearchSuggestions,
 } from "../features/body-parameters-card";
 import { CapacitorHttp } from '@capacitor/core';
 import { debugLog } from '../shared/utils/logger.js';
+import CustomAlertModal from '../shared/components/CustomAlertModal';
 import { format } from 'date-fns';
 
 const PAGE_SIZE = 20;
@@ -33,7 +37,12 @@ function CardSkeleton() {
 }
 
 /** Memoized grid tile — avoids re-rendering unchanged cards on load-more. */
-const BodyParamsCardTile = memo(function BodyParamsCardTile({ card, onEdit }) {
+const BodyParamsCardTile = memo(function BodyParamsCardTile({
+  card,
+  onEdit,
+  onDelete,
+  isDeleting = false,
+}) {
   return (
     <div
       onClick={() => onEdit(card)}
@@ -43,17 +52,35 @@ const BodyParamsCardTile = memo(function BodyParamsCardTile({ card, onEdit }) {
         <div className="flex items-start justify-between mb-3">
           <div className="flex-1 min-w-0">
             <h3 className="font-semibold text-gray-900 truncate">{card.name}</h3>
-            <p className="text-sm text-gray-500">{card.phoneNumber}</p>
+            {card.phoneNumber ? (
+              <p className="text-sm text-gray-500 truncate">{card.phoneNumber}</p>
+            ) : null}
           </div>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onEdit(card);
-            }}
-            className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
-          >
-            <Edit2 size={16} className="text-gray-400" />
-          </button>
+          <div className="flex items-center gap-0.5 flex-shrink-0">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onEdit(card);
+              }}
+              className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
+              aria-label={`Edit ${card.name || 'card'}`}
+            >
+              <Edit2 size={16} className="text-gray-400" />
+            </button>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete(card);
+              }}
+              disabled={isDeleting}
+              className="p-1.5 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
+              aria-label={`Delete ${card.name || 'card'}`}
+            >
+              <Trash2 size={16} className={isDeleting ? 'text-red-300' : 'text-red-400'} />
+            </button>
+          </div>
         </div>
 
         <div className="grid grid-cols-2 gap-2 mb-3">
@@ -75,9 +102,19 @@ const BodyParamsCardTile = memo(function BodyParamsCardTile({ card, onEdit }) {
           </div>
         </div>
 
-        <div className="flex items-center justify-between text-xs text-gray-500 pt-2 border-t border-gray-100">
-          <span>{card.gender}</span>
-          <span>{card.recordedDate ? format(new Date(card.recordedDate), 'MMM d, yyyy') : 'N/A'}</span>
+        <div className="pt-2 border-t border-gray-100 space-y-1">
+          <div className="flex items-center justify-between text-xs text-gray-500">
+            <span>{card.gender || '—'}</span>
+            <span>
+              Date:{' '}
+              {card.recordedDate ? format(new Date(card.recordedDate), 'd MMM yyyy') : 'N/A'}
+            </span>
+          </div>
+          {card.locationName ? (
+            <p className="text-xs text-gray-600 truncate">
+              Venue: <span className="font-medium text-gray-800">{card.locationName}</span>
+            </p>
+          ) : null}
         </div>
       </div>
     </div>
@@ -95,7 +132,12 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
   const [bodyParamsCards, setBodyParamsCards] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [highlightedSuggestion, setHighlightedSuggestion] = useState(-1);
   const [refreshing, setRefreshing] = useState(false);
+  const [deletingCardId, setDeletingCardId] = useState(null);
+  const [cardPendingDelete, setCardPendingDelete] = useState(null);
+  const [deleteErrorMessage, setDeleteErrorMessage] = useState(null);
   const [pagination, setPagination] = useState({
     totalRecords: 0,
     currentPage: 0,
@@ -106,10 +148,15 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
   const [selectedCard, setSelectedCard] = useState(null);
   const [bodyParamsShareData, setBodyParamsShareData] = useState(null);
   const [bodyParamsPreCapCard, setBodyParamsPreCapCard] = useState(null);
+  /** Editable page-level Venue — shown in header only, applied when saving a card. */
+  const [headerVenue, setHeaderVenue] = useState('');
+  const headerVenueInitializedRef = useRef(false);
 
   const coachIdRef = useRef(null);
   /** Cache: `${search}::${page}` → { cards, pagination } */
   const pageCacheRef = useRef(new Map());
+  /** Accumulated cards for autocomplete (survives paginated / filtered list swaps). */
+  const [suggestionPool, setSuggestionPool] = useState([]);
   const scrollRef = useRef(null);
   const sentinelRef = useRef(null);
   /** Monotonic request id — only the latest request may write state. */
@@ -122,10 +169,98 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
     preloadBodyParamsShareAssets();
   }, [isBodyParamsFormOpen]);
 
+  // Seed editable header Venue once from the newest card that has one.
+  useEffect(() => {
+    if (headerVenueInitializedRef.current) return;
+    const venue = bodyParamsCards
+      .map((c) => String(c.locationName || '').trim())
+      .find(Boolean);
+    if (!venue) return;
+    headerVenueInitializedRef.current = true;
+    setHeaderVenue(venue);
+  }, [bodyParamsCards]);
+
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(searchQuery.trim()), 300);
     return () => clearTimeout(t);
   }, [searchQuery]);
+
+  // Grow autocomplete pool whenever cards load (page 1, load-more, or search hits).
+  useEffect(() => {
+    setSuggestionPool((prev) => {
+      const map = new Map(prev.map((c) => [c.id, c]));
+      let changed = false;
+      for (const card of bodyParamsCards) {
+        if (card?.id == null) continue;
+        const next = {
+          id: card.id,
+          name: card.name,
+          phoneNumber: card.phoneNumber,
+        };
+        const existing = map.get(card.id);
+        if (
+          existing
+          && existing.name === next.name
+          && existing.phoneNumber === next.phoneNumber
+        ) {
+          continue;
+        }
+        map.set(card.id, next);
+        changed = true;
+      }
+      return changed ? Array.from(map.values()) : prev;
+    });
+  }, [bodyParamsCards]);
+
+  const suggestions = useMemo(
+    () => buildBpcSearchSuggestions(suggestionPool, searchQuery),
+    [suggestionPool, searchQuery],
+  );
+
+  const handleSelectSuggestion = useCallback((suggestion) => {
+    setSearchQuery(suggestion?.term || '');
+    setIsSearchOpen(false);
+    setHighlightedSuggestion(-1);
+  }, []);
+
+  const handleSearchKeyDown = useCallback((e) => {
+    if (!searchQuery.trim()) return;
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      if (!suggestions.length) return;
+      setIsSearchOpen(true);
+      setHighlightedSuggestion((prev) => (prev < suggestions.length - 1 ? prev + 1 : 0));
+      return;
+    }
+    if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (!suggestions.length) return;
+      setIsSearchOpen(true);
+      setHighlightedSuggestion((prev) => (prev > 0 ? prev - 1 : suggestions.length - 1));
+      return;
+    }
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (highlightedSuggestion >= 0 && suggestions[highlightedSuggestion]) {
+        handleSelectSuggestion(suggestions[highlightedSuggestion]);
+      } else {
+        setIsSearchOpen(false);
+        setHighlightedSuggestion(-1);
+      }
+      return;
+    }
+    if (e.key === 'Escape') {
+      setIsSearchOpen(false);
+      setHighlightedSuggestion(-1);
+    }
+  }, [searchQuery, suggestions, highlightedSuggestion, handleSelectSuggestion]);
+
+  const handleSearchChange = useCallback((value) => {
+    setSearchQuery(value);
+    setIsSearchOpen(true);
+    setHighlightedSuggestion(-1);
+  }, []);
 
   const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
 
@@ -186,7 +321,6 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
 
     if (append) setLoadingMore(true);
     else if (!isBackground) setLoading(true);
-    else setRefreshing(true);
     setError(null);
 
     try {
@@ -224,19 +358,42 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
     }
   }, [user?.email, getUserId, applyPageResult]);
 
-  // Reset + load page 1 when user / search / refreshKey changes
+  /** True after the first successful page-1 load for the current user/refreshKey. */
+  const hasLoadedOnceRef = useRef(false);
+  const prevListDriversRef = useRef({ user, refreshKey, debouncedSearch });
+
+  // Load page 1 when user / search / refreshKey changes.
+  // Search-only changes soft-update in the background so typing does not flash
+  // the full-page Loading skeleton or unmount the search bar.
   useEffect(() => {
+    const prev = prevListDriversRef.current;
+    const hardReset = prev.user !== user || prev.refreshKey !== refreshKey;
+    prevListDriversRef.current = { user, refreshKey, debouncedSearch };
+
     pageCacheRef.current.clear();
     inFlightPagesRef.current.clear();
-    setBodyParamsCards([]);
-    setPagination({ totalRecords: 0, currentPage: 0, hasNextPage: false });
-    setLoading(true);
     setError(null);
+
+    if (hardReset) {
+      hasLoadedOnceRef.current = false;
+      setBodyParamsCards([]);
+      setPagination({ totalRecords: 0, currentPage: 0, hasNextPage: false });
+      setLoading(true);
+    }
+
+    const softSearch = hasLoadedOnceRef.current && !hardReset;
 
     let cancelled = false;
     const run = async () => {
-      await fetchPage({ page: 1, search: debouncedSearch, append: false });
+      await fetchPage({
+        page: 1,
+        search: debouncedSearch,
+        append: false,
+        // Keep current cards + search UI visible while filtered results load.
+        isBackground: softSearch,
+      });
       if (cancelled) return;
+      hasLoadedOnceRef.current = true;
     };
     run();
 
@@ -247,9 +404,16 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
     };
   }, [user, refreshKey, debouncedSearch, fetchPage]);
 
+  // Clear suggestion pool when the coach or external refresh key changes.
+  useEffect(() => {
+    setSuggestionPool([]);
+  }, [user, refreshKey]);
+
   const handleRefresh = () => {
     pageCacheRef.current.clear();
     inFlightPagesRef.current.clear();
+    setSuggestionPool([]);
+    setRefreshing(true);
     fetchPage({
       page: 1,
       search: debouncedSearch,
@@ -288,14 +452,51 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
       const merged = {
         ...fresh,
         phoneNumber: fresh.phoneNumber ?? card.phoneNumber ?? null,
+        locationName: fresh.locationName ?? card.locationName ?? null,
       };
+      // Sync header to THIS card's venue so header doesn't force an old value.
+      headerVenueInitializedRef.current = true;
+      setHeaderVenue(String(merged.locationName || '').trim());
       setSelectedCard(merged);
       setIsBodyParamsFormOpen(true);
     } catch {
+      headerVenueInitializedRef.current = true;
+      setHeaderVenue(String(card.locationName || '').trim());
       setSelectedCard(card);
       setIsBodyParamsFormOpen(true);
     }
   };
+
+  const handleDeleteCard = useCallback((card) => {
+    if (!card?.id || deletingCardId != null) return;
+    setDeleteErrorMessage(null);
+    setCardPendingDelete(card);
+  }, [deletingCardId]);
+
+  const confirmDeleteCard = useCallback(async () => {
+    const card = cardPendingDelete;
+    if (!card?.id || deletingCardId != null) return;
+
+    setCardPendingDelete(null);
+    setDeletingCardId(card.id);
+    try {
+      const coachId = await getUserId(user.email);
+      await deleteBodyParamsCard({ id: card.id, coachId });
+      pageCacheRef.current.clear();
+      setBodyParamsCards((prev) => prev.filter((c) => c.id !== card.id));
+      setSuggestionPool((prev) => prev.filter((c) => c.id !== card.id));
+      setPagination((prev) => ({
+        ...prev,
+        totalRecords: Math.max(0, (prev.totalRecords || 1) - 1),
+      }));
+      debugLog('[WellnessCounselling] card deleted', { id: card.id });
+    } catch (err) {
+      console.error('[WellnessCounselling] Error deleting card:', err);
+      setDeleteErrorMessage(err.message || 'Failed to delete card. Please try again.');
+    } finally {
+      setDeletingCardId(null);
+    }
+  }, [cardPendingDelete, deletingCardId, getUserId, user?.email]);
 
   if (loading && bodyParamsCards.length === 0 && !error) {
     return (
@@ -319,32 +520,52 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
     <div className="h-screen bg-gradient-to-br from-green-50 to-blue-50 overflow-hidden flex flex-col">
       <div className="flex-shrink-0 bg-white shadow-sm">
         <div className="px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div>
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="min-w-0 flex-1">
               <h1 className="text-lg font-bold text-gray-900">Body Composition Metrics</h1>
-              <p className="text-xs text-gray-500">{pagination.totalRecords || bodyParamsCards.length} Cards</p>
+              <div className="flex items-center gap-2 mt-0.5 min-w-0">
+                <p className="text-xs text-gray-500 flex-shrink-0">
+                  {pagination.totalRecords || bodyParamsCards.length} Cards
+                </p>
+                <span className="text-xs text-gray-400 flex-shrink-0">·</span>
+                <label className="text-xs text-gray-500 flex-shrink-0" htmlFor="bpc-header-venue">
+                  Venue:
+                </label>
+                <input
+                  id="bpc-header-venue"
+                  type="text"
+                  value={headerVenue}
+                  onChange={(e) => {
+                    headerVenueInitializedRef.current = true;
+                    setHeaderVenue(e.target.value);
+                  }}
+                  placeholder="e.g. Chennai"
+                  className="min-w-0 flex-1 text-xs text-gray-800 border border-gray-200 rounded-md px-2 py-0.5 focus:outline-none focus:ring-1 focus:ring-green-500 bg-white"
+                />
+              </div>
             </div>
           </div>
           <button
             onClick={handleRefresh}
             disabled={refreshing}
-            className="p-2 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50"
+            className="p-2 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50 flex-shrink-0"
           >
             <RefreshCw size={20} className={refreshing ? 'animate-spin' : ''} />
           </button>
         </div>
 
         <div className="px-4 pb-3">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-            <input
-              type="text"
-              placeholder="Search by name or phone..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
-            />
-          </div>
+          <BodyParamsSearchBar
+            value={searchQuery}
+            onChange={handleSearchChange}
+            suggestions={suggestions}
+            isOpen={isSearchOpen}
+            onOpenChange={setIsSearchOpen}
+            highlightedIndex={highlightedSuggestion}
+            onHighlightChange={setHighlightedSuggestion}
+            onSelectSuggestion={handleSelectSuggestion}
+            onKeyDown={handleSearchKeyDown}
+          />
         </div>
       </div>
 
@@ -381,7 +602,13 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
           <>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 pb-4">
               {bodyParamsCards.map((card) => (
-                <BodyParamsCardTile key={card.id} card={card} onEdit={handleEditCard} />
+                <BodyParamsCardTile
+                  key={card.id}
+                  card={card}
+                  onEdit={handleEditCard}
+                  onDelete={handleDeleteCard}
+                  isDeleting={deletingCardId === card.id}
+                />
               ))}
             </div>
             {loadingMore && (
@@ -416,12 +643,28 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
         user={user}
         selectedMember={null}
         existingCard={selectedCard}
+        externalVenue={headerVenue}
+        onVenueChange={(venue) => {
+          headerVenueInitializedRef.current = true;
+          setHeaderVenue(venue);
+        }}
         onSaveStart={(formData) => {
-          setBodyParamsPreCapCard(formData);
+          const venue = String(formData.locationName || '').trim();
+          if (venue) {
+            headerVenueInitializedRef.current = true;
+            setHeaderVenue(venue);
+          }
+          setBodyParamsPreCapCard({
+            ...formData,
+            locationName: venue,
+          });
         }}
         onSaveSuccess={(card, shareUrl, previousCard) => {
           setIsBodyParamsFormOpen(false);
           onCardSaved?.(card);
+          const savedVenue = String(card?.locationName || '').trim();
+          headerVenueInitializedRef.current = true;
+          setHeaderVenue(savedVenue);
 
           pageCacheRef.current.clear();
           setBodyParamsCards((prevCards) => {
@@ -430,6 +673,7 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
               ...(idx >= 0 ? prevCards[idx] : {}),
               ...card,
               phoneNumber: card.phoneNumber ?? (idx >= 0 ? prevCards[idx].phoneNumber : null),
+              locationName: savedVenue || null,
             };
             if (idx >= 0) {
               const next = [...prevCards];
@@ -440,7 +684,14 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
           });
 
           setSelectedCard(null);
-          setBodyParamsShareData({ card, shareUrl, previousCard: previousCard || null });
+          setBodyParamsShareData({
+            card: {
+              ...card,
+              locationName: savedVenue,
+            },
+            shareUrl,
+            previousCard: previousCard || null,
+          });
         }}
       />
 
@@ -462,6 +713,27 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
         shareUrl={bodyParamsShareData?.shareUrl}
         preCapCard={bodyParamsPreCapCard}
         previousCard={bodyParamsShareData?.previousCard ?? null}
+      />
+
+      <CustomAlertModal
+        isOpen={!!cardPendingDelete}
+        onClose={() => setCardPendingDelete(null)}
+        title="Delete card?"
+        message={`Delete ${String(cardPendingDelete?.name || 'this card').trim() || 'this card'}? This cannot be undone.`}
+        type="warning"
+        confirmText="Delete"
+        cancelText="Cancel"
+        onConfirm={confirmDeleteCard}
+        onCancel={() => setCardPendingDelete(null)}
+      />
+
+      <CustomAlertModal
+        isOpen={!!deleteErrorMessage}
+        onClose={() => setDeleteErrorMessage(null)}
+        title="Delete failed"
+        message={deleteErrorMessage || ''}
+        type="error"
+        confirmText="OK"
       />
     </div>
   );

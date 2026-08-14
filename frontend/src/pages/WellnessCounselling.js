@@ -169,6 +169,7 @@ const WellnessCounselling = ({ user, onBack, tabVisitKey = 0, refreshKey = 0 }) 
         
         const mapped = { ...node };
         mapped.userEmail = node.email || node.userEmail;
+        mapped.communityId = node.communityId || node.CommunityId || null;
         
         // Metrics already added by backend, but ensure consistency
         if (!mapped.metrics) {
@@ -243,7 +244,9 @@ const WellnessCounselling = ({ user, onBack, tabVisitKey = 0, refreshKey = 0 }) 
     // Check current node
     if (
       node.userName?.toLowerCase().includes(lowerQuery) ||
-      node.userEmail?.toLowerCase().includes(lowerQuery)
+      node.userEmail?.toLowerCase().includes(lowerQuery) ||
+      node.email?.toLowerCase().includes(lowerQuery) ||
+      String(node.communityId || '').toLowerCase().includes(lowerQuery)
     ) {
       return true;
     }

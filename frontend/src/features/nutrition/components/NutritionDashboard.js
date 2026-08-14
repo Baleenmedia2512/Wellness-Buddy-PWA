@@ -543,6 +543,9 @@ const NutritionDashboard = ({
       if (openGenerationRef.current !== generation) return;
       setMealDetailError(err?.message || 'Unable to load food details.');
       setMealDetailStatus('error');
+      if (initialMeal) {
+        hydrateSelectedMeal(initialMeal, { status: 'error' });
+      }
     }
   }, [
     analyses,

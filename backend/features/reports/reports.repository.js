@@ -69,6 +69,8 @@ function mapReportingMembersToRaw(reportingMembers, coachId, parentByUserId, dir
     .map((member) => ({
       UserId: member.UserId,
       UserName: member.UserName,
+      Email: member.Email || null,
+      CommunityId: member.CommunityId ? String(member.CommunityId).trim() : null,
       Height: member.Height ?? null,
       CoachId: member.CoachId,
       Role: member.Role,
@@ -89,7 +91,7 @@ export async function getCoachMember(coachId) {
   const supabase = getSupabaseClient();
   const { data, error } = await supabase
     .from('team_table')
-    .select('"UserId", "UserName", "Height", "CoachId", "Role", "Status"')
+    .select('"UserId", "UserName", "Email", "CommunityId", "Height", "CoachId", "Role", "Status"')
     .eq('"UserId"', coachId)
     .maybeSingle();
   if (error) throw error;

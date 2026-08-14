@@ -71,6 +71,7 @@ import {
   FoodImageShareCard,
   HomeNutritionCarousel,
 } from "./features/nutrition";
+import { DetoxDayReminder } from "./features/marathon";
 import { EducationLogCard } from "./features/education";
 import { WatchActivityCard } from "./features/activity";
 import LoadingSpinner from "./shared/components/LoadingSpinner";
@@ -112,6 +113,7 @@ import {
   deleteNutritionAnalysis,
 } from "./features/nutrition";
 import { seedDailyWellnessScoreCache } from "./features/wellness-score-sheet/services/dailyWellnessScoreCache";
+import { refreshDailyWellnessScoreAfterSave } from "./features/wellness-score-sheet/services/refreshDailyWellnessScoreNow";
 import { analyzeImage as orchestrateAnalyzeImage } from "./shared/services/orchestratorService";
 import {
   reserveAiCredit,
@@ -4764,6 +4766,7 @@ function WellnessValleyApp() {
             });
             clearCaptureAnalyzing(captureId);
             triggerNutritionRefresh({ immediate: true, source: 'capture-food-saved' });
+            void refreshDailyWellnessScoreAfterSave({ user, userId: ownerUserId, apiBaseUrl });
             showToast('Food saved to Diary');
             return;
           }
@@ -4782,6 +4785,7 @@ function WellnessValleyApp() {
             await settleCredit();
             clearCaptureAnalyzing(captureId);
             triggerNutritionRefresh({ immediate: true, source: 'capture-weight-saved' });
+            void refreshDailyWellnessScoreAfterSave({ user, userId: ownerUserId, apiBaseUrl });
             showToast('Weight saved to Diary');
             return;
           }
@@ -4802,6 +4806,7 @@ function WellnessValleyApp() {
             await settleCredit();
             clearCaptureAnalyzing(captureId);
             triggerNutritionRefresh({ immediate: true, source: 'capture-education-saved' });
+            void refreshDailyWellnessScoreAfterSave({ user, userId: ownerUserId, apiBaseUrl });
             return;
           }
 
@@ -4816,6 +4821,7 @@ function WellnessValleyApp() {
             await settleCredit();
             clearCaptureAnalyzing(captureId);
             triggerNutritionRefresh({ immediate: true, source: 'capture-watch-saved' });
+            void refreshDailyWellnessScoreAfterSave({ user, userId: ownerUserId, apiBaseUrl });
             return;
           }
 
@@ -5380,6 +5386,7 @@ function WellnessValleyApp() {
         foodRowId: saveRes?.id ?? saveRes?.insertId ?? null,
       });
       triggerNutritionRefresh({ immediate: true, source: "camera-save" });
+      void refreshDailyWellnessScoreAfterSave({ user, apiBaseUrl });
 
       // ? ANDROID FIX: Don't auto-show popup - data is saved silently
       // Users can view saved data from Dashboard/Insights button
@@ -8089,6 +8096,7 @@ function WellnessValleyApp() {
                       <span className="text-sm font-bold text-emerald-700">Gallery</span>
                     </button>
                   </div>
+                  <DetoxDayReminder />
                 </div>
               </div>
 
@@ -8117,6 +8125,12 @@ function WellnessValleyApp() {
                 };
                 setWellnessScoreInitialRange(next);
                 setHomeCarouselDateRange(next);
+                const scoreDate = rangeOpts.scoreDate || null;
+                const scoreData = rangeOpts.scoreData || null;
+                const uid = user?.id || user?.UserId || user?.userId || null;
+                if (scoreData && scoreDate && uid) {
+                  seedDailyWellnessScoreCache(uid, scoreDate, scoreData);
+                }
                 navigateTo('wellness-score');
               }}
               onOpenWellnessScoreSetup={

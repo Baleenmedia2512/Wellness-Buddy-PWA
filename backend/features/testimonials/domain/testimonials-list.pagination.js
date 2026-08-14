@@ -21,6 +21,7 @@ export const TESTIMONIALS_LIST_SCOPES = new Set(['mine', 'direct', 'full']);
  *   page: number,
  *   limit: number,
  *   search: string,
+ *   healthIssue: string,
  *   coachId: number|null,
  *   scope: 'mine'|'direct'|'full',
  *   uploadFilter: string,
@@ -42,6 +43,7 @@ export function normalizeTestimonialsListPagination(raw = {}) {
   }
 
   const search = String(raw.search || '').trim().toLowerCase();
+  const healthIssue = String(raw.healthIssue || '').trim().toLowerCase();
 
   let coachId = null;
   if (raw.coachId != null && raw.coachId !== '') {
@@ -55,7 +57,7 @@ export function normalizeTestimonialsListPagination(raw = {}) {
   const filterRaw = String(raw.uploadFilter || raw.uploadStatus || 'all').toLowerCase();
   const uploadFilter = TESTIMONIALS_UPLOAD_FILTERS.has(filterRaw) ? filterRaw : 'all';
 
-  return { page, limit, search, coachId, scope, uploadFilter };
+  return { page, limit, search, healthIssue, coachId, scope, uploadFilter };
 }
 
 /**
@@ -115,6 +117,24 @@ export function filterTestimonialsListBySearch(rows, searchNormalized) {
   return rows.filter((row) => {
     const name = String(row.user?.UserName ?? row.user?.userName ?? '').toLowerCase();
     return name.includes(searchNormalized);
+  });
+}
+
+/**
+ * @template T
+ * @param {Array<{ recoveredHealthIssues?: string[], testimonial?: object|null, testimonialRaw?: object|null }>} rows
+ * @param {string} healthIssueNormalized
+ * @returns {typeof rows}
+ */
+export function filterTestimonialsListByHealthIssue(rows, healthIssueNormalized) {
+  if (!healthIssueNormalized) return rows;
+  return rows.filter((row) => {
+    const issues = row.recoveredHealthIssues
+      ?? row.testimonial?.recoveredHealthIssues
+      ?? row.testimonialRaw?.recovered_health_issues
+      ?? [];
+    if (!Array.isArray(issues)) return false;
+    return issues.some((issue) => String(issue || '').toLowerCase().includes(healthIssueNormalized));
   });
 }
 

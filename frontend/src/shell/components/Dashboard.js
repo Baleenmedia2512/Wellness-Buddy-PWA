@@ -12,7 +12,7 @@ import React, { useState, useEffect, useRef, lazy, Suspense, useMemo, useCallbac
 import { flushSync } from 'react-dom';
 import { Calendar, ChevronLeft, ChevronRight, Footprints, Smartphone } from 'lucide-react';
 import TouchFeedbackButton from '../../shared/components/TouchFeedbackButton';
-import { TeamMemberSearch } from '../../features/team';
+import { TeamMemberSearch, formatMemberSubtitle, subtitleCommunityId } from '../../features/team';
 import TeamMemberProfileModal from '../../shared/components/TeamMemberProfileModal';
 import { isFlagEnabled } from '../../config/featureFlags';
 import { useNutritionRefresh } from '../../shared/context/NutritionRefreshContext';
@@ -822,7 +822,15 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
                       onClick={() => setShowMemberProfile(true)}
                       className="text-blue-600 active:text-green-600 hover:underline"
                     >
-                      {`Viewing ${selectedMember.userName}'s data`}
+                      {(() => {
+                        const subtitle = formatMemberSubtitle(
+                          selectedMember.email,
+                          subtitleCommunityId(selectedMember),
+                        );
+                        return subtitle
+                          ? subtitle
+                          : `Viewing ${selectedMember.userName}'s data`;
+                      })()}
                     </button>
                   )
                   : 'Track your wellness journey'

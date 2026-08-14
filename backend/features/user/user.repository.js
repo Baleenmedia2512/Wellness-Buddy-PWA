@@ -150,6 +150,43 @@ export async function getLatestWeight(userId) {
 }
 
 /**
+ * First (oldest) weight record for a user — becomes their Initial Weight.
+ * Later uploads must not change this value.
+ * @param {number|string} userId
+ * @returns {Promise<object|null>}
+ */
+export async function getInitialWeight(userId) {
+  const uid = Number.parseInt(String(userId), 10);
+  if (!Number.isFinite(uid) || uid < 1) return null;
+
+  const supabase = getSupabaseClient();
+  const selectCols = 'ID, Weight, CreatedAt';
+
+  let { data, error } = await supabase
+    .from('weight_records_table')
+    .select(selectCols)
+    .eq('UserId', uid)
+    .or('IsDeleted.is.null,IsDeleted.eq.false,IsDeleted.eq.0')
+    .order('CreatedAt', { ascending: true })
+    .limit(1);
+
+  if (error && isMissingIsDeletedColumn(error)) {
+    console.warn('[user.repo] getInitialWeight: IsDeleted missing — retrying without soft-delete filter');
+    ({ data, error } = await supabase
+      .from('weight_records_table')
+      .select(selectCols)
+      .eq('UserId', uid)
+      .order('CreatedAt', { ascending: true })
+      .limit(1));
+  }
+  if (error) {
+    console.warn('[user.repo] getInitialWeight failed:', error.message);
+    return null;
+  }
+  return Array.isArray(data) && data.length > 0 ? data[0] : null;
+}
+
+/**
  * Latest non-null BodyFat % from any weight record (most recent first).
  * @param {number|string} userId
  * @returns {Promise<number|null>}

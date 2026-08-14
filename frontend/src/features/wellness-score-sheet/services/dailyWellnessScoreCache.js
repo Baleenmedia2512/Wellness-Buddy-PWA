@@ -16,8 +16,16 @@ function dailyKey(userId, date) {
 }
 
 export function getDailyWellnessScoreCached(userId, date) {
-  if (userId == null || !date) return null;
-  return dailyScoreCache.get(dailyKey(userId, date)) || null;
+  if (date && userId != null) {
+    const hit = dailyScoreCache.get(dailyKey(userId, date));
+    if (hit) return hit;
+  }
+  if (!date) return null;
+  const suffix = `|${date}`;
+  for (const [key, score] of dailyScoreCache.entries()) {
+    if (key.endsWith(suffix)) return score;
+  }
+  return null;
 }
 
 export function setDailyWellnessScoreCached(userId, date, score) {

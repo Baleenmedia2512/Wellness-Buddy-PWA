@@ -41,8 +41,9 @@ import {
 } from '../../features/ai-credits';
 import { fetchWaterIntake, todayLocal } from '../../features/water';
 import { isIOS } from '../../shared/utils/platform';
-import { buildDiaryShareSuffix } from '../../features/diary';
+import { buildDiaryShareSuffix, extractFoodItemDisplayNames } from '../../features/diary';
 import { useNutritionRefreshOptional } from '../../shared/context/NutritionRefreshContext';
+import { refreshDailyWellnessScoreAfterSave } from '../../features/wellness-score-sheet/services/refreshDailyWellnessScoreNow';
 import HealthySnacksSubSelectModal from './HealthySnacksSubSelectModal';
 import {
   MANUAL_LOG_CATEGORY,
@@ -232,7 +233,8 @@ export default function ManualEntryPage({
   const refreshAfterPersist = useCallback((source) => {
     // Fire only after DB write — early refresh locks in a stale Home/sheet total.
     nutritionRefresh?.triggerRefresh({ immediate: true, source });
-  }, [nutritionRefresh]);
+    void refreshDailyWellnessScoreAfterSave({ userId, apiBaseUrl });
+  }, [nutritionRefresh, userId, apiBaseUrl]);
 
   const creditsEnabled = isFlagEnabled('ff.ai-credits');
   const [credits, setCredits] = useState(null);
@@ -449,6 +451,7 @@ export default function ManualEntryPage({
           analysisResult,
           capturedAt: originalCapturedAt || null,
         });
+        refreshAfterPersist('manual-log-persisted');
       })
       .catch((err) => {
         onToast?.(err?.message || "Couldn't save — check Diary.");
@@ -558,16 +561,19 @@ export default function ManualEntryPage({
   const handleFoodSave = async (manualData) => {
     const analysis = buildAnalysisFromManualFood(manualData);
     const foodName = analysis?.foods?.[0]?.name || manualData?.name || 'Food';
+    const itemNames = extractFoodItemDisplayNames(analysis);
     const n = analysis?.total || analysis?.foods?.[0]?.nutrition || {};
     // Snacks & Soups: name + kcal only (no P/C/F/Fiber/GI). Full food keeps macros.
     const fromSnacks = Boolean(foodEntryMeta?.fromHealthySnacks);
     const activityCaption = fromSnacks
       ? buildDiaryShareSuffix('food', {
           foodName,
+          itemNames,
           calories: n.calories ?? 0,
         })
       : buildDiaryShareSuffix('food', {
           foodName,
+          itemNames,
           calories: n.calories ?? 0,
           protein: n.protein ?? 0,
           carbs: n.carbs ?? 0,
@@ -594,6 +600,7 @@ export default function ManualEntryPage({
           analysisResult: analysis,
           capturedAt: originalCapturedAt || null,
         });
+        refreshAfterPersist('manual-food-persisted');
       })
       .catch((err) => {
         onToast?.(err?.message || "Couldn't save food — check Diary.");

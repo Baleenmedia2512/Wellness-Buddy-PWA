@@ -134,7 +134,9 @@ export function NutritionRefreshProvider({ children }) {
    * Also records an async activity-log entry so remounted Home can decide
    * whether a refetch is needed (newer log) or can keep cached state.
    *
-   * Wrapped in startTransition to prevent Suspense errors.
+   * Immediate saves bump refreshKey synchronously so Wellness Score can
+   * fetch /daily in the same turn (startTransition deferred it until idle).
+   * Debounced edits still use startTransition.
    * @param {Object} options
    * @param {boolean} options.immediate - Skip debounce (default: false)
    * @param {string} options.source - Debug label for who triggered refresh
@@ -153,18 +155,17 @@ export function NutritionRefreshProvider({ children }) {
       console.log(`🔄 [NutritionRefresh] Triggered by: ${source}`, { immediate });
     }
 
-    // Immediate refresh (used after saves/deletes) - wrapped in startTransition
+    // Immediate refresh (used after saves/deletes). Must not use startTransition —
+    // image-save work would defer the Wellness Score /daily fetch until idle.
     if (immediate) {
-      startTransition(() => {
-        setRefreshKey(prev => {
-          const newKey = prev + 1;
-          if (process.env.NODE_ENV !== 'production') {
-            console.log(`🔄 [NutritionRefresh] Key updated: ${prev} → ${newKey}`);
-          }
-          return newKey;
-        });
-        setPendingRefresh(false);
+      setRefreshKey((prev) => {
+        const newKey = prev + 1;
+        if (process.env.NODE_ENV !== 'production') {
+          console.log(`🔄 [NutritionRefresh] Key updated: ${prev} → ${newKey}`);
+        }
+        return newKey;
       });
+      setPendingRefresh(false);
       return;
     }
 

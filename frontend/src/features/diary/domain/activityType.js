@@ -109,6 +109,30 @@ function isShakeName(name) {
 }
 
 /**
+ * Display names for every food item (share captions).
+ * Preserves first-seen casing; skips blanks and case-insensitive dupes.
+ * Compact titles like "White Rice+4more" are not used — callers pass items.
+ *
+ * @param {{ detailedItems?: object[], foods?: object[] }|null} foodData
+ * @param {unknown} [analysisData]
+ * @returns {string[]}
+ */
+export function extractFoodItemDisplayNames(foodData, analysisData = null) {
+  const items = collectFoodItems(foodData, analysisData);
+  const seen = new Set();
+  const names = [];
+  for (const item of items) {
+    const name = String(item?.name || item?.foodName || '').trim();
+    if (!name) continue;
+    const key = name.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    names.push(name);
+  }
+  return names;
+}
+
+/**
  * Total volume_ml from food items (water / liquids).
  * @param {{ detailedItems?: object[] }|null} foodData
  * @param {unknown} [analysisData]
@@ -228,13 +252,17 @@ function normalizeShakeProducts(products) {
 }
 
 function collectFoodItems(foodData, analysisData) {
-  if (Array.isArray(foodData?.detailedItems) && foodData.detailedItems.length > 0) {
-    return foodData.detailedItems;
-  }
+  const fromData = Array.isArray(foodData?.detailedItems) ? foodData.detailedItems : [];
+  const fromFoods = Array.isArray(foodData?.foods) ? foodData.foods : [];
   const raw = parseRawAnalysis(analysisData);
-  if (Array.isArray(raw?.foods)) return raw.foods;
-  if (Array.isArray(raw?.detailedItems)) return raw.detailedItems;
-  return [];
+  const fromRawFoods = Array.isArray(raw?.foods) ? raw.foods : [];
+  const fromRawDetailed = Array.isArray(raw?.detailedItems) ? raw.detailedItems : [];
+  const lists = [fromData, fromFoods, fromRawFoods, fromRawDetailed];
+  let best = [];
+  for (const list of lists) {
+    if (list.length > best.length) best = list;
+  }
+  return best;
 }
 
 function parseMlFromPortion(portion) {

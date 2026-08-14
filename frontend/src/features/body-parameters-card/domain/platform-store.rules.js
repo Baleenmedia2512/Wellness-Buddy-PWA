@@ -37,31 +37,33 @@ export function buildOnboardingShareUrl(apiBaseUrl) {
 
 /**
  * Caption for WhatsApp when the body-parameters card IMAGE is the attachment.
- * Omits a full https:// URL so WhatsApp does not replace the image with an OG link card.
+ * Uses the creating coach's name and the card Venue (locationName).
+ * No app/share URL — the metrics card image is the message payload.
  *
- * @param {string} memberName
- * @param {string|null} shareUrl - generic /app link (host/path only in caption)
+ * @param {string} coachName - coach who created the BCP
+ * @param {string} [venue] - venue / location entered on the card
  * @returns {string}
  */
-export function buildShareCaptionForImage(memberName, shareUrl) {
-  const firstName = memberName?.trim().split(/\s+/)[0] || 'there';
-  const lines = [
-    `Hey ${firstName}! Your sponsor shared your body parameters.`,
-    'Install or open Wellness Valley app.',
-  ];
-  if (shareUrl) {
-    lines.push(shareUrl.replace(/^https?:\/\//i, ''));
-  }
-  return lines.join('\n');
+export function buildShareCaptionForImage(coachName, venue) {
+  const shortName = String(coachName || '').trim().split(/\s+/).filter(Boolean)[0] || 'your coach';
+  const place = String(venue || '').trim();
+  const meetLine = place
+    ? `It was good to meet you at the fat camp in ${place}. I'm enclosing your body composition metrics here with.`
+    : `It was good to meet you at the fat camp. I'm enclosing your body composition metrics here with.`;
+  return [
+    `Hi, this is ${shortName}.`,
+    '',
+    meetLine,
+  ].join('\n');
 }
 
 /**
  * Build plain-text WhatsApp message (text-only fallback — no image).
  *
- * @param {string|null} shareUrl
- * @param {string} memberName
+ * @param {string} coachName
+ * @param {string} [venue]
  * @returns {string}
  */
-export function buildShareText(shareUrl, memberName) {
-  return buildShareCaptionForImage(memberName, shareUrl);
+export function buildShareText(coachName, venue) {
+  return buildShareCaptionForImage(coachName, venue);
 }

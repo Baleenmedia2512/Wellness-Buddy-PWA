@@ -20,7 +20,10 @@ import { Smartphone, GraduationCap, HelpCircle, Share2, ArrowUp, ArrowDown } fro
 import { useSwipeToDelete } from '../../../../shared/hooks/useSwipeToDelete';
 import { parseAnalysisData, recalculateTotals, getMealCategory } from '../../../nutrition/services/nutritionDashboard/analysisHelpers';
 import { captureAndShare } from '../../../../shared/utils/shareUtils';
-import { formatBusinessTime, DEFAULT_BUSINESS_TIMEZONE } from '../../../../shared/utils/datetimeUtils';
+import {
+  formatBusinessTime,
+  DEFAULT_BUSINESS_TIMEZONE,
+} from '../../../../shared/utils/datetimeUtils';
 import { DIARY_FOOD_ACTIVITY } from '../../domain/activityType';
 import { resolveFoodRowPresentation } from '../../domain/foodRowDisplay';
 import {
@@ -307,6 +310,10 @@ export function FoodRow({
   const isShake = activityType === DIARY_FOOD_ACTIVITY.SHAKE;
   const showNutritionShare = !isWater && !isAfresh;
   const foodItems = Array.isArray(foodData.detailedItems) ? foodData.detailedItems : [];
+  const shareMealName = foodItems
+    .map((item) => String(item?.name || '').trim())
+    .filter(Boolean)
+    .join(', ') || mealName;
 
   // Lazy-hydrate share card image once (on share or when thumb URL is raw).
   useEffect(() => {
@@ -351,7 +358,9 @@ export function FoodRow({
     ? new Date(entry.capturedAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })
     : '';
 
-  // Share taps the full off-screen nutrition card, not the compact row
+  // Share taps the full off-screen nutrition card, not the compact row.
+  // Water / Afresh captions use THIS card's volume / scoops.
+  // Day totals ("so far today") belong to Manual Entry share after save.
   const handleShare = async (e) => {
     e.stopPropagation();
     if (swipe.dragging || swipe.leaving || isSharing) return;
@@ -360,7 +369,7 @@ export function FoodRow({
     setIsSharing(true);
     try {
       await captureAndShare(target, {
-        title: mealName,
+        title: shareMealName,
         text: shareText,
         fileName: `wellness-${activityType}-${Date.now()}.png`,
       });
@@ -384,7 +393,7 @@ export function FoodRow({
         {/* Header */}
         <div style={{ background: 'linear-gradient(135deg, #16a34a 0%, #15803d 100%)', padding: '16px 20px 12px' }}>
           <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.7)', margin: 0, letterSpacing: 0.3 }}>WELLNESS VALLEY · {shareTime}</p>
-          <p style={{ fontSize: 20, fontWeight: 700, color: '#fff', margin: '4px 0 0', lineHeight: 1.2 }}>{mealName}</p>
+          <p style={{ fontSize: 20, fontWeight: 700, color: '#fff', margin: '4px 0 0', lineHeight: 1.2 }}>{shareMealName}</p>
           {showMealBadge && meal && (
             <span style={{ display: 'inline-block', marginTop: 5, fontSize: 11, fontWeight: 600, padding: '2px 9px', borderRadius: 20, background: 'rgba(255,255,255,0.2)', color: '#fff' }}>
               {meal.label}
