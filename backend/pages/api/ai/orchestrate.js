@@ -110,6 +110,7 @@ export default async function handler(req, res) {
     const userId     = sanitiseString(fields.userId);
     const userName   = sanitiseString(fields.userName);
     const userEmail  = sanitiseString(fields.userEmail);
+    const appVersion = sanitiseString(fields.appVersion) || sanitiseString(req.headers['x-app-version']);
     const foodRowId  = sanitiseInt(fields.foodRowId);
     // modelTier: 'pro' signals the frontend is on its 3rd (escalation) attempt
     // and wants Gemini Pro instead of Flash for better accuracy.
@@ -184,6 +185,7 @@ export default async function handler(req, res) {
         userId,
         userName,
         userEmail,
+        appVersion,
         imageBase64,
         foodRowId,
         usePro: modelTier === 'pro',

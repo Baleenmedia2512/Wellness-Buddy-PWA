@@ -15,6 +15,7 @@
 
 import './serverLocalStoragePolyfill.js';
 import AIClient from "ai-token-monitor";
+import { waitUntil } from '@vercel/functions';
 // Do not fs.readFileSync / resolve package.json via __dirname — on Vercel the
 // bundled chunk lives under .next/server/chunks, so that path becomes
 // /vercel/path0/package.json and throws ENOENT. Keep fallback in sync with
@@ -31,6 +32,7 @@ const ANALYSIS_MODULES = {
 import { GoogleGenerativeAI, SchemaType } from '@google/generative-ai';
 import logger from '../logger.js';
 import { getSupabaseClient } from '../../../utils/supabaseClient.js';
+import sharp from 'sharp';
 
 /** Short-lived cache so telemetry in one request doesn't double-hit DB. */
 const _endUserCache = new Map();
@@ -117,6 +119,7 @@ async function sendMonitorTelemetry(basePayload, trace) {
       endUserId: trace?.userId ?? null,
       endUserEmail,
       endUserName,
+      appVersion: trace?.appVersion ?? APP_VERSION,
       // Image-analysis attribution is carried by the request trace. Default
       // food calls for compatibility with legacy callers that predate modules.
       module: trace?.module ?? ANALYSIS_MODULES.FOOD_IMAGE_ANALYSIS,
@@ -277,7 +280,10 @@ function getGenAI() {
       appVersion: APP_VERSION,
 
       environment:
-        process.env.AI_MONITOR_ENV || (process.env.VERCEL_URL ? (process.env.VERCEL_URL.includes('-test') ? 'test' : 'production') : (process.env.NODE_ENV === 'production' ? 'production' : 'localhost')),
+        process.env.AI_MONITOR_ENV || 
+        (process.env.VERCEL_ENV === 'preview' ? 'test' : 
+         process.env.VERCEL_ENV === 'production' ? 'production' : 
+         process.env.NODE_ENV === 'production' ? 'production' : 'localhost'),
     });
 
     logger.info("AI Token Monitor SDK initialized");
@@ -361,6 +367,8 @@ export function imageInlinePart(buffer, mimeType) {
   };
 }
 
+
+
 export async function generateContent(
   configKey,
   parts,
@@ -374,35 +382,118 @@ export async function generateContent(
     modelOverride
   );
 
-  const start = Date.now();
-
+  // 1. Sanitize your prompt to prevent massive JSON payloads
+  let telemetryPrompt = '[Complex Prompt]';
   try {
-    const result = await model.generateContent(parts);
-    const latency = Date.now() - start;
+    telemetryPrompt = JSON.stringify(parts).replace(
+      /"data":"[^"]+"/g, 
+      '"data":"[BASE64_IMAGE_REMOVED_FOR_LOGGING]"'
+    );
+  } catch (e) {
+    console.error("Telemetry error:", e);
+  }
 
-    // Await telemetry to prevent Vercel container freeze breaking the background network request
-    await sendMonitorTelemetry({
-      provider: 'Gemini',
-      model: modelOverride ?? MODEL_NAME,
-      usage: result.response.usageMetadata,
-      latency,
-      status: 'SUCCESS',
-    }, trace);
+  // We will handle telemetry image compression in the background later so we don't block.
 
-    return result;
-  } catch (err) {
-    const latency = Date.now() - start;
+  const maxAttempts = 2; // Retry loop
 
-    await sendMonitorTelemetry({
-      provider: 'Gemini',
-      model: modelOverride ?? MODEL_NAME,
-      usage: {},
-      latency,
-      status: 'FAILED',
-      errorMessage: err.message,
-    }, trace);
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const start = Date.now();
 
-    throw err;
+    try {
+      const result = await model.generateContent(parts);
+      const latency = Date.now() - start;
+
+      let responseText = null;
+      try {
+        responseText = result.response.text();
+      } catch (e) {
+        responseText = JSON.stringify(result.response.candidates);
+      }
+
+      // 3. FIRE AND FORGET LOGGING
+      waitUntil(
+        (async () => {
+          let telemetryImage = trace?.imageUrl;
+          if (!telemetryImage) {
+            const inlineData = parts.find(p => p.inlineData)?.inlineData;
+            if (inlineData?.data) {
+              try {
+                const buffer = Buffer.from(inlineData.data, 'base64');
+                const compressedBuffer = await sharp(buffer)
+                  .resize({ width: 256, withoutEnlargement: true })
+                  .jpeg({ quality: 60 })
+                  .toBuffer();
+                telemetryImage = `data:image/jpeg;base64,${compressedBuffer.toString('base64')}`;
+              } catch (e) {
+                telemetryImage = trace?.captureId ? `capture_${trace.captureId}` : null;
+              }
+            } else {
+              telemetryImage = trace?.captureId ? `capture_${trace.captureId}` : null;
+            }
+          }
+
+          return sendMonitorTelemetry({
+            provider: 'Gemini',
+            model: modelOverride ?? MODEL_NAME,
+            usage: {
+              ...(result.response.usageMetadata || {}),
+              candidateMetadata: result.response.candidates?.[0] || {},
+            },
+            latency,
+            status: 'SUCCESS',
+            prompt: telemetryPrompt,
+            imageName: telemetryImage,
+            responseText: responseText,
+          }, { ...trace, traceId: trace?.traceId ? `${trace.traceId}-${attempt}` : undefined }).catch(err => logger.error("geminiClient: Telemetry error", { error: err.message }));
+        })()
+      );
+
+      return result;
+    } catch (err) {
+      const latency = Date.now() - start;
+
+      // 3. FIRE AND FORGET LOGGING (failure case)
+      waitUntil(
+        (async () => {
+          let telemetryImage = trace?.imageUrl;
+          if (!telemetryImage) {
+            const inlineData = parts.find(p => p.inlineData)?.inlineData;
+            if (inlineData?.data) {
+              try {
+                const buffer = Buffer.from(inlineData.data, 'base64');
+                const compressedBuffer = await sharp(buffer)
+                  .resize({ width: 256, withoutEnlargement: true })
+                  .jpeg({ quality: 60 })
+                  .toBuffer();
+                telemetryImage = `data:image/jpeg;base64,${compressedBuffer.toString('base64')}`;
+              } catch (e) {
+                telemetryImage = trace?.captureId ? `capture_${trace.captureId}` : null;
+              }
+            } else {
+              telemetryImage = trace?.captureId ? `capture_${trace.captureId}` : null;
+            }
+          }
+
+          return sendMonitorTelemetry({
+            provider: 'Gemini',
+            model: modelOverride ?? MODEL_NAME,
+            usage: {},
+            latency,
+            status: 'FAILED',
+            errorMessage: err.message,
+            prompt: telemetryPrompt,
+            imageName: telemetryImage,
+          }, { ...trace, traceId: trace?.traceId ? `${trace.traceId}-${attempt}` : undefined }).catch(telemetryErr => logger.error("geminiClient: Telemetry error", { error: telemetryErr.message }));
+        })()
+      );
+
+      if (attempt === maxAttempts) {
+        throw err;
+      }
+      
+      logger.warn(`geminiClient: generateContent attempt ${attempt} failed. Retrying...`, { error: err.message });
+    }
   }
 }
 

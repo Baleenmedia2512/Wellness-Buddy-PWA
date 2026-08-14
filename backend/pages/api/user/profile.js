@@ -2,9 +2,15 @@ import { applyCors, methodNotAllowed, runService } from '../../../shared/lib/han
 import logger from '../../../shared/lib/logger.js';
 import { validateGetProfile, validateUpdateProfile } from '../../../features/user/user.validators.js';
 import { getProfile, updateProfile } from '../../../features/user/user.service.js';
-import { largeBodyConfig as config } from '../../../utils/apiConfig.js';
+// Inline config for Next.js 15
 
-export { config };
+export const config = {
+  api: {
+    bodyParser: {
+      sizeLimit: '10mb',
+    },
+  },
+};
 
 async function handleUpdateProfile(req, res) {
   logger.info('[profile] incoming update request', {
