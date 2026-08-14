@@ -16,6 +16,8 @@ import { teamHierarchyService } from '../../../shared/services/teamHierarchyServ
 import { getApiBaseUrl } from '../../../config/api.config.js';
 import { buildOnboardingShareUrl } from '../domain/platform-store.rules.js';
 import { debugLog } from '../../../shared/utils/logger.js';
+import { CapacitorHttp } from '@capacitor/core';
+import { getAppVersionHeaders } from '../../../shared/services/apiFetch.js';
 
 /**
  * Normalise any phone string to a 10-digit Indian national number for prefix
@@ -145,7 +147,7 @@ export function useBodyParamsCard({
     let cancelled = false;
     CapacitorHttp.get({
       url: `${getApiBaseUrl()}/api/user/lookup?email=${encodeURIComponent(user.email)}`,
-      headers: { 'Cache-Control': 'no-cache' },
+      headers: { 'Cache-Control': 'no-cache', ...getAppVersionHeaders() },
     })
       .then((response) => {
         const data = response.data;

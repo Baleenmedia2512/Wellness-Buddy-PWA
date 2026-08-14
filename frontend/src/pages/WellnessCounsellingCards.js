@@ -13,6 +13,7 @@ import {
 } from "../features/body-parameters-card";
 import { CapacitorHttp } from '@capacitor/core';
 import { debugLog } from '../shared/utils/logger.js';
+import { getAppVersionHeaders } from '../shared/services/apiFetch.js';
 import CustomAlertModal from '../shared/components/CustomAlertModal';
 import { format } from 'date-fns';
 
@@ -269,7 +270,8 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
     if (coachIdRef.current) return coachIdRef.current;
 
     const response = await CapacitorHttp.get({
-      url: `${apiBaseUrl}/api/user/lookup?email=${encodeURIComponent(email)}`
+      url: `${apiBaseUrl}/api/user/lookup?email=${encodeURIComponent(email)}`,
+      headers: getAppVersionHeaders(),
     });
     const data = response.data;
 
