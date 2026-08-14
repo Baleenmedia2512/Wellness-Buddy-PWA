@@ -114,21 +114,23 @@ export async function detectFace({ mimeType, base64Data, userId = null, module =
 
     let result;
     let latencyMs;
+    const parts = [
+      {
+        inlineData: {
+          mimeType: mimeType || 'image/jpeg',
+          data: base64Data,
+        },
+      },
+      // Must match faceDetect responseMimeType: application/json
+      'Does this image contain a clear, visible human face? '
+        + 'Respond with JSON only: {"hasFace": true} or {"hasFace": false}. '
+        + 'Use true for any clearly visible human face (including photos of people).',
+    ];
+
     try {
       const generated = await generateContent(
         'faceDetect',
-        [
-          {
-            inlineData: {
-              mimeType: mimeType || 'image/jpeg',
-              data: base64Data,
-            },
-          },
-          // Must match faceDetect responseMimeType: application/json
-          'Does this image contain a clear, visible human face? '
-            + 'Respond with JSON only: {"hasFace": true} or {"hasFace": false}. '
-            + 'Use true for any clearly visible human face (including photos of people).',
-        ],
+        parts,
         null,
         null,
         trace,
@@ -140,6 +142,7 @@ export async function detectFace({ mimeType, base64Data, userId = null, module =
         usage: result.response?.usageMetadata ?? {},
         latency: latencyMs,
         trace,
+        parts,
       }).catch(() => {});
     } catch (genErr) {
       await reportAiCallTelemetry({
@@ -148,6 +151,7 @@ export async function detectFace({ mimeType, base64Data, userId = null, module =
         latency: genErr.latencyMs ?? 0,
         errorMessage: genErr.message,
         trace,
+        parts,
       }).catch(() => {});
       throw genErr;
     }
