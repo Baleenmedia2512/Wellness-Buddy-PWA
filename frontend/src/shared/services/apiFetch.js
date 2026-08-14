@@ -1,14 +1,16 @@
 /**
  * Shared API fetch — attaches X-App-Version so the backend can gate
- * version-aware feature flags via isEnabledForAppVersion.
+ * version-aware feature flags and APP_VERSION_ENFORCE_API.
  *
  * Prefer this over raw fetch() for backend calls that may eventually
  * use version-gated behaviour.
  */
 import { getApiBaseUrl } from '../../config/api.config.js';
 import APP_VERSION from '../../config/version.js';
+import { handlePossibleAppUpdateRequired } from './appVersionEnforce.client.js';
 
 export const APP_VERSION_HEADER = 'X-App-Version';
+export const APP_VERSION_CODE_HEADER = 'X-App-Version-Code';
 
 /**
  * @returns {Record<string, string>}
@@ -16,6 +18,7 @@ export const APP_VERSION_HEADER = 'X-App-Version';
 export function getAppVersionHeaders() {
   return {
     [APP_VERSION_HEADER]: String(APP_VERSION.VERSION || ''),
+    [APP_VERSION_CODE_HEADER]: String(APP_VERSION.VERSION_CODE ?? ''),
   };
 }
 
@@ -36,8 +39,21 @@ export async function apiFetch(pathOrUrl, options = {}) {
     ...(headers || {}),
   };
 
-  return fetch(url, {
+  const res = await fetch(url, {
     ...rest,
     headers: mergedHeaders,
   });
+
+  // Peek 426 bodies without consuming the stream for callers that need .json().
+  if (res.status === 426) {
+    try {
+      const clone = res.clone();
+      const body = await clone.json().catch(() => ({}));
+      handlePossibleAppUpdateRequired(res, body);
+    } catch {
+      handlePossibleAppUpdateRequired(res, {});
+    }
+  }
+
+  return res;
 }

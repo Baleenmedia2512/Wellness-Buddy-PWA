@@ -1,7 +1,7 @@
 /**
  * App version policy — client API + session dismiss helpers.
  */
-import { apiFetch } from './apiFetch.js';
+import { getApiBaseUrl } from '../../config/api.config.js';
 import { Capacitor } from '@capacitor/core';
 import APP_VERSION from '../../config/version.js';
 
@@ -43,6 +43,11 @@ export function dismissSoftUpdate(recommendedVersion) {
 }
 
 /**
+ * Fetch version policy with a simple GET (version in query only).
+ * Do NOT send X-App-Version here — that header triggers CORS preflight;
+ * if Allow-Headers omits it, Android WebView blocks the GET and the app
+ * fail-opens to Home (exactly the bug we saw in Vercel OPTIONS-only logs).
+ *
  * @returns {Promise<{ ok: boolean, data?: object, networkError?: boolean }>}
  */
 export async function fetchAppVersionPolicy() {
@@ -54,8 +59,10 @@ export async function fetchAppVersionPolicy() {
   });
 
   try {
-    const res = await apiFetch(`/api/app/version-policy?${params.toString()}`, {
+    const base = getApiBaseUrl().replace(/\/+$/, '');
+    const res = await fetch(`${base}/api/app/version-policy?${params.toString()}`, {
       method: 'GET',
+      // Accept is CORS-safelisted — no preflight required for this GET.
       headers: { Accept: 'application/json' },
     });
     const data = await res.json().catch(() => ({}));

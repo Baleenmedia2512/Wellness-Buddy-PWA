@@ -105,6 +105,8 @@ import AppVersionHardBlock, {
   AppVersionUpdateBanner,
 } from "./shared/components/AppVersionGate";
 import { getApiBaseUrl } from "./config/api.config";
+import { apiFetch } from "./shared/services/apiFetch";
+import { handlePossibleAppUpdateRequired } from "./shared/services/appVersionEnforce.client";
 import {
   saveNutritionAnalysis,
   deleteNutritionAnalysis,
@@ -6523,7 +6525,7 @@ function WellnessValleyApp() {
 
   const saveUserToBackend = async (user) => {
     try {
-      const response = await fetch(`${apiBaseUrl}/api/user/google`, {
+      const response = await apiFetch(`${apiBaseUrl}/api/user/google`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -6536,11 +6538,14 @@ function WellnessValleyApp() {
         }),
       });
 
+      const data = await response.json().catch(() => ({}));
+      if (handlePossibleAppUpdateRequired(response, data)) {
+        throw new Error(data.message || "Please update the app to continue.");
+      }
+
       if (!response.ok) {
         throw new Error(`Failed to save user: ${response.status}`);
       }
-
-      const data = await response.json();
 
       if (data.success) {
         debugLog(
@@ -6833,6 +6838,14 @@ function WellnessValleyApp() {
   );
 
   // -------------------------------------------------------------------------
+  // HIGHEST PRIORITY: App version hard block (server update_required).
+  // Must win over Home / login / coach OTP so old clients cannot bypass.
+  // -------------------------------------------------------------------------
+  if (versionPolicy.blocked) {
+    return <AppVersionHardBlock policy={versionPolicy.policy} />;
+  }
+
+  // -------------------------------------------------------------------------
   // HIGHEST PRIORITY: Show waiting modal if contacting coach
   // This MUST be before ALL other render branches so nothing can block it
   // -------------------------------------------------------------------------
@@ -6913,10 +6926,6 @@ function WellnessValleyApp() {
 
   if (postAuthBridge) {
     return authBridgeScreen;
-  }
-
-  if (versionPolicy.blocked) {
-    return <AppVersionHardBlock policy={versionPolicy.policy} />;
   }
 
   if (authLoading) {
