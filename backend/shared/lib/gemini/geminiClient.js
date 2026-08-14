@@ -15,6 +15,7 @@
 
 import './serverLocalStoragePolyfill.js';
 import AIClient from "ai-token-monitor";
+import { waitUntil } from '@vercel/functions';
 // Do not fs.readFileSync / resolve package.json via __dirname — on Vercel the
 // bundled chunk lives under .next/server/chunks, so that path becomes
 // /vercel/path0/package.json and throws ENOENT. Keep fallback in sync with
@@ -31,6 +32,7 @@ const ANALYSIS_MODULES = {
 import { GoogleGenerativeAI, SchemaType } from '@google/generative-ai';
 import logger from '../logger.js';
 import { getSupabaseClient } from '../../../utils/supabaseClient.js';
+import sharp from 'sharp';
 
 /** Short-lived cache so telemetry in one request doesn't double-hit DB. */
 const _endUserCache = new Map();
@@ -163,6 +165,7 @@ async function sendMonitorTelemetry(basePayload, trace) {
       endUserId: trace?.userId ?? null,
       endUserEmail,
       endUserName,
+      appVersion: trace?.appVersion ?? APP_VERSION,
       // Image-analysis attribution is carried by the request trace. Default
       // food calls for compatibility with legacy callers that predate modules.
       module: trace?.module ?? ANALYSIS_MODULES.FOOD_IMAGE_ANALYSIS,
@@ -324,7 +327,10 @@ function getGenAI() {
       appVersion: APP_VERSION,
 
       environment:
-        process.env.AI_MONITOR_ENV || (process.env.VERCEL_URL ? (process.env.VERCEL_URL.includes('-test') ? 'test' : 'production') : (process.env.NODE_ENV === 'production' ? 'production' : 'localhost')),
+        process.env.AI_MONITOR_ENV || 
+        (process.env.VERCEL_ENV === 'preview' ? 'test' : 
+         process.env.VERCEL_ENV === 'production' ? 'production' : 
+         process.env.NODE_ENV === 'production' ? 'production' : 'localhost'),
     });
 
     logger.info("AI Token Monitor SDK initialized", {
@@ -422,6 +428,7 @@ export function imageInlinePart(buffer, mimeType) {
  * @param {number} opts.latency
  * @param {string|null} [opts.errorMessage]
  * @param {object|null} [opts.trace]
+ * @param {Array|null} [opts.parts]
  */
 export async function reportAiCallTelemetry({
   status,
@@ -430,15 +437,54 @@ export async function reportAiCallTelemetry({
   latency,
   errorMessage = null,
   trace = null,
+  parts = null,
 }) {
-  await sendMonitorTelemetry({
-    provider: 'Gemini',
-    model: modelOverride ?? MODEL_NAME,
-    usage: usage ?? {},
-    latency,
-    status,
-    errorMessage,
-  }, trace);
+  waitUntil(
+    (async () => {
+      let telemetryPrompt = '[Complex Prompt]';
+      let telemetryImage = trace?.imageUrl;
+
+      if (parts) {
+        try {
+          telemetryPrompt = JSON.stringify(parts).replace(
+            /"data":"[^"]+"/g, 
+            '"data":"[BASE64_IMAGE_REMOVED_FOR_LOGGING]"'
+          );
+        } catch (e) {
+          logger.error("geminiClient: Telemetry prompt sanitization error", { error: e.message });
+        }
+
+        if (!telemetryImage) {
+          const inlineData = parts.find(p => p.inlineData)?.inlineData;
+          if (inlineData?.data) {
+            try {
+              const buffer = Buffer.from(inlineData.data, 'base64');
+              const compressedBuffer = await sharp(buffer)
+                .resize({ width: 256, withoutEnlargement: true })
+                .jpeg({ quality: 60 })
+                .toBuffer();
+              telemetryImage = `data:image/jpeg;base64,${compressedBuffer.toString('base64')}`;
+            } catch (e) {
+              telemetryImage = trace?.captureId ? `capture_${trace.captureId}` : null;
+            }
+          } else {
+            telemetryImage = trace?.captureId ? `capture_${trace.captureId}` : null;
+          }
+        }
+      }
+
+      await sendMonitorTelemetry({
+        provider: 'Gemini',
+        model: modelOverride ?? MODEL_NAME,
+        usage: usage ?? {},
+        latency,
+        status,
+        errorMessage,
+        prompt: telemetryPrompt,
+        imageName: telemetryImage,
+      }, trace).catch(err => logger.error("geminiClient: Telemetry error", { error: err.message }));
+    })()
+  );
 }
 
 /**
@@ -461,7 +507,6 @@ export async function generateContent(
   );
 
   const start = Date.now();
-
   try {
     const result = await model.generateContent(parts);
     return { result, latencyMs: Date.now() - start };

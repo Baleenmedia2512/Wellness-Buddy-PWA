@@ -1,3 +1,4 @@
+// Inline config for Next.js 15
 import { methodNotAllowed, runService } from '../../../shared/lib/handler.js';
 import {
   validateCreateCapture,
@@ -8,7 +9,6 @@ import {
   updateCaptureType,
 } from '../../../features/background-analysis/analysis.service.js';
 
-// Must be a literal export — Next.js cannot statically parse re-exported config.
 export const config = {
   api: {
     bodyParser: {

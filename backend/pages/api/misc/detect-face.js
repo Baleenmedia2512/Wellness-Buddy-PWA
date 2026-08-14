@@ -1,8 +1,8 @@
 import { applyCors, methodNotAllowed, runService } from '../../../shared/lib/handler.js';
+// Inline config for Next.js 15
 import { validateDetectFace } from '../../../features/misc/misc.validators.js';
 import { detectFace } from '../../../features/misc/misc.service.js';
 
-// Must be a literal export — Next.js cannot statically parse re-exported config.
 export const config = {
   api: {
     bodyParser: {

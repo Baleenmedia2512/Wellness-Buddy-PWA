@@ -110,6 +110,7 @@ export default async function handler(req, res) {
     const userId     = sanitiseString(fields.userId);
     const userName   = sanitiseString(fields.userName);
     const userEmail  = sanitiseString(fields.userEmail);
+    const appVersion = sanitiseString(fields.appVersion) || sanitiseString(req.headers['x-app-version']);
     const foodRowId  = sanitiseInt(fields.foodRowId);
     // modelTier: 'pro' = frontend escalation after Flash failed (attempt 2).
     const modelTier  = sanitiseString(fields.modelTier);
@@ -191,6 +192,7 @@ export default async function handler(req, res) {
         userId,
         userName,
         userEmail,
+        appVersion,
         imageBase64,
         foodRowId,
         usePro: resolvedTier === 'pro',
