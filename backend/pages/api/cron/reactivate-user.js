@@ -1,23 +1,25 @@
 /**
  * reactivate-user.js — API endpoint to reactivate an inactive user.
- * When a coach is reactivated, automatically restores their downline members.
- * 
+ *
+ * Hierarchy note: idle deactivation only sets Status='Inactive' and does not
+ * rewrite CoachId (see batchDeactivateUsers). Members already point at the
+ * original coach; resolveActiveCoach picks them up again once Status=Active.
+ *
  * Per claude.md §2.6: Returns structured JSON with ok/error pattern.
- * 
+ *
  * @module backend/pages/api/cron/reactivate-user
  */
 
-import { restoreMembersToOriginalCoach } from '../../../features/idle-cleanup/data/idle-repo.js';
 import logger from '../../../shared/lib/logger.js';
 import { nowUtc } from '../../../shared/lib/datetime/index.js';
 
 /**
- * Reactivates a user and restores their hierarchy.
- * 
+ * Reactivates a user (Status → Active).
+ *
  * POST /api/cron/reactivate-user
  * Body: { userId: string }
  * Auth: Bearer <CRON_SECRET>
- * 
+ *
  * @param {import('next').NextApiRequest} req
  * @param {import('next').NextApiResponse} res
  */
@@ -74,22 +76,12 @@ export default async function handler(req, res) {
   });
 
   try {
-    // Step 1: Reactivate user
     const { setUserStatus } = await import('../../../features/user/user.repository.js');
     await setUserStatus(userId, 'Active');
-
-    logger.info('User reactivated', {
-      correlationId,
-      userId,
-    });
-
-    // Step 2: Restore their downline members (if any)
-    const restoreResult = await restoreMembersToOriginalCoach(userId, correlationId);
 
     logger.info('User reactivation completed', {
       correlationId,
       userId,
-      membersRestored: restoreResult.restored,
       durationMs: Date.now() - startTime,
     });
 
@@ -98,7 +90,7 @@ export default async function handler(req, res) {
       data: {
         message: 'User reactivated successfully',
         userId,
-        membersRestored: restoreResult.restored,
+        membersRestored: 0,
       },
     });
 

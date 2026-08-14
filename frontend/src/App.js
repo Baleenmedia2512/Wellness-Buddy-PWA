@@ -4432,9 +4432,15 @@ function WellnessValleyApp() {
 
       if (detectedType.type === "food") {
         const analysis = detectedType.details;
-        // Completed AI call — charge even when items aren't usable (anti-spam).
-        await settleRetryCredit();
         if (!hasRecognizedFood(analysis)) {
+          if (creditsEnabled && !!reservationId) {
+            await releaseReservedAiCredit({
+              userId: user.id,
+              reservationId,
+              apiBaseUrl,
+              reason: 'unknown_share_food_unrecognized',
+            });
+          }
           setUnknownShareView((v) => ({
             ...v,
             retrying: false,
@@ -4449,6 +4455,7 @@ function WellnessValleyApp() {
           analysisResult,
           originalCapturedAt: unknownShareView.createdAt ?? null,
         });
+        await settleRetryCredit();
         seedMealAfterPromotion({
           ownerUserId: user.id,
           result: promoteResult,
@@ -4462,29 +4469,29 @@ function WellnessValleyApp() {
         detectedType.type === "weight" &&
         detectedType.details?.weightValue
       ) {
-        await settleRetryCredit();
         const weightValue = detectedType.details.weightValue;
         const unit = detectedType.details.unit || "kg";
         await updatePendingCaptureType(
           Promise.resolve({ id: captureId }),
           "weight",
         );
+        await settleRetryCredit();
         setUnknownShareView((v) => ({ ...v, open: false, retrying: false }));
         showToast(`Weight ${weightValue} ${unit} saved`);
       } else if (detectedType.type === "education") {
-        await settleRetryCredit();
         await updatePendingCaptureType(
           Promise.resolve({ id: captureId }),
           "education",
         );
+        await settleRetryCredit();
         setUnknownShareView((v) => ({ ...v, open: false, retrying: false }));
         showToast("Education session saved");
       } else if (detectedType.type === "smartwatch") {
-        await settleRetryCredit();
         await updatePendingCaptureType(
           Promise.resolve({ id: captureId }),
           "smartwatch",
         );
+        await settleRetryCredit();
         setUnknownShareView((v) => ({ ...v, open: false, retrying: false }));
         showToast("Activity saved");
       } else {
@@ -4729,9 +4736,18 @@ function WellnessValleyApp() {
           }).catch(() => {});
         };
 
+        const releaseCredit = async (reason) => {
+          if (!hasReservedCredit || !ownerUserId) return;
+          await releaseReservedAiCredit({
+            userId: ownerUserId,
+            reservationId,
+            apiBaseUrl,
+            reason,
+          });
+        };
+
         try {
           if (foodOk) {
-            await settleCredit();
             const analysisResult = buildAnalysisFromGeminiAnalysis(detectedType.details);
             const promoteResult = await promoteUnknownToFood({
               captureId,
@@ -4739,6 +4755,8 @@ function WellnessValleyApp() {
               analysisResult,
               originalCapturedAt: null,
             });
+            // Charge only after diary save succeeds — avoids Other + 1 credit.
+            await settleCredit();
             seedMealAfterPromotion({
               ownerUserId,
               result: promoteResult,
@@ -4749,9 +4767,6 @@ function WellnessValleyApp() {
             showToast('Food saved to Diary');
             return;
           }
-
-          // AI finished (weight / education / watch / other) — charge before branching.
-          await settleCredit();
 
           if (
             detectedType?.type === 'weight' &&
@@ -4764,6 +4779,7 @@ function WellnessValleyApp() {
               captureId,
               imageBase64ToSave: imageBase64,
             });
+            await settleCredit();
             clearCaptureAnalyzing(captureId);
             triggerNutritionRefresh({ immediate: true, source: 'capture-weight-saved' });
             showToast('Weight saved to Diary');
@@ -4783,6 +4799,7 @@ function WellnessValleyApp() {
               captureId,
               { silent: true },
             );
+            await settleCredit();
             clearCaptureAnalyzing(captureId);
             triggerNutritionRefresh({ immediate: true, source: 'capture-education-saved' });
             return;
@@ -4796,17 +4813,25 @@ function WellnessValleyApp() {
               source: detectedType.details?.source || 'Smartwatch',
               captureId,
             });
+            await settleCredit();
             clearCaptureAnalyzing(captureId);
             triggerNutritionRefresh({ immediate: true, source: 'capture-watch-saved' });
             return;
           }
 
+          // No domain save for unknown/other — do not permanently consume credit.
+          await releaseCredit(
+            detectedType?.details?.defaulted === true
+              ? 'orchestrate_defaulted'
+              : 'capture_unidentified',
+          );
           updatePendingCaptureType(pendingSharePromise, 'unknown');
           clearCaptureAnalyzing(captureId);
           triggerNutritionRefresh({ immediate: true, source: 'capture-unknown' });
           showToast('Couldn’t identify — open Diary to log manually');
         } catch (saveErr) {
           console.error('[Background AI] save failed:', saveErr);
+          await releaseCredit('capture_save_failed');
           updatePendingCaptureType(pendingSharePromise, 'unknown');
           clearCaptureAnalyzing(captureId);
           triggerNutritionRefresh({ immediate: true, source: 'capture-ai-save-failed' });
