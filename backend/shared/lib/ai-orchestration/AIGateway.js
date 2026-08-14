@@ -821,6 +821,7 @@ async function callModel(
         ? `TIMEOUT: ${err.message}`
         : err.message,
       trace,
+      parts,
     });
 
     // No backend Flash→Pro auto-fallback. Frontend owns escalation.
@@ -836,6 +837,7 @@ async function callModel(
     usage: result.response?.usageMetadata ?? {},
     latency: result.__latencyMs ?? totalLatencyMs,
     trace,
+    parts,
   });
 
   logger.info('AIGateway.callModel: success', {

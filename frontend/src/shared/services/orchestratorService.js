@@ -22,6 +22,7 @@
 import { getApiBaseUrl } from '../../config/api.config';
 import { debugLog } from '../utils/logger.js';
 import { computeMealGlycemicIndex } from '../../features/nutrition/domain/mealGlycemicIndex';
+import { APP_VERSION } from '../../config/version.js';
 
 const API_BASE           = getApiBaseUrl();
 const ORCHESTRATE_URL    = `${API_BASE}/api/ai/orchestrate`;
@@ -337,8 +338,9 @@ async function _singleAttempt(
     if (userName)   formData.append('userName',  String(userName));
     if (userEmail)  formData.append('userEmail', String(userEmail));
     if (foodRowId)  formData.append('foodRowId', String(foodRowId));
-    // Signal backend to use Gemini Pro on this attempt (escalation).
     if (usePro)     formData.append('modelTier', 'pro');
+    if (foodRowId)  formData.append('foodRowId',   String(foodRowId));
+    formData.append('appVersion', APP_VERSION.VERSION);
     if (creditGated && reservationId) {
       formData.append('creditGated', '1');
       formData.append('reservationId', String(reservationId));

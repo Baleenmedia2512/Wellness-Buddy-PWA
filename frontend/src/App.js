@@ -101,7 +101,13 @@ import {
 } from "./shared/utils/backButtonHandler";
 import { getUserId, clearUserIdCache, verifyAndAttachDbUserId, verifyAccountSession } from "./shared/services/userIdentity";
 import { getVersionString } from "./config/version";
+import { useAppVersionPolicy } from "./shared/hooks/useAppVersionPolicy";
+import AppVersionHardBlock, {
+  AppVersionUpdateBanner,
+} from "./shared/components/AppVersionGate";
 import { getApiBaseUrl } from "./config/api.config";
+import { apiFetch } from "./shared/services/apiFetch";
+import { handlePossibleAppUpdateRequired } from "./shared/services/appVersionEnforce.client";
 import {
   saveNutritionAnalysis,
   deleteNutritionAnalysis,
@@ -294,6 +300,7 @@ const prefetchManualEntryPage = () => {
 };
 function WellnessValleyApp() {
   const apiBaseUrl = getApiBaseUrl();
+  const versionPolicy = useAppVersionPolicy();
   const [selectedImage, setSelectedImage] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
   const [nutritionData, setNutritionData] = useState(null);
@@ -6550,7 +6557,7 @@ function WellnessValleyApp() {
 
   const saveUserToBackend = async (user) => {
     try {
-      const response = await fetch(`${apiBaseUrl}/api/user/google`, {
+      const response = await apiFetch(`${apiBaseUrl}/api/user/google`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -6563,11 +6570,14 @@ function WellnessValleyApp() {
         }),
       });
 
+      const data = await response.json().catch(() => ({}));
+      if (handlePossibleAppUpdateRequired(response, data)) {
+        throw new Error(data.message || "Please update the app to continue.");
+      }
+
       if (!response.ok) {
         throw new Error(`Failed to save user: ${response.status}`);
       }
-
-      const data = await response.json();
 
       if (data.success) {
         debugLog(
@@ -6858,6 +6868,14 @@ function WellnessValleyApp() {
       onConfirm={alertModal.onConfirm}
     />
   );
+
+  // -------------------------------------------------------------------------
+  // HIGHEST PRIORITY: App version hard block (server update_required).
+  // Must win over Home / login / coach OTP so old clients cannot bypass.
+  // -------------------------------------------------------------------------
+  if (versionPolicy.blocked) {
+    return <AppVersionHardBlock policy={versionPolicy.policy} />;
+  }
 
   // -------------------------------------------------------------------------
   // HIGHEST PRIORITY: Show waiting modal if contacting coach
@@ -7153,6 +7171,12 @@ function WellnessValleyApp() {
   // dashboard API reloads unless a newer async activity log exists
   // (see homeDashboardActivity + NutritionRefreshContext.triggerRefresh).
   let homeOverlay = null;
+  const versionSoftBanner = versionPolicy.showSoftBanner ? (
+    <AppVersionUpdateBanner
+      policy={versionPolicy.policy}
+      onDismiss={versionPolicy.dismissRecommended}
+    />
+  ) : null;
 
   // Inline Profile Page — full-screen, below nav bar (no modal overlay)
   // Never show during onboarding (My Profile is not part of the setup wizard).
@@ -9175,6 +9199,7 @@ function WellnessValleyApp() {
     </LocationGuard>
       </div>
       {homeOverlay}
+      {versionSoftBanner}
     </>
   );
 }

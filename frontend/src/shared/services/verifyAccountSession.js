@@ -8,6 +8,8 @@ import { getApiBaseUrl } from '../../config/api.config.js';
 import { getDeviceTimezoneIana } from '../utils/deviceTimezone.js';
 import * as Session from './sessionStorage.js';
 import { clearUserIdCache } from './getUserId.js';
+import { apiFetch } from './apiFetch.js';
+import { handlePossibleAppUpdateRequired } from './appVersionEnforce.client.js';
 
 /**
  * Invalidate local session markers when the account no longer exists server-side.
@@ -46,7 +48,7 @@ export async function verifyAccountSession({ userId = null, email = null, phone 
   }
 
   try {
-    const res = await fetch(`${apiBaseUrl}/api/user/verify-session`, {
+    const res = await apiFetch(`${apiBaseUrl}/api/user/verify-session`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -57,6 +59,10 @@ export async function verifyAccountSession({ userId = null, email = null, phone 
       data = await res.json();
     } catch {
       data = {};
+    }
+
+    if (handlePossibleAppUpdateRequired(res, data)) {
+      return { ok: false, networkError: true, updateRequired: true };
     }
 
     if (res.status === 404 || data.userNotFound || (data.success === false && !data.networkError)) {
