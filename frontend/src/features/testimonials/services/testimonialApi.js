@@ -289,3 +289,16 @@ export async function verifyUnifiedOtp(payload) {
   });
   return parseApiResponse(res, 'OTP verification failed');
 }
+
+/**
+ * Coach: update a reporting member's recovered health issues (no OTP).
+ * @param {{ coachId: number, userId: number, recoveredHealthIssues: string[] }} payload
+ */
+export async function updateMemberHealthIssues(payload) {
+  const res = await CapacitorHttp.post({
+    url:     `${base()}/update-health-issues`,
+    headers: { 'Content-Type': 'application/json' },
+    data:    payload,
+  });
+  return parseApiResponse(res, 'Failed to update health issue');
+}

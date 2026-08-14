@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import {
   validateSubmitTestimonial,
   validateEditTestimonial,
+  validateUpdateMemberHealthIssues,
 } from '../testimonials.validators.js';
 import { ValidationError } from '../../../shared/lib/ValidationError.js';
 
@@ -70,5 +71,36 @@ describe('validateEditTestimonial', () => {
     assert.equal(result.userId, 713);
     assert.equal(result.beforeWeightKg, 84);
     assert.equal(result.recoveredHealthIssues, undefined);
+  });
+});
+
+describe('validateUpdateMemberHealthIssues', () => {
+  it('accepts a coach updating a member health issue', () => {
+    const result = validateUpdateMemberHealthIssues({
+      coachId: 10,
+      userId: 713,
+      recoveredHealthIssues: ['Back Pain'],
+    });
+    assert.equal(result.coachId, 10);
+    assert.equal(result.userId, 713);
+    assert.deepEqual(result.recoveredHealthIssues, ['Back Pain']);
+  });
+
+  it('requires recoveredHealthIssues', () => {
+    assert.throws(
+      () => validateUpdateMemberHealthIssues({ coachId: 10, userId: 713 }),
+      (err) => err instanceof ValidationError && /recoveredHealthIssues is required/i.test(err.message),
+    );
+  });
+
+  it('requires at least one non-empty health issue', () => {
+    assert.throws(
+      () => validateUpdateMemberHealthIssues({
+        coachId: 10,
+        userId: 713,
+        recoveredHealthIssues: [],
+      }),
+      (err) => err instanceof ValidationError && /recovered health issue/i.test(err.message),
+    );
   });
 });

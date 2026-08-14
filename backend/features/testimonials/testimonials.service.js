@@ -24,6 +24,7 @@ import {
   validateTeamReport,
   validateSubmitAllEdits,
   validateVerifyUnifiedOtp,
+  validateUpdateMemberHealthIssues,
 } from './testimonials.validators.js';
 import {
   mapTestimonialsListLeanFields,
@@ -1426,6 +1427,36 @@ export async function verifyUnifiedOtp(rawBody) {
       message: verifiedItems
         ? `Your ${verifiedItems} have been verified successfully.`
         : 'Verification complete.',
+    },
+  };
+}
+
+/**
+ * Coach updates a reporting member's recovered health issues (no OTP).
+ */
+export async function updateMemberHealthIssues(rawBody) {
+  const payload = validateUpdateMemberHealthIssues(rawBody);
+
+  const allowed = await repo.isReportingMember(payload.coachId, payload.userId, 'full');
+  if (!allowed) {
+    throw new ValidationError(403, 'Member is not in your team hierarchy');
+  }
+
+  const existing = await repo.findByUserId(payload.userId);
+  if (!existing) {
+    throw new ValidationError(404, 'No testimonial found for this user');
+  }
+
+  await repo.updateTestimonial(existing.id, {
+    recoveredHealthIssues: payload.recoveredHealthIssues,
+  });
+
+  return {
+    httpStatus: 200,
+    body: {
+      success: true,
+      message: 'Health issue updated.',
+      recoveredHealthIssues: payload.recoveredHealthIssues,
     },
   };
 }
