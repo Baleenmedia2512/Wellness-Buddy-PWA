@@ -25,6 +25,7 @@
  */
 
 import { getDeviceTimezoneIana } from "../../utils/deviceTimezone.js";
+import { apiFetch } from "../apiFetch.js";
 
 /**
  * POST /api/user/lookup → user-status discriminated union.
@@ -46,7 +47,7 @@ export async function fetchUserStatus({ apiBaseUrl, email }) {
   if (!email) return { result: "active" };
 
   try {
-    const response = await fetch(`${apiBaseUrl}/api/user/lookup`, {
+    const response = await apiFetch(`${apiBaseUrl}/api/user/lookup`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -111,7 +112,7 @@ export async function fetchSetupStatus({ apiBaseUrl, email }) {
   if (!email) return { result: "error" };
 
   try {
-    const statusResponse = await fetch(
+    const statusResponse = await apiFetch(
       `${apiBaseUrl}/api/user/status?email=${encodeURIComponent(email)}`,
     );
 

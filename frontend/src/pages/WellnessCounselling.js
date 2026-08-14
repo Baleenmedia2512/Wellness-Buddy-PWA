@@ -17,8 +17,10 @@ import { WellnessCounsellingForm } from "../features/counselling";
 import TouchFeedbackButton from "../shared/components/TouchFeedbackButton";
 import { TeamMemberProfileModal } from "../shared/components/TeamMemberProfileModal";
 import { debugLog } from '../shared/utils/logger.js';
+import { getAppVersionHeaders } from '../shared/services/apiFetch.js';
 import { shareTextViaWhatsApp } from '../shared/utils/shareUtils.js';
 import { getApiBaseUrl } from '../config/api.config.js';
+
 /**
  * Wellness Counselling Page
  * Shows team hierarchy with counselling status and allows starting new assessments
@@ -73,7 +75,8 @@ const WellnessCounselling = ({ user, onBack, tabVisitKey = 0, refreshKey = 0 }) 
     debugLog('ðŸ” [WellnessCounselling] Looking up user ID for:', email);
     
     const response = await CapacitorHttp.get({
-      url: `${apiBaseUrl}/api/user/lookup?email=${encodeURIComponent(email)}`
+      url: `${apiBaseUrl}/api/user/lookup?email=${encodeURIComponent(email)}`,
+      headers: getAppVersionHeaders(),
     });
     const data = response.data;
     
