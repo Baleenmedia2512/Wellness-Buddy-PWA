@@ -309,6 +309,34 @@ export function getReportingMemberIds(coachId, scope, context) {
 }
 
 /**
+ * True when memberId is the viewer or in the viewer's full reporting downline.
+ * Pure — pass a pre-built ReportingContext (no I/O).
+ */
+export function isReportingDownlineMember(coachId, memberId, context, scope = 'full') {
+  if (coachId == null || memberId == null) return false;
+  if (Number(coachId) === Number(memberId)) return true;
+  const ids = getReportingMemberIds(coachId, scope, context);
+  return ids.some((id) => Number(id) === Number(memberId));
+}
+
+/**
+ * 403 when viewerUserId is set and memberUserId is outside the viewer's
+ * recursive reporting downline. No-op when viewer is omitted (legacy callers).
+ */
+export async function assertViewerCanAccessMember(supabase, viewerUserId, memberUserId) {
+  if (viewerUserId == null || viewerUserId === '') return;
+  if (memberUserId == null || memberUserId === '') return;
+  if (Number(viewerUserId) === Number(memberUserId)) return;
+
+  const context = await loadReportingContextForCoach(supabase, viewerUserId);
+  if (isReportingDownlineMember(viewerUserId, memberUserId, context, 'full')) return;
+
+  const err = new Error('You do not have permission to view this member');
+  err.status = 403;
+  throw err;
+}
+
+/**
  * parentCoachId → direct reporting child userIds.
  * Walks every active parent who has a DB downline (not only Role=coach) so
  * nested team scores / Full Team rollups include deeper levels.

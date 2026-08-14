@@ -10,6 +10,7 @@ import {
   getFullReportingMembers,
   getReportingMemberIds,
   buildReportingChildrenIndex,
+  isReportingDownlineMember,
 } from '../reportingHierarchyService.js';
 
 const X = 1;
@@ -208,5 +209,14 @@ describe('inactive nested leader (Role=user) rollup — coach→a3→b1→c1', (
     assert.ok(full.some((m) => m.UserId === C1));
     assert.ok(!full.some((m) => m.UserId === B1), 'inactive b1 not in Full after Active-style use');
     // Note: getFullReportingMembers still may include inactive coaches; b1 is user so not included.
+  });
+
+  it('isReportingDownlineMember allows self, nested C1, and rejects outsiders', () => {
+    const context = buildReportingContext(makeTree('Active'));
+    assert.equal(isReportingDownlineMember(X, X, context), true);
+    assert.equal(isReportingDownlineMember(X, A3, context), true);
+    assert.equal(isReportingDownlineMember(X, B1, context), true);
+    assert.equal(isReportingDownlineMember(X, C1, context), true);
+    assert.equal(isReportingDownlineMember(X, 9999, context), false);
   });
 });

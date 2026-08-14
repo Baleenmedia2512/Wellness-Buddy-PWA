@@ -7636,6 +7636,7 @@ function WellnessValleyApp() {
           <Suspense fallback={<LoadingSpinner message="Loading reports…" />}>
             <ReportsDashboard
               user={user}
+              userRole={userRole}
               tabVisitKey={tabVisitKeys.reports ?? 0}
               initialTab={reportsDashboardTab}
             />

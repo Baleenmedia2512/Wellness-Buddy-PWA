@@ -65,6 +65,7 @@ export function validateStats(query) {
     // totalsOnly: return dailyTotals only (no meal rows) — for calorie trend charts
     totalsOnly: String(query.totalsOnly) === 'true',
     maxRangeDays: MAX_STATS_RANGE_DAYS,
+    viewerUserId: query.viewerUserId || null,
   };
 }
 

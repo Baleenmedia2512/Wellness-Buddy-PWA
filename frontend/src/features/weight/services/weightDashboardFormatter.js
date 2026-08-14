@@ -18,6 +18,17 @@ import {
 export const UNDO_SECONDS = 10;
 export const WEIGHT_PAGE_SIZE = 10;
 
+/** Reports Trend tab range keys. Max = first-ever recorded weight → latest. */
+export const WEIGHT_TREND_RANGE_MAX = 'max';
+export const REPORTS_WEIGHT_TREND_RANGES = [
+  { key: 1, label: '1D', days: 1 },
+  { key: 5, label: '5D', days: 5 },
+  { key: 30, label: '1M', days: 30 },
+  { key: 365, label: '1Y', days: 365 },
+  { key: 1825, label: '5Y', days: 1825 },
+  { key: WEIGHT_TREND_RANGE_MAX, label: 'Max', days: WEIGHT_TREND_RANGE_MAX },
+];
+
 export const toDateKey = (value) => {
   if (value instanceof Date) return formatCalendarPickerDate(value);
   return timestampToBusinessYmd(value) || formatCalendarPickerDate(new Date(value));
@@ -151,6 +162,61 @@ export function buildTrendSeries(weightHistory, weightTrendRangeDays) {
     });
   }
   return points;
+}
+
+function formatTrendTooltipDate(date) {
+  return date.toLocaleDateString('en-GB', {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+  }).replace(',', '');
+}
+
+/**
+ * Actual weigh-in points (no calendar fill). Used by Reports Trend.
+ * Max = first-ever valid record through latest. Other ranges clip to the
+ * last N days ending today, still starting from the first record in range.
+ */
+export function buildRecordedTrendSeries(weightHistory, rangeDays = WEIGHT_TREND_RANGE_MAX) {
+  const sorted = (weightHistory || [])
+    .filter((entry) => entry && !entry.isUndoPlaceholder && entry.CreatedAt && entry.Weight)
+    .map((entry) => ({
+      createdAt: parseUtcTimestamp(entry.CreatedAt),
+      weight: Number.parseFloat(entry.Weight),
+    }))
+    .filter((entry) => entry.createdAt && !Number.isNaN(entry.createdAt.getTime()) && Number.isFinite(entry.weight))
+    .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+
+  if (sorted.length === 0) return [];
+
+  const latestByDate = new Map();
+  sorted.forEach((entry) => { latestByDate.set(toDateKey(entry.createdAt), entry); });
+  const unique = Array.from(latestByDate.values())
+    .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+
+  let inRange = unique;
+  if (rangeDays !== WEIGHT_TREND_RANGE_MAX && Number.isFinite(rangeDays) && rangeDays > 0) {
+    const endYmd = todayBusinessDate(DEFAULT_BUSINESS_TIMEZONE);
+    const [ey, em, ed] = endYmd.split('-').map(Number);
+    const end = new Date(ey, em - 1, ed);
+    end.setHours(0, 0, 0, 0);
+    const start = new Date(end);
+    start.setDate(end.getDate() - (rangeDays - 1));
+    const startKey = toDateKey(start);
+    inRange = unique.filter((entry) => toDateKey(entry.createdAt) >= startKey);
+  }
+
+  return inRange.map((entry) => {
+    const date = entry.createdAt;
+    return {
+      key: toDateKey(date),
+      date,
+      label: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+      tooltipDate: formatTrendTooltipDate(date),
+      hasRecorded: true,
+      value: entry.weight,
+    };
+  });
 }
 
 export function summarizeTrendSeries(series) {
