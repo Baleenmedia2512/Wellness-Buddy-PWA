@@ -12,6 +12,7 @@
  * APP_VERSION_STORE_IOS=https://...
  * APP_VERSION_MIN_ANDROID_CODE=62        (optional hard floor by versionCode)
  * APP_VERSION_ENFORCE_WEB=false          (default false — web PWA lenient)
+ * APP_VERSION_ENFORCE_API=false          (default false — server lock on critical APIs)
  */
 
 const DEFAULT_STORE_ANDROID =
@@ -51,6 +52,9 @@ export function loadVersionPolicyConfig() {
   const storeUrlIos = envStr('APP_VERSION_STORE_IOS', storeUrlAndroid);
   const minAndroidVersionCode = envInt('APP_VERSION_MIN_ANDROID_CODE');
   const enforceWeb = envBool('APP_VERSION_ENFORCE_WEB', false);
+  // Server-side lock for old APKs that never call /api/app/version-policy.
+  // Default OFF so rollout stays safe until Play Store build is live.
+  const enforceApi = envBool('APP_VERSION_ENFORCE_API', false);
 
   return {
     enabled,
@@ -64,5 +68,6 @@ export function loadVersionPolicyConfig() {
     storeUrlIos,
     minAndroidVersionCode,
     enforceWeb,
+    enforceApi,
   };
 }

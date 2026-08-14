@@ -2,7 +2,7 @@
  * Extract the client app version from an HTTP request.
  *
  * Preferred: header `X-App-Version` (or `x-app-version`).
- * Fallback: query/body `appVersion` / `clientVersion`.
+ * Fallback: query/body `appVersion` / `clientVersion` / `version`.
  *
  * Handlers that gate behaviour with `isEnabledForAppVersion` MUST pass
  * the value returned here into that helper.
@@ -27,8 +27,10 @@ export function getClientAppVersion(req) {
   const fallback =
     query.appVersion
     ?? query.clientVersion
+    ?? query.version
     ?? body.appVersion
     ?? body.clientVersion
+    ?? body.version
     ?? null;
 
   if (fallback == null || String(fallback).trim() === '') return null;

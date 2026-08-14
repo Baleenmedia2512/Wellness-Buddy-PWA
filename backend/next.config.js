@@ -13,7 +13,7 @@ const nextConfig = {
         headers: [
           { key: 'Access-Control-Allow-Origin', value: '*' },
           { key: 'Access-Control-Allow-Methods', value: 'GET, POST, PUT, DELETE, OPTIONS' },
-          { key: 'Access-Control-Allow-Headers', value: 'Content-Type, Authorization, Accept, Cache-Control, Pragma, X-App-Version' },
+          { key: 'Access-Control-Allow-Headers', value: 'Content-Type, Authorization, Accept, Cache-Control, Pragma, X-App-Version, X-App-Version-Code, X-App-Platform' },
         ],
       },
     ];
