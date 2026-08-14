@@ -8,6 +8,7 @@ import {
   normalizeTestimonialsListPagination,
   computeUploadCompletenessFromRow,
   filterTestimonialsListBySearch,
+  filterTestimonialsListByHealthIssue,
   filterTestimonialsListByUpload,
   paginateTestimonialsList,
   countTestimonialsUploadLevels,
@@ -22,13 +23,15 @@ describe('normalizeTestimonialsListPagination', () => {
     assert.equal(n.scope, 'direct');
     assert.equal(n.uploadFilter, 'all');
     assert.equal(n.search, '');
+    assert.equal(n.healthIssue, '');
   });
 
-  it('caps limit at 50 and accepts search/scope/filter', () => {
+  it('caps limit at 50 and accepts search/healthIssue/scope/filter', () => {
     const n = normalizeTestimonialsListPagination({
       page: '2',
       limit: '999',
       search: '  Priya ',
+      healthIssue: '  Back Pain ',
       scope: 'full',
       uploadFilter: 'partial_upload',
       coachId: '339',
@@ -36,6 +39,7 @@ describe('normalizeTestimonialsListPagination', () => {
     assert.equal(n.page, 2);
     assert.equal(n.limit, 50);
     assert.equal(n.search, 'priya');
+    assert.equal(n.healthIssue, 'back pain');
     assert.equal(n.scope, 'full');
     assert.equal(n.uploadFilter, 'partial_upload');
     assert.equal(n.coachId, 339);
@@ -68,9 +72,35 @@ describe('filter + paginate', () => {
     { user: { UserName: 'Gamma' }, uploadLevel: 'not_uploaded', testimonial: null },
   ];
 
-  it('filters by search name', () => {
-    assert.equal(filterTestimonialsListBySearch(rows, 'bet').length, 1);
-  });
+    it('filters by search name', () => {
+      assert.equal(filterTestimonialsListBySearch(rows, 'bet').length, 1);
+    });
+
+    it('name search does not match health issues', () => {
+      const withIssues = [
+        ...rows,
+        {
+          user: { UserName: 'Delta' },
+          uploadLevel: 'partial_upload',
+          recoveredHealthIssues: ['Back Pain', 'Diabetes'],
+        },
+      ];
+      assert.equal(filterTestimonialsListBySearch(withIssues, 'back').length, 0);
+    });
+
+    it('filters by recovered health issue', () => {
+      const withIssues = [
+        ...rows,
+        {
+          user: { UserName: 'Delta' },
+          uploadLevel: 'partial_upload',
+          recoveredHealthIssues: ['Back Pain', 'Diabetes'],
+        },
+      ];
+      const matched = filterTestimonialsListByHealthIssue(withIssues, 'back');
+      assert.equal(matched.length, 1);
+      assert.equal(matched[0].user.UserName, 'Delta');
+    });
 
   it('filters by upload level', () => {
     assert.equal(filterTestimonialsListByUpload(rows, 'partial_upload').length, 1);

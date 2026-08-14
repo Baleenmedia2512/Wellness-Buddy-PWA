@@ -217,6 +217,7 @@ export function validateListForCoach(query) {
     page: normalized.page,
     limit: normalized.limit,
     search: normalized.search,
+    healthIssue: normalized.healthIssue,
     uploadFilter: normalized.uploadFilter,
   };
 }

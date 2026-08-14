@@ -27,7 +27,6 @@ import { uploadTestimonialVideoInChunks } from '../services/testimonialVideoUplo
 import TestimonialSearchBar from './TestimonialSearchBar.jsx';
 import OtpInline from './OtpInline.jsx';
 import VideoThumbnailCard from './VideoThumbnailCard.jsx';
-import DiseaseMultiSelect from './DiseaseMultiSelect.jsx';
 import HealthIssueCoachEditor from './HealthIssueCoachEditor.jsx';
 import {
   TransformationCardContent,
@@ -44,6 +43,7 @@ import {
   toggleStatusFilter,
 } from '../utils/testimonialFilters.js';
 import {
+  buildHealthIssueSuggestions,
   buildSearchSuggestions,
   normalizeSearchQuery,
 } from '../utils/testimonialSearch.js';
@@ -401,7 +401,6 @@ function MemberCard({
   userId = null,
   coachId = null,
   onOtpVerified,
-  canEditHealthIssues = false,
   knownHealthIssues = [],
 }) {
   const { user } = row;
@@ -753,6 +752,7 @@ function MemberCard({
   }, [onOtpVerified]);
 
   const handleHealthIssuesSaved = useCallback((nextIssues) => {
+    setDraftIssues(nextIssues);
     setDetailTestimonial((prev) => ({
       ...(prev || testimonial || {}),
       recoveredHealthIssues: nextIssues,
@@ -781,7 +781,7 @@ function MemberCard({
     :                                          'bg-white';
 
   return (
-    <div className={`rounded-3xl border ${borderCls} ${bgCls} shadow-md`}>
+    <div className={`rounded-3xl border ${borderCls} ${bgCls} shadow-md overflow-visible`}>
       {/* Header strip */}
       <div className="flex items-center gap-3 px-4 pt-4 pb-3">
         <MemberAvatar user={user} />
@@ -1152,47 +1152,18 @@ function MemberCard({
 
       {/* Recovery Health Issue — below photos, above result video */}
       {(editable || testimonial) && (
-        <div className="space-y-1.5">
-          <div className="flex items-center justify-between gap-2">
-            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide flex items-center gap-1">
-              <HeartPulse className="h-3 w-3" /> Recovery Health Issue
-            </p>
-            {editable && !canEditHealthIssues && (
-              <button
-                type="button"
-                onClick={() => toggleSlot('issues')}
-                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full border bg-white text-[10px] font-bold transition-colors shrink-0 ${expandedSlots.has('issues') ? 'border-rose-400 text-rose-700 bg-rose-50' : 'border-gray-200 text-gray-600 hover:border-rose-400 hover:text-rose-700'}`}
-              >
-                <Pencil className="h-3 w-3" /> {issues.length > 0 ? 'Edit' : 'Add'}
-              </button>
-            )}
-          </div>
-          {canEditHealthIssues ? (
-            <HealthIssueCoachEditor
-              userId={userId || user?.userId}
-              coachId={coachId}
-              currentIssues={issues}
-              knownHealthIssues={knownHealthIssues}
-              onSaved={handleHealthIssuesSaved}
-            />
-          ) : (
-            <>
-              {issues.length > 0 ? (
-                <p className="text-[11px] text-gray-600">
-                  Current Health Issue: <span className="font-bold text-gray-900">{issues.join(', ')}</span>
-                </p>
-              ) : (
-                <p className="text-[11px] text-gray-400 italic">Not added yet</p>
-              )}
-              {editable && expandedSlots.has('issues') && (
-                <DiseaseMultiSelect
-                  value={draftIssues ?? issues}
-                  onChange={(val) => setDraftIssues(val)}
-                  autoFocus
-                />
-              )}
-            </>
-          )}
+        <div className="space-y-1.5 overflow-visible relative z-20">
+          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide flex items-center gap-1">
+            <HeartPulse className="h-3 w-3" /> Recovery Health Issue
+          </p>
+          <HealthIssueCoachEditor
+            userId={userId || user?.userId}
+            coachId={coachId}
+            currentIssues={draftIssues ?? issues}
+            knownHealthIssues={knownHealthIssues}
+            persist={Boolean(testimonial?.id)}
+            onSaved={handleHealthIssuesSaved}
+          />
         </div>
       )}
 
@@ -1420,8 +1391,11 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
   const [uploadFilter,          setUploadFilter]          = useState(UPLOAD_FILTERS.ALL);
   const [teamScope,             setTeamScope]             = useState(TEAM_SCOPES.MINE);
   const [searchQuery,           setSearchQuery]           = useState('');
+  const [healthIssueQuery,      setHealthIssueQuery]      = useState('');
   const [isSearchOpen,          setIsSearchOpen]          = useState(false);
+  const [isIssueSearchOpen,     setIsIssueSearchOpen]     = useState(false);
   const [highlightedSuggestion, setHighlightedSuggestion] = useState(-1);
+  const [highlightedIssue,      setHighlightedIssue]      = useState(-1);
 
   const [teamPerformanceByUserId, setTeamPerformanceByUserId] = useState({});
   const [fullTeamMemberCount, setFullTeamMemberCount] = useState(null);
@@ -1547,6 +1521,7 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
         page: 1,
         limit: 10,
         search: normalizeSearchQuery(searchQuery),
+        healthIssue: normalizeSearchQuery(healthIssueQuery),
         uploadFilter,
       });
       if (generation !== loadGenerationRef.current) return;
@@ -1564,7 +1539,7 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
         setFullLoading(false);
       }
     }
-  }, [coachId, fullLoaded, fullLoading, searchQuery, uploadFilter]);
+  }, [coachId, fullLoaded, fullLoading, searchQuery, healthIssueQuery, uploadFilter]);
 
   useEffect(() => { loadDirectAndMine(); }, [loadDirectAndMine, tabVisitKey]);
 
@@ -1600,8 +1575,11 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
 
   useEffect(() => {
     setSearchQuery('');
+    setHealthIssueQuery('');
     setIsSearchOpen(false);
+    setIsIssueSearchOpen(false);
     setHighlightedSuggestion(-1);
+    setHighlightedIssue(-1);
     setUploadFilter(UPLOAD_FILTERS.ALL);
   }, [teamScope]);
 
@@ -1644,9 +1622,14 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
     return labels;
   }, [mineRow, directRows, fullRows]);
 
-  const suggestions = useMemo(
+  const nameSuggestions = useMemo(
     () => buildSearchSuggestions(filteredRows, searchQuery),
     [filteredRows, searchQuery],
+  );
+
+  const issueSuggestions = useMemo(
+    () => buildHealthIssueSuggestions(healthIssueQuery, knownHealthIssues),
+    [healthIssueQuery, knownHealthIssues],
   );
 
   const activePagination = teamScope === TEAM_SCOPES.FULL ? fullPagination : directPagination;
@@ -1656,7 +1639,7 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
     if (!activePagination.hasMore) return;
     const scope = teamScope === TEAM_SCOPES.FULL ? 'full' : 'direct';
     const nextPage = (activePagination.page || 1) + 1;
-    const cacheKey = `${scope}|${normalizeSearchQuery(searchQuery)}|${uploadFilter}|${nextPage}`;
+    const cacheKey = `${scope}|${normalizeSearchQuery(searchQuery)}|${normalizeSearchQuery(healthIssueQuery)}|${uploadFilter}|${nextPage}`;
     if (pageCacheRef.current.has(cacheKey)) {
       const cached = pageCacheRef.current.get(cacheKey);
       if (scope === 'full') {
@@ -1676,6 +1659,7 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
       page: nextPage,
       limit: 10,
       search: normalizeSearchQuery(searchQuery),
+      healthIssue: normalizeSearchQuery(healthIssueQuery),
       uploadFilter,
     });
     inFlightRef.current.set(cacheKey, promise);
@@ -1700,7 +1684,7 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
     }
   }, [
     isMineScope, loadingMore, loading, fullLoading, activePagination,
-    teamScope, searchQuery, uploadFilter, coachId,
+    teamScope, searchQuery, healthIssueQuery, uploadFilter, coachId,
   ]);
 
   // Refetch page 1 when search / upload filter changes (server-side).
@@ -1721,6 +1705,7 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
           page: 1,
           limit: 10,
           search: normalizeSearchQuery(searchQuery),
+          healthIssue: normalizeSearchQuery(healthIssueQuery),
           uploadFilter,
         });
         if (cancelled) return;
@@ -1744,7 +1729,7 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
       clearTimeout(timer);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: refetch on search/filter/scope
-  }, [searchQuery, uploadFilter, teamScope, coachId, hasDownline, isMineScope]);
+  }, [searchQuery, healthIssueQuery, uploadFilter, teamScope, coachId, hasDownline, isMineScope]);
 
   // Reset skip flag when leaving Mine so Direct/Full get a clean first paint from their loaders.
   useEffect(() => {
@@ -1775,10 +1760,22 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
     setHighlightedSuggestion(-1);
   }, []);
 
-  const handleSelectSuggestion = useCallback((row) => {
-    setSearchQuery(row.user?.userName || '');
+  const handleIssueSearchChange = useCallback((value) => {
+    setHealthIssueQuery(value);
+    setIsIssueSearchOpen(true);
+    setHighlightedIssue(-1);
+  }, []);
+
+  const handleSelectNameSuggestion = useCallback((row) => {
+    setSearchQuery(row?.user?.userName || '');
     setIsSearchOpen(false);
     setHighlightedSuggestion(-1);
+  }, []);
+
+  const handleSelectIssueSuggestion = useCallback((issue) => {
+    setHealthIssueQuery(typeof issue === 'string' ? issue : (issue?.label || ''));
+    setIsIssueSearchOpen(false);
+    setHighlightedIssue(-1);
   }, []);
 
   const handleSearchKeyDown = useCallback((event) => {
@@ -1787,22 +1784,22 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
 
     if (event.key === 'ArrowDown') {
       event.preventDefault();
-      if (!suggestions.length) return;
+      if (!nameSuggestions.length) return;
       setIsSearchOpen(true);
-      setHighlightedSuggestion((prev) => (prev < suggestions.length - 1 ? prev + 1 : 0));
+      setHighlightedSuggestion((prev) => (prev < nameSuggestions.length - 1 ? prev + 1 : 0));
       return;
     }
     if (event.key === 'ArrowUp') {
       event.preventDefault();
-      if (!suggestions.length) return;
+      if (!nameSuggestions.length) return;
       setIsSearchOpen(true);
-      setHighlightedSuggestion((prev) => (prev > 0 ? prev - 1 : suggestions.length - 1));
+      setHighlightedSuggestion((prev) => (prev > 0 ? prev - 1 : nameSuggestions.length - 1));
       return;
     }
     if (event.key === 'Enter') {
       event.preventDefault();
-      if (highlightedSuggestion >= 0 && suggestions[highlightedSuggestion]) {
-        handleSelectSuggestion(suggestions[highlightedSuggestion]);
+      if (highlightedSuggestion >= 0 && nameSuggestions[highlightedSuggestion]) {
+        handleSelectNameSuggestion(nameSuggestions[highlightedSuggestion]);
       } else {
         setIsSearchOpen(false);
         setHighlightedSuggestion(-1);
@@ -1813,10 +1810,45 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
       setIsSearchOpen(false);
       setHighlightedSuggestion(-1);
     }
-  }, [searchQuery, suggestions, highlightedSuggestion, handleSelectSuggestion]);
+  }, [searchQuery, nameSuggestions, highlightedSuggestion, handleSelectNameSuggestion]);
+
+  const handleIssueSearchKeyDown = useCallback((event) => {
+    const hasQuery = normalizeSearchQuery(healthIssueQuery).length > 0;
+    if (!hasQuery) return;
+
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      if (!issueSuggestions.length) return;
+      setIsIssueSearchOpen(true);
+      setHighlightedIssue((prev) => (prev < issueSuggestions.length - 1 ? prev + 1 : 0));
+      return;
+    }
+    if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      if (!issueSuggestions.length) return;
+      setIsIssueSearchOpen(true);
+      setHighlightedIssue((prev) => (prev > 0 ? prev - 1 : issueSuggestions.length - 1));
+      return;
+    }
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      if (highlightedIssue >= 0 && issueSuggestions[highlightedIssue]) {
+        handleSelectIssueSuggestion(issueSuggestions[highlightedIssue]);
+      } else {
+        setIsIssueSearchOpen(false);
+        setHighlightedIssue(-1);
+      }
+      return;
+    }
+    if (event.key === 'Escape') {
+      setIsIssueSearchOpen(false);
+      setHighlightedIssue(-1);
+    }
+  }, [healthIssueQuery, issueSuggestions, highlightedIssue, handleSelectIssueSuggestion]);
 
   const hasScopeData    = scopeRows.length > 0 || (activePagination.total > 0 && !isMineScope);
-  const hasActiveSearch = normalizeSearchQuery(searchQuery).length > 0;
+  const hasActiveSearch = normalizeSearchQuery(searchQuery).length > 0
+    || normalizeSearchQuery(healthIssueQuery).length > 0;
   const showTeamChrome  = hasDownline;
 
   return (
@@ -1868,17 +1900,38 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
       {/* Search + upload filters — team scopes only (not Mine / not leaf members) */}
       {!loading && showTeamChrome && hasScopeData && !isMineScope && (
         <>
-          <TestimonialSearchBar
-            value={searchQuery}
-            onChange={handleSearchChange}
-            suggestions={suggestions}
-            isOpen={isSearchOpen}
-            onOpenChange={setIsSearchOpen}
-            highlightedIndex={highlightedSuggestion}
-            onHighlightChange={setHighlightedSuggestion}
-            onSelectSuggestion={handleSelectSuggestion}
-            onKeyDown={handleSearchKeyDown}
-          />
+          <div className="space-y-3">
+            <div>
+              <p className="text-xs font-semibold text-gray-600 mb-1.5">Search health issue</p>
+              <TestimonialSearchBar
+                variant="issue"
+                value={healthIssueQuery}
+                onChange={handleIssueSearchChange}
+                suggestions={issueSuggestions}
+                isOpen={isIssueSearchOpen}
+                onOpenChange={setIsIssueSearchOpen}
+                highlightedIndex={highlightedIssue}
+                onHighlightChange={setHighlightedIssue}
+                onSelectSuggestion={handleSelectIssueSuggestion}
+                onKeyDown={handleIssueSearchKeyDown}
+              />
+            </div>
+            <div>
+              <p className="text-xs font-semibold text-gray-600 mb-1.5">Search user name</p>
+              <TestimonialSearchBar
+                variant="name"
+                value={searchQuery}
+                onChange={handleSearchChange}
+                suggestions={nameSuggestions}
+                isOpen={isSearchOpen}
+                onOpenChange={setIsSearchOpen}
+                highlightedIndex={highlightedSuggestion}
+                onHighlightChange={setHighlightedSuggestion}
+                onSelectSuggestion={handleSelectNameSuggestion}
+                onKeyDown={handleSearchKeyDown}
+              />
+            </div>
+          </div>
 
           <div className="flex gap-1.5 overflow-x-auto scrollbar-hide sm:flex-wrap sm:gap-2 sm:overflow-visible" role="group" aria-label="Upload completeness filter">
             <UploadFilterChip
@@ -1955,7 +2008,6 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
           editable={isMineScope}
           userId={row.user.userId}
           coachId={coachId}
-          canEditHealthIssues={!isMineScope && Boolean(row.testimonial)}
           knownHealthIssues={knownHealthIssues}
           onOtpVerified={isMineScope ? () => { loadDirectAndMine(); } : undefined}
         />

@@ -99,6 +99,7 @@ export async function verifyTestimonialOtp(payload) {
  *   page?: number,
  *   limit?: number,
  *   search?: string,
+ *   healthIssue?: string,
  *   uploadFilter?: string,
  * }} [opts]
  * @returns {Promise<{ data: Array, pagination: object, uploadCounts: object }>}
@@ -108,6 +109,7 @@ export async function listForCoach(coachId, opts = {}) {
   const page = typeof opts === 'object' ? (opts.page ?? 1) : 1;
   const limit = typeof opts === 'object' ? (opts.limit ?? 10) : 10;
   const search = typeof opts === 'object' ? (opts.search || '') : '';
+  const healthIssue = typeof opts === 'object' ? (opts.healthIssue || '') : '';
   const uploadFilter = typeof opts === 'object' ? (opts.uploadFilter || 'all') : 'all';
 
   const params = new URLSearchParams({
@@ -117,6 +119,7 @@ export async function listForCoach(coachId, opts = {}) {
   });
   if (scope === 'full') params.set('scope', 'full');
   if (search) params.set('search', search);
+  if (healthIssue) params.set('healthIssue', healthIssue);
   if (uploadFilter && uploadFilter !== 'all') params.set('uploadFilter', uploadFilter);
 
   const res = await CapacitorHttp.get({

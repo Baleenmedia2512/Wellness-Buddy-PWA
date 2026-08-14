@@ -1,26 +1,25 @@
 /**
  * HealthIssueCoachEditor.jsx
- * Coach-only search + save for a member's recovered health issue.
- * Suggestions come from the shared medical-condition catalog plus issues
- * already stored on user transformation records.
+ * Search + suggestions for Recovery Health Issue.
+ * Typing "back" shows Back Pain, Lower Back Pain, Chronic Back Pain, etc.
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { HeartPulse, Save, Search, X } from 'lucide-react';
-import { useDebounce } from '../../../shared/hooks/useDebounce.js';
 import {
   recordRecentMedicalCondition,
   searchMedicalConditions,
   VISIBLE_SUGGESTION_CAP,
 } from '../domain/medicalConditionSearch.js';
-import { ALL_MEDICAL_CONDITIONS } from '../data/medicalConditions.js';
+import {
+  ALL_MEDICAL_CONDITIONS,
+  POPULAR_MEDICAL_CONDITIONS,
+} from '../data/medicalConditions.js';
 import { updateMemberHealthIssues } from '../services/testimonialApi.js';
 
-const SEARCH_DEBOUNCE_MS = 200;
-
-function uniqueConditions(extra = []) {
+function uniqueConditions(items = []) {
   const seen = new Set();
   const result = [];
-  for (const item of [...ALL_MEDICAL_CONDITIONS, ...extra]) {
+  for (const item of items) {
     const label = String(item || '').trim();
     if (!label) continue;
     const key = label.toLowerCase();
@@ -31,12 +30,31 @@ function uniqueConditions(extra = []) {
   return result;
 }
 
+function HighlightMatch({ text, query }) {
+  const q = String(query || '').trim();
+  if (!q) return <>{text}</>;
+  const lowerText = text.toLowerCase();
+  const lowerQuery = q.toLowerCase();
+  const idx = lowerText.indexOf(lowerQuery);
+  if (idx < 0) return <>{text}</>;
+  return (
+    <>
+      {text.slice(0, idx)}
+      <mark className="bg-green-200 text-green-900 rounded-sm px-0.5 font-semibold">
+        {text.slice(idx, idx + q.length)}
+      </mark>
+      {text.slice(idx + q.length)}
+    </>
+  );
+}
+
 /**
  * @param {{
  *   userId: number,
  *   coachId: number,
  *   currentIssues?: string[],
  *   knownHealthIssues?: string[],
+ *   persist?: boolean,
  *   onSaved?: (issues: string[]) => void,
  * }} props
  */
@@ -45,10 +63,11 @@ export default function HealthIssueCoachEditor({
   coachId,
   currentIssues = [],
   knownHealthIssues = [],
+  persist = true,
   onSaved,
 }) {
   const inputRef = useRef(null);
-  const dropRef = useRef(null);
+  const wrapRef = useRef(null);
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
   const [highlight, setHighlight] = useState(-1);
@@ -56,19 +75,27 @@ export default function HealthIssueCoachEditor({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
 
-  const debouncedQuery = useDebounce(query, SEARCH_DEBOUNCE_MS);
-  const catalog = useMemo(() => uniqueConditions(knownHealthIssues), [knownHealthIssues]);
+  const catalog = useMemo(
+    () => uniqueConditions([...ALL_MEDICAL_CONDITIONS, ...knownHealthIssues]),
+    [knownHealthIssues],
+  );
 
   const suggestions = useMemo(() => {
-    if (!debouncedQuery.trim()) return [];
-    return searchMedicalConditions(debouncedQuery, { conditions: catalog }).slice(0, VISIBLE_SUGGESTION_CAP);
-  }, [debouncedQuery, catalog]);
+    const q = query.trim();
+    if (q) {
+      return searchMedicalConditions(q, { conditions: catalog }).slice(0, VISIBLE_SUGGESTION_CAP);
+    }
+    const popular = catalog.filter((name) => POPULAR_MEDICAL_CONDITIONS.has(name));
+    return uniqueConditions([...knownHealthIssues, ...popular]).slice(0, VISIBLE_SUGGESTION_CAP);
+  }, [query, catalog, knownHealthIssues]);
 
-  const displayedIssues = pending ? [pending] : (Array.isArray(currentIssues) ? currentIssues : []);
+  const displayedIssues = pending
+    ? [pending]
+    : (Array.isArray(currentIssues) ? currentIssues : []);
   const alreadyCurrent = Array.isArray(currentIssues)
     && currentIssues.length === 1
     && currentIssues[0] === pending;
-  const canSave = Boolean(pending) && !alreadyCurrent;
+  const canSave = Boolean(pending) && !alreadyCurrent && persist;
 
   const closeDropdown = useCallback(() => {
     setOpen(false);
@@ -77,15 +104,16 @@ export default function HealthIssueCoachEditor({
 
   useEffect(() => {
     function onOutside(event) {
-      if (
-        dropRef.current && !dropRef.current.contains(event.target)
-        && inputRef.current && !inputRef.current.contains(event.target)
-      ) {
+      if (wrapRef.current && !wrapRef.current.contains(event.target)) {
         closeDropdown();
       }
     }
     document.addEventListener('mousedown', onOutside);
-    return () => document.removeEventListener('mousedown', onOutside);
+    document.addEventListener('touchstart', onOutside);
+    return () => {
+      document.removeEventListener('mousedown', onOutside);
+      document.removeEventListener('touchstart', onOutside);
+    };
   }, [closeDropdown]);
 
   const selectIssue = useCallback((issue) => {
@@ -96,10 +124,13 @@ export default function HealthIssueCoachEditor({
     setError(null);
     closeDropdown();
     recordRecentMedicalCondition(trimmed);
-  }, [closeDropdown]);
+    if (!persist) {
+      onSaved?.([trimmed]);
+    }
+  }, [closeDropdown, persist, onSaved]);
 
   const handleSave = useCallback(async () => {
-    if (!pending || saving) return;
+    if (!pending || saving || !persist) return;
     setSaving(true);
     setError(null);
     try {
@@ -116,23 +147,18 @@ export default function HealthIssueCoachEditor({
     } finally {
       setSaving(false);
     }
-  }, [pending, saving, coachId, userId, onSaved]);
+  }, [pending, saving, persist, coachId, userId, onSaved]);
 
   const handleKeyDown = (event) => {
-    if (!open && event.key === 'ArrowDown' && query.trim()) {
-      setOpen(true);
-      setHighlight(0);
-      event.preventDefault();
-      return;
-    }
-    if (!open) return;
     if (event.key === 'ArrowDown') {
       event.preventDefault();
+      setOpen(true);
       setHighlight((prev) => (suggestions.length ? (prev + 1) % suggestions.length : -1));
       return;
     }
     if (event.key === 'ArrowUp') {
       event.preventDefault();
+      setOpen(true);
       setHighlight((prev) => (suggestions.length ? (prev <= 0 ? suggestions.length - 1 : prev - 1) : -1));
       return;
     }
@@ -140,6 +166,8 @@ export default function HealthIssueCoachEditor({
       event.preventDefault();
       if (highlight >= 0 && suggestions[highlight]) {
         selectIssue(suggestions[highlight]);
+      } else if (query.trim().length >= 2) {
+        selectIssue(query.trim());
       }
       return;
     }
@@ -149,60 +177,73 @@ export default function HealthIssueCoachEditor({
   };
 
   return (
-    <div className="space-y-2">
+    <div ref={wrapRef} className="space-y-2 relative z-20">
       <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400 pointer-events-none" />
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-green-600 pointer-events-none" />
         <input
           ref={inputRef}
           type="text"
           value={query}
           placeholder="Search health issue..."
           autoComplete="off"
+          autoCorrect="off"
+          spellCheck={false}
           onChange={(e) => {
             setQuery(e.target.value);
             setOpen(true);
             setHighlight(-1);
             setError(null);
           }}
-          onFocus={() => { if (query.trim()) setOpen(true); }}
+          onFocus={() => {
+            setOpen(true);
+            setHighlight(-1);
+          }}
           onKeyDown={handleKeyDown}
-          className="w-full pl-9 pr-8 py-2 text-sm border border-gray-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-green-400"
+          className="w-full h-11 pl-10 pr-9 text-sm text-gray-800 placeholder-gray-500 bg-white border border-green-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
           aria-label="Search health issue"
+          aria-autocomplete="list"
+          aria-expanded={open}
         />
         {query ? (
           <button
             type="button"
-            onClick={() => { setQuery(''); closeDropdown(); inputRef.current?.focus(); }}
+            onClick={() => { setQuery(''); setOpen(true); inputRef.current?.focus(); }}
             className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600"
             aria-label="Clear search"
           >
-            <X className="h-3.5 w-3.5" />
+            <X className="h-4 w-4" />
           </button>
         ) : null}
 
-        {open && query.trim() && (
-          <div
-            ref={dropRef}
-            className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-2xl shadow-xl overflow-hidden"
-            style={{ maxHeight: '220px', overflowY: 'auto' }}
+        {open && (
+          <ul
+            role="listbox"
+            aria-label="Health issue suggestions"
+            className="absolute left-0 right-0 z-[80] mt-1 bg-white border border-green-200 rounded-2xl shadow-xl overflow-y-auto"
+            style={{ maxHeight: '240px' }}
           >
             {suggestions.length > 0 ? suggestions.map((issue, idx) => (
-              <button
-                key={issue}
-                type="button"
-                onMouseDown={(e) => { e.preventDefault(); selectIssue(issue); }}
-                onMouseEnter={() => setHighlight(idx)}
-                className={`w-full flex items-center gap-2 px-4 py-2.5 text-left text-xs font-medium transition-colors ${
-                  highlight === idx ? 'bg-green-50 text-green-800' : 'text-gray-700 hover:bg-gray-50'
-                }`}
-              >
-                <HeartPulse className="h-3 w-3 text-rose-400 shrink-0" />
-                {issue}
-              </button>
+              <li key={issue} role="presentation">
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={highlight === idx}
+                  onMouseDown={(e) => { e.preventDefault(); selectIssue(issue); }}
+                  onMouseEnter={() => setHighlight(idx)}
+                  className={`w-full flex items-center gap-2 px-4 py-2.5 text-left text-sm transition-colors ${
+                    highlight === idx ? 'bg-green-50 text-green-900' : 'text-gray-800 hover:bg-green-50/70'
+                  }`}
+                >
+                  <HeartPulse className="h-3.5 w-3.5 text-rose-400 shrink-0" />
+                  <HighlightMatch text={issue} query={query} />
+                </button>
+              </li>
             )) : (
-              <p className="px-4 py-3 text-xs text-gray-400 italic">No matching health issues</p>
+              <li className="px-4 py-3 text-xs text-gray-400 italic">
+                {query.trim() ? 'No matching health issues' : 'Start typing to search health issues'}
+              </li>
             )}
-          </div>
+          </ul>
         )}
       </div>
 
@@ -223,7 +264,7 @@ export default function HealthIssueCoachEditor({
         <button
           type="button"
           onClick={handleSave}
-          disabled={saving || !canSave}
+          disabled={saving}
           className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-green-600 hover:bg-green-700 text-white text-sm font-bold disabled:opacity-60"
         >
           <Save className="h-4 w-4" />

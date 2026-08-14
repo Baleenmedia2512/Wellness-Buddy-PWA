@@ -29,6 +29,7 @@ import {
 import {
   mapTestimonialsListLeanFields,
   filterTestimonialsListBySearch,
+  filterTestimonialsListByHealthIssue,
   filterTestimonialsListByUpload,
   paginateTestimonialsList,
   countTestimonialsUploadLevels,
@@ -627,7 +628,7 @@ export async function getMyVideoTestimonial(rawQuery) {
  */
 export async function listForCoach(rawQuery) {
   const apiStarted = Date.now();
-  const { coachId, scope, page, limit, search, uploadFilter } = validateListForCoach(rawQuery);
+  const { coachId, scope, page, limit, search, healthIssue, uploadFilter } = validateListForCoach(rawQuery);
 
   const sqlStarted = Date.now();
   const rows = await repo.listForCoach(coachId, scope);
@@ -645,7 +646,10 @@ export async function listForCoach(rawQuery) {
     };
   });
 
-  const searched = filterTestimonialsListBySearch(leanJoined, search);
+  const searched = filterTestimonialsListByHealthIssue(
+    filterTestimonialsListBySearch(leanJoined, search),
+    healthIssue,
+  );
   const filtered = filterTestimonialsListByUpload(searched, uploadFilter);
   const uploadCounts = countTestimonialsUploadLevels(searched);
   const { pageRows, pagination } = paginateTestimonialsList(filtered, { page, limit });
@@ -721,6 +725,7 @@ export async function listForCoach(rawQuery) {
     limit: pagination.limit,
     total: pagination.total,
     search: search || null,
+    healthIssue: healthIssue || null,
     uploadFilter,
     sqlMs,
     signMs,
