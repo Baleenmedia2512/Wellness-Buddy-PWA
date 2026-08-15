@@ -1,6 +1,7 @@
 /**
  * NutritionSectionStack — stacked nutrition cards for the Reports Nutrition tab.
  * Reuses Home carousel cards + domain compute helpers. No new RDA / GI / macro math.
+ * Nutrient rings open the same food-breakdown sheet as Home / Wellness Score.
  */
 import React, { useMemo } from 'react';
 import {
@@ -19,13 +20,17 @@ import VitaminsBComplexCard from './carousel/VitaminsBComplexCard';
 import VitaminsFatSolubleCard from './carousel/VitaminsFatSolubleCard';
 import LowCarbCard from './carousel/LowCarbCard';
 import HeartHealthyCard from './carousel/HeartHealthyCard';
+import NutrientBreakdownModals, { useNutrientBreakdownModal } from '../NutrientBreakdownModals';
 
 export default function NutritionSectionStack({
   calorieTarget,
   dailyStats,
   latestWeight,
   gender = null,
+  analyses = [],
 }) {
+  const { modalState, handleOpenModal, handleCloseModal } = useNutrientBreakdownModal();
+
   const { proteinTarget, fatTarget, carbsTarget } = useMemo(
     () => computeMacroTargets({ latestWeight, calorieTarget, gender }),
     [latestWeight, calorieTarget, gender],
@@ -75,20 +80,37 @@ export default function NutritionSectionStack({
         proteinTarget={proteinTarget}
         fatTarget={fatTarget}
         carbsTarget={carbsTarget}
+        layout="stack"
+        onOpenModal={handleOpenModal}
       />
-      <MineralsCard tiles={mineralTiles} />
-      <VitaminsBComplexCard tiles={vitBTiles} layout="row" />
-      <VitaminsFatSolubleCard tiles={vitFatTiles} />
+      <MineralsCard tiles={mineralTiles} onOpenModal={handleOpenModal} />
+      <VitaminsBComplexCard tiles={vitBTiles} layout="row" onOpenModal={handleOpenModal} />
+      <VitaminsFatSolubleCard tiles={vitFatTiles} onOpenModal={handleOpenModal} />
       <LowCarbCard
         carbs={lowCarbCard.carbs}
         sugar={lowCarbCard.sugar}
         fiber={lowCarbCard.fiber}
         glycemicIndex={dailyStats?.averageGlycemicIndex ?? null}
+        onOpenModal={handleOpenModal}
       />
       <HeartHealthyCard
         fat={heartCard.fat}
         sodium={heartCard.sodium}
         cholesterol={heartCard.cholesterol}
+        onOpenModal={handleOpenModal}
+      />
+      <NutrientBreakdownModals
+        isOpen={modalState.isOpen}
+        nutrient={modalState.nutrient}
+        onClose={handleCloseModal}
+        analyses={analyses}
+        dailyStats={dailyStats}
+        proteinTarget={proteinTarget}
+        fatTarget={fatTarget}
+        carbsTarget={carbsTarget}
+        calorieTarget={calorieTarget}
+        heartCard={heartCard}
+        lowCarbCard={lowCarbCard}
       />
     </div>
   );

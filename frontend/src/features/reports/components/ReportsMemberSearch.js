@@ -45,12 +45,12 @@ export default function ReportsMemberSearch({
           onSelect={vm.selectMember}
         />
       )}
-      <p className="mt-2 text-xs text-gray-600">
+      {/* <p className="mt-2 text-xs text-gray-600">
         Selected User:{' '}
         <span className="font-semibold text-gray-900">
           {reportsSelectedUserLabel(selectedMember)}
         </span>
-      </p>
+      </p> */}
     </div>
   );
 }

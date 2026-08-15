@@ -1,11 +1,15 @@
 /**
- * ReportsNutritionTab — selected member's nutrition using existing dashboard
- * APIs, RDA rules, and carousel cards. Loads only the viewed user (not the
- * whole downline).
+ * ReportsNutritionTab — selected member's nutrition with date-range pills
+ * (Today / Yesterday / Last 7 Days / Custom).
+ * When wellness score is enabled, uses the same stacked parameter cards as
+ * the Wellness Score sheet (limit/target badges, Details, contribution sheet).
  */
-import React, { useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { isFlagEnabled } from '../../../config/featureFlags';
 import { getApiBaseUrl } from '../../../config/api.config.js';
 import { useBusinessToday } from '../../../shared/hooks/useBusinessToday';
+import ReportDateRangeFilter from '../../../shared/components/common/ReportDateRangeFilter';
+import { REPORTS_NUTRITION_DATE_RANGES } from '../../../shared/domain/reportDateRanges';
 import {
   NutritionSectionStack,
   useUserCalorieTarget,
@@ -13,6 +17,11 @@ import {
   useResolveUserId,
   useDayAnalyses,
 } from '../../nutrition';
+import {
+  WellnessScoreNutritionSection,
+  resolveWellnessDateRange,
+  dateFromPickerValue,
+} from '../../wellness-score-sheet';
 import {
   reportsMemberPossessiveTitle,
   resolveReportsViewedUser,
@@ -25,24 +34,91 @@ function ymdToLocalDate(ymd) {
 
 export default function ReportsNutritionTab({ user, selectedMember }) {
   const viewedUser = resolveReportsViewedUser(selectedMember, user);
+  const scoreUser = viewedUser
+    ? { ...viewedUser, id: viewedUser.id || viewedUser.userId }
+    : viewedUser;
   const apiBaseUrl = getApiBaseUrl();
   const todayYmd = useBusinessToday(viewedUser);
-  const selectedDate = useMemo(() => ymdToLocalDate(todayYmd), [todayYmd]);
   const title = reportsMemberPossessiveTitle(selectedMember, 'Nutrition');
+  const useScoreCards = isFlagEnabled('ff.wellness-score-sheet');
+  const sessionUserId = user?.id || user?.userId || null;
+
+  const [dateRange, setDateRange] = useState('today');
+  const [customStartDate, setCustomStartDate] = useState(null);
+  const [customEndDate, setCustomEndDate] = useState(null);
+  const [selectedDate, setSelectedDate] = useState(todayYmd);
+
+  const range = useMemo(
+    () => resolveWellnessDateRange({
+      preset: dateRange,
+      customStartDate,
+      customEndDate,
+      today: todayYmd,
+    }),
+    [dateRange, customStartDate, customEndDate, todayYmd],
+  );
+
+  useEffect(() => {
+    setSelectedDate(range.endDate);
+  }, [range.startDate, range.endDate, range.isMultiDay]);
+
+  const handleDateRangeChange = useCallback((nextRange) => {
+    setDateRange(nextRange);
+    if (nextRange !== 'custom') {
+      const next = resolveWellnessDateRange({ preset: nextRange, today: todayYmd });
+      setSelectedDate(next.endDate);
+    }
+  }, [todayYmd]);
+
+  const handleCustomDateSelect = useCallback((start, end) => {
+    setCustomStartDate(start);
+    setCustomEndDate(end);
+    setDateRange('custom');
+    setSelectedDate(dateFromPickerValue(end));
+  }, []);
 
   return (
-    <ReportsNutritionBody
-      key={viewedUser?.id || viewedUser?.userId || viewedUser?.email || 'self'}
-      viewedUser={viewedUser}
-      sessionUser={user}
-      apiBaseUrl={apiBaseUrl}
-      selectedDate={selectedDate}
-      title={title}
-    />
+    <div className="max-w-6xl mx-auto w-full px-3 sm:px-4 py-4">
+      <h2 className="text-base sm:text-lg font-bold text-gray-900 mb-3">{title}</h2>
+
+      <div className="mb-4">
+        <ReportDateRangeFilter
+          ranges={REPORTS_NUTRITION_DATE_RANGES}
+          dateRange={dateRange}
+          onDateRangeChange={handleDateRangeChange}
+          customStartDate={customStartDate}
+          customEndDate={customEndDate}
+          onCustomDateSelect={handleCustomDateSelect}
+        />
+      </div>
+
+      {useScoreCards ? (
+        <WellnessScoreNutritionSection
+          key={scoreUser?.id || scoreUser?.email || 'self'}
+          user={scoreUser}
+          apiBaseUrl={apiBaseUrl}
+          date={selectedDate}
+          startDate={range.startDate}
+          endDate={range.endDate}
+          isMultiDay={range.isMultiDay}
+          onSelectDate={setSelectedDate}
+          today={todayYmd}
+          viewerUserId={sessionUserId}
+        />
+      ) : (
+        <ReportsNutritionBody
+          key={`${viewedUser?.id || viewedUser?.userId || viewedUser?.email || 'self'}-${selectedDate}`}
+          viewedUser={viewedUser}
+          sessionUser={user}
+          apiBaseUrl={apiBaseUrl}
+          selectedDate={ymdToLocalDate(selectedDate)}
+        />
+      )}
+    </div>
   );
 }
 
-function ReportsNutritionBody({ viewedUser, sessionUser, apiBaseUrl, selectedDate, title }) {
+function ReportsNutritionBody({ viewedUser, sessionUser, apiBaseUrl, selectedDate }) {
   const resolveUserId = useResolveUserId({ user: viewedUser, apiBaseUrl });
   const { calorieTarget, bmrLoading } = useUserCalorieTarget({
     user: viewedUser,
@@ -52,7 +128,7 @@ function ReportsNutritionBody({ viewedUser, sessionUser, apiBaseUrl, selectedDat
     user: viewedUser,
     apiBaseUrl,
   });
-  const { dailyStats, loading, error } = useDayAnalyses({
+  const { dailyStats, analyses, loading, error } = useDayAnalyses({
     user: viewedUser,
     selectedDate,
     apiBaseUrl,
@@ -63,26 +139,27 @@ function ReportsNutritionBody({ viewedUser, sessionUser, apiBaseUrl, selectedDat
   const isLoading = bmrLoading || loading;
   const hasMeals = (dailyStats?.mealCount || 0) > 0;
 
-  return (
-    <div className="max-w-6xl mx-auto w-full px-3 sm:px-4 py-4">
-      <h2 className="text-base sm:text-lg font-bold text-gray-900 mb-3">{title}</h2>
+  if (isLoading) {
+    return <p className="text-sm text-gray-500 py-10 text-center">Loading nutrition...</p>;
+  }
+  if (error) {
+    return <p className="text-sm text-gray-500 py-10 text-center">{error}</p>;
+  }
+  if (!hasMeals) {
+    return (
+      <p className="text-sm text-gray-500 py-10 text-center">
+        No nutrition data available for this user.
+      </p>
+    );
+  }
 
-      {isLoading ? (
-        <p className="text-sm text-gray-500 py-10 text-center">Loading nutrition...</p>
-      ) : error ? (
-        <p className="text-sm text-gray-500 py-10 text-center">{error}</p>
-      ) : !hasMeals ? (
-        <p className="text-sm text-gray-500 py-10 text-center">
-          No nutrition data available for this user.
-        </p>
-      ) : (
-        <NutritionSectionStack
-          calorieTarget={calorieTarget}
-          dailyStats={dailyStats}
-          latestWeight={latestWeight}
-          gender={gender}
-        />
-      )}
-    </div>
+  return (
+    <NutritionSectionStack
+      calorieTarget={calorieTarget}
+      dailyStats={dailyStats}
+      latestWeight={latestWeight}
+      gender={gender}
+      analyses={analyses}
+    />
   );
 }
