@@ -1,34 +1,51 @@
 /**
- * ReportsWeightTrendChart — recorded weigh-ins with 1D/5D/1M/1Y/5Y/Max
- * and a hover/tap tooltip. Reuses weight chart geometry; does not change
- * the Home Weight Dashboard 7D/14D/30D chart.
+ * ReportsWeightTrendChart — recorded weigh-ins with 5 days / 10 days /
+ * 1 month / 1 year / Custom date, plus first→current weight. Reuses
+ * weight chart geometry; does not change the Home Weight Dashboard
+ * 7D/14D/30D chart.
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { AnimatePresence } from 'framer-motion';
+import DateRangePicker from '../../../shared/components/common/DateRangePicker';
+import { formatCustomRangeLabel } from '../../../shared/domain/reportDateRanges';
 import {
   buildChartGeometry,
   buildRecordedTrendSeries,
+  getFirstAndLatestRecordedWeight,
   isSmallChartDevice,
   REPORTS_WEIGHT_TREND_RANGES,
-  WEIGHT_TREND_RANGE_MAX,
+  WEIGHT_TREND_RANGE_CUSTOM,
 } from '../../weight';
 
 const PILL = 'px-2 py-1 text-[11px] sm:text-xs rounded-full transition-all duration-300 shrink-0';
 const ACTIVE = 'bg-emerald-500 text-white shadow-sm';
 const INACTIVE = 'text-gray-600 hover:bg-white';
 
-function RangeSelector({ selected, onSelect }) {
+function RangeSelector({
+  selected,
+  onSelect,
+  customStartDate,
+  customEndDate,
+}) {
   return (
     <div className="flex items-center gap-1 bg-gray-100 rounded-full p-1 overflow-x-auto">
-      {REPORTS_WEIGHT_TREND_RANGES.map((range) => (
-        <button
-          key={String(range.key)}
-          type="button"
-          onClick={() => onSelect(range.days)}
-          className={`${PILL} ${selected === range.days ? ACTIVE : INACTIVE}`}
-        >
-          {range.label}
-        </button>
-      ))}
+      {REPORTS_WEIGHT_TREND_RANGES.map((range) => {
+        const isCustom = range.days === WEIGHT_TREND_RANGE_CUSTOM;
+        const isActive = selected === range.days;
+        const label = isCustom && isActive
+          ? formatCustomRangeLabel(customStartDate, customEndDate)
+          : range.label;
+        return (
+          <button
+            key={String(range.key)}
+            type="button"
+            onClick={() => onSelect(range.days)}
+            className={`${PILL} ${isActive ? ACTIVE : INACTIVE}`}
+          >
+            {label}
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -37,19 +54,40 @@ function formatKg(value) {
   return Number.isFinite(value) ? `${value.toFixed(2)} kg` : '';
 }
 
+function firstToCurrentLabel(firstWeight, latestWeight) {
+  if (!Number.isFinite(firstWeight) || !Number.isFinite(latestWeight)) {
+    return 'First weight → Current weight';
+  }
+  return `First ${formatKg(firstWeight)} → Current ${formatKg(latestWeight)}`;
+}
+
 export default function ReportsWeightTrendChart({
   weightHistory,
   rangeDays,
   onRangeChange,
+  customStartDate = null,
+  customEndDate = null,
+  onCustomDateSelect,
 }) {
   const chartRef = useRef(null);
   const [chartWidth, setChartWidth] = useState(320);
   const [tooltip, setTooltip] = useState(null);
+  const [showDatePicker, setShowDatePicker] = useState(false);
   const small = isSmallChartDevice();
+  const isCustom = rangeDays === WEIGHT_TREND_RANGE_CUSTOM;
+  const hasCustomDates = Boolean(customStartDate && customEndDate);
+
+  const { firstWeight, latestWeight } = useMemo(
+    () => getFirstAndLatestRecordedWeight(weightHistory),
+    [weightHistory],
+  );
 
   const series = useMemo(
-    () => buildRecordedTrendSeries(weightHistory, rangeDays),
-    [weightHistory, rangeDays],
+    () => buildRecordedTrendSeries(weightHistory, rangeDays, {
+      startDate: customStartDate,
+      endDate: customEndDate,
+    }),
+    [weightHistory, rangeDays, customStartDate, customEndDate],
   );
   const geom = useMemo(
     () => (series.length
@@ -79,6 +117,16 @@ export default function ReportsWeightTrendChart({
     return () => window.removeEventListener('resize', update);
   }, [series.length]);
 
+  const handleRangeSelect = (days) => {
+    onRangeChange(days);
+    setShowDatePicker(days === WEIGHT_TREND_RANGE_CUSTOM);
+  };
+
+  const handleCustomSelect = (start, end) => {
+    if (typeof onCustomDateSelect === 'function') onCustomDateSelect(start, end);
+    setShowDatePicker(false);
+  };
+
   const showPoint = (point, event) => {
     if (!point?.hasRecorded || !Number.isFinite(point.value)) return;
     const rect = chartRef.current?.getBoundingClientRect();
@@ -92,20 +140,42 @@ export default function ReportsWeightTrendChart({
 
   const hideTooltip = () => setTooltip(null);
 
+  const emptyMessage = isCustom && !hasCustomDates
+    ? 'Select a date range to view the trend.'
+    : series.length === 0 && Number.isFinite(firstWeight)
+      ? 'No weight records available for this period.'
+      : 'No weight records available for this user.';
+
   return (
     <div>
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3">
         <p className="text-xs sm:text-sm text-gray-500">
-          {rangeDays === WEIGHT_TREND_RANGE_MAX
-            ? 'First weight → Latest weight'
-            : `Last ${rangeDays} days`}
+          {firstToCurrentLabel(firstWeight, latestWeight)}
         </p>
-        <RangeSelector selected={rangeDays} onSelect={onRangeChange} />
+        <RangeSelector
+          selected={rangeDays}
+          onSelect={handleRangeSelect}
+          customStartDate={customStartDate}
+          customEndDate={customEndDate}
+        />
       </div>
+
+      <AnimatePresence>
+        {showDatePicker && isCustom && (
+          <div className="mb-3 w-full">
+            <DateRangePicker
+              startDate={customStartDate}
+              endDate={customEndDate}
+              onSelect={handleCustomSelect}
+              onClose={() => setShowDatePicker(false)}
+            />
+          </div>
+        )}
+      </AnimatePresence>
 
       {series.length === 0 ? (
         <div className="h-36 rounded-xl border border-dashed border-gray-200 flex items-center justify-center text-sm text-gray-500">
-          No weight records available for this user.
+          {emptyMessage}
         </div>
       ) : (
         <div

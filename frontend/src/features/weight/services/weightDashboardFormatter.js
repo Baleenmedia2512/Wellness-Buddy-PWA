@@ -13,21 +13,25 @@ import {
   todayBusinessDate,
   formatCalendarPickerDate,
   DEFAULT_BUSINESS_TIMEZONE,
-} from '../../../shared/utils/datetimeUtils';
+} from '../../../shared/utils/datetimeUtils.js';
 
 export const UNDO_SECONDS = 10;
 export const WEIGHT_PAGE_SIZE = 10;
 
-/** Reports Trend tab range keys. Max = first-ever recorded weight → latest. */
-export const WEIGHT_TREND_RANGE_MAX = 'max';
-export const REPORTS_WEIGHT_TREND_RANGES = [
-  { key: 1, label: '1D', days: 1 },
-  { key: 5, label: '5D', days: 5 },
-  { key: 30, label: '1M', days: 30 },
-  { key: 365, label: '1Y', days: 365 },
-  { key: 1825, label: '5Y', days: 1825 },
-  { key: WEIGHT_TREND_RANGE_MAX, label: 'Max', days: WEIGHT_TREND_RANGE_MAX },
-];
+/** Reports Trend tab — custom calendar range (start/end from the date picker). */
+export const WEIGHT_TREND_RANGE_CUSTOM = 'custom';
+export const WEIGHT_TREND_DEFAULT_DAYS = 5;
+export const REPORTS_WEIGHT_TREND_RANGES = Object.freeze([
+  Object.freeze({ key: 5, label: '5 days', days: 5 }),
+  Object.freeze({ key: 10, label: '10 days', days: 10 }),
+  Object.freeze({ key: 30, label: '1 month', days: 30 }),
+  Object.freeze({ key: 365, label: '1 year', days: 365 }),
+  Object.freeze({
+    key: WEIGHT_TREND_RANGE_CUSTOM,
+    label: 'Custom date',
+    days: WEIGHT_TREND_RANGE_CUSTOM,
+  }),
+]);
 
 export const toDateKey = (value) => {
   if (value instanceof Date) return formatCalendarPickerDate(value);
@@ -172,13 +176,8 @@ function formatTrendTooltipDate(date) {
   }).replace(',', '');
 }
 
-/**
- * Actual weigh-in points (no calendar fill). Used by Reports Trend.
- * Max = first-ever valid record through latest. Other ranges clip to the
- * last N days ending today, still starting from the first record in range.
- */
-export function buildRecordedTrendSeries(weightHistory, rangeDays = WEIGHT_TREND_RANGE_MAX) {
-  const sorted = (weightHistory || [])
+function collectRecordedWeightEntries(weightHistory) {
+  return (weightHistory || [])
     .filter((entry) => entry && !entry.isUndoPlaceholder && entry.CreatedAt && entry.Weight)
     .map((entry) => ({
       createdAt: parseUtcTimestamp(entry.CreatedAt),
@@ -186,16 +185,64 @@ export function buildRecordedTrendSeries(weightHistory, rangeDays = WEIGHT_TREND
     }))
     .filter((entry) => entry.createdAt && !Number.isNaN(entry.createdAt.getTime()) && Number.isFinite(entry.weight))
     .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+}
 
-  if (sorted.length === 0) return [];
-
+function uniqueLatestByDate(sorted) {
   const latestByDate = new Map();
   sorted.forEach((entry) => { latestByDate.set(toDateKey(entry.createdAt), entry); });
-  const unique = Array.from(latestByDate.values())
+  return Array.from(latestByDate.values())
     .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+}
+
+function customRangeKeys(customRange) {
+  if (!customRange?.startDate || !customRange?.endDate) return null;
+  const startKey = formatCalendarPickerDate(customRange.startDate)
+    || dateToBusinessYmd(customRange.startDate);
+  const endKey = formatCalendarPickerDate(customRange.endDate)
+    || dateToBusinessYmd(customRange.endDate);
+  if (!startKey || !endKey) return null;
+  return startKey <= endKey
+    ? { startKey, endKey }
+    : { startKey: endKey, endKey: startKey };
+}
+
+/**
+ * First weight ever logged in the app and the latest (current) weight.
+ * Uses chronological entries, not the selected chart range.
+ */
+export function getFirstAndLatestRecordedWeight(weightHistory) {
+  const sorted = collectRecordedWeightEntries(weightHistory);
+  if (sorted.length === 0) return { firstWeight: null, latestWeight: null };
+  return {
+    firstWeight: sorted[0].weight,
+    latestWeight: sorted[sorted.length - 1].weight,
+  };
+}
+
+/**
+ * Actual weigh-in points (no calendar fill). Used by Reports Trend.
+ * Numeric ranges clip to the last N days ending today. Custom uses the
+ * picker start/end (inclusive, business calendar).
+ */
+export function buildRecordedTrendSeries(
+  weightHistory,
+  rangeDays = WEIGHT_TREND_DEFAULT_DAYS,
+  customRange = null,
+) {
+  const sorted = collectRecordedWeightEntries(weightHistory);
+  if (sorted.length === 0) return [];
+
+  const unique = uniqueLatestByDate(sorted);
 
   let inRange = unique;
-  if (rangeDays !== WEIGHT_TREND_RANGE_MAX && Number.isFinite(rangeDays) && rangeDays > 0) {
+  if (rangeDays === WEIGHT_TREND_RANGE_CUSTOM) {
+    const keys = customRangeKeys(customRange);
+    if (!keys) return [];
+    inRange = unique.filter((entry) => {
+      const key = toDateKey(entry.createdAt);
+      return key >= keys.startKey && key <= keys.endKey;
+    });
+  } else if (Number.isFinite(rangeDays) && rangeDays > 0) {
     const endYmd = todayBusinessDate(DEFAULT_BUSINESS_TIMEZONE);
     const [ey, em, ed] = endYmd.split('-').map(Number);
     const end = new Date(ey, em - 1, ed);

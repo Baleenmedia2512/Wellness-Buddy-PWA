@@ -1,11 +1,13 @@
 /**
- * ReportsTrendTab — selected member's weight history from first valid
- * record through latest. Uses existing /api/weight/history.
+ * ReportsTrendTab — selected member's weight history. Chart ranges are
+ * 5 days / 10 days / 1 month / 1 year / custom date. The first→current
+ * weight label uses the full history. Uses existing /api/weight/history.
  */
 import React, { useEffect, useState } from 'react';
 import {
   getWeightHistory,
-  WEIGHT_TREND_RANGE_MAX,
+  WEIGHT_TREND_DEFAULT_DAYS,
+  WEIGHT_TREND_RANGE_CUSTOM,
 } from '../../weight';
 import {
   reportsMemberPossessiveTitle,
@@ -22,7 +24,9 @@ export default function ReportsTrendTab({ user, selectedMember }) {
   const [weightHistory, setWeightHistory] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [rangeDays, setRangeDays] = useState(WEIGHT_TREND_RANGE_MAX);
+  const [rangeDays, setRangeDays] = useState(WEIGHT_TREND_DEFAULT_DAYS);
+  const [customStartDate, setCustomStartDate] = useState(null);
+  const [customEndDate, setCustomEndDate] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -67,6 +71,13 @@ export default function ReportsTrendTab({ user, selectedMember }) {
             weightHistory={weightHistory}
             rangeDays={rangeDays}
             onRangeChange={setRangeDays}
+            customStartDate={customStartDate}
+            customEndDate={customEndDate}
+            onCustomDateSelect={(start, end) => {
+              setCustomStartDate(start);
+              setCustomEndDate(end);
+              setRangeDays(WEIGHT_TREND_RANGE_CUSTOM);
+            }}
           />
         </div>
       )}
