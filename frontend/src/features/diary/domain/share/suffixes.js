@@ -74,6 +74,12 @@ export function buildDiaryShareSuffix(activityType, payload = {}) {
       if (burned > 0) return `Calories Burnt: ${burned} kcal so far today`;
       return 'Calories Burnt';
     }
+    case 'good-habit': {
+      const notes = String(payload.notes || '').trim();
+      const isBeforeAfter = payload.habitType === 'before_after';
+      const kindLabel = isBeforeAfter ? 'Before vs After' : 'Good Habit';
+      return notes ? `${kindLabel} — ${notes}` : kindLabel;
+    }
     case DIARY_FOOD_ACTIVITY.FOOD:
     case 'food':
     default: {

@@ -343,6 +343,16 @@ describe('buildDiaryShareSuffix', () => {
     })).toBe('Academy');
   });
 
+  test('good-habit suffix uses notes and before/after label', () => {
+    expect(buildDiaryShareSuffix('good-habit', {
+      habitType: 'before_after',
+      notes: 'Morning walk',
+    })).toBe('Before vs After — Morning walk');
+    expect(buildDiaryShareSuffix('good-habit', {
+      habitType: 'image_notes',
+    })).toBe('Good Habit');
+  });
+
   test('shake suffix includes Formula 1, Shakemate, and Protein scoops', () => {
     expect(buildDiaryShareSuffix('shake', {
       shakeName: 'Herbalife Shake',

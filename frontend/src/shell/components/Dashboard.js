@@ -24,6 +24,7 @@ import DashboardTabs from './DashboardTabs';
 import UnknownEntryFlow from './UnknownEntryFlow';
 import UnknownCaptureUndoBanner, { UNDO_SECONDS } from './UnknownCaptureUndoBanner';
 import { undoDeleteCapture } from '../../features/captures';
+import { deleteGoodHabit, undoDeleteGoodHabit } from '../../features/good-habits';
 import { deleteMealById, undoMealDelete } from '../../features/nutrition';
 import { parseAnalysisData } from '../../features/nutrition/services/nutritionDashboard/analysisHelpers';
 import { prefetchMealDetails } from '../../features/nutrition/services/mealDetailCache';
@@ -519,6 +520,8 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
         return p.topic || 'Smartwatch entry';
       case 'unknown':
         return 'Capture';
+      case 'good-habit':
+        return entry.payload?.habitType === 'before_after' ? 'Before vs After' : 'Good Habit';
       default:
         return 'Entry';
     }
@@ -644,6 +647,9 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
       case 'unknown':
         await undoDeleteCapture({ captureId: entryId, userId });
         break;
+      case 'good-habit':
+        await undoDeleteGoodHabit({ userId, id: entryId });
+        break;
       default:
         return;
     }
@@ -740,6 +746,9 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
           await deleteCapture({ captureId: entryId, userId: ownerId });
           break;
         }
+        case 'good-habit':
+          await deleteGoodHabit({ userId: ownerId, id: entryId });
+          break;
         default:
           removeDiaryUndo(entry.kind, entryId);
           return;

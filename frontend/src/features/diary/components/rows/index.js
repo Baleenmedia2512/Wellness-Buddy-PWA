@@ -16,7 +16,7 @@
  */
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Smartphone, GraduationCap, HelpCircle, Share2, ArrowUp, ArrowDown } from 'lucide-react';
+import { Smartphone, GraduationCap, HelpCircle, Share2, ArrowUp, ArrowDown, Star } from 'lucide-react';
 import { useSwipeToDelete } from '../../../../shared/hooks/useSwipeToDelete';
 import { parseAnalysisData, recalculateTotals, getMealCategory } from '../../../nutrition/services/nutritionDashboard/analysisHelpers';
 import { captureAndShare } from '../../../../shared/utils/shareUtils';
@@ -841,6 +841,104 @@ export function EducationRow({
   );
 }
 
+// ─── kind: good-habit ───────────────────────────────────────────────────────
+
+export function GoodHabitRow({
+  entry,
+  onDelete,
+  canDelete = true,
+  hideTime = false,
+  timezoneIana = DEFAULT_BUSINESS_TIMEZONE,
+  ownerUserId = null,
+  viewerUserId = null,
+}) {
+  const p = entry.payload || {};
+  const { swipe, swipeEnabled } = useDiaryRowSwipe({ canDelete, onDelete, entry });
+  const thumb = thumbPropsFromEntry(entry, { ownerUserId, viewerUserId });
+  const [isSharing, setIsSharing] = useState(false);
+  const isBeforeAfter = p.habitType === 'before_after';
+  const title = isBeforeAfter ? 'Before vs After' : 'Good Habit';
+  const shareText = buildDiaryShareSuffix('good-habit', {
+    habitType: p.habitType,
+    notes: p.notes,
+  });
+
+  const handleShare = async (e) => {
+    e.stopPropagation();
+    if (swipe.dragging || swipe.leaving || isSharing || !swipe.elRef.current) return;
+    setIsSharing(true);
+    try {
+      await captureAndShare(swipe.elRef.current, {
+        title,
+        text: shareText,
+        fileName: `wellness-good-habit-${Date.now()}.png`,
+      });
+    } catch (err) {
+      if (!err?.message?.toLowerCase().includes('cancel')) {
+        console.error('[GoodHabitRow] Share failed:', err);
+      }
+    } finally {
+      setIsSharing(false);
+    }
+  };
+
+  return (
+    <SwipeDeleteShell swipe={swipe} enabled={swipeEnabled}>
+      {swipeEnabled && (
+        <div aria-hidden className="absolute inset-0 z-0 flex items-center justify-end pr-5 overflow-hidden rounded-xl">
+          <div
+            className="flex items-center justify-center w-12 h-12 bg-red-500 rounded-full"
+            style={{
+              opacity: swipe.progress,
+              transform: `scale(${0.6 + swipe.progress * 0.4})`,
+              transition: swipe.dragging ? 'none' : 'transform 160ms ease, opacity 160ms ease',
+            }}
+          >
+            <svg className="w-6 h-6 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              style={{ transform: `rotate(${swipe.armed ? 10 : 0}deg)`, transition: 'transform 160ms cubic-bezier(.2,.8,.2,1.2)', strokeWidth: swipe.armed ? 2.2 : 2 }}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3M4 7h16" />
+            </svg>
+          </div>
+        </div>
+      )}
+
+      <div
+        ref={swipe.elRef}
+        data-testid="diary-row-good-habit"
+        className={`relative z-10 bg-white/70 backdrop-blur-xl border border-gray-200/80 rounded-xl shadow-sm p-3 flex items-center gap-3 select-none overflow-hidden ${swipe.leaving ? 'pointer-events-none' : ''}`}
+        style={swipeCardStyle(swipe, { enabled: swipeEnabled })}
+        {...(swipeEnabled ? swipe.touchHandlers : {})}
+        {...(swipeEnabled ? swipe.pointerHandlers : {})}
+      >
+        {swipeEnabled && (
+          <div className="absolute bottom-0 left-0 h-0.5 bg-red-500 rounded-b-xl"
+            style={{ width: `${swipe.progress * 100}%`, transition: swipe.dragging ? 'none' : 'width 180ms ease', opacity: swipe.progress > 0 ? 1 : 0 }} />
+        )}
+        <Thumb {...thumb} fallback={<Star className="w-6 h-6 text-emerald-700" />} />
+        <div className="flex-1 min-w-0">
+          <h4 className="font-semibold text-gray-900 truncate">{title}</h4>
+          {!hideTime && (
+            <p className="text-xs text-gray-500 truncate">
+              {formatTime(entry.capturedAt, timezoneIana)}
+              {p.notes ? ` · ${p.notes}` : ''}
+            </p>
+          )}
+        </div>
+        <button
+          aria-label="Share this Good Habit"
+          onClick={handleShare}
+          disabled={isSharing}
+          className="shrink-0 ml-1 p-1.5 rounded-lg text-gray-400 hover:text-green-600 hover:bg-green-50 transition-colors disabled:opacity-50"
+        >
+          {isSharing
+            ? <div className="w-4 h-4 border-2 border-green-500 border-t-transparent rounded-full animate-spin" aria-hidden="true" />
+            : <Share2 className="w-4 h-4" aria-hidden="true" />}
+        </button>
+      </div>
+    </SwipeDeleteShell>
+  );
+}
+
 // ─── kind: watch ────────────────────────────────────────────────────────────
 
 export function WatchRow({ entry, onOpen, onDelete, canDelete = true, hideTime = false, timezoneIana = DEFAULT_BUSINESS_TIMEZONE }) {
@@ -1137,11 +1235,12 @@ export function OtherRow({
 // Default export — small registry so DiaryFeed dispatches via a lookup,
 // not a switch statement that duplicates kind enums.
 const ROWS_BY_KIND = Object.freeze({
-  food:      FoodRow,
-  weight:    WeightRow,
-  education: EducationRow,
-  watch:     WatchRow,
-  unknown:   OtherRow,
+  food:         FoodRow,
+  weight:       WeightRow,
+  education:    EducationRow,
+  watch:        WatchRow,
+  unknown:      OtherRow,
+  'good-habit': GoodHabitRow,
 });
 
 export default ROWS_BY_KIND;

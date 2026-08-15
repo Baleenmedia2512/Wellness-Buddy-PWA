@@ -9,6 +9,7 @@ import {
   Lock,
   Salad,
   Sparkles,
+  Star,
   UtensilsCrossed,
   X,
 } from 'lucide-react';
@@ -45,6 +46,8 @@ import { buildDiaryShareSuffix, extractFoodItemDisplayNames } from '../../featur
 import { useNutritionRefreshOptional } from '../../shared/context/NutritionRefreshContext';
 import { refreshDailyWellnessScoreAfterSave } from '../../features/wellness-score-sheet/services/refreshDailyWellnessScoreNow';
 import HealthySnacksSubSelectModal from './HealthySnacksSubSelectModal';
+import GoodHabitFlow from './GoodHabitFlow';
+import { saveGoodHabit } from '../../features/good-habits';
 import {
   MANUAL_LOG_CATEGORY,
   resolveManualLogCategoryClick,
@@ -85,6 +88,7 @@ const CATEGORIES = [
     isImgIcon: true,
     Icon: Dumbbell,
   },
+  { id: MANUAL_LOG_CATEGORY.GOOD_HABIT, Icon: Star, label: 'Good Habit' },
 ];
 
 /** Home hero banner greens — keep classify screen on-brand with Take Photo card. */
@@ -96,7 +100,7 @@ const BRAND = {
   active: '#16a34a',
 };
 
-/** Shared Log-as button chrome — fills one cell in the 3×3 grid. */
+/** Shared Log-as button chrome — fills one cell in the 3×4 grid. */
 const LOG_AS_BTN_BASE =
   'log-as-btn flex h-full min-h-0 w-full min-w-0 flex-col items-center justify-center gap-0.5 overflow-hidden rounded-xl px-1 py-1.5 text-center cursor-pointer select-none transition-[transform,box-shadow,background-color,border-color] duration-150 ease-out disabled:pointer-events-none disabled:opacity-50 min-[360px]:gap-1 min-[360px]:px-1.5 min-[360px]:py-2';
 
@@ -237,6 +241,7 @@ export default function ManualEntryPage({
   }, [nutritionRefresh, userId, apiBaseUrl]);
 
   const creditsEnabled = isFlagEnabled('ff.ai-credits');
+  const goodHabitEnabled = isFlagEnabled('ff.good-habit');
   const [credits, setCredits] = useState(null);
   // Start loading=true so first paint never flashes green "Analyze" before status returns.
   const [creditsLoading, setCreditsLoading] = useState(() => isFlagEnabled('ff.ai-credits'));
@@ -465,6 +470,11 @@ export default function ManualEntryPage({
     if (next.kind === 'healthy-snacks-picker') {
       setFoodEntryMeta(null);
       setActiveForm(MANUAL_LOG_CATEGORY.HEALTHY_SNACKS);
+      return;
+    }
+    if (next.kind === 'good-habit-picker') {
+      setFoodEntryMeta(null);
+      setActiveForm(MANUAL_LOG_CATEGORY.GOOD_HABIT);
       return;
     }
     setFoodEntryMeta(null);
@@ -745,6 +755,38 @@ export default function ManualEntryPage({
     });
   };
 
+  const handleGoodHabitSave = ({
+    habitType,
+    notes,
+    imageBase64: habitImage,
+    beforeImageBase64,
+    afterImageBase64,
+    shareImage,
+  }) => {
+    const capId = captureId;
+    const uid = userId;
+    setActiveForm(null);
+    onToast?.('Good Habit saved to Diary');
+    exit({
+      activityCaption: buildDiaryShareSuffix('good-habit', { habitType, notes }),
+      shareImage: shareImage || habitImage || afterImageBase64 || imageBase64,
+    });
+    void saveGoodHabit({
+      userId: uid,
+      captureId: capId,
+      habitType,
+      notes,
+      imageBase64: habitImage,
+      beforeImageBase64,
+      afterImageBase64,
+      clientTimestamp: originalCapturedAt || null,
+    }).then(() => {
+      refreshAfterPersist('manual-good-habit-persisted');
+    }).catch((err) => {
+      onToast?.(err?.message || "Couldn't save Good Habit — check Diary.");
+    });
+  };
+
   // Don't treat credits as available until status has loaded — avoids green CTA flash then lock.
   const creditsChecking = creditsEnabled && creditsLoading;
   const outOfCredits = creditsEnabled && creditUi.phase === 'exhausted';
@@ -821,8 +863,8 @@ export default function ManualEntryPage({
               Log as
             </p>
           </div>
-          <div className="grid w-full flex-1 grid-cols-3 auto-rows-[minmax(4.25rem,1fr)] gap-1.5 min-h-[12.5rem] min-[360px]:min-h-[14rem] min-[360px]:gap-2 sm:min-h-[15rem] sm:gap-2.5">
-            {CATEGORIES.map(({ id, Icon, src, label, isImgIcon }) => {
+          <div className="grid w-full flex-1 grid-cols-3 auto-rows-[minmax(4.25rem,1fr)] gap-1.5 min-h-[16rem] min-[360px]:min-h-[18rem] min-[360px]:gap-2 sm:min-h-[20rem] sm:gap-2.5">
+            {CATEGORIES.filter((cat) => goodHabitEnabled || cat.id !== MANUAL_LOG_CATEGORY.GOOD_HABIT).map(({ id, Icon, src, label, isImgIcon }) => {
               // iOS WebView often blanks custom emoji SVGs — use Lucide for Workout.
               const useLucideOnIos = id === MANUAL_LOG_CATEGORY.SMARTWATCH && isIOS() && Icon;
               const isPending = pendingLogAsId === id;
@@ -980,6 +1022,12 @@ export default function ManualEntryPage({
           setActiveForm(null);
         }}
         onPick={handleHealthySnacksPick}
+      />
+      <GoodHabitFlow
+        isOpen={activeForm === MANUAL_LOG_CATEGORY.GOOD_HABIT}
+        onClose={() => setActiveForm(null)}
+        capturedPreview={previewSrc}
+        onSave={handleGoodHabitSave}
       />
       <ManualWeightEntryModal
         isOpen={activeForm === MANUAL_LOG_CATEGORY.WEIGHT}

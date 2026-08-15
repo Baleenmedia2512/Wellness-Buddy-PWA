@@ -19,6 +19,7 @@ describe('manualLogCategories', () => {
   it('includes healthy-snacks among known category ids', () => {
     assert.equal(MANUAL_LOG_CATEGORY.HEALTHY_SNACKS, 'healthy-snacks');
     assert.equal(isManualLogCategory('healthy-snacks'), true);
+    assert.equal(isManualLogCategory('good-habit'), true);
     assert.equal(isManualLogCategory('food'), true);
     assert.equal(isManualLogCategory('nope'), false);
   });
@@ -42,6 +43,12 @@ describe('manualLogCategories', () => {
   it('routes healthy-snacks tile to the subtype picker', () => {
     assert.deepEqual(resolveManualLogCategoryClick('healthy-snacks'), {
       kind: 'healthy-snacks-picker',
+    });
+  });
+
+  it('routes good-habit tile to the subtype picker', () => {
+    assert.deepEqual(resolveManualLogCategoryClick('good-habit'), {
+      kind: 'good-habit-picker',
     });
   });
 

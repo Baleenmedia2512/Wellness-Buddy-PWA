@@ -26,8 +26,8 @@ function loadImage(src) {
   });
 }
 
-function encodeWithinBudget(canvas) {
-  const targetBytes = STORAGE_IMAGE_TARGET_BYTES || 22 * 1024;
+function encodeWithinBudget(canvas, targetBytesOverride) {
+  const targetBytes = targetBytesOverride || STORAGE_IMAGE_TARGET_BYTES || 22 * 1024;
   const startQuality = STORAGE_IMAGE_JPEG_QUALITY || 0.65;
   const maxDataUrlLen = Math.ceil(targetBytes / 0.75) + 32;
 
@@ -44,15 +44,16 @@ function encodeWithinBudget(canvas) {
 
 /**
  * @param {string|null|undefined} imageBase64
+ * @param {{ targetBytes?: number, maxDim?: number }} [options]
  * @returns {Promise<string|null>} JPEG data URL sized for DB storage, or null
  */
-export async function toStorageThumbnail(imageBase64) {
+export async function toStorageThumbnail(imageBase64, options = {}) {
   const src = toDataUrl(imageBase64);
   if (!src) return null;
 
   try {
     const img = await loadImage(src);
-    const maxDim = STORAGE_IMAGE_MAX_DIMENSION_PX || 256;
+    const maxDim = options.maxDim || STORAGE_IMAGE_MAX_DIMENSION_PX || 256;
     const scale = Math.min(1, maxDim / Math.max(img.width, img.height, 1));
     const width = Math.max(1, Math.round(img.width * scale));
     const height = Math.max(1, Math.round(img.height * scale));
@@ -71,7 +72,7 @@ export async function toStorageThumbnail(imageBase64) {
     }
     ctx.drawImage(img, 0, 0, width, height);
 
-    const dataUrl = encodeWithinBudget(canvas);
+    const dataUrl = encodeWithinBudget(canvas, options.targetBytes);
     canvas.width = 0;
     canvas.height = 0;
 
