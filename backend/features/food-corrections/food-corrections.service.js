@@ -18,11 +18,13 @@ import {
   sortByFoodNameMatch,
 } from '../nutrition-knowledge/index.js';
 import logger from '../../shared/lib/logger.js';
+import { ValidationError } from '../../shared/lib/ValidationError.js';
+import { getSupabaseClient } from '../../utils/supabaseClient.js';
+import { assertViewerCanAccessMember } from '../../utils/reportingHierarchyService.js';
 import {
   injectGlycemicIndexIntoAnalysisData,
   resolveGlycemicIndexForUpdate,
 } from './glycemicIndex.helpers.js';
-import { ValidationError } from '../../shared/lib/ValidationError.js';
 
 const MICRO_TOTAL_FIELDS = [
   ['totalVitaminA', 'TotalVitaminA'], ['totalVitaminC', 'TotalVitaminC'],
@@ -408,10 +410,13 @@ export async function getStats({
   startDate = null,
   endDate = null,
   maxRangeDays = 31,
+  viewerUserId = null,
 }) {
   if (userId === 'DEMO_USER') {
     return { httpStatus: 200, body: demoStatsResponse() };
   }
+
+  await assertViewerCanAccessMember(getSupabaseClient(), viewerUserId, userId);
 
   const timezoneIana = await getUserTimezoneIana(userId);
 

@@ -4,6 +4,8 @@
 export const REPORT_DASHBOARD_TABS = {
   IDEAL_WEIGHT: 'ideal-weight',
   WELLNESS_SCORE: 'wellness-score',
+  NUTRITION: 'nutrition',
+  TREND: 'trend',
 };
 
 /**
@@ -16,6 +18,12 @@ export function resolveReportsDashboardTab(initialTab, wellnessScoreEnabled) {
     && wellnessScoreEnabled
   ) {
     return REPORT_DASHBOARD_TABS.WELLNESS_SCORE;
+  }
+  if (initialTab === REPORT_DASHBOARD_TABS.NUTRITION) {
+    return REPORT_DASHBOARD_TABS.NUTRITION;
+  }
+  if (initialTab === REPORT_DASHBOARD_TABS.TREND) {
+    return REPORT_DASHBOARD_TABS.TREND;
   }
   return REPORT_DASHBOARD_TABS.IDEAL_WEIGHT;
 }

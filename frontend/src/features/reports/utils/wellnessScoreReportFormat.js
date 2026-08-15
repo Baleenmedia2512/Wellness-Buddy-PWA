@@ -62,13 +62,15 @@ export function computeWeightChange(todayWeight, previousWeight, differenceFromA
 
 /**
  * @param {number|null|undefined} kg
+ * @param {{ compact?: boolean }} [opts] compact — number only (mobile WT column)
  * @returns {string}
  */
-export function formatWeightKg(kg) {
+export function formatWeightKg(kg, opts = {}) {
   if (kg == null || kg === '') return '';
   const n = Number(kg);
   if (!Number.isFinite(n)) return '';
-  return `${n.toFixed(2)} kg`;
+  const value = n.toFixed(2);
+  return opts.compact ? value : `${value} kg`;
 }
 
 /**

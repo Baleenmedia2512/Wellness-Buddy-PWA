@@ -39,6 +39,7 @@ import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton'
 import LoadingSpinner from '../../../shared/components/LoadingSpinner';
 import { useTestimonial } from '../hooks/useTestimonial.js';
 import { useTestimonialVideo } from '../hooks/useTestimonialVideo.js';
+import { MAX_HEALTH_VIDEO_MB, MAX_BUSINESS_VIDEO_MB } from '../utils/videoLimits.js';
 import { editTestimonial } from '../services/testimonialApi.js';
 import {
   PORTRAIT_IMAGE_CLASS_SM,
@@ -497,6 +498,7 @@ function VideoSlotContent({
   const accentBtn = isHealth ? 'bg-green-600 hover:bg-green-700' : 'bg-blue-600 hover:bg-blue-700';
   const accentBorder = isHealth ? 'border-green-200 text-green-700' : 'border-blue-200 text-blue-700';
   const maxLabel = isHealth ? '1 min' : '2 min';
+  const maxMb = isHealth ? MAX_HEALTH_VIDEO_MB : MAX_BUSINESS_VIDEO_MB;
 
   return (
     <div className="px-4 pb-5 pt-4 space-y-4">
@@ -509,7 +511,7 @@ function VideoSlotContent({
         <p className="text-xs text-gray-500 leading-relaxed">
           {isEditMode
             ? `Replace your ${isHealth ? 'health' : 'business'} results video. Your sponsor will receive a new OTP.`
-            : `Upload a short ${isHealth ? 'health' : 'business'} results video (max ${maxLabel}). Your sponsor verifies it.`}
+            : `Upload a short ${isHealth ? 'health' : 'business'} results video (max ${maxLabel}, ${maxMb} MB). Your sponsor verifies it.`}
         </p>
       )}
 
@@ -1118,7 +1120,7 @@ export default function TestimonialsHub({ userId, focusOnly = null, onFocusClose
           iconBg="bg-green-50"
           iconColor="text-green-600"
           title="Health Results"
-          subtitle={healthSlotExpanded ? null : 'Max 1 min · show your health journey'}
+          subtitle={healthSlotExpanded ? null : `Max 1 min · ${MAX_HEALTH_VIDEO_MB} MB`}
           status={slots.healthVideo}
           isExpanded={healthSlotExpanded || (isFocused && focusOnly === 'health')}
           onToggle={() => {
@@ -1155,7 +1157,7 @@ export default function TestimonialsHub({ userId, focusOnly = null, onFocusClose
           iconBg="bg-blue-50"
           iconColor="text-blue-600"
           title="Business Results"
-          subtitle={businessSlotExpanded ? null : 'Max 2 min · show your business journey'}
+          subtitle={businessSlotExpanded ? null : `Max 2 min · ${MAX_BUSINESS_VIDEO_MB} MB`}
           status={slots.businessVideo}
           isExpanded={businessSlotExpanded || (isFocused && focusOnly === 'business')}
           onToggle={() => {

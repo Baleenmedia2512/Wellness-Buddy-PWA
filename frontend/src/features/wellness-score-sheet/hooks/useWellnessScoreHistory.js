@@ -56,6 +56,7 @@ export function useWellnessScoreHistory({
   endDate,
   selectedDate,
   nutritionRefreshKey = 0,
+  persistSnapshot = true,
 }) {
   const paintedOnMount = instantPaintDays({ user, startDate, endDate });
   const [loading, setLoading] = useState(paintedOnMount.length === 0);
@@ -76,7 +77,7 @@ export function useWellnessScoreHistory({
       return;
     }
 
-    const snapshot = getWellnessScoreSnapshot();
+    const snapshot = persistSnapshot ? getWellnessScoreSnapshot() : null;
     const knownUserId = user.id || snapshot?.userId || null;
     const singleDay = isSingleDayRange(startDate, endDate);
     const cachedDaily = (knownUserId && singleDay)
@@ -84,7 +85,8 @@ export function useWellnessScoreHistory({
       : null;
 
     if (
-      !force
+      persistSnapshot
+      && !force
       && !shouldRefreshWellnessScore()
       && snapshotMatchesRange({
         snapshot,
@@ -147,16 +149,18 @@ export function useWellnessScoreHistory({
       if (requestId !== requestIdRef.current) return;
 
       applyDays(days);
-      setWellnessScoreSnapshot({
-        userId,
-        rangeKey: rangeKey(startDate, endDate),
-        startDate,
-        endDate,
-        days,
-        activityLogId: activityLogAtFetch,
-      });
-      if (getLatestActivityLogId() === activityLogAtFetch) {
-        markWellnessScoreProcessed(activityLogAtFetch);
+      if (persistSnapshot) {
+        setWellnessScoreSnapshot({
+          userId,
+          rangeKey: rangeKey(startDate, endDate),
+          startDate,
+          endDate,
+          days,
+          activityLogId: activityLogAtFetch,
+        });
+        if (getLatestActivityLogId() === activityLogAtFetch) {
+          markWellnessScoreProcessed(activityLogAtFetch);
+        }
       }
     } catch (err) {
       if (requestId !== requestIdRef.current) return;
@@ -165,7 +169,7 @@ export function useWellnessScoreHistory({
     } finally {
       if (requestId === requestIdRef.current) setLoading(false);
     }
-  }, [user, apiBaseUrl, startDate, endDate, applyDays]);
+  }, [user, apiBaseUrl, startDate, endDate, applyDays, persistSnapshot]);
 
   useEffect(() => {
     const painted = instantPaintDays({ user, startDate, endDate });
@@ -187,8 +191,8 @@ export function useWellnessScoreHistory({
   }, [startDate, endDate, user?.id, applyDays]);
 
   useEffect(() => {
-    const snapshot = getWellnessScoreSnapshot();
-    const rangeChanged = !snapshotMatchesRange({
+    const snapshot = persistSnapshot ? getWellnessScoreSnapshot() : null;
+    const rangeChanged = !persistSnapshot || !snapshotMatchesRange({
       snapshot,
       userId: user?.id,
       startDate,
@@ -203,7 +207,7 @@ export function useWellnessScoreHistory({
     // Home already painted Today via /daily — don't force a second compute
     // just because the sheet snapshot is empty on first open.
     reload({ force: (rangeChanged && !hasFreshDaily) || needsRefresh });
-  }, [reload, user?.id, startDate, endDate]);
+  }, [reload, user?.id, startDate, endDate, persistSnapshot]);
 
   useEffect(() => {
     return subscribeDailyWellnessScoreSeed(({ userId, date: seedDate, score }) => {

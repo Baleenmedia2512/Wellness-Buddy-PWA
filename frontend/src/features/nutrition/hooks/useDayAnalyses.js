@@ -87,6 +87,8 @@ export function useDayAnalyses({
   enableActivityLogGate = false,
   /** When false, skip auto-fetch (timeline modal-host mount). */
   enabled = true,
+  /** Coach viewing a downline member — forwarded for backend hierarchy check. */
+  viewerUserId = null,
 }) {
   // Restore last Home snapshot instantly when remounting with no new activity log.
   const cachedSnapshot = enableActivityLogGate ? getHomeDashboardSnapshot() : null;
@@ -155,14 +157,29 @@ export function useDayAnalyses({
           );
         }
 
+        const statsParams = new URLSearchParams({
+          userId: String(actualUserId),
+          date: dateString,
+          detailed: 'true',
+          _t: String(cacheBuster),
+        });
+        if (viewerUserId != null && viewerUserId !== '' && String(viewerUserId) !== String(actualUserId)) {
+          statsParams.set('viewerUserId', String(viewerUserId));
+        }
+
         const response = await fetch(
-          `${apiBaseUrl}/api/food-corrections/stats?userId=${actualUserId}&date=${dateString}&detailed=true&_t=${cacheBuster}`,
+          `${apiBaseUrl}/api/food-corrections/stats?${statsParams.toString()}`,
           {
             cache: 'no-store',
             headers: { 'Cache-Control': 'no-cache', Pragma: 'no-cache' },
           },
         );
         const data = await response.json();
+
+        if (response.status === 403) {
+          setError('You do not have permission to view this member.');
+          return;
+        }
 
         // Stage 19 — useDayAnalyses fetch completed
         if (_trD) {
@@ -224,7 +241,7 @@ export function useDayAnalyses({
         setLoading(false);
       }
     },
-    [apiBaseUrl, resolveUserId, enableActivityLogGate],
+    [apiBaseUrl, resolveUserId, enableActivityLogGate, viewerUserId],
   );
 
   // Auto-refresh when user, date, or nutritionRefreshKey (activity log) changes.

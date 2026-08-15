@@ -9,6 +9,7 @@ import { User, Search, X } from 'lucide-react';
 export default function TeamSearchInput({
   inputRef, value, searchQuery, onChange, onFocus, onClear,
   showViewMine, onClearSelection,
+  placeholder = 'Type a name to search members...',
 }) {
   return (
     <div className="flex items-center gap-2">
@@ -23,7 +24,7 @@ export default function TeamSearchInput({
           onChange={(e) => onChange(e.target.value)}
           onFocus={onFocus}
           onClick={(e) => { if (!searchQuery) e.target.select(); }}
-          placeholder="Type a name to search members..."
+          placeholder={placeholder}
           className="block w-full pl-10 pr-10 py-2.5 border border-gray-300 rounded-xl text-sm font-medium placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all cursor-pointer"
         />
         {searchQuery ? (

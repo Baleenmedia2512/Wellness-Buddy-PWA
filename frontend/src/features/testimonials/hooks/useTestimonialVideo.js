@@ -14,12 +14,12 @@ import {
   getMyVideoTestimonial,
 } from '../services/testimonialApi.js';
 import { resolveVideoDuration } from '../utils/getVideoMetadata.js';
-
-// Server-side binary limits — mirrors backend validator constants
-const MAX_HEALTH_VIDEO_MB   = 50;
-const MAX_BUSINESS_VIDEO_MB = 50;
-const MAX_HEALTH_DURATION_S   = 60;   // 1 min
-const MAX_BUSINESS_DURATION_S = 120;  // 2 min
+import {
+  MAX_HEALTH_DURATION_S,
+  MAX_BUSINESS_DURATION_S,
+  isVideoOverSizeLimit,
+  videoTooLargeMessage,
+} from '../utils/videoLimits.js';
 
 /**
  * @param {{ userId: number, healthIssues?: string[] }} opts
@@ -116,14 +116,12 @@ export function useTestimonialVideo({ userId, healthIssues = [] }) {
       setError(null);
       setWarning(null);
 
-      const maxMb       = slot === 'health' ? MAX_HEALTH_VIDEO_MB   : MAX_BUSINESS_VIDEO_MB;
       const maxDuration = slot === 'health' ? MAX_HEALTH_DURATION_S : MAX_BUSINESS_DURATION_S;
       const maxLabel    = slot === 'health' ? '1 min' : '2 min';
 
-      // Size check (rough, before full read)
       const fileMb = file.size / (1024 * 1024);
-      if (fileMb > maxMb) {
-        setError(`${slot === 'health' ? 'Health' : 'Business'} video is too large (max ~${maxMb} MB). Please compress or trim the video.`);
+      if (isVideoOverSizeLimit(file, slot)) {
+        setError(videoTooLargeMessage(slot));
         return;
       }
 

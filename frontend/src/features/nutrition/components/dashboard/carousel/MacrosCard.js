@@ -5,23 +5,59 @@ import CarouselPeriodHeader from './CarouselPeriodHeader';
 
 /**
  * MacrosCard — Card 2 of the Nutrition Carousel.
- * Compact MyFitnessPal-style with 3 macros side by side.
+ * layout="grid" (default): 3 macros side by side for the Home carousel.
+ * layout="stack": Carbs, Fat, Protein stacked vertically for Reports Nutrition.
  */
-const MacrosCard = ({ 
-  consumedProtein, 
-  consumedFat, 
-  consumedCarbs, 
-  proteinTarget, 
-  fatTarget, 
-  carbsTarget, 
+const MacrosCard = ({
+  consumedProtein,
+  consumedFat,
+  consumedCarbs,
+  proteinTarget,
+  fatTarget,
+  carbsTarget,
   periodContext,
   onOpenModal,
+  layout = 'grid',
 }) => {
   const hasTargets = proteinTarget != null;
-  
+  const isStack = layout === 'stack';
+
   const proteinPct = hasTargets && proteinTarget > 0 ? Math.round((consumedProtein / proteinTarget) * 100) : null;
   const fatPct = hasTargets && fatTarget > 0 ? Math.round((consumedFat / fatTarget) * 100) : null;
   const carbsPct = hasTargets && carbsTarget > 0 ? Math.round((consumedCarbs / carbsTarget) * 100) : null;
+
+  const items = [
+    {
+      key: 'carbs',
+      label: 'Carbs',
+      Icon: Wheat,
+      iconClass: 'text-orange-500',
+      color: 'from-orange-400 to-amber-400',
+      consumed: consumedCarbs,
+      target: carbsTarget,
+      pct: carbsPct,
+    },
+    {
+      key: 'fat',
+      label: 'Fat',
+      Icon: Droplet,
+      iconClass: 'text-yellow-500',
+      color: 'from-yellow-400 to-amber-500',
+      consumed: consumedFat,
+      target: fatTarget,
+      pct: fatPct,
+    },
+    {
+      key: 'protein',
+      label: 'Protein',
+      Icon: Beef,
+      iconClass: 'text-blue-500',
+      color: 'from-blue-400 to-indigo-500',
+      consumed: consumedProtein,
+      target: proteinTarget,
+      pct: proteinPct,
+    },
+  ];
 
   return (
     <div className="h-full flex items-center justify-center py-2">
@@ -42,88 +78,16 @@ const MacrosCard = ({
           )}
         </div>
 
-        {/* 3 Macros in a Row — order: Carbs, Fat, Protein */}
-        <div className="grid grid-cols-3 gap-3">
-          {/* Carbs */}
-          <div className="text-center">
-            {carbsPct != null ? (
-              <CircularProgress 
-                percentage={carbsPct} 
-                color="from-orange-400 to-amber-400" 
-                size={60} 
-                strokeWidth={5} 
-                targetLabel={carbsTarget != null ? `${carbsTarget}g` : undefined}
-                onClick={() => onOpenModal && onOpenModal('carbs')}
-              />
-            ) : (
-              <div className="w-[60px] h-[60px] mx-auto rounded-full bg-gray-100 flex items-center justify-center">
-                <span className="text-xs text-gray-400 font-medium">?</span>
-              </div>
-            )}
-            <div className="mt-1">
-              <div className="flex items-center justify-center gap-0.5 mb-0.5">
-                <Wheat className="w-3 h-3 text-orange-500" />
-                <p className="text-[10px] font-semibold text-gray-700">Carbs</p>
-              </div>
-              <p className="text-xs font-bold text-gray-900">{Math.round(consumedCarbs || 0)}g</p>
-              {hasTargets && <p className="text-[9px] text-gray-500">/ {carbsTarget}g</p>}
-              {!hasTargets && <p className="text-[8px] text-amber-600">No target</p>}
-            </div>
-          </div>
-
-          {/* Fat */}
-          <div className="text-center">
-            {fatPct != null ? (
-              <CircularProgress 
-                percentage={fatPct} 
-                color="from-yellow-400 to-amber-500" 
-                size={60} 
-                strokeWidth={5} 
-                targetLabel={fatTarget != null ? `${fatTarget}g` : undefined}
-                onClick={() => onOpenModal && onOpenModal('fat')}
-              />
-            ) : (
-              <div className="w-[60px] h-[60px] mx-auto rounded-full bg-gray-100 flex items-center justify-center">
-                <span className="text-xs text-gray-400 font-medium">?</span>
-              </div>
-            )}
-            <div className="mt-1">
-              <div className="flex items-center justify-center gap-0.5 mb-0.5">
-                <Droplet className="w-3 h-3 text-yellow-500" />
-                <p className="text-[10px] font-semibold text-gray-700">Fat</p>
-              </div>
-              <p className="text-xs font-bold text-gray-900">{Math.round(consumedFat || 0)}g</p>
-              {hasTargets && <p className="text-[9px] text-gray-500">/ {fatTarget}g</p>}
-              {!hasTargets && <p className="text-[8px] text-amber-600">No target</p>}
-            </div>
-          </div>
-
-          {/* Protein */}
-          <div className="text-center">
-            {proteinPct != null ? (
-              <CircularProgress 
-                percentage={proteinPct} 
-                color="from-blue-400 to-indigo-500" 
-                size={60} 
-                strokeWidth={5} 
-                targetLabel={proteinTarget != null ? `${proteinTarget}g` : undefined}
-                onClick={() => onOpenModal && onOpenModal('protein')}
-              />
-            ) : (
-              <div className="w-[60px] h-[60px] mx-auto rounded-full bg-gray-100 flex items-center justify-center">
-                <span className="text-xs text-gray-400 font-medium">?</span>
-              </div>
-            )}
-            <div className="mt-1">
-              <div className="flex items-center justify-center gap-0.5 mb-0.5">
-                <Beef className="w-3 h-3 text-blue-500" />
-                <p className="text-[10px] font-semibold text-gray-700">Protein</p>
-              </div>
-              <p className="text-xs font-bold text-gray-900">{Math.round(consumedProtein || 0)}g</p>
-              {hasTargets && <p className="text-[9px] text-gray-500">/ {proteinTarget}g</p>}
-              {!hasTargets && <p className="text-[8px] text-amber-600">No target</p>}
-            </div>
-          </div>
+        <div className={isStack ? 'flex flex-col' : 'grid grid-cols-3 gap-3'}>
+          {items.map((item) => (
+            <MacroItem
+              key={item.key}
+              item={item}
+              hasTargets={hasTargets}
+              isStack={isStack}
+              onOpenModal={onOpenModal}
+            />
+          ))}
         </div>
 
         {/* Footer */}
@@ -138,5 +102,73 @@ const MacrosCard = ({
     </div>
   );
 };
+
+function MacroItem({ item, hasTargets, isStack, onOpenModal }) {
+  const { key, label, Icon, iconClass, color, consumed, target, pct } = item;
+  const consumedLabel = `${Math.round(consumed || 0)}g`;
+
+  const circle = pct != null ? (
+    <CircularProgress
+      percentage={pct}
+      color={color}
+      size={60}
+      strokeWidth={5}
+      targetLabel={target != null ? `${target}g` : undefined}
+      onClick={isStack ? undefined : () => onOpenModal && onOpenModal(key)}
+    />
+  ) : (
+    <div className={`w-[60px] h-[60px] rounded-full bg-gray-100 flex items-center justify-center ${isStack ? '' : 'mx-auto'}`}>
+      <span className="text-xs text-gray-400 font-medium">?</span>
+    </div>
+  );
+
+  if (isStack) {
+    return (
+      <div
+        className={`flex items-center gap-3 py-2.5 border-b border-gray-100 last:border-b-0 ${
+          onOpenModal ? 'cursor-pointer active:scale-[0.99] transition-transform' : ''
+        }`}
+        onClick={() => onOpenModal && onOpenModal(key)}
+        role={onOpenModal ? 'button' : undefined}
+        tabIndex={onOpenModal ? 0 : undefined}
+        onKeyPress={onOpenModal ? (e) => { if (e.key === 'Enter' || e.key === ' ') onOpenModal(key); } : undefined}
+      >
+        <div className="shrink-0 pointer-events-none">{circle}</div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1 mb-0.5">
+            <Icon className={`w-3.5 h-3.5 ${iconClass}`} />
+            <p className="text-sm font-semibold text-gray-700">{label}</p>
+          </div>
+          {hasTargets ? (
+            <p className="text-sm font-bold text-gray-900">
+              {consumedLabel}
+              <span className="text-xs font-normal text-gray-500"> / {target}g</span>
+            </p>
+          ) : (
+            <>
+              <p className="text-sm font-bold text-gray-900">{consumedLabel}</p>
+              <p className="text-[8px] text-amber-600">No target</p>
+            </>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="text-center">
+      {circle}
+      <div className="mt-1">
+        <div className="flex items-center justify-center gap-0.5 mb-0.5">
+          <Icon className={`w-3 h-3 ${iconClass}`} />
+          <p className="text-[10px] font-semibold text-gray-700">{label}</p>
+        </div>
+        <p className="text-xs font-bold text-gray-900">{consumedLabel}</p>
+        {hasTargets && <p className="text-[9px] text-gray-500">/ {target}g</p>}
+        {!hasTargets && <p className="text-[8px] text-amber-600">No target</p>}
+      </div>
+    </div>
+  );
+}
 
 export default MacrosCard;

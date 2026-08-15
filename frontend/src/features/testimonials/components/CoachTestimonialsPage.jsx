@@ -34,6 +34,7 @@ import {
 } from './TransformationShareCard.jsx';
 import { getCachedVideoThumbnail } from '../utils/videoThumbnailCache.js';
 import { resolveResultVideoUrl, prefetchNativeResultVideos } from '../utils/downloadVideo.js';
+import { MAX_HEALTH_VIDEO_MB, isVideoOverSizeLimit, videoTooLargeMessage } from '../utils/videoLimits.js';
 import { compressImage } from '../hooks/useTestimonial.js';
 import { setCaptureFlowBusy } from '../../../shared/services/captureFlowBusy';
 import {
@@ -640,6 +641,10 @@ function MemberCard({
       setVideoUploadError('Cannot upload video: user ID is missing. Please refresh the page.');
       return;
     }
+    if (isVideoOverSizeLimit(file, slot)) {
+      setVideoUploadError(videoTooLargeMessage(slot));
+      return;
+    }
     setVideoUploadError(null);
     const localUrl = URL.createObjectURL(file);
     if (slot === 'health')    { setDraftHealthPreview(localUrl);   setUploadingHealth(true);   }
@@ -1197,6 +1202,7 @@ function MemberCard({
         <div className="space-y-1.5">
           <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide flex items-center gap-1">
             <Video className="h-3 w-3" /> Result Video
+            <span className="font-normal normal-case tracking-normal">· max {MAX_HEALTH_VIDEO_MB} MB each</span>
           </p>
           {editable && videoUploadError && (
             <div className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5 flex items-start gap-2">

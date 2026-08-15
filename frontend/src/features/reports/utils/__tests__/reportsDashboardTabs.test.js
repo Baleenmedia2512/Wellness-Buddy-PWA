@@ -33,4 +33,15 @@ describe('resolveReportsDashboardTab', () => {
       REPORT_DASHBOARD_TABS.IDEAL_WEIGHT,
     );
   });
+
+  it('opens Nutrition and Trend when requested', () => {
+    assert.equal(
+      resolveReportsDashboardTab(REPORT_DASHBOARD_TABS.NUTRITION, true),
+      REPORT_DASHBOARD_TABS.NUTRITION,
+    );
+    assert.equal(
+      resolveReportsDashboardTab(REPORT_DASHBOARD_TABS.TREND, false),
+      REPORT_DASHBOARD_TABS.TREND,
+    );
+  });
 });
