@@ -280,3 +280,12 @@ registerFlag({
   description:    'ADR-0006 — User Consent Form gate: require Agree before OTP/Google account creation; no team_table insert without consent; existing users blocked until accepted.',
   defaultEnabled: true,
 });
+
+registerFlag({
+  name:           'ff.good-habit',
+  owner:          '@principal-eng',
+  createdAt:      '2026-08-16',
+  removeBy:       '2027-02-16',
+  description:    'ADR-0008 — Manual Log Good Habit tile: Before vs After or Image + Notes. New good_habits_table; Diary kind good-habit. Does not change food logging or capture state machine.',
+  defaultEnabled: true,
+});

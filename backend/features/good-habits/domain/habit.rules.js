@@ -1,0 +1,81 @@
+/**
+ * Pure Good Habit rules. No I/O.
+ */
+
+export const HABIT_TYPE_BEFORE_AFTER = 'before_after';
+export const HABIT_TYPE_IMAGE_NOTES = 'image_notes';
+
+export const HABIT_TYPES = Object.freeze([
+  HABIT_TYPE_BEFORE_AFTER,
+  HABIT_TYPE_IMAGE_NOTES,
+]);
+
+export const NOTES_MAX_LEN = 200;
+
+export function isHabitType(value) {
+  return HABIT_TYPES.includes(value);
+}
+
+export function clampNotes(value) {
+  if (value == null) return '';
+  return String(value).slice(0, NOTES_MAX_LEN);
+}
+
+export function stripDataUrl(value) {
+  if (value == null) return null;
+  const text = String(value).trim();
+  if (!text) return null;
+  const comma = text.indexOf(',');
+  if (text.startsWith('data:') && comma !== -1) {
+    return text.slice(comma + 1) || null;
+  }
+  return text;
+}
+
+/**
+ * @param {{ habitType: string, notes?: string, imageBase64?: string|null, beforeImageBase64?: string|null, afterImageBase64?: string|null }} input
+ * @returns {{ habitType: string, notes: string, imageBase64: string|null, beforeImageBase64: string|null, afterImageBase64: string|null }}
+ */
+export function normalizeHabitPayload(input) {
+  const habitType = input?.habitType;
+  const notes = clampNotes(input?.notes);
+  const imageBase64 = stripDataUrl(input?.imageBase64);
+  const beforeImageBase64 = stripDataUrl(input?.beforeImageBase64);
+  const afterImageBase64 = stripDataUrl(input?.afterImageBase64);
+
+  if (habitType === HABIT_TYPE_BEFORE_AFTER) {
+    return {
+      habitType,
+      notes,
+      imageBase64: afterImageBase64 || imageBase64,
+      beforeImageBase64,
+      afterImageBase64,
+    };
+  }
+
+  return {
+    habitType,
+    notes,
+    imageBase64: imageBase64 || afterImageBase64 || beforeImageBase64,
+    beforeImageBase64: null,
+    afterImageBase64: null,
+  };
+}
+
+export function assertHabitImages(normalized) {
+  if (normalized.habitType === HABIT_TYPE_BEFORE_AFTER) {
+    if (!normalized.beforeImageBase64 || !normalized.afterImageBase64) {
+      const err = new Error('Before and After images are required');
+      err.status = 400;
+      err.code = 'HABIT_IMAGES_REQUIRED';
+      throw err;
+    }
+    return;
+  }
+  if (!normalized.imageBase64) {
+    const err = new Error('An image is required');
+    err.status = 400;
+    err.code = 'HABIT_IMAGE_REQUIRED';
+    throw err;
+  }
+}
