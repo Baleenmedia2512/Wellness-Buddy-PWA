@@ -1,6 +1,7 @@
 // src/shared/components/TeamMemberProfileModal/TeamMemberProfileModal.js
 import React, { useState, useEffect } from 'react';
 import { X, User, Mail, Ruler, Flame, Salad, Phone } from 'lucide-react';
+import { fetchTeamMemberProfile } from './fetchTeamMemberProfile.js';
 
 const DIET_LABELS = {
   veg: '🥦 Vegetarian',
@@ -31,13 +32,7 @@ const TeamMemberProfileModal = ({ isOpen, onClose, memberEmail, apiBaseUrl }) =>
       setError('');
       setProfile(null);
       try {
-        const base = apiBaseUrl || process.env.REACT_APP_API_BASE_URL;
-        const res = await fetch(
-          `${base}/api/user/profile?email=${encodeURIComponent(memberEmail)}&_t=${Date.now()}`,
-          { cache: 'no-store', headers: { 'Cache-Control': 'no-cache', Pragma: 'no-cache' } }
-        );
-        if (!res.ok) throw new Error('Failed to load profile');
-        const data = await res.json();
+        const data = await fetchTeamMemberProfile(memberEmail, apiBaseUrl);
         if (data.success && data.data) {
           setProfile(data.data);
         } else {
