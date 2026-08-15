@@ -452,6 +452,7 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
       const userId = await getUserId(user.email);
       const fresh = await getBodyParamsCard(userId, card.id);
       const merged = {
+        ...card,
         ...fresh,
         phoneNumber: fresh.phoneNumber ?? card.phoneNumber ?? null,
         locationName: fresh.locationName ?? card.locationName ?? null,

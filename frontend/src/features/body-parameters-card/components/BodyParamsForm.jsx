@@ -130,10 +130,6 @@ const BodyParamsForm = ({
 
   const handleSave = async () => {
     await vm.handleSave();
-    // Only reset for new-card flow; edit mode reloads from existingCard on next open.
-    if (!vm.error && !vm.isEditMode) {
-      vm.resetForm();
-    }
   };
 
   const handleBackdropClick = (e) => {

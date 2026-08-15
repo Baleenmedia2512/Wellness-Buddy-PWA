@@ -111,7 +111,7 @@ describe('getDetoxReminder', () => {
     assert.equal(marathon2Day3.marathonDay, 3);
   });
 
-  it('returns Marathon Day 1 copy one day before Day 0', () => {
+  it('returns Marathon Day 0 copy one day before Day 0', () => {
     const beforeFirst = getDetoxReminder('2026-07-31');
     assert.equal(beforeFirst.title, MARATHON_START_REMINDER_TITLE);
     assert.equal(beforeFirst.subtitle, MARATHON_START_REMINDER_SUBTITLE);
@@ -120,7 +120,7 @@ describe('getDetoxReminder', () => {
     assert.equal(beforeFirst.marathonDay, null);
 
     const beforeFifteenth = getDetoxReminder('2026-08-14');
-    assert.equal(beforeFifteenth.title, 'Tomorrow is Marathon Day 1');
+    assert.equal(beforeFifteenth.title, 'Tomorrow is Marathon Day 0');
     assert.equal(beforeFifteenth.kind, 'marathon-start');
     assert.equal(beforeFifteenth.marathonNumber, 2);
 

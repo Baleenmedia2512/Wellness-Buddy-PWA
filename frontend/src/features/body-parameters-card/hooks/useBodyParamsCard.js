@@ -9,7 +9,7 @@
  * Also owns phone-prefix autocomplete state + member pre-fill logic.
  * Components only render — no fetch logic here.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { computeKatchMcArdleBmr } from '../../../shared/utils/bmrCalculations.js';
 import { createBodyParamsCard, updateBodyParamsCard } from '../services/bodyParamsCardApi.js';
 import { teamHierarchyService } from '../../../shared/services/teamHierarchyService.js';
@@ -122,9 +122,35 @@ export function useBodyParamsCard({
 
   const targetUserId = selectedMember?.userId || selectedMember?.id || null;
 
-  // Reload form only when the modal opens (or the card being edited changes).
+  // Fingerprint of persisted card fields so a late-arriving detail fetch
+  // (same id, more values) hydrates the form without waiting for a remount.
+  const existingCardSnapshot = useMemo(() => {
+    if (!existingCard?.id) return '';
+    return [
+      existingCard.id,
+      existingCard.name,
+      existingCard.phoneNumber,
+      existingCard.age,
+      existingCard.gender,
+      existingCard.heightCm,
+      existingCard.weightKg,
+      existingCard.bmi,
+      existingCard.fatPercent,
+      existingCard.bmr,
+      existingCard.visceralFat,
+      existingCard.bodyAge,
+      existingCard.chestCm,
+      existingCard.waistCm,
+      existingCard.hipCm,
+      existingCard.locationName,
+      existingCard.recordedDate,
+    ].map((v) => (v == null ? '' : String(v))).join('\u0001');
+  }, [existingCard]);
+
+  // Reload form when the modal opens or the card values actually change.
+  // useLayoutEffect so saved / fetched values paint on the first open frame.
   // Create: prefill Venue from header. Edit: use the card's saved Venue.
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!isOpen) return;
     const next = cardToFormState(existingCard);
     if (!isEditMode) {
@@ -136,9 +162,19 @@ export function useBodyParamsCard({
     setBmiUserEdited(false);
     setBmrUserEdited(false);
     setError('');
-    // externalVenue intentionally omitted from deps — only seed on open / card change
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, existingCard?.id, isEditMode]);
+  }, [isOpen, existingCardSnapshot, isEditMode]);
+
+  // Create flow: keep form Venue in sync with the header Venue immediately.
+  useLayoutEffect(() => {
+    if (!isOpen || isEditMode) return;
+    const fromHeader = externalVenue != null ? String(externalVenue).trim() : '';
+    setForm((prev) => {
+      if (String(prev.locationName || '').trim() === fromHeader) return prev;
+      venueRef.current = fromHeader;
+      return { ...prev, locationName: fromHeader };
+    });
+  }, [isOpen, isEditMode, externalVenue]);
 
   // Resolve counsellor database UserId (team_table.UserId) — required for card createdBy only.
   useEffect(() => {
@@ -510,17 +546,22 @@ export function useBodyParamsCard({
         waistCm:      pickSavedField(cardCore.waistCm, form.waistCm),
         hipCm:        pickSavedField(cardCore.hipCm, form.hipCm),
         recordedDate: pickSavedField(cardCore.recordedDate, form.recordedDate),
-        // Prefer what we sent if API omits it (e.g. older deploy / missing column read).
-        locationName: pickSavedField(cardCore.locationName, locationNameToSave),
+        // Prefer the Venue the user just entered so the share card updates immediately.
+        locationName: locationNameToSave || pickSavedField(cardCore.locationName, locationNameToSave),
         creatorName,
       };
 
       setSavedCard(fullCard);
       setShareUrl(url);
+      // Keep the just-saved values in the form immediately (do not wait for remount).
+      setForm(cardToFormState(fullCard));
+      venueRef.current = String(fullCard.locationName || '').trim();
       debugLog('✅ [BodyParamsCard] Created:', fullCard);
       if (onSaveSuccess) onSaveSuccess(fullCard, url, prevCard);
+      return true;
     } catch (err) {
       setError(err.message || 'Failed to save. Please try again.');
+      return false;
     } finally {
       setIsSaving(false);
     }
