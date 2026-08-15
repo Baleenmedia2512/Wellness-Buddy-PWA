@@ -358,14 +358,21 @@ export function FoodRow({
     ? new Date(entry.capturedAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })
     : '';
 
+  const sharingLockRef = useRef(false);
+
   // Share taps the full off-screen nutrition card, not the compact row.
   // Water / Afresh captions use THIS card's volume / scoops.
   // Day totals ("so far today") belong to Manual Entry share after save.
   const handleShare = async (e) => {
+    e.preventDefault();
     e.stopPropagation();
-    if (swipe.dragging || swipe.leaving || isSharing) return;
+    if (sharingLockRef.current || swipe.leaving) return;
+    sharingLockRef.current = true;
     const target = shareCardRef.current || swipe.elRef.current;
-    if (!target) return;
+    if (!target) {
+      sharingLockRef.current = false;
+      return;
+    }
     setIsSharing(true);
     try {
       await captureAndShare(target, {
@@ -378,8 +385,13 @@ export function FoodRow({
         console.error('[FoodRow] Share failed:', err);
       }
     } finally {
+      sharingLockRef.current = false;
       setIsSharing(false);
     }
+  };
+
+  const stopShareGesture = (e) => {
+    e.stopPropagation();
   };
 
   return (
@@ -531,10 +543,15 @@ export function FoodRow({
             <p className="text-[11px] text-gray-500 -mt-0.5">{primaryUnit}</p>
           ) : null}
         </div>
-        {/* Share button — stopPropagation prevents opening the detail modal */}
+        {/* Share button — stopPropagation prevents opening the detail modal
+            and keeps swipe-to-delete from swallowing the first tap. */}
         <button
+          type="button"
           aria-label={`Share this ${activityType} entry`}
           onClick={handleShare}
+          onPointerDown={stopShareGesture}
+          onTouchStart={stopShareGesture}
+          onMouseDown={stopShareGesture}
           disabled={isSharing}
           className="shrink-0 ml-1 p-1.5 rounded-lg text-gray-400 hover:text-green-600 hover:bg-green-50 transition-colors disabled:opacity-50"
         >
