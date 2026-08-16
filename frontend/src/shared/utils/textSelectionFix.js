@@ -1,8 +1,10 @@
 /**
  * textSelectionFix.js
  *
- * On focus / tap of text, search, and numeric inputs: select the full value
- * so the user can type over it immediately (same UX as Workout kcal field).
+ * First focus / first tap on text, search, and numeric inputs: select the full
+ * value so the user can type over it immediately.
+ * Second tap while the field stays focused: leave the caret where the user
+ * tapped (do not re-select all).
  *
  * Opt-outs / variants via data attributes:
  *   data-no-select-all="true"         — leave caret alone
@@ -88,17 +90,49 @@ export function selectAllTextInField(el) {
   });
 }
 
-/** Props for React inputs: onFocus / onClick → select all. */
+/**
+ * Tracks whether an input was already focused at mousedown/touchstart.
+ * Used so the activating first tap still select-alls (mobile WebViews often
+ * clear focusin selection on the following click), while a second tap places
+ * the caret instead of selecting everything again.
+ * @type {WeakMap<EventTarget, boolean>}
+ */
+const alreadyFocusedAtPointerDown = new WeakMap();
+
+/** @param {EventTarget | null} target */
+export function markPointerDownFocusState(target) {
+  if (!target || !(target instanceof HTMLElement)) return;
+  if (!isSelectAllTextField(target) && target.dataset?.selectAfterDecimal !== 'true') {
+    return;
+  }
+  alreadyFocusedAtPointerDown.set(target, document.activeElement === target);
+}
+
+/** @param {EventTarget | null} target */
+export function shouldSelectAllOnClick(target) {
+  if (!target || !(target instanceof HTMLElement)) return false;
+  // First activating tap: not focused before pointer-down → select all.
+  // Second tap while focused → false → browser places caret.
+  return alreadyFocusedAtPointerDown.get(target) !== true;
+}
+
+/** Props for React inputs: first focus/tap → select all; second tap → caret. */
 export const selectAllTextFieldProps = Object.freeze({
   onFocus: (e) => selectAllTextInField(e.currentTarget),
-  onClick: (e) => selectAllTextInField(e.currentTarget),
+  onMouseDown: (e) => markPointerDownFocusState(e.currentTarget),
+  onTouchStart: (e) => markPointerDownFocusState(e.currentTarget),
+  onClick: (e) => {
+    if (shouldSelectAllOnClick(e.currentTarget)) {
+      selectAllTextInField(e.currentTarget);
+    }
+  },
 });
 
 let installed = false;
 let selectionGuardInstalled = false;
 
 /**
- * App-wide: any text/search/numeric field selects its full value on focus/tap.
+ * App-wide: first focus/tap selects full value; second tap places caret.
  * Opt out with data-no-select-all="true" on the element.
  * Weight fields: data-select-after-decimal="true".
  */
@@ -106,12 +140,23 @@ export function installSelectAllOnTextFocus() {
   if (installed || typeof document === 'undefined') return;
   installed = true;
 
-  const onActivate = (e) => {
+  const onPointerDown = (e) => {
+    markPointerDownFocusState(e.target);
+  };
+
+  const onFocusIn = (e) => {
     selectAllTextInField(e.target);
   };
 
-  document.addEventListener('focusin', onActivate, true);
-  document.addEventListener('click', onActivate, true);
+  const onClick = (e) => {
+    if (!shouldSelectAllOnClick(e.target)) return;
+    selectAllTextInField(e.target);
+  };
+
+  document.addEventListener('mousedown', onPointerDown, true);
+  document.addEventListener('touchstart', onPointerDown, true);
+  document.addEventListener('focusin', onFocusIn, true);
+  document.addEventListener('click', onClick, true);
 }
 
 /** Form fields where copy / paste / Select all must still work. */
