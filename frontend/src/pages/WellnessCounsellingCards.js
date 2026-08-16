@@ -170,17 +170,6 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
     preloadBodyParamsShareAssets();
   }, [isBodyParamsFormOpen]);
 
-  // Seed editable header Venue once from the newest card that has one.
-  useEffect(() => {
-    if (headerVenueInitializedRef.current) return;
-    const venue = bodyParamsCards
-      .map((c) => String(c.locationName || '').trim())
-      .find(Boolean);
-    if (!venue) return;
-    headerVenueInitializedRef.current = true;
-    setHeaderVenue(venue);
-  }, [bodyParamsCards]);
-
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(searchQuery.trim()), 300);
     return () => clearTimeout(t);
@@ -533,9 +522,12 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
               <RefreshCw size={20} className={refreshing ? 'animate-spin' : ''} />
             </button>
           </div>
-          <div className="flex items-center gap-2 mt-0.5 min-w-0">
-            <label className="text-xs text-gray-500 flex-shrink min-w-0" htmlFor="bpc-header-venue">
-              Body composition metrics checked at venue:
+          <div className="mt-1 flex w-full min-w-0 flex-nowrap items-center gap-1.5 overflow-x-auto py-0.5 sm:gap-2">
+            <label
+              className="whitespace-nowrap text-[11px] text-gray-500 sm:text-xs"
+              htmlFor="bpc-header-venue"
+            >
+              Body composition metrics checked at:
             </label>
             <input
               id="bpc-header-venue"
@@ -545,10 +537,9 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
                 headerVenueInitializedRef.current = true;
                 setHeaderVenue(e.target.value);
               }}
-              placeholder="e.g. Chennai"
-              className="min-w-0 w-28 sm:w-36 text-xs text-gray-800 border border-gray-200 rounded-md px-2 py-0.5 focus:outline-none focus:ring-1 focus:ring-green-500 bg-white"
+              className="h-7 w-20 min-w-[4.5rem] flex-shrink-0 rounded-md border border-gray-200 bg-white px-2 text-xs text-gray-800 outline-none focus:border-green-500 focus:ring-1 focus:ring-inset focus:ring-green-500 sm:w-28 md:w-36"
             />
-            <p className="text-xs text-gray-500 flex-shrink-0 ml-auto">
+            <p className="ml-auto flex-shrink-0 whitespace-nowrap text-[11px] text-gray-500 sm:text-xs">
               {pagination.totalRecords || bodyParamsCards.length} Cards
             </p>
           </div>
