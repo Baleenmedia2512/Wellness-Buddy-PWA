@@ -2,7 +2,8 @@
  * ReportsNutritionTab — selected member's nutrition with date-range pills
  * (Today / Yesterday / Last 7 Days / Custom).
  * When wellness score is enabled, uses the same stacked parameter cards as
- * the Wellness Score sheet (limit/target badges, Details, contribution sheet).
+ * the Wellness Score sheet — nutrition + progress sections (limit/target
+ * badges, Details, contribution sheet).
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { isFlagEnabled } from '../../../config/featureFlags';

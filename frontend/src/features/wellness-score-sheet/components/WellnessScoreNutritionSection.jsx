@@ -3,15 +3,20 @@ import { Loader2 } from 'lucide-react';
 import ScoreCategoryRow from './ScoreCategoryRow';
 import ParameterContributionModal from './ParameterContributionModal';
 import WellnessScoreDayStrip from './WellnessScoreDayStrip';
-import { getParameterMeta } from '../domain/parameterRegistry';
+import { getParameterMeta, PARAMETER_SECTIONS } from '../domain/parameterRegistry';
 import { getSectionIcon } from '../domain/parameterIcons';
 import { useTimeWindows } from '../hooks/useTimeWindows';
 import { useParameterContribution } from '../hooks/useParameterContribution';
 import { useWellnessScoreHistory } from '../hooks/useWellnessScoreHistory';
 
+/** Sections shown on the Reports Nutrition tab (nutrition + progress). */
+const REPORTS_NUTRITION_SECTIONS = PARAMETER_SECTIONS.filter(
+  (s) => s.id === 'nutrition' || s.id === 'progress',
+);
+
 /**
- * Nutrition parameter list — same cards as Wellness Score sheet.
- * One stacked card per nutrient: badge, today status, points, Details, progress bar.
+ * Nutrition + Progress parameter lists — same cards as Wellness Score sheet.
+ * One stacked card per parameter: badge, today status, points, Details, progress bar.
  */
 export default function WellnessScoreNutritionSection({
   user,
@@ -55,12 +60,19 @@ export default function WellnessScoreNutritionSection({
     viewerUserId,
   });
 
-  const nutritionParams = (scoreData?.parameters || []).filter(
-    (p) => getParameterMeta(p.key)?.section === 'nutrition',
-  );
-  const sectionEarned = nutritionParams.reduce((s, p) => s + (p.earnedPoints ?? 0), 0);
-  const sectionMax = nutritionParams.reduce((s, p) => s + (p.maxPoints ?? 0), 0);
-  const SectionIcon = getSectionIcon('nutrition');
+  const sections = REPORTS_NUTRITION_SECTIONS.map((section) => {
+    const parameters = (scoreData?.parameters || []).filter(
+      (p) => getParameterMeta(p.key)?.section === section.id,
+    );
+    return {
+      ...section,
+      parameters,
+      earned: parameters.reduce((s, p) => s + (p.earnedPoints ?? 0), 0),
+      max: parameters.reduce((s, p) => s + (p.maxPoints ?? 0), 0),
+    };
+  }).filter((section) => section.parameters.length > 0);
+
+  const hasAnyParams = sections.length > 0;
 
   return (
     <div className="space-y-3">
@@ -100,38 +112,48 @@ export default function WellnessScoreNutritionSection({
         </p>
       )}
 
-      {scoreData && nutritionParams.length === 0 && (
+      {scoreData && !hasAnyParams && (
         <p className="text-sm text-gray-500 py-10 text-center">
           No nutrition score data available for this user.
         </p>
       )}
 
-      {scoreData && nutritionParams.length > 0 && (
-        <section className="overflow-hidden rounded-2xl border border-gray-200/90 bg-white shadow-sm">
-          {/* <div className="flex items-center justify-between border-b border-gray-100 bg-gray-50/80 px-4 py-2.5">
-            <div className="flex items-center gap-2">
-              <SectionIcon className="h-4 w-4 text-emerald-600" aria-hidden />
-              <h2 className="text-xs font-bold uppercase tracking-wide text-gray-700">
-                Nutrition
-              </h2>
+      {scoreData && sections.map((section) => {
+        const SectionIcon = getSectionIcon(section.id);
+        const showHeader = section.id === 'progress';
+
+        return (
+          <section
+            key={section.id}
+            className="overflow-hidden rounded-2xl border border-gray-200/90 bg-white shadow-sm"
+          >
+            {showHeader && (
+              <div className="flex items-center justify-between border-b border-gray-100 bg-gray-50/80 px-4 py-2.5">
+                <div className="flex items-center gap-2">
+                  <SectionIcon className="h-4 w-4 text-emerald-600" aria-hidden />
+                  <h2 className="text-xs font-bold uppercase tracking-wide text-gray-700">
+                    {section.label}
+                  </h2>
+                </div>
+                <span className="text-xs font-semibold tabular-nums text-gray-600">
+                  {Math.round(section.earned)}/{Math.round(section.max)}
+                </span>
+              </div>
+            )}
+            <div className="space-y-2 p-3">
+              {section.parameters.map((param) => (
+                <ScoreCategoryRow
+                  key={param.key}
+                  category={param}
+                  goalMode={scoreData?.goalMode}
+                  timeWindows={timeWindows}
+                  onOpenContribution={handleOpenContribution}
+                />
+              ))}
             </div>
-            <span className="text-xs font-semibold tabular-nums text-gray-600">
-              {Math.round(sectionEarned)}/{Math.round(sectionMax)}
-            </span>
-          </div> */}
-          <div className="space-y-2 p-3">
-            {nutritionParams.map((param) => (
-              <ScoreCategoryRow
-                key={param.key}
-                category={param}
-                goalMode={scoreData?.goalMode}
-                timeWindows={timeWindows}
-                onOpenContribution={handleOpenContribution}
-              />
-            ))}
-          </div>
-        </section>
-      )}
+          </section>
+        );
+      })}
 
       <ParameterContributionModal
         isOpen={!!selectedParam}
