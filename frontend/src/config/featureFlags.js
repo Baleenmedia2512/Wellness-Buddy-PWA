@@ -141,7 +141,7 @@ const REGISTRY = Object.freeze({
     envKey:         'REACT_APP_FF_GOOD_HABIT',
     storageKey:     'ff.good-habit',
     defaultEnabled: true,
-    description:    'Manual Log Good Habit: Before vs After or Image + Notes (ADR-0008).',
+    description:    'Manual Log Good Habit and wellness-score Good Habit Post (ADR-0008).',
   },
 });
 
