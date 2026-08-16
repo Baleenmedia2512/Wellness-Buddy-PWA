@@ -94,6 +94,12 @@ export default function WellnessScoreNutritionSection({
         </div>
       )}
 
+      {!loading && !error && !scoreData && (
+        <p className="text-sm text-gray-500 py-10 text-center">
+          No nutrition score data available for this user.
+        </p>
+      )}
+
       {scoreData && nutritionParams.length === 0 && (
         <p className="text-sm text-gray-500 py-10 text-center">
           No nutrition score data available for this user.

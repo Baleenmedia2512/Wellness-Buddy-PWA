@@ -8,7 +8,8 @@
  *   4. Trend — selected member's weight history
  *
  * Ideal Weight and Wellness Score stay mounted after first visit so filters
- * survive tab switches. Nutrition and Trend share selectedMember.
+ * survive tab switches. Nutrition and Trend each have their own search bar
+ * and selected member — picking someone on one tab does not change the other.
  * The page title follows the active tab. Refresh lives in this header and
  * reloads whichever tab is showing.
  */
@@ -67,7 +68,10 @@ export default function ReportsDashboard({
     () => resolveReportsDashboardTab(initialTab, wellnessScoreEnabled)
       === REPORT_DASHBOARD_TABS.TREND,
   );
-  const [selectedMember, setSelectedMember] = useState(null);
+  const [nutritionMember, setNutritionMember] = useState(null);
+  const [trendMember, setTrendMember] = useState(null);
+  const nutritionMemberKey = nutritionMember?.id || nutritionMember?.userId || 'self';
+  const trendMemberKey = trendMember?.id || trendMember?.userId || 'self';
   const refreshFnsRef = useRef({});
   const [refreshingByTab, setRefreshingByTab] = useState({});
 
@@ -208,13 +212,23 @@ export default function ReportsDashboard({
             </button>
           </div>
 
-          {memberSearchVisible && (
-            <div className="mt-3">
+          {nutritionMounted && (
+            <div className={`mt-3 ${nutritionActive ? '' : 'hidden'}`}>
               <ReportsMemberSearch
                 user={user}
                 userRole={userRole}
-                selectedMember={selectedMember}
-                onMemberSelect={setSelectedMember}
+                selectedMember={nutritionMember}
+                onMemberSelect={setNutritionMember}
+              />
+            </div>
+          )}
+          {trendMounted && (
+            <div className={`mt-3 ${trendActive ? '' : 'hidden'}`}>
+              <ReportsMemberSearch
+                user={user}
+                userRole={userRole}
+                selectedMember={trendMember}
+                onMemberSelect={setTrendMember}
               />
             </div>
           )}
@@ -263,8 +277,9 @@ export default function ReportsDashboard({
           className={nutritionActive ? undefined : 'hidden'}
         >
           <ReportsNutritionTab
+            key={`nutrition-${nutritionMemberKey}`}
             user={user}
-            selectedMember={selectedMember}
+            selectedMember={nutritionMember}
             onRefreshRegister={bindNutritionRefresh}
           />
         </div>
@@ -279,8 +294,9 @@ export default function ReportsDashboard({
           className={trendActive ? undefined : 'hidden'}
         >
           <ReportsTrendTab
+            key={`trend-${trendMemberKey}`}
             user={user}
-            selectedMember={selectedMember}
+            selectedMember={trendMember}
             onRefreshRegister={bindTrendRefresh}
           />
         </div>

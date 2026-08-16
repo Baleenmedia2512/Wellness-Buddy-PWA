@@ -14,7 +14,8 @@ export function isSingleDayRange(startDate, endDate) {
 
 export function snapshotMatchesRange({ snapshot, userId, startDate, endDate }) {
   if (!snapshot || !Array.isArray(snapshot.days)) return false;
-  if (userId != null && snapshot.userId != null && String(snapshot.userId) !== String(userId)) {
+  if (userId != null && userId !== '' && snapshot.userId != null
+      && String(snapshot.userId) !== String(userId)) {
     return false;
   }
   return snapshot.rangeKey === rangeKey(startDate, endDate);

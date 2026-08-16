@@ -34,9 +34,11 @@ function ymdToLocalDate(ymd) {
 
 export default function ReportsNutritionTab({ user, selectedMember, onRefreshRegister }) {
   const viewedUser = resolveReportsViewedUser(selectedMember, user);
-  const scoreUser = viewedUser
-    ? { ...viewedUser, id: viewedUser.id || viewedUser.userId }
-    : viewedUser;
+  const scoreUser = useMemo(() => {
+    if (!viewedUser) return viewedUser;
+    const id = viewedUser.id || viewedUser.userId || viewedUser.UserId || null;
+    return { ...viewedUser, id, userId: viewedUser.userId || id };
+  }, [viewedUser]);
   const apiBaseUrl = getApiBaseUrl();
   const todayYmd = useBusinessToday(viewedUser);
   const title = reportsMemberPossessiveTitle(selectedMember, 'Nutrition');

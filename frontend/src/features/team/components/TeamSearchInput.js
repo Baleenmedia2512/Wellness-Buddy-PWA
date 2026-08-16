@@ -11,6 +11,13 @@ export default function TeamSearchInput({
   showViewMine, onClearSelection,
   placeholder = 'Type a name to search members...',
 }) {
+  const selectShownName = (el) => {
+    if (!el || searchQuery) return;
+    requestAnimationFrame(() => {
+      try { el.select(); } catch { /* some WebViews reject select() */ }
+    });
+  };
+
   return (
     <div className="flex items-center gap-2">
       <div className="relative flex-1">
@@ -22,7 +29,10 @@ export default function TeamSearchInput({
           type="text"
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          onFocus={onFocus}
+          onFocus={(e) => {
+            onFocus?.();
+            selectShownName(e.target);
+          }}
           onClick={(e) => { if (!searchQuery) e.target.select(); }}
           placeholder={placeholder}
           className="block w-full pl-10 pr-10 py-2.5 border border-gray-300 rounded-xl text-sm font-medium placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all cursor-pointer"

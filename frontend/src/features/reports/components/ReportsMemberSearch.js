@@ -1,7 +1,7 @@
 /**
- * ReportsMemberSearch — team downline search shared by Nutrition and Trend tabs.
- * Reuses useTeamSearch (recursive getFlatTeamList) so search is the same
- * hierarchy as the Home dashboard, not a second team tree.
+ * ReportsMemberSearch — per-tab team downline search.
+ * Reuses useTeamSearch (recursive getFlatTeamList) so each Reports tab can
+ * pick a member independently from the same Active hierarchy.
  */
 import React from 'react';
 import { TeamSearchInput, TeamSearchResults, useTeamSearch } from '../../team';
@@ -30,7 +30,7 @@ export default function ReportsMemberSearch({
         value={vm.inputValue}
         searchQuery={vm.searchQuery}
         onChange={vm.handleQueryChange}
-        onFocus={() => vm.setIsOpen(true)}
+        onFocus={vm.handleFocus}
         onClear={vm.clearQuery}
         showViewMine={Boolean(selectedMember && !selectedMember.isSelf)}
         onClearSelection={vm.clearSelection}

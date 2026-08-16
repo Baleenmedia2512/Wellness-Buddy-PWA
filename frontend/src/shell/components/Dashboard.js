@@ -1292,6 +1292,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
           <>
           {activeTab === 'nutrition' && (
             <NutritionDashboard
+              key={displayUser?.id || displayUser?.userId || 'self'}
               user={displayUser}
               onBack={onBack}
               apiBaseUrl={apiBaseUrl}

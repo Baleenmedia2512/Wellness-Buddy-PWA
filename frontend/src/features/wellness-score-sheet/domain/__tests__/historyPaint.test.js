@@ -89,6 +89,29 @@ describe('historyPaint', () => {
     assert.equal(days[0].totalEarned, 496);
   });
 
+  it('does not paint a snapshot that belongs to a different user', () => {
+    const snapshot = {
+      userId: '1',
+      rangeKey: '2026-08-16__2026-08-16',
+      days: [{ date: '2026-08-16', totalEarned: 400, userId: '1' }],
+    };
+    assert.equal(snapshotMatchesRange({
+      snapshot,
+      userId: '22',
+      startDate: '2026-08-16',
+      endDate: '2026-08-16',
+    }), false);
+
+    const days = historyDaysForInstantPaint({
+      snapshot,
+      userId: '22',
+      startDate: '2026-08-16',
+      endDate: '2026-08-16',
+      dailyScore: null,
+    });
+    assert.deepEqual(days, []);
+  });
+
   it('does not invent a multi-day row from a single daily cache', () => {
     const days = historyDaysForInstantPaint({
       snapshot: null,

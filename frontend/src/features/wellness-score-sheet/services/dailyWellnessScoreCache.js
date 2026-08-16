@@ -16,11 +16,13 @@ function dailyKey(userId, date) {
 }
 
 export function getDailyWellnessScoreCached(userId, date) {
-  if (date && userId != null) {
-    const hit = dailyScoreCache.get(dailyKey(userId, date));
-    if (hit) return hit;
-  }
   if (!date) return null;
+  // Known identity: only that user's row. Never fall through to another
+  // person's same-date score (Reports Nutrition viewing a downline).
+  if (userId != null && userId !== '') {
+    return dailyScoreCache.get(dailyKey(userId, date)) || null;
+  }
+  // Home first paint before userId resolves — date-only match is OK.
   const suffix = `|${date}`;
   for (const [key, score] of dailyScoreCache.entries()) {
     if (key.endsWith(suffix)) return score;
