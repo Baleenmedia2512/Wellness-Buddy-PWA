@@ -1,7 +1,7 @@
 /**
  * Diary tap target for Good Habit — Before vs After photos + optional notes.
  */
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Loader2, Star, X } from 'lucide-react';
 import {
   formatBusinessTime,
@@ -9,11 +9,18 @@ import {
 } from '../../../shared/utils/datetimeUtils';
 import { useGoodHabitDetailImages } from '../hooks/useGoodHabitDetailImages';
 
-function PhotoSlot({ label, src, loading }) {
+function PhotoSlot({ label, src, loading, onOpen }) {
+  const canOpen = Boolean(src) && typeof onOpen === 'function';
   return (
     <div className="flex min-w-0 flex-1 flex-col gap-1.5">
       <p className="text-[10px] font-bold uppercase tracking-wide text-emerald-700/80">{label}</p>
-      <div className="flex h-44 items-center justify-center overflow-hidden rounded-xl border border-emerald-200 bg-emerald-50/60">
+      <button
+        type="button"
+        disabled={!canOpen}
+        onClick={() => onOpen({ src, label })}
+        className="flex h-44 w-full items-center justify-center overflow-hidden rounded-xl border border-emerald-200 bg-emerald-50/60 disabled:cursor-default"
+        aria-label={canOpen ? `View ${label} photo full size` : `${label} photo`}
+      >
         {src ? (
           <img src={src} alt={`${label} photo`} className="h-full w-full object-cover" />
         ) : loading ? (
@@ -21,7 +28,48 @@ function PhotoSlot({ label, src, loading }) {
         ) : (
           <Star className="h-8 w-8 text-emerald-300" aria-hidden />
         )}
-      </div>
+      </button>
+    </div>
+  );
+}
+
+function FullScreenPhoto({ src, label, onClose }) {
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  return (
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 p-3"
+      role="dialog"
+      aria-modal="true"
+      aria-label={`${label} photo full size`}
+      onClick={(e) => {
+        e.stopPropagation();
+        onClose();
+      }}
+    >
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          onClose();
+        }}
+        className="absolute right-3 top-3 z-[101] rounded-full bg-white/15 p-2.5 text-white backdrop-blur-sm active:bg-white/25"
+        aria-label="Close full size photo"
+      >
+        <X className="h-6 w-6" strokeWidth={2.5} aria-hidden />
+      </button>
+      <img
+        src={src}
+        alt={`${label} photo full size`}
+        className="max-h-full max-w-full object-contain"
+        onClick={(e) => e.stopPropagation()}
+      />
     </div>
   );
 }
@@ -38,6 +86,7 @@ export default function GoodHabitDetailModal({
     userId: ownerUserId,
     habitId,
   });
+  const [expanded, setExpanded] = useState(null);
   const notes = String(p.notes || '').trim();
   const timeLabel = entry?.capturedAt
     ? formatBusinessTime(entry.capturedAt, timezoneIana)
@@ -84,14 +133,21 @@ export default function GoodHabitDetailModal({
             </p>
           )}
           <div className="flex gap-2">
-            <PhotoSlot label="Before" src={beforeSrc} loading={loading} />
-            <PhotoSlot label="After" src={afterSrc} loading={loading} />
+            <PhotoSlot label="Before" src={beforeSrc} loading={loading} onOpen={setExpanded} />
+            <PhotoSlot label="After" src={afterSrc} loading={loading} onOpen={setExpanded} />
           </div>
           {notes ? (
             <p className="rounded-xl bg-emerald-50/80 px-3 py-2 text-sm text-emerald-950">{notes}</p>
           ) : null}
         </div>
       </div>
+      {expanded?.src && (
+        <FullScreenPhoto
+          src={expanded.src}
+          label={expanded.label}
+          onClose={() => setExpanded(null)}
+        />
+      )}
     </div>
   );
 }
