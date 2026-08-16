@@ -5,6 +5,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   REPORT_DASHBOARD_TABS,
+  getReportsDashboardTitle,
   resolveReportsDashboardTab,
 } from '../reportsDashboardTabs.js';
 
@@ -32,6 +33,26 @@ describe('resolveReportsDashboardTab', () => {
       resolveReportsDashboardTab(REPORT_DASHBOARD_TABS.WELLNESS_SCORE, false),
       REPORT_DASHBOARD_TABS.IDEAL_WEIGHT,
     );
+  });
+
+  it('titles the page after the active tab', () => {
+    assert.equal(
+      getReportsDashboardTitle(REPORT_DASHBOARD_TABS.IDEAL_WEIGHT),
+      'Ideal Weight',
+    );
+    assert.equal(
+      getReportsDashboardTitle(REPORT_DASHBOARD_TABS.WELLNESS_SCORE),
+      'Wellness Score',
+    );
+    assert.equal(
+      getReportsDashboardTitle(REPORT_DASHBOARD_TABS.NUTRITION),
+      'Nutrition',
+    );
+    assert.equal(
+      getReportsDashboardTitle(REPORT_DASHBOARD_TABS.TREND),
+      'Trend',
+    );
+    assert.equal(getReportsDashboardTitle('unknown'), 'Ideal Weight');
   });
 
   it('opens Nutrition and Trend when requested', () => {

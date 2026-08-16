@@ -3,7 +3,7 @@
  * Date filter + server-side pagination (10/page); Share Excel for selected date.
  * Interactive column sorting (asc/desc) with visual indicators.
  */
-import React, { useState, useCallback, startTransition } from 'react';
+import React, { useState, useCallback, useEffect, startTransition } from 'react';
 import {
   RefreshCw,
   Share2,
@@ -338,6 +338,7 @@ export default function WellnessScoreReport({
   tabVisitKey = 0,
   hidePageTitle = false,
   embeddedStickyClass = 'sticky top-[6.5rem] z-20',
+  onRefreshRegister,
 }) {
   const coachId = user?.id ?? user?.UserId ?? getDbUserId() ?? null;
   const {
@@ -433,6 +434,11 @@ export default function WellnessScoreReport({
     ? formatReportDateLabel(scoreDate)
     : 'Custom Date';
 
+  useEffect(() => {
+    if (typeof onRefreshRegister !== 'function') return undefined;
+    onRefreshRegister({ refresh, refreshing: isRefreshing || filtersBusy });
+  }, [onRefreshRegister, refresh, isRefreshing, filtersBusy]);
+
   return (
     <div className="min-h-full bg-gray-50 flex flex-col">
       <div className={`${hidePageTitle ? embeddedStickyClass : 'sticky top-0 z-20'} bg-white border-b border-gray-200`}>
@@ -500,14 +506,16 @@ export default function WellnessScoreReport({
               <Share2 className="h-3.5 w-3.5" />
               <span className="hidden sm:inline">Share</span>
             </TouchFeedbackButton>
-            <TouchFeedbackButton
-              onClick={refresh}
-              disabled={loading && rows.length === 0}
-              className="flex-shrink-0 p-1.5 sm:p-2 rounded-xl hover:bg-gray-100 transition-colors disabled:opacity-40"
-              ariaLabel="Refresh"
-            >
-              <RefreshCw className={`h-4 w-4 text-gray-600 ${isRefreshing ? 'animate-spin' : ''}`} />
-            </TouchFeedbackButton>
+            {!hidePageTitle && (
+              <TouchFeedbackButton
+                onClick={refresh}
+                disabled={loading && rows.length === 0}
+                className="flex-shrink-0 p-1.5 sm:p-2 rounded-xl hover:bg-gray-100 transition-colors disabled:opacity-40"
+                ariaLabel="Refresh"
+              >
+                <RefreshCw className={`h-4 w-4 text-gray-600 ${isRefreshing ? 'animate-spin' : ''}`} />
+              </TouchFeedbackButton>
+            )}
           </div>
 
           <AnimatePresence>

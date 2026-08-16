@@ -9,9 +9,13 @@
  *
  * Ideal Weight and Wellness Score stay mounted after first visit so filters
  * survive tab switches. Nutrition and Trend share selectedMember.
+ * The page title follows the active tab. Refresh lives in this header and
+ * reloads whichever tab is showing.
  */
-import React, { useEffect, useState, startTransition } from 'react';
+import React, { useCallback, useEffect, useRef, useState, startTransition } from 'react';
+import { RefreshCw } from 'lucide-react';
 import { isFlagEnabled } from '../../../config/featureFlags';
+import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
 import DownlineWeightReport from './DownlineWeightReport';
 import WellnessScoreReport from './WellnessScoreReport';
 import ReportsMemberSearch from './ReportsMemberSearch';
@@ -19,6 +23,7 @@ import ReportsNutritionTab from './ReportsNutritionTab';
 import ReportsTrendTab from './ReportsTrendTab';
 import {
   REPORT_DASHBOARD_TABS,
+  getReportsDashboardTitle,
   resolveReportsDashboardTab,
 } from '../utils/reportsDashboardTabs.js';
 
@@ -63,6 +68,33 @@ export default function ReportsDashboard({
       === REPORT_DASHBOARD_TABS.TREND,
   );
   const [selectedMember, setSelectedMember] = useState(null);
+  const refreshFnsRef = useRef({});
+  const [refreshingByTab, setRefreshingByTab] = useState({});
+
+  const bindTabRefresh = useCallback((tabId, api) => {
+    refreshFnsRef.current[tabId] = api?.refresh || null;
+    const refreshing = Boolean(api?.refreshing);
+    setRefreshingByTab((prev) => (
+      prev[tabId] === refreshing ? prev : { ...prev, [tabId]: refreshing }
+    ));
+  }, []);
+
+  const bindIdealRefresh = useCallback(
+    (api) => bindTabRefresh(REPORT_DASHBOARD_TABS.IDEAL_WEIGHT, api),
+    [bindTabRefresh],
+  );
+  const bindWellnessRefresh = useCallback(
+    (api) => bindTabRefresh(REPORT_DASHBOARD_TABS.WELLNESS_SCORE, api),
+    [bindTabRefresh],
+  );
+  const bindNutritionRefresh = useCallback(
+    (api) => bindTabRefresh(REPORT_DASHBOARD_TABS.NUTRITION, api),
+    [bindTabRefresh],
+  );
+  const bindTrendRefresh = useCallback(
+    (api) => bindTabRefresh(REPORT_DASHBOARD_TABS.TREND, api),
+    [bindTabRefresh],
+  );
 
   useEffect(() => {
     const next = resolveReportsDashboardTab(initialTab, wellnessScoreEnabled);
@@ -94,14 +126,30 @@ export default function ReportsDashboard({
   const embeddedStickyClass = memberSearchVisible
     ? 'sticky top-[9.75rem] z-20'
     : 'sticky top-[6.5rem] z-20';
+  const pageTitle = getReportsDashboardTitle(activeTab);
+  const isRefreshing = Boolean(refreshingByTab[activeTab]);
+
+  const handleRefresh = () => {
+    refreshFnsRef.current[activeTab]?.();
+  };
 
   return (
     <div className="min-h-full bg-gray-50 flex flex-col">
       <div className="sticky top-0 z-30 bg-white border-b border-gray-200">
         <div className="max-w-6xl mx-auto w-full px-3 sm:px-4 pt-3 pb-3">
-          <h1 className="text-base sm:text-lg font-bold text-gray-900 leading-tight truncate">
-            Reports Dashboard
-          </h1>
+          <div className="flex items-center gap-2">
+            <h1 className="flex-1 min-w-0 text-base sm:text-lg font-bold text-gray-900 leading-tight truncate">
+              {pageTitle}
+            </h1>
+            <TouchFeedbackButton
+              onClick={handleRefresh}
+              disabled={isRefreshing}
+              className="flex-shrink-0 p-2 rounded-xl hover:bg-gray-100 transition-colors disabled:opacity-40"
+              ariaLabel="Refresh"
+            >
+              <RefreshCw className={`h-4 w-4 text-gray-600 ${isRefreshing ? 'animate-spin' : ''}`} />
+            </TouchFeedbackButton>
+          </div>
 
           <div
             className="mt-3 bg-white rounded-xl border border-gray-200 shadow-sm p-1 flex gap-1 w-full"
@@ -184,7 +232,7 @@ export default function ReportsDashboard({
           user={user}
           tabVisitKey={tabVisitKey}
           hidePageTitle
-          embeddedStickyClass={embeddedStickyClass}
+          onRefreshRegister={bindIdealRefresh}
         />
       </div>
 
@@ -201,6 +249,7 @@ export default function ReportsDashboard({
             tabVisitKey={tabVisitKey}
             hidePageTitle
             embeddedStickyClass={embeddedStickyClass}
+            onRefreshRegister={bindWellnessRefresh}
           />
         </div>
       )}
@@ -213,7 +262,11 @@ export default function ReportsDashboard({
           hidden={!nutritionActive}
           className={nutritionActive ? undefined : 'hidden'}
         >
-          <ReportsNutritionTab user={user} selectedMember={selectedMember} />
+          <ReportsNutritionTab
+            user={user}
+            selectedMember={selectedMember}
+            onRefreshRegister={bindNutritionRefresh}
+          />
         </div>
       )}
 
@@ -225,7 +278,11 @@ export default function ReportsDashboard({
           hidden={!trendActive}
           className={trendActive ? undefined : 'hidden'}
         >
-          <ReportsTrendTab user={user} selectedMember={selectedMember} />
+          <ReportsTrendTab
+            user={user}
+            selectedMember={selectedMember}
+            onRefreshRegister={bindTrendRefresh}
+          />
         </div>
       )}
     </div>

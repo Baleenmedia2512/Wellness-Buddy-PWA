@@ -32,7 +32,7 @@ function ymdToLocalDate(ymd) {
   return new Date(y, m - 1, d);
 }
 
-export default function ReportsNutritionTab({ user, selectedMember }) {
+export default function ReportsNutritionTab({ user, selectedMember, onRefreshRegister }) {
   const viewedUser = resolveReportsViewedUser(selectedMember, user);
   const scoreUser = viewedUser
     ? { ...viewedUser, id: viewedUser.id || viewedUser.userId }
@@ -47,6 +47,16 @@ export default function ReportsNutritionTab({ user, selectedMember }) {
   const [customStartDate, setCustomStartDate] = useState(null);
   const [customEndDate, setCustomEndDate] = useState(null);
   const [selectedDate, setSelectedDate] = useState(todayYmd);
+  const [dataRefreshKey, setDataRefreshKey] = useState(0);
+
+  const refresh = useCallback(() => {
+    setDataRefreshKey((k) => k + 1);
+  }, []);
+
+  useEffect(() => {
+    if (typeof onRefreshRegister !== 'function') return undefined;
+    onRefreshRegister({ refresh, refreshing: false });
+  }, [onRefreshRegister, refresh]);
 
   const range = useMemo(
     () => resolveWellnessDateRange({
@@ -94,7 +104,7 @@ export default function ReportsNutritionTab({ user, selectedMember }) {
 
       {useScoreCards ? (
         <WellnessScoreNutritionSection
-          key={scoreUser?.id || scoreUser?.email || 'self'}
+          key={`${scoreUser?.id || scoreUser?.email || 'self'}-${dataRefreshKey}`}
           user={scoreUser}
           apiBaseUrl={apiBaseUrl}
           date={selectedDate}
@@ -107,7 +117,7 @@ export default function ReportsNutritionTab({ user, selectedMember }) {
         />
       ) : (
         <ReportsNutritionBody
-          key={`${viewedUser?.id || viewedUser?.userId || viewedUser?.email || 'self'}-${selectedDate}`}
+          key={`${viewedUser?.id || viewedUser?.userId || viewedUser?.email || 'self'}-${selectedDate}-${dataRefreshKey}`}
           viewedUser={viewedUser}
           sessionUser={user}
           apiBaseUrl={apiBaseUrl}

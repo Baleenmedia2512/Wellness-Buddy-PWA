@@ -522,39 +522,36 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
   return (
     <div className="h-screen bg-gradient-to-br from-green-50 to-blue-50 overflow-hidden flex flex-col">
       <div className="flex-shrink-0 bg-white shadow-sm">
-        <div className="px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="min-w-0 flex-1">
-              <h1 className="text-lg font-bold text-gray-900">Body Composition Metrics</h1>
-              <div className="flex items-center gap-2 mt-0.5 min-w-0">
-                <p className="text-xs text-gray-500 flex-shrink-0">
-                  {pagination.totalRecords || bodyParamsCards.length} Cards
-                </p>
-                <span className="text-xs text-gray-400 flex-shrink-0">·</span>
-                <label className="text-xs text-gray-500 flex-shrink-0" htmlFor="bpc-header-venue">
-                  Venue:
-                </label>
-                <input
-                  id="bpc-header-venue"
-                  type="text"
-                  value={headerVenue}
-                  onChange={(e) => {
-                    headerVenueInitializedRef.current = true;
-                    setHeaderVenue(e.target.value);
-                  }}
-                  placeholder="e.g. Chennai"
-                  className="min-w-0 flex-1 text-xs text-gray-800 border border-gray-200 rounded-md px-2 py-0.5 focus:outline-none focus:ring-1 focus:ring-green-500 bg-white"
-                />
-              </div>
-            </div>
+        <div className="px-4 py-3">
+          <div className="flex items-center justify-between gap-3">
+            <h1 className="text-lg font-bold text-gray-900 min-w-0">Body Composition Metrics</h1>
+            <button
+              onClick={handleRefresh}
+              disabled={refreshing}
+              className="p-2 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50 flex-shrink-0"
+            >
+              <RefreshCw size={20} className={refreshing ? 'animate-spin' : ''} />
+            </button>
           </div>
-          <button
-            onClick={handleRefresh}
-            disabled={refreshing}
-            className="p-2 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50 flex-shrink-0"
-          >
-            <RefreshCw size={20} className={refreshing ? 'animate-spin' : ''} />
-          </button>
+          <div className="flex items-center gap-2 mt-0.5 min-w-0">
+            <label className="text-xs text-gray-500 flex-shrink min-w-0" htmlFor="bpc-header-venue">
+              Body composition metrics checked at venue:
+            </label>
+            <input
+              id="bpc-header-venue"
+              type="text"
+              value={headerVenue}
+              onChange={(e) => {
+                headerVenueInitializedRef.current = true;
+                setHeaderVenue(e.target.value);
+              }}
+              placeholder="e.g. Chennai"
+              className="min-w-0 w-28 sm:w-36 text-xs text-gray-800 border border-gray-200 rounded-md px-2 py-0.5 focus:outline-none focus:ring-1 focus:ring-green-500 bg-white"
+            />
+            <p className="text-xs text-gray-500 flex-shrink-0 ml-auto">
+              {pagination.totalRecords || bodyParamsCards.length} Cards
+            </p>
+          </div>
         </div>
 
         <div className="px-4 pb-3">

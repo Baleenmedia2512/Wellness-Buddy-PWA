@@ -3,7 +3,7 @@
  * 5 days / 10 days / 1 month / 1 year / custom date. The first→current
  * weight label uses the full history. Uses existing /api/weight/history.
  */
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   getWeightHistory,
   WEIGHT_TREND_DEFAULT_DAYS,
@@ -15,7 +15,7 @@ import {
 } from '../utils/reportsViewedMember.js';
 import ReportsWeightTrendChart from './ReportsWeightTrendChart';
 
-export default function ReportsTrendTab({ user, selectedMember }) {
+export default function ReportsTrendTab({ user, selectedMember, onRefreshRegister }) {
   const viewedUser = resolveReportsViewedUser(selectedMember, user);
   const viewedUserId = viewedUser?.id || viewedUser?.userId;
   const viewerUserId = user?.id || user?.userId;
@@ -27,6 +27,16 @@ export default function ReportsTrendTab({ user, selectedMember }) {
   const [rangeDays, setRangeDays] = useState(WEIGHT_TREND_DEFAULT_DAYS);
   const [customStartDate, setCustomStartDate] = useState(null);
   const [customEndDate, setCustomEndDate] = useState(null);
+  const [reloadToken, setReloadToken] = useState(0);
+
+  const refresh = useCallback(() => {
+    setReloadToken((k) => k + 1);
+  }, []);
+
+  useEffect(() => {
+    if (typeof onRefreshRegister !== 'function') return undefined;
+    onRefreshRegister({ refresh, refreshing: loading });
+  }, [onRefreshRegister, refresh, loading]);
 
   useEffect(() => {
     let cancelled = false;
@@ -56,7 +66,7 @@ export default function ReportsTrendTab({ user, selectedMember }) {
     }
     load();
     return () => { cancelled = true; };
-  }, [viewedUserId, viewerUserId]);
+  }, [viewedUserId, viewerUserId, reloadToken]);
 
   return (
     <div className="max-w-6xl mx-auto w-full px-3 sm:px-4 py-4">

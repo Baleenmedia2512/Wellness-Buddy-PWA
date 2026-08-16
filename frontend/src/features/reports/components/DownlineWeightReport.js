@@ -51,7 +51,7 @@ export default function DownlineWeightReport({
   user,
   tabVisitKey = 0,
   hidePageTitle = false,
-  embeddedStickyClass = 'sticky top-[6.5rem] z-20',
+  onRefreshRegister,
 }) {
   const coachId = user?.id ?? null;
   const {
@@ -74,6 +74,11 @@ export default function DownlineWeightReport({
     refresh,
   } = useDownlineWeightReport({ coachId, tabVisitKey });
 
+  useEffect(() => {
+    if (typeof onRefreshRegister !== 'function') return undefined;
+    onRefreshRegister({ refresh, refreshing: loading });
+  }, [onRefreshRegister, refresh, loading]);
+
   const listSentinelRef = useRef(null);
 
   useEffect(() => {
@@ -93,29 +98,27 @@ export default function DownlineWeightReport({
 
   return (
     <div className="min-h-full bg-gray-50">
-      {/* Page header */}
-      <div className={`${hidePageTitle ? embeddedStickyClass : 'sticky top-0 z-10'} bg-white border-b border-gray-200`}>
-        <div className="max-w-lg mx-auto w-full px-4 sm:px-6 py-3">
-          <div className="flex items-center gap-2 sm:gap-3">
-            {!hidePageTitle && (
+      {!hidePageTitle && (
+        <div className="sticky top-0 z-10 bg-white border-b border-gray-200">
+          <div className="max-w-lg mx-auto w-full px-4 sm:px-6 py-3">
+            <div className="flex items-center gap-2 sm:gap-3">
               <div className="flex-1 min-w-0">
                 <h1 className="text-base sm:text-lg font-bold text-gray-900 leading-tight truncate">
                   Ideal Weight Report
                 </h1>
               </div>
-            )}
-            {hidePageTitle && <div className="flex-1 min-w-0" />}
-            <TouchFeedbackButton
-              onClick={refresh}
-              disabled={loading}
-              className="flex-shrink-0 p-2 rounded-xl hover:bg-gray-100 transition-colors disabled:opacity-40"
-              ariaLabel="Refresh"
-            >
-              <RefreshCw className={`h-4 w-4 text-gray-600 ${loading ? 'animate-spin' : ''}`} />
-            </TouchFeedbackButton>
+              <TouchFeedbackButton
+                onClick={refresh}
+                disabled={loading}
+                className="flex-shrink-0 p-2 rounded-xl hover:bg-gray-100 transition-colors disabled:opacity-40"
+                ariaLabel="Refresh"
+              >
+                <RefreshCw className={`h-4 w-4 text-gray-600 ${loading ? 'animate-spin' : ''}`} />
+              </TouchFeedbackButton>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       <div className="max-w-lg mx-auto w-full px-4 sm:px-6 pt-4 pb-24 space-y-3">
         {/* Search */}
