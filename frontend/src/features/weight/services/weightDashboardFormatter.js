@@ -176,15 +176,27 @@ function formatTrendTooltipDate(date) {
   }).replace(',', '');
 }
 
-function collectRecordedWeightEntries(weightHistory) {
-  return (weightHistory || [])
-    .filter((entry) => entry && !entry.isUndoPlaceholder && entry.CreatedAt && entry.Weight)
+function defaultWeightValueOf(entry) {
+  return Number.parseFloat(entry?.Weight);
+}
+
+function collectRecordedMetricEntries(history, valueOf = defaultWeightValueOf) {
+  return (history || [])
+    .filter((entry) => entry && !entry.isUndoPlaceholder && entry.CreatedAt)
     .map((entry) => ({
       createdAt: parseUtcTimestamp(entry.CreatedAt),
-      weight: Number.parseFloat(entry.Weight),
+      value: Number.parseFloat(valueOf(entry)),
     }))
-    .filter((entry) => entry.createdAt && !Number.isNaN(entry.createdAt.getTime()) && Number.isFinite(entry.weight))
+    .filter((entry) => (
+      entry.createdAt
+      && !Number.isNaN(entry.createdAt.getTime())
+      && Number.isFinite(entry.value)
+    ))
     .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+}
+
+function collectRecordedWeightEntries(weightHistory) {
+  return collectRecordedMetricEntries(weightHistory);
 }
 
 function uniqueLatestByDate(sorted) {
@@ -207,29 +219,41 @@ function customRangeKeys(customRange) {
 }
 
 /**
- * First weight ever logged in the app and the latest (current) weight.
+ * First finite metric value ever logged and the latest (current) value.
  * Uses chronological entries, not the selected chart range.
  */
-export function getFirstAndLatestRecordedWeight(weightHistory) {
-  const sorted = collectRecordedWeightEntries(weightHistory);
-  if (sorted.length === 0) return { firstWeight: null, latestWeight: null };
+export function getFirstAndLatestRecordedValue(history, valueOf = defaultWeightValueOf) {
+  const sorted = collectRecordedMetricEntries(history, valueOf);
+  if (sorted.length === 0) return { firstValue: null, latestValue: null };
   return {
-    firstWeight: sorted[0].weight,
-    latestWeight: sorted[sorted.length - 1].weight,
+    firstValue: sorted[0].value,
+    latestValue: sorted[sorted.length - 1].value,
   };
 }
 
 /**
- * Actual weigh-in points (no calendar fill). Used by Reports Trend.
+ * First weight ever logged in the app and the latest (current) weight.
+ * Uses chronological entries, not the selected chart range.
+ */
+export function getFirstAndLatestRecordedWeight(weightHistory) {
+  const { firstValue, latestValue } = getFirstAndLatestRecordedValue(weightHistory);
+  return { firstWeight: firstValue, latestWeight: latestValue };
+}
+
+/**
+ * Actual recorded points (no calendar fill). Used by Reports Trend.
  * Numeric ranges clip to the last N days ending today. Custom uses the
  * picker start/end (inclusive, business calendar).
+ * `options.getValue(entry)` selects the numeric field; defaults to Weight.
  */
 export function buildRecordedTrendSeries(
   weightHistory,
   rangeDays = WEIGHT_TREND_DEFAULT_DAYS,
   customRange = null,
+  options = {},
 ) {
-  const sorted = collectRecordedWeightEntries(weightHistory);
+  const getValue = typeof options.getValue === 'function' ? options.getValue : defaultWeightValueOf;
+  const sorted = collectRecordedMetricEntries(weightHistory, getValue);
   if (sorted.length === 0) return [];
 
   const unique = uniqueLatestByDate(sorted);
@@ -261,7 +285,7 @@ export function buildRecordedTrendSeries(
       label: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
       tooltipDate: formatTrendTooltipDate(date),
       hasRecorded: true,
-      value: entry.weight,
+      value: entry.value,
     };
   });
 }

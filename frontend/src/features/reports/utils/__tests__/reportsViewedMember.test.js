@@ -31,11 +31,13 @@ describe('reports titles', () => {
     assert.equal(reportsSelectedUserLabel(null), 'My Profile');
     assert.equal(reportsMemberPossessiveTitle(null, 'Nutrition'), 'My Nutrition');
     assert.equal(reportsMemberPossessiveTitle(null, 'Weight Trend'), 'My Weight Trend');
+    assert.equal(reportsMemberPossessiveTitle(null, 'Fat Trend'), 'My Fat Trend');
   });
 
   it('uses the member name when a downline user is selected', () => {
     assert.equal(reportsSelectedUserLabel(downline), 'A2');
     assert.equal(reportsMemberPossessiveTitle(downline, 'Nutrition'), "A2's Nutrition");
     assert.equal(reportsMemberPossessiveTitle(downline, 'Weight Trend'), "A2's Weight Trend");
+    assert.equal(reportsMemberPossessiveTitle(downline, 'VFat Trend'), "A2's VFat Trend");
   });
 });

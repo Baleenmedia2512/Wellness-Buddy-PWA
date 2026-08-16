@@ -5,6 +5,7 @@ export {
   buildTrendSeries,
   buildRecordedTrendSeries,
   summarizeTrendSeries,
+  getFirstAndLatestRecordedValue,
   getFirstAndLatestRecordedWeight,
   isSmallChartDevice,
   WEIGHT_TREND_RANGE_CUSTOM,

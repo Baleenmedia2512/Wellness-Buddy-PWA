@@ -105,4 +105,19 @@ describe('buildRecordedTrendSeries', () => {
     });
     assert.deepEqual(series.map((p) => p.value), [91, 92]);
   });
+
+  it('plots a non-weight field and skips nulls', () => {
+    const fatHistory = [
+      { ID: 1, Weight: 90, BodyFat: null, CreatedAt: `${addDaysYmd(today, -3)}T12:00:00.000Z` },
+      { ID: 2, Weight: 91, BodyFat: 22, CreatedAt: `${addDaysYmd(today, -2)}T12:00:00.000Z` },
+      { ID: 3, Weight: 92, BodyFat: 21.5, CreatedAt: `${today}T12:00:00.000Z` },
+    ];
+    const series = buildRecordedTrendSeries(fatHistory, 5, null, {
+      getValue: (row) => {
+        const n = Number.parseFloat(row.BodyFat);
+        return Number.isFinite(n) ? n : null;
+      },
+    });
+    assert.deepEqual(series.map((p) => p.value), [22, 21.5]);
+  });
 });

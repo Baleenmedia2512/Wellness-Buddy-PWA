@@ -5,7 +5,7 @@
  *   1. Ideal Weight (default) — existing DownlineWeightReport
  *   2. Wellness Score Report — existing WellnessScoreReport (ff.wellness-score-sheet)
  *   3. Nutrition — selected member's nutrition (existing dashboard cards/APIs)
- *   4. Trend — selected member's weight history
+ *   4. Trend — selected member's body-metric history (weight + BPC fields)
  *
  * Ideal Weight and Wellness Score stay mounted after first visit so filters
  * survive tab switches. Nutrition and Trend each have their own search bar

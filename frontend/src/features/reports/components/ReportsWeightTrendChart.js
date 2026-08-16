@@ -1,48 +1,64 @@
 /**
- * ReportsWeightTrendChart — recorded weigh-ins with 5 days / 10 days /
- * 1 month / 1 year / Custom date, plus first→current weight. Reuses
- * weight chart geometry; does not change the Home Weight Dashboard
- * 7D/14D/30D chart.
+ * ReportsWeightTrendChart — one metric's recorded points for a date range.
+ * Parent (Trend tab) owns range + stacks one card per metric, like Diary.
  */
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { AnimatePresence } from 'framer-motion';
-import DateRangePicker from '../../../shared/components/common/DateRangePicker';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { formatCustomRangeLabel } from '../../../shared/domain/reportDateRanges';
 import {
   buildChartGeometry,
   buildRecordedTrendSeries,
-  getFirstAndLatestRecordedWeight,
+  getFirstAndLatestRecordedValue,
   isSmallChartDevice,
   REPORTS_WEIGHT_TREND_RANGES,
   WEIGHT_TREND_RANGE_CUSTOM,
 } from '../../weight';
+import {
+  REPORTS_TREND_DEFAULT_METRIC,
+  firstToCurrentMetricLabel,
+  formatTrendMetricValue,
+  getReportsTrendMetric,
+  readTrendMetricValue,
+} from '../utils/reportsTrendMetrics.js';
 
-const PILL = 'px-2 py-1 text-[11px] sm:text-xs rounded-full transition-all duration-300 shrink-0';
+const PILL = 'min-w-0 px-1 py-1.5 text-[10px] xs:text-[11px] sm:text-xs font-semibold rounded-full transition-all duration-300 truncate';
 const ACTIVE = 'bg-emerald-500 text-white shadow-sm';
 const INACTIVE = 'text-gray-600 hover:bg-white';
 
-function RangeSelector({
+const RANGE_SHORT_LABEL = {
+  5: '5D',
+  10: '10D',
+  30: '1M',
+  365: '1Y',
+  [WEIGHT_TREND_RANGE_CUSTOM]: 'Custom',
+};
+
+export function ReportsTrendRangeSelector({
   selected,
   onSelect,
   customStartDate,
   customEndDate,
 }) {
   return (
-    <div className="flex items-center gap-1 bg-gray-100 rounded-full p-1 overflow-x-auto">
+    <div className="grid grid-cols-5 items-center gap-1 bg-gray-100 rounded-full p-1 w-full min-w-0">
       {REPORTS_WEIGHT_TREND_RANGES.map((range) => {
         const isCustom = range.days === WEIGHT_TREND_RANGE_CUSTOM;
         const isActive = selected === range.days;
-        const label = isCustom && isActive
+        const longLabel = isCustom && isActive
           ? formatCustomRangeLabel(customStartDate, customEndDate)
           : range.label;
+        const shortLabel = isCustom && isActive
+          ? (longLabel || RANGE_SHORT_LABEL[range.key])
+          : RANGE_SHORT_LABEL[range.key];
         return (
           <button
             key={String(range.key)}
             type="button"
             onClick={() => onSelect(range.days)}
             className={`${PILL} ${isActive ? ACTIVE : INACTIVE}`}
+            title={longLabel}
           >
-            {label}
+            <span className="sm:hidden">{shortLabel}</span>
+            <span className="hidden sm:inline">{longLabel}</span>
           </button>
         );
       })}
@@ -50,44 +66,37 @@ function RangeSelector({
   );
 }
 
-function formatKg(value) {
-  return Number.isFinite(value) ? `${value.toFixed(2)} kg` : '';
-}
-
-function firstToCurrentLabel(firstWeight, latestWeight) {
-  if (!Number.isFinite(firstWeight) || !Number.isFinite(latestWeight)) {
-    return 'First weight → Current weight';
-  }
-  return `First ${formatKg(firstWeight)} → Current ${formatKg(latestWeight)}`;
-}
-
 export default function ReportsWeightTrendChart({
   weightHistory,
+  metricKey = REPORTS_TREND_DEFAULT_METRIC,
   rangeDays,
-  onRangeChange,
   customStartDate = null,
   customEndDate = null,
-  onCustomDateSelect,
 }) {
   const chartRef = useRef(null);
   const [chartWidth, setChartWidth] = useState(320);
   const [tooltip, setTooltip] = useState(null);
-  const [showDatePicker, setShowDatePicker] = useState(false);
   const small = isSmallChartDevice();
   const isCustom = rangeDays === WEIGHT_TREND_RANGE_CUSTOM;
   const hasCustomDates = Boolean(customStartDate && customEndDate);
+  const metric = getReportsTrendMetric(metricKey);
+  const gradientId = `reportsTrendArea-${metric.key}`;
+  const valueOf = useCallback(
+    (entry) => readTrendMetricValue(entry, metric.key),
+    [metric.key],
+  );
 
-  const { firstWeight, latestWeight } = useMemo(
-    () => getFirstAndLatestRecordedWeight(weightHistory),
-    [weightHistory],
+  const { firstValue, latestValue } = useMemo(
+    () => getFirstAndLatestRecordedValue(weightHistory, valueOf),
+    [weightHistory, valueOf],
   );
 
   const series = useMemo(
     () => buildRecordedTrendSeries(weightHistory, rangeDays, {
       startDate: customStartDate,
       endDate: customEndDate,
-    }),
-    [weightHistory, rangeDays, customStartDate, customEndDate],
+    }, { getValue: valueOf }),
+    [weightHistory, rangeDays, customStartDate, customEndDate, valueOf],
   );
   const geom = useMemo(
     () => (series.length
@@ -117,15 +126,9 @@ export default function ReportsWeightTrendChart({
     return () => window.removeEventListener('resize', update);
   }, [series.length]);
 
-  const handleRangeSelect = (days) => {
-    onRangeChange(days);
-    setShowDatePicker(days === WEIGHT_TREND_RANGE_CUSTOM);
-  };
-
-  const handleCustomSelect = (start, end) => {
-    if (typeof onCustomDateSelect === 'function') onCustomDateSelect(start, end);
-    setShowDatePicker(false);
-  };
+  useEffect(() => {
+    setTooltip(null);
+  }, [metric.key]);
 
   const showPoint = (point, event) => {
     if (!point?.hasRecorded || !Number.isFinite(point.value)) return;
@@ -142,45 +145,23 @@ export default function ReportsWeightTrendChart({
 
   const emptyMessage = isCustom && !hasCustomDates
     ? 'Select a date range to view the trend.'
-    : series.length === 0 && Number.isFinite(firstWeight)
-      ? 'No weight records available for this period.'
-      : 'No weight records available for this user.';
+    : series.length === 0 && Number.isFinite(firstValue)
+      ? `No ${metric.label} records available for this period.`
+      : `No ${metric.label} records available for this user.`;
 
   return (
-    <div>
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3">
-        <p className="text-xs sm:text-sm text-gray-500">
-          {firstToCurrentLabel(firstWeight, latestWeight)}
-        </p>
-        <RangeSelector
-          selected={rangeDays}
-          onSelect={handleRangeSelect}
-          customStartDate={customStartDate}
-          customEndDate={customEndDate}
-        />
-      </div>
-
-      <AnimatePresence>
-        {showDatePicker && isCustom && (
-          <div className="mb-3 w-full">
-            <DateRangePicker
-              startDate={customStartDate}
-              endDate={customEndDate}
-              onSelect={handleCustomSelect}
-              onClose={() => setShowDatePicker(false)}
-            />
-          </div>
-        )}
-      </AnimatePresence>
-
+    <div className="min-w-0">
+      <p className="text-xs sm:text-sm text-gray-500 mb-2 break-words">
+        {firstToCurrentMetricLabel(firstValue, latestValue, metric.key)}
+      </p>
       {series.length === 0 ? (
-        <div className="h-36 rounded-xl border border-dashed border-gray-200 flex items-center justify-center text-sm text-gray-500">
+        <div className="h-36 rounded-xl border border-dashed border-gray-200 flex items-center justify-center text-sm text-gray-500 px-4 text-center">
           {emptyMessage}
         </div>
       ) : (
         <div
           ref={chartRef}
-          className="relative w-full overflow-visible pb-1"
+          className="relative w-full min-w-0 overflow-hidden pb-1"
           onMouseLeave={hideTooltip}
         >
           {tooltip && (
@@ -188,7 +169,7 @@ export default function ReportsWeightTrendChart({
               className="absolute z-10 -translate-x-1/2 pointer-events-none rounded-lg bg-gray-900 text-white px-2.5 py-1.5 text-center shadow-lg"
               style={{ left: tooltip.x, top: 0 }}
             >
-              <p className="text-xs font-semibold">{formatKg(tooltip.value)}</p>
+              <p className="text-xs font-semibold">{formatTrendMetricValue(tooltip.value, metric.key)}</p>
               <p className="text-[10px] text-gray-300">{tooltip.dateLabel}</p>
             </div>
           )}
@@ -199,7 +180,7 @@ export default function ReportsWeightTrendChart({
             preserveAspectRatio="none"
           >
             <defs>
-              <linearGradient id="reportsWeightTrendArea" x1="0" y1="0" x2="0" y2="1">
+              <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stopColor="#16a34a" stopOpacity="0.16" />
                 <stop offset="100%" stopColor="#16a34a" stopOpacity="0.02" />
               </linearGradient>
@@ -238,7 +219,7 @@ export default function ReportsWeightTrendChart({
                   fontWeight="500"
                   fill="#94a3b8"
                 >
-                  {level.toFixed(1)}
+                  {Number(level).toFixed(metric.decimals)}
                 </text>
               );
             })}
