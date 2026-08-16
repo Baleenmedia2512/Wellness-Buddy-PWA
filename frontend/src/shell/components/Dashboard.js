@@ -24,7 +24,7 @@ import DashboardTabs from './DashboardTabs';
 import UnknownEntryFlow from './UnknownEntryFlow';
 import UnknownCaptureUndoBanner, { UNDO_SECONDS } from './UnknownCaptureUndoBanner';
 import { undoDeleteCapture } from '../../features/captures';
-import { deleteGoodHabit, undoDeleteGoodHabit } from '../../features/good-habits';
+import { deleteGoodHabit, undoDeleteGoodHabit, GoodHabitDetailModal } from '../../features/good-habits';
 import { deleteMealById, undoMealDelete } from '../../features/nutrition';
 import { parseAnalysisData } from '../../features/nutrition/services/nutritionDashboard/analysisHelpers';
 import { prefetchMealDetails } from '../../features/nutrition/services/mealDetailCache';
@@ -400,6 +400,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
   const [diaryOwnerTimezoneIana, setDiaryOwnerTimezoneIana] = useState(null);
   const weightOpenRef    = useRef(null);
   const educationOpenRef = useRef(null);
+  const [goodHabitDetail, setGoodHabitDetail] = useState(null);
 
   // Reload the diary feed whenever a nutrition mutation fires the shared context.
   // This keeps the timeline timestamp/calorie values fresh after an edit or delete
@@ -466,6 +467,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
     weight:    (entry) => weightOpenRef.current?.(entry),
     education: (entry) => educationOpenRef.current?.(entry),
     watch:     (entry) => educationOpenRef.current?.(entry),
+    'good-habit': (entry) => setGoodHabitDetail(entry),
   };
 
   // ── Unknown / Needs logging tap → same ManualEntryPage as post-capture ──
@@ -1345,6 +1347,15 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
         onClose={() => setShowMemberProfile(false)}
         memberEmail={selectedMember.email}
         apiBaseUrl={apiBaseUrl}
+      />
+    )}
+
+    {goodHabitDetail && (
+      <GoodHabitDetailModal
+        entry={goodHabitDetail}
+        ownerUserId={ownerId}
+        timezoneIana={diaryOwnerTimezoneIana}
+        onClose={() => setGoodHabitDetail(null)}
       />
     )}
 

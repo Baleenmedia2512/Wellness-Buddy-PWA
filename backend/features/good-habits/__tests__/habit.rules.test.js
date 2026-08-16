@@ -9,6 +9,7 @@ import {
   stripDataUrl,
   normalizeHabitPayload,
   assertHabitImages,
+  readHabitImageRow,
 } from '../domain/habit.rules.js';
 
 describe('habit.rules', () => {
@@ -63,5 +64,23 @@ describe('habit.rules', () => {
       })),
       /image is required/,
     );
+  });
+
+  it('readHabitImageRow returns before and after even with mixed keys', () => {
+    const images = readHabitImageRow({
+      ImageBase64: 'main',
+      beforeImageBase64: 'before-pic',
+      AfterImageBase64: 'after-pic',
+    });
+    assert.equal(images.beforeImageBase64, 'before-pic');
+    assert.equal(images.afterImageBase64, 'after-pic');
+    assert.equal(images.imageBase64, 'main');
+  });
+
+  it('readHabitImageRow falls after back to the main image', () => {
+    const images = readHabitImageRow({ ImageBase64: 'only-after' });
+    assert.equal(images.beforeImageBase64, null);
+    assert.equal(images.afterImageBase64, 'only-after');
+    assert.equal(images.imageBase64, 'only-after');
   });
 });

@@ -8,6 +8,8 @@ import {
   MANUAL_LOG_CATEGORY,
   HEALTHY_SNACKS_SUBTYPE,
   HEALTHY_SNACKS_SUBOPTIONS,
+  GOOD_HABIT_SUBTYPE,
+  GOOD_HABIT_SUBOPTIONS,
   isManualLogCategory,
   isHealthySnacksSubtype,
   getHealthySnacksSuboption,
@@ -46,10 +48,17 @@ describe('manualLogCategories', () => {
     });
   });
 
-  it('routes good-habit tile to the subtype picker', () => {
+  it('routes good-habit tile to the Good Habit flow', () => {
     assert.deepEqual(resolveManualLogCategoryClick('good-habit'), {
       kind: 'good-habit-picker',
     });
+  });
+
+  it('Good Habit Manual Log is Before vs After only', () => {
+    assert.deepEqual(
+      GOOD_HABIT_SUBOPTIONS.map((o) => o.id),
+      [GOOD_HABIT_SUBTYPE.BEFORE_AFTER],
+    );
   });
 
   it('routes other tiles straight to their form id', () => {

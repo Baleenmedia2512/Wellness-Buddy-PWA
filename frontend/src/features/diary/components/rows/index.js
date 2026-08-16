@@ -845,6 +845,7 @@ export function EducationRow({
 
 export function GoodHabitRow({
   entry,
+  onOpen,
   onDelete,
   canDelete = true,
   hideTime = false,
@@ -904,11 +905,19 @@ export function GoodHabitRow({
 
       <div
         ref={swipe.elRef}
+        role="button"
+        tabIndex={0}
+        aria-label="Before vs After"
         data-testid="diary-row-good-habit"
-        className={`relative z-10 bg-white/70 backdrop-blur-xl border border-gray-200/80 rounded-xl shadow-sm p-3 flex items-center gap-3 select-none overflow-hidden ${swipe.leaving ? 'pointer-events-none' : ''}`}
+        className={`relative z-10 bg-white/70 backdrop-blur-xl border border-gray-200/80 rounded-xl shadow-sm p-3 flex items-center gap-3 cursor-pointer hover:shadow-md transition-shadow select-none overflow-hidden ${swipe.leaving ? 'pointer-events-none' : ''}`}
         style={swipeCardStyle(swipe, { enabled: swipeEnabled })}
         {...(swipeEnabled ? swipe.touchHandlers : {})}
         {...(swipeEnabled ? swipe.pointerHandlers : {})}
+        onKeyDown={(e) => {
+          if (swipe.leaving) return;
+          if (e.key === 'Enter' && !swipe.dragging) onOpen?.(entry);
+        }}
+        onClick={() => { if (!swipe.dragging && Math.abs(swipe.dx) < 5 && !swipe.leaving) onOpen?.(entry); }}
       >
         {swipeEnabled && (
           <div className="absolute bottom-0 left-0 h-0.5 bg-red-500 rounded-b-xl"

@@ -2,6 +2,7 @@ import * as repo from '../data/good-habits.repo.js';
 import {
   assertHabitImages,
   normalizeHabitPayload,
+  readHabitImageRow,
 } from '../domain/habit.rules.js';
 import logger from '../../../shared/lib/logger.js';
 import {
@@ -62,10 +63,15 @@ export async function getHabitImage({ id, userId }) {
   if (!data) {
     return { httpStatus: 404, body: { success: false, message: 'Habit not found' } };
   }
-  const imageBase64 = data.ImageBase64 || data.AfterImageBase64 || data.BeforeImageBase64 || null;
+  const images = readHabitImageRow(data);
   return {
     httpStatus: 200,
-    body: { success: true, imageBase64 },
+    body: {
+      success: true,
+      imageBase64: images.imageBase64,
+      beforeImageBase64: images.beforeImageBase64,
+      afterImageBase64: images.afterImageBase64,
+    },
   };
 }
 

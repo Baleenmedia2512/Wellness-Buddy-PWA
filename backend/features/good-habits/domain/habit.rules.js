@@ -79,3 +79,30 @@ export function assertHabitImages(normalized) {
     throw err;
   }
 }
+
+function firstNonEmpty(row, names) {
+  if (!row) return null;
+  for (const name of names) {
+    const value = row[name];
+    if (value != null && String(value).trim() !== '') return value;
+  }
+  const wanted = new Set(names.map((n) => String(n).toLowerCase().replace(/"/g, '')));
+  for (const [key, value] of Object.entries(row)) {
+    if (!wanted.has(String(key).toLowerCase().replace(/"/g, ''))) continue;
+    if (value != null && String(value).trim() !== '') return value;
+  }
+  return null;
+}
+
+/** Map a good_habits image row to API fields regardless of PostgREST key casing. */
+export function readHabitImageRow(row) {
+  const imageBase64 = firstNonEmpty(row, ['ImageBase64', 'imageBase64']);
+  const beforeImageBase64 = firstNonEmpty(row, ['BeforeImageBase64', 'beforeImageBase64']);
+  const afterImageBase64 = firstNonEmpty(row, ['AfterImageBase64', 'afterImageBase64'])
+    || imageBase64;
+  return {
+    imageBase64: imageBase64 || afterImageBase64 || beforeImageBase64 || null,
+    beforeImageBase64: beforeImageBase64 || null,
+    afterImageBase64: afterImageBase64 || null,
+  };
+}
