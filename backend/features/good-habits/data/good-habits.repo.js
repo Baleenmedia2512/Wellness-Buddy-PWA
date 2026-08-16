@@ -1,4 +1,7 @@
 import { getSupabaseClient } from '../../../utils/supabaseClient.js';
+import logger from '../../../shared/lib/logger.js';
+import { applyDayFilterWidened } from '../../../shared/lib/datetime/applyDayFilter.js';
+import { IANA_IST, filterRowsByCalendarDay } from '../../../shared/lib/datetime/index.js';
 
 export async function insertHabit(payload) {
   const supabase = getSupabaseClient();
@@ -36,6 +39,27 @@ export async function softDeleteHabit(id, userId, updatedAt) {
     .maybeSingle();
   if (error) throw error;
   return data;
+}
+
+export async function listHabitsForDate(userId, date, timezoneIana = IANA_IST) {
+  if (userId == null || String(userId).trim() === '') return [];
+  const supabase = getSupabaseClient();
+  let query = supabase
+    .from('good_habits_table')
+    .select('"CreatedAt", "HabitType"')
+    .eq('"UserId"', String(userId))
+    .eq('"IsDeleted"', 0);
+  query = applyDayFilterWidened(query, 'CreatedAt', date, timezoneIana);
+  const { data, error } = await query;
+  if (error) {
+    logger.error('[good-habits.repo] listHabitsForDate failed', {
+      userId: String(userId),
+      date,
+      err: error.message,
+    });
+    return [];
+  }
+  return filterRowsByCalendarDay(data || [], date, timezoneIana, 'CreatedAt');
 }
 
 export async function restoreHabit(id, userId, updatedAt) {
