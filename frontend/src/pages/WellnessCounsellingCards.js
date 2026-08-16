@@ -527,7 +527,7 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
               className="whitespace-nowrap text-[11px] text-gray-500 sm:text-xs"
               htmlFor="bpc-header-venue"
             >
-              Body composition metrics checked at:
+              Checked At:
             </label>
             <input
               id="bpc-header-venue"
