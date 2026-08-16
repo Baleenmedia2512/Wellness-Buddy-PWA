@@ -94,7 +94,12 @@ function TrendMetricCard({ metric, latestValue, onOpen }) {
   );
 }
 
-export default function ReportsTrendTab({ user, selectedMember, onRefreshRegister }) {
+export default function ReportsTrendTab({
+  user,
+  selectedMember,
+  onRefreshRegister,
+  onDisplayTitleChange,
+}) {
   const viewedUser = resolveReportsViewedUser(selectedMember, user);
   const viewedUserId = viewedUser?.id || viewedUser?.userId;
   const viewerUserId = user?.id || user?.userId;
@@ -104,6 +109,7 @@ export default function ReportsTrendTab({ user, selectedMember, onRefreshRegiste
   const title = reportsMemberPossessiveTitle(
     selectedMember,
     openMetric ? openMetric.noun : 'Trend',
+    user,
   );
 
   const [weightHistory, setWeightHistory] = useState([]);
@@ -121,8 +127,10 @@ export default function ReportsTrendTab({ user, selectedMember, onRefreshRegiste
   }, []);
 
   useEffect(() => {
-    setOpenMetricKey(null);
-  }, [viewedUserId]);
+    if (typeof onDisplayTitleChange !== 'function') return undefined;
+    onDisplayTitleChange(title);
+    return () => onDisplayTitleChange(null);
+  }, [onDisplayTitleChange, title]);
 
   useEffect(() => {
     if (typeof onRefreshRegister !== 'function') return undefined;

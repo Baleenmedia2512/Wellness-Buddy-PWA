@@ -13,8 +13,19 @@ export function reportsSelectedUserLabel(selectedMember) {
   return selectedMember.userName || selectedMember.name || 'Member';
 }
 
-export function reportsMemberPossessiveTitle(selectedMember, noun) {
+/**
+ * Prefer selectedMember, then session user fields for the display name.
+ * @param {object|null} selectedMember
+ * @param {string} noun e.g. "Weight Trend"
+ * @param {object|null} [sessionUser] used when selectedMember is self/null for "My …" only
+ */
+export function reportsMemberPossessiveTitle(selectedMember, noun, sessionUser = null) {
   if (!selectedMember || selectedMember.isSelf) return `My ${noun}`;
-  const name = selectedMember.userName || selectedMember.name || 'Member';
+  const viewed = resolveReportsViewedUser(selectedMember, sessionUser);
+  const name = viewed?.userName
+    || viewed?.name
+    || selectedMember.userName
+    || selectedMember.name
+    || 'Member';
   return `${name}'s ${noun}`;
 }

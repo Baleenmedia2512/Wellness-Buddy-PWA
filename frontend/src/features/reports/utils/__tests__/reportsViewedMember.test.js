@@ -39,5 +39,12 @@ describe('reports titles', () => {
     assert.equal(reportsMemberPossessiveTitle(downline, 'Nutrition'), "A2's Nutrition");
     assert.equal(reportsMemberPossessiveTitle(downline, 'Weight Trend'), "A2's Weight Trend");
     assert.equal(reportsMemberPossessiveTitle(downline, 'VFat Trend'), "A2's VFat Trend");
+    assert.equal(
+      reportsMemberPossessiveTitle(
+        { id: 9, name: 'Usha', isSelf: false },
+        'Weight Trend',
+      ),
+      "Usha's Weight Trend",
+    );
   });
 });

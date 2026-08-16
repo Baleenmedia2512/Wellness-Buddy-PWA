@@ -27,6 +27,7 @@ import {
   getReportsDashboardTitle,
   resolveReportsDashboardTab,
 } from '../utils/reportsDashboardTabs.js';
+import { reportsMemberPossessiveTitle } from '../utils/reportsViewedMember.js';
 
 export { REPORT_DASHBOARD_TABS } from '../utils/reportsDashboardTabs.js';
 
@@ -70,8 +71,8 @@ export default function ReportsDashboard({
   );
   const [nutritionMember, setNutritionMember] = useState(null);
   const [trendMember, setTrendMember] = useState(null);
+  const [trendDisplayTitle, setTrendDisplayTitle] = useState(null);
   const nutritionMemberKey = nutritionMember?.id || nutritionMember?.userId || 'self';
-  const trendMemberKey = trendMember?.id || trendMember?.userId || 'self';
   const refreshFnsRef = useRef({});
   const [refreshingByTab, setRefreshingByTab] = useState({});
 
@@ -130,7 +131,11 @@ export default function ReportsDashboard({
   const embeddedStickyClass = memberSearchVisible
     ? 'sticky top-[9.75rem] z-20'
     : 'sticky top-[6.5rem] z-20';
-  const pageTitle = getReportsDashboardTitle(activeTab);
+  const pageTitle = trendActive && trendDisplayTitle
+    ? trendDisplayTitle
+    : trendActive
+      ? reportsMemberPossessiveTitle(trendMember, 'Trend', user)
+      : getReportsDashboardTitle(activeTab);
   const isRefreshing = Boolean(refreshingByTab[activeTab]);
 
   const handleRefresh = () => {
@@ -294,10 +299,10 @@ export default function ReportsDashboard({
           className={trendActive ? undefined : 'hidden'}
         >
           <ReportsTrendTab
-            key={`trend-${trendMemberKey}`}
             user={user}
             selectedMember={trendMember}
             onRefreshRegister={bindTrendRefresh}
+            onDisplayTitleChange={setTrendDisplayTitle}
           />
         </div>
       )}
