@@ -251,7 +251,7 @@ export default function ReportsTrendTab({
       ) : error ? (
         <p className="text-sm text-gray-500 py-10 text-center">{error}</p>
       ) : openMetric ? (
-        <div className="bg-white rounded-xl border border-gray-100 p-3 sm:p-4 min-w-0 overflow-hidden">
+        <div className="bg-white rounded-xl border border-gray-100 p-3 sm:p-4 min-w-0 overflow-x-clip">
           <ReportsWeightTrendChart
             weightHistory={trendHistory}
             metricKey={openMetric.key}

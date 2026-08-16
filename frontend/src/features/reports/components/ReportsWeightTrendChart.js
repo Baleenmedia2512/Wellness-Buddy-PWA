@@ -32,6 +32,19 @@ const RANGE_SHORT_LABEL = {
   [WEIGHT_TREND_RANGE_CUSTOM]: 'Custom',
 };
 
+const TOOLTIP_EDGE_PAD = 8;
+const TOOLTIP_HALF_WIDTH = 52;
+
+function clampTooltipX(rawX, containerWidth) {
+  const width = Number.isFinite(containerWidth) && containerWidth > 0
+    ? containerWidth
+    : 320;
+  const min = TOOLTIP_EDGE_PAD + TOOLTIP_HALF_WIDTH;
+  const max = Math.max(min, width - TOOLTIP_EDGE_PAD - TOOLTIP_HALF_WIDTH);
+  if (!Number.isFinite(rawX)) return width / 2;
+  return Math.min(Math.max(rawX, min), max);
+}
+
 export function ReportsTrendRangeSelector({
   selected,
   onSelect,
@@ -132,12 +145,17 @@ export default function ReportsWeightTrendChart({
 
   const showPoint = (point, event) => {
     if (!point?.hasRecorded || !Number.isFinite(point.value)) return;
-    const rect = chartRef.current?.getBoundingClientRect();
+    const node = chartRef.current;
+    const rect = node?.getBoundingClientRect();
     const clientX = event.clientX ?? event.touches?.[0]?.clientX;
+    const rawX = rect && Number.isFinite(clientX)
+      ? clientX - rect.left
+      : point.x;
+    const width = rect?.width || chartWidth;
     setTooltip({
       value: point.value,
       dateLabel: point.tooltipDate || point.label,
-      x: rect && Number.isFinite(clientX) ? clientX - rect.left : point.x,
+      x: clampTooltipX(rawX, width),
     });
   };
 
@@ -161,12 +179,12 @@ export default function ReportsWeightTrendChart({
       ) : (
         <div
           ref={chartRef}
-          className="relative w-full min-w-0 overflow-hidden pb-1"
+          className="relative w-full min-w-0 overflow-x-clip overflow-y-visible pb-1"
           onMouseLeave={hideTooltip}
         >
           {tooltip && (
             <div
-              className="absolute z-10 -translate-x-1/2 pointer-events-none rounded-lg bg-gray-900 text-white px-2.5 py-1.5 text-center shadow-lg"
+              className="absolute z-20 -translate-x-1/2 pointer-events-none rounded-lg bg-gray-900 text-white px-2.5 py-1.5 text-center shadow-lg whitespace-nowrap max-w-[calc(100%-1rem)]"
               style={{ left: tooltip.x, top: 0 }}
             >
               <p className="text-xs font-semibold">{formatTrendMetricValue(tooltip.value, metric.key)}</p>
