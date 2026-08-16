@@ -23,14 +23,14 @@ export const HEALTHY_SNACKS_SUBTYPE = Object.freeze({
 });
 
 export const GOOD_HABIT_SUBTYPE = Object.freeze({
-  BEFORE_AFTER: 'before_after',
+  IMAGE_NOTES: 'image_notes',
 });
 
 export const GOOD_HABIT_SUBOPTIONS = Object.freeze([
   {
-    id: GOOD_HABIT_SUBTYPE.BEFORE_AFTER,
-    label: 'Before vs After Image',
-    hint: 'Upload a before photo and an after photo',
+    id: GOOD_HABIT_SUBTYPE.IMAGE_NOTES,
+    label: 'Good Habit Photo',
+    hint: 'Upload a photo of your good habit',
   },
 ]);
 

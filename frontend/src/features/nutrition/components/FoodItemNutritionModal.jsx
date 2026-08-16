@@ -1,10 +1,12 @@
 /**
  * Read-only nutrition facts for a single food item in a meal.
- * Stacks above MealAnalysisModal / FoodDetailModal (z-50).
+ * Portaled to document.body so the title + close button are never clipped
+ * by MealAnalysisModal / FoodDetailModal (overflow + transform containing blocks).
  */
 import React, { useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
-import { buildFoodItemNutritionFacts } from '../domain/foodItemNutritionFacts';
+import { buildFoodItemNutritionFacts, FACT_SECTIONS } from '../domain/foodItemNutritionFacts';
 
 const GI_TONE = {
   low: { text: 'text-emerald-700', bg: 'bg-emerald-50', border: 'border-emerald-200' },
@@ -12,18 +14,42 @@ const GI_TONE = {
   high: { text: 'text-rose-700', bg: 'bg-rose-50', border: 'border-rose-200' },
 };
 
+function FactRow({ row }) {
+  const isCalories = row.key === 'calories';
+  const isNestedCarb = row.key === 'available_carbohydrate';
+  return (
+    <li
+      className={`flex items-baseline justify-between py-2.5 ${isCalories ? 'pt-1' : ''}`}
+    >
+      <span className={`text-sm ${isCalories ? 'font-semibold text-gray-900' : isNestedCarb ? 'text-gray-500 pl-3' : 'text-gray-700'}`}>
+        {row.label}
+      </span>
+      <span className={`tabular-nums ${isCalories ? 'text-lg font-extrabold text-orange-600' : 'text-sm font-semibold text-gray-900'}`}>
+        {row.value}
+        {row.unit ? (
+          <span className="ml-1 text-xs font-medium text-gray-400">{row.unit}</span>
+        ) : null}
+      </span>
+    </li>
+  );
+}
+
 function FoodItemNutritionModal({ item, onClose }) {
   const facts = useMemo(() => buildFoodItemNutritionFacts(item), [item]);
-  if (!item) return null;
+  if (!item || typeof document === 'undefined') return null;
 
   const giRow = facts.rows.find((row) => row.key === 'glycemic_index');
   const otherRows = facts.rows.filter((row) => row.key !== 'glycemic_index');
   const giTone = facts.giZone ? GI_TONE[facts.giZone.tone] : null;
+  const sections = FACT_SECTIONS.map((section) => ({
+    ...section,
+    rows: otherRows.filter((row) => row.section === section.id),
+  })).filter((section) => section.rows.length > 0);
 
-  return (
+  return createPortal(
     <>
       <div
-        className="fixed inset-0 bg-black/40 z-[70]"
+        className="fixed inset-0 bg-black/40 z-[80]"
         onClick={(e) => {
           e.stopPropagation();
           onClose();
@@ -34,11 +60,11 @@ function FoodItemNutritionModal({ item, onClose }) {
         role="dialog"
         aria-modal="true"
         aria-labelledby="food-item-nutrition-title"
-        className="fixed bottom-0 left-0 right-0 z-[71] bg-white rounded-t-3xl shadow-2xl max-h-[80vh] flex flex-col"
+        className="fixed bottom-0 left-0 right-0 z-[81] bg-white rounded-t-3xl shadow-2xl max-h-[88vh] flex flex-col overflow-hidden"
         onClick={(e) => e.stopPropagation()}
         style={{ animation: 'slideUp 0.3s ease-out' }}
       >
-        <div className="flex items-start justify-between gap-3 px-4 py-3 border-b border-gray-200">
+        <div className="flex-shrink-0 flex items-start justify-between gap-3 px-4 py-3 border-b border-gray-200 bg-white">
           <div className="min-w-0">
             <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">
               Nutrition facts
@@ -63,32 +89,26 @@ function FoodItemNutritionModal({ item, onClose }) {
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-4 py-3">
+        <div className="flex-1 min-h-0 overflow-y-auto px-4 py-3">
           {otherRows.length === 0 && !giRow ? (
             <p className="text-sm text-gray-500 py-8 text-center">
               No nutrition values stored for this item.
             </p>
           ) : (
-            <ul className="divide-y divide-gray-100">
-              {otherRows.map((row) => (
-                <li
-                  key={row.key}
-                  className={`flex items-baseline justify-between py-2.5 ${
-                    row.key === 'calories' ? 'pt-1' : ''
-                  }`}
-                >
-                  <span className={`text-sm ${row.key === 'calories' ? 'font-semibold text-gray-900' : row.key === 'available_carbohydrate' ? 'text-gray-500 pl-3' : 'text-gray-700'}`}>
-                    {row.label}
-                  </span>
-                  <span className={`tabular-nums ${row.key === 'calories' ? 'text-lg font-extrabold text-orange-600' : 'text-sm font-semibold text-gray-900'}`}>
-                    {row.value}
-                    {row.unit ? (
-                      <span className="ml-1 text-xs font-medium text-gray-400">{row.unit}</span>
-                    ) : null}
-                  </span>
-                </li>
-              ))}
-            </ul>
+            sections.map((section) => (
+              <div key={section.id} className={section.id === 'macros' ? '' : 'mt-4'}>
+                {section.label ? (
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400 pb-1 border-b border-gray-100">
+                    {section.label}
+                  </p>
+                ) : null}
+                <ul className="divide-y divide-gray-100">
+                  {section.rows.map((row) => (
+                    <FactRow key={row.key} row={row} />
+                  ))}
+                </ul>
+              </div>
+            ))
           )}
 
           {giRow && (
@@ -110,7 +130,8 @@ function FoodItemNutritionModal({ item, onClose }) {
           )}
         </div>
       </div>
-    </>
+    </>,
+    document.body,
   );
 }
 

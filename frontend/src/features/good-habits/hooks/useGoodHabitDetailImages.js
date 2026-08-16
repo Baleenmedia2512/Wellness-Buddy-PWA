@@ -8,8 +8,7 @@ function toImgSrc(b64) {
 }
 
 export function useGoodHabitDetailImages({ userId, habitId }) {
-  const [beforeSrc, setBeforeSrc] = useState(null);
-  const [afterSrc, setAfterSrc] = useState(null);
+  const [src, setSrc] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
@@ -21,8 +20,7 @@ export function useGoodHabitDetailImages({ userId, habitId }) {
     fetchGoodHabitImages({ userId, id: habitId })
       .then((data) => {
         if (cancelled) return;
-        setBeforeSrc(toImgSrc(data.beforeImageBase64));
-        setAfterSrc(toImgSrc(data.afterImageBase64 || data.imageBase64));
+        setSrc(toImgSrc(data.imageBase64 || data.afterImageBase64 || data.beforeImageBase64));
       })
       .catch((err) => {
         if (cancelled) return;
@@ -36,5 +34,5 @@ export function useGoodHabitDetailImages({ userId, habitId }) {
     };
   }, [userId, habitId]);
 
-  return { beforeSrc, afterSrc, loading, error };
+  return { src, loading, error };
 }

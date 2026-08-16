@@ -286,6 +286,6 @@ registerFlag({
   owner:          '@principal-eng',
   createdAt:      '2026-08-16',
   removeBy:       '2027-02-16',
-  description:    'ADR-0008 — Manual Log Good Habit tile: Before vs After. New good_habits_table; Diary kind good-habit; wellness-score good_habit_post. Does not change food logging or capture state machine.',
+  description:    'ADR-0008 — Manual Log Good Habit tile: single photo. New good_habits_table; Diary kind good-habit; wellness-score good_habit_post. Does not change food logging or capture state machine.',
   defaultEnabled: true,
 });

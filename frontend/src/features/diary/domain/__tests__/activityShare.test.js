@@ -320,6 +320,19 @@ describe('buildDiaryShareSuffix', () => {
     })).toBe('weight 55.6 kg');
   });
 
+  test('weight suffix appends ideal weight when provided', () => {
+    expect(buildDiaryShareSuffix('weight', {
+      previousWeight: 73.65,
+      currentWeight: 73.4,
+      idealWeight: 73.6,
+    })).toBe('Previous: 73.65 kg, Current: 73.4 kg, Ideal Weight: 73.6 kg ⬇️');
+
+    expect(buildDiaryShareSuffix('weight', {
+      currentWeight: 55.6,
+      idealWeight: 62.4,
+    })).toBe('weight 55.6 kg, Ideal Weight: 62.4 kg');
+  });
+
   test('workout suffix shows calories burnt so far today', () => {
     expect(buildDiaryShareSuffix('workout', { caloriesBurned: 457 }))
       .toBe('Calories Burnt: 457 kcal so far today');
@@ -343,13 +356,16 @@ describe('buildDiaryShareSuffix', () => {
     })).toBe('Academy');
   });
 
-  test('good-habit suffix uses notes and before/after label', () => {
-    expect(buildDiaryShareSuffix('good-habit', {
-      habitType: 'before_after',
-      notes: 'Morning walk',
-    })).toBe('Before vs After — Morning walk');
+  test('good-habit suffix is Good Habit, with notes when present', () => {
     expect(buildDiaryShareSuffix('good-habit', {
       habitType: 'image_notes',
+      notes: 'Morning walk',
+    })).toBe('Good Habit — Morning walk');
+    expect(buildDiaryShareSuffix('good-habit', {
+      habitType: 'image_notes',
+    })).toBe('Good Habit');
+    expect(buildDiaryShareSuffix('good-habit', {
+      habitType: 'before_after',
     })).toBe('Good Habit');
   });
 

@@ -93,13 +93,27 @@ describe('buildFoodItemNutritionFacts', () => {
     assert.equal(byKey.vitamin_c.unit, 'mg');
   });
 
-  it('skips zero extra micros so the sheet stays compact', () => {
+  it('shows only extras that have a stored non-zero value', () => {
     const facts = buildFoodItemNutritionFacts({
       name: 'Tea',
-      nutrition: { calories: 2, protein: 0, carbs: 0, fat: 0, fiber: 0, sodium: 0, iron: 0 },
+      nutrition: { calories: 2, protein: 0, carbs: 0, fat: 0, fiber: 0, sodium: 0, iron: 0, vitamin_c: 4 },
     });
     const keys = facts.rows.map((r) => r.key);
     assert.equal(keys.includes('sodium'), false);
     assert.equal(keys.includes('iron'), false);
+    assert.equal(keys.includes('vitamin_a'), false);
+    assert.equal(keys.includes('calcium'), false);
+    assert.equal(keys.includes('vitamin_c'), true);
+  });
+
+  it('reads camelCase vitamin aliases from nested nutrition', () => {
+    const facts = buildFoodItemNutritionFacts({
+      name: 'Idli',
+      nutrition: { calories: 350, protein: 10, carbs: 60, fat: 8, fiber: 5, vitaminC: 4, calcium: 40 },
+    });
+    const byKey = Object.fromEntries(facts.rows.map((r) => [r.key, r]));
+    assert.equal(byKey.vitamin_c.value, '4');
+    assert.equal(byKey.calcium.value, '40');
+    assert.equal(byKey.calcium.section, 'minerals');
   });
 });

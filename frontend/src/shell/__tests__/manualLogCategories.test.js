@@ -54,10 +54,10 @@ describe('manualLogCategories', () => {
     });
   });
 
-  it('Good Habit Manual Log is Before vs After only', () => {
+  it('Good Habit Manual Log is a single photo', () => {
     assert.deepEqual(
       GOOD_HABIT_SUBOPTIONS.map((o) => o.id),
-      [GOOD_HABIT_SUBTYPE.BEFORE_AFTER],
+      [GOOD_HABIT_SUBTYPE.IMAGE_NOTES],
     );
   });
 

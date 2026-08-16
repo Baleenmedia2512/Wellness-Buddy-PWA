@@ -29,7 +29,15 @@ import {
   fetchWatchBurnedCalories,
 } from '../../features/nutrition';
 import { seedMealAfterPromotion } from '../../features/nutrition/services/seedMealAfterPromotion';
-import { ManualWeightEntryModal, saveWeight, warmLatestWeightCache, getCachedLatestWeight } from '../../features/weight';
+import {
+  ManualWeightEntryModal,
+  saveWeight,
+  warmLatestWeightCache,
+  getCachedLatestWeight,
+  computeIdealWeightRange,
+  pickIdealWeightKg,
+} from '../../features/weight';
+import { getProfile, getCachedProfile } from '../../features/user/services/user.api';
 import { ManualEducationEntryModal, saveLog } from '../../features/education';
 import { ManualWatchEntryModal } from '../../features/activity';
 import {
@@ -219,6 +227,7 @@ function shakePayloadToAnalysis(payload) {
 
 export default function ManualEntryPage({
   userId,
+  userEmail = null,
   apiBaseUrl,
   captureId,
   imageBase64,
@@ -265,6 +274,29 @@ export default function ManualEntryPage({
   const [workoutTodayLoading, setWorkoutTodayLoading] = useState(false);
   // True after light watch-calories has returned once (prefetch or open).
   const workoutSummaryReadyRef = useRef(false);
+  // BMI 19–23 range from profile height — warmed so share caption is sync on Save.
+  const idealWeightRangeRef = useRef(null);
+
+  useEffect(() => {
+    if (!userEmail) {
+      idealWeightRangeRef.current = null;
+      return undefined;
+    }
+    const cached = getCachedProfile(userEmail);
+    if (cached?.data?.height) {
+      idealWeightRangeRef.current = computeIdealWeightRange(cached.data.height);
+    }
+    let cancelled = false;
+    getProfile(userEmail)
+      .then((res) => {
+        if (cancelled) return;
+        idealWeightRangeRef.current = computeIdealWeightRange(res?.data?.height);
+      })
+      .catch(() => {
+        // Non-critical: WhatsApp caption omits Ideal when height is unavailable.
+      });
+    return () => { cancelled = true; };
+  }, [userEmail]);
 
   // Capture row must exist before LOG AS / AI can finish. Upload runs in the
   // background — UI stays interactive; taps are queued until captureId arrives.
@@ -622,6 +654,8 @@ export default function ManualEntryPage({
   const handleWeightSave = ({ weightValue, unit, bmr }) => {
     // Share caption uses cache only — do not block Save on a network round-trip.
     const previousWeight = getCachedLatestWeight(userId)?.value ?? null;
+    const idealRange = idealWeightRangeRef.current
+      || computeIdealWeightRange(getCachedProfile(userEmail)?.data?.height);
     const capId = captureId;
     const uid = userId;
     const img = imageBase64;
@@ -632,6 +666,7 @@ export default function ManualEntryPage({
       activityCaption: buildDiaryShareSuffix('weight', {
         previousWeight,
         currentWeight: weightValue,
+        idealWeight: pickIdealWeightKg(weightValue, idealRange),
       }),
     });
 
@@ -757,10 +792,7 @@ export default function ManualEntryPage({
 
   const handleGoodHabitSave = async ({
     habitType,
-    notes,
     imageBase64: habitImage,
-    beforeImageBase64,
-    afterImageBase64,
     shareImage,
   }) => {
     // Persist first, then refresh score, then leave — exiting early left Home
@@ -769,17 +801,15 @@ export default function ManualEntryPage({
       userId,
       captureId,
       habitType,
-      notes,
+      notes: '',
       imageBase64: habitImage,
-      beforeImageBase64,
-      afterImageBase64,
       clientTimestamp: originalCapturedAt || null,
     });
     refreshAfterPersist('manual-good-habit-persisted');
     onToast?.('Good Habit saved to Diary');
     exit({
-      activityCaption: buildDiaryShareSuffix('good-habit', { habitType, notes }),
-      shareImage: shareImage || habitImage || afterImageBase64 || imageBase64,
+      activityCaption: buildDiaryShareSuffix('good-habit', { habitType }),
+      shareImage: shareImage || habitImage || imageBase64,
     });
   };
 

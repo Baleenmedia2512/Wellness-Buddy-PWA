@@ -1,5 +1,5 @@
 /**
- * Diary tap target for Good Habit — Before vs After photos + optional notes.
+ * Diary tap target for Good Habit — single photo.
  */
 import React, { useEffect, useState } from 'react';
 import { Loader2, Star, X } from 'lucide-react';
@@ -9,27 +9,24 @@ import {
 } from '../../../shared/utils/datetimeUtils';
 import { useGoodHabitDetailImages } from '../hooks/useGoodHabitDetailImages';
 
-function PhotoSlot({ label, src, loading, onOpen }) {
+function PhotoSlot({ src, loading, onOpen }) {
   const canOpen = Boolean(src) && typeof onOpen === 'function';
   return (
-    <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-      <p className="text-[10px] font-bold uppercase tracking-wide text-emerald-700/80">{label}</p>
-      <button
-        type="button"
-        disabled={!canOpen}
-        onClick={() => onOpen({ src, label })}
-        className="flex h-44 w-full items-center justify-center overflow-hidden rounded-xl border border-emerald-200 bg-emerald-50/60 disabled:cursor-default"
-        aria-label={canOpen ? `View ${label} photo full size` : `${label} photo`}
-      >
-        {src ? (
-          <img src={src} alt={`${label} photo`} className="h-full w-full object-cover" />
-        ) : loading ? (
-          <Loader2 className="h-6 w-6 animate-spin text-emerald-600" aria-label={`Loading ${label}`} />
-        ) : (
-          <Star className="h-8 w-8 text-emerald-300" aria-hidden />
-        )}
-      </button>
-    </div>
+    <button
+      type="button"
+      disabled={!canOpen}
+      onClick={() => onOpen({ src, label: 'Good Habit' })}
+      className="flex h-56 w-full items-center justify-center overflow-hidden rounded-xl border border-emerald-200 bg-emerald-50/60 disabled:cursor-default"
+      aria-label={canOpen ? 'View Good Habit photo full size' : 'Good Habit photo'}
+    >
+      {src ? (
+        <img src={src} alt="Good Habit photo" className="h-full w-full object-cover" />
+      ) : loading ? (
+        <Loader2 className="h-6 w-6 animate-spin text-emerald-600" aria-label="Loading photo" />
+      ) : (
+        <Star className="h-8 w-8 text-emerald-300" aria-hidden />
+      )}
+    </button>
   );
 }
 
@@ -82,12 +79,11 @@ export default function GoodHabitDetailModal({
 }) {
   const p = entry?.payload || {};
   const habitId = p.id;
-  const { beforeSrc, afterSrc, loading, error } = useGoodHabitDetailImages({
+  const { src, loading, error } = useGoodHabitDetailImages({
     userId: ownerUserId,
     habitId,
   });
   const [expanded, setExpanded] = useState(null);
-  const notes = String(p.notes || '').trim();
   const timeLabel = entry?.capturedAt
     ? formatBusinessTime(entry.capturedAt, timezoneIana)
     : null;
@@ -110,7 +106,7 @@ export default function GoodHabitDetailModal({
         <div className="flex items-start justify-between px-4 pb-2 pt-4">
           <div>
             <p id="good-habit-detail-title" className="text-sm font-bold text-emerald-900">
-              Before vs After
+              Good Habit
             </p>
             {timeLabel && (
               <p className="mt-0.5 text-[11px] text-emerald-700/70">{timeLabel}</p>
@@ -132,13 +128,7 @@ export default function GoodHabitDetailModal({
               {error}
             </p>
           )}
-          <div className="flex gap-2">
-            <PhotoSlot label="Before" src={beforeSrc} loading={loading} onOpen={setExpanded} />
-            <PhotoSlot label="After" src={afterSrc} loading={loading} onOpen={setExpanded} />
-          </div>
-          {notes ? (
-            <p className="rounded-xl bg-emerald-50/80 px-3 py-2 text-sm text-emerald-950">{notes}</p>
-          ) : null}
+          <PhotoSlot src={src} loading={loading} onOpen={setExpanded} />
         </div>
       </div>
       {expanded?.src && (

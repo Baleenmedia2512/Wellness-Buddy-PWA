@@ -6,6 +6,7 @@ import { Capacitor } from "@capacitor/core";
 import { App } from "@capacitor/app";
 import { debugLog } from './logger.js';
 import { hasValidProfileName } from '../../features/user/domain/profileCompleteness';
+import { apiFetch } from '../services/apiFetch.js';
 
 const PROFILE_USER_NAME_KEY = 'wv.profileUserName';
 
@@ -97,9 +98,13 @@ export function resolveShareDisplayName(savedUserName, user, fallback = 'Wellnes
 /** Fetch UserName from /api/user/profile (best-effort). */
 async function fetchProfileUserName(email, apiBaseUrl) {
   if (!email || !apiBaseUrl) return null;
-  const res = await fetch(
-    `${apiBaseUrl}/api/user/profile?email=${encodeURIComponent(email)}&_t=${Date.now()}`,
-    { cache: 'no-store', headers: { 'Cache-Control': 'no-cache', Pragma: 'no-cache' } },
+  const res = await apiFetch(
+    `/api/user/profile?email=${encodeURIComponent(email)}&_t=${Date.now()}`,
+    {
+      apiBaseUrl,
+      cache: 'no-store',
+      headers: { 'Cache-Control': 'no-cache', Pragma: 'no-cache' },
+    },
   );
   if (!res.ok) return null;
   const data = await res.json();

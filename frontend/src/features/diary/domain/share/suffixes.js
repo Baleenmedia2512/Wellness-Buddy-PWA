@@ -14,6 +14,7 @@ import { formatShakeProductScoops } from './shakeShare';
 /**
  * @param {'food'|'water'|'afresh'|'shake'|'education'|'weight'|string} activityType
  * @param {object} [payload]
+ * @param {number} [payload.idealWeight] kg target (BMI 19–23) appended as "Ideal Weight: X kg"
  * @returns {string|null} compact suffix, or null when nothing useful to append
  */
 export function buildDiaryShareSuffix(activityType, payload = {}) {
@@ -55,8 +56,10 @@ export function buildDiaryShareSuffix(activityType, payload = {}) {
     case 'weight': {
       const current = formatShareKg(payload.currentWeight);
       const previous = formatShareKg(payload.previousWeight);
+      const ideal = formatShareKg(payload.idealWeight);
+      const idealPart = ideal != null ? `, Ideal Weight: ${ideal} kg` : '';
       if (current == null) return 'weight';
-      if (previous == null) return `weight ${current} kg`;
+      if (previous == null) return `weight ${current} kg${idealPart}`;
 
       const delta = Math.round((current - previous) * 100) / 100;
       // Direction as emoji arrows (⬆️/⬇️) — WhatsApp renders them as button-style icons.
@@ -64,7 +67,7 @@ export function buildDiaryShareSuffix(activityType, payload = {}) {
       if (delta < 0) arrow = ' ⬇️';
       else if (delta > 0) arrow = ' ⬆️';
 
-      return `Previous: ${previous} kg, Current: ${current} kg${arrow}`;
+      return `Previous: ${previous} kg, Current: ${current} kg${idealPart}${arrow}`;
     }
     case 'workout':
     case 'watch':
@@ -76,9 +79,7 @@ export function buildDiaryShareSuffix(activityType, payload = {}) {
     }
     case 'good-habit': {
       const notes = String(payload.notes || '').trim();
-      const isBeforeAfter = payload.habitType === 'before_after';
-      const kindLabel = isBeforeAfter ? 'Before vs After' : 'Good Habit';
-      return notes ? `${kindLabel} — ${notes}` : kindLabel;
+      return notes ? `Good Habit — ${notes}` : 'Good Habit';
     }
     case DIARY_FOOD_ACTIVITY.FOOD:
     case 'food':

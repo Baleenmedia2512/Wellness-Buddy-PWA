@@ -95,6 +95,7 @@ export const selectAllTextFieldProps = Object.freeze({
 });
 
 let installed = false;
+let selectionGuardInstalled = false;
 
 /**
  * App-wide: any text/search/numeric field selects its full value on focus/tap.
@@ -111,4 +112,52 @@ export function installSelectAllOnTextFocus() {
 
   document.addEventListener('focusin', onActivate, true);
   document.addEventListener('click', onActivate, true);
+}
+
+/** Form fields where copy / paste / Select all must still work. */
+export const EDITABLE_SELECTION_SELECTOR =
+  'input, textarea, select, [contenteditable="true"], [contenteditable="plaintext-only"]';
+
+/**
+ * True when the event target is (or is inside) a real text field.
+ * Dashboard labels, names, and scores are not editable — those must not
+ * open Android's Copy / Select all toolbar.
+ * @param {EventTarget | Node | null | undefined} target
+ */
+export function isEditableSelectionTarget(target) {
+  if (!target) return false;
+  let el = target;
+  if (el.nodeType === 3) {
+    el = el.parentElement;
+  }
+  if (!el || typeof el.closest !== 'function') return false;
+  if (el.isContentEditable) return true;
+  return Boolean(el.closest(EDITABLE_SELECTION_SELECTOR));
+}
+
+/**
+ * Block Android WebView Copy / Select all on non-input UI.
+ * Paste still works inside OTP, email, food name, and other fields.
+ */
+export function installDisableNonEditableSelection() {
+  if (selectionGuardInstalled || typeof document === 'undefined') return;
+  selectionGuardInstalled = true;
+
+  const blockIfNonEditable = (e) => {
+    if (isEditableSelectionTarget(e.target)) return;
+    e.preventDefault();
+  };
+
+  document.addEventListener('selectstart', blockIfNonEditable, true);
+  document.addEventListener('contextmenu', blockIfNonEditable, true);
+  document.addEventListener('copy', blockIfNonEditable, true);
+  document.addEventListener('cut', blockIfNonEditable, true);
+
+  document.addEventListener('selectionchange', () => {
+    if (isEditableSelectionTarget(document.activeElement)) return;
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return;
+    if (isEditableSelectionTarget(sel.anchorNode)) return;
+    sel.removeAllRanges();
+  });
 }

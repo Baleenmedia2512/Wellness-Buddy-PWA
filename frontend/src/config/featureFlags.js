@@ -134,7 +134,7 @@ const REGISTRY = Object.freeze({
     description:    'Require User Consent Form Agree before OTP/Google and app use (ADR-0006).',
   },
 
-  // ADR-0008 — Manual Log Good Habit (Before vs After).
+  // ADR-0008 — Manual Log Good Habit (single photo).
   // Default ON. Set REACT_APP_FF_GOOD_HABIT=false or
   // localStorage 'ff.good-habit'='false' to hide the tile.
   'ff.good-habit': {

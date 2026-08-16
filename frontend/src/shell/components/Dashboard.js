@@ -524,7 +524,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
       case 'unknown':
         return 'Capture';
       case 'good-habit':
-        return entry.payload?.habitType === 'before_after' ? 'Before vs After' : 'Good Habit';
+        return 'Good Habit';
       default:
         return 'Entry';
     }
@@ -1377,6 +1377,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
       <Suspense fallback={null}>
         <ManualEntryPage
           userId={ownerId}
+          userEmail={user?.email || user?.Email || null}
           apiBaseUrl={apiBaseUrl}
           captureId={classifyFlow.captureId}
           imageBase64={classifyFlow.imageBase64}

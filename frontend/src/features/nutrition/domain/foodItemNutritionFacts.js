@@ -15,39 +15,59 @@ export const CORE_FACT_KEYS = Object.freeze([
   'glycemic_index',
 ]);
 
+export const HEART_FACT_KEYS = Object.freeze(['sodium', 'cholesterol']);
+
+export const VITAMIN_FACT_KEYS = Object.freeze([
+  'vitamin_a', 'vitamin_c', 'vitamin_d', 'vitamin_e', 'vitamin_k',
+  'vitamin_b1', 'vitamin_b2', 'vitamin_b3', 'vitamin_b6', 'vitamin_b9', 'vitamin_b12',
+]);
+
+export const MINERAL_FACT_KEYS = Object.freeze([
+  'calcium', 'iron', 'magnesium', 'potassium', 'zinc', 'phosphorus',
+]);
+
+export const FACT_SECTIONS = Object.freeze([
+  { id: 'macros', label: null },
+  { id: 'other', label: 'Sodium & cholesterol' },
+  { id: 'vitamins', label: 'Vitamins' },
+  { id: 'minerals', label: 'Minerals' },
+]);
+
 export const FACT_FIELD_META = Object.freeze({
-  calories: { label: 'Calories', unit: 'kcal' },
-  protein: { label: 'Protein', unit: 'g' },
-  carbs: { label: 'Carbohydrates', unit: 'g' },
-  available_carbohydrate: { label: 'Available Carbohydrate', unit: 'g' },
-  fiber: { label: 'Fibre', unit: 'g' },
-  sugar: { label: 'Sugar', unit: 'g' },
-  fat: { label: 'Fat', unit: 'g' },
-  glycemic_index: { label: 'Glycemic Index', unit: '' },
-  sodium: { label: 'Sodium', unit: 'mg' },
-  cholesterol: { label: 'Cholesterol', unit: 'mg' },
-  vitamin_a: { label: 'Vitamin A', unit: 'µg' },
-  vitamin_c: { label: 'Vitamin C', unit: 'mg' },
-  vitamin_d: { label: 'Vitamin D', unit: 'µg' },
-  vitamin_e: { label: 'Vitamin E', unit: 'mg' },
-  vitamin_k: { label: 'Vitamin K', unit: 'µg' },
-  vitamin_b1: { label: 'Vitamin B1', unit: 'mg' },
-  vitamin_b2: { label: 'Vitamin B2', unit: 'mg' },
-  vitamin_b3: { label: 'Vitamin B3', unit: 'mg' },
-  vitamin_b6: { label: 'Vitamin B6', unit: 'mg' },
-  vitamin_b9: { label: 'Vitamin B9', unit: 'µg' },
-  vitamin_b12: { label: 'Vitamin B12', unit: 'µg' },
-  calcium: { label: 'Calcium', unit: 'mg' },
-  iron: { label: 'Iron', unit: 'mg' },
-  magnesium: { label: 'Magnesium', unit: 'mg' },
-  potassium: { label: 'Potassium', unit: 'mg' },
-  zinc: { label: 'Zinc', unit: 'mg' },
-  phosphorus: { label: 'Phosphorus', unit: 'mg' },
+  calories: { label: 'Calories', unit: 'kcal', section: 'macros' },
+  protein: { label: 'Protein', unit: 'g', section: 'macros' },
+  carbs: { label: 'Carbohydrates', unit: 'g', section: 'macros' },
+  available_carbohydrate: { label: 'Available Carbohydrate', unit: 'g', section: 'macros' },
+  fiber: { label: 'Fibre', unit: 'g', section: 'macros' },
+  sugar: { label: 'Sugar', unit: 'g', section: 'macros' },
+  fat: { label: 'Fat', unit: 'g', section: 'macros' },
+  glycemic_index: { label: 'Glycemic Index', unit: '', section: 'macros' },
+  sodium: { label: 'Sodium', unit: 'mg', section: 'other' },
+  cholesterol: { label: 'Cholesterol', unit: 'mg', section: 'other' },
+  vitamin_a: { label: 'Vitamin A', unit: 'µg', section: 'vitamins' },
+  vitamin_c: { label: 'Vitamin C', unit: 'mg', section: 'vitamins' },
+  vitamin_d: { label: 'Vitamin D', unit: 'µg', section: 'vitamins' },
+  vitamin_e: { label: 'Vitamin E', unit: 'mg', section: 'vitamins' },
+  vitamin_k: { label: 'Vitamin K', unit: 'µg', section: 'vitamins' },
+  vitamin_b1: { label: 'Vitamin B1 (Thiamin)', unit: 'mg', section: 'vitamins' },
+  vitamin_b2: { label: 'Vitamin B2 (Riboflavin)', unit: 'mg', section: 'vitamins' },
+  vitamin_b3: { label: 'Vitamin B3 (Niacin)', unit: 'mg', section: 'vitamins' },
+  vitamin_b6: { label: 'Vitamin B6', unit: 'mg', section: 'vitamins' },
+  vitamin_b9: { label: 'Vitamin B9 (Folate)', unit: 'µg', section: 'vitamins' },
+  vitamin_b12: { label: 'Vitamin B12', unit: 'µg', section: 'vitamins' },
+  calcium: { label: 'Calcium', unit: 'mg', section: 'minerals' },
+  iron: { label: 'Iron', unit: 'mg', section: 'minerals' },
+  magnesium: { label: 'Magnesium', unit: 'mg', section: 'minerals' },
+  potassium: { label: 'Potassium', unit: 'mg', section: 'minerals' },
+  zinc: { label: 'Zinc', unit: 'mg', section: 'minerals' },
+  phosphorus: { label: 'Phosphorus', unit: 'mg', section: 'minerals' },
 });
 
-const EXTRA_FACT_KEYS = Object.freeze(
-  Object.keys(FACT_FIELD_META).filter((key) => !CORE_FACT_KEYS.includes(key)),
-);
+const EXTRA_FACT_KEYS = Object.freeze([
+  ...HEART_FACT_KEYS,
+  ...VITAMIN_FACT_KEYS,
+  ...MINERAL_FACT_KEYS,
+]);
 
 /**
  * @param {number|null|undefined} value
@@ -100,17 +120,52 @@ function hasValue(nutrition, key) {
   return v != null && Number.isFinite(Number(v));
 }
 
-/** Nested `nutrition` wins; flat item fields are the fallback (same as pickNutrition). */
+function snakeToCamel(key) {
+  return key.replace(/_([a-z])/g, (_, ch) => ch.toUpperCase());
+}
+
+function snakeToPascal(key) {
+  const camel = snakeToCamel(key);
+  return camel.charAt(0).toUpperCase() + camel.slice(1);
+}
+
+function keyAliases(key) {
+  const camel = snakeToCamel(key);
+  const pascal = snakeToPascal(key);
+  return [camel, pascal, `total${pascal}`, `Total${pascal}`];
+}
+
+function readNumber(source, key) {
+  if (!source || typeof source !== 'object') return undefined;
+  const candidates = [key, ...keyAliases(key)];
+  for (const k of candidates) {
+    const v = source[k];
+    if (v == null || v === '') continue;
+    const n = Number(v);
+    if (Number.isFinite(n)) return n;
+  }
+  return undefined;
+}
+
+/** Nested `nutrition` wins; serving / flat item fields are fallbacks. */
 function readItemNutrition(item) {
   if (!item || typeof item !== 'object') return {};
-  const nested = item.nutrition && typeof item.nutrition === 'object' ? item.nutrition : {};
+  const sources = [
+    item.nutrition,
+    item.serving?.nutrition,
+    item.defaultServing?.nutrition,
+    item,
+  ];
   const out = {};
   for (const key of Object.keys(FACT_FIELD_META)) {
     if (key === 'available_carbohydrate') continue;
-    const v = nested[key] ?? item[key];
-    if (v == null || v === '') continue;
-    const n = Number(v);
-    if (Number.isFinite(n)) out[key] = n;
+    for (const src of sources) {
+      const n = readNumber(src, key);
+      if (n != null) {
+        out[key] = n;
+        break;
+      }
+    }
   }
   return out;
 }
@@ -126,18 +181,20 @@ function toRow(key, value) {
     value: display,
     unit: meta.unit,
     numeric: Number(value),
+    section: meta.section,
   };
 }
 
 /**
  * Build display rows for one food item only (never meal totals).
- * Core macros are always included; GI / available carbs / extras only when present.
+ * Core macros are always included; vitamins / minerals / sodium / cholesterol
+ * only when a stored value is greater than 0.
  *
  * @param {object|null|undefined} item
  * @returns {{
  *   name: string,
  *   portion: string|null,
- *   rows: Array<{ key: string, label: string, value: string, unit: string, numeric: number }>,
+ *   rows: Array<{ key: string, label: string, value: string, unit: string, numeric: number, section: string }>,
  *   giZone: { label: string, tone: 'low'|'medium'|'high' }|null,
  * }}
  */
