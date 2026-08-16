@@ -755,7 +755,7 @@ export default function ManualEntryPage({
     });
   };
 
-  const handleGoodHabitSave = ({
+  const handleGoodHabitSave = async ({
     habitType,
     notes,
     imageBase64: habitImage,
@@ -763,27 +763,23 @@ export default function ManualEntryPage({
     afterImageBase64,
     shareImage,
   }) => {
-    const capId = captureId;
-    const uid = userId;
-    setActiveForm(null);
-    onToast?.('Good Habit saved to Diary');
-    exit({
-      activityCaption: buildDiaryShareSuffix('good-habit', { habitType, notes }),
-      shareImage: shareImage || habitImage || afterImageBase64 || imageBase64,
-    });
-    void saveGoodHabit({
-      userId: uid,
-      captureId: capId,
+    // Persist first, then refresh score, then leave — exiting early left Home
+    // on the pre-save total until a full page reload.
+    await saveGoodHabit({
+      userId,
+      captureId,
       habitType,
       notes,
       imageBase64: habitImage,
       beforeImageBase64,
       afterImageBase64,
       clientTimestamp: originalCapturedAt || null,
-    }).then(() => {
-      refreshAfterPersist('manual-good-habit-persisted');
-    }).catch((err) => {
-      onToast?.(err?.message || "Couldn't save Good Habit — check Diary.");
+    });
+    refreshAfterPersist('manual-good-habit-persisted');
+    onToast?.('Good Habit saved to Diary');
+    exit({
+      activityCaption: buildDiaryShareSuffix('good-habit', { habitType, notes }),
+      shareImage: shareImage || habitImage || afterImageBase64 || imageBase64,
     });
   };
 

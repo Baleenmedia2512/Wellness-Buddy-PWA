@@ -25,6 +25,7 @@ import UnknownEntryFlow from './UnknownEntryFlow';
 import UnknownCaptureUndoBanner, { UNDO_SECONDS } from './UnknownCaptureUndoBanner';
 import { undoDeleteCapture } from '../../features/captures';
 import { deleteGoodHabit, undoDeleteGoodHabit, GoodHabitDetailModal } from '../../features/good-habits';
+import { refreshDailyWellnessScoreAfterSave } from '../../features/wellness-score-sheet/services/refreshDailyWellnessScoreNow';
 import { deleteMealById, undoMealDelete } from '../../features/nutrition';
 import { parseAnalysisData } from '../../features/nutrition/services/nutritionDashboard/analysisHelpers';
 import { prefetchMealDetails } from '../../features/nutrition/services/mealDetailCache';
@@ -590,6 +591,16 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
     triggerNutritionRefresh({ immediate: true, source });
   };
 
+  /** Home + Wellness Score refetch after a good-habit write (same as a page reload). */
+  const refreshWellnessScoreAfterGoodHabit = useCallback((source) => {
+    triggerNutritionRefresh({ immediate: true, source });
+    void refreshDailyWellnessScoreAfterSave({
+      user,
+      userId: ownerId,
+      apiBaseUrl,
+    });
+  }, [apiBaseUrl, ownerId, triggerNutritionRefresh, user]);
+
   const handleEducationDeleteWithUndo = useCallback(({ entryId, expiresAt, topic = null }) => {
     const kind = isCaloriesBurnedTopic(topic) ? 'watch' : 'education';
     handleEntryDeleteWithUndo({
@@ -651,6 +662,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
         break;
       case 'good-habit':
         await undoDeleteGoodHabit({ userId, id: entryId });
+        refreshWellnessScoreAfterGoodHabit('diary-undo-good-habit');
         break;
       default:
         return;
@@ -750,6 +762,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
         }
         case 'good-habit':
           await deleteGoodHabit({ userId: ownerId, id: entryId });
+          refreshWellnessScoreAfterGoodHabit('diary-swipe-delete-good-habit');
           break;
         default:
           removeDiaryUndo(entry.kind, entryId);
