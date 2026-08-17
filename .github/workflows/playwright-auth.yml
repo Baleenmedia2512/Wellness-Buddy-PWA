@@ -1,4 +1,4 @@
-name: Playwright Authentication Tests
+name: Playwright Authentication and Profile Tests
 
 on:
   push:
@@ -23,27 +23,32 @@ on:
 
 
 jobs:
-  playwright-auth:
 
-    name: Playwright Login Tests
+  # ============================================================
+  # PLAYWRIGHT TESTS
+  # ============================================================
+
+  playwright-tests:
+
+    name: Playwright Auth + Complete Profile Tests
 
     runs-on: ubuntu-latest
 
-    timeout-minutes: 30
+    timeout-minutes: 40
 
     steps:
 
-      # ============================================================
-      # 1. Checkout repository
-      # ============================================================
+      # ==========================================================
+      # 1. CHECKOUT
+      # ==========================================================
 
       - name: Checkout repository
         uses: actions/checkout@v4
 
 
-      # ============================================================
-      # 2. Setup Node.js
-      # ============================================================
+      # ==========================================================
+      # 2. NODE.JS
+      # ==========================================================
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -52,35 +57,35 @@ jobs:
           cache: npm
 
 
-      # ============================================================
-      # 3. Install ROOT dependencies
-      # ============================================================
+      # ==========================================================
+      # 3. ROOT DEPENDENCIES
+      # ==========================================================
 
       - name: Install root dependencies
         run: npm ci
 
 
-      # ============================================================
-      # 4. Install FRONTEND dependencies
-      # ============================================================
+      # ==========================================================
+      # 4. FRONTEND DEPENDENCIES
+      # ==========================================================
 
       - name: Install frontend dependencies
         working-directory: ./frontend
         run: npm ci
 
 
-      # ============================================================
-      # 5. Install BACKEND dependencies
-      # ============================================================
+      # ==========================================================
+      # 5. BACKEND DEPENDENCIES
+      # ==========================================================
 
       - name: Install backend dependencies
         working-directory: ./backend
         run: npm ci
 
 
-      # ============================================================
-      # 6. Create FRONTEND .env
-      # ============================================================
+      # ==========================================================
+      # 6. CREATE FRONTEND ENVIRONMENT
+      # ==========================================================
 
       - name: Create frontend environment
         shell: bash
@@ -89,23 +94,30 @@ jobs:
           REACT_APP_GOOGLE_MAPS_API_KEY: ${{ secrets.REACT_APP_GOOGLE_MAPS_API_KEY }}
 
         run: |
+
           cat > frontend/.env <<EOF
+
           GEMINI_API_KEY=$GEMINI_API_KEY
+
           REACT_APP_GOOGLE_MAPS_API_KEY=$REACT_APP_GOOGLE_MAPS_API_KEY
+
           REACT_APP_API_BASE_URL=http://127.0.0.1:3000
+
           DISABLE_ESLINT_PLUGIN=true
+
           EOF
 
           echo "Frontend .env created."
 
 
-      # ============================================================
-      # 7. Create BACKEND .env
-      # ============================================================
+      # ==========================================================
+      # 7. CREATE BACKEND ENVIRONMENT
+      # ==========================================================
 
       - name: Create backend environment
         shell: bash
         env:
+
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
 
           SMTP_USER: ${{ secrets.SMTP_USER }}
@@ -137,7 +149,9 @@ jobs:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
 
         run: |
+
           cat > backend/.env <<EOF
+
           GEMINI_API_KEY=$GEMINI_API_KEY
 
           SMTP_USER=$SMTP_USER
@@ -167,53 +181,62 @@ jobs:
           SUPABASE_SERVICE_KEY=$SUPABASE_SERVICE_KEY
 
           CRON_SECRET=$CRON_SECRET
+
           EOF
 
           echo "Backend .env created."
 
 
-      # ============================================================
-      # 8. Install wait-on
-      # ============================================================
+      # ==========================================================
+      # 8. INSTALL WAIT-ON
+      # ==========================================================
 
       - name: Install wait-on
         run: npm install --no-save wait-on
 
 
-      # ============================================================
-      # 9. Install Playwright Chromium
-      # ============================================================
+      # ==========================================================
+      # 9. INSTALL PLAYWRIGHT BROWSERS
+      # ==========================================================
 
-      - name: Install Playwright
+      - name: Install Playwright Chromium
         run: npx playwright install --with-deps chromium
 
 
-      # ============================================================
-      # 10. Verify react-scripts
-      # ============================================================
+      # ==========================================================
+      # 10. VERIFY REACT-SCRIPTS
+      # ==========================================================
 
       - name: Verify React Scripts
         working-directory: ./frontend
         run: |
+
           echo "Checking react-scripts..."
 
           if [ -f "node_modules/.bin/react-scripts" ]; then
+
             echo "react-scripts is installed."
+
           else
+
             echo "ERROR: react-scripts was not found."
+
             ls -la node_modules/.bin || true
+
             exit 1
+
           fi
 
 
-      # ============================================================
-      # 11. Start BACKEND
-      # ============================================================
+      # ==========================================================
+      # 11. START BACKEND
+      # ==========================================================
 
       - name: Start Backend
         working-directory: ./backend
         shell: bash
         run: |
+
           echo "=========================================="
           echo "Starting backend on port 3000"
           echo "=========================================="
@@ -226,15 +249,14 @@ jobs:
           cat ../backend.pid
 
 
-      # ============================================================
-      # 12. Wait for BACKEND
-      #
-      # We use TCP because GET / returns 404.
-      # ============================================================
+      # ==========================================================
+      # 12. WAIT FOR BACKEND
+      # ==========================================================
 
       - name: Wait for Backend
         shell: bash
         run: |
+
           echo "Waiting for backend on port 3000..."
 
           npx wait-on \
@@ -244,18 +266,22 @@ jobs:
           echo "Backend port 3000 is ready."
 
 
-      # ============================================================
-      # 13. Verify BACKEND process
-      # ============================================================
+      # ==========================================================
+      # 13. VERIFY BACKEND PROCESS
+      # ==========================================================
 
       - name: Verify Backend Process
         shell: bash
         run: |
+
           echo "Checking backend process..."
 
           if kill -0 $(cat backend.pid) 2>/dev/null; then
+
             echo "Backend process is running."
+
           else
+
             echo "Backend process stopped."
 
             echo ""
@@ -264,21 +290,13 @@ jobs:
             echo "=============================================="
 
             exit 1
+
           fi
 
 
-      # ============================================================
-      # 14. Start FRONTEND
-      #
-      # IMPORTANT:
-      # Create React App normally uses port 3000.
-      #
-      # Backend is already using 3000.
-      #
-      # Therefore explicitly set:
-      #
-      # PORT=3001
-      # ============================================================
+      # ==========================================================
+      # 14. START FRONTEND
+      # ==========================================================
 
       - name: Start Frontend
         working-directory: ./frontend
@@ -287,6 +305,7 @@ jobs:
           PORT: 3001
 
         run: |
+
           echo "=========================================="
           echo "Starting frontend on port 3001"
           echo "=========================================="
@@ -301,14 +320,15 @@ jobs:
           cat ../frontend.pid
 
 
-      # ============================================================
-      # 15. Give FRONTEND time to start
-      # ============================================================
+      # ==========================================================
+      # 15. WAIT FOR FRONTEND PROCESS
+      # ==========================================================
 
       - name: Check Frontend Startup
         shell: bash
         run: |
-          echo "Waiting 10 seconds for frontend..."
+
+          echo "Waiting for frontend startup..."
 
           sleep 10
 
@@ -318,18 +338,22 @@ jobs:
           echo "==============================================="
 
 
-      # ============================================================
-      # 16. Verify FRONTEND process
-      # ============================================================
+      # ==========================================================
+      # 16. VERIFY FRONTEND PROCESS
+      # ==========================================================
 
       - name: Verify Frontend Process
         shell: bash
         run: |
+
           echo "Checking frontend process..."
 
           if kill -0 $(cat frontend.pid) 2>/dev/null; then
+
             echo "Frontend process is running."
+
           else
+
             echo "Frontend process stopped."
 
             echo ""
@@ -338,16 +362,18 @@ jobs:
             echo "==============================================="
 
             exit 1
+
           fi
 
 
-      # ============================================================
-      # 17. Wait for FRONTEND
-      # ============================================================
+      # ==========================================================
+      # 17. WAIT FOR FRONTEND
+      # ==========================================================
 
       - name: Wait for Frontend
         shell: bash
         run: |
+
           echo "Waiting for frontend on port 3001..."
 
           npx wait-on \
@@ -357,13 +383,14 @@ jobs:
           echo "Frontend is ready."
 
 
-      # ============================================================
-      # 18. Verify FRONTEND HTTP response
-      # ============================================================
+      # ==========================================================
+      # 18. VERIFY FRONTEND HTTP RESPONSE
+      # ==========================================================
 
       - name: Verify Frontend
         shell: bash
         run: |
+
           echo "Checking frontend HTTP response..."
 
           curl -I http://127.0.0.1:3001
@@ -372,23 +399,62 @@ jobs:
           echo "Frontend is responding correctly."
 
 
-      # ============================================================
-      # 19. Run Playwright AUTH tests
-      # ============================================================
+      # ==========================================================
+      # 19. RUN AUTH TESTS
+      # ==========================================================
 
       - name: Run Playwright Authentication Tests
         run: |
-          npx playwright test tests/frontend/auth/login.spec.js
+
+          echo "=========================================="
+          echo "Running Authentication Tests"
+          echo "=========================================="
+
+          npx playwright test \
+            tests/frontend/auth/login.spec.js
 
 
-      # ============================================================
-      # 20. Show backend logs
-      # ============================================================
+      # ==========================================================
+      # 20. RUN COMPLETE PROFILE TESTS
+      # ==========================================================
+
+      - name: Run Playwright Complete Profile Tests
+        run: |
+
+          echo "=========================================="
+          echo "Running Complete Profile Tests"
+          echo "=========================================="
+
+          npx playwright test \
+            tests/frontend/profile/complete-profile.spec.js
+
+
+      # ==========================================================
+      # 21. RUN ALL FRONTEND TESTS
+      # ==========================================================
+      #
+      # Leave this commented for now.
+      #
+      # Once you add more frontend spec files, you can enable this
+      # step to run everything under tests/frontend.
+      #
+      # ==========================================================
+
+      # - name: Run All Frontend Playwright Tests
+      #   run: |
+      #
+      #     npx playwright test tests/frontend
+
+
+      # ==========================================================
+      # 22. BACKEND LOGS
+      # ==========================================================
 
       - name: Show Backend Logs
         if: always()
         shell: bash
         run: |
+
           echo ""
           echo "=========================================="
           echo "BACKEND LOG"
@@ -397,14 +463,15 @@ jobs:
           cat backend.log || true
 
 
-      # ============================================================
-      # 21. Show frontend logs
-      # ============================================================
+      # ==========================================================
+      # 23. FRONTEND LOGS
+      # ==========================================================
 
       - name: Show Frontend Logs
         if: always()
         shell: bash
         run: |
+
           echo ""
           echo "=========================================="
           echo "FRONTEND LOG"
@@ -413,9 +480,9 @@ jobs:
           cat frontend.log || true
 
 
-      # ============================================================
-      # 22. Upload Playwright report
-      # ============================================================
+      # ==========================================================
+      # 24. UPLOAD PLAYWRIGHT REPORT
+      # ==========================================================
 
       - name: Upload Playwright Report
         if: always()
@@ -426,9 +493,9 @@ jobs:
           retention-days: 7
 
 
-      # ============================================================
-      # 23. Upload failed test results
-      # ============================================================
+      # ==========================================================
+      # 25. UPLOAD FAILED TEST RESULTS
+      # ==========================================================
 
       - name: Upload Test Results
         if: failure()
