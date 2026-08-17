@@ -2,6 +2,10 @@
  * Compress Transformation before/after photos for upload.
  * Android camera JPEGs are often landscape pixels with EXIF orientation 6/8.
  * Portrait is decided AFTER applying that orientation.
+ *
+ * iPhone / WKWebView already applies EXIF on HTMLImageElement, so img width/height
+ * are display pixels. Re-applying EXIF 6/8 would swap a portrait photo back to
+ * landscape and wrongly reject it.
  */
 
 const TARGET_BYTES = 900 * 1024;
@@ -24,6 +28,57 @@ export function displaySizeAfterOrientation(width, height, orientation) {
 export function isPortraitAfterOrientation(width, height, orientation) {
   const size = displaySizeAfterOrientation(width, height, orientation);
   return size.height > size.width;
+}
+
+/**
+ * True when the browser already honoured EXIF 5–8 on the Image (Safari/iOS).
+ * Encoded JPEG is landscape; loaded image is already portrait.
+ * @param {number} imgWidth
+ * @param {number} imgHeight
+ * @param {number} [encodedWidth]
+ * @param {number} [encodedHeight]
+ * @param {number} orientation
+ */
+export function browserHonoredExifOrientation(
+  imgWidth,
+  imgHeight,
+  encodedWidth,
+  encodedHeight,
+  orientation,
+) {
+  if (orientation < 5 || orientation > 8) return false;
+  if (!encodedWidth || !encodedHeight) return imgHeight > imgWidth;
+  return encodedWidth > encodedHeight && imgHeight > imgWidth;
+}
+
+/**
+ * Size to use for the portrait check and canvas, plus whether to bake EXIF.
+ * @param {number} imgWidth
+ * @param {number} imgHeight
+ * @param {number} [encodedWidth]
+ * @param {number} [encodedHeight]
+ * @param {number} orientation
+ */
+export function resolveOrientedImageSize(
+  imgWidth,
+  imgHeight,
+  encodedWidth,
+  encodedHeight,
+  orientation,
+) {
+  if (browserHonoredExifOrientation(imgWidth, imgHeight, encodedWidth, encodedHeight, orientation)) {
+    return { width: imgWidth, height: imgHeight, applyExif: false };
+  }
+  const srcW = encodedWidth || imgWidth;
+  const srcH = encodedHeight || imgHeight;
+  const display = displaySizeAfterOrientation(srcW, srcH, orientation);
+  return {
+    width: display.width,
+    height: display.height,
+    applyExif: orientation >= 2 && orientation <= 8,
+    srcW,
+    srcH,
+  };
 }
 
 /**
@@ -64,6 +119,45 @@ export function readJpegOrientation(buffer) {
     return 1;
   }
   return 1;
+}
+
+/**
+ * Encoded JPEG pixel size from SOF (before EXIF). Null if not JPEG / unreadable.
+ * @param {ArrayBuffer} buffer
+ * @returns {{ width: number, height: number } | null}
+ */
+export function readJpegSize(buffer) {
+  try {
+    const view = new DataView(buffer);
+    if (view.byteLength < 4 || view.getUint16(0, false) !== 0xFFD8) return null;
+
+    let offset = 2;
+    while (offset + 8 <= view.byteLength) {
+      const marker = view.getUint16(offset, false);
+      offset += 2;
+      if ((marker & 0xFF00) !== 0xFF00) break;
+      if (marker === 0xFFDA) break;
+      if (offset + 2 > view.byteLength) break;
+      const size = view.getUint16(offset, false);
+      if (size < 2) break;
+
+      const isSof =
+        (marker >= 0xFFC0 && marker <= 0xFFC3)
+        || (marker >= 0xFFC5 && marker <= 0xFFC7)
+        || (marker >= 0xFFC9 && marker <= 0xFFCB)
+        || (marker >= 0xFFCD && marker <= 0xFFCF);
+      if (isSof && size >= 7 && offset + 6 <= view.byteLength) {
+        const height = view.getUint16(offset + 3, false);
+        const width = view.getUint16(offset + 5, false);
+        if (width > 0 && height > 0) return { width, height };
+        return null;
+      }
+      offset += size;
+    }
+  } catch {
+    return null;
+  }
+  return null;
 }
 
 function readOrientationFromTiff(view, tiffOffset) {
@@ -189,19 +283,30 @@ export async function compressImage(file) {
 
   try {
     const img = await loadImageFromUrl(objectUrl);
-    if (!isPortraitAfterOrientation(img.width, img.height, orientation)) {
+    const imgW = img.naturalWidth || img.width;
+    const imgH = img.naturalHeight || img.height;
+    const encoded = readJpegSize(buffer);
+    const resolved = resolveOrientedImageSize(
+      imgW,
+      imgH,
+      encoded?.width,
+      encoded?.height,
+      orientation,
+    );
+    if (resolved.height <= resolved.width) {
       throw new Error('Please upload a portrait photo (vertical orientation). Landscape photos are not allowed.');
     }
 
-    let srcW = img.width;
-    let srcH = img.height;
-    if (srcW > MAX_DIM || srcH > MAX_DIM) {
-      const ratio = Math.min(MAX_DIM / srcW, MAX_DIM / srcH);
-      srcW = Math.round(srcW * ratio);
-      srcH = Math.round(srcH * ratio);
+    const drawOrientation = resolved.applyExif ? orientation : 1;
+    let drawW = resolved.applyExif ? resolved.srcW : resolved.width;
+    let drawH = resolved.applyExif ? resolved.srcH : resolved.height;
+    if (drawW > MAX_DIM || drawH > MAX_DIM) {
+      const ratio = Math.min(MAX_DIM / drawW, MAX_DIM / drawH);
+      drawW = Math.round(drawW * ratio);
+      drawH = Math.round(drawH * ratio);
     }
 
-    const display = displaySizeAfterOrientation(srcW, srcH, orientation);
+    const display = displaySizeAfterOrientation(drawW, drawH, drawOrientation);
     const canvas = document.createElement('canvas');
     canvas.width = display.width;
     canvas.height = display.height;
@@ -211,8 +316,8 @@ export async function compressImage(file) {
     }
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'medium';
-    transformCanvasForOrientation(ctx, srcW, srcH, orientation);
-    ctx.drawImage(img, 0, 0, srcW, srcH);
+    transformCanvasForOrientation(ctx, drawW, drawH, drawOrientation);
+    ctx.drawImage(img, 0, 0, drawW, drawH);
 
     const maxBase64Len = Math.ceil(TARGET_BYTES / 0.75);
     let quality = 0.85;
