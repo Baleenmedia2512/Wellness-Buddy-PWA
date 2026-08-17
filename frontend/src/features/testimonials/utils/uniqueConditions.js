@@ -55,3 +55,21 @@ export function isSameIssueList(a, b) {
   const keys = new Set(left.map(issueKey));
   return right.every((item) => keys.has(issueKey(item)));
 }
+
+/**
+ * Show "Add custom" when the typed label is not already selected
+ * and is not an exact catalog suggestion.
+ *
+ * @param {unknown} query
+ * @param {{ suggestions?: unknown[], selected?: unknown[] }} [opts]
+ * @returns {boolean}
+ */
+export function canAddCustomHealthIssue(query, { suggestions = [], selected = [] } = {}) {
+  const trimmed = String(query || '').trim();
+  if (trimmed.length < 2) return false;
+  const key = issueKey(trimmed);
+  if (!key) return false;
+  if (selected.some((item) => issueKey(item) === key)) return false;
+  if (suggestions.some((item) => issueKey(item) === key)) return false;
+  return true;
+}

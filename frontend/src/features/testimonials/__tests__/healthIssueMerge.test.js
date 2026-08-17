@@ -8,6 +8,7 @@ import {
   hasHealthIssue,
   withoutHealthIssue,
   isSameIssueList,
+  canAddCustomHealthIssue,
 } from '../utils/uniqueConditions.js';
 
 describe('uniqueConditions health-issue merge', () => {
@@ -64,5 +65,33 @@ describe('approved vs newly added health issues', () => {
       isSameIssueList(['High Cholesterol', 'Hypertension', 'Asthma'], ['High Cholesterol', 'Hypertension']),
       false,
     );
+  });
+
+  it('offers Add custom when the typed issue is not in the suggestion list', () => {
+    assert.equal(
+      canAddCustomHealthIssue('Kidney swelling', {
+        suggestions: ['Diabetes Type 2', 'Hypertension'],
+        selected: ['High Cholesterol'],
+      }),
+      true,
+    );
+  });
+
+  it('does not offer Add custom for an exact catalog match or a duplicate', () => {
+    assert.equal(
+      canAddCustomHealthIssue('Diabetes Type 2', {
+        suggestions: ['Diabetes Type 2', 'Diabetes Type 1'],
+        selected: [],
+      }),
+      false,
+    );
+    assert.equal(
+      canAddCustomHealthIssue('Asthma', {
+        suggestions: ['Hypertension'],
+        selected: ['Asthma'],
+      }),
+      false,
+    );
+    assert.equal(canAddCustomHealthIssue('h', { suggestions: [], selected: [] }), false);
   });
 });
