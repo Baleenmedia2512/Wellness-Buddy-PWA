@@ -36,7 +36,8 @@ import {
 import { getCachedVideoThumbnail } from '../utils/videoThumbnailCache.js';
 import { jpegDataUrlToObjectUrl, revokeBlobUrl, withTestimonialMediaCacheBust } from '../utils/testimonialMediaUrl.js';
 import { resolveResultVideoUrl, prefetchNativeResultVideos } from '../utils/downloadVideo.js';
-import { MAX_HEALTH_VIDEO_MB, isVideoOverSizeLimit, videoTooLargeMessage } from '../utils/videoLimits.js';
+import { MAX_HEALTH_VIDEO_MB, isVideoOverSizeLimit, videoTooLargeMessage, maxVideoMbForSlot } from '../utils/videoLimits.js';
+import { compressVideoToMaxBytes } from '../utils/compressTestimonialVideo.js';
 import { normalizeVideoUploadFile } from '../utils/normalizeVideoUploadFile.js';
 import { compressImage } from '../utils/compressTestimonialImage.js';
 import { isCaptureFlowBusy, setCaptureFlowBusy } from '../../../shared/services/captureFlowBusy';
@@ -695,11 +696,8 @@ function MemberCard({
       setVideoUploadError('Cannot upload video: user ID is missing. Please refresh the page.');
       return;
     }
-    if (isVideoOverSizeLimit(file, slot)) {
-      setVideoSizeAlert(videoTooLargeMessage(slot));
-      return;
-    }
     setVideoUploadError(null);
+    setCaptureFlowBusy(true);
     const localUrl = URL.createObjectURL(file);
     if (slot === 'health') {
       setDraftHealthPreview((prev) => { revokeBlobUrl(prev); return localUrl; });
@@ -712,7 +710,9 @@ function MemberCard({
     }
     try {
       const normalized = await normalizeVideoUploadFile(file);
-      if (isVideoOverSizeLimit(normalized, slot)) {
+      const maxBytes = maxVideoMbForSlot(slot) * 1024 * 1024;
+      const compressed = await compressVideoToMaxBytes(normalized, maxBytes);
+      if (isVideoOverSizeLimit(compressed, slot)) {
         setVideoSizeAlert(videoTooLargeMessage(slot));
         if (slot === 'health') {
           setDraftHealthPreview((prev) => { revokeBlobUrl(prev); return null; });
@@ -732,7 +732,7 @@ function MemberCard({
       if (!info?.path || !info?.sessionId) {
         throw new Error('Server did not return a valid upload path. Please try again.');
       }
-      const uploadPromise = uploadTestimonialVideoInChunks(normalized, info, slot, numericUserId);
+      const uploadPromise = uploadTestimonialVideoInChunks(compressed, info, slot, numericUserId);
       uploadPromise.catch(() => {});
       const path = await Promise.race([
         uploadPromise,
@@ -765,6 +765,7 @@ function MemberCard({
         setDraftBusinessPath(null);
       }
     } finally {
+      setCaptureFlowBusy(false);
       if (slot === 'health') setUploadingHealth(false);
       else                   setUploadingBusiness(false);
     }
@@ -1391,7 +1392,7 @@ function MemberCard({
                     <div className="absolute inset-0 bg-black/60 rounded-xl flex items-center justify-center z-10">
                       <div className="flex flex-col items-center gap-1">
                         <Upload className="h-5 w-5 text-white animate-bounce" />
-                        <span className="text-white text-[10px] font-bold">Uploading…</span>
+                        <span className="text-white text-[10px] font-bold">Preparing…</span>
                       </div>
                     </div>
                   )}
@@ -1443,7 +1444,7 @@ function MemberCard({
                     <div className="absolute inset-0 bg-black/60 rounded-xl flex items-center justify-center z-10">
                       <div className="flex flex-col items-center gap-1">
                         <Upload className="h-5 w-5 text-white animate-bounce" />
-                        <span className="text-white text-[10px] font-bold">Uploading…</span>
+                        <span className="text-white text-[10px] font-bold">Preparing…</span>
                       </div>
                     </div>
                   )}

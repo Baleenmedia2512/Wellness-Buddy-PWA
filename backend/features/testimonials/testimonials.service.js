@@ -917,6 +917,14 @@ function tmpChunkPath(userId, sessionId, chunkIndex) {
   return `${userId}/tmp_${sessionId}_chunk_${chunkIndex}.part`;
 }
 
+function sniffVideoContentType(buffer) {
+  if (!buffer || buffer.length < 4) return 'video/mp4';
+  if (buffer[0] === 0x1A && buffer[1] === 0x45 && buffer[2] === 0xDF && buffer[3] === 0xA3) {
+    return 'video/webm';
+  }
+  return 'video/mp4';
+}
+
 function assertAssembledVideoSize(buffer, slot) {
   const maxBytes = slot === 'health' ? MAX_HEALTH_VIDEO_BYTES : MAX_BUSINESS_VIDEO_BYTES;
   if (buffer.length > maxBytes) {
@@ -951,7 +959,7 @@ export async function uploadVideoChunk(rawBody) {
   // Single-chunk videos upload directly — avoids tmp write/read race on small files.
   if (payload.totalChunks === 1) {
     assertAssembledVideoSize(buffer, payload.slot);
-    await repo.uploadBuffer(payload.finalPath, buffer, 'video/mp4');
+    await repo.uploadBuffer(payload.finalPath, buffer, sniffVideoContentType(buffer));
     return {
       httpStatus: 200,
       body: { success: true, complete: true, path: payload.finalPath },
@@ -978,7 +986,7 @@ export async function uploadVideoChunk(rawBody) {
 
   const assembled = Buffer.concat(parts);
   assertAssembledVideoSize(assembled, payload.slot);
-  await repo.uploadBuffer(payload.finalPath, assembled, 'video/mp4');
+  await repo.uploadBuffer(payload.finalPath, assembled, sniffVideoContentType(assembled));
   await repo.removePaths(tmpPaths);
 
   return {

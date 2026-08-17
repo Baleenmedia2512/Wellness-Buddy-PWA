@@ -15,9 +15,12 @@ import {
 } from '../services/testimonialApi.js';
 import { normalizeVideoUploadFile } from '../utils/normalizeVideoUploadFile.js';
 import { resolveVideoDuration } from '../utils/getVideoMetadata.js';
+import { compressVideoToMaxBytes } from '../utils/compressTestimonialVideo.js';
 import {
   MAX_HEALTH_DURATION_S,
   MAX_BUSINESS_DURATION_S,
+  MAX_HEALTH_VIDEO_MB,
+  MAX_BUSINESS_VIDEO_MB,
   isVideoOverSizeLimit,
   videoTooLargeMessage,
 } from '../utils/videoLimits.js';
@@ -119,12 +122,7 @@ export function useTestimonialVideo({ userId, healthIssues = [] }) {
 
       const maxDuration = slot === 'health' ? MAX_HEALTH_DURATION_S : MAX_BUSINESS_DURATION_S;
       const maxLabel    = slot === 'health' ? '1 min' : '2 min';
-
-      const fileMb = file.size / (1024 * 1024);
-      if (isVideoOverSizeLimit(file, slot)) {
-        setError(videoTooLargeMessage(slot));
-        return;
-      }
+      const maxBytes = (slot === 'health' ? MAX_HEALTH_VIDEO_MB : MAX_BUSINESS_VIDEO_MB) * 1024 * 1024;
 
       try {
         const { duration, durationVerified } = await resolveVideoDuration(file);
@@ -133,11 +131,19 @@ export function useTestimonialVideo({ userId, healthIssues = [] }) {
           return;
         }
 
-        const sizeLabel = fileMb < 1 ? `${Math.round(file.size / 1024)} KB` : `${fileMb.toFixed(1)} MB`;
+        const normalized = await normalizeVideoUploadFile(file);
+        const uploadFile = await compressVideoToMaxBytes(normalized, maxBytes);
+        if (isVideoOverSizeLimit(uploadFile, slot)) {
+          setError(videoTooLargeMessage(slot));
+          return;
+        }
+
+        const fileMb = uploadFile.size / (1024 * 1024);
+        const sizeLabel = fileMb < 1 ? `${Math.round(uploadFile.size / 1024)} KB` : `${fileMb.toFixed(1)} MB`;
 
         const info = {
           name: file.name,
-          file,
+          file: uploadFile,
           sizeLabel,
           durationUnverified: !durationVerified,
         };
