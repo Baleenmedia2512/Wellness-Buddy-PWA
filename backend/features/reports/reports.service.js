@@ -14,7 +14,7 @@ import { cache } from '../../utils/cache.js';
 
 /** Short TTL so page/filter changes reuse the expensive hierarchy+weight build. */
 const REPORT_BUILD_CACHE_TTL_MS = 20_000;
-const REPORT_BUILD_CACHE_PREFIX = 'reports:downline-weight:v1:';
+const REPORT_BUILD_CACHE_PREFIX = 'reports:downline-weight:v2:';
 
 /**
  * Classify a member's weight status relative to their ideal range.
@@ -173,6 +173,8 @@ function buildWeightRow(member, weightMap) {
   return {
     userId: member.UserId,
     userName: member.UserName,
+    email: member.Email || null,
+    communityId: member.CommunityId ? String(member.CommunityId).trim() : null,
     currentWeight,
     idealMin: idealRange?.idealMin ?? null,
     idealMax: idealRange?.idealMax ?? null,

@@ -127,14 +127,16 @@ const MEAL_LABELS = {
 function buildShareText({
   activityType, foodName, calories, volumeMl, scoops, servings, shakeProducts, nutrition = {},
   glycemicIndex = null,
+  itemNames = null,
 }) {
   if (activityType === 'water') {
-    return buildDiaryShareSuffix('water', { volumeMl });
+    return buildDiaryShareSuffix('water', { volumeMl, soFarToday: false });
   }
   if (activityType === 'afresh') {
     return buildDiaryShareSuffix('afresh', {
       scoops: scoops ?? 1,
       calories,
+      soFarToday: false,
     });
   }
   if (activityType === 'shake') {
@@ -146,6 +148,7 @@ function buildShareText({
   }
   return buildDiaryShareSuffix('food', {
     foodName,
+    itemNames,
     calories,
     protein: nutrition.protein ?? 0,
     carbs: nutrition.carbs ?? 0,
@@ -197,6 +200,7 @@ const FoodDetailModal = ({ payload, capturedAt, onClose, onDelete }) => {
     scoops,
     servings: 1,
     shakeProducts,
+    itemNames: items.map((item) => item.name).filter(Boolean),
     nutrition: {
       protein: totals.protein ?? foodData?.nutrition?.protein ?? 0,
       carbs: totals.carbs ?? foodData?.nutrition?.carbs ?? 0,

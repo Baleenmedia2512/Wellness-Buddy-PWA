@@ -1,6 +1,7 @@
 // src/shared/components/TeamMemberProfileModal/TeamMemberProfileModal.js
 import React, { useState, useEffect } from 'react';
 import { X, User, Mail, Ruler, Flame, Salad, Phone } from 'lucide-react';
+import { fetchTeamMemberProfile } from './fetchTeamMemberProfile.js';
 
 const DIET_LABELS = {
   veg: '🥦 Vegetarian',
@@ -31,13 +32,7 @@ const TeamMemberProfileModal = ({ isOpen, onClose, memberEmail, apiBaseUrl }) =>
       setError('');
       setProfile(null);
       try {
-        const base = apiBaseUrl || process.env.REACT_APP_API_BASE_URL;
-        const res = await fetch(
-          `${base}/api/user/profile?email=${encodeURIComponent(memberEmail)}&_t=${Date.now()}`,
-          { cache: 'no-store', headers: { 'Cache-Control': 'no-cache', Pragma: 'no-cache' } }
-        );
-        if (!res.ok) throw new Error('Failed to load profile');
-        const data = await res.json();
+        const data = await fetchTeamMemberProfile(memberEmail, apiBaseUrl);
         if (data.success && data.data) {
           setProfile(data.data);
         } else {
@@ -130,6 +125,13 @@ const TeamMemberProfileModal = ({ isOpen, onClose, memberEmail, apiBaseUrl }) =>
                 label="Email"
                 value={profile.email || '—'}
               />
+              {profile.communityId ? (
+                <ProfileRow
+                  icon={<User className="h-4 w-4 text-green-600" />}
+                  label="Community ID"
+                  value={String(profile.communityId)}
+                />
+              ) : null}
               <ProfileRow
                 icon={<Ruler className="h-4 w-4 text-green-600" />}
                 label="Height"
@@ -154,6 +156,22 @@ const TeamMemberProfileModal = ({ isOpen, onClose, memberEmail, apiBaseUrl }) =>
                 }
                 highlight
               />
+              {/* Initial Weight — first upload, read-only */}
+              {profile.initialWeight != null && Number.isFinite(Number(profile.initialWeight)) && (
+                <ProfileRow
+                  icon={<span className="text-base">🏁</span>}
+                  label="Initial Weight"
+                  value={`${parseFloat(profile.initialWeight).toFixed(1)} kg`}
+                  sub={profile.initialWeightDate
+                    ? new Date(profile.initialWeightDate).toLocaleDateString('en-GB', {
+                      day: 'numeric',
+                      month: 'short',
+                      year: 'numeric',
+                      timeZone: 'Asia/Kolkata',
+                    })
+                    : undefined}
+                />
+              )}
               {/* Current Weight */}
               {profile.latestWeight && (
                 <ProfileRow
@@ -227,13 +245,16 @@ const TeamMemberProfileModal = ({ isOpen, onClose, memberEmail, apiBaseUrl }) =>
   );
 };
 
-const ProfileRow = ({ icon, label, value, highlight }) => (
+const ProfileRow = ({ icon, label, value, highlight, sub }) => (
   <div className={`flex items-center gap-3 p-3 rounded-xl ${highlight ? 'bg-blue-50 border border-blue-200' : 'bg-gray-50'}`}>
     <div className={`flex-shrink-0 w-10 h-10 rounded-xl shadow-sm flex items-center justify-center ${highlight ? 'bg-blue-100' : 'bg-white'}`}>
       {icon}
     </div>
     <div className="flex-1 min-w-0">
       <p className={`text-xs font-medium ${highlight ? 'text-blue-500' : 'text-gray-400'}`}>{label}</p>
+      {sub ? (
+        <p className={`text-[10px] ${highlight ? 'text-blue-400' : 'text-gray-400'}`}>{sub}</p>
+      ) : null}
       <p className={`text-sm font-semibold truncate ${highlight ? 'text-blue-700' : 'text-gray-800'}`}>{value}</p>
     </div>
   </div>

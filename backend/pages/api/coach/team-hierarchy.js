@@ -96,7 +96,7 @@ export default async function handler(req, res) {
     // Leaderboard strips load avatars separately for top-N only.
     let query = supabase
       .from("team_table")
-      .select("UserId, UserName, Email, Role, CoachId, CoachTeamId, Status, PhoneNumber, Height, Bmr");
+      .select("UserId, UserName, Email, Role, CoachId, CoachTeamId, Status, PhoneNumber, Height, Bmr, CommunityId");
 
     // Always fetch ALL users (Active + Inactive) so inactive intermediate coaches
     // can be detected and their members promoted up to the nearest active ancestor.
@@ -183,6 +183,7 @@ export default async function handler(req, res) {
         userId: user.UserId,
         userName: user.UserName,
         email: user.Email || "",
+        communityId: user.CommunityId ? String(user.CommunityId).trim() : null,
         role: user.Role || "user",
         coachId: user.CoachId,
         coCoachId: deriveCoCoachId(user), // Dynamically derived from coach_teams_table
@@ -532,6 +533,7 @@ export default async function handler(req, res) {
           UserId: node.userId,
           UserName: node.userName,
           Email: node.email,
+          CommunityId: node.communityId || null,
           Role: node.role,
           CoachId: node.coachId,
           CoCoachId: node.coCoachId,
@@ -566,6 +568,7 @@ export default async function handler(req, res) {
         UserId: hierarchy.coCoachInfo.userId,
         UserName: hierarchy.coCoachInfo.userName,
         Email: hierarchy.coCoachInfo.email,
+        CommunityId: hierarchy.coCoachInfo.communityId || null,
         Role: hierarchy.coCoachInfo.role,
         CoachId: hierarchy.coCoachInfo.coachId,
         CoCoachId: hierarchy.coCoachInfo.coCoachId,

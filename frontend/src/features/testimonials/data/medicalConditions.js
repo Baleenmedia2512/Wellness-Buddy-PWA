@@ -120,6 +120,8 @@ export const MEDICAL_CONDITION_CATEGORIES = {
     'Osteoarthritis',
     'Rheumatoid Arthritis',
     'Back Pain',
+    'Lower Back Pain',
+    'Chronic Back Pain',
     'Neck Pain',
     'Gout',
     'Osteoporosis',

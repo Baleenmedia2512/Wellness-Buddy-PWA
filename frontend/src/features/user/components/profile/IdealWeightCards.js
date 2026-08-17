@@ -15,13 +15,29 @@ const Row = ({ wrapper, label, labelIcon, value, valueClass, sub }) => (
   </div>
 );
 
-const IdealWeightCards = ({ height, latestWeight }) => {
+function formatInitialWeightDate(value) {
+  if (!value) return '';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleDateString('en-GB', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    timeZone: 'Asia/Kolkata',
+  });
+}
+
+const IdealWeightCards = ({ height, latestWeight, initialWeight, initialWeightDate }) => {
   const h = parseFloat(height);
   if (!h || h < 50) return null;
   const m = h / 100;
   const idealMin = parseFloat((19 * m * m).toFixed(1));
   const idealMax = parseFloat((23 * m * m).toFixed(1));
   const current = latestWeight;
+  const initial = initialWeight != null && Number.isFinite(Number(initialWeight))
+    ? Number(initialWeight)
+    : null;
+  const initialDateLabel = formatInitialWeightDate(initialWeightDate);
   const isLoss = current && current > idealMax + 0.5;
   const isGain = current && current < idealMin - 0.5;
   const display = isGain ? `${idealMin} kg` : `${idealMax} kg`;
@@ -30,6 +46,13 @@ const IdealWeightCards = ({ height, latestWeight }) => {
     <>
       <Row wrapper="bg-blue-50 border border-blue-200 text-blue-600"
         label="Ideal Weight" value={display} valueClass="text-blue-700" />
+      {initial != null && (
+        <Row wrapper="bg-slate-50 border border-slate-200 text-slate-600"
+          label="Initial Weight"
+          labelIcon={<EmojiOrNative emoji="🏁" className="w-4 h-4" nativeClassName="text-sm" />}
+          sub={initialDateLabel || undefined}
+          value={`${initial.toFixed(1)} kg`} valueClass="text-slate-700" />
+      )}
       {current != null && (
         <Row wrapper="bg-gray-50 border border-gray-200 text-gray-600"
           label="Current Weight"

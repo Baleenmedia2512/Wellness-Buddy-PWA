@@ -4,8 +4,10 @@
  * Shows a curated disease list + free-text custom entry.
  * Selected tags shown as removable pills below the input.
  */
-import React, { useState, useRef, useCallback, useEffect } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { X, Search, Plus, HeartPulse } from 'lucide-react';
+import { searchMedicalConditions } from '../domain/medicalConditionSearch.js';
+import { ALL_MEDICAL_CONDITIONS } from '../data/medicalConditions.js';
 
 // ── Curated disease list ───────────────────────────────────────────────────────
 const PRESET_DISEASES = [
@@ -42,6 +44,8 @@ const PRESET_DISEASES = [
 ];
 
 const MAX_ITEMS = 10;
+
+const SEARCH_CATALOG = [...new Set([...PRESET_DISEASES, ...ALL_MEDICAL_CONDITIONS])];
 
 function normalize(str) {
   return (str || '').toLowerCase().trim();
@@ -97,13 +101,11 @@ export default function DiseaseMultiSelect({ value = [], onChange, disabled = fa
   const atMax       = selected.length >= maxItems;
   const normQuery   = normalize(query);
 
-  // Suggestions: presets not yet selected, filtered by query
-  const suggestions = PRESET_DISEASES.filter((d) => {
-    const alreadySelected = selected.some((s) => normalize(s) === normalize(d));
-    if (alreadySelected) return false;
-    if (!normQuery) return true;
-    return normalize(d).includes(normQuery);
-  });
+  // Empty query → curated presets. Typed query → catalog used by users (Back Pain, Lower Back Pain, …).
+  const suggestions = (normQuery
+    ? searchMedicalConditions(query, { conditions: SEARCH_CATALOG })
+    : PRESET_DISEASES
+  ).filter((d) => !selected.some((s) => normalize(s) === normalize(d)));
 
   // Whether the custom query can be added (not already selected, not in presets, non-empty)
   const canAddCustom =

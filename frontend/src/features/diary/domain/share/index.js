@@ -21,6 +21,7 @@ export { buildShakeShareText } from './shakeShare';
 export { buildEducationShareText } from './educationShare';
 export { buildWeightShareText, resolveWeightDeltaDisplay } from './weightShare';
 export { buildDiaryShareSuffix } from './suffixes';
+export { resolveBeverageDayShareText } from './beverageDayShare';
 export { formatShakeProductScoops } from './shakeShare';
 
 /**

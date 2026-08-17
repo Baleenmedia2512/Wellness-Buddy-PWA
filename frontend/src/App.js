@@ -71,6 +71,7 @@ import {
   FoodImageShareCard,
   HomeNutritionCarousel,
 } from "./features/nutrition";
+import { DetoxDayReminder } from "./features/marathon";
 import { EducationLogCard } from "./features/education";
 import { WatchActivityCard } from "./features/activity";
 import LoadingSpinner from "./shared/components/LoadingSpinner";
@@ -100,12 +101,19 @@ import {
 } from "./shared/utils/backButtonHandler";
 import { getUserId, clearUserIdCache, verifyAndAttachDbUserId, verifyAccountSession } from "./shared/services/userIdentity";
 import { getVersionString } from "./config/version";
+import { useAppVersionPolicy } from "./shared/hooks/useAppVersionPolicy";
+import AppVersionHardBlock, {
+  AppVersionUpdateBanner,
+} from "./shared/components/AppVersionGate";
 import { getApiBaseUrl } from "./config/api.config";
+import { apiFetch } from "./shared/services/apiFetch";
+import { handlePossibleAppUpdateRequired } from "./shared/services/appVersionEnforce.client";
 import {
   saveNutritionAnalysis,
   deleteNutritionAnalysis,
 } from "./features/nutrition";
 import { seedDailyWellnessScoreCache } from "./features/wellness-score-sheet/services/dailyWellnessScoreCache";
+import { refreshDailyWellnessScoreAfterSave } from "./features/wellness-score-sheet/services/refreshDailyWellnessScoreNow";
 import { analyzeImage as orchestrateAnalyzeImage } from "./shared/services/orchestratorService";
 import {
   reserveAiCredit,
@@ -292,6 +300,7 @@ const prefetchManualEntryPage = () => {
 };
 function WellnessValleyApp() {
   const apiBaseUrl = getApiBaseUrl();
+  const versionPolicy = useAppVersionPolicy();
   const [selectedImage, setSelectedImage] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
   const [nutritionData, setNutritionData] = useState(null);
@@ -4425,9 +4434,15 @@ function WellnessValleyApp() {
 
       if (detectedType.type === "food") {
         const analysis = detectedType.details;
-        // Completed AI call — charge even when items aren't usable (anti-spam).
-        await settleRetryCredit();
         if (!hasRecognizedFood(analysis)) {
+          if (creditsEnabled && !!reservationId) {
+            await releaseReservedAiCredit({
+              userId: user.id,
+              reservationId,
+              apiBaseUrl,
+              reason: 'unknown_share_food_unrecognized',
+            });
+          }
           setUnknownShareView((v) => ({
             ...v,
             retrying: false,
@@ -4442,6 +4457,7 @@ function WellnessValleyApp() {
           analysisResult,
           originalCapturedAt: unknownShareView.createdAt ?? null,
         });
+        await settleRetryCredit();
         seedMealAfterPromotion({
           ownerUserId: user.id,
           result: promoteResult,
@@ -4455,29 +4471,29 @@ function WellnessValleyApp() {
         detectedType.type === "weight" &&
         detectedType.details?.weightValue
       ) {
-        await settleRetryCredit();
         const weightValue = detectedType.details.weightValue;
         const unit = detectedType.details.unit || "kg";
         await updatePendingCaptureType(
           Promise.resolve({ id: captureId }),
           "weight",
         );
+        await settleRetryCredit();
         setUnknownShareView((v) => ({ ...v, open: false, retrying: false }));
         showToast(`Weight ${weightValue} ${unit} saved`);
       } else if (detectedType.type === "education") {
-        await settleRetryCredit();
         await updatePendingCaptureType(
           Promise.resolve({ id: captureId }),
           "education",
         );
+        await settleRetryCredit();
         setUnknownShareView((v) => ({ ...v, open: false, retrying: false }));
         showToast("Education session saved");
       } else if (detectedType.type === "smartwatch") {
-        await settleRetryCredit();
         await updatePendingCaptureType(
           Promise.resolve({ id: captureId }),
           "smartwatch",
         );
+        await settleRetryCredit();
         setUnknownShareView((v) => ({ ...v, open: false, retrying: false }));
         showToast("Activity saved");
       } else {
@@ -4722,9 +4738,18 @@ function WellnessValleyApp() {
           }).catch(() => {});
         };
 
+        const releaseCredit = async (reason) => {
+          if (!hasReservedCredit || !ownerUserId) return;
+          await releaseReservedAiCredit({
+            userId: ownerUserId,
+            reservationId,
+            apiBaseUrl,
+            reason,
+          });
+        };
+
         try {
           if (foodOk) {
-            await settleCredit();
             const analysisResult = buildAnalysisFromGeminiAnalysis(detectedType.details);
             const promoteResult = await promoteUnknownToFood({
               captureId,
@@ -4732,6 +4757,8 @@ function WellnessValleyApp() {
               analysisResult,
               originalCapturedAt: null,
             });
+            // Charge only after diary save succeeds — avoids Other + 1 credit.
+            await settleCredit();
             seedMealAfterPromotion({
               ownerUserId,
               result: promoteResult,
@@ -4739,12 +4766,10 @@ function WellnessValleyApp() {
             });
             clearCaptureAnalyzing(captureId);
             triggerNutritionRefresh({ immediate: true, source: 'capture-food-saved' });
+            void refreshDailyWellnessScoreAfterSave({ user, userId: ownerUserId, apiBaseUrl });
             showToast('Food saved to Diary');
             return;
           }
-
-          // AI finished (weight / education / watch / other) — charge before branching.
-          await settleCredit();
 
           if (
             detectedType?.type === 'weight' &&
@@ -4757,8 +4782,10 @@ function WellnessValleyApp() {
               captureId,
               imageBase64ToSave: imageBase64,
             });
+            await settleCredit();
             clearCaptureAnalyzing(captureId);
             triggerNutritionRefresh({ immediate: true, source: 'capture-weight-saved' });
+            void refreshDailyWellnessScoreAfterSave({ user, userId: ownerUserId, apiBaseUrl });
             showToast('Weight saved to Diary');
             return;
           }
@@ -4776,8 +4803,10 @@ function WellnessValleyApp() {
               captureId,
               { silent: true },
             );
+            await settleCredit();
             clearCaptureAnalyzing(captureId);
             triggerNutritionRefresh({ immediate: true, source: 'capture-education-saved' });
+            void refreshDailyWellnessScoreAfterSave({ user, userId: ownerUserId, apiBaseUrl });
             return;
           }
 
@@ -4789,17 +4818,26 @@ function WellnessValleyApp() {
               source: detectedType.details?.source || 'Smartwatch',
               captureId,
             });
+            await settleCredit();
             clearCaptureAnalyzing(captureId);
             triggerNutritionRefresh({ immediate: true, source: 'capture-watch-saved' });
+            void refreshDailyWellnessScoreAfterSave({ user, userId: ownerUserId, apiBaseUrl });
             return;
           }
 
+          // No domain save for unknown/other — do not permanently consume credit.
+          await releaseCredit(
+            detectedType?.details?.defaulted === true
+              ? 'orchestrate_defaulted'
+              : 'capture_unidentified',
+          );
           updatePendingCaptureType(pendingSharePromise, 'unknown');
           clearCaptureAnalyzing(captureId);
           triggerNutritionRefresh({ immediate: true, source: 'capture-unknown' });
           showToast('Couldn’t identify — open Diary to log manually');
         } catch (saveErr) {
           console.error('[Background AI] save failed:', saveErr);
+          await releaseCredit('capture_save_failed');
           updatePendingCaptureType(pendingSharePromise, 'unknown');
           clearCaptureAnalyzing(captureId);
           triggerNutritionRefresh({ immediate: true, source: 'capture-ai-save-failed' });
@@ -5348,6 +5386,7 @@ function WellnessValleyApp() {
         foodRowId: saveRes?.id ?? saveRes?.insertId ?? null,
       });
       triggerNutritionRefresh({ immediate: true, source: "camera-save" });
+      void refreshDailyWellnessScoreAfterSave({ user, apiBaseUrl });
 
       // ? ANDROID FIX: Don't auto-show popup - data is saved silently
       // Users can view saved data from Dashboard/Insights button
@@ -6518,7 +6557,7 @@ function WellnessValleyApp() {
 
   const saveUserToBackend = async (user) => {
     try {
-      const response = await fetch(`${apiBaseUrl}/api/user/google`, {
+      const response = await apiFetch(`${apiBaseUrl}/api/user/google`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -6531,11 +6570,14 @@ function WellnessValleyApp() {
         }),
       });
 
+      const data = await response.json().catch(() => ({}));
+      if (handlePossibleAppUpdateRequired(response, data)) {
+        throw new Error(data.message || "Please update the app to continue.");
+      }
+
       if (!response.ok) {
         throw new Error(`Failed to save user: ${response.status}`);
       }
-
-      const data = await response.json();
 
       if (data.success) {
         debugLog(
@@ -6826,6 +6868,14 @@ function WellnessValleyApp() {
       onConfirm={alertModal.onConfirm}
     />
   );
+
+  // -------------------------------------------------------------------------
+  // HIGHEST PRIORITY: App version hard block (server update_required).
+  // Must win over Home / login / coach OTP so old clients cannot bypass.
+  // -------------------------------------------------------------------------
+  if (versionPolicy.blocked) {
+    return <AppVersionHardBlock policy={versionPolicy.policy} />;
+  }
 
   // -------------------------------------------------------------------------
   // HIGHEST PRIORITY: Show waiting modal if contacting coach
@@ -7121,6 +7171,12 @@ function WellnessValleyApp() {
   // dashboard API reloads unless a newer async activity log exists
   // (see homeDashboardActivity + NutritionRefreshContext.triggerRefresh).
   let homeOverlay = null;
+  const versionSoftBanner = versionPolicy.showSoftBanner ? (
+    <AppVersionUpdateBanner
+      policy={versionPolicy.policy}
+      onDismiss={versionPolicy.dismissRecommended}
+    />
+  ) : null;
 
   // Inline Profile Page — full-screen, below nav bar (no modal overlay)
   // Never show during onboarding (My Profile is not part of the setup wizard).
@@ -8040,6 +8096,7 @@ function WellnessValleyApp() {
                       <span className="text-sm font-bold text-emerald-700">Gallery</span>
                     </button>
                   </div>
+                  <DetoxDayReminder />
                 </div>
               </div>
 
@@ -8068,6 +8125,12 @@ function WellnessValleyApp() {
                 };
                 setWellnessScoreInitialRange(next);
                 setHomeCarouselDateRange(next);
+                const scoreDate = rangeOpts.scoreDate || null;
+                const scoreData = rangeOpts.scoreData || null;
+                const uid = user?.id || user?.UserId || user?.userId || null;
+                if (scoreData && scoreDate && uid) {
+                  seedDailyWellnessScoreCache(uid, scoreDate, scoreData);
+                }
                 navigateTo('wellness-score');
               }}
               onOpenWellnessScoreSetup={
@@ -9136,6 +9199,7 @@ function WellnessValleyApp() {
     </LocationGuard>
       </div>
       {homeOverlay}
+      {versionSoftBanner}
     </>
   );
 }

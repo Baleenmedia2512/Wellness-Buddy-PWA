@@ -99,6 +99,7 @@ export async function verifyTestimonialOtp(payload) {
  *   page?: number,
  *   limit?: number,
  *   search?: string,
+ *   healthIssue?: string,
  *   uploadFilter?: string,
  * }} [opts]
  * @returns {Promise<{ data: Array, pagination: object, uploadCounts: object }>}
@@ -108,6 +109,7 @@ export async function listForCoach(coachId, opts = {}) {
   const page = typeof opts === 'object' ? (opts.page ?? 1) : 1;
   const limit = typeof opts === 'object' ? (opts.limit ?? 10) : 10;
   const search = typeof opts === 'object' ? (opts.search || '') : '';
+  const healthIssue = typeof opts === 'object' ? (opts.healthIssue || '') : '';
   const uploadFilter = typeof opts === 'object' ? (opts.uploadFilter || 'all') : 'all';
 
   const params = new URLSearchParams({
@@ -117,6 +119,7 @@ export async function listForCoach(coachId, opts = {}) {
   });
   if (scope === 'full') params.set('scope', 'full');
   if (search) params.set('search', search);
+  if (healthIssue) params.set('healthIssue', healthIssue);
   if (uploadFilter && uploadFilter !== 'all') params.set('uploadFilter', uploadFilter);
 
   const res = await CapacitorHttp.get({
@@ -288,4 +291,17 @@ export async function verifyUnifiedOtp(payload) {
     data:    payload,
   });
   return parseApiResponse(res, 'OTP verification failed');
+}
+
+/**
+ * Coach: update a reporting member's recovered health issues (no OTP).
+ * @param {{ coachId: number, userId: number, recoveredHealthIssues: string[] }} payload
+ */
+export async function updateMemberHealthIssues(payload) {
+  const res = await CapacitorHttp.post({
+    url:     `${base()}/update-health-issues`,
+    headers: { 'Content-Type': 'application/json' },
+    data:    payload,
+  });
+  return parseApiResponse(res, 'Failed to update health issue');
 }

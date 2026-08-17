@@ -49,10 +49,17 @@ describe('paginateBpcListRecords', () => {
     assert.equal(pagination.hasNextPage, false);
   });
 
-  it('filters by name and phone', () => {
+  it('filters by name, phone, email and community id', () => {
     const { records, pagination } = paginateBpcListRecords(cards, { search: 'alice', limit: 100 });
     assert.ok(records.every((c) => c.name.toLowerCase().includes('alice')));
     assert.equal(pagination.totalRecords, filterBpcListRecords(cards, 'alice').length);
+
+    const withMeta = [
+      ...cards,
+      { id: 999, name: 'Zed', phoneNumber: null, email: 'zed@test.com', communityId: 'WB999' },
+    ];
+    assert.equal(filterBpcListRecords(withMeta, 'wb999').length, 1);
+    assert.equal(filterBpcListRecords(withMeta, 'zed@test').length, 1);
   });
 });
 

@@ -1,5 +1,5 @@
 // Profile form state + validation.
-// Owns name/height/phone/dietType/bmr/gender/bodyFat; derives validity flags and a `payload`
+// Owns name/height/phone/communityId/dietType/bmr/gender/bodyFat; derives validity flags and a `payload`
 // helper. Caller passes initial values from the loaded profile.
 import { useEffect, useState } from 'react';
 import {
@@ -8,6 +8,7 @@ import {
   MIN_BODY_FAT_PCT,
   MAX_BODY_FAT_PCT,
 } from '../domain/profileCompleteness';
+import { normalizeCommunityId, validateCommunityId } from '../domain/communityId';
 
 const cleanPhone = (s) => s.trim().replace(/[\s\-()]/g, '');
 
@@ -23,6 +24,7 @@ export default function useProfileForm(initial = {}) {
   const [bodyFat, setBodyFat] = useState(initial.bodyFat || '');
   const [needsBodyFat, setNeedsBodyFat] = useState(Boolean(initial.needsBodyFat));
   const [email, setEmail] = useState(initial.email || '');
+  const [communityId, setCommunityId] = useState(initial.communityId || '');
   const [bodyMetrics, setBodyMetrics] = useState(null);
 
   const reload = (p) => {
@@ -41,6 +43,7 @@ export default function useProfileForm(initial = {}) {
     setBodyFat(p.bodyFat != null && p.bodyFat !== '' ? String(p.bodyFat) : '');
     setNeedsBodyFat(Boolean(p.needsBodyFat));
     setEmail(p.email ?? '');
+    setCommunityId(p.communityId != null ? String(p.communityId) : '');
     setBodyMetrics(p.bodyMetrics ?? null);
   };
 
@@ -71,6 +74,8 @@ export default function useProfileForm(initial = {}) {
     if (needsBodyFat && !hasValidBodyFatPercent(bodyFat)) {
       return `Please enter body fat (${MIN_BODY_FAT_PCT}–${MAX_BODY_FAT_PCT}%).`;
     }
+    const communityIdCheck = validateCommunityId(communityId);
+    if (!communityIdCheck.valid) return communityIdCheck.message;
     return '';
   };
 
@@ -85,6 +90,7 @@ export default function useProfileForm(initial = {}) {
       gender: genderValid ? gender : undefined,
       phoneNumber: phone.trim() || undefined,
       weightGoalMode: weightGoalMode || 'loss',
+      communityId: normalizeCommunityId(communityId),
       ...extras,
     };
 
@@ -103,6 +109,7 @@ export default function useProfileForm(initial = {}) {
     bodyFat, setBodyFat,
     needsBodyFat,
     email, setEmail,
+    communityId, setCommunityId,
     bodyMetrics,
     heightNum, heightValid, phoneValid, nameValid, dietValid, genderValid, bodyFatValid,
     validate, payload, reload,

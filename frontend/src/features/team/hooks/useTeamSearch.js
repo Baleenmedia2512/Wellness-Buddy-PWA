@@ -6,7 +6,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  fetchSavedUserName, fetchTeamMembers, fetchHasTeamMembers,
+  fetchSavedSearchProfile, fetchTeamMembers, fetchHasTeamMembers,
   filterMembers, toSelectedUser, isCoachRole, canUseTeamSearch,
   resolveTeamSearchDisplayName,
 } from '../services/teamSearchService';
@@ -21,21 +21,33 @@ export function useTeamSearch({ user, userRole, selectedMember, onMemberSelect }
   const [savedUserName, setSavedUserName] = useState(() => (
     resolveTeamSearchDisplayName(getCachedProfileUserName(user?.email), user) || ''
   ));
+  const [coachCommunityId, setCoachCommunityId] = useState(
+    () => (user?.communityId != null ? String(user.communityId).trim() || null : null),
+  );
   const [hasTeamMembers, setHasTeamMembers] = useState(false);
+  const coachCommunityIdRef = useRef(coachCommunityId);
 
   const searchRef = useRef(null);
   const dropdownRef = useRef(null);
 
   const isCoach = canUseTeamSearch(userRole, hasTeamMembers);
 
+  useEffect(() => {
+    coachCommunityIdRef.current = coachCommunityId;
+  }, [coachCommunityId]);
+
   // Reset hasCleared whenever a different member is selected externally.
   useEffect(() => { setHasCleared(false); }, [selectedMember]);
 
-  // Fetch saved profile name (best-effort).
+  // Fetch saved profile name + Community ID (best-effort).
   useEffect(() => {
     let cancelled = false;
-    fetchSavedUserName(user?.email)
-      .then((name) => { if (!cancelled && name) setSavedUserName(name); })
+    fetchSavedSearchProfile(user?.email)
+      .then(({ userName, communityId }) => {
+        if (cancelled) return;
+        if (userName) setSavedUserName(userName);
+        if (communityId) setCoachCommunityId(communityId);
+      })
       .catch((err) => console.error('Error fetching user profile for search:', err));
     return () => { cancelled = true; };
   }, [user?.email]);
@@ -59,6 +71,7 @@ export function useTeamSearch({ user, userRole, selectedMember, onMemberSelect }
   // Fetch the coach's flat team list once it becomes possible.
   // Intentionally omit savedUserName from deps — name is resolved at fetch time
   // so profile-name load does not re-download the full team-hierarchy payload.
+  // Re-run when coachCommunityId arrives so direct-downline rows get Your CID.
   useEffect(() => {
     if (!isCoach || !user?.id) return undefined;
     let cancelled = false;
@@ -68,13 +81,14 @@ export function useTeamSearch({ user, userRole, selectedMember, onMemberSelect }
       coachName: resolveTeamSearchDisplayName(savedUserName, user),
       coachEmail: user.email,
       coachRole: userRole,
+      coachCommunityId: coachCommunityIdRef.current || coachCommunityId,
     })
       .then((members) => { if (!cancelled) setAllTeamMembers(members); })
       .catch((err) => console.error('Error loading team members:', err))
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps -- savedUserName intentionally excluded
-  }, [user?.id, user?.name, user?.email, isCoach, userRole]);
+  }, [user?.id, user?.name, user?.email, isCoach, userRole, coachCommunityId]);
 
   const suggestions = useMemo(
     () => filterMembers(allTeamMembers, searchQuery),
