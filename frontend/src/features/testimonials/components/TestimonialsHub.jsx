@@ -41,6 +41,7 @@ import { useTestimonial } from '../hooks/useTestimonial.js';
 import { useTestimonialVideo } from '../hooks/useTestimonialVideo.js';
 import { MAX_HEALTH_VIDEO_MB, MAX_BUSINESS_VIDEO_MB } from '../utils/videoLimits.js';
 import { editTestimonial } from '../services/testimonialApi.js';
+import { withTestimonialMediaCacheBust } from '../utils/testimonialMediaUrl.js';
 import {
   PORTRAIT_IMAGE_CLASS_SM,
   sanitizeDurationDigits,
@@ -203,8 +204,10 @@ function OverallStatusBar({ slots, photoSuccess, videoSuccess }) {
 
 // ── Image picker ──────────────────────────────────────────────────────────────
 
-function InlineImagePicker({ image, existingPreviewUrl, cameraRef, galleryRef, onCameraChange, onGalleryChange }) {
-  const previewSrc = image?.preview || existingPreviewUrl || null;
+function InlineImagePicker({ image, existingPreviewUrl, mediaVersion, cameraRef, galleryRef, onCameraChange, onGalleryChange }) {
+  const previewSrc = image?.preview
+    || withTestimonialMediaCacheBust(existingPreviewUrl, mediaVersion)
+    || null;
   const isExistingOnly = !image && !!existingPreviewUrl;
 
   return (
@@ -306,6 +309,7 @@ function BeforePhotoSlotContent({
   existing, isEditMode,
   form, setField,
   beforeImage,
+  mediaVersion,
   beforeCameraRef, beforeGalleryRef,
   onBeforeCameraChange, onBeforeGalleryChange,
   submitting, error,
@@ -327,6 +331,7 @@ function BeforePhotoSlotContent({
       <InlineImagePicker
         image={beforeImage}
         existingPreviewUrl={isEditMode ? existing?.beforeImageUrl : null}
+        mediaVersion={mediaVersion}
         cameraRef={beforeCameraRef}
         galleryRef={beforeGalleryRef}
         onCameraChange={onBeforeCameraChange}
@@ -419,6 +424,7 @@ function AfterPhotoSlotContent({
   form, setField,
   afterImage,
   existingAfterUrl,
+  mediaVersion,
   isEditMode,
   afterCameraRef, afterGalleryRef,
   onAfterCameraChange, onAfterGalleryChange,
@@ -438,6 +444,7 @@ function AfterPhotoSlotContent({
       <InlineImagePicker
         image={afterImage}
         existingPreviewUrl={isEditMode ? existingAfterUrl : null}
+        mediaVersion={mediaVersion}
         cameraRef={afterCameraRef}
         galleryRef={afterGalleryRef}
         onCameraChange={onAfterCameraChange}
@@ -641,15 +648,20 @@ export default function TestimonialsHub({ userId, focusOnly = null, onFocusClose
     startEdit: startVideoEdit, cancelEdit: cancelVideoEdit,
   } = useTestimonialVideo({ userId, healthIssues });
 
-  // Sync shared health issues from photo or video testimonial row
+  // Sync shared health issues from photo or video testimonial row (merge both sources).
   useEffect(() => {
-    if (existing && Array.isArray(existing.recoveredHealthIssues)) {
-      setHealthIssues(existing.recoveredHealthIssues);
-      return;
-    }
-    if (existingVideo && Array.isArray(existingVideo.recoveredHealthIssues)) {
-      setHealthIssues(existingVideo.recoveredHealthIssues);
-    }
+    const fromPhoto = Array.isArray(existing?.recoveredHealthIssues) ? existing.recoveredHealthIssues : [];
+    const fromVideo = Array.isArray(existingVideo?.recoveredHealthIssues) ? existingVideo.recoveredHealthIssues : [];
+    const merged = [...fromPhoto, ...fromVideo].filter(Boolean);
+    if (merged.length === 0) return;
+    const seen = new Set();
+    const unique = merged.filter((issue) => {
+      const key = String(issue).toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+    setHealthIssues(unique);
   }, [existing, existingVideo]);
 
   // ── Which slot is expanded ──────────────────────────────────────────────────
@@ -793,6 +805,7 @@ export default function TestimonialsHub({ userId, focusOnly = null, onFocusClose
 
   // ── Slot statuses (plain JS — not hooks, safe after guard) ─────────────────
   const slots = computeSlotStatuses(existing, existingVideo);
+  const mediaVersion = existing?.updatedAt ?? existing?.id ?? '';
   const hasTestimonialRow = !!(existing || existingVideo);
   const isFocused = !!focusOnly;
   const showBefore   = !isFocused || focusOnly === 'before';
@@ -878,6 +891,7 @@ export default function TestimonialsHub({ userId, focusOnly = null, onFocusClose
             form={form}
             setField={setField}
             beforeImage={beforeImage}
+            mediaVersion={mediaVersion}
             beforeCameraRef={beforeCameraRef}
             beforeGalleryRef={beforeGalleryRef}
             onBeforeCameraChange={handleBeforeImageChange}
@@ -893,7 +907,8 @@ export default function TestimonialsHub({ userId, focusOnly = null, onFocusClose
         {!isFocused && !beforeSlotExpanded && existing && existing.beforeImageUrl && (
           <div className="bg-white rounded-2xl border border-gray-100 px-4 py-3 flex items-center gap-3 shadow-sm">
             <img
-              src={existing.beforeImageUrl}
+              key={`before-thumb-${mediaVersion}`}
+              src={withTestimonialMediaCacheBust(existing.beforeImageUrl, mediaVersion)}
               alt="Before"
               className="w-14 h-20 object-contain bg-gray-50 rounded-xl border border-gray-200 shrink-0"
             />
@@ -1048,6 +1063,7 @@ export default function TestimonialsHub({ userId, focusOnly = null, onFocusClose
               setField={setField}
               afterImage={afterImage}
               existingAfterUrl={existing?.afterImageUrl}
+              mediaVersion={mediaVersion}
               isEditMode={slots.afterPhoto !== 'none'}
               afterCameraRef={afterCameraRef}
               afterGalleryRef={afterGalleryRef}
@@ -1065,7 +1081,8 @@ export default function TestimonialsHub({ userId, focusOnly = null, onFocusClose
         {!isFocused && !afterSlotLocked && !afterSlotExpanded && slots.afterPhoto !== 'none' && existing?.afterImageUrl && (
           <div className="bg-white rounded-2xl border border-gray-100 px-4 py-3 flex items-center gap-3 shadow-sm">
             <img
-              src={existing.afterImageUrl}
+              key={`after-thumb-${mediaVersion}`}
+              src={withTestimonialMediaCacheBust(existing.afterImageUrl, mediaVersion)}
               alt="After"
               className="w-14 h-20 object-contain bg-gray-50 rounded-xl border border-gray-200 shrink-0"
             />

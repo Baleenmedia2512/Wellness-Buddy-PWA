@@ -16,6 +16,7 @@ import {
   Images, Mail, Pencil, Plus, RefreshCw, Save, ShieldCheck, Upload, Users, Video,
   X, HeartPulse, TrendingDown, TrendingUp,
 } from 'lucide-react';
+import CustomAlertModal from '../../../shared/components/CustomAlertModal';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
 import NativeInput from '../../../shared/components/NativeInput.jsx';
 import LoadingSpinner from '../../../shared/components/LoadingSpinner';
@@ -33,10 +34,13 @@ import {
   TransformationShareActions,
 } from './TransformationShareCard.jsx';
 import { getCachedVideoThumbnail } from '../utils/videoThumbnailCache.js';
+import { jpegDataUrlToObjectUrl, revokeBlobUrl, withTestimonialMediaCacheBust } from '../utils/testimonialMediaUrl.js';
 import { resolveResultVideoUrl, prefetchNativeResultVideos } from '../utils/downloadVideo.js';
 import { MAX_HEALTH_VIDEO_MB, isVideoOverSizeLimit, videoTooLargeMessage } from '../utils/videoLimits.js';
-import { compressImage } from '../hooks/useTestimonial.js';
-import { setCaptureFlowBusy } from '../../../shared/services/captureFlowBusy';
+import { normalizeVideoUploadFile } from '../utils/normalizeVideoUploadFile.js';
+import { compressImage } from '../utils/compressTestimonialImage.js';
+import { isCaptureFlowBusy, setCaptureFlowBusy } from '../../../shared/services/captureFlowBusy';
+import { shouldShowTestimonialsPageSkeleton } from '../utils/testimonialsPageLoad.js';
 import {
   UPLOAD_FILTERS,
   TEAM_SCOPES,
@@ -50,6 +54,7 @@ import {
 } from '../utils/testimonialSearch.js';
 import { PORTRAIT_IMAGE_CLASS_SM } from '../services/testimonialFormUtils.js';
 import { resolveRowTeamUploadPerformance } from '../utils/testimonialTeamPerformance.js';
+import { uniqueConditions, isSameIssueList, withoutHealthIssue } from '../utils/uniqueConditions.js';
 import { getApiBaseUrl } from '../../../config/api.config.js';
 
 // â”€â”€ Constants â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -401,13 +406,15 @@ function MemberCard({
   editable = false,
   userId = null,
   coachId = null,
+  onMineRefresh,
   onOtpVerified,
   knownHealthIssues = [],
 }) {
   const { user } = row;
   const [detailTestimonial, setDetailTestimonial] = useState(null);
   const detailInFlightRef = useRef(null);
-  const testimonial = detailTestimonial || row.testimonial;
+  // Mine card: always prefer parent row after server refresh (photos + signed URLs).
+  const testimonial = editable ? row.testimonial : (detailTestimonial || row.testimonial);
   const { level, filledCount, totalSlots } = computeMemberCompleteness({
     ...row,
     testimonial,
@@ -454,7 +461,10 @@ function MemberCard({
 
   const [expandedPhoto, setExpandedPhoto] = useState(null);
   const hasAfter  = testimonial?.afterImageUrl  && testimonial?.status !== 'incomplete';
-  const issues    = testimonial?.recoveredHealthIssues ?? [];
+  const issues    = Array.isArray(testimonial?.recoveredHealthIssues)
+    ? testimonial.recoveredHealthIssues
+    : [];
+  const [approvedIssues, setApprovedIssues] = useState(issues);
 
   // ── Inline editing state (Mine card only) ────────────────────────────────
   const [expandedSlots, setExpandedSlots] = useState(new Set());
@@ -465,6 +475,12 @@ function MemberCard({
   const [draftHealthPreview,   setDraftHealthPreview]   = useState(null);
   const [draftBusinessPreview, setDraftBusinessPreview] = useState(null);
   const [draftIssues,   setDraftIssues]   = useState(null);
+  // Freeze the last approved issue list while new tags are draft/pending OTP.
+  useEffect(() => {
+    if (draftIssues != null) return;
+    if (testimonial?.status === 'pending') return;
+    setApprovedIssues(issues);
+  }, [issues, draftIssues, testimonial?.status]);
   // Local text while weight field is open — needed for Android WebView typing
   const [beforeWeightText, setBeforeWeightText] = useState(null);
   const [afterWeightText,  setAfterWeightText]  = useState(null);
@@ -474,9 +490,12 @@ function MemberCard({
   const [isSubmitting,    setIsSubmitting]    = useState(false);
   const [submitError,     setSubmitError]     = useState(null);
   const [videoUploadError,setVideoUploadError]= useState(null);
+  const [videoSizeAlert,  setVideoSizeAlert]  = useState(null);
   const [submitDone,      setSubmitDone]      = useState(false);
   const [unifiedOtpVerified, setUnifiedOtpVerified] = useState(false);
+  const [mediaEpoch, setMediaEpoch] = useState(0);
   const shareCardRef = useRef(null);
+  const compressBusyRef = useRef(false);
 
   const beforeCamRef   = useRef(null);
   const beforeGalRef   = useRef(null);
@@ -506,6 +525,12 @@ function MemberCard({
   const diff = testimonial && hasAfter && displayBeforeKg > 0 && displayAfterKg > 0
     ? Math.abs(displayAfterKg - displayBeforeKg).toFixed(1)
     : null;
+
+  const mediaVersion = `${testimonial?.updatedAt ?? testimonial?.id ?? ''}-${mediaEpoch}`;
+  const beforeImageSrc = draftBefore?.previewUrl
+    || withTestimonialMediaCacheBust(testimonial?.beforeImageUrl, mediaVersion);
+  const afterImageSrc = draftAfter?.previewUrl
+    || withTestimonialMediaCacheBust(hasAfter ? testimonial?.afterImageUrl : null, mediaVersion);
 
   // Photo-only drafts — weight/duration edits must NOT open this strip (Android focus loss)
   const hasPhotoDraft = Boolean(
@@ -579,9 +604,22 @@ function MemberCard({
     });
   }, []);
 
+  const openPhotoPicker = useCallback((inputRef) => {
+    setCaptureFlowBusy(true);
+    setPickerSlot(null);
+    inputRef?.current?.click();
+    const onFocus = () => {
+      window.removeEventListener('focus', onFocus);
+      window.setTimeout(() => {
+        if (!compressBusyRef.current) setCaptureFlowBusy(false);
+      }, 400);
+    };
+    window.addEventListener('focus', onFocus);
+  }, []);
+
   const handleImageFile = useCallback((slot, file) => {
     if (!file) return;
-    // Instant local preview — do not wait for FileReader / compression.
+    // Instant local blob preview — Android WebView often cannot paint large data: URLs.
     const objectUrl = URL.createObjectURL(file);
     const beforeBase = {
       weightKg: testimonial?.beforeWeightKg,
@@ -591,46 +629,62 @@ function MemberCard({
     const afterBase = { weightKg: testimonial?.afterWeightKg };
 
     if (slot === 'before') {
-      setDraftBefore((prev) => ({
-        ...(prev || beforeBase),
-        previewUrl: objectUrl,
-        imageBase64: null,
-        compressing: true,
-      }));
+      setDraftBefore((prev) => {
+        revokeBlobUrl(prev?.previewUrl);
+        return {
+          ...(prev || beforeBase),
+          previewUrl: objectUrl,
+          imageBase64: null,
+          compressing: true,
+        };
+      });
     } else {
-      setDraftAfter((prev) => ({
-        ...(prev || afterBase),
-        previewUrl: objectUrl,
-        imageBase64: null,
-        compressing: true,
-      }));
+      setDraftAfter((prev) => {
+        revokeBlobUrl(prev?.previewUrl);
+        return {
+          ...(prev || afterBase),
+          previewUrl: objectUrl,
+          imageBase64: null,
+          compressing: true,
+        };
+      });
     }
     setPickerSlot(null);
     setSubmitError(null);
+    compressBusyRef.current = true;
     setCaptureFlowBusy(true);
 
     void compressImage(file)
       .then(({ base64, preview }) => {
+        const compressedPreview = jpegDataUrlToObjectUrl(preview) || objectUrl;
         if (slot === 'before') {
           setDraftBefore((prev) => {
-            if (!prev) return prev;
-            return { ...prev, imageBase64: base64, previewUrl: preview, compressing: false };
+            if (!prev) {
+              if (compressedPreview !== objectUrl) revokeBlobUrl(compressedPreview);
+              return prev;
+            }
+            if (compressedPreview !== objectUrl) revokeBlobUrl(objectUrl);
+            return { ...prev, imageBase64: base64, previewUrl: compressedPreview, compressing: false };
           });
         } else {
           setDraftAfter((prev) => {
-            if (!prev) return prev;
-            return { ...prev, imageBase64: base64, previewUrl: preview, compressing: false };
+            if (!prev) {
+              if (compressedPreview !== objectUrl) revokeBlobUrl(compressedPreview);
+              return prev;
+            }
+            if (compressedPreview !== objectUrl) revokeBlobUrl(objectUrl);
+            return { ...prev, imageBase64: base64, previewUrl: compressedPreview, compressing: false };
           });
         }
-        URL.revokeObjectURL(objectUrl);
       })
       .catch((err) => {
-        URL.revokeObjectURL(objectUrl);
+        revokeBlobUrl(objectUrl);
         if (slot === 'before') setDraftBefore(null);
         else setDraftAfter(null);
         setSubmitError(err?.message || 'Could not read that photo. Please try another.');
       })
       .finally(() => {
+        compressBusyRef.current = false;
         setCaptureFlowBusy(false);
       });
   }, [testimonial]);
@@ -642,14 +696,33 @@ function MemberCard({
       return;
     }
     if (isVideoOverSizeLimit(file, slot)) {
-      setVideoUploadError(videoTooLargeMessage(slot));
+      setVideoSizeAlert(videoTooLargeMessage(slot));
       return;
     }
     setVideoUploadError(null);
     const localUrl = URL.createObjectURL(file);
-    if (slot === 'health')    { setDraftHealthPreview(localUrl);   setUploadingHealth(true);   }
-    else                      { setDraftBusinessPreview(localUrl); setUploadingBusiness(true); }
+    if (slot === 'health') {
+      setDraftHealthPreview((prev) => { revokeBlobUrl(prev); return localUrl; });
+      setDraftHealthPath(null);
+      setUploadingHealth(true);
+    } else {
+      setDraftBusinessPreview((prev) => { revokeBlobUrl(prev); return localUrl; });
+      setDraftBusinessPath(null);
+      setUploadingBusiness(true);
+    }
     try {
+      const normalized = await normalizeVideoUploadFile(file);
+      if (isVideoOverSizeLimit(normalized, slot)) {
+        setVideoSizeAlert(videoTooLargeMessage(slot));
+        if (slot === 'health') {
+          setDraftHealthPreview((prev) => { revokeBlobUrl(prev); return null; });
+          setDraftHealthPath(null);
+        } else {
+          setDraftBusinessPreview((prev) => { revokeBlobUrl(prev); return null; });
+          setDraftBusinessPath(null);
+        }
+        return;
+      }
       const prep = await prepareTestimonialVideoUpload({
         userId:         numericUserId,
         uploadHealth:   slot === 'health',
@@ -659,19 +732,38 @@ function MemberCard({
       if (!info?.path || !info?.sessionId) {
         throw new Error('Server did not return a valid upload path. Please try again.');
       }
-      const path = await uploadTestimonialVideoInChunks(file, info, slot, numericUserId);
+      const uploadPromise = uploadTestimonialVideoInChunks(normalized, info, slot, numericUserId);
+      uploadPromise.catch(() => {});
+      const path = await Promise.race([
+        uploadPromise,
+        new Promise((_, reject) => {
+          setTimeout(() => {
+            reject(new Error('Video upload timed out. Please try a smaller MP4 file.'));
+          }, 180000);
+        }),
+      ]);
       if (slot === 'health') setDraftHealthPath(path);
       else                   setDraftBusinessPath(path);
     } catch (err) {
       const msg = err?.message || '';
-      const isNoCoach = msg.toLowerCase().includes('no coach');
-      setVideoUploadError(
-        isNoCoach
-          ? 'You do not have a sponsor assigned yet. Please ask your admin to assign a sponsor before uploading videos.'
-          : (msg || 'Video upload failed. Please try again.')
-      );
-      if (slot === 'health') { setDraftHealthPreview(null); setDraftHealthPath(null); }
-      else                   { setDraftBusinessPreview(null); setDraftBusinessPath(null); }
+      const isTooLarge = /max of \d+ MB|exceeds \d+ MB/i.test(msg);
+      if (isTooLarge) {
+        setVideoSizeAlert(videoTooLargeMessage(slot));
+      } else {
+        const isNoCoach = msg.toLowerCase().includes('no coach');
+        setVideoUploadError(
+          isNoCoach
+            ? 'You do not have a sponsor assigned yet. Please ask your admin to assign a sponsor before uploading videos.'
+            : (msg || 'Video upload failed. Please try again.')
+        );
+      }
+      if (slot === 'health') {
+        setDraftHealthPreview((prev) => { revokeBlobUrl(prev); return null; });
+        setDraftHealthPath(null);
+      } else {
+        setDraftBusinessPreview((prev) => { revokeBlobUrl(prev); return null; });
+        setDraftBusinessPath(null);
+      }
     } finally {
       if (slot === 'health') setUploadingHealth(false);
       else                   setUploadingBusiness(false);
@@ -679,7 +771,16 @@ function MemberCard({
   }, [userId]);
 
   const handleSubmitAll = useCallback(() => {
-    const needsOtp = dirtySlots.some((s) => ['before', 'after', 'health', 'business'].includes(s));
+    const photoOrVideoChanged = dirtySlots.some((s) => ['before', 'after', 'health', 'business'].includes(s));
+    const hasResultVideo = Boolean(
+      testimonial?.healthVideoPath || testimonial?.businessVideoPath
+      || testimonial?.healthVideoUrl || testimonial?.businessVideoUrl,
+    );
+    const issuesNeedOtp = dirtySlots.includes('issues') && (hasAfter || hasResultVideo);
+    const needsOtpUi = dirtySlots.some((s) => ['after', 'health', 'business'].includes(s))
+      || (dirtySlots.includes('before') && hasAfter)
+      || issuesNeedOtp;
+    const isSilentSave = !photoOrVideoChanged && !issuesNeedOtp;
     // Photos still compressing — wait so we do not submit without image bytes.
     if (draftBefore?.compressing || draftAfter?.compressing) {
       setSubmitError('Photo is still preparing — try Submit again in a moment.');
@@ -713,24 +814,31 @@ function MemberCard({
     };
 
     const clearDrafts = () => {
-      setDraftBefore(null);
-      setDraftAfter(null);
+      setDraftBefore((prev) => { revokeBlobUrl(prev?.previewUrl); return null; });
+      setDraftAfter((prev) => { revokeBlobUrl(prev?.previewUrl); return null; });
       setDraftHealthPath(null);
       setDraftBusinessPath(null);
-      setDraftHealthPreview(null);
-      setDraftBusinessPreview(null);
+      setDraftHealthPreview((prev) => { revokeBlobUrl(prev); return null; });
+      setDraftBusinessPreview((prev) => { revokeBlobUrl(prev); return null; });
       setDraftIssues(null);
       setExpandedSlots(new Set());
     };
 
     setSubmitError(null);
 
-    // Weight / issues only — close dirty UI immediately; save in background.
-    if (!needsOtp) {
-      clearDrafts();
+    const reloadMine = async (patchedTestimonial) => {
+      if (typeof onMineRefresh === 'function') {
+        await onMineRefresh(patchedTestimonial || null);
+      }
+      setMediaEpoch((n) => n + 1);
+    };
+
+    // Weight / issues only — save in background, reload, then clear drafts.
+    if (isSilentSave) {
       void submitAllEdits(payload)
-        .then(() => {
-          onOtpVerified?.();
+        .then(async (result) => {
+          await reloadMine(result?.testimonial);
+          clearDrafts();
         })
         .catch((err) => {
           setSubmitError(err?.message || 'Failed to save. Please try again.');
@@ -738,13 +846,14 @@ function MemberCard({
       return;
     }
 
-    // Photo / video changes need server ack before OTP UI.
+    // Photo / video changes — apply fresh signed URLs from the submit response before clearing local previews.
     setIsSubmitting(true);
     setCaptureFlowBusy(true);
     void submitAllEdits(payload)
-      .then(() => {
+      .then(async (result) => {
+        await reloadMine(result?.testimonial);
         clearDrafts();
-        setSubmitDone(true);
+        if (needsOtpUi) setSubmitDone(true);
       })
       .catch((err) => {
         setSubmitError(err?.message || 'Failed to submit. Please try again.');
@@ -753,7 +862,7 @@ function MemberCard({
         setIsSubmitting(false);
         setCaptureFlowBusy(false);
       });
-  }, [userId, dirtySlots, draftBefore, draftAfter, draftHealthPath, draftBusinessPath, draftIssues, onOtpVerified]);
+  }, [userId, dirtySlots, draftBefore, draftAfter, draftHealthPath, draftBusinessPath, draftIssues, onMineRefresh, hasAfter, testimonial?.healthVideoPath, testimonial?.businessVideoPath, testimonial?.healthVideoUrl, testimonial?.businessVideoUrl]);
 
   const anyPhotoCompressing = Boolean(draftBefore?.compressing || draftAfter?.compressing);
 
@@ -764,12 +873,16 @@ function MemberCard({
   }, [onOtpVerified]);
 
   const handleHealthIssuesSaved = useCallback((nextIssues) => {
-    setDraftIssues(nextIssues);
-    setDetailTestimonial((prev) => ({
-      ...(prev || testimonial || {}),
-      recoveredHealthIssues: nextIssues,
-    }));
-  }, [testimonial]);
+    const next = uniqueConditions(nextIssues);
+    setDraftIssues(isSameIssueList(next, approvedIssues) ? null : next);
+  }, [approvedIssues]);
+
+  const handleHealthIssueRemoved = useCallback((issue) => {
+    setDraftIssues((prev) => {
+      const next = withoutHealthIssue(prev ?? issues, issue);
+      return isSameIssueList(next, approvedIssues) ? null : next;
+    });
+  }, [issues, approvedIssues]);
 
   const prepareShareCard = useCallback(async () => {
     const full = await ensureDetail();
@@ -821,17 +934,17 @@ function MemberCard({
         <div className="flex gap-2">
           <div className="flex-1 text-center">
             <div className="relative">
-              {draftBefore?.previewUrl || testimonial?.beforeImageUrl ? (
+              {beforeImageSrc ? (
                 <button
                   type="button"
-                  onClick={() => setExpandedPhoto({ url: draftBefore?.previewUrl || testimonial.beforeImageUrl, label: `${user.userName} — Before` })}
+                  onClick={() => setExpandedPhoto({ url: beforeImageSrc, label: `${user.userName} — Before` })}
                   className="w-full"
                 >
                   <img
-                    src={draftBefore?.previewUrl || testimonial.beforeImageUrl}
+                    key={`before-${beforeImageSrc}`}
+                    src={beforeImageSrc}
                     alt="Before"
                     className={`${PORTRAIT_IMAGE_CLASS_SM} w-full cursor-zoom-in`}
-                    loading="lazy"
                   />
                 </button>
               ) : (
@@ -843,7 +956,7 @@ function MemberCard({
                   {editable ? <Plus className="h-7 w-7 text-green-400" /> : <AlertCircle className="h-5 w-5 text-gray-300" />}
                 </button>
               )}
-              {editable && (draftBefore?.previewUrl || testimonial?.beforeImageUrl) && (
+              {editable && beforeImageSrc && (
                 <button
                   type="button"
                   onClick={() => setPickerSlot(pickerSlot === 'before' ? null : 'before')}
@@ -853,7 +966,7 @@ function MemberCard({
                   <Pencil className="h-3 w-3" />
                 </button>
               )}
-              {isVerified && (draftBefore?.previewUrl || testimonial?.beforeImageUrl) && (
+              {isVerified && beforeImageSrc && (
                 <span
                   className="absolute top-1.5 left-1.5 h-6 w-6 rounded-full bg-green-500 text-white text-sm font-extrabold flex items-center justify-center shadow"
                   aria-label="Verified"
@@ -861,14 +974,22 @@ function MemberCard({
                   ✓
                 </span>
               )}
+              {draftBefore?.compressing && (
+                <div className="absolute inset-0 bg-black/50 rounded-2xl flex items-center justify-center z-10">
+                  <div className="flex flex-col items-center gap-1">
+                    <div className="h-5 w-5 rounded-full border-2 border-white/40 border-t-white animate-spin" />
+                    <span className="text-white text-[10px] font-bold">Preparing…</span>
+                  </div>
+                </div>
+              )}
             </div>
             {editable && pickerSlot === 'before' && (
               <div className="flex gap-1.5 mt-1.5 justify-center">
-                <button type="button" onClick={() => { beforeCamRef.current?.click(); setPickerSlot(null); }}
+                <button type="button" onClick={() => openPhotoPicker(beforeCamRef)}
                   className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-green-600 text-white text-[10px] font-bold">
                   <Camera className="h-3 w-3" /> Camera
                 </button>
-                <button type="button" onClick={() => { beforeGalRef.current?.click(); setPickerSlot(null); }}
+                <button type="button" onClick={() => openPhotoPicker(beforeGalRef)}
                   className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-gray-300 text-gray-700 text-[10px] font-bold">
                   <Images className="h-3 w-3" /> Gallery
                 </button>
@@ -879,9 +1000,17 @@ function MemberCard({
               </div>
             )}
             <input ref={beforeCamRef} type="file" accept="image/*" capture="environment" className="hidden"
-              onChange={(e) => { if (e.target.files?.[0]) { handleImageFile('before', e.target.files[0]); setPickerSlot(null); } }} />
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                e.target.value = '';
+                if (file) { handleImageFile('before', file); setPickerSlot(null); }
+              }} />
             <input ref={beforeGalRef} type="file" accept="image/*" className="hidden"
-              onChange={(e) => { if (e.target.files?.[0]) { handleImageFile('before', e.target.files[0]); setPickerSlot(null); } }} />
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                e.target.value = '';
+                if (file) { handleImageFile('before', file); setPickerSlot(null); }
+              }} />
             <div className="mt-1 space-y-0.5">
               <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">BEFORE</p>
               {editable && expandedSlots.has('beforeWeight') ? (
@@ -933,17 +1062,17 @@ function MemberCard({
           </div>
           <div className="flex-1 text-center">
             <div className="relative">
-              {draftAfter?.previewUrl || (hasAfter && testimonial?.afterImageUrl) ? (
+              {afterImageSrc ? (
                 <button
                   type="button"
-                  onClick={() => setExpandedPhoto({ url: draftAfter?.previewUrl || testimonial.afterImageUrl, label: `${user.userName} — After` })}
+                  onClick={() => setExpandedPhoto({ url: afterImageSrc, label: `${user.userName} — After` })}
                   className="w-full"
                 >
                   <img
-                    src={draftAfter?.previewUrl || testimonial.afterImageUrl}
+                    key={`after-${afterImageSrc}`}
+                    src={afterImageSrc}
                     alt="After"
                     className={`${PORTRAIT_IMAGE_CLASS_SM} w-full cursor-zoom-in`}
-                    loading="lazy"
                   />
                 </button>
               ) : (
@@ -955,7 +1084,7 @@ function MemberCard({
                   {editable ? <Plus className="h-7 w-7 text-purple-400" /> : <AlertCircle className="h-5 w-5 text-gray-300" />}
                 </button>
               )}
-              {editable && (draftAfter?.previewUrl || (hasAfter && testimonial?.afterImageUrl)) && (
+              {editable && afterImageSrc && (
                 <button
                   type="button"
                   onClick={() => setPickerSlot(pickerSlot === 'after' ? null : 'after')}
@@ -965,7 +1094,7 @@ function MemberCard({
                   <Pencil className="h-3 w-3" />
                 </button>
               )}
-              {isVerified && (draftAfter?.previewUrl || (hasAfter && testimonial?.afterImageUrl)) && (
+              {isVerified && afterImageSrc && (
                 <span
                   className="absolute top-1.5 left-1.5 h-6 w-6 rounded-full bg-green-500 text-white text-sm font-extrabold flex items-center justify-center shadow"
                   aria-label="Verified"
@@ -973,14 +1102,22 @@ function MemberCard({
                   ✓
                 </span>
               )}
+              {draftAfter?.compressing && (
+                <div className="absolute inset-0 bg-black/50 rounded-2xl flex items-center justify-center z-10">
+                  <div className="flex flex-col items-center gap-1">
+                    <div className="h-5 w-5 rounded-full border-2 border-white/40 border-t-white animate-spin" />
+                    <span className="text-white text-[10px] font-bold">Preparing…</span>
+                  </div>
+                </div>
+              )}
             </div>
             {editable && pickerSlot === 'after' && (
               <div className="flex gap-1.5 mt-1.5 justify-center">
-                <button type="button" onClick={() => { afterCamRef.current?.click(); setPickerSlot(null); }}
+                <button type="button" onClick={() => openPhotoPicker(afterCamRef)}
                   className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-purple-600 text-white text-[10px] font-bold">
                   <Camera className="h-3 w-3" /> Camera
                 </button>
-                <button type="button" onClick={() => { afterGalRef.current?.click(); setPickerSlot(null); }}
+                <button type="button" onClick={() => openPhotoPicker(afterGalRef)}
                   className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-gray-300 text-gray-700 text-[10px] font-bold">
                   <Images className="h-3 w-3" /> Gallery
                 </button>
@@ -991,9 +1128,17 @@ function MemberCard({
               </div>
             )}
             <input ref={afterCamRef} type="file" accept="image/*" capture="environment" className="hidden"
-              onChange={(e) => { if (e.target.files?.[0]) { handleImageFile('after', e.target.files[0]); setPickerSlot(null); } }} />
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                e.target.value = '';
+                if (file) { handleImageFile('after', file); setPickerSlot(null); }
+              }} />
             <input ref={afterGalRef} type="file" accept="image/*" className="hidden"
-              onChange={(e) => { if (e.target.files?.[0]) { handleImageFile('after', e.target.files[0]); setPickerSlot(null); } }} />
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                e.target.value = '';
+                if (file) { handleImageFile('after', file); setPickerSlot(null); }
+              }} />
             <div className="mt-1 space-y-0.5">
               <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">AFTER</p>
               {editable && expandedSlots.has('afterWeight') ? (
@@ -1182,9 +1327,12 @@ function MemberCard({
             userId={userId || user?.userId}
             coachId={coachId}
             currentIssues={draftIssues ?? issues}
+            approvedIssues={approvedIssues}
             knownHealthIssues={knownHealthIssues}
-            persist={Boolean(testimonial?.id)}
+            persist={editable ? false : Boolean(testimonial?.id)}
+            allowRemove={editable && draftIssues != null}
             onSaved={handleHealthIssuesSaved}
+            onRemove={handleHealthIssueRemoved}
           />
           {testimonial && (testimonial.beforeImageUrl || hasAfter) && (
             <TransformationShareActions
@@ -1248,7 +1396,11 @@ function MemberCard({
                     </div>
                   )}
                   <input ref={healthVidRef} type="file" accept="video/*" className="hidden"
-                    onChange={(e) => e.target.files?.[0] && handleVideoFile('health', e.target.files[0])} />
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      e.target.value = '';
+                      if (file) handleVideoFile('health', file);
+                    }} />
                 </div>
               ) : (
                 <VideoThumbnailCard
@@ -1296,7 +1448,11 @@ function MemberCard({
                     </div>
                   )}
                   <input ref={businessVidRef} type="file" accept="video/*" className="hidden"
-                    onChange={(e) => e.target.files?.[0] && handleVideoFile('business', e.target.files[0])} />
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      e.target.value = '';
+                      if (file) handleVideoFile('business', file);
+                    }} />
                 </div>
               ) : (
                 <VideoThumbnailCard
@@ -1346,11 +1502,11 @@ function MemberCard({
       )}
 
       {/* ── Submit for Approval button (Mine, when any slot has draft changes) ── */}
+      {editable && submitError && (
+        <p className="text-xs text-red-600 text-center bg-red-50 rounded-xl px-3 py-2">{submitError}</p>
+      )}
       {editable && hasDirtySlots && !submitDone && (
         <div className="space-y-2 pt-1">
-          {submitError && (
-            <p className="text-xs text-red-600 text-center bg-red-50 rounded-xl px-3 py-2">{submitError}</p>
-          )}
           <button
             type="button"
             onClick={handleSubmitAll}
@@ -1391,6 +1547,14 @@ function MemberCard({
       {expandedPhoto && (
         <PhotoModal url={expandedPhoto.url} label={expandedPhoto.label} onClose={() => setExpandedPhoto(null)} />
       )}
+      <CustomAlertModal
+        isOpen={Boolean(videoSizeAlert)}
+        onClose={() => setVideoSizeAlert(null)}
+        title="Video too large"
+        message={videoSizeAlert}
+        type="warning"
+        confirmText="OK"
+      />
 
       {/* Hidden share card — kept in the viewport (opacity 0) so photos are
           already decoded when Share is tapped. Off-screen -9999px made html2canvas slow. */}
@@ -1411,8 +1575,8 @@ function MemberCard({
             ref={shareCardRef}
             testimonial={{
               ...testimonial,
-              beforeImageUrl: draftBefore?.previewUrl || testimonial.beforeImageUrl,
-              afterImageUrl: draftAfter?.previewUrl || testimonial.afterImageUrl,
+              beforeImageUrl: draftBefore?.previewUrl || withTestimonialMediaCacheBust(testimonial.beforeImageUrl, mediaVersion),
+              afterImageUrl: draftAfter?.previewUrl || withTestimonialMediaCacheBust(testimonial.afterImageUrl, mediaVersion),
               beforeWeightKg: displayBeforeKg || testimonial.beforeWeightKg,
               afterWeightKg: displayAfterKg || testimonial.afterWeightKg,
               recoveredHealthIssues: draftIssues ?? testimonial.recoveredHealthIssues,
@@ -1462,16 +1626,21 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
   const loadGenerationRef = useRef(0);
   const pageCacheRef = useRef(new Map());
   const inFlightRef = useRef(new Map());
+  const mineRowRef = useRef(null);
 
-  const coachId = user?.userId || user?.id;
+  const coachId = user?.userId || user?.id || null;
+  const userName = user?.userName || user?.displayName || user?.name || 'You';
+  const profileImage = user?.profileImage || user?.photoURL || null;
+  const phoneNumber = user?.phoneNumber || user?.PhoneNumber || null;
+  mineRowRef.current = mineRow;
 
   const buildMineRow = useCallback(async () => {
     if (!coachId) return null;
     const userPayload = {
-      userId:       coachId,
-      userName:     user?.userName || user?.displayName || user?.name || 'You',
-      profileImage: user?.profileImage || user?.photoURL || null,
-      phoneNumber:  user?.phoneNumber || user?.PhoneNumber || null,
+      userId: coachId,
+      userName,
+      profileImage,
+      phoneNumber,
     };
     try {
       const [testimonial, video] = await Promise.all([
@@ -1497,14 +1666,41 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
     } catch {
       return { user: userPayload, testimonial: null };
     }
-  }, [coachId, user]);
+  }, [coachId, userName, profileImage, phoneNumber]);
+
+  /** Refresh Mine card only — no full-page loading skeleton (used after photo/video save). */
+  const refreshMineRow = useCallback(async (patchedTestimonial = null) => {
+    if (!coachId) return;
+    if (patchedTestimonial) {
+      setMineRow((prev) => ({
+        user: prev?.user || {
+          userId: coachId,
+          userName,
+          profileImage,
+          phoneNumber,
+        },
+        testimonial: { ...(prev?.testimonial || {}), ...patchedTestimonial },
+      }));
+      return;
+    }
+    try {
+      const mine = await buildMineRow();
+      setMineRow(mine);
+    } catch {
+      // Keep existing card if refresh fails.
+    }
+  }, [coachId, buildMineRow, userName, profileImage, phoneNumber]);
 
   const loadDirectAndMine = useCallback(async () => {
     if (!coachId) return;
+    if (isCaptureFlowBusy()) return;
     const generation = loadGenerationRef.current + 1;
     loadGenerationRef.current = generation;
-    setLoading(true);
-    setError(null);
+    const isFirstLoad = mineRowRef.current == null;
+    if (isFirstLoad) {
+      setLoading(true);
+      setError(null);
+    }
     setFullRows([]);
     setFullLoaded(false);
     setFullTeamMemberCount(null);
@@ -1529,7 +1725,7 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
       if (total === 0) setTeamScope(TEAM_SCOPES.MINE);
     } catch (err) {
       if (generation !== loadGenerationRef.current) return;
-      setError(err.message || 'Failed to load testimonials');
+      if (isFirstLoad) setError(err.message || 'Failed to load testimonials');
     } finally {
       if (generation === loadGenerationRef.current) {
         setLoading(false);
@@ -1886,6 +2082,7 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
     || normalizeSearchQuery(committedHealthIssue).length > 0;
   const hasActiveUploadFilter = uploadFilter && uploadFilter !== UPLOAD_FILTERS.ALL;
   const showTeamChrome  = hasDownline;
+  const showPageSkeleton = shouldShowTestimonialsPageSkeleton(loading, mineRow);
 
   return (
     <div className="max-w-lg mx-auto px-4 pt-4 pb-24 space-y-4">
@@ -2005,7 +2202,7 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
       )}
 
       {/* States */}
-      {loading && (
+      {showPageSkeleton && (
         <div className="space-y-3 animate-pulse">
           <div className="h-32 bg-gray-100 rounded-2xl" />
           <div className="h-6 bg-gray-100 rounded-xl w-3/4" />
@@ -2024,7 +2221,7 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
         </div>
       )}
 
-      {!loading && !fullLoading && !error && filteredRows.length === 0 && (
+      {!showPageSkeleton && !fullLoading && !error && filteredRows.length === 0 && (
         <div className="text-center py-12 text-gray-400">
           <Users className="h-12 w-12 mx-auto mb-3 opacity-30" />
           <p className="font-medium">
@@ -2047,7 +2244,7 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
       )}
 
       {/* Member cards */}
-      {!loading && !fullLoading && filteredRows.map((row) => (
+      {!showPageSkeleton && !fullLoading && filteredRows.map((row) => (
         <MemberCard
           key={row.user.userId}
           row={row}
@@ -2062,11 +2259,12 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
           userId={row.user.userId}
           coachId={coachId}
           knownHealthIssues={knownHealthIssues}
-          onOtpVerified={isMineScope ? () => { loadDirectAndMine(); } : undefined}
+          onMineRefresh={isMineScope ? refreshMineRow : undefined}
+          onOtpVerified={isMineScope ? () => loadDirectAndMine() : undefined}
         />
       ))}
 
-      {!loading && !fullLoading && !isMineScope && activePagination.hasMore && (
+      {!showPageSkeleton && !fullLoading && !isMineScope && activePagination.hasMore && (
         <div ref={loadMoreSentinelRef} className="py-4 flex justify-center">
           {loadingMore ? (
             <LoadingSpinner context="normal" />

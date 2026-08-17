@@ -15,20 +15,7 @@ import {
   POPULAR_MEDICAL_CONDITIONS,
 } from '../data/medicalConditions.js';
 import { updateMemberHealthIssues } from '../services/testimonialApi.js';
-
-function uniqueConditions(items = []) {
-  const seen = new Set();
-  const result = [];
-  for (const item of items) {
-    const label = String(item || '').trim();
-    if (!label) continue;
-    const key = label.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    result.push(label);
-  }
-  return result;
-}
+import { uniqueConditions, hasHealthIssue, issueKey } from '../utils/uniqueConditions.js';
 
 function HighlightMatch({ text, query }) {
   const q = String(query || '').trim();
@@ -53,18 +40,24 @@ function HighlightMatch({ text, query }) {
  *   userId: number,
  *   coachId: number,
  *   currentIssues?: string[],
+ *   approvedIssues?: string[],
  *   knownHealthIssues?: string[],
  *   persist?: boolean,
+ *   allowRemove?: boolean,
  *   onSaved?: (issues: string[]) => void,
+ *   onRemove?: (issue: string) => void,
  * }} props
  */
 export default function HealthIssueCoachEditor({
   userId,
   coachId,
   currentIssues = [],
+  approvedIssues,
   knownHealthIssues = [],
   persist = true,
+  allowRemove = false,
   onSaved,
+  onRemove,
 }) {
   const inputRef = useRef(null);
   const wrapRef = useRef(null);
@@ -89,12 +82,13 @@ export default function HealthIssueCoachEditor({
     return uniqueConditions([...knownHealthIssues, ...popular]).slice(0, VISIBLE_SUGGESTION_CAP);
   }, [query, catalog, knownHealthIssues]);
 
+  const savedIssues = Array.isArray(currentIssues) ? currentIssues : [];
+  const baselineIssues = Array.isArray(approvedIssues) ? approvedIssues : savedIssues;
   const displayedIssues = pending
-    ? [pending]
-    : (Array.isArray(currentIssues) ? currentIssues : []);
-  const alreadyCurrent = Array.isArray(currentIssues)
-    && currentIssues.length === 1
-    && currentIssues[0] === pending;
+    ? uniqueConditions([...savedIssues, pending])
+    : savedIssues;
+  const alreadyCurrent = Boolean(pending)
+    && savedIssues.some((issue) => issue.toLowerCase() === pending.toLowerCase());
   const canSave = Boolean(pending) && !alreadyCurrent && persist;
 
   const closeDropdown = useCallback(() => {
@@ -124,17 +118,23 @@ export default function HealthIssueCoachEditor({
     setError(null);
     closeDropdown();
     recordRecentMedicalCondition(trimmed);
-    if (!persist) {
-      onSaved?.([trimmed]);
+    if (hasHealthIssue(savedIssues, trimmed)) {
+      setPending(null);
+      return;
     }
-  }, [closeDropdown, persist, onSaved]);
+    const next = uniqueConditions([...savedIssues, trimmed]);
+    if (!persist) {
+      onSaved?.(next);
+      setPending(null);
+    }
+  }, [closeDropdown, persist, onSaved, savedIssues]);
 
   const handleSave = useCallback(async () => {
     if (!pending || saving || !persist) return;
     setSaving(true);
     setError(null);
     try {
-      const next = [pending];
+      const next = uniqueConditions([...savedIssues, pending]);
       await updateMemberHealthIssues({
         coachId,
         userId,
@@ -147,7 +147,7 @@ export default function HealthIssueCoachEditor({
     } finally {
       setSaving(false);
     }
-  }, [pending, saving, persist, coachId, userId, onSaved]);
+  }, [pending, saving, persist, coachId, userId, onSaved, savedIssues]);
 
   const handleKeyDown = (event) => {
     if (event.key === 'ArrowDown') {
@@ -249,14 +249,39 @@ export default function HealthIssueCoachEditor({
 
       <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-gray-600">
         <span>Current Health Issue:</span>
-        {displayedIssues.length > 0 ? displayedIssues.map((issue) => (
-          <span
-            key={issue}
-            className="inline-block bg-red-50 border border-red-200 text-red-800 rounded-full px-2.5 py-0.5 font-semibold"
-          >
-            {issue}
-          </span>
-        )) : (
+        {displayedIssues.length > 0 ? displayedIssues.map((issue) => {
+          const approved = hasHealthIssue(baselineIssues, issue);
+          const isPendingAdd = Boolean(pending) && issueKey(issue) === issueKey(pending);
+          const showCancel = !approved && (allowRemove || isPendingAdd);
+          return (
+            <span
+              key={issue}
+              className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 font-semibold ${
+                approved
+                  ? 'bg-red-50 border border-red-200 text-red-800'
+                  : 'bg-green-50 border border-green-300 text-green-800'
+              }`}
+            >
+              {issue}
+              {showCancel && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (isPendingAdd) {
+                      setPending(null);
+                      return;
+                    }
+                    onRemove?.(issue);
+                  }}
+                  className="p-0.5 rounded-full text-green-700 hover:bg-green-200"
+                  aria-label={`Remove ${issue}`}
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              )}
+            </span>
+          );
+        }) : (
           <span className="italic text-gray-400">Not added yet</span>
         )}
       </div>

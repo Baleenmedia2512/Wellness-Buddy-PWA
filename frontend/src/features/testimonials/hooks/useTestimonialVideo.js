@@ -13,6 +13,7 @@ import {
   submitTestimonialVideo,
   getMyVideoTestimonial,
 } from '../services/testimonialApi.js';
+import { normalizeVideoUploadFile } from '../utils/normalizeVideoUploadFile.js';
 import { resolveVideoDuration } from '../utils/getVideoMetadata.js';
 import {
   MAX_HEALTH_DURATION_S,
@@ -169,26 +170,29 @@ export function useTestimonialVideo({ userId, healthIssues = [] }) {
 
     setSubmitting(true);
     try {
+      const normalizedHealth = healthVideo ? await normalizeVideoUploadFile(healthVideo.file) : null;
+      const normalizedBusiness = businessVideo ? await normalizeVideoUploadFile(businessVideo.file) : null;
+
       const uploads = await prepareTestimonialVideoUpload({
         userId,
-        uploadHealth: !!healthVideo,
-        uploadBusiness: !!businessVideo,
+        uploadHealth: !!normalizedHealth,
+        uploadBusiness: !!normalizedBusiness,
       });
 
       let healthVideoPath;
       let businessVideoPath;
 
-      if (healthVideo) {
+      if (normalizedHealth) {
         healthVideoPath = await uploadTestimonialVideoFile(
-          healthVideo.file,
+          normalizedHealth,
           uploads.health,
           'health',
           userId,
         );
       }
-      if (businessVideo) {
+      if (normalizedBusiness) {
         businessVideoPath = await uploadTestimonialVideoFile(
-          businessVideo.file,
+          normalizedBusiness,
           uploads.business,
           'business',
           userId,

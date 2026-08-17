@@ -1,9 +1,8 @@
 /**
- * Upload caps for result videos. Keep files small so Share Video
- * does not wait on a ~50–100 MB download before the share sheet opens.
+ * Upload caps for result videos.
  */
-export const MAX_HEALTH_VIDEO_MB = 10;
-export const MAX_BUSINESS_VIDEO_MB = 10;
+export const MAX_HEALTH_VIDEO_MB = 15;
+export const MAX_BUSINESS_VIDEO_MB = 15;
 export const MAX_HEALTH_DURATION_S = 60;
 export const MAX_BUSINESS_DURATION_S = 120;
 
@@ -18,6 +17,5 @@ export function isVideoOverSizeLimit(file, slot) {
 
 export function videoTooLargeMessage(slot) {
   const maxMb = maxVideoMbForSlot(slot);
-  const label = slot === 'health' ? 'Health' : 'Business';
-  return `${label} video is too large (max ${maxMb} MB). Please compress or trim the video.`;
+  return `Upload max of ${maxMb} MB.`;
 }
