@@ -1246,7 +1246,8 @@ async function sendUnifiedCoachEmail({
  * Member submits multiple edited slots in one request; generates a single unified OTP.
  *
  * Logic:
- * - Issues-only change → silent save, no OTP, no email.
+ * - Issues-only on an incomplete testimonial → silent save, no OTP, no email.
+ * - Issues-only on a complete photo/video testimonial → unified OTP (same as other slots).
  * - Any photo/video change → one OTP stored in both otp_hash and video_otp_hash fields.
  * - Photo status is set to 'pending' only when the testimonial is or becomes complete (has both photos).
  * - Video status is set to 'pending' when video slots are dirty.
@@ -1275,8 +1276,12 @@ export async function submitAllEdits(rawBody) {
     ? unionHealthIssues(existing.recovered_health_issues, payload.recoveredHealthIssues)
     : (existing.recovered_health_issues ?? []);
 
-  // Issues-only → silent save, no OTP required
-  if (hasIssuesDirty && !hasPhotoDirty && !hasVideoDirty) {
+  const issuesOtpChannel = hasIssuesDirty && !hasPhotoDirty && !hasVideoDirty
+    ? resolveHealthIssueOtpChannel(existing)
+    : null;
+
+  // Issues-only on an incomplete record → silent save, no OTP required
+  if (hasIssuesDirty && !hasPhotoDirty && !hasVideoDirty && !issuesOtpChannel) {
     await repo.updateTestimonial(existing.id, {
       recoveredHealthIssues: mergedIssues,
     });
@@ -1351,7 +1356,7 @@ export async function submitAllEdits(rawBody) {
 
   // Save photo changes
   const photoDbUpdates = { ...photoUpdates, otpHash, otpExpiresAt: otpExpiry };
-  if (photoNeedsOtp) {
+  if (photoNeedsOtp || issuesOtpChannel === 'photo') {
     photoDbUpdates.status    = 'pending';
     photoDbUpdates.verifiedAt = null;
   } else if (hasPhotoDirty && !isComplete) {
@@ -1360,7 +1365,7 @@ export async function submitAllEdits(rawBody) {
   await repo.updateTestimonial(existing.id, photoDbUpdates);
 
   // Save video changes
-  if (hasVideoDirty) {
+  if (hasVideoDirty || issuesOtpChannel === 'video') {
     const videoUpdates = {
       videoStatus:       'pending',
       videoOtpHash:      otpHash,
@@ -1370,7 +1375,7 @@ export async function submitAllEdits(rawBody) {
     if (slots.has('health'))   videoUpdates.healthVideoPath   = payload.healthVideoPath;
     if (slots.has('business')) videoUpdates.businessVideoPath = payload.businessVideoPath;
     await repo.updateTestimonialVideos(existing.id, videoUpdates);
-  } else if (!hasPhotoDirty) {
+  } else if (!hasPhotoDirty && issuesOtpChannel !== 'photo') {
     // video-only path won't reach here but guard for clarity
     await repo.updateTestimonialVideos(existing.id, { videoOtpHash: otpHash, videoOtpExpiresAt: otpExpiry });
   }
@@ -1403,8 +1408,12 @@ export async function submitAllEdits(rawBody) {
     });
   }
 
-  const finalStatus      = photoNeedsOtp ? 'pending' : (photoDbUpdates.status ?? existing.status);
-  const finalVideoStatus = hasVideoDirty ? 'pending' : (existing.video_status ?? 'none');
+  const finalStatus      = (photoNeedsOtp || issuesOtpChannel === 'photo')
+    ? 'pending'
+    : (photoDbUpdates.status ?? existing.status);
+  const finalVideoStatus = (hasVideoDirty || issuesOtpChannel === 'video')
+    ? 'pending'
+    : (existing.video_status ?? 'none');
   const display = await enrichTestimonialForDisplay(await repo.findByUserId(payload.userId));
 
   return {
