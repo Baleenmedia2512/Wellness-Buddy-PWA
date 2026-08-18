@@ -86,17 +86,11 @@ export default async function handler(req, res) {
     const context = await loadReportingContextForCoach(supabase, viewerUserId);
     const visibleUsers = collectVisibleHierarchyUsers(viewerUserId, context);
 
-    // Co-coach peers are already in the indexed subtree load; keep them even when
-    // they sit beside the viewer (they are not an unrelated upline branch).
+    // Only trust the hierarchy-scoped visible list.
+    // This prevents leaking peer-descendants via indexed subtree load.
     const visibleById = new Map(
       visibleUsers.map((u) => [Number(u.UserId), u]),
     );
-    for (const user of context.allUsers || []) {
-      const id = Number(user.UserId);
-      if (Number.isFinite(id) && !visibleById.has(id)) {
-        visibleById.set(id, user);
-      }
-    }
 
     // Existing app-user rule: Active + public-aggregate (excludes prod developers).
     const appUsers = filterPublicAggregateUsers(

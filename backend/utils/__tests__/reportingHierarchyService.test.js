@@ -259,41 +259,39 @@ describe('collectVisibleHierarchyUsers — upline people, own downline, not othe
     return members.map((m) => m.UserName).sort();
   }
 
-  it('Balaji sees ancestors + self + full downline, not Prem\'s other branch', () => {
+  it('Balaji sees ancestors + self + full downline, plus sibling peer (no peer downline)', () => {
     const context = buildReportingContext(TREE);
     const visible = collectVisibleHierarchyUsers(Balaji, context);
     assert.deepEqual(names(visible), [
-      'A', 'B', 'Balaji', 'C', 'Prem', 'Prethip', 'Ravi', 'Usha', 'X', 'X1', 'Y',
+      'A', 'A1', 'B', 'Balaji', 'C', 'Prem', 'Prethip', 'Ravi', 'Usha', 'X', 'X1', 'Y',
     ]);
     const idSet = new Set(visible.map((m) => m.UserId));
-    assert.equal(idSet.has(A1), false);
+    assert.equal(idSet.has(A1), true);
     assert.equal(idSet.has(B1), false);
     assert.equal(idSet.has(B2), false);
   });
 
-  it('Usha sees ancestors + self + her downline, not A1\'s branch', () => {
+  it('Usha sees ancestors + self + her downline, plus sibling peers (no peer downline)', () => {
     const context = buildReportingContext(TREE);
     const visible = collectVisibleHierarchyUsers(Usha, context);
     const idSet = new Set(visible.map((m) => m.UserId));
-    for (const id of [Ravi, Prethip, Prem, Balaji, Usha, A, BMember, C]) {
+    for (const id of [Ravi, Prethip, Prem, Balaji, Usha, A, BMember, C, XUser, Y]) {
       assert.equal(idSet.has(id), true, `Usha should see ${id}`);
     }
     assert.equal(idSet.has(A1), false);
     assert.equal(idSet.has(B1), false);
     assert.equal(idSet.has(B2), false);
-    // Sibling branch under Balaji is not an ancestor-other-branch of Prem,
-    // but it is another branch under Usha's upline Balaji — must not appear.
-    assert.equal(idSet.has(XUser), false);
+    // Peer nodes only: include XUser but not X1.
     assert.equal(idSet.has(X1), false);
-    assert.equal(idSet.has(Y), false);
   });
 
-  it('co-coach partnerIds include that peer and their downline only', () => {
+  it('partnerIds include the peer node only (no partner downline)', () => {
     const context = buildReportingContext(TREE);
-    const visible = collectVisibleHierarchyUsers(Usha, context, { partnerIds: [Y] });
+    const visible = collectVisibleHierarchyUsers(Usha, context, { partnerIds: [XUser] });
     const idSet = new Set(visible.map((m) => m.UserId));
+    assert.equal(idSet.has(XUser), true);
+    assert.equal(idSet.has(X1), false);
     assert.equal(idSet.has(Y), true);
-    assert.equal(idSet.has(XUser), false);
     assert.equal(idSet.has(A1), false);
   });
 });

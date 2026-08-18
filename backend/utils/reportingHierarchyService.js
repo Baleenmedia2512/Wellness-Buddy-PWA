@@ -504,7 +504,8 @@ export async function loadReportingContextForCoach(supabase, rootCoachId) {
  * - the viewer
  * - every ancestor on the CoachId chain (the people only — not their other branches)
  * - the viewer's full downline at every level
- * - optional co-coach partners and their downlines (existing dual-coaching peers)
+ * - sibling peers only (same direct parent as the viewer; peer nodes only)
+ * - optional partnerIds as peer nodes only (no partner downline)
  *
  * Does NOT include another branch under an upline. Seeing Prem does not mean
  * seeing Prem's entire downline (e.g. Balaji must not see A1/B1/B2).
@@ -535,6 +536,7 @@ export function collectVisibleHierarchyUsers(viewerUserId, context, { partnerIds
   const result = new Map();
   result.set(Number(viewer.UserId), viewer);
 
+  // ── Upline (ancestors): walk CoachId upward ──────────────────────────────
   let walkId = Number(viewer.CoachId);
   const visitedUp = new Set([viewerId]);
   while (Number.isFinite(walkId) && !visitedUp.has(walkId)) {
@@ -545,16 +547,41 @@ export function collectVisibleHierarchyUsers(viewerUserId, context, { partnerIds
     walkId = Number(ancestor.CoachId);
   }
 
-  const rootIds = [
-    viewerId,
-    ...((Array.isArray(partnerIds) ? partnerIds : []).map((id) => Number(id))),
-  ].filter((id) => Number.isFinite(id));
+  // ── Peers (siblings only): same direct parent, exclude selected coach ──
+  // Peer rule: show the peer node itself only; never include peer downline.
+  const parentId = Number(viewer.CoachId);
+  if (Number.isFinite(parentId)) {
+    const directSiblings = context.dbChildrenByCoachId.get(parentId) || [];
+    for (const peer of directSiblings) {
+      const peerId = Number(peer?.UserId);
+      if (!Number.isFinite(peerId) || peerId === viewerId) continue;
 
-  for (const rootId of [...new Set(rootIds)]) {
-    const root = getUser(rootId);
-    if (root) result.set(Number(root.UserId), root);
-    for (const member of collectFullSubtreeUnderActiveCoach(rootId, context)) {
-      result.set(Number(member.UserId), member);
+      // Follow existing "inactive nested leader" visibility posture:
+      // - inactive coach nodes can be shown
+      // - inactive nested leaders (Role=user) are hidden
+      const peerRole = peer?.Role;
+      const peerStatus = peer?.Status;
+      const canShowPeer =
+        isCoachRole(peerRole) || isActiveTeamStatus(peerStatus);
+      if (!canShowPeer) continue;
+
+      result.set(peerId, peer);
+    }
+  }
+
+  // ── Own downline: full recursive descendants of the selected coach ────
+  for (const member of collectFullSubtreeUnderActiveCoach(viewerId, context)) {
+    result.set(Number(member.UserId), member);
+  }
+
+  // ── Optional partnerIds: peer nodes only (no partner downline) ──────────
+  // Kept for backward compatibility with callers that already computed partnerIds.
+  if (Array.isArray(partnerIds) && partnerIds.length > 0) {
+    for (const pidRaw of partnerIds) {
+      const pid = Number(pidRaw);
+      if (!Number.isFinite(pid) || pid === viewerId) continue;
+      const peer = getUser(pid);
+      if (peer) result.set(pid, peer);
     }
   }
 
