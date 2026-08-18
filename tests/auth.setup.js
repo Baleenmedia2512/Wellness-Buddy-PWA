@@ -51,12 +51,17 @@ setup('authenticate', async ({ page }) => {
 
   // Wait for authentication state
   await expect
-    .poll(async () => {
-      return await page.evaluate(() =>
+  .poll(
+    async () =>
+      page.evaluate(() =>
         localStorage.getItem('isOtpVerified')
-      );
-    })
-    .toBe('true');
+      ),
+    {
+      timeout: 30000,
+      intervals: [500, 1000, 2000],
+    }
+  )
+  .toBe('true');
 
   // Save authentication state
   await page.context().storageState({
