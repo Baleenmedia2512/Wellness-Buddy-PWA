@@ -2,7 +2,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, User, Mail, Ruler, Flame, Salad, Phone } from 'lucide-react';
 import { fetchTeamMemberProfile } from './fetchTeamMemberProfile.js';
-import { EmojiOrNative } from '../icons/EmojiImage';
 
 const DIET_LABELS = {
   veg: '🥦 Vegetarian',
