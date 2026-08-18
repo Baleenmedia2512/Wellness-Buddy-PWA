@@ -308,41 +308,47 @@ describe('buildDiaryShareSuffix', () => {
     expect(buildDiaryShareSuffix('weight', {
       previousWeight: 55.7,
       currentWeight: 55.6,
-    })).toBe('Previous: 55.7 kg, Current: 55.6 kg ↓');
+    })).toBe('Prev: 55.7 kg\nCurr: 55.6 kg ⬇️');
 
     expect(buildDiaryShareSuffix('weight', {
       previousWeight: 70,
       currentWeight: 71,
-    })).toBe('Previous: 70 kg, Current: 71 kg ↑');
+    })).toBe('Prev: 70 kg\nCurr: 71 kg ⬆️');
 
     expect(buildDiaryShareSuffix('weight', {
       currentWeight: 55.6,
-    })).toBe('weight 55.6 kg');
+    })).toBe('Curr: 55.6 kg');
   });
 
-  test('weight suffix appends ideal weight when provided', () => {
+  test('weight suffix lists Ideal, Prev, Curr with arrow on current', () => {
     expect(buildDiaryShareSuffix('weight', {
       previousWeight: 73.65,
       currentWeight: 73.4,
       idealWeight: 73.6,
-    })).toBe('Previous: 73.65 kg, Current: 73.4 kg ↓, Ideal Weight: 73.6 kg');
+    })).toBe('Ideal: 73.6 kg\nPrev: 73.65 kg\nCurr: 73.4 kg ⬇️');
 
     expect(buildDiaryShareSuffix('weight', {
       previousWeight: 73.4,
       currentWeight: 72.9,
       idealWeight: 73.7,
-    })).toBe('Previous: 73.4 kg, Current: 72.9 kg ↓, Ideal Weight: 73.7 kg');
+    })).toBe('Ideal: 73.7 kg\nPrev: 73.4 kg\nCurr: 72.9 kg ⬇️');
+
+    expect(buildDiaryShareSuffix('weight', {
+      previousWeight: 72.9,
+      currentWeight: 72.85,
+      idealWeight: 73.7,
+    })).toBe('Ideal: 73.7 kg\nPrev: 72.9 kg\nCurr: 72.85 kg ⬇️');
 
     expect(buildDiaryShareSuffix('weight', {
       previousWeight: 73.4,
       currentWeight: 74.1,
       idealWeight: 73.7,
-    })).toBe('Previous: 73.4 kg, Current: 74.1 kg ↑, Ideal Weight: 73.7 kg');
+    })).toBe('Ideal: 73.7 kg\nPrev: 73.4 kg\nCurr: 74.1 kg ⬆️');
 
     expect(buildDiaryShareSuffix('weight', {
       currentWeight: 55.6,
       idealWeight: 62.4,
-    })).toBe('weight 55.6 kg, Ideal Weight: 62.4 kg');
+    })).toBe('Ideal: 62.4 kg\nCurr: 55.6 kg');
   });
 
   test('workout suffix shows calories burnt so far today', () => {
