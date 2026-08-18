@@ -100,6 +100,24 @@ export function formatBusinessTime(ts, timezoneIana = DEFAULT_BUSINESS_TIMEZONE,
   });
 }
 
+/**
+ * Date + time in the owner's business timezone (share cards, captions).
+ * @param {unknown} ts
+ * @param {string} [timezoneIana]
+ */
+export function formatBusinessDateTime(ts, timezoneIana = DEFAULT_BUSINESS_TIMEZONE) {
+  const date = parseUtcTimestamp(ts);
+  if (!date) return '';
+  return date.toLocaleString('en-US', {
+    timeZone: timezoneIana,
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  });
+}
+
 /** @param {unknown} ts */
 export function formatUtcDateTime(ts, dateOptions = {}, timeOptions = {}) {
   const dateStr = formatUtcDate(ts, dateOptions);

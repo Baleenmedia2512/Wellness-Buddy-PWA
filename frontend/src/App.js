@@ -8136,7 +8136,7 @@ function WellnessValleyApp() {
                       <span className="text-sm font-bold text-emerald-700">Gallery</span>
                     </button>
                   </div>
-                  <DetoxDayReminder />
+                  <DetoxDayReminder user={user} />
                 </div>
               </div>
 

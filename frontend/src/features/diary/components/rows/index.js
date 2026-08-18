@@ -22,6 +22,7 @@ import { parseAnalysisData, recalculateTotals, getMealCategory } from '../../../
 import { captureAndShare } from '../../../../shared/utils/shareUtils';
 import {
   formatBusinessTime,
+  formatBusinessDateTime,
   DEFAULT_BUSINESS_TIMEZONE,
 } from '../../../../shared/utils/datetimeUtils';
 import { DIARY_FOOD_ACTIVITY } from '../../domain/activityType';
@@ -92,6 +93,10 @@ const WeighingScaleIcon = ({ className }) => (
 
 function formatTime(iso, timezoneIana = DEFAULT_BUSINESS_TIMEZONE) {
   return formatBusinessTime(iso, timezoneIana);
+}
+
+function formatShareDateTime(iso, timezoneIana = DEFAULT_BUSINESS_TIMEZONE) {
+  return formatBusinessDateTime(iso, timezoneIana);
 }
 
 const MEAL_BADGE_BY_CATEGORY = {
@@ -354,9 +359,7 @@ export function FoodRow({
     { label: 'Fiber',    value: Math.round(t.fiber    ?? 0), unit: 'g',    color: '#22c55e' },
     { label: 'Sugar',    value: Math.round(t.sugar    ?? 0), unit: 'g',    color: '#a855f7' },
   ];
-  const shareTime = entry.capturedAt
-    ? new Date(entry.capturedAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })
-    : '';
+  const shareTime = formatShareDateTime(entry.capturedAt, timezoneIana);
 
   const sharingLockRef = useRef(false);
 
@@ -587,9 +590,7 @@ export function WeightRow({
     previousWeight,
     currentWeight: p.weight,
   });
-  const shareTime = entry.capturedAt
-    ? new Date(entry.capturedAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })
-    : '';
+  const shareTime = formatShareDateTime(entry.capturedAt, timezoneIana);
 
   const handleShare = async (e) => {
     e.stopPropagation();

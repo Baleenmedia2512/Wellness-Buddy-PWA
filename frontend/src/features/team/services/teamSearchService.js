@@ -196,6 +196,7 @@ export function formatMemberSubtitle(email, communityId) {
 
 /** Map the slim DB shape into the user-object shape the rest of the app expects. */
 export function toSelectedUser(member) {
+  const timezone = member.timezone || member.timezoneIana || null;
   return {
     id: member.userId,
     userId: member.userId,
@@ -207,5 +208,7 @@ export function toSelectedUser(member) {
     coachId: member.coachId ?? null,
     role: member.role,
     isSelf: member.isSelf,
+    timezone,
+    timezoneIana: timezone,
   };
 }
