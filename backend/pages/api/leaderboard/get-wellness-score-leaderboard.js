@@ -72,7 +72,7 @@ export default async function handler(req, res) {
       });
     }
 
-    const cacheKey = `lb:hierarchy:wellness:v1:${viewerUserId}:${topN}:${scoreDate}`;
+    const cacheKey = `lb:hierarchy:wellness:v2:${viewerUserId}:${topN}:${scoreDate}`;
     const cached = cache.get(cacheKey);
     if (cached) {
       res.setHeader('X-Cache', 'HIT');

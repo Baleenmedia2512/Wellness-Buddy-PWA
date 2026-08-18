@@ -12,6 +12,7 @@ import {
   buildReportingChildrenIndex,
   isReportingDownlineMember,
   collectVisibleHierarchyUsers,
+  collectSearchableHierarchyUsers,
 } from '../reportingHierarchyService.js';
 
 const X = 1;
@@ -293,5 +294,46 @@ describe('collectVisibleHierarchyUsers — upline people, own downline, not othe
     assert.equal(idSet.has(X1), false);
     assert.equal(idSet.has(Y), true);
     assert.equal(idSet.has(A1), false);
+  });
+});
+
+describe('collectSearchableHierarchyUsers — Diary / team search roster', () => {
+  const Parent = 735;
+  const Yasheer = 339;
+  const Balaji = 279;
+  const Sabarish = 476;
+  const Avinash = 999;
+  const Ramesh = 843;
+  const Kablian = 892;
+  const BalajiKid = 405;
+  const SabarishKid = 900;
+
+  const TEAM = [
+    { UserId: Parent, UserName: 'Parent', Role: 'coach', CoachId: null, Status: 'Active' },
+    { UserId: Yasheer, UserName: 'YASHEER', Role: 'coach', CoachId: Parent, Status: 'Active' },
+    { UserId: Balaji, UserName: 'Balaji', Role: 'coach', CoachId: Parent, Status: 'Active' },
+    { UserId: Sabarish, UserName: 'Sabarish', Role: 'user', CoachId: Parent, Status: 'Active' },
+    { UserId: Avinash, UserName: 'Avinash', Role: 'user', CoachId: Parent, Status: 'Active' },
+    { UserId: Ramesh, UserName: 'Ramesh', Role: 'user', CoachId: Yasheer, Status: 'Active' },
+    { UserId: Kablian, UserName: 'Kablian', Role: 'user', CoachId: Ramesh, Status: 'Active' },
+    { UserId: BalajiKid, UserName: 'Leenah', Role: 'user', CoachId: Balaji, Status: 'Active' },
+    { UserId: SabarishKid, UserName: 'Kid', Role: 'user', CoachId: Sabarish, Status: 'Active' },
+  ];
+
+  it('YASHEER can search upline, sibling peers, and own downline — not peer kids', () => {
+    const searchable = collectSearchableHierarchyUsers(
+      Yasheer,
+      buildReportingContext(TEAM),
+    );
+    const idSet = new Set(searchable.map((m) => m.UserId));
+    assert.equal(idSet.has(Yasheer), false);
+    assert.equal(idSet.has(Parent), true);
+    assert.equal(idSet.has(Balaji), true);
+    assert.equal(idSet.has(Sabarish), true);
+    assert.equal(idSet.has(Avinash), true);
+    assert.equal(idSet.has(Ramesh), true);
+    assert.equal(idSet.has(Kablian), true);
+    assert.equal(idSet.has(BalajiKid), false);
+    assert.equal(idSet.has(SabarishKid), false);
   });
 });

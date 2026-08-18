@@ -376,7 +376,7 @@ const TEAM_USER_SELECT =
 const MAX_SUBTREE_DEPTH = 12;
 const SUBTREE_CONTEXT_CACHE = new Map();
 const SUBTREE_CONTEXT_TTL_MS = 60_000;
-const SUBTREE_CACHE_KEY_PREFIX = 'v4:'; // bump when select columns or rollup rules change
+const SUBTREE_CACHE_KEY_PREFIX = 'v5:'; // bump when select columns or rollup rules change
 
 /**
  * @param {object} supabase
@@ -434,7 +434,8 @@ async function resolveCoCoachRootCoachIds(supabase, rootUser) {
 
 /**
  * Load reporting context for one coach subtree via indexed CoachId walks
- * (no full team_table scan). Includes ancestor chain for inactive-coach rollup.
+ * (no full team_table scan). Includes ancestor chain for inactive-coach rollup
+ * and sibling peer nodes (same parent; not their downlines).
  *
  * @param {object} supabase
  * @param {number} rootCoachId
@@ -490,6 +491,17 @@ export async function loadReportingContextForCoach(supabase, rootCoachId) {
     }
     currentCoachIds = [...new Set(nextCoachIds)];
     depth += 1;
+  }
+
+  // Sibling peers: parent's direct children, nodes only — do not walk peer downline.
+  const parentId = Number(rootUser.CoachId);
+  if (Number.isFinite(parentId)) {
+    const siblings = await fetchTeamUsersByCoachIds(supabase, [parentId]);
+    for (const sibling of siblings) {
+      const siblingId = Number(sibling?.UserId);
+      if (!Number.isFinite(siblingId) || siblingId === rootId) continue;
+      if (!usersById.has(siblingId)) usersById.set(siblingId, sibling);
+    }
   }
 
   const context = buildReportingContext([...usersById.values()]);
@@ -586,6 +598,29 @@ export function collectVisibleHierarchyUsers(viewerUserId, context, { partnerIds
   }
 
   return [...result.values()];
+}
+
+/**
+ * Diary / team-search roster: upline + sibling peers (nodes only) + own downline.
+ * Excludes the viewer — callers prepend the "Me" row.
+ *
+ * @param {number} viewerUserId
+ * @param {ReportingContext} context
+ * @param {{ includeInactive?: boolean, partnerIds?: Array<number|string> }} [options]
+ * @returns {TeamUser[]}
+ */
+export function collectSearchableHierarchyUsers(
+  viewerUserId,
+  context,
+  { includeInactive = false, partnerIds = [] } = {},
+) {
+  const viewerId = Number(viewerUserId);
+  return collectVisibleHierarchyUsers(viewerUserId, context, { partnerIds })
+    .filter((user) => {
+      if (Number(user.UserId) === viewerId) return false;
+      if (includeInactive) return true;
+      return isActiveTeamStatus(user.Status);
+    });
 }
 
 /**
