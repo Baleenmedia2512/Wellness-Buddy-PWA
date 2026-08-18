@@ -211,6 +211,86 @@ export function formatCalendarPickerDate(date) {
   return `${y}-${m}-${d}`;
 }
 
+/**
+ * Add whole calendar days to a YYYY-MM-DD (UTC date math — no TZ shift).
+ * @param {unknown} ymd
+ * @param {number} deltaDays
+ * @returns {string}
+ */
+export function addCalendarDaysYmd(ymd, deltaDays) {
+  if (typeof ymd !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return '';
+  if (!Number.isInteger(deltaDays)) return '';
+  const year = Number.parseInt(ymd.slice(0, 4), 10);
+  const month = Number.parseInt(ymd.slice(5, 7), 10);
+  const day = Number.parseInt(ymd.slice(8, 10), 10);
+  const utc = new Date(Date.UTC(year, month - 1, day + deltaDays));
+  return utc.toISOString().slice(0, 10);
+}
+
+/** @param {unknown} ymd @returns {Date|null} local midnight for a calendar widget */
+export function ymdToPickerDate(ymd) {
+  if (typeof ymd !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return null;
+  const year = Number.parseInt(ymd.slice(0, 4), 10);
+  const month = Number.parseInt(ymd.slice(5, 7), 10);
+  const day = Number.parseInt(ymd.slice(8, 10), 10);
+  return new Date(year, month - 1, day);
+}
+
+/** @param {Date} date @param {string} [timezoneIana] @param {Date} [now] */
+export function isPickerDateToday(date, timezoneIana = DEFAULT_BUSINESS_TIMEZONE, now = new Date()) {
+  const ymd = formatCalendarPickerDate(date);
+  return Boolean(ymd) && ymd === todayBusinessDate(timezoneIana, now);
+}
+
+/** @param {Date} date @param {string} [timezoneIana] @param {Date} [now] */
+export function isPickerDateYesterday(date, timezoneIana = DEFAULT_BUSINESS_TIMEZONE, now = new Date()) {
+  const ymd = formatCalendarPickerDate(date);
+  const todayYmd = todayBusinessDate(timezoneIana, now);
+  return Boolean(ymd) && ymd === addCalendarDaysYmd(todayYmd, -1);
+}
+
+/** @param {Date} date @param {string} [timezoneIana] @param {Date} [now] */
+export function isPickerDateFuture(date, timezoneIana = DEFAULT_BUSINESS_TIMEZONE, now = new Date()) {
+  const ymd = formatCalendarPickerDate(date);
+  return Boolean(ymd) && ymd > todayBusinessDate(timezoneIana, now);
+}
+
+/**
+ * Date-picker button: "Today" / "Yesterday" / "Aug 17" in the owner's zone.
+ * @param {Date} date
+ * @param {string} [timezoneIana]
+ * @param {Date} [now]
+ */
+export function formatPickerDayButtonLabel(date, timezoneIana = DEFAULT_BUSINESS_TIMEZONE, now = new Date()) {
+  if (isPickerDateToday(date, timezoneIana, now)) return 'Today';
+  if (isPickerDateYesterday(date, timezoneIana, now)) return 'Yesterday';
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) return '';
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+/**
+ * Diary timeline header in the owner's zone.
+ * @param {unknown} dateStr YYYY-MM-DD
+ * @param {string} [timezoneIana]
+ * @param {Date} [now]
+ */
+export function formatOwnerDayLabel(dateStr, timezoneIana = DEFAULT_BUSINESS_TIMEZONE, now = new Date()) {
+  if (typeof dateStr !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return '';
+  const todayYmd = todayBusinessDate(timezoneIana, now);
+  const yesterdayYmd = addCalendarDaysYmd(todayYmd, -1);
+  const year = Number.parseInt(dateStr.slice(0, 4), 10);
+  const month = Number.parseInt(dateStr.slice(5, 7), 10);
+  const day = Number.parseInt(dateStr.slice(8, 10), 10);
+  const long = new Date(year, month - 1, day).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+  if (dateStr === todayYmd) return `Today \u00b7 ${long}`;
+  if (dateStr === yesterdayYmd) return `Yesterday \u00b7 ${long}`;
+  return long;
+}
+
 /** @param {unknown} a @param {unknown} b */
 export function compareUtcTimestampsDesc(a, b) {
   return getUtcTimestampMs(b) - getUtcTimestampMs(a);
@@ -229,17 +309,14 @@ export function isSameBusinessDay(tsA, tsB, timezoneIana = DEFAULT_BUSINESS_TIME
 }
 
 /** @param {unknown} ts @param {string} [timezoneIana] */
-export function isBusinessToday(ts, timezoneIana = DEFAULT_BUSINESS_TIMEZONE) {
-  return timestampToBusinessYmd(ts, timezoneIana) === todayBusinessDate(timezoneIana);
+export function isBusinessToday(ts, timezoneIana = DEFAULT_BUSINESS_TIMEZONE, now = new Date()) {
+  return timestampToBusinessYmd(ts, timezoneIana) === todayBusinessDate(timezoneIana, now);
 }
 
-/** @param {unknown} ts @param {string} [timezoneIana] */
-export function isBusinessYesterday(ts, timezoneIana = DEFAULT_BUSINESS_TIMEZONE) {
-  const today = todayBusinessDate(timezoneIana);
-  const [y, m, d] = today.split('-').map(Number);
-  const yesterdayAnchor = new Date(Date.UTC(y, m - 1, d - 1));
-  const yesterday = todayBusinessDate(timezoneIana, yesterdayAnchor);
-  return timestampToBusinessYmd(ts, timezoneIana) === yesterday;
+/** @param {unknown} ts @param {string} [timezoneIana] @param {Date} [now] */
+export function isBusinessYesterday(ts, timezoneIana = DEFAULT_BUSINESS_TIMEZONE, now = new Date()) {
+  const today = todayBusinessDate(timezoneIana, now);
+  return timestampToBusinessYmd(ts, timezoneIana) === addCalendarDaysYmd(today, -1);
 }
 
 /** @param {unknown} ts */

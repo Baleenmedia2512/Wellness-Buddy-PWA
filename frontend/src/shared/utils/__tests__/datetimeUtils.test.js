@@ -9,6 +9,13 @@ import {
   formatBusinessDateTime,
   formatCalendarPickerDate,
   todayBusinessDate,
+  addCalendarDaysYmd,
+  formatPickerDayButtonLabel,
+  formatOwnerDayLabel,
+  isPickerDateToday,
+  isPickerDateYesterday,
+  isPickerDateFuture,
+  isBusinessYesterday,
 } from '../datetimeUtils.js';
 
 const IST = 'Asia/Kolkata';
@@ -34,17 +41,39 @@ describe('formatBusinessDateTime — owner local date + time', () => {
   });
 });
 
-describe('calendar picker vs owner zone', () => {
-  it('local-midnight Aug 18 is still Aug 18 even in Qatar or USA', () => {
-    const picked = new Date(2026, 7, 18); // viewer-local midnight
-    assert.equal(formatCalendarPickerDate(picked), '2026-08-18');
+describe('Today vs Yesterday — owner zone', () => {
+  it('adds calendar days without timezone shift', () => {
+    assert.equal(addCalendarDaysYmd('2026-08-18', -1), '2026-08-17');
+    assert.equal(addCalendarDaysYmd('2026-03-01', -1), '2026-02-28');
   });
 
-  it('today in Qatar / USA / India can differ around midnight', () => {
-    // 2026-08-18 00:30 IST = 2026-08-17 19:00 UTC
-    const justAfterIstMidnight = new Date('2026-08-17T19:00:00.000Z');
-    assert.equal(todayBusinessDate(IST, justAfterIstMidnight), '2026-08-18');
-    assert.equal(todayBusinessDate(QATAR, justAfterIstMidnight), '2026-08-17');
-    assert.equal(todayBusinessDate(USA_EAST, justAfterIstMidnight), '2026-08-17');
+  it('labels Today / Yesterday from the owner calendar, not the viewer', () => {
+    // 2026-08-18 00:30 IST = still 17 Aug in Qatar and USA
+    const now = new Date('2026-08-17T19:00:00.000Z');
+    const indiaToday = new Date(2026, 7, 18);
+    const qatarToday = new Date(2026, 7, 17);
+
+    assert.equal(formatPickerDayButtonLabel(indiaToday, IST, now), 'Today');
+    assert.equal(formatPickerDayButtonLabel(qatarToday, QATAR, now), 'Today');
+    assert.equal(formatPickerDayButtonLabel(qatarToday, IST, now), 'Yesterday');
+
+    assert.equal(isPickerDateToday(indiaToday, IST, now), true);
+    assert.equal(isPickerDateToday(indiaToday, QATAR, now), false);
+    assert.equal(isPickerDateYesterday(qatarToday, IST, now), true);
+    assert.equal(isPickerDateFuture(indiaToday, QATAR, now), true);
+  });
+
+  it('timeline header uses owner Today / Yesterday', () => {
+    const now = new Date('2026-08-17T19:00:00.000Z');
+    assert.match(formatOwnerDayLabel('2026-08-18', IST, now), /^Today /);
+    assert.match(formatOwnerDayLabel('2026-08-17', QATAR, now), /^Today /);
+    assert.match(formatOwnerDayLabel('2026-08-17', IST, now), /^Yesterday /);
+    assert.match(formatOwnerDayLabel('2026-08-16', QATAR, now), /^Yesterday /);
+  });
+
+  it('isBusinessYesterday uses the previous owner calendar day (not UTC midnight)', () => {
+    const now = new Date('2026-08-18T16:00:00.000Z'); // noon EDT Aug 18
+    const yesterdayAfternoonEd = '2026-08-17T19:00:00.000Z'; // 3pm EDT Aug 17
+    assert.equal(isBusinessYesterday(yesterdayAfternoonEd, USA_EAST, now), true);
   });
 });

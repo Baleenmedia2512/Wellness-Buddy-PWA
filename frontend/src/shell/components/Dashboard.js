@@ -36,6 +36,13 @@ import {
 } from '../../features/education/services/educationDashboardService';
 import { isCaloriesBurnedTopic } from '../../features/education/services/educationFormatter';
 import { DIARY_UNDO_SECONDS } from '../../features/diary/components/DiaryUndoRow';
+import {
+  DEFAULT_BUSINESS_TIMEZONE,
+  resolveBusinessTimezone,
+  formatPickerDayButtonLabel,
+  isPickerDateToday,
+  isPickerDateFuture,
+} from '../../shared/utils/datetimeUtils';
 
 // âœ… LAZY LOADING: Load tab components on-demand (only one visible at a time)
 const NutritionDashboard = lazy(() => import('../../features/nutrition/components/NutritionDashboard'));
@@ -261,12 +268,13 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
     setDiaryOwnerTimezoneIana(null);
   }, [displayUser?.id, displayUser?.userId, selectedMember?.id, selectedMember?.userId]);
 
-  // Label for the shell-level date-picker button: "Today" when the
-  // selected day is the current day, otherwise a short date (e.g. "Jun 9").
-  const dateButtonLabel =
-    selectedDate.toDateString() === new Date().toDateString()
-      ? 'Today'
-      : selectedDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  const ownerTimezoneIana = diaryOwnerTimezoneIana
+    || resolveBusinessTimezone(displayUser)
+    || DEFAULT_BUSINESS_TIMEZONE;
+
+  // Label for the shell-level date-picker button: "Today" / "Yesterday"
+  // in the diary owner's zone (Qatar / USA / India), not the viewer's device.
+  const dateButtonLabel = formatPickerDayButtonLabel(selectedDate, ownerTimezoneIana);
 
   // Save active tab to localStorage when it changes
   const handleTabChange = (tab) => {
@@ -967,7 +975,6 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
               {(() => {
                 const year = calendarMonth.getFullYear();
                 const month = calendarMonth.getMonth();
-                const today = new Date();
                 
                 // Get first day of month and number of days
                 const firstDay = new Date(year, month, 1);
@@ -984,9 +991,9 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
                     date: prevDate,
                     dayNumber: prevDate.getDate(),
                     isCurrentMonth: false,
-                    isToday: prevDate.toDateString() === today.toDateString(),
+                    isToday: isPickerDateToday(prevDate, ownerTimezoneIana),
                     isSelected: prevDate.toDateString() === selectedDate.toDateString(),
-                    isFuture: prevDate > today
+                    isFuture: isPickerDateFuture(prevDate, ownerTimezoneIana),
                   });
                 }
                 
@@ -997,9 +1004,9 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
                     date: date,
                     dayNumber: day,
                     isCurrentMonth: true,
-                    isToday: date.toDateString() === today.toDateString(),
+                    isToday: isPickerDateToday(date, ownerTimezoneIana),
                     isSelected: date.toDateString() === selectedDate.toDateString(),
-                    isFuture: date > today
+                    isFuture: isPickerDateFuture(date, ownerTimezoneIana),
                   });
                 }
                 
@@ -1011,9 +1018,9 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
                     date: nextDate,
                     dayNumber: day,
                     isCurrentMonth: false,
-                    isToday: nextDate.toDateString() === today.toDateString(),
+                    isToday: isPickerDateToday(nextDate, ownerTimezoneIana),
                     isSelected: nextDate.toDateString() === selectedDate.toDateString(),
-                    isFuture: nextDate > today
+                    isFuture: isPickerDateFuture(nextDate, ownerTimezoneIana),
                   });
                 }
                 
@@ -1186,6 +1193,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
                   onAfterModalClose={reloadDiary}
                   onDeleteWithUndo={handleWeightDeleteWithUndo}
                   onDeleteUndoCancel={handleWeightDeleteUndoCancel}
+                  timezoneIana={diaryOwnerTimezoneIana}
                 />
                 <EducationDashboard
                   user={displayUser}
@@ -1200,6 +1208,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
                   onAfterModalClose={reloadDiary}
                   onDeleteWithUndo={handleEducationDeleteWithUndo}
                   onDeleteUndoCancel={handleEducationDeleteUndoCancel}
+                  timezoneIana={diaryOwnerTimezoneIana}
                 />
               </div>
             </>
@@ -1239,6 +1248,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
                 refreshKey={weightReloadKey}
                 onDeleteWithUndo={handleWeightDeleteWithUndo}
                 onDeleteUndoCancel={handleWeightDeleteUndoCancel}
+                timezoneIana={diaryOwnerTimezoneIana}
               />
 
               <EducationDashboard
@@ -1251,6 +1261,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
                 initialEntryId={initialMealId}
                 onDeleteWithUndo={handleEducationDeleteWithUndo}
                 onDeleteUndoCancel={handleEducationDeleteUndoCancel}
+                timezoneIana={diaryOwnerTimezoneIana}
               />
 
               {/* "Other" — unrecognised ("unknown") captures only. Reuses the
@@ -1320,6 +1331,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
               initialEntryId={initialMealId}
               onDeleteWithUndo={handleWeightDeleteWithUndo}
               onDeleteUndoCancel={handleWeightDeleteUndoCancel}
+              timezoneIana={diaryOwnerTimezoneIana}
             />
           )}
 
@@ -1333,6 +1345,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
               initialEntryId={initialMealId}
               onDeleteWithUndo={handleEducationDeleteWithUndo}
               onDeleteUndoCancel={handleEducationDeleteUndoCancel}
+              timezoneIana={diaryOwnerTimezoneIana}
             />
           )}
           </>
