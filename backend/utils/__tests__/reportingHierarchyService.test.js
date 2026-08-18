@@ -13,6 +13,7 @@ import {
   isReportingDownlineMember,
   collectVisibleHierarchyUsers,
   collectSearchableHierarchyUsers,
+  collectVisibleHierarchyMemberIds,
 } from '../reportingHierarchyService.js';
 
 const X = 1;
@@ -335,5 +336,13 @@ describe('collectSearchableHierarchyUsers — Diary / team search roster', () =>
     assert.equal(idSet.has(Kablian), true);
     assert.equal(idSet.has(BalajiKid), false);
     assert.equal(idSet.has(SabarishKid), false);
+  });
+
+  it('full visible ids keep peer leaders only and exclude self by default', () => {
+    const ids = collectVisibleHierarchyMemberIds(
+      Yasheer,
+      buildReportingContext(TEAM),
+    ).sort((a, b) => a - b);
+    assert.deepEqual(ids, [Parent, Balaji, Sabarish, Avinash, Ramesh, Kablian].sort((a, b) => a - b));
   });
 });

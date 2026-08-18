@@ -5,7 +5,7 @@
 import { validateDownlineWeightStatus } from './reports.validators.js';
 import {
   getCoachMember,
-  getFullTeamMembers,
+  getVisibleTeamMembers,
   getLatestWeightsForUsers,
 } from './reports.repository.js';
 import { computeIdealWeightRange } from '../../utils/weightValidation.js';
@@ -197,7 +197,7 @@ async function buildDownlineWeightSnapshot(coachId) {
 
   const [coachMember, teamData] = await Promise.all([
     getCoachMember(coachId),
-    getFullTeamMembers(coachId),
+    getVisibleTeamMembers(coachId),
   ]);
   const fullTeamMembers = teamData.rawMembers;
   const childrenByParentId = teamData.childrenByParentId;

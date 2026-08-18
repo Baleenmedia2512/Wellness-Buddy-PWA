@@ -530,8 +530,10 @@ export async function loadTeamReportingContext(coachId) {
  */
 async function fetchReportingTeamMembers(coachId, scope = 'direct', context = null) {
   const resolvedContext = context ?? await loadTeamReportingContext(coachId);
-  const { getReportingMembers } = await import('../../utils/reportingHierarchyService.js');
-  const members = getReportingMembers(coachId, scope, resolvedContext);
+  const { getReportingMembers, collectVisibleHierarchyUsers } = await import('../../utils/reportingHierarchyService.js');
+  const members = scope === 'full'
+    ? collectVisibleHierarchyUsers(coachId, resolvedContext)
+    : getReportingMembers(coachId, scope, resolvedContext);
   return members
     .filter((member) => member.UserId !== Number(coachId))
     .sort((a, b) => String(a.UserName || '').localeCompare(String(b.UserName || '')));

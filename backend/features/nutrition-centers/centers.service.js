@@ -4,6 +4,11 @@ import { todayInTimezone } from '../../shared/lib/datetime/index.js';
 import { getUserTimezoneIana } from '../user/domain/userTimezone.js';
 import { cache } from '../../utils/cache.js';
 import { paginateCentersListRecords } from './domain/centers.pagination.js';
+import { getSupabaseClient } from '../../utils/supabaseClient.js';
+import {
+  loadReportingContextForCoach,
+  collectVisibleHierarchyMemberIds,
+} from '../../utils/reportingHierarchyService.js';
 
 /** Global geo list for GPS check-in — identical for all users. */
 const GEO_LIST_CACHE_TTL_MS = 2 * 60 * 1000;
@@ -143,12 +148,12 @@ async function resolveTeamUserIds({ userIdNum, teamFilter }) {
     return [userIdNum];
   }
   if (teamFilter === 'full') {
-    // Shared 60s subtree cache (same as Activity Report) — avoids re-walking on tab switch.
-    const { buildActivityReportCoachScope } = await import(
-      '../activity/domain/activity-report.hierarchy.js'
-    );
-    const { fullIds } = await buildActivityReportCoachScope(userIdNum);
-    return [...new Set([userIdNum, ...fullIds])];
+    const supabase = getSupabaseClient();
+    const context = await loadReportingContextForCoach(supabase, userIdNum);
+    return [...new Set([
+      userIdNum,
+      ...collectVisibleHierarchyMemberIds(userIdNum, context),
+    ])];
   }
   // direct
   const directMembers = await repo.findDirectMembers(userIdNum);

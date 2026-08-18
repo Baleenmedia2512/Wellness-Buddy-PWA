@@ -624,6 +624,31 @@ export function collectSearchableHierarchyUsers(
 }
 
 /**
+ * Visible hierarchy member ids for cross-surface team scoping.
+ * Full scope = ancestors + peer nodes only + own downline.
+ *
+ * @param {number} viewerUserId
+ * @param {ReportingContext} context
+ * @param {{ includeSelf?: boolean, includeInactive?: boolean, partnerIds?: Array<number|string> }} [options]
+ * @returns {number[]}
+ */
+export function collectVisibleHierarchyMemberIds(
+  viewerUserId,
+  context,
+  { includeSelf = false, includeInactive = false, partnerIds = [] } = {},
+) {
+  const viewerId = Number(viewerUserId);
+  return collectVisibleHierarchyUsers(viewerUserId, context, { partnerIds })
+    .filter((user) => {
+      if (!includeSelf && Number(user.UserId) === viewerId) return false;
+      if (includeInactive) return true;
+      return isActiveTeamStatus(user.Status);
+    })
+    .map((user) => Number(user.UserId))
+    .filter((id) => Number.isFinite(id));
+}
+
+/**
  * Convenience: load context + return reporting members in one call.
  * @param {object} supabase
  * @param {number} coachId
