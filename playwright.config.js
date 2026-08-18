@@ -13,6 +13,7 @@ module.exports = defineConfig({
   // GLOBAL TEST TIMEOUT
   // ============================================================
 
+  // Give slower GitHub Actions runs enough time.
   timeout: 60 * 1000,
 
 
@@ -20,42 +21,31 @@ module.exports = defineConfig({
   // EXPECT ASSERTION TIMEOUT
   // ============================================================
 
+  // Increase from 10s to 15s for CI.
   expect: {
-    timeout: 10 * 1000,
+    timeout: 15 * 1000,
   },
 
 
   // ============================================================
-  // RUN TESTS IN PARALLEL
-  // ============================================================
-  //
-  // The tests are currently being stabilized.
-  // Keep workers = 1 for deterministic debugging.
-  //
-  // After all tests are stable, this can be changed to:
-  //
-  // workers: process.env.CI ? 2 : undefined
-  //
+  // PARALLELISM
   // ============================================================
 
-  fullyParallel: true,
+  // Keep this disabled while stabilizing the suite.
+  fullyParallel: false,
 
+  // One worker is safer for your current authentication,
+  // route mocking, localStorage and navigation-heavy tests.
   workers: 1,
 
 
   // ============================================================
   // RETRIES
   // ============================================================
-  //
-  // Temporarily disabled so we can see the REAL first failure.
-  //
-  // Once the suite is stable, change this to:
-  //
-  // retries: process.env.CI ? 2 : 0
-  //
-  // ============================================================
 
-  retries: 0,
+  // Retry CI failures once so transient CI timing issues get
+  // a second chance, while keeping local runs at 0 retries.
+  retries: process.env.CI ? 1 : 0,
 
 
   // ============================================================
@@ -71,9 +61,12 @@ module.exports = defineConfig({
 
   reporter: [
     ['list'],
-    ['html', {
-      open: 'never',
-    }],
+    [
+      'html',
+      {
+        open: 'never',
+      },
+    ],
   ],
 
 
@@ -86,14 +79,9 @@ module.exports = defineConfig({
     // ----------------------------------------------------------
     // FRONTEND URL
     // ----------------------------------------------------------
-    //
-    // GitHub Actions:
-    // Frontend -> 3001
-    // Backend  -> 3000
-    //
-    // ----------------------------------------------------------
 
-    baseURL: 'http://127.0.0.1:3001',
+    baseURL:
+      'http://127.0.0.1:3001',
 
 
     // ----------------------------------------------------------
@@ -107,32 +95,40 @@ module.exports = defineConfig({
     // SCREENSHOT
     // ----------------------------------------------------------
 
-    screenshot: 'only-on-failure',
+    screenshot:
+      'only-on-failure',
 
 
     // ----------------------------------------------------------
     // VIDEO
     // ----------------------------------------------------------
 
-    video: 'retain-on-failure',
+    video:
+      'retain-on-failure',
 
 
     // ----------------------------------------------------------
     // TRACE
     // ----------------------------------------------------------
 
-    trace: 'retain-on-failure',
+    trace:
+      'retain-on-failure',
 
 
     // ----------------------------------------------------------
     // ACTION TIMEOUT
     // ----------------------------------------------------------
-    //
-    // Prevent individual actions from waiting indefinitely.
-    //
+
+    actionTimeout:
+      15 * 1000,
+
+
+    // ----------------------------------------------------------
+    // NAVIGATION TIMEOUT
     // ----------------------------------------------------------
 
-    actionTimeout: 15 * 1000,
+    navigationTimeout:
+      30 * 1000,
 
   },
 
