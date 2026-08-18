@@ -15,6 +15,7 @@ import { captureAndShare, composeBrandedShareCaption } from '../../../shared/uti
 import { withMarathonWhatsAppNotice } from '../../marathon';
 import { parseAnalysisData, getMealCategory } from '../services/nutritionDashboard/analysisHelpers';
 import { buildDiaryShareSuffix } from '../../diary/domain/share/suffixes';
+import { extractFoodShareItems } from '../../diary/domain/activityType';
 import FoodItemNutritionModal from './FoodItemNutritionModal';
 
 function macro(n) {
@@ -130,6 +131,7 @@ function buildShareText({
   activityType, foodName, calories, volumeMl, scoops, servings, shakeProducts, nutrition = {},
   glycemicIndex = null,
   itemNames = null,
+  foodItems = null,
 }) {
   if (activityType === 'water') {
     return buildDiaryShareSuffix('water', { volumeMl, soFarToday: false });
@@ -150,6 +152,7 @@ function buildShareText({
   }
   return buildDiaryShareSuffix('food', {
     foodName,
+    foodItems,
     itemNames,
     calories,
     protein: nutrition.protein ?? 0,
@@ -204,6 +207,7 @@ const FoodDetailModal = ({ payload, capturedAt, onClose, onDelete }) => {
     servings: 1,
     shakeProducts,
     itemNames: items.map((item) => item.name).filter(Boolean),
+    foodItems: extractFoodShareItems(foodData, payload?.analysisData),
     nutrition: {
       protein: totals.protein ?? foodData?.nutrition?.protein ?? 0,
       carbs: totals.carbs ?? foodData?.nutrition?.carbs ?? 0,

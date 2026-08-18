@@ -82,6 +82,8 @@ export function formatFactValue(value, key) {
   return Number.isInteger(rounded) ? String(rounded) : String(rounded);
 }
 
+const GI_SHARE_LETTER = Object.freeze({ low: 'l', medium: 'm', high: 'h' });
+
 /**
  * @param {number|null|undefined} gi
  * @returns {{ label: string, tone: 'low'|'medium'|'high' }|null}
@@ -92,6 +94,16 @@ export function giZone(gi) {
   if (n <= 55) return { label: 'Low', tone: 'low' };
   if (n <= 69) return { label: 'Medium', tone: 'medium' };
   return { label: 'High', tone: 'high' };
+}
+
+/**
+ * Compact WhatsApp GI band: l = low, m = medium, h = high.
+ * @param {number|null|undefined} gi
+ * @returns {'l'|'m'|'h'|null}
+ */
+export function giShareLetter(gi) {
+  const zone = giZone(gi);
+  return zone ? GI_SHARE_LETTER[zone.tone] : null;
 }
 
 function readPortion(item) {

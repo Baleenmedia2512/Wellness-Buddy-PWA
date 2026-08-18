@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import {
   buildFoodItemNutritionFacts,
   formatFactValue,
+  giShareLetter,
   giZone,
 } from './foodItemNutritionFacts.js';
 
@@ -28,6 +29,15 @@ describe('giZone', () => {
     assert.equal(giZone(56).tone, 'medium');
     assert.equal(giZone(70).tone, 'high');
     assert.equal(giZone(null), null);
+  });
+});
+
+describe('giShareLetter', () => {
+  it('maps GI bands to l / m / h for WhatsApp captions', () => {
+    assert.equal(giShareLetter(55), 'l');
+    assert.equal(giShareLetter(65), 'm');
+    assert.equal(giShareLetter(70), 'h');
+    assert.equal(giShareLetter(null), null);
   });
 });
 

@@ -3,8 +3,8 @@
  *
  * Branding line + activity suffix:
  *   "YASHEER · Wellness Valley v 3.4.0, Consumed: 1 L water so far today"
- * Food: kcal on the brand line, then each item on its own line:
- *   "YASHEER J · Wellness Valley v 3.4.5, 1890 kcal\nMasala Dosa,\nRagi Dosa,"
+ * Food: kcal on the brand line, then each item on its own line with GI:
+ *   "YASHEER J · Wellness Valley v 3.4.5, 1890 kcal\nMasala Dosa - GI 65 m"
  * Weight (other multi-line) sits under the brand with a blank line:
  *   "Balaji Sekar · Wellness Valley v 3.4.5\n\nIdeal: 73.7 kg\nPrev: 72.9 kg"
  */

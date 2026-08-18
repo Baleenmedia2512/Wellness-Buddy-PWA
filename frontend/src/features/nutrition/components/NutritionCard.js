@@ -14,7 +14,7 @@ import {
   extractVolumeMl,
   extractScoops,
   extractShakeProducts,
-  extractFoodItemDisplayNames,
+  extractFoodShareItems,
 } from "../../diary/domain/activityType";
 import { buildDiaryShareSuffix } from "../../diary/domain/share/suffixes";
 import { withMarathonWhatsAppNotice } from "../../marathon";
@@ -841,7 +841,7 @@ const NutritionCard = ({
       } else {
         activityCaption = buildDiaryShareSuffix('food', {
           foodName: mealName,
-          itemNames: extractFoodItemDisplayNames({ detailedItems: localDetailedItems }),
+          foodItems: extractFoodShareItems({ detailedItems: localDetailedItems }),
           calories,
           protein: localNutrition?.protein ?? 0,
           carbs: localNutrition?.carbs ?? 0,

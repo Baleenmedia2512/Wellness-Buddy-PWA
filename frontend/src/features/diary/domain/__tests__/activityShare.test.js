@@ -291,16 +291,28 @@ describe('buildDiaryShareSuffix', () => {
     })).toBe('875 kcal\nWhite Rice+4more,');
   });
 
-  test('food suffix lists kcal first then every item name on its own line', () => {
+  test('food suffix lists kcal first then every item name with GI band', () => {
     expect(buildDiaryShareSuffix('food', {
       foodName: 'White Rice+2more',
-      itemNames: ['White Rice', 'Sambar', 'Onion'],
+      foodItems: [
+        { name: 'White Rice', glycemicIndex: 73 },
+        { name: 'Sambar', glycemicIndex: 50 },
+        { name: 'Onion', glycemicIndex: 10 },
+      ],
       calories: 875,
       protein: 28,
       carbs: 160,
       fat: 12,
       fiber: 16,
       glycemicIndex: 66,
+    })).toBe('875 kcal\nWhite Rice - GI 73 h\nSambar - GI 50 l\nOnion - GI 10 l');
+  });
+
+  test('food suffix keeps item name with comma when GI is missing', () => {
+    expect(buildDiaryShareSuffix('food', {
+      foodName: 'White Rice+2more',
+      itemNames: ['White Rice', 'Sambar', 'Onion'],
+      calories: 875,
     })).toBe('875 kcal\nWhite Rice,\nSambar,\nOnion,');
   });
 
@@ -509,14 +521,14 @@ describe('resolveFoodRowPresentation', () => {
       foodData: {
         name: 'White Rice+2more',
         detailedItems: [
-          { name: 'White Rice', calories: 200 },
-          { name: 'Sambar', calories: 80 },
-          { name: 'Onion', calories: 20 },
+          { name: 'White Rice', calories: 200, nutrition: { glycemic_index: 73 } },
+          { name: 'Sambar', calories: 80, nutrition: { glycemic_index: 50 } },
+          { name: 'Onion', calories: 20, nutrition: { glycemic_index: 10 } },
         ],
         nutrition: { calories: 300, protein: 8, carbs: 50, fat: 4, fiber: 3, glycemic_index: 70 },
       },
       calories: 300,
     });
-    expect(view.shareText).toBe('300 kcal\nWhite Rice,\nSambar,\nOnion,');
+    expect(view.shareText).toBe('300 kcal\nWhite Rice - GI 73 h\nSambar - GI 50 l\nOnion - GI 10 l');
   });
 });

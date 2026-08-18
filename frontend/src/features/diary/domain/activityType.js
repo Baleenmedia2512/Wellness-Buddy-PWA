@@ -109,8 +109,30 @@ function isShakeName(name) {
 }
 
 /**
- * Display names for every food item (share captions).
+ * Food items for WhatsApp share captions: unique names + per-item GI.
  * Preserves first-seen casing; skips blanks and case-insensitive dupes.
+ *
+ * @param {{ detailedItems?: object[], foods?: object[] }|null} foodData
+ * @param {unknown} [analysisData]
+ * @returns {Array<{ name: string, glycemicIndex: number|null }>}
+ */
+export function extractFoodShareItems(foodData, analysisData = null) {
+  const items = collectFoodItems(foodData, analysisData);
+  const seen = new Set();
+  const out = [];
+  for (const item of items) {
+    const name = String(item?.name || item?.foodName || '').trim();
+    if (!name) continue;
+    const key = name.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ name, glycemicIndex: readItemGlycemicIndex(item) });
+  }
+  return out;
+}
+
+/**
+ * Display names for every food item (share captions).
  * Compact titles like "White Rice+4more" are not used — callers pass items.
  *
  * @param {{ detailedItems?: object[], foods?: object[] }|null} foodData
@@ -118,18 +140,17 @@ function isShakeName(name) {
  * @returns {string[]}
  */
 export function extractFoodItemDisplayNames(foodData, analysisData = null) {
-  const items = collectFoodItems(foodData, analysisData);
-  const seen = new Set();
-  const names = [];
-  for (const item of items) {
-    const name = String(item?.name || item?.foodName || '').trim();
-    if (!name) continue;
-    const key = name.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    names.push(name);
-  }
-  return names;
+  return extractFoodShareItems(foodData, analysisData).map((item) => item.name);
+}
+
+function readItemGlycemicIndex(item) {
+  const raw = item?.nutrition?.glycemic_index
+    ?? item?.glycemic_index
+    ?? item?.glycemicIndex
+    ?? item?.per100g?.glycemic_index;
+  if (raw == null || raw === '') return null;
+  const n = Number(raw);
+  return Number.isFinite(n) ? Math.round(n) : null;
 }
 
 /**

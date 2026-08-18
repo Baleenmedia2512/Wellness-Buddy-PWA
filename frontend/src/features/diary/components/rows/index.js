@@ -281,6 +281,8 @@ export function FoodRow({
           ? listSummary.items.map((item) => ({
               name: item.name,
               calories: item.calories,
+              glycemicIndex: item.glycemicIndex ?? item.glycemic_index ?? null,
+              glycemic_index: item.glycemicIndex ?? item.glycemic_index ?? null,
               volume_ml: listSummary.volumeMl,
               scoops: listSummary.scoops,
             }))

@@ -5,7 +5,6 @@
  * Each runs Day 0 (start) through Day 10 (last day).
  * Home reminders fire one calendar day before:
  *   - Day 0 → "Tomorrow is Marathon Day 0"
- *   - Day 1 → "Tomorrow is Marathon Day 1" (shown on Day 0)
  *   - Detox Days 4 and 9 → "Tomorrow is Detox Day"
  */
 
@@ -30,10 +29,6 @@ export const DETOX_REMINDER_SUBTITLE = 'Prepare for your Detox Day tomorrow.';
 export const MARATHON_START_REMINDER_TITLE = 'Tomorrow is Marathon Day 0';
 export const MARATHON_START_REMINDER_SUBTITLE = 'Prepare for Marathon Day 0 tomorrow.';
 
-/** User-facing label for Marathon Day 1 (shown on Day 0). */
-export const MARATHON_DAY_1_REMINDER_TITLE = 'Tomorrow is Marathon Day 1';
-export const MARATHON_DAY_1_REMINDER_SUBTITLE = 'Prepare for Marathon Day 1 tomorrow.';
-
 /** DevTools override: `localStorage.setItem('marathon.testDate', 'YYYY-MM-DD')` then refresh. */
 export const MARATHON_TEST_DATE_STORAGE_KEY = 'marathon.testDate';
 
@@ -57,7 +52,6 @@ const EMPTY_STATE = Object.freeze({
   isDetoxDay: false,
   showDetoxReminder: false,
   showMarathonStartReminder: false,
-  showDay1Reminder: false,
 });
 
 /**
@@ -123,7 +117,6 @@ function getMarathonStartReminderMeta(parts) {
  * @property {boolean} isDetoxDay
  * @property {boolean} showDetoxReminder
  * @property {boolean} showMarathonStartReminder
- * @property {boolean} showDay1Reminder
  */
 
 /**
@@ -149,7 +142,6 @@ export function getMarathonCalendarState(ymd) {
         isDetoxDay: DETOX_MARATHON_DAYS.includes(marathonDay),
         showDetoxReminder: DETOX_REMINDER_MARATHON_DAYS.includes(marathonDay),
         showMarathonStartReminder: false,
-        showDay1Reminder: marathonDay === 0,
       };
     }
   }
@@ -163,7 +155,6 @@ export function getMarathonCalendarState(ymd) {
       isDetoxDay: false,
       showDetoxReminder: false,
       showMarathonStartReminder: true,
-      showDay1Reminder: false,
     };
   }
 
@@ -171,11 +162,11 @@ export function getMarathonCalendarState(ymd) {
 }
 
 /**
- * Home-screen copy for tomorrow's Detox Day, Marathon Day 0, or Day 1.
- * Returns null on every other day (including Detox Days / Day 1 themselves).
+ * Home-screen copy for tomorrow's Detox Day or Marathon Day 0.
+ * Returns null on every other day (including Detox Days / Day 0 themselves).
  *
  * @param {unknown} ymd YYYY-MM-DD
- * @returns {{ title: string, subtitle: string, marathonDay: number|null, marathonNumber: number, kind: 'detox'|'marathon-start'|'day-1' }|null}
+ * @returns {{ title: string, subtitle: string, marathonDay: number|null, marathonNumber: number, kind: 'detox'|'marathon-start' }|null}
  */
 export function getDetoxReminder(ymd) {
   const state = getMarathonCalendarState(ymd);
@@ -187,16 +178,6 @@ export function getDetoxReminder(ymd) {
       marathonDay: null,
       marathonNumber: state.marathonNumber,
       kind: 'marathon-start',
-    };
-  }
-
-  if (state.showDay1Reminder) {
-    return {
-      title: MARATHON_DAY_1_REMINDER_TITLE,
-      subtitle: MARATHON_DAY_1_REMINDER_SUBTITLE,
-      marathonDay: 0,
-      marathonNumber: state.marathonNumber,
-      kind: 'day-1',
     };
   }
 

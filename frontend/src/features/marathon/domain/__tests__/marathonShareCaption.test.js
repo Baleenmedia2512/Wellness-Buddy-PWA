@@ -15,20 +15,20 @@ import {
 const CURRENT_DAY_CAPTION = 'BALAJI · Wellness Valley v 3.4.4, Previous: 73.65 kg, Current: 73.4 kg';
 
 describe('MARATHON_WHATSAPP_ADVANCE_SPECIALS', () => {
-  it('keeps Detox Days in sync with the calendar and supports extra specials by table', () => {
+  it('keeps only Marathon start and Detox Days as specials', () => {
     const days = MARATHON_WHATSAPP_ADVANCE_SPECIALS.map((special) => special.day);
-    assert.deepEqual(days, [0, 1, 4, 9]);
+    assert.deepEqual(days, [0, 4, 9]);
     assert.equal(
       formatMarathonWhatsAppAdvanceNotice(0, 'Marathon Starts'),
       'Tomorrow is Day 0 - Marathon Starts',
     );
     assert.equal(
-      formatMarathonWhatsAppAdvanceNotice(1, ''),
-      'Tomorrow is Day 1',
-    );
-    assert.equal(
       formatMarathonWhatsAppCurrentDayNotice(0, 'Marathon Starts'),
       'Day 0 - Marathon Starts',
+    );
+    assert.equal(
+      formatMarathonWhatsAppCurrentDayNotice(1),
+      'Day 1',
     );
   });
 });
@@ -42,6 +42,10 @@ describe('getMarathonWhatsAppCurrentDayNotice', () => {
     assert.equal(
       getMarathonWhatsAppCurrentDayNotice('2026-08-02'),
       'Day 1',
+    );
+    assert.equal(
+      getMarathonWhatsAppCurrentDayNotice('2026-08-03'),
+      'Day 2',
     );
     assert.equal(
       getMarathonWhatsAppCurrentDayNotice('2026-08-05'),
@@ -91,23 +95,13 @@ describe('getMarathonWhatsAppAdvanceNotice', () => {
     );
   });
 
-  it('returns Day 1 copy on Day 0 (1st and 15th)', () => {
-    assert.equal(
-      getMarathonWhatsAppAdvanceNotice('2026-08-01'),
-      'Tomorrow is Day 1',
-    );
-    assert.equal(
-      getMarathonWhatsAppAdvanceNotice('2026-08-15'),
-      'Tomorrow is Day 1',
-    );
-  });
-
-  it('returns Tomorrow is Day N+1 on every in-marathon day except Day 10', () => {
-    assert.equal(getMarathonWhatsAppAdvanceNotice('2026-08-02'), 'Tomorrow is Day 2');
-    assert.equal(getMarathonWhatsAppAdvanceNotice('2026-08-03'), 'Tomorrow is Day 3');
-    assert.equal(getMarathonWhatsAppAdvanceNotice('2026-08-05'), 'Tomorrow is Day 5');
-    assert.equal(getMarathonWhatsAppAdvanceNotice('2026-08-10'), 'Tomorrow is Day 10');
+  it('returns null on ordinary days including Day 0, Day 1, and Day 2', () => {
+    assert.equal(getMarathonWhatsAppAdvanceNotice('2026-08-01'), null);
+    assert.equal(getMarathonWhatsAppAdvanceNotice('2026-08-02'), null);
+    assert.equal(getMarathonWhatsAppAdvanceNotice('2026-08-03'), null);
+    assert.equal(getMarathonWhatsAppAdvanceNotice('2026-08-05'), null);
     assert.equal(getMarathonWhatsAppAdvanceNotice('2026-08-11'), null);
+    assert.equal(getMarathonWhatsAppAdvanceNotice('2026-08-15'), null);
   });
 
   it('returns null outside the marathon (except Day -1)', () => {
@@ -119,28 +113,30 @@ describe('getMarathonWhatsAppAdvanceNotice', () => {
 });
 
 describe('appendMarathonWhatsAppNotice', () => {
-  it('adds only the tomorrow line on in-marathon days, and Day 10 on the last day', () => {
-    const dayMinus1 = appendMarathonWhatsAppNotice(CURRENT_DAY_CAPTION, '2026-07-31');
+  it('uses Tomorrow only for Marathon start and Detox; other days are Day N', () => {
     assert.equal(
-      dayMinus1,
+      appendMarathonWhatsAppNotice(CURRENT_DAY_CAPTION, '2026-07-31'),
       `${CURRENT_DAY_CAPTION}, Tomorrow is Day 0 - Marathon Starts`,
     );
-
     assert.equal(
       appendMarathonWhatsAppNotice(CURRENT_DAY_CAPTION, '2026-08-01'),
-      `${CURRENT_DAY_CAPTION}, Tomorrow is Day 1`,
+      `${CURRENT_DAY_CAPTION}, Day 0 - Marathon Starts`,
     );
     assert.equal(
       appendMarathonWhatsAppNotice(CURRENT_DAY_CAPTION, '2026-08-02'),
-      `${CURRENT_DAY_CAPTION}, Tomorrow is Day 2`,
+      `${CURRENT_DAY_CAPTION}, Day 1`,
     );
     assert.equal(
       appendMarathonWhatsAppNotice(CURRENT_DAY_CAPTION, '2026-08-03'),
-      `${CURRENT_DAY_CAPTION}, Tomorrow is Day 3`,
+      `${CURRENT_DAY_CAPTION}, Day 2`,
     );
     assert.equal(
       appendMarathonWhatsAppNotice(CURRENT_DAY_CAPTION, '2026-08-04'),
       `${CURRENT_DAY_CAPTION}, Tomorrow is Day 4 - Detox Day`,
+    );
+    assert.equal(
+      appendMarathonWhatsAppNotice(CURRENT_DAY_CAPTION, '2026-08-05'),
+      `${CURRENT_DAY_CAPTION}, Day 4 - Detox Day`,
     );
     assert.equal(
       appendMarathonWhatsAppNotice(CURRENT_DAY_CAPTION, '2026-08-09'),
@@ -170,6 +166,10 @@ describe('appendMarathonWhatsAppNotice', () => {
       appendMarathonWhatsAppNotice(education, '2026-08-04'),
       `${education}\nTomorrow is Day 4 - Detox Day`,
     );
+    assert.equal(
+      appendMarathonWhatsAppNotice(education, '2026-08-02'),
+      `${education}\nDay 1`,
+    );
   });
 
   it('returns the day sequence when the caption is empty', () => {
@@ -179,19 +179,15 @@ describe('appendMarathonWhatsAppNotice', () => {
     );
     assert.equal(
       appendMarathonWhatsAppNotice('', '2026-08-01'),
-      'Tomorrow is Day 1',
+      'Day 0 - Marathon Starts',
     );
     assert.equal(
       appendMarathonWhatsAppNotice('', '2026-08-02'),
-      'Tomorrow is Day 2',
+      'Day 1',
     );
     assert.equal(
       appendMarathonWhatsAppNotice('', '2026-08-04'),
       'Tomorrow is Day 4 - Detox Day',
-    );
-    assert.equal(
-      appendMarathonWhatsAppNotice('   ', '2026-08-15'),
-      'Tomorrow is Day 1',
     );
   });
 });

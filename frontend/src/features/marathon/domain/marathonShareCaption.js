@@ -1,17 +1,14 @@
 /**
  * WhatsApp caption extras for the marathon / Detox day sequence.
  *
- * Current-day activity copy is owned by the share composers. This module
- * appends "Tomorrow is Day N+1" on every in-marathon day except the last.
- * The last day (Day 10) still gets the current Day 10 line. Eve-of-Day-0
- * uses getMarathonCalendarState().showMarathonStartReminder.
+ * Ordinary in-marathon days append "Day N" (Day 1, Day 2, …).
+ * Only Marathon start and Detox Days get a 1-day-early "Tomorrow…" line.
  *
  * Add future special labels to MARATHON_WHATSAPP_ADVANCE_SPECIALS
  * (or DETOX_MARATHON_DAYS for more Detox Days).
  */
 import {
   DETOX_MARATHON_DAYS,
-  MARATHON_LAST_DAY_INDEX,
   getMarathonCalendarState,
 } from './marathonCalendar.js';
 
@@ -21,12 +18,10 @@ export const DETOX_DAY_WHATSAPP_LABEL = 'Detox Day';
 /**
  * Special days announced in WhatsApp one day early.
  * Detox entries stay in sync with DETOX_MARATHON_DAYS.
- * Day 1 has no extra label: "Tomorrow is Day 1".
- * @type {ReadonlyArray<{ day: number, label: string, kind: 'marathon-start'|'detox'|'day'|string }>}
+ * @type {ReadonlyArray<{ day: number, label: string, kind: 'marathon-start'|'detox'|string }>}
  */
 export const MARATHON_WHATSAPP_ADVANCE_SPECIALS = Object.freeze([
   { day: 0, label: MARATHON_START_WHATSAPP_LABEL, kind: 'marathon-start' },
-  { day: 1, label: '', kind: 'day' },
   ...DETOX_MARATHON_DAYS.map((day) => ({
     day,
     label: DETOX_DAY_WHATSAPP_LABEL,
@@ -77,8 +72,7 @@ export function getMarathonWhatsAppCurrentDayNotice(ymd) {
 }
 
 /**
- * Next-day copy for WhatsApp, or null when there is no tomorrow in-sequence.
- * Reuses marathon calendar state; does not replace current-day captions.
+ * Tomorrow copy only for Marathon start and Detox Days, one day early.
  *
  * @param {unknown} ymd YYYY-MM-DD
  * @returns {string|null}
@@ -97,19 +91,16 @@ export function getMarathonWhatsAppAdvanceNotice(ymd) {
 
   if (!state.inMarathon || !Number.isInteger(state.marathonDay)) return null;
 
-  const tomorrow = state.marathonDay + 1;
-  if (tomorrow > MARATHON_LAST_DAY_INDEX) return null;
-
   const special = MARATHON_WHATSAPP_ADVANCE_SPECIALS.find(
-    (item) => item.kind !== 'marathon-start' && item.day === tomorrow,
+    (item) => item.kind !== 'marathon-start' && item.day === state.marathonDay + 1,
   );
-  return formatMarathonWhatsAppAdvanceNotice(tomorrow, special?.label || '');
+  if (!special) return null;
+  return formatMarathonWhatsAppAdvanceNotice(special.day, special.label);
 }
 
 /**
- * Append current marathon day and optional tomorrow notice (comma or newline).
- * Append the tomorrow notice when there is one; otherwise the current Day N
- * line (Day 10 / off-sequence). Will not duplicate an existing notice.
+ * Marathon/Detox eve: tomorrow line only. Other in-marathon days: Day N.
+ * Will not duplicate an existing notice.
  *
  * @param {unknown} caption
  * @param {unknown} ymd YYYY-MM-DD

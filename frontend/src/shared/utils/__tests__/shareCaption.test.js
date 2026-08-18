@@ -7,7 +7,7 @@ import { composeQuickShareCaption } from '../shareCaption.js';
 import { appendMarathonWhatsAppNotice } from '../../../features/marathon/domain/marathonShareCaption.js';
 
 const BRAND = 'YASHEER J \u00B7 Wellness Valley v 3.4.5';
-const FOOD_SUFFIX = '1890 kcal\nMasala Dosa,\nRagi Dosa,\nPlain Ghee Dosa,';
+const FOOD_SUFFIX = '1890 kcal\nMasala Dosa - GI 65 m\nRagi Dosa - GI 45 l\nPlain Ghee Dosa - GI 72 h';
 
 describe('composeQuickShareCaption', () => {
   it('joins a one-line suffix with a comma', () => {
@@ -20,7 +20,7 @@ describe('composeQuickShareCaption', () => {
   it('puts food kcal on the brand line and each item on its own line', () => {
     assert.equal(
       composeQuickShareCaption(BRAND, FOOD_SUFFIX),
-      `${BRAND}, 1890 kcal\nMasala Dosa,\nRagi Dosa,\nPlain Ghee Dosa,`,
+      `${BRAND}, 1890 kcal\nMasala Dosa - GI 65 m\nRagi Dosa - GI 45 l\nPlain Ghee Dosa - GI 72 h`,
     );
   });
 
@@ -35,7 +35,7 @@ describe('composeQuickShareCaption', () => {
     const caption = composeQuickShareCaption(BRAND, FOOD_SUFFIX);
     assert.equal(
       appendMarathonWhatsAppNotice(caption, '2026-08-04'),
-      `${BRAND}, 1890 kcal\nMasala Dosa,\nRagi Dosa,\nPlain Ghee Dosa,\nTomorrow is Day 4 - Detox Day`,
+      `${BRAND}, 1890 kcal\nMasala Dosa - GI 65 m\nRagi Dosa - GI 45 l\nPlain Ghee Dosa - GI 72 h\nTomorrow is Day 4 - Detox Day`,
     );
   });
 });

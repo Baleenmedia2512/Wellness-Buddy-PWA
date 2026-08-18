@@ -50,7 +50,7 @@ import {
 } from '../../features/ai-credits';
 import { fetchWaterIntake, todayLocal } from '../../features/water';
 import { isIOS } from '../../shared/utils/platform';
-import { buildDiaryShareSuffix, extractFoodItemDisplayNames } from '../../features/diary';
+import { buildDiaryShareSuffix, extractFoodShareItems } from '../../features/diary';
 import { useNutritionRefreshOptional } from '../../shared/context/NutritionRefreshContext';
 import { refreshDailyWellnessScoreAfterSave } from '../../features/wellness-score-sheet/services/refreshDailyWellnessScoreNow';
 import HealthySnacksSubSelectModal from './HealthySnacksSubSelectModal';
@@ -603,19 +603,19 @@ export default function ManualEntryPage({
   const handleFoodSave = async (manualData) => {
     const analysis = buildAnalysisFromManualFood(manualData);
     const foodName = analysis?.foods?.[0]?.name || manualData?.name || 'Food';
-    const itemNames = extractFoodItemDisplayNames(analysis);
+    const foodItems = extractFoodShareItems(analysis);
     const n = analysis?.total || analysis?.foods?.[0]?.nutrition || {};
     // Snacks & Soups: name + kcal only (no P/C/F/Fiber/GI). Full food keeps macros.
     const fromSnacks = Boolean(foodEntryMeta?.fromHealthySnacks);
     const activityCaption = fromSnacks
       ? buildDiaryShareSuffix('food', {
           foodName,
-          itemNames,
+          foodItems,
           calories: n.calories ?? 0,
         })
       : buildDiaryShareSuffix('food', {
           foodName,
-          itemNames,
+          foodItems,
           calories: n.calories ?? 0,
           protein: n.protein ?? 0,
           carbs: n.carbs ?? 0,
