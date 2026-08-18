@@ -1,19 +1,13 @@
 import { getSupabaseClient } from "../../../utils/supabaseClient.js";
 import logger from '../../../shared/lib/logger.js';
 import { isActiveTeamStatus } from '../../../utils/teamHierarchyBuilder.js';
-import {
-  buildReportingContext,
-  collectSearchableHierarchyUsers,
-} from '../../../utils/reportingHierarchyService.js';
 
 /**
  * API: Get Hierarchical Team Structure
  * Returns nested team hierarchy for the All Teams view
  * Supports multi-level Coach → Co-Coach → Members structure
  *
- * By default, allMembers (used by Diary / team search) contains Active users
- * in the viewer's visible hierarchy: full upline, sibling peers (nodes only),
- * and the viewer's entire own downline. Peer descendants are excluded.
+ * By default, allMembers (used by Diary / team search) contains Active users only.
  * Pass includeInactive=true to include Inactive users in the flat list.
  */
 export default async function handler(req, res) {
@@ -583,31 +577,6 @@ export default async function handler(req, res) {
         height: hierarchy.coCoachInfo.height != null ? hierarchy.coCoachInfo.height : null,
         bmr: hierarchy.coCoachInfo.bmr != null ? hierarchy.coCoachInfo.bmr : null,
         isCoCoach: true
-      });
-    }
-
-    // Search roster also includes full upline + sibling peers (nodes only).
-    // Nested `hierarchy` stays own-downline so peers are not shown as reports.
-    const reportingContext = buildReportingContext(allUsers);
-    for (const user of collectSearchableHierarchyUsers(coachIdInt, reportingContext, {
-      includeInactive,
-    })) {
-      const userId = Number(user.UserId);
-      if (memberMap.has(userId)) continue;
-      const node = userMap.get(userId);
-      if (!node) continue;
-      memberMap.set(userId, {
-        UserId: node.userId,
-        UserName: node.userName,
-        Email: node.email,
-        CommunityId: node.communityId || null,
-        Role: node.role,
-        CoachId: node.coachId,
-        CoCoachId: node.coCoachId,
-        Status: node.status,
-        phoneNumber: node.phoneNumber || null,
-        height: node.height != null ? node.height : null,
-        bmr: node.bmr != null ? node.bmr : null,
       });
     }
     

@@ -10,7 +10,7 @@
 import { validateWellnessScoreReport } from './reports.validators.js';
 import {
   getCoachMember,
-  getVisibleTeamMembers,
+  getFullTeamMembers,
   getWellnessScoresForUsers,
   getLatestTwoWeightsForUsers,
   getUserNamesByIds,
@@ -55,7 +55,7 @@ async function getWellnessScoreReportRoster(coachId) {
 
   const [coachMember, teamData] = await Promise.all([
     getCoachMember(coachId),
-    getVisibleTeamMembers(coachId),
+    getFullTeamMembers(coachId),
   ]);
 
   const fullTeamMembers = teamData.rawMembers.filter((m) => isActiveTeamStatus(m.Status));

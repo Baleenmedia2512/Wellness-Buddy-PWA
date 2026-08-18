@@ -10,7 +10,6 @@ import {
   getFullReportingMembers,
   getDirectReportingMembers,
   buildReportingChildrenIndex,
-  collectVisibleHierarchyUsers,
 } from '../../utils/reportingHierarchyService.js';
 import { shiftDateYmd, IANA_IST } from '../../shared/lib/datetime/index.js';
 import { classifyWeightsForScoreDate } from './domain/wellness-score-report.weight.js';
@@ -80,26 +79,6 @@ function mapReportingMembersToRaw(reportingMembers, coachId, parentByUserId, dir
       isDirectToRoot: directToRoot.has(Number(member.UserId)),
     }))
     .sort((a, b) => String(a.UserName || '').localeCompare(String(b.UserName || '')));
-}
-
-function extractVisibleHierarchyMeta(context, rootCoachId, visibleMembers) {
-  const rootId = Number(rootCoachId);
-  const allowedIds = new Set([rootId, ...visibleMembers.map((member) => Number(member.UserId))]);
-  const parentByUserId = new Map();
-  const childrenByParentId = new Map();
-  const directToRoot = new Set(getDirectReportingMembers(rootId, context).map((m) => m.UserId));
-
-  for (const member of visibleMembers) {
-    const childId = Number(member.UserId);
-    const parentId = Number(member.CoachId);
-    if (!Number.isFinite(childId) || !Number.isFinite(parentId)) continue;
-    if (!allowedIds.has(parentId)) continue;
-    parentByUserId.set(childId, parentId);
-    if (!childrenByParentId.has(parentId)) childrenByParentId.set(parentId, []);
-    childrenByParentId.get(parentId).push(childId);
-  }
-
-  return { parentByUserId, childrenByParentId, directToRoot };
 }
 
 /**
@@ -190,37 +169,6 @@ export async function getFullTeamMembers(coachId) {
 
   const rawMembers = mapReportingMembersToRaw(
     reportingMembers,
-    coachId,
-    parentByUserId,
-    directToRoot,
-  );
-
-  return { rawMembers, childrenByParentId };
-}
-
-/**
- * Fetch visible hierarchy members for peer-aware "full" surfaces:
- * ancestors + peer leader nodes only + own downline.
- *
- * @param {number} coachId
- * @returns {Promise<{
- *   rawMembers: Array<{ UserId: number, UserName: string, Height: string|null, CoachId: number, HierarchyParent: number, isDirectToRoot: boolean }>,
- *   childrenByParentId: Map<number, number[]>
- * }>}
- */
-export async function getVisibleTeamMembers(coachId) {
-  const supabase = getSupabaseClient();
-  const context = await loadReportingContextForCoach(supabase, coachId);
-  const visibleMembers = collectVisibleHierarchyUsers(coachId, context)
-    .filter((member) => Number(member.UserId) !== Number(coachId));
-  const { parentByUserId, childrenByParentId, directToRoot } = extractVisibleHierarchyMeta(
-    context,
-    coachId,
-    visibleMembers,
-  );
-
-  const rawMembers = mapReportingMembersToRaw(
-    visibleMembers,
     coachId,
     parentByUserId,
     directToRoot,
