@@ -2,7 +2,8 @@
  * WhatsApp caption extras for the marathon / Detox day sequence.
  *
  * Current-day activity copy is owned by the share composers. This module
- * only appends the next special day, one calendar day in advance.
+ * appends the marathon day on ordinary in-marathon days. On the eve of a
+ * special day, only the tomorrow line is added (no current "Day N").
  *
  * Add future in-marathon specials to MARATHON_WHATSAPP_ADVANCE_SPECIALS
  * (or DETOX_MARATHON_DAYS for more Detox Days). Eve-of-Day-0 still uses
@@ -40,6 +41,36 @@ export function formatMarathonWhatsAppAdvanceNotice(day, label) {
 }
 
 /**
+ * @param {number} day
+ * @param {string|null} [label]
+ * @returns {string}
+ */
+export function formatMarathonWhatsAppCurrentDayNotice(day, label = null) {
+  const cleanLabel = typeof label === 'string' ? label.trim() : '';
+  return cleanLabel ? `Day ${day} - ${cleanLabel}` : `Day ${day}`;
+}
+
+/**
+ * Current-day marathon sequence copy for WhatsApp, or null when today is
+ * outside the marathon.
+ *
+ * @param {unknown} ymd YYYY-MM-DD
+ * @returns {string|null}
+ */
+export function getMarathonWhatsAppCurrentDayNotice(ymd) {
+  const state = getMarathonCalendarState(ymd);
+  if (!state.inMarathon || !Number.isInteger(state.marathonDay)) return null;
+
+  const special = MARATHON_WHATSAPP_ADVANCE_SPECIALS.find(
+    (item) => item.day === state.marathonDay,
+  );
+  return formatMarathonWhatsAppCurrentDayNotice(
+    state.marathonDay,
+    special?.label || null,
+  );
+}
+
+/**
  * Next-day special copy for WhatsApp, or null when today is not an eve.
  * Reuses marathon calendar state; does not replace current-day captions.
  *
@@ -68,8 +99,9 @@ export function getMarathonWhatsAppAdvanceNotice(ymd) {
 }
 
 /**
- * Append the advance notice to an existing caption (comma or newline).
- * No-ops when there is no notice, and will not duplicate an existing notice.
+ * Append marathon sequence copy to an existing caption (comma or newline).
+ * Eve of a special day: tomorrow line only. Other in-marathon days: Day N.
+ * Will not duplicate an existing notice.
  *
  * @param {unknown} caption
  * @param {unknown} ymd YYYY-MM-DD
@@ -77,10 +109,16 @@ export function getMarathonWhatsAppAdvanceNotice(ymd) {
  */
 export function appendMarathonWhatsAppNotice(caption, ymd) {
   const notice = getMarathonWhatsAppAdvanceNotice(ymd);
+  const currentDay = notice ? null : getMarathonWhatsAppCurrentDayNotice(ymd);
   const base = String(caption || '').trim();
-  if (!notice) return base;
-  if (!base) return notice;
-  if (base.includes(notice)) return base;
+  const additions = [];
+
+  if (currentDay && !base.includes(currentDay)) additions.push(currentDay);
+  if (notice && !base.includes(notice)) additions.push(notice);
+
+  if (additions.length === 0) return base;
+  if (!base) return additions.join('\n');
+
   const separator = base.includes('\n') ? '\n' : ', ';
-  return `${base}${separator}${notice}`;
+  return `${base}${separator}${additions.join(separator)}`;
 }

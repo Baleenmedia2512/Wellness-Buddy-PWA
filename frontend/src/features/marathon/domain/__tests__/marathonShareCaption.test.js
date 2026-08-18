@@ -6,6 +6,8 @@ import assert from 'node:assert/strict';
 import {
   MARATHON_WHATSAPP_ADVANCE_SPECIALS,
   formatMarathonWhatsAppAdvanceNotice,
+  formatMarathonWhatsAppCurrentDayNotice,
+  getMarathonWhatsAppCurrentDayNotice,
   getMarathonWhatsAppAdvanceNotice,
   appendMarathonWhatsAppNotice,
 } from '../marathonShareCaption.js';
@@ -20,6 +22,37 @@ describe('MARATHON_WHATSAPP_ADVANCE_SPECIALS', () => {
       formatMarathonWhatsAppAdvanceNotice(0, 'Marathon Starts'),
       'Tomorrow is Day 0 - Marathon Starts',
     );
+    assert.equal(
+      formatMarathonWhatsAppCurrentDayNotice(0, 'Marathon Starts'),
+      'Day 0 - Marathon Starts',
+    );
+  });
+});
+
+describe('getMarathonWhatsAppCurrentDayNotice', () => {
+  it('returns the current marathon day on every in-marathon day', () => {
+    assert.equal(
+      getMarathonWhatsAppCurrentDayNotice('2026-08-01'),
+      'Day 0 - Marathon Starts',
+    );
+    assert.equal(
+      getMarathonWhatsAppCurrentDayNotice('2026-08-02'),
+      'Day 1',
+    );
+    assert.equal(
+      getMarathonWhatsAppCurrentDayNotice('2026-08-05'),
+      'Day 4 - Detox Day',
+    );
+    assert.equal(
+      getMarathonWhatsAppCurrentDayNotice('2026-08-10'),
+      'Day 9 - Detox Day',
+    );
+  });
+
+  it('returns null outside the marathon, including Day -1', () => {
+    assert.equal(getMarathonWhatsAppCurrentDayNotice('2026-07-31'), null);
+    assert.equal(getMarathonWhatsAppCurrentDayNotice('2026-08-12'), null);
+    assert.equal(getMarathonWhatsAppCurrentDayNotice(null), null);
   });
 });
 
@@ -72,7 +105,7 @@ describe('getMarathonWhatsAppAdvanceNotice', () => {
 });
 
 describe('appendMarathonWhatsAppNotice', () => {
-  it('keeps current-day content and adds the tomorrow line on Day -1, 3, and 8', () => {
+  it('keeps current-day content and adds only the tomorrow line on Day -1, 3, and 8', () => {
     const dayMinus1 = appendMarathonWhatsAppNotice(CURRENT_DAY_CAPTION, '2026-07-31');
     assert.ok(dayMinus1.startsWith(CURRENT_DAY_CAPTION));
     assert.ok(dayMinus1.includes('Tomorrow is Day 0 - Marathon Starts'));
@@ -87,6 +120,7 @@ describe('appendMarathonWhatsAppNotice', () => {
       day3,
       `${CURRENT_DAY_CAPTION}, Tomorrow is Day 4 - Detox Day`,
     );
+    assert.equal(day3.includes('Day 3'), false);
 
     const day8 = appendMarathonWhatsAppNotice(CURRENT_DAY_CAPTION, '2026-08-09');
     assert.ok(day8.startsWith(CURRENT_DAY_CAPTION));
@@ -94,19 +128,24 @@ describe('appendMarathonWhatsAppNotice', () => {
       day8,
       `${CURRENT_DAY_CAPTION}, Tomorrow is Day 9 - Detox Day`,
     );
+    assert.equal(day8.includes('Day 8'), false);
   });
 
-  it('leaves Day 0 and other days as the original caption', () => {
+  it('adds the current day during the marathon and leaves non-marathon days untouched', () => {
     assert.equal(
       appendMarathonWhatsAppNotice(CURRENT_DAY_CAPTION, '2026-08-01'),
-      CURRENT_DAY_CAPTION,
+      `${CURRENT_DAY_CAPTION}, Day 0 - Marathon Starts`,
     );
     assert.equal(
       appendMarathonWhatsAppNotice(CURRENT_DAY_CAPTION, '2026-08-05'),
-      CURRENT_DAY_CAPTION,
+      `${CURRENT_DAY_CAPTION}, Day 4 - Detox Day`,
     );
     assert.equal(
       appendMarathonWhatsAppNotice(CURRENT_DAY_CAPTION, '2026-08-02'),
+      `${CURRENT_DAY_CAPTION}, Day 1`,
+    );
+    assert.equal(
+      appendMarathonWhatsAppNotice(CURRENT_DAY_CAPTION, '2026-08-12'),
       CURRENT_DAY_CAPTION,
     );
   });
@@ -126,11 +165,22 @@ describe('appendMarathonWhatsAppNotice', () => {
     );
   });
 
-  it('returns only the notice when the caption is empty', () => {
+  it('returns the day sequence when the caption is empty', () => {
     assert.equal(
       appendMarathonWhatsAppNotice('', '2026-08-14'),
       'Tomorrow is Day 0 - Marathon Starts',
     );
-    assert.equal(appendMarathonWhatsAppNotice('   ', '2026-08-01'), '');
+    assert.equal(
+      appendMarathonWhatsAppNotice('', '2026-08-01'),
+      'Day 0 - Marathon Starts',
+    );
+    assert.equal(
+      appendMarathonWhatsAppNotice('', '2026-08-04'),
+      'Tomorrow is Day 4 - Detox Day',
+    );
+    assert.equal(
+      appendMarathonWhatsAppNotice('   ', '2026-08-01'),
+      'Day 0 - Marathon Starts',
+    );
   });
 });
