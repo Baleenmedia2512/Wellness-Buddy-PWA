@@ -8051,6 +8051,7 @@ function WellnessValleyApp() {
             ref={wellnessLeaderboardRef}
             apiBaseUrl={apiBaseUrl}
             topN={10}
+            userId={user?.id || user?.UserId}
           />
         )}
 

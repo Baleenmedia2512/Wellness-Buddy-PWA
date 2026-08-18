@@ -13,9 +13,16 @@ import { useAutoScrollStrip } from '../../../shared/hooks/useAutoScrollStrip.js'
 import LeaderboardAvatar from './LeaderboardAvatar.js';
 
 const CACHE_TTL = 5 * 60 * 1000;
-// v4: always display Rank 10 → 1 (descending by rank number)
-const CACHE_KEY = 'wv.lb.wellness.v4';
-const LEGACY_CACHE_KEYS = ['wv.lb.wellness', 'wv.lb.wellness.v2', 'wv.lb.wellness.v3'];
+// v5: hierarchy-scoped Top 10 (per logged-in user) — test API requires userId
+const CACHE_KEY_PREFIX = 'wv.lb.wellness.v5.';
+const LEGACY_CACHE_KEYS = [
+  'wv.lb.wellness',
+  'wv.lb.wellness.v2',
+  'wv.lb.wellness.v3',
+  'wv.lb.wellness.v4',
+];
+
+const cacheKeyFor = (userId) => `${CACHE_KEY_PREFIX}${userId || 'anon'}`;
 
 const stripAvatars = (data) =>
   (data || []).map(({ profileImage, ...rest }) => rest);
@@ -24,43 +31,53 @@ const stripAvatars = (data) =>
 const toDescendingRankOrder = (data) =>
   [...(data || [])].sort((a, b) => (Number(b.rank) || 0) - (Number(a.rank) || 0));
 
-const readCache = () => {
+const readCache = (userId) => {
   try {
     LEGACY_CACHE_KEYS.forEach((k) => localStorage.removeItem(k));
-    const raw = localStorage.getItem(CACHE_KEY);
+    const raw = localStorage.getItem(cacheKeyFor(userId));
     if (!raw) return null;
     const c = JSON.parse(raw);
     return Date.now() - c.ts < CACHE_TTL ? toDescendingRankOrder(c.data) : null;
   } catch { return null; }
 };
-const writeCache = (data) => {
+const writeCache = (userId, data) => {
   try {
     // Do not cache base64 avatars — quota blows and leaves stale null-avatar data.
     localStorage.setItem(
-      CACHE_KEY,
+      cacheKeyFor(userId),
       JSON.stringify({ data: stripAvatars(toDescendingRankOrder(data)), ts: Date.now() }),
     );
   } catch {
-    try { localStorage.removeItem(CACHE_KEY); } catch { /* ignore */ }
+    try { localStorage.removeItem(cacheKeyFor(userId)); } catch { /* ignore */ }
   }
 };
 
 /**
  * Top wellness scores for today (IST) — swipeable strip on Home.
  * Display order: Rank N → Rank 1 (descending).
+ * Ranked among the logged-in user's allowed hierarchy (test API requires userId).
  */
-const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
-  const [leaderboardData, setLeaderboardData] = useState(() => readCache() ?? []);
-  const [isVisible, setIsVisible] = useState(() => (readCache()?.length ?? 0) > 0);
-  const [hasEntered, setHasEntered] = useState(() => (readCache()?.length ?? 0) > 0);
+const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId }, ref) => {
+  const [leaderboardData, setLeaderboardData] = useState(() => readCache(userId) ?? []);
+  const [isVisible, setIsVisible] = useState(() => (readCache(userId)?.length ?? 0) > 0);
+  const [hasEntered, setHasEntered] = useState(() => (readCache(userId)?.length ?? 0) > 0);
   const { viewportRef, trackRef, interactionHandlers } = useAutoScrollStrip({
     enabled: isVisible && leaderboardData.length > 0,
   });
 
   const fetchLeaderboard = useCallback(async () => {
+    if (userId == null || userId === '') {
+      setLeaderboardData([]);
+      setIsVisible(false);
+      return;
+    }
     try {
+      const params = new URLSearchParams({
+        topN: String(topN),
+        userId: String(userId),
+      });
       const response = await fetch(
-        `${apiBaseUrl}/api/leaderboard/get-wellness-score-leaderboard?topN=${topN}`,
+        `${apiBaseUrl}/api/leaderboard/get-wellness-score-leaderboard?${params}`,
         {
           method: 'GET',
           headers: {
@@ -75,7 +92,7 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => 
         const ordered = toDescendingRankOrder(result.data);
         setLeaderboardData(ordered);
         setIsVisible(true);
-        writeCache(ordered);
+        writeCache(userId, ordered);
       } else {
         debugLog('[WELLNESS-LB] No data:', result.message || 'Empty');
         setLeaderboardData([]);
@@ -86,7 +103,7 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => 
       setLeaderboardData([]);
       setIsVisible(false);
     }
-  }, [apiBaseUrl, topN]);
+  }, [apiBaseUrl, topN, userId]);
 
   useImperativeHandle(ref, () => ({
     refresh: fetchLeaderboard,
@@ -94,11 +111,15 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => 
 
   // Skip network if SWR cache is fresh; background refresh on CACHE_TTL
   useEffect(() => {
-    if (!readCache()) {
+    const cached = readCache(userId);
+    if (cached?.length) {
+      setLeaderboardData(cached);
+      setIsVisible(true);
+    } else {
       fetchLeaderboard();
     }
     return setVisibilityAwareInterval(fetchLeaderboard, CACHE_TTL);
-  }, [fetchLeaderboard]);
+  }, [fetchLeaderboard, userId]);
 
   // Smooth enter once data is ready
   useEffect(() => {
