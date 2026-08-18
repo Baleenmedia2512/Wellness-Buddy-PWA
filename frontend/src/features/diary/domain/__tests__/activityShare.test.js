@@ -279,7 +279,7 @@ describe('buildDiaryShareSuffix', () => {
       .toBe('Consumed: 200 mL water');
   });
 
-  test('food suffix is item names and total kcal only', () => {
+  test('food suffix is total kcal then each item on its own line', () => {
     expect(buildDiaryShareSuffix('food', {
       foodName: 'White Rice+4more',
       calories: 875,
@@ -288,10 +288,10 @@ describe('buildDiaryShareSuffix', () => {
       fat: 12,
       fiber: 16,
       glycemicIndex: 66,
-    })).toBe('White Rice+4more, 875 kcal');
+    })).toBe('875 kcal\nWhite Rice+4more,');
   });
 
-  test('food suffix lists every item name plus total kcal', () => {
+  test('food suffix lists kcal first then every item name on its own line', () => {
     expect(buildDiaryShareSuffix('food', {
       foodName: 'White Rice+2more',
       itemNames: ['White Rice', 'Sambar', 'Onion'],
@@ -301,7 +301,7 @@ describe('buildDiaryShareSuffix', () => {
       fat: 12,
       fiber: 16,
       glycemicIndex: 66,
-    })).toBe('White Rice, Sambar, Onion, 875 kcal');
+    })).toBe('875 kcal\nWhite Rice,\nSambar,\nOnion,');
   });
 
   test('weight suffix includes previous, current, and arrow', () => {
@@ -517,6 +517,6 @@ describe('resolveFoodRowPresentation', () => {
       },
       calories: 300,
     });
-    expect(view.shareText).toBe('White Rice, Sambar, Onion, 300 kcal');
+    expect(view.shareText).toBe('300 kcal\nWhite Rice,\nSambar,\nOnion,');
   });
 });

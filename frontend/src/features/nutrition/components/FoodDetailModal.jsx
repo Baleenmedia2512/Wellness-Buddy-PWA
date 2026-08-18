@@ -11,7 +11,7 @@
  */
 import React, { useRef, useState, useMemo } from 'react';
 import { X, Flame, Trash2, Share2, Droplets, ChevronRight } from 'lucide-react';
-import { captureAndShare } from '../../../shared/utils/shareUtils';
+import { captureAndShare, composeBrandedShareCaption } from '../../../shared/utils/shareUtils';
 import { withMarathonWhatsAppNotice } from '../../marathon';
 import { parseAnalysisData, getMealCategory } from '../services/nutritionDashboard/analysisHelpers';
 import { buildDiaryShareSuffix } from '../../diary/domain/share/suffixes';
@@ -238,7 +238,7 @@ const FoodDetailModal = ({ payload, capturedAt, onClose, onDelete }) => {
     try {
       await captureAndShare(cardRef.current, {
         title: foodName,
-        text: withMarathonWhatsAppNotice(shareText),
+        text: withMarathonWhatsAppNotice(composeBrandedShareCaption(shareText)),
         fileName: `wellness-${activityType}-${Date.now()}.png`,
       });
     } catch (err) {

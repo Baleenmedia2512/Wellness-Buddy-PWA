@@ -5,7 +5,7 @@ import { getVersionString } from "../../../config/version";
 import EditableFoodItem from "./EditableFoodItem";
 import { getUserId } from "../../../shared/services/userIdentity";
 import { searchFoods } from "../services/foodCorrectionService";
-import { captureAndShare, shareImageDirectly, precaptureShareImage, shareCachedDataUrl } from "../../../shared/utils/shareUtils";
+import { captureAndShare, shareImageDirectly, precaptureShareImage, shareCachedDataUrl, composeBrandedShareCaption } from "../../../shared/utils/shareUtils";
 import { debugLog } from '../../../shared/utils/logger.js';
 import { computeMealGlycemicIndex } from "../domain/mealGlycemicIndex";
 import {
@@ -857,7 +857,9 @@ const NutritionCard = ({
       // Capture and share the complete nutrition card (food image + all nutrition details)
       const shareOpts = {
         title: `${mealName} - Wellness Valley`,
-        text: withMarathonWhatsAppNotice(activityCaption),
+        text: withMarathonWhatsAppNotice(
+          composeBrandedShareCaption(activityCaption, { savedUserName, user }),
+        ),
         fileName: `wellness-valley-${mealName
           .toLowerCase()
           .replace(/\s+/g, "-")}.png`,

@@ -285,6 +285,7 @@ function FeedEmpty({ date, isSelf, filterKinds }) {
  * @param {Object} props
  * @param {string} props.ownerUserId   the diary subject
  * @param {string} props.viewerUserId  the authenticated session user
+ * @param {object|null} [props.shareUser] session user for WhatsApp brand line
  * @param {Date|string} props.date     selected calendar day
  * @param {object|null} [props.timezoneSource] Owner user for business-calendar TZ (matches backend owner TZ)
  * @param {number} [props.refreshKey]  bump from parent to trigger background re-fetch without unmounting
@@ -315,6 +316,7 @@ function FeedEmpty({ date, isSelf, filterKinds }) {
 export default function DiaryFeed({
   ownerUserId,
   viewerUserId,
+  shareUser = null,
   date,
   timezoneSource = null,
   refreshKey: externalRefreshKey = 0,
@@ -494,6 +496,7 @@ export default function DiaryFeed({
           timezoneIana={ownerTimezoneIana}
           ownerUserId={ownerUserId}
           viewerUserId={viewerUserId}
+          shareUser={shareUser}
           {...(entry.kind === 'weight'
             ? { previousWeight: weightId ? (previousWeightById.get(weightId) ?? null) : null }
             : {})}
@@ -521,6 +524,7 @@ export default function DiaryFeed({
       handleUndoExpire,
       ownerUserId,
       viewerUserId,
+      shareUser,
     ],
   );
 

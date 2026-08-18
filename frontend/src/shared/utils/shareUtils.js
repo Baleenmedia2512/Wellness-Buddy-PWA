@@ -7,33 +7,29 @@ import { App } from "@capacitor/app";
 import { debugLog } from './logger.js';
 import { hasValidProfileName } from '../../features/user/domain/profileCompleteness';
 import { apiFetch } from '../services/apiFetch.js';
+import { getUserEmail as getStoredSessionEmail } from '../services/sessionStorage.js';
+import { getVersionString } from '../../config/version.js';
+import { buildQuickShareText, composeQuickShareCaption } from './shareCaption.js';
+
+export {
+  SHARE_TEXT_SEPARATOR,
+  buildQuickShareText,
+  composeQuickShareCaption,
+} from './shareCaption.js';
 
 const PROFILE_USER_NAME_KEY = 'wv.profileUserName';
 
-/** UTF-8 middle dot separator for share captions: "Name · Wellness Valley v X.Y.Z" */
-export const SHARE_TEXT_SEPARATOR = '\u00B7';
-
-/** Build the standard Quick Share caption line. */
-export function buildQuickShareText(displayName, versionString) {
-  const name = (displayName || 'Wellness User').trim();
-  const version = (versionString || '').trim();
-  return `${name} ${SHARE_TEXT_SEPARATOR} Wellness Valley ${version}`.replace(/\uFFFD/g, '');
-}
-
 /**
- * Branding line + optional activity suffix.
- * One-line suffixes stay comma-joined:
- *   "YASHEER · Wellness Valley v 3.4.0, Consumed: 1 L water so far today"
- * Multi-line suffixes (weight) sit under the brand with a blank line:
- *   "Balaji Sekar · Wellness Valley v 3.4.5\n\nIdeal: 73.7 kg\nPrev: 72.9 kg\nCurr: 72.85 kg ⬇️"
+ * Brand line (Name · Wellness Valley v X.Y.Z) + activity suffix.
+ * Resolves the display name from savedUserName / user / cached profile.
  */
-export function composeQuickShareCaption(brandLine, activitySuffix = null) {
-  const brand = String(brandLine || '').trim();
-  const suffix = typeof activitySuffix === 'string' ? activitySuffix.trim() : '';
-  if (!brand) return suffix;
-  if (!suffix) return brand;
-  if (suffix.includes('\n')) return `${brand}\n\n${suffix}`;
-  return `${brand}, ${suffix}`;
+export function composeBrandedShareCaption(activitySuffix, { savedUserName = null, user = null } = {}) {
+  const email = getUserEmail(user) || getStoredSessionEmail();
+  const name = resolveShareDisplayName(savedUserName, user || (email ? { email } : null));
+  return composeQuickShareCaption(
+    buildQuickShareText(name, getVersionString()),
+    activitySuffix,
+  );
 }
 
 function getUserPhone(user) {

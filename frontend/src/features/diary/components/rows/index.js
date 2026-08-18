@@ -19,7 +19,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Smartphone, GraduationCap, HelpCircle, Share2, ArrowUp, ArrowDown, Star } from 'lucide-react';
 import { useSwipeToDelete } from '../../../../shared/hooks/useSwipeToDelete';
 import { parseAnalysisData, recalculateTotals, getMealCategory } from '../../../nutrition/services/nutritionDashboard/analysisHelpers';
-import { captureAndShare } from '../../../../shared/utils/shareUtils';
+import { captureAndShare, composeBrandedShareCaption } from '../../../../shared/utils/shareUtils';
 import { withMarathonWhatsAppNotice } from '../../../marathon';
 import {
   formatBusinessTime,
@@ -251,6 +251,7 @@ export function FoodRow({
   timezoneIana = DEFAULT_BUSINESS_TIMEZONE,
   ownerUserId = null,
   viewerUserId = null,
+  shareUser = null,
 }) {
   const p = entry.payload || {};
   const cal = p.totals?.calories ?? 0;
@@ -381,7 +382,7 @@ export function FoodRow({
     try {
       await captureAndShare(target, {
         title: shareMealName,
-        text: withMarathonWhatsAppNotice(shareText),
+        text: withMarathonWhatsAppNotice(composeBrandedShareCaption(shareText, { user: shareUser })),
         fileName: `wellness-${activityType}-${Date.now()}.png`,
       });
     } catch (err) {

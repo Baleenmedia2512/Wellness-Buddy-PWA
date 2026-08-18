@@ -1,8 +1,10 @@
 /**
  * diary/domain/share/suffixes.js
  *
- * Compact one-line activity suffixes for Quick Share captions:
+ * Compact activity suffixes for Quick Share captions:
  *   "Name · Wellness Valley v X.Y.Z, Consumed: 1 L water so far today"
+ * Food is kcal on the brand line, then each item on its own line:
+ *   "Name · Wellness Valley v X.Y.Z, 1890 kcal\nMasala Dosa,\nRagi Dosa,"
  *
  * Rich multi-line templates stay in the per-activity builders for Diary share.
  */
@@ -89,10 +91,12 @@ export function buildDiaryShareSuffix(activityType, payload = {}) {
     default: {
       const names = resolveFoodShareNames(payload);
       const calories = Math.round(Number(payload.calories) || 0);
-      const parts = [];
-      if (names.length > 0) parts.push(names.join(', '));
-      if (calories > 0) parts.push(`${calories} kcal`);
-      return parts.length > 0 ? parts.join(', ') : null;
+      const lines = [];
+      if (calories > 0) lines.push(`${calories} kcal`);
+      for (const name of names) {
+        lines.push(`${name},`);
+      }
+      return lines.length > 0 ? lines.join('\n') : null;
     }
   }
 }
