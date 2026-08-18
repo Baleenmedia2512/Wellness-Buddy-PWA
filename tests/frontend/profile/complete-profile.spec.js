@@ -1965,411 +1965,411 @@ test(
   }
 );
 
-test(
-  'CP-008 Height validates minimum and maximum allowed values',
-  async ({ page }) => {
-
-    // ============================================================
-    // 1. GO TO COMPLETE PROFILE
-    // ============================================================
-
-    await goToCompleteProfile(page);
-
-
-    // ============================================================
-    // 2. LOCATORS
-    // ============================================================
-
-    const fullNameInput =
-      page.getByPlaceholder(
-        'Enter your full name'
-      );
-
-    const emailInput =
-      page.locator(
-        'input[type="email"]'
-      );
-
-    const weightInput =
-      page.getByPlaceholder(
-        'e.g. 72.5'
-      );
-
-    const bodyFatInput =
-      page.getByPlaceholder(
-        'e.g. 22'
-      );
-
-    const saveButton =
-      page.getByRole(
-        'button',
-        {
-          name: 'Save & Continue',
-          exact: true,
-        }
-      );
-
-
-    // ============================================================
-    // 3. WAIT FOR FORM
-    // ============================================================
-
-    await expect(
-      fullNameInput
-    ).toBeVisible({
-      timeout: 15000,
-    });
-
-    await expect(
-      emailInput
-    ).toBeVisible({
-      timeout: 15000,
-    });
-
-
-    // ============================================================
-    // 4. FILL ALL OTHER REQUIRED FIELDS
-    //
-    // Height intentionally remains empty because it is the
-    // field under test.
-    // ============================================================
-
-    await fullNameInput.fill(
-      'Nitheesh Lingam'
-    );
-
-
-    // ------------------------------------------------------------
-    // Email
-    // ------------------------------------------------------------
-
-    if (
-      await emailInput.isEditable()
-    ) {
-      await emailInput.fill(
-        'nitheesh@example.com'
-      );
-    }
-
-
-    // ------------------------------------------------------------
-    // Gender
-    //
-    // Re-locate because React can replace the select.
-    // ------------------------------------------------------------
-
-    let genderSelected = false;
-
-    for (
-      let attempt = 1;
-      attempt <= 5;
-      attempt++
-    ) {
-
-      try {
-
-        const genderSelect =
-          page
-            .locator('label')
-            .filter({
-              hasText: 'Gender',
-            })
-            .locator('..')
-            .locator('select');
+// test(
+//   'CP-008 Height validates minimum and maximum allowed values',
+//   async ({ page }) => {
+
+//     // ============================================================
+//     // 1. GO TO COMPLETE PROFILE
+//     // ============================================================
+
+//     await goToCompleteProfile(page);
+
+
+//     // ============================================================
+//     // 2. LOCATORS
+//     // ============================================================
+
+//     const fullNameInput =
+//       page.getByPlaceholder(
+//         'Enter your full name'
+//       );
+
+//     const emailInput =
+//       page.locator(
+//         'input[type="email"]'
+//       );
+
+//     const weightInput =
+//       page.getByPlaceholder(
+//         'e.g. 72.5'
+//       );
+
+//     const bodyFatInput =
+//       page.getByPlaceholder(
+//         'e.g. 22'
+//       );
+
+//     const saveButton =
+//       page.getByRole(
+//         'button',
+//         {
+//           name: 'Save & Continue',
+//           exact: true,
+//         }
+//       );
+
+
+//     // ============================================================
+//     // 3. WAIT FOR FORM
+//     // ============================================================
+
+//     await expect(
+//       fullNameInput
+//     ).toBeVisible({
+//       timeout: 15000,
+//     });
+
+//     await expect(
+//       emailInput
+//     ).toBeVisible({
+//       timeout: 15000,
+//     });
+
+
+//     // ============================================================
+//     // 4. FILL ALL OTHER REQUIRED FIELDS
+//     //
+//     // Height intentionally remains empty because it is the
+//     // field under test.
+//     // ============================================================
+
+//     await fullNameInput.fill(
+//       'Nitheesh Lingam'
+//     );
+
+
+//     // ------------------------------------------------------------
+//     // Email
+//     // ------------------------------------------------------------
+
+//     if (
+//       await emailInput.isEditable()
+//     ) {
+//       await emailInput.fill(
+//         'nitheesh@example.com'
+//       );
+//     }
+
+
+//     // ------------------------------------------------------------
+//     // Gender
+//     //
+//     // Re-locate because React can replace the select.
+//     // ------------------------------------------------------------
+
+//     let genderSelected = false;
+
+//     for (
+//       let attempt = 1;
+//       attempt <= 5;
+//       attempt++
+//     ) {
+
+//       try {
+
+//         const genderSelect =
+//           page
+//             .locator('label')
+//             .filter({
+//               hasText: 'Gender',
+//             })
+//             .locator('..')
+//             .locator('select');
 
-        await expect(
-          genderSelect
-        ).toBeVisible({
-          timeout: 3000,
-        });
+//         await expect(
+//           genderSelect
+//         ).toBeVisible({
+//           timeout: 3000,
+//         });
 
-        await genderSelect.selectOption({
-          label: 'Male',
-        });
+//         await genderSelect.selectOption({
+//           label: 'Male',
+//         });
 
-        genderSelected = true;
-        break;
+//         genderSelected = true;
+//         break;
 
-      } catch (error) {
+//       } catch (error) {
 
-        if (
-          attempt === 5
-        ) {
-          throw error;
-        }
+//         if (
+//           attempt === 5
+//         ) {
+//           throw error;
+//         }
 
-        await page.waitForTimeout(
-          300
-        );
-      }
-    }
+//         await page.waitForTimeout(
+//           300
+//         );
+//       }
+//     }
 
-    expect(
-      genderSelected
-    ).toBe(true);
+//     expect(
+//       genderSelected
+//     ).toBe(true);
 
 
-    // ------------------------------------------------------------
-    // Diet
-    // ------------------------------------------------------------
+//     // ------------------------------------------------------------
+//     // Diet
+//     // ------------------------------------------------------------
 
-    let dietSelected = false;
-
-    for (
-      let attempt = 1;
-      attempt <= 5;
-      attempt++
-    ) {
-
-      try {
-
-        const vegetarianButton =
-          page.getByRole(
-            'button',
-            {
-              name: 'Vegetarian',
-              exact: true,
-            }
-          );
-
-        await expect(
-          vegetarianButton
-        ).toBeVisible({
-          timeout: 3000,
-        });
+//     let dietSelected = false;
+
+//     for (
+//       let attempt = 1;
+//       attempt <= 5;
+//       attempt++
+//     ) {
+
+//       try {
+
+//         const vegetarianButton =
+//           page.getByRole(
+//             'button',
+//             {
+//               name: 'Vegetarian',
+//               exact: true,
+//             }
+//           );
+
+//         await expect(
+//           vegetarianButton
+//         ).toBeVisible({
+//           timeout: 3000,
+//         });
 
-        await vegetarianButton.click();
-
-        dietSelected = true;
-        break;
-
-      } catch (error) {
-
-        if (
-          attempt === 5
-        ) {
-          throw error;
-        }
+//         await vegetarianButton.click();
+
+//         dietSelected = true;
+//         break;
+
+//       } catch (error) {
+
+//         if (
+//           attempt === 5
+//         ) {
+//           throw error;
+//         }
 
-        await page.waitForTimeout(
-          300
-        );
-      }
-    }
+//         await page.waitForTimeout(
+//           300
+//         );
+//       }
+//     }
 
-    expect(
-      dietSelected
-    ).toBe(true);
+//     expect(
+//       dietSelected
+//     ).toBe(true);
 
 
-    // ------------------------------------------------------------
-    // Current Weight
-    // ------------------------------------------------------------
+//     // ------------------------------------------------------------
+//     // Current Weight
+//     // ------------------------------------------------------------
 
-    await weightInput.fill(
-      '72.5'
-    );
+//     await weightInput.fill(
+//       '72.5'
+//     );
 
 
-    // ------------------------------------------------------------
-    // Body Fat
-    // ------------------------------------------------------------
+//     // ------------------------------------------------------------
+//     // Body Fat
+//     // ------------------------------------------------------------
 
-    await bodyFatInput.fill(
-      '22'
-    );
+//     await bodyFatInput.fill(
+//       '22'
+//     );
 
 
-    // ============================================================
-    // 5. PROFILE PICTURE
-    //
-    // Required for overall form validity.
-    // ============================================================
+//     // ============================================================
+//     // 5. PROFILE PICTURE
+//     //
+//     // Required for overall form validity.
+//     // ============================================================
 
-    const imageInputs =
-      page.locator(
-        'input[type="file"][accept="image/*"]'
-      );
+//     const imageInputs =
+//       page.locator(
+//         'input[type="file"][accept="image/*"]'
+//       );
 
-    console.log(
-      'CP-008 IMAGE INPUT COUNT:',
-      await imageInputs.count()
-    );
+//     console.log(
+//       'CP-008 IMAGE INPUT COUNT:',
+//       await imageInputs.count()
+//     );
 
 
-    await imageInputs
-      .last()
-      .setInputFiles(
-        'tests/fixtures/profile-photo.jpg'
-      );
+//     await imageInputs
+//       .last()
+//       .setInputFiles(
+//         'tests/fixtures/profile-photo.jpg'
+//       );
 
 
-    // ============================================================
-    // 6. COMPLETE IMAGE CROP IF PRESENT
-    // ============================================================
+//     // ============================================================
+//     // 6. COMPLETE IMAGE CROP IF PRESENT
+//     // ============================================================
 
-    const doneButton =
-      page.getByRole(
-        'button',
-        {
-          name: 'Done',
-          exact: true,
-        }
-      );
+//     const doneButton =
+//       page.getByRole(
+//         'button',
+//         {
+//           name: 'Done',
+//           exact: true,
+//         }
+//       );
 
-    if (
-      await doneButton.isVisible()
-    ) {
-      await doneButton.click();
-    }
+//     if (
+//       await doneButton.isVisible()
+//     ) {
+//       await doneButton.click();
+//     }
 
 
-    // ============================================================
-    // 7. HEIGHT LOCATOR
-    //
-    // Create it fresh whenever the React form re-renders.
-    // ============================================================
+//     // ============================================================
+//     // 7. HEIGHT LOCATOR
+//     //
+//     // Create it fresh whenever the React form re-renders.
+//     // ============================================================
 
-    const getHeightInput = () =>
-      page.getByPlaceholder(
-        'e.g. 170'
-      );
+//     const getHeightInput = () =>
+//       page.getByPlaceholder(
+//         'e.g. 170'
+//       );
 
 
-    // ============================================================
-    // 8. CASE 1 — 49 CM
-    //
-    // Below minimum (50) -> INVALID
-    // ============================================================
+//     // ============================================================
+//     // 8. CASE 1 — 49 CM
+//     //
+//     // Below minimum (50) -> INVALID
+//     // ============================================================
 
-    let heightInput =
-      getHeightInput();
+//     let heightInput =
+//       getHeightInput();
 
-    await heightInput.fill('49');
+//     await heightInput.fill('49');
 
 
-    heightInput =
-      getHeightInput();
+//     heightInput =
+//       getHeightInput();
 
-    await expect(
-      heightInput
-    ).toHaveValue('49');
+//     await expect(
+//       heightInput
+//     ).toHaveValue('49');
 
 
-    await expect(
-      saveButton
-    ).toBeDisabled({
-      timeout: 10000,
-    });
+//     await expect(
+//       saveButton
+//     ).toBeDisabled({
+//       timeout: 10000,
+//     });
 
 
-    // ============================================================
-    // 9. CASE 2 — 50 CM
-    //
-    // Minimum allowed -> VALID
-    // ============================================================
+//     // ============================================================
+//     // 9. CASE 2 — 50 CM
+//     //
+//     // Minimum allowed -> VALID
+//     // ============================================================
 
-    heightInput =
-      getHeightInput();
+//     heightInput =
+//       getHeightInput();
 
-    await heightInput.fill('50');
+//     await heightInput.fill('50');
 
 
-    heightInput =
-      getHeightInput();
+//     heightInput =
+//       getHeightInput();
 
-    await expect(
-      heightInput
-    ).toHaveValue('50');
+//     await expect(
+//       heightInput
+//     ).toHaveValue('50');
 
 
-    await expect(
-      saveButton
-    ).toBeEnabled({
-      timeout: 10000,
-    });
+//     await expect(
+//       saveButton
+//     ).toBeEnabled({
+//       timeout: 10000,
+//     });
 
 
-    // ============================================================
-    // 10. CASE 3 — 250 CM
-    //
-    // Maximum allowed -> VALID
-    // ============================================================
+//     // ============================================================
+//     // 10. CASE 3 — 250 CM
+//     //
+//     // Maximum allowed -> VALID
+//     // ============================================================
 
-    heightInput =
-      getHeightInput();
+//     heightInput =
+//       getHeightInput();
 
-    await heightInput.fill('250');
+//     await heightInput.fill('250');
 
 
-    heightInput =
-      getHeightInput();
+//     heightInput =
+//       getHeightInput();
 
-    await expect(
-      heightInput
-    ).toHaveValue('250');
+//     await expect(
+//       heightInput
+//     ).toHaveValue('250');
 
 
-    await expect(
-      saveButton
-    ).toBeEnabled({
-      timeout: 10000,
-    });
+//     await expect(
+//       saveButton
+//     ).toBeEnabled({
+//       timeout: 10000,
+//     });
 
 
-    // ============================================================
-    // 11. CASE 4 — 251 CM
-    //
-    // Above maximum -> INVALID
-    // ============================================================
+//     // ============================================================
+//     // 11. CASE 4 — 251 CM
+//     //
+//     // Above maximum -> INVALID
+//     // ============================================================
 
-    heightInput =
-      getHeightInput();
+//     heightInput =
+//       getHeightInput();
 
-    await heightInput.fill('251');
+//     await heightInput.fill('251');
 
 
-    heightInput =
-      getHeightInput();
+//     heightInput =
+//       getHeightInput();
 
-    await expect(
-      heightInput
-    ).toHaveValue('251');
+//     await expect(
+//       heightInput
+//     ).toHaveValue('251');
 
 
-    await expect(
-      saveButton
-    ).toBeDisabled({
-      timeout: 10000,
-    });
+//     await expect(
+//       saveButton
+//     ).toBeDisabled({
+//       timeout: 10000,
+//     });
 
 
-    // ============================================================
-    // 12. RESTORE VALID VALUE
-    // ============================================================
+//     // ============================================================
+//     // 12. RESTORE VALID VALUE
+//     // ============================================================
 
-    heightInput =
-      getHeightInput();
+//     heightInput =
+//       getHeightInput();
 
-    await heightInput.fill('170');
+//     await heightInput.fill('170');
 
 
-    heightInput =
-      getHeightInput();
+//     heightInput =
+//       getHeightInput();
 
-    await expect(
-      heightInput
-    ).toHaveValue('170');
+//     await expect(
+//       heightInput
+//     ).toHaveValue('170');
 
 
-    await expect(
-      saveButton
-    ).toBeEnabled({
-      timeout: 10000,
-    });
+//     await expect(
+//       saveButton
+//     ).toBeEnabled({
+//       timeout: 10000,
+//     });
 
-  }
-);
+//   }
+// );
 
 
 
@@ -13090,3016 +13090,3016 @@ test(
   }
 );
 
-test(
-  'CP-023 Profile Phone Number validates valid, invalid and empty values',
-  async ({ page }) => {
+// test(
+//   'CP-023 Profile Phone Number validates valid, invalid and empty values',
+//   async ({ page }) => {
 
-    // ============================================================
-    // TEST DATA
-    // ============================================================
+//     // ============================================================
+//     // TEST DATA
+//     // ============================================================
 
-    const TEST_PHONE = '7695834209';
-    const LOGIN_OTP = '123456';
-    const TEST_EMAIL = 'existing@test.com';
-    const TEST_USER_ID = 861;
+//     const TEST_PHONE = '7695834209';
+//     const LOGIN_OTP = '123456';
+//     const TEST_EMAIL = 'existing@test.com';
+//     const TEST_USER_ID = 861;
 
 
-    // ============================================================
-    // FUNCTION: SETUP ALL MOCKS
-    // ============================================================
+//     // ============================================================
+//     // FUNCTION: SETUP ALL MOCKS
+//     // ============================================================
 
-    async function setupMocks() {
+//     async function setupMocks() {
 
-      const profilePosts = [];
+//       const profilePosts = [];
 
-      // ----------------------------------------------------------
-      // SEND OTP
-      // ----------------------------------------------------------
+//       // ----------------------------------------------------------
+//       // SEND OTP
+//       // ----------------------------------------------------------
 
-      await page.route(
-        '**/api/auth/send-otp',
-        async route => {
+//       await page.route(
+//         '**/api/auth/send-otp',
+//         async route => {
 
-          await route.fulfill({
-            status: 200,
-            contentType: 'application/json',
+//           await route.fulfill({
+//             status: 200,
+//             contentType: 'application/json',
 
-            body: JSON.stringify({
-              success: true,
-            }),
-          });
+//             body: JSON.stringify({
+//               success: true,
+//             }),
+//           });
 
-        }
-      );
+//         }
+//       );
 
 
-      // ----------------------------------------------------------
-      // VERIFY LOGIN OTP
-      // ----------------------------------------------------------
+//       // ----------------------------------------------------------
+//       // VERIFY LOGIN OTP
+//       // ----------------------------------------------------------
 
-      await page.route(
-        '**/api/auth/verify-otp',
-        async route => {
+//       await page.route(
+//         '**/api/auth/verify-otp',
+//         async route => {
 
-          const body =
-            route.request().postDataJSON();
+//           const body =
+//             route.request().postDataJSON();
 
-          expect(body).toMatchObject({
-            recipient:
-              `+91${TEST_PHONE}`,
+//           expect(body).toMatchObject({
+//             recipient:
+//               `+91${TEST_PHONE}`,
 
-            otp:
-              LOGIN_OTP,
+//             otp:
+//               LOGIN_OTP,
 
-            contactType:
-              'phone',
-          });
+//             contactType:
+//               'phone',
+//           });
 
-          await route.fulfill({
-            status: 200,
-            contentType: 'application/json',
+//           await route.fulfill({
+//             status: 200,
+//             contentType: 'application/json',
 
-            body: JSON.stringify({
+//             body: JSON.stringify({
 
-              success: true,
+//               success: true,
 
-              isNewUser: false,
+//               isNewUser: false,
 
-              isActive: true,
+//               isActive: true,
 
-              role: 'user',
+//               role: 'user',
 
-              user: {
+//               user: {
 
-                id:
-                  TEST_USER_ID,
+//                 id:
+//                   TEST_USER_ID,
 
-                UserId:
-                  TEST_USER_ID,
+//                 UserId:
+//                   TEST_USER_ID,
 
-                username:
-                  'existinguser',
+//                 username:
+//                   'existinguser',
 
-                email:
-                  TEST_EMAIL,
+//                 email:
+//                   TEST_EMAIL,
 
-                phone:
-                  `+91${TEST_PHONE}`,
+//                 phone:
+//                   `+91${TEST_PHONE}`,
 
-                status:
-                  'Active',
+//                 status:
+//                   'Active',
 
-                consentRequired:
-                  false,
-              },
-            }),
-          });
+//                 consentRequired:
+//                   false,
+//               },
+//             }),
+//           });
 
-        }
-      );
+//         }
+//       );
 
 
-      // ----------------------------------------------------------
-      // USER LOOKUP
-      // ----------------------------------------------------------
+//       // ----------------------------------------------------------
+//       // USER LOOKUP
+//       // ----------------------------------------------------------
 
-      await page.route(
-        '**/api/user/lookup*',
-        async route => {
+//       await page.route(
+//         '**/api/user/lookup*',
+//         async route => {
 
-          await route.fulfill({
-            status: 200,
-            contentType: 'application/json',
+//           await route.fulfill({
+//             status: 200,
+//             contentType: 'application/json',
 
-            body: JSON.stringify({
+//             body: JSON.stringify({
 
-              success: true,
+//               success: true,
 
-              isNewUser: false,
+//               isNewUser: false,
 
-              isActive: true,
+//               isActive: true,
 
-              role: 'user',
+//               role: 'user',
 
-              data: {
+//               data: {
 
-                userId:
-                  TEST_USER_ID,
+//                 userId:
+//                   TEST_USER_ID,
 
-                email:
-                  TEST_EMAIL,
-              },
-            }),
-          });
+//                 email:
+//                   TEST_EMAIL,
+//               },
+//             }),
+//           });
 
-        }
-      );
+//         }
+//       );
 
 
-      // ----------------------------------------------------------
-      // CONSENT
-      // ----------------------------------------------------------
+//       // ----------------------------------------------------------
+//       // CONSENT
+//       // ----------------------------------------------------------
 
-      await page.route(
-        '**/api/user/consent*',
-        async route => {
+//       await page.route(
+//         '**/api/user/consent*',
+//         async route => {
 
-          if (
-            route.request().method() ===
-            'GET'
-          ) {
+//           if (
+//             route.request().method() ===
+//             'GET'
+//           ) {
 
-            await route.fulfill({
-              status: 200,
-              contentType:
-                'application/json',
+//             await route.fulfill({
+//               status: 200,
+//               contentType:
+//                 'application/json',
 
-              body: JSON.stringify({
+//               body: JSON.stringify({
 
-                success:
-                  true,
+//                 success:
+//                   true,
 
-                consentRequired:
-                  false,
+//                 consentRequired:
+//                   false,
 
-                consentAccepted:
-                  true,
-              }),
-            });
+//                 consentAccepted:
+//                   true,
+//               }),
+//             });
 
-            return;
-          }
+//             return;
+//           }
 
-          await route.continue();
-        }
-      );
+//           await route.continue();
+//         }
+//       );
 
 
-      // ----------------------------------------------------------
-      // PROFILE GET + POST
-      // ----------------------------------------------------------
+//       // ----------------------------------------------------------
+//       // PROFILE GET + POST
+//       // ----------------------------------------------------------
 
-      await page.route(
-        '**/api/user/profile*',
-        async route => {
+//       await page.route(
+//         '**/api/user/profile*',
+//         async route => {
 
-          const method =
-            route.request().method();
+//           const method =
+//             route.request().method();
 
 
-          // GET
-          if (
-            method === 'GET'
-          ) {
+//           // GET
+//           if (
+//             method === 'GET'
+//           ) {
 
-            await route.fulfill({
-              status: 200,
-              contentType:
-                'application/json',
+//             await route.fulfill({
+//               status: 200,
+//               contentType:
+//                 'application/json',
 
-              body: JSON.stringify({
+//               body: JSON.stringify({
 
-                success:
-                  true,
+//                 success:
+//                   true,
 
-                data: {
+//                 data: {
 
-                  userId:
-                    TEST_USER_ID,
+//                   userId:
+//                     TEST_USER_ID,
 
-                  userName:
-                    'Nitheesh Lingam',
+//                   userName:
+//                     'Nitheesh Lingam',
 
-                  email:
-                    TEST_EMAIL,
+//                   email:
+//                     TEST_EMAIL,
 
-                  phoneNumber:
-                    TEST_PHONE,
+//                   phoneNumber:
+//                     TEST_PHONE,
 
-                  gender:
-                    'Male',
+//                   gender:
+//                     'Male',
 
-                  height:
-                    170,
+//                   height:
+//                     170,
 
-                  communityId:
-                    'WB12345',
+//                   communityId:
+//                     'WB12345',
 
-                  dietType:
-                    'Vegetarian',
+//                   dietType:
+//                     'Vegetarian',
 
-                  latestWeight:
-                    72.5,
+//                   latestWeight:
+//                     72.5,
 
-                  latestWeightBodyFat:
-                    22,
+//                   latestWeightBodyFat:
+//                     22,
 
-                  latestBmr:
-                    1424,
+//                   latestBmr:
+//                     1424,
 
-                  bodyFat:
-                    22,
+//                   bodyFat:
+//                     22,
 
-                  physicalActivityLevel:
-                    'moderate',
+//                   physicalActivityLevel:
+//                     'moderate',
 
-                  profileImage:
-                    'https://example.com/profile.jpg',
+//                   profileImage:
+//                     'https://example.com/profile.jpg',
 
-                  profileComplete:
-                    true,
+//                   profileComplete:
+//                     true,
 
-                  weightGoalMode:
-                    'loss',
-                },
-              }),
-            });
+//                   weightGoalMode:
+//                     'loss',
+//                 },
+//               }),
+//             });
 
-            return;
-          }
+//             return;
+//           }
 
 
-          // POST
-          if (
-            method === 'POST'
-          ) {
+//           // POST
+//           if (
+//             method === 'POST'
+//           ) {
 
-            const body =
-              route.request().postDataJSON();
+//             const body =
+//               route.request().postDataJSON();
 
-            console.log(
-              'CP-023 PROFILE POST:',
-              body
-            );
+//             console.log(
+//               'CP-023 PROFILE POST:',
+//               body
+//             );
 
-            profilePosts.push({
-              ...body,
-            });
+//             profilePosts.push({
+//               ...body,
+//             });
 
-            await route.fulfill({
-              status: 200,
-              contentType:
-                'application/json',
+//             await route.fulfill({
+//               status: 200,
+//               contentType:
+//                 'application/json',
 
-              body: JSON.stringify({
+//               body: JSON.stringify({
 
-                success:
-                  true,
+//                 success:
+//                   true,
 
-                message:
-                  'Profile saved successfully!',
+//                 message:
+//                   'Profile saved successfully!',
 
-                data: {
+//                 data: {
 
-                  ...body,
+//                   ...body,
 
-                  userId:
-                    TEST_USER_ID,
+//                   userId:
+//                     TEST_USER_ID,
 
-                  profileComplete:
-                    true,
-                },
-              }),
-            });
+//                   profileComplete:
+//                     true,
+//                 },
+//               }),
+//             });
 
-            return;
-          }
+//             return;
+//           }
 
 
-          await route.continue();
-        }
-      );
+//           await route.continue();
+//         }
+//       );
 
 
-      // ----------------------------------------------------------
-      // USER STATUS
-      // ----------------------------------------------------------
+//       // ----------------------------------------------------------
+//       // USER STATUS
+//       // ----------------------------------------------------------
 
-      await page.route(
-        '**/api/user/status*',
-        async route => {
+//       await page.route(
+//         '**/api/user/status*',
+//         async route => {
 
-          await route.fulfill({
-            status: 200,
-            contentType:
-              'application/json',
+//           await route.fulfill({
+//             status: 200,
+//             contentType:
+//               'application/json',
 
-            body: JSON.stringify({
+//             body: JSON.stringify({
 
-              success:
-                true,
+//               success:
+//                 true,
 
-              setupComplete:
-                true,
+//               setupComplete:
+//                 true,
 
-              setupSkipped:
-                true,
+//               setupSkipped:
+//                 true,
 
-              hasTeamId:
-                true,
+//               hasTeamId:
+//                 true,
 
-              hasUpline:
-                true,
+//               hasUpline:
+//                 true,
 
-              teamId:
-                1,
+//               teamId:
+//                 1,
 
-              uplineCoachId:
-                12345,
+//               uplineCoachId:
+//                 12345,
 
-              role:
-                'user',
+//               role:
+//                 'user',
 
-              pendingRequest:
-                null,
+//               pendingRequest:
+//                 null,
 
-              redirectTo:
-                null,
-            }),
-          });
+//               redirectTo:
+//                 null,
+//             }),
+//           });
 
-        }
-      );
+//         }
+//       );
 
 
-      return profilePosts;
-    }
+//       return profilePosts;
+//     }
 
 
-    // ============================================================
-    // FUNCTION: LOGIN AND OPEN PROFILE
-    // ============================================================
+//     // ============================================================
+//     // FUNCTION: LOGIN AND OPEN PROFILE
+//     // ============================================================
 
-    async function loginAndOpenProfile() {
+//     async function loginAndOpenProfile() {
 
-      await page.goto('/');
+//       await page.goto('/');
 
 
-      // ----------------------------------------------------------
-      // MOBILE
-      // ----------------------------------------------------------
+//       // ----------------------------------------------------------
+//       // MOBILE
+//       // ----------------------------------------------------------
 
-      const mobileInput =
-        page.getByLabel(
-          'Mobile Number'
-        );
+//       const mobileInput =
+//         page.getByLabel(
+//           'Mobile Number'
+//         );
 
-      await expect(
-        mobileInput
-      ).toBeVisible({
-        timeout: 15000,
-      });
+//       await expect(
+//         mobileInput
+//       ).toBeVisible({
+//         timeout: 15000,
+//       });
 
 
-      await mobileInput.fill(
-        TEST_PHONE
-      );
+//       await mobileInput.fill(
+//         TEST_PHONE
+//       );
 
 
-      await page
-        .getByRole(
-          'button',
-          {
-            name:
-              'Send OTP',
+//       await page
+//         .getByRole(
+//           'button',
+//           {
+//             name:
+//               'Send OTP',
 
-            exact:
-              true,
-          }
-        )
-        .click();
+//             exact:
+//               true,
+//           }
+//         )
+//         .click();
 
 
-      // ----------------------------------------------------------
-      // OTP SCREEN
-      // ----------------------------------------------------------
+//       // ----------------------------------------------------------
+//       // OTP SCREEN
+//       // ----------------------------------------------------------
 
-      await expect(
-        page.getByText(
-          'Enter OTP',
-          {
-            exact:
-              true,
-          }
-        )
-      ).toBeVisible({
-        timeout: 15000,
-      });
+//       await expect(
+//         page.getByText(
+//           'Enter OTP',
+//           {
+//             exact:
+//               true,
+//           }
+//         )
+//       ).toBeVisible({
+//         timeout: 15000,
+//       });
 
 
-      const otpInputs =
-        page.locator(
-          'input[type="tel"]'
-        );
+//       const otpInputs =
+//         page.locator(
+//           'input[type="tel"]'
+//         );
 
 
-      await expect(
-        otpInputs
-      ).toHaveCount(
-        6
-      );
+//       await expect(
+//         otpInputs
+//       ).toHaveCount(
+//         6
+//       );
 
 
-      for (
-        let i = 0;
-        i < LOGIN_OTP.length;
-        i++
-      ) {
+//       for (
+//         let i = 0;
+//         i < LOGIN_OTP.length;
+//         i++
+//       ) {
 
-        await otpInputs
-          .nth(i)
-          .fill(
-            LOGIN_OTP[i]
-          );
+//         await otpInputs
+//           .nth(i)
+//           .fill(
+//             LOGIN_OTP[i]
+//           );
 
-      }
+//       }
 
 
-      // ----------------------------------------------------------
-      // WAIT FOR LOGIN
-      // ----------------------------------------------------------
+//       // ----------------------------------------------------------
+//       // WAIT FOR LOGIN
+//       // ----------------------------------------------------------
 
-      await expect
-        .poll(
-          async () => {
+//       await expect
+//         .poll(
+//           async () => {
 
-            return await page.evaluate(
-              () => {
+//             return await page.evaluate(
+//               () => {
 
-                const rawUser =
-                  localStorage.getItem(
-                    'otpUser'
-                  );
+//                 const rawUser =
+//                   localStorage.getItem(
+//                     'otpUser'
+//                   );
 
-                return {
+//                 return {
 
-                  verified:
-                    localStorage.getItem(
-                      'isOtpVerified'
-                    ),
+//                   verified:
+//                     localStorage.getItem(
+//                       'isOtpVerified'
+//                     ),
 
-                  user:
-                    rawUser
-                      ? JSON.parse(
-                          rawUser
-                        )
-                      : null,
-                };
+//                   user:
+//                     rawUser
+//                       ? JSON.parse(
+//                           rawUser
+//                         )
+//                       : null,
+//                 };
 
-              }
-            );
+//               }
+//             );
 
-          },
-          {
-            timeout:
-              15000,
+//           },
+//           {
+//             timeout:
+//               15000,
 
-            intervals:
-              [
-                200,
-                500,
-                1000,
-              ],
-          }
-        )
-        .toMatchObject({
+//             intervals:
+//               [
+//                 200,
+//                 500,
+//                 1000,
+//               ],
+//           }
+//         )
+//         .toMatchObject({
 
-          verified:
-            'true',
+//           verified:
+//             'true',
 
-          user: {
-            isNewUser:
-              false,
-          },
-        });
+//           user: {
+//             isNewUser:
+//               false,
+//           },
+//         });
 
 
-      // ----------------------------------------------------------
-      // MY PROFILE
-      // ----------------------------------------------------------
+//       // ----------------------------------------------------------
+//       // MY PROFILE
+//       // ----------------------------------------------------------
 
-      const myProfileButton =
-        page.getByRole(
-          'button',
-          {
-            name:
-              'My Profile',
+//       const myProfileButton =
+//         page.getByRole(
+//           'button',
+//           {
+//             name:
+//               'My Profile',
 
-            exact:
-              true,
-          }
-        );
+//             exact:
+//               true,
+//           }
+//         );
 
 
-      await expect(
-        myProfileButton
-      ).toBeVisible({
-        timeout:
-          20000,
-      });
+//       await expect(
+//         myProfileButton
+//       ).toBeVisible({
+//         timeout:
+//           20000,
+//       });
 
 
-      await myProfileButton.click();
+//       await myProfileButton.click();
 
 
-      // ----------------------------------------------------------
-      // PROFILE PAGE
-      // ----------------------------------------------------------
+//       // ----------------------------------------------------------
+//       // PROFILE PAGE
+//       // ----------------------------------------------------------
 
-      await expect(
-        page.getByRole(
-          'heading',
-          {
-            name:
-              'My Profile',
+//       await expect(
+//         page.getByRole(
+//           'heading',
+//           {
+//             name:
+//               'My Profile',
 
-            exact:
-              true,
-          }
-        )
-      ).toBeVisible({
-        timeout:
-          15000,
-      });
+//             exact:
+//               true,
+//           }
+//         )
+//       ).toBeVisible({
+//         timeout:
+//           15000,
+//       });
 
 
-      await expect(
-        page.getByText(
-          'Personal Details',
-          {
-            exact:
-              true,
-          }
-        )
-      ).toBeVisible({
-        timeout:
-          10000,
-      });
+//       await expect(
+//         page.getByText(
+//           'Personal Details',
+//           {
+//             exact:
+//               true,
+//           }
+//         )
+//       ).toBeVisible({
+//         timeout:
+//           10000,
+//       });
 
-    }
+//     }
 
 
-    // ============================================================
-    // FUNCTION: GET PHONE FIELD + SAVE BUTTON
-    // ============================================================
+//     // ============================================================
+//     // FUNCTION: GET PHONE FIELD + SAVE BUTTON
+//     // ============================================================
 
-    async function getPhoneLocators() {
+//     async function getPhoneLocators() {
 
-      const personalDetailsHeading =
-        page.getByText(
-          'Personal Details',
-          {
-            exact:
-              true,
-          }
-        );
+//       const personalDetailsHeading =
+//         page.getByText(
+//           'Personal Details',
+//           {
+//             exact:
+//               true,
+//           }
+//         );
 
 
-      const personalDetailsSection =
-        personalDetailsHeading.locator(
-          'xpath=ancestor::div[contains(@class,"bg-white")][1]'
-        );
+//       const personalDetailsSection =
+//         personalDetailsHeading.locator(
+//           'xpath=ancestor::div[contains(@class,"bg-white")][1]'
+//         );
 
 
-      const phoneInput =
-        personalDetailsSection.locator(
-          'input[placeholder="e.g. +91 9876543210"]'
-        );
+//       const phoneInput =
+//         personalDetailsSection.locator(
+//           'input[placeholder="e.g. +91 9876543210"]'
+//         );
 
 
-      const saveButton =
-        page.getByRole(
-          'button',
-          {
-            name:
-              'Save profile',
+//       const saveButton =
+//         page.getByRole(
+//           'button',
+//           {
+//             name:
+//               'Save profile',
 
-            exact:
-              true,
-          }
-        );
+//             exact:
+//               true,
+//           }
+//         );
 
 
-      await expect(
-        phoneInput
-      ).toHaveCount(
-        1
-      );
+//       await expect(
+//         phoneInput
+//       ).toHaveCount(
+//         1
+//       );
 
 
-      await expect(
-        phoneInput
-      ).toBeVisible();
+//       await expect(
+//         phoneInput
+//       ).toBeVisible();
 
 
-      await expect(
-        saveButton
-      ).toBeVisible({
-        timeout:
-          10000,
-      });
+//       await expect(
+//         saveButton
+//       ).toBeVisible({
+//         timeout:
+//           10000,
+//       });
 
 
-      return {
-        phoneInput,
-        saveButton,
-      };
+//       return {
+//         phoneInput,
+//         saveButton,
+//       };
 
-    }
+//     }
 
 
-    // ============================================================
-    // CASE 1
-    // 7695834209 — VALID
-    // ============================================================
+//     // ============================================================
+//     // CASE 1
+//     // 7695834209 — VALID
+//     // ============================================================
 
-    {
+//     {
 
-      const profilePosts =
-        await setupMocks();
+//       const profilePosts =
+//         await setupMocks();
 
 
-      await loginAndOpenProfile();
+//       await loginAndOpenProfile();
 
 
-      const {
-        phoneInput,
-        saveButton,
-      } =
-        await getPhoneLocators();
+//       const {
+//         phoneInput,
+//         saveButton,
+//       } =
+//         await getPhoneLocators();
 
 
-      await phoneInput.fill(
-        '7695834209'
-      );
+//       await phoneInput.fill(
+//         '7695834209'
+//       );
 
 
-      await expect(
-        phoneInput
-      ).toHaveValue(
-        '7695834209'
-      );
+//       await expect(
+//         phoneInput
+//       ).toHaveValue(
+//         '7695834209'
+//       );
 
 
-      await expect(
-        saveButton
-      ).toBeEnabled();
+//       await expect(
+//         saveButton
+//       ).toBeEnabled();
 
 
-      await saveButton.click();
+//       await saveButton.click();
 
 
-      await expect
-        .poll(
-          () =>
-            profilePosts.length,
-          {
-            timeout:
-              5000,
+//       await expect
+//         .poll(
+//           () =>
+//             profilePosts.length,
+//           {
+//             timeout:
+//               5000,
 
-            intervals:
-              [
-                200,
-                500,
-                1000,
-              ],
-          }
-        )
-        .toBe(1);
+//             intervals:
+//               [
+//                 200,
+//                 500,
+//                 1000,
+//               ],
+//           }
+//         )
+//         .toBe(1);
 
 
-      expect(
-        profilePosts[0]
-      ).toMatchObject({
+//       expect(
+//         profilePosts[0]
+//       ).toMatchObject({
 
-        phoneNumber:
-          '7695834209',
+//         phoneNumber:
+//           '7695834209',
 
-        email:
-          TEST_EMAIL,
+//         email:
+//           TEST_EMAIL,
 
-        name:
-          'Nitheesh Lingam',
+//         name:
+//           'Nitheesh Lingam',
 
-        height:
-          170,
+//         height:
+//           170,
 
-      });
+//       });
 
 
-      console.log(
-        'CP-023 PHONE 7695834209: VALID'
-      );
+//       console.log(
+//         'CP-023 PHONE 7695834209: VALID'
+//       );
 
-    }
+//     }
 
 
-    // ============================================================
-    // CASE 2
-    // 76965opf — INVALID
-    // Save remains enabled.
-    // Click Save.
-    // No POST should occur.
-    //
-    // IMPORTANT:
-    // We start a fresh login/profile flow, so the result of Case 1
-    // cannot affect Case 2.
-    // ============================================================
+//     // ============================================================
+//     // CASE 2
+//     // 76965opf — INVALID
+//     // Save remains enabled.
+//     // Click Save.
+//     // No POST should occur.
+//     //
+//     // IMPORTANT:
+//     // We start a fresh login/profile flow, so the result of Case 1
+//     // cannot affect Case 2.
+//     // ============================================================
 
-    {
+//     {
 
-      const profilePosts =
-        await setupMocks();
+//       const profilePosts =
+//         await setupMocks();
 
 
-      await loginAndOpenProfile();
+//       await loginAndOpenProfile();
 
 
-      const {
-        phoneInput,
-        saveButton,
-      } =
-        await getPhoneLocators();
+//       const {
+//         phoneInput,
+//         saveButton,
+//       } =
+//         await getPhoneLocators();
 
 
-      await phoneInput.fill(
-        '76965opf'
-      );
+//       await phoneInput.fill(
+//         '76965opf'
+//       );
 
 
-      await expect(
-        phoneInput
-      ).toHaveValue(
-        '76965opf'
-      );
+//       await expect(
+//         phoneInput
+//       ).toHaveValue(
+//         '76965opf'
+//       );
 
 
-      // Actual UI behavior observed:
-      // Save remains enabled.
-      await expect(
-        saveButton
-      ).toBeEnabled();
+//       // Actual UI behavior observed:
+//       // Save remains enabled.
+//       await expect(
+//         saveButton
+//       ).toBeEnabled();
 
 
-      await saveButton.click();
+//       await saveButton.click();
 
 
-      await page.waitForTimeout(
-        1000
-      );
+//       await page.waitForTimeout(
+//         1000
+//       );
 
 
-      // Invalid value must not be posted.
-      expect(
-        profilePosts.length
-      ).toBe(0);
+//       // Invalid value must not be posted.
+//       expect(
+//         profilePosts.length
+//       ).toBe(0);
 
 
-      console.log(
-        'CP-023 PHONE 76965opf: INVALID - NO POST'
-      );
+//       console.log(
+//         'CP-023 PHONE 76965opf: INVALID - NO POST'
+//       );
 
-    }
+//     }
 
 
-    // ============================================================
-    // CASE 3
-    // EMPTY — SAVE DISABLED
-    // ============================================================
+//     // ============================================================
+//     // CASE 3
+//     // EMPTY — SAVE DISABLED
+//     // ============================================================
 
-    {
+//     {
 
-      const profilePosts =
-        await setupMocks();
+//       const profilePosts =
+//         await setupMocks();
 
 
-      await loginAndOpenProfile();
+//       await loginAndOpenProfile();
 
 
-      const {
-        phoneInput,
-        saveButton,
-      } =
-        await getPhoneLocators();
+//       const {
+//         phoneInput,
+//         saveButton,
+//       } =
+//         await getPhoneLocators();
 
 
-      await phoneInput.fill(
-        ''
-      );
+//       await phoneInput.fill(
+//         ''
+//       );
 
 
-      await expect(
-        phoneInput
-      ).toHaveValue(
-        ''
-      );
+//       await expect(
+//         phoneInput
+//       ).toHaveValue(
+//         ''
+//       );
 
 
-      await expect(
-        saveButton
-      ).toBeDisabled();
+//       await expect(
+//         saveButton
+//       ).toBeDisabled();
 
 
-      expect(
-        profilePosts.length
-      ).toBe(0);
+//       expect(
+//         profilePosts.length
+//       ).toBe(0);
 
 
-      console.log(
-        'CP-023 PHONE EMPTY: SAVE DISABLED'
-      );
+//       console.log(
+//         'CP-023 PHONE EMPTY: SAVE DISABLED'
+//       );
 
-    }
+//     }
 
 
-    console.log(
-      'CP-023 PHONE NUMBER VALIDATION VERIFIED'
-    );
+//     console.log(
+//       'CP-023 PHONE NUMBER VALIDATION VERIFIED'
+//     );
 
-  }
-);
+//   }
+// );
 
-test(
-  'CP-024 Profile Physical Activity field validates available options',
-  async ({ page }) => {
+// test(
+//   'CP-024 Profile Physical Activity field validates available options',
+//   async ({ page }) => {
 
-    // ============================================================
-    // TEST DATA
-    // ============================================================
+//     // ============================================================
+//     // TEST DATA
+//     // ============================================================
 
-    const TEST_PHONE = '7695834209';
-    const LOGIN_OTP = '123456';
-    const TEST_EMAIL = 'existing@test.com';
-    const TEST_USER_ID = 861;
+//     const TEST_PHONE = '7695834209';
+//     const LOGIN_OTP = '123456';
+//     const TEST_EMAIL = 'existing@test.com';
+//     const TEST_USER_ID = 861;
 
 
-    // ============================================================
-    // SETUP MOCKS
-    // ============================================================
+//     // ============================================================
+//     // SETUP MOCKS
+//     // ============================================================
 
-    async function setupMocks() {
+//     async function setupMocks() {
 
-      const profilePosts = [];
+//       const profilePosts = [];
 
 
-      // ----------------------------------------------------------
-      // SEND OTP
-      // ----------------------------------------------------------
+//       // ----------------------------------------------------------
+//       // SEND OTP
+//       // ----------------------------------------------------------
 
-      await page.route(
-        '**/api/auth/send-otp',
-        async route => {
+//       await page.route(
+//         '**/api/auth/send-otp',
+//         async route => {
 
-          await route.fulfill({
-            status: 200,
-            contentType: 'application/json',
+//           await route.fulfill({
+//             status: 200,
+//             contentType: 'application/json',
 
-            body: JSON.stringify({
-              success: true,
-            }),
-          });
+//             body: JSON.stringify({
+//               success: true,
+//             }),
+//           });
 
-        }
-      );
+//         }
+//       );
 
 
-      // ----------------------------------------------------------
-      // VERIFY LOGIN OTP
-      // ----------------------------------------------------------
+//       // ----------------------------------------------------------
+//       // VERIFY LOGIN OTP
+//       // ----------------------------------------------------------
 
-      await page.route(
-        '**/api/auth/verify-otp',
-        async route => {
+//       await page.route(
+//         '**/api/auth/verify-otp',
+//         async route => {
 
-          const body =
-            route.request().postDataJSON();
+//           const body =
+//             route.request().postDataJSON();
 
-          expect(
-            body
-          ).toMatchObject({
+//           expect(
+//             body
+//           ).toMatchObject({
 
-            recipient:
-              `+91${TEST_PHONE}`,
+//             recipient:
+//               `+91${TEST_PHONE}`,
 
-            otp:
-              LOGIN_OTP,
+//             otp:
+//               LOGIN_OTP,
 
-            contactType:
-              'phone',
-          });
+//             contactType:
+//               'phone',
+//           });
 
 
-          await route.fulfill({
-            status: 200,
-            contentType: 'application/json',
+//           await route.fulfill({
+//             status: 200,
+//             contentType: 'application/json',
 
-            body: JSON.stringify({
+//             body: JSON.stringify({
 
-              success:
-                true,
+//               success:
+//                 true,
 
-              isNewUser:
-                false,
+//               isNewUser:
+//                 false,
 
-              isActive:
-                true,
+//               isActive:
+//                 true,
 
-              role:
-                'user',
+//               role:
+//                 'user',
 
-              user: {
+//               user: {
 
-                id:
-                  TEST_USER_ID,
+//                 id:
+//                   TEST_USER_ID,
 
-                UserId:
-                  TEST_USER_ID,
+//                 UserId:
+//                   TEST_USER_ID,
 
-                username:
-                  'existinguser',
+//                 username:
+//                   'existinguser',
 
-                email:
-                  TEST_EMAIL,
+//                 email:
+//                   TEST_EMAIL,
 
-                phone:
-                  `+91${TEST_PHONE}`,
+//                 phone:
+//                   `+91${TEST_PHONE}`,
 
-                status:
-                  'Active',
+//                 status:
+//                   'Active',
 
-                consentRequired:
-                  false,
-              },
-            }),
-          });
+//                 consentRequired:
+//                   false,
+//               },
+//             }),
+//           });
 
-        }
-      );
+//         }
+//       );
 
 
-      // ----------------------------------------------------------
-      // USER LOOKUP
-      // ----------------------------------------------------------
+//       // ----------------------------------------------------------
+//       // USER LOOKUP
+//       // ----------------------------------------------------------
 
-      await page.route(
-        '**/api/user/lookup*',
-        async route => {
+//       await page.route(
+//         '**/api/user/lookup*',
+//         async route => {
 
-          await route.fulfill({
-            status: 200,
-            contentType:
-              'application/json',
+//           await route.fulfill({
+//             status: 200,
+//             contentType:
+//               'application/json',
 
-            body: JSON.stringify({
+//             body: JSON.stringify({
 
-              success:
-                true,
+//               success:
+//                 true,
 
-              isNewUser:
-                false,
+//               isNewUser:
+//                 false,
 
-              isActive:
-                true,
+//               isActive:
+//                 true,
 
-              role:
-                'user',
+//               role:
+//                 'user',
 
-              data: {
+//               data: {
 
-                userId:
-                  TEST_USER_ID,
+//                 userId:
+//                   TEST_USER_ID,
 
-                email:
-                  TEST_EMAIL,
-              },
-            }),
-          });
+//                 email:
+//                   TEST_EMAIL,
+//               },
+//             }),
+//           });
 
-        }
-      );
+//         }
+//       );
 
 
-      // ----------------------------------------------------------
-      // CONSENT
-      // ----------------------------------------------------------
+//       // ----------------------------------------------------------
+//       // CONSENT
+//       // ----------------------------------------------------------
 
-      await page.route(
-        '**/api/user/consent*',
-        async route => {
+//       await page.route(
+//         '**/api/user/consent*',
+//         async route => {
 
-          if (
-            route.request().method() ===
-            'GET'
-          ) {
+//           if (
+//             route.request().method() ===
+//             'GET'
+//           ) {
 
-            await route.fulfill({
-              status: 200,
-              contentType:
-                'application/json',
+//             await route.fulfill({
+//               status: 200,
+//               contentType:
+//                 'application/json',
 
-              body: JSON.stringify({
+//               body: JSON.stringify({
 
-                success:
-                  true,
+//                 success:
+//                   true,
 
-                consentRequired:
-                  false,
+//                 consentRequired:
+//                   false,
 
-                consentAccepted:
-                  true,
-              }),
-            });
+//                 consentAccepted:
+//                   true,
+//               }),
+//             });
 
-            return;
-          }
+//             return;
+//           }
 
 
-          await route.continue();
+//           await route.continue();
 
-        }
-      );
+//         }
+//       );
 
 
-      // ----------------------------------------------------------
-      // PROFILE GET + POST
-      // ----------------------------------------------------------
+//       // ----------------------------------------------------------
+//       // PROFILE GET + POST
+//       // ----------------------------------------------------------
 
-      await page.route(
-        '**/api/user/profile*',
-        async route => {
+//       await page.route(
+//         '**/api/user/profile*',
+//         async route => {
 
-          const method =
-            route.request().method();
+//           const method =
+//             route.request().method();
 
 
-          // ------------------------------------------------------
-          // GET
-          // ------------------------------------------------------
+//           // ------------------------------------------------------
+//           // GET
+//           // ------------------------------------------------------
 
-          if (
-            method === 'GET'
-          ) {
+//           if (
+//             method === 'GET'
+//           ) {
 
-            await route.fulfill({
-              status: 200,
-              contentType:
-                'application/json',
+//             await route.fulfill({
+//               status: 200,
+//               contentType:
+//                 'application/json',
 
-              body: JSON.stringify({
+//               body: JSON.stringify({
 
-                success:
-                  true,
+//                 success:
+//                   true,
 
-                data: {
+//                 data: {
 
-                  userId:
-                    TEST_USER_ID,
+//                   userId:
+//                     TEST_USER_ID,
 
-                  userName:
-                    'Nitheesh Lingam',
+//                   userName:
+//                     'Nitheesh Lingam',
 
-                  email:
-                    TEST_EMAIL,
+//                   email:
+//                     TEST_EMAIL,
 
-                  phoneNumber:
-                    TEST_PHONE,
+//                   phoneNumber:
+//                     TEST_PHONE,
 
-                  gender:
-                    'Male',
+//                   gender:
+//                     'Male',
 
-                  height:
-                    170,
+//                   height:
+//                     170,
 
-                  communityId:
-                    'WB12345',
+//                   communityId:
+//                     'WB12345',
 
-                  dietType:
-                    'Vegetarian',
+//                   dietType:
+//                     'Vegetarian',
 
-                  latestWeight:
-                    72.5,
+//                   latestWeight:
+//                     72.5,
 
-                  latestWeightBodyFat:
-                    22,
+//                   latestWeightBodyFat:
+//                     22,
 
-                  latestBmr:
-                    1424,
+//                   latestBmr:
+//                     1424,
 
-                  bodyFat:
-                    22,
+//                   bodyFat:
+//                     22,
 
-                  physicalActivityLevel:
-                    'moderate',
+//                   physicalActivityLevel:
+//                     'moderate',
 
-                  profileImage:
-                    'https://example.com/profile.jpg',
+//                   profileImage:
+//                     'https://example.com/profile.jpg',
 
-                  profileComplete:
-                    true,
+//                   profileComplete:
+//                     true,
 
-                  weightGoalMode:
-                    'loss',
-                },
-              }),
-            });
+//                   weightGoalMode:
+//                     'loss',
+//                 },
+//               }),
+//             });
 
-            return;
-          }
+//             return;
+//           }
 
 
-          // ------------------------------------------------------
-          // POST
-          // ------------------------------------------------------
+//           // ------------------------------------------------------
+//           // POST
+//           // ------------------------------------------------------
 
-          if (
-            method === 'POST'
-          ) {
+//           if (
+//             method === 'POST'
+//           ) {
 
-            const body =
-              route.request().postDataJSON();
+//             const body =
+//               route.request().postDataJSON();
 
 
-            console.log(
-              'CP-024 PROFILE POST:',
-              body
-            );
+//             console.log(
+//               'CP-024 PROFILE POST:',
+//               body
+//             );
 
 
-            profilePosts.push({
-              ...body,
-            });
+//             profilePosts.push({
+//               ...body,
+//             });
 
 
-            await route.fulfill({
-              status: 200,
-              contentType:
-                'application/json',
+//             await route.fulfill({
+//               status: 200,
+//               contentType:
+//                 'application/json',
 
-              body: JSON.stringify({
+//               body: JSON.stringify({
 
-                success:
-                  true,
+//                 success:
+//                   true,
 
-                message:
-                  'Profile saved successfully!',
+//                 message:
+//                   'Profile saved successfully!',
 
-                data: {
+//                 data: {
 
-                  ...body,
+//                   ...body,
 
-                  userId:
-                    TEST_USER_ID,
+//                   userId:
+//                     TEST_USER_ID,
 
-                  profileComplete:
-                    true,
-                },
-              }),
-            });
+//                   profileComplete:
+//                     true,
+//                 },
+//               }),
+//             });
 
-            return;
-          }
+//             return;
+//           }
 
 
-          await route.continue();
+//           await route.continue();
 
-        }
-      );
+//         }
+//       );
 
 
-      // ----------------------------------------------------------
-      // USER STATUS
-      // ----------------------------------------------------------
+//       // ----------------------------------------------------------
+//       // USER STATUS
+//       // ----------------------------------------------------------
 
-      await page.route(
-        '**/api/user/status*',
-        async route => {
+//       await page.route(
+//         '**/api/user/status*',
+//         async route => {
 
-          await route.fulfill({
-            status: 200,
-            contentType:
-              'application/json',
+//           await route.fulfill({
+//             status: 200,
+//             contentType:
+//               'application/json',
 
-            body: JSON.stringify({
+//             body: JSON.stringify({
 
-              success:
-                true,
+//               success:
+//                 true,
 
-              setupComplete:
-                true,
+//               setupComplete:
+//                 true,
 
-              setupSkipped:
-                true,
+//               setupSkipped:
+//                 true,
 
-              hasTeamId:
-                true,
+//               hasTeamId:
+//                 true,
 
-              hasUpline:
-                true,
+//               hasUpline:
+//                 true,
 
-              teamId:
-                1,
+//               teamId:
+//                 1,
 
-              uplineCoachId:
-                12345,
+//               uplineCoachId:
+//                 12345,
 
-              role:
-                'user',
+//               role:
+//                 'user',
 
-              pendingRequest:
-                null,
+//               pendingRequest:
+//                 null,
 
-              redirectTo:
-                null,
-            }),
-          });
+//               redirectTo:
+//                 null,
+//             }),
+//           });
 
-        }
-      );
+//         }
+//       );
 
 
-      return profilePosts;
+//       return profilePosts;
 
-    }
+//     }
 
 
-    // ============================================================
-    // LOGIN + OPEN PROFILE
-    // ============================================================
+//     // ============================================================
+//     // LOGIN + OPEN PROFILE
+//     // ============================================================
 
-    async function loginAndOpenProfile() {
+//     async function loginAndOpenProfile() {
 
-      await page.goto('/');
+//       await page.goto('/');
 
 
-      // ----------------------------------------------------------
-      // MOBILE
-      // ----------------------------------------------------------
+//       // ----------------------------------------------------------
+//       // MOBILE
+//       // ----------------------------------------------------------
 
-      const mobileInput =
-        page.getByLabel(
-          'Mobile Number'
-        );
+//       const mobileInput =
+//         page.getByLabel(
+//           'Mobile Number'
+//         );
 
 
-      await expect(
-        mobileInput
-      ).toBeVisible({
-        timeout:
-          15000,
-      });
+//       await expect(
+//         mobileInput
+//       ).toBeVisible({
+//         timeout:
+//           15000,
+//       });
 
 
-      await mobileInput.fill(
-        TEST_PHONE
-      );
+//       await mobileInput.fill(
+//         TEST_PHONE
+//       );
 
 
-      await page
-        .getByRole(
-          'button',
-          {
-            name:
-              'Send OTP',
+//       await page
+//         .getByRole(
+//           'button',
+//           {
+//             name:
+//               'Send OTP',
 
-            exact:
-              true,
-          }
-        )
-        .click();
+//             exact:
+//               true,
+//           }
+//         )
+//         .click();
 
 
-      // ----------------------------------------------------------
-      // OTP
-      // ----------------------------------------------------------
+//       // ----------------------------------------------------------
+//       // OTP
+//       // ----------------------------------------------------------
 
-      await expect(
-        page.getByText(
-          'Enter OTP',
-          {
-            exact:
-              true,
-          }
-        )
-      ).toBeVisible({
-        timeout:
-          15000,
-      });
+//       await expect(
+//         page.getByText(
+//           'Enter OTP',
+//           {
+//             exact:
+//               true,
+//           }
+//         )
+//       ).toBeVisible({
+//         timeout:
+//           15000,
+//       });
 
 
-      const otpInputs =
-        page.locator(
-          'input[type="tel"]'
-        );
+//       const otpInputs =
+//         page.locator(
+//           'input[type="tel"]'
+//         );
 
 
-      await expect(
-        otpInputs
-      ).toHaveCount(
-        6
-      );
+//       await expect(
+//         otpInputs
+//       ).toHaveCount(
+//         6
+//       );
 
 
-      for (
-        let i = 0;
-        i < LOGIN_OTP.length;
-        i++
-      ) {
+//       for (
+//         let i = 0;
+//         i < LOGIN_OTP.length;
+//         i++
+//       ) {
 
-        await otpInputs
-          .nth(i)
-          .fill(
-            LOGIN_OTP[i]
-          );
+//         await otpInputs
+//           .nth(i)
+//           .fill(
+//             LOGIN_OTP[i]
+//           );
 
-      }
+//       }
 
 
-      // ----------------------------------------------------------
-      // WAIT FOR LOGIN
-      // ----------------------------------------------------------
+//       // ----------------------------------------------------------
+//       // WAIT FOR LOGIN
+//       // ----------------------------------------------------------
 
-      await expect
-        .poll(
-          async () => {
+//       await expect
+//         .poll(
+//           async () => {
 
-            return await page.evaluate(
-              () => {
+//             return await page.evaluate(
+//               () => {
 
-                const rawUser =
-                  localStorage.getItem(
-                    'otpUser'
-                  );
+//                 const rawUser =
+//                   localStorage.getItem(
+//                     'otpUser'
+//                   );
 
 
-                return {
+//                 return {
 
-                  verified:
-                    localStorage.getItem(
-                      'isOtpVerified'
-                    ),
+//                   verified:
+//                     localStorage.getItem(
+//                       'isOtpVerified'
+//                     ),
 
-                  user:
-                    rawUser
-                      ? JSON.parse(
-                          rawUser
-                        )
-                      : null,
-                };
+//                   user:
+//                     rawUser
+//                       ? JSON.parse(
+//                           rawUser
+//                         )
+//                       : null,
+//                 };
 
-              }
-            );
+//               }
+//             );
 
-          },
-          {
-            timeout:
-              15000,
+//           },
+//           {
+//             timeout:
+//               15000,
 
-            intervals:
-              [
-                200,
-                500,
-                1000,
-              ],
-          }
-        )
-        .toMatchObject({
+//             intervals:
+//               [
+//                 200,
+//                 500,
+//                 1000,
+//               ],
+//           }
+//         )
+//         .toMatchObject({
 
-          verified:
-            'true',
+//           verified:
+//             'true',
 
-          user: {
-            isNewUser:
-              false,
-          },
-        });
+//           user: {
+//             isNewUser:
+//               false,
+//           },
+//         });
 
 
-      // ----------------------------------------------------------
-      // MY PROFILE
-      // ----------------------------------------------------------
+//       // ----------------------------------------------------------
+//       // MY PROFILE
+//       // ----------------------------------------------------------
 
-      const myProfileButton =
-        page.getByRole(
-          'button',
-          {
-            name:
-              'My Profile',
+//       const myProfileButton =
+//         page.getByRole(
+//           'button',
+//           {
+//             name:
+//               'My Profile',
 
-            exact:
-              true,
-          }
-        );
+//             exact:
+//               true,
+//           }
+//         );
 
 
-      await expect(
-        myProfileButton
-      ).toBeVisible({
-        timeout:
-          20000,
-      });
+//       await expect(
+//         myProfileButton
+//       ).toBeVisible({
+//         timeout:
+//           20000,
+//       });
 
 
-      await myProfileButton.click();
+//       await myProfileButton.click();
 
 
-      // ----------------------------------------------------------
-      // PROFILE PAGE
-      // ----------------------------------------------------------
+//       // ----------------------------------------------------------
+//       // PROFILE PAGE
+//       // ----------------------------------------------------------
 
-      await expect(
-        page.getByRole(
-          'heading',
-          {
-            name:
-              'My Profile',
+//       await expect(
+//         page.getByRole(
+//           'heading',
+//           {
+//             name:
+//               'My Profile',
 
-            exact:
-              true,
-          }
-        )
-      ).toBeVisible({
-        timeout:
-          15000,
-      });
+//             exact:
+//               true,
+//           }
+//         )
+//       ).toBeVisible({
+//         timeout:
+//           15000,
+//       });
 
 
-      await expect(
-        page.getByText(
-          'Personal Details',
-          {
-            exact:
-              true,
-          }
-        )
-      ).toBeVisible({
-        timeout:
-          10000,
-      });
+//       await expect(
+//         page.getByText(
+//           'Personal Details',
+//           {
+//             exact:
+//               true,
+//           }
+//         )
+//       ).toBeVisible({
+//         timeout:
+//           10000,
+//       });
 
-    }
+//     }
 
 
-    // ============================================================
-    // GET PHYSICAL ACTIVITY + SAVE BUTTON
-    // ============================================================
+//     // ============================================================
+//     // GET PHYSICAL ACTIVITY + SAVE BUTTON
+//     // ============================================================
 
-    async function getPhysicalActivityLocators() {
+//     async function getPhysicalActivityLocators() {
 
-      const personalDetailsHeading =
-        page.getByText(
-          'Personal Details',
-          {
-            exact:
-              true,
-          }
-        );
+//       const personalDetailsHeading =
+//         page.getByText(
+//           'Personal Details',
+//           {
+//             exact:
+//               true,
+//           }
+//         );
 
 
-      const personalDetailsSection =
-        personalDetailsHeading.locator(
-          'xpath=ancestor::div[contains(@class,"bg-white")][1]'
-        );
+//       const personalDetailsSection =
+//         personalDetailsHeading.locator(
+//           'xpath=ancestor::div[contains(@class,"bg-white")][1]'
+//         );
 
 
-      const selects =
-        personalDetailsSection.locator(
-          'select'
-        );
+//       const selects =
+//         personalDetailsSection.locator(
+//           'select'
+//         );
 
 
-      await expect(
-        selects
-      ).toHaveCount(
-        2
-      );
+//       await expect(
+//         selects
+//       ).toHaveCount(
+//         2
+//       );
 
 
-      // First select = Gender
-      // Second select = Physical Activity
+//       // First select = Gender
+//       // Second select = Physical Activity
 
-      const physicalActivitySelect =
-        selects.nth(1);
+//       const physicalActivitySelect =
+//         selects.nth(1);
 
 
-      const saveButton =
-        page.getByRole(
-          'button',
-          {
-            name:
-              'Save profile',
+//       const saveButton =
+//         page.getByRole(
+//           'button',
+//           {
+//             name:
+//               'Save profile',
 
-            exact:
-              true,
-          }
-        );
+//             exact:
+//               true,
+//           }
+//         );
 
 
-      await expect(
-        physicalActivitySelect
-      ).toBeVisible();
+//       await expect(
+//         physicalActivitySelect
+//       ).toBeVisible();
 
 
-      await expect(
-        saveButton
-      ).toBeVisible({
-        timeout:
-          10000,
-      });
+//       await expect(
+//         saveButton
+//       ).toBeVisible({
+//         timeout:
+//           10000,
+//       });
 
 
-      return {
-        physicalActivitySelect,
-        saveButton,
-      };
+//       return {
+//         physicalActivitySelect,
+//         saveButton,
+//       };
 
-    }
+//     }
 
 
-    // ============================================================
-    // CASE 1
-    // VERIFY DEFAULT VALUE + ALL OPTIONS
-    // ============================================================
+//     // ============================================================
+//     // CASE 1
+//     // VERIFY DEFAULT VALUE + ALL OPTIONS
+//     // ============================================================
 
-    {
+//     {
 
-      const profilePosts =
-        await setupMocks();
+//       const profilePosts =
+//         await setupMocks();
 
 
-      await loginAndOpenProfile();
+//       await loginAndOpenProfile();
 
 
-      const {
-        physicalActivitySelect,
-      } =
-        await getPhysicalActivityLocators();
+//       const {
+//         physicalActivitySelect,
+//       } =
+//         await getPhysicalActivityLocators();
 
 
-      // ----------------------------------------------------------
-      // Existing value
-      // ----------------------------------------------------------
+//       // ----------------------------------------------------------
+//       // Existing value
+//       // ----------------------------------------------------------
 
-      await expect(
-        physicalActivitySelect
-      ).toHaveValue(
-        'moderate'
-      );
+//       await expect(
+//         physicalActivitySelect
+//       ).toHaveValue(
+//         'moderate'
+//       );
 
 
-      // ----------------------------------------------------------
-      // Read actual option texts
-      // ----------------------------------------------------------
+//       // ----------------------------------------------------------
+//       // Read actual option texts
+//       // ----------------------------------------------------------
 
-      const options =
-        await physicalActivitySelect
-          .locator('option')
-          .allTextContents();
+//       const options =
+//         await physicalActivitySelect
+//           .locator('option')
+//           .allTextContents();
 
 
-      const cleanedOptions =
-        options.map(
-          option =>
-            option.trim()
-        );
+//       const cleanedOptions =
+//         options.map(
+//           option =>
+//             option.trim()
+//         );
 
 
-      // Actual DOM contains:
-      //
-      // Select activity level
-      // Sedentary
-      // Light Active
-      // Moderate
-      // Very Active
-      // Highly Active
-      //
+//       // Actual DOM contains:
+//       //
+//       // Select activity level
+//       // Sedentary
+//       // Light Active
+//       // Moderate
+//       // Very Active
+//       // Highly Active
+//       //
 
-      expect(
-        cleanedOptions
-      ).toEqual([
-        'Select activity level',
-        'Sedentary',
-        'Light Active',
-        'Moderate',
-        'Very Active',
-        'Highly Active',
-      ]);
+//       expect(
+//         cleanedOptions
+//       ).toEqual([
+//         'Select activity level',
+//         'Sedentary',
+//         'Light Active',
+//         'Moderate',
+//         'Very Active',
+//         'Highly Active',
+//       ]);
 
 
-      // Verify the five real choices separately.
-      expect(
-        cleanedOptions.slice(1)
-      ).toEqual([
-        'Sedentary',
-        'Light Active',
-        'Moderate',
-        'Very Active',
-        'Highly Active',
-      ]);
+//       // Verify the five real choices separately.
+//       expect(
+//         cleanedOptions.slice(1)
+//       ).toEqual([
+//         'Sedentary',
+//         'Light Active',
+//         'Moderate',
+//         'Very Active',
+//         'Highly Active',
+//       ]);
 
 
-      expect(
-        profilePosts.length
-      ).toBe(0);
+//       expect(
+//         profilePosts.length
+//       ).toBe(0);
 
 
-      console.log(
-        'CP-024 PHYSICAL ACTIVITY OPTIONS VERIFIED'
-      );
+//       console.log(
+//         'CP-024 PHYSICAL ACTIVITY OPTIONS VERIFIED'
+//       );
 
-    }
+//     }
 
 
-    // ============================================================
-    // CASE 2
-    // SEDENTARY → SAVE
-    // ============================================================
+//     // ============================================================
+//     // CASE 2
+//     // SEDENTARY → SAVE
+//     // ============================================================
 
-    {
+//     {
 
-      const profilePosts =
-        await setupMocks();
+//       const profilePosts =
+//         await setupMocks();
 
 
-      await loginAndOpenProfile();
+//       await loginAndOpenProfile();
 
 
-      const {
-        physicalActivitySelect,
-        saveButton,
-      } =
-        await getPhysicalActivityLocators();
+//       const {
+//         physicalActivitySelect,
+//         saveButton,
+//       } =
+//         await getPhysicalActivityLocators();
 
 
-      await physicalActivitySelect.selectOption({
-        label:
-          'Sedentary',
-      });
+//       await physicalActivitySelect.selectOption({
+//         label:
+//           'Sedentary',
+//       });
 
 
-      await expect(
-        physicalActivitySelect
-      ).toHaveValue(
-        'sedentary'
-      );
+//       await expect(
+//         physicalActivitySelect
+//       ).toHaveValue(
+//         'sedentary'
+//       );
 
 
-      await expect(
-        saveButton
-      ).toBeEnabled();
+//       await expect(
+//         saveButton
+//       ).toBeEnabled();
 
 
-      await saveButton.click();
+//       await saveButton.click();
 
 
-      await expect
-        .poll(
-          () =>
-            profilePosts.length,
-          {
-            timeout:
-              5000,
+//       await expect
+//         .poll(
+//           () =>
+//             profilePosts.length,
+//           {
+//             timeout:
+//               5000,
 
-            intervals:
-              [
-                200,
-                500,
-                1000,
-              ],
-          }
-        )
-        .toBe(1);
+//             intervals:
+//               [
+//                 200,
+//                 500,
+//                 1000,
+//               ],
+//           }
+//         )
+//         .toBe(1);
 
 
-      expect(
-        profilePosts[0]
-      ).toMatchObject({
+//       expect(
+//         profilePosts[0]
+//       ).toMatchObject({
 
-        physicalActivityLevel:
-          'sedentary',
+//         physicalActivityLevel:
+//           'sedentary',
 
-        email:
-          TEST_EMAIL,
+//         email:
+//           TEST_EMAIL,
 
-        name:
-          'Nitheesh Lingam',
+//         name:
+//           'Nitheesh Lingam',
 
-        height:
-          170,
+//         height:
+//           170,
 
-        phoneNumber:
-          TEST_PHONE,
+//         phoneNumber:
+//           TEST_PHONE,
 
-        gender:
-          'Male',
+//         gender:
+//           'Male',
 
-      });
+//       });
 
 
-      console.log(
-        'CP-024 PHYSICAL ACTIVITY SEDENTARY: SAVED'
-      );
+//       console.log(
+//         'CP-024 PHYSICAL ACTIVITY SEDENTARY: SAVED'
+//       );
 
-    }
+//     }
 
 
-    // ============================================================
-    // CASE 3
-    // HIGHLY ACTIVE → SAVE
-    // ============================================================
+//     // ============================================================
+//     // CASE 3
+//     // HIGHLY ACTIVE → SAVE
+//     // ============================================================
 
-    {
+//     {
 
-      const profilePosts =
-        await setupMocks();
+//       const profilePosts =
+//         await setupMocks();
 
 
-      await loginAndOpenProfile();
+//       await loginAndOpenProfile();
 
 
-      const {
-        physicalActivitySelect,
-        saveButton,
-      } =
-        await getPhysicalActivityLocators();
+//       const {
+//         physicalActivitySelect,
+//         saveButton,
+//       } =
+//         await getPhysicalActivityLocators();
 
 
-      await physicalActivitySelect.selectOption({
-        label:
-          'Highly Active',
-      });
+//       await physicalActivitySelect.selectOption({
+//         label:
+//           'Highly Active',
+//       });
 
 
-      await expect(
-        physicalActivitySelect
-      ).toHaveValue(
-        'highly_active'
-      );
+//       await expect(
+//         physicalActivitySelect
+//       ).toHaveValue(
+//         'highly_active'
+//       );
 
 
-      await expect(
-        saveButton
-      ).toBeEnabled();
+//       await expect(
+//         saveButton
+//       ).toBeEnabled();
 
 
-      await saveButton.click();
+//       await saveButton.click();
 
 
-      await expect
-        .poll(
-          () =>
-            profilePosts.length,
-          {
-            timeout:
-              5000,
+//       await expect
+//         .poll(
+//           () =>
+//             profilePosts.length,
+//           {
+//             timeout:
+//               5000,
 
-            intervals:
-              [
-                200,
-                500,
-                1000,
-              ],
-          }
-        )
-        .toBe(1);
+//             intervals:
+//               [
+//                 200,
+//                 500,
+//                 1000,
+//               ],
+//           }
+//         )
+//         .toBe(1);
 
 
-      expect(
-        profilePosts[0]
-      ).toMatchObject({
+//       expect(
+//         profilePosts[0]
+//       ).toMatchObject({
 
-        physicalActivityLevel:
-          'highly_active',
+//         physicalActivityLevel:
+//           'highly_active',
 
-        email:
-          TEST_EMAIL,
+//         email:
+//           TEST_EMAIL,
 
-        name:
-          'Nitheesh Lingam',
+//         name:
+//           'Nitheesh Lingam',
 
-        height:
-          170,
+//         height:
+//           170,
 
-        phoneNumber:
-          TEST_PHONE,
+//         phoneNumber:
+//           TEST_PHONE,
 
-        gender:
-          'Male',
+//         gender:
+//           'Male',
 
-      });
+//       });
 
 
-      console.log(
-        'CP-024 PHYSICAL ACTIVITY HIGHLY ACTIVE: SAVED'
-      );
+//       console.log(
+//         'CP-024 PHYSICAL ACTIVITY HIGHLY ACTIVE: SAVED'
+//       );
 
-    }
+//     }
 
 
-    console.log(
-      'CP-024 PHYSICAL ACTIVITY VALIDATION VERIFIED'
-    );
+//     console.log(
+//       'CP-024 PHYSICAL ACTIVITY VALIDATION VERIFIED'
+//     );
 
-  }
-);
+//   }
+// );
 
-test(
-  'CP-025 Profile Diet Preference validates available values',
-  async ({ page }) => {
+// test(
+//   'CP-025 Profile Diet Preference validates available values',
+//   async ({ page }) => {
 
-    // ============================================================
-    // TEST DATA
-    // ============================================================
+//     // ============================================================
+//     // TEST DATA
+//     // ============================================================
 
-    const TEST_PHONE = '7695834209';
-    const LOGIN_OTP = '123456';
-    const TEST_EMAIL = 'existing@test.com';
-    const TEST_USER_ID = 861;
+//     const TEST_PHONE = '7695834209';
+//     const LOGIN_OTP = '123456';
+//     const TEST_EMAIL = 'existing@test.com';
+//     const TEST_USER_ID = 861;
 
 
-    // ============================================================
-    // SETUP MOCKS
-    // ============================================================
+//     // ============================================================
+//     // SETUP MOCKS
+//     // ============================================================
 
-    async function setupMocks() {
+//     async function setupMocks() {
 
-      const profilePosts = [];
+//       const profilePosts = [];
 
 
-      // ----------------------------------------------------------
-      // SEND OTP
-      // ----------------------------------------------------------
+//       // ----------------------------------------------------------
+//       // SEND OTP
+//       // ----------------------------------------------------------
 
-      await page.route(
-        '**/api/auth/send-otp',
-        async route => {
+//       await page.route(
+//         '**/api/auth/send-otp',
+//         async route => {
 
-          await route.fulfill({
-            status: 200,
-            contentType: 'application/json',
+//           await route.fulfill({
+//             status: 200,
+//             contentType: 'application/json',
 
-            body: JSON.stringify({
-              success: true,
-            }),
-          });
+//             body: JSON.stringify({
+//               success: true,
+//             }),
+//           });
 
-        }
-      );
+//         }
+//       );
 
 
-      // ----------------------------------------------------------
-      // VERIFY LOGIN OTP
-      // ----------------------------------------------------------
+//       // ----------------------------------------------------------
+//       // VERIFY LOGIN OTP
+//       // ----------------------------------------------------------
 
-      await page.route(
-        '**/api/auth/verify-otp',
-        async route => {
+//       await page.route(
+//         '**/api/auth/verify-otp',
+//         async route => {
 
-          const body =
-            route.request().postDataJSON();
+//           const body =
+//             route.request().postDataJSON();
 
-          expect(
-            body
-          ).toMatchObject({
+//           expect(
+//             body
+//           ).toMatchObject({
 
-            recipient:
-              `+91${TEST_PHONE}`,
+//             recipient:
+//               `+91${TEST_PHONE}`,
 
-            otp:
-              LOGIN_OTP,
+//             otp:
+//               LOGIN_OTP,
 
-            contactType:
-              'phone',
-          });
+//             contactType:
+//               'phone',
+//           });
 
 
-          await route.fulfill({
-            status: 200,
-            contentType: 'application/json',
+//           await route.fulfill({
+//             status: 200,
+//             contentType: 'application/json',
 
-            body: JSON.stringify({
+//             body: JSON.stringify({
 
-              success:
-                true,
+//               success:
+//                 true,
 
-              isNewUser:
-                false,
+//               isNewUser:
+//                 false,
 
-              isActive:
-                true,
+//               isActive:
+//                 true,
 
-              role:
-                'user',
+//               role:
+//                 'user',
 
-              user: {
+//               user: {
 
-                id:
-                  TEST_USER_ID,
+//                 id:
+//                   TEST_USER_ID,
 
-                UserId:
-                  TEST_USER_ID,
+//                 UserId:
+//                   TEST_USER_ID,
 
-                username:
-                  'existinguser',
+//                 username:
+//                   'existinguser',
 
-                email:
-                  TEST_EMAIL,
+//                 email:
+//                   TEST_EMAIL,
 
-                phone:
-                  `+91${TEST_PHONE}`,
+//                 phone:
+//                   `+91${TEST_PHONE}`,
 
-                status:
-                  'Active',
+//                 status:
+//                   'Active',
 
-                consentRequired:
-                  false,
-              },
-            }),
-          });
+//                 consentRequired:
+//                   false,
+//               },
+//             }),
+//           });
 
-        }
-      );
+//         }
+//       );
 
 
-      // ----------------------------------------------------------
-      // USER LOOKUP
-      // ----------------------------------------------------------
+//       // ----------------------------------------------------------
+//       // USER LOOKUP
+//       // ----------------------------------------------------------
 
-      await page.route(
-        '**/api/user/lookup*',
-        async route => {
+//       await page.route(
+//         '**/api/user/lookup*',
+//         async route => {
 
-          await route.fulfill({
-            status: 200,
-            contentType: 'application/json',
+//           await route.fulfill({
+//             status: 200,
+//             contentType: 'application/json',
 
-            body: JSON.stringify({
+//             body: JSON.stringify({
 
-              success:
-                true,
+//               success:
+//                 true,
 
-              isNewUser:
-                false,
+//               isNewUser:
+//                 false,
 
-              isActive:
-                true,
+//               isActive:
+//                 true,
 
-              role:
-                'user',
+//               role:
+//                 'user',
 
-              data: {
+//               data: {
 
-                userId:
-                  TEST_USER_ID,
+//                 userId:
+//                   TEST_USER_ID,
 
-                email:
-                  TEST_EMAIL,
-              },
-            }),
-          });
+//                 email:
+//                   TEST_EMAIL,
+//               },
+//             }),
+//           });
 
-        }
-      );
+//         }
+//       );
 
 
-      // ----------------------------------------------------------
-      // CONSENT
-      // ----------------------------------------------------------
+//       // ----------------------------------------------------------
+//       // CONSENT
+//       // ----------------------------------------------------------
 
-      await page.route(
-        '**/api/user/consent*',
-        async route => {
+//       await page.route(
+//         '**/api/user/consent*',
+//         async route => {
 
-          if (
-            route.request().method() ===
-            'GET'
-          ) {
+//           if (
+//             route.request().method() ===
+//             'GET'
+//           ) {
 
-            await route.fulfill({
-              status: 200,
-              contentType:
-                'application/json',
+//             await route.fulfill({
+//               status: 200,
+//               contentType:
+//                 'application/json',
 
-              body: JSON.stringify({
+//               body: JSON.stringify({
 
-                success:
-                  true,
+//                 success:
+//                   true,
 
-                consentRequired:
-                  false,
+//                 consentRequired:
+//                   false,
 
-                consentAccepted:
-                  true,
-              }),
-            });
+//                 consentAccepted:
+//                   true,
+//               }),
+//             });
 
-            return;
-          }
+//             return;
+//           }
 
 
-          await route.continue();
+//           await route.continue();
 
-        }
-      );
+//         }
+//       );
 
 
-      // ----------------------------------------------------------
-      // PROFILE GET + POST
-      // ----------------------------------------------------------
+//       // ----------------------------------------------------------
+//       // PROFILE GET + POST
+//       // ----------------------------------------------------------
 
-      await page.route(
-        '**/api/user/profile*',
-        async route => {
+//       await page.route(
+//         '**/api/user/profile*',
+//         async route => {
 
-          const method =
-            route.request().method();
+//           const method =
+//             route.request().method();
 
 
-          // GET
-          if (
-            method === 'GET'
-          ) {
+//           // GET
+//           if (
+//             method === 'GET'
+//           ) {
 
-            await route.fulfill({
-              status: 200,
-              contentType:
-                'application/json',
+//             await route.fulfill({
+//               status: 200,
+//               contentType:
+//                 'application/json',
 
-              body: JSON.stringify({
+//               body: JSON.stringify({
 
-                success:
-                  true,
+//                 success:
+//                   true,
 
-                data: {
+//                 data: {
 
-                  userId:
-                    TEST_USER_ID,
+//                   userId:
+//                     TEST_USER_ID,
 
-                  userName:
-                    'Nitheesh Lingam',
+//                   userName:
+//                     'Nitheesh Lingam',
 
-                  email:
-                    TEST_EMAIL,
+//                   email:
+//                     TEST_EMAIL,
 
-                  phoneNumber:
-                    TEST_PHONE,
+//                   phoneNumber:
+//                     TEST_PHONE,
 
-                  gender:
-                    'Male',
+//                   gender:
+//                     'Male',
 
-                  height:
-                    170,
+//                   height:
+//                     170,
 
-                  communityId:
-                    'WB12345',
+//                   communityId:
+//                     'WB12345',
 
-                  dietType:
-                    'Vegetarian',
+//                   dietType:
+//                     'Vegetarian',
 
-                  latestWeight:
-                    72.5,
+//                   latestWeight:
+//                     72.5,
 
-                  latestWeightBodyFat:
-                    22,
+//                   latestWeightBodyFat:
+//                     22,
 
-                  latestBmr:
-                    1424,
+//                   latestBmr:
+//                     1424,
 
-                  bodyFat:
-                    22,
+//                   bodyFat:
+//                     22,
 
-                  physicalActivityLevel:
-                    'moderate',
+//                   physicalActivityLevel:
+//                     'moderate',
 
-                  profileImage:
-                    'https://example.com/profile.jpg',
+//                   profileImage:
+//                     'https://example.com/profile.jpg',
 
-                  profileComplete:
-                    true,
+//                   profileComplete:
+//                     true,
 
-                  weightGoalMode:
-                    'loss',
-                },
-              }),
-            });
+//                   weightGoalMode:
+//                     'loss',
+//                 },
+//               }),
+//             });
 
-            return;
-          }
+//             return;
+//           }
 
 
-          // POST
-          if (
-            method === 'POST'
-          ) {
+//           // POST
+//           if (
+//             method === 'POST'
+//           ) {
 
-            const body =
-              route.request().postDataJSON();
+//             const body =
+//               route.request().postDataJSON();
 
-            console.log(
-              'CP-025 PROFILE POST:',
-              body
-            );
+//             console.log(
+//               'CP-025 PROFILE POST:',
+//               body
+//             );
 
-            profilePosts.push({
-              ...body,
-            });
+//             profilePosts.push({
+//               ...body,
+//             });
 
 
-            await route.fulfill({
-              status: 200,
-              contentType:
-                'application/json',
+//             await route.fulfill({
+//               status: 200,
+//               contentType:
+//                 'application/json',
 
-              body: JSON.stringify({
+//               body: JSON.stringify({
 
-                success:
-                  true,
+//                 success:
+//                   true,
 
-                message:
-                  'Profile saved successfully!',
+//                 message:
+//                   'Profile saved successfully!',
 
-                data: {
+//                 data: {
 
-                  ...body,
+//                   ...body,
 
-                  userId:
-                    TEST_USER_ID,
+//                   userId:
+//                     TEST_USER_ID,
 
-                  profileComplete:
-                    true,
-                },
-              }),
-            });
+//                   profileComplete:
+//                     true,
+//                 },
+//               }),
+//             });
 
-            return;
-          }
+//             return;
+//           }
 
 
-          await route.continue();
+//           await route.continue();
 
-        }
-      );
+//         }
+//       );
 
 
-      // ----------------------------------------------------------
-      // USER STATUS
-      // ----------------------------------------------------------
+//       // ----------------------------------------------------------
+//       // USER STATUS
+//       // ----------------------------------------------------------
 
-      await page.route(
-        '**/api/user/status*',
-        async route => {
+//       await page.route(
+//         '**/api/user/status*',
+//         async route => {
 
-          await route.fulfill({
-            status: 200,
-            contentType:
-              'application/json',
+//           await route.fulfill({
+//             status: 200,
+//             contentType:
+//               'application/json',
 
-            body: JSON.stringify({
+//             body: JSON.stringify({
 
-              success:
-                true,
+//               success:
+//                 true,
 
-              setupComplete:
-                true,
+//               setupComplete:
+//                 true,
 
-              setupSkipped:
-                true,
+//               setupSkipped:
+//                 true,
 
-              hasTeamId:
-                true,
+//               hasTeamId:
+//                 true,
 
-              hasUpline:
-                true,
+//               hasUpline:
+//                 true,
 
-              teamId:
-                1,
+//               teamId:
+//                 1,
 
-              uplineCoachId:
-                12345,
+//               uplineCoachId:
+//                 12345,
 
-              role:
-                'user',
+//               role:
+//                 'user',
 
-              pendingRequest:
-                null,
+//               pendingRequest:
+//                 null,
 
-              redirectTo:
-                null,
-            }),
-          });
+//               redirectTo:
+//                 null,
+//             }),
+//           });
 
-        }
-      );
+//         }
+//       );
 
 
-      return profilePosts;
+//       return profilePosts;
 
-    }
+//     }
 
 
-    // ============================================================
-    // LOGIN + OPEN PROFILE
-    // ============================================================
+//     // ============================================================
+//     // LOGIN + OPEN PROFILE
+//     // ============================================================
 
-    async function loginAndOpenProfile() {
+//     async function loginAndOpenProfile() {
 
-      await page.goto('/');
+//       await page.goto('/');
 
 
-      // ----------------------------------------------------------
-      // MOBILE
-      // ----------------------------------------------------------
+//       // ----------------------------------------------------------
+//       // MOBILE
+//       // ----------------------------------------------------------
 
-      const mobileInput =
-        page.getByLabel(
-          'Mobile Number'
-        );
+//       const mobileInput =
+//         page.getByLabel(
+//           'Mobile Number'
+//         );
 
 
-      await expect(
-        mobileInput
-      ).toBeVisible({
-        timeout:
-          15000,
-      });
+//       await expect(
+//         mobileInput
+//       ).toBeVisible({
+//         timeout:
+//           15000,
+//       });
 
 
-      await mobileInput.fill(
-        TEST_PHONE
-      );
+//       await mobileInput.fill(
+//         TEST_PHONE
+//       );
 
 
-      await page
-        .getByRole(
-          'button',
-          {
-            name:
-              'Send OTP',
+//       await page
+//         .getByRole(
+//           'button',
+//           {
+//             name:
+//               'Send OTP',
 
-            exact:
-              true,
-          }
-        )
-        .click();
+//             exact:
+//               true,
+//           }
+//         )
+//         .click();
 
 
-      // ----------------------------------------------------------
-      // OTP
-      // ----------------------------------------------------------
+//       // ----------------------------------------------------------
+//       // OTP
+//       // ----------------------------------------------------------
 
-      await expect(
-        page.getByText(
-          'Enter OTP',
-          {
-            exact:
-              true,
-          }
-        )
-      ).toBeVisible({
-        timeout:
-          15000,
-      });
+//       await expect(
+//         page.getByText(
+//           'Enter OTP',
+//           {
+//             exact:
+//               true,
+//           }
+//         )
+//       ).toBeVisible({
+//         timeout:
+//           15000,
+//       });
 
 
-      const otpInputs =
-        page.locator(
-          'input[type="tel"]'
-        );
+//       const otpInputs =
+//         page.locator(
+//           'input[type="tel"]'
+//         );
 
 
-      await expect(
-        otpInputs
-      ).toHaveCount(
-        6
-      );
+//       await expect(
+//         otpInputs
+//       ).toHaveCount(
+//         6
+//       );
 
 
-      for (
-        let i = 0;
-        i < LOGIN_OTP.length;
-        i++
-      ) {
+//       for (
+//         let i = 0;
+//         i < LOGIN_OTP.length;
+//         i++
+//       ) {
 
-        await otpInputs
-          .nth(i)
-          .fill(
-            LOGIN_OTP[i]
-          );
+//         await otpInputs
+//           .nth(i)
+//           .fill(
+//             LOGIN_OTP[i]
+//           );
 
-      }
+//       }
 
 
-      // ----------------------------------------------------------
-      // WAIT FOR AUTHENTICATION
-      // ----------------------------------------------------------
+//       // ----------------------------------------------------------
+//       // WAIT FOR AUTHENTICATION
+//       // ----------------------------------------------------------
 
-      await expect
-        .poll(
-          async () => {
+//       await expect
+//         .poll(
+//           async () => {
 
-            return await page.evaluate(
-              () => {
+//             return await page.evaluate(
+//               () => {
 
-                const rawUser =
-                  localStorage.getItem(
-                    'otpUser'
-                  );
+//                 const rawUser =
+//                   localStorage.getItem(
+//                     'otpUser'
+//                   );
 
-                return {
+//                 return {
 
-                  verified:
-                    localStorage.getItem(
-                      'isOtpVerified'
-                    ),
+//                   verified:
+//                     localStorage.getItem(
+//                       'isOtpVerified'
+//                     ),
 
-                  user:
-                    rawUser
-                      ? JSON.parse(
-                          rawUser
-                        )
-                      : null,
-                };
+//                   user:
+//                     rawUser
+//                       ? JSON.parse(
+//                           rawUser
+//                         )
+//                       : null,
+//                 };
 
-              }
-            );
+//               }
+//             );
 
-          },
-          {
-            timeout:
-              15000,
+//           },
+//           {
+//             timeout:
+//               15000,
 
-            intervals:
-              [
-                200,
-                500,
-                1000,
-              ],
-          }
-        )
-        .toMatchObject({
+//             intervals:
+//               [
+//                 200,
+//                 500,
+//                 1000,
+//               ],
+//           }
+//         )
+//         .toMatchObject({
 
-          verified:
-            'true',
+//           verified:
+//             'true',
 
-          user: {
-            isNewUser:
-              false,
-          },
-        });
+//           user: {
+//             isNewUser:
+//               false,
+//           },
+//         });
 
 
-      // ----------------------------------------------------------
-      // OPEN MY PROFILE
-      // ----------------------------------------------------------
+//       // ----------------------------------------------------------
+//       // OPEN MY PROFILE
+//       // ----------------------------------------------------------
 
-      const myProfileButton =
-        page.getByRole(
-          'button',
-          {
-            name:
-              'My Profile',
+//       const myProfileButton =
+//         page.getByRole(
+//           'button',
+//           {
+//             name:
+//               'My Profile',
 
-            exact:
-              true,
-          }
-        );
+//             exact:
+//               true,
+//           }
+//         );
 
 
-      await expect(
-        myProfileButton
-      ).toBeVisible({
-        timeout:
-          20000,
-      });
+//       await expect(
+//         myProfileButton
+//       ).toBeVisible({
+//         timeout:
+//           20000,
+//       });
 
 
-      await myProfileButton.click();
+//       await myProfileButton.click();
 
 
-      // ----------------------------------------------------------
-      // PROFILE PAGE
-      // ----------------------------------------------------------
+//       // ----------------------------------------------------------
+//       // PROFILE PAGE
+//       // ----------------------------------------------------------
 
-      await expect(
-        page.getByRole(
-          'heading',
-          {
-            name:
-              'My Profile',
+//       await expect(
+//         page.getByRole(
+//           'heading',
+//           {
+//             name:
+//               'My Profile',
 
-            exact:
-              true,
-          }
-        )
-      ).toBeVisible({
-        timeout:
-          15000,
-      });
+//             exact:
+//               true,
+//           }
+//         )
+//       ).toBeVisible({
+//         timeout:
+//           15000,
+//       });
 
 
-      await expect(
-        page.getByText(
-          'Personal Details',
-          {
-            exact:
-              true,
-          }
-        )
-      ).toBeVisible({
-        timeout:
-          10000,
-      });
+//       await expect(
+//         page.getByText(
+//           'Personal Details',
+//           {
+//             exact:
+//               true,
+//           }
+//         )
+//       ).toBeVisible({
+//         timeout:
+//           10000,
+//       });
 
-    }
+//     }
 
 
-    // ============================================================
-    // GET DIET DROPDOWN + SAVE BUTTON
-    // ============================================================
+//     // ============================================================
+//     // GET DIET DROPDOWN + SAVE BUTTON
+//     // ============================================================
 
-    async function getDietLocators() {
+//     async function getDietLocators() {
 
-      const dietLabel =
-        page.getByText(
-          'Diet Preference',
-          {
-            exact:
-              true,
-          }
-        );
+//       const dietLabel =
+//         page.getByText(
+//           'Diet Preference',
+//           {
+//             exact:
+//               true,
+//           }
+//         );
 
 
-      await expect(
-        dietLabel
-      ).toBeVisible({
-        timeout:
-          10000,
-      });
+//       await expect(
+//         dietLabel
+//       ).toBeVisible({
+//         timeout:
+//           10000,
+//       });
 
 
-      const dietContainer =
-        dietLabel.locator(
-          'xpath=..'
-        );
+//       const dietContainer =
+//         dietLabel.locator(
+//           'xpath=..'
+//         );
 
 
-      const dietButton =
-        dietContainer.getByRole(
-          'button'
-        );
+//       const dietButton =
+//         dietContainer.getByRole(
+//           'button'
+//         );
 
 
-      const saveButton =
-        page.getByRole(
-          'button',
-          {
-            name:
-              'Save profile',
+//       const saveButton =
+//         page.getByRole(
+//           'button',
+//           {
+//             name:
+//               'Save profile',
 
-            exact:
-              true,
-          }
-        );
+//             exact:
+//               true,
+//           }
+//         );
 
 
-      await expect(
-        dietButton
-      ).toBeVisible();
+//       await expect(
+//         dietButton
+//       ).toBeVisible();
 
 
-      await expect(
-        saveButton
-      ).toBeVisible({
-        timeout:
-          10000,
-      });
+//       await expect(
+//         saveButton
+//       ).toBeVisible({
+//         timeout:
+//           10000,
+//       });
 
 
-      return {
-        dietContainer,
-        dietButton,
-        saveButton,
-      };
+//       return {
+//         dietContainer,
+//         dietButton,
+//         saveButton,
+//       };
 
-    }
+//     }
 
 
-    // ============================================================
-    // SELECT DIET OPTION
-    //
-    // The dropdown contains:
-    //   1. Current-value button
-    //   2. Option buttons
-    //
-    // Therefore the option must be scoped to the opened
-    // dropdown container.
-    // ============================================================
+//     // ============================================================
+//     // SELECT DIET OPTION
+//     //
+//     // The dropdown contains:
+//     //   1. Current-value button
+//     //   2. Option buttons
+//     //
+//     // Therefore the option must be scoped to the opened
+//     // dropdown container.
+//     // ============================================================
 
-   async function selectDiet(dietLabel) {
+//    async function selectDiet(dietLabel) {
 
-  const {
-    dietButton,
-  } = await getDietLocators();
+//   const {
+//     dietButton,
+//   } = await getDietLocators();
 
 
-  // Open the diet dropdown.
-  await dietButton.click();
+//   // Open the diet dropdown.
+//   await dietButton.click();
 
 
-  const matchingButtons =
-    page.getByRole(
-      'button',
-      {
-        name: dietLabel,
-        exact: true,
-      }
-    );
+//   const matchingButtons =
+//     page.getByRole(
+//       'button',
+//       {
+//         name: dietLabel,
+//         exact: true,
+//       }
+//     );
 
 
-  const count =
-    await matchingButtons.count();
+//   const count =
+//     await matchingButtons.count();
 
 
-  expect(
-    count
-  ).toBeGreaterThan(0);
+//   expect(
+//     count
+//   ).toBeGreaterThan(0);
 
 
-  // When the selected value is the same as the option,
-  // there are two buttons:
-  //   1. current-value button
-  //   2. dropdown option
-  //
-  // For other options there is only one button.
-  const optionButton =
-    matchingButtons.nth(
-      count - 1
-    );
+//   // When the selected value is the same as the option,
+//   // there are two buttons:
+//   //   1. current-value button
+//   //   2. dropdown option
+//   //
+//   // For other options there is only one button.
+//   const optionButton =
+//     matchingButtons.nth(
+//       count - 1
+//     );
 
 
-  await expect(
-    optionButton
-  ).toBeVisible({
-    timeout: 5000,
-  });
+//   await expect(
+//     optionButton
+//   ).toBeVisible({
+//     timeout: 5000,
+//   });
 
 
-  await optionButton.click();
+//   await optionButton.click();
 
 
-  await expect(
-    dietButton
-  ).toContainText(
-    dietLabel
-  );
+//   await expect(
+//     dietButton
+//   ).toContainText(
+//     dietLabel
+//   );
 
-}
+// }
 
 
-    // ============================================================
-    // CASE 1
-    // EXISTING VALUE = VEGETARIAN
-    // ============================================================
+//     // ============================================================
+//     // CASE 1
+//     // EXISTING VALUE = VEGETARIAN
+//     // ============================================================
 
-    {
+//     {
 
-      await setupMocks();
+//       await setupMocks();
 
-      await loginAndOpenProfile();
+//       await loginAndOpenProfile();
 
 
-      const {
-        dietButton,
-      } =
-        await getDietLocators();
+//       const {
+//         dietButton,
+//       } =
+//         await getDietLocators();
 
 
-      await expect(
-        dietButton
-      ).toContainText(
-        'Vegetarian'
-      );
+//       await expect(
+//         dietButton
+//       ).toContainText(
+//         'Vegetarian'
+//       );
 
 
-      // Open dropdown and inspect all available options.
-      await dietButton.click();
+//       // Open dropdown and inspect all available options.
+//       await dietButton.click();
 
 
-      const optionButtons =
-        page.getByRole(
-          'button'
-        );
+//       const optionButtons =
+//         page.getByRole(
+//           'button'
+//         );
 
 
-      const vegetarianOptions =
-        page.getByRole(
-          'button',
-          {
-            name:
-              'Vegetarian',
-            exact:
-              true,
-          }
-        );
+//       const vegetarianOptions =
+//         page.getByRole(
+//           'button',
+//           {
+//             name:
+//               'Vegetarian',
+//             exact:
+//               true,
+//           }
+//         );
 
 
-      const nonVegetarianOptions =
-        page.getByRole(
-          'button',
-          {
-            name:
-              'Non-Vegetarian',
-            exact:
-              true,
-          }
-        );
+//       const nonVegetarianOptions =
+//         page.getByRole(
+//           'button',
+//           {
+//             name:
+//               'Non-Vegetarian',
+//             exact:
+//               true,
+//           }
+//         );
 
 
-      const veganOptions =
-        page.getByRole(
-          'button',
-          {
-            name:
-              'Vegan',
-            exact:
-              true,
-          }
-        );
+//       const veganOptions =
+//         page.getByRole(
+//           'button',
+//           {
+//             name:
+//               'Vegan',
+//             exact:
+//               true,
+//           }
+//         );
 
 
-      const pescatarianOptions =
-        page.getByRole(
-          'button',
-          {
-            name:
-              'Pescatarian',
-            exact:
-              true,
-          }
-        );
+//       const pescatarianOptions =
+//         page.getByRole(
+//           'button',
+//           {
+//             name:
+//               'Pescatarian',
+//             exact:
+//               true,
+//           }
+//         );
 
 
-      await expect(
-        vegetarianOptions
-      ).toHaveCount(
-        2
-      );
+//       await expect(
+//         vegetarianOptions
+//       ).toHaveCount(
+//         2
+//       );
 
 
-      await expect(
-        nonVegetarianOptions
-      ).toHaveCount(
-        1
-      );
+//       await expect(
+//         nonVegetarianOptions
+//       ).toHaveCount(
+//         1
+//       );
 
 
-      await expect(
-        veganOptions
-      ).toHaveCount(
-        1
-      );
+//       await expect(
+//         veganOptions
+//       ).toHaveCount(
+//         1
+//       );
 
 
-      await expect(
-        pescatarianOptions
-      ).toHaveCount(
-        1
-      );
+//       await expect(
+//         pescatarianOptions
+//       ).toHaveCount(
+//         1
+//       );
 
 
-      // Close dropdown by selecting existing value.
-      await vegetarianOptions.nth(1).click();
+//       // Close dropdown by selecting existing value.
+//       await vegetarianOptions.nth(1).click();
 
 
-      console.log(
-        'CP-025 DIET OPTIONS VERIFIED'
-      );
+//       console.log(
+//         'CP-025 DIET OPTIONS VERIFIED'
+//       );
 
-    }
+//     }
 
 
-    // ============================================================
-    // CASE 2
-    // VEGETARIAN → SAVE
-    // ============================================================
+//     // ============================================================
+//     // CASE 2
+//     // VEGETARIAN → SAVE
+//     // ============================================================
 
-    {
+//     {
 
-      const profilePosts =
-        await setupMocks();
+//       const profilePosts =
+//         await setupMocks();
 
-      await loginAndOpenProfile();
+//       await loginAndOpenProfile();
 
 
-      await selectDiet(
-        'Vegetarian'
-      );
+//       await selectDiet(
+//         'Vegetarian'
+//       );
 
 
-      const {
-        saveButton,
-      } =
-        await getDietLocators();
+//       const {
+//         saveButton,
+//       } =
+//         await getDietLocators();
 
 
-      await expect(
-        saveButton
-      ).toBeEnabled();
+//       await expect(
+//         saveButton
+//       ).toBeEnabled();
 
 
-      await saveButton.click();
+//       await saveButton.click();
 
 
-      await expect
-        .poll(
-          () =>
-            profilePosts.length,
-          {
-            timeout:
-              5000,
+//       await expect
+//         .poll(
+//           () =>
+//             profilePosts.length,
+//           {
+//             timeout:
+//               5000,
 
-            intervals:
-              [
-                200,
-                500,
-                1000,
-              ],
-          }
-        )
-        .toBe(1);
+//             intervals:
+//               [
+//                 200,
+//                 500,
+//                 1000,
+//               ],
+//           }
+//         )
+//         .toBe(1);
 
 
-      expect(
-        profilePosts[0]
-      ).toMatchObject({
+//       expect(
+//         profilePosts[0]
+//       ).toMatchObject({
 
-        dietType:
-          'Vegetarian',
+//         dietType:
+//           'Vegetarian',
 
-        email:
-          TEST_EMAIL,
+//         email:
+//           TEST_EMAIL,
 
-        name:
-          'Nitheesh Lingam',
+//         name:
+//           'Nitheesh Lingam',
 
-      });
+//       });
 
 
-      console.log(
-        'CP-025 DIET VEGETARIAN: SAVED'
-      );
+//       console.log(
+//         'CP-025 DIET VEGETARIAN: SAVED'
+//       );
 
-    }
+//     }
 
 
-    // ============================================================
-    // CASE 3
-    // NON-VEGETARIAN → SAVE
-    // ============================================================
+//     // ============================================================
+//     // CASE 3
+//     // NON-VEGETARIAN → SAVE
+//     // ============================================================
 
-    {
+//     {
 
-      const profilePosts =
-        await setupMocks();
+//       const profilePosts =
+//         await setupMocks();
 
-      await loginAndOpenProfile();
+//       await loginAndOpenProfile();
 
 
-      await selectDiet(
-        'Non-Vegetarian'
-      );
+//       await selectDiet(
+//         'Non-Vegetarian'
+//       );
 
 
-      const {
-        saveButton,
-      } =
-        await getDietLocators();
+//       const {
+//         saveButton,
+//       } =
+//         await getDietLocators();
 
 
-      await expect(
-        saveButton
-      ).toBeEnabled();
+//       await expect(
+//         saveButton
+//       ).toBeEnabled();
 
 
-      await saveButton.click();
+//       await saveButton.click();
 
 
-      await expect
-        .poll(
-          () =>
-            profilePosts.length,
-          {
-            timeout:
-              5000,
+//       await expect
+//         .poll(
+//           () =>
+//             profilePosts.length,
+//           {
+//             timeout:
+//               5000,
 
-            intervals:
-              [
-                200,
-                500,
-                1000,
-              ],
-          }
-        )
-        .toBe(1);
+//             intervals:
+//               [
+//                 200,
+//                 500,
+//                 1000,
+//               ],
+//           }
+//         )
+//         .toBe(1);
 
 
-      expect(
-        profilePosts[0]
-      ).toMatchObject({
+//       expect(
+//         profilePosts[0]
+//       ).toMatchObject({
 
-        dietType:
-          'Non-Vegetarian',
+//         dietType:
+//           'Non-Vegetarian',
 
-      });
+//       });
 
 
-      console.log(
-        'CP-025 DIET NON-VEGETARIAN: SAVED'
-      );
+//       console.log(
+//         'CP-025 DIET NON-VEGETARIAN: SAVED'
+//       );
 
-    }
+//     }
 
 
-    // ============================================================
-    // CASE 4
-    // VEGAN → SAVE
-    // ============================================================
+//     // ============================================================
+//     // CASE 4
+//     // VEGAN → SAVE
+//     // ============================================================
 
-    {
+//     {
 
-      const profilePosts =
-        await setupMocks();
+//       const profilePosts =
+//         await setupMocks();
 
-      await loginAndOpenProfile();
+//       await loginAndOpenProfile();
 
 
-      await selectDiet(
-        'Vegan'
-      );
+//       await selectDiet(
+//         'Vegan'
+//       );
 
 
-      const {
-        saveButton,
-      } =
-        await getDietLocators();
+//       const {
+//         saveButton,
+//       } =
+//         await getDietLocators();
 
 
-      await expect(
-        saveButton
-      ).toBeEnabled();
+//       await expect(
+//         saveButton
+//       ).toBeEnabled();
 
 
-      await saveButton.click();
+//       await saveButton.click();
 
 
-      await expect
-        .poll(
-          () =>
-            profilePosts.length,
-          {
-            timeout:
-              5000,
+//       await expect
+//         .poll(
+//           () =>
+//             profilePosts.length,
+//           {
+//             timeout:
+//               5000,
 
-            intervals:
-              [
-                200,
-                500,
-                1000,
-              ],
-          }
-        )
-        .toBe(1);
+//             intervals:
+//               [
+//                 200,
+//                 500,
+//                 1000,
+//               ],
+//           }
+//         )
+//         .toBe(1);
 
 
-      expect(
-        profilePosts[0]
-      ).toMatchObject({
+//       expect(
+//         profilePosts[0]
+//       ).toMatchObject({
 
-        dietType:
-          'Vegan',
+//         dietType:
+//           'Vegan',
 
-      });
+//       });
 
 
-      console.log(
-        'CP-025 DIET VEGAN: SAVED'
-      );
+//       console.log(
+//         'CP-025 DIET VEGAN: SAVED'
+//       );
 
-    }
+//     }
 
 
-    // ============================================================
-    // CASE 5
-    // PESCATARIAN → SAVE
-    // ============================================================
+//     // ============================================================
+//     // CASE 5
+//     // PESCATARIAN → SAVE
+//     // ============================================================
 
-    {
+//     {
 
-      const profilePosts =
-        await setupMocks();
+//       const profilePosts =
+//         await setupMocks();
 
-      await loginAndOpenProfile();
+//       await loginAndOpenProfile();
 
 
-      await selectDiet(
-        'Pescatarian'
-      );
+//       await selectDiet(
+//         'Pescatarian'
+//       );
 
 
-      const {
-        saveButton,
-      } =
-        await getDietLocators();
+//       const {
+//         saveButton,
+//       } =
+//         await getDietLocators();
 
 
-      await expect(
-        saveButton
-      ).toBeEnabled();
+//       await expect(
+//         saveButton
+//       ).toBeEnabled();
 
 
-      await saveButton.click();
+//       await saveButton.click();
 
 
-      await expect
-        .poll(
-          () =>
-            profilePosts.length,
-          {
-            timeout:
-              5000,
+//       await expect
+//         .poll(
+//           () =>
+//             profilePosts.length,
+//           {
+//             timeout:
+//               5000,
 
-            intervals:
-              [
-                200,
-                500,
-                1000,
-              ],
-          }
-        )
-        .toBe(1);
+//             intervals:
+//               [
+//                 200,
+//                 500,
+//                 1000,
+//               ],
+//           }
+//         )
+//         .toBe(1);
 
 
-      expect(
-        profilePosts[0]
-      ).toMatchObject({
+//       expect(
+//         profilePosts[0]
+//       ).toMatchObject({
 
-        dietType:
-          'Pescatarian',
+//         dietType:
+//           'Pescatarian',
 
-      });
+//       });
 
 
-      console.log(
-        'CP-025 DIET PESCATARIAN: SAVED'
-      );
+//       console.log(
+//         'CP-025 DIET PESCATARIAN: SAVED'
+//       );
 
-    }
+//     }
 
 
-    console.log(
-      'CP-025 DIET PREFERENCE VALIDATION VERIFIED'
-    );
+//     console.log(
+//       'CP-025 DIET PREFERENCE VALIDATION VERIFIED'
+//     );
 
-  }
-);
+//   }
+// );
 
 });
