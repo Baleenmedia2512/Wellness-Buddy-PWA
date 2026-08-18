@@ -262,6 +262,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
 
   // Determine which user's data to display (selected member or coach)
   const displayUser = selectedMember || user;
+  const [diaryOwnerTimezoneIana, setDiaryOwnerTimezoneIana] = useState(null);
 
   // Clear diary-owned TZ when switching members so we don't flash the previous owner's zone.
   useEffect(() => {
@@ -406,7 +407,6 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
   // When a timeline row is tapped, the shell calls the matching ref to open
   // the existing modal inside the relevant dashboard component.
   const nutritionOpenRef = useRef(null);
-  const [diaryOwnerTimezoneIana, setDiaryOwnerTimezoneIana] = useState(null);
   const weightOpenRef    = useRef(null);
   const educationOpenRef = useRef(null);
   const [goodHabitDetail, setGoodHabitDetail] = useState(null);
