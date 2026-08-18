@@ -12,20 +12,22 @@ import {
 } from '../utils/videoLimits.js';
 
 describe('video size limits', () => {
-  it('caps each result video at 10 MB so Share Video stays small', () => {
-    assert.equal(MAX_HEALTH_VIDEO_MB, 10);
-    assert.equal(MAX_BUSINESS_VIDEO_MB, 10);
+  it('caps each result video at 15 MB', () => {
+    assert.equal(MAX_HEALTH_VIDEO_MB, 15);
+    assert.equal(MAX_BUSINESS_VIDEO_MB, 15);
   });
 
   it('accepts a file at the limit', () => {
-    const file = { size: 10 * 1024 * 1024 };
+    const file = { size: 15 * 1024 * 1024 };
     assert.equal(isVideoOverSizeLimit(file, 'health'), false);
     assert.equal(isVideoOverSizeLimit(file, 'business'), false);
   });
 
-  it('rejects a file over the limit', () => {
-    const file = { size: 10 * 1024 * 1024 + 1 };
-    assert.equal(isVideoOverSizeLimit(file, 'health'), true);
-    assert.equal(videoTooLargeMessage('health'), 'Health video is too large (max 10 MB). Please compress or trim the video.');
+  it('rejects 16 MB, 30 MB, and 40 MB files', () => {
+    assert.equal(isVideoOverSizeLimit({ size: 16 * 1024 * 1024 }, 'health'), true);
+    assert.equal(isVideoOverSizeLimit({ size: 30 * 1024 * 1024 }, 'business'), true);
+    assert.equal(isVideoOverSizeLimit({ size: 40 * 1024 * 1024 }, 'health'), true);
+    assert.equal(videoTooLargeMessage('health'), 'Upload max of 15 MB.');
+    assert.equal(videoTooLargeMessage('business'), 'Upload max of 15 MB.');
   });
 });

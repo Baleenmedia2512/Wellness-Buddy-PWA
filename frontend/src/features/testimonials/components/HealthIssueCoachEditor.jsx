@@ -2,10 +2,12 @@
  * HealthIssueCoachEditor.jsx
  * Search + suggestions for Recovery Health Issue.
  * Typing "back" shows Back Pain, Lower Back Pain, Chronic Back Pain, etc.
+ * Custom typed issues are remembered and shown in later suggestion searches.
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { HeartPulse, Save, Search, X } from 'lucide-react';
+import { HeartPulse, Plus, Save, Search, X } from 'lucide-react';
 import {
+  getCustomMedicalConditions,
   recordRecentMedicalCondition,
   searchMedicalConditions,
   VISIBLE_SUGGESTION_CAP,
@@ -15,56 +17,32 @@ import {
   POPULAR_MEDICAL_CONDITIONS,
 } from '../data/medicalConditions.js';
 import { updateMemberHealthIssues } from '../services/testimonialApi.js';
-
-function uniqueConditions(items = []) {
-  const seen = new Set();
-  const result = [];
-  for (const item of items) {
-    const label = String(item || '').trim();
-    if (!label) continue;
-    const key = label.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    result.push(label);
-  }
-  return result;
-}
-
-function HighlightMatch({ text, query }) {
-  const q = String(query || '').trim();
-  if (!q) return <>{text}</>;
-  const lowerText = text.toLowerCase();
-  const lowerQuery = q.toLowerCase();
-  const idx = lowerText.indexOf(lowerQuery);
-  if (idx < 0) return <>{text}</>;
-  return (
-    <>
-      {text.slice(0, idx)}
-      <mark className="bg-green-200 text-green-900 rounded-sm px-0.5 font-semibold">
-        {text.slice(idx, idx + q.length)}
-      </mark>
-      {text.slice(idx + q.length)}
-    </>
-  );
-}
+import { uniqueConditions, hasHealthIssue, issueKey, canAddCustomHealthIssue } from '../utils/uniqueConditions.js';
+import { validateMedicalCondition } from '../domain/medicalConditionValidation.js';
 
 /**
  * @param {{
  *   userId: number,
  *   coachId: number,
  *   currentIssues?: string[],
+ *   approvedIssues?: string[],
  *   knownHealthIssues?: string[],
  *   persist?: boolean,
+ *   allowRemove?: boolean,
  *   onSaved?: (issues: string[]) => void,
+ *   onRemove?: (issue: string) => void,
  * }} props
  */
 export default function HealthIssueCoachEditor({
   userId,
   coachId,
   currentIssues = [],
+  approvedIssues,
   knownHealthIssues = [],
   persist = true,
+  allowRemove = false,
   onSaved,
+  onRemove,
 }) {
   const inputRef = useRef(null);
   const wrapRef = useRef(null);
@@ -82,20 +60,34 @@ export default function HealthIssueCoachEditor({
 
   const suggestions = useMemo(() => {
     const q = query.trim();
+    const learned = uniqueConditions([
+      ...getCustomMedicalConditions(),
+      ...knownHealthIssues,
+    ]);
     if (q) {
-      return searchMedicalConditions(q, { conditions: catalog }).slice(0, VISIBLE_SUGGESTION_CAP);
+      return searchMedicalConditions(q, {
+        conditions: catalog,
+        customConditions: learned,
+      }).slice(0, VISIBLE_SUGGESTION_CAP);
     }
     const popular = catalog.filter((name) => POPULAR_MEDICAL_CONDITIONS.has(name));
-    return uniqueConditions([...knownHealthIssues, ...popular]).slice(0, VISIBLE_SUGGESTION_CAP);
+    return uniqueConditions([...learned, ...popular]).slice(0, VISIBLE_SUGGESTION_CAP);
   }, [query, catalog, knownHealthIssues]);
 
+  const savedIssues = Array.isArray(currentIssues) ? currentIssues : [];
+  const baselineIssues = Array.isArray(approvedIssues) ? approvedIssues : savedIssues;
   const displayedIssues = pending
-    ? [pending]
-    : (Array.isArray(currentIssues) ? currentIssues : []);
-  const alreadyCurrent = Array.isArray(currentIssues)
-    && currentIssues.length === 1
-    && currentIssues[0] === pending;
+    ? uniqueConditions([...savedIssues, pending])
+    : savedIssues;
+  const alreadyCurrent = Boolean(pending)
+    && savedIssues.some((issue) => issue.toLowerCase() === pending.toLowerCase());
   const canSave = Boolean(pending) && !alreadyCurrent && persist;
+
+  const canAddCustom = canAddCustomHealthIssue(query, {
+    suggestions,
+    selected: savedIssues,
+  });
+  const listSize = suggestions.length + (canAddCustom ? 1 : 0);
 
   const closeDropdown = useCallback(() => {
     setOpen(false);
@@ -117,24 +109,34 @@ export default function HealthIssueCoachEditor({
   }, [closeDropdown]);
 
   const selectIssue = useCallback((issue) => {
-    const trimmed = String(issue || '').trim();
-    if (!trimmed) return;
+    const check = validateMedicalCondition(issue);
+    if (!check.valid) {
+      setError(check.message);
+      return;
+    }
+    const trimmed = check.value;
     setPending(trimmed);
     setQuery('');
     setError(null);
     closeDropdown();
     recordRecentMedicalCondition(trimmed);
-    if (!persist) {
-      onSaved?.([trimmed]);
+    if (hasHealthIssue(savedIssues, trimmed)) {
+      setPending(null);
+      return;
     }
-  }, [closeDropdown, persist, onSaved]);
+    const next = uniqueConditions([...savedIssues, trimmed]);
+    if (!persist) {
+      onSaved?.(next);
+      setPending(null);
+    }
+  }, [closeDropdown, persist, onSaved, savedIssues]);
 
   const handleSave = useCallback(async () => {
     if (!pending || saving || !persist) return;
     setSaving(true);
     setError(null);
     try {
-      const next = [pending];
+      const next = uniqueConditions([...savedIssues, pending]);
       await updateMemberHealthIssues({
         coachId,
         userId,
@@ -147,25 +149,27 @@ export default function HealthIssueCoachEditor({
     } finally {
       setSaving(false);
     }
-  }, [pending, saving, persist, coachId, userId, onSaved]);
+  }, [pending, saving, persist, coachId, userId, onSaved, savedIssues]);
 
   const handleKeyDown = (event) => {
     if (event.key === 'ArrowDown') {
       event.preventDefault();
       setOpen(true);
-      setHighlight((prev) => (suggestions.length ? (prev + 1) % suggestions.length : -1));
+      setHighlight((prev) => (listSize ? (prev + 1) % listSize : -1));
       return;
     }
     if (event.key === 'ArrowUp') {
       event.preventDefault();
       setOpen(true);
-      setHighlight((prev) => (suggestions.length ? (prev <= 0 ? suggestions.length - 1 : prev - 1) : -1));
+      setHighlight((prev) => (listSize ? (prev <= 0 ? listSize - 1 : prev - 1) : -1));
       return;
     }
     if (event.key === 'Enter') {
       event.preventDefault();
-      if (highlight >= 0 && suggestions[highlight]) {
+      if (highlight >= 0 && highlight < suggestions.length && suggestions[highlight]) {
         selectIssue(suggestions[highlight]);
+      } else if (canAddCustom && (highlight === suggestions.length || highlight < 0)) {
+        selectIssue(query.trim());
       } else if (query.trim().length >= 2) {
         selectIssue(query.trim());
       }
@@ -222,7 +226,7 @@ export default function HealthIssueCoachEditor({
             className="absolute left-0 right-0 z-[80] mt-1 bg-white border border-green-200 rounded-2xl shadow-xl overflow-y-auto"
             style={{ maxHeight: '240px' }}
           >
-            {suggestions.length > 0 ? suggestions.map((issue, idx) => (
+            {suggestions.map((issue, idx) => (
               <li key={issue} role="presentation">
                 <button
                   type="button"
@@ -235,12 +239,32 @@ export default function HealthIssueCoachEditor({
                   }`}
                 >
                   <HeartPulse className="h-3.5 w-3.5 text-rose-400 shrink-0" />
-                  <HighlightMatch text={issue} query={query} />
+                  {issue}
                 </button>
               </li>
-            )) : (
+            ))}
+            {canAddCustom && (
+              <li role="presentation">
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={highlight === suggestions.length}
+                  onMouseDown={(e) => { e.preventDefault(); selectIssue(query.trim()); }}
+                  onMouseEnter={() => setHighlight(suggestions.length)}
+                  className={`w-full flex items-center gap-2 px-4 py-2.5 text-left text-sm font-semibold transition-colors border-t border-gray-100 ${
+                    highlight === suggestions.length
+                      ? 'bg-emerald-50 text-emerald-800'
+                      : 'text-emerald-700 hover:bg-emerald-50'
+                  }`}
+                >
+                  <Plus className="h-3.5 w-3.5 shrink-0" />
+                  Add "{query.trim()}"
+                </button>
+              </li>
+            )}
+            {suggestions.length === 0 && !canAddCustom && (
               <li className="px-4 py-3 text-xs text-gray-400 italic">
-                {query.trim() ? 'No matching health issues' : 'Start typing to search health issues'}
+                {query.trim() ? 'Type at least 2 characters to add a custom health issue' : 'Start typing to search health issues'}
               </li>
             )}
           </ul>
@@ -249,14 +273,39 @@ export default function HealthIssueCoachEditor({
 
       <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-gray-600">
         <span>Current Health Issue:</span>
-        {displayedIssues.length > 0 ? displayedIssues.map((issue) => (
-          <span
-            key={issue}
-            className="inline-block bg-red-50 border border-red-200 text-red-800 rounded-full px-2.5 py-0.5 font-semibold"
-          >
-            {issue}
-          </span>
-        )) : (
+        {displayedIssues.length > 0 ? displayedIssues.map((issue) => {
+          const approved = hasHealthIssue(baselineIssues, issue);
+          const isPendingAdd = Boolean(pending) && issueKey(issue) === issueKey(pending);
+          const showCancel = !approved && (allowRemove || isPendingAdd);
+          return (
+            <span
+              key={issue}
+              className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 font-semibold ${
+                approved
+                  ? 'bg-red-50 border border-red-200 text-red-800'
+                  : 'bg-green-50 border border-green-300 text-green-800'
+              }`}
+            >
+              {issue}
+              {showCancel && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (isPendingAdd) {
+                      setPending(null);
+                      return;
+                    }
+                    onRemove?.(issue);
+                  }}
+                  className="p-0.5 rounded-full text-green-700 hover:bg-green-200"
+                  aria-label={`Remove ${issue}`}
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              )}
+            </span>
+          );
+        }) : (
           <span className="italic text-gray-400">Not added yet</span>
         )}
       </div>

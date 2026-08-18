@@ -77,6 +77,24 @@ function healthIssuesEqual(left, right) {
   return normalize(left) === normalize(right);
 }
 
+/**
+ * Merge incoming health issues into the existing list (case-insensitive).
+ * Prevents a client sending only the newly selected issue from wiping prior issues.
+ */
+function unionHealthIssues(existingList, incomingList) {
+  const seen = new Set();
+  const result = [];
+  for (const item of [...(Array.isArray(existingList) ? existingList : []), ...(Array.isArray(incomingList) ? incomingList : [])]) {
+    const label = String(item || '').trim();
+    if (!label) continue;
+    const key = label.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(label);
+  }
+  return result;
+}
+
 /** Extract millis timestamp embedded in storage paths like `42/before_1720000000000.jpg`. */
 function parseStoragePathTimestamp(path) {
   if (!path || typeof path !== 'string') return 0;
@@ -424,7 +442,12 @@ export async function editTestimonial(rawBody) {
   if (payload.afterWeightKg        !== undefined) updates.afterWeightKg       = payload.afterWeightKg;
   if (payload.goalType             !== undefined) updates.goalType            = payload.goalType;
   if (payload.durationText         !== undefined) updates.durationText        = payload.durationText;
-  if (payload.recoveredHealthIssues !== undefined) updates.recoveredHealthIssues = payload.recoveredHealthIssues;
+  if (payload.recoveredHealthIssues !== undefined) {
+    updates.recoveredHealthIssues = unionHealthIssues(
+      existing.recovered_health_issues,
+      payload.recoveredHealthIssues,
+    );
+  }
 
   const requiresReverification = [
     'beforeImagePath',
@@ -435,14 +458,14 @@ export async function editTestimonial(rawBody) {
     'durationText',
   ].some((field) => updates[field] !== undefined);
 
-  const resolvedHealthIssues = payload.recoveredHealthIssues !== undefined
-    ? payload.recoveredHealthIssues
+  const resolvedHealthIssues = updates.recoveredHealthIssues !== undefined
+    ? updates.recoveredHealthIssues
     : (existing.recovered_health_issues ?? []);
 
   // Health-only edits: shared list for photo + video. Resend coach OTP with the latest entry.
   if (!requiresReverification) {
     const issuesChanged = payload.recoveredHealthIssues !== undefined
-      && !healthIssuesEqual(payload.recoveredHealthIssues, existing.recovered_health_issues);
+      && !healthIssuesEqual(resolvedHealthIssues, existing.recovered_health_issues);
 
     const otpChannel = issuesChanged ? resolveHealthIssueOtpChannel(existing) : null;
     const saveUpdates = { ...updates };
@@ -454,7 +477,7 @@ export async function editTestimonial(rawBody) {
         existing,
         coachInfo,
         userInfo,
-        recoveredHealthIssues: payload.recoveredHealthIssues,
+        recoveredHealthIssues: resolvedHealthIssues,
         saveUpdates,
       });
     } else {
@@ -894,6 +917,14 @@ function tmpChunkPath(userId, sessionId, chunkIndex) {
   return `${userId}/tmp_${sessionId}_chunk_${chunkIndex}.part`;
 }
 
+function sniffVideoContentType(buffer) {
+  if (!buffer || buffer.length < 4) return 'video/mp4';
+  if (buffer[0] === 0x1A && buffer[1] === 0x45 && buffer[2] === 0xDF && buffer[3] === 0xA3) {
+    return 'video/webm';
+  }
+  return 'video/mp4';
+}
+
 function assertAssembledVideoSize(buffer, slot) {
   const maxBytes = slot === 'health' ? MAX_HEALTH_VIDEO_BYTES : MAX_BUSINESS_VIDEO_BYTES;
   if (buffer.length > maxBytes) {
@@ -928,7 +959,7 @@ export async function uploadVideoChunk(rawBody) {
   // Single-chunk videos upload directly — avoids tmp write/read race on small files.
   if (payload.totalChunks === 1) {
     assertAssembledVideoSize(buffer, payload.slot);
-    await repo.uploadBuffer(payload.finalPath, buffer, 'video/mp4');
+    await repo.uploadBuffer(payload.finalPath, buffer, sniffVideoContentType(buffer));
     return {
       httpStatus: 200,
       body: { success: true, complete: true, path: payload.finalPath },
@@ -955,7 +986,7 @@ export async function uploadVideoChunk(rawBody) {
 
   const assembled = Buffer.concat(parts);
   assertAssembledVideoSize(assembled, payload.slot);
-  await repo.uploadBuffer(payload.finalPath, assembled, 'video/mp4');
+  await repo.uploadBuffer(payload.finalPath, assembled, sniffVideoContentType(assembled));
   await repo.removePaths(tmpPaths);
 
   return {
@@ -995,7 +1026,7 @@ export async function submitVideo(rawBody) {
   }
 
   const resolvedHealthIssues = payload.recoveredHealthIssues !== undefined
-    ? payload.recoveredHealthIssues
+    ? unionHealthIssues(existing.recovered_health_issues, payload.recoveredHealthIssues)
     : (existing.recovered_health_issues ?? []);
 
   if (resolvedHealthIssues.length === 0) {
@@ -1015,7 +1046,7 @@ export async function submitVideo(rawBody) {
   });
 
   if (payload.recoveredHealthIssues !== undefined) {
-    await repo.updateTestimonial(existing.id, { recoveredHealthIssues: payload.recoveredHealthIssues });
+    await repo.updateTestimonial(existing.id, { recoveredHealthIssues: resolvedHealthIssues });
   }
 
   const coachInfo = await repo.findCoachEmail(userInfo.coachId);
@@ -1223,7 +1254,8 @@ async function sendUnifiedCoachEmail({
  * Member submits multiple edited slots in one request; generates a single unified OTP.
  *
  * Logic:
- * - Issues-only change → silent save, no OTP, no email.
+ * - Issues-only on an incomplete testimonial → silent save, no OTP, no email.
+ * - Issues-only on a complete photo/video testimonial → unified OTP (same as other slots).
  * - Any photo/video change → one OTP stored in both otp_hash and video_otp_hash fields.
  * - Photo status is set to 'pending' only when the testimonial is or becomes complete (has both photos).
  * - Video status is set to 'pending' when video slots are dirty.
@@ -1248,12 +1280,20 @@ export async function submitAllEdits(rawBody) {
     || payload.goalType !== undefined || payload.durationText !== undefined;
   const hasVideoDirty  = slots.has('health') || slots.has('business');
   const hasIssuesDirty = slots.has('issues');
+  const mergedIssues = hasIssuesDirty
+    ? unionHealthIssues(existing.recovered_health_issues, payload.recoveredHealthIssues)
+    : (existing.recovered_health_issues ?? []);
 
-  // Issues-only → silent save, no OTP required
-  if (hasIssuesDirty && !hasPhotoDirty && !hasVideoDirty) {
+  const issuesOtpChannel = hasIssuesDirty && !hasPhotoDirty && !hasVideoDirty
+    ? resolveHealthIssueOtpChannel(existing)
+    : null;
+
+  // Issues-only on an incomplete record → silent save, no OTP required
+  if (hasIssuesDirty && !hasPhotoDirty && !hasVideoDirty && !issuesOtpChannel) {
     await repo.updateTestimonial(existing.id, {
-      recoveredHealthIssues: payload.recoveredHealthIssues ?? [],
+      recoveredHealthIssues: mergedIssues,
     });
+    const display = await enrichTestimonialForDisplay(await repo.findByUserId(payload.userId));
     return {
       httpStatus: 200,
       body: {
@@ -1262,6 +1302,7 @@ export async function submitAllEdits(rawBody) {
         testimonialId: existing.id,
         status:     existing.status,
         videoStatus: existing.video_status ?? 'none',
+        testimonial: display,
       },
     };
   }
@@ -1284,7 +1325,7 @@ export async function submitAllEdits(rawBody) {
   if (payload.afterWeightKg  !== undefined) photoUpdates.afterWeightKg  = payload.afterWeightKg;
   if (payload.goalType       !== undefined) photoUpdates.goalType        = payload.goalType;
   if (payload.durationText   !== undefined) photoUpdates.durationText    = payload.durationText;
-  if (hasIssuesDirty)                       photoUpdates.recoveredHealthIssues = payload.recoveredHealthIssues ?? [];
+  if (hasIssuesDirty)                       photoUpdates.recoveredHealthIssues = mergedIssues;
 
   // Determine if testimonial is/becomes complete (has both real photos)
   const newBeforePath = photoUpdates.beforeImagePath ?? existing.before_image_path;
@@ -1300,9 +1341,7 @@ export async function submitAllEdits(rawBody) {
   const photoNeedsOtp = hasPhotoDirty && isComplete;
 
   // Validate health issues are present when completing a testimonial
-  const resolvedHealthIssues = hasIssuesDirty
-    ? (payload.recoveredHealthIssues ?? [])
-    : (existing.recovered_health_issues ?? []);
+  const resolvedHealthIssues = mergedIssues;
 
   if (photoNeedsOtp && resolvedHealthIssues.length === 0) {
     throw new ValidationError(422, 'At least one recovered health issue is required.');
@@ -1325,7 +1364,7 @@ export async function submitAllEdits(rawBody) {
 
   // Save photo changes
   const photoDbUpdates = { ...photoUpdates, otpHash, otpExpiresAt: otpExpiry };
-  if (photoNeedsOtp) {
+  if (photoNeedsOtp || issuesOtpChannel === 'photo') {
     photoDbUpdates.status    = 'pending';
     photoDbUpdates.verifiedAt = null;
   } else if (hasPhotoDirty && !isComplete) {
@@ -1334,7 +1373,7 @@ export async function submitAllEdits(rawBody) {
   await repo.updateTestimonial(existing.id, photoDbUpdates);
 
   // Save video changes
-  if (hasVideoDirty) {
+  if (hasVideoDirty || issuesOtpChannel === 'video') {
     const videoUpdates = {
       videoStatus:       'pending',
       videoOtpHash:      otpHash,
@@ -1344,7 +1383,7 @@ export async function submitAllEdits(rawBody) {
     if (slots.has('health'))   videoUpdates.healthVideoPath   = payload.healthVideoPath;
     if (slots.has('business')) videoUpdates.businessVideoPath = payload.businessVideoPath;
     await repo.updateTestimonialVideos(existing.id, videoUpdates);
-  } else if (!hasPhotoDirty) {
+  } else if (!hasPhotoDirty && issuesOtpChannel !== 'photo') {
     // video-only path won't reach here but guard for clarity
     await repo.updateTestimonialVideos(existing.id, { videoOtpHash: otpHash, videoOtpExpiresAt: otpExpiry });
   }
@@ -1377,8 +1416,13 @@ export async function submitAllEdits(rawBody) {
     });
   }
 
-  const finalStatus      = photoNeedsOtp ? 'pending' : (photoDbUpdates.status ?? existing.status);
-  const finalVideoStatus = hasVideoDirty ? 'pending' : (existing.video_status ?? 'none');
+  const finalStatus      = (photoNeedsOtp || issuesOtpChannel === 'photo')
+    ? 'pending'
+    : (photoDbUpdates.status ?? existing.status);
+  const finalVideoStatus = (hasVideoDirty || issuesOtpChannel === 'video')
+    ? 'pending'
+    : (existing.video_status ?? 'none');
+  const display = await enrichTestimonialForDisplay(await repo.findByUserId(payload.userId));
 
   return {
     httpStatus: 200,
@@ -1388,6 +1432,7 @@ export async function submitAllEdits(rawBody) {
       testimonialId: existing.id,
       status:        finalStatus,
       videoStatus:   finalVideoStatus,
+      testimonial:   display,
     },
   };
 }
@@ -1467,8 +1512,13 @@ export async function updateMemberHealthIssues(rawBody) {
     throw new ValidationError(404, 'No testimonial found for this user');
   }
 
+  const mergedIssues = unionHealthIssues(
+    existing.recovered_health_issues,
+    payload.recoveredHealthIssues,
+  );
+
   await repo.updateTestimonial(existing.id, {
-    recoveredHealthIssues: payload.recoveredHealthIssues,
+    recoveredHealthIssues: mergedIssues,
   });
 
   return {
@@ -1476,7 +1526,7 @@ export async function updateMemberHealthIssues(rawBody) {
     body: {
       success: true,
       message: 'Health issue updated.',
-      recoveredHealthIssues: payload.recoveredHealthIssues,
+      recoveredHealthIssues: mergedIssues,
     },
   };
 }

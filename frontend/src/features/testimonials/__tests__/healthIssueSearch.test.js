@@ -26,6 +26,15 @@ describe('health issue search', () => {
     assert.ok(items.includes('Chronic Back Pain'));
     assert.equal(items[0], 'Back Pain');
   });
+
+  it('includes a custom issue in later suggestion searches', () => {
+    const results = searchMedicalConditions('kidney', {
+      conditions: ['Diabetes Type 2', 'Hypertension'],
+      recentSelections: [],
+      customConditions: ['Kidney swelling'],
+    });
+    assert.ok(results.includes('Kidney swelling'));
+  });
 });
 
 describe('name search suggestions', () => {
