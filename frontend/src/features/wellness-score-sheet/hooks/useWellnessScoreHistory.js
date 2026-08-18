@@ -23,6 +23,7 @@ import {
   isSingleDayRange,
   rangeKey,
   snapshotMatchesRange,
+  selectHistoryDay,
 } from '../domain/historyPaint';
 import { shouldSkipWellnessScoreRefresh } from '../domain/skipWellnessScoreRefresh';
 
@@ -270,14 +271,10 @@ export function useWellnessScoreHistory({
     return () => document.removeEventListener('visibilitychange', onVisible);
   }, [reload]);
 
-  const selectedData = useMemo(() => {
-    if (!historyDays.length) return null;
-    if (selectedDate) {
-      const match = historyDays.find((d) => d.date === selectedDate);
-      if (match) return match;
-    }
-    return historyDays.length === 1 ? historyDays[0] : null;
-  }, [historyDays, selectedDate]);
+  const selectedData = useMemo(
+    () => selectHistoryDay(historyDays, selectedDate),
+    [historyDays, selectedDate],
+  );
 
   return { loading, error, historyDays, data: selectedData, reload: () => reload({ force: true }) };
 }

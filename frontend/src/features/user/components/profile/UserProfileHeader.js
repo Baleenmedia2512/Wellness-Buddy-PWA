@@ -2,6 +2,7 @@
 import React from 'react';
 import { X, Camera, Crop, Loader } from 'lucide-react';
 import TouchFeedbackButton from '../../../../shared/components/TouchFeedbackButton';
+import { EmojiOrNative } from '../../../../shared/components/icons/EmojiImage';
 
 const COLORS = ['bg-blue-500', 'bg-green-500', 'bg-purple-500', 'bg-pink-500', 'bg-indigo-500', 'bg-yellow-500', 'bg-red-500', 'bg-teal-500'];
 
@@ -66,9 +67,11 @@ const UserProfileHeader = ({
                 : 'bg-green-100 border-green-300 text-green-700'
               }`}
           >
-            <span className="text-sm">
-              {weightGoalMode === 'loss' ? '🔥' : weightGoalMode === 'gain' ? '💪' : '⚖️'}
-            </span>
+            <EmojiOrNative
+              emoji={weightGoalMode === 'loss' ? '🔥' : weightGoalMode === 'gain' ? '💪' : '⚖️'}
+              className="w-3.5 h-3.5"
+              nativeClassName="text-sm leading-none"
+            />
             <span>
               {weightGoalMode === 'loss' ? 'Loss Mode' : weightGoalMode === 'gain' ? 'Gain Mode' : 'Maintain'}
             </span>

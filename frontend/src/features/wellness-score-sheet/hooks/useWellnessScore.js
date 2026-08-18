@@ -7,6 +7,7 @@ import {
   shouldRefreshWellnessScore,
 } from '../../../shared/services/homeDashboardActivity';
 import { fetchDailyWellnessScore } from '../services/wellnessScore.api';
+import { scoreIsForDate } from '../domain/historyPaint';
 import { shouldSkipWellnessScoreRefresh } from '../domain/skipWellnessScoreRefresh';
 import {
   clearPinnedDailyWellnessScore,
@@ -29,12 +30,30 @@ export { seedDailyWellnessScoreCache, invalidateDailyWellnessScoreCache };
  * - Tab switch / app resume with no new activity → keep cached score (no API call)
  * - Sheet seed → paint immediately so Home matches the sheet total
  */
+function cachedScoreForDate(userId, date) {
+  const cached = getDailyWellnessScoreCached(userId, date);
+  if (!cached) return null;
+  if (cached.date && !scoreIsForDate(cached, date)) return null;
+  return { ...cached, date: cached.date || date };
+}
+
 export function useWellnessScore({ user, apiBaseUrl, date, nutritionRefreshKey = 0 }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [data, setData] = useState(null);
+  const [dataDate, setDataDate] = useState(date);
   const userIdRef = useRef(null);
   const requestIdRef = useRef(0);
+
+  // Drop the previous pill's total during render (effects run too late and flash Today ↔ Yesterday).
+  if (date !== dataDate) {
+    setDataDate(date);
+    const uid = user?.id || userIdRef.current;
+    const cached = uid ? cachedScoreForDate(uid, date) : null;
+    setData(cached);
+    setError(null);
+    if (!cached) setLoading(true);
+  }
 
   const reload = useCallback(async ({ background = false, force = false } = {}) => {
     if (!user) {
@@ -50,7 +69,7 @@ export function useWellnessScore({ user, apiBaseUrl, date, nutritionRefreshKey =
       if (requestId !== requestIdRef.current) return;
       userIdRef.current = userId;
 
-      const cached = getDailyWellnessScoreCached(userId, date);
+      const cached = cachedScoreForDate(userId, date);
 
       // Skip network when nothing dashboard-affecting happened since last fetch.
       if (!force && cached && !shouldRefreshWellnessScore()) {
@@ -82,9 +101,15 @@ export function useWellnessScore({ user, apiBaseUrl, date, nutritionRefreshKey =
         && pin.activityLogId === getLatestActivityLogId(),
       );
       const nextScore = pinMatches ? pin.score : score;
-      setDailyWellnessScoreCached(userId, date, nextScore);
+      if (nextScore && nextScore.date && !scoreIsForDate(nextScore, date)) {
+        if (requestId !== requestIdRef.current) return;
+        setLoading(false);
+        return;
+      }
+      const stamped = nextScore ? { ...nextScore, date: nextScore.date || date } : nextScore;
+      setDailyWellnessScoreCached(userId, date, stamped);
       if (!pinMatches) clearPinnedDailyWellnessScore(userId, date);
-      setData(nextScore);
+      setData(stamped);
 
       // Only mark processed if nothing newer landed mid-fetch (food-save race).
       if (getLatestActivityLogId() === activityLogAtFetch) {
@@ -99,19 +124,14 @@ export function useWellnessScore({ user, apiBaseUrl, date, nutritionRefreshKey =
     }
   }, [user, apiBaseUrl, date]);
 
-  // Drop yesterday's payload as soon as the IST date rolls over.
-  useEffect(() => {
-    setData(null);
-    setError(null);
-  }, [date]);
-
   // Sheet (or setup) published a day score — paint Home immediately.
   useEffect(() => {
     return subscribeDailyWellnessScoreSeed(({ userId, date: seedDate, score }) => {
       const uid = userIdRef.current || user?.id;
       if (!uid || String(uid) !== String(userId)) return;
       if (String(seedDate) !== String(date)) return;
-      setData(score);
+      if (score?.date && !scoreIsForDate(score, date)) return;
+      setData(score ? { ...score, date: score.date || date } : score);
       setError(null);
       setLoading(false);
     });

@@ -56,6 +56,14 @@ describe('dailyWellnessScoreCache sheet→Home pin', () => {
     expect(getDailyWellnessScoreCached('1', '2026-08-16').totalEarned).toBe(400);
   });
 
+  test('rejects a payload stamped for a different day', () => {
+    seedDailyWellnessScoreCache('42', '2026-08-17', {
+      date: '2026-08-18',
+      totalEarned: 500,
+    });
+    expect(getDailyWellnessScoreCached('42', '2026-08-17')).toBeNull();
+  });
+
   test('notifies seed listeners', () => {
     const seen = [];
     const unsub = subscribeDailyWellnessScoreSeed((payload) => seen.push(payload));
