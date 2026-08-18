@@ -12,6 +12,7 @@ import {
   DETOX_REMINDER_MARATHON_DAYS,
   MARATHON_START_REMINDER_TITLE,
   MARATHON_START_REMINDER_SUBTITLE,
+  MARATHON_DAY_1_REMINDER_TITLE,
 } from '../marathonCalendar.js';
 
 function expectState(ymd, partial) {
@@ -23,8 +24,8 @@ function expectState(ymd, partial) {
 
 describe('getMarathonCalendarState — marathon 1 (starts on the 1st)', () => {
   it('maps Day 0 through Day 10 from the 1st', () => {
-    expectState('2026-08-01', { inMarathon: true, marathonNumber: 1, marathonDay: 0, isDetoxDay: false, showDetoxReminder: false, showMarathonStartReminder: false });
-    expectState('2026-08-02', { marathonDay: 1, showDetoxReminder: false });
+    expectState('2026-08-01', { inMarathon: true, marathonNumber: 1, marathonDay: 0, isDetoxDay: false, showDetoxReminder: false, showMarathonStartReminder: false, showDay1Reminder: true });
+    expectState('2026-08-02', { marathonDay: 1, showDetoxReminder: false, showDay1Reminder: false });
     expectState('2026-08-03', { marathonDay: 2, showDetoxReminder: false });
     expectState('2026-08-04', { marathonDay: 3, showDetoxReminder: true, isDetoxDay: false });
     expectState('2026-08-05', { marathonDay: 4, isDetoxDay: true, showDetoxReminder: false });
@@ -42,7 +43,7 @@ describe('getMarathonCalendarState — marathon 1 (starts on the 1st)', () => {
 
 describe('getMarathonCalendarState — marathon 2 (starts on the 15th)', () => {
   it('maps Day 0 through Day 10 from the 15th', () => {
-    expectState('2026-08-15', { inMarathon: true, marathonNumber: 2, marathonDay: 0, showDetoxReminder: false, showMarathonStartReminder: false });
+    expectState('2026-08-15', { inMarathon: true, marathonNumber: 2, marathonDay: 0, showDetoxReminder: false, showMarathonStartReminder: false, showDay1Reminder: true });
     expectState('2026-08-18', { marathonNumber: 2, marathonDay: 3, showDetoxReminder: true });
     expectState('2026-08-19', { marathonDay: 4, isDetoxDay: true, showDetoxReminder: false });
     expectState('2026-08-23', { marathonDay: 8, showDetoxReminder: true });
@@ -129,13 +130,25 @@ describe('getDetoxReminder', () => {
     assert.equal(leapEve.marathonNumber, 1);
   });
 
-  it('returns null on Detox Days, start/end days, and days outside reminder windows', () => {
-    assert.equal(getDetoxReminder('2026-08-01'), null);
+  it('returns Marathon Day 1 copy on Day 0 (1st and 15th)', () => {
+    const first = getDetoxReminder('2026-08-01');
+    assert.equal(first.title, MARATHON_DAY_1_REMINDER_TITLE);
+    assert.equal(first.kind, 'day-1');
+    assert.equal(first.marathonDay, 0);
+    assert.equal(first.marathonNumber, 1);
+
+    const fifteenth = getDetoxReminder('2026-08-15');
+    assert.equal(fifteenth.title, 'Tomorrow is Marathon Day 1');
+    assert.equal(fifteenth.kind, 'day-1');
+    assert.equal(fifteenth.marathonNumber, 2);
+  });
+
+  it('returns null on Detox Days, Day 1, end days, and days outside reminder windows', () => {
+    assert.equal(getDetoxReminder('2026-08-02'), null);
     assert.equal(getDetoxReminder('2026-08-05'), null);
     assert.equal(getDetoxReminder('2026-08-10'), null);
     assert.equal(getDetoxReminder('2026-08-11'), null);
     assert.equal(getDetoxReminder('2026-08-12'), null);
-    assert.equal(getDetoxReminder('2026-08-15'), null);
     assert.equal(getDetoxReminder('2026-08-19'), null);
     assert.equal(getDetoxReminder('2026-08-26'), null);
     assert.equal(getDetoxReminder('2026-08-30'), null);
