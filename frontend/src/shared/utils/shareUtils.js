@@ -21,14 +21,18 @@ export function buildQuickShareText(displayName, versionString) {
 }
 
 /**
- * Branding line + optional compact activity suffix.
- * Example: "YASHEER · Wellness Valley v 3.4.0, Consumed: 1 L water so far today"
+ * Branding line + optional activity suffix.
+ * One-line suffixes stay comma-joined:
+ *   "YASHEER · Wellness Valley v 3.4.0, Consumed: 1 L water so far today"
+ * Multi-line suffixes (weight) sit under the brand with a blank line:
+ *   "Balaji Sekar · Wellness Valley v 3.4.5\n\nIdeal: 73.7 kg\nPrev: 72.9 kg\nCurr: 72.85 kg ⬇️"
  */
 export function composeQuickShareCaption(brandLine, activitySuffix = null) {
   const brand = String(brandLine || '').trim();
   const suffix = typeof activitySuffix === 'string' ? activitySuffix.trim() : '';
   if (!brand) return suffix;
   if (!suffix) return brand;
+  if (suffix.includes('\n')) return `${brand}\n\n${suffix}`;
   return `${brand}, ${suffix}`;
 }
 

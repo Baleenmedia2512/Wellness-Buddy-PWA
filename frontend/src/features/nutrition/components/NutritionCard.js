@@ -17,6 +17,7 @@ import {
   extractFoodItemDisplayNames,
 } from "../../diary/domain/activityType";
 import { buildDiaryShareSuffix } from "../../diary/domain/share/suffixes";
+import { withMarathonWhatsAppNotice } from "../../marathon";
 const NutritionCard = ({
   data,
   onDataUpdate,
@@ -856,7 +857,7 @@ const NutritionCard = ({
       // Capture and share the complete nutrition card (food image + all nutrition details)
       const shareOpts = {
         title: `${mealName} - Wellness Valley`,
-        text: activityCaption,
+        text: withMarathonWhatsAppNotice(activityCaption),
         fileName: `wellness-valley-${mealName
           .toLowerCase()
           .replace(/\s+/g, "-")}.png`,

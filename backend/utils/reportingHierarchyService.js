@@ -376,7 +376,7 @@ const TEAM_USER_SELECT =
 const MAX_SUBTREE_DEPTH = 12;
 const SUBTREE_CONTEXT_CACHE = new Map();
 const SUBTREE_CONTEXT_TTL_MS = 60_000;
-const SUBTREE_CACHE_KEY_PREFIX = 'v4:'; // bump when select columns or rollup rules change
+const SUBTREE_CACHE_KEY_PREFIX = 'v5:'; // bump when select columns or rollup rules change
 
 /**
  * @param {object} supabase
@@ -434,7 +434,8 @@ async function resolveCoCoachRootCoachIds(supabase, rootUser) {
 
 /**
  * Load reporting context for one coach subtree via indexed CoachId walks
- * (no full team_table scan). Includes ancestor chain for inactive-coach rollup.
+ * (no full team_table scan). Includes ancestor chain for inactive-coach rollup
+ * and sibling peer nodes (same parent; not their downlines).
  *
  * @param {object} supabase
  * @param {number} rootCoachId
@@ -492,9 +493,111 @@ export async function loadReportingContextForCoach(supabase, rootCoachId) {
     depth += 1;
   }
 
+  // Sibling peers: parent's direct children, nodes only — do not walk peer downline.
+  const parentId = Number(rootUser.CoachId);
+  if (Number.isFinite(parentId)) {
+    const siblings = await fetchTeamUsersByCoachIds(supabase, [parentId]);
+    for (const sibling of siblings) {
+      const siblingId = Number(sibling?.UserId);
+      if (!Number.isFinite(siblingId) || siblingId === rootId) continue;
+      if (!usersById.has(siblingId)) usersById.set(siblingId, sibling);
+    }
+  }
+
   const context = buildReportingContext([...usersById.values()]);
   SUBTREE_CONTEXT_CACHE.set(cacheKey, { value: context, expiresAt: now + SUBTREE_CONTEXT_TTL_MS });
   return context;
+}
+
+/**
+ * Users the viewer may see on hierarchy-scoped surfaces (Top 10 Score).
+ *
+ * Includes:
+ * - the viewer
+ * - every ancestor on the CoachId chain (the people only — not their other branches)
+ * - the viewer's full downline at every level
+ * - sibling peers only (same direct parent as the viewer; peer nodes only)
+ * - optional partnerIds as peer nodes only (no partner downline)
+ *
+ * Does NOT include another branch under an upline. Seeing Prem does not mean
+ * seeing Prem's entire downline (e.g. Balaji must not see A1/B1/B2).
+ *
+ * Pure — pass a pre-built ReportingContext (no I/O).
+ *
+ * @param {number} viewerUserId
+ * @param {ReportingContext} context
+ * @param {{ partnerIds?: Array<number|string> }} [options]
+ * @returns {TeamUser[]}
+ */
+export function collectVisibleHierarchyUsers(viewerUserId, context, { partnerIds = [] } = {}) {
+  const viewerId = Number(viewerUserId);
+  if (!Number.isFinite(viewerId) || !context?.userById) return [];
+
+  const getUser = (id) => {
+    const n = Number(id);
+    if (!Number.isFinite(n)) return null;
+    return context.userById.get(n)
+      || context.userById.get(id)
+      || context.userById.get(String(n))
+      || null;
+  };
+
+  const viewer = getUser(viewerId);
+  if (!viewer) return [];
+
+  const result = new Map();
+  result.set(Number(viewer.UserId), viewer);
+
+  // ── Upline (ancestors): walk CoachId upward ──────────────────────────────
+  let walkId = Number(viewer.CoachId);
+  const visitedUp = new Set([viewerId]);
+  while (Number.isFinite(walkId) && !visitedUp.has(walkId)) {
+    visitedUp.add(walkId);
+    const ancestor = getUser(walkId);
+    if (!ancestor) break;
+    result.set(Number(ancestor.UserId), ancestor);
+    walkId = Number(ancestor.CoachId);
+  }
+
+  // ── Peers (siblings only): same direct parent, exclude selected coach ──
+  // Peer rule: show the peer node itself only; never include peer downline.
+  const parentId = Number(viewer.CoachId);
+  if (Number.isFinite(parentId)) {
+    const directSiblings = context.dbChildrenByCoachId.get(parentId) || [];
+    for (const peer of directSiblings) {
+      const peerId = Number(peer?.UserId);
+      if (!Number.isFinite(peerId) || peerId === viewerId) continue;
+
+      // Follow existing "inactive nested leader" visibility posture:
+      // - inactive coach nodes can be shown
+      // - inactive nested leaders (Role=user) are hidden
+      const peerRole = peer?.Role;
+      const peerStatus = peer?.Status;
+      const canShowPeer =
+        isCoachRole(peerRole) || isActiveTeamStatus(peerStatus);
+      if (!canShowPeer) continue;
+
+      result.set(peerId, peer);
+    }
+  }
+
+  // ── Own downline: full recursive descendants of the selected coach ────
+  for (const member of collectFullSubtreeUnderActiveCoach(viewerId, context)) {
+    result.set(Number(member.UserId), member);
+  }
+
+  // ── Optional partnerIds: peer nodes only (no partner downline) ──────────
+  // Kept for backward compatibility with callers that already computed partnerIds.
+  if (Array.isArray(partnerIds) && partnerIds.length > 0) {
+    for (const pidRaw of partnerIds) {
+      const pid = Number(pidRaw);
+      if (!Number.isFinite(pid) || pid === viewerId) continue;
+      const peer = getUser(pid);
+      if (peer) result.set(pid, peer);
+    }
+  }
+
+  return [...result.values()];
 }
 
 /**

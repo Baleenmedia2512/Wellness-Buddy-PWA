@@ -13,7 +13,7 @@ import { useAutoScrollStrip } from '../../../shared/hooks/useAutoScrollStrip.js'
 import LeaderboardAvatar from './LeaderboardAvatar.js';
 
 const CACHE_TTL = 5 * 60 * 1000;
-// v5: hierarchy-scoped Top 10 (per logged-in user) — test API requires userId
+// v5: hierarchy-scoped Top 10 (per logged-in user)
 const CACHE_KEY_PREFIX = 'wv.lb.wellness.v5.';
 const LEGACY_CACHE_KEYS = [
   'wv.lb.wellness',
@@ -55,7 +55,7 @@ const writeCache = (userId, data) => {
 /**
  * Top wellness scores for today (IST) — swipeable strip on Home.
  * Display order: Rank N → Rank 1 (descending).
- * Ranked among the logged-in user's allowed hierarchy (test API requires userId).
+ * Ranked among the logged-in user's allowed hierarchy (not global Top 10).
  */
 const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId }, ref) => {
   const [leaderboardData, setLeaderboardData] = useState(() => readCache(userId) ?? []);

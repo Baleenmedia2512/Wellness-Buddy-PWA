@@ -14,7 +14,7 @@ import { formatShakeProductScoops } from './shakeShare';
 /**
  * @param {'food'|'water'|'afresh'|'shake'|'education'|'weight'|string} activityType
  * @param {object} [payload]
- * @param {number} [payload.idealWeight] kg target (BMI 19–23) appended as "Ideal Weight: X kg"
+ * @param {number} [payload.idealWeight] kg target (BMI 19–23) shown as "Ideal: X kg"
  * @returns {string|null} compact suffix, or null when nothing useful to append
  */
 export function buildDiaryShareSuffix(activityType, payload = {}) {
@@ -57,17 +57,20 @@ export function buildDiaryShareSuffix(activityType, payload = {}) {
       const current = formatShareKg(payload.currentWeight);
       const previous = formatShareKg(payload.previousWeight);
       const ideal = formatShareKg(payload.idealWeight);
-      const idealPart = ideal != null ? `, Ideal Weight: ${ideal} kg` : '';
       if (current == null) return 'weight';
-      if (previous == null) return `weight ${current} kg${idealPart}`;
 
-      const delta = Math.round((current - previous) * 100) / 100;
-      // Direction as emoji arrows (⬆️/⬇️) — WhatsApp renders them as button-style icons.
-      let arrow = '';
-      if (delta < 0) arrow = ' ⬇️';
-      else if (delta > 0) arrow = ' ⬆️';
+      const lines = [];
+      if (ideal != null) lines.push(`Ideal: ${ideal} kg`);
+      if (previous != null) lines.push(`Prev: ${previous} kg`);
 
-      return `Previous: ${previous} kg, Current: ${current} kg${idealPart}${arrow}`;
+      let curr = `Curr: ${current} kg`;
+      if (previous != null) {
+        const delta = Math.round((current - previous) * 100) / 100;
+        if (delta < 0) curr += ' ⬇️';
+        else if (delta > 0) curr += ' ⬆️';
+      }
+      lines.push(curr);
+      return lines.join('\n');
     }
     case 'workout':
     case 'watch':
