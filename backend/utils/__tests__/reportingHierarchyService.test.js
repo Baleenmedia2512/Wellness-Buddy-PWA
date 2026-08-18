@@ -11,6 +11,7 @@ import {
   getReportingMemberIds,
   buildReportingChildrenIndex,
   isReportingDownlineMember,
+  collectVisibleHierarchyUsers,
 } from '../reportingHierarchyService.js';
 
 const X = 1;
@@ -218,5 +219,81 @@ describe('inactive nested leader (Role=user) rollup — coach→a3→b1→c1', (
     assert.equal(isReportingDownlineMember(X, B1, context), true);
     assert.equal(isReportingDownlineMember(X, C1, context), true);
     assert.equal(isReportingDownlineMember(X, 9999, context), false);
+  });
+});
+
+describe('collectVisibleHierarchyUsers — upline people, own downline, not other branches', () => {
+  const Ravi = 1;
+  const Prethip = 2;
+  const Prem = 3;
+  const A1 = 4;
+  const B1 = 5;
+  const B2 = 6;
+  const Balaji = 7;
+  const XUser = 8;
+  const X1 = 9;
+  const Y = 10;
+  const Usha = 11;
+  const A = 12;
+  const BMember = 13;
+  const C = 14;
+
+  const TREE = [
+    { UserId: Ravi, UserName: 'Ravi', Role: 'coach', CoachId: null, Status: 'Active' },
+    { UserId: Prethip, UserName: 'Prethip', Role: 'coach', CoachId: Ravi, Status: 'Active' },
+    { UserId: Prem, UserName: 'Prem', Role: 'coach', CoachId: Prethip, Status: 'Active' },
+    { UserId: A1, UserName: 'A1', Role: 'user', CoachId: Prem, Status: 'Active' },
+    { UserId: B1, UserName: 'B1', Role: 'user', CoachId: A1, Status: 'Active' },
+    { UserId: B2, UserName: 'B2', Role: 'user', CoachId: A1, Status: 'Active' },
+    { UserId: Balaji, UserName: 'Balaji', Role: 'coach', CoachId: Prem, Status: 'Active' },
+    { UserId: XUser, UserName: 'X', Role: 'user', CoachId: Balaji, Status: 'Active' },
+    { UserId: X1, UserName: 'X1', Role: 'user', CoachId: XUser, Status: 'Active' },
+    { UserId: Y, UserName: 'Y', Role: 'user', CoachId: Balaji, Status: 'Active' },
+    { UserId: Usha, UserName: 'Usha', Role: 'coach', CoachId: Balaji, Status: 'Active' },
+    { UserId: A, UserName: 'A', Role: 'user', CoachId: Usha, Status: 'Active' },
+    { UserId: BMember, UserName: 'B', Role: 'user', CoachId: Usha, Status: 'Active' },
+    { UserId: C, UserName: 'C', Role: 'user', CoachId: Usha, Status: 'Active' },
+  ];
+
+  function names(members) {
+    return members.map((m) => m.UserName).sort();
+  }
+
+  it('Balaji sees ancestors + self + full downline, not Prem\'s other branch', () => {
+    const context = buildReportingContext(TREE);
+    const visible = collectVisibleHierarchyUsers(Balaji, context);
+    assert.deepEqual(names(visible), [
+      'A', 'B', 'Balaji', 'C', 'Prem', 'Prethip', 'Ravi', 'Usha', 'X', 'X1', 'Y',
+    ]);
+    const idSet = new Set(visible.map((m) => m.UserId));
+    assert.equal(idSet.has(A1), false);
+    assert.equal(idSet.has(B1), false);
+    assert.equal(idSet.has(B2), false);
+  });
+
+  it('Usha sees ancestors + self + her downline, not A1\'s branch', () => {
+    const context = buildReportingContext(TREE);
+    const visible = collectVisibleHierarchyUsers(Usha, context);
+    const idSet = new Set(visible.map((m) => m.UserId));
+    for (const id of [Ravi, Prethip, Prem, Balaji, Usha, A, BMember, C]) {
+      assert.equal(idSet.has(id), true, `Usha should see ${id}`);
+    }
+    assert.equal(idSet.has(A1), false);
+    assert.equal(idSet.has(B1), false);
+    assert.equal(idSet.has(B2), false);
+    // Sibling branch under Balaji is not an ancestor-other-branch of Prem,
+    // but it is another branch under Usha's upline Balaji — must not appear.
+    assert.equal(idSet.has(XUser), false);
+    assert.equal(idSet.has(X1), false);
+    assert.equal(idSet.has(Y), false);
+  });
+
+  it('co-coach partnerIds include that peer and their downline only', () => {
+    const context = buildReportingContext(TREE);
+    const visible = collectVisibleHierarchyUsers(Usha, context, { partnerIds: [Y] });
+    const idSet = new Set(visible.map((m) => m.UserId));
+    assert.equal(idSet.has(Y), true);
+    assert.equal(idSet.has(XUser), false);
+    assert.equal(idSet.has(A1), false);
   });
 });

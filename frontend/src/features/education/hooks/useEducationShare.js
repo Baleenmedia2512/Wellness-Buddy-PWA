@@ -7,6 +7,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import {
   captureAndShare, precaptureShareImage, shareCachedDataUrl,
 } from '../../../shared/utils/shareUtils';
+import { withMarathonWhatsAppNotice } from '../../marathon';
 
 export function useEducationShare({ educationData, imagePreview, deps = [] } = {}) {
   const [isSharing, setIsSharing] = useState(false);
@@ -33,12 +34,12 @@ export function useEducationShare({ educationData, imagePreview, deps = [] } = {
     try {
       const shareOpts = {
         title: `Education Session - ${educationData.topic}`,
-        text: [
+        text: withMarathonWhatsAppNotice([
           '🎓 Education',
           '',
           `Platform: ${educationData.platform || '—'}`,
           `Session: ${educationData.topic || '—'}`,
-        ].join('\n'),
+        ].join('\n')),
         fileName: `wellness-valley-education-${educationData.topic.toLowerCase().replace(/\s+/g, '-')}.png`,
       };
       const cached = cachedRef.current;

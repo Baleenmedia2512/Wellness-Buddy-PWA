@@ -71,7 +71,7 @@ import {
   FoodImageShareCard,
   HomeNutritionCarousel,
 } from "./features/nutrition";
-import { DetoxDayReminder } from "./features/marathon";
+import { DetoxDayReminder, withMarathonWhatsAppNotice } from "./features/marathon";
 import { EducationLogCard } from "./features/education";
 import { WatchActivityCard } from "./features/activity";
 import LoadingSpinner from "./shared/components/LoadingSpinner";
@@ -712,7 +712,9 @@ function WellnessValleyApp() {
           shareDisplayName,
           getVersionString(),
         );
-        return composeQuickShareCaption(brand, activityCaption);
+        return withMarathonWhatsAppNotice(
+          composeQuickShareCaption(brand, activityCaption),
+        );
       };
 
       try {
@@ -830,7 +832,9 @@ function WellnessValleyApp() {
         cacheProfileUserName(user.email, shareDisplayName);
         setSavedUserName(shareDisplayName);
       }
-      const shareText = buildQuickShareText(shareDisplayName, getVersionString());
+      const shareText = withMarathonWhatsAppNotice(
+        buildQuickShareText(shareDisplayName, getVersionString()),
+      );
       const ok = await shareTextViaWhatsApp(shareText);
       if (cancelled) return;
 
@@ -8051,6 +8055,7 @@ function WellnessValleyApp() {
             ref={wellnessLeaderboardRef}
             apiBaseUrl={apiBaseUrl}
             topN={10}
+            userId={user?.id || user?.UserId}
           />
         )}
 

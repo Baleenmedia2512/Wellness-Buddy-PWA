@@ -308,12 +308,12 @@ describe('buildDiaryShareSuffix', () => {
     expect(buildDiaryShareSuffix('weight', {
       previousWeight: 55.7,
       currentWeight: 55.6,
-    })).toBe('Previous: 55.7 kg, Current: 55.6 kg ⬇️');
+    })).toBe('Previous: 55.7 kg, Current: 55.6 kg ↓');
 
     expect(buildDiaryShareSuffix('weight', {
       previousWeight: 70,
       currentWeight: 71,
-    })).toBe('Previous: 70 kg, Current: 71 kg ⬆️');
+    })).toBe('Previous: 70 kg, Current: 71 kg ↑');
 
     expect(buildDiaryShareSuffix('weight', {
       currentWeight: 55.6,
@@ -325,7 +325,19 @@ describe('buildDiaryShareSuffix', () => {
       previousWeight: 73.65,
       currentWeight: 73.4,
       idealWeight: 73.6,
-    })).toBe('Previous: 73.65 kg, Current: 73.4 kg, Ideal Weight: 73.6 kg ⬇️');
+    })).toBe('Previous: 73.65 kg, Current: 73.4 kg ↓, Ideal Weight: 73.6 kg');
+
+    expect(buildDiaryShareSuffix('weight', {
+      previousWeight: 73.4,
+      currentWeight: 72.9,
+      idealWeight: 73.7,
+    })).toBe('Previous: 73.4 kg, Current: 72.9 kg ↓, Ideal Weight: 73.7 kg');
+
+    expect(buildDiaryShareSuffix('weight', {
+      previousWeight: 73.4,
+      currentWeight: 74.1,
+      idealWeight: 73.7,
+    })).toBe('Previous: 73.4 kg, Current: 74.1 kg ↑, Ideal Weight: 73.7 kg');
 
     expect(buildDiaryShareSuffix('weight', {
       currentWeight: 55.6,

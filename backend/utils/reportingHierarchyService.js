@@ -498,6 +498,70 @@ export async function loadReportingContextForCoach(supabase, rootCoachId) {
 }
 
 /**
+ * Users the viewer may see on hierarchy-scoped surfaces (Top 10 Score).
+ *
+ * Includes:
+ * - the viewer
+ * - every ancestor on the CoachId chain (the people only — not their other branches)
+ * - the viewer's full downline at every level
+ * - optional co-coach partners and their downlines (existing dual-coaching peers)
+ *
+ * Does NOT include another branch under an upline. Seeing Prem does not mean
+ * seeing Prem's entire downline (e.g. Balaji must not see A1/B1/B2).
+ *
+ * Pure — pass a pre-built ReportingContext (no I/O).
+ *
+ * @param {number} viewerUserId
+ * @param {ReportingContext} context
+ * @param {{ partnerIds?: Array<number|string> }} [options]
+ * @returns {TeamUser[]}
+ */
+export function collectVisibleHierarchyUsers(viewerUserId, context, { partnerIds = [] } = {}) {
+  const viewerId = Number(viewerUserId);
+  if (!Number.isFinite(viewerId) || !context?.userById) return [];
+
+  const getUser = (id) => {
+    const n = Number(id);
+    if (!Number.isFinite(n)) return null;
+    return context.userById.get(n)
+      || context.userById.get(id)
+      || context.userById.get(String(n))
+      || null;
+  };
+
+  const viewer = getUser(viewerId);
+  if (!viewer) return [];
+
+  const result = new Map();
+  result.set(Number(viewer.UserId), viewer);
+
+  let walkId = Number(viewer.CoachId);
+  const visitedUp = new Set([viewerId]);
+  while (Number.isFinite(walkId) && !visitedUp.has(walkId)) {
+    visitedUp.add(walkId);
+    const ancestor = getUser(walkId);
+    if (!ancestor) break;
+    result.set(Number(ancestor.UserId), ancestor);
+    walkId = Number(ancestor.CoachId);
+  }
+
+  const rootIds = [
+    viewerId,
+    ...((Array.isArray(partnerIds) ? partnerIds : []).map((id) => Number(id))),
+  ].filter((id) => Number.isFinite(id));
+
+  for (const rootId of [...new Set(rootIds)]) {
+    const root = getUser(rootId);
+    if (root) result.set(Number(root.UserId), root);
+    for (const member of collectFullSubtreeUnderActiveCoach(rootId, context)) {
+      result.set(Number(member.UserId), member);
+    }
+  }
+
+  return [...result.values()];
+}
+
+/**
  * Convenience: load context + return reporting members in one call.
  * @param {object} supabase
  * @param {number} coachId

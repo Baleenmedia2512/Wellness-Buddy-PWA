@@ -20,6 +20,7 @@ import { Smartphone, GraduationCap, HelpCircle, Share2, ArrowUp, ArrowDown, Star
 import { useSwipeToDelete } from '../../../../shared/hooks/useSwipeToDelete';
 import { parseAnalysisData, recalculateTotals, getMealCategory } from '../../../nutrition/services/nutritionDashboard/analysisHelpers';
 import { captureAndShare } from '../../../../shared/utils/shareUtils';
+import { withMarathonWhatsAppNotice } from '../../../marathon';
 import {
   formatBusinessTime,
   DEFAULT_BUSINESS_TIMEZONE,
@@ -377,7 +378,7 @@ export function FoodRow({
     try {
       await captureAndShare(target, {
         title: shareMealName,
-        text: shareText,
+        text: withMarathonWhatsAppNotice(shareText),
         fileName: `wellness-${activityType}-${Date.now()}.png`,
       });
     } catch (err) {
@@ -600,7 +601,7 @@ export function WeightRow({
     try {
       await captureAndShare(target, {
         title: `Weight ${p.weight} kg`,
-        text: shareText,
+        text: withMarathonWhatsAppNotice(shareText),
         fileName: `wellness-weight-${Date.now()}.png`,
       });
     } catch (err) {
@@ -762,7 +763,7 @@ export function EducationRow({
     try {
       await captureAndShare(swipe.elRef.current, {
         title: `Education - ${p.topic || 'Session'}`,
-        text: shareText,
+        text: withMarathonWhatsAppNotice(shareText),
         fileName: `wellness-education-${Date.now()}.png`,
       });
     } catch (err) {
@@ -870,7 +871,7 @@ export function GoodHabitRow({
     try {
       await captureAndShare(swipe.elRef.current, {
         title,
-        text: shareText,
+        text: withMarathonWhatsAppNotice(shareText),
         fileName: `wellness-good-habit-${Date.now()}.png`,
       });
     } catch (err) {
