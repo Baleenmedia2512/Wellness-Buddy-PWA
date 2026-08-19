@@ -443,10 +443,10 @@ export async function editTestimonial(rawBody) {
   if (payload.goalType             !== undefined) updates.goalType            = payload.goalType;
   if (payload.durationText         !== undefined) updates.durationText        = payload.durationText;
   if (payload.recoveredHealthIssues !== undefined) {
-    updates.recoveredHealthIssues = unionHealthIssues(
-      existing.recovered_health_issues,
-      payload.recoveredHealthIssues,
-    );
+    // Replace directly so removals are honoured.
+    updates.recoveredHealthIssues = Array.isArray(payload.recoveredHealthIssues)
+      ? payload.recoveredHealthIssues.map((s) => String(s || '').trim()).filter(Boolean)
+      : [];
   }
 
   const requiresReverification = [
@@ -1025,8 +1025,11 @@ export async function submitVideo(rawBody) {
     uploads.businessVideoPath = payload.businessVideoPath;
   }
 
+  // Replace directly so removals are honoured.
   const resolvedHealthIssues = payload.recoveredHealthIssues !== undefined
-    ? unionHealthIssues(existing.recovered_health_issues, payload.recoveredHealthIssues)
+    ? (Array.isArray(payload.recoveredHealthIssues)
+        ? payload.recoveredHealthIssues.map((s) => String(s || '').trim()).filter(Boolean)
+        : [])
     : (existing.recovered_health_issues ?? []);
 
   if (resolvedHealthIssues.length === 0) {
@@ -1280,8 +1283,11 @@ export async function submitAllEdits(rawBody) {
     || payload.goalType !== undefined || payload.durationText !== undefined;
   const hasVideoDirty  = slots.has('health') || slots.has('business');
   const hasIssuesDirty = slots.has('issues');
+  // When the issues slot is dirty we replace with the exact incoming list so removals are honoured.
   const mergedIssues = hasIssuesDirty
-    ? unionHealthIssues(existing.recovered_health_issues, payload.recoveredHealthIssues)
+    ? (Array.isArray(payload.recoveredHealthIssues)
+        ? payload.recoveredHealthIssues.map((s) => String(s || '').trim()).filter(Boolean)
+        : (existing.recovered_health_issues ?? []))
     : (existing.recovered_health_issues ?? []);
 
   const issuesOtpChannel = hasIssuesDirty && !hasPhotoDirty && !hasVideoDirty
@@ -1512,13 +1518,13 @@ export async function updateMemberHealthIssues(rawBody) {
     throw new ValidationError(404, 'No testimonial found for this user');
   }
 
-  const mergedIssues = unionHealthIssues(
-    existing.recovered_health_issues,
-    payload.recoveredHealthIssues,
-  );
+  // Replace the list directly so removals are honoured.
+  const resolvedIssues = Array.isArray(payload.recoveredHealthIssues)
+    ? payload.recoveredHealthIssues.map((s) => String(s || '').trim()).filter(Boolean)
+    : (existing.recovered_health_issues ?? []);
 
   await repo.updateTestimonial(existing.id, {
-    recoveredHealthIssues: mergedIssues,
+    recoveredHealthIssues: resolvedIssues,
   });
 
   return {
@@ -1526,7 +1532,7 @@ export async function updateMemberHealthIssues(rawBody) {
     body: {
       success: true,
       message: 'Health issue updated.',
-      recoveredHealthIssues: mergedIssues,
+      recoveredHealthIssues: resolvedIssues,
     },
   };
 }
