@@ -71,34 +71,40 @@ New apps that use `apiFetch` send the version header and show the update screen 
 
 ## Feature flags (behaviour old apps cannot handle)
 
-Version policy decides **whether the app may run**. Version-based dual paths decide **which backend behaviour each allowed version gets**.
-
-**Primary rule (`CLAUDE.md` §5.1 / `.cursor/rules/mobile-backend-api-compatibility.mdc`):**
+Version policy decides **whether the app may run**. Feature flags (with optional `minAppVersion`) decide **which backend behaviour each allowed version gets**.
 
 ```
-Breaking API change
-  → keep legacy + add new path in one backend deploy
-  → route by client app version (< NEW → legacy; ≥ NEW → new; missing → legacy while supported)
-  → deploy BEFORE Play lists the new app (no “turn flag ON after Play approval” step)
-  → grace: old still allowed on legacy path; soft RECOMMENDED OK
-  → force: raise MIN_REQUIRED + ENFORCE_API
-  → then remove legacy after old is unsupported
+New backend behaviour
+  → ship behind flag, default OFF
+  → deploy backend (old apps unchanged)
+  → new AAB live on Play Store
+  → enable flag only for versions that support it
+    (set flag ON + minAppVersion / FF_<FLAG>_MIN_APP_VERSION)
+  → never turn new behaviour ON for older supported apps
+  → after APP_VERSION_MIN_REQUIRED raised past old clients
+    → remove flag and dead code
 ```
 
-Feature flags may be **emergency kill switches** or non-breaking WIP gates — they must **not** be required for normal Play activation of breaking behaviour.
+This complements soft/hard update (`/api/app/version-policy`, `APP_VERSION_ENFORCE_API`). See also `CLAUDE.md` §5.1 for dual-path API compatibility (legacy vs new by client version) when a full old/new code path is required.
 
-Optional helper when a kill switch is desired:
+### How to gate a flag by app version
+
+1. Register optional `minAppVersion` on the flag (or set `FF_<NAME>_MIN_APP_VERSION` in env).
+2. In the handler/service, use:
 
 ```js
 import { isEnabledForAppVersion } from '../../../shared/lib/feature-flags.js';
 import { getClientAppVersion } from '../../../shared/lib/client-app-version.js';
 
-if (!isEnabledForAppVersion('ff.example', getClientAppVersion(req))) {
-  // keep legacy behaviour
+const clientVersion = getClientAppVersion(req);
+if (!isEnabledForAppVersion('ff.example', clientVersion)) {
+  // old / missing client → keep legacy behaviour
 }
 ```
 
-Do **not** turn a breaking behaviour ON for all clients with plain `isEnabled()` while older versions remain in the supported window.
+3. Client should send `X-App-Version` via `apiFetch` from `frontend/src/shared/services/apiFetch.js`.
+
+Do **not** turn a breaking behaviour ON with plain `isEnabled()` alone while older versions remain in the supported window.
 
 ## Tests
 

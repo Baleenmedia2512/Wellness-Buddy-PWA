@@ -60,10 +60,14 @@ const EMPTY_FORM = {
   hipCm:        '',
   recordedDate: new Date().toISOString().substring(0, 10),
   locationName: '',
+  recoveredHealthIssues: [],
 };
 
 function cardToFormState(card) {
   if (!card?.id) return EMPTY_FORM;
+  const issues = Array.isArray(card.recoveredHealthIssues)
+    ? card.recoveredHealthIssues.filter(Boolean)
+    : [];
   return {
     name:         card.name ? normalizeName(card.name) : '',
     phoneNumber:  card.phoneNumber  ?? '',
@@ -81,6 +85,7 @@ function cardToFormState(card) {
     hipCm:        card.hipCm        != null ? String(card.hipCm)       : '',
     recordedDate: card.recordedDate ?? new Date().toISOString().substring(0, 10),
     locationName: card.locationName ?? '',
+    recoveredHealthIssues: issues,
   };
 }
 
@@ -144,6 +149,7 @@ export function useBodyParamsCard({
       existingCard.hipCm,
       existingCard.locationName,
       existingCard.recordedDate,
+      JSON.stringify(existingCard.recoveredHealthIssues || []),
     ].map((v) => (v == null ? '' : String(v))).join('\u0001');
   }, [existingCard]);
 
@@ -491,6 +497,10 @@ export function useBodyParamsCard({
         recordedDate: form.recordedDate,
         locationName: locationNameToSave || '',
         creatorName,
+        // Required for WhatsApp pre-capture — share sheet prefers preCapCard over API card
+        recoveredHealthIssues: Array.isArray(form.recoveredHealthIssues)
+          ? form.recoveredHealthIssues
+          : [],
       });
     }
 
@@ -515,6 +525,9 @@ export function useBodyParamsCard({
         hipCm:       toOptionalNum(form.hipCm),
         recordedDate: form.recordedDate || undefined,
         locationName: locationNameToSave,
+        recoveredHealthIssues: Array.isArray(form.recoveredHealthIssues)
+          ? form.recoveredHealthIssues
+          : [],
       };
 
       debugLog('📍 [BodyParamsCard] saving Venue:', locationNameToSave);
@@ -548,6 +561,17 @@ export function useBodyParamsCard({
         recordedDate: pickSavedField(cardCore.recordedDate, form.recordedDate),
         // Prefer the Venue the user just entered so the share card updates immediately.
         locationName: locationNameToSave || pickSavedField(cardCore.locationName, locationNameToSave),
+        // Prefer API when it has values; else keep form selection (empty API
+        // array must not erase chips the coach just picked).
+        recoveredHealthIssues: (() => {
+          const fromApi = Array.isArray(cardCore.recoveredHealthIssues)
+            ? cardCore.recoveredHealthIssues.filter(Boolean)
+            : [];
+          const fromForm = Array.isArray(form.recoveredHealthIssues)
+            ? form.recoveredHealthIssues.filter(Boolean)
+            : [];
+          return fromApi.length > 0 ? fromApi : fromForm;
+        })(),
         creatorName,
       };
 

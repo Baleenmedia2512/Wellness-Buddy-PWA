@@ -3,7 +3,7 @@
  * Unified testimonials card view for every user.
  *
  * Unified per-member card shows ALL 5 slots:
- *   • Before photo · After photo · Health video · Business video · Recovered health issues
+ *   • Before photo · After photo · Health video · Business video · Health issues
  *
  * With downline: Mine | Direct | Full + search + upload filters.
  * Without downline: own card only (no Direct/Full/search/filters).
@@ -14,7 +14,7 @@ import React, { useEffect, useCallback, useState, useMemo, useRef } from 'react'
 import {
   AlertCircle, ArrowLeft, Camera, CheckCircle, CircleDot, Clock,
   Images, Mail, Pencil, Plus, RefreshCw, Save, ShieldCheck, Upload, Users, Video,
-  X, HeartPulse, TrendingDown, TrendingUp,
+  X, TrendingDown, TrendingUp,
 } from 'lucide-react';
 import CustomAlertModal from '../../../shared/components/CustomAlertModal';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
@@ -1318,11 +1318,11 @@ function MemberCard({
         </div>
       )}
 
-      {/* Recovery Health Issue — below photos, above result video */}
+      {/* Health Issues — below photos, above result video */}
       {(editable || testimonial) && (
         <div className="space-y-1.5 overflow-visible relative z-20">
-          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide flex items-center gap-1">
-            <HeartPulse className="h-3 w-3" /> Recovery Health Issue
+          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">
+            Health Issues
           </p>
           <HealthIssueCoachEditor
             userId={userId || user?.userId}

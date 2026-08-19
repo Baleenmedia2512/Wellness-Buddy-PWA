@@ -1,11 +1,11 @@
 /**
  * HealthIssueCoachEditor.jsx
- * Search + suggestions for Recovery Health Issue.
+ * Search + suggestions for Health Issues (coach Transformation editor).
  * Typing "back" shows Back Pain, Lower Back Pain, Chronic Back Pain, etc.
  * Custom typed issues are remembered and shown in later suggestion searches.
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { HeartPulse, Plus, Save, Search, X } from 'lucide-react';
+import { Plus, Save, Search, X } from 'lucide-react';
 import {
   getCustomMedicalConditions,
   recordRecentMedicalCondition,
@@ -235,10 +235,9 @@ export default function HealthIssueCoachEditor({
                   onMouseDown={(e) => { e.preventDefault(); selectIssue(issue); }}
                   onMouseEnter={() => setHighlight(idx)}
                   className={`w-full flex items-center gap-2 px-4 py-2.5 text-left text-sm transition-colors ${
-                    highlight === idx ? 'bg-green-50 text-green-900' : 'text-gray-800 hover:bg-green-50/70'
+                    highlight === idx ? 'bg-indigo-50 text-indigo-900' : 'text-gray-800 hover:bg-indigo-50/70'
                   }`}
                 >
-                  <HeartPulse className="h-3.5 w-3.5 text-rose-400 shrink-0" />
                   {issue}
                 </button>
               </li>
@@ -272,7 +271,7 @@ export default function HealthIssueCoachEditor({
       </div>
 
       <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-gray-600">
-        <span>Current Health Issue:</span>
+        <span>Current Health Issues:</span>
         {displayedIssues.length > 0 ? displayedIssues.map((issue) => {
           const approved = hasHealthIssue(baselineIssues, issue);
           const isPendingAdd = Boolean(pending) && issueKey(issue) === issueKey(pending);
