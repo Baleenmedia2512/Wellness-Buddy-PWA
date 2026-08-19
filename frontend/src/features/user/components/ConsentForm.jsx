@@ -367,14 +367,14 @@ const ConsentForm = ({
                 backgroundColor: choice === 'agree' ? `${BRAND}0D` : '#fff',
               }}
             >
-              <input
+              {/* <input
                 type="radio"
                 name="consentChoice"
                 className="mt-1 shrink-0 accent-[#047857]"
                 checked={choice === 'agree'}
                 onChange={() => setChoice('agree')}
                 disabled={submitting}
-              />
+              /> */}
               <span className="min-w-0">
                 <span className="block font-semibold text-gray-900 text-sm leading-snug">I Agree</span>
                 <span className="block text-[11px] text-gray-500 mt-1 leading-snug">
