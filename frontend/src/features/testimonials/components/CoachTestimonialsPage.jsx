@@ -1335,7 +1335,8 @@ function MemberCard({
             onSaved={handleHealthIssuesSaved}
             onRemove={handleHealthIssueRemoved}
           />
-          {testimonial && (testimonial.beforeImageUrl || hasAfter) && (
+          {testimonial && (testimonial.beforeImageUrl || hasAfter) &&
+            (editable ? (isVerified && !hasDirtySlots && !submitDone) : true) && (
             <TransformationShareActions
               kind="photo"
               cardRef={shareCardRef}
@@ -1491,7 +1492,9 @@ function MemberCard({
               <Clock className="h-3 w-3 shrink-0" /> Videos pending — share OTP with {user.userName}
             </p>
           )}
-          {Boolean(resultVideoUrl || testimonial?.healthVideoPath || testimonial?.businessVideoPath) && (
+          {testimonial?.videoStatus === 'verified' &&
+            (editable ? (!hasDirtySlots && !submitDone) : true) &&
+            Boolean(resultVideoUrl || testimonial?.healthVideoPath || testimonial?.businessVideoPath) && (
             <TransformationShareActions
               kind="video"
               userName={user.userName}
