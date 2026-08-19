@@ -71,17 +71,23 @@ New apps that use `apiFetch` send the version header and show the update screen 
 
 ## Feature flags (behaviour old apps cannot handle)
 
-Version policy decides **whether the app may run**. Feature flags decide **which backend behaviour each allowed version gets**.
+Version policy decides **whether the app may run**. Version-based dual paths decide **which backend behaviour each allowed version gets**.
+
+**Primary rule (`CLAUDE.md` §5.1 / `.cursor/rules/mobile-backend-api-compatibility.mdc`):**
 
 ```
-New backend behaviour
-  → ship behind flag, default OFF
-  → deploy backend (old apps unchanged)
-  → new AAB live on Play Store
-  → enable flag + set minAppVersion (or FF_<FLAG>_MIN_APP_VERSION) to that build
-  → never enable new behaviour globally while older supported apps cannot handle it
-  → after APP_VERSION_MIN_REQUIRED raised past old clients → remove flag and dead code
+Breaking API change
+  → keep legacy + add new path in one backend deploy
+  → route by client app version (< NEW → legacy; ≥ NEW → new; missing → legacy while supported)
+  → deploy BEFORE Play lists the new app (no “turn flag ON after Play approval” step)
+  → grace: old still allowed on legacy path; soft RECOMMENDED OK
+  → force: raise MIN_REQUIRED + ENFORCE_API
+  → then remove legacy after old is unsupported
 ```
+
+Feature flags may be **emergency kill switches** or non-breaking WIP gates — they must **not** be required for normal Play activation of breaking behaviour.
+
+Optional helper when a kill switch is desired:
 
 ```js
 import { isEnabledForAppVersion } from '../../../shared/lib/feature-flags.js';
@@ -91,6 +97,8 @@ if (!isEnabledForAppVersion('ff.example', getClientAppVersion(req))) {
   // keep legacy behaviour
 }
 ```
+
+Do **not** turn a breaking behaviour ON for all clients with plain `isEnabled()` while older versions remain in the supported window.
 
 ## Tests
 
