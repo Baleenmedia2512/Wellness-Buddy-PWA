@@ -172,12 +172,27 @@ function readShareGi(item) {
 }
 
 /**
+ * Splits "Herbalife Aloe Plus (Digestive Health)" into
+ * boldPart = "Herbalife Aloe Plus" and suffix = " (Digestive Health)"
+ * so the parenthetical sub-category stays plain text outside the bold markers.
+ */
+function splitNameAndSuffix(name) {
+  const match = String(name || '').match(/^(.*?)(\s*\([^)]*\)\s*)$/);
+  if (match) return { bold: match[1].trim(), suffix: match[2].trimEnd() };
+  return { bold: String(name || '').trim(), suffix: '' };
+}
+
+/**
  * @param {string} name
  * @param {number|null} glycemicIndex
  * @returns {string}
  */
 function formatFoodShareLine(name, glycemicIndex) {
-  return glycemicIndex != null ? waBold(name) : waBold(`${name},`);
+  const { bold, suffix } = splitNameAndSuffix(name);
+  if (glycemicIndex != null) {
+    return `${waBold(bold)}${suffix}`;
+  }
+  return `${waBold(`${bold},`)}${suffix}`;
 }
 
 /**
