@@ -1016,6 +1016,7 @@ export default function ManualEntryPage({
       </main>
 
       <SmartFoodSearchModal
+        key={foodEntryMeta?.initialQuery || 'food'}
         isOpen={activeForm === MANUAL_LOG_CATEGORY.FOOD}
         onClose={closeFoodSearch}
         onSave={handleFoodSave}

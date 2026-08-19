@@ -58,11 +58,20 @@ const SmartFoodSearchModal = ({
   // Prevents double-submit while parent closes + saves in background.
   const saveStartedRef = useRef(false);
 
-  // Reset state when modal opens/closes
+  // Track whether the modal was open on the previous render so we can detect
+  // the exact open transition regardless of React batching order.
+  const wasOpenRef = useRef(false);
+
+  // Reset state on open. We watch isOpen + initialQuery so that if initialQuery
+  // arrives one render after isOpen=true (React batching), we still catch it.
   useEffect(() => {
     if (isOpen) {
+      const justOpened = !wasOpenRef.current;
+      wasOpenRef.current = true;
+      const q = typeof initialQuery === "string" ? initialQuery : "";
+
       setShowTypeSelect(!skipTypeSelect);
-      setSearchQuery(typeof initialQuery === "string" ? initialQuery : "");
+      setSearchQuery(q);
       setMasterItems([]);
       setMyItems([]);
       setCommunityItems([]);
@@ -71,7 +80,20 @@ const SmartFoodSearchModal = ({
       setError("");
       resetManualForm();
       saveStartedRef.current = false;
+
+      // Kick off search for the initial query. Use a short delay so all state
+      // setters above have been applied before the fetch runs.
+      if (q.trim().length >= 1) {
+        setIsSearching(true);
+        const timer = setTimeout(() => performSearch(q.trim()), 80);
+        return () => clearTimeout(timer);
+      }
+      return undefined;
+    } else {
+      wasOpenRef.current = false;
+      return undefined;
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- performSearch ref is stable
   }, [isOpen, skipTypeSelect, initialQuery]);
 
   const handleBackFromFoodEntry = () => {
