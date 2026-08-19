@@ -12,6 +12,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { computeKatchMcArdleBmr } from '../../../shared/utils/bmrCalculations.js';
 import { createBodyParamsCard, updateBodyParamsCard } from '../services/bodyParamsCardApi.js';
+import { saveBcmMemberToDeviceContacts } from '../utils/bcmDeviceContact.js';
 import { teamHierarchyService } from '../../../shared/services/teamHierarchyService.js';
 import { getApiBaseUrl } from '../../../config/api.config.js';
 import { buildOnboardingShareUrl } from '../domain/platform-store.rules.js';
@@ -581,6 +582,17 @@ export function useBodyParamsCard({
       setForm(cardToFormState(fullCard));
       venueRef.current = String(fullCard.locationName || '').trim();
       debugLog('✅ [BodyParamsCard] Created:', fullCard);
+
+      // New team member → save phone to coach device contacts as "name venue yy/mm/dd"
+      if (!isEditMode && cardCore.isNewMember) {
+        void saveBcmMemberToDeviceContacts({
+          name: fullCard.name,
+          venue: fullCard.locationName,
+          recordedDate: fullCard.recordedDate,
+          phoneNumber: fullCard.phoneNumber,
+        });
+      }
+
       if (onSaveSuccess) onSaveSuccess(fullCard, url, prevCard);
       return true;
     } catch (err) {
