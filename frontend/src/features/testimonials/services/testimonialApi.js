@@ -4,20 +4,14 @@
  */
 import { CapacitorHttp } from '@capacitor/core';
 import { getApiBaseUrl } from '../../../config/api.config.js';
+import { parseCapacitorHttpJson } from '../utils/testimonialMediaUrl.js';
 
 function base() {
   return `${getApiBaseUrl()}/api/testimonials`;
 }
 
 function parseApiResponse(res, fallbackMessage) {
-  let result = res?.data;
-  if (typeof result === 'string') {
-    try {
-      result = JSON.parse(result);
-    } catch {
-      result = null;
-    }
-  }
+  let result = parseCapacitorHttpJson(res?.data);
   if (res?.status >= 200 && res?.status < 300 && result?.success) {
     return result;
   }
@@ -54,11 +48,12 @@ export async function editTestimonial(payload) {
  * Fetch the current user's own testimonial.
  * @param {number} userId
  */
-export async function getMyTestimonial(userId) {
+export async function getMyTestimonial(userId, { cacheBust = true } = {}) {
+  const ts = cacheBust ? `&_t=${Date.now()}` : '';
   const res = await CapacitorHttp.get({
-    url: `${base()}/my-testimonial?userId=${encodeURIComponent(userId)}`,
+    url: `${base()}/my-testimonial?userId=${encodeURIComponent(userId)}${ts}`,
   });
-  const result = res.data;
+  const result = parseCapacitorHttpJson(res.data);
   if (!result?.success) throw new Error(result?.message || 'Failed to fetch testimonial');
   return result.data; // null if not submitted yet
 }
@@ -68,10 +63,11 @@ export async function getMyTestimonial(userId) {
  * @param {number} userId
  */
 export async function getMyVideoTestimonial(userId) {
+  const ts = `&_t=${Date.now()}`;
   const res = await CapacitorHttp.get({
-    url: `${base()}/my-video?userId=${encodeURIComponent(userId)}`,
+    url: `${base()}/my-video?userId=${encodeURIComponent(userId)}${ts}`,
   });
-  const result = res.data;
+  const result = parseCapacitorHttpJson(res.data);
   if (!result?.success) throw new Error(result?.message || 'Failed to fetch video testimonial');
   return result.data; // null if no videos uploaded
 }
@@ -99,6 +95,7 @@ export async function verifyTestimonialOtp(payload) {
  *   page?: number,
  *   limit?: number,
  *   search?: string,
+ *   healthIssue?: string,
  *   uploadFilter?: string,
  * }} [opts]
  * @returns {Promise<{ data: Array, pagination: object, uploadCounts: object }>}
@@ -108,6 +105,7 @@ export async function listForCoach(coachId, opts = {}) {
   const page = typeof opts === 'object' ? (opts.page ?? 1) : 1;
   const limit = typeof opts === 'object' ? (opts.limit ?? 10) : 10;
   const search = typeof opts === 'object' ? (opts.search || '') : '';
+  const healthIssue = typeof opts === 'object' ? (opts.healthIssue || '') : '';
   const uploadFilter = typeof opts === 'object' ? (opts.uploadFilter || 'all') : 'all';
 
   const params = new URLSearchParams({
@@ -117,6 +115,7 @@ export async function listForCoach(coachId, opts = {}) {
   });
   if (scope === 'full') params.set('scope', 'full');
   if (search) params.set('search', search);
+  if (healthIssue) params.set('healthIssue', healthIssue);
   if (uploadFilter && uploadFilter !== 'all') params.set('uploadFilter', uploadFilter);
 
   const res = await CapacitorHttp.get({
@@ -167,9 +166,11 @@ export async function prepareTestimonialVideoUpload(payload) {
   const res = await CapacitorHttp.post({
     url:     `${base()}/prepare-video-upload`,
     headers: { 'Content-Type': 'application/json' },
+    connectTimeout: 30000,
+    readTimeout: 60000,
     data:    payload,
   });
-  const result = res.data;
+  const result = parseCapacitorHttpJson(res.data);
   if (res.status < 200 || res.status >= 300 || !result?.success) {
     throw new Error(result?.message || 'Failed to prepare video upload');
   }
@@ -196,9 +197,7 @@ export async function submitTestimonialVideo(payload) {
     headers: { 'Content-Type': 'application/json' },
     data:    payload,
   });
-  const result = res.data;
-  if (!result?.success) throw new Error(result?.message || 'Failed to upload video testimonial');
-  return result;
+  return parseApiResponse(res, 'Failed to upload video testimonial');
 }
 
 /**
@@ -288,4 +287,17 @@ export async function verifyUnifiedOtp(payload) {
     data:    payload,
   });
   return parseApiResponse(res, 'OTP verification failed');
+}
+
+/**
+ * Coach: update a reporting member's recovered health issues (no OTP).
+ * @param {{ coachId: number, userId: number, recoveredHealthIssues: string[] }} payload
+ */
+export async function updateMemberHealthIssues(payload) {
+  const res = await CapacitorHttp.post({
+    url:     `${base()}/update-health-issues`,
+    headers: { 'Content-Type': 'application/json' },
+    data:    payload,
+  });
+  return parseApiResponse(res, 'Failed to update health issue');
 }

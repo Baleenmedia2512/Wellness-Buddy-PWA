@@ -1,8 +1,9 @@
-// Editable name / height / phone / gender / bodyFat fields + email.
+// Editable name / height / phone / community ID / gender / bodyFat fields + email.
 // BMR is display-only when bmrReadOnly (profile page) — calculated from weight/formula.
 // Body fat is shown only when the user has no existing weight/BPC source.
 import React from 'react';
-import { Flame, Mail, Percent } from 'lucide-react';
+import { Flame, Hash, Mail, Percent } from 'lucide-react';
+import { COMMUNITY_ID_MAX_LENGTH, sanitizeCommunityIdInput } from '../../domain/communityId';
 import PhysicalActivityField from './PhysicalActivityField';
 import {
   VALID_GENDERS,
@@ -30,6 +31,7 @@ const UserProfileFields = ({
   physicalActivityLevel, setPhysicalActivityLevel,
   bodyFat, setBodyFat,
   showBodyFat = false,
+  communityId, setCommunityId,
 }) => (
   <div className="space-y-4">
     <Field label="Email" required>
@@ -87,6 +89,22 @@ const UserProfileFields = ({
     <Field label="Phone Number" required>
       <input type="text" inputMode="numeric" pattern="[0-9]*" value={phone} onChange={(e) => setPhone(e.target.value)}
         placeholder="e.g. +91 9876543210" className={inputCls} style={{ fontSize: '16px' }} />
+    </Field>
+    <Field label="Community ID">
+      <div className="relative">
+        <Hash className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+        <input
+          type="text"
+          autoComplete="off"
+          value={communityId || ''}
+          onChange={(e) => setCommunityId && setCommunityId(sanitizeCommunityIdInput(e.target.value))}
+          maxLength={COMMUNITY_ID_MAX_LENGTH}
+          placeholder="e.g. WB12345"
+          className={`${inputCls} pl-9`}
+          style={{ fontSize: '16px' }}
+        />
+      </div>
+      <p className="text-xs text-gray-400 mt-1">Letters and numbers only. Optional.</p>
     </Field>
     <div>
       <label className="flex items-center gap-1 text-sm font-medium text-gray-700 mb-1">

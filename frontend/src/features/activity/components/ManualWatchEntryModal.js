@@ -3,13 +3,18 @@ import React, { useState, useEffect } from "react";
 import { X, Loader2, Dumbbell } from "lucide-react";
 import { EmojiOrNative } from "../../../shared/components/icons/EmojiImage";
 import { isIOS } from "../../../shared/utils/platform";
+import TouchFeedbackButton from "../../../shared/components/TouchFeedbackButton";
+import {
+  WATCH_KCAL_MAX,
+  WATCH_KCAL_STEP,
+  WATCH_KCAL_QUICK_ADD,
+  parseKcal,
+  clampKcal,
+  watchKcalBounds,
+  nextWatchKcal,
+} from "../domain/watchKcalStepper";
 
 const DEFAULT_SOURCE = "Smartwatch";
-
-function parseKcal(value) {
-  const n = Number(String(value ?? '').replace(/[^\d.]/g, ''));
-  return Number.isFinite(n) && n > 0 ? Math.round(n) : 0;
-}
 
 /**
  * ManualWatchEntryModal
@@ -27,27 +32,32 @@ const ManualWatchEntryModal = ({
   todayBaseline = 0,
   loading = false,
 }) => {
-  const [caloriesBurned, setCaloriesBurned] = useState("");
+  const [caloriesBurned, setCaloriesBurned] = useState(0);
   const [error, setError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
+  const { baseline: baselineKcal, min: minKcal, max: maxKcal } = watchKcalBounds(todayBaseline);
+
   useEffect(() => {
     if (!isOpen) {
-      setCaloriesBurned('');
+      setCaloriesBurned(0);
       setError('');
       return;
     }
     if (loading) return;
     const fromAi = parseKcal(initialCaloriesBurned);
     const baseline = parseKcal(todayBaseline);
-    const prefill = Math.max(fromAi, baseline);
-    setCaloriesBurned(prefill > 0 ? String(prefill) : '');
+    setCaloriesBurned(Math.max(fromAi, baseline));
     setError('');
   }, [isOpen, initialCaloriesBurned, formKey, todayBaseline, loading]);
 
   const resetForm = () => {
-    setCaloriesBurned("");
+    setCaloriesBurned(0);
     setError("");
+  };
+
+  const bumpBy = (amount) => {
+    setCaloriesBurned((v) => nextWatchKcal(v, amount, todayBaseline));
   };
 
   const handleCancel = () => {
@@ -58,12 +68,12 @@ const ManualWatchEntryModal = ({
   const handleSave = () => {
     setError("");
 
-    const kcal = Number(caloriesBurned);
-    if (!caloriesBurned || isNaN(kcal) || kcal <= 0) {
+    const kcal = clampKcal(caloriesBurned, minKcal, maxKcal);
+    if (kcal <= 0) {
       setError("Please enter a valid calories burned value");
       return;
     }
-    if (kcal > 10000) {
+    if (kcal > WATCH_KCAL_MAX) {
       setError("Calories burned seems too high (max 10,000)");
       return;
     }
@@ -76,9 +86,8 @@ const ManualWatchEntryModal = ({
 
   if (!isOpen) return null;
 
-  const enteredKcal = parseKcal(caloriesBurned);
-  const baselineKcal = parseKcal(todayBaseline);
-  const noChange = !loading && enteredKcal > 0 && enteredKcal <= baselineKcal;
+  const enteredKcal = clampKcal(caloriesBurned, minKcal, maxKcal);
+  const noChange = !loading && enteredKcal <= baselineKcal;
   const saveDisabled = isSaving || loading || noChange;
 
   const saveLabel = (() => {
@@ -134,29 +143,52 @@ const ManualWatchEntryModal = ({
               Loading today&apos;s total…
             </div>
           ) : (
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1">
-              Calories Burned (kcal) <span className="text-red-500">*</span>
-            </label>
-            {baselineKcal > 0 && (
-              <p className="mb-2 text-xs text-emerald-700">
-                {/* Logged today: {baselineKcal} kcal — enter a higher total to update */}
-              </p>
-            )}
-            <input
-              type="text"
-              inputMode="decimal"
-              pattern="[0-9]*"
-              value={caloriesBurned}
-              onChange={(e) => setCaloriesBurned(e.target.value)}
-              placeholder="e.g., 350"
-              min="1"
-              max="10000"
-              disabled={isSaving}
-              className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:border-emerald-400 focus:outline-none text-base bg-white disabled:opacity-60"
-              style={{ fontSize: "16px" }}
-            />
-          </div>
+            <div className="flex flex-col items-center gap-4">
+              <div className="flex items-center gap-5">
+                <TouchFeedbackButton
+                  onClick={() => bumpBy(-WATCH_KCAL_STEP)}
+                  disabled={isSaving || enteredKcal <= minKcal}
+                  className="w-11 h-11 rounded-full border-2 border-gray-200 flex items-center justify-center text-xl font-bold text-gray-700 disabled:opacity-30"
+                  aria-label="Decrease"
+                >
+                  −
+                </TouchFeedbackButton>
+                <span className="min-w-[7.5rem] text-center text-2xl font-bold text-gray-900 tabular-nums">
+                  {enteredKcal} kcal
+                </span>
+                <TouchFeedbackButton
+                  onClick={() => bumpBy(WATCH_KCAL_STEP)}
+                  disabled={isSaving || enteredKcal >= maxKcal}
+                  className="w-11 h-11 rounded-full border-2 border-gray-200 flex items-center justify-center text-xl font-bold text-gray-700 disabled:opacity-30"
+                  aria-label="Increase"
+                >
+                  +
+                </TouchFeedbackButton>
+              </div>
+              <div className="w-full">
+                <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide text-center mb-2">
+                  Quick add
+                </p>
+                <div className="flex gap-2 justify-center flex-wrap">
+                  {WATCH_KCAL_QUICK_ADD.map((preset) => {
+                    const amount = Number(preset.amount) || 0;
+                    const disabled = isSaving || amount <= 0 || enteredKcal + amount > maxKcal;
+                    return (
+                      <TouchFeedbackButton
+                        key={preset.label}
+                        type="button"
+                        onClick={() => bumpBy(amount)}
+                        disabled={disabled}
+                        className="min-w-[5.5rem] px-4 py-2.5 rounded-xl border-2 border-emerald-200 bg-emerald-50 text-sm font-bold text-emerald-800 disabled:opacity-40 active:bg-emerald-100"
+                        aria-label={`Add ${preset.label}`}
+                      >
+                        +{preset.label}
+                      </TouchFeedbackButton>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
           )}
 
           {error && (

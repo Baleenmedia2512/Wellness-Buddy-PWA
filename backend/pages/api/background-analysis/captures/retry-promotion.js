@@ -1,8 +1,8 @@
+// Inline config for Next.js 15
 import { applyCors, methodNotAllowed, runService } from '../../../../shared/lib/handler.js';
 import { validateRetryPromotion } from '../../../../features/background-analysis/analysis.validators.js';
 import { retryPromotionToFood } from '../../../../features/background-analysis/diary.service.js';
 
-// Must be a literal export — Next.js cannot statically parse re-exported config.
 export const config = {
   api: {
     bodyParser: {

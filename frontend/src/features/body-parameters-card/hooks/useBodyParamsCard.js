@@ -9,13 +9,15 @@
  * Also owns phone-prefix autocomplete state + member pre-fill logic.
  * Components only render — no fetch logic here.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { computeKatchMcArdleBmr } from '../../../shared/utils/bmrCalculations.js';
 import { createBodyParamsCard, updateBodyParamsCard } from '../services/bodyParamsCardApi.js';
 import { teamHierarchyService } from '../../../shared/services/teamHierarchyService.js';
 import { getApiBaseUrl } from '../../../config/api.config.js';
 import { buildOnboardingShareUrl } from '../domain/platform-store.rules.js';
 import { debugLog } from '../../../shared/utils/logger.js';
+import { CapacitorHttp } from '@capacitor/core';
+import { getAppVersionHeaders } from '../../../shared/services/apiFetch.js';
 
 /**
  * Normalise any phone string to a 10-digit Indian national number for prefix
@@ -83,9 +85,12 @@ function cardToFormState(card) {
 }
 
 /**
- * @param {{ user: object, selectedMember: object|null, onSaveSuccess: function, existingCard: object|null, onSaveStart: function|null, isOpen: boolean }} opts
+ * @param {{ user: object, selectedMember: object|null, onSaveSuccess: function, existingCard: object|null, onSaveStart: function|null, isOpen: boolean, externalVenue?: string|null }} opts
  */
-export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existingCard = null, onSaveStart = null, isOpen = false } = {}) {
+export function useBodyParamsCard({
+  user, selectedMember, onSaveSuccess, existingCard = null, onSaveStart = null, isOpen = false,
+  externalVenue = null,
+} = {}) {
   const isEditMode = Boolean(existingCard?.id);
 
   const [form, setForm] = useState(() => cardToFormState(existingCard));
@@ -112,17 +117,64 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
   // Flat list of all team members — loaded once when coachUserId is available.
   // Used for client-side phone prefix filtering (no backend round-trip needed).
   const [allTeamMembers, setAllTeamMembers] = useState([]);
+  /** Always-current Venue string — avoids stale form state on Save. */
+  const venueRef = useRef('');
 
   const targetUserId = selectedMember?.userId || selectedMember?.id || null;
 
-  // Reload form every time the modal opens (fixes phone/fields missing after save+reopen).
-  useEffect(() => {
+  // Fingerprint of persisted card fields so a late-arriving detail fetch
+  // (same id, more values) hydrates the form without waiting for a remount.
+  const existingCardSnapshot = useMemo(() => {
+    if (!existingCard?.id) return '';
+    return [
+      existingCard.id,
+      existingCard.name,
+      existingCard.phoneNumber,
+      existingCard.age,
+      existingCard.gender,
+      existingCard.heightCm,
+      existingCard.weightKg,
+      existingCard.bmi,
+      existingCard.fatPercent,
+      existingCard.bmr,
+      existingCard.visceralFat,
+      existingCard.bodyAge,
+      existingCard.chestCm,
+      existingCard.waistCm,
+      existingCard.hipCm,
+      existingCard.locationName,
+      existingCard.recordedDate,
+    ].map((v) => (v == null ? '' : String(v))).join('\u0001');
+  }, [existingCard]);
+
+  // Reload form when the modal opens or the card values actually change.
+  // useLayoutEffect so saved / fetched values paint on the first open frame.
+  // Create: prefill Venue from header. Edit: use the card's saved Venue.
+  useLayoutEffect(() => {
     if (!isOpen) return;
-    setForm(cardToFormState(existingCard));
+    const next = cardToFormState(existingCard);
+    if (!isEditMode) {
+      const fromHeader = externalVenue != null ? String(externalVenue).trim() : '';
+      if (fromHeader) next.locationName = fromHeader;
+    }
+    venueRef.current = String(next.locationName || '').trim();
+    setForm(next);
     setBmiUserEdited(false);
     setBmrUserEdited(false);
     setError('');
-  }, [isOpen, existingCard]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, existingCardSnapshot, isEditMode]);
+
+  // Create flow: keep form Venue in sync with the header Venue immediately.
+  useLayoutEffect(() => {
+    if (!isOpen || isEditMode) return;
+    const fromHeader = externalVenue != null ? String(externalVenue).trim() : '';
+    setForm((prev) => {
+      if (String(prev.locationName || '').trim() === fromHeader) return prev;
+      venueRef.current = fromHeader;
+      return { ...prev, locationName: fromHeader };
+    });
+  }, [isOpen, isEditMode, externalVenue]);
 
   // Resolve counsellor database UserId (team_table.UserId) — required for card createdBy only.
   useEffect(() => {
@@ -131,7 +183,7 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
     let cancelled = false;
     CapacitorHttp.get({
       url: `${getApiBaseUrl()}/api/user/lookup?email=${encodeURIComponent(user.email)}`,
-      headers: { 'Cache-Control': 'no-cache' },
+      headers: { 'Cache-Control': 'no-cache', ...getAppVersionHeaders() },
     })
       .then((response) => {
         const data = response.data;
@@ -240,6 +292,9 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
 
   const setField = useCallback((field, value) => {
     const nextValue = field === 'name' ? normalizeName(value) : value;
+    if (field === 'locationName') {
+      venueRef.current = String(nextValue || '').trim();
+    }
     setForm((prev) => ({ ...prev, [field]: nextValue }));
     if (field === 'weightKg' || field === 'fatPercent') {
       setBmrUserEdited(false);
@@ -404,8 +459,19 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
     setError('');
     setIsSaving(true);
 
+    // Venue from form ref (typed in modal), else header Venue — never drop on save.
+    const locationNameToSave = (
+      String(venueRef.current || '').trim()
+      || String(form.locationName || '').trim()
+      || String(externalVenue || '').trim()
+      || null
+    );
+
     // ⚡ Notify parent immediately with form data so it can start
     // pre-rendering + pre-capturing the card image in parallel with the API call.
+    const creatorName = String(
+      user?.userName || user?.name || user?.username || user?.displayName || ''
+    ).trim();
     if (onSaveStart) {
       onSaveStart({
         name:         form.name.trim(),
@@ -423,7 +489,8 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
         waistCm:      toOptionalNum(form.waistCm),
         hipCm:        toOptionalNum(form.hipCm),
         recordedDate: form.recordedDate,
-        locationName: form.locationName,
+        locationName: locationNameToSave || '',
+        creatorName,
       });
     }
 
@@ -447,8 +514,10 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
         waistCm:     toOptionalNum(form.waistCm),
         hipCm:       toOptionalNum(form.hipCm),
         recordedDate: form.recordedDate || undefined,
-        locationName: form.locationName || undefined,
+        locationName: locationNameToSave,
       };
+
+      debugLog('📍 [BodyParamsCard] saving Venue:', locationNameToSave);
 
       const card = isEditMode
         ? await updateBodyParamsCard(existingCard.id, payload)
@@ -477,19 +546,26 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
         waistCm:      pickSavedField(cardCore.waistCm, form.waistCm),
         hipCm:        pickSavedField(cardCore.hipCm, form.hipCm),
         recordedDate: pickSavedField(cardCore.recordedDate, form.recordedDate),
-        locationName: pickSavedField(cardCore.locationName, form.locationName),
+        // Prefer the Venue the user just entered so the share card updates immediately.
+        locationName: locationNameToSave || pickSavedField(cardCore.locationName, locationNameToSave),
+        creatorName,
       };
 
       setSavedCard(fullCard);
       setShareUrl(url);
+      // Keep the just-saved values in the form immediately (do not wait for remount).
+      setForm(cardToFormState(fullCard));
+      venueRef.current = String(fullCard.locationName || '').trim();
       debugLog('✅ [BodyParamsCard] Created:', fullCard);
       if (onSaveSuccess) onSaveSuccess(fullCard, url, prevCard);
+      return true;
     } catch (err) {
       setError(err.message || 'Failed to save. Please try again.');
+      return false;
     } finally {
       setIsSaving(false);
     }
-  }, [isValid, form, coachUserId, targetUserId, onSaveSuccess, onSaveStart, isEditMode, existingCard, user, bmrUserEdited]);
+  }, [isValid, form, coachUserId, targetUserId, onSaveSuccess, onSaveStart, isEditMode, existingCard, user, bmrUserEdited, externalVenue]);
 
   return {
     form, setField,

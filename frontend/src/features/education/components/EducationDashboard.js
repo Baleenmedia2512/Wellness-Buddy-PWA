@@ -26,12 +26,14 @@ const EducationDashboard = ({
   onAfterModalClose = null,
   /** Timeline modal-host: skip logs/summary until first open. */
   deferDataFetch = false,
+  timezoneIana = null,
 }) => {
   const [dataFetchEnabled, setDataFetchEnabled] = useState(!deferDataFetch);
   const vm = useEducationDashboard({
     user, apiBaseUrl, refreshKey, selectedDate,
     onDeleteWithUndo, onDeleteUndoCancel,
     enabled: dataFetchEnabled,
+    timezoneIana,
   });
   const [selectedLog, setSelectedLog] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
@@ -110,6 +112,7 @@ const EducationDashboard = ({
       isDeleting={deletingId === selectedLog?.Id}
       apiBaseUrl={vm.apiBaseUrl}
       userId={vm.userIdRef.current}
+      timezoneIana={vm.timezoneIana}
     />
   ) : null;
 

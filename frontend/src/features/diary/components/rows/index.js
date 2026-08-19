@@ -16,11 +16,16 @@
  */
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Smartphone, GraduationCap, HelpCircle, Share2, ArrowUp, ArrowDown } from 'lucide-react';
+import { Smartphone, GraduationCap, HelpCircle, Share2, ArrowUp, ArrowDown, Star } from 'lucide-react';
 import { useSwipeToDelete } from '../../../../shared/hooks/useSwipeToDelete';
 import { parseAnalysisData, recalculateTotals, getMealCategory } from '../../../nutrition/services/nutritionDashboard/analysisHelpers';
-import { captureAndShare } from '../../../../shared/utils/shareUtils';
-import { formatBusinessTime, DEFAULT_BUSINESS_TIMEZONE } from '../../../../shared/utils/datetimeUtils';
+import { captureAndShare, composeBrandedShareCaption } from '../../../../shared/utils/shareUtils';
+import { withMarathonWhatsAppNotice } from '../../../marathon';
+import {
+  formatBusinessTime,
+  formatBusinessDateTime,
+  DEFAULT_BUSINESS_TIMEZONE,
+} from '../../../../shared/utils/datetimeUtils';
 import { DIARY_FOOD_ACTIVITY } from '../../domain/activityType';
 import { resolveFoodRowPresentation } from '../../domain/foodRowDisplay';
 import {
@@ -89,6 +94,10 @@ const WeighingScaleIcon = ({ className }) => (
 
 function formatTime(iso, timezoneIana = DEFAULT_BUSINESS_TIMEZONE) {
   return formatBusinessTime(iso, timezoneIana);
+}
+
+function formatShareDateTime(iso, timezoneIana = DEFAULT_BUSINESS_TIMEZONE) {
+  return formatBusinessDateTime(iso, timezoneIana);
 }
 
 const MEAL_BADGE_BY_CATEGORY = {
@@ -242,6 +251,7 @@ export function FoodRow({
   timezoneIana = DEFAULT_BUSINESS_TIMEZONE,
   ownerUserId = null,
   viewerUserId = null,
+  shareUser = null,
 }) {
   const p = entry.payload || {};
   const cal = p.totals?.calories ?? 0;
@@ -271,6 +281,8 @@ export function FoodRow({
           ? listSummary.items.map((item) => ({
               name: item.name,
               calories: item.calories,
+              glycemicIndex: item.glycemicIndex ?? item.glycemic_index ?? null,
+              glycemic_index: item.glycemicIndex ?? item.glycemic_index ?? null,
               volume_ml: listSummary.volumeMl,
               scoops: listSummary.scoops,
             }))
@@ -307,6 +319,10 @@ export function FoodRow({
   const isShake = activityType === DIARY_FOOD_ACTIVITY.SHAKE;
   const showNutritionShare = !isWater && !isAfresh;
   const foodItems = Array.isArray(foodData.detailedItems) ? foodData.detailedItems : [];
+  const shareMealName = foodItems
+    .map((item) => String(item?.name || '').trim())
+    .filter(Boolean)
+    .join(', ') || mealName;
 
   // Lazy-hydrate share card image once (on share or when thumb URL is raw).
   useEffect(() => {
@@ -347,21 +363,28 @@ export function FoodRow({
     { label: 'Fiber',    value: Math.round(t.fiber    ?? 0), unit: 'g',    color: '#22c55e' },
     { label: 'Sugar',    value: Math.round(t.sugar    ?? 0), unit: 'g',    color: '#a855f7' },
   ];
-  const shareTime = entry.capturedAt
-    ? new Date(entry.capturedAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })
-    : '';
+  const shareTime = formatShareDateTime(entry.capturedAt, timezoneIana);
 
-  // Share taps the full off-screen nutrition card, not the compact row
+  const sharingLockRef = useRef(false);
+
+  // Share taps the full off-screen nutrition card, not the compact row.
+  // Water / Afresh captions use THIS card's volume / scoops.
+  // Day totals ("so far today") belong to Manual Entry share after save.
   const handleShare = async (e) => {
+    e.preventDefault();
     e.stopPropagation();
-    if (swipe.dragging || swipe.leaving || isSharing) return;
+    if (sharingLockRef.current || swipe.leaving) return;
+    sharingLockRef.current = true;
     const target = shareCardRef.current || swipe.elRef.current;
-    if (!target) return;
+    if (!target) {
+      sharingLockRef.current = false;
+      return;
+    }
     setIsSharing(true);
     try {
       await captureAndShare(target, {
-        title: mealName,
-        text: shareText,
+        title: shareMealName,
+        text: withMarathonWhatsAppNotice(composeBrandedShareCaption(shareText, { user: shareUser })),
         fileName: `wellness-${activityType}-${Date.now()}.png`,
       });
     } catch (err) {
@@ -369,8 +392,13 @@ export function FoodRow({
         console.error('[FoodRow] Share failed:', err);
       }
     } finally {
+      sharingLockRef.current = false;
       setIsSharing(false);
     }
+  };
+
+  const stopShareGesture = (e) => {
+    e.stopPropagation();
   };
 
   return (
@@ -384,7 +412,7 @@ export function FoodRow({
         {/* Header */}
         <div style={{ background: 'linear-gradient(135deg, #16a34a 0%, #15803d 100%)', padding: '16px 20px 12px' }}>
           <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.7)', margin: 0, letterSpacing: 0.3 }}>WELLNESS VALLEY · {shareTime}</p>
-          <p style={{ fontSize: 20, fontWeight: 700, color: '#fff', margin: '4px 0 0', lineHeight: 1.2 }}>{mealName}</p>
+          <p style={{ fontSize: 20, fontWeight: 700, color: '#fff', margin: '4px 0 0', lineHeight: 1.2 }}>{shareMealName}</p>
           {showMealBadge && meal && (
             <span style={{ display: 'inline-block', marginTop: 5, fontSize: 11, fontWeight: 600, padding: '2px 9px', borderRadius: 20, background: 'rgba(255,255,255,0.2)', color: '#fff' }}>
               {meal.label}
@@ -522,10 +550,15 @@ export function FoodRow({
             <p className="text-[11px] text-gray-500 -mt-0.5">{primaryUnit}</p>
           ) : null}
         </div>
-        {/* Share button — stopPropagation prevents opening the detail modal */}
+        {/* Share button — stopPropagation prevents opening the detail modal
+            and keeps swipe-to-delete from swallowing the first tap. */}
         <button
+          type="button"
           aria-label={`Share this ${activityType} entry`}
           onClick={handleShare}
+          onPointerDown={stopShareGesture}
+          onTouchStart={stopShareGesture}
+          onMouseDown={stopShareGesture}
           disabled={isSharing}
           className="shrink-0 ml-1 p-1.5 rounded-lg text-gray-400 hover:text-green-600 hover:bg-green-50 transition-colors disabled:opacity-50"
         >
@@ -561,9 +594,7 @@ export function WeightRow({
     previousWeight,
     currentWeight: p.weight,
   });
-  const shareTime = entry.capturedAt
-    ? new Date(entry.capturedAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })
-    : '';
+  const shareTime = formatShareDateTime(entry.capturedAt, timezoneIana);
 
   const handleShare = async (e) => {
     e.stopPropagation();
@@ -574,7 +605,7 @@ export function WeightRow({
     try {
       await captureAndShare(target, {
         title: `Weight ${p.weight} kg`,
-        text: shareText,
+        text: withMarathonWhatsAppNotice(shareText),
         fileName: `wellness-weight-${Date.now()}.png`,
       });
     } catch (err) {
@@ -736,7 +767,7 @@ export function EducationRow({
     try {
       await captureAndShare(swipe.elRef.current, {
         title: `Education - ${p.topic || 'Session'}`,
-        text: shareText,
+        text: withMarathonWhatsAppNotice(shareText),
         fileName: `wellness-education-${Date.now()}.png`,
       });
     } catch (err) {
@@ -802,6 +833,111 @@ export function EducationRow({
         </div>
         <button
           aria-label="Share this education entry"
+          onClick={handleShare}
+          disabled={isSharing}
+          className="shrink-0 ml-1 p-1.5 rounded-lg text-gray-400 hover:text-green-600 hover:bg-green-50 transition-colors disabled:opacity-50"
+        >
+          {isSharing
+            ? <div className="w-4 h-4 border-2 border-green-500 border-t-transparent rounded-full animate-spin" aria-hidden="true" />
+            : <Share2 className="w-4 h-4" aria-hidden="true" />}
+        </button>
+      </div>
+    </SwipeDeleteShell>
+  );
+}
+
+// ─── kind: good-habit ───────────────────────────────────────────────────────
+
+export function GoodHabitRow({
+  entry,
+  onOpen,
+  onDelete,
+  canDelete = true,
+  hideTime = false,
+  timezoneIana = DEFAULT_BUSINESS_TIMEZONE,
+  ownerUserId = null,
+  viewerUserId = null,
+}) {
+  const p = entry.payload || {};
+  const { swipe, swipeEnabled } = useDiaryRowSwipe({ canDelete, onDelete, entry });
+  const thumb = thumbPropsFromEntry(entry, { ownerUserId, viewerUserId });
+  const [isSharing, setIsSharing] = useState(false);
+  const title = 'Good Habit';
+  const shareText = buildDiaryShareSuffix('good-habit', {
+    habitType: p.habitType,
+    notes: p.notes,
+  });
+
+  const handleShare = async (e) => {
+    e.stopPropagation();
+    if (swipe.dragging || swipe.leaving || isSharing || !swipe.elRef.current) return;
+    setIsSharing(true);
+    try {
+      await captureAndShare(swipe.elRef.current, {
+        title,
+        text: withMarathonWhatsAppNotice(shareText),
+        fileName: `wellness-good-habit-${Date.now()}.png`,
+      });
+    } catch (err) {
+      if (!err?.message?.toLowerCase().includes('cancel')) {
+        console.error('[GoodHabitRow] Share failed:', err);
+      }
+    } finally {
+      setIsSharing(false);
+    }
+  };
+
+  return (
+    <SwipeDeleteShell swipe={swipe} enabled={swipeEnabled}>
+      {swipeEnabled && (
+        <div aria-hidden className="absolute inset-0 z-0 flex items-center justify-end pr-5 overflow-hidden rounded-xl">
+          <div
+            className="flex items-center justify-center w-12 h-12 bg-red-500 rounded-full"
+            style={{
+              opacity: swipe.progress,
+              transform: `scale(${0.6 + swipe.progress * 0.4})`,
+              transition: swipe.dragging ? 'none' : 'transform 160ms ease, opacity 160ms ease',
+            }}
+          >
+            <svg className="w-6 h-6 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              style={{ transform: `rotate(${swipe.armed ? 10 : 0}deg)`, transition: 'transform 160ms cubic-bezier(.2,.8,.2,1.2)', strokeWidth: swipe.armed ? 2.2 : 2 }}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3M4 7h16" />
+            </svg>
+          </div>
+        </div>
+      )}
+
+      <div
+        ref={swipe.elRef}
+        role="button"
+        tabIndex={0}
+        aria-label="Good Habit"
+        data-testid="diary-row-good-habit"
+        className={`relative z-10 bg-white/70 backdrop-blur-xl border border-gray-200/80 rounded-xl shadow-sm p-3 flex items-center gap-3 cursor-pointer hover:shadow-md transition-shadow select-none overflow-hidden ${swipe.leaving ? 'pointer-events-none' : ''}`}
+        style={swipeCardStyle(swipe, { enabled: swipeEnabled })}
+        {...(swipeEnabled ? swipe.touchHandlers : {})}
+        {...(swipeEnabled ? swipe.pointerHandlers : {})}
+        onKeyDown={(e) => {
+          if (swipe.leaving) return;
+          if (e.key === 'Enter' && !swipe.dragging) onOpen?.(entry);
+        }}
+        onClick={() => { if (!swipe.dragging && Math.abs(swipe.dx) < 5 && !swipe.leaving) onOpen?.(entry); }}
+      >
+        {swipeEnabled && (
+          <div className="absolute bottom-0 left-0 h-0.5 bg-red-500 rounded-b-xl"
+            style={{ width: `${swipe.progress * 100}%`, transition: swipe.dragging ? 'none' : 'width 180ms ease', opacity: swipe.progress > 0 ? 1 : 0 }} />
+        )}
+        <Thumb {...thumb} fallback={<Star className="w-6 h-6 text-emerald-700" />} />
+        <div className="flex-1 min-w-0">
+          <h4 className="font-semibold text-gray-900 truncate">{title}</h4>
+          {!hideTime && (
+            <p className="text-xs text-gray-500 truncate">
+              {formatTime(entry.capturedAt, timezoneIana)}
+            </p>
+          )}
+        </div>
+        <button
+          aria-label="Share this Good Habit"
           onClick={handleShare}
           disabled={isSharing}
           className="shrink-0 ml-1 p-1.5 rounded-lg text-gray-400 hover:text-green-600 hover:bg-green-50 transition-colors disabled:opacity-50"
@@ -1111,11 +1247,12 @@ export function OtherRow({
 // Default export — small registry so DiaryFeed dispatches via a lookup,
 // not a switch statement that duplicates kind enums.
 const ROWS_BY_KIND = Object.freeze({
-  food:      FoodRow,
-  weight:    WeightRow,
-  education: EducationRow,
-  watch:     WatchRow,
-  unknown:   OtherRow,
+  food:         FoodRow,
+  weight:       WeightRow,
+  education:    EducationRow,
+  watch:        WatchRow,
+  unknown:      OtherRow,
+  'good-habit': GoodHabitRow,
 });
 
 export default ROWS_BY_KIND;

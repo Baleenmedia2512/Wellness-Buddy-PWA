@@ -10,6 +10,13 @@ import { handlePossibleAppUpdateRequired } from '../../../shared/services/appVer
 
 const base = () => getApiBaseUrl();
 
+/** Sync read of the shared getProfile cache — null when missing or expired. */
+export function getCachedProfile(email) {
+  if (!email) return null;
+  const key = cacheManager.generateKey('userProfile', String(email).toLowerCase());
+  return cacheManager.get(key, cacheManager.ttls.userProfile);
+}
+
 /**
  * GET /api/user/profile — shared cache + in-flight dedup across Header,
  * NutritionDashboard, WeightDashboard, and nutrition BMR/macro hooks.

@@ -92,6 +92,24 @@ export async function searchPhonesByPrefix({ prefix, coachId }) {
 }
 
 /**
+ * Soft-delete a body-parameters card owned by the coach.
+ * @param {{ id: string|number, coachId: string|number }} opts
+ * @returns {Promise<{ id: number }>}
+ */
+export async function deleteBodyParamsCard({ id, coachId }) {
+  const response = await CapacitorHttp.delete({
+    url: `${getApiBaseUrl()}/api/body-parameters-card/delete`,
+    headers: { 'Content-Type': 'application/json' },
+    data: { id, coachId },
+  });
+  const result = response.data;
+  if (!result?.success) {
+    throw new Error(result?.message || result?.error?.message || 'Failed to delete card');
+  }
+  return result.data;
+}
+
+/**
  * List body parameter cards for a coach (paginated).
  * @param {string|number} coachId
  * @param {{ page?: number, limit?: number, search?: string, signal?: AbortSignal }} [opts]
@@ -151,4 +169,28 @@ export async function getBodyParamsCard(coachId, cardId) {
     throw new Error(result?.error?.message || 'Failed to load card');
   }
   return result.data;
+}
+
+/**
+ * Dated body-parameter snapshots for Reports Trend.
+ * @param {string|number} userId
+ * @param {{ viewerUserId?: string|number }} [opts]
+ * @returns {Promise<{ ok: boolean, status: number, data: object }>}
+ */
+export async function fetchBodyParamsCardHistory(userId, { viewerUserId } = {}) {
+  const params = new URLSearchParams({ userId: String(userId) });
+  params.set('_t', String(Date.now()));
+  if (viewerUserId != null && viewerUserId !== '') {
+    params.set('viewerUserId', String(viewerUserId));
+  }
+  const response = await CapacitorHttp.get({
+    url: `${getApiBaseUrl()}/api/body-parameters-card/history?${params}`,
+    headers: { 'Cache-Control': 'no-cache' },
+  });
+  const result = response.data;
+  return {
+    ok: response.status >= 200 && response.status < 300 && result?.ok === true,
+    status: response.status,
+    data: result,
+  };
 }

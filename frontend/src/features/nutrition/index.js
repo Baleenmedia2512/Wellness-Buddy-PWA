@@ -3,6 +3,7 @@ export { default as NutritionCard } from './components/NutritionCard';
 export { default as HomeNutritionCarousel } from './components/HomeNutritionCarousel';
 export { default as FoodImageShareCard } from './components/FoodImageShareCard';
 export { default as NutritionDashboard } from './components/NutritionDashboard';
+export { default as NutritionSectionStack } from './components/dashboard/NutritionSectionStack';
 export { default as SmartFoodSearchModal } from './components/SmartFoodSearchModal';
 export { default as ShakeCalculatorModal } from './components/ShakeCalculatorModal';
 export { default as ServingStepperModal, buildWaterAnalysisResult } from './components/ServingStepperModal';
@@ -25,7 +26,7 @@ export { default as NutritionSummaryCards } from './components/dashboard/Nutriti
 export { default as NutritionFilters } from './components/dashboard/NutritionFilters';
 export { default as MealAnalysisModal } from './components/dashboard/MealAnalysisModal';
 export { default as UndoRow } from './components/dashboard/UndoRow';
-export { useUserCalorieTarget, useBurnedCalories, useResolveUserId, useDayAnalyses, useCalorieTrend, useCalorieChartData, useMealMutations } from './hooks';
+export { useUserCalorieTarget, useUserLatestWeight, useBurnedCalories, useResolveUserId, useDayAnalyses, useCalorieTrend, useCalorieChartData, useMealMutations } from './hooks';
 export * from './services/foodCorrectionService';
 export * from './services/foodCorrection';
 export * from './services/duplicateDetectionService';

@@ -36,6 +36,7 @@ export function validateHistoryInput(query) {
     includeImage: query.includeImage === 'true' || query.includeImage === true,
     limit: Number.isFinite(parsedLimit) && parsedLimit > 0 ? parsedLimit : null,
     offset: Number.isFinite(parsedOffset) && parsedOffset >= 0 ? parsedOffset : 0,
+    viewerUserId: query.viewerUserId || null,
   };
 }
 

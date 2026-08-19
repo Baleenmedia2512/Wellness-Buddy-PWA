@@ -33,6 +33,7 @@ describe('medicalConditionSearch', () => {
       const results = searchMedicalConditions('hea', {
         conditions: sampleConditions,
         recentSelections: [],
+        customConditions: [],
       });
       expect(results).toContain('Heart Attack');
       expect(results).toContain('Heart Failure');
@@ -44,6 +45,7 @@ describe('medicalConditionSearch', () => {
       const results = searchMedicalConditions('dia', {
         conditions: sampleConditions,
         recentSelections: [],
+        customConditions: [],
       });
       expect(results).toEqual(['Diabetes', 'Diarrhea']);
     });
@@ -52,6 +54,7 @@ describe('medicalConditionSearch', () => {
       const results = searchMedicalConditions('hea', {
         conditions: sampleConditions,
         recentSelections: ['Heart Disease'],
+        customConditions: [],
       });
       expect(results[0]).toBe('Heart Disease');
     });
@@ -60,12 +63,31 @@ describe('medicalConditionSearch', () => {
       const results = searchMedicalConditions('f', {
         conditions: sampleConditions,
         recentSelections: [],
+        customConditions: [],
       });
       expect(results[0]).toBe('Fever');
     });
 
     it('returns empty array for blank query', () => {
       expect(searchMedicalConditions('  ', { conditions: sampleConditions })).toEqual([]);
+    });
+
+    it('includes a previously added custom issue in later searches', () => {
+      const results = searchMedicalConditions('kidney', {
+        conditions: sampleConditions,
+        recentSelections: [],
+        customConditions: ['Kidney swelling'],
+      });
+      expect(results).toContain('Kidney swelling');
+    });
+
+    it('returns Back Pain variants when searching back', () => {
+      const results = searchMedicalConditions('back');
+      expect(results).toEqual(expect.arrayContaining([
+        'Back Pain',
+        'Lower Back Pain',
+        'Chronic Back Pain',
+      ]));
     });
   });
 });

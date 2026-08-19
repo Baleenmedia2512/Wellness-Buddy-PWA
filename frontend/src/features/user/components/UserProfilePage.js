@@ -5,7 +5,7 @@
 //
 // Sections:
 //   1. Avatar / photo picker
-//   2. Profile fields (name, height, phone, email, diet, BMR, PAL)
+//   2. Profile fields (name, height, phone, community ID, email, diet, BMR, PAL)
 //   3. Weight goal mode
 //   4. Settings  (auto camera toggle)
 //   5. Account actions (sign out, delete account)
@@ -31,6 +31,7 @@ import UserProfileBodyMetrics from './profile/UserProfileBodyMetrics';
 import IdealWeightCards from './profile/IdealWeightCards';
 import DietDropdown from './profile/DietDropdown';
 import WeightModeSelector from './profile/WeightModeSelector';
+import { EmojiOrNative } from '../../../shared/components/icons/EmojiImage';
 import { deriveWeightGoalMode } from '../../weight/services/weightFormService';
 import DeleteAccountModal from './DeleteAccountModal';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
@@ -46,6 +47,8 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
   const [profileImagePreview, setProfileImagePreview] = useState(null);
   const [profileImage, setProfileImage] = useState(null);
   const [latestWeight, setLatestWeight] = useState(null);
+  const [initialWeight, setInitialWeight] = useState(null);
+  const [initialWeightDate, setInitialWeightDate] = useState(null);
   const [coachName, setCoachName] = useState('');
   const [idealCoachName, setIdealCoachName] = useState('');
   const [isLoading, setIsLoading] = useState(true);
@@ -97,11 +100,14 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
           : (data?.bodyFat != null ? String(data.bodyFat) : ''),
         needsBodyFat: Boolean(data?.needsBodyFat),
         email: data?.email || user?.email || '',
+        communityId: data?.communityId != null ? String(data.communityId) : '',
         bodyMetrics: data?.bodyMetrics || null,
       };
 
       form.reload(profileData);
       setLatestWeight(data?.latestWeight ? parseFloat(data.latestWeight) : null);
+      setInitialWeight(data?.initialWeight != null ? parseFloat(data.initialWeight) : null);
+      setInitialWeightDate(data?.initialWeightDate || null);
       setCoachName(
         (data?.sponsorName || data?.coachName)
           ? String(data.sponsorName || data.coachName).trim()
@@ -182,6 +188,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
         height: form.height ? parseFloat(form.height) : null,
         physicalActivityLevel: form.physicalActivityLevel || null,
         dietType: form.dietType || null,
+        communityId: form.communityId || null,
         profileImage: profileImagePreview || null,
       });
       if (user?.id) getUserContext(user.id).catch(() => {});
@@ -281,7 +288,14 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
               {displayWeightGoalMode && (
                 <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold border
                   ${displayWeightGoalMode === 'loss' ? 'bg-red-100 border-red-300 text-red-700' : displayWeightGoalMode === 'gain' ? 'bg-blue-100 border-blue-300 text-blue-700' : 'bg-green-100 border-green-300 text-green-700'}`}>
-                  {displayWeightGoalMode === 'loss' ? '🔥 Loss Mode' : displayWeightGoalMode === 'gain' ? '💪 Gain Mode' : '⚖️ Maintain'}
+                  <EmojiOrNative
+                    emoji={displayWeightGoalMode === 'loss' ? '🔥' : displayWeightGoalMode === 'gain' ? '💪' : '⚖️'}
+                    className="w-3.5 h-3.5"
+                    nativeClassName="text-xs leading-none"
+                  />
+                  <span>
+                    {displayWeightGoalMode === 'loss' ? 'Loss Mode' : displayWeightGoalMode === 'gain' ? 'Gain Mode' : 'Maintain'}
+                  </span>
                 </span>
               )}
               {coachName && (
@@ -333,9 +347,16 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
                   setPhysicalActivityLevel={form.setPhysicalActivityLevel}
                   bodyFat={form.bodyFat} setBodyFat={form.setBodyFat}
                   showBodyFat={form.needsBodyFat}
+                  communityId={form.communityId}
+                  setCommunityId={form.setCommunityId}
                 />
                 <UserProfileBodyMetrics bodyMetrics={form.bodyMetrics} />
-                <IdealWeightCards height={form.height} latestWeight={latestWeight} />
+                <IdealWeightCards
+                  height={form.height}
+                  latestWeight={latestWeight}
+                  initialWeight={initialWeight}
+                  initialWeightDate={initialWeightDate}
+                />
                 <DietDropdown value={form.dietType} onChange={form.setDietType} />
                 <WeightModeSelector
                   height={form.height}

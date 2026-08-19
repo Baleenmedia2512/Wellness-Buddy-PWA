@@ -3,23 +3,24 @@
 import { computeMealGlycemicIndex } from '../../domain/mealGlycemicIndex';
 import { parseUtcTimestamp } from '../../../../shared/utils/datetimeUtils';
 
-/** Calories for a single food item from canonical or legacy shapes. */
-const foodItemCalories = (food) =>
-  Number(food?.nutrition?.calories ?? food?.calories ?? 0);
-
 /**
- * Compact multi-food title: highest-calorie dish + extra count.
- * e.g. "Dosa+2more" for 3 items when Dosa has the most kcal.
+ * Multi-food title: every item name, comma-separated.
+ * e.g. "Dosa, Idli with Sambar, Idiyappam" — not "Dosa+3more".
  */
 export const formatFoodsTitle = (foods) => {
   const items = Array.isArray(foods) ? foods.filter(Boolean) : [];
-  const count = items.length;
-  if (count === 0) return 'Unknown Food';
-  if (count === 1) return (items[0]?.name || 'Unknown Food').trim();
-
-  const top = [...items].sort((a, b) => foodItemCalories(b) - foodItemCalories(a))[0];
-  const topName = (top?.name || 'Unknown Food').trim();
-  return `${topName}+${count - 1}more`;
+  const seen = new Set();
+  const names = [];
+  for (const item of items) {
+    const name = String(item?.name || item?.foodName || '').trim();
+    if (!name) continue;
+    const key = name.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    names.push(name);
+  }
+  if (names.length === 0) return 'Unknown Food';
+  return names.join(', ');
 };
 
 /**

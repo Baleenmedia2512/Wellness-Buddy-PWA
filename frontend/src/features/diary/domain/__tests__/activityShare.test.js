@@ -10,6 +10,7 @@ import {
   extractShakeServings,
   extractShakeProducts,
   sumAfreshScoopsFromDayAnalyses,
+  extractFoodItemDisplayNames,
 } from '../activityType';
 import { formatWaterVolume } from '../formatVolume';
 import { resolveFoodRowPresentation } from '../foodRowDisplay';
@@ -22,6 +23,7 @@ import {
   buildEducationShareText,
   buildWeightShareText,
   buildDiaryShareSuffix,
+  resolveBeverageDayShareText,
   resolveWeightDeltaDisplay,
 } from '../share';
 
@@ -87,6 +89,41 @@ describe('diary activityType', () => {
     expect(extractShakeServings({
       detailedItems: [{ name: 'Herbalife Shake', portion: '1 serving (300ml)' }],
     })).toBe(1);
+  });
+
+  test('extracts every food item display name for share captions', () => {
+    expect(extractFoodItemDisplayNames({
+      detailedItems: [
+        { name: 'White Rice' },
+        { name: 'Sambar' },
+        { name: 'Onion' },
+      ],
+    })).toEqual(['White Rice', 'Sambar', 'Onion']);
+
+    expect(extractFoodItemDisplayNames({
+      detailedItems: [
+        { name: 'White Rice' },
+        { name: 'white rice' },
+        { name: 'Sambar' },
+      ],
+    })).toEqual(['White Rice', 'Sambar']);
+
+    expect(extractFoodItemDisplayNames({
+      foods: [{ name: 'Masala Dosa' }],
+      detailedItems: [
+        { name: 'Masala Dosa' },
+        { name: 'Dosa with Onion' },
+        { name: 'Dosa batter' },
+        { name: 'Egg Dosa' },
+        { name: 'Ragi Dosa' },
+      ],
+    })).toEqual([
+      'Masala Dosa',
+      'Dosa with Onion',
+      'Dosa batter',
+      'Egg Dosa',
+      'Ragi Dosa',
+    ]);
   });
 
   test('sums afresh scoops across day analyses without counting water', () => {
@@ -236,9 +273,13 @@ describe('buildDiaryShareSuffix', () => {
       .toBe('Consumed: 2 scoops Afresh so far today');
     expect(buildDiaryShareSuffix('afresh', { scoops: 1 }))
       .toBe('Consumed: 1 scoop Afresh so far today');
+    expect(buildDiaryShareSuffix('afresh', { scoops: 1, soFarToday: false }))
+      .toBe('Consumed: 1 scoop Afresh');
+    expect(buildDiaryShareSuffix('water', { volumeMl: 200, soFarToday: false }))
+      .toBe('Consumed: 200 mL water');
   });
 
-  test('food suffix includes macros and GI', () => {
+  test('food suffix is total kcal then each item on its own line', () => {
     expect(buildDiaryShareSuffix('food', {
       foodName: 'White Rice+4more',
       calories: 875,
@@ -247,23 +288,79 @@ describe('buildDiaryShareSuffix', () => {
       fat: 12,
       fiber: 16,
       glycemicIndex: 66,
-    })).toBe('White Rice+4more, 875 kcal · P 28g · C 160g · F 12g · Fiber 16g · GI 66');
+    })).toBe('875 kcal\nWhite Rice+4more,');
+  });
+
+  test('food suffix lists kcal first then every item name with GI band', () => {
+    expect(buildDiaryShareSuffix('food', {
+      foodName: 'White Rice+2more',
+      foodItems: [
+        { name: 'White Rice', glycemicIndex: 73 },
+        { name: 'Sambar', glycemicIndex: 50 },
+        { name: 'Onion', glycemicIndex: 10 },
+      ],
+      calories: 875,
+      protein: 28,
+      carbs: 160,
+      fat: 12,
+      fiber: 16,
+      glycemicIndex: 66,
+    })).toBe('875 kcal\nWhite Rice - GI 73 h\nSambar - GI 50 l\nOnion - GI 10 l');
+  });
+
+  test('food suffix keeps item name with comma when GI is missing', () => {
+    expect(buildDiaryShareSuffix('food', {
+      foodName: 'White Rice+2more',
+      itemNames: ['White Rice', 'Sambar', 'Onion'],
+      calories: 875,
+    })).toBe('875 kcal\nWhite Rice,\nSambar,\nOnion,');
   });
 
   test('weight suffix includes previous, current, and arrow', () => {
     expect(buildDiaryShareSuffix('weight', {
       previousWeight: 55.7,
       currentWeight: 55.6,
-    })).toBe('Previous: 55.7 kg, Current: 55.6 kg ⬇️');
+    })).toBe('Prev: 55.7 kg\nCurr: 55.6 kg ⬇️');
 
     expect(buildDiaryShareSuffix('weight', {
       previousWeight: 70,
       currentWeight: 71,
-    })).toBe('Previous: 70 kg, Current: 71 kg ⬆️');
+    })).toBe('Prev: 70 kg\nCurr: 71 kg ⬆️');
 
     expect(buildDiaryShareSuffix('weight', {
       currentWeight: 55.6,
-    })).toBe('weight 55.6 kg');
+    })).toBe('Curr: 55.6 kg');
+  });
+
+  test('weight suffix lists Ideal, Prev, Curr with arrow on current', () => {
+    expect(buildDiaryShareSuffix('weight', {
+      previousWeight: 73.65,
+      currentWeight: 73.4,
+      idealWeight: 73.6,
+    })).toBe('Ideal: 73.6 kg\nPrev: 73.65 kg\nCurr: 73.4 kg ⬇️');
+
+    expect(buildDiaryShareSuffix('weight', {
+      previousWeight: 73.4,
+      currentWeight: 72.9,
+      idealWeight: 73.7,
+    })).toBe('Ideal: 73.7 kg\nPrev: 73.4 kg\nCurr: 72.9 kg ⬇️');
+
+    expect(buildDiaryShareSuffix('weight', {
+      previousWeight: 72.9,
+      currentWeight: 72.85,
+      idealWeight: 73.7,
+    })).toBe('Ideal: 73.7 kg\nPrev: 72.9 kg\nCurr: 72.85 kg ⬇️');
+
+    expect(buildDiaryShareSuffix('weight', {
+      previousWeight: 73.4,
+      currentWeight: 74.1,
+      idealWeight: 73.7,
+    })).toBe('Ideal: 73.7 kg\nPrev: 73.4 kg\nCurr: 74.1 kg ⬆️');
+
+    expect(buildDiaryShareSuffix('weight', {
+      currentWeight: 55.6,
+      idealWeight: 62.4,
+    })).toBe('Ideal: 62.4 kg\nCurr: 55.6 kg');
   });
 
   test('workout suffix shows calories burnt so far today', () => {
@@ -289,6 +386,19 @@ describe('buildDiaryShareSuffix', () => {
     })).toBe('Academy');
   });
 
+  test('good-habit suffix is Good Habit, with notes when present', () => {
+    expect(buildDiaryShareSuffix('good-habit', {
+      habitType: 'image_notes',
+      notes: 'Morning walk',
+    })).toBe('Good Habit — Morning walk');
+    expect(buildDiaryShareSuffix('good-habit', {
+      habitType: 'image_notes',
+    })).toBe('Good Habit');
+    expect(buildDiaryShareSuffix('good-habit', {
+      habitType: 'before_after',
+    })).toBe('Good Habit');
+  });
+
   test('shake suffix includes Formula 1, Shakemate, and Protein scoops', () => {
     expect(buildDiaryShareSuffix('shake', {
       shakeName: 'Herbalife Shake',
@@ -299,6 +409,33 @@ describe('buildDiaryShareSuffix', () => {
       shakeName: 'Herbalife Shake',
       servings: 1,
     })).toBe('Herbalife Shake, serving 1');
+  });
+});
+
+describe('resolveBeverageDayShareText', () => {
+  test('water prefers day total over this-card fallback', () => {
+    expect(resolveBeverageDayShareText({
+      activityType: 'water',
+      totalMl: 3500,
+      fallbackVolumeMl: 2000,
+    })).toBe('Consumed: 3.5 L water so far today');
+  });
+
+  test('water falls back to card volume when day total missing', () => {
+    expect(resolveBeverageDayShareText({
+      activityType: 'water',
+      totalMl: null,
+      fallbackVolumeMl: 2000,
+    })).toBe('Consumed: 2 L water so far today');
+  });
+
+  test('afresh prefers day scoops over this-card fallback', () => {
+    expect(resolveBeverageDayShareText({
+      activityType: 'afresh',
+      totalAfreshScoops: 4,
+      fallbackScoops: 2,
+      calories: 14,
+    })).toBe('Consumed: 4 scoops Afresh so far today');
   });
 });
 
@@ -329,8 +466,21 @@ describe('resolveFoodRowPresentation', () => {
     expect(view.showMealBadge).toBe(false);
     expect(view.primaryValue).toBe('1');
     expect(view.primaryUnit).toBe('L');
-    expect(view.shareText).toBe('Consumed: 1 L water so far today');
+    expect(view.shareText).toBe('Consumed: 1 L water');
     expect(view.thumbFallback).toBe('💧');
+  });
+
+  test('water diary caption uses this card volume, not a day total', () => {
+    const view = resolveFoodRowPresentation({
+      processedBy: 'water_preset',
+      foodData: {
+        name: 'Plain Water',
+        detailedItems: [{ name: 'Plain Water', volume_ml: 200 }],
+        nutrition: { calories: 0 },
+      },
+      calories: 0,
+    });
+    expect(view.shareText).toBe('Consumed: 200 mL water');
   });
 
   test('afresh row shows kcal with scoops secondary and hides meal badge', () => {
@@ -349,7 +499,36 @@ describe('resolveFoodRowPresentation', () => {
     expect(view.primaryValue).toBe('7');
     expect(view.primaryUnit).toBe('kcal');
     expect(view.secondaryLabel).toBe('2 scoops');
-    expect(view.shareText).toBe('Consumed: 2 scoops Afresh so far today');
+    expect(view.shareText).toBe('Consumed: 2 scoops Afresh');
     expect(view.thumbFallback).toBe('🥤');
+  });
+
+  test('afresh diary caption uses this card scoops, not a day total', () => {
+    const view = resolveFoodRowPresentation({
+      processedBy: 'afresh_preset',
+      foodData: {
+        name: 'Herbalife Afresh Energy Drink',
+        detailedItems: [{ name: 'Herbalife Afresh Energy Drink', scoops: 1 }],
+        nutrition: { calories: 4 },
+      },
+      calories: 4,
+    });
+    expect(view.shareText).toBe('Consumed: 1 scoop Afresh');
+  });
+
+  test('food row share caption lists every item and total kcal', () => {
+    const view = resolveFoodRowPresentation({
+      foodData: {
+        name: 'White Rice+2more',
+        detailedItems: [
+          { name: 'White Rice', calories: 200, nutrition: { glycemic_index: 73 } },
+          { name: 'Sambar', calories: 80, nutrition: { glycemic_index: 50 } },
+          { name: 'Onion', calories: 20, nutrition: { glycemic_index: 10 } },
+        ],
+        nutrition: { calories: 300, protein: 8, carbs: 50, fat: 4, fiber: 3, glycemic_index: 70 },
+      },
+      calories: 300,
+    });
+    expect(view.shareText).toBe('300 kcal\nWhite Rice - GI 73 h\nSambar - GI 50 l\nOnion - GI 10 l');
   });
 });

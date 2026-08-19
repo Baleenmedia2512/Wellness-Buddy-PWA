@@ -20,8 +20,9 @@ export function useEducationDashboard({
   onDeleteWithUndo = null,
   onDeleteUndoCancel = null,
   enabled = true,
+  timezoneIana: timezoneIanaProp = null,
 }) {
-  const timezoneIana = resolveBusinessTimezone(user);
+  const timezoneIana = timezoneIanaProp || resolveBusinessTimezone(user);
   const [educationLogs, setEducationLogs] = useState([]);
   const [loading, setLoading] = useState(Boolean(enabled));
   const [error, setError] = useState(null);

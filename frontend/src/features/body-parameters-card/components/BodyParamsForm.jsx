@@ -3,7 +3,7 @@
  *
  * Modal form for creating a Body Parameters Card.
  * Pure presentational — all logic in useBodyParamsCard hook.
- * Fields: Date, Name, Age, Height, Phone, Gender, Weight, BMI, Fat%, BMR, Body Age, Chest, Waist, Hip.
+ * Fields: Date, Venue, Name, Age, Height, Phone, Gender, Weight, BMI, Fat%, BMR, Body Age, Chest, Waist, Hip.
  */
 import React, { useRef } from 'react';
 import { X, AlertCircle } from 'lucide-react';
@@ -76,12 +76,19 @@ const SelectField = ({ label, value, onChange, options, inputRef, onEnter }) => 
 };
 
 /**
- * @param {{ isOpen, onClose, user, selectedMember, onSaveSuccess, existingCard, onSaveStart }} props
+ * @param {{ isOpen, onClose, user, selectedMember, onSaveSuccess, existingCard, onSaveStart, externalVenue, onVenueChange, hideVenueField }} props
  */
-const BodyParamsForm = ({ isOpen, onClose, user, selectedMember, onSaveSuccess, existingCard = null, onSaveStart = null }) => {
-  const vm = useBodyParamsCard({ user, selectedMember, onSaveSuccess, existingCard, onSaveStart, isOpen });
+const BodyParamsForm = ({
+  isOpen, onClose, user, selectedMember, onSaveSuccess, existingCard = null, onSaveStart = null,
+  externalVenue = null, onVenueChange = null, hideVenueField = false,
+}) => {
+  const vm = useBodyParamsCard({
+    user, selectedMember, onSaveSuccess, existingCard, onSaveStart, isOpen,
+    externalVenue,
+  });
 
   // Refs for all input fields
+  const venueRef = useRef(null);
   const phoneRef = useRef(null);
   const nameRef = useRef(null);
   const ageRef = useRef(null);
@@ -123,10 +130,6 @@ const BodyParamsForm = ({ isOpen, onClose, user, selectedMember, onSaveSuccess, 
 
   const handleSave = async () => {
     await vm.handleSave();
-    // Only reset for new-card flow; edit mode reloads from existingCard on next open.
-    if (!vm.error && !vm.isEditMode) {
-      vm.resetForm();
-    }
   };
 
   const handleBackdropClick = (e) => {
@@ -173,8 +176,23 @@ const BodyParamsForm = ({ isOpen, onClose, user, selectedMember, onSaveSuccess, 
             value={vm.form.recordedDate} 
             onChange={(v) => vm.setField('recordedDate', v)} 
             type="date"
-            onEnter={() => focusNextField(nameRef)}
+            onEnter={() => focusNextField(hideVenueField ? nameRef : venueRef)}
           />
+
+          {/* Venue — editable; prefilled from header when provided */}
+          {!hideVenueField && (
+            <InputField
+              label="Venue"
+              value={vm.form.locationName}
+              onChange={(v) => {
+                vm.setField('locationName', v);
+                if (onVenueChange) onVenueChange(v);
+              }}
+              placeholder="e.g. Chennai"
+              inputRef={venueRef}
+              onEnter={() => focusNextField(nameRef)}
+            />
+          )}
 
           {/* Name */}
           <InputField 

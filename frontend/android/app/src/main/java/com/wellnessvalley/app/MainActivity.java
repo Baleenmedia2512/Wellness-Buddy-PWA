@@ -342,6 +342,21 @@ public class MainActivity extends BridgeActivity {
                         android.util.Log.w("MainActivity", "Could not disable text classifier", e);
                     }
                 }
+
+                // Swallow long-press on dashboard text so Android does not show
+                // Copy / Select all. Leave input fields alone so OTP/email paste works.
+                webView.setOnLongClickListener(v -> {
+                    try {
+                        WebView.HitTestResult result = webView.getHitTestResult();
+                        if (result != null
+                                && result.getType() == WebView.HitTestResult.EDIT_TEXT_TYPE) {
+                            return false;
+                        }
+                    } catch (Exception e) {
+                        android.util.Log.w("MainActivity", "Long-click hit test failed", e);
+                    }
+                    return true;
+                });
                 
                 // ═══════════════════════════════════════════════════════════════
                 // COMPLETE AUTOFILL CONFIGURATION FOR WEBVIEW

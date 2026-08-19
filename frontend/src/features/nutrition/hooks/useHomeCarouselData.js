@@ -16,16 +16,20 @@ import {
   sumDailyStatsForPeriod,
 } from '../domain/carouselPeriodProgress';
 import { enumerateDatesYmd, resolveWellnessDateRange, ymdToLocalDate } from '../../wellness-score-sheet/domain/dateRange';
+import { scoreIsForDate } from '../../wellness-score-sheet/domain/historyPaint';
 import { fetchDailyWellnessScore, fetchWellnessScoreHistory } from '../../wellness-score-sheet/services/wellnessScore.api';
 import {
   getPinnedDailyWellnessScore,
+  setDailyWellnessScoreCached,
   subscribeDailyWellnessScoreSeed,
 } from '../../wellness-score-sheet/services/dailyWellnessScoreCache';
 import {
   getLatestActivityLogId,
+  getActivityLogDebug,
   markHomeDashboardProcessed,
   shouldRefreshHomeDashboard,
 } from '../../../shared/services/homeDashboardActivity';
+import { shouldSkipWellnessScoreRefresh } from '../../wellness-score-sheet/domain/skipWellnessScoreRefresh';
 import {
   isCaptureFlowBusy,
   subscribeCaptureFlowBusy,
@@ -44,6 +48,14 @@ const rangeCache = new Map();
 
 function cacheKey(userId, startDate, endDate) {
   return `${userId}|${startDate}|${endDate}`;
+}
+
+function wellnessForRange(score, range) {
+  if (!score) return null;
+  if (range.isMultiDay) return score;
+  if (Number(score.dayCount) > 1) return null;
+  if (score.date && !scoreIsForDate(score, range.endDate)) return null;
+  return score;
 }
 
 function readCache(userId, startDate, endDate) {
@@ -168,11 +180,25 @@ export function useHomeCarouselData({
   const lastUserIdRef = useRef(null);
   const resolvedUserIdRef = useRef(null);
   const loadDataRef = useRef(null);
+  const rangeStamp = `${range.startDate}|${range.endDate}`;
+  const rangeStampRef = useRef(rangeStamp);
+  if (rangeStampRef.current !== rangeStamp) {
+    rangeStampRef.current = rangeStamp;
+    const uid = resolvedUserIdRef.current;
+    const cached = uid ? readCache(uid, range.startDate, range.endDate) : null;
+    if (cached) {
+      setNutrition(cached.nutrition);
+      setWellnessScore(wellnessForRange(cached.wellnessScore, range));
+    } else {
+      setNutrition({ ...EMPTY_NUTRITION, dayCount: expectedDayCount });
+      setWellnessScore(null);
+    }
+  }
 
   const applyPayload = useCallback((payload) => {
     setNutrition(payload.nutrition);
-    setWellnessScore(payload.wellnessScore);
-  }, []);
+    setWellnessScore(wellnessForRange(payload.wellnessScore, range));
+  }, [range]);
 
   const loadData = useCallback(async ({ force = false } = {}) => {
     if (!user) {
@@ -273,6 +299,9 @@ export function useHomeCarouselData({
 
       writeCache(userId, range.startDate, range.endDate, payload);
       applyPayload(payload);
+      if (!range.isMultiDay && payload.wellnessScore) {
+        setDailyWellnessScoreCached(userId, range.endDate, payload.wellnessScore);
+      }
       markHomeDashboardProcessed(activityLogAtFetch);
 
       // Warm Yesterday after Today so the common switch is cache-hit instant.
@@ -289,10 +318,12 @@ export function useHomeCarouselData({
               isMultiDay: false,
             }).catch(() => null),
           ]).then(([nutritionWarm, wellnessWarm]) => {
+            const wellness = wellnessForRange(wellnessWarm, yRange);
             writeCache(userId, yRange.startDate, yRange.endDate, {
               nutrition: nutritionWarm,
-              wellnessScore: wellnessWarm,
+              wellnessScore: wellness,
             });
+            if (wellness) setDailyWellnessScoreCached(userId, yRange.endDate, wellness);
           }).catch(() => { /* prefetch is best-effort */ });
         }
       }
@@ -354,6 +385,7 @@ export function useHomeCarouselData({
 
   useEffect(() => {
     if (nutritionRefreshKey === 0) return;
+    if (shouldSkipWellnessScoreRefresh(getActivityLogDebug().lastSource)) return;
     // Key bump always means a mutation completed — never skip via watermark.
     // (Watermark race with capture-ai-started used to swallow capture-food-saved.)
     refreshAfterActivity({ force: true });
@@ -415,7 +447,7 @@ export function useHomeCarouselData({
     analyses: nutrition.analyses,
     dailyStats: nutrition.dailyStats,
     burnedCalories,
-    wellnessScore,
+    wellnessScore: wellnessForRange(wellnessScore, range),
     wellnessLoading: loading,
     nutritionLoading: loading,
     periodContext,

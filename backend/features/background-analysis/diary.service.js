@@ -434,6 +434,7 @@ export async function listDiaryEntries(input) {
 
   // 3. Resolve the flag once per request — never per row.
   const includesUnknown = isEnabled('ff.diary-feed');
+  const includesGoodHabit = isEnabled('ff.good-habit');
 
   // 4. Fan out the per-vertical reads in parallel. Each call is wrapped
   // so a partial failure degrades gracefully instead of failing the
@@ -456,6 +457,9 @@ export async function listDiaryEntries(input) {
   if (includesUnknown) {
     reads.push(safe('unknown', () => diaryRepo.fetchUnknownCapturesForDay(ownerUserId, date, timezoneIana)));
     reads.push(safe('pending', () => diaryRepo.fetchPendingCapturesForDay(ownerUserId, date, timezoneIana)));
+  }
+  if (includesGoodHabit) {
+    reads.push(safe('good-habit', () => diaryRepo.fetchGoodHabitsForDay(ownerUserId, date, timezoneIana)));
   }
   const results = await Promise.all(reads);
 
@@ -641,6 +645,19 @@ export function toDiaryEntry(
             hasImageHint: true,
           }),
           ...(isPendingAnalysis ? { isPendingAnalysis: true } : {}),
+        },
+      };
+
+    case 'good-habit':
+      return {
+        kind: 'good-habit',
+        capturedAt,
+        capture: row.CaptureID ? { id: row.CaptureID } : null,
+        payload: {
+          id:        row.ID,
+          habitType: row.HabitType,
+          notes:     row.Notes || '',
+          hasImage:  true,
         },
       };
 

@@ -45,7 +45,26 @@ describe('dailyWellnessScoreCache sheet→Home pin', () => {
     expect(getDailyWellnessScoreCached('42', '2026-08-10')).toBeNull();
   });
 
-  test('notifies subscribers on seed', () => {
+  test('reads a date match when userId is not ready yet', () => {
+    seedDailyWellnessScoreCache('339', '2026-08-13', { totalEarned: 496 });
+    expect(getDailyWellnessScoreCached(null, '2026-08-13').totalEarned).toBe(496);
+  });
+
+  test('does not return another user score for the same date', () => {
+    seedDailyWellnessScoreCache('1', '2026-08-16', { totalEarned: 400, userId: '1' });
+    expect(getDailyWellnessScoreCached('22', '2026-08-16')).toBeNull();
+    expect(getDailyWellnessScoreCached('1', '2026-08-16').totalEarned).toBe(400);
+  });
+
+  test('rejects a payload stamped for a different day', () => {
+    seedDailyWellnessScoreCache('42', '2026-08-17', {
+      date: '2026-08-18',
+      totalEarned: 500,
+    });
+    expect(getDailyWellnessScoreCached('42', '2026-08-17')).toBeNull();
+  });
+
+  test('notifies seed listeners', () => {
     const seen = [];
     const unsub = subscribeDailyWellnessScoreSeed((payload) => seen.push(payload));
     seedDailyWellnessScoreCache('7', '2026-08-10', { totalEarned: 10 });

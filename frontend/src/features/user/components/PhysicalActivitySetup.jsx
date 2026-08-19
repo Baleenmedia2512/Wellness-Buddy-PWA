@@ -8,8 +8,9 @@
 import React, { useState } from 'react';
 import { Activity } from 'lucide-react';
 import { PHYSICAL_ACTIVITY_OPTIONS } from '../../../shared/utils/tdeeCalculations.js';
+import { saveProfile } from '../services/profileService';
 
-export default function PhysicalActivitySetup({ user, apiBaseUrl, onComplete }) {
+export default function PhysicalActivitySetup({ user, onComplete }) {
   const [selected, setSelected] = useState(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -19,7 +20,7 @@ export default function PhysicalActivitySetup({ user, apiBaseUrl, onComplete }) 
       setError('Please select your physical activity level to continue.');
       return;
     }
-    const email = user?.email;
+    const email = (user?.email || user?.Email || '').trim();
     if (!email) {
       setError('Unable to identify your account. Please re-login.');
       return;
@@ -27,22 +28,15 @@ export default function PhysicalActivitySetup({ user, apiBaseUrl, onComplete }) 
     setSaving(true);
     setError('');
     try {
-      const res = await fetch(`${apiBaseUrl}/api/user/profile`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, physicalActivityLevel: selected }),
-      });
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        setError(data.message || 'Failed to save. Please try again.');
-        return;
-      }
+      // saveProfile clears the shared getProfile cache so the onboarding gate
+      // cannot re-read a stale profile without physicalActivityLevel.
+      const data = await saveProfile({ email, physicalActivityLevel: selected });
       await onComplete?.({
         physicalActivityLevel: selected,
         calorieTarget: data.data?.calorieTarget ?? null,
       });
-    } catch {
-      setError('Network error. Please check your connection and try again.');
+    } catch (err) {
+      setError(err?.message || 'Network error. Please check your connection and try again.');
     } finally {
       setSaving(false);
     }
