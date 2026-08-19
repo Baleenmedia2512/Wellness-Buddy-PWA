@@ -5,6 +5,8 @@
 import { getApiBaseUrl } from '../../../config/api.config.js';
 import { getDeviceTimezoneIana } from '../../../shared/utils/deviceTimezone.js';
 import cacheManager from '../../../shared/services/cacheManager.js';
+import { apiFetch } from '../../../shared/services/apiFetch.js';
+import { handlePossibleAppUpdateRequired } from '../../../shared/services/appVersionEnforce.client.js';
 
 const base = () => getApiBaseUrl();
 
@@ -22,18 +24,20 @@ export async function getProfile(email, { cacheBust = false, signal } = {}) {
     key,
     async () => {
       const ts = cacheBust ? `&_t=${Date.now()}` : '';
-      const res = await fetch(
+      const res = await apiFetch(
         `${base()}/api/user/profile?email=${encodeURIComponent(email)}${ts}`,
         signal ? { signal } : undefined,
       );
-      return res.json();
+      const data = await res.json();
+      handlePossibleAppUpdateRequired(res, data);
+      return data;
     },
     cacheManager.ttls.userProfile,
   );
 }
 
 export async function updateProfile(payload) {
-  const res = await fetch(`${base()}/api/user/profile`, {
+  const res = await apiFetch(`${base()}/api/user/profile`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
@@ -42,12 +46,16 @@ export async function updateProfile(payload) {
   if (email) {
     cacheManager.clear(cacheManager.generateKey('userProfile', String(email).toLowerCase()));
   }
-  return res.json();
+  const data = await res.json();
+  handlePossibleAppUpdateRequired(res, data);
+  return data;
 }
 
 export async function getContext(userId) {
-  const res = await fetch(`${base()}/api/user/context?userId=${encodeURIComponent(userId)}`);
-  return res.json();
+  const res = await apiFetch(`${base()}/api/user/context?userId=${encodeURIComponent(userId)}`);
+  const data = await res.json();
+  handlePossibleAppUpdateRequired(res, data);
+  return data;
 }
 
 export async function lookup(email, { method = 'POST' } = {}) {
@@ -62,12 +70,14 @@ export async function lookup(email, { method = 'POST' } = {}) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, timezoneIana }),
     };
-  const res = await fetch(url, init);
-  return res.json();
+  const res = await apiFetch(url, init);
+  const data = await res.json();
+  handlePossibleAppUpdateRequired(res, data);
+  return data;
 }
 
 export async function saveGoogleUser(payload) {
-  const res = await fetch(`${base()}/api/user/google`, {
+  const res = await apiFetch(`${base()}/api/user/google`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -75,11 +85,13 @@ export async function saveGoogleUser(payload) {
       timezoneIana: getDeviceTimezoneIana() ?? '',
     }),
   });
-  return res.json();
+  const data = await res.json();
+  handlePossibleAppUpdateRequired(res, data);
+  return data;
 }
 
 export async function snoozeProfilePic(userId) {
-  const res = await fetch(`${base()}/api/user/snooze-pic`, {
+  const res = await apiFetch(`${base()}/api/user/snooze-pic`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ userId }),
@@ -88,7 +100,7 @@ export async function snoozeProfilePic(userId) {
 }
 
 export async function deleteAccount(email) {
-  const res = await fetch(`${base()}/api/user/account`, {
+  const res = await apiFetch(`${base()}/api/user/account`, {
     method: 'DELETE',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email }),
@@ -97,7 +109,7 @@ export async function deleteAccount(email) {
 }
 
 export async function skipSetup(payload) {
-  const res = await fetch(`${base()}/api/user/skip-setup`, {
+  const res = await apiFetch(`${base()}/api/user/skip-setup`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
@@ -106,6 +118,8 @@ export async function skipSetup(payload) {
 }
 
 export async function getStatus(email) {
-  const res = await fetch(`${base()}/api/user/status?email=${encodeURIComponent(email)}`);
-  return res.json();
+  const res = await apiFetch(`${base()}/api/user/status?email=${encodeURIComponent(email)}`);
+  const data = await res.json();
+  handlePossibleAppUpdateRequired(res, data);
+  return data;
 }

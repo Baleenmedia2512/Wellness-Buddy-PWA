@@ -151,13 +151,13 @@ export default function WellnessScoreSheet({
             today={today}
           />
         )}
-        {loading && (
+        {loading && !scoreData && (
           <div className="flex justify-center py-16">
             <Loader2 className="h-8 w-8 animate-spin text-emerald-600" aria-label="Loading" />
           </div>
         )}
 
-        {error && !loading && (
+        {error && !scoreData && (
           <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-center">
             <p className="text-sm text-red-700">{error}</p>
             {onRetry && (
@@ -172,7 +172,7 @@ export default function WellnessScoreSheet({
           </div>
         )}
 
-        {!loading && !error && scoreData && (
+        {scoreData && (
           <>
             <section className="overflow-hidden rounded-2xl border border-emerald-200/80 bg-white shadow-sm">
               <div className="border-b border-emerald-100 bg-gradient-to-r from-emerald-50 to-white px-4 py-3">

@@ -28,6 +28,42 @@ describe('extractFoodListSummary', () => {
     assert.equal(summary.items[0].calories, 63);
   });
 
+  it('lists every food name instead of a +N compact title', () => {
+    const summary = extractFoodListSummary({
+      foods: [
+        { name: 'Dosa', calories: 540 },
+        { name: 'Idli with Sambar and vegetable curry', calories: 350 },
+        { name: 'Idiyappam', calories: 345 },
+        { name: 'Chutney', calories: 40 },
+      ],
+      total: { calories: 1275 },
+    }, null);
+    assert.equal(
+      summary.name,
+      'Dosa, Idli with Sambar and vegetable curry, Idiyappam, Chutney',
+    );
+    assert.equal(summary.items.length, 4);
+  });
+
+  it('uses detailedItems when it has more dishes than foods[]', () => {
+    const summary = extractFoodListSummary({
+      foods: [{ name: 'Masala Dosa', calories: 1450 }],
+      detailedItems: [
+        { name: 'Masala Dosa', calories: 400 },
+        { name: 'Dosa with Onion', calories: 350 },
+        { name: 'Dosa batter', calories: 200 },
+        { name: 'Egg Dosa', calories: 300 },
+        { name: 'Ragi Dosa', calories: 200 },
+      ],
+      total: { calories: 1450 },
+    }, null);
+    assert.equal(
+      summary.name,
+      'Masala Dosa, Dosa with Onion, Dosa batter, Egg Dosa, Ragi Dosa',
+    );
+    assert.equal(summary.items.length, 5);
+  });
+
   it('detects water via processedBy', () => {
     const summary = extractFoodListSummary({
       foods: [{ name: 'Plain Water', volume_ml: 100, calories: 0 }],

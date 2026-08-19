@@ -67,5 +67,14 @@ describe('medicalConditionSearch', () => {
     it('returns empty array for blank query', () => {
       expect(searchMedicalConditions('  ', { conditions: sampleConditions })).toEqual([]);
     });
+
+    it('returns Back Pain variants when searching back', () => {
+      const results = searchMedicalConditions('back');
+      expect(results).toEqual(expect.arrayContaining([
+        'Back Pain',
+        'Lower Back Pain',
+        'Chronic Back Pain',
+      ]));
+    });
   });
 });

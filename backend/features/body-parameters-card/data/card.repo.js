@@ -21,29 +21,45 @@ const APPROVALS = 'approval_requests_table';
  */
 export async function insertCard(payload) {
   const supabase = getSupabaseClient();
-  const { data, error } = await supabase
-    .from(TABLE)
-    .insert({
-      created_by:   payload.createdBy,
-      user_id:      payload.userId,
-      name:         payload.name,
-      age:          payload.age,
-      gender:       payload.gender,
-      height_cm:    payload.heightCm,
-      weight_kg:    payload.weightKg,
-      bmi:          payload.bmi,
-      fat_percent:  payload.fatPercent,
-      bmr:          payload.bmr,
-      body_age:     payload.bodyAge,
-      visceral_fat: payload.visceralFat,
-      chest_cm:     payload.chestCm,
-      waist_cm:     payload.waistCm,
-      hip_cm:       payload.hipCm,
-      recorded_date: payload.recordedDate,
-      location_name: payload.locationName,
-    })
-    .select()
-    .single();
+  const locationName = payload.locationName != null && String(payload.locationName).trim() !== ''
+    ? String(payload.locationName).trim().substring(0, 200)
+    : null;
+
+  const row = {
+    created_by:    payload.createdBy,
+    user_id:       payload.userId,
+    name:          payload.name,
+    age:           payload.age,
+    gender:        payload.gender,
+    height_cm:     payload.heightCm,
+    weight_kg:     payload.weightKg,
+    bmi:           payload.bmi,
+    fat_percent:   payload.fatPercent,
+    bmr:           payload.bmr,
+    body_age:      payload.bodyAge,
+    visceral_fat:  payload.visceralFat,
+    chest_cm:      payload.chestCm,
+    waist_cm:      payload.waistCm,
+    hip_cm:        payload.hipCm,
+    location_name: locationName,
+  };
+  // Only set recorded_date when provided — otherwise DB DEFAULT CURRENT_DATE applies.
+  if (payload.recordedDate) {
+    row.recorded_date = payload.recordedDate;
+  }
+
+  const { data, error } = await supabase.from(TABLE).insert(row).select().single();
+
+  if (error && /location_name/i.test(String(error.message || ''))) {
+    logger.error('[body-params-card] location_name column missing — Venue cannot be saved. Run migration add_location_name_to_body_parameters_cards.sql', {
+      message: error.message,
+    });
+    throw new Error(
+      'Venue cannot be saved: database column location_name is missing. '
+      + 'Run backend/migrations/add_location_name_to_body_parameters_cards.sql in Supabase.',
+    );
+  }
+
   if (error) throw error;
   return data;
 }
@@ -56,29 +72,46 @@ export async function insertCard(payload) {
  */
 export async function updateCard(id, payload) {
   const supabase = getSupabaseClient();
+  const locationName = payload.locationName != null && String(payload.locationName).trim() !== ''
+    ? String(payload.locationName).trim().substring(0, 200)
+    : null;
+
+  const patch = {
+    name:          payload.name,
+    age:           payload.age,
+    gender:        payload.gender,
+    height_cm:     payload.heightCm,
+    weight_kg:     payload.weightKg,
+    bmi:           payload.bmi,
+    fat_percent:   payload.fatPercent,
+    bmr:           payload.bmr,
+    body_age:      payload.bodyAge,
+    visceral_fat:  payload.visceralFat,
+    chest_cm:      payload.chestCm,
+    waist_cm:      payload.waistCm,
+    hip_cm:        payload.hipCm,
+    recorded_date: payload.recordedDate,
+    location_name: locationName,
+  };
+
   const { data, error } = await supabase
     .from(TABLE)
-    .update({
-      name:          payload.name,
-      age:           payload.age,
-      gender:        payload.gender,
-      height_cm:     payload.heightCm,
-      weight_kg:     payload.weightKg,
-      bmi:           payload.bmi,
-      fat_percent:   payload.fatPercent,
-      bmr:           payload.bmr,
-      body_age:      payload.bodyAge,
-      visceral_fat:  payload.visceralFat,
-      chest_cm:      payload.chestCm,
-      waist_cm:      payload.waistCm,
-      hip_cm:        payload.hipCm,
-      recorded_date: payload.recordedDate,
-      location_name: payload.locationName,
-    })
+    .update(patch)
     .eq('id', id)
     .eq('is_deleted', false)
     .select()
     .single();
+
+  if (error && /location_name/i.test(String(error.message || ''))) {
+    logger.error('[body-params-card] location_name column missing — Venue cannot be saved. Run migration add_location_name_to_body_parameters_cards.sql', {
+      message: error.message,
+    });
+    throw new Error(
+      'Venue cannot be saved: database column location_name is missing. '
+      + 'Run backend/migrations/add_location_name_to_body_parameters_cards.sql in Supabase.',
+    );
+  }
+
   if (error) throw error;
   return data;
 }
@@ -567,6 +600,7 @@ const LIST_SUMMARY_COLS = [
   'weight_kg',
   'bmi',
   'recorded_date',
+  'location_name',
   'created_at',
   'created_by',
 ].join(', ');
@@ -599,29 +633,33 @@ const bpcListCache = new Map();
 const bpcListInflight = new Map();
 
 function bpcListCacheKey(coachId) {
-  return `bpc:list:${coachId}`;
+  return `bpc:list:v2:${coachId}`;
 }
 
-function mapCardSummary(card, phone) {
+function mapCardSummary(card, memberMeta = null) {
+  const phone = memberMeta?.phoneNumber || null;
   return {
     id: card.id,
     userId: card.user_id,
     name: card.name,
     phoneNumber: phone,
+    email: memberMeta?.email || null,
+    communityId: memberMeta?.communityId || null,
     age: card.age,
     gender: card.gender,
     heightCm: card.height_cm,
     weightKg: card.weight_kg,
     bmi: card.bmi,
     recordedDate: card.recorded_date,
+    locationName: card.location_name || null,
     createdAt: card.created_at,
     createdBy: card.created_by,
   };
 }
 
-function mapCardDetail(card, phone) {
+function mapCardDetail(card, memberMeta = null) {
   return {
-    ...mapCardSummary(card, phone),
+    ...mapCardSummary(card, memberMeta),
     fatPercent: card.fat_percent,
     bmr: card.bmr,
     bodyAge: card.body_age,
@@ -633,7 +671,7 @@ function mapCardDetail(card, phone) {
   };
 }
 
-async function fetchPhonesByUserIds(supabase, userIds) {
+async function fetchTeamMemberMetaByUserIds(supabase, userIds) {
   const teamMembersMap = {};
   if (!userIds.length) return teamMembersMap;
 
@@ -642,16 +680,51 @@ async function fetchPhonesByUserIds(supabase, userIds) {
     const chunk = userIds.slice(i, i + CHUNK);
     const { data: teamMembers } = await supabase
       .from('team_table')
-      .select('UserId, PhoneNumber')
+      .select('UserId, PhoneNumber, Email, CommunityId')
       .in('UserId', chunk);
 
     if (teamMembers) {
       for (const m of teamMembers) {
-        teamMembersMap[String(m.UserId)] = m;
+        teamMembersMap[String(m.UserId)] = {
+          phoneNumber: m.PhoneNumber && String(m.PhoneNumber).trim()
+            ? String(m.PhoneNumber).trim()
+            : null,
+          email: m.Email && String(m.Email).trim() ? String(m.Email).trim() : null,
+          communityId: m.CommunityId && String(m.CommunityId).trim()
+            ? String(m.CommunityId).trim()
+            : null,
+        };
       }
     }
   }
   return teamMembersMap;
+}
+
+/** @deprecated use fetchTeamMemberMetaByUserIds */
+async function fetchPhonesByUserIds(supabase, userIds) {
+  return fetchTeamMemberMetaByUserIds(supabase, userIds);
+}
+
+/**
+ * Soft-delete a body-parameters card owned by the coach.
+ * Sets `is_deleted = true`. Returns null when missing or not owned.
+ *
+ * @param {{ id: number, coachId: number }} opts
+ * @returns {Promise<{ id: number, created_by: number }|null>}
+ */
+export async function softDeleteCard({ id, coachId }) {
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from(TABLE)
+    .update({ is_deleted: true })
+    .eq('id', id)
+    .eq('created_by', coachId)
+    .eq('is_deleted', false)
+    .select('id, created_by')
+    .maybeSingle();
+
+  if (error) throw error;
+  return data || null;
 }
 
 /**
@@ -683,12 +756,29 @@ async function loadSlimCardsForCoach(coachId) {
     const supabase = getSupabaseClient();
     logger.info('[listCardsForCoach] querying slim columns', { coachId });
 
-    const { data: cards, error: cardsError } = await supabase
+    let { data: cards, error: cardsError } = await supabase
       .from(TABLE)
       .select(LIST_SUMMARY_COLS)
       .eq('created_by', coachId)
       .eq('is_deleted', false)
       .order('created_at', { ascending: false });
+
+    if (cardsError && /location_name/i.test(String(cardsError.message || ''))) {
+      logger.error('[listCardsForCoach] location_name missing — retrying without it; run migration', {
+        message: cardsError.message,
+      });
+      const colsWithoutVenue = LIST_SUMMARY_COLS
+        .split(',')
+        .map((c) => c.trim())
+        .filter((c) => c !== 'location_name')
+        .join(', ');
+      ({ data: cards, error: cardsError } = await supabase
+        .from(TABLE)
+        .select(colsWithoutVenue)
+        .eq('created_by', coachId)
+        .eq('is_deleted', false)
+        .order('created_at', { ascending: false }));
+    }
 
     if (cardsError) {
       logger.error('[listCardsForCoach] database error:', cardsError);
@@ -697,14 +787,11 @@ async function loadSlimCardsForCoach(coachId) {
 
     const rows = cards || [];
     const userIds = [...new Set(rows.map((c) => c.user_id).filter(Boolean))];
-    const teamMembersMap = await fetchPhonesByUserIds(supabase, userIds);
+    const teamMembersMap = await fetchTeamMemberMetaByUserIds(supabase, userIds);
 
     const mapped = rows.map((card) => {
-      const member = teamMembersMap[String(card.user_id)];
-      const phone = member?.PhoneNumber && String(member.PhoneNumber).trim()
-        ? String(member.PhoneNumber).trim()
-        : null;
-      return mapCardSummary(card, phone);
+      const member = teamMembersMap[String(card.user_id)] || null;
+      return mapCardSummary(card, member);
     });
 
     bpcListCache.set(key, { rows: mapped, expiresAt: Date.now() + BPC_LIST_CACHE_TTL_MS });
@@ -757,13 +844,10 @@ export async function getCardByIdForCoach(coachId, cardId) {
   if (error) throw error;
   if (!card) return null;
 
-  let phone = null;
+  let memberMeta = null;
   if (card.user_id) {
-    const map = await fetchPhonesByUserIds(supabase, [card.user_id]);
-    const member = map[String(card.user_id)];
-    phone = member?.PhoneNumber && String(member.PhoneNumber).trim()
-      ? String(member.PhoneNumber).trim()
-      : null;
+    const map = await fetchTeamMemberMetaByUserIds(supabase, [card.user_id]);
+    memberMeta = map[String(card.user_id)] || null;
   }
-  return mapCardDetail(card, phone);
+  return mapCardDetail(card, memberMeta);
 }

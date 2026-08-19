@@ -48,3 +48,14 @@ export function canViewPublicCard() {
 export function canSearchTeamPhones({ coachId } = {}) {
   return Boolean(coachId && Number.isInteger(Number(coachId)) && Number(coachId) > 0);
 }
+
+/**
+ * Can this coach soft-delete a body-parameters card they created?
+ * Ownership (`created_by === coachId`) is enforced in the data layer.
+ *
+ * @param {{ coachId: number|null }} ctx
+ * @returns {boolean}
+ */
+export function canDeleteCard({ coachId } = {}) {
+  return Boolean(coachId && Number.isInteger(Number(coachId)) && Number(coachId) > 0);
+}

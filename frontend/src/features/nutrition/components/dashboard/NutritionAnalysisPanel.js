@@ -16,6 +16,29 @@ import {
 import { formatWaterVolume } from '../../../diary/domain/formatVolume';
 import { resolveMealImageSrc } from '../../services/nutritionDashboard/mealImageSrc';
 
+function uniqueFoodNames(items) {
+  if (!Array.isArray(items) || items.length === 0) return [];
+  const seen = new Set();
+  const names = [];
+  for (const item of items) {
+    const name = String(item?.name || item?.foodName || '').trim();
+    if (!name) continue;
+    const key = name.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    names.push(name);
+  }
+  return names;
+}
+
+function longestNameList(...lists) {
+  let best = [];
+  for (const list of lists) {
+    if (Array.isArray(list) && list.length > best.length) best = list;
+  }
+  return best;
+}
+
 function mealHasDisplayItems(localDetailedItems, foodData) {
   if (localDetailedItems?.length > 0) return true;
   return Array.isArray(foodData?.detailedItems) && foodData.detailedItems.length > 0;
@@ -78,10 +101,17 @@ const NutritionAnalysisPanel = ({
   const isLoadingDetails = mealDetailStatus === 'loading';
   const isDetailError = mealDetailStatus === 'error';
   const foodData = parseAnalysisData(selectedMeal.AnalysisData, 'text-white');
+  const itemNames = longestNameList(
+    uniqueFoodNames(selectedMeal.listSummary?.items),
+    uniqueFoodNames(localDetailedItems),
+    uniqueFoodNames(foodData.detailedItems),
+  );
   const fallbackTitle = selectedMeal.listSummary?.name || null;
-  const displayTitle = (isLoadingDetails || isDetailError) && !mealHasDisplayItems(localDetailedItems, foodData)
-    ? (fallbackTitle || (isLoadingDetails ? 'Loading food details...' : foodData.name))
-    : foodData.name;
+  const displayTitle = itemNames.length > 0
+    ? itemNames.join(', ')
+    : ((isLoadingDetails || isDetailError) && !mealHasDisplayItems(localDetailedItems, foodData)
+      ? (fallbackTitle || (isLoadingDetails ? 'Loading food details...' : foodData.name))
+      : foodData.name);
   // Prefer explicit owner TZ (diary API / parent). Do not fall back to IST when
   // the logged-in `user` object is missing timezone — that caused "Logged at"
   // to show Kolkata time for Qatar/US/UK members.

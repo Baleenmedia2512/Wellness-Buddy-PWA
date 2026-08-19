@@ -2,10 +2,12 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { getUserId } from '../../../shared/services/userIdentity';
 import {
   getLatestActivityLogId,
+  getActivityLogDebug,
   markWellnessScoreProcessed,
   shouldRefreshWellnessScore,
 } from '../../../shared/services/homeDashboardActivity';
 import { fetchDailyWellnessScore } from '../services/wellnessScore.api';
+import { shouldSkipWellnessScoreRefresh } from '../domain/skipWellnessScoreRefresh';
 import {
   clearPinnedDailyWellnessScore,
   getDailyWellnessScoreCached,
@@ -32,6 +34,7 @@ export function useWellnessScore({ user, apiBaseUrl, date, nutritionRefreshKey =
   const [error, setError] = useState(null);
   const [data, setData] = useState(null);
   const userIdRef = useRef(null);
+  const requestIdRef = useRef(0);
 
   const reload = useCallback(async ({ background = false, force = false } = {}) => {
     if (!user) {
@@ -40,9 +43,11 @@ export function useWellnessScore({ user, apiBaseUrl, date, nutritionRefreshKey =
       return;
     }
 
+    const requestId = ++requestIdRef.current;
     try {
       const userId = user.id || userIdRef.current || (await getUserId(user));
       if (!userId) throw new Error('Unable to resolve user');
+      if (requestId !== requestIdRef.current) return;
       userIdRef.current = userId;
 
       const cached = getDailyWellnessScoreCached(userId, date);
@@ -66,6 +71,7 @@ export function useWellnessScore({ user, apiBaseUrl, date, nutritionRefreshKey =
 
       const activityLogAtFetch = getLatestActivityLogId();
       const score = await fetchDailyWellnessScore({ userId, date, apiBaseUrl });
+      if (requestId !== requestIdRef.current) return;
 
       // After sheet → Home sync, keep the sheet total for this watermark so a
       // racing /daily response cannot put Home back on an older/different number.
@@ -85,10 +91,11 @@ export function useWellnessScore({ user, apiBaseUrl, date, nutritionRefreshKey =
         markWellnessScoreProcessed(activityLogAtFetch);
       }
     } catch (err) {
+      if (requestId !== requestIdRef.current) return;
       setError(err?.message || 'Failed to load wellness score');
       if (!background) setData(null);
     } finally {
-      if (!background) setLoading(false);
+      if (requestId === requestIdRef.current && !background) setLoading(false);
     }
   }, [user, apiBaseUrl, date]);
 
@@ -121,11 +128,9 @@ export function useWellnessScore({ user, apiBaseUrl, date, nutritionRefreshKey =
       activityRefreshMounted.current = true;
       return;
     }
-    // Drop session cache before refetch so we never paint a pre-save total
-    // while /daily is in flight — but restore a same-watermark sheet pin.
-    invalidateDailyWellnessScoreCache();
-    // Always refetch on key bump — do not gate on shouldRefreshWellnessScore().
-    // The sheet may have already marked wellness processed while Home was stale.
+    if (shouldSkipWellnessScoreRefresh(getActivityLogDebug().lastSource)) return;
+    // Keep the last painted total so Home + sheet stay visible while /daily
+    // refetches. force=true still bypasses the freshness skip.
     reload({ background: true, force: true });
   }, [nutritionRefreshKey, reload]);
 

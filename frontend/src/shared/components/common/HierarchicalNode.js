@@ -564,6 +564,18 @@ const HierarchicalNode = ({
                         </span>
                       )}
                     </div>
+                    {/* Email | Community ID — downline identity line */}
+                    {(() => {
+                      const mail = String(node.userEmail || node.email || '').trim();
+                      const cid = String(node.communityId || '').trim();
+                      const subtitle = mail && cid ? `${mail} | ${cid}` : (mail || cid);
+                      if (!subtitle) return null;
+                      return (
+                        <div className="text-[10px] text-gray-500 mt-0.5 truncate" title={subtitle}>
+                          {subtitle}
+                        </div>
+                      );
+                    })()}
                     {/* Reports to - Coach and Co-Coach */}
                     {(node.uplineCoachName || node.uplineCoCoachName) && (
                       <div className="text-[10px] text-gray-500 mt-0.5">
@@ -732,26 +744,37 @@ const HierarchicalNode = ({
                     >
                       {/* Member Header */}
                       <div className="flex items-center justify-between mb-2">
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 min-w-0">
                           {child.profileImage ? (
                             <img
                               src={child.profileImage}
                               alt={child.userName || child.name}
-                              className="h-8 w-8 rounded-full object-cover border border-gray-200"
+                              className="h-8 w-8 rounded-full object-cover border border-gray-200 flex-shrink-0"
                             />
                           ) : (
-                            <div className="h-8 w-8 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center">
+                            <div className="h-8 w-8 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center flex-shrink-0">
                               <span className="text-white font-semibold text-xs">
                                 {(child.userName || child.name || "?")[0].toUpperCase()}
                               </span>
                             </div>
                           )}
-                          <span className="text-sm font-medium text-gray-900">
-                            {child.userName || child.name}
-                          </span>
+                          <div className="min-w-0">
+                            <span className="text-sm font-medium text-gray-900 block truncate">
+                              {child.userName || child.name}
+                            </span>
+                            {(() => {
+                              const mail = String(child.userEmail || child.email || '').trim();
+                              const cid = String(child.communityId || '').trim();
+                              const subtitle = mail && cid ? `${mail} | ${cid}` : (mail || cid);
+                              if (!subtitle) return null;
+                              return (
+                                <span className="text-[10px] text-gray-500 block truncate">{subtitle}</span>
+                              );
+                            })()}
+                          </div>
                         </div>
                         {renderStatus && (
-                          <div>{renderStatus(child, false)}</div>
+                          <div className="flex-shrink-0">{renderStatus(child, false)}</div>
                         )}
                       </div>
 

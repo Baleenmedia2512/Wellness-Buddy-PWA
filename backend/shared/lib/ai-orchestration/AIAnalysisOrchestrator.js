@@ -113,6 +113,8 @@ const FAST_FALLBACK = Object.freeze({
  * @param {string} [params.userId]       Caller user ID (for tracing + job context).
  * @param {string} [params.imageBase64]  Base64 image for queuing the enrichment job.
  * @param {number} [params.foodRowId]    food_nutrition_data_table PK (for enrichment write-back).
+ * @param {boolean} [params.usePro]      Force Gemini Pro for this request.
+ * @param {boolean} [params.fresh]       Bypass idempotency cache (frontend retry).
  *
  * @returns {Promise<OrchestratorResult>}
  */
@@ -124,19 +126,20 @@ export async function analyse(params) {
     userId       = null,
     userName     = null,
     userEmail    = null,
+    appVersion   = null,
     imageBase64  = null,
     foodRowId    = null,
-    // usePro: true forces Gemini Pro on this request (used by frontend
-    // attempt-3 escalation when Flash failed twice to classify the image).
+    // usePro: true forces Gemini Pro (frontend attempt-2 escalation after Flash).
     usePro       = false,
+    fresh        = false,
     module       = ANALYSIS_MODULES.FOOD_IMAGE_ANALYSIS,
   } = params;
 
-  const trace = new TraceContext({ captureId, userId, userName, userEmail, module });
+  const trace = new TraceContext({ captureId, userId, userName, userEmail, appVersion, module });
 
   // ── Step 1: Idempotency guard ──────────────────────────────────────────────
   if (captureId) {
-    const check = idempotencyGuard.check(captureId);
+    const check = idempotencyGuard.check(captureId, { fresh });
     if (check.duplicate) {
       logger.info('orchestrator: returning cached result for duplicate capture', {
         captureId,
@@ -233,6 +236,7 @@ export async function analyse(params) {
         userId:       userId    ?? '',
         traceId:      trace.traceId,
         module:       trace.module,
+        appVersion:   trace.appVersion,
         imageBase64,
         mimeType,
         fastNutrition: fastResult.fastNutrition ?? {},

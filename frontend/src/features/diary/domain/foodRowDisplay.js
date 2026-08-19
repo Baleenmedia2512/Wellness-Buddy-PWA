@@ -7,6 +7,7 @@
 
 import {
   DIARY_FOOD_ACTIVITY,
+  extractFoodItemDisplayNames,
   extractScoops,
   extractShakeProducts,
   extractShakeServings,
@@ -92,6 +93,7 @@ export function resolveFoodRowPresentation({
     }
   }
 
+  const itemNames = extractFoodItemDisplayNames(foodData, analysisData);
   const shareText = buildFoodActivityShareText({
     activityType,
     mealLabel,
@@ -102,6 +104,7 @@ export function resolveFoodRowPresentation({
     scoops,
     servings,
     shakeProducts,
+    itemNames,
     glycemicIndex,
   });
 
@@ -135,16 +138,18 @@ export function buildFoodActivityShareText({
   scoops = null,
   servings = 1,
   shakeProducts = null,
+  itemNames = null,
   glycemicIndex = null,
 } = {}) {
   const nutrition = foodData?.nutrition || {};
   switch (activityType) {
     case DIARY_FOOD_ACTIVITY.WATER:
-      return buildDiaryShareSuffix('water', { volumeMl });
+      return buildDiaryShareSuffix('water', { volumeMl, soFarToday: false });
     case DIARY_FOOD_ACTIVITY.AFRESH:
       return buildDiaryShareSuffix('afresh', {
         scoops: scoops ?? 1,
         calories: nutrition.calories ?? calories,
+        soFarToday: false,
       });
     case DIARY_FOOD_ACTIVITY.SHAKE:
       return buildDiaryShareSuffix('shake', {
@@ -155,6 +160,7 @@ export function buildFoodActivityShareText({
     default:
       return buildDiaryShareSuffix('food', {
         foodName,
+        itemNames: itemNames || extractFoodItemDisplayNames(foodData),
         calories: nutrition.calories ?? calories,
         protein: nutrition.protein ?? 0,
         carbs: nutrition.carbs ?? 0,

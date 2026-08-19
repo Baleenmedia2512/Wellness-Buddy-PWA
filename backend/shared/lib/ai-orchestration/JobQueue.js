@@ -83,7 +83,7 @@ export class JobQueue {
    * @param {number}   params.foodRowId        food_nutrition_data_table PK.
    * @returns {Promise<{ jobId: string }>}
    */
-  async enqueue({ captureId, userId, traceId, module = null, imageBase64, mimeType, fastNutrition, foodItems, foodRowId }) {
+  async enqueue({ captureId, userId, traceId, module = null, appVersion = null, imageBase64, mimeType, fastNutrition, foodItems, foodRowId }) {
     const jobId = randomUUID();
     const now   = Date.now();
 
@@ -93,6 +93,7 @@ export class JobQueue {
       userId:        String(userId    ?? ''),
       traceId:       String(traceId   ?? ''),
       module:        module ? String(module) : null,
+      appVersion:    appVersion ? String(appVersion) : null,
       imageBase64,
       mimeType:      mimeType ?? 'image/jpeg',
       fastNutrition: fastNutrition ?? {},
@@ -275,6 +276,7 @@ export class JobQueue {
         UserID:       job.userId,
         TraceId:      job.traceId,
         MimeType:     job.mimeType,
+        AppVersion:   job.appVersion,
         FastNutrition: JSON.stringify(job.fastNutrition),
         FoodItems:    JSON.stringify(job.foodItems ?? []),
         FoodRowId:    job.foodRowId,

@@ -1,4 +1,5 @@
 import { debugLog } from '../utils/logger.js';
+import { apiFetch } from './apiFetch.js';
 
 /**
  * @file userContextService — loads and caches the personalized AI
@@ -38,7 +39,7 @@ export const getUserContext = async (userId, forceRefresh = false) => {
   }
 
   try {
-    const response = await fetch(
+    const response = await apiFetch(
       `${API_BASE_URL}/api/user/context?userId=${userId}`
     );
     if (!response.ok) {

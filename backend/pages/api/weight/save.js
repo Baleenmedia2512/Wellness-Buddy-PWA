@@ -1,10 +1,16 @@
-import { largeBodyConfig as config } from '../../../utils/apiConfig.js';
+// Inline config for Next.js 15
 import { applyCors, methodNotAllowed, runService } from '../../../shared/lib/handler.js';
 import { validateSaveInput } from '../../../features/weight/weight.validators.js';
 import { saveWeight } from '../../../features/weight/weight.service.js';
 import logger from '../../../shared/lib/logger.js';
 
-export { config };
+export const config = {
+  api: {
+    bodyParser: {
+      sizeLimit: '10mb',
+    },
+  },
+};
 
 export default async function handler(req, res) {
   if (applyCors(req, res, 'GET, POST, OPTIONS')) return;

@@ -18,7 +18,7 @@ export async function fetchMealDetailRow({ apiBaseUrl, userId, mealId, signal })
     headers: { 'Cache-Control': 'no-cache', Pragma: 'no-cache' },
     signal,
   });
-  const body = await res.json();
+  const body = await readJsonBody(res);
   if (!res.ok || !body?.success || !body?.data) {
     const err = new Error(body?.message || 'Unable to load food details.');
     err.status = res.status;
@@ -44,11 +44,21 @@ export async function fetchMealDetailRowsBatch({ apiBaseUrl, userId, mealIds, si
     headers: { 'Cache-Control': 'no-cache', Pragma: 'no-cache' },
     signal,
   });
-  const body = await res.json();
+  const body = await readJsonBody(res);
   if (!res.ok || !body?.success) {
     const err = new Error(body?.message || 'Unable to load food details.');
     err.status = res.status;
     throw err;
   }
   return Array.isArray(body.data) ? body.data : [];
+}
+
+async function readJsonBody(res) {
+  const text = await res.text();
+  if (!text) return null;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { success: false, message: 'Unable to load food details.' };
+  }
 }

@@ -14,6 +14,7 @@ import {
   extractVolumeMl,
   extractScoops,
   extractShakeProducts,
+  extractFoodItemDisplayNames,
 } from "../../diary/domain/activityType";
 import { buildDiaryShareSuffix } from "../../diary/domain/share/suffixes";
 const NutritionCard = ({
@@ -155,12 +156,11 @@ const NutritionCard = ({
 
   // Generate meal name from food items
   const generateMealName = () => {
-    if (localDetailedItems.length === 0) return data?.category?.name || "Meal";
-    if (localDetailedItems.length === 1) return localDetailedItems[0].name;
-
-    const firstItem = localDetailedItems[0].name;
-    const remaining = localDetailedItems.length - 1;
-    return `${firstItem} + ${remaining} more`;
+    const names = localDetailedItems
+      .map((item) => String(item?.name || '').trim())
+      .filter(Boolean);
+    if (names.length === 0) return data?.category?.name || "Meal";
+    return names.join(", ");
   };
 
   const calculateNutritionFromSearchResult = (foodResult, quantity) => {
@@ -840,6 +840,7 @@ const NutritionCard = ({
       } else {
         activityCaption = buildDiaryShareSuffix('food', {
           foodName: mealName,
+          itemNames: extractFoodItemDisplayNames({ detailedItems: localDetailedItems }),
           calories,
           protein: localNutrition?.protein ?? 0,
           carbs: localNutrition?.carbs ?? 0,
