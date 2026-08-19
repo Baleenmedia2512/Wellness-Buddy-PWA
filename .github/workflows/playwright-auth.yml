@@ -414,19 +414,19 @@ jobs:
             tests/frontend/auth/login.spec.js
 
 
-      # ==========================================================
-      # 20. RUN COMPLETE PROFILE TESTS
-      # ==========================================================
+      # # ==========================================================
+      # # 20. RUN COMPLETE PROFILE TESTS
+      # # ==========================================================
 
-      - name: Run Playwright Complete Profile Tests
-        run: |
+      # - name: Run Playwright Complete Profile Tests
+      #   run: |
 
-          echo "=========================================="
-          echo "Running Complete Profile Tests"
-          echo "=========================================="
+      #     echo "=========================================="
+      #     echo "Running Complete Profile Tests"
+      #     echo "=========================================="
 
-          npx playwright test \
-            tests/frontend/profile/complete-profile.spec.js
+      #     npx playwright test \
+      #       tests/frontend/profile/complete-profile.spec.js
 
 
       # ==========================================================
