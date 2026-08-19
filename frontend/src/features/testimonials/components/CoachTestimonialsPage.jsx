@@ -802,8 +802,11 @@ function MemberCard({
       ...(draftBefore ? {
         ...(draftBefore.imageBase64 ? { beforeImageBase64: draftBefore.imageBase64 } : {}),
         ...(draftBefore.weightKg !== undefined ? { beforeWeightKg: draftBefore.weightKg } : {}),
-        ...(draftBefore.goalType ? { goalType: draftBefore.goalType } : {}),
-        ...(draftBefore.durationText ? { durationText: draftBefore.durationText } : {}),
+        // Always send goal on drafts — UI may show "Weight Loss" without writing state
+        goalType: draftBefore.goalType || testimonial?.goalType || 'loss',
+        ...((draftBefore.durationText || testimonial?.durationText)
+          ? { durationText: draftBefore.durationText || testimonial.durationText }
+          : {}),
       } : {}),
       ...(draftAfter ? {
         ...(draftAfter.imageBase64 ? { afterImageBase64: draftAfter.imageBase64 } : {}),
@@ -813,6 +816,32 @@ function MemberCard({
       ...(draftBusinessPath ? { businessVideoPath: draftBusinessPath } : {}),
       ...(draftIssues !== null ? { recoveredHealthIssues: draftIssues } : {}),
     };
+
+    // Completing both photos requires at least one health issue (same rule as backend).
+    const willComplete =
+      Boolean(draftBefore?.imageBase64 || testimonial?.beforeImageUrl)
+      && Boolean(draftAfter?.imageBase64 || (hasAfter && testimonial?.afterImageUrl));
+    const issuesForSubmit = draftIssues !== null
+      ? draftIssues
+      : (testimonial?.recoveredHealthIssues || []);
+    if (
+      willComplete
+      && dirtySlots.some((s) => s === 'before' || s === 'after')
+      && (!Array.isArray(issuesForSubmit) || issuesForSubmit.filter(Boolean).length === 0)
+    ) {
+      setSubmitError('Add at least one Health Issue before submitting before + after photos.');
+      return;
+    }
+
+    // First-time submit needs the before image bytes in the payload.
+    if (!testimonial?.id && dirtySlots.includes('before') && !draftBefore?.imageBase64) {
+      setSubmitError('Before photo failed to prepare. Please pick it again.');
+      return;
+    }
+    if (!testimonial?.id && !dirtySlots.includes('before')) {
+      setSubmitError('Please add a before photo before submitting.');
+      return;
+    }
 
     const clearDrafts = () => {
       setDraftBefore((prev) => { revokeBlobUrl(prev?.previewUrl); return null; });
@@ -863,7 +892,7 @@ function MemberCard({
         setIsSubmitting(false);
         setCaptureFlowBusy(false);
       });
-  }, [userId, dirtySlots, draftBefore, draftAfter, draftHealthPath, draftBusinessPath, draftIssues, onMineRefresh, hasAfter, testimonial?.healthVideoPath, testimonial?.businessVideoPath, testimonial?.healthVideoUrl, testimonial?.businessVideoUrl]);
+  }, [userId, dirtySlots, draftBefore, draftAfter, draftHealthPath, draftBusinessPath, draftIssues, onMineRefresh, hasAfter, testimonial?.id, testimonial?.beforeImageUrl, testimonial?.afterImageUrl, testimonial?.goalType, testimonial?.durationText, testimonial?.recoveredHealthIssues, testimonial?.healthVideoPath, testimonial?.businessVideoPath, testimonial?.healthVideoUrl, testimonial?.businessVideoUrl]);
 
   const anyPhotoCompressing = Boolean(draftBefore?.compressing || draftAfter?.compressing);
 
@@ -1331,7 +1360,7 @@ function MemberCard({
             approvedIssues={approvedIssues}
             knownHealthIssues={knownHealthIssues}
             persist={editable ? false : Boolean(testimonial?.id)}
-            allowRemove={editable && draftIssues != null}
+            allowRemove={editable}
             onSaved={handleHealthIssuesSaved}
             onRemove={handleHealthIssueRemoved}
           />
