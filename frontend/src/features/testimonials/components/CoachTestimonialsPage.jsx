@@ -1322,7 +1322,8 @@ function MemberCard({
       {(editable || testimonial) && (
         <div className="space-y-1.5 overflow-visible relative z-20">
           <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide flex items-center gap-1">
-            <HeartPulse className="h-3 w-3" /> Recovery Health Issue
+            <HeartPulse className="h-3 w-3" /> 
+            Health Issue
           </p>
           <HealthIssueCoachEditor
             userId={userId || user?.userId}
@@ -1332,6 +1333,7 @@ function MemberCard({
             knownHealthIssues={knownHealthIssues}
             persist={editable ? false : Boolean(testimonial?.id)}
             allowRemove={editable && draftIssues != null}
+            editable={editable}
             onSaved={handleHealthIssuesSaved}
             onRemove={handleHealthIssueRemoved}
           />
