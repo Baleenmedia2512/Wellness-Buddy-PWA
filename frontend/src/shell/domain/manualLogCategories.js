@@ -10,12 +10,25 @@ export const MANUAL_LOG_CATEGORY = Object.freeze({
   SHAKE: 'shake',
   WATER: 'water',
   FOOD: 'food',
-  HEALTHY_SNACKS: 'healthy-snacks',
+  DRY_SALAD: 'dry-salad',
   SMARTWATCH: 'smartwatch',
   GOOD_HABIT: 'good-habit',
 });
 
-/** Sub-options under Snacks & Soups — each opens the food search flow. */
+/**
+ * Dry Salad category metadata — opens the food search flow directly.
+ * searchHint pre-fills the query with "salad" so relevant items surface first.
+ */
+export const DRY_SALAD_META = Object.freeze({
+  id: MANUAL_LOG_CATEGORY.DRY_SALAD,
+  label: 'Dry Salad',
+  emoji: '🥗',
+  searchHint: '',
+  headerTitle: 'Dry Salad',
+  headerSubtitle: 'Search for a salad item below',
+});
+
+/** @deprecated Snacks & Soups tile was replaced by the Dry Salad tile. Kept for any imports that may reference it. */
 export const HEALTHY_SNACKS_SUBTYPE = Object.freeze({
   SOUPS: 'soups',
   SALADS: 'salads',
@@ -80,12 +93,12 @@ export function getHealthySnacksSuboption(id) {
 /**
  * After tapping a Log-as tile: either open a form directly, or the snacks picker.
  * @param {string} categoryId
- * @returns {{ kind: 'form', formId: string } | { kind: 'healthy-snacks-picker' } | { kind: 'good-habit-picker' } | null}
+ * @returns {{ kind: 'form', formId: string } | { kind: 'dry-salad' } | { kind: 'good-habit-picker' } | null}
  */
 export function resolveManualLogCategoryClick(categoryId) {
   if (!isManualLogCategory(categoryId)) return null;
-  if (categoryId === MANUAL_LOG_CATEGORY.HEALTHY_SNACKS) {
-    return { kind: 'healthy-snacks-picker' };
+  if (categoryId === MANUAL_LOG_CATEGORY.DRY_SALAD) {
+    return { kind: 'dry-salad' };
   }
   if (categoryId === MANUAL_LOG_CATEGORY.GOOD_HABIT) {
     return { kind: 'good-habit-picker' };
