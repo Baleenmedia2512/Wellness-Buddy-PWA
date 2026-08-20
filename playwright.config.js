@@ -70,13 +70,9 @@ module.exports = defineConfig({
   // ============================================================
 
 reporter: [
-  ['list'],
-  ['html', {
-    open: 'never',
-  }],
-  ['json', {
-    outputFile: 'test-results/results.json'
-  }],
+  ["list"],
+  ["json", { outputFile: "test-results/results.json" }],
+  ["html", { outputFolder: "playwright-report", open: "never" }],
 ],
 
 
