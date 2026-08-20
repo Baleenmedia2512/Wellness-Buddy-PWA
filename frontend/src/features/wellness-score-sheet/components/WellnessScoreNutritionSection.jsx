@@ -1,8 +1,10 @@
-import React from 'react';
+import React, { useCallback, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import ScoreCategoryRow from './ScoreCategoryRow';
 import ParameterContributionModal from './ParameterContributionModal';
-import WellnessScoreDayStrip from './WellnessScoreDayStrip';
+import WellnessScoreMultiDayCarousel, {
+  MULTI_DAY_PANEL,
+} from './WellnessScoreMultiDayCarousel';
 import { getParameterMeta, PARAMETER_SECTIONS } from '../domain/parameterRegistry';
 import { getSectionIcon } from '../domain/parameterIcons';
 import { useTimeWindows } from '../hooks/useTimeWindows';
@@ -30,6 +32,11 @@ export default function WellnessScoreNutritionSection({
   viewerUserId = null,
   nutritionRefreshKey = 0,
 }) {
+  const [multiDayPanel, setMultiDayPanel] = useState(MULTI_DAY_PANEL.AVERAGE);
+  const handlePanelChange = useCallback((panelId) => {
+    setMultiDayPanel(panelId);
+  }, []);
+
   const { loading, error, historyDays, data: scoreData, reload } = useWellnessScoreHistory({
     user,
     apiBaseUrl,
@@ -42,6 +49,9 @@ export default function WellnessScoreNutritionSection({
   const timeWindows = useTimeWindows();
   const userId = scoreData?.userId || user?.id || user?.userId || null;
   const dateStr = scoreData?.date || date;
+  const showDayDetailCards = !isMultiDay
+    || historyDays.length <= 1
+    || multiDayPanel === MULTI_DAY_PANEL.DAYS;
 
   const {
     selectedParam,
@@ -77,11 +87,13 @@ export default function WellnessScoreNutritionSection({
   return (
     <div className="space-y-3">
       {isMultiDay && historyDays.length > 1 && onSelectDate && (
-        <WellnessScoreDayStrip
-          days={historyDays}
+        <WellnessScoreMultiDayCarousel
+          historyDays={historyDays}
+          sections={sections}
           selectedDate={date}
           onSelectDate={onSelectDate}
           today={today}
+          onPanelChange={handlePanelChange}
         />
       )}
 
@@ -118,7 +130,7 @@ export default function WellnessScoreNutritionSection({
         </p>
       )}
 
-      {scoreData && sections.map((section) => {
+      {showDayDetailCards && scoreData && sections.map((section) => {
         const SectionIcon = getSectionIcon(section.id);
         const showHeader = section.id === 'progress';
 
@@ -156,7 +168,7 @@ export default function WellnessScoreNutritionSection({
       })}
 
       <ParameterContributionModal
-        isOpen={!!selectedParam}
+        isOpen={showDayDetailCards && !!selectedParam}
         onClose={handleCloseContribution}
         view={contributionView}
         loading={!!selectedParam && needsMeals && mealsLoading}

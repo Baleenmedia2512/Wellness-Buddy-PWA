@@ -51,13 +51,12 @@ import { buildDiaryShareSuffix, extractFoodShareItems } from '../../features/dia
 import { useNutritionRefreshOptional } from '../../shared/context/NutritionRefreshContext';
 import { refreshDailyWellnessScoreAfterSave } from '../../features/wellness-score-sheet/services/refreshDailyWellnessScoreNow';
 import { prefetchTimeWindows } from '../../features/wellness-score-sheet/hooks/useTimeWindows';
-import HealthySnacksSubSelectModal from './HealthySnacksSubSelectModal';
 import GoodHabitFlow from './GoodHabitFlow';
 import { saveGoodHabit } from '../../features/good-habits';
 import {
   MANUAL_LOG_CATEGORY,
+  DRY_SALAD_META,
   resolveManualLogCategoryClick,
-  resolveHealthySnacksSubtypeClick,
 } from '../domain/manualLogCategories';
 
 /** PNG/SVG from `frontend/public` — same pattern as BathroomScaleIcon. */
@@ -81,10 +80,9 @@ const CATEGORIES = [
   { id: MANUAL_LOG_CATEGORY.WATER, src: '/water.svg', label: 'Water', isImgIcon: true },
   { id: MANUAL_LOG_CATEGORY.FOOD, Icon: UtensilsCrossed, label: 'Food' },
   {
-    id: MANUAL_LOG_CATEGORY.HEALTHY_SNACKS,
+    id: MANUAL_LOG_CATEGORY.DRY_SALAD,
     Icon: Salad,
-    label: 'Snacks & Soups',
-    wrapLabel: true,
+    label: 'Dry Salad',
   },
   // smartwatch flow = calories burned; label is Workout (green weightlifter / Lucide on iOS)
   {
@@ -446,9 +444,14 @@ export default function ManualEntryPage({
   const openCategory = useCallback((id) => {
     const next = resolveManualLogCategoryClick(id);
     if (!next) return;
-    if (next.kind === 'healthy-snacks-picker') {
-      setFoodEntryMeta(null);
-      setActiveForm(MANUAL_LOG_CATEGORY.HEALTHY_SNACKS);
+    if (next.kind === 'dry-salad') {
+      setFoodEntryMeta({
+        fromDrySalad: true,
+        headerTitle: DRY_SALAD_META.headerTitle,
+        headerSubtitle: DRY_SALAD_META.headerSubtitle,
+        initialQuery: DRY_SALAD_META.searchHint,
+      });
+      setActiveForm(MANUAL_LOG_CATEGORY.FOOD);
       return;
     }
     if (next.kind === 'good-habit-picker') {
@@ -559,25 +562,7 @@ export default function ManualEntryPage({
     }
   }, [captureReady, pendingLogAsId, pendingAi, openCategory, startAiAnalyze]);
 
-  const handleHealthySnacksPick = (subtypeId) => {
-    const next = resolveHealthySnacksSubtypeClick(subtypeId);
-    if (!next) return;
-    setFoodEntryMeta({
-      fromHealthySnacks: true,
-      subtypeId: next.subtype.id,
-      headerTitle: next.subtype.headerTitle,
-      headerSubtitle: 'Type the food item below',
-      initialQuery: next.subtype.searchHint || '',
-    });
-    setActiveForm(next.formId);
-  };
-
   const closeFoodSearch = () => {
-    if (foodEntryMeta?.fromHealthySnacks) {
-      setFoodEntryMeta(null);
-      setActiveForm(MANUAL_LOG_CATEGORY.HEALTHY_SNACKS);
-      return;
-    }
     setFoodEntryMeta(null);
     setActiveForm(null);
   };
@@ -587,8 +572,8 @@ export default function ManualEntryPage({
     const foodName = analysis?.foods?.[0]?.name || manualData?.name || 'Food';
     const foodItems = extractFoodShareItems(analysis);
     const n = analysis?.total || analysis?.foods?.[0]?.nutrition || {};
-    // Snacks & Soups: name + kcal only (no P/C/F/Fiber/GI). Full food keeps macros.
-    const fromSnacks = Boolean(foodEntryMeta?.fromHealthySnacks);
+    // Dry Salad and full Food: name + kcal only for the compact share caption.
+    const fromSnacks = Boolean(foodEntryMeta?.fromDrySalad);
     const activityCaption = fromSnacks
       ? buildDiaryShareSuffix('food', {
           foodName,
@@ -925,6 +910,7 @@ export default function ManualEntryPage({
       </main>
 
       <SmartFoodSearchModal
+        key={foodEntryMeta?.initialQuery || 'food'}
         isOpen={activeForm === MANUAL_LOG_CATEGORY.FOOD}
         onClose={closeFoodSearch}
         onSave={handleFoodSave}
@@ -934,14 +920,7 @@ export default function ManualEntryPage({
         headerTitle={foodEntryMeta?.headerTitle}
         headerSubtitle={foodEntryMeta?.headerSubtitle}
         initialQuery={foodEntryMeta?.initialQuery || ''}
-      />
-      <HealthySnacksSubSelectModal
-        isOpen={activeForm === MANUAL_LOG_CATEGORY.HEALTHY_SNACKS}
-        onClose={() => {
-          setFoodEntryMeta(null);
-          setActiveForm(null);
-        }}
-        onPick={handleHealthySnacksPick}
+        catalogMode={Boolean(foodEntryMeta?.fromDrySalad)}
       />
       <GoodHabitFlow
         isOpen={activeForm === MANUAL_LOG_CATEGORY.GOOD_HABIT}

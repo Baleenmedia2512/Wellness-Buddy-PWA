@@ -22,6 +22,7 @@ import { recordRecentMedicalCondition } from '../domain/medicalConditionSearch.j
  *   knownHealthIssues?: string[],
  *   persist?: boolean,
  *   allowRemove?: boolean,
+ *   editable?: boolean,
  *   onSaved?: (issues: string[]) => void,
  *   onRemove?: (issue: string) => void,
  * }} props
@@ -34,6 +35,7 @@ export default function HealthIssueCoachEditor({
   knownHealthIssues = [],
   persist = true,
   allowRemove = false,
+  editable = false,
   onSaved,
   onRemove,
 }) {
@@ -49,6 +51,7 @@ export default function HealthIssueCoachEditor({
   const [draft, setDraft] = useState(savedIssues);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
+  const [deleteConfirm, setDeleteConfirm] = useState(null);
 
   useEffect(() => {
     setDraft(savedIssues);
@@ -129,6 +132,46 @@ export default function HealthIssueCoachEditor({
           <Save className="h-4 w-4" />
           {saving ? 'Saving…' : 'Save health issues'}
         </button>
+      )}
+
+      {/* Delete confirmation dialog */}
+      {deleteConfirm && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40 px-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xs p-5 flex flex-col gap-4">
+            <div className="flex items-start gap-3">
+              <div className="bg-red-100 rounded-full p-2 shrink-0">
+                <HeartPulse className="h-5 w-5 text-red-500" />
+              </div>
+              <div>
+                <p className="text-sm font-bold text-gray-800">Remove health issue?</p>
+                <p className="text-xs text-gray-500 mt-1">
+                  Are you sure you want to remove{' '}
+                  <span className="font-semibold text-red-700">"{deleteConfirm}"</span>?
+                  This will take effect once the testimonial is submitted and OTP is verified.
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setDeleteConfirm(null)}
+                className="flex-1 py-2 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  onRemove?.(deleteConfirm);
+                  setDeleteConfirm(null);
+                }}
+                className="flex-1 py-2 rounded-xl bg-red-500 hover:bg-red-600 text-white text-sm font-bold"
+              >
+                Yes, Remove
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

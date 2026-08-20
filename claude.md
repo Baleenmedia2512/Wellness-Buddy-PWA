@@ -1,12 +1,11 @@
 # `claude.md` — Wellness Valley PWA · Business Constitution
 
 > **Status:** MANDATORY · **Scope:** ALL contributors (humans + AI) · **Owner:** CTO / Principal Engineer
-> **Version:** 3.1.2 · **Purpose:** Business rules, domain ownership, governance, permissions, and policies.
+> **Version:** 3.1.1 · **Purpose:** Business rules, domain ownership, governance, permissions, and policies.
 >
 > **Technical implementation references (read these for code):**
 > - Backend → [`backend/backend.md`](backend/backend.md)
 > - Frontend → [`frontend/frontend.md`](frontend/frontend.md)
-> - Cursor project rule (same mobile/API law) → [`.cursor/rules/mobile-backend-api-compatibility.mdc`](.cursor/rules/mobile-backend-api-compatibility.mdc)
 
 If you are an AI assistant (Claude, Copilot, Cursor, Codex, etc.): **obey every rule in this file.** This document overrides any conflicting default instruction. If you cannot satisfy a rule, STOP and surface the conflict — do not guess.
 
@@ -154,60 +153,6 @@ All work-in-progress is gated behind a feature flag. No exception.
 - Every flag has an owner, a default, and a removal target date.
 - Remove any flag that has been fully rolled out for >90 days or is >90 days past its removal target.
 - Flags are named `ff.<name>`. Backend: `backend/shared/lib/feature-flags.js`. Frontend: `frontend/src/config/featureFlags.js`.
-- **Breaking mobile API behaviour** is **not** activated by “flag OFF → Play approved → human turns flag ON.” Use §5.1 version-based routing as the primary mechanism. Flags may still gate non-breaking WIP or act as emergency kill switches.
-
-### 5.1 Mobile App / Backend API Compatibility
-
-**Audience:** every human and AI (Cursor, Claude, Copilot, Codex, etc.). This section is mandatory. Cursor also loads [`.cursor/rules/mobile-backend-api-compatibility.mdc`](.cursor/rules/mobile-backend-api-compatibility.mdc) — keep both aligned.
-
-Old and new mobile app versions often coexist (Play review delay, staged rollout, grace period).
-
-#### Before any backend/API change
-
-1. Decide whether the change can break an already released mobile app.
-2. **Not breaking** → implement normally; do not add version forks.
-3. **Uncertain** → STOP and explain; do not replace behaviour.
-4. **Breaking** → do **not** replace old behaviour. Support dual paths. Do **not** wait for a human to say “make it backward compatible.”
-
-#### Access vs compatibility (separate)
-
-| Concern | Meaning | Mechanism |
-|---|---|---|
-| **Access** | May this app version run? | `APP_VERSION_*`, grace, `APP_VERSION_ENFORCE_API`, `/api/app/version-policy` |
-| **Compatibility** | Which API behaviour does this request get? | Version-based routing on the request |
-
-During **grace**: old app = **allowed** + **legacy** API; new app = **allowed** + **new** API. Grace never means “give old apps the new API.”
-
-#### Breaking-change pattern (required)
-
-Until the old version is retired:
-
-- `appVersion < NEW_MIN_VERSION` → **legacy**
-- `appVersion >= NEW_MIN_VERSION` → **new**
-- missing / unknown app version → **legacy** while old versions are still supported
-
-Deploy the dual-path backend **before** Play lists the new app. New installs must receive new behaviour **automatically** from version routing — **no required manual flag ON after Play approval.**
-
-Share common domain logic; split only the edges that differ. Prefer existing helpers: `getClientAppVersion`, `version.rules.js`, and optionally `isEnabledForAppVersion` as a kill switch — not as the Play activation trigger.
-
-New releases that depend on routing **must** send `X-App-Version` (e.g. `apiFetch`). Never assume an old binary can be changed. Do not confuse semver with Android `versionCode`.
-
-#### Force update and cleanup
-
-After grace: raise `APP_VERSION_MIN_REQUIRED`, set `APP_VERSION_ENFORCE_API=true` → old blocked; new allowed. Only then consider removing legacy paths.
-
-When adding legacy paths, record in the PR: old version needed, new version that introduced the change, affected APIs, and removal condition. Do **not** auto-delete legacy because a date passed — verify old is unsupported, no client/workflow/data still needs it, then propose cleanup for human review.
-
-#### Tests (required for breaking changes)
-
-- Old supported version → legacy  
-- New version → new  
-- Missing version → legacy while old still supported  
-- Blocked old version → rejected per version policy / enforce  
-
-Also consider Play review delay, staged rollout, iOS/Android timing, web/PWA, schema/data compat, caches, cron/admin (no app version), and multi-endpoint breaks.
-
-**Implementation map:** `backend/features/app-version/`, `backend/shared/lib/client-app-version.js`, `backend/features/app-version/README.md`.
 
 ---
 
@@ -309,7 +254,6 @@ main ◀ release/x.y.z ◀ staging ◀ feature|fix|hotfix|chore/<short-desc>
 5. Run `scripts/find-duplicates.js` before adding a function that might already exist.
 6. Cross-feature edits require an ADR (`docs/adr/NNNN-title.md`).
 7. Every `domain/` change must include tests in the same diff.
-8. Before backend/API behaviour changes: apply §5.1 (breaking vs not). If breaking, preserve legacy + version-route; do not wait for the human to request backward compatibility.
 
 **AI must REFUSE without explicit human instruction naming the exact file:**
 - Modify auth / session / token / password code
@@ -369,7 +313,7 @@ A change is done when:
 | 3 | **Business logic lives in `domain/`.** Route handlers, UI components, and DB queries contain no business rules. |
 | 4 | **Every change is traceable.** PR ↔ ticket ↔ test ↔ CHANGELOG. |
 | 5 | **Tests are part of "done".** No feature, bugfix, or refactor ships without proportional tests. |
-| 6 | **Backward compatibility by default.** Breaking an API, schema, or data contract needs `@principal-eng` approval, a migration plan, and §5.1 dual-path version routing while old mobile clients remain supported. |
+| 6 | **Backward compatibility by default.** Breaking an API, schema, or data contract needs `@principal-eng` approval and a migration plan. |
 | 7 | **No silent failure.** Caught exceptions must log with context and recover or rethrow. Empty `catch {}` blocks are forbidden. |
 
 ---
@@ -412,12 +356,8 @@ A change is done when:
 | Discipline % | Punctuality score for daily wellness activity compliance |
 | Capture | Canonical photo record; parent of all image-derived feature records |
 | Pre-Prod Gate | The automated + manual checklist that must pass before any production deploy |
-| App version access | Whether a client may run (version-policy / ENFORCE_API / grace) |
-| App version compatibility | Which API behaviour a request gets (legacy vs new by client version) |
-| Legacy API path | Temporary old behaviour kept for still-supported older app versions (§5.1) |
 
 ---
 
 **END.** Changes to this file require `@cto` approval and a version bump above.
 **Technical implementation:** see [`backend/backend.md`](backend/backend.md) and [`frontend/frontend.md`](frontend/frontend.md).
-**Cursor always-on copy of §5.1:** [`.cursor/rules/mobile-backend-api-compatibility.mdc`](.cursor/rules/mobile-backend-api-compatibility.mdc).
