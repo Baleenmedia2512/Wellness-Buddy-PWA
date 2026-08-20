@@ -43,7 +43,7 @@ import { PushNotifications } from '@capacitor/push-notifications';
 
 // ── Permission type constants ─────────────────────────────────────────────────
 
-/** @typedef {'camera'|'location'|'notifications'} PermissionType */
+/** @typedef {'camera'|'location'|'notifications'|'contacts'} PermissionType */
 
 /**
  * Static configuration for each permission.
@@ -69,6 +69,12 @@ export const PERMISSION_CONFIG = {
     label: 'Notifications',
     icon: '🔔',
     reason: "We'll remind you to log meals, water, and your daily weight on time.",
+    required: false,
+  },
+  contacts: {
+    label: 'Contacts',
+    icon: '👤',
+    reason: 'Save new Body Parameters members to your phone contacts when you create a card.',
     required: false,
   },
 };
@@ -100,6 +106,10 @@ export async function checkPermission(type) {
     } else if (type === 'notifications') {
       const result = await PushNotifications.checkPermissions();
       rawStatus = result?.receive;
+    } else if (type === 'contacts') {
+      const { Contacts } = await import('@capacitor-community/contacts');
+      const result = await Contacts.checkPermissions();
+      rawStatus = result?.contacts;
     }
 
     const status = rawStatus ?? 'unknown';
@@ -159,6 +169,13 @@ export async function requestPermission(type) {
         );
       }
       return { status, granted };
+    }
+
+    if (type === 'contacts') {
+      const { Contacts } = await import('@capacitor-community/contacts');
+      const result = await Contacts.requestPermissions();
+      const status = result?.contacts ?? 'unknown';
+      return { status, granted: status === 'granted' };
     }
 
     return { status: 'unknown', granted: false };

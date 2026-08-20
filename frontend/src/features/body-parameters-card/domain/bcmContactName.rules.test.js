@@ -11,8 +11,12 @@ import {
 } from './bcmContactName.rules.js';
 
 describe('formatBcmContactDate', () => {
-  it('formats ISO date as yy/mm/dd', () => {
-    assert.equal(formatBcmContactDate('2026-08-19'), '26/08/19');
+  it('formats ISO date as yymmdd', () => {
+    assert.equal(formatBcmContactDate('2026-08-20'), '260820');
+  });
+
+  it('formats DD/MM/YYYY as yymmdd', () => {
+    assert.equal(formatBcmContactDate('20/08/2026'), '260820');
   });
 });
 
@@ -29,36 +33,36 @@ describe('abbreviateVenue', () => {
 });
 
 describe('buildBcmContactDisplayName', () => {
-  it('uses short venue initials', () => {
+  it('joins name + venueShort + yymmdd with no space before date', () => {
     assert.equal(
       buildBcmContactDisplayName({
-        name: 'ADHITYA',
-        venue: 'St.louis church',
-        recordedDate: '2026-08-19',
+        name: 'praveen',
+        venue: 'st.louis church',
+        recordedDate: '2026-08-20',
       }),
-      'ADHITYA slc 26/08/19',
+      'praveen slc260820',
     );
   });
 
-  it('keeps single-word venue', () => {
+  it('keeps single-word venue glued to date', () => {
     assert.equal(
       buildBcmContactDisplayName({
         name: 'ADHITYA',
         venue: 'adyar',
         recordedDate: '2026-08-19',
       }),
-      'ADHITYA adyar 26/08/19',
+      'ADHITYA adyar260819',
     );
   });
 
-  it('omits empty venue', () => {
+  it('omits empty venue but keeps date', () => {
     assert.equal(
       buildBcmContactDisplayName({
-        name: 'ADHITYA',
+        name: 'praveen',
         venue: '',
-        recordedDate: '2026-08-19',
+        recordedDate: '2026-08-20',
       }),
-      'ADHITYA 26/08/19',
+      'praveen 260820',
     );
   });
 });
