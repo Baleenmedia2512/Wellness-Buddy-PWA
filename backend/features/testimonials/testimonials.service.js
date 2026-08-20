@@ -1024,6 +1024,7 @@ export async function submitVideo(rawBody) {
     uploads.businessVideoPath = payload.businessVideoPath;
   }
 
+  // Replace directly so removals are honoured.
   const resolvedHealthIssues = payload.recoveredHealthIssues !== undefined
     ? normalizeHealthIssuesList(payload.recoveredHealthIssues)
     : (existing.recovered_health_issues ?? []);
@@ -1293,6 +1294,7 @@ export async function submitAllEdits(rawBody) {
     || payload.goalType !== undefined || payload.durationText !== undefined;
   const hasVideoDirty  = slots.has('health') || slots.has('business');
   const hasIssuesDirty = slots.has('issues');
+  // When the issues slot is dirty we replace with the exact incoming list so removals are honoured.
   const mergedIssues = hasIssuesDirty
     ? normalizeHealthIssuesList(payload.recoveredHealthIssues)
     : (existing.recovered_health_issues ?? []);
@@ -1537,7 +1539,7 @@ export async function updateMemberHealthIssues(rawBody) {
   const mergedIssues = normalizeHealthIssuesList(payload.recoveredHealthIssues);
 
   await repo.updateTestimonial(existing.id, {
-    recoveredHealthIssues: mergedIssues,
+    recoveredHealthIssues: resolvedIssues,
   });
 
   return {
@@ -1545,7 +1547,7 @@ export async function updateMemberHealthIssues(rawBody) {
     body: {
       success: true,
       message: 'Health issue updated.',
-      recoveredHealthIssues: mergedIssues,
+      recoveredHealthIssues: resolvedIssues,
     },
   };
 }

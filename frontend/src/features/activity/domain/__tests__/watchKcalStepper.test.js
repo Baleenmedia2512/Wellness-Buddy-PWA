@@ -34,10 +34,10 @@ describe('clampKcal', () => {
 });
 
 describe('watchKcalBounds', () => {
-  it('uses today baseline as the floor', () => {
+  it('keeps the baseline but lets the stepper start from 0', () => {
     assert.deepEqual(watchKcalBounds(200), {
       baseline: 200,
-      min: 200,
+      min: 0,
       max: WATCH_KCAL_MAX,
     });
   });
@@ -53,11 +53,11 @@ describe('watchKcalBounds', () => {
 
 describe('nextWatchKcal', () => {
   it('increments by the step from 0', () => {
-    assert.equal(nextWatchKcal(0, WATCH_KCAL_STEP, 0), 50);
+    assert.equal(nextWatchKcal(0, WATCH_KCAL_STEP, 0), 1);
   });
 
-  it('does not go below today\'s logged total', () => {
-    assert.equal(nextWatchKcal(200, -WATCH_KCAL_STEP, 200), 200);
+  it('does not go below 0', () => {
+    assert.equal(nextWatchKcal(0, -WATCH_KCAL_STEP, 200), 0);
   });
 
   it('caps at the max', () => {

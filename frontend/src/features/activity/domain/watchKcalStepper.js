@@ -1,10 +1,11 @@
 /**
- * Calories-burnt stepper bounds for Manual Log (same UX as water / Afresh).
- * Same-day policy is max, not sum: value cannot go below today's logged total.
+ * Calories-burnt stepper bounds for Manual Log.
+ * The UI edits a non-negative delta, while save callers may still apply the
+ * day's baseline before persisting the final total.
  */
 
 export const WATCH_KCAL_MAX = 10000;
-export const WATCH_KCAL_STEP = 50;
+export const WATCH_KCAL_STEP = 1;
 export const WATCH_KCAL_QUICK_ADD = [
   { label: '50 kcal', amount: 50 },
   { label: '100 kcal', amount: 100 },
@@ -24,7 +25,7 @@ export function watchKcalBounds(todayBaseline) {
   const baseline = parseKcal(todayBaseline);
   return {
     baseline,
-    min: baseline,
+    min: 0,
     max: Math.max(WATCH_KCAL_MAX, baseline),
   };
 }

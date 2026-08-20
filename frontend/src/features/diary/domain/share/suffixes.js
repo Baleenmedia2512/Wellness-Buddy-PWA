@@ -12,7 +12,12 @@
 import { DIARY_FOOD_ACTIVITY } from '../activityType';
 import { formatWaterVolume } from '../formatVolume';
 import { formatShakeProductScoops } from './shakeShare';
-import { giShareLetter } from '../../../nutrition/domain/foodItemNutritionFacts';
+import { giZone } from '../../../nutrition/domain/foodItemNutritionFacts';
+
+function waBold(text) {
+  const clean = String(text || '').trim();
+  return clean ? `*${clean}*` : '';
+}
 
 /**
  * @param {'food'|'water'|'afresh'|'shake'|'education'|'weight'|string} activityType
@@ -36,13 +41,18 @@ export function buildDiaryShareSuffix(activityType, payload = {}) {
       const scoops = Number(payload.scoops);
       const count = Number.isFinite(scoops) && scoops > 0 ? scoops : 1;
       const scoopWord = count === 1 ? 'scoop' : 'scoops';
-      return `Consumed: ${count} ${scoopWord} Afresh${dayTotalSuffix(payload)}`;
+      return `${waBold(`Consumed: ${count} ${scoopWord}`)} Afresh${dayTotalSuffix(payload)},`;
     }
     case DIARY_FOOD_ACTIVITY.SHAKE:
     case 'shake': {
       const name = (payload.shakeName || 'Protein Shake').trim();
       const scoopLine = formatShakeProductScoops(payload.shakeProducts);
-      if (scoopLine) return `${name}, ${scoopLine}`;
+      if (scoopLine) {
+        return [
+          waBold(`${name},`),
+          ...scoopLine.split(', ').map((line) => waBold(`${line},`)),
+        ].join('\n');
+      }
       const servings = Number(payload.servings);
       const count = Number.isFinite(servings) && servings > 0 ? servings : 1;
       return `${name}, serving ${count}`;
@@ -51,7 +61,7 @@ export function buildDiaryShareSuffix(activityType, payload = {}) {
       // Session first, then platform — no "education" type prefix (redundant with session names like "Daily Education").
       const platform = (payload.platform || '').trim();
       const session = (payload.session || payload.topic || '').trim();
-      if (platform && session) return `${session} · ${platform}`;
+      if (platform && session) return waBold(`${session} · ${platform},`);
       if (session) return session;
       if (platform) return platform;
       return null;
@@ -93,7 +103,15 @@ export function buildDiaryShareSuffix(activityType, payload = {}) {
       const items = resolveFoodShareItems(payload);
       const calories = Math.round(Number(payload.calories) || 0);
       const lines = [];
-      if (calories > 0) lines.push(`${calories} kcal`);
+      const gi = readShareGi(payload);
+      const zone = giZone(gi);
+      if (calories > 0 || gi != null) {
+        if (gi != null && zone) {
+          lines.push(waBold(`${calories} kcal, GI : ${gi} (${zone.label.toUpperCase()})`));
+        } else if (calories > 0) {
+          lines.push(waBold(`${calories} kcal`));
+        }
+      }
       for (const item of items) {
         lines.push(formatFoodShareLine(item.name, item.glycemicIndex));
       }
@@ -154,24 +172,27 @@ function readShareGi(item) {
 }
 
 /**
+ * Splits "Herbalife Aloe Plus (Digestive Health)" into
+ * boldPart = "Herbalife Aloe Plus" and suffix = " (Digestive Health)"
+ * so the parenthetical sub-category stays plain text outside the bold markers.
+ */
+function splitNameAndSuffix(name) {
+  const match = String(name || '').match(/^(.*?)(\s*\([^)]*\)\s*)$/);
+  if (match) return { bold: match[1].trim(), suffix: match[2].trimEnd() };
+  return { bold: String(name || '').trim(), suffix: '' };
+}
+
+/**
  * @param {string} name
  * @param {number|null} glycemicIndex
  * @returns {string}
  */
 function formatFoodShareLine(name, glycemicIndex) {
-  const gi = formatShareGi(glycemicIndex);
-  return gi ? `${name} - ${gi}` : `${name},`;
-}
-
-/**
- * "GI 65 m" — m medium, h high, l low. Omits the token when GI is missing.
- * @param {number|null|undefined} value
- * @returns {string|null}
- */
-function formatShareGi(value) {
-  const letter = giShareLetter(value);
-  if (!letter) return null;
-  return `GI ${Math.round(Number(value))} ${letter}`;
+  const { bold, suffix } = splitNameAndSuffix(name);
+  if (glycemicIndex != null) {
+    return `${waBold(bold)}${suffix}`;
+  }
+  return `${waBold(`${bold},`)}${suffix}`;
 }
 
 /**
