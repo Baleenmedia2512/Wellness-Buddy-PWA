@@ -7517,7 +7517,18 @@ function WellnessValleyApp() {
         <div className="ios-scroll-body">
           <Suspense fallback={<LoadingSpinner message="Loading testimonials�" />}>
             <TestimonialsPage
-              user={{ userId: user?.id ?? userContext?.userId ?? null }}
+              user={{
+                userId: user?.id ?? userContext?.userId ?? null,
+                userName:
+                  savedUserName
+                  || user?.userName
+                  || user?.username
+                  || user?.displayName
+                  || user?.name
+                  || null,
+                profileImage: savedProfileImage || user?.photoURL || null,
+                phoneNumber: user?.phoneNumber || user?.PhoneNumber || null,
+              }}
               userRole={userRole}
               tabVisitKey={tabVisitKeys.testimonials ?? 0}
               onBack={() => {

@@ -1615,7 +1615,7 @@ function MemberCard({
               afterWeightKg: displayAfterKg || testimonial.afterWeightKg,
               recoveredHealthIssues: draftIssues ?? testimonial.recoveredHealthIssues,
             }}
-            userName={user.userName}
+            userName={user?.userName || user?.displayName || user?.name || null}
           />
         </div>
       )}
@@ -1663,7 +1663,7 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
   const mineRowRef = useRef(null);
 
   const coachId = user?.userId || user?.id || null;
-  const userName = user?.userName || user?.displayName || user?.name || 'You';
+  const userName = user?.userName || user?.displayName || user?.name || null;
   const profileImage = user?.profileImage || user?.photoURL || null;
   const phoneNumber = user?.phoneNumber || user?.PhoneNumber || null;
   mineRowRef.current = mineRow;

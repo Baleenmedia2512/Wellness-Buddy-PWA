@@ -19,12 +19,14 @@ import { X, Download, Share2, CheckCircle } from 'lucide-react';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
 import { captureAndShare } from '../../../shared/utils/shareUtils';
 import { saveImageBlobToGallery } from '../../../shared/plugins/saveToGalleryPlugin';
+import { getVersionString } from '../../../config/version';
 import {
   shareResultVideos,
 } from '../utils/downloadVideo.js';
 
 const CARD_W = 360;
 const PHOTO_H = 210;
+const TICK_SIZE = 26;
 
 function blobToDataUrl(blob) {
   return new Promise((resolve, reject) => {
@@ -94,20 +96,23 @@ export async function downloadTransformationCardImage(element, userName) {
 }
 
 function VerifiedTick() {
+  const half = TICK_SIZE / 2;
   return (
     <span
       style={{
         position: 'absolute',
-        top: 8,
-        left: 8,
-        width: 26,
-        height: 26,
-        borderRadius: 13,
+        top: '50%',
+        left: '50%',
+        marginTop: -half,
+        marginLeft: -half,
+        width: TICK_SIZE,
+        height: TICK_SIZE,
+        borderRadius: half,
         background: '#16a34a',
         color: '#ffffff',
         fontSize: 16,
         fontWeight: 800,
-        lineHeight: '26px',
+        lineHeight: `${TICK_SIZE}px`,
         textAlign: 'center',
         boxShadow: '0 1px 3px rgba(0,0,0,0.25)',
       }}
@@ -201,8 +206,6 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
   const isVerified = testimonial?.status === 'verified';
   const isLoss = testimonial?.goalType !== 'gain';
   const verb = isLoss ? 'Lost' : 'Gained';
-  const accentBg = isLoss ? '#dcfce7' : '#dbeafe';
-  const accentBdr = isLoss ? '#86efac' : '#93c5fd';
   const accentTxt = isLoss ? '#15803d' : '#1d4ed8';
   const issues = (testimonial?.recoveredHealthIssues ?? []).filter(Boolean);
 
@@ -218,13 +221,59 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
         fontFamily: 'Arial, Helvetica, sans-serif',
       }}
     >
-      <div style={{ background: '#059669', padding: '14px 20px' }}>
-        <p style={{ margin: 0, color: '#ffffff', fontSize: 17, fontWeight: 800 }}>Wellness Valley</p>
-        <p style={{ margin: '3px 0 0', color: '#d1fae5', fontSize: 11, fontWeight: 400 }}>Transformation Results</p>
+      <div style={{ background: '#059669', padding: '12px 16px' }}>
+        <table
+          style={{ width: '100%', borderCollapse: 'collapse' }}
+          cellPadding={0}
+          cellSpacing={0}
+        >
+          <tbody>
+            <tr>
+              <td style={{ width: 40, verticalAlign: 'middle', paddingRight: 10 }}>
+                <div
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: 18,
+                    background: '#ffffff',
+                    overflow: 'hidden',
+                    textAlign: 'center',
+                    lineHeight: '36px',
+                  }}
+                >
+                  <img
+                    src="/logo.png"
+                    alt="Wellness Valley"
+                    style={{
+                      display: 'inline-block',
+                      width: 30,
+                      height: 30,
+                      objectFit: 'contain',
+                      verticalAlign: 'middle',
+                    }}
+                  />
+                </div>
+              </td>
+              <td style={{ verticalAlign: 'middle' }}>
+                <p style={{ margin: 0, color: '#ffffff', fontSize: 16, fontWeight: 800, lineHeight: '20px' }}>
+                  Wellness Valley
+                  <span style={{ fontWeight: 500, fontSize: 12, color: '#d1fae5' }}>
+                    {' '}( {getVersionString()} )
+                  </span>
+                </p>
+                <p style={{ margin: '3px 0 0', color: '#d1fae5', fontSize: 11, fontWeight: 400 }}>
+                  Transformation Results
+                </p>
+              </td>
+            </tr>
+          </tbody>
+        </table>
       </div>
 
       <div style={{ paddingTop: 14, paddingBottom: 4, textAlign: 'center' }}>
-        <p style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#111827' }}>{userName || 'Member'}</p>
+        <p style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#111827' }}>
+          {userName || 'Member'}
+        </p>
       </div>
 
       {showPhotoRow && (
@@ -257,26 +306,23 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
       )}
 
       {diff && (
-        <div style={{ padding: '8px 20px 12px', textAlign: 'center' }}>
-          <span style={{
-            display: 'inline-block',
-            background: accentBg,
-            border: `2px solid ${accentBdr}`,
-            borderRadius: 40,
-            padding: '10px 28px',
-            fontSize: 20,
-            fontWeight: 800,
-            lineHeight: '24px',
-            color: accentTxt,
-          }}
+        <div style={{ padding: '4px 20px 10px', textAlign: 'center' }}>
+          <p
+            style={{
+              margin: 0,
+              fontSize: 15,
+              fontWeight: 700,
+              lineHeight: '20px',
+              color: accentTxt,
+            }}
           >
             {verb} {diff} kgs{testimonial?.durationText ? ` in ${testimonial.durationText}` : ''}
-          </span>
+          </p>
         </div>
       )}
 
       {issues.length > 0 && (
-        <div style={{ padding: '4px 20px 16px', textAlign: 'center' }}>
+        <div style={{ padding: '4px 20px 18px', textAlign: 'center' }}>
           <p style={{
             margin: '0 0 8px',
             fontSize: 10,
@@ -284,36 +330,35 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
             color: '#9ca3af',
             textTransform: 'uppercase',
             letterSpacing: '1px',
+            textAlign: 'center',
           }}
           >
             Health Issues
           </p>
-          {issues.map((issue) => (
-            <span
-              key={issue}
-              style={{
-                display: 'inline-block',
-                margin: '0 4px 4px',
-                background: '#fef2f2',
-                border: '1px solid #fecaca',
-                borderRadius: 20,
-                padding: '5px 14px',
-                fontSize: 12,
-                fontWeight: 600,
-                lineHeight: '16px',
-                color: '#991b1b',
-                textAlign: 'center',
-              }}
-            >
-              {issue}
-            </span>
-          ))}
+          <div style={{ textAlign: 'center', margin: '0 auto' }}>
+            {issues.map((issue) => (
+              <span
+                key={issue}
+                style={{
+                  display: 'inline-block',
+                  margin: '0 4px 6px',
+                  background: '#fef2f2',
+                  border: '1px solid #fecaca',
+                  borderRadius: 20,
+                  padding: '5px 14px',
+                  fontSize: 12,
+                  fontWeight: 600,
+                  lineHeight: '16px',
+                  color: '#991b1b',
+                  textAlign: 'center',
+                }}
+              >
+                {issue}
+              </span>
+            ))}
+          </div>
         </div>
       )}
-
-      <div style={{ background: '#f9fafb', borderTop: '1px solid #e5e7eb', padding: '8px 20px', textAlign: 'center' }}>
-        <p style={{ margin: 0, fontSize: 10, color: '#9ca3af' }}>wellness-valley.com &nbsp;·&nbsp; Powered by Wellness Valley</p>
-      </div>
     </div>
   );
 });
