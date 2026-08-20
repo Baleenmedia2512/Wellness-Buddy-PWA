@@ -99,6 +99,9 @@ async function _safeCard(card) {
     hipCm:        card.hip_cm,
     recordedDate: card.recorded_date,
     locationName: card.location_name,
+    recoveredHealthIssues: Array.isArray(card.recovered_health_issues)
+      ? card.recovered_health_issues
+      : [],
     phoneNumber,
     userId:       card.user_id,
     createdAt:    card.created_at,

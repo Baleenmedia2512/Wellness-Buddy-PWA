@@ -41,14 +41,27 @@ const BodyParamsShareSheet = ({ isOpen, onClose, card, preCapCard, previousCard 
   const venue = savedVenue || typedVenue;
 
   // Saved card is source of truth after persist; pre-cap fills in until then.
+  // Health issues: prefer non-empty list (pre-cap may race before API; API may
+  // return [] if column missing — never wipe a non-empty form selection).
+  const preIssues = Array.isArray(preCapCard?.recoveredHealthIssues)
+    ? preCapCard.recoveredHealthIssues.filter(Boolean)
+    : [];
+  const apiIssues = Array.isArray(card?.recoveredHealthIssues)
+    ? card.recoveredHealthIssues.filter(Boolean)
+    : [];
+  const recoveredHealthIssues = apiIssues.length > 0 ? apiIssues : preIssues;
+
   const displayCard = card
     ? {
         ...preCapCard,
         ...card,
         locationName: venue,
         creatorName: card.creatorName || preCapCard?.creatorName || '',
+        recoveredHealthIssues,
       }
-    : preCapCard;
+    : preCapCard
+      ? { ...preCapCard, recoveredHealthIssues }
+      : null;
 
   const captureKey = displayCard
     ? [
@@ -59,6 +72,7 @@ const BodyParamsShareSheet = ({ isOpen, onClose, card, preCapCard, previousCard 
         displayCard.fatPercent,
         displayCard.visceralFat,
         displayCard.bmr,
+        recoveredHealthIssues.join(','),
         previousCard?.id,
       ].map((v) => (v == null ? '' : String(v))).join('\u0001')
     : '';

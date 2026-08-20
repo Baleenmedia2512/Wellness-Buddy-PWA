@@ -6,6 +6,63 @@ import { ValidationError } from '../../../shared/lib/ValidationError.js';
 
 const VALID_GENDERS = ['Male', 'Female', 'Other'];
 
+/** Same limits as testimonials recoveredHealthIssues. */
+const MAX_HEALTH_ISSUES = 20;
+const MAX_ISSUE_LEN = 120;
+
+/**
+ * Optional recovered health issues (testimonials-compatible).
+ * Missing / null → []. Legacy medicalCondition string → single-item array.
+ *
+ * @param {object} body
+ * @returns {string[]}
+ */
+export function normalizeRecoveredHealthIssues(body) {
+  if (!body || typeof body !== 'object') return [];
+
+  let value = body.recoveredHealthIssues;
+  if (value === undefined) {
+    const legacy = body.medicalCondition;
+    if (legacy === undefined || legacy === null || legacy === '') return [];
+    if (Array.isArray(legacy)) value = legacy;
+    else if (typeof legacy === 'string') value = [legacy];
+    else return [];
+  }
+  if (value === null) return [];
+  if (!Array.isArray(value)) {
+    throw new ValidationError(422, 'recoveredHealthIssues must be an array');
+  }
+  if (value.length > MAX_HEALTH_ISSUES) {
+    throw new ValidationError(
+      422,
+      `recoveredHealthIssues must have at most ${MAX_HEALTH_ISSUES} items`,
+    );
+  }
+
+  const seen = new Set();
+  const result = [];
+  for (const item of value) {
+    if (typeof item !== 'string') {
+      throw new ValidationError(422, 'Each recovered health issue must be a string');
+    }
+    const trimmed = item.trim();
+    if (!trimmed) {
+      throw new ValidationError(422, 'Recovered health issue labels cannot be empty');
+    }
+    if (trimmed.length > MAX_ISSUE_LEN) {
+      throw new ValidationError(
+        422,
+        `Each recovered health issue must be <= ${MAX_ISSUE_LEN} characters`,
+      );
+    }
+    const key = trimmed.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(trimmed);
+  }
+  return result;
+}
+
 /**
  * Validate the payload for POST /api/body-parameters-card/create.
  * All body fields are optional except `name`.
@@ -36,7 +93,7 @@ export function validateCreateCard(body) {
   const bmiN      = _optionalFloat(bmi, 'bmi', 5, 70);
   const fatN      = _optionalFloat(fatPercent, 'fatPercent', 1, 70);
   const bmrN      = _optionalFloat(bmr, 'bmr', 500, 10000);
-  const visceralN = _optionalFloat(visceralFat, 'visceralFat', 0, 99); // No strict validation - allow any reasonable value
+  const visceralN = _optionalFloat(visceralFat, 'visceralFat', 0, 99);
   const chestN    = _optionalFloat(chestCm, 'chestCm', 20, 250);
   const waistN    = _optionalFloat(waistCm, 'waistCm', 20, 250);
   const hipN      = _optionalFloat(hipCm, 'hipCm', 20, 250);
@@ -45,7 +102,6 @@ export function validateCreateCard(body) {
     throw new ValidationError(422, `gender must be one of: ${VALID_GENDERS.join(', ')}`);
   }
 
-  // recordedDate: accept ISO date string or default to today
   let recordedDateVal = null;
   if (recordedDate) {
     const d = new Date(recordedDate);
@@ -54,6 +110,7 @@ export function validateCreateCard(body) {
   }
 
   const phoneVal = _optionalPhone(phoneNumber);
+  const recoveredHealthIssues = normalizeRecoveredHealthIssues(body);
 
   return {
     createdBy: createdByN,
@@ -75,6 +132,7 @@ export function validateCreateCard(body) {
     locationName: locationName ? String(locationName).trim().substring(0, 200) : null,
     phoneNumber: phoneVal,
     bmrManualOverride: bmrManualOverride === true || bmrManualOverride === 'true',
+    recoveredHealthIssues,
   };
 }
 
@@ -107,7 +165,7 @@ export function validateUpdateCard(body) {
   const bmiN      = _optionalFloat(bmi, 'bmi', 5, 70);
   const fatN      = _optionalFloat(fatPercent, 'fatPercent', 1, 70);
   const bmrN      = _optionalFloat(bmr, 'bmr', 500, 10000);
-  const visceralN = _optionalFloat(visceralFat, 'visceralFat', 0, 999); // No strict validation - allow any reasonable value
+  const visceralN = _optionalFloat(visceralFat, 'visceralFat', 0, 999);
   const chestN    = _optionalFloat(chestCm, 'chestCm', 20, 250);
   const waistN    = _optionalFloat(waistCm, 'waistCm', 20, 250);
   const hipN      = _optionalFloat(hipCm, 'hipCm', 20, 250);
@@ -124,6 +182,7 @@ export function validateUpdateCard(body) {
   }
 
   const phoneVal = _optionalPhone(phoneNumber);
+  const recoveredHealthIssues = normalizeRecoveredHealthIssues(body);
 
   return {
     id:          idN,
@@ -144,6 +203,7 @@ export function validateUpdateCard(body) {
     locationName: locationName ? String(locationName).trim().substring(0, 200) : null,
     phoneNumber: phoneVal,
     bmrManualOverride: bmrManualOverride === true || bmrManualOverride === 'true',
+    recoveredHealthIssues,
   };
 }
 

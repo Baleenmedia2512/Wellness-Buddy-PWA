@@ -275,41 +275,41 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
         </div>
       )}
 
-      <div style={{ padding: '4px 20px 16px', textAlign: 'center' }}>
-        <p style={{
-          margin: '0 0 8px',
-          fontSize: 10,
-          fontWeight: 700,
-          color: '#9ca3af',
-          textTransform: 'uppercase',
-          letterSpacing: '1px',
-        }}
-        >
-          Recovery Health Issue
-        </p>
-        {issues.length > 0 ? issues.map((issue) => (
-          <span
-            key={issue}
-            style={{
-              display: 'inline-block',
-              margin: '0 4px 4px',
-              background: '#fef2f2',
-              border: '1px solid #fecaca',
-              borderRadius: 20,
-              padding: '5px 14px',
-              fontSize: 12,
-              fontWeight: 600,
-              lineHeight: '16px',
-              color: '#991b1b',
-              textAlign: 'center',
-            }}
+      {issues.length > 0 && (
+        <div style={{ padding: '4px 20px 16px', textAlign: 'center' }}>
+          <p style={{
+            margin: '0 0 8px',
+            fontSize: 10,
+            fontWeight: 700,
+            color: '#9ca3af',
+            textTransform: 'uppercase',
+            letterSpacing: '1px',
+          }}
           >
-            {issue}
-          </span>
-        )) : (
-          <p style={{ margin: 0, fontSize: 12, color: '#9ca3af' }}>Not added yet</p>
-        )}
-      </div>
+            Health Issues
+          </p>
+          {issues.map((issue) => (
+            <span
+              key={issue}
+              style={{
+                display: 'inline-block',
+                margin: '0 4px 4px',
+                background: '#fef2f2',
+                border: '1px solid #fecaca',
+                borderRadius: 20,
+                padding: '5px 14px',
+                fontSize: 12,
+                fontWeight: 600,
+                lineHeight: '16px',
+                color: '#991b1b',
+                textAlign: 'center',
+              }}
+            >
+              {issue}
+            </span>
+          ))}
+        </div>
+      )}
 
       <div style={{ background: '#f9fafb', borderTop: '1px solid #e5e7eb', padding: '8px 20px', textAlign: 'center' }}>
         <p style={{ margin: 0, fontSize: 10, color: '#9ca3af' }}>wellness-valley.com &nbsp;·&nbsp; Powered by Wellness Valley</p>

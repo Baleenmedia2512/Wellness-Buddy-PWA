@@ -1,15 +1,14 @@
 /**
  * DiseaseMultiSelect.jsx
- * Searchable multi-select for "Recovered Health Issues".
- * Shows a curated disease list + free-text custom entry.
- * Selected tags shown as removable pills below the input.
+ * Filter-style multi-select for Health Issues (chips inside the search field).
+ * Shared by Transformation testimonials and Body Parameters Card.
+ * No heart icon — label is "Health Issues".
  */
-import React, { useState, useRef, useEffect } from 'react';
-import { X, Search, Plus, HeartPulse } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { Search, X, Plus, ChevronDown } from 'lucide-react';
 import { searchMedicalConditions } from '../domain/medicalConditionSearch.js';
 import { ALL_MEDICAL_CONDITIONS } from '../data/medicalConditions.js';
 
-// ── Curated disease list ───────────────────────────────────────────────────────
 const PRESET_DISEASES = [
   'Diabetes Type 2',
   'Pre-Diabetes',
@@ -44,23 +43,24 @@ const PRESET_DISEASES = [
 ];
 
 const MAX_ITEMS = 10;
-
 const SEARCH_CATALOG = [...new Set([...PRESET_DISEASES, ...ALL_MEDICAL_CONDITIONS])];
 
 function normalize(str) {
   return (str || '').toLowerCase().trim();
 }
 
-// ── Tag pill ───────────────────────────────────────────────────────────────────
-function Tag({ label, onRemove, disabled }) {
+function Chip({ label, onRemove, disabled }) {
   return (
-    <span className="inline-flex items-center gap-0.5 max-w-full px-2 py-0.5 bg-green-50 border border-green-200 rounded-full text-[10px] sm:text-[11px] font-medium text-green-800">
+    <span className="inline-flex items-center gap-1 max-w-[11rem] pl-2 pr-1 py-0.5 rounded-md bg-indigo-50 border border-indigo-200 text-[11px] font-medium text-indigo-800">
       <span className="truncate">{label}</span>
       {!disabled && (
         <button
           type="button"
-          onClick={() => onRemove(label)}
-          className="inline-flex items-center justify-center h-4 w-4 rounded-full text-green-600 hover:text-red-600 hover:bg-red-50 transition-colors flex-shrink-0"
+          onClick={(e) => {
+            e.stopPropagation();
+            onRemove(label);
+          }}
+          className="inline-flex items-center justify-center h-4 w-4 rounded text-indigo-500 hover:text-red-600 hover:bg-red-50"
           aria-label={`Remove ${label}`}
         >
           <X className="h-3 w-3" />
@@ -72,21 +72,29 @@ function Tag({ label, onRemove, disabled }) {
 
 /**
  * @param {{
- *   value: string[],
+ *   value?: string[],
  *   onChange: (next: string[]) => void,
  *   disabled?: boolean,
  *   maxItems?: number,
  *   required?: boolean,
+ *   autoFocus?: boolean,
  * }} props
  */
-export default function DiseaseMultiSelect({ value = [], onChange, disabled = false, maxItems = MAX_ITEMS, required = false, autoFocus = false }) {
-  const [query,     setQuery]     = useState('');
-  const [open,      setOpen]      = useState(false);
+export default function DiseaseMultiSelect({
+  value = [],
+  onChange,
+  disabled = false,
+  maxItems = MAX_ITEMS,
+  required = false,
+  autoFocus = false,
+}) {
+  const [query, setQuery] = useState('');
+  const [open, setOpen] = useState(false);
   const [highlight, setHighlight] = useState(-1);
-  const inputRef  = useRef(null);
-  const dropRef   = useRef(null);
+  const inputRef = useRef(null);
+  const rootRef = useRef(null);
+  const dropRef = useRef(null);
 
-  // Auto-focus + open dropdown on mount when requested
   useEffect(() => {
     if (autoFocus && !disabled) {
       const t = setTimeout(() => {
@@ -97,35 +105,36 @@ export default function DiseaseMultiSelect({ value = [], onChange, disabled = fa
     }
   }, [autoFocus, disabled]);
 
-  const selected    = Array.isArray(value) ? value : [];
-  const atMax       = selected.length >= maxItems;
-  const normQuery   = normalize(query);
+  const selected = Array.isArray(value) ? value : [];
+  const atMax = selected.length >= maxItems;
+  const normQuery = normalize(query);
 
-  // Empty query → curated presets. Typed query → catalog used by users (Back Pain, Lower Back Pain, …).
   const suggestions = (normQuery
     ? searchMedicalConditions(query, { conditions: SEARCH_CATALOG })
     : PRESET_DISEASES
   ).filter((d) => !selected.some((s) => normalize(s) === normalize(d)));
 
-  // Whether the custom query can be added (not already selected, not in presets, non-empty)
   const canAddCustom =
-    normQuery.length >= 2 &&
-    !selected.some((s) => normalize(s) === normQuery) &&
-    !PRESET_DISEASES.some((d) => normalize(d) === normQuery);
+    normQuery.length >= 2
+    && !selected.some((s) => normalize(s) === normQuery)
+    && !SEARCH_CATALOG.some((d) => normalize(d) === normQuery);
 
   function add(label) {
-    if (!label || atMax) return;
+    if (!label || atMax || disabled) return;
     const trimmed = label.trim();
+    if (!trimmed) return;
     if (selected.some((s) => normalize(s) === normalize(trimmed))) return;
     onChange([...selected, trimmed]);
     setQuery('');
-    setOpen(false);
     setHighlight(-1);
-    inputRef.current?.focus();
+    setOpen(true);
+    requestAnimationFrame(() => inputRef.current?.focus());
   }
 
   function remove(label) {
+    if (disabled) return;
     onChange(selected.filter((s) => s !== label));
+    inputRef.current?.focus();
   }
 
   function handleKeyDown(e) {
@@ -151,25 +160,24 @@ export default function DiseaseMultiSelect({ value = [], onChange, disabled = fa
         add(query.trim());
       } else if (canAddCustom) {
         add(query.trim());
+      } else if (suggestions[0]) {
+        add(suggestions[0]);
       }
       return;
     }
     if (e.key === 'Escape') {
       setOpen(false);
       setHighlight(-1);
+      return;
     }
     if (e.key === 'Backspace' && !query && selected.length > 0) {
       remove(selected[selected.length - 1]);
     }
   }
 
-  // Close on outside click
   useEffect(() => {
     function onOutside(e) {
-      if (
-        dropRef.current && !dropRef.current.contains(e.target) &&
-        inputRef.current && !inputRef.current.contains(e.target)
-      ) {
+      if (rootRef.current && !rootRef.current.contains(e.target)) {
         setOpen(false);
         setHighlight(-1);
       }
@@ -182,91 +190,117 @@ export default function DiseaseMultiSelect({ value = [], onChange, disabled = fa
   const listItems = suggestions.length > 0 || canAddCustom;
 
   return (
-    <div className="space-y-2">
-      {/* Label row */}
-      <div className="flex items-center gap-1.5">
-        <HeartPulse className="h-3.5 w-3.5 text-rose-500 flex-shrink-0" />
-        <span className="text-[11px] sm:text-xs font-semibold text-gray-700">
-          Recovered Health Issues
-          <span className="ml-1 text-gray-400 font-normal">({required ? 'required' : 'optional'} · up to {maxItems})</span>
+    <div className="flex flex-col gap-1" ref={rootRef}>
+      <label className="text-xs font-semibold text-indigo-800 uppercase tracking-wide">
+        Health Issues
+        <span className="ml-1 font-normal normal-case tracking-normal text-indigo-400">
+          ({required ? 'required' : 'optional'} · up to {maxItems})
         </span>
-      </div>
+      </label>
 
-      {/* Tag list */}
-      {selected.length > 0 && (
-        <div className="flex flex-wrap gap-1">
+      <div className="relative">
+        <div
+          role="combobox"
+          aria-expanded={open}
+          aria-haspopup="listbox"
+          tabIndex={-1}
+          onClick={() => {
+            if (disabled) return;
+            setOpen(true);
+            inputRef.current?.focus();
+          }}
+          className={`w-full min-h-[42px] flex flex-wrap items-center gap-1.5 border rounded-lg px-2.5 py-1.5 text-left bg-white transition-all ${
+            open
+              ? 'border-indigo-400 ring-2 ring-indigo-200'
+              : 'border-indigo-200 hover:border-indigo-300'
+          } ${disabled ? 'opacity-60 cursor-not-allowed' : 'cursor-text'}`}
+        >
+          <Search className="h-3.5 w-3.5 text-indigo-300 flex-shrink-0" />
+
           {selected.map((tag) => (
-            <Tag key={tag} label={tag} onRemove={remove} disabled={disabled} />
+            <Chip key={tag} label={tag} onRemove={remove} disabled={disabled} />
           ))}
-        </div>
-      )}
 
-      {/* Input wrapper */}
-      {!disabled && (
-        <div className="relative">
-          <div
-            className={`flex items-center gap-2 border rounded-xl px-3 py-2 bg-white transition-all ${
-              open ? 'border-green-400 ring-2 ring-green-100' : 'border-gray-300'
-            } ${atMax ? 'opacity-50 pointer-events-none' : ''}`}
-          >
-            <Search className="h-3.5 w-3.5 text-gray-400 flex-shrink-0" />
+          {!disabled && !atMax && (
             <input
               ref={inputRef}
               type="text"
-              placeholder={atMax ? `Max ${maxItems} selected` : 'Search or type a condition…'}
               value={query}
-              disabled={atMax}
-              onChange={(e) => { setQuery(e.target.value); setOpen(true); setHighlight(-1); }}
+              placeholder={selected.length === 0 ? 'Search health issues…' : 'Add more…'}
+              onChange={(e) => {
+                setQuery(e.target.value);
+                setOpen(true);
+                setHighlight(-1);
+              }}
               onFocus={() => setOpen(true)}
               onKeyDown={handleKeyDown}
-              className="flex-1 text-xs bg-transparent focus:outline-none text-gray-800 placeholder-gray-400"
+              className="flex-1 min-w-[7rem] text-sm bg-transparent focus:outline-none text-gray-800 placeholder-gray-400 py-0.5"
             />
-          </div>
-
-          {showDrop && listItems && (
-            <div
-              ref={dropRef}
-              className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-2xl shadow-xl overflow-hidden"
-              style={{ maxHeight: '220px', overflowY: 'auto' }}
-            >
-              {suggestions.map((d, idx) => (
-                <button
-                  key={d}
-                  type="button"
-                  onMouseDown={(e) => { e.preventDefault(); add(d); }}
-                  onMouseEnter={() => setHighlight(idx)}
-                  className={`w-full flex items-center gap-2 px-4 py-2.5 text-left text-xs font-medium transition-colors ${
-                    highlight === idx ? 'bg-green-50 text-green-800' : 'text-gray-700 hover:bg-gray-50'
-                  }`}
-                >
-                  <HeartPulse className="h-3 w-3 text-rose-400 flex-shrink-0" />
-                  {d}
-                </button>
-              ))}
-
-              {canAddCustom && (
-                <button
-                  type="button"
-                  onMouseDown={(e) => { e.preventDefault(); add(query.trim()); }}
-                  onMouseEnter={() => setHighlight(suggestions.length)}
-                  className={`w-full flex items-center gap-2 px-4 py-2.5 text-left text-xs font-semibold transition-colors border-t border-gray-100 ${
-                    highlight === suggestions.length ? 'bg-emerald-50 text-emerald-800' : 'text-emerald-700 hover:bg-emerald-50'
-                  }`}
-                >
-                  <Plus className="h-3.5 w-3.5 flex-shrink-0" />
-                  Add "{query.trim()}"
-                </button>
-              )}
-
-              {suggestions.length === 0 && !canAddCustom && (
-                <p className="px-4 py-3 text-xs text-gray-400 italic">
-                  {normQuery ? 'No match — type at least 2 characters to add custom.' : 'All presets selected.'}
-                </p>
-              )}
-            </div>
           )}
+
+          {atMax && (
+            <span className="text-[11px] text-gray-400 py-0.5">Max {maxItems}</span>
+          )}
+
+          <ChevronDown
+            className={`ml-auto h-4 w-4 text-indigo-300 flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''}`}
+          />
         </div>
-      )}
+
+        {showDrop && listItems && (
+          <div
+            ref={dropRef}
+            className="absolute z-50 w-full mt-1 bg-white border border-indigo-100 rounded-xl shadow-lg overflow-hidden"
+            style={{ maxHeight: 220, overflowY: 'auto' }}
+          >
+            {suggestions.map((d, idx) => (
+              <button
+                key={d}
+                type="button"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  add(d);
+                }}
+                onMouseEnter={() => setHighlight(idx)}
+                className={`w-full px-3 py-2 text-left text-sm transition-colors ${
+                  highlight === idx
+                    ? 'bg-indigo-50 text-indigo-900'
+                    : 'text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                {d}
+              </button>
+            ))}
+
+            {canAddCustom && (
+              <button
+                type="button"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  add(query.trim());
+                }}
+                onMouseEnter={() => setHighlight(suggestions.length)}
+                className={`w-full flex items-center gap-2 px-3 py-2 text-left text-sm font-medium border-t border-gray-100 ${
+                  highlight === suggestions.length
+                    ? 'bg-indigo-50 text-indigo-900'
+                    : 'text-indigo-700 hover:bg-indigo-50'
+                }`}
+              >
+                <Plus className="h-3.5 w-3.5 flex-shrink-0" />
+                Add &quot;{query.trim()}&quot;
+              </button>
+            )}
+
+            {suggestions.length === 0 && !canAddCustom && (
+              <p className="px-3 py-2.5 text-xs text-gray-400 italic">
+                {normQuery
+                  ? 'No match — type at least 2 characters to add custom.'
+                  : 'All presets selected.'}
+              </p>
+            )}
+          </div>
+        )}
+      </div>
 
       {disabled && selected.length === 0 && (
         <p className="text-xs text-gray-400 italic">No health issues recorded.</p>

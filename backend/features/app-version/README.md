@@ -71,26 +71,40 @@ New apps that use `apiFetch` send the version header and show the update screen 
 
 ## Feature flags (behaviour old apps cannot handle)
 
-Version policy decides **whether the app may run**. Feature flags decide **which backend behaviour each allowed version gets**.
+Version policy decides **whether the app may run**. Feature flags (with optional `minAppVersion`) decide **which backend behaviour each allowed version gets**.
 
 ```
 New backend behaviour
   → ship behind flag, default OFF
   → deploy backend (old apps unchanged)
   → new AAB live on Play Store
-  → enable flag + set minAppVersion (or FF_<FLAG>_MIN_APP_VERSION) to that build
-  → never enable new behaviour globally while older supported apps cannot handle it
-  → after APP_VERSION_MIN_REQUIRED raised past old clients → remove flag and dead code
+  → enable flag only for versions that support it
+    (set flag ON + minAppVersion / FF_<FLAG>_MIN_APP_VERSION)
+  → never turn new behaviour ON for older supported apps
+  → after APP_VERSION_MIN_REQUIRED raised past old clients
+    → remove flag and dead code
 ```
+
+This complements soft/hard update (`/api/app/version-policy`, `APP_VERSION_ENFORCE_API`). See also `CLAUDE.md` §5.1 for dual-path API compatibility (legacy vs new by client version) when a full old/new code path is required.
+
+### How to gate a flag by app version
+
+1. Register optional `minAppVersion` on the flag (or set `FF_<NAME>_MIN_APP_VERSION` in env).
+2. In the handler/service, use:
 
 ```js
 import { isEnabledForAppVersion } from '../../../shared/lib/feature-flags.js';
 import { getClientAppVersion } from '../../../shared/lib/client-app-version.js';
 
-if (!isEnabledForAppVersion('ff.example', getClientAppVersion(req))) {
-  // keep legacy behaviour
+const clientVersion = getClientAppVersion(req);
+if (!isEnabledForAppVersion('ff.example', clientVersion)) {
+  // old / missing client → keep legacy behaviour
 }
 ```
+
+3. Client should send `X-App-Version` via `apiFetch` from `frontend/src/shared/services/apiFetch.js`.
+
+Do **not** turn a breaking behaviour ON with plain `isEnabled()` alone while older versions remain in the supported window.
 
 ## Tests
 

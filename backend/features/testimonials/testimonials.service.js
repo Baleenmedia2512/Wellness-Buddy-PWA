@@ -78,13 +78,14 @@ function healthIssuesEqual(left, right) {
 }
 
 /**
- * Merge incoming health issues into the existing list (case-insensitive).
- * Prevents a client sending only the newly selected issue from wiping prior issues.
+ * Dedupe a health-issue list (case-insensitive). Does not merge with prior DB values.
+ * Clients send the full current selection (DiseaseMultiSelect / draftIssues), so
+ * removals must replace — not union — or deleted issues keep reappearing.
  */
-function unionHealthIssues(existingList, incomingList) {
+function normalizeHealthIssuesList(list) {
   const seen = new Set();
   const result = [];
-  for (const item of [...(Array.isArray(existingList) ? existingList : []), ...(Array.isArray(incomingList) ? incomingList : [])]) {
+  for (const item of (Array.isArray(list) ? list : [])) {
     const label = String(item || '').trim();
     if (!label) continue;
     const key = label.toLowerCase();
@@ -443,10 +444,8 @@ export async function editTestimonial(rawBody) {
   if (payload.goalType             !== undefined) updates.goalType            = payload.goalType;
   if (payload.durationText         !== undefined) updates.durationText        = payload.durationText;
   if (payload.recoveredHealthIssues !== undefined) {
-    updates.recoveredHealthIssues = unionHealthIssues(
-      existing.recovered_health_issues,
-      payload.recoveredHealthIssues,
-    );
+    // Full list from client — replace so removals persist
+    updates.recoveredHealthIssues = normalizeHealthIssuesList(payload.recoveredHealthIssues);
   }
 
   const requiresReverification = [
@@ -1026,7 +1025,7 @@ export async function submitVideo(rawBody) {
   }
 
   const resolvedHealthIssues = payload.recoveredHealthIssues !== undefined
-    ? unionHealthIssues(existing.recovered_health_issues, payload.recoveredHealthIssues)
+    ? normalizeHealthIssuesList(payload.recoveredHealthIssues)
     : (existing.recovered_health_issues ?? []);
 
   if (resolvedHealthIssues.length === 0) {
@@ -1264,14 +1263,28 @@ async function sendUnifiedCoachEmail({
 export async function submitAllEdits(rawBody) {
   const payload = validateSubmitAllEdits(rawBody);
 
-  const existing = await repo.findByUserId(payload.userId);
-  if (!existing) {
-    throw new ValidationError(404, 'No testimonial found. Please submit your before photo first.');
-  }
-
   const userInfo = await repo.findCoachIdForUser(payload.userId);
   if (!userInfo?.coachId) {
     throw new ValidationError(400, 'User has no coach assigned. Cannot submit for approval.');
+  }
+
+  let existing = await repo.findByUserId(payload.userId);
+
+  // Unified Transformation UI keeps photos as local drafts until Submit ("Not Uploaded").
+  // First submit must create the row — update-only previously always 404'd.
+  if (!existing) {
+    const createSlots = new Set(payload.dirtySlots);
+    if (!createSlots.has('before') || !payload.beforeImageBase64) {
+      throw new ValidationError(404, 'No testimonial found. Please submit your before photo first.');
+    }
+    existing = await repo.insertVideoOnlyTestimonial({
+      userId:  payload.userId,
+      coachId: userInfo.coachId,
+    });
+    logger.info('[testimonials.service] Created testimonial stub for first unified submit', {
+      userId: payload.userId,
+      testimonialId: existing.id,
+    });
   }
 
   const slots       = new Set(payload.dirtySlots);
@@ -1281,7 +1294,7 @@ export async function submitAllEdits(rawBody) {
   const hasVideoDirty  = slots.has('health') || slots.has('business');
   const hasIssuesDirty = slots.has('issues');
   const mergedIssues = hasIssuesDirty
-    ? unionHealthIssues(existing.recovered_health_issues, payload.recoveredHealthIssues)
+    ? normalizeHealthIssuesList(payload.recoveredHealthIssues)
     : (existing.recovered_health_issues ?? []);
 
   const issuesOtpChannel = hasIssuesDirty && !hasPhotoDirty && !hasVideoDirty
@@ -1323,8 +1336,17 @@ export async function submitAllEdits(rawBody) {
   }
   if (payload.beforeWeightKg !== undefined) photoUpdates.beforeWeightKg = payload.beforeWeightKg;
   if (payload.afterWeightKg  !== undefined) photoUpdates.afterWeightKg  = payload.afterWeightKg;
-  if (payload.goalType       !== undefined) photoUpdates.goalType        = payload.goalType;
-  if (payload.durationText   !== undefined) photoUpdates.durationText    = payload.durationText;
+  // First submit may omit goalType if the UI default was never touched — default loss.
+  if (payload.goalType !== undefined) {
+    photoUpdates.goalType = payload.goalType;
+  } else if (repo.isVideoOnlyPlaceholder(existing.before_image_path)) {
+    photoUpdates.goalType = 'loss';
+  }
+  if (payload.durationText !== undefined) {
+    photoUpdates.durationText = payload.durationText;
+  } else if (repo.isVideoOnlyPlaceholder(existing.before_image_path) && !existing.duration_text) {
+    photoUpdates.durationText = '—';
+  }
   if (hasIssuesDirty)                       photoUpdates.recoveredHealthIssues = mergedIssues;
 
   // Determine if testimonial is/becomes complete (has both real photos)
@@ -1512,10 +1534,7 @@ export async function updateMemberHealthIssues(rawBody) {
     throw new ValidationError(404, 'No testimonial found for this user');
   }
 
-  const mergedIssues = unionHealthIssues(
-    existing.recovered_health_issues,
-    payload.recoveredHealthIssues,
-  );
+  const mergedIssues = normalizeHealthIssuesList(payload.recoveredHealthIssues);
 
   await repo.updateTestimonial(existing.id, {
     recoveredHealthIssues: mergedIssues,
