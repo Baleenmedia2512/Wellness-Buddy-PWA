@@ -472,7 +472,7 @@ export function TransformationShareActions({
           ? 'Sharing…'
           : isVideo
             ? 'Share Video'
-            : 'Share'}
+            : 'Share Image'}
       </TouchFeedbackButton>
       {status === 'shared' && (
         <p className="text-[11px] text-green-700 text-center font-semibold">
