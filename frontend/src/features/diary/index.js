@@ -21,6 +21,7 @@ export {
   extractShakeProducts,
   sumAfreshScoopsFromDayAnalyses,
   extractFoodItemDisplayNames,
+  extractFoodShareItems,
 } from './domain/activityType';
 export { formatWaterVolume } from './domain/formatVolume';
 export { resolveFoodRowPresentation } from './domain/foodRowDisplay';

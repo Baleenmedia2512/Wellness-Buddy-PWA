@@ -31,6 +31,7 @@ import UserProfileBodyMetrics from './profile/UserProfileBodyMetrics';
 import IdealWeightCards from './profile/IdealWeightCards';
 import DietDropdown from './profile/DietDropdown';
 import WeightModeSelector from './profile/WeightModeSelector';
+import { EmojiOrNative } from '../../../shared/components/icons/EmojiImage';
 import { deriveWeightGoalMode } from '../../weight/services/weightFormService';
 import DeleteAccountModal from './DeleteAccountModal';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
@@ -287,7 +288,14 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
               {displayWeightGoalMode && (
                 <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold border
                   ${displayWeightGoalMode === 'loss' ? 'bg-red-100 border-red-300 text-red-700' : displayWeightGoalMode === 'gain' ? 'bg-blue-100 border-blue-300 text-blue-700' : 'bg-green-100 border-green-300 text-green-700'}`}>
-                  {displayWeightGoalMode === 'loss' ? '🔥 Loss Mode' : displayWeightGoalMode === 'gain' ? '💪 Gain Mode' : '⚖️ Maintain'}
+                  <EmojiOrNative
+                    emoji={displayWeightGoalMode === 'loss' ? '🔥' : displayWeightGoalMode === 'gain' ? '💪' : '⚖️'}
+                    className="w-3.5 h-3.5"
+                    nativeClassName="text-xs leading-none"
+                  />
+                  <span>
+                    {displayWeightGoalMode === 'loss' ? 'Loss Mode' : displayWeightGoalMode === 'gain' ? 'Gain Mode' : 'Maintain'}
+                  </span>
                 </span>
               )}
               {coachName && (

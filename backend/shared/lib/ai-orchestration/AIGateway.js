@@ -115,10 +115,9 @@ const UNIFIED_SCHEMA = {
               nutrition: {
                 type: SchemaType.OBJECT,
                 properties: FULL_NUTRITION_PROPS,
-                // Require macros + sugar/sodium/cholesterol/GI so carousel cards
-                // are always populated from the initial call (no enrichment needed).
-                required: ['calories', 'protein', 'carbs', 'fat', 'fiber',
-                           'sugar', 'sodium', 'cholesterol', 'glycemic_index'],
+                // All 26 fields required so item nutrition facts (vitamins +
+                // minerals) are stored on the first call, not only meal totals.
+                required: Object.keys(FULL_NUTRITION_PROPS),
               },
             },
             // Minimum required per item so food lists are never empty/nutrition-less
@@ -128,6 +127,7 @@ const UNIFIED_SCHEMA = {
         total: {
           type: SchemaType.OBJECT,
           properties: FULL_NUTRITION_PROPS,
+          required: Object.keys(FULL_NUTRITION_PROPS),
         },
         // ── WEIGHT ─────────────────────────────────────────────
         weightValue: { type: SchemaType.NUMBER },
@@ -1300,6 +1300,7 @@ export async function estimateNutritionFromText(
       nutrition: {
         type: SchemaType.OBJECT,
         properties: FULL_NUTRITION_PROPS,
+        required: Object.keys(FULL_NUTRITION_PROPS),
       },
       confidence: { type: SchemaType.NUMBER },
     },

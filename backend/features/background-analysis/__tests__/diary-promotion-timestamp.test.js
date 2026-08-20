@@ -116,3 +116,19 @@ describe('toDiaryEntry education matches unknown capture time', () => {
     assert.equal(weightEntry.capturedAt, captureUtc);
   });
 });
+
+describe('toDiaryEntry good-habit', () => {
+  it('projects notes and habit type', () => {
+    const entry = toDiaryEntry('good-habit', {
+      ID: 12,
+      HabitType: 'before_after',
+      Notes: 'Walked 20 min',
+      CaptureID: 'cap-9',
+      CreatedAt: '2026-08-16 08:00:00.000',
+    }, { timezoneIana: IANA_IST });
+    assert.equal(entry.kind, 'good-habit');
+    assert.equal(entry.payload.habitType, 'before_after');
+    assert.equal(entry.payload.notes, 'Walked 20 min');
+    assert.equal(entry.payload.hasImage, true);
+  });
+});

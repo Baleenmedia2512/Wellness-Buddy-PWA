@@ -15,6 +15,8 @@ class CacheManager {
   constructor() {
     this.cache = new Map();
     this.pendingRequests = new Map();
+    // Bumped on clear() so an in-flight request cannot write stale data back.
+    this.generations = new Map();
     
     // Default TTLs for different data types (in milliseconds)
     this.ttls = {
@@ -71,11 +73,17 @@ class CacheManager {
     });
   }
 
+  bumpGeneration(key) {
+    this.generations.set(key, (this.generations.get(key) || 0) + 1);
+  }
+
   /**
    * Clear specific cache entry
    */
   clear(key) {
     this.cache.delete(key);
+    this.pendingRequests.delete(key);
+    this.bumpGeneration(key);
   }
 
   /**
@@ -83,12 +91,19 @@ class CacheManager {
    */
   clearPattern(pattern) {
     let count = 0;
+    const matching = new Set();
     for (const key of this.cache.keys()) {
-      if (key.includes(pattern)) {
-        this.cache.delete(key);
-        count++;
-      }
+      if (key.includes(pattern)) matching.add(key);
     }
+    for (const key of this.pendingRequests.keys()) {
+      if (key.includes(pattern)) matching.add(key);
+    }
+    matching.forEach((key) => {
+      this.cache.delete(key);
+      this.pendingRequests.delete(key);
+      this.bumpGeneration(key);
+      count++;
+    });
     debugLog(`🗑️ [CACHE] Cleared ${count} entries matching "${pattern}"`);
   }
 
@@ -98,6 +113,7 @@ class CacheManager {
   clearAll() {
     this.cache.clear();
     this.pendingRequests.clear();
+    this.generations.clear();
     debugLog('🗑️ [CACHE] Cleared all cache');
   }
 
@@ -131,14 +147,21 @@ class CacheManager {
     }
 
     // Execute the function and cache the promise
+    const gen = this.generations.get(key) || 0;
     const promise = fn()
       .then(result => {
-        this.set(key, result);
-        this.pendingRequests.delete(key);
+        if (this.pendingRequests.get(key) === promise) {
+          this.pendingRequests.delete(key);
+        }
+        if ((this.generations.get(key) || 0) === gen) {
+          this.set(key, result);
+        }
         return result;
       })
       .catch(error => {
-        this.pendingRequests.delete(key);
+        if (this.pendingRequests.get(key) === promise) {
+          this.pendingRequests.delete(key);
+        }
         throw error;
       });
 

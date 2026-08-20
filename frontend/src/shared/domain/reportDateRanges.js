@@ -28,6 +28,14 @@ export const ACTIVITY_REPORT_DATE_RANGES = Object.freeze([
   Object.freeze({ value: 'custom', label: 'Custom' }),
 ]);
 
+/** Reports Nutrition tab — Last 7 Days (not Last 10). */
+export const REPORTS_NUTRITION_DATE_RANGES = Object.freeze([
+  REPORT_DATE_RANGE_TODAY,
+  REPORT_DATE_RANGE_YESTERDAY,
+  REPORT_DATE_RANGE_LAST_7,
+  REPORT_DATE_RANGE_CUSTOM,
+]);
+
 export function formatCustomRangeLabel(startDate, endDate) {
   if (!startDate || !endDate) return 'Select Dates';
   const formatDate = (d) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });

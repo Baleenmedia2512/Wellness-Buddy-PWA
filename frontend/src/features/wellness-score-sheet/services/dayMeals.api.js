@@ -4,7 +4,7 @@ import { getApiBaseUrl } from '../../../config/api.config.js';
  * Day meals for contribution sheets (same source nutrition dashboard uses).
  * @returns {Promise<object[]>}
  */
-export async function fetchDayMealsForScore({ userId, date, apiBaseUrl }) {
+export async function fetchDayMealsForScore({ userId, date, apiBaseUrl, viewerUserId = null }) {
   if (!userId || !date) return [];
 
   const params = new URLSearchParams({
@@ -13,6 +13,9 @@ export async function fetchDayMealsForScore({ userId, date, apiBaseUrl }) {
     detailed: 'true',
     _t: String(Date.now()),
   });
+  if (viewerUserId != null && viewerUserId !== '' && String(viewerUserId) !== String(userId)) {
+    params.set('viewerUserId', String(viewerUserId));
+  }
 
   const res = await fetch(`${apiBaseUrl || getApiBaseUrl()}/api/food-corrections/stats?${params}`, {
     cache: 'no-store',

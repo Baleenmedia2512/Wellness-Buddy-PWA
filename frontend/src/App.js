@@ -71,7 +71,7 @@ import {
   FoodImageShareCard,
   HomeNutritionCarousel,
 } from "./features/nutrition";
-import { DetoxDayReminder } from "./features/marathon";
+import { DetoxDayReminder, withMarathonWhatsAppNotice } from "./features/marathon";
 import { EducationLogCard } from "./features/education";
 import { WatchActivityCard } from "./features/activity";
 import LoadingSpinner from "./shared/components/LoadingSpinner";
@@ -186,6 +186,7 @@ import CustomAlertModal from "./shared/components/CustomAlertModal";
 import { WeightProgressTipsModal } from "./features/weight-progress-tips/components/WeightProgressTipsModal";
 import PhysicalActivitySetup from "./features/user/components/PhysicalActivitySetup";
 import { fetchProfile } from "./features/user/services/profileService";
+import { resolvePhysicalActivityGate } from "./features/user/domain/physicalActivityGate";
 import { getProfile } from "./features/user/services/user.api";
 import {
   NutritionRefreshProvider,
@@ -472,6 +473,9 @@ function WellnessValleyApp() {
   // Onboarding sequencing locks — camera/coach must wait until each gate is resolved.
   // Expected order: CompleteProfile → PhysicalActivity → Coach setup → Coach OTP → home camera.
   const [physicalActivityResolved, setPhysicalActivityResolved] = useState(false);
+  // Once we have seen or saved a level this session, never re-prompt — even if
+  // a later profile fetch is stale or fails.
+  const physicalActivityConfirmedRef = useRef(false);
   const [coachSetupResolved, setCoachSetupResolved] = useState(false);
 
   const [idealWeight, setIdealWeight] = useState(null); // { value: number, unit: 'kg', heightCm: number } | null
@@ -708,7 +712,9 @@ function WellnessValleyApp() {
           shareDisplayName,
           getVersionString(),
         );
-        return composeQuickShareCaption(brand, activityCaption);
+        return withMarathonWhatsAppNotice(
+          composeQuickShareCaption(brand, activityCaption),
+        );
       };
 
       try {
@@ -826,7 +832,9 @@ function WellnessValleyApp() {
         cacheProfileUserName(user.email, shareDisplayName);
         setSavedUserName(shareDisplayName);
       }
-      const shareText = buildQuickShareText(shareDisplayName, getVersionString());
+      const shareText = withMarathonWhatsAppNotice(
+        buildQuickShareText(shareDisplayName, getVersionString()),
+      );
       const ok = await shareTextViaWhatsApp(shareText);
       if (cancelled) return;
 
@@ -1256,6 +1264,7 @@ function WellnessValleyApp() {
   useEffect(() => {
     if (!user || !isOtpVerified) {
       setPhysicalActivityResolved(false);
+      physicalActivityConfirmedRef.current = false;
       return undefined;
     }
     if (showCompleteProfile || profileChecking) {
@@ -1269,20 +1278,44 @@ function WellnessValleyApp() {
       return undefined;
     }
 
+    if (physicalActivityConfirmedRef.current) {
+      setShowPhysicalActivitySetup(false);
+      setPhysicalActivityResolved(true);
+      return undefined;
+    }
+
     let cancelled = false;
     setPhysicalActivityResolved(false);
     (async () => {
       try {
         const { data } = await fetchProfile(email);
         if (cancelled) return;
-        if (data && !data.physicalActivityLevel) {
+        const decision = resolvePhysicalActivityGate({
+          confirmedThisSession: physicalActivityConfirmedRef.current,
+          profile: data,
+          fetchFailed: false,
+        });
+        if (decision === "show") {
           setShowPhysicalActivitySetup(true);
-        } else {
+        } else if (decision === "hide") {
+          if (data?.physicalActivityLevel) {
+            physicalActivityConfirmedRef.current = true;
+          }
           setShowPhysicalActivitySetup(false);
         }
       } catch {
-        // Fail closed for new onboarding: ask for activity rather than skipping to coach/camera.
-        if (!cancelled) setShowPhysicalActivitySetup(true);
+        // Do not force-show on a failed fetch. Returning users already filled
+        // this; a blip would otherwise re-prompt them. New users are already
+        // marked needActivity by CompleteProfile onComplete.
+        if (cancelled) return;
+        const decision = resolvePhysicalActivityGate({
+          confirmedThisSession: physicalActivityConfirmedRef.current,
+          profile: null,
+          fetchFailed: true,
+        });
+        if (decision === "hide") {
+          setShowPhysicalActivitySetup(false);
+        }
       } finally {
         if (!cancelled) setPhysicalActivityResolved(true);
       }
@@ -6246,6 +6279,9 @@ function WellnessValleyApp() {
     setError(null);
     setUser(null);
     setIsOtpVerified(false);
+    physicalActivityConfirmedRef.current = false;
+    setShowPhysicalActivitySetup(false);
+    setPhysicalActivityResolved(false);
     setShowConsentGate(false);
     setConsentSubmitting(false);
     setPostAuthBridge(false);
@@ -7214,6 +7250,9 @@ function WellnessValleyApp() {
               if (profileData?.bmr || profileData?.physicalActivityLevel) {
                 setBmrUpdateKey((prev) => prev + 1);
               }
+              if (profileData?.physicalActivityLevel) {
+                physicalActivityConfirmedRef.current = true;
+              }
               // Increment profileKey so Header re-fetches avatar/name
               setHeaderProfileKey((k) => k + 1);
               // Activity log: Home should refresh cards when returning from profile edits
@@ -7526,6 +7565,7 @@ function WellnessValleyApp() {
         <ManualEntryPage
           key={manualEntryPayload.clientKey || manualEntryPayload.captureId}
           userId={manualEntryPayload.userId}
+          userEmail={user?.email || user?.Email || null}
           apiBaseUrl={apiBaseUrl}
           captureId={manualEntryPayload.captureId}
           imageBase64={manualEntryPayload.imageBase64}
@@ -7552,7 +7592,7 @@ function WellnessValleyApp() {
             // Read image before onBack clears payload (exit calls onSaved then onBack).
             // Do NOT refresh score here — ManualEntryPage refreshes after DB promote/save
             // so Home + sheet do not lock in a pre-save total.
-            const image = manualEntryPayload?.imageBase64;
+            const image = shareMeta?.shareImage || manualEntryPayload?.imageBase64;
             void shareCaptureAfterClassify(image, {
               activityCaption: shareMeta?.activityCaption || null,
             });
@@ -7636,6 +7676,7 @@ function WellnessValleyApp() {
           <Suspense fallback={<LoadingSpinner message="Loading reports…" />}>
             <ReportsDashboard
               user={user}
+              userRole={userRole}
               tabVisitKey={tabVisitKeys.reports ?? 0}
               initialTab={reportsDashboardTab}
             />
@@ -7993,6 +8034,9 @@ function WellnessValleyApp() {
             if (profileData?.bmr || profileData?.physicalActivityLevel) {
               setBmrUpdateKey((prev) => prev + 1);
             }
+            if (profileData?.physicalActivityLevel) {
+              physicalActivityConfirmedRef.current = true;
+            }
             triggerNutritionRefresh({ immediate: true, source: 'profile-saved' });
             setBodyParamsRefreshKey((k) => k + 1);
           }}
@@ -8011,6 +8055,7 @@ function WellnessValleyApp() {
             ref={wellnessLeaderboardRef}
             apiBaseUrl={apiBaseUrl}
             topN={10}
+            userId={user?.id || user?.UserId}
           />
         )}
 
@@ -8096,7 +8141,7 @@ function WellnessValleyApp() {
                       <span className="text-sm font-bold text-emerald-700">Gallery</span>
                     </button>
                   </div>
-                  <DetoxDayReminder />
+                  <DetoxDayReminder user={user} />
                 </div>
               </div>
 
@@ -8648,10 +8693,10 @@ function WellnessValleyApp() {
         {showPhysicalActivitySetup && user && !showCompleteProfile && !showSetupWizard && !showValidateOTP && (
           <PhysicalActivitySetup
             user={user}
-            apiBaseUrl={apiBaseUrl}
             onComplete={async () => {
               const email =
                 user?.email || user?.Email || Session.getUserEmail() || "";
+              physicalActivityConfirmedRef.current = true;
               // Resolve coach gate while this screen is still visible, then switch.
               setCoachSetupResolved(false);
               await resolveCoachSetupStatus(email);
@@ -8762,6 +8807,7 @@ function WellnessValleyApp() {
                 setPhysicalActivityResolved(true);
                 setCoachSetupResolved(false);
               } else {
+                physicalActivityConfirmedRef.current = true;
                 setShowPhysicalActivitySetup(false);
                 setPhysicalActivityResolved(true);
                 setCoachSetupResolved(false);

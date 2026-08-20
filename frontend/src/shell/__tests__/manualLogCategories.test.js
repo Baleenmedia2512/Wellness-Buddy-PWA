@@ -8,6 +8,8 @@ import {
   MANUAL_LOG_CATEGORY,
   HEALTHY_SNACKS_SUBTYPE,
   HEALTHY_SNACKS_SUBOPTIONS,
+  GOOD_HABIT_SUBTYPE,
+  GOOD_HABIT_SUBOPTIONS,
   isManualLogCategory,
   isHealthySnacksSubtype,
   getHealthySnacksSuboption,
@@ -19,6 +21,7 @@ describe('manualLogCategories', () => {
   it('includes healthy-snacks among known category ids', () => {
     assert.equal(MANUAL_LOG_CATEGORY.HEALTHY_SNACKS, 'healthy-snacks');
     assert.equal(isManualLogCategory('healthy-snacks'), true);
+    assert.equal(isManualLogCategory('good-habit'), true);
     assert.equal(isManualLogCategory('food'), true);
     assert.equal(isManualLogCategory('nope'), false);
   });
@@ -43,6 +46,19 @@ describe('manualLogCategories', () => {
     assert.deepEqual(resolveManualLogCategoryClick('healthy-snacks'), {
       kind: 'healthy-snacks-picker',
     });
+  });
+
+  it('routes good-habit tile to the Good Habit flow', () => {
+    assert.deepEqual(resolveManualLogCategoryClick('good-habit'), {
+      kind: 'good-habit-picker',
+    });
+  });
+
+  it('Good Habit Manual Log is a single photo', () => {
+    assert.deepEqual(
+      GOOD_HABIT_SUBOPTIONS.map((o) => o.id),
+      [GOOD_HABIT_SUBTYPE.IMAGE_NOTES],
+    );
   });
 
   it('routes other tiles straight to their form id', () => {

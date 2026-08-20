@@ -13,10 +13,25 @@ import {
   todayBusinessDate,
   formatCalendarPickerDate,
   DEFAULT_BUSINESS_TIMEZONE,
-} from '../../../shared/utils/datetimeUtils';
+} from '../../../shared/utils/datetimeUtils.js';
 
 export const UNDO_SECONDS = 10;
 export const WEIGHT_PAGE_SIZE = 10;
+
+/** Reports Trend tab — custom calendar range (start/end from the date picker). */
+export const WEIGHT_TREND_RANGE_CUSTOM = 'custom';
+export const WEIGHT_TREND_DEFAULT_DAYS = 5;
+export const REPORTS_WEIGHT_TREND_RANGES = Object.freeze([
+  Object.freeze({ key: 5, label: '5 days', days: 5 }),
+  Object.freeze({ key: 10, label: '10 days', days: 10 }),
+  Object.freeze({ key: 30, label: '1 month', days: 30 }),
+  Object.freeze({ key: 365, label: '1 year', days: 365 }),
+  Object.freeze({
+    key: WEIGHT_TREND_RANGE_CUSTOM,
+    label: 'Custom date',
+    days: WEIGHT_TREND_RANGE_CUSTOM,
+  }),
+]);
 
 export const toDateKey = (value) => {
   if (value instanceof Date) return formatCalendarPickerDate(value);
@@ -151,6 +166,128 @@ export function buildTrendSeries(weightHistory, weightTrendRangeDays) {
     });
   }
   return points;
+}
+
+function formatTrendTooltipDate(date) {
+  return date.toLocaleDateString('en-GB', {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+  }).replace(',', '');
+}
+
+function defaultWeightValueOf(entry) {
+  return Number.parseFloat(entry?.Weight);
+}
+
+function collectRecordedMetricEntries(history, valueOf = defaultWeightValueOf) {
+  return (history || [])
+    .filter((entry) => entry && !entry.isUndoPlaceholder && entry.CreatedAt)
+    .map((entry) => ({
+      createdAt: parseUtcTimestamp(entry.CreatedAt),
+      value: Number.parseFloat(valueOf(entry)),
+    }))
+    .filter((entry) => (
+      entry.createdAt
+      && !Number.isNaN(entry.createdAt.getTime())
+      && Number.isFinite(entry.value)
+    ))
+    .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+}
+
+function collectRecordedWeightEntries(weightHistory) {
+  return collectRecordedMetricEntries(weightHistory);
+}
+
+function uniqueLatestByDate(sorted) {
+  const latestByDate = new Map();
+  sorted.forEach((entry) => { latestByDate.set(toDateKey(entry.createdAt), entry); });
+  return Array.from(latestByDate.values())
+    .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+}
+
+function customRangeKeys(customRange) {
+  if (!customRange?.startDate || !customRange?.endDate) return null;
+  const startKey = formatCalendarPickerDate(customRange.startDate)
+    || dateToBusinessYmd(customRange.startDate);
+  const endKey = formatCalendarPickerDate(customRange.endDate)
+    || dateToBusinessYmd(customRange.endDate);
+  if (!startKey || !endKey) return null;
+  return startKey <= endKey
+    ? { startKey, endKey }
+    : { startKey: endKey, endKey: startKey };
+}
+
+/**
+ * First finite metric value ever logged and the latest (current) value.
+ * Uses chronological entries, not the selected chart range.
+ */
+export function getFirstAndLatestRecordedValue(history, valueOf = defaultWeightValueOf) {
+  const sorted = collectRecordedMetricEntries(history, valueOf);
+  if (sorted.length === 0) return { firstValue: null, latestValue: null };
+  return {
+    firstValue: sorted[0].value,
+    latestValue: sorted[sorted.length - 1].value,
+  };
+}
+
+/**
+ * First weight ever logged in the app and the latest (current) weight.
+ * Uses chronological entries, not the selected chart range.
+ */
+export function getFirstAndLatestRecordedWeight(weightHistory) {
+  const { firstValue, latestValue } = getFirstAndLatestRecordedValue(weightHistory);
+  return { firstWeight: firstValue, latestWeight: latestValue };
+}
+
+/**
+ * Actual recorded points (no calendar fill). Used by Reports Trend.
+ * Numeric ranges clip to the last N days ending today. Custom uses the
+ * picker start/end (inclusive, business calendar).
+ * `options.getValue(entry)` selects the numeric field; defaults to Weight.
+ */
+export function buildRecordedTrendSeries(
+  weightHistory,
+  rangeDays = WEIGHT_TREND_DEFAULT_DAYS,
+  customRange = null,
+  options = {},
+) {
+  const getValue = typeof options.getValue === 'function' ? options.getValue : defaultWeightValueOf;
+  const sorted = collectRecordedMetricEntries(weightHistory, getValue);
+  if (sorted.length === 0) return [];
+
+  const unique = uniqueLatestByDate(sorted);
+
+  let inRange = unique;
+  if (rangeDays === WEIGHT_TREND_RANGE_CUSTOM) {
+    const keys = customRangeKeys(customRange);
+    if (!keys) return [];
+    inRange = unique.filter((entry) => {
+      const key = toDateKey(entry.createdAt);
+      return key >= keys.startKey && key <= keys.endKey;
+    });
+  } else if (Number.isFinite(rangeDays) && rangeDays > 0) {
+    const endYmd = todayBusinessDate(DEFAULT_BUSINESS_TIMEZONE);
+    const [ey, em, ed] = endYmd.split('-').map(Number);
+    const end = new Date(ey, em - 1, ed);
+    end.setHours(0, 0, 0, 0);
+    const start = new Date(end);
+    start.setDate(end.getDate() - (rangeDays - 1));
+    const startKey = toDateKey(start);
+    inRange = unique.filter((entry) => toDateKey(entry.createdAt) >= startKey);
+  }
+
+  return inRange.map((entry) => {
+    const date = entry.createdAt;
+    return {
+      key: toDateKey(date),
+      date,
+      label: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+      tooltipDate: formatTrendTooltipDate(date),
+      hasRecorded: true,
+      value: entry.value,
+    };
+  });
 }
 
 export function summarizeTrendSeries(series) {

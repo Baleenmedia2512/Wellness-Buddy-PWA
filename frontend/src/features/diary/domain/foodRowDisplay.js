@@ -7,7 +7,7 @@
 
 import {
   DIARY_FOOD_ACTIVITY,
-  extractFoodItemDisplayNames,
+  extractFoodShareItems,
   extractScoops,
   extractShakeProducts,
   extractShakeServings,
@@ -93,7 +93,7 @@ export function resolveFoodRowPresentation({
     }
   }
 
-  const itemNames = extractFoodItemDisplayNames(foodData, analysisData);
+  const foodItems = extractFoodShareItems(foodData, analysisData);
   const shareText = buildFoodActivityShareText({
     activityType,
     mealLabel,
@@ -104,7 +104,7 @@ export function resolveFoodRowPresentation({
     scoops,
     servings,
     shakeProducts,
-    itemNames,
+    foodItems,
     glycemicIndex,
   });
 
@@ -138,6 +138,7 @@ export function buildFoodActivityShareText({
   scoops = null,
   servings = 1,
   shakeProducts = null,
+  foodItems = null,
   itemNames = null,
   glycemicIndex = null,
 } = {}) {
@@ -160,7 +161,8 @@ export function buildFoodActivityShareText({
     default:
       return buildDiaryShareSuffix('food', {
         foodName,
-        itemNames: itemNames || extractFoodItemDisplayNames(foodData),
+        foodItems: foodItems || extractFoodShareItems(foodData),
+        itemNames,
         calories: nutrition.calories ?? calories,
         protein: nutrition.protein ?? 0,
         carbs: nutrition.carbs ?? 0,

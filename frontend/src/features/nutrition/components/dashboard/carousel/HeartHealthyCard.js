@@ -31,7 +31,13 @@ const HeartHealthyCard = ({ fat, sodium, cholesterol, periodContext, onOpenModal
         {/* 3 Nutrients in a Row */}
         <div className="grid grid-cols-3 gap-4">
           {/* Fat */}
-          <div className="text-center">
+          <div
+            className={`text-center ${onOpenModal ? 'cursor-pointer active:scale-95 transition-transform' : ''}`}
+            onClick={() => onOpenModal && onOpenModal('fat')}
+            role={onOpenModal ? 'button' : undefined}
+            tabIndex={onOpenModal ? 0 : undefined}
+            onKeyPress={onOpenModal ? (e) => { if (e.key === 'Enter' || e.key === ' ') onOpenModal('fat'); } : undefined}
+          >
             {hasFatTarget ? (
               <CircularProgress 
                 percentage={fatPct} 
@@ -39,7 +45,6 @@ const HeartHealthyCard = ({ fat, sodium, cholesterol, periodContext, onOpenModal
                 size={70} 
                 strokeWidth={6} 
                 targetLabel={fat.target != null ? `${fat.target}g` : undefined} 
-                onClick={() => onOpenModal && onOpenModal('fat')}
               />
             ) : (
               <div className="w-[70px] h-[70px] mx-auto rounded-full bg-gray-100 flex items-center justify-center">
@@ -58,14 +63,19 @@ const HeartHealthyCard = ({ fat, sodium, cholesterol, periodContext, onOpenModal
           </div>
 
           {/* Sodium */}
-          <div className="text-center">
+          <div
+            className={`text-center ${onOpenModal ? 'cursor-pointer active:scale-95 transition-transform' : ''}`}
+            onClick={() => onOpenModal && onOpenModal('sodium')}
+            role={onOpenModal ? 'button' : undefined}
+            tabIndex={onOpenModal ? 0 : undefined}
+            onKeyPress={onOpenModal ? (e) => { if (e.key === 'Enter' || e.key === ' ') onOpenModal('sodium'); } : undefined}
+          >
             <CircularProgress 
               percentage={sodiumPct} 
               color="from-rose-400 to-pink-500" 
               size={70} 
               strokeWidth={6} 
               targetLabel={`${sodium.target.toLocaleString()}mg`} 
-              onClick={() => onOpenModal && onOpenModal('sodium')}
             />
             <div className="mt-1.5">
               <div className="flex items-center justify-center gap-1 mb-1">
@@ -78,14 +88,19 @@ const HeartHealthyCard = ({ fat, sodium, cholesterol, periodContext, onOpenModal
           </div>
 
           {/* Cholesterol */}
-          <div className="text-center">
+          <div
+            className={`text-center ${onOpenModal ? 'cursor-pointer active:scale-95 transition-transform' : ''}`}
+            onClick={() => onOpenModal && onOpenModal('cholesterol')}
+            role={onOpenModal ? 'button' : undefined}
+            tabIndex={onOpenModal ? 0 : undefined}
+            onKeyPress={onOpenModal ? (e) => { if (e.key === 'Enter' || e.key === ' ') onOpenModal('cholesterol'); } : undefined}
+          >
             <CircularProgress 
               percentage={cholesterolPct} 
               color="from-purple-400 to-violet-500" 
               size={70} 
               strokeWidth={6} 
               targetLabel={`${cholesterol.target.toLocaleString()}mg`} 
-              onClick={() => onOpenModal && onOpenModal('cholesterol')}
             />
             <div className="mt-1.5">
               <div className="flex items-center justify-center gap-1 mb-1">

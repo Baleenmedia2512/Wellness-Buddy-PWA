@@ -8,11 +8,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   fetchSavedSearchProfile, fetchTeamMembers, fetchHasTeamMembers,
   filterMembers, toSelectedUser, isCoachRole, canUseTeamSearch,
-  resolveTeamSearchDisplayName,
+  resolveTeamSearchDisplayName, resolveTypedSearchQuery,
 } from '../services/teamSearchService';
 import { getCachedProfileUserName } from '../../../shared/utils/shareUtils';
 
-export function useTeamSearch({ user, userRole, selectedMember, onMemberSelect } = {}) {
+export function useTeamSearch({
+  user, userRole, selectedMember, onMemberSelect, viewKey,
+} = {}) {
   const [searchQuery, setSearchQuery] = useState('');
   const [isOpen, setIsOpen] = useState(false);
   const [allTeamMembers, setAllTeamMembers] = useState([]);
@@ -29,6 +31,8 @@ export function useTeamSearch({ user, userRole, selectedMember, onMemberSelect }
 
   const searchRef = useRef(null);
   const dropdownRef = useRef(null);
+  const searchQueryRef = useRef(searchQuery);
+  searchQueryRef.current = searchQuery;
 
   const isCoach = canUseTeamSearch(userRole, hasTeamMembers);
 
@@ -38,6 +42,17 @@ export function useTeamSearch({ user, userRole, selectedMember, onMemberSelect }
 
   // Reset hasCleared whenever a different member is selected externally.
   useEffect(() => { setHasCleared(false); }, [selectedMember]);
+
+  // Nutrition ↔ Trend (and other shared search surfaces): drop in-progress
+  // typing and show the selected member's name again so the same person
+  // stays visible after a tab switch.
+  useEffect(() => {
+    if (viewKey == null) return undefined;
+    setSearchQuery('');
+    setIsOpen(false);
+    setHasCleared(false);
+    return undefined;
+  }, [viewKey]);
 
   // Fetch saved profile name + Community ID (best-effort).
   useEffect(() => {
@@ -103,6 +118,7 @@ export function useTeamSearch({ user, userRole, selectedMember, onMemberSelect }
         && dropdownRef.current && !dropdownRef.current.contains(event.target)
       ) {
         setIsOpen(false);
+        if (!searchQueryRef.current) setHasCleared(false);
       }
     };
     document.addEventListener('mousedown', handler);
@@ -120,8 +136,21 @@ export function useTeamSearch({ user, userRole, selectedMember, onMemberSelect }
   }, [onMemberSelect]);
 
   const handleQueryChange = useCallback((value) => {
-    if (value === '') setHasCleared(true);
-    setSearchQuery(value); setIsOpen(true);
+    const displayName = selectedMember && !selectedMember.isSelf
+      ? (selectedMember.userName || selectedMember.name || selectedMember.email || '')
+      : resolveTeamSearchDisplayName(savedUserName, user);
+    const next = resolveTypedSearchQuery({
+      currentQuery: searchQuery,
+      displayName,
+      nextValue: value,
+    });
+    if (next === '') setHasCleared(true);
+    setSearchQuery(next);
+    setIsOpen(true);
+  }, [searchQuery, selectedMember, savedUserName, user]);
+
+  const handleFocus = useCallback(() => {
+    setIsOpen(true);
   }, []);
 
   const clearQuery = useCallback(() => {
@@ -129,9 +158,10 @@ export function useTeamSearch({ user, userRole, selectedMember, onMemberSelect }
   }, []);
 
   const fallbackName = resolveTeamSearchDisplayName(savedUserName, user);
-  const displayName = selectedMember
-    ? (selectedMember.isSelf ? fallbackName : (selectedMember.userName || ''))
+  const selectedLabel = selectedMember && !selectedMember.isSelf
+    ? (selectedMember.userName || selectedMember.name || selectedMember.email || '')
     : fallbackName;
+  const displayName = selectedMember ? selectedLabel : fallbackName;
   const inputValue = searchQuery || (hasCleared ? '' : displayName);
 
   return {
@@ -140,7 +170,7 @@ export function useTeamSearch({ user, userRole, selectedMember, onMemberSelect }
     isOpen, setIsOpen,
     searchQuery, suggestions, loading,
     inputValue,
-    handleQueryChange, clearQuery,
+    handleQueryChange, handleFocus, clearQuery,
     selectMember, clearSelection,
   };
 }

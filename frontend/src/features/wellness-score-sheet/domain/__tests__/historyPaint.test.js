@@ -7,7 +7,10 @@ import {
   asHistoryDay,
   historyDaysForInstantPaint,
   isSingleDayRange,
+  pickLiveDailyScore,
   rangeKey,
+  scoreIsForDate,
+  selectHistoryDay,
   snapshotMatchesRange,
 } from '../historyPaint.js';
 
@@ -89,6 +92,29 @@ describe('historyPaint', () => {
     assert.equal(days[0].totalEarned, 496);
   });
 
+  it('does not paint a snapshot that belongs to a different user', () => {
+    const snapshot = {
+      userId: '1',
+      rangeKey: '2026-08-16__2026-08-16',
+      days: [{ date: '2026-08-16', totalEarned: 400, userId: '1' }],
+    };
+    assert.equal(snapshotMatchesRange({
+      snapshot,
+      userId: '22',
+      startDate: '2026-08-16',
+      endDate: '2026-08-16',
+    }), false);
+
+    const days = historyDaysForInstantPaint({
+      snapshot,
+      userId: '22',
+      startDate: '2026-08-16',
+      endDate: '2026-08-16',
+      dailyScore: null,
+    });
+    assert.deepEqual(days, []);
+  });
+
   it('does not invent a multi-day row from a single daily cache', () => {
     const days = historyDaysForInstantPaint({
       snapshot: null,
@@ -103,5 +129,50 @@ describe('historyPaint', () => {
   it('fills date on asHistoryDay', () => {
     assert.equal(asHistoryDay({ totalEarned: 10 }, '2026-08-13').date, '2026-08-13');
     assert.equal(asHistoryDay(null, '2026-08-13'), null);
+  });
+
+  it('does not instant-paint a daily cache stamped for a different day', () => {
+    const days = historyDaysForInstantPaint({
+      snapshot: null,
+      userId: '339',
+      startDate: '2026-08-12',
+      endDate: '2026-08-12',
+      dailyScore: daily,
+    });
+    assert.deepEqual(days, []);
+  });
+
+  it('scoreIsForDate is strict about YYYY-MM-DD', () => {
+    assert.equal(scoreIsForDate(daily, '2026-08-13'), true);
+    assert.equal(scoreIsForDate(daily, '2026-08-12'), false);
+    assert.equal(scoreIsForDate({ totalEarned: 10 }, '2026-08-13'), false);
+    assert.equal(scoreIsForDate(null, '2026-08-13'), false);
+  });
+
+  it('pickLiveDailyScore ignores the previous Today/Yesterday payload', () => {
+    const today = { date: '2026-08-18', totalEarned: 500 };
+    const yesterday = { date: '2026-08-17', totalEarned: 220 };
+
+    assert.equal(pickLiveDailyScore({
+      liveScore: today,
+      parentScore: today,
+      dateYmd: '2026-08-17',
+    }), null);
+    assert.equal(pickLiveDailyScore({
+      liveScore: today,
+      parentScore: yesterday,
+      dateYmd: '2026-08-17',
+    }).totalEarned, 220);
+    assert.equal(pickLiveDailyScore({
+      liveScore: yesterday,
+      parentScore: today,
+      dateYmd: '2026-08-18',
+    }).totalEarned, 500);
+  });
+
+  it('selectHistoryDay does not return the only row when it is a different day', () => {
+    assert.equal(selectHistoryDay([daily], '2026-08-12'), null);
+    assert.equal(selectHistoryDay([daily], '2026-08-13').totalEarned, 496);
+    assert.equal(selectHistoryDay([daily], null).totalEarned, 496);
   });
 });
