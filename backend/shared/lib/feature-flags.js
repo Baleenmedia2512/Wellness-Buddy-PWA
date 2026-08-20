@@ -289,3 +289,12 @@ registerFlag({
   description:    'ADR-0008 — Manual Log Good Habit tile: single photo. New good_habits_table; Diary kind good-habit; wellness-score good_habit_post. Does not change food logging or capture state machine.',
   defaultEnabled: true,
 });
+
+registerFlag({
+  name:           'ff.dry-salad-catalog',
+  owner:          '@nutrition-team',
+  createdAt:      '2026-08-20',
+  removeBy:       '2027-02-20',
+  description:    'ADR-0009 — Dry Salad Manual Log search uses dry_salad_items_table instead of general food history. Saves still persist on food_nutrition_data_table.',
+  defaultEnabled: true,
+});

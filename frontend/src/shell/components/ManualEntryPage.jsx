@@ -1026,6 +1026,7 @@ export default function ManualEntryPage({
         headerTitle={foodEntryMeta?.headerTitle}
         headerSubtitle={foodEntryMeta?.headerSubtitle}
         initialQuery={foodEntryMeta?.initialQuery || ''}
+        catalogMode={Boolean(foodEntryMeta?.fromDrySalad) && isFlagEnabled('ff.dry-salad-catalog')}
       />
       <GoodHabitFlow
         isOpen={activeForm === MANUAL_LOG_CATEGORY.GOOD_HABIT}

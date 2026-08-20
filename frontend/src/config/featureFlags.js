@@ -143,6 +143,16 @@ const REGISTRY = Object.freeze({
     defaultEnabled: true,
     description:    'Manual Log Good Habit and wellness-score Good Habit Post (ADR-0008).',
   },
+
+  // ADR-0009 — Dry Salad catalog table for Manual Log search.
+  // Default ON. Set REACT_APP_FF_DRY_SALAD_CATALOG=false or
+  // localStorage 'ff.dry-salad-catalog'='false' to use general food search.
+  'ff.dry-salad-catalog': {
+    envKey:         'REACT_APP_FF_DRY_SALAD_CATALOG',
+    storageKey:     'ff.dry-salad-catalog',
+    defaultEnabled: true,
+    description:    'Dry Salad search uses dry_salad_items_table catalog (ADR-0009).',
+  },
 });
 
 function readStorage(key) {

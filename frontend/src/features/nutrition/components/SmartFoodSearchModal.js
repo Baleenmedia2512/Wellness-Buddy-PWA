@@ -32,6 +32,8 @@ const SmartFoodSearchModal = ({
   headerTitle = "Regular food",
   headerSubtitle = "Type the food item below",
   initialQuery = "",
+  // When true, search GET /api/dry-salad/search (catalog table only).
+  catalogMode = false,
 }) => {
   const [showTypeSelect, setShowTypeSelect] = useState(true); // initial screen: show 3 type buttons
   const [searchQuery, setSearchQuery] = useState("");
@@ -83,7 +85,7 @@ const SmartFoodSearchModal = ({
 
       // Kick off search for the initial query. Use a short delay so all state
       // setters above have been applied before the fetch runs.
-      if (q.trim().length >= 1) {
+      if (q.trim().length >= 1 || catalogMode) {
         setIsSearching(true);
         const timer = setTimeout(() => performSearch(q.trim()), 80);
         return () => clearTimeout(timer);
@@ -94,7 +96,7 @@ const SmartFoodSearchModal = ({
       return undefined;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- performSearch ref is stable
-  }, [isOpen, skipTypeSelect, initialQuery]);
+  }, [isOpen, skipTypeSelect, initialQuery, catalogMode]);
 
   const handleBackFromFoodEntry = () => {
     if (skipTypeSelect) {
@@ -110,7 +112,7 @@ const SmartFoodSearchModal = ({
   // Debounced search — abort in-flight so slow "y" responses can't overwrite newer queries
   useEffect(() => {
     if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
-    if (!searchQuery.trim() || searchQuery.trim().length < 1) {
+    if (!catalogMode && (!searchQuery.trim() || searchQuery.trim().length < 1)) {
       if (searchAbortRef.current) searchAbortRef.current.abort();
       setMasterItems([]);
       setMyItems([]);
@@ -125,20 +127,21 @@ const SmartFoodSearchModal = ({
     }, delay);
     return () => clearTimeout(searchTimerRef.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: listed deps would cause an infinite re-render
-  }, [searchQuery]);
+  }, [searchQuery, catalogMode]);
 
   const performSearch = async (query) => {
-    if (!userId || !apiBaseUrl) return;
+    if (!apiBaseUrl) return;
+    if (!catalogMode && !userId) return;
     if (searchAbortRef.current) searchAbortRef.current.abort();
     const controller = new AbortController();
     searchAbortRef.current = controller;
     const seq = ++searchSeqRef.current;
     setIsSearching(true);
     try {
-      const res = await fetch(
-        `${apiBaseUrl}/api/food-corrections/search?userId=${encodeURIComponent(userId)}&query=${encodeURIComponent(query)}`,
-        { signal: controller.signal },
-      );
+      const searchUrl = catalogMode
+        ? `${apiBaseUrl}/api/dry-salad/search?query=${encodeURIComponent(query)}`
+        : `${apiBaseUrl}/api/food-corrections/search?userId=${encodeURIComponent(userId)}&query=${encodeURIComponent(query)}`;
+      const res = await fetch(searchUrl, { signal: controller.signal });
       const data = await res.json();
       if (seq !== searchSeqRef.current) return;
       if (data.success) {
@@ -375,7 +378,7 @@ const SmartFoodSearchModal = ({
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search food (e.g. chicken, rice…)"
+                placeholder={catalogMode ? "Search dry salad (e.g. herbalife…)" : "Search food (e.g. chicken, rice…)"}
                 className="w-full pl-9 pr-10 py-3 border-2 border-gray-200 focus:border-orange-400 rounded-xl outline-none text-sm bg-white transition-colors"
                 style={{ fontSize: "16px" }}
               />
@@ -446,11 +449,13 @@ const SmartFoodSearchModal = ({
           )}
 
           {/* ── Search results ── */}
-          {!showManualForm && searchQuery.trim().length >= 1 && (
+          {!showManualForm && (searchQuery.trim().length >= 1 || catalogMode) && (
             <div className="space-y-4">
               {hasMasterItems && (
                 <div>
-                  <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5 px-1">Nutrition library</p>
+                  <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5 px-1">
+                    {catalogMode ? "Dry Salad catalog" : "Nutrition library"}
+                  </p>
                   <div className="space-y-1.5">
                     {masterItems.map((item) => (
                       <FoodItemRow
@@ -465,7 +470,7 @@ const SmartFoodSearchModal = ({
               )}
 
               {/* My items */}
-              {hasMyItems && (
+              {!catalogMode && hasMyItems && (
                 <div>
                   <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5 px-1">My History</p>
                   <div className="space-y-1.5">
@@ -482,7 +487,7 @@ const SmartFoodSearchModal = ({
               )}
 
               {/* Community items */}
-              {hasCommunityItems && (
+              {!catalogMode && hasCommunityItems && (
                 <div>
                   <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5 px-1">Community</p>
                   <div className="space-y-1.5">
@@ -500,13 +505,17 @@ const SmartFoodSearchModal = ({
 
               {/* No results */}
               {!isSearching && !hasMasterItems && !hasMyItems && !hasCommunityItems && (
-                <p className="text-sm text-gray-400 text-center py-4">No food found — try a different name or add manually</p>
+                <p className="text-sm text-gray-400 text-center py-4">
+                  {catalogMode
+                    ? "No dry salad found — try a different name or add manually"
+                    : "No food found — try a different name or add manually"}
+                </p>
               )}
             </div>
           )}
 
           {/* ── Empty state (only when nothing selected) ── */}
-          {!showManualForm && searchQuery.trim().length < 1 && !hasSelected && (
+          {!showManualForm && searchQuery.trim().length < 1 && !hasSelected && !catalogMode && (
             <div className="flex flex-col items-center justify-center py-10 text-center">
               <div className="w-14 h-14 rounded-2xl bg-orange-50 flex items-center justify-center mb-3">
                 <Search className="w-6 h-6 text-orange-400" />
