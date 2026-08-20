@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo } from 'react';
 import { useCarouselSwipe } from '../../nutrition/hooks/useCarouselSwipe';
+import { getSectionIcon } from '../domain/parameterIcons';
 import WellnessScoreDayStrip from './WellnessScoreDayStrip';
 
 const PANELS = [
@@ -38,31 +39,40 @@ function computeDayScoreAverage(historyDays) {
   return { avgEarned, avgPossible, avgPct, dayCount };
 }
 
-function computeParamAverages(historyDays) {
-  if (!historyDays || historyDays.length < 2) return {};
+/**
+ * Average only the keys passed in `activeKeys` (currently enabled params).
+ * Missing days count as 0 earned so the divisor is always the full period.
+ */
+function computeParamAverages(historyDays, activeParams = []) {
+  if (!historyDays || historyDays.length < 2 || !activeParams.length) return {};
 
+  const dayCount = historyDays.length;
   const totals = {};
-  const counts = {};
+
+  for (const param of activeParams) {
+    const key = param?.key;
+    if (!key) continue;
+    totals[key] = {
+      label: param.label || key,
+      earnedSum: 0,
+      maxPoints: Number(param.maxPoints) || 0,
+    };
+  }
 
   for (const day of historyDays) {
     for (const param of day.parameters || []) {
       const key = param.key;
-      if (!key) continue;
-      if (!totals[key]) {
-        totals[key] = { label: param.label || key, earnedSum: 0, maxPoints: param.maxPoints ?? 0 };
-        counts[key] = 0;
-      }
-      totals[key].earnedSum += param.earnedPoints ?? 0;
-      if (param.maxPoints > 0) totals[key].maxPoints = param.maxPoints;
-      counts[key] += 1;
+      if (!key || !totals[key]) continue;
+      totals[key].earnedSum += Number(param.earnedPoints) || 0;
+      const maxPoints = Number(param.maxPoints) || 0;
+      if (maxPoints > 0) totals[key].maxPoints = maxPoints;
     }
   }
 
   const result = {};
   for (const key of Object.keys(totals)) {
     const { label, earnedSum, maxPoints } = totals[key];
-    const n = counts[key];
-    const earnedAvg = n > 0 ? earnedSum / n : 0;
+    const earnedAvg = earnedSum / dayCount;
     const avgPct = maxPoints > 0 ? Math.min(100, Math.round((earnedAvg / maxPoints) * 100)) : 0;
     result[key] = { label, earnedAvg: Math.round(earnedAvg * 10) / 10, maxPoints, avgPct };
   }
@@ -70,13 +80,17 @@ function computeParamAverages(historyDays) {
 }
 
 function AverageScorePanel({ historyDays, sections }) {
+  const activeParams = useMemo(
+    () => sections.flatMap((section) => section.parameters || []),
+    [sections],
+  );
   const dayAverage = useMemo(
     () => computeDayScoreAverage(historyDays),
     [historyDays],
   );
   const avgByKey = useMemo(
-    () => computeParamAverages(historyDays),
-    [historyDays],
+    () => computeParamAverages(historyDays, activeParams),
+    [historyDays, activeParams],
   );
 
   const avgSections = sections
@@ -120,37 +134,66 @@ function AverageScorePanel({ historyDays, sections }) {
         <p className="mt-1.5 text-[10px] text-gray-400">over {dayCount} days</p>
       </div>
 
-      {avgSections.map((section) => (
-        <div key={section.id} className="space-y-2">
-          {section.parameters.map(({ label, earnedAvg, maxPoints, avgPct: paramPct }) => (
-            <div
-              key={label}
-              className="rounded-xl border border-emerald-100 bg-white px-3.5 py-3 shadow-sm"
-            >
-              <div className="flex items-center justify-between gap-2">
-                <p className="truncate text-sm font-semibold text-gray-900">{label}</p>
-                <p className="shrink-0 text-sm font-bold tabular-nums text-gray-900">
-                  {earnedAvg % 1 === 0 ? earnedAvg : earnedAvg.toFixed(1)}
-                  <span className="font-medium text-gray-400">/{maxPoints}</span>
-                  <span className="ml-1.5 text-[11px] font-medium text-emerald-700">{paramPct}%</span>
-                </p>
+      {avgSections.map((section) => {
+        const SectionIcon = getSectionIcon(section.id);
+        const sectionEarned = section.parameters.reduce((sum, p) => sum + (p.earnedAvg ?? 0), 0);
+        const sectionMax = section.parameters.reduce((sum, p) => sum + (p.maxPoints ?? 0), 0);
+        const sectionEarnedLabel = sectionEarned % 1 === 0
+          ? Math.round(sectionEarned)
+          : sectionEarned.toFixed(1);
+        const sectionMaxLabel = sectionMax % 1 === 0
+          ? Math.round(sectionMax)
+          : sectionMax.toFixed(1);
+
+        return (
+          <section
+            key={section.id}
+            className="overflow-hidden rounded-xl border border-gray-200/90 bg-white shadow-sm"
+          >
+            <div className="flex items-center justify-between border-b border-gray-100 bg-gray-50/80 px-3.5 py-2.5">
+              <div className="flex items-center gap-2">
+                <SectionIcon className="h-4 w-4 text-emerald-600" aria-hidden />
+                <h3 className="text-xs font-bold uppercase tracking-wide text-gray-700">
+                  {section.label}
+                </h3>
               </div>
-              <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-gray-100">
-                <div
-                  className={`h-full rounded-full transition-all duration-500 ${avgBarTone(paramPct)}`}
-                  style={{ width: `${paramPct}%` }}
-                  role="progressbar"
-                  aria-valuenow={paramPct}
-                  aria-valuemin={0}
-                  aria-valuemax={100}
-                  aria-label={`${label} average progress`}
-                />
-              </div>
-              <p className="mt-1 text-[10px] text-gray-400">avg pts/day over {dayCount} days</p>
+              <span className="text-xs font-semibold tabular-nums text-gray-600">
+                {sectionEarnedLabel}/{sectionMaxLabel}
+                <span className="ml-1 font-medium text-gray-400">avg</span>
+              </span>
             </div>
-          ))}
-        </div>
-      ))}
+            <div className="space-y-2 p-2.5">
+              {section.parameters.map(({ label, earnedAvg, maxPoints, avgPct: paramPct }) => (
+                <div
+                  key={label}
+                  className="rounded-xl border border-emerald-100 bg-white px-3.5 py-3 shadow-sm"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="truncate text-sm font-semibold text-gray-900">{label}</p>
+                    <p className="shrink-0 text-sm font-bold tabular-nums text-gray-900">
+                      {earnedAvg % 1 === 0 ? earnedAvg : earnedAvg.toFixed(1)}
+                      <span className="font-medium text-gray-400">/{maxPoints}</span>
+                      <span className="ml-1.5 text-[11px] font-medium text-emerald-700">{paramPct}%</span>
+                    </p>
+                  </div>
+                  <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-gray-100">
+                    <div
+                      className={`h-full rounded-full transition-all duration-500 ${avgBarTone(paramPct)}`}
+                      style={{ width: `${paramPct}%` }}
+                      role="progressbar"
+                      aria-valuenow={paramPct}
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                      aria-label={`${label} average progress`}
+                    />
+                  </div>
+                  <p className="mt-1 text-[10px] text-gray-400">avg pts/day over {dayCount} days</p>
+                </div>
+              ))}
+            </div>
+          </section>
+        );
+      })}
 
       <p className="text-center text-[10px] font-medium text-gray-400">
         Swipe left to pick a day
@@ -185,7 +228,11 @@ export default function WellnessScoreMultiDayCarousel({
   if (!historyDays.length || historyDays.length <= 1) return null;
 
   return (
-    <section className="overflow-hidden rounded-2xl border-2 border-emerald-200 bg-emerald-50/60 shadow-sm">
+    <section
+      className="overflow-hidden rounded-2xl border-2 border-emerald-200 bg-emerald-50/60 shadow-sm"
+      {...swipeHandlers}
+      style={{ touchAction: 'pan-y' }}
+    >
       <div className="flex items-center justify-between border-b border-emerald-100 bg-emerald-100/70 px-4 py-2.5">
         <div className="flex items-center gap-2">
           <span className="text-emerald-700" aria-hidden>📊</span>
@@ -200,29 +247,28 @@ export default function WellnessScoreMultiDayCarousel({
         </span>
       </div>
 
-      <div
-        className="w-full overflow-hidden"
-        {...swipeHandlers}
-        style={{ touchAction: 'pan-y' }}
-      >
+      <div className="w-full overflow-hidden">
         {activePanel.id === MULTI_DAY_PANEL.AVERAGE ? (
           <AverageScorePanel historyDays={historyDays} sections={sections} />
         ) : (
-          <div
-            onPointerDown={(e) => e.stopPropagation()}
-            onPointerMove={(e) => e.stopPropagation()}
-            onPointerUp={(e) => e.stopPropagation()}
-          >
-            <WellnessScoreDayStrip
-              days={historyDays}
-              selectedDate={selectedDate}
-              onSelectDate={onSelectDate}
-              today={today}
-            />
+          <>
+            {/* Block panel swipe only on the day strip so horizontal day-scroll works */}
+            <div
+              onPointerDown={(e) => e.stopPropagation()}
+              onPointerMove={(e) => e.stopPropagation()}
+              onPointerUp={(e) => e.stopPropagation()}
+            >
+              <WellnessScoreDayStrip
+                days={historyDays}
+                selectedDate={selectedDate}
+                onSelectDate={onSelectDate}
+                today={today}
+              />
+            </div>
             <p className="pb-2 pt-1 text-center text-[10px] font-medium text-gray-400">
-              Swipe right for average · tap a day below
+              Swipe right for average · or tap Average below
             </p>
-          </div>
+          </>
         )}
       </div>
 

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { ArrowLeft, ClipboardList, Loader2, Trophy } from 'lucide-react';
 import {
   todayBusinessDate,
@@ -6,10 +6,12 @@ import {
 } from '../../../shared/utils/datetimeUtils';
 import ScoreCategoryRow from './ScoreCategoryRow';
 import ParameterContributionModal from './ParameterContributionModal';
-import { PARAMETER_SECTIONS, parametersBySection } from '../domain/parameterRegistry';
+import WellnessScoreMultiDayCarousel, {
+  MULTI_DAY_PANEL,
+} from './WellnessScoreMultiDayCarousel';
+import { getParameterMeta, PARAMETER_SECTIONS, parametersBySection } from '../domain/parameterRegistry';
 import { getSectionIcon } from '../domain/parameterIcons';
 import { formatWellnessDayLabel, formatWellnessRangeLabel } from '../domain/dateRange';
-import { aggregateWellnessPeriodDetails } from '../domain/periodSummary';
 import { useParameterContribution } from '../hooks/useParameterContribution';
 import ReportDateRangeFilter from '../../../shared/components/common/ReportDateRangeFilter';
 import { WELLNESS_SCORE_DATE_RANGES } from '../../../shared/domain/reportDateRanges';
@@ -21,7 +23,29 @@ function scoreTone(pct) {
 }
 
 /**
+ * Average list must match currently enabled params (same as Today / latest day).
+ * Do not union older days — a param turned off later would still appear.
+ */
+function buildCarouselSections(historyDays = []) {
+  if (!Array.isArray(historyDays) || historyDays.length === 0) return [];
+
+  const sorted = [...historyDays].sort((a, b) =>
+    String(a?.date || '').localeCompare(String(b?.date || '')),
+  );
+  const latest = sorted[sorted.length - 1];
+  const parameters = latest?.parameters || [];
+
+  return PARAMETER_SECTIONS.map((section) => {
+    const sectionParams = parameters.filter(
+      (parameter) => getParameterMeta(parameter.key)?.section === section.id,
+    );
+    return { ...section, parameters: sectionParams };
+  }).filter((section) => section.parameters.length > 0);
+}
+
+/**
  * Full wellness score sheet — configured points + parameter breakdown.
+ * Multi-day ranges use the same Average carousel as the Nutrition tab.
  */
 export default function WellnessScoreSheet({
   onBack,
@@ -37,14 +61,21 @@ export default function WellnessScoreSheet({
   onCustomDateSelect,
   historyDays = [],
   selectedDate,
+  onSelectDate,
   isMultiDay = false,
   timeWindows = null,
   userId = null,
   apiBaseUrl,
   nutritionRefreshKey = 0,
 }) {
-  const periodSummary = isMultiDay ? aggregateWellnessPeriodDetails(historyDays) : null;
-  const activeScore = periodSummary || scoreData;
+  const [multiDayPanel, setMultiDayPanel] = useState(MULTI_DAY_PANEL.AVERAGE);
+  const handlePanelChange = useCallback((panelId) => {
+    setMultiDayPanel(panelId);
+  }, []);
+
+  const showMultiDayCarousel = isMultiDay && historyDays.length > 1 && typeof onSelectDate === 'function';
+  const showDayDetailCards = !showMultiDayCarousel || multiDayPanel === MULTI_DAY_PANEL.DAYS;
+
   const dateStr = scoreData?.date || selectedDate || todayBusinessDate(DEFAULT_BUSINESS_TIMEZONE);
   const summaryLabel = isMultiDay
     ? formatWellnessRangeLabel({
@@ -54,12 +85,19 @@ export default function WellnessScoreSheet({
       today,
     })
     : formatWellnessDayLabel(dateStr, today);
+
+  const activeScore = showDayDetailCards ? scoreData : null;
   const parameters = activeScore?.parameters || [];
   const grouped = parametersBySection(parameters);
   const progressPct = activeScore?.percentage ?? 0;
   const earned = Math.round(activeScore?.totalEarned ?? 0);
   const possible = Math.round(activeScore?.totalPossible ?? 0);
-  const contributionEnabled = !periodSummary;
+  const contributionEnabled = showDayDetailCards;
+
+  const carouselSections = useMemo(
+    () => (showMultiDayCarousel ? buildCarouselSections(historyDays) : []),
+    [showMultiDayCarousel, historyDays],
+  );
 
   const {
     selectedParam,
@@ -76,6 +114,8 @@ export default function WellnessScoreSheet({
     nutritionRefreshKey,
     timeWindows,
   });
+
+  const hasContent = showMultiDayCarousel || activeScore;
 
   return (
     <div className="min-h-screen bg-[#f4f7f5]">
@@ -114,13 +154,13 @@ export default function WellnessScoreSheet({
       </header>
 
       <main className="mx-auto max-w-lg space-y-4 px-4 py-4 pb-28">
-        {loading && !activeScore && (
+        {loading && !hasContent && (
           <div className="flex justify-center py-16">
             <Loader2 className="h-8 w-8 animate-spin text-emerald-600" aria-label="Loading" />
           </div>
         )}
 
-        {error && !activeScore && (
+        {error && !hasContent && (
           <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-center">
             <p className="text-sm text-red-700">{error}</p>
             {onRetry && (
@@ -135,14 +175,26 @@ export default function WellnessScoreSheet({
           </div>
         )}
 
-        {activeScore && (
+        {showMultiDayCarousel && (
+          <WellnessScoreMultiDayCarousel
+            historyDays={historyDays}
+            sections={carouselSections}
+            selectedDate={selectedDate}
+            onSelectDate={onSelectDate}
+            today={today}
+            onPanelChange={handlePanelChange}
+          />
+        )}
+
+        {showDayDetailCards && activeScore && (
           <>
             <section className="overflow-hidden rounded-2xl border border-emerald-200/80 bg-white shadow-sm">
               <div className="border-b border-emerald-100 bg-gradient-to-r from-emerald-50 to-white px-4 py-3">
                 <div className="flex items-center gap-2">
                   <Trophy className="h-4 w-4 text-emerald-600" aria-hidden />
                   <p className="text-xs font-semibold uppercase tracking-wide text-emerald-800">
-                    {isMultiDay ? `${summaryLabel} overall score` : `${summaryLabel}'s score`}
+                    {formatWellnessDayLabel(dateStr, today)}
+                    &apos;s score
                   </p>
                 </div>
               </div>
@@ -162,9 +214,8 @@ export default function WellnessScoreSheet({
                   <span className="font-semibold text-gray-900">{parameters.length}</span>
                   {' '}
                   active parameters
-                  {periodSummary
-                    ? ` across ${periodSummary.dayCount} days`
-                    : ' · tap a row for contribution'}
+                  {' '}
+                  · tap a row for contribution
                 </p>
                 <div className="mt-4">
                   <div className="mb-1.5 flex justify-between text-[11px] font-medium text-gray-500">
@@ -206,7 +257,7 @@ export default function WellnessScoreSheet({
                       </h2>
                     </div>
                     <span className="text-xs font-semibold tabular-nums text-gray-600">
-                      {sectionEarned}/{sectionMax}
+                      {Math.round(sectionEarned)}/{Math.round(sectionMax)}
                     </span>
                   </div>
                   <div className="space-y-2 p-3">

@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { aggregateWellnessPeriodDetails } from '../periodSummary.js';
 
 describe('aggregateWellnessPeriodDetails', () => {
-  it('sums totals and merges parameters by key across days', () => {
+  it('averages totals and parameters by key across days (missing days = 0)', () => {
     const result = aggregateWellnessPeriodDetails([
       {
         totalEarned: 120,
@@ -29,10 +29,11 @@ describe('aggregateWellnessPeriodDetails', () => {
       },
     ]);
 
-    assert.equal(result.totalEarned, 300);
-    assert.equal(result.totalPossible, 500);
+    assert.equal(result.totalEarned, 150);
+    assert.equal(result.totalPossible, 250);
     assert.equal(result.percentage, 60);
     assert.equal(result.dayCount, 2);
+    assert.equal(result.isAverage, true);
     assert.equal(result.goalMode, 'loss');
     assert.deepEqual(
       result.parameters.map((parameter) => ({
@@ -41,9 +42,10 @@ describe('aggregateWellnessPeriodDetails', () => {
         maxPoints: parameter.maxPoints,
       })),
       [
-        { key: 'weight_post', earnedPoints: 70, maxPoints: 100 },
-        { key: 'protein', earnedPoints: 120, maxPoints: 200 },
-        { key: 'water_qty', earnedPoints: 50, maxPoints: 150 },
+        { key: 'weight_post', earnedPoints: 35, maxPoints: 50 },
+        { key: 'protein', earnedPoints: 60, maxPoints: 100 },
+        // Present only on day 2 → (0 + 50) / 2
+        { key: 'water_qty', earnedPoints: 25, maxPoints: 150 },
       ],
     );
   });

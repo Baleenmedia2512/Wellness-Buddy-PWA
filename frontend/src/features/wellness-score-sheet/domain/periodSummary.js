@@ -11,29 +11,38 @@ function compareParameters(a, b) {
   return String(a.key).localeCompare(String(b.key));
 }
 
+function round1(value) {
+  return Math.round(value * 10) / 10;
+}
+
 /**
- * Collapse daily wellness-score rows into one period-wide total.
- * Sum earned/possible points across the range and merge parameter totals by key.
+ * Collapse daily wellness-score rows into one period-wide daily average.
+ * Earned/possible and each parameter use avg pts/day; maxPoints stay at the
+ * per-day configured value (missing days count as 0 earned).
  */
 export function aggregateWellnessPeriodDetails(days = []) {
   if (!Array.isArray(days) || days.length === 0) return null;
 
+  const dayCount = days.length;
   const parameterMap = new Map();
-  let totalEarned = 0;
-  let totalPossible = 0;
+  let totalEarnedSum = 0;
+  let totalPossibleSum = 0;
 
   for (const day of days) {
-    totalEarned += Number(day?.totalEarned) || 0;
-    totalPossible += Number(day?.totalPossible) || 0;
+    totalEarnedSum += Number(day?.totalEarned) || 0;
+    totalPossibleSum += Number(day?.totalPossible) || 0;
 
     for (const parameter of day?.parameters || []) {
       const key = parameter?.key;
       if (!key) continue;
 
+      const earned = Number(parameter?.earnedPoints) || 0;
+      const maxPoints = Number(parameter?.maxPoints) || 0;
       const existing = parameterMap.get(key);
+
       if (existing) {
-        existing.earnedPoints += Number(parameter?.earnedPoints) || 0;
-        existing.maxPoints += Number(parameter?.maxPoints) || 0;
+        existing.earnedSum += earned;
+        if (maxPoints > 0) existing.maxPoints = maxPoints;
         continue;
       }
 
@@ -42,18 +51,27 @@ export function aggregateWellnessPeriodDetails(days = []) {
         key,
         label: parameter?.label || meta?.label || key,
         scoringMode: parameter?.scoringMode || meta?.scoringMode,
-        earnedPoints: Number(parameter?.earnedPoints) || 0,
-        maxPoints: Number(parameter?.maxPoints) || 0,
+        earnedSum: earned,
+        maxPoints,
       });
     }
   }
+
+  const totalEarned = round1(totalEarnedSum / dayCount);
+  const totalPossible = round1(totalPossibleSum / dayCount);
 
   return {
     totalEarned,
     totalPossible,
     percentage: totalPossible > 0 ? Math.round((totalEarned / totalPossible) * 100) : 0,
-    dayCount: days.length,
+    dayCount,
+    isAverage: true,
     goalMode: days.find((day) => day?.goalMode)?.goalMode || 'loss',
-    parameters: [...parameterMap.values()].sort(compareParameters),
+    parameters: [...parameterMap.values()]
+      .map(({ earnedSum, ...parameter }) => ({
+        ...parameter,
+        earnedPoints: round1(earnedSum / dayCount),
+      }))
+      .sort(compareParameters),
   };
 }
