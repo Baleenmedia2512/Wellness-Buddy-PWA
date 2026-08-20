@@ -1,8 +1,10 @@
 /**
  * diary/domain/share/suffixes.js
  *
- * Compact one-line activity suffixes for Quick Share captions:
+ * Compact activity suffixes for Quick Share captions:
  *   "Name · Wellness Valley v X.Y.Z, Consumed: 1 L water so far today"
+ * Food is kcal on the brand line, then each item on its own line with GI:
+ *   "Name · Wellness Valley v 3.4.5, 1890 kcal\nMasala Dosa - GI 65 m\nRagi Dosa - GI 45 l"
  *
  * Rich multi-line templates stay in the per-activity builders for Diary share.
  */
@@ -10,10 +12,12 @@
 import { DIARY_FOOD_ACTIVITY } from '../activityType';
 import { formatWaterVolume } from '../formatVolume';
 import { formatShakeProductScoops } from './shakeShare';
+import { giShareLetter } from '../../../nutrition/domain/foodItemNutritionFacts';
 
 /**
  * @param {'food'|'water'|'afresh'|'shake'|'education'|'weight'|string} activityType
  * @param {object} [payload]
+ * @param {number} [payload.idealWeight] kg target (BMI 19–23) shown as "Ideal: X kg"
  * @returns {string|null} compact suffix, or null when nothing useful to append
  */
 export function buildDiaryShareSuffix(activityType, payload = {}) {
@@ -55,16 +59,21 @@ export function buildDiaryShareSuffix(activityType, payload = {}) {
     case 'weight': {
       const current = formatShareKg(payload.currentWeight);
       const previous = formatShareKg(payload.previousWeight);
+      const ideal = formatShareKg(payload.idealWeight);
       if (current == null) return 'weight';
-      if (previous == null) return `weight ${current} kg`;
 
-      const delta = Math.round((current - previous) * 100) / 100;
-      // Direction as emoji arrows (⬆️/⬇️) — WhatsApp renders them as button-style icons.
-      let arrow = '';
-      if (delta < 0) arrow = ' ⬇️';
-      else if (delta > 0) arrow = ' ⬆️';
+      const lines = [];
+      if (ideal != null) lines.push(`Ideal: ${ideal} kg`);
+      if (previous != null) lines.push(`Prev: ${previous} kg`);
 
-      return `Previous: ${previous} kg, Current: ${current} kg${arrow}`;
+      let curr = `Curr: ${current} kg`;
+      if (previous != null) {
+        const delta = Math.round((current - previous) * 100) / 100;
+        if (delta < 0) curr += ' ⬇️';
+        else if (delta > 0) curr += ' ⬆️';
+      }
+      lines.push(curr);
+      return lines.join('\n');
     }
     case 'workout':
     case 'watch':
@@ -74,15 +83,21 @@ export function buildDiaryShareSuffix(activityType, payload = {}) {
       if (burned > 0) return `Calories Burnt: ${burned} kcal so far today`;
       return 'Calories Burnt';
     }
+    case 'good-habit': {
+      const notes = String(payload.notes || '').trim();
+      return notes ? `Good Habit — ${notes}` : 'Good Habit';
+    }
     case DIARY_FOOD_ACTIVITY.FOOD:
     case 'food':
     default: {
-      const names = resolveFoodShareNames(payload);
+      const items = resolveFoodShareItems(payload);
       const calories = Math.round(Number(payload.calories) || 0);
-      const parts = [];
-      if (names.length > 0) parts.push(names.join(', '));
-      if (calories > 0) parts.push(`${calories} kcal`);
-      return parts.length > 0 ? parts.join(', ') : null;
+      const lines = [];
+      if (calories > 0) lines.push(`${calories} kcal`);
+      for (const item of items) {
+        lines.push(formatFoodShareLine(item.name, item.glycemicIndex));
+      }
+      return lines.length > 0 ? lines.join('\n') : null;
     }
   }
 }
@@ -90,26 +105,73 @@ export function buildDiaryShareSuffix(activityType, payload = {}) {
 /**
  * Prefer the full item list for food captions.
  * Falls back to compact foodName ("White Rice+4more") when items are missing.
- * @param {{ itemNames?: unknown[], foodName?: string }} payload
- * @returns {string[]}
+ * @param {{ foodItems?: unknown[], itemNames?: unknown[], foodName?: string }} payload
+ * @returns {Array<{ name: string, glycemicIndex: number|null }>}
  */
-function resolveFoodShareNames(payload) {
-  const fromItems = Array.isArray(payload.itemNames)
+function resolveFoodShareItems(payload) {
+  const fromFoodItems = Array.isArray(payload.foodItems) ? payload.foodItems : [];
+  const mapped = [];
+  const seen = new Set();
+  for (const item of fromFoodItems) {
+    const name = typeof item === 'string'
+      ? item.trim()
+      : String(item?.name || item?.foodName || '').trim();
+    if (!name) continue;
+    const key = name.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    mapped.push({
+      name,
+      glycemicIndex: typeof item === 'string' ? null : readShareGi(item),
+    });
+  }
+  if (mapped.length > 0) return mapped;
+
+  const fromNames = Array.isArray(payload.itemNames)
     ? payload.itemNames.map((n) => String(n || '').trim()).filter(Boolean)
     : [];
-  if (fromItems.length > 0) {
-    const seen = new Set();
+  if (fromNames.length > 0) {
     const names = [];
-    for (const name of fromItems) {
+    for (const name of fromNames) {
       const key = name.toLowerCase();
       if (seen.has(key)) continue;
       seen.add(key);
-      names.push(name);
+      names.push({ name, glycemicIndex: null });
     }
     return names;
   }
   const foodName = (payload.foodName || '').trim();
-  return foodName ? [foodName] : [];
+  return foodName ? [{ name: foodName, glycemicIndex: null }] : [];
+}
+
+function readShareGi(item) {
+  const raw = item?.glycemicIndex
+    ?? item?.glycemic_index
+    ?? item?.nutrition?.glycemic_index;
+  if (raw == null || raw === '') return null;
+  const n = Number(raw);
+  return Number.isFinite(n) ? Math.round(n) : null;
+}
+
+/**
+ * @param {string} name
+ * @param {number|null} glycemicIndex
+ * @returns {string}
+ */
+function formatFoodShareLine(name, glycemicIndex) {
+  const gi = formatShareGi(glycemicIndex);
+  return gi ? `${name} - ${gi}` : `${name},`;
+}
+
+/**
+ * "GI 65 m" — m medium, h high, l low. Omits the token when GI is missing.
+ * @param {number|null|undefined} value
+ * @returns {string|null}
+ */
+function formatShareGi(value) {
+  const letter = giShareLetter(value);
+  if (!letter) return null;
+  return `GI ${Math.round(Number(value))} ${letter}`;
 }
 
 /**

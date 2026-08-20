@@ -43,6 +43,7 @@ describe('computeWeightChange', () => {
 describe('format helpers', () => {
   it('formats weight and total_earned points', () => {
     assert.equal(formatWeightKg(72.4), '72.40 kg');
+    assert.equal(formatWeightKg(72.4, { compact: true }), '72.40');
     assert.equal(formatWellnessScore(660), '660');
     assert.equal(formatWellnessScore(550), '550');
     assert.equal(formatWellnessScore(null), '—');

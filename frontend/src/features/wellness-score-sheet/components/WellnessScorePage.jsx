@@ -103,6 +103,7 @@ export default function WellnessScorePage({
     if (!data || !resolvedUserId || range.isMultiDay) return;
     const scoreDate = selectedDate || range.endDate;
     if (!scoreDate) return;
+    if (data.date && String(data.date) !== String(scoreDate)) return;
     seedDailyWellnessScoreCache(resolvedUserId, scoreDate, data);
   }, [data, resolvedUserId, selectedDate, range.endDate, range.isMultiDay]);
 

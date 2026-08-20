@@ -9,6 +9,7 @@ import {
   Lock,
   Salad,
   Sparkles,
+  Star,
   UtensilsCrossed,
   X,
 } from 'lucide-react';
@@ -28,7 +29,15 @@ import {
   fetchWatchBurnedCalories,
 } from '../../features/nutrition';
 import { seedMealAfterPromotion } from '../../features/nutrition/services/seedMealAfterPromotion';
-import { ManualWeightEntryModal, saveWeight, warmLatestWeightCache, getCachedLatestWeight } from '../../features/weight';
+import {
+  ManualWeightEntryModal,
+  saveWeight,
+  warmLatestWeightCache,
+  getCachedLatestWeight,
+  computeIdealWeightRange,
+  pickIdealWeightKg,
+} from '../../features/weight';
+import { getProfile, getCachedProfile } from '../../features/user/services/user.api';
 import { ManualEducationEntryModal, saveLog } from '../../features/education';
 import { ManualWatchEntryModal } from '../../features/activity';
 import {
@@ -41,10 +50,12 @@ import {
 } from '../../features/ai-credits';
 import { fetchWaterIntake, todayLocal } from '../../features/water';
 import { isIOS } from '../../shared/utils/platform';
-import { buildDiaryShareSuffix, extractFoodItemDisplayNames } from '../../features/diary';
+import { buildDiaryShareSuffix, extractFoodShareItems } from '../../features/diary';
 import { useNutritionRefreshOptional } from '../../shared/context/NutritionRefreshContext';
 import { refreshDailyWellnessScoreAfterSave } from '../../features/wellness-score-sheet/services/refreshDailyWellnessScoreNow';
 import HealthySnacksSubSelectModal from './HealthySnacksSubSelectModal';
+import GoodHabitFlow from './GoodHabitFlow';
+import { saveGoodHabit } from '../../features/good-habits';
 import {
   MANUAL_LOG_CATEGORY,
   resolveManualLogCategoryClick,
@@ -85,6 +96,7 @@ const CATEGORIES = [
     isImgIcon: true,
     Icon: Dumbbell,
   },
+  { id: MANUAL_LOG_CATEGORY.GOOD_HABIT, Icon: Star, label: 'Good Habit' },
 ];
 
 /** Home hero banner greens — keep classify screen on-brand with Take Photo card. */
@@ -96,7 +108,7 @@ const BRAND = {
   active: '#16a34a',
 };
 
-/** Shared Log-as button chrome — fills one cell in the 3×3 grid. */
+/** Shared Log-as button chrome — fills one cell in the 3×4 grid. */
 const LOG_AS_BTN_BASE =
   'log-as-btn flex h-full min-h-0 w-full min-w-0 flex-col items-center justify-center gap-0.5 overflow-hidden rounded-xl px-1 py-1.5 text-center cursor-pointer select-none transition-[transform,box-shadow,background-color,border-color] duration-150 ease-out disabled:pointer-events-none disabled:opacity-50 min-[360px]:gap-1 min-[360px]:px-1.5 min-[360px]:py-2';
 
@@ -215,6 +227,7 @@ function shakePayloadToAnalysis(payload) {
 
 export default function ManualEntryPage({
   userId,
+  userEmail = null,
   apiBaseUrl,
   captureId,
   imageBase64,
@@ -237,6 +250,7 @@ export default function ManualEntryPage({
   }, [nutritionRefresh, userId, apiBaseUrl]);
 
   const creditsEnabled = isFlagEnabled('ff.ai-credits');
+  const goodHabitEnabled = isFlagEnabled('ff.good-habit');
   const [credits, setCredits] = useState(null);
   // Start loading=true so first paint never flashes green "Analyze" before status returns.
   const [creditsLoading, setCreditsLoading] = useState(() => isFlagEnabled('ff.ai-credits'));
@@ -260,6 +274,29 @@ export default function ManualEntryPage({
   const [workoutTodayLoading, setWorkoutTodayLoading] = useState(false);
   // True after light watch-calories has returned once (prefetch or open).
   const workoutSummaryReadyRef = useRef(false);
+  // BMI 19–23 range from profile height — warmed so share caption is sync on Save.
+  const idealWeightRangeRef = useRef(null);
+
+  useEffect(() => {
+    if (!userEmail) {
+      idealWeightRangeRef.current = null;
+      return undefined;
+    }
+    const cached = getCachedProfile(userEmail);
+    if (cached?.data?.height) {
+      idealWeightRangeRef.current = computeIdealWeightRange(cached.data.height);
+    }
+    let cancelled = false;
+    getProfile(userEmail)
+      .then((res) => {
+        if (cancelled) return;
+        idealWeightRangeRef.current = computeIdealWeightRange(res?.data?.height);
+      })
+      .catch(() => {
+        // Non-critical: WhatsApp caption omits Ideal when height is unavailable.
+      });
+    return () => { cancelled = true; };
+  }, [userEmail]);
 
   // Capture row must exist before LOG AS / AI can finish. Upload runs in the
   // background — UI stays interactive; taps are queued until captureId arrives.
@@ -467,6 +504,11 @@ export default function ManualEntryPage({
       setActiveForm(MANUAL_LOG_CATEGORY.HEALTHY_SNACKS);
       return;
     }
+    if (next.kind === 'good-habit-picker') {
+      setFoodEntryMeta(null);
+      setActiveForm(MANUAL_LOG_CATEGORY.GOOD_HABIT);
+      return;
+    }
     setFoodEntryMeta(null);
     setActiveForm(next.formId);
   }, []);
@@ -561,19 +603,19 @@ export default function ManualEntryPage({
   const handleFoodSave = async (manualData) => {
     const analysis = buildAnalysisFromManualFood(manualData);
     const foodName = analysis?.foods?.[0]?.name || manualData?.name || 'Food';
-    const itemNames = extractFoodItemDisplayNames(analysis);
+    const foodItems = extractFoodShareItems(analysis);
     const n = analysis?.total || analysis?.foods?.[0]?.nutrition || {};
     // Snacks & Soups: name + kcal only (no P/C/F/Fiber/GI). Full food keeps macros.
     const fromSnacks = Boolean(foodEntryMeta?.fromHealthySnacks);
     const activityCaption = fromSnacks
       ? buildDiaryShareSuffix('food', {
           foodName,
-          itemNames,
+          foodItems,
           calories: n.calories ?? 0,
         })
       : buildDiaryShareSuffix('food', {
           foodName,
-          itemNames,
+          foodItems,
           calories: n.calories ?? 0,
           protein: n.protein ?? 0,
           carbs: n.carbs ?? 0,
@@ -612,6 +654,8 @@ export default function ManualEntryPage({
   const handleWeightSave = ({ weightValue, unit, bmr }) => {
     // Share caption uses cache only — do not block Save on a network round-trip.
     const previousWeight = getCachedLatestWeight(userId)?.value ?? null;
+    const idealRange = idealWeightRangeRef.current
+      || computeIdealWeightRange(getCachedProfile(userEmail)?.data?.height);
     const capId = captureId;
     const uid = userId;
     const img = imageBase64;
@@ -622,6 +666,7 @@ export default function ManualEntryPage({
       activityCaption: buildDiaryShareSuffix('weight', {
         previousWeight,
         currentWeight: weightValue,
+        idealWeight: pickIdealWeightKg(weightValue, idealRange),
       }),
     });
 
@@ -745,6 +790,29 @@ export default function ManualEntryPage({
     });
   };
 
+  const handleGoodHabitSave = async ({
+    habitType,
+    imageBase64: habitImage,
+    shareImage,
+  }) => {
+    // Persist first, then refresh score, then leave — exiting early left Home
+    // on the pre-save total until a full page reload.
+    await saveGoodHabit({
+      userId,
+      captureId,
+      habitType,
+      notes: '',
+      imageBase64: habitImage,
+      clientTimestamp: originalCapturedAt || null,
+    });
+    refreshAfterPersist('manual-good-habit-persisted');
+    onToast?.('Good Habit saved to Diary');
+    exit({
+      activityCaption: buildDiaryShareSuffix('good-habit', { habitType }),
+      shareImage: shareImage || habitImage || imageBase64,
+    });
+  };
+
   // Don't treat credits as available until status has loaded — avoids green CTA flash then lock.
   const creditsChecking = creditsEnabled && creditsLoading;
   const outOfCredits = creditsEnabled && creditUi.phase === 'exhausted';
@@ -821,8 +889,8 @@ export default function ManualEntryPage({
               Log as
             </p>
           </div>
-          <div className="grid w-full flex-1 grid-cols-3 auto-rows-[minmax(4.25rem,1fr)] gap-1.5 min-h-[12.5rem] min-[360px]:min-h-[14rem] min-[360px]:gap-2 sm:min-h-[15rem] sm:gap-2.5">
-            {CATEGORIES.map(({ id, Icon, src, label, isImgIcon }) => {
+          <div className="grid w-full flex-1 grid-cols-3 auto-rows-[minmax(4.25rem,1fr)] gap-1.5 min-h-[16rem] min-[360px]:min-h-[18rem] min-[360px]:gap-2 sm:min-h-[20rem] sm:gap-2.5">
+            {CATEGORIES.filter((cat) => goodHabitEnabled || cat.id !== MANUAL_LOG_CATEGORY.GOOD_HABIT).map(({ id, Icon, src, label, isImgIcon }) => {
               // iOS WebView often blanks custom emoji SVGs — use Lucide for Workout.
               const useLucideOnIos = id === MANUAL_LOG_CATEGORY.SMARTWATCH && isIOS() && Icon;
               const isPending = pendingLogAsId === id;
@@ -980,6 +1048,12 @@ export default function ManualEntryPage({
           setActiveForm(null);
         }}
         onPick={handleHealthySnacksPick}
+      />
+      <GoodHabitFlow
+        isOpen={activeForm === MANUAL_LOG_CATEGORY.GOOD_HABIT}
+        onClose={() => setActiveForm(null)}
+        capturedPreview={previewSrc}
+        onSave={handleGoodHabitSave}
       />
       <ManualWeightEntryModal
         isOpen={activeForm === MANUAL_LOG_CATEGORY.WEIGHT}

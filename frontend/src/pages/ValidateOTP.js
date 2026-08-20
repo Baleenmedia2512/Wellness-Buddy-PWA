@@ -7,6 +7,8 @@ import useWebOtp from '../features/user/hooks/useWebOtp';
 import storage from '../shared/lib/storage';
 import { debugLog } from '../shared/utils/logger';
 import NativeInput, { otpAutoCompleteForCell, otpMaxLengthForCell } from '../shared/components/NativeInput.jsx';
+import { getStatus } from '../features/user/services/user.api.js';
+import { isAppUpdateRequiredResponse } from '../shared/services/appVersionEnforce.client.js';
 
 const API_BASE = process.env.REACT_APP_API_BASE_URL;
 
@@ -97,14 +99,13 @@ const ValidateOTP = ({ onClose, onSuccess, onLogout, isReactivationFlow = false,
       }
 
       debugLog("\ud83d\udfe6 [ValidateOTP] Fetching user status from API...");
-      const response = await axios.get(
-        `${API_BASE}/api/user/status?email=${encodeURIComponent(userEmail)}`
-      );
+      const data = await getStatus(userEmail);
+      if (isAppUpdateRequiredResponse(data)) return;
 
-      debugLog("\ud83d\udfe6 [ValidateOTP] API Response:", response.data);
+      debugLog("\ud83d\udfe6 [ValidateOTP] API Response:", data);
 
-      if (response.data.pendingRequest) {
-        const request = response.data.pendingRequest;
+      if (data.pendingRequest) {
+        const request = data.pendingRequest;
         debugLog("\ud83d\udfe6 [ValidateOTP] Request info loaded:", request);
         setRequestInfo(request);
       } else if (isReactivationFlowRef.current) {

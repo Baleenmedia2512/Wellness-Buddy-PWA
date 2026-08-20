@@ -2,6 +2,7 @@
 import { getApiBaseUrl } from '../../../config/api.config.js';
 import { getProfile } from './user.api.js';
 import cacheManager from '../../../shared/services/cacheManager.js';
+import { apiFetch } from '../../../shared/services/apiFetch.js';
 
 const DEMO_ACCOUNTS = ['testereasywork@gmail.com'];
 export const isDemoAccount = (email) =>
@@ -29,7 +30,7 @@ export const fetchProfile = async (email) => {
 
 export const saveProfile = async (payload) => {
   const apiBase = getApiBaseUrl();
-  const res = await fetch(`${apiBase}/api/user/profile`, {
+  const res = await apiFetch(`${apiBase}/api/user/profile`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),

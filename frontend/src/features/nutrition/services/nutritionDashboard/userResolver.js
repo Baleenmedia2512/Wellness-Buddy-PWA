@@ -3,6 +3,8 @@
 //   - Returns the literal 'DEMO_USER' sentinel for demo accounts.
 //   - Returns null on failure (does not throw) so the dashboard can render empty.
 
+import { apiFetch } from '../../../../shared/services/apiFetch.js';
+
 const DEMO_ACCOUNTS = ['testereasywork@gmail.com'];
 
 export const isDemoAccount = (email) =>
@@ -14,7 +16,7 @@ export async function resolveDashboardUserId(user, apiBaseUrl) {
   if (!user?.email) return null;
 
   try {
-    const res = await fetch(`${apiBaseUrl}/api/user/lookup`, {
+    const res = await apiFetch(`${apiBaseUrl}/api/user/lookup`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email: user.email }),

@@ -12,6 +12,7 @@ export const MANUAL_LOG_CATEGORY = Object.freeze({
   FOOD: 'food',
   HEALTHY_SNACKS: 'healthy-snacks',
   SMARTWATCH: 'smartwatch',
+  GOOD_HABIT: 'good-habit',
 });
 
 /** Sub-options under Snacks & Soups — each opens the food search flow. */
@@ -20,6 +21,18 @@ export const HEALTHY_SNACKS_SUBTYPE = Object.freeze({
   SALADS: 'salads',
   SPROUTS: 'sprouts',
 });
+
+export const GOOD_HABIT_SUBTYPE = Object.freeze({
+  IMAGE_NOTES: 'image_notes',
+});
+
+export const GOOD_HABIT_SUBOPTIONS = Object.freeze([
+  {
+    id: GOOD_HABIT_SUBTYPE.IMAGE_NOTES,
+    label: 'Good Habit Photo',
+    hint: 'Upload a photo of your good habit',
+  },
+]);
 
 export const HEALTHY_SNACKS_SUBOPTIONS = Object.freeze([
   {
@@ -67,12 +80,15 @@ export function getHealthySnacksSuboption(id) {
 /**
  * After tapping a Log-as tile: either open a form directly, or the snacks picker.
  * @param {string} categoryId
- * @returns {{ kind: 'form', formId: string } | { kind: 'healthy-snacks-picker' } | null}
+ * @returns {{ kind: 'form', formId: string } | { kind: 'healthy-snacks-picker' } | { kind: 'good-habit-picker' } | null}
  */
 export function resolveManualLogCategoryClick(categoryId) {
   if (!isManualLogCategory(categoryId)) return null;
   if (categoryId === MANUAL_LOG_CATEGORY.HEALTHY_SNACKS) {
     return { kind: 'healthy-snacks-picker' };
+  }
+  if (categoryId === MANUAL_LOG_CATEGORY.GOOD_HABIT) {
+    return { kind: 'good-habit-picker' };
   }
   return { kind: 'form', formId: categoryId };
 }

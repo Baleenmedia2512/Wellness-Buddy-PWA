@@ -6,6 +6,7 @@ import CustomAlertModal from '../../../shared/components/CustomAlertModal';
 import { Geolocation } from '@capacitor/geolocation';
 import { debugLog } from '../../../shared/utils/logger.js';
 import { loadGoogleMaps } from '../services/googleMapsLoader';
+import { apiFetch } from '../../../shared/services/apiFetch.js';
 
 const NutritionCenterRegistration = ({ user, onBack, initialCenter }) => {
   const [centerName, setCenterName] = useState('');
@@ -423,7 +424,7 @@ const NutritionCenterRegistration = ({ user, onBack, initialCenter }) => {
 
   // Get user ID helper
   const getUserId = async (email) => {
-    const response = await fetch(
+    const response = await apiFetch(
       `${apiBaseUrl}/api/user/lookup?email=${encodeURIComponent(email)}`
     );
     const data = await response.json();

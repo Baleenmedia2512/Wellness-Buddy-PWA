@@ -6,6 +6,7 @@
 import React from 'react';
 import { Bell } from 'lucide-react';
 import { useBusinessToday } from '../../../shared/hooks/useBusinessToday';
+import { getDeviceTimezoneIana } from '../../../shared/utils/deviceTimezone';
 import storage from '../../../shared/lib/storage';
 import {
   getDetoxReminder,
@@ -15,11 +16,16 @@ import {
 
 /**
  * @param {object} props
- * @param {string} [props.today] YYYY-MM-DD override (tests). Defaults to IST today
- *   or `localStorage.marathon.testDate` when set for QA.
+ * @param {string} [props.today] YYYY-MM-DD override (tests). Defaults to the
+ *   signed-in user's business date (Qatar / USA / India) or
+ *   `localStorage.marathon.testDate` when set for QA.
+ * @param {object|null} [props.user] Signed-in user (`timezone` / `timezoneIana`).
  */
-export default function DetoxDayReminder({ today: todayOverride } = {}) {
-  const liveToday = useBusinessToday();
+export default function DetoxDayReminder({ today: todayOverride, user = null } = {}) {
+  const timezoneSource = (user?.timezone || user?.timezoneIana)
+    ? user
+    : getDeviceTimezoneIana();
+  const liveToday = useBusinessToday(timezoneSource);
   const today = resolveMarathonToday(
     liveToday,
     todayOverride || storage.get(MARATHON_TEST_DATE_STORAGE_KEY),

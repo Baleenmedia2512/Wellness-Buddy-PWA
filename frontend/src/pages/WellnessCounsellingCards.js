@@ -170,17 +170,6 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
     preloadBodyParamsShareAssets();
   }, [isBodyParamsFormOpen]);
 
-  // Seed editable header Venue once from the newest card that has one.
-  useEffect(() => {
-    if (headerVenueInitializedRef.current) return;
-    const venue = bodyParamsCards
-      .map((c) => String(c.locationName || '').trim())
-      .find(Boolean);
-    if (!venue) return;
-    headerVenueInitializedRef.current = true;
-    setHeaderVenue(venue);
-  }, [bodyParamsCards]);
-
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(searchQuery.trim()), 300);
     return () => clearTimeout(t);
@@ -452,6 +441,7 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
       const userId = await getUserId(user.email);
       const fresh = await getBodyParamsCard(userId, card.id);
       const merged = {
+        ...card,
         ...fresh,
         phoneNumber: fresh.phoneNumber ?? card.phoneNumber ?? null,
         locationName: fresh.locationName ?? card.locationName ?? null,
@@ -521,39 +511,38 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
   return (
     <div className="h-screen bg-gradient-to-br from-green-50 to-blue-50 overflow-hidden flex flex-col">
       <div className="flex-shrink-0 bg-white shadow-sm">
-        <div className="px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="min-w-0 flex-1">
-              <h1 className="text-lg font-bold text-gray-900">Body Composition Metrics</h1>
-              <div className="flex items-center gap-2 mt-0.5 min-w-0">
-                <p className="text-xs text-gray-500 flex-shrink-0">
-                  {pagination.totalRecords || bodyParamsCards.length} Cards
-                </p>
-                <span className="text-xs text-gray-400 flex-shrink-0">·</span>
-                <label className="text-xs text-gray-500 flex-shrink-0" htmlFor="bpc-header-venue">
-                  Venue:
-                </label>
-                <input
-                  id="bpc-header-venue"
-                  type="text"
-                  value={headerVenue}
-                  onChange={(e) => {
-                    headerVenueInitializedRef.current = true;
-                    setHeaderVenue(e.target.value);
-                  }}
-                  placeholder="e.g. Chennai"
-                  className="min-w-0 flex-1 text-xs text-gray-800 border border-gray-200 rounded-md px-2 py-0.5 focus:outline-none focus:ring-1 focus:ring-green-500 bg-white"
-                />
-              </div>
-            </div>
+        <div className="px-4 py-3">
+          <div className="flex items-center justify-between gap-3">
+            <h1 className="text-lg font-bold text-gray-900 min-w-0">Body Composition Metrics</h1>
+            <button
+              onClick={handleRefresh}
+              disabled={refreshing}
+              className="p-2 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50 flex-shrink-0"
+            >
+              <RefreshCw size={20} className={refreshing ? 'animate-spin' : ''} />
+            </button>
           </div>
-          <button
-            onClick={handleRefresh}
-            disabled={refreshing}
-            className="p-2 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50 flex-shrink-0"
-          >
-            <RefreshCw size={20} className={refreshing ? 'animate-spin' : ''} />
-          </button>
+          <div className="mt-1 flex w-full min-w-0 flex-nowrap items-center gap-1.5 overflow-x-auto py-0.5 sm:gap-2">
+            <label
+              className="whitespace-nowrap text-[11px] text-gray-500 sm:text-xs"
+              htmlFor="bpc-header-venue"
+            >
+              Checked At:
+            </label>
+            <input
+              id="bpc-header-venue"
+              type="text"
+              value={headerVenue}
+              onChange={(e) => {
+                headerVenueInitializedRef.current = true;
+                setHeaderVenue(e.target.value);
+              }}
+              className="h-7 w-20 min-w-[4.5rem] flex-shrink-0 rounded-md border border-gray-200 bg-white px-2 text-xs text-gray-800 outline-none focus:border-green-500 focus:ring-1 focus:ring-inset focus:ring-green-500 sm:w-28 md:w-36"
+            />
+            <p className="ml-auto flex-shrink-0 whitespace-nowrap text-[11px] text-gray-500 sm:text-xs">
+              {pagination.totalRecords || bodyParamsCards.length} Cards
+            </p>
+          </div>
         </div>
 
         <div className="px-4 pb-3">

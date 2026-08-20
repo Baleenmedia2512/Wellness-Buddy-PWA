@@ -32,7 +32,9 @@ import {
   Droplet,
   Leaf,
   Trash2,
+  ChevronRight,
 } from "lucide-react";
+import FoodItemNutritionModal from "./FoodItemNutritionModal";
 import BathroomScaleIcon from "../../../shared/components/icons/BathroomScaleIcon";
 import { debugLog } from '../../../shared/utils/logger.js';
 
@@ -63,6 +65,7 @@ const EditableFoodItem = forwardRef(
   ) => {
     // Display/Edit mode toggle
     const [isEditing, setIsEditing] = useState(false);
+    const [showItemFacts, setShowItemFacts] = useState(false);
 
     // Search state
     const [searchQuery, setSearchQuery] = useState("");
@@ -1132,6 +1135,7 @@ const EditableFoodItem = forwardRef(
       const initial = (foodItem.name || '?')[0].toUpperCase();
 
       return (
+        <>
         <div className="relative bg-white rounded-2xl border border-gray-100 shadow-md hover:shadow-lg transition-all duration-200 overflow-hidden">
           {/* Top accent bar - colour-coded by GI / calorie density */}
           <div className={`h-1 w-full ${accentColor}`} />
@@ -1148,8 +1152,20 @@ const EditableFoodItem = forwardRef(
               {initial}
             </button>
 
-            {/* Content */}
-            <div className="flex-1 min-w-0">
+            {/* Content — tap opens this item's nutrition facts (not meal totals) */}
+            <div
+              role="button"
+              tabIndex={0}
+              onClick={() => setShowItemFacts(true)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  setShowItemFacts(true);
+                }
+              }}
+              className="flex-1 min-w-0 text-left cursor-pointer"
+              aria-label={`View nutrition facts for ${foodItem.name}`}
+            >
               {/* Row 1: name + primary metric */}
               <div className="flex items-start justify-between gap-2">
                 <span className="font-bold text-gray-900 text-[15px] leading-tight">
@@ -1164,6 +1180,7 @@ const EditableFoodItem = forwardRef(
                       ✓ Auto
                     </span>
                   )}
+                  <ChevronRight className="inline-block w-4 h-4 text-gray-300 ml-0.5 align-text-bottom" aria-hidden="true" />
                 </span>
                 <div className="flex-shrink-0 text-right">
                   <span className={`font-extrabold text-lg leading-none ${isWaterItem ? 'text-sky-500' : isAfreshItem ? 'text-orange-500' : 'text-orange-500'}`}>
@@ -1296,6 +1313,13 @@ const EditableFoodItem = forwardRef(
           </div>
           <style>{`@keyframes countdown-shrink { from { transform: scaleX(1); } to { transform: scaleX(0); } }`}</style>
         </div>
+        {showItemFacts && (
+          <FoodItemNutritionModal
+            item={foodItem}
+            onClose={() => setShowItemFacts(false)}
+          />
+        )}
+        </>
       );
     }
 

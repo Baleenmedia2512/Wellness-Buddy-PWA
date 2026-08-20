@@ -170,3 +170,27 @@ export async function getBodyParamsCard(coachId, cardId) {
   }
   return result.data;
 }
+
+/**
+ * Dated body-parameter snapshots for Reports Trend.
+ * @param {string|number} userId
+ * @param {{ viewerUserId?: string|number }} [opts]
+ * @returns {Promise<{ ok: boolean, status: number, data: object }>}
+ */
+export async function fetchBodyParamsCardHistory(userId, { viewerUserId } = {}) {
+  const params = new URLSearchParams({ userId: String(userId) });
+  params.set('_t', String(Date.now()));
+  if (viewerUserId != null && viewerUserId !== '') {
+    params.set('viewerUserId', String(viewerUserId));
+  }
+  const response = await CapacitorHttp.get({
+    url: `${getApiBaseUrl()}/api/body-parameters-card/history?${params}`,
+    headers: { 'Cache-Control': 'no-cache' },
+  });
+  const result = response.data;
+  return {
+    ok: response.status >= 200 && response.status < 300 && result?.ok === true,
+    status: response.status,
+    data: result,
+  };
+}

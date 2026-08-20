@@ -37,21 +37,23 @@ export function buildOnboardingShareUrl(apiBaseUrl) {
 
 /**
  * Caption for WhatsApp when the body-parameters card IMAGE is the attachment.
- * Uses the creating coach's name and the card Venue (locationName).
+ * Greets the member, names the creating coach, and mentions the card Venue.
  * No app/share URL — the metrics card image is the message payload.
  *
- * @param {string} coachName - coach who created the BCP
+ * @param {string} userName - member name recorded on the card
  * @param {string} [venue] - venue / location entered on the card
+ * @param {string} [coachName] - coach who created the card
  * @returns {string}
  */
-export function buildShareCaptionForImage(coachName, venue) {
-  const shortName = String(coachName || '').trim().split(/\s+/).filter(Boolean)[0] || 'your coach';
+export function buildShareCaptionForImage(userName, venue, coachName) {
+  const member = String(userName || '').trim() || 'there';
+  const coach = String(coachName || '').trim().split(/\s+/).filter(Boolean)[0] || 'your coach';
   const place = String(venue || '').trim();
   const meetLine = place
-    ? `It was good to meet you at the fat camp in ${place}. I'm enclosing your body composition metrics here with.`
-    : `It was good to meet you at the fat camp. I'm enclosing your body composition metrics here with.`;
+    ? `It was good to meet you at the fat camp in ${place}. I'm enclosing your body composition metrics herewith.`
+    : `It was good to meet you at the fat camp. I'm enclosing your body composition metrics herewith.`;
   return [
-    `Hi, this is ${shortName}.`,
+    `Hi ${member}, This is ${coach}.`,
     '',
     meetLine,
   ].join('\n');
@@ -60,10 +62,11 @@ export function buildShareCaptionForImage(coachName, venue) {
 /**
  * Build plain-text WhatsApp message (text-only fallback — no image).
  *
- * @param {string} coachName
+ * @param {string} userName
  * @param {string} [venue]
+ * @param {string} [coachName]
  * @returns {string}
  */
-export function buildShareText(coachName, venue) {
-  return buildShareCaptionForImage(coachName, venue);
+export function buildShareText(userName, venue, coachName) {
+  return buildShareCaptionForImage(userName, venue, coachName);
 }

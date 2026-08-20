@@ -4,7 +4,7 @@
  * Two marathons every month: start on calendar day 1 and day 15.
  * Each runs Day 0 (start) through Day 10 (last day).
  * Home reminders fire one calendar day before:
- *   - Day 0 → "Tomorrow is Marathon Day 1"
+ *   - Day 0 → "Tomorrow is Marathon Day 0"
  *   - Detox Days 4 and 9 → "Tomorrow is Detox Day"
  */
 
@@ -26,8 +26,8 @@ export const DETOX_REMINDER_TITLE = 'Tomorrow is Detox Day';
 export const DETOX_REMINDER_SUBTITLE = 'Prepare for your Detox Day tomorrow.';
 
 /** User-facing label for Marathon Day 0 (eve-of-start reminder). */
-export const MARATHON_START_REMINDER_TITLE = 'Tomorrow is Marathon Day 1';
-export const MARATHON_START_REMINDER_SUBTITLE = 'Prepare for Marathon Day 1 tomorrow.';
+export const MARATHON_START_REMINDER_TITLE = 'Tomorrow is Marathon Day 0';
+export const MARATHON_START_REMINDER_SUBTITLE = 'Prepare for Marathon Day 0 tomorrow.';
 
 /** DevTools override: `localStorage.setItem('marathon.testDate', 'YYYY-MM-DD')` then refresh. */
 export const MARATHON_TEST_DATE_STORAGE_KEY = 'marathon.testDate';
@@ -162,7 +162,7 @@ export function getMarathonCalendarState(ymd) {
 }
 
 /**
- * Home-screen copy for tomorrow's Detox Day or Marathon Day 1.
+ * Home-screen copy for tomorrow's Detox Day or Marathon Day 0.
  * Returns null on every other day (including Detox Days / Day 0 themselves).
  *
  * @param {unknown} ymd YYYY-MM-DD

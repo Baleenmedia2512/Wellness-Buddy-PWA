@@ -38,6 +38,15 @@ export const STORAGE_IMAGE_JPEG_QUALITY = 0.65;
 /** Storage thumb: max decoded JPEG size (~22 KB). */
 export const STORAGE_IMAGE_TARGET_BYTES = 22 * 1024;
 
+/** Good Habit Manual Log images: ~30 KB after compression. */
+export const GOOD_HABIT_IMAGE_TARGET_BYTES = 30 * 1024;
+
+/** Good Habit share/storage max side length (px). */
+export const GOOD_HABIT_IMAGE_MAX_DIMENSION_PX = 480;
+
+/** Good Habit notes field. */
+export const GOOD_HABIT_NOTES_MAX_LEN = 200;
+
 /** Default network request timeout (ms). */
 export const DEFAULT_FETCH_TIMEOUT_MS = 15_000;
 

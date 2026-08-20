@@ -254,9 +254,9 @@ export function validateMyTestimonial(query) {
 
 // ─── Video validators ─────────────────────────────────────────────────────────
 
-// Binary size limits for direct storage uploads (not base64)
-export const MAX_HEALTH_VIDEO_BYTES   = 20 * 1024 * 1024;
-export const MAX_BUSINESS_VIDEO_BYTES = 40 * 1024 * 1024;
+// Binary size limits for direct storage uploads (not base64).
+export const MAX_HEALTH_VIDEO_BYTES   = 15 * 1024 * 1024;
+export const MAX_BUSINESS_VIDEO_BYTES = 15 * 1024 * 1024;
 
 function validateOptionalVideoPath(value, fieldName, userId, slot) {
   if (value === undefined || value === null || value === '') return undefined;

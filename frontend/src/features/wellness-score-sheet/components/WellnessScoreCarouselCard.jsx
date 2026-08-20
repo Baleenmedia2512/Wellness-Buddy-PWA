@@ -5,6 +5,7 @@ import CarouselPeriodHeader from '../../nutrition/components/dashboard/carousel/
 import { useBusinessToday } from '../../../shared/hooks/useBusinessToday';
 import { useWellnessScore } from '../hooks/useWellnessScore';
 import { prefetchTimeWindows } from '../hooks/useTimeWindows';
+import { pickLiveDailyScore } from '../domain/historyPaint';
 
 /** Ring diameter + stroke that fit carousel card width on small phones... */
 function useResponsiveRing() {
@@ -62,9 +63,15 @@ export default function WellnessScoreCarouselCard({
     import('../components/WellnessScorePage.jsx');
   }, []);
 
-  // Prefer live daily score when enabled (fixes Home stuck behind sheet).
-  // Fall back to parent payload while live is still loading on first paint.
-  const data = (liveEnabled && live.data) ? live.data : (scoreDataProp ?? live.data);
+  // Prefer live daily score when it is actually for this pill's date.
+  // Do not fall back to the previous Today/Yesterday total while /daily loads.
+  const data = liveEnabled
+    ? pickLiveDailyScore({
+      liveScore: live.data,
+      parentScore: scoreDataProp,
+      dateYmd: liveScoreDate,
+    })
+    : (scoreDataProp ?? live.data);
   const loading = liveEnabled
     ? (Boolean(live.loading) && !data)
     : (loadingProp ?? live.loading);

@@ -279,7 +279,7 @@ describe('buildDiaryShareSuffix', () => {
       .toBe('Consumed: 200 mL water');
   });
 
-  test('food suffix is item names and total kcal only', () => {
+  test('food suffix is total kcal then each item on its own line', () => {
     expect(buildDiaryShareSuffix('food', {
       foodName: 'White Rice+4more',
       calories: 875,
@@ -288,36 +288,79 @@ describe('buildDiaryShareSuffix', () => {
       fat: 12,
       fiber: 16,
       glycemicIndex: 66,
-    })).toBe('White Rice+4more, 875 kcal');
+    })).toBe('875 kcal\nWhite Rice+4more,');
   });
 
-  test('food suffix lists every item name plus total kcal', () => {
+  test('food suffix lists kcal first then every item name with GI band', () => {
     expect(buildDiaryShareSuffix('food', {
       foodName: 'White Rice+2more',
-      itemNames: ['White Rice', 'Sambar', 'Onion'],
+      foodItems: [
+        { name: 'White Rice', glycemicIndex: 73 },
+        { name: 'Sambar', glycemicIndex: 50 },
+        { name: 'Onion', glycemicIndex: 10 },
+      ],
       calories: 875,
       protein: 28,
       carbs: 160,
       fat: 12,
       fiber: 16,
       glycemicIndex: 66,
-    })).toBe('White Rice, Sambar, Onion, 875 kcal');
+    })).toBe('875 kcal\nWhite Rice - GI 73 h\nSambar - GI 50 l\nOnion - GI 10 l');
+  });
+
+  test('food suffix keeps item name with comma when GI is missing', () => {
+    expect(buildDiaryShareSuffix('food', {
+      foodName: 'White Rice+2more',
+      itemNames: ['White Rice', 'Sambar', 'Onion'],
+      calories: 875,
+    })).toBe('875 kcal\nWhite Rice,\nSambar,\nOnion,');
   });
 
   test('weight suffix includes previous, current, and arrow', () => {
     expect(buildDiaryShareSuffix('weight', {
       previousWeight: 55.7,
       currentWeight: 55.6,
-    })).toBe('Previous: 55.7 kg, Current: 55.6 kg ⬇️');
+    })).toBe('Prev: 55.7 kg\nCurr: 55.6 kg ⬇️');
 
     expect(buildDiaryShareSuffix('weight', {
       previousWeight: 70,
       currentWeight: 71,
-    })).toBe('Previous: 70 kg, Current: 71 kg ⬆️');
+    })).toBe('Prev: 70 kg\nCurr: 71 kg ⬆️');
 
     expect(buildDiaryShareSuffix('weight', {
       currentWeight: 55.6,
-    })).toBe('weight 55.6 kg');
+    })).toBe('Curr: 55.6 kg');
+  });
+
+  test('weight suffix lists Ideal, Prev, Curr with arrow on current', () => {
+    expect(buildDiaryShareSuffix('weight', {
+      previousWeight: 73.65,
+      currentWeight: 73.4,
+      idealWeight: 73.6,
+    })).toBe('Ideal: 73.6 kg\nPrev: 73.65 kg\nCurr: 73.4 kg ⬇️');
+
+    expect(buildDiaryShareSuffix('weight', {
+      previousWeight: 73.4,
+      currentWeight: 72.9,
+      idealWeight: 73.7,
+    })).toBe('Ideal: 73.7 kg\nPrev: 73.4 kg\nCurr: 72.9 kg ⬇️');
+
+    expect(buildDiaryShareSuffix('weight', {
+      previousWeight: 72.9,
+      currentWeight: 72.85,
+      idealWeight: 73.7,
+    })).toBe('Ideal: 73.7 kg\nPrev: 72.9 kg\nCurr: 72.85 kg ⬇️');
+
+    expect(buildDiaryShareSuffix('weight', {
+      previousWeight: 73.4,
+      currentWeight: 74.1,
+      idealWeight: 73.7,
+    })).toBe('Ideal: 73.7 kg\nPrev: 73.4 kg\nCurr: 74.1 kg ⬆️');
+
+    expect(buildDiaryShareSuffix('weight', {
+      currentWeight: 55.6,
+      idealWeight: 62.4,
+    })).toBe('Ideal: 62.4 kg\nCurr: 55.6 kg');
   });
 
   test('workout suffix shows calories burnt so far today', () => {
@@ -341,6 +384,19 @@ describe('buildDiaryShareSuffix', () => {
     expect(buildDiaryShareSuffix('education', {
       session: 'Academy',
     })).toBe('Academy');
+  });
+
+  test('good-habit suffix is Good Habit, with notes when present', () => {
+    expect(buildDiaryShareSuffix('good-habit', {
+      habitType: 'image_notes',
+      notes: 'Morning walk',
+    })).toBe('Good Habit — Morning walk');
+    expect(buildDiaryShareSuffix('good-habit', {
+      habitType: 'image_notes',
+    })).toBe('Good Habit');
+    expect(buildDiaryShareSuffix('good-habit', {
+      habitType: 'before_after',
+    })).toBe('Good Habit');
   });
 
   test('shake suffix includes Formula 1, Shakemate, and Protein scoops', () => {
@@ -465,14 +521,14 @@ describe('resolveFoodRowPresentation', () => {
       foodData: {
         name: 'White Rice+2more',
         detailedItems: [
-          { name: 'White Rice', calories: 200 },
-          { name: 'Sambar', calories: 80 },
-          { name: 'Onion', calories: 20 },
+          { name: 'White Rice', calories: 200, nutrition: { glycemic_index: 73 } },
+          { name: 'Sambar', calories: 80, nutrition: { glycemic_index: 50 } },
+          { name: 'Onion', calories: 20, nutrition: { glycemic_index: 10 } },
         ],
         nutrition: { calories: 300, protein: 8, carbs: 50, fat: 4, fiber: 3, glycemic_index: 70 },
       },
       calories: 300,
     });
-    expect(view.shareText).toBe('White Rice, Sambar, Onion, 300 kcal');
+    expect(view.shareText).toBe('300 kcal\nWhite Rice - GI 73 h\nSambar - GI 50 l\nOnion - GI 10 l');
   });
 });

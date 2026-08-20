@@ -26,6 +26,18 @@ describe('extractFoodListSummary', () => {
     assert.equal(summary.activityType, 'food');
     assert.equal(summary.items.length, 1);
     assert.equal(summary.items[0].calories, 63);
+    assert.equal(summary.items[0].glycemicIndex, null);
+  });
+
+  it('includes per-item GI from nutrition.glycemic_index', () => {
+    const summary = extractFoodListSummary({
+      foods: [
+        { name: 'Masala Dosa', calories: 400, nutrition: { glycemic_index: 65.4 } },
+        { name: 'Ragi Dosa', calories: 200, glycemic_index: 45 },
+      ],
+    }, null);
+    assert.equal(summary.items[0].glycemicIndex, 65);
+    assert.equal(summary.items[1].glycemicIndex, 45);
   });
 
   it('lists every food name instead of a +N compact title', () => {

@@ -25,6 +25,8 @@ import { mergeLocationWithCapture } from '../captures/domain/location.fields.js'
 import logger from '../../shared/lib/logger.js';
 import { confirmPersisted, confirmFailed } from '../../shared/lib/ai-orchestration/AIAnalysisOrchestrator.js';
 import { getUserTimezoneIana } from '../user/domain/userTimezone.js';
+import { getSupabaseClient } from '../../utils/supabaseClient.js';
+import { assertViewerCanAccessMember } from '../../utils/reportingHierarchyService.js';
 
 function toNumberOrNull(v) {
   if (v === undefined || v === null || v === '') return null;
@@ -253,7 +255,8 @@ export async function saveWeight(input) {
   };
 }
 
-export async function getHistory({ userId, includeImage, limit = null, offset = 0 }) {
+export async function getHistory({ userId, includeImage, limit = null, offset = 0, viewerUserId = null }) {
+  await assertViewerCanAccessMember(getSupabaseClient(), viewerUserId, userId);
   const useLimit = Number.isFinite(limit) && limit > 0;
   const timezoneIana = await getUserTimezoneIana(userId);
 

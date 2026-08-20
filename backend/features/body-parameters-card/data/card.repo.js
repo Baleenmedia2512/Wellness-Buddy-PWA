@@ -3,6 +3,7 @@
  * The ONLY place in this feature that talks to Supabase.
  */
 import { getSupabaseClient } from '../../../utils/supabaseClient.js';
+import { assertViewerCanAccessMember } from '../../../utils/reportingHierarchyService.js';
 import { nowUtc } from '../../../shared/lib/datetime/index.js';
 import { canonicalPhoneForStorage, buildPhoneLookupVariants } from '../../auth/domain/phone-identity.rules.js';
 import {
@@ -669,6 +670,40 @@ function mapCardDetail(card, memberMeta = null) {
     hipCm: card.hip_cm,
     locationName: card.location_name,
   };
+}
+
+/**
+ * Dated body-parameter snapshots for one member (Reports Trend).
+ * Includes leftover cards when more than one still exists.
+ *
+ * @param {number} userId
+ * @returns {Promise<object[]>}
+ */
+export async function listCardHistoryByUserId(userId) {
+  const uid = parseInt(userId, 10);
+  if (!Number.isFinite(uid) || uid < 1) return [];
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from(TABLE)
+    .select(LIST_DETAIL_COLS)
+    .eq('user_id', uid)
+    .eq('is_deleted', false)
+    .order('recorded_date', { ascending: true })
+    .order('created_at', { ascending: true });
+  if (error) throw error;
+  return (data || []).map((row) => mapCardDetail(row));
+}
+
+/**
+ * Hierarchy-gated card history. Same viewer rule as /api/weight/history.
+ *
+ * @param {number} userId
+ * @param {number|null} viewerUserId
+ * @returns {Promise<object[]>}
+ */
+export async function listVisibleCardHistoryByUserId(userId, viewerUserId) {
+  await assertViewerCanAccessMember(getSupabaseClient(), viewerUserId, userId);
+  return listCardHistoryByUserId(userId);
 }
 
 async function fetchTeamMemberMetaByUserIds(supabase, userIds) {

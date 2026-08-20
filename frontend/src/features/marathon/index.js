@@ -11,3 +11,9 @@ export {
   MARATHON_START_REMINDER_TITLE,
   MARATHON_TEST_DATE_STORAGE_KEY,
 } from './domain/marathonCalendar.js';
+export {
+  getMarathonWhatsAppAdvanceNotice,
+  appendMarathonWhatsAppNotice,
+  MARATHON_WHATSAPP_ADVANCE_SPECIALS,
+} from './domain/marathonShareCaption.js';
+export { withMarathonWhatsAppNotice } from './withMarathonWhatsAppNotice.js';

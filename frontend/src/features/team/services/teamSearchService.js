@@ -7,6 +7,8 @@ import cacheManager from '../../../shared/services/cacheManager.js';
 import { hasValidProfileName } from '../../user/domain/profileCompleteness';
 import { getProfile } from '../../user/services/user.api.js';
 
+export { resolveTypedSearchQuery } from './teamSearchQuery.js';
+
 /** Coach-like roles that may search/view other team members. */
 const COACH_ROLES = new Set(['coach', 'coccoach', 'upline', 'admin', 'developer']);
 
@@ -194,6 +196,7 @@ export function formatMemberSubtitle(email, communityId) {
 
 /** Map the slim DB shape into the user-object shape the rest of the app expects. */
 export function toSelectedUser(member) {
+  const timezone = member.timezone || member.timezoneIana || null;
   return {
     id: member.userId,
     userId: member.userId,
@@ -205,5 +208,7 @@ export function toSelectedUser(member) {
     coachId: member.coachId ?? null,
     role: member.role,
     isSelf: member.isSelf,
+    timezone,
+    timezoneIana: timezone,
   };
 }

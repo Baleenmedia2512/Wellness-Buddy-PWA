@@ -12,6 +12,7 @@
  *   - captures_table                   (unknown rows  — ImageType = 'unknown', flag-gated)
  *   - captures_table                   (pending rows  — ImageType = 'pending', flag-gated;
  *                                       shown immediately after Phase-1 capture save)
+ *   - good_habits_table                (good-habit rows — flag-gated, ADR-0008)
  *
  * Each query is scoped to one user + one calendar day via
  * `applyDayFilterWidened()` (±1 day), then the service post-filters to the
@@ -165,4 +166,23 @@ export async function fetchCaptureImageById(captureId) {
   if (error) throw error;
   if (!data || data.IsDeleted === 1) return null;
   return data;
+}
+
+/**
+ * Good Habit rows for the day (ADR-0008). Images omitted — lazy thumb via
+ * GET /api/good-habits.
+ */
+export async function fetchGoodHabitsForDay(ownerUserId, date, timezoneIana = IANA_IST) {
+  const supabase = getSupabaseClient();
+  let query = supabase
+    .from('good_habits_table')
+    .select('"ID", "UserId", "HabitType", "Notes", "CaptureID", "CreatedAt"')
+    .eq('"UserId"', String(ownerUserId))
+    .eq('"IsDeleted"', 0);
+  query = applyDayFilterWidened(query, '"CreatedAt"', date, timezoneIana);
+  const { data, error } = await query
+    .order('"CreatedAt"', { ascending: false })
+    .limit(DIARY_LIST_SQL_CAP);
+  if (error) throw error;
+  return data || [];
 }

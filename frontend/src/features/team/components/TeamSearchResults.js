@@ -18,7 +18,7 @@ export default function TeamSearchResults({
   return (
     <div
       ref={dropdownRef}
-      className="absolute z-50 w-full mt-2 bg-white border border-gray-200 rounded-xl shadow-lg max-h-64 overflow-y-auto"
+      className="absolute z-[80] w-full mt-2 bg-white border border-gray-200 rounded-xl shadow-lg max-h-64 overflow-y-auto"
     >
       {loading ? (
         <div className="px-4 py-3 text-sm text-gray-500 flex items-center gap-2">
