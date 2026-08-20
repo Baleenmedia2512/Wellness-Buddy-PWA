@@ -3,6 +3,7 @@
  * GI uses available-carb weighting — keep in sync with frontend dailyStatsRules.
  */
 import { availableCarbohydrates } from '../mealGlycemicIndex.js';
+import { extractGlycemicIndexFromAnalysisData } from '../glycemicIndex.helpers.js';
 
 const MICRO_TOTAL_FIELDS = [
   ['totalVitaminA', 'TotalVitaminA'], ['totalVitaminC', 'TotalVitaminC'],
@@ -18,6 +19,28 @@ const MICRO_TOTAL_FIELDS = [
 
 const round2 = (n) => Math.round(n * 100) / 100;
 
+/**
+ * Prefer GlycemicIndex column; heal legacy rows from AnalysisData (same as Today path).
+ * @param {object} row
+ * @returns {number|null}
+ */
+export function resolveMealGiFromTotalsRow(row) {
+  const fromCol = Number(row?.GlycemicIndex);
+  if (Number.isFinite(fromCol) && fromCol > 0) return fromCol;
+
+  let data = row?.AnalysisData;
+  if (data == null) return null;
+  if (typeof data === 'string') {
+    try {
+      data = JSON.parse(data);
+    } catch {
+      return null;
+    }
+  }
+  if (!data || typeof data !== 'object') return null;
+  return extractGlycemicIndexFromAnalysisData(data);
+}
+
 export function emptyMealTotalsSeed() {
   return {
     totalCalories: 0, totalProtein: 0, totalCarbs: 0, totalFat: 0, totalFiber: 0,
@@ -32,9 +55,9 @@ export function emptyMealTotalsSeed() {
 export function addMealRowToTotals(t, r) {
   const mealCarbs = Number(r.TotalCarbs) || 0;
   const mealFiber = Number(r.TotalFiber) || 0;
-  const mealGi = Number(r.GlycemicIndex);
+  const mealGi = resolveMealGiFromTotalsRow(r);
   const availableCarbs = availableCarbohydrates(mealCarbs, mealFiber);
-  const includeGi = Number.isFinite(mealGi) && mealGi > 0 && availableCarbs > 0;
+  const includeGi = mealGi != null && availableCarbs > 0;
 
   const next = {
     totalCalories: t.totalCalories + (r.TotalCalories || 0),

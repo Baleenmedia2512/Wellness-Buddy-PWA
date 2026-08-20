@@ -30,6 +30,7 @@ import {
   addMealRowToTotals,
   roundMealTotals,
 } from './domain/meal-totals.js';
+import { MAX_STATS_RANGE_DAYS } from './food-corrections.validators.js';
 
 function inclusiveDayCount(startDate, endDate) {
   const a = Date.parse(`${startDate}T00:00:00Z`);
@@ -356,7 +357,7 @@ export async function getStats({
   totalsOnly = false,
   startDate = null,
   endDate = null,
-  maxRangeDays = 31,
+  maxRangeDays = MAX_STATS_RANGE_DAYS,
   viewerUserId = null,
 }) {
   if (userId === 'DEMO_USER') {

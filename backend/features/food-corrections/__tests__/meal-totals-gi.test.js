@@ -92,4 +92,28 @@ describe('meal totals GI aggregation', () => {
     const rounded = roundMealTotals(totals);
     assert.equal(rounded.averageGlycemicIndex, 55);
   });
+
+  it('heals GI from AnalysisData when GlycemicIndex column is null', () => {
+    let totals = emptyMealTotalsSeed();
+    totals = addMealRowToTotals(totals, {
+      TotalCalories: 300,
+      TotalProtein: 10,
+      TotalCarbs: 40,
+      TotalFiber: 0,
+      TotalFat: 5,
+      TotalSugar: 6,
+      TotalSodium: 0,
+      TotalCholesterol: 0,
+      GlycemicIndex: null,
+      AnalysisData: {
+        foods: [
+          { nutrition: { glycemic_index: 70, carbs: 30, fiber: 0 } },
+          { nutrition: { glycemic_index: 40, carbs: 10, fiber: 0 } },
+        ],
+      },
+    });
+    const rounded = roundMealTotals(totals);
+    // (70*30 + 40*10) / 40 = 62.5 → 63
+    assert.equal(rounded.averageGlycemicIndex, 63);
+  });
 });

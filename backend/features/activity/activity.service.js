@@ -15,7 +15,8 @@ import {
 import { ValidationError } from '../../shared/lib/ValidationError.js';
 
 const MAX_DAILY_STEPS = 50_000;
-const MAX_WATCH_RANGE_DAYS = 31;
+/** Keep aligned with food-corrections MAX_STATS_RANGE_DAYS (home custom ~6 months). */
+const MAX_WATCH_RANGE_DAYS = 186;
 
 function inclusiveDayCount(startDate, endDate) {
   const a = Date.parse(`${startDate}T00:00:00Z`);
