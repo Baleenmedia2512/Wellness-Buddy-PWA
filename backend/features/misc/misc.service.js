@@ -139,7 +139,10 @@ export async function detectFace({ mimeType, base64Data, userId = null, module =
       latencyMs = generated.latencyMs;
       await reportAiCallTelemetry({
         status: 'SUCCESS',
-        usage: result.response?.usageMetadata ?? {},
+        usage: {
+          ...(result.response?.usageMetadata ?? {}),
+          candidateMetadata: result.response?.candidates?.[0] ?? null
+        },
         latency: latencyMs,
         trace,
         parts,
