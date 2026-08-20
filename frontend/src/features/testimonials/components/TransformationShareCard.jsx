@@ -80,11 +80,32 @@ function transformationFileName(userName) {
   return `transformation-${String(userName || 'result').replace(/\s+/g, '-').toLowerCase()}.png`;
 }
 
-export async function shareTransformationCard(element, userName) {
+function buildTransformationShareText(userName, testimonial) {
+  const name = String(userName || 'Member').trim() || 'Member';
+  const bw = Number(testimonial?.beforeWeightKg ?? 0);
+  const aw = Number(testimonial?.afterWeightKg ?? 0);
+  const parts = [name, 'Before vs After'];
+
+  if (bw > 0 && aw > 0) {
+    parts.push(`${bw} kg → ${aw} kg`);
+    const diff = Math.abs(aw - bw).toFixed(1);
+    const verb = testimonial?.goalType === 'gain' ? 'Gained' : 'Lost';
+    const duration = String(testimonial?.durationText || '').trim();
+    parts.push(duration ? `${verb} ${diff} kgs in ${duration}` : `${verb} ${diff} kgs`);
+  } else if (bw > 0) {
+    parts.push(`Before ${bw} kg`);
+  } else if (aw > 0) {
+    parts.push(`After ${aw} kg`);
+  }
+
+  return parts.join(' · ');
+}
+
+export async function shareTransformationCard(element, userName, testimonial = null) {
   if (!element) throw new Error('Transformation card is not ready');
   await captureAndShare(element, {
     title: 'My Wellness Transformation',
-    text: `${userName || 'Member'} · Wellness Valley Transformation`,
+    text: buildTransformationShareText(userName, testimonial),
     fileName: transformationFileName(userName),
   });
 }
@@ -97,6 +118,7 @@ export async function downloadTransformationCardImage(element, userName) {
 
 function VerifiedTick() {
   const half = TICK_SIZE / 2;
+  const icon = 14;
   return (
     <span
       style={{
@@ -107,15 +129,39 @@ function VerifiedTick() {
         height: TICK_SIZE,
         borderRadius: half,
         background: '#16a34a',
-        color: '#ffffff',
-        fontSize: 16,
-        fontWeight: 800,
-        lineHeight: `${TICK_SIZE}px`,
-        textAlign: 'center',
         boxShadow: '0 1px 3px rgba(0,0,0,0.25)',
+        overflow: 'hidden',
       }}
+      aria-label="Verified"
     >
-      &#10003;
+      <table
+        style={{ width: TICK_SIZE, height: TICK_SIZE, borderCollapse: 'collapse' }}
+        cellPadding={0}
+        cellSpacing={0}
+      >
+        <tbody>
+          <tr>
+            <td style={{ width: TICK_SIZE, height: TICK_SIZE, textAlign: 'center', verticalAlign: 'middle', padding: 0 }}>
+              <svg
+                width={icon}
+                height={icon}
+                viewBox="0 0 24 24"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+                style={{ display: 'block', margin: '0 auto' }}
+              >
+                <path
+                  d="M20 6L9 17l-5-5"
+                  stroke="#ffffff"
+                  strokeWidth="3.2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </td>
+          </tr>
+        </tbody>
+      </table>
     </span>
   );
 }
@@ -338,20 +384,30 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
               <span
                 key={issue}
                 style={{
-                  display: 'inline-block',
+                  display: 'inline-table',
                   margin: '0 4px 6px',
                   background: '#fef2f2',
                   border: '1px solid #fecaca',
                   borderRadius: 20,
-                  padding: '5px 14px',
-                  fontSize: 12,
-                  fontWeight: 600,
-                  lineHeight: '16px',
-                  color: '#991b1b',
-                  textAlign: 'center',
+                  height: 28,
+                  verticalAlign: 'middle',
                 }}
               >
-                {issue}
+                <span
+                  style={{
+                    display: 'table-cell',
+                    verticalAlign: 'middle',
+                    padding: '0 14px',
+                    fontSize: 12,
+                    fontWeight: 600,
+                    lineHeight: '16px',
+                    color: '#991b1b',
+                    textAlign: 'center',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {issue}
+                </span>
               </span>
             ))}
           </div>
@@ -384,7 +440,7 @@ export default function TransformationShareCard({
     setStatus(null);
     try {
       if (mode === 'share') {
-        await shareTransformationCard(cardRef.current, userName);
+        await shareTransformationCard(cardRef.current, userName, testimonial);
         setStatus('shared');
       } else {
         await downloadTransformationCardImage(cardRef.current, userName);
@@ -487,7 +543,7 @@ export function TransformationShareActions({
       if (isVideo) {
         await shareResultVideos(resolved);
       } else {
-        await shareTransformationCard(cardRef?.current, userName);
+        await shareTransformationCard(cardRef?.current, userName, resolved);
       }
       setStatus('shared');
     } catch (err) {

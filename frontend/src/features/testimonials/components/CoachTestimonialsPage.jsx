@@ -998,10 +998,12 @@ function MemberCard({
               )}
               {isVerified && beforeImageSrc && (
                 <span
-                  className="absolute top-1.5 left-1.5 h-6 w-6 rounded-full bg-green-500 text-white text-sm font-extrabold flex items-center justify-center shadow"
+                  className="absolute top-1.5 left-1.5 h-6 w-6 rounded-full bg-green-500 text-white shadow flex items-center justify-center"
                   aria-label="Verified"
                 >
-                  ✓
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <path d="M20 6L9 17l-5-5" stroke="currentColor" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
                 </span>
               )}
               {draftBefore?.compressing && (
@@ -1126,10 +1128,12 @@ function MemberCard({
               )}
               {isVerified && afterImageSrc && (
                 <span
-                  className="absolute top-1.5 left-1.5 h-6 w-6 rounded-full bg-green-500 text-white text-sm font-extrabold flex items-center justify-center shadow"
+                  className="absolute top-1.5 left-1.5 h-6 w-6 rounded-full bg-green-500 text-white shadow flex items-center justify-center"
                   aria-label="Verified"
                 >
-                  ✓
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <path d="M20 6L9 17l-5-5" stroke="currentColor" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
                 </span>
               )}
               {draftAfter?.compressing && (
