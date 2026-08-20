@@ -39,6 +39,8 @@ export async function handleCreateCard(body) {
   }
 
   let userId = payload.userId;
+  /** True when createTeamMemberFromPhone inserted a brand-new team_table row. */
+  let isNewMember = false;
 
   if (payload.phoneNumber) {
     logger.info('[body-params-card] 📞 Creating team_table member from phone', {
@@ -58,7 +60,8 @@ export async function handleCreateCard(body) {
       fatPercent:    payload.fatPercent,
     });
     userId = memberId;
-    logger.info('[body-params-card] ✅ Team member ready', { userId, isNew, type: typeof userId });
+    isNewMember = Boolean(isNew);
+    logger.info('[body-params-card] ✅ Team member ready', { userId, isNew: isNewMember, type: typeof userId });
   }
 
   // Check if user already has a card
@@ -183,9 +186,13 @@ export async function handleCreateCard(body) {
         hipCm:            card.hip_cm,
         recordedDate:     card.recorded_date,
         locationName:     card.location_name,
+        recoveredHealthIssues: Array.isArray(card.recovered_health_issues)
+          ? card.recovered_health_issues
+          : (payload.recoveredHealthIssues || []),
         phoneNumber:      phoneNumber || payload.phoneNumber || null,
         userId:           card.user_id ?? userId ?? null,
         profileSynced:    syncResult.synced,
+        isNewMember,
         previousCard,
       },
     },

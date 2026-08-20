@@ -7,7 +7,7 @@
  *   2. After Photo   (available once before photo is saved)
  *   3. Health Results Video  (max 1 min)
  *   4. Business Results Video  (max 2 min)
- *   5. Recovered Health Issues  (searchable multi-select)
+ *   5. Health Issues  (filter-style multi-select, same as BCM)
  *
  * Overall status bar classifies the member's upload completeness across all 5 slots:
  *   Not Uploaded → Partial Upload → Awaiting Approval → Fully Uploaded / Verified
@@ -934,7 +934,7 @@ export default function TestimonialsHub({ userId, focusOnly = null, onFocusClose
           {!isFocused && (
             <div className="flex items-center gap-2 px-1 pt-2">
               <HeartPulse className="h-4 w-4 text-gray-400" />
-              <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Recovered Health Issues</p>
+              <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Health Issues</p>
               <span className="text-[10px] text-gray-400 font-normal ml-auto">Shared for photo &amp; video verification</span>
             </div>
           )}
@@ -943,13 +943,13 @@ export default function TestimonialsHub({ userId, focusOnly = null, onFocusClose
             icon={HeartPulse}
             iconBg="bg-rose-50"
             iconColor="text-rose-500"
-            title="Health Issues Recovered"
+            title="Health Issues"
             subtitle={
               healthIssuesExpanded || isFocused
                 ? null
                 : (healthIssues.length > 0
                     ? healthIssues.slice(0, 3).join(' · ') + (healthIssues.length > 3 ? ` +${healthIssues.length - 3} more` : '')
-                    : 'Which health issues did you recover from?')
+                    : 'Search and add health issues')
             }
             status={slots.healthIssues}
             isExpanded={healthIssuesExpanded || (isFocused && focusOnly === 'issues')}
@@ -964,12 +964,12 @@ export default function TestimonialsHub({ userId, focusOnly = null, onFocusClose
           >
             <div className="px-4 pb-5 pt-4 space-y-4">
               {!hasTestimonialRow && (
-                <p className="text-xs text-gray-400 italic">Upload a before photo or result video first, then add recovered health issues here.</p>
+                <p className="text-xs text-gray-400 italic">Upload a before photo or result video first, then add health issues here.</p>
               )}
               {hasTestimonialRow && (
                 <>
                   <p className="text-xs text-gray-500 leading-relaxed">
-                    Share which health conditions you recovered from. These apply to both photo and video testimonials. If you edit them after submitting, your sponsor gets a new OTP with your latest photos or videos.
+                    Share which health conditions improved. These apply to both photo and video testimonials. If you edit them after submitting, your sponsor gets a new OTP with your latest photos or videos.
                   </p>
                   <DiseaseMultiSelect
                     value={healthIssues}

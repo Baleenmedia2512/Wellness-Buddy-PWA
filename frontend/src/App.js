@@ -411,7 +411,7 @@ function WellnessValleyApp() {
   // Services are disabled on the device. Blocks home access until GPS is on.
   const [showGpsRequired, setShowGpsRequired] = useState(false);
   // Active per-permission gate. null = no gate active.
-  // { type: 'camera'|'location'|'notifications', canRequest: boolean }
+  // { type: 'camera'|'location'|'notifications'|'contacts', canRequest: boolean }
   // canRequest: true  ? OS can re-prompt � show [Allow Again] [Exit App]
   // canRequest: false ? permanently denied � show [Exit App] only
   const [activePermission, setActivePermission] = useState(null);
@@ -2571,7 +2571,7 @@ function WellnessValleyApp() {
   // Design: zero custom screens before OS dialogs. Permissions are requested
   // immediately in order. The PermissionBlockedDialog appears only AFTER an OS
   // prompt has been denied, as a last-resort block. Required permissions
-  // (camera, location) block the app entirely; optional ones (notifications)
+  // (camera, location) block the app entirely; optional ones (notifications, contacts)
   // are silently skipped on denial.
   //
   // States
@@ -2586,7 +2586,7 @@ function WellnessValleyApp() {
   const _permissionFlowRunningRef = useRef(false);
 
   /**
-   * Walk [camera ? location ? notifications] in order.
+   * Walk [camera → location → notifications → contacts] in order.
    *
    * For every non-granted permission, requestPermission() is called
    * IMMEDIATELY � no pre-dialog, no canRequest gate on the first check.
@@ -2611,7 +2611,7 @@ function WellnessValleyApp() {
     _permissionFlowRunningRef.current = true;
 
     try {
-      const PERMISSIONS = ['camera', 'location', 'notifications'];
+      const PERMISSIONS = ['camera', 'location', 'notifications', 'contacts'];
 
       for (const type of PERMISSIONS) {
         const config = PermissionManager.PERMISSION_CONFIG[type];

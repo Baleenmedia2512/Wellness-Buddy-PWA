@@ -834,7 +834,10 @@ async function callModel(
   await reportAiCallTelemetry({
     status: 'SUCCESS',
     modelOverride,
-    usage: result.response?.usageMetadata ?? {},
+    usage: {
+      ...(result.response?.usageMetadata ?? {}),
+      candidateMetadata: result.response?.candidates?.[0] ?? null
+    },
     latency: result.__latencyMs ?? totalLatencyMs,
     trace,
     parts,
