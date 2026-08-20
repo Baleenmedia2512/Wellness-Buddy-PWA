@@ -15,15 +15,12 @@ export default function WellnessScoreDayStrip({
   selectedDate,
   onSelectDate,
   today,
+  embedded = false,
 }) {
   if (!days.length || days.length <= 1) return null;
 
-  return (
-    <section className="overflow-hidden rounded-2xl border border-gray-200/90 bg-white shadow-sm">
-      <div className="border-b border-gray-100 bg-gray-50/80 px-4 py-2">
-        <p className="text-xs font-bold uppercase tracking-wide text-gray-600">Select day</p>
-      </div>
-      <div className="flex gap-2 overflow-x-auto p-3 scrollbar-hide">
+  const dayButtons = (
+    <div className="flex gap-2 overflow-x-auto p-3 scrollbar-hide">
         {days.map((day) => {
           const active = day.date === selectedDate;
           const pct = Math.round(day.percentage ?? 0);
@@ -51,7 +48,19 @@ export default function WellnessScoreDayStrip({
             </button>
           );
         })}
+    </div>
+  );
+
+  if (embedded) {
+    return dayButtons;
+  }
+
+  return (
+    <section className="overflow-hidden rounded-2xl border border-gray-200/90 bg-white shadow-sm">
+      <div className="border-b border-gray-100 bg-gray-50/80 px-4 py-2">
+        <p className="text-xs font-bold uppercase tracking-wide text-gray-600">Select day</p>
       </div>
+      {dayButtons}
     </section>
   );
 }

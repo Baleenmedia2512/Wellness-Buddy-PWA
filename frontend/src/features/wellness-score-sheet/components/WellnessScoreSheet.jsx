@@ -8,11 +8,11 @@ import ScoreCategoryRow from './ScoreCategoryRow';
 import ParameterContributionModal from './ParameterContributionModal';
 import { PARAMETER_SECTIONS, parametersBySection } from '../domain/parameterRegistry';
 import { getSectionIcon } from '../domain/parameterIcons';
-import { formatWellnessDayLabel } from '../domain/dateRange';
+import { formatWellnessDayLabel, formatWellnessRangeLabel } from '../domain/dateRange';
+import { aggregateWellnessPeriodDetails } from '../domain/periodSummary';
 import { useParameterContribution } from '../hooks/useParameterContribution';
 import ReportDateRangeFilter from '../../../shared/components/common/ReportDateRangeFilter';
 import { WELLNESS_SCORE_DATE_RANGES } from '../../../shared/domain/reportDateRanges';
-import WellnessScoreDayStrip from './WellnessScoreDayStrip';
 
 function scoreTone(pct) {
   if (pct >= 75) return 'from-emerald-500 to-emerald-600';
@@ -37,19 +37,29 @@ export default function WellnessScoreSheet({
   onCustomDateSelect,
   historyDays = [],
   selectedDate,
-  onSelectDate,
   isMultiDay = false,
   timeWindows = null,
   userId = null,
   apiBaseUrl,
   nutritionRefreshKey = 0,
 }) {
+  const periodSummary = isMultiDay ? aggregateWellnessPeriodDetails(historyDays) : null;
+  const activeScore = periodSummary || scoreData;
   const dateStr = scoreData?.date || selectedDate || todayBusinessDate(DEFAULT_BUSINESS_TIMEZONE);
-  const parameters = scoreData?.parameters || [];
+  const summaryLabel = isMultiDay
+    ? formatWellnessRangeLabel({
+      dateRange,
+      customStartDate,
+      customEndDate,
+      today,
+    })
+    : formatWellnessDayLabel(dateStr, today);
+  const parameters = activeScore?.parameters || [];
   const grouped = parametersBySection(parameters);
-  const progressPct = scoreData?.percentage ?? 0;
-  const earned = Math.round(scoreData?.totalEarned ?? 0);
-  const possible = Math.round(scoreData?.totalPossible ?? 0);
+  const progressPct = activeScore?.percentage ?? 0;
+  const earned = Math.round(activeScore?.totalEarned ?? 0);
+  const possible = Math.round(activeScore?.totalPossible ?? 0);
+  const contributionEnabled = !periodSummary;
 
   const {
     selectedParam,
@@ -86,7 +96,7 @@ export default function WellnessScoreSheet({
               <ClipboardList className="h-5 w-5 shrink-0 text-emerald-600" aria-hidden />
               Wellness Score
             </h1>
-            <p className="text-xs text-gray-500">{formatWellnessDayLabel(dateStr, today)}</p>
+            <p className="text-xs text-gray-500">{summaryLabel}</p>
           </div>
         </div>
         {onDateRangeChange && (
@@ -104,21 +114,13 @@ export default function WellnessScoreSheet({
       </header>
 
       <main className="mx-auto max-w-lg space-y-4 px-4 py-4 pb-28">
-        {isMultiDay && historyDays.length > 1 && onSelectDate && (
-          <WellnessScoreDayStrip
-            days={historyDays}
-            selectedDate={selectedDate || dateStr}
-            onSelectDate={onSelectDate}
-            today={today}
-          />
-        )}
-        {loading && !scoreData && (
+        {loading && !activeScore && (
           <div className="flex justify-center py-16">
             <Loader2 className="h-8 w-8 animate-spin text-emerald-600" aria-label="Loading" />
           </div>
         )}
 
-        {error && !scoreData && (
+        {error && !activeScore && (
           <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-center">
             <p className="text-sm text-red-700">{error}</p>
             {onRetry && (
@@ -133,14 +135,14 @@ export default function WellnessScoreSheet({
           </div>
         )}
 
-        {scoreData && (
+        {activeScore && (
           <>
             <section className="overflow-hidden rounded-2xl border border-emerald-200/80 bg-white shadow-sm">
               <div className="border-b border-emerald-100 bg-gradient-to-r from-emerald-50 to-white px-4 py-3">
                 <div className="flex items-center gap-2">
                   <Trophy className="h-4 w-4 text-emerald-600" aria-hidden />
                   <p className="text-xs font-semibold uppercase tracking-wide text-emerald-800">
-                    {formatWellnessDayLabel(dateStr, today)}&apos;s score
+                    {isMultiDay ? `${summaryLabel} overall score` : `${summaryLabel}'s score`}
                   </p>
                 </div>
               </div>
@@ -159,7 +161,10 @@ export default function WellnessScoreSheet({
                   {' '}
                   <span className="font-semibold text-gray-900">{parameters.length}</span>
                   {' '}
-                  active parameters · tap a row for contribution
+                  active parameters
+                  {periodSummary
+                    ? ` across ${periodSummary.dayCount} days`
+                    : ' · tap a row for contribution'}
                 </p>
                 <div className="mt-4">
                   <div className="mb-1.5 flex justify-between text-[11px] font-medium text-gray-500">
@@ -209,9 +214,9 @@ export default function WellnessScoreSheet({
                       <ScoreCategoryRow
                         key={param.key}
                         category={param}
-                        goalMode={scoreData?.goalMode}
+                        goalMode={activeScore?.goalMode}
                         timeWindows={timeWindows}
-                        onOpenContribution={handleOpenContribution}
+                        onOpenContribution={contributionEnabled ? handleOpenContribution : undefined}
                       />
                     ))}
                   </div>
@@ -223,7 +228,7 @@ export default function WellnessScoreSheet({
       </main>
 
       <ParameterContributionModal
-        isOpen={!!selectedParam}
+        isOpen={contributionEnabled && !!selectedParam}
         onClose={handleCloseContribution}
         view={contributionView}
         loading={!!selectedParam && needsMeals && mealsLoading}
