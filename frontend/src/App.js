@@ -7488,6 +7488,7 @@ function WellnessValleyApp() {
             <NutritionCenterRegistration
               user={user}
               initialCenter={editCenterData}
+              onSaved={() => bumpTabVisitKey('physical-club')}
               onBack={() => {
                 setShowRegisterCenter(false);
                 setEditCenterData(null);
@@ -8907,10 +8908,11 @@ function WellnessValleyApp() {
             <NutritionCenterRegistration
               user={user}
               initialCenter={editCenterData}
+              onSaved={() => bumpTabVisitKey('physical-club')}
               onBack={() => {
                 setShowRegisterCenter(false);
                 if (editCenterData) {
-                  // came from Physical Club Report via Edit � map already visible, just close form
+                  // came from Physical Club Report via Edit — map already visible, just close form
                   // No need to re-open map: setShowNutritionCentersMap(true);
                 }
                 setEditCenterData(null);

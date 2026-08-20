@@ -101,10 +101,8 @@ function VerifiedTick() {
     <span
       style={{
         position: 'absolute',
-        top: '50%',
-        left: '50%',
-        marginTop: -half,
-        marginLeft: -half,
+        top: 8,
+        left: 8,
         width: TICK_SIZE,
         height: TICK_SIZE,
         borderRadius: half,
