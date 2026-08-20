@@ -8042,11 +8042,12 @@ function WellnessValleyApp() {
           }}
         />
 
-        {/* Weight Loss Leaderboard Strip - Configure in src/config/leaderboardConfig.js */}
+        {/* Weight Loss Leaderboard Strip - hierarchy-scoped (same peer rule as Wellness Top 10) */}
         <WeightLossLeaderboard
           ref={leaderboardRef}
           apiBaseUrl={apiBaseUrl}
           topN={LEADERBOARD_CONFIG.TOP_N}
+          userId={user?.id || user?.UserId}
         />
 
         {/* Wellness Score Leaderboard — top 10 today's IST wellness % */}
