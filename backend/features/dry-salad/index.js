@@ -3,4 +3,3 @@
  */
 export { searchDrySalad } from './api/search.handler.js';
 export { validateSearch } from './validation/search.schema.js';
-export { searchSeedProfiles, listSeedProfiles } from './domain/seeds.js';
