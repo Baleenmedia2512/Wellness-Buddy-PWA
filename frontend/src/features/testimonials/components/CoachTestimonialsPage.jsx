@@ -1289,7 +1289,7 @@ function MemberCard({
           {/* "Lost X kgs in Y duration" sentence */}
           {diff && hasAfter && (
             <div className="flex items-center gap-2 flex-wrap">
-              <span className={`inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-sm font-bold border-2 ${displayGoalType === 'loss' ? 'bg-green-600 text-white border-green-700' : 'bg-blue-600 text-white border-blue-700'} shadow-sm`}>
+              <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold border ${displayGoalType === 'loss' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-blue-50 text-blue-700 border-blue-200'}`}>
                 {displayGoalType === 'loss'
                   ? <TrendingDown className="h-3 w-3 shrink-0" />
                   : <TrendingUp   className="h-3 w-3 shrink-0" />
