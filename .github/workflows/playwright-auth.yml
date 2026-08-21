@@ -408,12 +408,35 @@ jobs:
       - name: Run Playwright Authentication Tests
         run: npx playwright test tests/frontend/auth/login.spec.js
 
-      # ============================================================
-      # 20. RUN PROFILE TESTS
-      # ============================================================
+      - name: Sync Playwright results to QA Dashboard
+        if: always()
+        shell: bash
+        env:
+          DASHBOARD_IMPORT_URL: ${{ secrets.DASHBOARD_IMPORT_URL }}
+        run: |
 
-      - name: Run Playwright Profile Tests
-        run: npx playwright test tests/frontend/profile/complete-profile.spec.js
+          echo "=========================================="
+          echo "Syncing Playwright results to QA Dashboard"
+          echo "=========================================="
+
+          echo "Run ID: ${{ github.run_id }}"
+          echo "Commit: ${{ github.sha }}"
+          echo "Branch: ${{ github.ref_name }}"
+          echo "Developer: ${{ github.actor }}"
+          echo "Repository: ${{ github.repository }}"
+          echo "Job Status: ${{ job.status }}"
+
+          curl --fail-with-body \
+            -X POST \
+            "$DASHBOARD_IMPORT_URL" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "runId": "${{ github.run_id }}",
+              "status": "${{ job.status }}"
+            }'
+
+          echo ""
+          echo "Dashboard sync completed successfully."
 
       - name: Show Git information
         if: always()
@@ -437,7 +460,28 @@ jobs:
           path: test-results/results.json
           retention-days: 7
 
+      - name: Sync Playwright results to QA Dashboard
+        if: always()
+        shell: bash
+        env:
+          DASHBOARD_API_URL: ${{ secrets.DASHBOARD_API_URL }}
+        run: |
+          echo "=========================================="
+          echo "Syncing Playwright results to QA Dashboard"
+          echo "Run ID: $GITHUB_RUN_ID"
+          echo "Commit: $GITHUB_SHA"
+          echo "Branch: $GITHUB_REF_NAME"
+          echo "Developer: $GITHUB_ACTOR"
+          echo "Repository: $GITHUB_REPOSITORY"
 
+          curl --fail-with-body \
+            -X POST \
+            -H "Content-Type: application/json" \
+            -d "{\"runId\":\"$GITHUB_RUN_ID\"}" \
+            "$DASHBOARD_API_URL"
+
+          echo ""
+          echo "Dashboard sync completed successfully."
 
       - name: Show Backend Logs
         if: always()
