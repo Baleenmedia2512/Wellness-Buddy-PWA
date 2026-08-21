@@ -584,12 +584,12 @@ export function useBodyParamsCard({
       venueRef.current = String(fullCard.locationName || '').trim();
       debugLog('✅ [BodyParamsCard] Created:', fullCard);
 
-      // If Contacts was never asked, prompt NOW (before WhatsApp). Asking after
-      // share opens often fails on iPhone — the OS dialog is buried / dismissed.
+      // Always ask if not granted (do not gate on canRequest — Android first
+      // install often reports denied). Must run before WhatsApp share sheet.
       if (fullCard.phoneNumber && Capacitor.isNativePlatform()) {
         try {
-          const { granted, status, canRequest } = await PermissionManager.checkPermission('contacts');
-          if (!granted && (status === 'prompt' || canRequest)) {
+          const { granted } = await PermissionManager.checkPermission('contacts');
+          if (!granted) {
             await PermissionManager.requestPermission('contacts');
           }
         } catch (err) {
@@ -601,7 +601,7 @@ export function useBodyParamsCard({
       if (onSaveSuccess) onSaveSuccess(fullCard, url, prevCard);
 
       // Upsert device contact after share presents (create or overwrite venue/name/date).
-      // Denial skips save without affecting share.
+      // Denial / missing plugin skips save without affecting share.
       if (fullCard.phoneNumber) {
         const contactPayload = {
           name: fullCard.name,
@@ -610,7 +610,14 @@ export function useBodyParamsCard({
           phoneNumber: fullCard.phoneNumber,
         };
         setTimeout(() => {
-          void upsertBcmMemberToDeviceContacts(contactPayload);
+          void upsertBcmMemberToDeviceContacts(contactPayload).then((result) => {
+            if (result?.ok) return;
+            if (result?.reason === 'plugin-missing') {
+              console.error('[BodyParamsCard] Contact not saved — rebuild iOS with Contacts pod');
+            } else if (result?.reason === 'permission') {
+              console.warn('[BodyParamsCard] Contact not saved — enable Contacts in Settings');
+            }
+          });
         }, 1200);
       }
 
