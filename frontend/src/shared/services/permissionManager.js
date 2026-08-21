@@ -2,8 +2,8 @@
  * permissionManager.js — Centralised Permission Manager
  *
  * Single source of truth for all runtime permission logic in Wellness Valley.
- * Replaces scattered per-feature permission handling for Camera, Location, and
- * Notifications.
+ * Replaces scattered per-feature permission handling for Camera, Location,
+ * Notifications, and Contacts.
  *
  * Permission State Model (Capacitor / OS):
  * ─────────────────────────────────────────────────────────────────────────────
@@ -21,10 +21,11 @@
  *              • iOS: ANY denial is permanent (iOS has no "ask again" path).
  *              Action: direct user to App Settings — the only OS-allowed path.
  *
- * 'limited'  → iOS only: partial Photos access. Treated as 'granted' here since
- *              the app can still read/write captured images.
+ * 'limited'  → iOS only: partial Photos / Contacts access. Treated as 'granted'
+ *              here since native Contacts createContact still works with limited.
  *
- * 'unknown'  → Plugin error or unsupported platform. Fail-open.
+ * 'unknown'  → Plugin error or unsupported platform. Fail-open for required
+ *              flows only after logging — Contacts must not be silently skipped.
  *
  * Why canRequest?
  * ───────────────
@@ -40,6 +41,7 @@ import { App as CapacitorApp } from '@capacitor/app';
 import { Camera } from '@capacitor/camera';
 import { Geolocation } from '@capacitor/geolocation';
 import { PushNotifications } from '@capacitor/push-notifications';
+import { Contacts } from '@capacitor-community/contacts';
 
 // ── Permission type constants ─────────────────────────────────────────────────
 
@@ -79,6 +81,39 @@ export const PERMISSION_CONFIG = {
   },
 };
 
+function isPluginUnimplementedError(err) {
+  const msg = String(err?.message || err || '').toLowerCase();
+  return (
+    msg.includes('not implemented')
+    || msg.includes('unimplemented')
+    || msg.includes('is not implemented')
+    || msg.includes('"contacts" plugin is not implemented')
+  );
+}
+
+/**
+ * True when the native Contacts bridge is linked (not the web stub).
+ * iOS builds without `pod install` after adding CapacitorCommunityContacts fail this.
+ */
+export async function isContactsNativeAvailable() {
+  if (!Capacitor.isNativePlatform()) return false;
+  try {
+    await Contacts.checkPermissions();
+    return true;
+  } catch (err) {
+    if (isPluginUnimplementedError(err)) {
+      console.error(
+        '[PermissionManager] Contacts native plugin is NOT linked. '
+        + 'On Mac run: npx cap sync ios && cd ios/App && pod install — then rebuild the IPA.',
+        err,
+      );
+      return false;
+    }
+    // Other errors still mean the bridge answered.
+    return true;
+  }
+}
+
 // ── Core API ─────────────────────────────────────────────────────────────────
 
 /**
@@ -107,7 +142,6 @@ export async function checkPermission(type) {
       const result = await PushNotifications.checkPermissions();
       rawStatus = result?.receive;
     } else if (type === 'contacts') {
-      const { Contacts } = await import('@capacitor-community/contacts');
       const result = await Contacts.checkPermissions();
       rawStatus = result?.contacts;
       // iOS 18+ "Limited Access" — native plugin still allows createContact.
@@ -121,18 +155,22 @@ export async function checkPermission(type) {
 
     return { status, canRequest, granted };
   } catch (err) {
-    console.warn(`[PermissionManager] checkPermission(${type}) failed:`, err);
+    if (type === 'contacts' && isPluginUnimplementedError(err)) {
+      console.error(
+        '[PermissionManager] checkPermission(contacts) — native plugin missing. Rebuild iOS with pod install.',
+        err,
+      );
+    } else {
+      console.warn(`[PermissionManager] checkPermission(${type}) failed:`, err);
+    }
     return { status: 'unknown', canRequest: false, granted: false };
   }
 }
 
 /**
  * Invoke the OS permission request dialog for a single permission type.
- * Only call this when checkPermission() returned canRequest: true.
- *
- * After the OS dialog closes (granted or denied), this resolves with the new
- * status. The caller should call checkPermission() again if it needs to
- * distinguish 'prompt' (re-requestable) from 'denied' (permanent).
+ * Prefer calling this whenever status is not granted — do not gate only on
+ * canRequest (Android first-install often reports denied/canRequest=false).
  *
  * @param {PermissionType} type
  * @returns {Promise<{ status: 'granted'|'denied'|'prompt'|'unknown', granted: boolean }>}
@@ -174,7 +212,6 @@ export async function requestPermission(type) {
     }
 
     if (type === 'contacts') {
-      const { Contacts } = await import('@capacitor-community/contacts');
       const result = await Contacts.requestPermissions();
       let status = result?.contacts ?? 'unknown';
       // iOS 18+ limited access is enough for createContact.
@@ -184,7 +221,14 @@ export async function requestPermission(type) {
 
     return { status: 'unknown', granted: false };
   } catch (err) {
-    console.warn(`[PermissionManager] requestPermission(${type}) failed:`, err);
+    if (type === 'contacts' && isPluginUnimplementedError(err)) {
+      console.error(
+        '[PermissionManager] requestPermission(contacts) — native plugin missing. Rebuild iOS with pod install.',
+        err,
+      );
+    } else {
+      console.warn(`[PermissionManager] requestPermission(${type}) failed:`, err);
+    }
     return { status: 'unknown', granted: false };
   }
 }
