@@ -415,6 +415,20 @@ jobs:
             tests/frontend/auth/login.spec.js
 
 
+      # ==========================================================
+      # 20. RUN CLUB TESTS
+      # ==========================================================
+
+      - name: Run Playwright Club Tests
+        run: |
+
+          echo "=========================================="
+          echo "Running Club Tests"
+          echo "=========================================="
+
+          npx playwright test \
+            tests/frontend/authenticated/club.spec.js
+
       # # ==========================================================
       # # 20. RUN COMPLETE PROFILE TESTS
       # # ==========================================================
