@@ -84,10 +84,10 @@ function looksLikeBcmContact(contact) {
 }
 
 async function ensureContactsPermission() {
-  const { granted } = await PermissionManager.checkPermission('contacts');
-  if (granted) return true;
-  const { granted: nowGranted } = await PermissionManager.requestPermission('contacts');
-  return Boolean(nowGranted);
+  const { granted, status } = await PermissionManager.checkPermission('contacts');
+  if (granted || status === 'limited') return true;
+  const { granted: nowGranted, status: nowStatus } = await PermissionManager.requestPermission('contacts');
+  return Boolean(nowGranted || nowStatus === 'limited');
 }
 
 /**
@@ -148,6 +148,8 @@ export async function upsertBcmMemberToDeviceContacts(opts = {}) {
   try {
     const allowed = await ensureContactsPermission();
     if (!allowed) {
+      // Always visible in Xcode / Safari remote console — silent skip was hard to debug.
+      console.warn('[BCM contact] Contacts permission denied — enable in Settings → Wellness Valley → Contacts');
       debugLog('📱 [BCM contact] permission denied — skip save');
       return { ok: false, skipped: true, reason: 'permission' };
     }
@@ -174,11 +176,17 @@ export async function upsertBcmMemberToDeviceContacts(opts = {}) {
       },
     });
 
-    if (contactId) writeStoredContactId(phone, contactId);
+    if (!contactId) {
+      console.warn('[BCM contact] createContact returned no contactId');
+      return { ok: false, skipped: true, reason: 'create-failed' };
+    }
+
+    writeStoredContactId(phone, contactId);
 
     debugLog('📱 [BCM contact] upserted', { displayName, phone, updated, contactId });
     return { ok: true, updated };
   } catch (err) {
+    console.warn('[BCM contact] upsert failed', err?.message || err);
     debugLog('📱 [BCM contact] upsert failed', err?.message || err);
     return { ok: false, skipped: true, reason: err?.message || 'error' };
   }
