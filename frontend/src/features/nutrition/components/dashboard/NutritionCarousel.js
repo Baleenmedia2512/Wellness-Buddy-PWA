@@ -55,6 +55,7 @@ const NutritionCarousel = ({
   latestWeight,
   gender = null,
   analyses = [],
+  analysesLoading = false,
   leadingCard = null,
   leadingCardLabel = 'Wellness Score',
   periodContext = null,
@@ -227,6 +228,7 @@ const NutritionCarousel = ({
         nutrient={modalState.nutrient}
         onClose={handleCloseModal}
         analyses={analyses}
+        analysesLoading={analysesLoading}
         dailyStats={dailyStats}
         calCard={calCard}
         proteinTarget={scaledProteinTarget}

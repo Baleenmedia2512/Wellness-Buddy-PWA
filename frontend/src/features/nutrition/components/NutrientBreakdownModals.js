@@ -32,6 +32,7 @@ export default function NutrientBreakdownModals({
   nutrient,
   onClose,
   analyses = [],
+  analysesLoading = false,
   dailyStats,
   calCard = null,
   proteinTarget,
@@ -67,6 +68,7 @@ export default function NutrientBreakdownModals({
         nutrient, proteinTarget, fatTarget, carbsTarget, calorieTarget, heartCard, lowCarbCard,
       )}
       foodBreakdown={extractFoodContributions(analyses, nutrient).breakdown}
+      foodsLoading={analysesLoading && analyses.length === 0}
     />
   );
 }
