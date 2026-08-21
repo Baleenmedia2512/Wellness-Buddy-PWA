@@ -110,6 +110,8 @@ export async function checkPermission(type) {
       const { Contacts } = await import('@capacitor-community/contacts');
       const result = await Contacts.checkPermissions();
       rawStatus = result?.contacts;
+      // iOS 18+ "Limited Access" — native plugin still allows createContact.
+      if (rawStatus === 'limited') rawStatus = 'granted';
     }
 
     const status = rawStatus ?? 'unknown';
@@ -174,7 +176,9 @@ export async function requestPermission(type) {
     if (type === 'contacts') {
       const { Contacts } = await import('@capacitor-community/contacts');
       const result = await Contacts.requestPermissions();
-      const status = result?.contacts ?? 'unknown';
+      let status = result?.contacts ?? 'unknown';
+      // iOS 18+ limited access is enough for createContact.
+      if (status === 'limited') status = 'granted';
       return { status, granted: status === 'granted' };
     }
 

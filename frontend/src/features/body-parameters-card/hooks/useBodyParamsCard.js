@@ -17,8 +17,9 @@ import { teamHierarchyService } from '../../../shared/services/teamHierarchyServ
 import { getApiBaseUrl } from '../../../config/api.config.js';
 import { buildOnboardingShareUrl } from '../domain/platform-store.rules.js';
 import { debugLog } from '../../../shared/utils/logger.js';
-import { CapacitorHttp } from '@capacitor/core';
+import { Capacitor, CapacitorHttp } from '@capacitor/core';
 import { getAppVersionHeaders } from '../../../shared/services/apiFetch.js';
+import * as PermissionManager from '../../../shared/services/permissionManager.js';
 
 /**
  * Normalise any phone string to a 10-digit Indian national number for prefix
@@ -583,7 +584,20 @@ export function useBodyParamsCard({
       venueRef.current = String(fullCard.locationName || '').trim();
       debugLog('✅ [BodyParamsCard] Created:', fullCard);
 
-      // Share first — never await contacts permission before WhatsApp opens.
+      // If Contacts was never asked, prompt NOW (before WhatsApp). Asking after
+      // share opens often fails on iPhone — the OS dialog is buried / dismissed.
+      if (fullCard.phoneNumber && Capacitor.isNativePlatform()) {
+        try {
+          const { granted, status, canRequest } = await PermissionManager.checkPermission('contacts');
+          if (!granted && (status === 'prompt' || canRequest)) {
+            await PermissionManager.requestPermission('contacts');
+          }
+        } catch (err) {
+          console.warn('[BodyParamsCard] contacts pre-prompt failed', err?.message || err);
+        }
+      }
+
+      // Share first — never block WhatsApp on contact write itself.
       if (onSaveSuccess) onSaveSuccess(fullCard, url, prevCard);
 
       // Upsert device contact after share presents (create or overwrite venue/name/date).
