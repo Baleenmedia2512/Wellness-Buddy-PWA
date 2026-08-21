@@ -45,6 +45,13 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # ============================================================
+      # 20. RUN PROFILE TESTS
+      # ============================================================
+
+      - name: Run Playwright Profile Tests
+        run: npx playwright test tests/frontend/profile/complete-profile.spec.js
+
 
       # ==========================================================
       # 2. NODE.JS
