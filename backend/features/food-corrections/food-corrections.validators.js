@@ -37,7 +37,8 @@ export function validateUpdateAnalysis(body) {
   return body;
 }
 
-const MAX_STATS_RANGE_DAYS = 31;
+/** Home custom range: up to ~6 calendar months (6 × 31). */
+export const MAX_STATS_RANGE_DAYS = 186;
 
 export function validateStats(query) {
   if (!query?.userId) throw new ValidationError(400, 'UserId is required');

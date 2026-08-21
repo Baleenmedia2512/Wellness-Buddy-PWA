@@ -7,8 +7,9 @@ import { Geolocation } from '@capacitor/geolocation';
 import { debugLog } from '../../../shared/utils/logger.js';
 import { loadGoogleMaps } from '../services/googleMapsLoader';
 import { apiFetch } from '../../../shared/services/apiFetch.js';
+import { splitOwnerPhone } from '../domain/ownerPhone.js';
 
-const NutritionCenterRegistration = ({ user, onBack, initialCenter }) => {
+const NutritionCenterRegistration = ({ user, onBack, onSaved, initialCenter }) => {
   const [centerName, setCenterName] = useState('');
   const [latitude, setLatitude] = useState('');
   const [longitude, setLongitude] = useState('');
@@ -474,16 +475,9 @@ const NutritionCenterRegistration = ({ user, onBack, initialCenter }) => {
     setCenterName(center.center_name);
     setLatitude(String(center.latitude));
     setLongitude(String(center.longitude));
-    const storedPhone = center.owner_phone || '';
-    const knownCodes = ['+971', '+966', '+1', '+44', '+61', '+81', '+86', '+65', '+60', '+91'];
-    const matchedCode = knownCodes.find((c) => storedPhone.startsWith(c));
-    if (matchedCode) {
-      setCountryCode(matchedCode);
-      setOwnerPhone(storedPhone.slice(matchedCode.length));
-    } else {
-      setCountryCode('+91');
-      setOwnerPhone(storedPhone);
-    }
+    const { countryCode: nextCode, phone: nextPhone } = splitOwnerPhone(center.owner_phone);
+    setCountryCode(nextCode);
+    setOwnerPhone(nextPhone);
     setNameAvailable(null);
     setNameChecking(false);
     setError(null);
@@ -551,16 +545,25 @@ const NutritionCenterRegistration = ({ user, onBack, initialCenter }) => {
         throw new Error(result.message || 'Failed to update centre');
       }
       setSuccess('Nutrition centre updated successfully!');
-      handleCancelEdit();
-      fetchMyCenters();
-      
-      // Navigate back to Physical Club Report after successful save
+      // Refresh club list so phone (and other fields) show the new value immediately.
+      if (typeof onSaved === 'function') onSaved(result.data);
+      await fetchMyCenters();
       setTimeout(() => {
         setSuccess(null);
-        if (onBack) {
-          onBack();
+        setEditingCenter(null);
+        setCenterName('');
+        setLatitude('');
+        setLongitude('');
+        setOwnerPhone('');
+        setCountryCode('+91');
+        setNameAvailable(null);
+        setNameChecking(false);
+        if (markerRef.current) {
+          markerRef.current.setMap(null);
+          markerRef.current = null;
         }
-      }, 1500); // Show success message briefly before navigating back
+        if (onBack) onBack();
+      }, 800);
     } catch (err) {
       debugLog('Error updating centre:', err);
       setError(err.message);
