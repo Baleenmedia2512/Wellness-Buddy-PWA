@@ -434,8 +434,6 @@ jobs:
         run: |
           echo "=========================================="
           echo "Syncing Playwright results to QA Dashboard"
-          echo "=========================================="
-
           echo "Run ID: $GITHUB_RUN_ID"
           echo "Commit: $GITHUB_SHA"
           echo "Branch: $GITHUB_REF_NAME"
