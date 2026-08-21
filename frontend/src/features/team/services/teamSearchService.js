@@ -7,7 +7,10 @@ import cacheManager from '../../../shared/services/cacheManager.js';
 import { hasValidProfileName } from '../../user/domain/profileCompleteness';
 import { getProfile } from '../../user/services/user.api.js';
 
-export { resolveTypedSearchQuery } from './teamSearchQuery.js';
+import { resolveTypedSearchQuery } from './teamSearchQuery.js';
+
+// Export local binding so CRA/webpack lists this name on the barrel module.
+export { resolveTypedSearchQuery };
 
 /** Coach-like roles that may search/view other team members. */
 const COACH_ROLES = new Set(['coach', 'coccoach', 'upline', 'admin', 'developer']);
