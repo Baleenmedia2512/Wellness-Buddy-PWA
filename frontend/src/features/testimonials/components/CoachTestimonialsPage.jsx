@@ -3,7 +3,7 @@
  * Unified testimonials card view for every user.
  *
  * Unified per-member card shows ALL 5 slots:
- *   • Before photo · After photo · Health video · Business video · Recovered health issues
+ *   • Before photo · After photo · Health video · Business video · Health issues
  *
  * With downline: Mine | Direct | Full + search + upload filters.
  * Without downline: own card only (no Direct/Full/search/filters).
@@ -14,7 +14,7 @@ import React, { useEffect, useCallback, useState, useMemo, useRef } from 'react'
 import {
   AlertCircle, ArrowLeft, Camera, CheckCircle, CircleDot, Clock,
   Images, Mail, Pencil, Plus, RefreshCw, Save, ShieldCheck, Upload, Users, Video,
-  X, HeartPulse, TrendingDown, TrendingUp,
+  X, TrendingDown, TrendingUp,
 } from 'lucide-react';
 import CustomAlertModal from '../../../shared/components/CustomAlertModal';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
@@ -802,8 +802,11 @@ function MemberCard({
       ...(draftBefore ? {
         ...(draftBefore.imageBase64 ? { beforeImageBase64: draftBefore.imageBase64 } : {}),
         ...(draftBefore.weightKg !== undefined ? { beforeWeightKg: draftBefore.weightKg } : {}),
-        ...(draftBefore.goalType ? { goalType: draftBefore.goalType } : {}),
-        ...(draftBefore.durationText ? { durationText: draftBefore.durationText } : {}),
+        // Always send goal on drafts — UI may show "Weight Loss" without writing state
+        goalType: draftBefore.goalType || testimonial?.goalType || 'loss',
+        ...((draftBefore.durationText || testimonial?.durationText)
+          ? { durationText: draftBefore.durationText || testimonial.durationText }
+          : {}),
       } : {}),
       ...(draftAfter ? {
         ...(draftAfter.imageBase64 ? { afterImageBase64: draftAfter.imageBase64 } : {}),
@@ -813,6 +816,32 @@ function MemberCard({
       ...(draftBusinessPath ? { businessVideoPath: draftBusinessPath } : {}),
       ...(draftIssues !== null ? { recoveredHealthIssues: draftIssues } : {}),
     };
+
+    // Completing both photos requires at least one health issue (same rule as backend).
+    const willComplete =
+      Boolean(draftBefore?.imageBase64 || testimonial?.beforeImageUrl)
+      && Boolean(draftAfter?.imageBase64 || (hasAfter && testimonial?.afterImageUrl));
+    const issuesForSubmit = draftIssues !== null
+      ? draftIssues
+      : (testimonial?.recoveredHealthIssues || []);
+    if (
+      willComplete
+      && dirtySlots.some((s) => s === 'before' || s === 'after')
+      && (!Array.isArray(issuesForSubmit) || issuesForSubmit.filter(Boolean).length === 0)
+    ) {
+      setSubmitError('Add at least one Health Issue before submitting before + after photos.');
+      return;
+    }
+
+    // First-time submit needs the before image bytes in the payload.
+    if (!testimonial?.id && dirtySlots.includes('before') && !draftBefore?.imageBase64) {
+      setSubmitError('Before photo failed to prepare. Please pick it again.');
+      return;
+    }
+    if (!testimonial?.id && !dirtySlots.includes('before')) {
+      setSubmitError('Please add a before photo before submitting.');
+      return;
+    }
 
     const clearDrafts = () => {
       setDraftBefore((prev) => { revokeBlobUrl(prev?.previewUrl); return null; });
@@ -863,7 +892,7 @@ function MemberCard({
         setIsSubmitting(false);
         setCaptureFlowBusy(false);
       });
-  }, [userId, dirtySlots, draftBefore, draftAfter, draftHealthPath, draftBusinessPath, draftIssues, onMineRefresh, hasAfter, testimonial?.healthVideoPath, testimonial?.businessVideoPath, testimonial?.healthVideoUrl, testimonial?.businessVideoUrl]);
+  }, [userId, dirtySlots, draftBefore, draftAfter, draftHealthPath, draftBusinessPath, draftIssues, onMineRefresh, hasAfter, testimonial?.id, testimonial?.beforeImageUrl, testimonial?.afterImageUrl, testimonial?.goalType, testimonial?.durationText, testimonial?.recoveredHealthIssues, testimonial?.healthVideoPath, testimonial?.businessVideoPath, testimonial?.healthVideoUrl, testimonial?.businessVideoUrl]);
 
   const anyPhotoCompressing = Boolean(draftBefore?.compressing || draftAfter?.compressing);
 
@@ -969,10 +998,12 @@ function MemberCard({
               )}
               {isVerified && beforeImageSrc && (
                 <span
-                  className="absolute top-1.5 left-1.5 h-6 w-6 rounded-full bg-green-500 text-white text-sm font-extrabold flex items-center justify-center shadow"
+                  className="absolute top-1.5 left-1.5 h-6 w-6 rounded-full bg-green-500 text-white shadow flex items-center justify-center"
                   aria-label="Verified"
                 >
-                  ✓
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <path d="M20 6L9 17l-5-5" stroke="currentColor" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
                 </span>
               )}
               {draftBefore?.compressing && (
@@ -1097,10 +1128,12 @@ function MemberCard({
               )}
               {isVerified && afterImageSrc && (
                 <span
-                  className="absolute top-1.5 left-1.5 h-6 w-6 rounded-full bg-green-500 text-white text-sm font-extrabold flex items-center justify-center shadow"
+                  className="absolute top-1.5 left-1.5 h-6 w-6 rounded-full bg-green-500 text-white shadow flex items-center justify-center"
                   aria-label="Verified"
                 >
-                  ✓
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <path d="M20 6L9 17l-5-5" stroke="currentColor" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
                 </span>
               )}
               {draftAfter?.compressing && (
@@ -1318,11 +1351,11 @@ function MemberCard({
         </div>
       )}
 
-      {/* Recovery Health Issue — below photos, above result video */}
+      {/* Health Issues — below photos, above result video */}
       {(editable || testimonial) && (
         <div className="space-y-1.5 overflow-visible relative z-20">
-          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide flex items-center gap-1">
-            <HeartPulse className="h-3 w-3" /> Recovery Health Issue
+          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">
+            Health Issues
           </p>
           <HealthIssueCoachEditor
             userId={userId || user?.userId}
@@ -1331,11 +1364,13 @@ function MemberCard({
             approvedIssues={approvedIssues}
             knownHealthIssues={knownHealthIssues}
             persist={editable ? false : Boolean(testimonial?.id)}
-            allowRemove={editable && draftIssues != null}
+            allowRemove={editable}
+            editable={editable}
             onSaved={handleHealthIssuesSaved}
             onRemove={handleHealthIssueRemoved}
           />
-          {testimonial && (testimonial.beforeImageUrl || hasAfter) && (
+          {testimonial && (testimonial.beforeImageUrl || hasAfter) &&
+            (editable ? (isVerified && !hasDirtySlots && !submitDone) : true) && (
             <TransformationShareActions
               kind="photo"
               cardRef={shareCardRef}
@@ -1491,7 +1526,9 @@ function MemberCard({
               <Clock className="h-3 w-3 shrink-0" /> Videos pending — share OTP with {user.userName}
             </p>
           )}
-          {Boolean(resultVideoUrl || testimonial?.healthVideoPath || testimonial?.businessVideoPath) && (
+          {testimonial?.videoStatus === 'verified' &&
+            (editable ? (!hasDirtySlots && !submitDone) : true) &&
+            Boolean(resultVideoUrl || testimonial?.healthVideoPath || testimonial?.businessVideoPath) && (
             <TransformationShareActions
               kind="video"
               userName={user.userName}
@@ -1582,7 +1619,7 @@ function MemberCard({
               afterWeightKg: displayAfterKg || testimonial.afterWeightKg,
               recoveredHealthIssues: draftIssues ?? testimonial.recoveredHealthIssues,
             }}
-            userName={user.userName}
+            userName={user?.userName || user?.displayName || user?.name || null}
           />
         </div>
       )}
@@ -1630,7 +1667,7 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
   const mineRowRef = useRef(null);
 
   const coachId = user?.userId || user?.id || null;
-  const userName = user?.userName || user?.displayName || user?.name || 'You';
+  const userName = user?.userName || user?.displayName || user?.name || null;
   const profileImage = user?.profileImage || user?.photoURL || null;
   const phoneNumber = user?.phoneNumber || user?.PhoneNumber || null;
   mineRowRef.current = mineRow;

@@ -5,7 +5,7 @@
 	"bundledWebRuntime": false,
 	"android": {
 		"allowMixedContent": true,
-		"captureInput": true,
+		"captureInput": false,
 		"webContentsDebuggingEnabled": false,
 		"backgroundColor": "#ffffff",
 		"loggingBehavior": "none",
@@ -17,11 +17,11 @@
 	},
 	"server": {
 		"androidScheme": "https",
-		"hostname": "wellness-valley.vercel.app",
+		"hostname": "app.wellnessvalley.app",
 		"allowNavigation": [
+			"wellness-valley.vercel.app",
 			"wellness-valley-pwa-backend-test.vercel.app",
 			"wellness-buddy-pwa-backend-test.vercel.app",
-			"wellness-buddy-pwa-eta.vercel.app",
 			"*.vercel.app",
 			"*.googleapis.com",
 			"*.firebase.com",
@@ -75,6 +75,7 @@
 		}
 	},
 	"packageClassList": [
+		"ContactsPlugin",
 		"AppPlugin",
 		"CAPCameraPlugin",
 		"FilesystemPlugin",

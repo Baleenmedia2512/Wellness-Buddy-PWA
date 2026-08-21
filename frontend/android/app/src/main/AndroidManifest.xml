@@ -27,6 +27,10 @@
     <!-- Exact alarms for precise reminder times (wellness/reminder app category) -->
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
 
+    <!-- Contacts: save new BCM member phone to coach address book -->
+    <uses-permission android:name="android.permission.READ_CONTACTS" />
+    <uses-permission android:name="android.permission.WRITE_CONTACTS" />
+
     <!-- ── Daily Activity Reminders ─────────────────────────────────── -->
     <!-- Exact alarms: SCHEDULE_EXACT_ALARM for Android 12 (API 31-32), requires runtime check -->
     <!-- On Android 13+ (API 33+), use inexact alarms or request SCHEDULE_EXACT_ALARM at runtime -->

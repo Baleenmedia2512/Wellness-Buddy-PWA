@@ -43,6 +43,9 @@ export async function insertCard(payload) {
     waist_cm:      payload.waistCm,
     hip_cm:        payload.hipCm,
     location_name: locationName,
+    recovered_health_issues: Array.isArray(payload.recoveredHealthIssues)
+      ? payload.recoveredHealthIssues
+      : [],
   };
   // Only set recorded_date when provided — otherwise DB DEFAULT CURRENT_DATE applies.
   if (payload.recordedDate) {
@@ -50,6 +53,16 @@ export async function insertCard(payload) {
   }
 
   const { data, error } = await supabase.from(TABLE).insert(row).select().single();
+
+  if (error && /recovered_health_issues/i.test(String(error.message || ''))) {
+    logger.error('[body-params-card] recovered_health_issues column missing — run migration add_health_issues_to_body_parameters_cards.sql', {
+      message: error.message,
+    });
+    throw new Error(
+      'Health issues cannot be saved: database column recovered_health_issues is missing. '
+      + 'Run backend/migrations/add_health_issues_to_body_parameters_cards.sql in Supabase.',
+    );
+  }
 
   if (error && /location_name/i.test(String(error.message || ''))) {
     logger.error('[body-params-card] location_name column missing — Venue cannot be saved. Run migration add_location_name_to_body_parameters_cards.sql', {
@@ -93,6 +106,9 @@ export async function updateCard(id, payload) {
     hip_cm:        payload.hipCm,
     recorded_date: payload.recordedDate,
     location_name: locationName,
+    recovered_health_issues: Array.isArray(payload.recoveredHealthIssues)
+      ? payload.recoveredHealthIssues
+      : [],
   };
 
   const { data, error } = await supabase
@@ -102,6 +118,16 @@ export async function updateCard(id, payload) {
     .eq('is_deleted', false)
     .select()
     .single();
+
+  if (error && /recovered_health_issues/i.test(String(error.message || ''))) {
+    logger.error('[body-params-card] recovered_health_issues column missing — run migration add_health_issues_to_body_parameters_cards.sql', {
+      message: error.message,
+    });
+    throw new Error(
+      'Health issues cannot be saved: database column recovered_health_issues is missing. '
+      + 'Run backend/migrations/add_health_issues_to_body_parameters_cards.sql in Supabase.',
+    );
+  }
 
   if (error && /location_name/i.test(String(error.message || ''))) {
     logger.error('[body-params-card] location_name column missing — Venue cannot be saved. Run migration add_location_name_to_body_parameters_cards.sql', {
@@ -131,7 +157,8 @@ export async function findCardByToken(token) {
     .select(
       'id, created_by, user_id, public_share_token, share_expires_at, ' +
       'name, age, gender, height_cm, weight_kg, bmi, fat_percent, bmr, ' +
-      'body_age, visceral_fat, chest_cm, waist_cm, hip_cm, recorded_date, location_name, created_at'
+      'body_age, visceral_fat, chest_cm, waist_cm, hip_cm, recorded_date, location_name, ' +
+      'recovered_health_issues, created_at'
     )
     .eq('public_share_token', token)
     .eq('is_deleted', false)
@@ -625,6 +652,7 @@ const LIST_DETAIL_COLS = [
   'hip_cm',
   'recorded_date',
   'location_name',
+  'recovered_health_issues',
   'created_at',
   'created_by',
 ].join(', ');
@@ -635,6 +663,21 @@ const bpcListInflight = new Map();
 
 function bpcListCacheKey(coachId) {
   return `bpc:list:v2:${coachId}`;
+}
+
+function mapRecoveredHealthIssues(raw) {
+  if (Array.isArray(raw)) return raw.filter((x) => typeof x === 'string' && x.trim());
+  if (typeof raw === 'string' && raw.trim()) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        return parsed.filter((x) => typeof x === 'string' && x.trim());
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+  return [];
 }
 
 function mapCardSummary(card, memberMeta = null) {
@@ -669,6 +712,7 @@ function mapCardDetail(card, memberMeta = null) {
     waistCm: card.waist_cm,
     hipCm: card.hip_cm,
     locationName: card.location_name,
+    recoveredHealthIssues: mapRecoveredHealthIssues(card.recovered_health_issues),
   };
 }
 

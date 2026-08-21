@@ -17,14 +17,24 @@
 import React, { useRef, useState, useCallback, forwardRef, useEffect } from 'react';
 import { X, Download, Share2, CheckCircle } from 'lucide-react';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
-import { captureAndShare } from '../../../shared/utils/shareUtils';
+import { shareImageDirectly } from '../../../shared/utils/shareUtils';
 import { saveImageBlobToGallery } from '../../../shared/plugins/saveToGalleryPlugin';
+import { getVersionString } from '../../../config/version';
 import {
   shareResultVideos,
 } from '../utils/downloadVideo.js';
 
 const CARD_W = 360;
 const PHOTO_H = 210;
+const TICK_SIZE = 26;
+/** html2canvas paints <img> reliably; inline <svg> often mis-aligns or drops strokes. */
+const CHECK_MARK_SRC =
+  'data:image/svg+xml,' +
+  encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none">'
+    + '<path d="M20 6L9 17l-5-5" stroke="#ffffff" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>'
+    + '</svg>',
+  );
 
 function blobToDataUrl(blob) {
   return new Promise((resolve, reject) => {
@@ -78,11 +88,25 @@ function transformationFileName(userName) {
   return `transformation-${String(userName || 'result').replace(/\s+/g, '-').toLowerCase()}.png`;
 }
 
-export async function shareTransformationCard(element, userName) {
+function buildTransformationShareText(userName, testimonial) {
+  const name = String(userName || 'Member').trim() || 'Member';
+  const bw = Number(testimonial?.beforeWeightKg ?? 0);
+  const aw = Number(testimonial?.afterWeightKg ?? 0);
+  if (bw > 0 && aw > 0) {
+    return `${name} · Before vs After · ${bw} kg → ${aw} kg`;
+  }
+  return `${name} · Before vs After`;
+}
+
+export async function shareTransformationCard(element, userName, testimonial = null) {
   if (!element) throw new Error('Transformation card is not ready');
-  await captureAndShare(element, {
+  // Use the local capture (no scrollY) so the green header is not clipped when
+  // the page is scrolled; captureAndShare's scrollY offset cuts the top off.
+  const blob = await captureTransformationCardAsBlob(element);
+  const dataUrl = await blobToDataUrl(blob);
+  await shareImageDirectly(dataUrl, {
     title: 'My Wellness Transformation',
-    text: `${userName || 'Member'} · Wellness Valley Transformation`,
+    text: buildTransformationShareText(userName, testimonial),
     fileName: transformationFileName(userName),
   });
 }
@@ -94,25 +118,36 @@ export async function downloadTransformationCardImage(element, userName) {
 }
 
 function VerifiedTick() {
+  const inset = Math.round((TICK_SIZE - 14) / 2);
   return (
     <span
       style={{
         position: 'absolute',
         top: 8,
         left: 8,
-        width: 26,
-        height: 26,
-        borderRadius: 13,
+        width: TICK_SIZE,
+        height: TICK_SIZE,
+        borderRadius: TICK_SIZE / 2,
         background: '#16a34a',
-        color: '#ffffff',
-        fontSize: 16,
-        fontWeight: 800,
-        lineHeight: '26px',
-        textAlign: 'center',
         boxShadow: '0 1px 3px rgba(0,0,0,0.25)',
+        overflow: 'hidden',
       }}
+      aria-label="Verified"
     >
-      &#10003;
+      <img
+        src={CHECK_MARK_SRC}
+        alt=""
+        width={14}
+        height={14}
+        style={{
+          display: 'block',
+          position: 'absolute',
+          top: inset,
+          left: inset,
+          width: 14,
+          height: 14,
+        }}
+      />
     </span>
   );
 }
@@ -201,8 +236,6 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
   const isVerified = testimonial?.status === 'verified';
   const isLoss = testimonial?.goalType !== 'gain';
   const verb = isLoss ? 'Lost' : 'Gained';
-  const accentBg = isLoss ? '#dcfce7' : '#dbeafe';
-  const accentBdr = isLoss ? '#86efac' : '#93c5fd';
   const accentTxt = isLoss ? '#15803d' : '#1d4ed8';
   const issues = (testimonial?.recoveredHealthIssues ?? []).filter(Boolean);
 
@@ -218,13 +251,59 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
         fontFamily: 'Arial, Helvetica, sans-serif',
       }}
     >
-      <div style={{ background: '#059669', padding: '14px 20px' }}>
-        <p style={{ margin: 0, color: '#ffffff', fontSize: 17, fontWeight: 800 }}>Wellness Valley</p>
-        <p style={{ margin: '3px 0 0', color: '#d1fae5', fontSize: 11, fontWeight: 400 }}>Transformation Results</p>
+      <div style={{ background: '#059669', padding: '12px 16px' }}>
+        <table
+          style={{ width: '100%', borderCollapse: 'collapse' }}
+          cellPadding={0}
+          cellSpacing={0}
+        >
+          <tbody>
+            <tr>
+              <td style={{ width: 40, verticalAlign: 'middle', paddingRight: 10 }}>
+                <div
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: 18,
+                    background: '#ffffff',
+                    overflow: 'hidden',
+                    textAlign: 'center',
+                    lineHeight: '36px',
+                  }}
+                >
+                  <img
+                    src="/logo.png"
+                    alt="Wellness Valley"
+                    style={{
+                      display: 'inline-block',
+                      width: 30,
+                      height: 30,
+                      objectFit: 'contain',
+                      verticalAlign: 'middle',
+                    }}
+                  />
+                </div>
+              </td>
+              <td style={{ verticalAlign: 'middle' }}>
+                <p style={{ margin: 0, color: '#ffffff', fontSize: 16, fontWeight: 800, lineHeight: '20px' }}>
+                  Wellness Valley
+                  <span style={{ fontWeight: 500, fontSize: 12, color: '#d1fae5' }}>
+                    {' '}( {getVersionString()} )
+                  </span>
+                </p>
+                <p style={{ margin: '3px 0 0', color: '#d1fae5', fontSize: 11, fontWeight: 400 }}>
+                  Transformation Results
+                </p>
+              </td>
+            </tr>
+          </tbody>
+        </table>
       </div>
 
       <div style={{ paddingTop: 14, paddingBottom: 4, textAlign: 'center' }}>
-        <p style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#111827' }}>{userName || 'Member'}</p>
+        <p style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#111827' }}>
+          {userName || 'Member'}
+        </p>
       </div>
 
       {showPhotoRow && (
@@ -257,63 +336,62 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
       )}
 
       {diff && (
-        <div style={{ padding: '8px 20px 12px', textAlign: 'center' }}>
-          <span style={{
-            display: 'inline-block',
-            background: accentBg,
-            border: `2px solid ${accentBdr}`,
-            borderRadius: 40,
-            padding: '10px 28px',
-            fontSize: 20,
-            fontWeight: 800,
-            lineHeight: '24px',
-            color: accentTxt,
-          }}
+        <div style={{ padding: '4px 20px 10px', textAlign: 'center' }}>
+          <p
+            style={{
+              margin: 0,
+              fontSize: 15,
+              fontWeight: 700,
+              lineHeight: '20px',
+              color: accentTxt,
+            }}
           >
             {verb} {diff} kgs{testimonial?.durationText ? ` in ${testimonial.durationText}` : ''}
-          </span>
+          </p>
         </div>
       )}
 
-      <div style={{ padding: '4px 20px 16px', textAlign: 'center' }}>
-        <p style={{
-          margin: '0 0 8px',
-          fontSize: 10,
-          fontWeight: 700,
-          color: '#9ca3af',
-          textTransform: 'uppercase',
-          letterSpacing: '1px',
-        }}
-        >
-          Recovery Health Issue
-        </p>
-        {issues.length > 0 ? issues.map((issue) => (
-          <span
-            key={issue}
-            style={{
-              display: 'inline-block',
-              margin: '0 4px 4px',
-              background: '#fef2f2',
-              border: '1px solid #fecaca',
-              borderRadius: 20,
-              padding: '5px 14px',
-              fontSize: 12,
-              fontWeight: 600,
-              lineHeight: '16px',
-              color: '#991b1b',
-              textAlign: 'center',
-            }}
+      {issues.length > 0 && (
+        <div style={{ padding: '4px 20px 18px', textAlign: 'center' }}>
+          <p style={{
+            margin: '0 0 8px',
+            fontSize: 10,
+            fontWeight: 700,
+            color: '#9ca3af',
+            textTransform: 'uppercase',
+            letterSpacing: '1px',
+            textAlign: 'center',
+          }}
           >
-            {issue}
-          </span>
-        )) : (
-          <p style={{ margin: 0, fontSize: 12, color: '#9ca3af' }}>Not added yet</p>
-        )}
-      </div>
-
-      <div style={{ background: '#f9fafb', borderTop: '1px solid #e5e7eb', padding: '8px 20px', textAlign: 'center' }}>
-        <p style={{ margin: 0, fontSize: 10, color: '#9ca3af' }}>wellness-valley.com &nbsp;·&nbsp; Powered by Wellness Valley</p>
-      </div>
+            Health Issues
+          </p>
+          <div style={{ textAlign: 'center', margin: '0 auto' }}>
+            {issues.map((issue) => (
+              <span
+                key={issue}
+                style={{
+                  display: 'inline-block',
+                  margin: '0 4px 6px',
+                  background: '#fef2f2',
+                  border: '1px solid #fecaca',
+                  borderRadius: 20,
+                  padding: '0 14px',
+                  height: 28,
+                  lineHeight: '28px',
+                  fontSize: 12,
+                  fontWeight: 600,
+                  color: '#991b1b',
+                  textAlign: 'center',
+                  whiteSpace: 'nowrap',
+                  verticalAlign: 'middle',
+                }}
+              >
+                {issue}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 });
@@ -341,7 +419,7 @@ export default function TransformationShareCard({
     setStatus(null);
     try {
       if (mode === 'share') {
-        await shareTransformationCard(cardRef.current, userName);
+        await shareTransformationCard(cardRef.current, userName, testimonial);
         setStatus('shared');
       } else {
         await downloadTransformationCardImage(cardRef.current, userName);
@@ -444,7 +522,7 @@ export function TransformationShareActions({
       if (isVideo) {
         await shareResultVideos(resolved);
       } else {
-        await shareTransformationCard(cardRef?.current, userName);
+        await shareTransformationCard(cardRef?.current, userName, resolved);
       }
       setStatus('shared');
     } catch (err) {
@@ -472,7 +550,7 @@ export function TransformationShareActions({
           ? 'Sharing…'
           : isVideo
             ? 'Share Video'
-            : 'Share'}
+            : 'Share Image'}
       </TouchFeedbackButton>
       {status === 'shared' && (
         <p className="text-[11px] text-green-700 text-center font-semibold">

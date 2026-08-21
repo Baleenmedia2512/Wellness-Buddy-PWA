@@ -411,7 +411,7 @@ function WellnessValleyApp() {
   // Services are disabled on the device. Blocks home access until GPS is on.
   const [showGpsRequired, setShowGpsRequired] = useState(false);
   // Active per-permission gate. null = no gate active.
-  // { type: 'camera'|'location'|'notifications', canRequest: boolean }
+  // { type: 'camera'|'location'|'notifications'|'contacts', canRequest: boolean }
   // canRequest: true  ? OS can re-prompt � show [Allow Again] [Exit App]
   // canRequest: false ? permanently denied � show [Exit App] only
   const [activePermission, setActivePermission] = useState(null);
@@ -2571,7 +2571,7 @@ function WellnessValleyApp() {
   // Design: zero custom screens before OS dialogs. Permissions are requested
   // immediately in order. The PermissionBlockedDialog appears only AFTER an OS
   // prompt has been denied, as a last-resort block. Required permissions
-  // (camera, location) block the app entirely; optional ones (notifications)
+  // (camera, location) block the app entirely; optional ones (notifications, contacts)
   // are silently skipped on denial.
   //
   // States
@@ -2586,7 +2586,7 @@ function WellnessValleyApp() {
   const _permissionFlowRunningRef = useRef(false);
 
   /**
-   * Walk [camera ? location ? notifications] in order.
+   * Walk [camera → location → notifications → contacts] in order.
    *
    * For every non-granted permission, requestPermission() is called
    * IMMEDIATELY � no pre-dialog, no canRequest gate on the first check.
@@ -2611,7 +2611,7 @@ function WellnessValleyApp() {
     _permissionFlowRunningRef.current = true;
 
     try {
-      const PERMISSIONS = ['camera', 'location', 'notifications'];
+      const PERMISSIONS = ['camera', 'location', 'notifications', 'contacts'];
 
       for (const type of PERMISSIONS) {
         const config = PermissionManager.PERMISSION_CONFIG[type];
@@ -7488,6 +7488,7 @@ function WellnessValleyApp() {
             <NutritionCenterRegistration
               user={user}
               initialCenter={editCenterData}
+              onSaved={() => bumpTabVisitKey('physical-club')}
               onBack={() => {
                 setShowRegisterCenter(false);
                 setEditCenterData(null);
@@ -7517,7 +7518,18 @@ function WellnessValleyApp() {
         <div className="ios-scroll-body">
           <Suspense fallback={<LoadingSpinner message="Loading testimonials�" />}>
             <TestimonialsPage
-              user={{ userId: user?.id ?? userContext?.userId ?? null }}
+              user={{
+                userId: user?.id ?? userContext?.userId ?? null,
+                userName:
+                  savedUserName
+                  || user?.userName
+                  || user?.username
+                  || user?.displayName
+                  || user?.name
+                  || null,
+                profileImage: savedProfileImage || user?.photoURL || null,
+                phoneNumber: user?.phoneNumber || user?.PhoneNumber || null,
+              }}
               userRole={userRole}
               tabVisitKey={tabVisitKeys.testimonials ?? 0}
               onBack={() => {
@@ -8042,11 +8054,12 @@ function WellnessValleyApp() {
           }}
         />
 
-        {/* Weight Loss Leaderboard Strip - Configure in src/config/leaderboardConfig.js */}
+        {/* Weight Loss Leaderboard Strip - hierarchy-scoped (same peer rule as Wellness Top 10) */}
         <WeightLossLeaderboard
           ref={leaderboardRef}
           apiBaseUrl={apiBaseUrl}
           topN={LEADERBOARD_CONFIG.TOP_N}
+          userId={user?.id || user?.UserId}
         />
 
         {/* Wellness Score Leaderboard — top 10 today's IST wellness % */}
@@ -8895,10 +8908,11 @@ function WellnessValleyApp() {
             <NutritionCenterRegistration
               user={user}
               initialCenter={editCenterData}
+              onSaved={() => bumpTabVisitKey('physical-club')}
               onBack={() => {
                 setShowRegisterCenter(false);
                 if (editCenterData) {
-                  // came from Physical Club Report via Edit � map already visible, just close form
+                  // came from Physical Club Report via Edit — map already visible, just close form
                   // No need to re-open map: setShowNutritionCentersMap(true);
                 }
                 setEditCenterData(null);

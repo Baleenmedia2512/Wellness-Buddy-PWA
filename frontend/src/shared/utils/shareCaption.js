@@ -33,6 +33,11 @@ export function composeQuickShareCaption(brandLine, activitySuffix = null) {
   const suffix = typeof activitySuffix === 'string' ? activitySuffix.trim() : '';
   if (!brand) return suffix;
   if (!suffix) return brand;
+  // WhatsApp-formatted lines (`*bold*`) should sit under the brand line so the
+  // brand itself stays plain while the activity copy renders bold in WhatsApp.
+  if (suffix.startsWith('*')) {
+    return `${brand},\n${suffix}`;
+  }
   if (suffix.includes('\n')) {
     const [first, ...rest] = suffix.split('\n');
     if (FOOD_KCAL_FIRST_LINE.test(first.trim()) && rest.length > 0) {

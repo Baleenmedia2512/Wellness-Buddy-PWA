@@ -10,6 +10,7 @@ import { X, AlertCircle } from 'lucide-react';
 import { useBodyParamsCard } from '../hooks/useBodyParamsCard.js';
 import PhoneAutocomplete from './PhoneAutocomplete.jsx';
 import NativeInput from '../../../shared/components/NativeInput.jsx';
+import HealthIssuesFilterSelect from './HealthIssuesFilterSelect.jsx';
 
 const InputField = ({
   label, value, onChange, type = 'text', placeholder = '', inputRef, onEnter,
@@ -495,6 +496,14 @@ const BodyParamsForm = ({
             placeholder="cm"
             inputRef={hipRef}
           />
+
+          {/* Health Issues — filter-style multi-select */}
+          <div className="mt-1">
+            <HealthIssuesFilterSelect
+              value={vm.form.recoveredHealthIssues || []}
+              onChange={(next) => vm.setField('recoveredHealthIssues', next)}
+            />
+          </div>
         </div>
 
         {/* Actions */}

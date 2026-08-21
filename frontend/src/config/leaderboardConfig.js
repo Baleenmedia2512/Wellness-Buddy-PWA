@@ -6,6 +6,7 @@
  *
  * Default values:
  * - Weight Loss Leaderboard: TOP_N = 10 (smooth marquee animation)
+ * - Scope: hierarchy (viewer + upline people + sibling peers + own downline)
  */
 
 // Helper to get settings from localStorage with fallback to defaults

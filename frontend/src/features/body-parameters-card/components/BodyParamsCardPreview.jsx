@@ -588,6 +588,46 @@ const BodyParamsCardPreview = React.forwardRef(({ card, previousCard = null }, r
             />
           )}
 
+          {Array.isArray(card.recoveredHealthIssues) && card.recoveredHealthIssues.filter(Boolean).length > 0 && (
+            <div style={{
+              marginTop: 12,
+              paddingTop: 10,
+              borderTop: '1px dashed #bbf7d0',
+              textAlign: 'center',
+            }}>
+              <p style={{
+                margin: '0 0 8px',
+                fontSize: 10,
+                fontWeight: 700,
+                color: '#9ca3af',
+                textTransform: 'uppercase',
+                letterSpacing: '1px',
+              }}>
+                Health Issues
+              </p>
+              {card.recoveredHealthIssues.filter(Boolean).map((issue) => (
+                <span
+                  key={issue}
+                  style={{
+                    display: 'inline-block',
+                    margin: '0 4px 4px',
+                    background: '#fef2f2',
+                    border: '1px solid #fecaca',
+                    borderRadius: 20,
+                    padding: '5px 14px',
+                    fontSize: 12,
+                    fontWeight: 600,
+                    lineHeight: '16px',
+                    color: '#991b1b',
+                    textAlign: 'center',
+                  }}
+                >
+                  {issue}
+                </span>
+              ))}
+            </div>
+          )}
+
           {/* Footer brand */}
           <div style={{
             marginTop: 14,
