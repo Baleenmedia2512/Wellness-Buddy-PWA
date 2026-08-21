@@ -2586,10 +2586,13 @@ function WellnessValleyApp() {
   const _permissionFlowRunningRef = useRef(false);
 
   /**
-   * Walk [camera → location → notifications → contacts] in order.
+   * Walk [camera → location → contacts → notifications] in order.
+   *
+   * Contacts is asked before notifications so the dialog is not dropped after
+   * the push prompt. Contacts is optional — denial does not block the app.
    *
    * For every non-granted permission, requestPermission() is called
-   * IMMEDIATELY � no pre-dialog, no canRequest gate on the first check.
+   * IMMEDIATELY — no pre-dialog, no canRequest gate on the first check.
    *
    * Why skip the initial canRequest check?
    * Capacitor's checkPermissions() maps Android permission state via
@@ -2611,12 +2614,14 @@ function WellnessValleyApp() {
     _permissionFlowRunningRef.current = true;
 
     try {
-      const PERMISSIONS = ['camera', 'location', 'notifications', 'contacts'];
+      // Contacts before notifications — iOS often drops a 4th prompt if it
+      // immediately follows the push dialog. Brief pause lets prior sheet settle.
+      const PERMISSIONS = ['camera', 'location', 'contacts', 'notifications'];
 
       for (const type of PERMISSIONS) {
         const config = PermissionManager.PERMISSION_CONFIG[type];
 
-        // Fast path: already granted � skip without touching the OS.
+        // Fast path: already granted — skip without touching the OS.
         const { granted: alreadyGranted } = await PermissionManager.checkPermission(type);
         if (alreadyGranted) continue;
 
@@ -2628,16 +2633,28 @@ function WellnessValleyApp() {
           }
         }
 
-        // Not granted � request directly. The OS either shows a dialog
+        if (type === 'contacts') {
+          const nativeOk = await PermissionManager.isContactsNativeAvailable();
+          if (!nativeOk) {
+            console.error(
+              '[App] Skipping Contacts prompt — native plugin not linked. Rebuild iOS after pod install.',
+            );
+            continue;
+          }
+          // Let the previous OS sheet fully dismiss before showing Contacts.
+          await new Promise((r) => setTimeout(r, 450));
+        }
+
+        // Not granted — request directly. The OS either shows a dialog
         // (first-time or 'prompt') or silently returns denied (permanent).
         // We never show a custom screen before this call.
         const { granted: nowGranted } = await PermissionManager.requestPermission(type);
         if (nowGranted) continue;
 
         // Request returned denied.
-        if (!config.required) continue; // Notifications is optional � skip.
+        if (!config.required) continue; // Notifications / contacts optional — skip.
 
-        // Required permission denied. Re-check canRequest NOW � this
+        // Required permission denied. Re-check canRequest NOW — this
         // post-request value is accurate: Capacitor correctly maps 'prompt'
         // (Android first-denial, can ask again) vs 'denied' (permanent).
         const { canRequest: canRequestNow } = await PermissionManager.checkPermission(type);
