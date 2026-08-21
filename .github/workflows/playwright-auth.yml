@@ -9,6 +9,7 @@ on:
       - PH1_BACKUP
       - Development
       - Nitheesh_test
+      - Avinash_test
 
   pull_request:
     branches:
