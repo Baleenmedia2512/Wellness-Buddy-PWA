@@ -129,6 +129,28 @@ describe('isProfileComplete', () => {
     );
   });
 
+  it('does not require optional Age / V-Fat / circumferences for completeness', () => {
+    assert.equal(
+      isProfileComplete({
+        height: 170,
+        dietType: 'Vegetarian',
+        userName: 'Adithya Kumar',
+        email: 'adithya@example.com',
+        gender: 'Male',
+        bodyFat: 22,
+        bodyMetrics: {
+          age: null,
+          visceralFat: null,
+          bodyAge: null,
+          chestCm: null,
+          waistCm: null,
+          hipCm: null,
+        },
+      }),
+      true,
+    );
+  });
+
   it('skips body-fat prompt when weight already has fat %', () => {
     assert.equal(
       isProfileComplete({

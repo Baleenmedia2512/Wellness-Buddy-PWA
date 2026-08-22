@@ -4,6 +4,7 @@
 import { ValidationError } from '../../shared/lib/ValidationError.js';
 import { assertIanaTimezone, IANA_IST } from '../../shared/lib/datetime/index.js';
 import { VALID_PHYSICAL_ACTIVITY_LEVELS, isValidPhysicalActivityLevel } from '../../utils/tdeeCalculations.js';
+import { parseOptionalBodyMetric } from './domain/profileBodyMetrics.rules.js';
 
 const VALID_DIETS = ['Vegetarian', 'Non-Vegetarian', 'Vegan', 'Pescatarian'];
 const VALID_GOAL_MODES = ['loss', 'gain', 'maintain'];
@@ -135,6 +136,22 @@ export function validateUpdateProfile(body) {
     timezoneIana = validation.value;
   }
 
+  const parseMetric = (keys, bounds, label) => {
+    const present = keys.some((k) => k in body);
+    if (!present) return undefined;
+    const raw = keys.reduce((acc, k) => (acc !== undefined ? acc : body[k]), undefined);
+    const parsed = parseOptionalBodyMetric(raw, bounds);
+    if (!parsed.ok) throw new ValidationError(400, `Invalid ${label}. ${parsed.message}`);
+    return parsed.value;
+  };
+
+  const age = parseMetric(['age', 'Age'], { min: 1, max: 120, integer: true }, 'age');
+  const visceralFat = parseMetric(['visceralFat', 'VisceralFat', 'visceral_fat'], { min: 1, max: 59 }, 'visceralFat');
+  const bodyAge = parseMetric(['bodyAge', 'BodyAge', 'body_age'], { min: 1, max: 120 }, 'bodyAge');
+  const chestCm = parseMetric(['chestCm', 'ChestCm', 'chest_cm'], { min: 30, max: 200 }, 'chestCm');
+  const waistCm = parseMetric(['waistCm', 'WaistCm', 'waist_cm'], { min: 30, max: 200 }, 'waistCm');
+  const hipCm = parseMetric(['hipCm', 'HipCm', 'hip_cm'], { min: 30, max: 200 }, 'hipCm');
+
   return {
     email,
     name: body.name,
@@ -150,6 +167,12 @@ export function validateUpdateProfile(body) {
     bodyFat,
     currentWeight,
     timezoneIana,
+    age,
+    visceralFat,
+    bodyAge,
+    chestCm,
+    waistCm,
+    hipCm,
   };
 }
 

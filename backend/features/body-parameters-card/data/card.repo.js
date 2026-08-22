@@ -8,8 +8,10 @@ import { nowUtc } from '../../../shared/lib/datetime/index.js';
 import { canonicalPhoneForStorage, buildPhoneLookupVariants } from '../../auth/domain/phone-identity.rules.js';
 import {
   buildTeamMemberInsert,
+  computeBmiFromHeightWeight,
   shouldClearBpcLeadCoachId,
 } from '../domain/card.rules.js';
+import { getLatestWeight, getLatestWeightBodyFat, getLatestWeightMetricsByUserIds } from '../../user/user.repository.js';
 import logger from '../../../shared/lib/logger.js';
 
 const TABLE = 'body_parameters_cards';
@@ -529,17 +531,36 @@ export async function findLatestLinkedBodyMetricsCard(userId) {
  */
 export async function searchTeamPhonesByPrefix({ prefix, coachId }) {
   const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const selectFull =
+    'UserId, UserName, PhoneNumber, Height, Bmr, Age, VisceralFat, BodyAge, ChestCm, WaistCm, HipCm, Gender';
+  const selectBasic = 'UserId, UserName, PhoneNumber, Height, Bmr, Gender';
+
+  let data;
+  let error;
+  ({ data, error } = await supabase
     .from('team_table')
-    .select('UserId, UserName, PhoneNumber, Height, Bmr')
+    .select(selectFull)
     .eq('CoachId', coachId)
     .like('PhoneNumber', `${prefix}%`)
     .eq('Status', 'Active')
     .order('UserId', { ascending: true })
-    .limit(10);
+    .limit(10));
+
+  if (error && /Age|VisceralFat|BodyAge|ChestCm|WaistCm|HipCm/i.test(String(error.message || '')) && /column/i.test(String(error.message || ''))) {
+    ({ data, error } = await supabase
+      .from('team_table')
+      .select(selectBasic)
+      .eq('CoachId', coachId)
+      .like('PhoneNumber', `${prefix}%`)
+      .eq('Status', 'Active')
+      .order('UserId', { ascending: true })
+      .limit(10));
+  }
 
   if (error) throw error;
   if (!data) return [];
+
+  const num = (v) => (v != null && Number.isFinite(Number(v)) ? Number(v) : null);
 
   // Deduplicate by PhoneNumber (keep lowest UserId)
   const seen = new Set();
@@ -554,9 +575,124 @@ export async function searchTeamPhonesByPrefix({ prefix, coachId }) {
       phoneNumber: phone,
       heightCm:    row.Height ?? null,
       bmr:         row.Bmr    ?? null,
+      gender:      row.Gender ?? null,
+      age:         num(row.Age),
+      visceralFat: num(row.VisceralFat),
+      bodyAge:     num(row.BodyAge),
+      chestCm:     num(row.ChestCm),
+      waistCm:     num(row.WaistCm),
+      hipCm:       num(row.HipCm),
+      weightKg:    null,
+      fatPercent:  null,
+      bmi:         null,
     });
   }
+
+  const userIds = results.map((r) => r.userId).filter((id) => id != null);
+  if (userIds.length > 0) {
+    const weightByUser = await getLatestWeightMetricsByUserIds(userIds);
+    for (const r of results) {
+      const w = weightByUser.get(Number(r.userId));
+      if (!w) continue;
+      r.weightKg = w.weightKg;
+      r.fatPercent = w.fatPercent;
+      r.bmi = w.bmi;
+      if (r.bmr == null && w.bmr != null) r.bmr = w.bmr;
+    }
+  }
+
   return results;
+}
+
+/**
+ * Resolve weight / fat / BMI for one member (latest weight + any BodyFat row).
+ * @param {number} userId
+ * @param {number|null|undefined} heightCm
+ * @returns {Promise<{ weightKg: number|null, fatPercent: number|null, bmi: number|null, bmr: number|null }>}
+ */
+async function resolveMemberWeightMetrics(userId, heightCm) {
+  const empty = { weightKg: null, fatPercent: null, bmi: null, bmr: null };
+  const uid = Number(userId);
+  if (!Number.isFinite(uid) || uid < 1) return empty;
+
+  try {
+    const [latest, fatFromAny] = await Promise.all([
+      getLatestWeight(uid),
+      getLatestWeightBodyFat(uid),
+    ]);
+
+    const num = (v) => (v != null && Number.isFinite(Number(v)) ? Number(v) : null);
+    const weightKg = latest?.Weight != null ? num(latest.Weight) : null;
+    const fatPercent = num(latest?.BodyFat) ?? (fatFromAny != null ? num(fatFromAny) : null);
+    let bmi = latest?.Bmi != null ? num(latest.Bmi) : null;
+    if (bmi == null && weightKg != null && heightCm != null) {
+      bmi = computeBmiFromHeightWeight(heightCm, weightKg);
+    }
+    const bmr = latest?.Bmr != null ? num(latest.Bmr) : null;
+    return { weightKg, fatPercent, bmi, bmr };
+  } catch (err) {
+    logger.warn('[card.repo] resolveMemberWeightMetrics failed', {
+      userId: uid,
+      message: err?.message || String(err),
+    });
+    return empty;
+  }
+}
+
+/**
+ * Full BCM form prefill for a team member (team_table + latest weight).
+ * @param {number} userId
+ * @returns {Promise<object|null>}
+ */
+export async function getMemberPrefillForCard(userId) {
+  const uid = parseInt(userId, 10);
+  if (!Number.isFinite(uid) || uid < 1) return null;
+
+  const supabase = getSupabaseClient();
+  const selectFull =
+    'UserId, UserName, PhoneNumber, Height, Bmr, Age, VisceralFat, BodyAge, ChestCm, WaistCm, HipCm, Gender';
+  const selectBasic = 'UserId, UserName, PhoneNumber, Height, Bmr, Gender';
+
+  let data;
+  let error;
+  ({ data, error } = await supabase
+    .from('team_table')
+    .select(selectFull)
+    .eq('UserId', uid)
+    .maybeSingle());
+
+  if (error && /Age|VisceralFat|BodyAge|ChestCm|WaistCm|HipCm/i.test(String(error.message || '')) && /column/i.test(String(error.message || ''))) {
+    ({ data, error } = await supabase
+      .from('team_table')
+      .select(selectBasic)
+      .eq('UserId', uid)
+      .maybeSingle());
+  }
+
+  if (error) throw error;
+  if (!data) return null;
+
+  const num = (v) => (v != null && Number.isFinite(Number(v)) ? Number(v) : null);
+  const heightCm = data.Height != null ? Number(data.Height) : null;
+  const w = await resolveMemberWeightMetrics(uid, heightCm);
+
+  return {
+    userId: uid,
+    userName: data.UserName || '',
+    phoneNumber: data.PhoneNumber ? String(data.PhoneNumber).trim() : null,
+    heightCm,
+    bmr: data.Bmr != null ? Number(data.Bmr) : (w.bmr ?? null),
+    gender: data.Gender ?? null,
+    age: num(data.Age),
+    visceralFat: num(data.VisceralFat),
+    bodyAge: num(data.BodyAge),
+    chestCm: num(data.ChestCm),
+    waistCm: num(data.WaistCm),
+    hipCm: num(data.HipCm),
+    weightKg: w.weightKg ?? null,
+    fatPercent: w.fatPercent ?? null,
+    bmi: w.bmi ?? null,
+  };
 }
 
 /**

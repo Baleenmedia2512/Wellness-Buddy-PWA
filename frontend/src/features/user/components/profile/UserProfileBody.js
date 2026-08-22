@@ -24,12 +24,15 @@ const UserProfileBody = ({ isLoading, form, email, latestWeight, initialWeight, 
           bmr={form.bmr} setBmr={form.setBmr}
           physicalActivityLevel={form.physicalActivityLevel}
           setPhysicalActivityLevel={form.setPhysicalActivityLevel}
-          bodyFat={form.bodyFat} setBodyFat={form.setBodyFat}
-          showBodyFat={form.needsBodyFat}
           communityId={form.communityId}
           setCommunityId={form.setCommunityId}
         />
-        <UserProfileBodyMetrics bodyMetrics={form.bodyMetrics} />
+        <UserProfileBodyMetrics
+          bodyMetrics={form.bodyMetrics}
+          onChange={form.setBodyMetricField}
+          heightCm={form.height}
+          weightKg={latestWeight}
+        />
         <IdealWeightCards
           height={form.height}
           latestWeight={latestWeight}

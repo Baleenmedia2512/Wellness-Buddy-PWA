@@ -25,7 +25,7 @@ import { buildProfileCardSyncPayload } from '../body-parameters-card/domain/sync
 import { computeBmiFromHeightWeight } from '../body-parameters-card/domain/card.rules.js';
 import { deriveWeightGoalMode } from '../../utils/weightValidation.js';
 import { resolveProfileTimezone } from './domain/profileTimezone.js';
-import { mapCardToProfileBodyMetrics, hasCoachRecordedBodyMetrics } from './domain/profileBodyMetrics.rules.js';
+import { mapCardToProfileBodyMetrics, mergeProfileBodyMetrics, mapTeamRowToProfileBodyMetrics } from './domain/profileBodyMetrics.rules.js';
 import { findLatestLinkedBodyMetricsCard } from '../body-parameters-card/data/card.repo.js';
 import { isEnabled } from '../../shared/lib/feature-flags.js';
 import { isConsentRecorded } from '../auth/domain/consent.rules.js';
@@ -51,8 +51,8 @@ export async function getProfile({ email }) {
     resolveSponsorAndIdealCoach(user.UserId, { viewerUserId: user.UserId }),
     repo.getLatestWeightBodyFat(user.UserId),
   ]);
-  const bodyMetricsMapped = mapCardToProfileBodyMetrics(latestBodyMetricsCard);
-  const bodyMetrics = hasCoachRecordedBodyMetrics(bodyMetricsMapped) ? bodyMetricsMapped : null;
+  const cardMetrics = mapCardToProfileBodyMetrics(latestBodyMetricsCard);
+  const teamMetrics = mapTeamRowToProfileBodyMetrics(user);
   const height = user.Height ? parseFloat(user.Height) : null;
   const latestWeightKg = latestWeight?.Weight ? parseFloat(latestWeight.Weight) : null;
   const initialWeightKg = initialWeightRow?.Weight != null ? parseFloat(initialWeightRow.Weight) : null;
@@ -60,6 +60,13 @@ export async function getProfile({ email }) {
     ? latestWeightBodyFatResolved
     : (latestWeight?.BodyFat != null ? parseFloat(latestWeight.BodyFat) : null);
   const resolvedWeightBodyFat = hasValidBodyFatPercent(latestWeightBodyFat) ? latestWeightBodyFat : null;
+  const weightBmi = latestWeight?.Bmi != null ? parseFloat(latestWeight.Bmi) : null;
+  const bodyMetrics = mergeProfileBodyMetrics({
+    cardMetrics,
+    teamMetrics,
+    weightFatPercent: resolvedWeightBodyFat,
+    weightBmi: Number.isFinite(weightBmi) ? weightBmi : null,
+  });
   const derivedGoalMode = deriveWeightGoalMode({ heightCm: height, currentWeightKg: latestWeightKg });
   const dietType = user.DietType || null;
   const phoneNumber = user.PhoneNumber || null;
@@ -70,7 +77,7 @@ export async function getProfile({ email }) {
   const profileImage = user.ProfileImage || null;
   const resolvedBodyFatForBmr = hasValidBodyFatPercent(resolvedWeightBodyFat)
     ? resolvedWeightBodyFat
-    : (bodyMetricsMapped?.fatPercent ?? null);
+    : (bodyMetrics?.fatPercent ?? null);
   const latestBmr = resolveBmrForDisplay({
     storedBmr: user.Bmr,
     weightKg: latestWeightKg,
@@ -157,6 +164,7 @@ export async function getProfile({ email }) {
 
 function buildProfileUpdate({
   name, height, dietType, phoneNumber, profileImage, gender, weightGoalMode, physicalActivityLevel, communityId, timezoneIana,
+  age, visceralFat, bodyAge, chestCm, waistCm, hipCm,
 }) {
   const updateData = {};
   let cleanedPhoneNumber;
@@ -182,6 +190,12 @@ function buildProfileUpdate({
     updateData.ProfileImage = profileImage;
     updateData.profile_pic_snooze = null;
   }
+  if (age !== undefined) updateData.Age = age;
+  if (visceralFat !== undefined) updateData.VisceralFat = visceralFat;
+  if (bodyAge !== undefined) updateData.BodyAge = bodyAge;
+  if (chestCm !== undefined) updateData.ChestCm = chestCm;
+  if (waistCm !== undefined) updateData.WaistCm = waistCm;
+  if (hipCm !== undefined) updateData.HipCm = hipCm;
   return { updateData, cleanedPhoneNumber };
 }
 

@@ -298,3 +298,24 @@ export function validatePhoneSearchQuery(query) {
 
   return { prefix: cleanPrefix, coachId: coachIdN };
 }
+
+/**
+ * Validate GET member-prefill query.
+ * @param {{ userId?: string, coachId?: string }} query
+ * @returns {{ userId: number, coachId: number }}
+ */
+export function validateMemberPrefillQuery(query) {
+  if (!query) throw new ValidationError(400, 'Query is required');
+  const { userId, coachId } = query;
+  if (!userId) throw new ValidationError(400, 'userId is required');
+  if (!coachId) throw new ValidationError(400, 'coachId is required');
+  const userIdN = parseInt(userId, 10);
+  const coachIdN = parseInt(coachId, 10);
+  if (isNaN(userIdN) || userIdN < 1) {
+    throw new ValidationError(400, 'userId must be a valid UserId');
+  }
+  if (isNaN(coachIdN) || coachIdN < 1) {
+    throw new ValidationError(400, 'coachId must be a valid UserId');
+  }
+  return { userId: userIdN, coachId: coachIdN };
+}
