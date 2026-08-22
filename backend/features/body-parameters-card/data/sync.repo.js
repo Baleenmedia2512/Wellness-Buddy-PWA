@@ -7,6 +7,11 @@ import { getSupabaseClient } from '../../../utils/supabaseClient.js';
 import { cache, cacheKeys } from '../../../utils/cache.js';
 import logger from '../../../shared/lib/logger.js';
 import {
+  nowUtc,
+  utcInstantToLegacyIstWallStorage,
+  IANA_IST,
+} from '../../../shared/lib/datetime/index.js';
+import {
   buildTeamTableDiff,
   buildWeightInsertIfChanged,
   hasSyncWrites,
@@ -92,8 +97,17 @@ export async function patchTeamProfile(userId, diff) {
  */
 export async function insertWeightRecord(row) {
   if (!row) return;
+  // Match weight.service: store CreatedAt as legacy IST wall clock (no Z).
+  // Diary parses timezone-less timestamps as IST. DB default `now()` is UTC —
+  // omitting CreatedAt made BCM weights show ~5.5h early in Diary.
+  const legacyNow = utcInstantToLegacyIstWallStorage(nowUtc(), IANA_IST);
+  const payload = {
+    ...row,
+    CreatedAt: row.CreatedAt ?? legacyNow,
+    UpdatedAt: row.UpdatedAt ?? legacyNow,
+  };
   const supabase = getSupabaseClient();
-  const { error } = await supabase.from(WEIGHT).insert(row);
+  const { error } = await supabase.from(WEIGHT).insert(payload);
   if (error) throw error;
 }
 
