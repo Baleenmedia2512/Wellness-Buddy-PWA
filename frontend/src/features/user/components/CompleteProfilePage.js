@@ -1,5 +1,5 @@
-// CompleteProfilePage — unified onboarding screen (before activity / coach / OTP).
-// Collects: name, email, gender, height, diet, weight, Fat %, profile photo.
+// CompleteProfilePage — post-OTP onboarding: remaining profile fields
+// (gender, height, diet, weight, Fat %, photo). Name/email collected earlier.
 import React, { useEffect, useState, useCallback } from 'react';
 import { User } from 'lucide-react';
 import { fetchProfile, saveProfile } from '../services/profileService';
@@ -48,7 +48,22 @@ function isValidCurrentWeight(value) {
   return Number.isFinite(n) && n >= MIN_WEIGHT_KG && n <= MAX_WEIGHT_KG;
 }
 
-const CompleteProfilePage = ({ user, apiBaseUrl, onComplete, showPictureSection = true }) => {
+/**
+ * @param {{
+ *   user: object,
+ *   apiBaseUrl?: string,
+ *   onComplete: function,
+ *   showPictureSection?: boolean,
+ *   identityLocked?: boolean,
+ * }} props
+ */
+const CompleteProfilePage = ({
+  user,
+  apiBaseUrl,
+  onComplete,
+  showPictureSection = true,
+  identityLocked = true,
+}) => {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [emailLocked, setEmailLocked] = useState(false);
@@ -78,38 +93,39 @@ const CompleteProfilePage = ({ user, apiBaseUrl, onComplete, showPictureSection 
     let mounted = true;
     (async () => {
       const loginEmail = (user?.email || user?.Email || '').trim();
-      try {
-        if (!loginEmail) {
-          if (mounted) {
-            setEmailLocked(false);
-            setShowCurrentWeight(true);
-            setLoading(false);
-          }
-          return;
-        }
+      const uid = user?.id || user?.UserId || user?.userId || null;
+      const phone = user?.phoneNumber || user?.PhoneNumber || user?.phone || null;
+      const sessionName = String(
+        user?.userName || user?.UserName || user?.username || user?.name || '',
+      ).trim();
 
-        const result = await fetchProfile(loginEmail);
-        if (!mounted) return;
-        const profile = result?.data;
-        if (!profile) {
-          setEmail(loginEmail);
+      const applySessionNameFallback = () => {
+        if (hasValidProfileName(sessionName, { phoneNumber: phone })) {
+          setName(sessionName);
+        }
+      };
+
+      const applyProfile = (profile, fallbackEmail = '') => {
+        const profileEmail = (profile?.email || fallbackEmail || '').trim();
+        if (profileEmail) {
+          setEmail(profileEmail);
           setEmailLocked(true);
-          setShowCurrentWeight(true);
-          return;
+        } else {
+          setEmailLocked(false);
         }
 
-        const profileEmail = (profile.email || loginEmail).trim();
-        setEmail(profileEmail);
-        setEmailLocked(!!profileEmail);
-
-        const hasName = hasValidProfileName(profile.userName, {
+        const hasName = hasValidProfileName(profile?.userName, {
           email: profileEmail,
-          phoneNumber: profile.phoneNumber,
+          phoneNumber: profile?.phoneNumber || phone,
         });
-        if (hasName) setName(profile.userName.trim());
+        if (hasName) {
+          setName(String(profile.userName).trim());
+        } else {
+          applySessionNameFallback();
+        }
 
-        const bpcGender = profile.bodyMetrics?.gender;
-        if (hasValidProfileGender(profile.gender, profile.bodyMetrics)) {
+        const bpcGender = profile?.bodyMetrics?.gender;
+        if (hasValidProfileGender(profile?.gender, profile?.bodyMetrics)) {
           const resolved = VALID_GENDERS.includes(String(profile.gender || '').trim())
             ? String(profile.gender).trim()
             : String(bpcGender).trim();
@@ -119,23 +135,23 @@ const CompleteProfilePage = ({ user, apiBaseUrl, onComplete, showPictureSection 
           }
         }
 
-        const hasH = typeof profile.height === 'number' && profile.height >= 50 && profile.height <= 250;
+        const hasH = typeof profile?.height === 'number' && profile.height >= 50 && profile.height <= 250;
         if (hasH) setHeight(String(profile.height));
 
-        if (typeof profile.dietType === 'string' && profile.dietType.trim()) {
+        if (typeof profile?.dietType === 'string' && profile.dietType.trim()) {
           setDietType(profile.dietType);
         }
 
-        const hasWeight = profile.latestWeight != null
+        const hasWeight = profile?.latestWeight != null
           && Number.isFinite(Number(profile.latestWeight));
-        const needsWeight = profile.needsCurrentWeight === true || !hasWeight;
+        const needsWeight = profile?.needsCurrentWeight === true || !hasWeight;
         setShowCurrentWeight(needsWeight);
         if (hasWeight) setCurrentWeight(String(profile.latestWeight));
 
-        const bm = profile.bodyMetrics || {};
-        const fatFallback = hasValidBodyFatPercent(profile.latestWeightBodyFat)
+        const bm = profile?.bodyMetrics || {};
+        const fatFallback = hasValidBodyFatPercent(profile?.latestWeightBodyFat)
           ? profile.latestWeightBodyFat
-          : (hasValidBodyFatPercent(profile.bodyFat)
+          : (hasValidBodyFatPercent(profile?.bodyFat)
             ? profile.bodyFat
             : bm.fatPercent);
         setOptionalMetrics({
@@ -149,22 +165,52 @@ const CompleteProfilePage = ({ user, apiBaseUrl, onComplete, showPictureSection 
           hipCm: bm.hipCm != null ? String(bm.hipCm) : '',
         });
         setRecoveredHealthIssues(
-          Array.isArray(profile.recoveredHealthIssues) ? profile.recoveredHealthIssues : [],
+          Array.isArray(profile?.recoveredHealthIssues) ? profile.recoveredHealthIssues : [],
         );
 
-        if (profile.profileImage && (
+        if (profile?.profileImage && (
           profile.profileImage.startsWith('data:image/')
           || profile.profileImage.startsWith('https://')
         )) {
           setPreviewUrl(profile.profileImage);
           setHasExistingPhoto(true);
         }
+      };
+
+      try {
+        if (!loginEmail && !uid) {
+          if (mounted) {
+            applySessionNameFallback();
+            setEmailLocked(false);
+            setShowCurrentWeight(true);
+            setLoading(false);
+          }
+          return;
+        }
+
+        const result = loginEmail
+          ? await fetchProfile({ email: loginEmail })
+          : await fetchProfile({ userId: uid });
+        if (!mounted) return;
+        const profile = result?.data;
+        if (!profile) {
+          if (loginEmail) {
+            setEmail(loginEmail);
+            setEmailLocked(true);
+          }
+          applySessionNameFallback();
+          setShowCurrentWeight(true);
+          return;
+        }
+        applyProfile(profile, loginEmail);
       } catch (e) {
         if (mounted) {
           if (loginEmail) {
             setEmail(loginEmail);
             setEmailLocked(true);
           }
+          applySessionNameFallback();
+          setShowCurrentWeight(true);
           setError(e.message || 'Failed to load profile.');
         }
       } finally {
@@ -177,8 +223,11 @@ const CompleteProfilePage = ({ user, apiBaseUrl, onComplete, showPictureSection 
   const heightNum = parseFloat(height);
   const trimmedName = name.trim();
   const trimmedEmail = email.trim().toLowerCase();
+  // Name already collected on Welcome — keep valid even after email is entered.
   const nameValid = trimmedName.length >= 2
-    && hasValidProfileName(trimmedName, { email: trimmedEmail });
+    && hasValidProfileName(trimmedName, {
+      phoneNumber: user?.phoneNumber || user?.PhoneNumber || user?.phone,
+    });
   const emailValid = EMAIL_RE.test(trimmedEmail);
   const genderValid = !showGender || hasValidProfileGender(gender, null);
   const heightValid = !Number.isNaN(heightNum) && heightNum >= 50 && heightNum <= 250;
@@ -191,8 +240,9 @@ const CompleteProfilePage = ({ user, apiBaseUrl, onComplete, showPictureSection 
   const formValid = nameValid && emailValid && genderValid && heightValid && dietValid
     && currentWeightValid && fatPercentValid && pictureValid;
 
+  const nameLocked = identityLocked && nameValid;
   const checks = [
-    { label: 'Name', done: nameValid },
+    ...(nameLocked ? [] : [{ label: 'Name', done: nameValid }]),
     { label: 'Email', done: emailValid },
     ...(showGender ? [{ label: 'Gender', done: genderValid }] : []),
     { label: 'Height', done: heightValid },
@@ -319,7 +369,7 @@ const CompleteProfilePage = ({ user, apiBaseUrl, onComplete, showPictureSection 
           <h1 className="text-2xl font-bold text-white">Complete Your Profile</h1>
         </div>
         <p className="text-green-100 text-sm">
-          Name, email, gender, height, diet preference, and photo — all in one place.
+          Gender, height, diet, body metrics, and photo — then you&apos;re set.
         </p>
       </div>
       <div className="max-w-md mx-auto p-5 space-y-5">
@@ -333,6 +383,8 @@ const CompleteProfilePage = ({ user, apiBaseUrl, onComplete, showPictureSection 
             setEmail={setEmail}
             emailValid={emailValid}
             emailLocked={emailLocked}
+            identityLocked={nameLocked}
+            hideName={nameLocked}
             gender={gender}
             setGender={setGender}
             showGender={showGender}

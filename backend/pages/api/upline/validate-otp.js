@@ -42,13 +42,16 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Get email and otp from body
-    const { otp, email } = req.body;
+    // Resolve requester by email (legacy) or userId (phone / pre-email onboarding).
+    const { otp, email, userId } = req.body;
+    const uid = userId != null && String(userId).trim() !== ''
+      ? Number(userId)
+      : null;
 
-    if (!email) {
+    if (!email && !(uid && Number.isFinite(uid))) {
       res.status(400).json({
         success: false,
-        error: "Email is required",
+        error: "Email or userId is required",
       });
       return;
     }
@@ -70,27 +73,37 @@ export default async function handler(req, res) {
     // then continue through the normal flow (DB records already exist after login).
     const DEMO_ACCOUNTS = ['testereasywork@gmail.com'];
     const DEMO_OTP = '000000';
-    const isDemoAccount = DEMO_ACCOUNTS.includes(email.toLowerCase().trim());
+    const isDemoAccount = !!(email && DEMO_ACCOUNTS.includes(String(email).toLowerCase().trim()));
     // ─────────────────────────────────────────────────────────────────────────
 
     // Get requester's UserId
-    const { data: userRows, error: userError } = await supabase
-      .from("team_table")
-      .select("UserId")
-      .eq("Email", email)
-      .limit(1);
+    let requesterId = null;
+    if (uid && Number.isFinite(uid)) {
+      const { data: byId, error: byIdErr } = await supabase
+        .from("team_table")
+        .select("UserId")
+        .eq("UserId", uid)
+        .maybeSingle();
+      if (byIdErr) throw byIdErr;
+      requesterId = byId?.UserId ?? null;
+    } else {
+      const { data: userRows, error: userError } = await supabase
+        .from("team_table")
+        .select("UserId")
+        .eq("Email", email)
+        .limit(1);
 
-    if (userError) throw userError;
+      if (userError) throw userError;
+      requesterId = userRows?.[0]?.UserId ?? null;
+    }
 
-    if (!userRows || userRows.length === 0) {
+    if (!requesterId) {
       res.status(404).json({
         success: false,
         error: "User not found",
       });
       return;
     }
-
-    const requesterId = userRows[0].UserId;
 
     // Get pending request
     const { data: requestRows, error: requestError } = await supabase

@@ -74,8 +74,10 @@ async function resolvePendingApproval(userId) {
   return request;
 }
 
-export async function getStatus({ email }) {
-  const user = await repo.getStatusFields(email);
+export async function getStatus({ email, userId = null }) {
+  const user = userId
+    ? await repo.getStatusFieldsByUserId(userId)
+    : await repo.getStatusFields(email);
   if (!user) return { httpStatus: 404, body: { success: false, error: 'User not found' } };
 
   const hasTeamId = !!user.TeamId;

@@ -106,15 +106,19 @@ export async function getProfile(email) {
   const noConsentCols =
     '"UserId", "UserName", "Email", "Height", "DietType", "ProfileImage", "CoachId", "PhoneNumber", "Gender", "Bmr", profile_pic_snooze, "WeightGoalMode", "PhysicalActivityLevel", "CommunityId", timezone_iana';
 
+  async function load(cols) {
+    return findByEmail(email, cols);
+  }
+
   try {
-    return await findByEmail(email, fullCols);
+    return await load(fullCols);
   } catch (err) {
     let current = err;
     const msg = String(current?.message || current || '');
     if (!/column/i.test(msg)) throw current;
     if (/recovered_health_issues/i.test(msg)) {
       try {
-        return await findByEmail(email, withMetricsNoHealth);
+        return await load(withMetricsNoHealth);
       } catch (errHealth) {
         const msgH = String(errHealth?.message || errHealth || '');
         if (!/column/i.test(msgH)) throw errHealth;
@@ -125,15 +129,62 @@ export async function getProfile(email) {
     const missingMetrics = /Age|VisceralFat|BodyAge|ChestCm|WaistCm|HipCm/i.test(msg2);
     if (missingMetrics) {
       try {
-        return await findByEmail(email, withConsentNoMetrics);
+        return await load(withConsentNoMetrics);
       } catch (err2) {
         const msg3 = String(err2?.message || err2 || '');
         if (!/column/i.test(msg3)) throw err2;
-        return findByEmail(email, noConsentCols);
+        return load(noConsentCols);
       }
     }
     const missingConsent = /ConsentAcceptedAt|ConsentVersion/i.test(msg2);
-    if (missingConsent) return findByEmail(email, noConsentCols);
+    if (missingConsent) return load(noConsentCols);
+    throw current;
+  }
+}
+
+/** Same columns as getProfile, resolved by UserId (phone / pre-email onboarding). */
+export async function getProfileByUserId(userId) {
+  const fullCols =
+    '"UserId", "UserName", "Email", "Height", "DietType", "ProfileImage", "CoachId", "PhoneNumber", "Gender", "Bmr", profile_pic_snooze, "WeightGoalMode", "PhysicalActivityLevel", "CommunityId", timezone_iana, "ConsentAcceptedAt", "ConsentVersion", "Age", "VisceralFat", "BodyAge", "ChestCm", "WaistCm", "HipCm", recovered_health_issues';
+  const withMetricsNoHealth =
+    '"UserId", "UserName", "Email", "Height", "DietType", "ProfileImage", "CoachId", "PhoneNumber", "Gender", "Bmr", profile_pic_snooze, "WeightGoalMode", "PhysicalActivityLevel", "CommunityId", timezone_iana, "ConsentAcceptedAt", "ConsentVersion", "Age", "VisceralFat", "BodyAge", "ChestCm", "WaistCm", "HipCm"';
+  const withConsentNoMetrics =
+    '"UserId", "UserName", "Email", "Height", "DietType", "ProfileImage", "CoachId", "PhoneNumber", "Gender", "Bmr", profile_pic_snooze, "WeightGoalMode", "PhysicalActivityLevel", "CommunityId", timezone_iana, "ConsentAcceptedAt", "ConsentVersion"';
+  const noConsentCols =
+    '"UserId", "UserName", "Email", "Height", "DietType", "ProfileImage", "CoachId", "PhoneNumber", "Gender", "Bmr", profile_pic_snooze, "WeightGoalMode", "PhysicalActivityLevel", "CommunityId", timezone_iana';
+
+  async function load(cols) {
+    return findByUserId(userId, cols);
+  }
+
+  try {
+    return await load(fullCols);
+  } catch (err) {
+    let current = err;
+    const msg = String(current?.message || current || '');
+    if (!/column/i.test(msg)) throw current;
+    if (/recovered_health_issues/i.test(msg)) {
+      try {
+        return await load(withMetricsNoHealth);
+      } catch (errHealth) {
+        const msgH = String(errHealth?.message || errHealth || '');
+        if (!/column/i.test(msgH)) throw errHealth;
+        current = errHealth;
+      }
+    }
+    const msg2 = String(current?.message || current || '');
+    const missingMetrics = /Age|VisceralFat|BodyAge|ChestCm|WaistCm|HipCm/i.test(msg2);
+    if (missingMetrics) {
+      try {
+        return await load(withConsentNoMetrics);
+      } catch (err2) {
+        const msg3 = String(err2?.message || err2 || '');
+        if (!/column/i.test(msg3)) throw err2;
+        return load(noConsentCols);
+      }
+    }
+    const missingConsent = /ConsentAcceptedAt|ConsentVersion/i.test(msg2);
+    if (missingConsent) return load(noConsentCols);
     throw current;
   }
 }
@@ -388,6 +439,10 @@ export async function setUserStatus(userId, status) {
 
 export async function getStatusFields(email) {
   return findByEmail(email, '"UserId", "TeamId", "CoachId", "Role", "SetupSkipped", "Status"');
+}
+
+export async function getStatusFieldsByUserId(userId) {
+  return findByUserId(userId, '"UserId", "TeamId", "CoachId", "Role", "SetupSkipped", "Status"');
 }
 
 export async function getPendingApproval(userId) {

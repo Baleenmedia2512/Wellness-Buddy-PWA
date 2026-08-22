@@ -63,8 +63,17 @@ export function normalizeEmail(raw) {
 
 export function validateGetProfile(query) {
   const email = normalizeEmail(query?.email);
-  if (!email) throw new ValidationError(400, 'Missing required query parameter: email');
-  return { email };
+  const userIdRaw = query?.userId ?? query?.UserId;
+  const userId = userIdRaw != null && String(userIdRaw).trim() !== ''
+    ? Number(userIdRaw)
+    : null;
+  if ((!userId || !Number.isFinite(userId)) && !email) {
+    throw new ValidationError(400, 'Missing required query parameter: email or userId');
+  }
+  return {
+    email: email || null,
+    userId: userId && Number.isFinite(userId) ? userId : null,
+  };
 }
 
 const VALID_GENDERS = ['Male', 'Female'];
@@ -263,8 +272,17 @@ export function validateSkipSetup(body) {
 
 export function validateStatus(query) {
   const email = normalizeEmail(query?.email);
-  if (!email) throw new ValidationError(400, 'Email is required');
-  return { email };
+  const userIdRaw = query?.userId ?? query?.UserId;
+  const userId = userIdRaw != null && String(userIdRaw).trim() !== ''
+    ? Number(userIdRaw)
+    : null;
+  if ((!userId || !Number.isFinite(userId)) && !email) {
+    throw new ValidationError(400, 'email or userId is required');
+  }
+  return {
+    email: email || null,
+    userId: userId && Number.isFinite(userId) ? userId : null,
+  };
 }
 
 export function validateVerifySession(req) {

@@ -16,12 +16,15 @@ const inputCls = (invalid) =>
 const CompleteRequiredFields = ({
   name, setName, nameValid,
   email, setEmail, emailValid, emailLocked,
+  identityLocked = false,
+  hideName = false,
   gender, setGender, showGender,
   height, setHeight, heightValid,
   dietType, setDietType,
   currentWeight, setCurrentWeight, showCurrentWeight, currentWeightValid,
 }) => (
   <>
+    {!hideName && (
     <div>
       <label className="block text-sm font-semibold text-gray-700 mb-2">
         Full Name <span className="text-red-500">*</span>
@@ -34,11 +37,16 @@ const CompleteRequiredFields = ({
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="Enter your full name"
-          className={inputCls(name && !nameValid)}
+          disabled={identityLocked}
+          className={`${inputCls(name && !nameValid)} ${identityLocked ? 'bg-gray-50 text-gray-600' : ''}`}
           style={{ fontSize: '16px' }}
         />
       </div>
+      {identityLocked && (
+        <p className="text-xs text-gray-400 mt-1">Saved earlier in onboarding</p>
+      )}
     </div>
+    )}
 
     <div>
       <label className="block text-sm font-semibold text-gray-700 mb-2">
@@ -59,6 +67,9 @@ const CompleteRequiredFields = ({
       </div>
       {emailLocked && (
         <p className="text-xs text-gray-400 mt-1">Email from your login account</p>
+      )}
+      {!emailLocked && (
+        <p className="text-xs text-gray-400 mt-1">Required to finish your profile</p>
       )}
     </div>
 

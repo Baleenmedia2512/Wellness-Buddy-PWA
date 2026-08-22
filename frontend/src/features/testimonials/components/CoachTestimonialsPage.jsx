@@ -512,7 +512,8 @@ function MemberCard({
     draftAfter?.imageBase64  && 'after',
     draftHealthPath          && 'health',
     draftBusinessPath        && 'business',
-    draftIssues !== null     && 'issues',
+    // Only mark issues dirty when the list actually has labels (empty [] caused 422 on complete photo submit).
+    Array.isArray(draftIssues) && draftIssues.filter(Boolean).length > 0 && 'issues',
   ].filter(Boolean);
   // hasDirtySlots: true for ANY pending change including weight-only edits
   const hasDirtySlots = dirtySlots.length > 0 || !!draftBefore || !!draftAfter;
@@ -814,15 +815,17 @@ function MemberCard({
       } : {}),
       ...(draftHealthPath ? { healthVideoPath: draftHealthPath } : {}),
       ...(draftBusinessPath ? { businessVideoPath: draftBusinessPath } : {}),
-      ...(draftIssues !== null ? { recoveredHealthIssues: draftIssues } : {}),
+      ...(Array.isArray(draftIssues) && draftIssues.filter(Boolean).length > 0
+        ? { recoveredHealthIssues: draftIssues.filter(Boolean) }
+        : {}),
     };
 
     // Completing both photos requires at least one health issue (same rule as backend).
     const willComplete =
       Boolean(draftBefore?.imageBase64 || testimonial?.beforeImageUrl)
       && Boolean(draftAfter?.imageBase64 || (hasAfter && testimonial?.afterImageUrl));
-    const issuesForSubmit = draftIssues !== null
-      ? draftIssues
+    const issuesForSubmit = Array.isArray(draftIssues) && draftIssues.filter(Boolean).length > 0
+      ? draftIssues.filter(Boolean)
       : (testimonial?.recoveredHealthIssues || []);
     if (
       willComplete
@@ -838,7 +841,11 @@ function MemberCard({
       setSubmitError('Before photo failed to prepare. Please pick it again.');
       return;
     }
-    if (!testimonial?.id && !dirtySlots.includes('before')) {
+    if (!testimonial?.id && dirtySlots.includes('after') && !dirtySlots.includes('before') && !testimonial?.beforeImageUrl) {
+      setSubmitError('Please add a before photo before submitting.');
+      return;
+    }
+    if (!testimonial?.id && !dirtySlots.includes('before') && !testimonial?.beforeImageUrl) {
       setSubmitError('Please add a before photo before submitting.');
       return;
     }

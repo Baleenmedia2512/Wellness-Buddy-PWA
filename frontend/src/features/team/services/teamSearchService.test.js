@@ -23,8 +23,8 @@ describe('resolveTeamSearchDisplayName', () => {
     expect(resolveTeamSearchDisplayName('Adithya', user)).toBe('Adithya');
   });
 
-  it('rejects saved name that matches email local-part', () => {
-    expect(resolveTeamSearchDisplayName('adhithya5518', user)).toBe('');
+  it('allows a name that matches email local-part', () => {
+    expect(resolveTeamSearchDisplayName('adhithya5518', user)).toBe('adhithya5518');
   });
 
   it('accepts a valid auth userName when saved name is empty', () => {

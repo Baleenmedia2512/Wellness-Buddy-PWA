@@ -9,6 +9,7 @@ import {
   hasValidProfileGender,
   hasValidBodyFatSource,
   isPlaceholderUserName,
+  isOnboardingIdentityComplete,
   isProfileComplete,
 } from '../domain/profileCompleteness.js';
 
@@ -22,10 +23,18 @@ describe('isPlaceholderUserName', () => {
     assert.equal(isPlaceholderUserName('user_919876543210'), true);
   });
 
-  it('treats email local-part as placeholder', () => {
+  it('does not treat email local-part as a placeholder', () => {
     assert.equal(
       isPlaceholderUserName('adithya', { email: 'adithya@example.com' }),
-      true,
+      false,
+    );
+    assert.equal(
+      isPlaceholderUserName('SURESH', { email: 'suresh@gmail.com' }),
+      false,
+    );
+    assert.equal(
+      isPlaceholderUserName('suresh', { email: 'suresh@gmail.com' }),
+      false,
     );
   });
 
@@ -61,6 +70,34 @@ describe('hasValidBodyFatSource', () => {
 
   it('rejects missing body fat', () => {
     assert.equal(hasValidBodyFatSource({}), false);
+  });
+});
+
+describe('isOnboardingIdentityComplete', () => {
+  it('requires a real name only (email comes later)', () => {
+    assert.equal(
+      isOnboardingIdentityComplete({
+        userName: 'Adithya Kumar',
+        email: '',
+      }),
+      true,
+    );
+    assert.equal(
+      isOnboardingIdentityComplete({
+        userName: 'PRAVEEN',
+      }),
+      true,
+    );
+  });
+
+  it('rejects phone placeholder name', () => {
+    assert.equal(
+      isOnboardingIdentityComplete({
+        userName: 'user_919876543210',
+        email: 'a@b.com',
+      }),
+      false,
+    );
   });
 });
 

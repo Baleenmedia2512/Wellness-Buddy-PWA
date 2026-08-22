@@ -829,7 +829,7 @@ export async function findLatestLinkedBodyMetricsCard(userId) {
   // Include weight_kg / fat_percent / bmr so Wellness Score + profile can resolve
   // BMR when team_table.Bmr is null but a linked BPC has composition data.
   const cardSelect =
-    'id, user_id, age, gender, height_cm, weight_kg, fat_percent, bmr, visceral_fat, bmi, body_age, chest_cm, waist_cm, hip_cm';
+    'id, user_id, name, age, gender, height_cm, weight_kg, fat_percent, bmr, visceral_fat, bmi, body_age, chest_cm, waist_cm, hip_cm';
 
   const { data, error } = await supabase
     .from(TABLE)

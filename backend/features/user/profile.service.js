@@ -35,14 +35,18 @@ import * as weightRepo from '../weight/weight.repository.js';
 
 const notFound = () => ({ httpStatus: 404, body: { success: false, message: 'User not found' } });
 
-export async function getProfile({ email }) {
-  const cacheKey = cacheKeys.userProfile(String(email || '').toLowerCase());
+export async function getProfile({ email, userId = null }) {
+  const cacheKey = email
+    ? cacheKeys.userProfile(String(email || '').toLowerCase())
+    : cacheKeys.userProfile(`id:${userId}`);
   try {
     const cached = cache.get(cacheKey);
     if (cached) return cached;
   } catch { /* non-fatal */ }
 
-  const user = await repo.getProfile(email);
+  const user = userId
+    ? await repo.getProfileByUserId(userId)
+    : await repo.getProfile(email);
   if (!user) return notFound();
 
   const [latestWeight, initialWeightRow, latestBodyMetricsCard, sponsorIdeal, latestWeightBodyFatResolved] = await Promise.all([
@@ -54,8 +58,19 @@ export async function getProfile({ email }) {
   ]);
   const cardMetrics = mapCardToProfileBodyMetrics(latestBodyMetricsCard);
   const teamMetrics = mapTeamRowToProfileBodyMetrics(user);
-  const height = user.Height ? parseFloat(user.Height) : null;
-  const latestWeightKg = latestWeight?.Weight ? parseFloat(latestWeight.Weight) : null;
+  const cardHeight = latestBodyMetricsCard?.height_cm != null
+    ? parseFloat(latestBodyMetricsCard.height_cm)
+    : null;
+  const height = user.Height
+    ? parseFloat(user.Height)
+    : (Number.isFinite(cardHeight) ? cardHeight : null);
+  const weightFromRecord = latestWeight?.Weight ? parseFloat(latestWeight.Weight) : null;
+  const cardWeight = latestBodyMetricsCard?.weight_kg != null
+    ? parseFloat(latestBodyMetricsCard.weight_kg)
+    : null;
+  const latestWeightKg = Number.isFinite(weightFromRecord)
+    ? weightFromRecord
+    : (Number.isFinite(cardWeight) ? cardWeight : null);
   const initialWeightKg = initialWeightRow?.Weight != null ? parseFloat(initialWeightRow.Weight) : null;
   const latestWeightBodyFat = hasValidBodyFatPercent(latestWeightBodyFatResolved)
     ? latestWeightBodyFatResolved
@@ -101,13 +116,23 @@ export async function getProfile({ email }) {
   // Backward-compatible alias: coachName remains the direct parent (sponsor).
   const coachName = sponsorName;
 
+  const cardName = latestBodyMetricsCard?.name != null
+    ? String(latestBodyMetricsCard.name).trim()
+    : '';
+  const resolvedUserName = hasValidProfileName(user.UserName, {
+    email: user.Email,
+    phoneNumber,
+  })
+    ? user.UserName
+    : (cardName || user.UserName);
+
   const result = {
     httpStatus: 200,
     body: {
       success: true,
       data: {
         userId: user.UserId,
-        userName: user.UserName,
+        userName: resolvedUserName,
         email: user.Email,
         height, dietType, phoneNumber, gender,
         weightGoalMode: derivedGoalMode || user.WeightGoalMode || 'loss',
@@ -116,7 +141,7 @@ export async function getProfile({ email }) {
           height,
           dietType,
           phoneNumber,
-          userName: user.UserName,
+          userName: resolvedUserName,
           email: user.Email,
           gender,
           bodyMetrics,
@@ -125,12 +150,13 @@ export async function getProfile({ email }) {
           // Body fat lives on weight rows; only require it once a weight exists (or will be collected with weight).
           bodyFatRequired: true,
         }),
-        needsName: !hasValidProfileName(user.UserName, {
+        needsName: !hasValidProfileName(resolvedUserName, {
           email: user.Email,
           phoneNumber,
         }),
         needsBodyFat,
-        needsCurrentWeight: latestWeightKg == null,
+        // Still prompt to confirm weight when only BCM card has it (no weight row yet).
+        needsCurrentWeight: weightFromRecord == null,
         profileImage,
         coachId: user.CoachId || null,
         coachName,

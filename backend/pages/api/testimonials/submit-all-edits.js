@@ -16,6 +16,11 @@ export default async function handler(req, res) {
   logger.info('[testimonials/submit-all-edits] incoming request', {
     userId:     req.body?.userId     ?? 'unknown',
     dirtySlots: req.body?.dirtySlots ?? [],
+    hasBeforeImage: Boolean(req.body?.beforeImageBase64),
+    hasAfterImage: Boolean(req.body?.afterImageBase64),
+    beforeImageLen: typeof req.body?.beforeImageBase64 === 'string' ? req.body.beforeImageBase64.length : 0,
+    afterImageLen: typeof req.body?.afterImageBase64 === 'string' ? req.body.afterImageBase64.length : 0,
+    issuesCount: Array.isArray(req.body?.recoveredHealthIssues) ? req.body.recoveredHealthIssues.length : null,
   });
 
   return runService(res, () => submitAllEdits(req.body));
