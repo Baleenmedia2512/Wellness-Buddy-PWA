@@ -25,10 +25,8 @@ export default function useImageCropper({ onCropped, onError } = {}) {
       onError?.('Please select a valid image file');
       return;
     }
-    if (file.size > 5 * 1024 * 1024) {
-      onError?.('Image size must be less than 5MB');
-      return;
-    }
+    // No pick-time size cap — crop + encodeWithinBudget compresses to
+    // PROFILE_IMAGE_TARGET_BYTES (~200 KB) before save/upload.
     const reader = new FileReader();
     reader.onload = (e) => {
       setRawImageSrc(e.target.result);
