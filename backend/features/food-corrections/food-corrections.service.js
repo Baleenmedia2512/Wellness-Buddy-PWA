@@ -377,6 +377,14 @@ export async function updateAnalysis(input) {
   }
   cache.delete(cacheKeys.nutritionMeals(userId));
   await repo.touchLastActive(userId);
+
+  try {
+    const { recordMealFoodPairs } = await import('../food-suggestions/index.js');
+    await recordMealFoodPairs({ userId, analysisData });
+  } catch (err) {
+    logger.warn('updateAnalysis: food pair stats skipped', { err: err?.message, mealId: id });
+  }
+
   return {
     httpStatus: 200,
     body: {
