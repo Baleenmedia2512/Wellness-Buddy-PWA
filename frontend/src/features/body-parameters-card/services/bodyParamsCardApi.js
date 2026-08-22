@@ -93,6 +93,36 @@ export async function searchPhonesByPrefix({ prefix, coachId }) {
 }
 
 /**
+ * Check whether a phone belongs to an activated member (BCM blocked).
+ * Called as soon as a complete phone is typed (does not wait for Save).
+ *
+ * @param {{ phoneNumber: string, coachId: number|string }} opts
+ * @returns {Promise<{ activated: boolean, message: string|null }>}
+ */
+export async function fetchPhoneBcmStatus({ phoneNumber, coachId }) {
+  const response = await CapacitorHttp.get({
+    url: `${getApiBaseUrl()}/api/body-parameters-card/phone-status`
+      + `?phoneNumber=${encodeURIComponent(phoneNumber)}`
+      + `&coachId=${encodeURIComponent(coachId)}`,
+    headers: { 'Cache-Control': 'no-cache', ...getAppVersionHeaders() },
+  });
+  let result = response?.data;
+  if (typeof result === 'string') {
+    try { result = JSON.parse(result); } catch { /* keep */ }
+  }
+  const status = Number(response?.status) || 0;
+  if (status >= 400) {
+    throw new Error(result?.error?.message || result?.message || `Phone status check failed (${status})`);
+  }
+  if (!result?.ok) throw new Error(result?.error?.message || 'Phone status check failed');
+  return {
+    activated: Boolean(result.data?.activated),
+    message: result.data?.message || null,
+    existingCard: result.data?.existingCard || null,
+  };
+}
+
+/**
  * Prefill BCM fields from a member's profile + latest weight.
  * @param {{ userId: string|number, coachId: string|number }} opts
  * @returns {Promise<object>}

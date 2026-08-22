@@ -98,6 +98,8 @@ export async function getProfile(email) {
   // Consent / optional body-metric columns are optional until migrations are applied.
   // Body fat is stored on weight_records_table, not team_table.
   const fullCols =
+    '"UserId", "UserName", "Email", "Height", "DietType", "ProfileImage", "CoachId", "PhoneNumber", "Gender", "Bmr", profile_pic_snooze, "WeightGoalMode", "PhysicalActivityLevel", "CommunityId", timezone_iana, "ConsentAcceptedAt", "ConsentVersion", "Age", "VisceralFat", "BodyAge", "ChestCm", "WaistCm", "HipCm", recovered_health_issues';
+  const withMetricsNoHealth =
     '"UserId", "UserName", "Email", "Height", "DietType", "ProfileImage", "CoachId", "PhoneNumber", "Gender", "Bmr", profile_pic_snooze, "WeightGoalMode", "PhysicalActivityLevel", "CommunityId", timezone_iana, "ConsentAcceptedAt", "ConsentVersion", "Age", "VisceralFat", "BodyAge", "ChestCm", "WaistCm", "HipCm"';
   const withConsentNoMetrics =
     '"UserId", "UserName", "Email", "Height", "DietType", "ProfileImage", "CoachId", "PhoneNumber", "Gender", "Bmr", profile_pic_snooze, "WeightGoalMode", "PhysicalActivityLevel", "CommunityId", timezone_iana, "ConsentAcceptedAt", "ConsentVersion"';
@@ -107,21 +109,32 @@ export async function getProfile(email) {
   try {
     return await findByEmail(email, fullCols);
   } catch (err) {
-    const msg = String(err?.message || err || '');
-    if (!/column/i.test(msg)) throw err;
-    const missingMetrics = /Age|VisceralFat|BodyAge|ChestCm|WaistCm|HipCm/i.test(msg);
+    let current = err;
+    const msg = String(current?.message || current || '');
+    if (!/column/i.test(msg)) throw current;
+    if (/recovered_health_issues/i.test(msg)) {
+      try {
+        return await findByEmail(email, withMetricsNoHealth);
+      } catch (errHealth) {
+        const msgH = String(errHealth?.message || errHealth || '');
+        if (!/column/i.test(msgH)) throw errHealth;
+        current = errHealth;
+      }
+    }
+    const msg2 = String(current?.message || current || '');
+    const missingMetrics = /Age|VisceralFat|BodyAge|ChestCm|WaistCm|HipCm/i.test(msg2);
     if (missingMetrics) {
       try {
         return await findByEmail(email, withConsentNoMetrics);
       } catch (err2) {
-        const msg2 = String(err2?.message || err2 || '');
-        if (!/column/i.test(msg2)) throw err2;
+        const msg3 = String(err2?.message || err2 || '');
+        if (!/column/i.test(msg3)) throw err2;
         return findByEmail(email, noConsentCols);
       }
     }
-    const missingConsent = /ConsentAcceptedAt|ConsentVersion/i.test(msg);
+    const missingConsent = /ConsentAcceptedAt|ConsentVersion/i.test(msg2);
     if (missingConsent) return findByEmail(email, noConsentCols);
-    throw err;
+    throw current;
   }
 }
 

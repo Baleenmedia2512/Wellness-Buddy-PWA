@@ -5,6 +5,7 @@ import UserProfileFields from './UserProfileFields';
 import UserProfileBodyMetrics from './UserProfileBodyMetrics';
 import IdealWeightCards from './IdealWeightCards';
 import DietDropdown from './DietDropdown';
+import HealthIssuesFilterSelect from '../../../body-parameters-card/components/HealthIssuesFilterSelect';
 
 const UserProfileBody = ({ isLoading, form, email, latestWeight, initialWeight, initialWeightDate, error, successMessage }) => (
   <div className="p-6 space-y-5">
@@ -33,6 +34,12 @@ const UserProfileBody = ({ isLoading, form, email, latestWeight, initialWeight, 
           heightCm={form.height}
           weightKg={latestWeight}
         />
+        <div className="pt-1">
+          <HealthIssuesFilterSelect
+            value={form.recoveredHealthIssues || []}
+            onChange={form.setRecoveredHealthIssues}
+          />
+        </div>
         <IdealWeightCards
           height={form.height}
           latestWeight={latestWeight}

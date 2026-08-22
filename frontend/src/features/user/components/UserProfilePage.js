@@ -31,6 +31,7 @@ import UserProfileBodyMetrics from './profile/UserProfileBodyMetrics';
 import IdealWeightCards from './profile/IdealWeightCards';
 import DietDropdown from './profile/DietDropdown';
 import WeightModeSelector from './profile/WeightModeSelector';
+import HealthIssuesFilterSelect from '../../body-parameters-card/components/HealthIssuesFilterSelect';
 import { EmojiOrNative } from '../../../shared/components/icons/EmojiImage';
 import { deriveWeightGoalMode } from '../../weight/services/weightFormService';
 import DeleteAccountModal from './DeleteAccountModal';
@@ -102,6 +103,9 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
         email: data?.email || user?.email || '',
         communityId: data?.communityId != null ? String(data.communityId) : '',
         bodyMetrics: data?.bodyMetrics || null,
+        recoveredHealthIssues: Array.isArray(data?.recoveredHealthIssues)
+          ? data.recoveredHealthIssues
+          : [],
       };
 
       form.reload(profileData);
@@ -353,6 +357,10 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
                   onChange={form.setBodyMetricField}
                   heightCm={form.height}
                   weightKg={latestWeight}
+                />
+                <HealthIssuesFilterSelect
+                  value={form.recoveredHealthIssues || []}
+                  onChange={form.setRecoveredHealthIssues}
                 />
                 <IdealWeightCards
                   height={form.height}

@@ -5,6 +5,7 @@ import { ValidationError } from '../../shared/lib/ValidationError.js';
 import { assertIanaTimezone, IANA_IST } from '../../shared/lib/datetime/index.js';
 import { VALID_PHYSICAL_ACTIVITY_LEVELS, isValidPhysicalActivityLevel } from '../../utils/tdeeCalculations.js';
 import { parseOptionalBodyMetric } from './domain/profileBodyMetrics.rules.js';
+import { normalizeRecoveredHealthIssues } from '../body-parameters-card/validation/card.schema.js';
 
 const VALID_DIETS = ['Vegetarian', 'Non-Vegetarian', 'Vegan', 'Pescatarian'];
 const VALID_GOAL_MODES = ['loss', 'gain', 'maintain'];
@@ -152,6 +153,15 @@ export function validateUpdateProfile(body) {
   const waistCm = parseMetric(['waistCm', 'WaistCm', 'waist_cm'], { min: 30, max: 200 }, 'waistCm');
   const hipCm = parseMetric(['hipCm', 'HipCm', 'hip_cm'], { min: 30, max: 200 }, 'hipCm');
 
+  let recoveredHealthIssues;
+  if (
+    'recoveredHealthIssues' in body
+    || 'recovered_health_issues' in body
+    || 'medicalCondition' in body
+  ) {
+    recoveredHealthIssues = normalizeRecoveredHealthIssues(body);
+  }
+
   return {
     email,
     name: body.name,
@@ -173,6 +183,7 @@ export function validateUpdateProfile(body) {
     chestCm,
     waistCm,
     hipCm,
+    recoveredHealthIssues,
   };
 }
 

@@ -13,6 +13,7 @@ import CompleteRequiredFields, {
 } from './complete/CompleteRequiredFields';
 import CompletePictureSection from './complete/CompletePictureSection';
 import UserProfileBodyMetrics from './profile/UserProfileBodyMetrics';
+import HealthIssuesFilterSelect from '../../body-parameters-card/components/HealthIssuesFilterSelect';
 import {
   hasValidProfileName,
   hasValidProfileGender,
@@ -58,6 +59,7 @@ const CompleteProfilePage = ({ user, apiBaseUrl, onComplete, showPictureSection 
   const [currentWeight, setCurrentWeight] = useState('');
   const [showCurrentWeight, setShowCurrentWeight] = useState(false);
   const [optionalMetrics, setOptionalMetrics] = useState(EMPTY_OPTIONAL_METRICS);
+  const [recoveredHealthIssues, setRecoveredHealthIssues] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -146,6 +148,9 @@ const CompleteProfilePage = ({ user, apiBaseUrl, onComplete, showPictureSection 
           waistCm: bm.waistCm != null ? String(bm.waistCm) : '',
           hipCm: bm.hipCm != null ? String(bm.hipCm) : '',
         });
+        setRecoveredHealthIssues(
+          Array.isArray(profile.recoveredHealthIssues) ? profile.recoveredHealthIssues : [],
+        );
 
         if (profile.profileImage && (
           profile.profileImage.startsWith('data:image/')
@@ -272,6 +277,9 @@ const CompleteProfilePage = ({ user, apiBaseUrl, onComplete, showPictureSection 
       if (chestCm !== undefined) payload.chestCm = chestCm;
       if (waistCm !== undefined) payload.waistCm = waistCm;
       if (hipCm !== undefined) payload.hipCm = hipCm;
+      payload.recoveredHealthIssues = Array.isArray(recoveredHealthIssues)
+        ? recoveredHealthIssues
+        : [];
 
       await saveProfile(payload);
 
@@ -297,7 +305,7 @@ const CompleteProfilePage = ({ user, apiBaseUrl, onComplete, showPictureSection 
     currentWeightValid, fatPercentValid, pictureValid,
     showPictureSection, profileImage, user, apiBaseUrl,
     trimmedName, trimmedEmail, heightNum, dietType, showGender, gender, previewUrl, onComplete,
-    showCurrentWeight, currentWeight, optionalMetrics,
+    showCurrentWeight, currentWeight, optionalMetrics, recoveredHealthIssues,
   ]);
 
   return (
@@ -348,6 +356,12 @@ const CompleteProfilePage = ({ user, apiBaseUrl, onComplete, showPictureSection 
                 setOptionalMetrics((prev) => ({ ...prev, [key]: value }));
               }}
             />
+            <div className="mt-3">
+              <HealthIssuesFilterSelect
+                value={recoveredHealthIssues}
+                onChange={setRecoveredHealthIssues}
+              />
+            </div>
           </div>
           {error && (
             <div className="p-3 bg-red-50 border border-red-200 rounded-lg">

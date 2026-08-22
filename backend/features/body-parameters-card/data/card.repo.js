@@ -10,9 +10,12 @@ import {
   buildTeamMemberInsert,
   computeBmiFromHeightWeight,
   shouldClearBpcLeadCoachId,
+  isMemberActivatedForBcmExclusion,
+  BCM_ACTIVATED_MEMBER_MESSAGE,
 } from '../domain/card.rules.js';
 import { getLatestWeight, getLatestWeightBodyFat, getLatestWeightMetricsByUserIds } from '../../user/user.repository.js';
 import logger from '../../../shared/lib/logger.js';
+import { ValidationError } from '../../../shared/lib/ValidationError.js';
 
 const TABLE = 'body_parameters_cards';
 const APPROVALS = 'approval_requests_table';
@@ -88,6 +91,21 @@ export async function insertCard(payload) {
  */
 export async function updateCard(id, payload) {
   const supabase = getSupabaseClient();
+
+  const { data: existingRow, error: existingErr } = await supabase
+    .from(TABLE)
+    .select('id, user_id')
+    .eq('id', id)
+    .eq('is_deleted', false)
+    .maybeSingle();
+  if (existingErr) throw existingErr;
+  if (!existingRow) {
+    throw new ValidationError(404, 'Card not found');
+  }
+  if (existingRow.user_id && await isUserActivatedForBcm(existingRow.user_id)) {
+    await rejectBcmForActivatedMember(existingRow.user_id);
+  }
+
   const locationName = payload.locationName != null && String(payload.locationName).trim() !== ''
     ? String(payload.locationName).trim().substring(0, 200)
     : null;
@@ -191,7 +209,7 @@ export async function findTeamPhoneByUserId(userId) {
  * @param {number} userId
  * @returns {Promise<boolean>}
  */
-async function hasApprovedCoachSelection(userId) {
+export async function hasApprovedCoachSelection(userId) {
   const uid = parseInt(userId, 10);
   if (!Number.isFinite(uid) || uid < 1) return false;
   const supabase = getSupabaseClient();
@@ -210,6 +228,127 @@ async function hasApprovedCoachSelection(userId) {
     return false;
   }
   return Boolean(data?.[0]?.Id);
+}
+
+/**
+ * Activated for BCM exclusion = approved coach/sponsor OTP (implies logged-in member).
+ * @param {number} userId
+ * @returns {Promise<boolean>}
+ */
+export async function isUserActivatedForBcm(userId) {
+  const approved = await hasApprovedCoachSelection(userId);
+  return isMemberActivatedForBcmExclusion({ hasApprovedCoachSelection: approved });
+}
+
+/**
+ * Hard-delete every body_parameters_cards row linked to this member (all creators).
+ * Activation lock remains via OTP approval — delete does not reopen BCM for the phone.
+ *
+ * @param {number} userId
+ * @returns {Promise<{ deleted: number, createdByIds: number[] }>}
+ */
+export async function hardDeleteCardsForUserId(userId) {
+  const uid = parseInt(userId, 10);
+  if (!Number.isFinite(uid) || uid < 1) return { deleted: 0, createdByIds: [] };
+
+  const supabase = getSupabaseClient();
+  const { data: existing, error: selectErr } = await supabase
+    .from(TABLE)
+    .select('id, created_by')
+    .eq('user_id', uid);
+  if (selectErr) throw selectErr;
+
+  const rows = existing || [];
+  if (rows.length === 0) return { deleted: 0, createdByIds: [] };
+
+  const createdByIds = [
+    ...new Set(
+      rows
+        .map((r) => parseInt(r.created_by, 10))
+        .filter((n) => Number.isFinite(n) && n > 0),
+    ),
+  ];
+
+  const { error: deleteErr } = await supabase
+    .from(TABLE)
+    .delete()
+    .eq('user_id', uid);
+  if (deleteErr) throw deleteErr;
+
+  for (const coachId of createdByIds) {
+    invalidateBpcListCache(coachId);
+  }
+
+  logger.info('[body-params-card] hard-deleted BCM cards for activated member', {
+    userId: uid,
+    deleted: rows.length,
+    createdByIds,
+  });
+
+  return { deleted: rows.length, createdByIds };
+}
+
+/**
+ * After coach OTP approval: remove all BCM records for this member.
+ * Safe to call even when no cards exist.
+ *
+ * @param {number} userId
+ * @returns {Promise<{ deleted: number, createdByIds: number[] }>}
+ */
+export async function purgeBcmCardsForActivatedMember(userId) {
+  return hardDeleteCardsForUserId(userId);
+}
+
+/**
+ * @param {number[]} userIds
+ * @returns {Promise<Set<number>>} userIds that are activated for BCM exclusion
+ */
+async function findActivatedUserIdsAmong(userIds) {
+  const activated = new Set();
+  const ids = [...new Set(
+    (userIds || [])
+      .map((id) => parseInt(id, 10))
+      .filter((n) => Number.isFinite(n) && n > 0),
+  )];
+  if (ids.length === 0) return activated;
+
+  const supabase = getSupabaseClient();
+  const CHUNK = 200;
+  for (let i = 0; i < ids.length; i += CHUNK) {
+    const chunk = ids.slice(i, i + CHUNK);
+    const { data, error } = await supabase
+      .from(APPROVALS)
+      .select('"RequesterId"')
+      .in('"RequesterId"', chunk)
+      .eq('"Status"', 'approved');
+    if (error) {
+      logger.warn('[body-params-card] batch activated lookup failed', {
+        message: error.message,
+      });
+      continue;
+    }
+    for (const row of data || []) {
+      const rid = parseInt(row.RequesterId, 10);
+      if (Number.isFinite(rid) && rid > 0) activated.add(rid);
+    }
+  }
+  return activated;
+}
+
+/**
+ * Reject BCM when the phone belongs to an activated member: hard-delete cards, then throw.
+ * @param {number} userId
+ */
+async function rejectBcmForActivatedMember(userId) {
+  try {
+    await hardDeleteCardsForUserId(userId);
+  } catch (purgeErr) {
+    logger.error('[body-params-card] failed to purge cards before activated reject', {
+      userId,
+      message: purgeErr?.message,
+    });
+  }
+  throw new ValidationError(409, BCM_ACTIVATED_MEMBER_MESSAGE);
 }
 
 /**
@@ -274,6 +413,180 @@ export async function clearLegacyCounsellorCoachAssignment(userId, _counsellorId
 }
 
 /**
+ * Look up team_table UserId by phone (all variants). Lowest UserId wins.
+ * @param {string} phoneNumber
+ * @returns {Promise<number|null>}
+ */
+export async function findTeamMemberIdByPhone(phoneNumber) {
+  if (!phoneNumber || !String(phoneNumber).trim()) return null;
+  const supabase = getSupabaseClient();
+  for (const variant of buildPhoneLookupVariants(phoneNumber)) {
+    const { data: existing, error: lookupErr } = await supabase
+      .from('team_table')
+      .select('"UserId"')
+      .eq('PhoneNumber', variant)
+      .order('UserId', { ascending: true })
+      .limit(1);
+    if (lookupErr) throw lookupErr;
+    if (existing?.[0]?.UserId) return existing[0].UserId;
+  }
+  return null;
+}
+
+/**
+ * Whether this phone belongs to an activated member (BCM blocked).
+ * When not activated, also returns the latest saved BCM card fields so the form
+ * can restore name/venue/height/etc. (prefer this coach's card, else any).
+ *
+ * @param {string} phoneNumber
+ * @param {{ coachId?: number|null }} [opts]
+ * @returns {Promise<{ activated: boolean, userId: number|null, existingCard: object|null }>}
+ */
+export async function getBcmPhoneActivationStatus(phoneNumber, { coachId = null } = {}) {
+  const userId = await findTeamMemberIdByPhone(phoneNumber);
+  if (!userId) return { activated: false, userId: null, existingCard: null };
+
+  const activated = await isUserActivatedForBcm(userId);
+  if (activated) {
+    return { activated: true, userId, existingCard: null };
+  }
+
+  const coachIdN = parseInt(coachId, 10);
+  let card = null;
+  if (Number.isFinite(coachIdN) && coachIdN > 0) {
+    card = await findLatestFullCardByUserIdAndCreatedBy(userId, coachIdN);
+  }
+  if (!card) {
+    card = await findLatestFullCardByUserId(userId);
+  }
+
+  return {
+    activated: false,
+    userId,
+    existingCard: mapFullCardRowToPrefill(card, phoneNumber),
+  };
+}
+
+function mapFullCardRowToPrefill(card, phoneNumber) {
+  if (!card?.id) return null;
+  const issues = Array.isArray(card.recovered_health_issues)
+    ? card.recovered_health_issues.filter((x) => typeof x === 'string' && x.trim())
+    : [];
+  return {
+    id: card.id,
+    name: card.name ?? '',
+    phoneNumber: phoneNumber || null,
+    age: card.age ?? null,
+    gender: card.gender ?? null,
+    heightCm: card.height_cm ?? null,
+    weightKg: card.weight_kg ?? null,
+    bmi: card.bmi ?? null,
+    fatPercent: card.fat_percent ?? null,
+    bmr: card.bmr ?? null,
+    bodyAge: card.body_age ?? null,
+    visceralFat: card.visceral_fat ?? null,
+    chestCm: card.chest_cm ?? null,
+    waistCm: card.waist_cm ?? null,
+    hipCm: card.hip_cm ?? null,
+    locationName: card.location_name ?? null,
+    recordedDate: card.recorded_date ?? null,
+    recoveredHealthIssues: issues,
+  };
+}
+
+const FULL_CARD_PREFILL_COLS = [
+  'id', 'created_by', 'user_id', 'name', 'age', 'gender',
+  'height_cm', 'weight_kg', 'bmi', 'fat_percent', 'bmr',
+  'body_age', 'visceral_fat', 'chest_cm', 'waist_cm', 'hip_cm',
+  'location_name', 'recorded_date', 'recovered_health_issues', 'created_at',
+].join(', ');
+
+/**
+ * Latest non-deleted card for member + creating coach (own list visibility).
+ * @param {number} userId
+ * @param {number} createdBy
+ * @returns {Promise<object|null>}
+ */
+export async function findLatestCardByUserIdAndCreatedBy(userId, createdBy) {
+  const row = await findLatestFullCardByUserIdAndCreatedBy(userId, createdBy);
+  return row ? { id: row.id } : null;
+}
+
+async function findLatestFullCardByUserIdAndCreatedBy(userId, createdBy) {
+  const uid = parseInt(userId, 10);
+  const cid = parseInt(createdBy, 10);
+  if (!Number.isFinite(uid) || uid < 1 || !Number.isFinite(cid) || cid < 1) return null;
+
+  const supabase = getSupabaseClient();
+  let { data, error } = await supabase
+    .from(TABLE)
+    .select(FULL_CARD_PREFILL_COLS)
+    .eq('user_id', uid)
+    .eq('created_by', cid)
+    .eq('is_deleted', false)
+    .order('created_at', { ascending: false })
+    .limit(1);
+
+  if (error && /recovered_health_issues/i.test(String(error.message || ''))) {
+    ({ data, error } = await supabase
+      .from(TABLE)
+      .select(FULL_CARD_PREFILL_COLS.replace(', recovered_health_issues', ''))
+      .eq('user_id', uid)
+      .eq('created_by', cid)
+      .eq('is_deleted', false)
+      .order('created_at', { ascending: false })
+      .limit(1));
+  }
+  if (error && /location_name/i.test(String(error.message || ''))) {
+    ({ data, error } = await supabase
+      .from(TABLE)
+      .select('id, created_by, user_id, name, age, gender, height_cm, weight_kg, bmi, fat_percent, bmr, body_age, visceral_fat, chest_cm, waist_cm, hip_cm, recorded_date, created_at')
+      .eq('user_id', uid)
+      .eq('created_by', cid)
+      .eq('is_deleted', false)
+      .order('created_at', { ascending: false })
+      .limit(1));
+  }
+  if (error) throw error;
+  return data?.[0] || null;
+}
+
+async function findLatestFullCardByUserId(userId) {
+  const uid = parseInt(userId, 10);
+  if (!Number.isFinite(uid) || uid < 1) return null;
+
+  const supabase = getSupabaseClient();
+  let { data, error } = await supabase
+    .from(TABLE)
+    .select(FULL_CARD_PREFILL_COLS)
+    .eq('user_id', uid)
+    .eq('is_deleted', false)
+    .order('created_at', { ascending: false })
+    .limit(1);
+
+  if (error && /recovered_health_issues/i.test(String(error.message || ''))) {
+    ({ data, error } = await supabase
+      .from(TABLE)
+      .select(FULL_CARD_PREFILL_COLS.replace(', recovered_health_issues', ''))
+      .eq('user_id', uid)
+      .eq('is_deleted', false)
+      .order('created_at', { ascending: false })
+      .limit(1));
+  }
+  if (error && /location_name/i.test(String(error.message || ''))) {
+    ({ data, error } = await supabase
+      .from(TABLE)
+      .select('id, created_by, user_id, name, age, gender, height_cm, weight_kg, bmi, fat_percent, bmr, body_age, visceral_fat, chest_cm, waist_cm, hip_cm, recorded_date, created_at')
+      .eq('user_id', uid)
+      .eq('is_deleted', false)
+      .order('created_at', { ascending: false })
+      .limit(1));
+  }
+  if (error) throw error;
+  return data?.[0] || null;
+}
+
+/**
  * Create a new team_table row from the phone entered on the body-params form.
  * Checks if phone exists first; if yes, UPDATES the member (name/height/BMR only).
  * If no, creates a new member with CoachId left null — coach is chosen at onboarding.
@@ -316,12 +629,19 @@ export async function createTeamMemberFromPhone({
   // STEP 2: If phone exists, UPDATE existing member (never assign coach from counsellor)
   if (existingMember) {
     const existingUserId = existingMember.UserId;
+    const approved = await hasApprovedCoachSelection(existingUserId);
+    if (isMemberActivatedForBcmExclusion({ hasApprovedCoachSelection: approved })) {
+      logger.info('[body-params-card] blocking BCM for activated member', {
+        userId: existingUserId,
+      });
+      await rejectBcmForActivatedMember(existingUserId);
+    }
+
     const updatePatch = {};
     if (name && String(name).trim()) updatePatch.UserName = String(name).trim();
     if (heightCm != null) updatePatch.Height = heightCm;
     if (bmr != null) updatePatch.Bmr = bmr;
 
-    const approved = await hasApprovedCoachSelection(existingUserId);
     if (
       shouldClearBpcLeadCoachId({
         currentCoachId: existingMember.CoachId,
@@ -562,10 +882,15 @@ export async function searchTeamPhonesByPrefix({ prefix, coachId }) {
 
   const num = (v) => (v != null && Number.isFinite(Number(v)) ? Number(v) : null);
 
-  // Deduplicate by PhoneNumber (keep lowest UserId)
+  // Deduplicate by PhoneNumber (keep lowest UserId); drop activated members (OTP approved).
+  const candidateIds = data.map((row) => row.UserId).filter(Boolean);
+  const activatedIds = await findActivatedUserIdsAmong(candidateIds);
+
   const seen = new Set();
   const results = [];
   for (const row of data) {
+    const uid = parseInt(row.UserId, 10);
+    if (Number.isFinite(uid) && activatedIds.has(uid)) continue;
     const phone = String(row.PhoneNumber || '').trim();
     if (!phone || seen.has(phone)) continue;
     seen.add(phone);
@@ -650,7 +975,7 @@ export async function getMemberPrefillForCard(userId) {
 
   const supabase = getSupabaseClient();
   const selectFull =
-    'UserId, UserName, PhoneNumber, Height, Bmr, Age, VisceralFat, BodyAge, ChestCm, WaistCm, HipCm, Gender';
+    'UserId, UserName, PhoneNumber, Height, Bmr, Age, VisceralFat, BodyAge, ChestCm, WaistCm, HipCm, Gender, recovered_health_issues';
   const selectBasic = 'UserId, UserName, PhoneNumber, Height, Bmr, Gender';
 
   let data;
@@ -660,6 +985,14 @@ export async function getMemberPrefillForCard(userId) {
     .select(selectFull)
     .eq('UserId', uid)
     .maybeSingle());
+
+  if (error && /recovered_health_issues/i.test(String(error.message || '')) && /column/i.test(String(error.message || ''))) {
+    ({ data, error } = await supabase
+      .from('team_table')
+      .select('UserId, UserName, PhoneNumber, Height, Bmr, Age, VisceralFat, BodyAge, ChestCm, WaistCm, HipCm, Gender')
+      .eq('UserId', uid)
+      .maybeSingle());
+  }
 
   if (error && /Age|VisceralFat|BodyAge|ChestCm|WaistCm|HipCm/i.test(String(error.message || '')) && /column/i.test(String(error.message || ''))) {
     ({ data, error } = await supabase
@@ -671,6 +1004,10 @@ export async function getMemberPrefillForCard(userId) {
 
   if (error) throw error;
   if (!data) return null;
+
+  if (await isUserActivatedForBcm(uid)) {
+    await rejectBcmForActivatedMember(uid);
+  }
 
   const num = (v) => (v != null && Number.isFinite(Number(v)) ? Number(v) : null);
   const heightCm = data.Height != null ? Number(data.Height) : null;
@@ -692,6 +1029,9 @@ export async function getMemberPrefillForCard(userId) {
     weightKg: w.weightKg ?? null,
     fatPercent: w.fatPercent ?? null,
     bmi: w.bmi ?? null,
+    recoveredHealthIssues: Array.isArray(data.recovered_health_issues)
+      ? data.recovered_health_issues.filter((x) => typeof x === 'string' && x.trim())
+      : [],
   };
 }
 
@@ -1002,9 +1342,19 @@ async function loadSlimCardsForCoach(coachId) {
 
     const rows = cards || [];
     const userIds = [...new Set(rows.map((c) => c.user_id).filter(Boolean))];
-    const teamMembersMap = await fetchTeamMemberMetaByUserIds(supabase, userIds);
+    // Only hide activated members from the list. Hard-delete happens on OTP approve /
+    // create reject — never purge here (non-activated BCM history must stay visible).
+    const activatedIds = await findActivatedUserIdsAmong(userIds);
 
-    const mapped = rows.map((card) => {
+    const visibleRows = rows.filter((c) => {
+      const uid = parseInt(c.user_id, 10);
+      return !(Number.isFinite(uid) && activatedIds.has(uid));
+    });
+
+    const visibleUserIds = [...new Set(visibleRows.map((c) => c.user_id).filter(Boolean))];
+    const teamMembersMap = await fetchTeamMemberMetaByUserIds(supabase, visibleUserIds);
+
+    const mapped = visibleRows.map((card) => {
       const member = teamMembersMap[String(card.user_id)] || null;
       return mapCardSummary(card, member);
     });

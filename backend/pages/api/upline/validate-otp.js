@@ -309,6 +309,19 @@ export default async function handler(req, res) {
       .update({ Status: "approved", ProcessedAt: processedAt })
       .eq("Id", request.Id);
 
+    // Activated members leave BCM permanently — hard-delete all cards for this phone/user.
+    try {
+      const { purgeBcmCardsForActivatedMember } = await import(
+        '../../../features/body-parameters-card/data/card.repo.js'
+      );
+      await purgeBcmCardsForActivatedMember(requesterId);
+    } catch (bcmPurgeErr) {
+      logger.warn('[validate-otp] BCM card purge after activation failed', {
+        userId: requesterId,
+        message: bcmPurgeErr?.message,
+      });
+    }
+
     // Get requester and coach details for response
     const { data: userDetails, error: userDetailsError } = await supabase
       .from("team_table")

@@ -25,7 +25,8 @@ import { buildProfileCardSyncPayload } from '../body-parameters-card/domain/sync
 import { computeBmiFromHeightWeight } from '../body-parameters-card/domain/card.rules.js';
 import { deriveWeightGoalMode } from '../../utils/weightValidation.js';
 import { resolveProfileTimezone } from './domain/profileTimezone.js';
-import { mapCardToProfileBodyMetrics, mergeProfileBodyMetrics, mapTeamRowToProfileBodyMetrics } from './domain/profileBodyMetrics.rules.js';
+import { mapTeamRowToProfileBodyMetrics, mergeProfileBodyMetrics, mapCardToProfileBodyMetrics } from './domain/profileBodyMetrics.rules.js';
+import { mapTeamRecoveredHealthIssues } from './domain/recoveredHealthIssues.rules.js';
 import { findLatestLinkedBodyMetricsCard } from '../body-parameters-card/data/card.repo.js';
 import { isEnabled } from '../../shared/lib/feature-flags.js';
 import { isConsentRecorded } from '../auth/domain/consent.rules.js';
@@ -153,6 +154,7 @@ export async function getProfile({ email }) {
         tdeeBreakdown,
         weightRecordDate: latestWeight?.CreatedAt || null,
         bodyMetrics,
+        recoveredHealthIssues: mapTeamRecoveredHealthIssues(user.recovered_health_issues),
       },
     },
   };
@@ -164,7 +166,7 @@ export async function getProfile({ email }) {
 
 function buildProfileUpdate({
   name, height, dietType, phoneNumber, profileImage, gender, weightGoalMode, physicalActivityLevel, communityId, timezoneIana,
-  age, visceralFat, bodyAge, chestCm, waistCm, hipCm,
+  age, visceralFat, bodyAge, chestCm, waistCm, hipCm, recoveredHealthIssues,
 }) {
   const updateData = {};
   let cleanedPhoneNumber;
@@ -196,6 +198,11 @@ function buildProfileUpdate({
   if (chestCm !== undefined) updateData.ChestCm = chestCm;
   if (waistCm !== undefined) updateData.WaistCm = waistCm;
   if (hipCm !== undefined) updateData.HipCm = hipCm;
+  if (recoveredHealthIssues !== undefined) {
+    updateData.recovered_health_issues = Array.isArray(recoveredHealthIssues)
+      ? recoveredHealthIssues
+      : [];
+  }
   return { updateData, cleanedPhoneNumber };
 }
 

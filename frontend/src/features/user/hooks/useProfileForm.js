@@ -58,6 +58,9 @@ export default function useProfileForm(initial = {}) {
   const [email, setEmail] = useState(initial.email || '');
   const [communityId, setCommunityId] = useState(initial.communityId || '');
   const [bodyMetrics, setBodyMetrics] = useState(() => metricsFromProfile(initial));
+  const [recoveredHealthIssues, setRecoveredHealthIssues] = useState(() => (
+    Array.isArray(initial.recoveredHealthIssues) ? initial.recoveredHealthIssues : []
+  ));
 
   const setBodyMetricField = (key, value) => {
     if (key === 'bmi') return;
@@ -80,6 +83,9 @@ export default function useProfileForm(initial = {}) {
     setEmail(p.email ?? '');
     setCommunityId(p.communityId != null ? String(p.communityId) : '');
     setBodyMetrics(metricsFromProfile(p));
+    setRecoveredHealthIssues(
+      Array.isArray(p.recoveredHealthIssues) ? p.recoveredHealthIssues : [],
+    );
   };
 
   useEffect(() => {
@@ -131,6 +137,7 @@ export default function useProfileForm(initial = {}) {
       chestCm: parseOptionalNumber(bodyMetrics.chestCm),
       waistCm: parseOptionalNumber(bodyMetrics.waistCm),
       hipCm: parseOptionalNumber(bodyMetrics.hipCm),
+      recoveredHealthIssues: Array.isArray(recoveredHealthIssues) ? recoveredHealthIssues : [],
       ...extras,
     };
 
@@ -150,6 +157,8 @@ export default function useProfileForm(initial = {}) {
     communityId, setCommunityId,
     bodyMetrics,
     setBodyMetricField,
+    recoveredHealthIssues,
+    setRecoveredHealthIssues,
     heightNum, heightValid, phoneValid, nameValid, dietValid, genderValid, fatPercentValid,
     validate, payload, reload,
   };

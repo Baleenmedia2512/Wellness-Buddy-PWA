@@ -111,6 +111,24 @@ export function shouldClearBpcLeadCoachId({
 }
 
 /**
+ * Message when BCM is blocked for an activated member (coach OTP approved).
+ * Approved coach/sponsor selection only happens after the member signed in and
+ * selected a coach — that is the product definition of "activated".
+ */
+export const BCM_ACTIVATED_MEMBER_MESSAGE = 'User already exists';
+
+/**
+ * True when this member must be excluded from BCM create/list.
+ * Gate: approved coach/sponsor OTP selection (`hasApprovedCoachSelection`).
+ *
+ * @param {{ hasApprovedCoachSelection?: boolean }} input
+ * @returns {boolean}
+ */
+export function isMemberActivatedForBcmExclusion({ hasApprovedCoachSelection = false } = {}) {
+  return hasApprovedCoachSelection === true;
+}
+
+/**
  * @deprecated Prefer shouldClearBpcLeadCoachId — kept for callers that only
  * detached when counsellorId matched CoachId.
  */
@@ -285,5 +303,10 @@ export function buildFormPrefillFromMember(member) {
   copyNum('fatPercent');
   copyNum('bmi');
   copyNum('weightKg');
+  if (Array.isArray(member.recoveredHealthIssues) && member.recoveredHealthIssues.length) {
+    patch.recoveredHealthIssues = member.recoveredHealthIssues
+      .filter((x) => typeof x === 'string' && x.trim())
+      .map((x) => x.trim());
+  }
   return patch;
 }

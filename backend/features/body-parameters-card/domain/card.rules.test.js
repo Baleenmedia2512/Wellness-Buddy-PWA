@@ -11,6 +11,8 @@ import {
   isPersistableBmi,
   shouldClearBpcLeadCoachId,
   shouldDetachCounsellorCoachAssignment,
+  isMemberActivatedForBcmExclusion,
+  BCM_ACTIVATED_MEMBER_MESSAGE,
 } from './card.rules.js';
 
 describe('buildTeamMemberInsert', () => {
@@ -93,6 +95,18 @@ describe('shouldClearBpcLeadCoachId', () => {
       }),
       false,
     );
+  });
+});
+
+describe('isMemberActivatedForBcmExclusion', () => {
+  it('blocks BCM only when coach/sponsor OTP is approved', () => {
+    assert.equal(isMemberActivatedForBcmExclusion({ hasApprovedCoachSelection: true }), true);
+    assert.equal(isMemberActivatedForBcmExclusion({ hasApprovedCoachSelection: false }), false);
+    assert.equal(isMemberActivatedForBcmExclusion({}), false);
+  });
+
+  it('exposes a stable user-facing message', () => {
+    assert.equal(BCM_ACTIVATED_MEMBER_MESSAGE, 'User already exists');
   });
 });
 
