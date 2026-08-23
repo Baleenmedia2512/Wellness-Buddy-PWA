@@ -82,7 +82,7 @@ const CATEGORIES = [
   {
     id: MANUAL_LOG_CATEGORY.DRY_SALAD,
     Icon: Salad,
-    label: 'Dry Salad',
+    label: 'Target Nutrition',
   },
   // smartwatch flow = calories burned; label is Workout (green weightlifter / Lucide on iOS)
   {
@@ -922,7 +922,7 @@ export default function ManualEntryPage({
         initialQuery={foodEntryMeta?.initialQuery || ''}
         catalogMode={Boolean(foodEntryMeta?.fromDrySalad)}
       />
-      <GoodHabitFlow
+      <GoodHabitFlow 
         isOpen={activeForm === MANUAL_LOG_CATEGORY.GOOD_HABIT}
         onClose={() => setActiveForm(null)}
         capturedPreview={previewSrc}

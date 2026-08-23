@@ -1,6 +1,6 @@
 // Public surface of the nutrition-dashboard service module.
 export { resolveDashboardUserId, isDemoAccount } from './userResolver';
-export { fetchDayAnalyses, fetchRangeMealTotals } from './dayAnalysesApi';
+export { fetchDayAnalyses, fetchRangeMealTotals, fetchRangeDayAnalyses } from './dayAnalysesApi';
 export { updateMealNutrition, deleteMealById, undoMealDelete } from './mealMutationsApi';
 export { fetchCalorieTrend } from './calorieTrendApi';
 export { fetchWatchBurnedCalories, fetchWatchBurnedCaloriesRange } from './burnedCaloriesApi';

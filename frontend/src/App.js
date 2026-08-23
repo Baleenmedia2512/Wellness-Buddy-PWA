@@ -7606,6 +7606,7 @@ function WellnessValleyApp() {
             <NutritionCenterRegistration
               user={user}
               initialCenter={editCenterData}
+              onSaved={() => bumpTabVisitKey('physical-club')}
               onBack={() => {
                 setShowRegisterCenter(false);
                 setEditCenterData(null);
@@ -7635,7 +7636,18 @@ function WellnessValleyApp() {
         <div className="ios-scroll-body">
           <Suspense fallback={<LoadingSpinner message="Loading testimonials�" />}>
             <TestimonialsPage
-              user={{ userId: user?.id ?? userContext?.userId ?? null }}
+              user={{
+                userId: user?.id ?? userContext?.userId ?? null,
+                userName:
+                  savedUserName
+                  || user?.userName
+                  || user?.username
+                  || user?.displayName
+                  || user?.name
+                  || null,
+                profileImage: savedProfileImage || user?.photoURL || null,
+                phoneNumber: user?.phoneNumber || user?.PhoneNumber || null,
+              }}
               userRole={userRole}
               tabVisitKey={tabVisitKeys.testimonials ?? 0}
               onBack={() => {
@@ -9073,10 +9085,11 @@ function WellnessValleyApp() {
             <NutritionCenterRegistration
               user={user}
               initialCenter={editCenterData}
+              onSaved={() => bumpTabVisitKey('physical-club')}
               onBack={() => {
                 setShowRegisterCenter(false);
                 if (editCenterData) {
-                  // came from Physical Club Report via Edit � map already visible, just close form
+                  // came from Physical Club Report via Edit — map already visible, just close form
                   // No need to re-open map: setShowNutritionCentersMap(true);
                 }
                 setEditCenterData(null);

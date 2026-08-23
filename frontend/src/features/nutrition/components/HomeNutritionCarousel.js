@@ -246,6 +246,8 @@ export default function HomeNutritionCarousel({
 
         analyses={carouselData.analyses}
 
+        analysesLoading={carouselData.analysesLoading}
+
         leadingCard={wellnessScoreCard}
 
         periodContext={carouselData.periodContext}

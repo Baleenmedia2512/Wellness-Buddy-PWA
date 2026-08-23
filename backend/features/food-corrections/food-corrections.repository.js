@@ -171,7 +171,7 @@ export async function fetchMealTotalsForDate(userId, date, timezoneIana = IANA_I
     .from('food_nutrition_data_table')
     .select([
       'TotalCalories, TotalProtein, TotalCarbs, TotalFat, TotalFiber',
-      'TotalSugar, TotalSodium, TotalCholesterol',
+      'TotalSugar, TotalSodium, TotalCholesterol, GlycemicIndex',
       'TotalVitaminA, TotalVitaminC, TotalVitaminD, TotalVitaminE, TotalVitaminK',
       'TotalVitaminB1, TotalVitaminB2, TotalVitaminB3, TotalVitaminB6, TotalVitaminB9, TotalVitaminB12',
       'TotalCalcium, TotalIron, TotalMagnesium, TotalPotassium, TotalZinc, TotalPhosphorus',
@@ -195,8 +195,9 @@ export async function fetchMealTotalsForRange(userId, startDate, endDate, timezo
   let query = supabase
     .from('food_nutrition_data_table')
     .select([
+      // AnalysisData: heal GI when GlycemicIndex column is null (legacy meals)
       'TotalCalories, TotalProtein, TotalCarbs, TotalFat, TotalFiber',
-      'TotalSugar, TotalSodium, TotalCholesterol',
+      'TotalSugar, TotalSodium, TotalCholesterol, GlycemicIndex, AnalysisData',
       'TotalVitaminA, TotalVitaminC, TotalVitaminD, TotalVitaminE, TotalVitaminK',
       'TotalVitaminB1, TotalVitaminB2, TotalVitaminB3, TotalVitaminB6, TotalVitaminB9, TotalVitaminB12',
       'TotalCalcium, TotalIron, TotalMagnesium, TotalPotassium, TotalZinc, TotalPhosphorus',

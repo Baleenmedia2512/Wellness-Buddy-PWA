@@ -9,13 +9,19 @@ import { hasValidProfileName } from '../../features/user/domain/profileCompleten
 import { apiFetch } from '../services/apiFetch.js';
 import { getUserEmail as getStoredSessionEmail } from '../services/sessionStorage.js';
 import { getVersionString } from '../../config/version.js';
-import { buildQuickShareText, composeQuickShareCaption } from './shareCaption.js';
-
-export {
+import {
   SHARE_TEXT_SEPARATOR,
   buildQuickShareText,
   composeQuickShareCaption,
 } from './shareCaption.js';
+
+// Export local bindings (not `export { … } from`) so CRA/webpack harmony
+// export analysis always lists these names on this module.
+export {
+  SHARE_TEXT_SEPARATOR,
+  buildQuickShareText,
+  composeQuickShareCaption,
+};
 
 const PROFILE_USER_NAME_KEY = 'wv.profileUserName';
 

@@ -114,8 +114,6 @@ export default function ReportsNutritionTab({ user, selectedMember, onRefreshReg
           startDate={range.startDate}
           endDate={range.endDate}
           isMultiDay={range.isMultiDay}
-          onSelectDate={setSelectedDate}
-          today={todayYmd}
           viewerUserId={sessionUserId}
         />
       ) : (

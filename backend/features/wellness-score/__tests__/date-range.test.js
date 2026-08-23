@@ -29,4 +29,18 @@ describe('date-range', () => {
   it('rejects inverted ranges', () => {
     assert.throws(() => enumerateScoreDates('2026-07-16', '2026-07-15'));
   });
+
+  it('allows up to ~6 months (186 days)', () => {
+    const dates = enumerateScoreDates('2026-02-17', '2026-08-21');
+    assert.equal(dates.length, 186);
+    assert.equal(dates[0], '2026-02-17');
+    assert.equal(dates[dates.length - 1], '2026-08-21');
+  });
+
+  it('rejects ranges longer than 6 months', () => {
+    assert.throws(
+      () => enumerateScoreDates('2026-02-16', '2026-08-21'),
+      /cannot exceed 186 days/,
+    );
+  });
 });
