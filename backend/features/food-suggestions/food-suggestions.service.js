@@ -18,10 +18,14 @@ import {
   displayFoodName,
   enumerateUndirectedPairs,
   extractFoodNamesFromAnalysis,
+  extractLatestFoodsFromMeals,
+  isDrySaladAnalysis,
+  isExcludedSuggestionName,
   mergeOftenWithPersonalFirst,
   normalizeFoodNameKey,
   partnersFromPairRows,
 } from './domain/foodPairs.rules.js';
+import { listApprovedCatalogNameKeys } from '../dry-salad/index.js';
 
 export const PROVIDER_ID = 'frequency-v1';
 
@@ -58,6 +62,7 @@ function flattenFoodItem(name, nutritionSource, source = 'history') {
  */
 export async function recordMealFoodPairs({ userId, analysisData }) {
   try {
+    if (isDrySaladAnalysis(analysisData)) return { recorded: 0 };
     const names = extractFoodNamesFromAnalysis(analysisData);
     if (names.length < 2) return { recorded: 0 };
     const pairs = enumerateUndirectedPairs(names);
@@ -82,29 +87,9 @@ export async function recordMealFoodPairs({ userId, analysisData }) {
   }
 }
 
-function extractLatestFromMeals(rows, limit) {
-  const seen = new Set();
-  const latest = [];
-  for (const row of rows || []) {
-    let data = row.AnalysisData;
-    if (typeof data === 'string') {
-      try {
-        data = JSON.parse(data);
-      } catch {
-        continue;
-      }
-    }
-    const foods = Array.isArray(data?.foods) ? data.foods : [];
-    for (const f of foods) {
-      const display = displayFoodName(f?.name || f?.foodName || '');
-      const key = normalizeFoodNameKey(display);
-      if (!key || seen.has(key)) continue;
-      seen.add(key);
-      latest.push(flattenFoodItem(display, f, 'history'));
-      if (latest.length >= limit) return latest;
-    }
-  }
-  return latest;
+function flattenLatestFromMeals(rows, limit, excludeKeys) {
+  return extractLatestFoodsFromMeals(rows, limit, excludeKeys)
+    .map((item) => flattenFoodItem(item.name, item.food, 'history'));
 }
 
 async function resolveNutritionForName(userId, name, userMealRows) {
@@ -149,13 +134,17 @@ export async function getFoodSuggestions({
   exclude = [],
 }) {
   const uid = String(userId);
-  const mealRows = await repo.listRecentUserMeals(uid, 50);
-  const latest = extractLatestFromMeals(mealRows, DEFAULT_LATEST_LIMIT);
+  const [mealRows, drySaladKeys] = await Promise.all([
+    repo.listRecentUserMeals(uid, 50),
+    listApprovedCatalogNameKeys().catch(() => []),
+  ]);
+  const catalogExclude = new Set(drySaladKeys || []);
+  const latest = flattenLatestFromMeals(mealRows, DEFAULT_LATEST_LIMIT, catalogExclude);
 
   const anchorKey = normalizeFoodNameKey(anchor);
   let oftenWith = [];
 
-  if (anchorKey) {
+  if (anchorKey && !isExcludedSuggestionName(anchorKey, catalogExclude)) {
     const [userPairRows, globalPairRows] = await Promise.all([
       repo.listUserPairsForAnchor(uid, anchorKey).catch(() => []),
       repo.listGlobalPairsForAnchor(anchorKey, MIN_GLOBAL_PAIR_COUNT).catch(() => []),
@@ -166,6 +155,7 @@ export async function getFoodSuggestions({
     const excludeKeys = [
       anchorKey,
       ...((exclude || []).map(normalizeFoodNameKey)),
+      ...catalogExclude,
     ];
 
     const ranked = mergeOftenWithPersonalFirst(personal, global, {

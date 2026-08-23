@@ -28,7 +28,6 @@ describe('manualLogCategories', () => {
 
   it('exposes DRY_SALAD_META with required fields', () => {
     assert.equal(DRY_SALAD_META.id, 'dry-salad');
-    assert.equal(DRY_SALAD_META.searchHint, 'herbalife');
     assert.ok(DRY_SALAD_META.headerTitle);
     assert.ok(DRY_SALAD_META.headerSubtitle);
   });

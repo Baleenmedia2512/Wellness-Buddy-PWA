@@ -17,15 +17,14 @@ export const MANUAL_LOG_CATEGORY = Object.freeze({
 
 /**
  * Dry Salad category metadata — opens the food search flow directly.
- * searchHint pre-fills the query with "herbalife" so relevant items surface first.
+ * Usual combo for the current time slot is pre-selected; user can add/remove.
  */
 export const DRY_SALAD_META = Object.freeze({
   id: MANUAL_LOG_CATEGORY.DRY_SALAD,
   label: 'Dry Salad',
   emoji: '🥗',
-  searchHint: 'herbalife',
   headerTitle: 'Dry Salad',
-  headerSubtitle: 'Search for a salad item below',
+  headerSubtitle: 'Your usual combo is ready — add or remove',
 });
 
 export const GOOD_HABIT_SUBTYPE = Object.freeze({
