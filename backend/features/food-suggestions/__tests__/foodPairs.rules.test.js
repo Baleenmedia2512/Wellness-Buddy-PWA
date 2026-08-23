@@ -8,6 +8,8 @@ import {
   normalizeFoodNameKey,
   enumerateUndirectedPairs,
   extractFoodNamesFromAnalysis,
+  extractLatestFoodsFromMeals,
+  isDrySaladAnalysis,
   mergeOftenWithPersonalFirst,
   partnersFromPairRows,
   PERSONAL_SUFFICIENT_COUNT,
@@ -31,6 +33,20 @@ describe('foodPairs.rules', () => {
       'chutney|omelette',
       'dosa|omelette',
     ]);
+  });
+
+  it('isDrySaladAnalysis detects Target Nutrition meals', () => {
+    assert.equal(isDrySaladAnalysis({ mealKind: 'dry-salad', foods: [{ name: 'Formula 1' }] }), true);
+    assert.equal(isDrySaladAnalysis({ foods: [{ name: 'Dosa' }] }), false);
+  });
+
+  it('extractLatestFoodsFromMeals skips dry-salad meals and catalog names', () => {
+    const latest = extractLatestFoodsFromMeals([
+      { AnalysisData: { mealKind: 'dry-salad', foods: [{ name: 'Formula 1' }] } },
+      { AnalysisData: { foods: [{ name: 'Protein Powder' }, { name: 'Dosa' }] } },
+      { AnalysisData: { foods: [{ name: 'Idli' }] } },
+    ], 12, new Set(['protein powder']));
+    assert.deepEqual(latest.map((f) => f.name), ['Dosa', 'Idli']);
   });
 
   it('extractFoodNamesFromAnalysis dedupes', () => {

@@ -8,7 +8,7 @@
 /** Bytes in 1 MB (1024 * 1024). */
 export const ONE_MB = 1024 * 1024;
 
-/** Maximum request body size accepted by image-upload endpoints. */
+/** API body budget after client compression (not a pick-time photo cap). */
 export const MAX_UPLOAD_BYTES = 10 * ONE_MB;
 
 /** Maximum dimension (px) for any user-uploaded image after resize. */

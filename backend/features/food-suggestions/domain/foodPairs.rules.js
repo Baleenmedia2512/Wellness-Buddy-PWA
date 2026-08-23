@@ -9,6 +9,8 @@ export const PERSONAL_OFTEN_WITH_MIN = 1;
 export const PERSONAL_SUFFICIENT_COUNT = 3;
 export const DEFAULT_SUGGESTION_LIMIT = 8;
 export const DEFAULT_LATEST_LIMIT = 12;
+/** Meals logged from Target Nutrition — never enter regular food suggestions. */
+export const DRY_SALAD_MEAL_KIND = 'dry-salad';
 
 /**
  * Normalize a food name to a stable pair key (lowercase, collapsed whitespace).
@@ -32,20 +34,83 @@ export function displayFoodName(name) {
 }
 
 /**
- * Extract unique food names from AnalysisData-like payload (order preserved).
- * @param {object|string|null} analysisData
- * @returns {string[]}
+ * @param {object|string|null|undefined} analysisData
+ * @returns {object|null}
  */
-export function extractFoodNamesFromAnalysis(analysisData) {
+export function parseAnalysisData(analysisData) {
   let data = analysisData;
   if (typeof data === 'string') {
     try {
       data = JSON.parse(data);
     } catch {
-      return [];
+      return null;
     }
   }
-  const foods = Array.isArray(data?.foods) ? data.foods : [];
+  return data && typeof data === 'object' ? data : null;
+}
+
+/**
+ * Target Nutrition saves are tagged and must stay out of food suggestions.
+ * @param {object|string|null|undefined} analysisData
+ * @returns {boolean}
+ */
+export function isDrySaladAnalysis(analysisData) {
+  const data = parseAnalysisData(analysisData);
+  return data?.mealKind === DRY_SALAD_MEAL_KIND;
+}
+
+/**
+ * @param {unknown} name
+ * @param {Set<string>|string[]|null|undefined} excludeKeys
+ * @returns {boolean}
+ */
+export function isExcludedSuggestionName(name, excludeKeys) {
+  if (!excludeKeys) return false;
+  const key = normalizeFoodNameKey(name);
+  if (!key) return true;
+  if (excludeKeys instanceof Set) return excludeKeys.has(key);
+  return [...excludeKeys].map(normalizeFoodNameKey).includes(key);
+}
+
+/**
+ * Unique foods from recent meals, skipping Target Nutrition (tag + catalog names).
+ * Newest-first rows. Returns raw meal foods for the caller to flatten.
+ *
+ * @param {Array<{ AnalysisData?: object|string }>} rows
+ * @param {number} limit
+ * @param {Set<string>|string[]|null|undefined} [excludeKeys] dry-salad catalog keys
+ * @returns {{ name: string, food: object }[]}
+ */
+export function extractLatestFoodsFromMeals(rows, limit, excludeKeys) {
+  const cap = Number.isFinite(limit) ? Math.max(0, Math.floor(limit)) : DEFAULT_LATEST_LIMIT;
+  const seen = new Set();
+  const latest = [];
+  for (const row of rows || []) {
+    const data = parseAnalysisData(row?.AnalysisData);
+    if (!data || isDrySaladAnalysis(data)) continue;
+    const foods = Array.isArray(data.foods) ? data.foods : [];
+    for (const f of foods) {
+      const display = displayFoodName(f?.name || f?.foodName || '');
+      const key = normalizeFoodNameKey(display);
+      if (!key || seen.has(key)) continue;
+      if (isExcludedSuggestionName(display, excludeKeys)) continue;
+      seen.add(key);
+      latest.push({ name: display, food: f && typeof f === 'object' ? f : {} });
+      if (latest.length >= cap) return latest;
+    }
+  }
+  return latest;
+}
+
+/**
+ * Extract unique food names from AnalysisData-like payload (order preserved).
+ * @param {object|string|null} analysisData
+ * @returns {string[]}
+ */
+export function extractFoodNamesFromAnalysis(analysisData) {
+  const data = parseAnalysisData(analysisData);
+  if (!data) return [];
+  const foods = Array.isArray(data.foods) ? data.foods : [];
   const seen = new Set();
   const names = [];
   for (const f of foods) {

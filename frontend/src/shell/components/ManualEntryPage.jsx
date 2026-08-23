@@ -449,7 +449,6 @@ export default function ManualEntryPage({
         fromDrySalad: true,
         headerTitle: DRY_SALAD_META.headerTitle,
         headerSubtitle: DRY_SALAD_META.headerSubtitle,
-        initialQuery: DRY_SALAD_META.searchHint,
       });
       setActiveForm(MANUAL_LOG_CATEGORY.FOOD);
       return;
@@ -910,7 +909,7 @@ export default function ManualEntryPage({
       </main>
 
       <SmartFoodSearchModal
-        key={foodEntryMeta?.initialQuery || 'food'}
+        key={foodEntryMeta?.fromDrySalad ? 'dry-salad' : 'food'}
         isOpen={activeForm === MANUAL_LOG_CATEGORY.FOOD}
         onClose={closeFoodSearch}
         onSave={handleFoodSave}

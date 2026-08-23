@@ -17,7 +17,13 @@ import {
 } from "./meal-builder/mealSelection";
 import { toSelectableItem } from "./meal-builder/useMealSelection";
 import { fetchFoodSuggestions } from "../services/foodSuggestionsApi";
-import { filterSuggestionsAgainstSelected } from "../domain/foodSuggestionRank";
+import { fetchDrySaladSuggestions } from "../services/drySaladSuggestionsApi";
+import {
+  filterSuggestionsAgainstSelected,
+  drySaladUsualComboTitle,
+  drySaladOftenTitle,
+  drySaladSlotFromDeviceNow,
+} from "../domain/foodSuggestionRank";
 
 /**
  * SmartFoodSearchModal
@@ -53,6 +59,8 @@ const SmartFoodSearchModal = ({
   const [addToast, setAddToast] = useState("");
   const [latestFoods, setLatestFoods] = useState([]);
   const [oftenWith, setOftenWith] = useState([]);
+  const [usualCombo, setUsualCombo] = useState([]);
+  const [drySaladSlot, setDrySaladSlot] = useState(null);
 
   const [manualName, setManualName] = useState("");
   const [manualCalories, setManualCalories] = useState("");
@@ -68,6 +76,7 @@ const SmartFoodSearchModal = ({
   const saveStartedRef = useRef(false);
   const wasOpenRef = useRef(false);
   const addToastTimerRef = useRef(null);
+  const didPrefillRef = useRef(false);
   const selectedItemsRef = useRef(selectedItems);
   selectedItemsRef.current = selectedItems;
 
@@ -101,10 +110,13 @@ const SmartFoodSearchModal = ({
       setMealSheetOpen(false);
       setLatestFoods([]);
       setOftenWith([]);
+      setUsualCombo([]);
+      setDrySaladSlot(null);
       setAddToast("");
       setError("");
       resetManualForm();
       saveStartedRef.current = false;
+      didPrefillRef.current = false;
 
       if (q.trim().length >= 1 || catalogMode) {
         setIsSearching(true);
@@ -157,6 +169,43 @@ const SmartFoodSearchModal = ({
     apiBaseUrl,
     userId,
     selectedItems,
+    showTypeSelect,
+    skipTypeSelect,
+  ]);
+
+  // Dry salad: usual combo for this time of day, pre-selected and ready to save
+  useEffect(() => {
+    if (!isOpen || !catalogMode || !apiBaseUrl || !userId) return undefined;
+    if (showTypeSelect && !skipTypeSelect) return undefined;
+
+    const controller = new AbortController();
+    fetchDrySaladSuggestions({
+      apiBaseUrl,
+      userId,
+      slot: drySaladSlotFromDeviceNow(),
+      signal: controller.signal,
+    })
+      .then((data) => {
+        const selected = data.selected || [];
+        const extras = data.suggestions || [];
+        setDrySaladSlot(data.slot || null);
+        setUsualCombo(selected);
+        setOftenWith(extras);
+        if (!didPrefillRef.current && selected.length > 0) {
+          didPrefillRef.current = true;
+          setSelectedItems(selected.map((item) => toSelectableItem(item)));
+        }
+      })
+      .catch(() => {
+        /* abort / network — leave empty combo */
+      });
+
+    return () => controller.abort();
+  }, [
+    isOpen,
+    catalogMode,
+    apiBaseUrl,
+    userId,
     showTypeSelect,
     skipTypeSelect,
   ]);
@@ -254,7 +303,10 @@ const SmartFoodSearchModal = ({
   const handleAddSelected = () => {
     if (selectedItems.length === 0) return;
     setMealSheetOpen(false);
-    submitSave(buildPlateSavePayload(selectedItems));
+    const payload = buildPlateSavePayload(selectedItems);
+    submitSave(catalogMode
+      ? { ...payload, mealKind: "dry-salad", intakeSlot: drySaladSlotFromDeviceNow() }
+      : payload);
   };
 
   const handleManualSave = () => {
@@ -305,7 +357,6 @@ const SmartFoodSearchModal = ({
 
   if (!isOpen) return null;
 
-  const hasMasterItems = masterItems.length > 0;
   const hasMyItems = myItems.length > 0;
   const hasCommunityItems = communityItems.length > 0;
   const hasSelected = selectedItems.length > 0;
@@ -313,10 +364,18 @@ const SmartFoodSearchModal = ({
   const macroSummary = computeMacroSummary(selectedItems);
   const showFoodEntry = skipTypeSelect || !showTypeSelect;
   const useFullScreen = mealBuilderEnabled && showFoodEntry;
-  const searching = searchQuery.trim().length >= 1 || catalogMode;
+  const hasTypedQuery = searchQuery.trim().length >= 1;
+  const searching = hasTypedQuery;
+  const showCatalogResults = catalogMode || hasTypedQuery;
   const suggestionRows = hasSelected
     ? filterSuggestionsAgainstSelected(oftenWith, selectedItems)
     : filterSuggestionsAgainstSelected(latestFoods, selectedItems);
+  const drySaladOftenRows = filterSuggestionsAgainstSelected(oftenWith, selectedItems);
+  const catalogRows = catalogMode && !hasTypedQuery
+    ? filterSuggestionsAgainstSelected(masterItems, selectedItems)
+    : masterItems;
+  const showDrySaladSuggestions = catalogMode && !hasTypedQuery && !showManualForm;
+  const showRegularSuggestions = !catalogMode && !showManualForm && !searching && suggestionRows.length > 0;
 
   const searchBar = !showManualForm && (
     <div className="relative">
@@ -382,7 +441,9 @@ const SmartFoodSearchModal = ({
               <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
             </svg>
           </button>
-          <h1 className="flex-1 text-center text-base font-bold text-gray-900 pr-8">Add Food</h1>
+          <h1 className="flex-1 text-center text-base font-bold text-gray-900 pr-8">
+            {catalogMode ? (headerTitle || "Dry Salad") : "Add Food"}
+          </h1>
         </div>
 
         <div className={`flex-1 overflow-y-auto px-4 py-3 space-y-3 ${hasSelected ? "pb-28" : ""}`}>
@@ -394,7 +455,7 @@ const SmartFoodSearchModal = ({
             </p>
           )}
 
-          {!showManualForm && !searching && suggestionRows.length > 0 && (
+          {showRegularSuggestions && (
             <div>
               <div className="flex items-center justify-between mb-2 px-0.5">
                 <p className="text-sm font-bold text-gray-900">
@@ -407,15 +468,40 @@ const SmartFoodSearchModal = ({
             </div>
           )}
 
-          {!showManualForm && searching && (
+          {showDrySaladSuggestions && usualCombo.length > 0 && (
+            <div>
+              <p className="text-[11px] text-green-700 font-medium px-0.5 mb-2">
+                Usual {drySaladSlot || "time"} combo selected — remove or add items, then save
+              </p>
+              <p className="text-sm font-bold text-gray-900 mb-2 px-0.5">
+                {drySaladUsualComboTitle(drySaladSlot)}
+              </p>
+              <div className="space-y-1.5">
+                {renderFoodRows(usualCombo, "usual", true)}
+              </div>
+            </div>
+          )}
+
+          {showDrySaladSuggestions && drySaladOftenRows.length > 0 && (
+            <div>
+              <p className="text-sm font-bold text-gray-900 mb-2 px-0.5">
+                {drySaladOftenTitle(drySaladSlot)}
+              </p>
+              <div className="space-y-1.5">
+                {renderFoodRows(drySaladOftenRows, "often-slot", true)}
+              </div>
+            </div>
+          )}
+
+          {!showManualForm && showCatalogResults && (
             <div className="space-y-4">
-              {hasMasterItems && (
+              {(catalogRows.length > 0) && (
                 <div>
                   <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5 px-1">
                     {catalogMode ? "Dry Salad catalog" : "Nutrition library"}
                   </p>
                   <div className="space-y-1.5">
-                    {renderFoodRows(masterItems, "master", true)}
+                    {renderFoodRows(catalogRows, "master", true)}
                   </div>
                 </div>
               )}
@@ -431,7 +517,7 @@ const SmartFoodSearchModal = ({
                   <div className="space-y-1.5">{renderFoodRows(communityItems, "community", true)}</div>
                 </div>
               )}
-              {!isSearching && !hasMasterItems && !hasMyItems && !hasCommunityItems && (
+              {!isSearching && catalogRows.length === 0 && !hasMyItems && !hasCommunityItems && !usualCombo.length && (
                 <p className="text-sm text-gray-400 text-center py-4">
                   No food found — try a different name
                 </p>
@@ -439,7 +525,7 @@ const SmartFoodSearchModal = ({
             </div>
           )}
 
-          {!showManualForm && !searching && suggestionRows.length === 0 && !hasSelected && (
+          {!showManualForm && !searching && !catalogMode && suggestionRows.length === 0 && !hasSelected && (
             <div className="flex flex-col items-center justify-center py-14 text-center">
               <div className="w-14 h-14 rounded-2xl bg-green-50 flex items-center justify-center mb-3">
                 <MealBowlIcon size={36} />
@@ -648,14 +734,23 @@ const SmartFoodSearchModal = ({
                 </div>
               )}
 
-              {!showManualForm && searching && (
+              {!showManualForm && catalogMode && usualCombo.length > 0 && !hasTypedQuery && (
+                <div>
+                  <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5 px-1">
+                    {drySaladUsualComboTitle(drySaladSlot)}
+                  </p>
+                  <div className="space-y-1.5">{renderFoodRows(usualCombo, "usual", false)}</div>
+                </div>
+              )}
+
+              {!showManualForm && showCatalogResults && (
                 <div className="space-y-4">
-                  {hasMasterItems && (
+                  {catalogRows.length > 0 && (
                     <div>
                       <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5 px-1">
                         {catalogMode ? "Dry Salad catalog" : "Nutrition library"}
                       </p>
-                      <div className="space-y-1.5">{renderFoodRows(masterItems, "master", false)}</div>
+                      <div className="space-y-1.5">{renderFoodRows(catalogRows, "master", false)}</div>
                     </div>
                   )}
                   {!catalogMode && hasMyItems && (

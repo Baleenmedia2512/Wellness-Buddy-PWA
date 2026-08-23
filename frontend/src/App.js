@@ -5813,18 +5813,7 @@ function WellnessValleyApp() {
       return;
     }
 
-    if (file.size > 10 * 1024 * 1024) {
-      setAlertModal({
-        isOpen: true,
-        title: "File too large",
-        message:
-          "Image file is too large. Please choose a smaller image (max 10MB).",
-        type: "error",
-      });
-      imageProcessingInProgress.current = false;
-      setCaptureFlowBusy(false);
-      return;
-    }
+    // No pick-time size cap — compress to ≤800px / q0.7 before upload.
 
     // Warm classify chunk while FileReader runs — do not wait on status/network.
     prefetchManualEntryPage();
@@ -6369,7 +6358,7 @@ function WellnessValleyApp() {
 
     // Image and analysis errors
     else if (rawMessage.includes("Image file is too large")) {
-      return "?? Image file is too large. Please use a smaller photo (max 10MB).";
+      return "Could not send this photo. Please try again.";
     } else if (rawMessage.includes("No food items detected")) {
       return "??? Could not detect food items. Please take a clear photo of your meal.";
     } else if (rawMessage.includes("Invalid response format")) {
