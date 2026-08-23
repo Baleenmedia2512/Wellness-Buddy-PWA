@@ -934,9 +934,9 @@ function WellnessValleyApp() {
   const [showSetupWizard, setShowSetupWizard] = useState(false);
   const [showValidateOTP, setShowValidateOTP] = useState(false);
 
-  // Blocks Home / Profile / camera across gaps between onboarding wizards.
-  // Stays true until identity → sponsor/OTP → remaining profile → activity finish.
-  const onboardingBlocking =
+  // Hard = a full-screen onboarding UI is up (must block tabs).
+  // Soft = background resolve flags still settling (must NOT swallow tab taps).
+  const onboardingHardBlocking =
     !!user &&
     isOtpVerified &&
     isUserActive &&
@@ -947,11 +947,21 @@ function WellnessValleyApp() {
       showPhysicalActivitySetup ||
       showSetupWizard ||
       (showValidateOTP && !isInactiveReactivationFlow) ||
-      profileChecking ||
+      profileChecking
+    );
+  const onboardingSoftBlocking =
+    !!user &&
+    isOtpVerified &&
+    isUserActive &&
+    (
       !identityResolved ||
       !physicalActivityResolved ||
       !coachSetupResolved
     );
+  // Full block for camera / force-close Profile during unresolved onboarding.
+  const onboardingBlocking = onboardingHardBlocking || onboardingSoftBlocking;
+  const onboardingHardBlockingRef = useRef(false);
+  onboardingHardBlockingRef.current = onboardingHardBlocking;
   const onboardingBlockingRef = useRef(false);
   onboardingBlockingRef.current = onboardingBlocking;
 
@@ -1301,7 +1311,10 @@ function WellnessValleyApp() {
     }
     const email = (user.email && user.email.trim()) || Session.getUserEmail();
     if (!email) {
-      setPhysicalActivityResolved(false);
+      // Activity check needs email; hard profile/identity gates cover incompleteness.
+      // Fail-open soft flag so tab nav is not stuck forever without email.
+      setPhysicalActivityResolved(true);
+      setShowPhysicalActivitySetup(false);
       return undefined;
     }
 
@@ -1312,7 +1325,7 @@ function WellnessValleyApp() {
     }
 
     let cancelled = false;
-    setPhysicalActivityResolved(false);
+    // Do not flip resolved→false during re-fetch — that made navigateTo ignore taps.
     (async () => {
       try {
         const { data } = await fetchProfile(email);
@@ -2448,8 +2461,9 @@ function WellnessValleyApp() {
   //   � tab switch from another sub-page ? replaceState (keeps back ? Home clean)
   //   � go Home from sub-page ? history.back() (pops the sub-page entry)
   const navigateTo = useCallback((targetPage) => {
-    // Onboarding owns the screen — do not open Profile / Diary / etc mid-wizard.
-    if (onboardingBlockingRef.current && targetPage !== 'home') {
+    // Only hard onboarding UI blocks tabs. Soft resolve-flag flaps must not
+    // silently ignore icon taps (felt like "touched but nothing happened").
+    if (onboardingHardBlockingRef.current && targetPage !== 'home') {
       return;
     }
     if (Session.getPendingClassifyCapture()?.captureId) {
@@ -3939,7 +3953,7 @@ function WellnessValleyApp() {
     }
 
     let cancelled = false;
-    setCoachSetupResolved(false);
+    // Keep last resolved=true while re-checking — flipping false blocked tab taps.
 
     (async () => {
       await resolveCoachSetupStatus(userEmail, { userId });
@@ -8120,7 +8134,7 @@ function WellnessValleyApp() {
           onSignOut={handleSignOut}
           onLeaderboardRefresh={handleLeaderboardRefresh}
           onOpenProfile={() => {
-            if (onboardingBlockingRef.current) return;
+            if (onboardingHardBlockingRef.current) return;
             navigateTo('profile');
           }}
           profileKey={headerProfileKey}

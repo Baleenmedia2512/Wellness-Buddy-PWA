@@ -1,6 +1,6 @@
 // src/components/SmartFoodSearchModal.js
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { X, Search, Check, ShoppingCart, Mic } from "lucide-react";
+import { X, Search, Check, ShoppingCart } from "lucide-react";
 import {
   dedupeSearchBuckets,
   resolveQuantityUnit,
@@ -14,10 +14,8 @@ import {
   buildPlateSavePayload,
   computeMacroSummary,
   computeSelectedKcal,
-  itemAlreadySelected,
 } from "./meal-builder/mealSelection";
 import { toSelectableItem } from "./meal-builder/useMealSelection";
-import useFoodVoiceInput from "../hooks/useFoodVoiceInput";
 import { fetchFoodSuggestions } from "../services/foodSuggestionsApi";
 import { filterSuggestionsAgainstSelected } from "../domain/foodSuggestionRank";
 
@@ -52,7 +50,7 @@ const SmartFoodSearchModal = ({
   const [error, setError] = useState("");
   const [selectedItems, setSelectedItems] = useState([]);
   const [mealSheetOpen, setMealSheetOpen] = useState(false);
-  const [voiceToast, setVoiceToast] = useState("");
+  const [addToast, setAddToast] = useState("");
   const [latestFoods, setLatestFoods] = useState([]);
   const [oftenWith, setOftenWith] = useState([]);
 
@@ -69,69 +67,15 @@ const SmartFoodSearchModal = ({
   const inputRef = useRef(null);
   const saveStartedRef = useRef(false);
   const wasOpenRef = useRef(false);
-  const voiceToastTimerRef = useRef(null);
+  const addToastTimerRef = useRef(null);
   const selectedItemsRef = useRef(selectedItems);
   selectedItemsRef.current = selectedItems;
 
-  const showVoiceToast = useCallback((msg) => {
-    setVoiceToast(msg);
-    if (voiceToastTimerRef.current) clearTimeout(voiceToastTimerRef.current);
-    voiceToastTimerRef.current = setTimeout(() => setVoiceToast(""), 2800);
+  const showAddToast = useCallback((msg) => {
+    setAddToast(msg);
+    if (addToastTimerRef.current) clearTimeout(addToastTimerRef.current);
+    addToastTimerRef.current = setTimeout(() => setAddToast(""), 2800);
   }, []);
-
-  const searchFoodOnce = useCallback(async (query) => {
-    if (!apiBaseUrl) return null;
-    if (!catalogMode && !userId) return null;
-    const q = String(query || "").trim();
-    if (!q) return null;
-    try {
-      const searchUrl = catalogMode
-        ? `${apiBaseUrl}/api/dry-salad/search?query=${encodeURIComponent(q)}`
-        : `${apiBaseUrl}/api/food-corrections/search?userId=${encodeURIComponent(userId)}&query=${encodeURIComponent(q)}`;
-      const res = await fetch(searchUrl);
-      const data = await res.json();
-      if (!data?.success) return null;
-      const buckets = dedupeSearchBuckets({
-        masterItems: data.masterItems || [],
-        myItems: data.myItems || [],
-        communityItems: data.communityItems || [],
-      }, q);
-      return buckets.masterItems[0] || buckets.myItems[0] || buckets.communityItems[0] || null;
-    } catch {
-      return null;
-    }
-  }, [apiBaseUrl, catalogMode, userId]);
-
-  const handleVoiceNames = useCallback(async (names) => {
-    const added = [];
-    const missed = [];
-    let next = [...selectedItemsRef.current];
-    for (const name of names) {
-      if (itemAlreadySelected(next, name)) continue;
-      const hit = await searchFoodOnce(name);
-      if (!hit) {
-        missed.push(name);
-        continue;
-      }
-      if (itemAlreadySelected(next, hit.name)) continue;
-      next = [...next, toSelectableItem(hit)];
-      added.push(hit.name);
-    }
-    setSelectedItems(next);
-    if (added.length) {
-      showVoiceToast(`Added ${added.join(", ")} · use Edit qty on the tray`);
-    } else if (missed.length) {
-      showVoiceToast(`No match for ${missed[0]}${missed.length > 1 ? ` (+${missed.length - 1})` : ""}`);
-    } else {
-      showVoiceToast("Already in meal");
-    }
-  }, [searchFoodOnce, showVoiceToast]);
-
-  const voice = useFoodVoiceInput({
-    onNames: handleVoiceNames,
-    onUnsupported: () => showVoiceToast("Voice not available"),
-  });
-  const stopVoice = voice.stop;
 
   const resetManualForm = () => {
     setManualName("");
@@ -157,11 +101,10 @@ const SmartFoodSearchModal = ({
       setMealSheetOpen(false);
       setLatestFoods([]);
       setOftenWith([]);
-      setVoiceToast("");
+      setAddToast("");
       setError("");
       resetManualForm();
       saveStartedRef.current = false;
-      stopVoice();
 
       if (q.trim().length >= 1 || catalogMode) {
         setIsSearching(true);
@@ -171,13 +114,12 @@ const SmartFoodSearchModal = ({
       return undefined;
     }
     wasOpenRef.current = false;
-    stopVoice();
     return undefined;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, skipTypeSelect, initialQuery, catalogMode, stopVoice]);
+  }, [isOpen, skipTypeSelect, initialQuery, catalogMode]);
 
   useEffect(() => () => {
-    if (voiceToastTimerRef.current) clearTimeout(voiceToastTimerRef.current);
+    if (addToastTimerRef.current) clearTimeout(addToastTimerRef.current);
   }, []);
 
   // Latest + Often added with (personal-first server ranking)
@@ -288,7 +230,7 @@ const SmartFoodSearchModal = ({
     }
     // Stay on search / suggestions — do not open sheet (blocks multi-add).
     setSelectedItems([...prev, toSelectableItem(item)]);
-    showVoiceToast(`Added ${item.name}`);
+    showAddToast(`Added ${item.name}`);
   };
 
   const handleQuantityChange = (name, rawValue) => {
@@ -347,7 +289,6 @@ const SmartFoodSearchModal = ({
     setSelectedItems([]);
     setError("");
     resetManualForm();
-    stopVoice();
     onClose();
   };
 
@@ -386,9 +327,7 @@ const SmartFoodSearchModal = ({
         value={searchQuery}
         onChange={(e) => setSearchQuery(e.target.value)}
         placeholder={catalogMode ? "Search dry salad…" : "Search for food..."}
-        className={`w-full pl-9 py-3 border-2 border-gray-200 focus:border-green-500 rounded-xl outline-none text-sm bg-white transition-colors ${
-          mealBuilderEnabled ? "pr-20" : "pr-10"
-        }`}
+        className="w-full pl-9 pr-10 py-3 border-2 border-gray-200 focus:border-green-500 rounded-xl outline-none text-sm bg-white transition-colors"
         style={{ fontSize: "16px" }}
       />
       <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-0.5">
@@ -408,27 +347,6 @@ const SmartFoodSearchModal = ({
             aria-label="Clear search"
           >
             <X className="w-4 h-4" />
-          </button>
-        )}
-        {mealBuilderEnabled && (
-          <button
-            type="button"
-            onClick={() => {
-              if (!voice.supported) {
-                showVoiceToast("Voice not available");
-                return;
-              }
-              voice.toggle();
-            }}
-            className={`p-1.5 rounded-full transition-colors ${
-              voice.listening
-                ? "bg-green-100 text-green-700 ring-2 ring-green-400 animate-pulse"
-                : "text-gray-400 hover:text-green-700 hover:bg-green-50"
-            }`}
-            aria-label={voice.listening ? "Stop voice input" : "Add foods by voice"}
-            aria-pressed={voice.listening}
-          >
-            <Mic className="w-4 h-4" />
           </button>
         )}
       </div>
@@ -470,9 +388,9 @@ const SmartFoodSearchModal = ({
         <div className={`flex-1 overflow-y-auto px-4 py-3 space-y-3 ${hasSelected ? "pb-28" : ""}`}>
           {searchBar}
 
-          {(voiceToast || (voice.status && voice.listening)) && (
+          {addToast && (
             <p className="text-[11px] text-green-700 font-medium px-1" role="status">
-              {voiceToast || voice.status}
+              {addToast}
             </p>
           )}
 
@@ -527,7 +445,7 @@ const SmartFoodSearchModal = ({
                 <MealBowlIcon size={36} />
               </div>
               <p className="text-sm font-medium text-gray-600">Build your meal</p>
-              <p className="text-xs text-gray-400 mt-1">Search, tap +, or use the mic</p>
+              <p className="text-xs text-gray-400 mt-1">Search or tap + to build your meal</p>
             </div>
           )}
 
