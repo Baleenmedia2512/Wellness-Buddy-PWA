@@ -298,3 +298,52 @@ export function validatePhoneSearchQuery(query) {
 
   return { prefix: cleanPrefix, coachId: coachIdN };
 }
+
+/**
+ * Validate GET /api/body-parameters-card/phone-status query.
+ *
+ * @param {{ phoneNumber?: string, phone?: string, coachId?: string }} query
+ * @returns {{ phoneNumber: string, coachId: number }}
+ */
+export function validatePhoneStatusQuery(query) {
+  if (!query) throw new ValidationError(400, 'Query params missing');
+  const rawPhone = query.phoneNumber ?? query.phone;
+  const { coachId } = query;
+
+  if (!rawPhone || String(rawPhone).trim() === '') {
+    throw new ValidationError(400, 'phoneNumber is required');
+  }
+  const phoneNumber = String(rawPhone).trim().replace(/[\s\-()]/g, '');
+  if (!/^\+?[0-9]{10,15}$/.test(phoneNumber)) {
+    throw new ValidationError(422, 'phoneNumber must be 10–15 digits (optional + prefix)');
+  }
+
+  if (!coachId) throw new ValidationError(400, 'coachId is required');
+  const coachIdN = parseInt(coachId, 10);
+  if (isNaN(coachIdN) || coachIdN < 1) {
+    throw new ValidationError(400, 'coachId must be a valid UserId');
+  }
+
+  return { phoneNumber, coachId: coachIdN };
+}
+
+/**
+ * Validate GET member-prefill query.
+ * @param {{ userId?: string, coachId?: string }} query
+ * @returns {{ userId: number, coachId: number }}
+ */
+export function validateMemberPrefillQuery(query) {
+  if (!query) throw new ValidationError(400, 'Query is required');
+  const { userId, coachId } = query;
+  if (!userId) throw new ValidationError(400, 'userId is required');
+  if (!coachId) throw new ValidationError(400, 'coachId is required');
+  const userIdN = parseInt(userId, 10);
+  const coachIdN = parseInt(coachId, 10);
+  if (isNaN(userIdN) || userIdN < 1) {
+    throw new ValidationError(400, 'userId must be a valid UserId');
+  }
+  if (isNaN(coachIdN) || coachIdN < 1) {
+    throw new ValidationError(400, 'coachId must be a valid UserId');
+  }
+  return { userId: userIdN, coachId: coachIdN };
+}

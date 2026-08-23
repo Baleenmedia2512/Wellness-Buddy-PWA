@@ -17,14 +17,14 @@ export const MAX_IMAGE_DIMENSION_PX = 1600;
 /** JPEG quality used by client-side image compression. */
 export const IMAGE_JPEG_QUALITY = 0.82;
 
-/** Profile avatar: max side length (px) after crop — keeps saved size ~50–80 KB. */
-export const PROFILE_IMAGE_MAX_DIMENSION_PX = 320;
+/** Profile avatar: max side length (px) after crop. */
+export const PROFILE_IMAGE_MAX_DIMENSION_PX = 640;
 
 /** Profile avatar: starting JPEG quality (may step down to hit target bytes). */
-export const PROFILE_IMAGE_JPEG_QUALITY = 0.8;
+export const PROFILE_IMAGE_JPEG_QUALITY = 0.85;
 
-/** Profile avatar: max decoded JPEG size before base64 (~80 KB). */
-export const PROFILE_IMAGE_TARGET_BYTES = 80 * 1024;
+/** Profile avatar: max decoded JPEG size before base64 (~200 KB). */
+export const PROFILE_IMAGE_TARGET_BYTES = 200 * 1024;
 
 /**
  * Diary / capture storage thumb after AI (or on pending capture write).
