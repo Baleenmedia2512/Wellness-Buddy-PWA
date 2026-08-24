@@ -167,6 +167,12 @@ describe('nutrition parameters', () => {
     assert.equal(r.earnedPoints, 80);
   });
 
+  it('protein — status text uses whole grams', () => {
+    const r = calculateProtein({ maxPoints: 50, consumed: 27.73, target: 113 });
+    assert.equal(r.calculationReason, '28g / 113g');
+    assert.equal(r.earnedPoints, 12);
+  });
+
   it('vitamin E — rounds floating-point consumed values in status text', () => {
     const r = calculateVitaminE({
       maxPoints: 25,
@@ -262,6 +268,25 @@ describe('progress parameters', () => {
   it('physical activity — proportional burn', () => {
     const r = calculatePhysicalActivity({ maxPoints: 100, exerciseCalories: 225, bmr: 1500 });
     assert.equal(r.earnedPoints, 50);
+  });
+});
+
+describe('aggregateDailyFoodStats', () => {
+  it('includes beverage-only meals in nutrient totals', () => {
+    const stats = aggregateDailyFoodStats([
+      {
+        AnalysisData: { foods: [{ name: 'Filter Coffee with milk' }] },
+        TotalProtein: 3,
+        TotalCalories: 40,
+      },
+      {
+        AnalysisData: { foods: [{ name: 'Herbalife Shake' }] },
+        TotalProtein: 25,
+        TotalCalories: 200,
+      },
+    ]);
+    assert.equal(stats.totalProtein, 28);
+    assert.equal(stats.totalCalories, 240);
   });
 });
 
