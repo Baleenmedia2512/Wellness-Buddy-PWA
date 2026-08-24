@@ -809,9 +809,6 @@ function MemberCard({
       || testimonial?.healthVideoUrl || testimonial?.businessVideoUrl,
     );
     const issuesNeedOtp = dirtySlots.includes('issues') && (hasAfter || hasResultVideo);
-    const needsOtpUi = dirtySlots.some((s) => ['after', 'health', 'business'].includes(s))
-      || (dirtySlots.includes('before') && hasAfter)
-      || issuesNeedOtp;
     const isSilentSave = !photoOrVideoChanged && !issuesNeedOtp;
     // Photos still compressing — wait so we do not submit without image bytes.
     if (draftBefore?.compressing || draftAfter?.compressing) {
@@ -900,13 +897,19 @@ function MemberCard({
       setMediaEpoch((n) => n + 1);
     };
 
-    // Weight / issues only — save in background, reload, then clear drafts.
+    const finishSubmit = async (result) => {
+      await reloadMine(result?.testimonial);
+      clearDrafts();
+      if (result?.otpSent !== false) {
+        setUnifiedOtpVerified(false);
+        setSubmitDone(true);
+      }
+    };
+
+    // Weight / issues only — still show OTP when the server emailed a code.
     if (isSilentSave) {
       void submitAllEdits(payload)
-        .then(async (result) => {
-          await reloadMine(result?.testimonial);
-          clearDrafts();
-        })
+        .then(finishSubmit)
         .catch((err) => {
           setSubmitError(err?.message || 'Failed to save. Please try again.');
         });
@@ -917,11 +920,7 @@ function MemberCard({
     setIsSubmitting(true);
     setCaptureFlowBusy(true);
     void submitAllEdits(payload)
-      .then(async (result) => {
-        await reloadMine(result?.testimonial);
-        clearDrafts();
-        if (needsOtpUi) setSubmitDone(true);
-      })
+      .then(finishSubmit)
       .catch((err) => {
         setSubmitError(err?.message || 'Failed to submit. Please try again.');
       })
@@ -1306,13 +1305,13 @@ function MemberCard({
         </div>
       )}
 
-      {/* Unified OTP — after submitting all edits */}
-      {editable && submitDone && (
+      {/* Unified OTP — after submit, including weight-only updates that emailed a code */}
+      {editable && (submitDone || testimonial?.otpPending) && !unifiedOtpVerified && (
         <UnifiedOtpInline userId={userId} onVerified={handleUnifiedOtpVerified} />
       )}
 
-      {/* Existing pending OTP (from old per-slot flow) — only show if not yet in new submit flow */}
-      {editable && !submitDone && testimonial?.status === 'pending' && testimonial?.id && (
+      {/* Existing pending OTP (from old per-slot flow) — only show if unified OTP is not already up */}
+      {editable && !submitDone && !testimonial?.otpPending && testimonial?.status === 'pending' && testimonial?.id && (
         <OtpInline
           testimonialId={testimonial.id}
           type="photo"
