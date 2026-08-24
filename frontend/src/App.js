@@ -959,7 +959,8 @@ function WellnessValleyApp() {
       !physicalActivityResolved ||
       !coachSetupResolved
     );
-  // Full block for camera / force-close Profile during unresolved onboarding.
+  // Full block for camera only while soft resolve flags may still flap.
+  // Profile open/render uses hard blocking — soft flaps must not keep Home stuck.
   const onboardingBlocking = onboardingHardBlocking || onboardingSoftBlocking;
   const onboardingHardBlockingRef = useRef(false);
   onboardingHardBlockingRef.current = onboardingHardBlocking;
@@ -1304,13 +1305,14 @@ function WellnessValleyApp() {
   // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: fire on user/auth change
   }, [user?.id, user?.email, user?.userName, user?.username, isOtpVerified, apiBaseUrl]);
 
-  // Never leave My Profile / other sub-pages open while onboarding is in progress.
+  // Force-close Profile only for visible onboarding wizards — not soft resolve flaps
+  // (those used to set showProfilePage then immediately clear it → "stuck on Home").
   useEffect(() => {
-    if (!onboardingBlocking) return;
+    if (!onboardingHardBlocking) return;
     setShowProfilePage(false);
     setShowDashboard(false);
     setShowNewUserProfileModal(false);
-  }, [onboardingBlocking]);
+  }, [onboardingHardBlocking]);
 
   // Physical activity gate: after remaining profile fields (post sponsor OTP).
   useEffect(() => {
@@ -7392,8 +7394,8 @@ function WellnessValleyApp() {
   ) : null;
 
   // Inline Profile Page — full-screen, below nav bar (no modal overlay)
-  // Never show during onboarding (My Profile is not part of the setup wizard).
-  if (showProfilePage && !onboardingBlocking) {
+  // Hard onboarding wizards only — soft resolve flags must not hide Profile on Home.
+  if (showProfilePage && !onboardingHardBlocking) {
     homeOverlay = (
       <div className="ios-full-page bg-gray-50">
         <Header
