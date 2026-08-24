@@ -29,7 +29,7 @@ import { useDiary } from '../hooks/useDiary';
 import ROWS_BY_KIND, { OtherRow } from './rows';
 import DiaryUndoRow, { DIARY_UNDO_SECONDS } from './DiaryUndoRow';
 import { EmojiOrNative } from '../../../shared/components/icons/EmojiImage';
-import { formatBusinessTime, todayBusinessDate } from '../../../shared/utils/datetimeUtils';
+import { formatBusinessTime, formatOwnerDayLabel } from '../../../shared/utils/datetimeUtils';
 import { resolveDiaryTimezone } from '../utils/diaryTimezone';
 import { isStalePendingAnalysis, filterPendingCaptureMetaForOwner } from '../utils/stalePending';
 import { getProfile } from '../../user/services/user.api';
@@ -151,30 +151,7 @@ function formatTimelineTime(iso, timezoneIana) {
  * `dateStr` is `YYYY-MM-DD` business calendar date from the API.
  */
 function formatTimelineDate(dateStr, timezoneIana) {
-  if (!dateStr) return '';
-  const [y, m, d] = dateStr.split('-').map(Number);
-  const target = new Date(y, m - 1, d);
-  const todayYmd = todayBusinessDate(timezoneIana);
-  const [ty, tm, td] = todayYmd.split('-').map(Number);
-  const today = new Date(ty, tm - 1, td);
-  const yesterday = new Date(today);
-  yesterday.setDate(today.getDate() - 1);
-
-  const isToday =
-    target.getFullYear() === today.getFullYear() &&
-    target.getMonth() === today.getMonth() &&
-    target.getDate() === today.getDate();
-  const isYesterday =
-    target.getFullYear() === yesterday.getFullYear() &&
-    target.getMonth() === yesterday.getMonth() &&
-    target.getDate() === yesterday.getDate();
-
-  const long = target.toLocaleDateString('en-US', {
-    month: 'short', day: 'numeric', year: 'numeric',
-  });
-  if (isToday)     return `Today \u00b7 ${long}`;
-  if (isYesterday) return `Yesterday \u00b7 ${long}`;
-  return long;
+  return formatOwnerDayLabel(dateStr, timezoneIana);
 }
 
 /**
@@ -308,6 +285,7 @@ function FeedEmpty({ date, isSelf, filterKinds }) {
  * @param {Object} props
  * @param {string} props.ownerUserId   the diary subject
  * @param {string} props.viewerUserId  the authenticated session user
+ * @param {object|null} [props.shareUser] session user for WhatsApp brand line
  * @param {Date|string} props.date     selected calendar day
  * @param {object|null} [props.timezoneSource] Owner user for business-calendar TZ (matches backend owner TZ)
  * @param {number} [props.refreshKey]  bump from parent to trigger background re-fetch without unmounting
@@ -338,6 +316,7 @@ function FeedEmpty({ date, isSelf, filterKinds }) {
 export default function DiaryFeed({
   ownerUserId,
   viewerUserId,
+  shareUser = null,
   date,
   timezoneSource = null,
   refreshKey: externalRefreshKey = 0,
@@ -517,6 +496,7 @@ export default function DiaryFeed({
           timezoneIana={ownerTimezoneIana}
           ownerUserId={ownerUserId}
           viewerUserId={viewerUserId}
+          shareUser={shareUser}
           {...(entry.kind === 'weight'
             ? { previousWeight: weightId ? (previousWeightById.get(weightId) ?? null) : null }
             : {})}
@@ -544,6 +524,7 @@ export default function DiaryFeed({
       handleUndoExpire,
       ownerUserId,
       viewerUserId,
+      shareUser,
     ],
   );
 

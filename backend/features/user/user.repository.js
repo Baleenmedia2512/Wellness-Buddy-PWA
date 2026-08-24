@@ -95,26 +95,158 @@ export async function findByUsername(username) {
 }
 
 export async function getProfile(email) {
-  // Consent columns are optional until migrations are applied — never block profile load.
+  // Consent / optional body-metric columns are optional until migrations are applied.
   // Body fat is stored on weight_records_table, not team_table.
   const fullCols =
+    '"UserId", "UserName", "Email", "Height", "DietType", "ProfileImage", "CoachId", "PhoneNumber", "Gender", "Bmr", profile_pic_snooze, "WeightGoalMode", "PhysicalActivityLevel", "CommunityId", timezone_iana, "ConsentAcceptedAt", "ConsentVersion", "Age", "VisceralFat", "BodyAge", "ChestCm", "WaistCm", "HipCm", recovered_health_issues';
+  const withMetricsNoHealth =
+    '"UserId", "UserName", "Email", "Height", "DietType", "ProfileImage", "CoachId", "PhoneNumber", "Gender", "Bmr", profile_pic_snooze, "WeightGoalMode", "PhysicalActivityLevel", "CommunityId", timezone_iana, "ConsentAcceptedAt", "ConsentVersion", "Age", "VisceralFat", "BodyAge", "ChestCm", "WaistCm", "HipCm"';
+  const withConsentNoMetrics =
     '"UserId", "UserName", "Email", "Height", "DietType", "ProfileImage", "CoachId", "PhoneNumber", "Gender", "Bmr", profile_pic_snooze, "WeightGoalMode", "PhysicalActivityLevel", "CommunityId", timezone_iana, "ConsentAcceptedAt", "ConsentVersion"';
   const noConsentCols =
     '"UserId", "UserName", "Email", "Height", "DietType", "ProfileImage", "CoachId", "PhoneNumber", "Gender", "Bmr", profile_pic_snooze, "WeightGoalMode", "PhysicalActivityLevel", "CommunityId", timezone_iana';
 
+  async function load(cols) {
+    return findByEmail(email, cols);
+  }
+
   try {
-    return await findByEmail(email, fullCols);
+    return await load(fullCols);
   } catch (err) {
-    const msg = String(err?.message || err || '');
-    const missingConsent = /ConsentAcceptedAt|ConsentVersion/i.test(msg) && /column/i.test(msg);
-    if (!missingConsent && !/column/i.test(msg)) throw err;
-    return findByEmail(email, noConsentCols);
+    let current = err;
+    const msg = String(current?.message || current || '');
+    if (!/column/i.test(msg)) throw current;
+    if (/recovered_health_issues/i.test(msg)) {
+      try {
+        return await load(withMetricsNoHealth);
+      } catch (errHealth) {
+        const msgH = String(errHealth?.message || errHealth || '');
+        if (!/column/i.test(msgH)) throw errHealth;
+        current = errHealth;
+      }
+    }
+    const msg2 = String(current?.message || current || '');
+    const missingMetrics = /Age|VisceralFat|BodyAge|ChestCm|WaistCm|HipCm/i.test(msg2);
+    if (missingMetrics) {
+      try {
+        return await load(withConsentNoMetrics);
+      } catch (err2) {
+        const msg3 = String(err2?.message || err2 || '');
+        if (!/column/i.test(msg3)) throw err2;
+        return load(noConsentCols);
+      }
+    }
+    const missingConsent = /ConsentAcceptedAt|ConsentVersion/i.test(msg2);
+    if (missingConsent) return load(noConsentCols);
+    throw current;
+  }
+}
+
+/** Same columns as getProfile, resolved by UserId (phone / pre-email onboarding). */
+export async function getProfileByUserId(userId) {
+  const fullCols =
+    '"UserId", "UserName", "Email", "Height", "DietType", "ProfileImage", "CoachId", "PhoneNumber", "Gender", "Bmr", profile_pic_snooze, "WeightGoalMode", "PhysicalActivityLevel", "CommunityId", timezone_iana, "ConsentAcceptedAt", "ConsentVersion", "Age", "VisceralFat", "BodyAge", "ChestCm", "WaistCm", "HipCm", recovered_health_issues';
+  const withMetricsNoHealth =
+    '"UserId", "UserName", "Email", "Height", "DietType", "ProfileImage", "CoachId", "PhoneNumber", "Gender", "Bmr", profile_pic_snooze, "WeightGoalMode", "PhysicalActivityLevel", "CommunityId", timezone_iana, "ConsentAcceptedAt", "ConsentVersion", "Age", "VisceralFat", "BodyAge", "ChestCm", "WaistCm", "HipCm"';
+  const withConsentNoMetrics =
+    '"UserId", "UserName", "Email", "Height", "DietType", "ProfileImage", "CoachId", "PhoneNumber", "Gender", "Bmr", profile_pic_snooze, "WeightGoalMode", "PhysicalActivityLevel", "CommunityId", timezone_iana, "ConsentAcceptedAt", "ConsentVersion"';
+  const noConsentCols =
+    '"UserId", "UserName", "Email", "Height", "DietType", "ProfileImage", "CoachId", "PhoneNumber", "Gender", "Bmr", profile_pic_snooze, "WeightGoalMode", "PhysicalActivityLevel", "CommunityId", timezone_iana';
+
+  async function load(cols) {
+    return findByUserId(userId, cols);
+  }
+
+  try {
+    return await load(fullCols);
+  } catch (err) {
+    let current = err;
+    const msg = String(current?.message || current || '');
+    if (!/column/i.test(msg)) throw current;
+    if (/recovered_health_issues/i.test(msg)) {
+      try {
+        return await load(withMetricsNoHealth);
+      } catch (errHealth) {
+        const msgH = String(errHealth?.message || errHealth || '');
+        if (!/column/i.test(msgH)) throw errHealth;
+        current = errHealth;
+      }
+    }
+    const msg2 = String(current?.message || current || '');
+    const missingMetrics = /Age|VisceralFat|BodyAge|ChestCm|WaistCm|HipCm/i.test(msg2);
+    if (missingMetrics) {
+      try {
+        return await load(withConsentNoMetrics);
+      } catch (err2) {
+        const msg3 = String(err2?.message || err2 || '');
+        if (!/column/i.test(msg3)) throw err2;
+        return load(noConsentCols);
+      }
+    }
+    const missingConsent = /ConsentAcceptedAt|ConsentVersion/i.test(msg2);
+    if (missingConsent) return load(noConsentCols);
+    throw current;
   }
 }
 
 function isMissingIsDeletedColumn(error) {
   const msg = String(error?.message || error || '');
   return /IsDeleted/i.test(msg) && /column/i.test(msg) && /does not exist|not find|unknown/i.test(msg);
+}
+
+/**
+ * Latest weight metrics for many users (one row each — most recent CreatedAt).
+ * @param {Array<number|string>} userIds
+ * @returns {Promise<Map<number, { weightKg: number|null, fatPercent: number|null, bmi: number|null, bmr: number|null }>>}
+ */
+export async function getLatestWeightMetricsByUserIds(userIds) {
+  const out = new Map();
+  const ids = [...new Set(
+    (userIds || []).map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0),
+  )];
+  if (ids.length === 0) return out;
+
+  const supabase = getSupabaseClient();
+  const selectCols = 'UserId, Weight, BodyFat, Bmi, Bmr, CreatedAt';
+  const chunkSize = 100;
+
+  for (let i = 0; i < ids.length; i += chunkSize) {
+    const chunk = ids.slice(i, i + chunkSize);
+    const run = (withDeletedFilter) => {
+      let q = supabase
+        .from('weight_records_table')
+        .select(selectCols)
+        .in('UserId', chunk)
+        .order('CreatedAt', { ascending: false });
+      if (withDeletedFilter) {
+        q = q.or('IsDeleted.is.null,IsDeleted.eq.false,IsDeleted.eq.0');
+      }
+      return q;
+    };
+
+    let { data, error } = await run(true);
+    if (error && isMissingIsDeletedColumn(error)) {
+      ({ data, error } = await run(false));
+    }
+    if (error) {
+      console.warn('[user.repo] getLatestWeightMetricsByUserIds failed:', error.message);
+      continue;
+    }
+
+    const num = (v) => (v != null && Number.isFinite(Number(v)) ? Number(v) : null);
+    for (const row of data || []) {
+      const uid = Number(row.UserId);
+      if (!Number.isFinite(uid) || out.has(uid)) continue;
+      out.set(uid, {
+        weightKg: num(row.Weight),
+        fatPercent: num(row.BodyFat),
+        bmi: num(row.Bmi),
+        bmr: num(row.Bmr),
+      });
+    }
+  }
+
+  return out;
 }
 
 export async function getLatestWeight(userId) {
@@ -144,6 +276,43 @@ export async function getLatestWeight(userId) {
   }
   if (error) {
     console.warn('[user.repo] getLatestWeight failed:', error.message);
+    return null;
+  }
+  return Array.isArray(data) && data.length > 0 ? data[0] : null;
+}
+
+/**
+ * First (oldest) weight record for a user — becomes their Initial Weight.
+ * Later uploads must not change this value.
+ * @param {number|string} userId
+ * @returns {Promise<object|null>}
+ */
+export async function getInitialWeight(userId) {
+  const uid = Number.parseInt(String(userId), 10);
+  if (!Number.isFinite(uid) || uid < 1) return null;
+
+  const supabase = getSupabaseClient();
+  const selectCols = 'ID, Weight, CreatedAt';
+
+  let { data, error } = await supabase
+    .from('weight_records_table')
+    .select(selectCols)
+    .eq('UserId', uid)
+    .or('IsDeleted.is.null,IsDeleted.eq.false,IsDeleted.eq.0')
+    .order('CreatedAt', { ascending: true })
+    .limit(1);
+
+  if (error && isMissingIsDeletedColumn(error)) {
+    console.warn('[user.repo] getInitialWeight: IsDeleted missing — retrying without soft-delete filter');
+    ({ data, error } = await supabase
+      .from('weight_records_table')
+      .select(selectCols)
+      .eq('UserId', uid)
+      .order('CreatedAt', { ascending: true })
+      .limit(1));
+  }
+  if (error) {
+    console.warn('[user.repo] getInitialWeight failed:', error.message);
     return null;
   }
   return Array.isArray(data) && data.length > 0 ? data[0] : null;
@@ -270,6 +439,10 @@ export async function setUserStatus(userId, status) {
 
 export async function getStatusFields(email) {
   return findByEmail(email, '"UserId", "TeamId", "CoachId", "Role", "SetupSkipped", "Status"');
+}
+
+export async function getStatusFieldsByUserId(userId) {
+  return findByUserId(userId, '"UserId", "TeamId", "CoachId", "Role", "SetupSkipped", "Status"');
 }
 
 export async function getPendingApproval(userId) {

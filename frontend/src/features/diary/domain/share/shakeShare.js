@@ -30,11 +30,11 @@ export function formatShakeProductScoops(products) {
   ].some((n) => Number.isFinite(n))) {
     return null;
   }
-  return [
-    `Formula 1: ${f1} ${scoopUnit(f1)}`,
-    `Shakemate: ${sm} ${scoopUnit(sm)}`,
-    `Personalized Protein: ${pp} ${scoopUnit(pp)}`,
-  ].join(', ');
+  const lines = [];
+  if (f1 > 0) lines.push(`Formula 1: ${f1} ${scoopUnit(f1)}`);
+  if (sm > 0) lines.push(`Shakemate: ${sm} ${scoopUnit(sm)}`);
+  if (pp > 0) lines.push(`Personalized Protein: ${pp} ${scoopUnit(pp)}`);
+  return lines.length > 0 ? lines.join(', ') : null;
 }
 
 /**

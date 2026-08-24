@@ -6,7 +6,7 @@ import { SplashScreen } from '@capacitor/splash-screen';
 import { Capacitor } from '@capacitor/core';
 import { debugLog } from './shared/utils/logger.js';
 import { installNativeInputModeSync } from './shared/utils/nativeInputMode.js';
-import { installSelectAllOnTextFocus } from './shared/utils/textSelectionFix.js';
+import { installSelectAllOnTextFocus, installDisableNonEditableSelection } from './shared/utils/textSelectionFix.js';
 
 // ✅ PERFORMANCE: Suppress all console output in production
 // In iOS WKWebView, every console.log bridges to native — very expensive
@@ -28,6 +28,8 @@ if (Capacitor.isNativePlatform()) {
 installNativeInputModeSync();
 // Text / search / numeric fields: tap → select full value (type over easily).
 installSelectAllOnTextFocus();
+// Android: hide Copy / Select all on dashboard text; keep paste in inputs.
+installDisableNonEditableSelection();
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
 

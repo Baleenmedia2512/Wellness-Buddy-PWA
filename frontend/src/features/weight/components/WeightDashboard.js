@@ -143,12 +143,15 @@ const WeightDashboard = ({
   onAfterModalClose = null,
   /** Timeline modal-host: skip history/profile until first open. */
   deferDataFetch = false,
+  /** Diary owner zone — list and detail must use the same clock. */
+  timezoneIana = null,
 }) => {
   const [dataFetchEnabled, setDataFetchEnabled] = useState(!deferDataFetch);
   const vm = useWeightDashboard({
     user, apiBaseUrl, initialEntryId, selectedDate, refreshKey,
     onDeleteWithUndo, onDeleteUndoCancel,
     enabled: dataFetchEnabled,
+    timezoneIana,
   });
   const pendingOpenIdRef = useRef(null);
 

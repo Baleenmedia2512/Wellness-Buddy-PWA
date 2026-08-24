@@ -105,31 +105,59 @@ export async function detectFace({ mimeType, base64Data, userId = null, module =
   }
 
   try {
-    const { generateContent } = await import('../../shared/lib/gemini/geminiClient.js');
+    const { generateContent, reportAiCallTelemetry } = await import('../../shared/lib/gemini/geminiClient.js');
     const { TraceContext } = await import('../../shared/lib/ai-orchestration/ObservabilityTracer.js');
     const profileModule = module === ANALYSIS_MODULES.PROFILE_IMAGE_UPDATE
       ? ANALYSIS_MODULES.PROFILE_IMAGE_UPDATE
       : ANALYSIS_MODULES.PROFILE_IMAGE_SET;
     const trace = new TraceContext({ userId, module: profileModule });
 
-    const result = await generateContent(
-      'faceDetect',
-      [
-        {
-          inlineData: {
-            mimeType: mimeType || 'image/jpeg',
-            data: base64Data,
-          },
+    let result;
+    let latencyMs;
+    const parts = [
+      {
+        inlineData: {
+          mimeType: mimeType || 'image/jpeg',
+          data: base64Data,
         },
-        // Must match faceDetect responseMimeType: application/json
-        'Does this image contain a clear, visible human face? '
-          + 'Respond with JSON only: {"hasFace": true} or {"hasFace": false}. '
-          + 'Use true for any clearly visible human face (including photos of people).',
-      ],
-      null,
-      null,
-      trace
-    );
+      },
+      // Must match faceDetect responseMimeType: application/json
+      'Does this image contain a clear, visible human face? '
+        + 'Respond with JSON only: {"hasFace": true} or {"hasFace": false}. '
+        + 'Use true for any clearly visible human face (including photos of people).',
+    ];
+
+    try {
+      const generated = await generateContent(
+        'faceDetect',
+        parts,
+        null,
+        null,
+        trace,
+      );
+      result = generated.result;
+      latencyMs = generated.latencyMs;
+      await reportAiCallTelemetry({
+        status: 'SUCCESS',
+        usage: {
+          ...(result.response?.usageMetadata ?? {}),
+          candidateMetadata: result.response?.candidates?.[0] ?? null
+        },
+        latency: latencyMs,
+        trace,
+        parts,
+      }).catch(() => {});
+    } catch (genErr) {
+      await reportAiCallTelemetry({
+        status: 'FAILED',
+        usage: {},
+        latency: genErr.latencyMs ?? 0,
+        errorMessage: genErr.message,
+        trace,
+        parts,
+      }).catch(() => {});
+      throw genErr;
+    }
 
     const text = result.response.text();
     const hasFace = parseHasFace(text);

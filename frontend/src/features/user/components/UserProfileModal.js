@@ -16,6 +16,8 @@ const UserProfileModal = ({ isOpen, onClose, user, userRole = 'user', onProfileU
   const [profileImagePreview, setProfileImagePreview] = useState(null);
   const [profileImage, setProfileImage] = useState(null);
   const [latestWeight, setLatestWeight] = useState(null);
+  const [initialWeight, setInitialWeight] = useState(null);
+  const [initialWeightDate, setInitialWeightDate] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState('');
@@ -53,11 +55,14 @@ const UserProfileModal = ({ isOpen, onClose, user, userRole = 'user', onProfileU
           bodyFat: data.latestWeightBodyFat != null
             ? String(data.latestWeightBodyFat)
             : (data.bodyFat != null ? String(data.bodyFat) : ''),
-          needsBodyFat: Boolean(data.needsBodyFat),
+          latestWeightBodyFat: data.latestWeightBodyFat ?? null,
           email: data.email || user?.email || '',
+          communityId: data.communityId != null ? String(data.communityId) : '',
           bodyMetrics: data.bodyMetrics || null,
         });
         setLatestWeight(data.latestWeight ? parseFloat(data.latestWeight) : null);
+        setInitialWeight(data.initialWeight != null ? parseFloat(data.initialWeight) : null);
+        setInitialWeightDate(data.initialWeightDate || null);
         if (data.profileImage) setProfileImagePreview(data.profileImage);
       }
     } catch (e) { setError(e.message || 'Failed to load profile.'); }
@@ -93,6 +98,7 @@ const UserProfileModal = ({ isOpen, onClose, user, userRole = 'user', onProfileU
         bmr: form.bmr ? parseFloat(form.bmr) : null,
         physicalActivityLevel: form.physicalActivityLevel || null,
         dietType: form.dietType || null,
+        communityId: form.communityId || null,
         profileImage: profileImagePreview || null,
       });
       if (user?.id) getUserContext(user.id).catch(() => {});
@@ -114,7 +120,8 @@ const UserProfileModal = ({ isOpen, onClose, user, userRole = 'user', onProfileU
   if (!isOpen) return null;
 
   const saveDisabled = isSaving || !form.nameValid ||
-    !form.height || form.height.trim() === '' || !form.phone || form.phone.trim() === '';
+    !form.height || form.height.trim() === '' || !form.phone || form.phone.trim() === '' ||
+    !form.fatPercentValid;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">
@@ -130,7 +137,9 @@ const UserProfileModal = ({ isOpen, onClose, user, userRole = 'user', onProfileU
         <input ref={cropper.fileInputRef} type="file" accept="image/*" className="hidden"
           onChange={(e) => cropper.selectFile(e.target.files?.[0])} />
         <UserProfileBody isLoading={isLoading} form={form} email={form.email}
-          latestWeight={latestWeight} error={error} successMessage={successMessage} />
+          latestWeight={latestWeight} initialWeight={initialWeight}
+          initialWeightDate={initialWeightDate}
+          error={error} successMessage={successMessage} />
         {!isLoading && (
           <UserProfileFooter isSaving={isSaving} hasSaved={hasSaved} disabled={saveDisabled}
             onCancel={handleCancel} onSave={handleSave} />

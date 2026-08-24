@@ -18,69 +18,19 @@ import {
   sortByFoodNameMatch,
 } from '../nutrition-knowledge/index.js';
 import logger from '../../shared/lib/logger.js';
+import { ValidationError } from '../../shared/lib/ValidationError.js';
+import { getSupabaseClient } from '../../utils/supabaseClient.js';
+import { assertViewerCanAccessMember } from '../../utils/reportingHierarchyService.js';
 import {
   injectGlycemicIndexIntoAnalysisData,
   resolveGlycemicIndexForUpdate,
 } from './glycemicIndex.helpers.js';
-import { ValidationError } from '../../shared/lib/ValidationError.js';
-
-const MICRO_TOTAL_FIELDS = [
-  ['totalVitaminA', 'TotalVitaminA'], ['totalVitaminC', 'TotalVitaminC'],
-  ['totalVitaminD', 'TotalVitaminD'], ['totalVitaminE', 'TotalVitaminE'],
-  ['totalVitaminK', 'TotalVitaminK'], ['totalVitaminB1', 'TotalVitaminB1'],
-  ['totalVitaminB2', 'TotalVitaminB2'], ['totalVitaminB3', 'TotalVitaminB3'],
-  ['totalVitaminB6', 'TotalVitaminB6'], ['totalVitaminB9', 'TotalVitaminB9'],
-  ['totalVitaminB12', 'TotalVitaminB12'], ['totalCalcium', 'TotalCalcium'],
-  ['totalIron', 'TotalIron'], ['totalMagnesium', 'TotalMagnesium'],
-  ['totalPotassium', 'TotalPotassium'], ['totalZinc', 'TotalZinc'],
-  ['totalPhosphorus', 'TotalPhosphorus'],
-];
-
-const round2 = (n) => Math.round(n * 100) / 100;
-
-function emptyMealTotalsSeed() {
-  return {
-    totalCalories: 0, totalProtein: 0, totalCarbs: 0, totalFat: 0, totalFiber: 0,
-    totalSugar: 0, totalSodium: 0, totalCholesterol: 0, mealCount: 0,
-    ...MICRO_TOTAL_FIELDS.reduce((s, [k]) => { s[k] = 0; return s; }, {}),
-  };
-}
-
-function addMealRowToTotals(t, r) {
-  const next = {
-    totalCalories: t.totalCalories + (r.TotalCalories || 0),
-    totalProtein: t.totalProtein + (r.TotalProtein || 0),
-    totalCarbs: t.totalCarbs + (r.TotalCarbs || 0),
-    totalFat: t.totalFat + (r.TotalFat || 0),
-    totalFiber: t.totalFiber + (r.TotalFiber || 0),
-    totalSugar: t.totalSugar + (r.TotalSugar || 0),
-    totalSodium: t.totalSodium + (r.TotalSodium || 0),
-    totalCholesterol: t.totalCholesterol + (r.TotalCholesterol || 0),
-    mealCount: t.mealCount + 1,
-  };
-  for (const [statKey, dbCol] of MICRO_TOTAL_FIELDS) {
-    next[statKey] = (t[statKey] || 0) + (r[dbCol] || 0);
-  }
-  return next;
-}
-
-function roundMealTotals(dailyTotals) {
-  return {
-    ...dailyTotals,
-    totalCalories: round2(dailyTotals.totalCalories),
-    totalProtein: round2(dailyTotals.totalProtein),
-    totalCarbs: round2(dailyTotals.totalCarbs),
-    totalFat: round2(dailyTotals.totalFat),
-    totalFiber: round2(dailyTotals.totalFiber),
-    totalSugar: round2(dailyTotals.totalSugar),
-    totalSodium: round2(dailyTotals.totalSodium),
-    totalCholesterol: round2(dailyTotals.totalCholesterol),
-    ...MICRO_TOTAL_FIELDS.reduce((acc, [k]) => {
-      acc[k] = round2(dailyTotals[k] || 0);
-      return acc;
-    }, {}),
-  };
-}
+import {
+  emptyMealTotalsSeed,
+  addMealRowToTotals,
+  roundMealTotals,
+} from './domain/meal-totals.js';
+import { MAX_STATS_RANGE_DAYS } from './food-corrections.validators.js';
 
 function inclusiveDayCount(startDate, endDate) {
   const a = Date.parse(`${startDate}T00:00:00Z`);
@@ -375,6 +325,14 @@ export async function updateAnalysis(input) {
   }
   cache.delete(cacheKeys.nutritionMeals(userId));
   await repo.touchLastActive(userId);
+
+  try {
+    const { recordMealFoodPairs } = await import('../food-suggestions/index.js');
+    await recordMealFoodPairs({ userId, analysisData });
+  } catch (err) {
+    logger.warn('updateAnalysis: food pair stats skipped', { err: err?.message, mealId: id });
+  }
+
   return {
     httpStatus: 200,
     body: {
@@ -407,11 +365,14 @@ export async function getStats({
   totalsOnly = false,
   startDate = null,
   endDate = null,
-  maxRangeDays = 31,
+  maxRangeDays = MAX_STATS_RANGE_DAYS,
+  viewerUserId = null,
 }) {
   if (userId === 'DEMO_USER') {
     return { httpStatus: 200, body: demoStatsResponse() };
   }
+
+  await assertViewerCanAccessMember(getSupabaseClient(), viewerUserId, userId);
 
   const timezoneIana = await getUserTimezoneIana(userId);
 

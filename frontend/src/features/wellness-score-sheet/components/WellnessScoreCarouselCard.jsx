@@ -5,6 +5,7 @@ import CarouselPeriodHeader from '../../nutrition/components/dashboard/carousel/
 import { useBusinessToday } from '../../../shared/hooks/useBusinessToday';
 import { useWellnessScore } from '../hooks/useWellnessScore';
 import { prefetchTimeWindows } from '../hooks/useTimeWindows';
+import { pickLiveDailyScore } from '../domain/historyPaint';
 
 /** Ring diameter + stroke that fit carousel card width on small phones... */
 function useResponsiveRing() {
@@ -59,11 +60,18 @@ export default function WellnessScoreCarouselCard({
   // hints on first open instead of the generic fallback.
   useEffect(() => {
     prefetchTimeWindows();
+    import('../components/WellnessScorePage.jsx');
   }, []);
 
-  // Prefer live daily score when enabled (fixes Home stuck behind sheet).
-  // Fall back to parent payload while live is still loading on first paint.
-  const data = (liveEnabled && live.data) ? live.data : (scoreDataProp ?? live.data);
+  // Prefer live daily score when it is actually for this pill's date.
+  // Do not fall back to the previous Today/Yesterday total while /daily loads.
+  const data = liveEnabled
+    ? pickLiveDailyScore({
+      liveScore: live.data,
+      parentScore: scoreDataProp,
+      dateYmd: liveScoreDate,
+    })
+    : (scoreDataProp ?? live.data);
   const loading = liveEnabled
     ? (Boolean(live.loading) && !data)
     : (loadingProp ?? live.loading);
@@ -76,10 +84,17 @@ export default function WellnessScoreCarouselCard({
 
   if (!user) return null;
 
+  const openSheet = () => {
+    onOpen?.({
+      scoreData: liveEnabled ? (data || null) : null,
+      scoreDate: liveEnabled ? (liveScoreDate || today) : null,
+    });
+  };
+
   const handleCardKeyDown = (e) => {
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
-      onOpen?.();
+      openSheet();
     }
   };
 
@@ -88,7 +103,7 @@ export default function WellnessScoreCarouselCard({
       <div
         role="button"
         tabIndex={0}
-        onClick={onOpen}
+        onClick={openSheet}
         onKeyDown={handleCardKeyDown}
         className="group flex h-full w-full min-h-[148px] flex-col rounded-xl bg-gradient-to-br from-white via-white to-emerald-50/70 p-2.5 text-left shadow-lg ring-1 ring-emerald-100/80 transition-all hover:shadow-xl hover:ring-emerald-200 active:scale-[0.99] focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 cursor-pointer"
         data-testid="wellness-score-home-tile"

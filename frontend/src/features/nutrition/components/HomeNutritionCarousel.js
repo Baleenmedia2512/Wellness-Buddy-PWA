@@ -109,13 +109,23 @@ export default function HomeNutritionCarousel({
   }, [isControlled, onDateRangeChangeProp]);
 
   /** Open full sheet on the same date range currently selected on Home. */
-  const handleOpenWellnessScore = useCallback(() => {
+  const handleOpenWellnessScore = useCallback((openOpts = {}) => {
     onOpenWellnessScore?.({
       dateRange,
       customStartDate,
       customEndDate,
+      scoreData: openOpts.scoreData ?? carouselData.wellnessScore ?? null,
+      scoreDate: openOpts.scoreDate ?? (carouselData.isMultiDay ? null : carouselData.rangeKey),
     });
-  }, [onOpenWellnessScore, dateRange, customStartDate, customEndDate]);
+  }, [
+    onOpenWellnessScore,
+    dateRange,
+    customStartDate,
+    customEndDate,
+    carouselData.wellnessScore,
+    carouselData.isMultiDay,
+    carouselData.rangeKey,
+  ]);
 
   const hasLoadedOnce = useRef(false);
 
@@ -235,6 +245,8 @@ export default function HomeNutritionCarousel({
         gender={gender}
 
         analyses={carouselData.analyses}
+
+        analysesLoading={carouselData.analysesLoading}
 
         leadingCard={wellnessScoreCard}
 

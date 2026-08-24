@@ -19,6 +19,8 @@ import * as repo from '../data/wellness-score.repo.js';
 import { getUserTimezoneIana } from '../../user/domain/userTimezone.js';
 import { findLatestLinkedBodyMetricsCard } from '../../body-parameters-card/data/card.repo.js';
 import { findLatestBodyFat } from '../../weight/weight.repository.js';
+import { listHabitsForDate } from '../../good-habits/data/good-habits.repo.js';
+import { isEnabled } from '../../../shared/lib/feature-flags.js';
 import {
   resolveRequestedDateYmd,
   assertNotFutureDateYmd,
@@ -97,11 +99,17 @@ async function persistDailyScore(userId, payload) {
   }
 }
 
+function applyGoodHabitFlag(parameterConfig) {
+  if (isEnabled('ff.good-habit')) return parameterConfig;
+  return parameterConfig.filter((p) => p.key !== 'good_habit_post');
+}
+
 /**
  * Compute wellness score for one IST business date and persist snapshot.
  */
 export async function computeDailyScoreForDate({ userId, date, timezoneIana }) {
   const tz = timezoneIana || await getUserTimezoneIana(userId);
+  const includeGoodHabit = isEnabled('ff.good-habit');
   const [
     configRow,
     userGoal,
@@ -115,6 +123,7 @@ export async function computeDailyScoreForDate({ userId, date, timezoneIana }) {
     stepRows,
     watchRows,
     bodyMetricsCard,
+    habitLogs,
   ] = await Promise.all([
     repo.getLatestConfig(),
     getUserWeightGoal(userId),
@@ -128,9 +137,12 @@ export async function computeDailyScoreForDate({ userId, date, timezoneIana }) {
     activityRepo.fetchDailyRows(userId, date, date, null, tz),
     activityRepo.fetchWatchCalorieRows(userId, date, tz),
     findLatestLinkedBodyMetricsCard(userId),
+    includeGoodHabit ? listHabitsForDate(userId, date, tz) : Promise.resolve([]),
   ]);
 
-  const parameterConfig = normalizeParameterConfig(configRow?.parameters ?? DEFAULT_PARAMETER_CONFIG);
+  const parameterConfig = applyGoodHabitFlag(
+    normalizeParameterConfig(configRow?.parameters ?? DEFAULT_PARAMETER_CONFIG),
+  );
   const timeWindows = {
     weight: timeWindowsRaw?.weight,
     breakfast: timeWindowsRaw?.breakfast,
@@ -186,6 +198,7 @@ export async function computeDailyScoreForDate({ userId, date, timezoneIana }) {
   const scores = calculateWellnessScore({
     parameterConfig,
     educationLogs,
+    habitLogs,
     weightRecords,
     foodRecords,
     waterConsumedMl: waterIntake?.totalMl ?? 0,

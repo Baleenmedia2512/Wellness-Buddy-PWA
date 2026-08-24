@@ -117,10 +117,11 @@ export async function processNextJob() {
   }
 
   const trace = new TraceContext({
-    captureId: job.captureId,
-    userId:    job.userId,
-    traceId:   job.traceId,   // Replay the original traceId for correlation
-    module:    job.module,
+    captureId:  job.captureId,
+    userId:     job.userId,
+    traceId:    job.traceId,   // Replay the original traceId for correlation
+    module:     job.module,
+    appVersion: job.appVersion,
   });
 
   logger.info('jobWorker: starting enrichment', {

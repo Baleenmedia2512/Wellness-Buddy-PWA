@@ -2,9 +2,14 @@
  * TeamSearchResults.js — presentational.
  * Dropdown panel listing matching team members. Renders three states:
  * loading, results, or empty.
+ *
+ * Display:
+ *   Line 1 — User Name
+ *   Line 2 — Email | member's own Community ID (omit empty sides / bare "|")
  */
 import React from 'react';
 import { User } from 'lucide-react';
+import { formatMemberSubtitle, subtitleCommunityId } from '../services/teamSearchService';
 
 export default function TeamSearchResults({
   dropdownRef, loading, suggestions,
@@ -13,7 +18,7 @@ export default function TeamSearchResults({
   return (
     <div
       ref={dropdownRef}
-      className="absolute z-50 w-full mt-2 bg-white border border-gray-200 rounded-xl shadow-lg max-h-64 overflow-y-auto"
+      className="absolute z-[80] w-full mt-2 bg-white border border-gray-200 rounded-xl shadow-lg max-h-64 overflow-y-auto"
     >
       {loading ? (
         <div className="px-4 py-3 text-sm text-gray-500 flex items-center gap-2">
@@ -22,7 +27,12 @@ export default function TeamSearchResults({
         </div>
       ) : suggestions.length > 0 ? (
         <ul className="py-1">
-          {suggestions.map((member, index) => (
+          {suggestions.map((member, index) => {
+            const subtitle = formatMemberSubtitle(
+              member.email,
+              subtitleCommunityId(member),
+            );
+            return (
             <li key={`${member.userId}-${index}`}>
               <button
                 onClick={() => onSelect(member)}
@@ -36,14 +46,17 @@ export default function TeamSearchResults({
                     {member.userName}
                     {member.isSelf && <span className="ml-2 text-xs text-green-600">(Me)</span>}
                   </p>
-                  <p className="text-xs text-gray-500 truncate">{member.email}</p>
+                  {subtitle ? (
+                    <p className="text-xs text-gray-500 truncate">{subtitle}</p>
+                  ) : null}
                 </div>
                 {selectedMemberId === member.userId && (
                   <div className="flex-shrink-0 w-2 h-2 rounded-full bg-green-500" />
                 )}
               </button>
             </li>
-          ))}
+            );
+          })}
         </ul>
       ) : (
         <div className="px-4 py-3 text-sm text-gray-500">

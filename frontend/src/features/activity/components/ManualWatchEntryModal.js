@@ -1,15 +1,22 @@
 // src/components/ManualWatchEntryModal.js
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { X, Loader2, Dumbbell } from "lucide-react";
 import { EmojiOrNative } from "../../../shared/components/icons/EmojiImage";
 import { isIOS } from "../../../shared/utils/platform";
+import TouchFeedbackButton from "../../../shared/components/TouchFeedbackButton";
+import {
+  WATCH_KCAL_MAX,
+  WATCH_KCAL_STEP,
+  WATCH_KCAL_QUICK_ADD,
+  parseKcal,
+  clampKcal,
+  watchKcalBounds,
+  nextWatchKcal,
+} from "../domain/watchKcalStepper";
 
 const DEFAULT_SOURCE = "Smartwatch";
-
-function parseKcal(value) {
-  const n = Number(String(value ?? '').replace(/[^\d.]/g, ''));
-  return Number.isFinite(n) && n > 0 ? Math.round(n) : 0;
-}
+const HOLD_START_MS = 400;
+const HOLD_REPEAT_MS = 70;
 
 /**
  * ManualWatchEntryModal
@@ -27,28 +34,90 @@ const ManualWatchEntryModal = ({
   todayBaseline = 0,
   loading = false,
 }) => {
-  const [caloriesBurned, setCaloriesBurned] = useState("");
+  const [caloriesBurned, setCaloriesBurned] = useState(0);
   const [error, setError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
+  const { baseline: baselineKcal, max: maxKcal } = watchKcalBounds(todayBaseline);
+
   useEffect(() => {
     if (!isOpen) {
-      setCaloriesBurned('');
+      setCaloriesBurned(0);
       setError('');
       return;
     }
     if (loading) return;
     const fromAi = parseKcal(initialCaloriesBurned);
     const baseline = parseKcal(todayBaseline);
-    const prefill = Math.max(fromAi, baseline);
-    setCaloriesBurned(prefill > 0 ? String(prefill) : '');
+    // The stepper shows the total the user wants to save.
+    // Pre-fill with the AI value if it's higher than today's baseline;
+    // otherwise start at today's baseline so the user can see and add on top.
+    const initial = fromAi > baseline ? fromAi : baseline;
+    setCaloriesBurned(clampKcal(initial, baseline, maxKcal));
     setError('');
-  }, [isOpen, initialCaloriesBurned, formKey, todayBaseline, loading]);
+  }, [isOpen, initialCaloriesBurned, formKey, todayBaseline, loading, maxKcal]);
 
   const resetForm = () => {
-    setCaloriesBurned("");
+    setCaloriesBurned(0);
     setError("");
   };
+
+  // caloriesBurned is the total to save; baseline is the floor (can't go below today's logged value).
+  const bumpBy = useCallback((amount) => {
+    setCaloriesBurned((v) => clampKcal(v + amount, baselineKcal, maxKcal));
+  }, [baselineKcal, maxKcal]);
+
+  const holdTimersRef = useRef({ delay: null, interval: null });
+  const skipNextClickRef = useRef(false);
+
+  const stopHold = useCallback(() => {
+    if (holdTimersRef.current.delay) {
+      clearTimeout(holdTimersRef.current.delay);
+      holdTimersRef.current.delay = null;
+    }
+    if (holdTimersRef.current.interval) {
+      clearInterval(holdTimersRef.current.interval);
+      holdTimersRef.current.interval = null;
+    }
+  }, []);
+
+  useEffect(() => () => stopHold(), [stopHold]);
+  useEffect(() => {
+    if (!isOpen || isSaving || loading) stopHold();
+  }, [isOpen, isSaving, loading, stopHold]);
+
+  const startHold = useCallback((amount) => {
+    stopHold();
+    bumpBy(amount);
+    holdTimersRef.current.delay = setTimeout(() => {
+      holdTimersRef.current.interval = setInterval(() => {
+        bumpBy(amount);
+      }, HOLD_REPEAT_MS);
+    }, HOLD_START_MS);
+  }, [bumpBy, stopHold]);
+
+  const holdHandlers = (amount, disabled) => ({
+    onPointerDown: (e) => {
+      if (disabled || (e.button != null && e.button !== 0)) return;
+      skipNextClickRef.current = true;
+      e.preventDefault();
+      try { e.currentTarget.setPointerCapture?.(e.pointerId); } catch { /* ignore */ }
+      startHold(amount);
+    },
+    onPointerUp: stopHold,
+    onPointerCancel: stopHold,
+    onPointerLeave: stopHold,
+    onContextMenu: (e) => e.preventDefault(),
+    onClick: (e) => {
+      // Pointer already applied the first step; skip the synthetic Android click.
+      if (skipNextClickRef.current) {
+        skipNextClickRef.current = false;
+        e.preventDefault();
+        return;
+      }
+      if (!disabled) bumpBy(amount);
+    },
+  });
 
   const handleCancel = () => {
     resetForm();
@@ -58,12 +127,12 @@ const ManualWatchEntryModal = ({
   const handleSave = () => {
     setError("");
 
-    const kcal = Number(caloriesBurned);
-    if (!caloriesBurned || isNaN(kcal) || kcal <= 0) {
-      setError("Please enter a valid calories burned value");
+    const kcal = clampKcal(caloriesBurned, baselineKcal, maxKcal);
+    if (kcal <= 0) {
+      setError("Please add at least 1 calorie burned");
       return;
     }
-    if (kcal > 10000) {
+    if (kcal > WATCH_KCAL_MAX) {
       setError("Calories burned seems too high (max 10,000)");
       return;
     }
@@ -76,16 +145,16 @@ const ManualWatchEntryModal = ({
 
   if (!isOpen) return null;
 
-  const enteredKcal = parseKcal(caloriesBurned);
-  const baselineKcal = parseKcal(todayBaseline);
-  const noChange = !loading && enteredKcal > 0 && enteredKcal <= baselineKcal;
+  // The displayed value is always the running total.
+  const enteredKcal = clampKcal(caloriesBurned, baselineKcal, maxKcal);
+  const noChange = !loading && enteredKcal <= baselineKcal;
   const saveDisabled = isSaving || loading || noChange;
 
   const saveLabel = (() => {
     if (isSaving) return 'Saving…';
     if (loading) return 'Loading…';
-    if (noChange) return 'Up to date';
-    if (baselineKcal > 0 && enteredKcal > baselineKcal) {
+    if (noChange) return 'Add calories';
+    if (baselineKcal > 0) {
       return `Update to ${enteredKcal} kcal`;
     }
     return 'Log Activity';
@@ -124,7 +193,7 @@ const ManualWatchEntryModal = ({
             )}
           </div>
           <h2 className="truncate text-base font-bold text-gray-800 tracking-tight">Calories burnt</h2>
-          <p className="text-xs text-gray-400 mt-0.5">How much you&apos;ve burnt so far today</p>
+          <p className="text-xs text-gray-400 mt-0.5">Add calories burnt to today&apos;s total</p>
         </div>
 
         <div className="p-5 space-y-4">
@@ -134,29 +203,57 @@ const ManualWatchEntryModal = ({
               Loading today&apos;s total…
             </div>
           ) : (
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1">
-              Calories Burned (kcal) <span className="text-red-500">*</span>
-            </label>
-            {baselineKcal > 0 && (
-              <p className="mb-2 text-xs text-emerald-700">
-                {/* Logged today: {baselineKcal} kcal — enter a higher total to update */}
-              </p>
-            )}
-            <input
-              type="text"
-              inputMode="decimal"
-              pattern="[0-9]*"
-              value={caloriesBurned}
-              onChange={(e) => setCaloriesBurned(e.target.value)}
-              placeholder="e.g., 350"
-              min="1"
-              max="10000"
-              disabled={isSaving}
-              className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:border-emerald-400 focus:outline-none text-base bg-white disabled:opacity-60"
-              style={{ fontSize: "16px" }}
-            />
-          </div>
+            <div className="flex flex-col items-center gap-4">
+              <div className="flex items-center gap-5">
+                <TouchFeedbackButton
+                  disabled={isSaving || enteredKcal <= baselineKcal}
+                  className="w-11 h-11 rounded-full border-2 border-gray-200 flex items-center justify-center text-xl font-bold text-gray-700 disabled:opacity-30 select-none [touch-action:manipulation]"
+                  aria-label="Decrease"
+                  {...holdHandlers(-WATCH_KCAL_STEP, isSaving || enteredKcal <= baselineKcal)}
+                >
+                  −
+                </TouchFeedbackButton>
+                <span className="min-w-[7.5rem] text-center text-2xl font-bold text-gray-900 tabular-nums">
+                  {enteredKcal} kcal
+                </span>
+                <TouchFeedbackButton
+                  disabled={isSaving || enteredKcal >= maxKcal}
+                  className="w-11 h-11 rounded-full border-2 border-gray-200 flex items-center justify-center text-xl font-bold text-gray-700 disabled:opacity-30 select-none [touch-action:manipulation]"
+                  aria-label="Increase"
+                  {...holdHandlers(WATCH_KCAL_STEP, isSaving || enteredKcal >= maxKcal)}
+                >
+                  +
+                </TouchFeedbackButton>
+              </div>
+              <div className="w-full">
+                <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide text-center mb-2">
+                  Quick add
+                </p>
+                <div className="flex gap-2 justify-center flex-wrap">
+                  {WATCH_KCAL_QUICK_ADD.map((preset) => {
+                    const amount = Number(preset.amount) || 0;
+                    const disabled = isSaving || amount <= 0 || enteredKcal + amount > maxKcal;
+                    return (
+                      <TouchFeedbackButton
+                        key={preset.label}
+                        type="button"
+                        onClick={() => bumpBy(amount)}
+                        disabled={disabled}
+                        className="min-w-[5.5rem] px-4 py-2.5 rounded-xl border-2 border-emerald-200 bg-emerald-50 text-sm font-bold text-emerald-800 disabled:opacity-40 active:bg-emerald-100"
+                        aria-label={`Add ${preset.label}`}
+                      >
+                        +{preset.label}
+                      </TouchFeedbackButton>
+                    );
+                  })}
+                </div>
+              </div>
+              {baselineKcal > 0 && (
+                <p className="text-center text-xs text-gray-500">
+                  Today&apos;s logged: {baselineKcal} kcal. Saving as: {enteredKcal} kcal.
+                </p>
+              )}
+            </div>
           )}
 
           {error && (

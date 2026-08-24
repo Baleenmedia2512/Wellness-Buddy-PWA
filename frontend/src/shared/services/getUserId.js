@@ -1,5 +1,6 @@
 import { debugLog } from '../utils/logger.js';
 import { getDeviceTimezoneIana } from '../utils/deviceTimezone.js';
+import { apiFetch } from './apiFetch.js';
 
 /**
  * @file getUserId — looks up the canonical database UserID for an
@@ -40,7 +41,7 @@ export async function getUserId(user) {
   }
 
   try {
-    const res = await fetch(`${apiBaseUrl}/api/user/lookup`, {
+    const res = await apiFetch(`${apiBaseUrl}/api/user/lookup`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -49,6 +50,12 @@ export async function getUserId(user) {
       }),
     });
     const data = await res.json();
+
+    if (res.status === 404 || data.userNotFound) {
+      userIdCache.delete(email);
+      return null;
+    }
+
     if (data.success && data.userId) {
       userIdCache.set(email, data.userId);
       debugLog('[getUserId] Cached userId for:', email);
@@ -73,7 +80,7 @@ export async function lookupUserByEmail(email) {
   if (!email) return { success: false };
 
   try {
-    const res = await fetch(`${apiBaseUrl}/api/user/lookup`, {
+    const res = await apiFetch(`${apiBaseUrl}/api/user/lookup`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -82,6 +89,11 @@ export async function lookupUserByEmail(email) {
       }),
     });
     const data = await res.json();
+
+    if (res.status === 404 || data.userNotFound) {
+      userIdCache.delete(email);
+      return { success: false, userNotFound: true };
+    }
     
     // Cache the userId if successful
     if (data.success && data.userId) {

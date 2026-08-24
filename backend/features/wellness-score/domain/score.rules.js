@@ -330,6 +330,31 @@ export function calculateEducationPost({
   return { ...base, key: 'edu_post', label: 'Education Post' };
 }
 
+/** Any non-deleted habit on the score date earns full points — no time window. */
+export function calculateGoodHabitPost({ maxPoints, habitLogs }) {
+  const logs = Array.isArray(habitLogs) ? habitLogs : [];
+  if (!logs.length) {
+    return buildParameterScore({
+      key: 'good_habit_post',
+      label: 'Good Habit Post',
+      section: 'logging',
+      scoringMode: 'binary',
+      maxPoints,
+      earnedPoints: 0,
+      calculationReason: 'Not completed',
+    });
+  }
+  return buildParameterScore({
+    key: 'good_habit_post',
+    label: 'Good Habit Post',
+    section: 'logging',
+    scoringMode: 'binary',
+    maxPoints,
+    earnedPoints: maxPoints,
+    calculationReason: 'Done today',
+  });
+}
+
 function solidFoodRecords(foodRecords) {
   return (foodRecords || []).filter((r) => !isExemptedBeverageOnly(r.AnalysisData));
 }
@@ -768,6 +793,11 @@ const CALCULATOR_BY_KEY = {
       window: ctx.timeWindows.education,
       timezoneIana: ctx.timezoneIana,
     }),
+  good_habit_post: (cfg, ctx) =>
+    calculateGoodHabitPost({
+      maxPoints: cfg.maxPoints,
+      habitLogs: ctx.habitLogs,
+    }),
   breakfast_post: (cfg, ctx) =>
     calculateBreakfastPost({
       maxPoints: cfg.maxPoints,
@@ -903,11 +933,12 @@ const CALCULATOR_BY_KEY = {
 };
 
 /**
- * Aggregate all 34 parameter scores into total wellness score.
+ * Aggregate all enabled parameter scores into total wellness score.
  */
 export function calculateWellnessScore({
   parameterConfig,
   educationLogs,
+  habitLogs,
   weightRecords,
   foodRecords,
   waterConsumedMl,
@@ -924,6 +955,7 @@ export function calculateWellnessScore({
 }) {
   const ctx = {
     educationLogs,
+    habitLogs,
     weightRecords,
     foodRecords,
     waterConsumedMl,

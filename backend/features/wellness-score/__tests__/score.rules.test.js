@@ -1,5 +1,5 @@
 /**
- * Unit tests for wellness score domain rules (34 individual parameters).
+ * Unit tests for wellness score domain rules (35 individual parameters).
  * Run: node --test backend/features/wellness-score/__tests__/score.rules.test.js
  */
 import { describe, it } from 'node:test';
@@ -19,6 +19,7 @@ import {
   calculateWeightImprovement,
   calculatePhysicalActivity,
   calculateWellnessScore,
+  calculateGoodHabitPost,
   aggregateDailyFoodStats,
 } from '../domain/score.rules.js';
 import { computeNutritionTargets } from '../domain/nutrition-targets.js';
@@ -81,6 +82,22 @@ describe('logging parameters', () => {
       window: EDU,
     });
     assert.equal(r.earnedPoints, 100);
+  });
+
+  it('good habit post — full points any time today', () => {
+    const r = calculateGoodHabitPost({
+      maxPoints: 100,
+      habitLogs: [{ CreatedAt: '2026-07-08T23:30:00' }],
+    });
+    assert.equal(r.key, 'good_habit_post');
+    assert.equal(r.earnedPoints, 100);
+    assert.match(r.calculationReason, /Done today/i);
+  });
+
+  it('good habit post — 0 when missing', () => {
+    const r = calculateGoodHabitPost({ maxPoints: 100, habitLogs: [] });
+    assert.equal(r.earnedPoints, 0);
+    assert.match(r.calculationReason, /Not completed/i);
   });
 
   it('weight post — 0 when late', () => {
@@ -249,7 +266,7 @@ describe('progress parameters', () => {
 });
 
 describe('calculateWellnessScore', () => {
-  it('returns 34 individual parameter scores', () => {
+  it('returns 35 individual parameter scores', () => {
     const nutritionTargets = computeNutritionTargets({ bmr: 1500, weightKg: 70 });
     const dailyStats = aggregateDailyFoodStats([
       {
@@ -264,6 +281,7 @@ describe('calculateWellnessScore', () => {
     const r = calculateWellnessScore({
       parameterConfig: DEFAULT_PARAMETER_CONFIG,
       educationLogs: [{ CreatedAt: '2026-07-08T07:00:00', Topic: 'Edu' }],
+      habitLogs: [{ CreatedAt: '2026-07-08T23:30:00' }],
       weightRecords: [{ CreatedAt: '2026-07-08T06:00:00', Weight: 69 }],
       foodRecords: [{
         CreatedAt: '2026-07-08T07:00:00',
@@ -290,7 +308,7 @@ describe('calculateWellnessScore', () => {
       bmr: 1500,
     });
 
-    assert.equal(r.parameters.length, 34);
+    assert.equal(r.parameters.length, 35);
     assert.ok(r.totalPossible > 0);
     assert.ok(r.percentage >= 0 && r.percentage <= 100);
 
@@ -298,6 +316,8 @@ describe('calculateWellnessScore', () => {
     assert.ok(keys.has('protein'));
     assert.ok(keys.has('vitamin_c'));
     assert.ok(keys.has('physical_activity'));
+    assert.ok(keys.has('good_habit_post'));
+    assert.equal(r.parameters.find((p) => p.key === 'good_habit_post')?.earnedPoints, 100);
     assert.equal(keys.has('nutrition'), false);
     assert.equal(keys.has('foodDiary'), false);
   });
@@ -322,7 +342,7 @@ describe('calculateWellnessScore', () => {
       exerciseCalories: 0,
       bmr: 1500,
     });
-    assert.equal(r.parameters.length, 33);
+    assert.equal(r.parameters.length, 34);
     assert.ok(!r.parameters.some((p) => p.key === 'calories'));
   });
 });

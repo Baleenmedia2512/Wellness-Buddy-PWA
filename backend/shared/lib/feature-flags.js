@@ -11,6 +11,17 @@
  *                         (90 days after full rollout per §3.5).
  *   - `description`     : one-line product intent.
  *   - `defaultEnabled`  : value when the env override is absent.
+ *   - `minAppVersion`   : (optional) semver — when set, use
+ *                         `isEnabledForAppVersion` so only clients at/above
+ *                         this version get the new behaviour.
+ *
+ * Release rule (app version policy)
+ *   New backend behaviour that older supported apps cannot handle MUST
+ *   ship behind a flag default OFF. After the supporting AAB is live on
+ *   Play Store, enable the flag and set minAppVersion (or
+ *   FF_<FLAG>_MIN_APP_VERSION) to that build. Never enable such behaviour
+ *   globally while older versions remain in the supported window.
+ *   See backend/features/app-version/README.md.
  *
  * Runtime resolution
  *   `isEnabled(name)` reads `process.env.FF_<UPPER_SNAKE>` first; if the
@@ -19,12 +30,21 @@
  *   pure — no caching, no Supabase calls — so tests can flip the env
  *   var between cases without bookkeeping.
  *
+ *   `isEnabledForAppVersion(name, clientVersion)` applies the global flag
+ *   first, then the optional minAppVersion gate (fail closed when the
+ *   gate is configured but clientVersion is missing/invalid).
+ *
  * Stale-flag enforcement
  *   `findStaleFlags(now)` returns every registered flag whose `removeBy`
  *   date has passed. CI calls this in a guard script (per §15.2 row
  *   "Stale flags") to warn the team. Adding a flag without `removeBy`
  *   throws at registration time so unmaintainable flags can never land.
  */
+
+import {
+  isAtLeastVersion,
+  parseSemver,
+} from '../../features/app-version/domain/version.rules.js';
 
 const REGISTRY = Object.create(null);
 
@@ -33,11 +53,18 @@ function envKeyFor(flagName) {
   return `FF_${flagName.replace(/^ff\./, '').replace(/-/g, '_').toUpperCase()}`;
 }
 
+function minAppVersionEnvKeyFor(flagName) {
+  // ff.diary-feed → FF_DIARY_FEED_MIN_APP_VERSION
+  return `${envKeyFor(flagName)}_MIN_APP_VERSION`;
+}
+
 function registerFlag(spec) {
   if (!spec || typeof spec !== 'object') {
     throw new Error('feature-flags: spec object required');
   }
-  const { name, owner, createdAt, removeBy, description, defaultEnabled } = spec;
+  const {
+    name, owner, createdAt, removeBy, description, defaultEnabled, minAppVersion,
+  } = spec;
   if (!name || !/^ff\.[a-z][a-z0-9-]*$/.test(name)) {
     throw new Error(`feature-flags: invalid flag name '${name}' (must match ff.<kebab-case>)`);
   }
@@ -51,12 +78,19 @@ function registerFlag(spec) {
   if (typeof defaultEnabled !== 'boolean') {
     throw new Error(`feature-flags: '${name}' defaultEnabled must be boolean`);
   }
+  if (minAppVersion != null && minAppVersion !== '') {
+    if (!parseSemver(minAppVersion)) {
+      throw new Error(
+        `feature-flags: '${name}' minAppVersion must be a semver string (got '${minAppVersion}')`,
+      );
+    }
+  }
   REGISTRY[name] = Object.freeze({ ...spec });
   return REGISTRY[name];
 }
 
 /**
- * Resolve a flag for the current request.
+ * Resolve a flag for the current request (global on/off only).
  * @param {string} name
  * @returns {boolean}
  */
@@ -80,8 +114,49 @@ export function isEnabled(name) {
 }
 
 /**
+ * Effective min app version for a flag: env override wins, else registry.
+ * @param {string} name
+ * @returns {string|null}
+ */
+export function getMinAppVersion(name) {
+  const spec = REGISTRY[name];
+  if (!spec) return null;
+  const envMin = process.env[minAppVersionEnvKeyFor(name)];
+  if (envMin != null && String(envMin).trim() !== '') {
+    const trimmed = String(envMin).trim();
+    return parseSemver(trimmed) ? trimmed : null;
+  }
+  if (spec.minAppVersion != null && String(spec.minAppVersion).trim() !== '') {
+    return String(spec.minAppVersion).trim();
+  }
+  return null;
+}
+
+/**
+ * Version-aware flag resolution for behaviour that older apps cannot handle.
+ *
+ * 1) if !isEnabled(name) → false
+ * 2) if no minAppVersion configured → true (legacy / fully rolled-out flags)
+ * 3) if clientVersion missing/invalid → false (fail closed)
+ * 4) if clientVersion < minAppVersion → false
+ * 5) else → true
+ *
+ * @param {string} name
+ * @param {string|null|undefined} clientVersion
+ * @returns {boolean}
+ */
+export function isEnabledForAppVersion(name, clientVersion) {
+  if (!isEnabled(name)) return false;
+  const minVersion = getMinAppVersion(name);
+  if (!minVersion) return true;
+  const meets = isAtLeastVersion(clientVersion, minVersion);
+  if (meets === null) return false;
+  return meets === true;
+}
+
+/**
  * Test-only — peek at the registered spec. Production code MUST go
- * through `isEnabled`.
+ * through `isEnabled` / `isEnabledForAppVersion`.
  */
 export function getSpec(name) {
   return REGISTRY[name] || null;
@@ -109,6 +184,14 @@ export function __resetRegistry() {
   for (const key of Object.keys(REGISTRY)) {
     delete REGISTRY[key];
   }
+}
+
+/**
+ * Test-only — register a flag after `__resetRegistry`.
+ * @internal
+ */
+export function __registerFlag(spec) {
+  return registerFlag(spec);
 }
 
 // ─── Registered flags ───────────────────────────────────────────────────────
@@ -195,5 +278,23 @@ registerFlag({
   createdAt:      '2026-07-31',
   removeBy:       '2027-01-31',
   description:    'ADR-0006 — User Consent Form gate: require Agree before OTP/Google account creation; no team_table insert without consent; existing users blocked until accepted.',
+  defaultEnabled: true,
+});
+
+registerFlag({
+  name:           'ff.good-habit',
+  owner:          '@principal-eng',
+  createdAt:      '2026-08-16',
+  removeBy:       '2027-02-16',
+  description:    'ADR-0008 — Manual Log Good Habit tile: single photo. New good_habits_table; Diary kind good-habit; wellness-score good_habit_post. Does not change food logging or capture state machine.',
+  defaultEnabled: true,
+});
+
+registerFlag({
+  name:           'ff.meal-builder',
+  owner:          '@nutrition-team',
+  createdAt:      '2026-08-22',
+  removeBy:       '2027-02-22',
+  description:    'Meal Builder multi-add tray + bottom sheet + voice insert in SmartFoodSearchModal (replaces cart UX). Frontend-primary; backend flag for registry parity.',
   defaultEnabled: true,
 });

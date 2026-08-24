@@ -428,6 +428,23 @@ export async function save(input) {
     });
   }
 
+  // Meal Builder pair stats (frequency-v1) — never fails the meal save.
+  try {
+    const { recordMealFoodPairs } = await import('../food-suggestions/index.js');
+    const parsedForPairs = typeof analysisResult === 'string'
+      ? JSON.parse(analysisResult)
+      : analysisResult;
+    await recordMealFoodPairs({
+      userId: userId?.toString(),
+      analysisData: parsedForPairs,
+    });
+  } catch (err) {
+    logger.warn('analysis.save: food pair stats skipped', {
+      err: err?.message,
+      userId: userId?.toString(),
+    });
+  }
+
   const totalLatencyMs = Date.now() - saveStart;
   logger.info('analysis.save: completed', {
     userId: userId?.toString(),

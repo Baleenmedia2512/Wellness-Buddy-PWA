@@ -57,6 +57,11 @@ export function resolveDiaryThumbSource(entry, {
         src: `${base}/api/education/log-image?logId=${encodeURIComponent(id)}&userId=${encodeURIComponent(owner)}`,
         format: 'json',
       };
+    case 'good-habit':
+      return {
+        src: `${base}/api/good-habits?id=${encodeURIComponent(id)}&userId=${encodeURIComponent(owner)}`,
+        format: 'json',
+      };
     case 'unknown':
       if (!viewer) return { src: null, format: null };
       return {

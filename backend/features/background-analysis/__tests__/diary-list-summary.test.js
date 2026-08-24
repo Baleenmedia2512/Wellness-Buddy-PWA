@@ -26,6 +26,54 @@ describe('extractFoodListSummary', () => {
     assert.equal(summary.activityType, 'food');
     assert.equal(summary.items.length, 1);
     assert.equal(summary.items[0].calories, 63);
+    assert.equal(summary.items[0].glycemicIndex, null);
+  });
+
+  it('includes per-item GI from nutrition.glycemic_index', () => {
+    const summary = extractFoodListSummary({
+      foods: [
+        { name: 'Masala Dosa', calories: 400, nutrition: { glycemic_index: 65.4 } },
+        { name: 'Ragi Dosa', calories: 200, glycemic_index: 45 },
+      ],
+    }, null);
+    assert.equal(summary.items[0].glycemicIndex, 65);
+    assert.equal(summary.items[1].glycemicIndex, 45);
+  });
+
+  it('lists every food name instead of a +N compact title', () => {
+    const summary = extractFoodListSummary({
+      foods: [
+        { name: 'Dosa', calories: 540 },
+        { name: 'Idli with Sambar and vegetable curry', calories: 350 },
+        { name: 'Idiyappam', calories: 345 },
+        { name: 'Chutney', calories: 40 },
+      ],
+      total: { calories: 1275 },
+    }, null);
+    assert.equal(
+      summary.name,
+      'Dosa, Idli with Sambar and vegetable curry, Idiyappam, Chutney',
+    );
+    assert.equal(summary.items.length, 4);
+  });
+
+  it('uses detailedItems when it has more dishes than foods[]', () => {
+    const summary = extractFoodListSummary({
+      foods: [{ name: 'Masala Dosa', calories: 1450 }],
+      detailedItems: [
+        { name: 'Masala Dosa', calories: 400 },
+        { name: 'Dosa with Onion', calories: 350 },
+        { name: 'Dosa batter', calories: 200 },
+        { name: 'Egg Dosa', calories: 300 },
+        { name: 'Ragi Dosa', calories: 200 },
+      ],
+      total: { calories: 1450 },
+    }, null);
+    assert.equal(
+      summary.name,
+      'Masala Dosa, Dosa with Onion, Dosa batter, Egg Dosa, Ragi Dosa',
+    );
+    assert.equal(summary.items.length, 5);
   });
 
   it('detects water via processedBy', () => {

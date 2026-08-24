@@ -2,16 +2,23 @@
 import { getApiBaseUrl } from '../../../config/api.config.js';
 import { getProfile } from './user.api.js';
 import cacheManager from '../../../shared/services/cacheManager.js';
+import { apiFetch } from '../../../shared/services/apiFetch.js';
 
 const DEMO_ACCOUNTS = ['testereasywork@gmail.com'];
 export const isDemoAccount = (email) =>
   DEMO_ACCOUNTS.includes((email || '').toLowerCase().trim());
 export const demoStorageKey = (email) => `demo_profile_${email}`;
 
-export const fetchProfile = async (email) => {
+export const fetchProfile = async (emailOrUserId) => {
   try {
+    const opts = typeof emailOrUserId === 'object' && emailOrUserId != null
+      ? emailOrUserId
+      : (String(emailOrUserId || '').includes('@')
+        ? { email: emailOrUserId }
+        : { userId: emailOrUserId });
+    const email = opts.email;
     // Shared getProfile cache/dedup — avoids parallel Home profile storms.
-    const data = await getProfile(email);
+    const data = await getProfile(opts);
     // Demo accounts: API returns top-level fields with no `data` wrapper.
     if (data.success && !data.data && isDemoAccount(email)) {
       const stored = localStorage.getItem(demoStorageKey(email));
@@ -27,9 +34,29 @@ export const fetchProfile = async (email) => {
   }
 };
 
+/**
+ * Attach display name (and optional email) for phone-OTP / BCM users.
+ * POST /api/user/save-email — email may be omitted; name is required.
+ */
+export const saveEmailIdentity = async ({ userId, email, name }) => {
+  const apiBase = getApiBaseUrl();
+  const body = { userId, name };
+  if (email) body.email = email;
+  const res = await apiFetch(`${apiBase}/api/user/save-email`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.success) {
+    throw new Error(data.message || 'Failed to save. Please try again.');
+  }
+  return data;
+};
+
 export const saveProfile = async (payload) => {
   const apiBase = getApiBaseUrl();
-  const res = await fetch(`${apiBase}/api/user/profile`, {
+  const res = await apiFetch(`${apiBase}/api/user/profile`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),

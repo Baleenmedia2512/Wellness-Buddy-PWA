@@ -1,8 +1,10 @@
 /**
  * diary/domain/share/suffixes.js
  *
- * Compact one-line activity suffixes for Quick Share captions:
+ * Compact activity suffixes for Quick Share captions:
  *   "Name · Wellness Valley v X.Y.Z, Consumed: 1 L water so far today"
+ * Food is kcal on the brand line, then each item on its own line with GI:
+ *   "Name · Wellness Valley v 3.4.5, 1890 kcal\nMasala Dosa - GI 65 m\nRagi Dosa - GI 45 l"
  *
  * Rich multi-line templates stay in the per-activity builders for Diary share.
  */
@@ -10,10 +12,17 @@
 import { DIARY_FOOD_ACTIVITY } from '../activityType';
 import { formatWaterVolume } from '../formatVolume';
 import { formatShakeProductScoops } from './shakeShare';
+import { giZone } from '../../../nutrition/domain/foodItemNutritionFacts';
+
+function waBold(text) {
+  const clean = String(text || '').trim();
+  return clean ? `*${clean}*` : '';
+}
 
 /**
  * @param {'food'|'water'|'afresh'|'shake'|'education'|'weight'|string} activityType
  * @param {object} [payload]
+ * @param {number} [payload.idealWeight] kg target (BMI 19–23) shown as "Ideal: X kg"
  * @returns {string|null} compact suffix, or null when nothing useful to append
  */
 export function buildDiaryShareSuffix(activityType, payload = {}) {
@@ -22,22 +31,28 @@ export function buildDiaryShareSuffix(activityType, payload = {}) {
     case 'water': {
       const consumed = payload.volumeLabel
         || (payload.volumeMl != null ? formatWaterVolume(payload.volumeMl) : null);
+      const day = dayTotalSuffix(payload);
       return consumed
-        ? `Consumed: ${consumed} water so far today`
-        : 'Consumed water so far today';
+        ? `Consumed: ${consumed} water${day}`
+        : `Consumed water${day}`;
     }
     case DIARY_FOOD_ACTIVITY.AFRESH:
     case 'afresh': {
       const scoops = Number(payload.scoops);
       const count = Number.isFinite(scoops) && scoops > 0 ? scoops : 1;
       const scoopWord = count === 1 ? 'scoop' : 'scoops';
-      return `Consumed: ${count} ${scoopWord} Afresh so far today`;
+      return `${waBold(`Consumed: ${count} ${scoopWord}`)} Afresh${dayTotalSuffix(payload)},`;
     }
     case DIARY_FOOD_ACTIVITY.SHAKE:
     case 'shake': {
       const name = (payload.shakeName || 'Protein Shake').trim();
       const scoopLine = formatShakeProductScoops(payload.shakeProducts);
-      if (scoopLine) return `${name}, ${scoopLine}`;
+      if (scoopLine) {
+        return [
+          waBold(`${name},`),
+          ...scoopLine.split(', ').map((line) => waBold(`${line},`)),
+        ].join('\n');
+      }
       const servings = Number(payload.servings);
       const count = Number.isFinite(servings) && servings > 0 ? servings : 1;
       return `${name}, serving ${count}`;
@@ -46,7 +61,7 @@ export function buildDiaryShareSuffix(activityType, payload = {}) {
       // Session first, then platform — no "education" type prefix (redundant with session names like "Daily Education").
       const platform = (payload.platform || '').trim();
       const session = (payload.session || payload.topic || '').trim();
-      if (platform && session) return `${session} · ${platform}`;
+      if (platform && session) return waBold(`${session} · ${platform},`);
       if (session) return session;
       if (platform) return platform;
       return null;
@@ -54,16 +69,21 @@ export function buildDiaryShareSuffix(activityType, payload = {}) {
     case 'weight': {
       const current = formatShareKg(payload.currentWeight);
       const previous = formatShareKg(payload.previousWeight);
+      const ideal = formatShareKg(payload.idealWeight);
       if (current == null) return 'weight';
-      if (previous == null) return `weight ${current} kg`;
 
-      const delta = Math.round((current - previous) * 100) / 100;
-      // Direction as emoji arrows (⬆️/⬇️) — WhatsApp renders them as button-style icons.
-      let arrow = '';
-      if (delta < 0) arrow = ' ⬇️';
-      else if (delta > 0) arrow = ' ⬆️';
+      const lines = [];
+      if (ideal != null) lines.push(`Ideal: ${ideal} kg`);
+      if (previous != null) lines.push(`Prev: ${previous} kg`);
 
-      return `Previous: ${previous} kg, Current: ${current} kg${arrow}`;
+      let curr = `Curr: ${current} kg`;
+      if (previous != null) {
+        const delta = Math.round((current - previous) * 100) / 100;
+        if (delta < 0) curr += ' ⬇️';
+        else if (delta > 0) curr += ' ⬆️';
+      }
+      lines.push(curr);
+      return lines.join('\n');
     }
     case 'workout':
     case 'watch':
@@ -73,43 +93,114 @@ export function buildDiaryShareSuffix(activityType, payload = {}) {
       if (burned > 0) return `Calories Burnt: ${burned} kcal so far today`;
       return 'Calories Burnt';
     }
+    case 'good-habit': {
+      const notes = String(payload.notes || '').trim();
+      return notes ? `Good Habit — ${notes}` : 'Good Habit';
+    }
     case DIARY_FOOD_ACTIVITY.FOOD:
     case 'food':
     default: {
-      const foodName = (payload.foodName || '').trim();
+      const items = resolveFoodShareItems(payload);
       const calories = Math.round(Number(payload.calories) || 0);
-      const parts = [];
-      if (foodName) parts.push(foodName);
-      if (calories > 0) parts.push(`${calories} kcal`);
-
-      const protein = roundMacro(payload.protein);
-      const carbs = roundMacro(payload.carbs);
-      const fat = roundMacro(payload.fat);
-      const fiber = roundMacro(payload.fiber);
-      const gi = roundMacro(payload.glycemicIndex ?? payload.glycemic_index);
-
-      const facts = [];
-      if (protein != null) facts.push(`P ${protein}g`);
-      if (carbs != null) facts.push(`C ${carbs}g`);
-      if (fat != null) facts.push(`F ${fat}g`);
-      if (fiber != null) facts.push(`Fiber ${fiber}g`);
-      if (gi != null) facts.push(`GI ${gi}`);
-
-      if (facts.length > 0) {
-        const head = parts.length > 0 ? `${parts.join(', ')} · ` : '';
-        return `${head}${facts.join(' · ')}`;
+      const lines = [];
+      const gi = readShareGi(payload);
+      const zone = giZone(gi);
+      if (calories > 0 || gi != null) {
+        if (gi != null && zone) {
+          lines.push(waBold(`${calories} kcal, GI : ${gi} (${zone.label.toUpperCase()})`));
+        } else if (calories > 0) {
+          lines.push(waBold(`${calories} kcal`));
+        }
       }
-      if (parts.length > 0) return parts.join(', ');
-      return null;
+      for (const item of items) {
+        lines.push(formatFoodShareLine(item.name, item.glycemicIndex));
+      }
+      return lines.length > 0 ? lines.join('\n') : null;
     }
   }
 }
 
-/** Round macro/GI for share text; null when missing or zero. */
-function roundMacro(value) {
-  const n = Number(value);
-  if (!Number.isFinite(n) || n <= 0) return null;
-  return Math.round(n);
+/**
+ * Prefer the full item list for food captions.
+ * Falls back to compact foodName ("White Rice+4more") when items are missing.
+ * @param {{ foodItems?: unknown[], itemNames?: unknown[], foodName?: string }} payload
+ * @returns {Array<{ name: string, glycemicIndex: number|null }>}
+ */
+function resolveFoodShareItems(payload) {
+  const fromFoodItems = Array.isArray(payload.foodItems) ? payload.foodItems : [];
+  const mapped = [];
+  const seen = new Set();
+  for (const item of fromFoodItems) {
+    const name = typeof item === 'string'
+      ? item.trim()
+      : String(item?.name || item?.foodName || '').trim();
+    if (!name) continue;
+    const key = name.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    mapped.push({
+      name,
+      glycemicIndex: typeof item === 'string' ? null : readShareGi(item),
+    });
+  }
+  if (mapped.length > 0) return mapped;
+
+  const fromNames = Array.isArray(payload.itemNames)
+    ? payload.itemNames.map((n) => String(n || '').trim()).filter(Boolean)
+    : [];
+  if (fromNames.length > 0) {
+    const names = [];
+    for (const name of fromNames) {
+      const key = name.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      names.push({ name, glycemicIndex: null });
+    }
+    return names;
+  }
+  const foodName = (payload.foodName || '').trim();
+  return foodName ? [{ name: foodName, glycemicIndex: null }] : [];
+}
+
+function readShareGi(item) {
+  const raw = item?.glycemicIndex
+    ?? item?.glycemic_index
+    ?? item?.nutrition?.glycemic_index;
+  if (raw == null || raw === '') return null;
+  const n = Number(raw);
+  return Number.isFinite(n) ? Math.round(n) : null;
+}
+
+/**
+ * Splits "Herbalife Aloe Plus (Digestive Health)" into
+ * boldPart = "Herbalife Aloe Plus" and suffix = " (Digestive Health)"
+ * so the parenthetical sub-category stays plain text outside the bold markers.
+ */
+function splitNameAndSuffix(name) {
+  const match = String(name || '').match(/^(.*?)(\s*\([^)]*\)\s*)$/);
+  if (match) return { bold: match[1].trim(), suffix: match[2].trimEnd() };
+  return { bold: String(name || '').trim(), suffix: '' };
+}
+
+/**
+ * @param {string} name
+ * @param {number|null} glycemicIndex
+ * @returns {string}
+ */
+function formatFoodShareLine(name, glycemicIndex) {
+  const { bold, suffix } = splitNameAndSuffix(name);
+  if (glycemicIndex != null) {
+    return `${waBold(bold)}${suffix}`;
+  }
+  return `${waBold(`${bold},`)}${suffix}`;
+}
+
+/**
+ * Manual Log / day-total share keeps "so far today".
+ * Diary card share passes soFarToday: false (this entry only).
+ */
+function dayTotalSuffix(payload) {
+  return payload.soFarToday === false ? '' : ' so far today';
 }
 
 /** Weight kg for share captions (2 decimal places max). */

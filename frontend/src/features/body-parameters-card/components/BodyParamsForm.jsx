@@ -3,13 +3,14 @@
  *
  * Modal form for creating a Body Parameters Card.
  * Pure presentational — all logic in useBodyParamsCard hook.
- * Fields: Date, Name, Age, Height, Phone, Gender, Weight, BMI, Fat%, BMR, Body Age, Chest, Waist, Hip.
+ * Fields: Date, Venue, Name, Age, Height, Phone, Gender, Weight, BMI, Fat%, BMR, Body Age, Chest, Waist, Hip.
  */
 import React, { useRef } from 'react';
 import { X, AlertCircle } from 'lucide-react';
 import { useBodyParamsCard } from '../hooks/useBodyParamsCard.js';
 import PhoneAutocomplete from './PhoneAutocomplete.jsx';
 import NativeInput from '../../../shared/components/NativeInput.jsx';
+import HealthIssuesFilterSelect from './HealthIssuesFilterSelect.jsx';
 
 const InputField = ({
   label, value, onChange, type = 'text', placeholder = '', inputRef, onEnter,
@@ -76,12 +77,19 @@ const SelectField = ({ label, value, onChange, options, inputRef, onEnter }) => 
 };
 
 /**
- * @param {{ isOpen, onClose, user, selectedMember, onSaveSuccess, existingCard, onSaveStart }} props
+ * @param {{ isOpen, onClose, user, selectedMember, onSaveSuccess, existingCard, onSaveStart, externalVenue, onVenueChange, hideVenueField }} props
  */
-const BodyParamsForm = ({ isOpen, onClose, user, selectedMember, onSaveSuccess, existingCard = null, onSaveStart = null }) => {
-  const vm = useBodyParamsCard({ user, selectedMember, onSaveSuccess, existingCard, onSaveStart, isOpen });
+const BodyParamsForm = ({
+  isOpen, onClose, user, selectedMember, onSaveSuccess, existingCard = null, onSaveStart = null,
+  externalVenue = null, onVenueChange = null, hideVenueField = false,
+}) => {
+  const vm = useBodyParamsCard({
+    user, selectedMember, onSaveSuccess, existingCard, onSaveStart, isOpen,
+    externalVenue,
+  });
 
   // Refs for all input fields
+  const venueRef = useRef(null);
   const phoneRef = useRef(null);
   const nameRef = useRef(null);
   const ageRef = useRef(null);
@@ -123,10 +131,6 @@ const BodyParamsForm = ({ isOpen, onClose, user, selectedMember, onSaveSuccess, 
 
   const handleSave = async () => {
     await vm.handleSave();
-    // Only reset for new-card flow; edit mode reloads from existingCard on next open.
-    if (!vm.error && !vm.isEditMode) {
-      vm.resetForm();
-    }
   };
 
   const handleBackdropClick = (e) => {
@@ -160,7 +164,7 @@ const BodyParamsForm = ({ isOpen, onClose, user, selectedMember, onSaveSuccess, 
         </div>
 
         <div className="p-5 space-y-4">
-          {vm.error && (
+          {vm.error && !/user already exists/i.test(String(vm.error)) && (
             <div className="flex items-center gap-2 bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded-lg text-sm">
               <AlertCircle size={16} className="flex-shrink-0" />
               {vm.error}
@@ -173,8 +177,23 @@ const BodyParamsForm = ({ isOpen, onClose, user, selectedMember, onSaveSuccess, 
             value={vm.form.recordedDate} 
             onChange={(v) => vm.setField('recordedDate', v)} 
             type="date"
-            onEnter={() => focusNextField(nameRef)}
+            onEnter={() => focusNextField(hideVenueField ? nameRef : venueRef)}
           />
+
+          {/* Venue — editable; prefilled from header when provided */}
+          {!hideVenueField && (
+            <InputField
+              label="Venue"
+              value={vm.form.locationName}
+              onChange={(v) => {
+                vm.setField('locationName', v);
+                if (onVenueChange) onVenueChange(v);
+              }}
+              placeholder="e.g. Chennai"
+              inputRef={venueRef}
+              onEnter={() => focusNextField(nameRef)}
+            />
+          )}
 
           {/* Name */}
           <InputField 
@@ -222,6 +241,8 @@ const BodyParamsForm = ({ isOpen, onClose, user, selectedMember, onSaveSuccess, 
             isLoading={vm.phoneSearchLoading}
             inputRef={phoneRef}
             onEnter={() => focusNextField(genderRef)}
+            onBlur={vm.recheckPhoneStatus}
+            error={vm.phoneFieldError}
           />
 
           {/* Gender - Full Width */}
@@ -477,6 +498,14 @@ const BodyParamsForm = ({ isOpen, onClose, user, selectedMember, onSaveSuccess, 
             placeholder="cm"
             inputRef={hipRef}
           />
+
+          {/* Health Issues — filter-style multi-select */}
+          <div className="mt-1">
+            <HealthIssuesFilterSelect
+              value={vm.form.recoveredHealthIssues || []}
+              onChange={(next) => vm.setField('recoveredHealthIssues', next)}
+            />
+          </div>
         </div>
 
         {/* Actions */}

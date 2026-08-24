@@ -3,7 +3,8 @@
  */
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-export const MAX_HISTORY_DAYS = 31;
+/** Keep aligned with food-corrections MAX_STATS_RANGE_DAYS (home custom ~6 months). */
+export const MAX_HISTORY_DAYS = 186;
 
 export function isValidScoreDate(date) {
   return DATE_RE.test(String(date || ''));
@@ -39,11 +40,11 @@ export function enumerateScoreDates(startDate, endDate) {
   let cursor = startDate;
   while (cursor <= endDate) {
     dates.push(cursor);
-    if (cursor === endDate) break;
-    cursor = addDaysYmd(cursor, 1);
     if (dates.length > MAX_HISTORY_DAYS) {
       throw new Error(`Date range cannot exceed ${MAX_HISTORY_DAYS} days`);
     }
+    if (cursor === endDate) break;
+    cursor = addDaysYmd(cursor, 1);
   }
   return dates;
 }

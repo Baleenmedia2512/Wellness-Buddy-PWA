@@ -43,7 +43,7 @@ import {
   invalidateMealDetail,
 } from '../services/mealDetailCache';
 import { computeMealGlycemicIndex } from '../domain/mealGlycemicIndex';
-import { resolveBusinessTimezone } from '../../../shared/utils/datetimeUtils';
+import { resolveBusinessTimezone, formatPickerDayButtonLabel } from '../../../shared/utils/datetimeUtils';
 import { getProfile } from '../../user/services/user.api';
 import { getDeviceTimezoneIana } from '../../../shared/utils/deviceTimezone';
 
@@ -543,6 +543,9 @@ const NutritionDashboard = ({
       if (openGenerationRef.current !== generation) return;
       setMealDetailError(err?.message || 'Unable to load food details.');
       setMealDetailStatus('error');
+      if (initialMeal) {
+        hydrateSelectedMeal(initialMeal, { status: 'error' });
+      }
     }
   }, [
     analyses,
@@ -664,14 +667,9 @@ const NutritionDashboard = ({
   // Infinite scroll pagination moved to useInfiniteScroll hook.
 
   const formatDateHeader = (date) => {
+    const label = formatPickerDayButtonLabel(date, ownerTimezoneIana);
+    if (label === 'Today' || label === 'Yesterday') return label;
     const today = new Date();
-    const yesterday = new Date(today);
-    yesterday.setDate(today.getDate() - 1);
-    const tomorrow = new Date(today);
-    tomorrow.setDate(today.getDate() + 1);
-    if (date.toDateString() === today.toDateString()) return "Today";
-    if (date.toDateString() === yesterday.toDateString()) return "Yesterday";
-    if (date.toDateString() === tomorrow.toDateString()) return "Tomorrow";
     return date.toLocaleDateString("en-US", {
       month: "short",
       day: "numeric",
