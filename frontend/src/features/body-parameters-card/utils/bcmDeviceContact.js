@@ -141,6 +141,7 @@ async function findBcmContactIds(phone) {
  */
 export async function upsertBcmMemberToDeviceContacts(opts = {}) {
   if (!Capacitor.isNativePlatform()) {
+    console.warn('[BCM contact] skipped — not a native app (web)');
     return { ok: false, skipped: true, reason: 'web' };
   }
 
@@ -151,6 +152,10 @@ export async function upsertBcmMemberToDeviceContacts(opts = {}) {
     recordedDate: opts.recordedDate,
   });
   if (!phone || !displayName) {
+    console.warn('[BCM contact] skipped — missing phone or display name', {
+      hasPhone: Boolean(phone),
+      hasName: Boolean(displayName),
+    });
     return { ok: false, skipped: true, reason: 'missing-fields' };
   }
 
@@ -179,7 +184,7 @@ export async function upsertBcmMemberToDeviceContacts(opts = {}) {
         await Contacts.deleteContact({ contactId });
         updated = true;
       } catch (err) {
-        debugLog('📱 [BCM contact] delete failed', contactId, err?.message || err);
+        console.warn('[BCM contact] delete failed', contactId, err?.message || err);
       }
     }
     if (existingIds.length) clearStoredContactId(phone);
@@ -193,18 +198,39 @@ export async function upsertBcmMemberToDeviceContacts(opts = {}) {
     });
 
     if (!contactId) {
-      console.warn('[BCM contact] createContact returned no contactId');
-      return { ok: false, skipped: true, reason: 'create-failed' };
+      console.warn('[BCM contact] createContact returned no contactId', {
+        displayName,
+        phoneTail: phone.slice(-4),
+        permissionGranted: allowed,
+      });
+      return {
+        ok: false,
+        skipped: true,
+        reason: allowed ? 'create-failed' : 'permission',
+      };
     }
 
     writeStoredContactId(phone, contactId);
 
+    console.warn('[BCM contact] saved', {
+      displayName,
+      phoneTail: phone.slice(-4),
+      updated,
+      contactId,
+      permissionGranted: allowed,
+    });
     debugLog('📱 [BCM contact] upserted', { displayName, phone, updated, contactId });
     return { ok: true, updated };
   } catch (err) {
-    console.warn('[BCM contact] upsert failed', err?.message || err);
-    debugLog('📱 [BCM contact] upsert failed', err?.message || err);
-    return { ok: false, skipped: true, reason: err?.message || 'error' };
+    const message = err?.message || String(err);
+    console.warn('[BCM contact] upsert failed', message);
+    debugLog('📱 [BCM contact] upsert failed', message);
+    const denied = /permission|denied|not authorized|access/i.test(message);
+    return {
+      ok: false,
+      skipped: true,
+      reason: denied ? 'permission' : (message || 'error'),
+    };
   }
 }
 

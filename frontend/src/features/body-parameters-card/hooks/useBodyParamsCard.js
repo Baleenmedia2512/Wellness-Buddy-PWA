@@ -835,7 +835,17 @@ export function useBodyParamsCard({
         };
         setTimeout(() => {
           void upsertBcmMemberToDeviceContacts(contactPayload).then((result) => {
-            if (result?.ok) return;
+            if (result?.ok) {
+              console.warn('[BodyParamsCard] Contact saved', {
+                updated: result.updated,
+                name: contactPayload.name,
+              });
+              return;
+            }
+            console.warn('[BodyParamsCard] Contact not saved', {
+              reason: result?.reason || 'unknown',
+              hasPhone: Boolean(contactPayload.phoneNumber),
+            });
             if (result?.reason === 'plugin-missing') {
               console.error('[BodyParamsCard] Contact not saved — rebuild iOS with Contacts pod');
             } else if (result?.reason === 'permission') {
@@ -843,6 +853,8 @@ export function useBodyParamsCard({
             }
           });
         }, 1200);
+      } else {
+        console.warn('[BodyParamsCard] Contact skipped — card has no phoneNumber');
       }
 
       return true;
