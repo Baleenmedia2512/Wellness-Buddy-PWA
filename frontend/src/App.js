@@ -8265,6 +8265,7 @@ function WellnessValleyApp() {
             apiBaseUrl={apiBaseUrl}
             topN={10}
             userId={user?.id || user?.UserId}
+            viewerName={savedUserName}
           />
         )}
 

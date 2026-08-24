@@ -32,7 +32,7 @@ const TransformationPhotosSection = ({
           <h3 className="text-sm font-semibold text-gray-800">Transformation Photos (Optional)</h3>
         </div>
         <p className="text-xs text-gray-500 mt-1">
-          Upload your photos to track your transformation progress.
+          Upload Front, Left, and Right. Left is shown as Before and After on Transformation.
         </p>
       </div>
       <CameraGalleryButtons

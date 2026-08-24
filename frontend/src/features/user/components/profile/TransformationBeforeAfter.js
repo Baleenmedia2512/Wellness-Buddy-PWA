@@ -2,8 +2,8 @@ import React, { useMemo } from 'react';
 import {
   DEFAULT_TRANSFORMATION_COMPARE_TYPE,
   TRANSFORMATION_COMPARE_TYPES,
+  filterTransformationHistoryByType,
   formatTransformationRecordWeight,
-  selectTransformationBeforeAfter,
 } from '../../domain/transformationBeforeAfter';
 
 const TAB_LABELS = { front: 'Front', left: 'Left', right: 'Right' };
@@ -20,28 +20,21 @@ const PhotoFrame = ({ src, alt }) => (
   )
 );
 
-const WeightLine = ({ kg }) => (
-  <p className="text-sm font-semibold text-gray-800 text-center">
-    {kg != null ? `${kg} kg` : '—'}
-  </p>
-);
-
 const TransformationBeforeAfter = ({
   history = [],
   selectedType = DEFAULT_TRANSFORMATION_COMPARE_TYPE,
   onSelectType,
 }) => {
-  const pair = useMemo(
-    () => selectTransformationBeforeAfter(history, selectedType),
-    [history, selectedType],
-  );
-  const beforeKg = formatTransformationRecordWeight(pair.before);
-  const afterKg = formatTransformationRecordWeight(pair.after);
+  const current = useMemo(() => {
+    const list = filterTransformationHistoryByType(history, selectedType);
+    return list.length > 0 ? list[list.length - 1] : null;
+  }, [history, selectedType]);
+  const kg = formatTransformationRecordWeight(current);
   const typeLabel = TAB_LABELS[selectedType];
 
   return (
     <div className="space-y-3 pt-2">
-      <p className="text-sm font-semibold text-gray-800">Before vs After</p>
+      <p className="text-sm font-semibold text-gray-800">Front, Left, and Right</p>
       <div className="grid grid-cols-3 gap-1 rounded-xl bg-gray-100 p-1">
         {TRANSFORMATION_COMPARE_TYPES.map((type) => (
           <button
@@ -58,17 +51,14 @@ const TransformationBeforeAfter = ({
           </button>
         ))}
       </div>
-      <div className="grid grid-cols-2 gap-3">
-        <div className="space-y-1.5">
-          <p className="text-[11px] font-bold uppercase tracking-wide text-gray-400 text-center">Before</p>
-          <PhotoFrame src={pair.before?.imageUrl} alt={`Before ${typeLabel}`} />
-          <WeightLine kg={beforeKg} />
-        </div>
-        <div className="space-y-1.5">
-          <p className="text-[11px] font-bold uppercase tracking-wide text-gray-400 text-center">After</p>
-          <PhotoFrame src={pair.after?.imageUrl} alt={`After ${typeLabel}`} />
-          <WeightLine kg={afterKg} />
-        </div>
+      <div className="max-w-[220px] mx-auto space-y-1.5">
+        <p className="text-[11px] font-bold uppercase tracking-wide text-gray-400 text-center">
+          {typeLabel}
+        </p>
+        <PhotoFrame src={current?.imageUrl} alt={typeLabel} />
+        <p className="text-sm font-semibold text-gray-800 text-center">
+          {kg != null ? `${kg} kg` : '—'}
+        </p>
       </div>
     </div>
   );

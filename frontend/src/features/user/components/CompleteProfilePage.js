@@ -358,15 +358,14 @@ const CompleteProfilePage = ({
 
       await saveProfile(payload);
 
-      const photos = transformationPhotos.testimonialPayload();
-      if (uid && (photos.beforeImageBase64 || photos.afterImageBase64)) {
+      if (uid && (isValidCurrentWeight(currentWeight) || transformationPhotos.leftImageBase64())) {
         const weightNum = isValidCurrentWeight(currentWeight)
           ? parseFloat(currentWeight)
           : null;
         await persistOnboardingTestimonialPhotos({
           userId: uid,
-          photos,
           weightKg: weightNum,
+          leftImageBase64: transformationPhotos.leftImageBase64(),
           goalType: deriveWeightGoalMode({
             heightCm: heightNum,
             currentWeightKg: weightNum,

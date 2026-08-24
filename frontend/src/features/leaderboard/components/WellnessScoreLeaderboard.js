@@ -11,16 +11,34 @@ import { resolveSponsorCoachNames } from '../../../shared/utils/sponsorCoachLabe
 import { setVisibilityAwareInterval } from '../../../shared/utils/visibilityAwareInterval.js';
 import { useAutoScrollStrip } from '../../../shared/hooks/useAutoScrollStrip.js';
 import LeaderboardAvatar from './LeaderboardAvatar.js';
+import {
+  hasValidProfileName,
+  isPlaceholderUserName,
+} from '../../user/domain/profileCompleteness';
 
 const CACHE_TTL = 5 * 60 * 1000;
-// v5: hierarchy-scoped Top 10 (per logged-in user)
-const CACHE_KEY_PREFIX = 'wv.lb.wellness.v5.';
+// v6: overlay chosen display name when DB still has user_<phone>
+const CACHE_KEY_PREFIX = 'wv.lb.wellness.v6.';
 const LEGACY_CACHE_KEYS = [
   'wv.lb.wellness',
   'wv.lb.wellness.v2',
   'wv.lb.wellness.v3',
   'wv.lb.wellness.v4',
+  'wv.lb.wellness.v5',
 ];
+
+function displayLeaderboardName(entry, viewerUserId, viewerName) {
+  const stored = String(entry?.userName || '').trim();
+  const isViewer = Number(entry?.userId) === Number(viewerUserId);
+  if (
+    isViewer
+    && hasValidProfileName(viewerName)
+    && isPlaceholderUserName(stored)
+  ) {
+    return String(viewerName).trim();
+  }
+  return stored || 'Unknown';
+}
 
 const cacheKeyFor = (userId) => `${CACHE_KEY_PREFIX}${userId || 'anon'}`;
 
@@ -57,7 +75,7 @@ const writeCache = (userId, data) => {
  * Display order: Rank N → Rank 1 (descending).
  * Ranked among the logged-in user's allowed hierarchy (not global Top 10).
  */
-const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId }, ref) => {
+const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, viewerName }, ref) => {
   const [leaderboardData, setLeaderboardData] = useState(() => readCache(userId) ?? []);
   const [isVisible, setIsVisible] = useState(() => (readCache(userId)?.length ?? 0) > 0);
   const [hasEntered, setHasEntered] = useState(() => (readCache(userId)?.length ?? 0) > 0);
@@ -155,7 +173,9 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId }, 
     return null;
   }
 
-  const renderLeaderboardCard = (user, key) => (
+  const renderLeaderboardCard = (user, key) => {
+    const shownName = displayLeaderboardName(user, userId, viewerName);
+    return (
     <div
       key={key}
       className="inline-flex items-center gap-1.5 sm:gap-2 md:gap-3 mx-2 sm:mx-3 md:mx-4 flex-shrink-0"
@@ -176,14 +196,14 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId }, 
           apiBaseUrl={apiBaseUrl}
           userId={user.userId}
           email={user.email}
-          userName={user.userName}
+          userName={shownName}
           profileImage={user.profileImage}
         />
       </div>
 
       <div className="flex flex-col justify-center flex-shrink-0 min-w-0 max-w-[120px] sm:max-w-[150px] md:max-w-[180px]">
         <span className="font-bold text-gray-800 text-xs sm:text-sm md:text-base truncate leading-tight">
-          {user.userName}
+          {shownName}
         </span>
         {(() => {
           const { sponsorName, idealCoachName } = resolveSponsorCoachNames(user);
@@ -207,7 +227,8 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId }, 
         </span>
       </div>
     </div>
-  );
+    );
+  };
 
   return (
     <div

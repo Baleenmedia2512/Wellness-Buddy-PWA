@@ -57,6 +57,8 @@ import { PORTRAIT_IMAGE_CLASS_SM } from '../services/testimonialFormUtils.js';
 import { resolveRowTeamUploadPerformance } from '../utils/testimonialTeamPerformance.js';
 import { uniqueConditions, isSameIssueList, withoutHealthIssue } from '../utils/uniqueConditions.js';
 import { getApiBaseUrl } from '../../../config/api.config.js';
+import { getProfile } from '../../user/services/user.api.js';
+import { seedMineTestimonialFromLeftSlot } from '../../user/domain/transformationBeforeAfter';
 
 // â”€â”€ Constants â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -520,8 +522,15 @@ function MemberCard({
   const anyVideoUploading = uploadingHealth || uploadingBusiness;
 
   // Prefer draft edits so the "Lost/Gained X kgs" badge updates live while editing
-  const displayBeforeKg = Number(draftBefore?.weightKg ?? testimonial?.beforeWeightKg ?? 0);
-  const displayAfterKg  = Number(draftAfter?.weightKg ?? (hasAfter ? testimonial?.afterWeightKg : 0) ?? 0);
+  const shownBeforeKg = draftBefore?.weightKg
+    ?? testimonial?.beforeWeightKg
+    ?? (editable ? user?.latestWeightKg : null);
+  const displayBeforeKg = Number(shownBeforeKg ?? 0);
+  const shownAfterKg = draftAfter?.weightKg
+    ?? (hasAfter ? testimonial?.afterWeightKg : null)
+    ?? testimonial?.afterWeightKg
+    ?? shownBeforeKg;
+  const displayAfterKg  = Number(shownAfterKg ?? 0);
   const displayGoalType = draftBefore?.goalType ?? testimonial?.goalType;
   const displayDuration = draftBefore?.durationText ?? testimonial?.durationText;
   const diff = testimonial && hasAfter && displayBeforeKg > 0 && displayAfterKg > 0
@@ -529,10 +538,31 @@ function MemberCard({
     : null;
 
   const mediaVersion = `${testimonial?.updatedAt ?? testimonial?.id ?? ''}-${mediaEpoch}`;
-  const beforeImageSrc = draftBefore?.previewUrl
+  const beforeRaw = draftBefore?.previewUrl
     || withTestimonialMediaCacheBust(testimonial?.beforeImageUrl, mediaVersion);
-  const afterImageSrc = draftAfter?.previewUrl
-    || withTestimonialMediaCacheBust(hasAfter ? testimonial?.afterImageUrl : null, mediaVersion);
+  const afterRaw = draftAfter?.previewUrl
+    || withTestimonialMediaCacheBust(
+      hasAfter || editable
+        ? (testimonial?.afterImageUrl || (editable ? testimonial?.beforeImageUrl : null))
+        : null,
+      mediaVersion,
+    );
+  const beforeFromData = typeof beforeRaw === 'string' && beforeRaw.startsWith('data:image');
+  const afterFromData = typeof afterRaw === 'string' && afterRaw.startsWith('data:image');
+  const beforeImageSrc = useMemo(() => (
+    beforeFromData ? jpegDataUrlToObjectUrl(beforeRaw) : beforeRaw
+  ), [beforeRaw, beforeFromData]);
+  const afterImageSrc = useMemo(() => (
+    afterFromData ? jpegDataUrlToObjectUrl(afterRaw) : afterRaw
+  ), [afterRaw, afterFromData]);
+  useEffect(() => {
+    if (!beforeFromData) return undefined;
+    return () => revokeBlobUrl(beforeImageSrc);
+  }, [beforeFromData, beforeImageSrc]);
+  useEffect(() => {
+    if (!afterFromData) return undefined;
+    return () => revokeBlobUrl(afterImageSrc);
+  }, [afterFromData, afterImageSrc]);
 
   // Photo-only drafts — weight/duration edits must NOT open this strip (Android focus loss)
   const hasPhotoDraft = Boolean(
@@ -561,13 +591,13 @@ function MemberCard({
   }, [parseWeightInput]);
 
   const openBeforeWeightEdit = useCallback(() => {
-    setBeforeWeightText(String(draftBefore?.weightKg ?? testimonial?.beforeWeightKg ?? ''));
+    setBeforeWeightText(String(draftBefore?.weightKg ?? testimonial?.beforeWeightKg ?? user?.latestWeightKg ?? ''));
     setExpandedSlots((prev) => {
       const next = new Set(prev);
       next.add('beforeWeight');
       return next;
     });
-  }, [draftBefore?.weightKg, testimonial?.beforeWeightKg]);
+  }, [draftBefore?.weightKg, testimonial?.beforeWeightKg, user?.latestWeightKg]);
 
   const closeBeforeWeightEdit = useCallback((raw) => {
     if (raw != null) commitBeforeWeight(raw);
@@ -580,13 +610,13 @@ function MemberCard({
   }, [commitBeforeWeight]);
 
   const openAfterWeightEdit = useCallback(() => {
-    setAfterWeightText(String(draftAfter?.weightKg ?? (hasAfter ? testimonial?.afterWeightKg : '') ?? ''));
+    setAfterWeightText(String(draftAfter?.weightKg ?? testimonial?.afterWeightKg ?? user?.latestWeightKg ?? ''));
     setExpandedSlots((prev) => {
       const next = new Set(prev);
       next.add('afterWeight');
       return next;
     });
-  }, [draftAfter?.weightKg, hasAfter, testimonial?.afterWeightKg]);
+  }, [draftAfter?.weightKg, testimonial?.afterWeightKg, user?.latestWeightKg]);
 
   const closeAfterWeightEdit = useCallback((raw) => {
     if (raw != null) commitAfterWeight(raw);
@@ -1086,8 +1116,8 @@ function MemberCard({
               ) : (
                 <div className="flex items-center justify-center gap-1">
                   <p className="text-sm font-bold text-gray-800">
-                    {draftBefore?.weightKg ?? testimonial?.beforeWeightKg ?? '—'}
-                    {(draftBefore?.weightKg ?? testimonial?.beforeWeightKg) && <span className="text-xs font-normal text-gray-400"> kg</span>}
+                    {shownBeforeKg ?? '—'}
+                    {shownBeforeKg != null && shownBeforeKg !== '' && <span className="text-xs font-normal text-gray-400"> kg</span>}
                   </p>
                   {editable && (
                     <button type="button" onClick={openBeforeWeightEdit}
@@ -1216,8 +1246,8 @@ function MemberCard({
               ) : (
                 <div className="flex items-center justify-center gap-1">
                   <p className="text-sm font-bold text-gray-800">
-                    {draftAfter?.weightKg ?? (hasAfter ? testimonial?.afterWeightKg : null) ?? '—'}
-                    {(draftAfter?.weightKg ?? (hasAfter ? testimonial?.afterWeightKg : null)) && <span className="text-xs font-normal text-gray-400"> kg</span>}
+                    {shownAfterKg ?? '—'}
+                    {shownAfterKg != null && shownAfterKg !== '' && <span className="text-xs font-normal text-gray-400"> kg</span>}
                   </p>
                   {editable && (
                     <button type="button" onClick={openAfterWeightEdit}
@@ -1688,24 +1718,37 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
       phoneNumber,
     };
     try {
-      const [testimonial, video] = await Promise.all([
+      const [testimonial, video, profileResult] = await Promise.all([
         getMyTestimonial(coachId),
         getMyVideoTestimonial(coachId).catch(() => null),
+        getProfile({ userId: coachId, cacheBust: true }).catch(() => null),
       ]);
-      if (!testimonial && !video) {
+      const latestWeightKg = profileResult?.success && profileResult?.data?.latestWeight != null
+        ? Number(profileResult.data.latestWeight)
+        : NaN;
+      if (Number.isFinite(latestWeightKg) && latestWeightKg > 0) {
+        userPayload.latestWeightKg = latestWeightKg;
+      }
+      const leftUrl = profileResult?.success
+        ? profileResult?.data?.transformationPhotos?.left
+        : null;
+      const seeded = seedMineTestimonialFromLeftSlot(testimonial, {
+        leftUrl,
+        weightKg: Number.isFinite(latestWeightKg) ? latestWeightKg : null,
+      });
+      if (!seeded && !video) {
         return { user: userPayload, testimonial: null };
       }
-      // Merge video verification fields so Mine can show "Videos verified"
       const merged = {
-        ...(testimonial || {
+        ...(seeded || {
           healthVideoUrl: null,
           businessVideoUrl: null,
           status: 'incomplete',
           recoveredHealthIssues: [],
         }),
-        id:              testimonial?.id ?? video?.testimonialId ?? null,
-        videoStatus:     video?.videoStatus ?? testimonial?.videoStatus ?? 'none',
-        videoVerifiedAt: video?.videoVerifiedAt ?? testimonial?.videoVerifiedAt ?? null,
+        id:              seeded?.id ?? testimonial?.id ?? video?.testimonialId ?? null,
+        videoStatus:     video?.videoStatus ?? seeded?.videoStatus ?? testimonial?.videoStatus ?? 'none',
+        videoVerifiedAt: video?.videoVerifiedAt ?? seeded?.videoVerifiedAt ?? testimonial?.videoVerifiedAt ?? null,
       };
       return { user: userPayload, testimonial: merged };
     } catch {

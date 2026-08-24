@@ -1,6 +1,6 @@
 /**
- * Before vs After pairing from testimonials_table (not a new table).
- * Front / Left / Right tabs stay; stored before/after maps to Left only.
+ * Front / Left / Right slot history from team_table.transformation_photos.
+ * Testimonials before/after pairing stays available for the Transformation tab.
  */
 
 export const TRANSFORMATION_COMPARE_TYPES = ['front', 'left', 'right'];
@@ -123,7 +123,8 @@ export function formatTransformationRecordWeight(row) {
 }
 
 /** Latest Front/Left/Right images from team_table.transformation_photos. */
-export function historyFromLatestSlots(latestSlots) {
+export function historyFromLatestSlots(latestSlots, snapshotWeightKg = null) {
+  const weight = Number.isFinite(snapshotWeightKg) ? snapshotWeightKg : null;
   const out = [];
   TRANSFORMATION_COMPARE_TYPES.forEach((type) => {
     const url = latestSlots?.[type];
@@ -132,12 +133,63 @@ export function historyFromLatestSlots(latestSlots) {
         id: 0,
         imageType: type,
         imageUrl: String(url).trim(),
-        weight: null,
+        weight,
         createdAt: null,
       });
     }
   });
   return out;
+}
+
+function firstPositiveKg(...values) {
+  for (const value of values) {
+    const n = value != null && value !== '' ? parseFloat(value) : NaN;
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+  return null;
+}
+
+/**
+ * Transformation Before/After: Left photo fills both slots until a real After exists.
+ * Same current weight on both when After is not a later photo yet.
+ */
+export function seedMineTestimonialFromLeftSlot(testimonial, { leftUrl, weightKg } = {}) {
+  const hasLeft = isStoredPhoto(leftUrl);
+  const weight = firstPositiveKg(weightKg);
+  const hasExistingPhoto = isStoredPhoto(testimonial?.beforeImageUrl);
+  if (!testimonial && !hasLeft && weight == null) return null;
+
+  const next = testimonial ? { ...testimonial } : {
+    status: 'incomplete',
+    recoveredHealthIssues: [],
+    beforeImageUrl: null,
+    afterImageUrl: null,
+  };
+  if (!hasExistingPhoto && hasLeft) {
+    next.beforeImageUrl = String(leftUrl).trim();
+  }
+  const beforeW = firstPositiveKg(next.beforeWeightKg, weight);
+  if (beforeW != null) next.beforeWeightKg = beforeW;
+
+  const incomplete = !next.status || next.status === 'incomplete';
+  const realAfter = !incomplete
+    && isStoredPhoto(next.afterImageUrl)
+    && next.afterImageUrl !== next.beforeImageUrl;
+  if (!realAfter) {
+    if (hasLeft && !isStoredPhoto(next.afterImageUrl)) {
+      next.afterImageUrl = String(leftUrl).trim();
+    } else if (hasLeft && next.afterImageUrl === next.beforeImageUrl) {
+      next.afterImageUrl = String(leftUrl).trim();
+    } else if (!isStoredPhoto(next.afterImageUrl) && isStoredPhoto(next.beforeImageUrl)) {
+      next.afterImageUrl = next.beforeImageUrl;
+    }
+    const afterW = firstPositiveKg(next.afterWeightKg, beforeW, weight);
+    if (afterW != null) next.afterWeightKg = afterW;
+  } else {
+    const afterW = firstPositiveKg(next.afterWeightKg, weight);
+    if (afterW != null && !firstPositiveKg(next.afterWeightKg)) next.afterWeightKg = afterW;
+  }
+  return next;
 }
 
 /** Testimonials before/after (with weights) replace Left JSON-only rows. */

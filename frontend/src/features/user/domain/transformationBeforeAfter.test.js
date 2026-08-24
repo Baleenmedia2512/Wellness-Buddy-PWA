@@ -9,6 +9,7 @@ import {
   formatTransformationRecordWeight,
   historyFromLatestSlots,
   mapTestimonialToCompareHistory,
+  seedMineTestimonialFromLeftSlot,
   selectTransformationBeforeAfter,
 } from './transformationBeforeAfter.js';
 
@@ -95,9 +96,56 @@ describe('transformation Before vs After pairing', () => {
       front: 'data:image/jpeg;base64,front',
       left: 'data:image/jpeg;base64,left',
       right: 'data:image/jpeg;base64,right',
-    });
+    }, 72);
     assert.equal(selectTransformationBeforeAfter(rows, 'front').before.imageUrl, 'data:image/jpeg;base64,front');
     assert.equal(selectTransformationBeforeAfter(rows, 'left').before.imageUrl, 'data:image/jpeg;base64,left');
     assert.equal(selectTransformationBeforeAfter(rows, 'right').before.imageUrl, 'data:image/jpeg;base64,right');
+    assert.equal(selectTransformationBeforeAfter(rows, 'front').before.weight, 72);
+  });
+
+  it('seeds the same weight on Before and After when photos are skipped', () => {
+    const seeded = seedMineTestimonialFromLeftSlot(null, { leftUrl: null, weightKg: 55 });
+    assert.equal(seeded.beforeImageUrl, null);
+    assert.equal(seeded.afterImageUrl, null);
+    assert.equal(seeded.beforeWeightKg, 55);
+    assert.equal(seeded.afterWeightKg, 55);
+  });
+
+  it('seeds Transformation Before from the Left slot and weight', () => {
+    const seeded = seedMineTestimonialFromLeftSlot(null, {
+      leftUrl: 'data:image/jpeg;base64,left',
+      weightKg: 55,
+    });
+    assert.equal(seeded.beforeImageUrl, 'data:image/jpeg;base64,left');
+    assert.equal(seeded.beforeWeightKg, 55);
+    assert.equal(seeded.afterWeightKg, 55);
+    assert.equal(seeded.afterImageUrl, 'data:image/jpeg;base64,left');
+  });
+
+  it('does not replace a verified After photo with Left', () => {
+    const seeded = seedMineTestimonialFromLeftSlot({
+      status: 'pending',
+      beforeImageUrl: 'https://cdn.example/before.jpg',
+      afterImageUrl: 'https://cdn.example/after.jpg',
+      beforeWeightKg: 80,
+      afterWeightKg: 72,
+    }, {
+      leftUrl: 'data:image/jpeg;base64,left',
+      weightKg: 70,
+    });
+    assert.equal(seeded.afterImageUrl, 'https://cdn.example/after.jpg');
+    assert.equal(seeded.afterWeightKg, 72);
+  });
+
+  it('does not replace an existing Before photo', () => {
+    const seeded = seedMineTestimonialFromLeftSlot({
+      beforeImageUrl: 'https://cdn.example/before.jpg',
+      beforeWeightKg: 48,
+    }, {
+      leftUrl: 'data:image/jpeg;base64,left',
+      weightKg: 55,
+    });
+    assert.equal(seeded.beforeImageUrl, 'https://cdn.example/before.jpg');
+    assert.equal(seeded.beforeWeightKg, 48);
   });
 });
