@@ -85,6 +85,43 @@ function looksLikeBcmContact(contact) {
 }
 
 /**
+ * TEMP debug (OPPO F29 Pro): show createContact failure on device screen.
+ * Remove once the OEM Contacts issue is diagnosed.
+ */
+function showBcmContactSaveFailedAlert(details) {
+  try {
+    const text = typeof details === 'string'
+      ? details
+      : Object.entries(details || {})
+        .filter(([, v]) => v != null && v !== '')
+        .map(([k, v]) => `${k}: ${v}`)
+        .join('\n');
+    // eslint-disable-next-line no-alert -- temporary BCM contact debug on OPPO F29 Pro
+    window.alert(`BCM Contact Save Failed\n\n${text || '(no details)'}`);
+  } catch {
+    /* ignore alert failures */
+  }
+}
+
+/** Pull message/code from Capacitor / plugin Error shapes. */
+function formatCreateContactError(err) {
+  const message = err?.message || String(err);
+  const code = err?.code ?? err?.errorCode ?? err?.error_code ?? null;
+  let raw = '';
+  try {
+    raw = JSON.stringify(err, Object.getOwnPropertyNames(err || {}));
+  } catch {
+    raw = String(err);
+  }
+  return {
+    message,
+    code: code != null ? String(code) : '(none)',
+    name: err?.name || '(none)',
+    raw,
+  };
+}
+
+/**
  * Best-effort OS prompt. Always call createContact afterward — native plugin
  * also requests permission when needed. Do not gate only on canRequest
  * (Android first-install often reports denied).
@@ -141,6 +178,7 @@ async function findBcmContactIds(phone) {
  */
 export async function upsertBcmMemberToDeviceContacts(opts = {}) {
   if (!Capacitor.isNativePlatform()) {
+    console.warn('[BCM contact] skipped — not a native app (web)');
     return { ok: false, skipped: true, reason: 'web' };
   }
 
@@ -151,6 +189,10 @@ export async function upsertBcmMemberToDeviceContacts(opts = {}) {
     recordedDate: opts.recordedDate,
   });
   if (!phone || !displayName) {
+    console.warn('[BCM contact] skipped — missing phone or display name', {
+      hasPhone: Boolean(phone),
+      hasName: Boolean(displayName),
+    });
     return { ok: false, skipped: true, reason: 'missing-fields' };
   }
 
@@ -179,32 +221,96 @@ export async function upsertBcmMemberToDeviceContacts(opts = {}) {
         await Contacts.deleteContact({ contactId });
         updated = true;
       } catch (err) {
-        debugLog('📱 [BCM contact] delete failed', contactId, err?.message || err);
+        console.warn('[BCM contact] delete failed', contactId, err?.message || err);
       }
     }
     if (existingIds.length) clearStoredContactId(phone);
 
-    const { contactId } = await Contacts.createContact({
-      contact: {
-        name: { given: displayName },
-        note: BCM_CONTACT_NOTE,
-        phones: [{ type: PhoneType?.Mobile ?? 'mobile', number: phone }],
-      },
-    });
+    let createResult;
+    try {
+      createResult = await Contacts.createContact({
+        contact: {
+          name: { given: displayName },
+          note: BCM_CONTACT_NOTE,
+          phones: [{ type: PhoneType?.Mobile ?? 'mobile', number: phone }],
+        },
+      });
+    } catch (createErr) {
+      const formatted = formatCreateContactError(createErr);
+      console.warn('[BCM contact] upsert failed', formatted.message, formatted);
+      debugLog('📱 [BCM contact] upsert failed', formatted);
+      showBcmContactSaveFailedAlert({
+        platform: Capacitor.getPlatform(),
+        permissionGranted: allowed,
+        message: formatted.message,
+        code: formatted.code,
+        name: formatted.name,
+        raw: formatted.raw,
+      });
+      const denied = /permission|denied|not authorized|access/i.test(formatted.message);
+      return {
+        ok: false,
+        skipped: true,
+        reason: denied ? 'permission' : (formatted.message || 'error'),
+      };
+    }
 
+    const contactId = createResult?.contactId;
     if (!contactId) {
-      console.warn('[BCM contact] createContact returned no contactId');
-      return { ok: false, skipped: true, reason: 'create-failed' };
+      console.warn('[BCM contact] createContact returned no contactId', {
+        displayName,
+        phoneTail: phone.slice(-4),
+        permissionGranted: allowed,
+        createResult,
+      });
+      let rawResult = '';
+      try {
+        rawResult = JSON.stringify(createResult ?? null);
+      } catch {
+        rawResult = String(createResult);
+      }
+      showBcmContactSaveFailedAlert({
+        platform: Capacitor.getPlatform(),
+        permissionGranted: allowed,
+        message: 'createContact returned no contactId',
+        code: '(none)',
+        raw: rawResult,
+      });
+      return {
+        ok: false,
+        skipped: true,
+        reason: allowed ? 'create-failed' : 'permission',
+      };
     }
 
     writeStoredContactId(phone, contactId);
 
+    console.warn('[BCM contact] saved', {
+      displayName,
+      phoneTail: phone.slice(-4),
+      updated,
+      contactId,
+      permissionGranted: allowed,
+    });
     debugLog('📱 [BCM contact] upserted', { displayName, phone, updated, contactId });
     return { ok: true, updated };
   } catch (err) {
-    console.warn('[BCM contact] upsert failed', err?.message || err);
-    debugLog('📱 [BCM contact] upsert failed', err?.message || err);
-    return { ok: false, skipped: true, reason: err?.message || 'error' };
+    const formatted = formatCreateContactError(err);
+    console.warn('[BCM contact] upsert failed', formatted.message, formatted);
+    debugLog('📱 [BCM contact] upsert failed', formatted);
+    showBcmContactSaveFailedAlert({
+      platform: Capacitor.getPlatform(),
+      message: formatted.message,
+      code: formatted.code,
+      name: formatted.name,
+      raw: formatted.raw,
+    });
+    const denied = /permission|denied|not authorized|access/i.test(formatted.message);
+    return {
+      ok: false,
+      skipped: true,
+      reason: denied ? 'permission' : (formatted.message || 'error'),
+    };
   }
 }
 

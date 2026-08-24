@@ -116,15 +116,14 @@ export async function getProfile({ email, userId = null }) {
   // Backward-compatible alias: coachName remains the direct parent (sponsor).
   const coachName = sponsorName;
 
-  const cardName = latestBodyMetricsCard?.name != null
-    ? String(latestBodyMetricsCard.name).trim()
-    : '';
-  const resolvedUserName = hasValidProfileName(user.UserName, {
+  // Onboarding identity uses team_table.UserName only. A BCM card name must
+  // not skip the name gate for users who still have a placeholder login name.
+  const persistedUserName = user.UserName;
+  const nameComplete = hasValidProfileName(persistedUserName, {
     email: user.Email,
     phoneNumber,
-  })
-    ? user.UserName
-    : (cardName || user.UserName);
+  });
+  const resolvedUserName = persistedUserName;
 
   const result = {
     httpStatus: 200,
@@ -150,10 +149,7 @@ export async function getProfile({ email, userId = null }) {
           // Body fat lives on weight rows; only require it once a weight exists (or will be collected with weight).
           bodyFatRequired: true,
         }),
-        needsName: !hasValidProfileName(resolvedUserName, {
-          email: user.Email,
-          phoneNumber,
-        }),
+        needsName: !nameComplete,
         needsBodyFat,
         // Still prompt to confirm weight when only BCM card has it (no weight row yet).
         needsCurrentWeight: weightFromRecord == null,

@@ -17,9 +17,8 @@ import { teamHierarchyService } from '../../../shared/services/teamHierarchyServ
 import { getApiBaseUrl } from '../../../config/api.config.js';
 import { buildOnboardingShareUrl } from '../domain/platform-store.rules.js';
 import { debugLog } from '../../../shared/utils/logger.js';
-import { Capacitor, CapacitorHttp } from '@capacitor/core';
+import { CapacitorHttp } from '@capacitor/core';
 import { getAppVersionHeaders } from '../../../shared/services/apiFetch.js';
-import * as PermissionManager from '../../../shared/services/permissionManager.js';
 
 /**
  * Normalise any phone string to a 10-digit Indian national number for prefix
@@ -690,6 +689,7 @@ export function useBodyParamsCard({
     setError('');
     setPhoneFieldError('');
     setIsSaving(true);
+    const saveStartedAt = performance.now();
 
     // Venue from form ref (typed in modal), else header Venue — never drop on save.
     const locationNameToSave = (
@@ -807,25 +807,15 @@ export function useBodyParamsCard({
       setForm(cardToFormState(fullCard));
       venueRef.current = String(fullCard.locationName || '').trim();
       debugLog('✅ [BodyParamsCard] Created:', fullCard);
+      debugLog('⏱️ [BodyParamsCard] API save done', {
+        ms: Math.round(performance.now() - saveStartedAt),
+      });
 
-      // Always ask if not granted (do not gate on canRequest — Android first
-      // install often reports denied). Must run before WhatsApp share sheet.
-      if (fullCard.phoneNumber && Capacitor.isNativePlatform()) {
-        try {
-          const { granted } = await PermissionManager.checkPermission('contacts');
-          if (!granted) {
-            await PermissionManager.requestPermission('contacts');
-          }
-        } catch (err) {
-          console.warn('[BodyParamsCard] contacts pre-prompt failed', err?.message || err);
-        }
-      }
-
-      // Share first — never block WhatsApp on contact write itself.
+      // Open share immediately — Contacts must NOT block the share critical path.
       if (onSaveSuccess) onSaveSuccess(fullCard, url, prevCard);
 
-      // Upsert device contact after share presents (create or overwrite venue/name/date).
-      // Denial / missing plugin skips save without affecting share.
+      // Background: permission + upsert after share sheet has time to present.
+      // 1.2s delay avoids competing with the native share UI (esp. OPPO / Android).
       if (fullCard.phoneNumber) {
         const contactPayload = {
           name: fullCard.name,
@@ -835,14 +825,28 @@ export function useBodyParamsCard({
         };
         setTimeout(() => {
           void upsertBcmMemberToDeviceContacts(contactPayload).then((result) => {
-            if (result?.ok) return;
+            if (result?.ok) {
+              console.warn('[BodyParamsCard] Contact saved', {
+                updated: result.updated,
+                name: contactPayload.name,
+              });
+              return;
+            }
+            console.warn('[BodyParamsCard] Contact not saved', {
+              reason: result?.reason || 'unknown',
+              hasPhone: Boolean(contactPayload.phoneNumber),
+            });
             if (result?.reason === 'plugin-missing') {
               console.error('[BodyParamsCard] Contact not saved — rebuild iOS with Contacts pod');
             } else if (result?.reason === 'permission') {
               console.warn('[BodyParamsCard] Contact not saved — enable Contacts in Settings');
             }
+          }).catch((err) => {
+            console.warn('[BodyParamsCard] Contact save unexpected error', err?.message || err);
           });
         }, 1200);
+      } else {
+        console.warn('[BodyParamsCard] Contact skipped — card has no phoneNumber');
       }
 
       return true;

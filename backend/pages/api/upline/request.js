@@ -272,8 +272,42 @@ export default async function handler(req, res) {
       return;
     }
 
-    // Cancel any existing pending requests for this user
     const now = nowUtc();
+    const { data: existingPendingRows, error: existingPendingErr } = await supabase
+      .from("approval_requests_table")
+      .select("Id, UplineCoachId, OtpExpiresAt, Status")
+      .eq("RequesterId", requesterId)
+      .eq("Status", "pending")
+      .order("RequestedAt", { ascending: false })
+      .limit(1);
+    if (existingPendingErr) throw existingPendingErr;
+
+    const existingPending = existingPendingRows?.[0];
+    const existingStillValid = !!(
+      existingPending
+      && String(existingPending.UplineCoachId) === String(coachId)
+      && existingPending.OtpExpiresAt
+      && new Date(now) < new Date(existingPending.OtpExpiresAt)
+    );
+
+    if (existingStillValid) {
+      const { data: existingCoachRows } = await supabase
+        .from("team_table")
+        .select("UserName")
+        .eq("UserId", coachId)
+        .limit(1);
+      return res.status(200).json({
+        success: true,
+        reused: true,
+        requestId: existingPending.Id,
+        coachName: existingCoachRows?.[0]?.UserName || null,
+        nextStep: "validate-otp",
+        redirectTo: "/setup/validate-otp",
+        message: "A verification code is already pending with your coach.",
+      });
+    }
+
+    // Cancel any existing pending requests for this user
     await supabase
       .from("approval_requests_table")
       .update({ Status: "cancelled", ProcessedAt: now })
