@@ -1288,6 +1288,25 @@ function WellnessValleyApp() {
       });
       if (cancelled) return;
 
+      const sessionName = String(
+        user.userName || user.UserName || user.username || user.name || '',
+      ).trim();
+      const sessionHasName = hasValidProfileName(sessionName, { phoneNumber: phone });
+
+      // DB is source of truth. If the API is down, do not re-prompt a user who
+      // already saved a real name this install.
+      if (result.status === 'error') {
+        if (sessionHasName) {
+          setShowOnboardingIdentity(false);
+          setIdentityResolved(true);
+          setShowCompleteProfile(false);
+        } else {
+          setShowOnboardingIdentity(true);
+          setShowCompleteProfile(false);
+        }
+        return;
+      }
+
       const identityOk = result.identityComplete === true;
       if (identityOk) {
         setShowOnboardingIdentity(false);
@@ -1302,7 +1321,7 @@ function WellnessValleyApp() {
 
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: fire on user/auth change
-  }, [user?.id, user?.email, user?.userName, user?.username, isOtpVerified, apiBaseUrl]);
+  }, [user?.id, user?.email, isOtpVerified, apiBaseUrl]);
 
   // Never leave My Profile / other sub-pages open while onboarding is in progress.
   useEffect(() => {
