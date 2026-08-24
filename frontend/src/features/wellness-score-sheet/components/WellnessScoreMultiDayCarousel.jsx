@@ -1,17 +1,5 @@
-import React, { useEffect, useMemo } from 'react';
-import { useCarouselSwipe } from '../../nutrition/hooks/useCarouselSwipe';
+import React, { useMemo } from 'react';
 import { getSectionIcon } from '../domain/parameterIcons';
-import WellnessScoreDayStrip from './WellnessScoreDayStrip';
-
-const PANELS = [
-  { id: 'average', label: 'Average' },
-  { id: 'days', label: 'Select day' },
-];
-
-export const MULTI_DAY_PANEL = {
-  AVERAGE: 'average',
-  DAYS: 'days',
-};
 
 function avgBarTone(pct) {
   if (pct >= 100) return 'bg-emerald-500';
@@ -194,52 +182,26 @@ function AverageScorePanel({ historyDays, sections }) {
           </section>
         );
       })}
-
-      <p className="text-center text-[10px] font-medium text-gray-400">
-        Swipe left to pick a day
-      </p>
     </div>
   );
 }
 
 /**
- * Swipeable multi-day header — Average first, swipe left for Select day strip.
+ * Multi-day wellness score summary — period average only (no per-day picker).
  */
 export default function WellnessScoreMultiDayCarousel({
   historyDays,
   sections,
-  selectedDate,
-  onSelectDate,
-  today,
-  onPanelChange,
 }) {
-  const resetKey = historyDays.map((day) => day.date).join('|');
-  const { activeIndex, goTo, swipeHandlers } = useCarouselSwipe({
-    cardCount: PANELS.length,
-    resetKey,
-  });
-
-  const activePanel = PANELS[activeIndex] || PANELS[0];
-
-  useEffect(() => {
-    onPanelChange?.(activePanel.id);
-  }, [activePanel.id, onPanelChange]);
-
   if (!historyDays.length || historyDays.length <= 1) return null;
 
   return (
-    <section
-      className="overflow-hidden rounded-2xl border-2 border-emerald-200 bg-emerald-50/60 shadow-sm"
-      {...swipeHandlers}
-      style={{ touchAction: 'pan-y' }}
-    >
+    <section className="overflow-hidden rounded-2xl border-2 border-emerald-200 bg-emerald-50/60 shadow-sm">
       <div className="flex items-center justify-between border-b border-emerald-100 bg-emerald-100/70 px-4 py-2.5">
         <div className="flex items-center gap-2">
           <span className="text-emerald-700" aria-hidden>📊</span>
           <h2 className="text-xs font-bold uppercase tracking-wide text-emerald-800">
-            {activePanel.id === MULTI_DAY_PANEL.AVERAGE
-              ? `Average — Last ${historyDays.length} Days`
-              : activePanel.label}
+            {`Average — Last ${historyDays.length} Days`}
           </h2>
         </div>
         <span className="rounded-full bg-emerald-200 px-2 py-0.5 text-[10px] font-semibold text-emerald-800">
@@ -248,54 +210,7 @@ export default function WellnessScoreMultiDayCarousel({
       </div>
 
       <div className="w-full overflow-hidden">
-        {activePanel.id === MULTI_DAY_PANEL.AVERAGE ? (
-          <AverageScorePanel historyDays={historyDays} sections={sections} />
-        ) : (
-          <>
-            {/* Block panel swipe only on the day strip so horizontal day-scroll works */}
-            <div
-              onPointerDown={(e) => e.stopPropagation()}
-              onPointerMove={(e) => e.stopPropagation()}
-              onPointerUp={(e) => e.stopPropagation()}
-            >
-              <WellnessScoreDayStrip
-                days={historyDays}
-                selectedDate={selectedDate}
-                onSelectDate={onSelectDate}
-                today={today}
-              />
-            </div>
-            <p className="pb-2 pt-1 text-center text-[10px] font-medium text-gray-400">
-              Swipe right for average · or tap Average below
-            </p>
-          </>
-        )}
-      </div>
-
-      <div className="flex items-center justify-center gap-3 border-t border-emerald-100 py-2">
-        {PANELS.map((panel, index) => (
-          <button
-            key={panel.id}
-            type="button"
-            onClick={() => goTo(index)}
-            className="flex items-center gap-1.5 rounded-full px-2 py-1 transition-colors hover:bg-emerald-100/80"
-            aria-label={`Show ${panel.label}`}
-            aria-current={index === activeIndex ? 'true' : undefined}
-          >
-            <span
-              className={`rounded-full transition-all duration-200 ${
-                index === activeIndex ? 'h-1.5 w-4 bg-emerald-500' : 'h-1.5 w-1.5 bg-gray-300'
-              }`}
-            />
-            <span
-              className={`text-[10px] font-semibold ${
-                index === activeIndex ? 'text-emerald-800' : 'text-gray-400'
-              }`}
-            >
-              {panel.label}
-            </span>
-          </button>
-        ))}
+        <AverageScorePanel historyDays={historyDays} sections={sections} />
       </div>
     </section>
   );

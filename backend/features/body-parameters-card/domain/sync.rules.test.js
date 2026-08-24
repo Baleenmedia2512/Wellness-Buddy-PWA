@@ -73,6 +73,63 @@ describe('buildTeamTableDiff', () => {
     );
     assert.deepEqual(diff, {});
   });
+
+  it('syncs optional body metrics when they differ', () => {
+    const diff = buildTeamTableDiff(
+      {
+        name: 'Ada',
+        height_cm: 170,
+        bmr: 1500,
+        age: 35,
+        visceral_fat: 8,
+        body_age: 32,
+        chest_cm: 94,
+        waist_cm: 80,
+        hip_cm: 98,
+      },
+      {
+        userName: 'Ada',
+        height: 170,
+        bmr: 1500,
+        age: 30,
+        visceralFat: 5,
+      },
+    );
+    assert.equal(diff.Age, 35);
+    assert.equal(diff.VisceralFat, 8);
+    assert.equal(diff.BodyAge, 32);
+    assert.equal(diff.ChestCm, 94);
+    assert.equal(diff.WaistCm, 80);
+    assert.equal(diff.HipCm, 98);
+  });
+
+  it('skips optional metrics that already match', () => {
+    const diff = buildTeamTableDiff(
+      {
+        name: 'Ada',
+        height_cm: 170,
+        bmr: 1500,
+        age: 35,
+        visceral_fat: 8,
+        body_age: 32,
+        chest_cm: 94,
+        waist_cm: 80,
+        hip_cm: 98,
+      },
+      {
+        userName: 'Ada',
+        height: 170,
+        bmr: 1500,
+        age: 35,
+        visceralFat: 8,
+        bodyAge: 32,
+        chestCm: 94,
+        waistCm: 80,
+        hipCm: 98,
+      },
+    );
+    assert.deepEqual(diff, {});
+  });
 });
 
 describe('buildWeightInsertIfChanged', () => {

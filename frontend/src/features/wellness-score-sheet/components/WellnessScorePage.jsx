@@ -135,7 +135,6 @@ export default function WellnessScorePage({
       onCustomDateSelect={handleCustomDateSelect}
       historyDays={historyDays}
       selectedDate={selectedDate}
-      onSelectDate={setSelectedDate}
       isMultiDay={range.isMultiDay}
       timeWindows={timeWindows}
       userId={resolvedUserId}

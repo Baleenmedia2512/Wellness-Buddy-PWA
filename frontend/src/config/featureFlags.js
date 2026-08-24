@@ -143,6 +143,16 @@ const REGISTRY = Object.freeze({
     defaultEnabled: true,
     description:    'Manual Log Good Habit and wellness-score Good Habit Post (ADR-0008).',
   },
+
+  // Meal Builder — multi-add tray + bottom sheet (replaces cart UX in food search).
+  // Default ON. Set REACT_APP_FF_MEAL_BUILDER=false or
+  // localStorage 'ff.meal-builder'='false' to fall back to the orange cart panel.
+  'ff.meal-builder': {
+    envKey:         'REACT_APP_FF_MEAL_BUILDER',
+    storageKey:     'ff.meal-builder',
+    defaultEnabled: true,
+    description:    'Meal Builder multi-add tray + sheet + voice insert in SmartFoodSearchModal.',
+  },
 });
 
 function readStorage(key) {

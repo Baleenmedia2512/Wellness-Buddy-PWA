@@ -1,10 +1,8 @@
-import React, { useCallback, useState } from 'react';
+import React from 'react';
 import { Loader2 } from 'lucide-react';
 import ScoreCategoryRow from './ScoreCategoryRow';
 import ParameterContributionModal from './ParameterContributionModal';
-import WellnessScoreMultiDayCarousel, {
-  MULTI_DAY_PANEL,
-} from './WellnessScoreMultiDayCarousel';
+import WellnessScoreMultiDayCarousel from './WellnessScoreMultiDayCarousel';
 import { getParameterMeta, PARAMETER_SECTIONS } from '../domain/parameterRegistry';
 import { getSectionIcon } from '../domain/parameterIcons';
 import { useTimeWindows } from '../hooks/useTimeWindows';
@@ -27,16 +25,9 @@ export default function WellnessScoreNutritionSection({
   startDate,
   endDate,
   isMultiDay = false,
-  onSelectDate,
-  today,
   viewerUserId = null,
   nutritionRefreshKey = 0,
 }) {
-  const [multiDayPanel, setMultiDayPanel] = useState(MULTI_DAY_PANEL.AVERAGE);
-  const handlePanelChange = useCallback((panelId) => {
-    setMultiDayPanel(panelId);
-  }, []);
-
   const { loading, error, historyDays, data: scoreData, reload } = useWellnessScoreHistory({
     user,
     apiBaseUrl,
@@ -49,9 +40,9 @@ export default function WellnessScoreNutritionSection({
   const timeWindows = useTimeWindows();
   const userId = scoreData?.userId || user?.id || user?.userId || null;
   const dateStr = scoreData?.date || date;
-  const showDayDetailCards = !isMultiDay
-    || historyDays.length <= 1
-    || multiDayPanel === MULTI_DAY_PANEL.DAYS;
+  const showMultiDayCarousel = isMultiDay && historyDays.length > 1;
+  // Multi-day ranges show period average only — no per-day picker or day detail cards.
+  const showDayDetailCards = !showMultiDayCarousel;
 
   const {
     selectedParam,
@@ -86,14 +77,10 @@ export default function WellnessScoreNutritionSection({
 
   return (
     <div className="space-y-3">
-      {isMultiDay && historyDays.length > 1 && onSelectDate && (
+      {showMultiDayCarousel && (
         <WellnessScoreMultiDayCarousel
           historyDays={historyDays}
           sections={sections}
-          selectedDate={date}
-          onSelectDate={onSelectDate}
-          today={today}
-          onPanelChange={handlePanelChange}
         />
       )}
 

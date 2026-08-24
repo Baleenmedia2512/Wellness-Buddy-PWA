@@ -4,6 +4,8 @@
 import { ValidationError } from '../../shared/lib/ValidationError.js';
 import { assertIanaTimezone, IANA_IST } from '../../shared/lib/datetime/index.js';
 import { VALID_PHYSICAL_ACTIVITY_LEVELS, isValidPhysicalActivityLevel } from '../../utils/tdeeCalculations.js';
+import { parseOptionalBodyMetric } from './domain/profileBodyMetrics.rules.js';
+import { normalizeRecoveredHealthIssues } from '../body-parameters-card/validation/card.schema.js';
 
 const VALID_DIETS = ['Vegetarian', 'Non-Vegetarian', 'Vegan', 'Pescatarian'];
 const VALID_GOAL_MODES = ['loss', 'gain', 'maintain'];
@@ -61,8 +63,17 @@ export function normalizeEmail(raw) {
 
 export function validateGetProfile(query) {
   const email = normalizeEmail(query?.email);
-  if (!email) throw new ValidationError(400, 'Missing required query parameter: email');
-  return { email };
+  const userIdRaw = query?.userId ?? query?.UserId;
+  const userId = userIdRaw != null && String(userIdRaw).trim() !== ''
+    ? Number(userIdRaw)
+    : null;
+  if ((!userId || !Number.isFinite(userId)) && !email) {
+    throw new ValidationError(400, 'Missing required query parameter: email or userId');
+  }
+  return {
+    email: email || null,
+    userId: userId && Number.isFinite(userId) ? userId : null,
+  };
 }
 
 const VALID_GENDERS = ['Male', 'Female'];
@@ -135,6 +146,31 @@ export function validateUpdateProfile(body) {
     timezoneIana = validation.value;
   }
 
+  const parseMetric = (keys, bounds, label) => {
+    const present = keys.some((k) => k in body);
+    if (!present) return undefined;
+    const raw = keys.reduce((acc, k) => (acc !== undefined ? acc : body[k]), undefined);
+    const parsed = parseOptionalBodyMetric(raw, bounds);
+    if (!parsed.ok) throw new ValidationError(400, `Invalid ${label}. ${parsed.message}`);
+    return parsed.value;
+  };
+
+  const age = parseMetric(['age', 'Age'], { min: 1, max: 120, integer: true }, 'age');
+  const visceralFat = parseMetric(['visceralFat', 'VisceralFat', 'visceral_fat'], { min: 1, max: 59 }, 'visceralFat');
+  const bodyAge = parseMetric(['bodyAge', 'BodyAge', 'body_age'], { min: 1, max: 120 }, 'bodyAge');
+  const chestCm = parseMetric(['chestCm', 'ChestCm', 'chest_cm'], { min: 30, max: 200 }, 'chestCm');
+  const waistCm = parseMetric(['waistCm', 'WaistCm', 'waist_cm'], { min: 30, max: 200 }, 'waistCm');
+  const hipCm = parseMetric(['hipCm', 'HipCm', 'hip_cm'], { min: 30, max: 200 }, 'hipCm');
+
+  let recoveredHealthIssues;
+  if (
+    'recoveredHealthIssues' in body
+    || 'recovered_health_issues' in body
+    || 'medicalCondition' in body
+  ) {
+    recoveredHealthIssues = normalizeRecoveredHealthIssues(body);
+  }
+
   return {
     email,
     name: body.name,
@@ -150,6 +186,13 @@ export function validateUpdateProfile(body) {
     bodyFat,
     currentWeight,
     timezoneIana,
+    age,
+    visceralFat,
+    bodyAge,
+    chestCm,
+    waistCm,
+    hipCm,
+    recoveredHealthIssues,
   };
 }
 
@@ -229,8 +272,17 @@ export function validateSkipSetup(body) {
 
 export function validateStatus(query) {
   const email = normalizeEmail(query?.email);
-  if (!email) throw new ValidationError(400, 'Email is required');
-  return { email };
+  const userIdRaw = query?.userId ?? query?.UserId;
+  const userId = userIdRaw != null && String(userIdRaw).trim() !== ''
+    ? Number(userIdRaw)
+    : null;
+  if ((!userId || !Number.isFinite(userId)) && !email) {
+    throw new ValidationError(400, 'email or userId is required');
+  }
+  return {
+    email: email || null,
+    userId: userId && Number.isFinite(userId) ? userId : null,
+  };
 }
 
 export function validateVerifySession(req) {

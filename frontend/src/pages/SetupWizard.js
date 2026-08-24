@@ -6,7 +6,13 @@ import { debugLog } from '../shared/utils/logger.js';
 
 const API_BASE = process.env.REACT_APP_API_BASE_URL || "http://localhost:3000";
 
-const SetupWizard = ({ onClose, onNavigateToOTP, onLogout, userEmail: userEmailProp = '' }) => {
+const SetupWizard = ({
+  onClose,
+  onNavigateToOTP,
+  onLogout,
+  userEmail: userEmailProp = '',
+  userId: userIdProp = null,
+}) => {
   // Step 1: Coach Search, Step 2: Team ID
   const [step, setStep] = useState(1);
 
@@ -27,6 +33,15 @@ const SetupWizard = ({ onClose, onNavigateToOTP, onLogout, userEmail: userEmailP
   // General
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+
+  const resolveRequester = () => {
+    const email = (userEmailProp || localStorage.getItem('userEmail') || '').trim();
+    const userId = userIdProp
+      || localStorage.getItem('userId')
+      || localStorage.getItem('dbUserId')
+      || null;
+    return { email, userId };
+  };
 
   // Mask email function
   const maskEmail = (email) => {
@@ -191,8 +206,8 @@ const SetupWizard = ({ onClose, onNavigateToOTP, onLogout, userEmail: userEmailP
     setError("");
 
     try {
-      const userEmail = userEmailProp || localStorage.getItem("userEmail");
-      if (!userEmail) {
+      const { email: userEmail, userId } = resolveRequester();
+      if (!userEmail && !userId) {
         setError("Session expired. Please login again.");
         setSendingRequest(false);
         return;
@@ -203,15 +218,19 @@ const SetupWizard = ({ onClose, onNavigateToOTP, onLogout, userEmail: userEmailP
         {
           coachId: selectedCoach.userId,
           coachName: selectedCoach.userName,
-          email: userEmail,
+          email: userEmail || null,
+          userId: userId || null,
         },
       );
 
       // Send approval request directly WITHOUT claiming Team ID
       // Backend will generate OTP and send to coach
+      const requestBody = { coachId: selectedCoach.userId };
+      if (userEmail) requestBody.email = userEmail;
+      else requestBody.userId = userId;
       const requestResponse = await axios.post(
         `${API_BASE}/api/upline/request`,
-        { coachId: selectedCoach.userId, email: userEmail },
+        requestBody,
       );
 
       debugLog("Approval request sent (no Team ID):", requestResponse.data);
@@ -247,32 +266,36 @@ const SetupWizard = ({ onClose, onNavigateToOTP, onLogout, userEmail: userEmailP
     setError("");
 
     try {
-      const userEmail = userEmailProp || localStorage.getItem("userEmail");
-      if (!userEmail) {
+      const { email: userEmail, userId } = resolveRequester();
+      if (!userEmail && !userId) {
         setError("Session expired. Please login again.");
         setClaimingTeamId(false);
         return;
       }
 
-      debugLog("Claiming Team ID:", { teamId, email: userEmail });
+      debugLog("Claiming Team ID:", { teamId, email: userEmail || null, userId: userId || null });
 
       // Step 1: Claim Team ID
-      const claimResponse = await axios.post(`${API_BASE}/api/team/claim-id`, {
-        teamId,
-        email: userEmail,
-      });
+      const claimBody = { teamId };
+      if (userEmail) claimBody.email = userEmail;
+      else claimBody.userId = userId;
+      const claimResponse = await axios.post(`${API_BASE}/api/team/claim-id`, claimBody);
 
       debugLog("Team ID claimed successfully:", claimResponse.data);
 
       debugLog("Sending approval request:", {
         coachId: selectedCoach.userId,
-        email: userEmail,
+        email: userEmail || null,
+        userId: userId || null,
       });
 
       // Step 2: Send approval request to coach
+      const requestBody = { coachId: selectedCoach.userId };
+      if (userEmail) requestBody.email = userEmail;
+      else requestBody.userId = userId;
       const requestResponse = await axios.post(
         `${API_BASE}/api/upline/request`,
-        { coachId: selectedCoach.userId, email: userEmail },
+        requestBody,
       );
 
       debugLog("Approval request sent:", requestResponse.data);

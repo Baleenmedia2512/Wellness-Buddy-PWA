@@ -1,19 +1,34 @@
 // src/components/SmartFoodSearchModal.js
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { X, Search, Check, ShoppingCart } from "lucide-react";
 import {
-  scaleNutritionFields,
-  sumNutrition,
-  pickNutrition,
   dedupeSearchBuckets,
   resolveQuantityUnit,
   formatServingPortion,
-  referenceWeightG,
 } from "../domain/nutritionFields";
+import { isFlagEnabled } from "../../../config/featureFlags";
+import FloatingMealTray from "./meal-builder/FloatingMealTray";
+import MealBuilderSheet from "./meal-builder/MealBuilderSheet";
+import MealBowlIcon from "./meal-builder/MealBowlIcon";
+import {
+  buildPlateSavePayload,
+  computeMacroSummary,
+  computeSelectedKcal,
+} from "./meal-builder/mealSelection";
+import { toSelectableItem } from "./meal-builder/useMealSelection";
+import { fetchFoodSuggestions } from "../services/foodSuggestionsApi";
+import { fetchDrySaladSuggestions } from "../services/drySaladSuggestionsApi";
+import {
+  filterSuggestionsAgainstSelected,
+  drySaladUsualComboTitle,
+  drySaladOftenTitle,
+  drySaladSlotFromDeviceNow,
+} from "../domain/foodSuggestionRank";
 
 /**
  * SmartFoodSearchModal
  * Master DB + history search, then manual macros. Micros preserved (ADR-0005).
+ * With ff.meal-builder: full-screen Add Food + Your Meal tray + suggestions.
  */
 const SmartFoodSearchModal = ({
   isOpen,
@@ -24,18 +39,14 @@ const SmartFoodSearchModal = ({
   userId,
   timeLabel,
   altSwitchButtons,
-  // When true, skip the "AI Unavailable / Log Food" type-select screen and go
-  // directly to the search/manual form. Use when the caller has already
-  // established the entry type (e.g. UnknownEntryFlow after picking Food).
   skipTypeSelect = false,
-  // Optional overrides when opened from Healthy Snacks & Soups (or similar).
   headerTitle = "Regular food",
   headerSubtitle = "Type the food item below",
   initialQuery = "",
-  // When true, search GET /api/dry-salad/search (catalog table only).
   catalogMode = false,
 }) => {
-  const [showTypeSelect, setShowTypeSelect] = useState(true); // initial screen: show 3 type buttons
+  const mealBuilderEnabled = isFlagEnabled("ff.meal-builder");
+  const [showTypeSelect, setShowTypeSelect] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [masterItems, setMasterItems] = useState([]);
   const [myItems, setMyItems] = useState([]);
@@ -43,9 +54,14 @@ const SmartFoodSearchModal = ({
   const [isSearching, setIsSearching] = useState(false);
   const [showManualForm, setShowManualForm] = useState(false);
   const [error, setError] = useState("");
-  const [selectedItems, setSelectedItems] = useState([]); // items chosen for this meal
+  const [selectedItems, setSelectedItems] = useState([]);
+  const [mealSheetOpen, setMealSheetOpen] = useState(false);
+  const [addToast, setAddToast] = useState("");
+  const [latestFoods, setLatestFoods] = useState([]);
+  const [oftenWith, setOftenWith] = useState([]);
+  const [usualCombo, setUsualCombo] = useState([]);
+  const [drySaladSlot, setDrySaladSlot] = useState(null);
 
-  // Manual form fields
   const [manualName, setManualName] = useState("");
   const [manualCalories, setManualCalories] = useState("");
   const [manualProtein, setManualProtein] = useState("");
@@ -57,18 +73,30 @@ const SmartFoodSearchModal = ({
   const searchAbortRef = useRef(null);
   const searchSeqRef = useRef(0);
   const inputRef = useRef(null);
-  // Prevents double-submit while parent closes + saves in background.
   const saveStartedRef = useRef(false);
-
-  // Track whether the modal was open on the previous render so we can detect
-  // the exact open transition regardless of React batching order.
   const wasOpenRef = useRef(false);
+  const addToastTimerRef = useRef(null);
+  const didPrefillRef = useRef(false);
+  const selectedItemsRef = useRef(selectedItems);
+  selectedItemsRef.current = selectedItems;
 
-  // Reset state on open. We watch isOpen + initialQuery so that if initialQuery
-  // arrives one render after isOpen=true (React batching), we still catch it.
+  const showAddToast = useCallback((msg) => {
+    setAddToast(msg);
+    if (addToastTimerRef.current) clearTimeout(addToastTimerRef.current);
+    addToastTimerRef.current = setTimeout(() => setAddToast(""), 2800);
+  }, []);
+
+  const resetManualForm = () => {
+    setManualName("");
+    setManualCalories("");
+    setManualProtein("");
+    setManualCarbs("");
+    setManualFat("");
+    setManualFiber("");
+  };
+
   useEffect(() => {
     if (isOpen) {
-      const justOpened = !wasOpenRef.current;
       wasOpenRef.current = true;
       const q = typeof initialQuery === "string" ? initialQuery : "";
 
@@ -79,37 +107,109 @@ const SmartFoodSearchModal = ({
       setCommunityItems([]);
       setShowManualForm(false);
       setSelectedItems([]);
+      setMealSheetOpen(false);
+      setLatestFoods([]);
+      setOftenWith([]);
+      setUsualCombo([]);
+      setDrySaladSlot(null);
+      setAddToast("");
       setError("");
       resetManualForm();
       saveStartedRef.current = false;
+      didPrefillRef.current = false;
 
-      // Kick off search for the initial query. Use a short delay so all state
-      // setters above have been applied before the fetch runs.
       if (q.trim().length >= 1 || catalogMode) {
         setIsSearching(true);
         const timer = setTimeout(() => performSearch(q.trim()), 80);
         return () => clearTimeout(timer);
       }
       return undefined;
-    } else {
-      wasOpenRef.current = false;
-      return undefined;
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- performSearch ref is stable
+    wasOpenRef.current = false;
+    return undefined;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, skipTypeSelect, initialQuery, catalogMode]);
 
-  const handleBackFromFoodEntry = () => {
-    if (skipTypeSelect) {
-      handleClose();
-      return;
-    }
-    setShowTypeSelect(true);
-    setSearchQuery("");
-    setShowManualForm(false);
-    setError("");
-  };
+  useEffect(() => () => {
+    if (addToastTimerRef.current) clearTimeout(addToastTimerRef.current);
+  }, []);
 
-  // Debounced search — abort in-flight so slow "y" responses can't overwrite newer queries
+  // Latest + Often added with (personal-first server ranking)
+  useEffect(() => {
+    if (!isOpen || !mealBuilderEnabled || catalogMode || !apiBaseUrl || !userId) return undefined;
+    if (showTypeSelect && !skipTypeSelect) return undefined;
+
+    const controller = new AbortController();
+    const anchor = selectedItems.length
+      ? selectedItems[selectedItems.length - 1].name
+      : "";
+    const exclude = selectedItems.map((s) => s.name);
+
+    fetchFoodSuggestions({
+      apiBaseUrl,
+      userId,
+      anchor,
+      exclude,
+      limit: 8,
+      signal: controller.signal,
+    })
+      .then((data) => {
+        setLatestFoods(data.latest || []);
+        setOftenWith(data.oftenWith || []);
+      })
+      .catch(() => {
+        /* abort / network — leave prior suggestions */
+      });
+
+    return () => controller.abort();
+  }, [
+    isOpen,
+    mealBuilderEnabled,
+    catalogMode,
+    apiBaseUrl,
+    userId,
+    selectedItems,
+    showTypeSelect,
+    skipTypeSelect,
+  ]);
+
+  // Dry salad: usual combo for this time of day, pre-selected and ready to save
+  useEffect(() => {
+    if (!isOpen || !catalogMode || !apiBaseUrl || !userId) return undefined;
+    if (showTypeSelect && !skipTypeSelect) return undefined;
+
+    const controller = new AbortController();
+    fetchDrySaladSuggestions({
+      apiBaseUrl,
+      userId,
+      slot: drySaladSlotFromDeviceNow(),
+      signal: controller.signal,
+    })
+      .then((data) => {
+        const selected = data.selected || [];
+        const extras = data.suggestions || [];
+        setDrySaladSlot(data.slot || null);
+        setUsualCombo(selected);
+        setOftenWith(extras);
+        if (!didPrefillRef.current && selected.length > 0) {
+          didPrefillRef.current = true;
+          setSelectedItems(selected.map((item) => toSelectableItem(item)));
+        }
+      })
+      .catch(() => {
+        /* abort / network — leave empty combo */
+      });
+
+    return () => controller.abort();
+  }, [
+    isOpen,
+    catalogMode,
+    apiBaseUrl,
+    userId,
+    showTypeSelect,
+    skipTypeSelect,
+  ]);
+
   useEffect(() => {
     if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
     if (!catalogMode && (!searchQuery.trim() || searchQuery.trim().length < 1)) {
@@ -120,13 +220,12 @@ const SmartFoodSearchModal = ({
       setIsSearching(false);
       return undefined;
     }
-    // Longer debounce for 1-letter (noisy); shorter once the user has typed more
     const delay = searchQuery.trim().length === 1 ? 280 : 220;
     searchTimerRef.current = setTimeout(() => {
       performSearch(searchQuery.trim());
     }, delay);
     return () => clearTimeout(searchTimerRef.current);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: listed deps would cause an infinite re-render
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchQuery, catalogMode]);
 
   const performSearch = async (query) => {
@@ -159,7 +258,7 @@ const SmartFoodSearchModal = ({
         setCommunityItems([]);
       }
     } catch (err) {
-      if (err?.name === 'AbortError') return;
+      if (err?.name === "AbortError") return;
       if (seq !== searchSeqRef.current) return;
       setMasterItems([]);
       setMyItems([]);
@@ -169,59 +268,28 @@ const SmartFoodSearchModal = ({
     }
   };
 
-  const resetManualForm = () => {
-    setManualName("");
-    setManualCalories("");
-    setManualProtein("");
-    setManualCarbs("");
-    setManualFat("");
-    setManualFiber("");
-  };
-
   const handleToggleItem = (item) => {
-    setSelectedItems(prev => {
-      const exists = prev.some(s => s.name === item.name);
-      if (exists) return prev.filter(s => s.name !== item.name);
-      const qtyUnit = resolveQuantityUnit(item);
-      // Quantity is servings/pcs/cups — nutrition on the item is for 1 unit.
-      return [...prev, {
-        ...item,
-        servings: 1,
-        refWeightG: referenceWeightG(item),
-        quantityUnit: qtyUnit.unit,
-        quantityLabel: qtyUnit.shortLabel,
-      }];
-    });
+    const prev = selectedItemsRef.current;
+    const exists = prev.some((s) => s.name === item.name);
+    if (exists) {
+      const next = prev.filter((s) => s.name !== item.name);
+      setSelectedItems(next);
+      if (next.length === 0) setMealSheetOpen(false);
+      return;
+    }
+    // Stay on search / suggestions — do not open sheet (blocks multi-add).
+    setSelectedItems([...prev, toSelectableItem(item)]);
+    showAddToast(`Added ${item.name}`);
   };
 
   const handleQuantityChange = (name, rawValue) => {
     const qty = parseFloat(rawValue);
-    setSelectedItems(prev =>
-      prev.map(s => s.name === name
-        ? { ...s, servings: isNaN(qty) || qty < 0 ? 0 : qty }
-        : s)
+    const whole = Number.isNaN(qty) || qty < 1 ? 1 : Math.round(qty);
+    setSelectedItems((prev) =>
+      prev.map((s) => (s.name === name ? { ...s, servings: whole } : s)),
     );
   };
 
-  // Scale nutrition by serving count (1 unit = reference weight / profile portion).
-  const scaledItem = (item) => {
-    const servings = Number(item.servings);
-    const count = Number.isFinite(servings) && servings > 0 ? servings : 1;
-    const nutrition = scaleNutritionFields(item, count);
-    const refW = item.refWeightG ?? referenceWeightG(item);
-    return {
-      name: item.name,
-      weight_g: Math.round(refW * count),
-      portion: formatServingPortion(item, count),
-      nutrition,
-      ...nutrition,
-    };
-  };
-
-  /**
-   * Hand off to parent without blocking the Save button on network.
-   * Parent closes this modal and runs promote/share in the background.
-   */
   const submitSave = (payload) => {
     if (saveStartedRef.current) return;
     saveStartedRef.current = true;
@@ -234,14 +302,11 @@ const SmartFoodSearchModal = ({
 
   const handleAddSelected = () => {
     if (selectedItems.length === 0) return;
-    const scaled = selectedItems.map(scaledItem);
-    const total = sumNutrition(scaled.map((f) => pickNutrition(f)));
-    submitSave({
-      items: scaled,
-      total,
-      isPlate: true,
-      plateName: selectedItems.map((f) => f.name).join(", "),
-    });
+    setMealSheetOpen(false);
+    const payload = buildPlateSavePayload(selectedItems);
+    submitSave(catalogMode
+      ? { ...payload, mealKind: "dry-salad", intakeSlot: drySaladSlotFromDeviceNow() }
+      : payload);
   };
 
   const handleManualSave = () => {
@@ -251,7 +316,7 @@ const SmartFoodSearchModal = ({
       return;
     }
     const calories = parseFloat(manualCalories);
-    if (!manualCalories || isNaN(calories) || calories < 0) {
+    if (!manualCalories || Number.isNaN(calories) || calories < 0) {
       setError("Please enter valid calories");
       return;
     }
@@ -279,253 +344,197 @@ const SmartFoodSearchModal = ({
     onClose();
   };
 
+  const handleBackFromFoodEntry = () => {
+    if (skipTypeSelect) {
+      handleClose();
+      return;
+    }
+    setShowTypeSelect(true);
+    setSearchQuery("");
+    setShowManualForm(false);
+    setError("");
+  };
+
   if (!isOpen) return null;
 
-  const hasMasterItems = masterItems.length > 0;
   const hasMyItems = myItems.length > 0;
   const hasCommunityItems = communityItems.length > 0;
   const hasSelected = selectedItems.length > 0;
-  const selectedTotal = selectedItems.reduce((s, f) => {
-    const count = Number(f.servings);
-    const servings = Number.isFinite(count) && count > 0 ? count : 1;
-    return s + Math.round((f.calories ?? 0) * servings);
-  }, 0);
+  const selectedTotal = computeSelectedKcal(selectedItems);
+  const macroSummary = computeMacroSummary(selectedItems);
+  const showFoodEntry = skipTypeSelect || !showTypeSelect;
+  const useFullScreen = mealBuilderEnabled && showFoodEntry;
+  const hasTypedQuery = searchQuery.trim().length >= 1;
+  const searching = hasTypedQuery;
+  const showCatalogResults = catalogMode || hasTypedQuery;
+  const suggestionRows = hasSelected
+    ? filterSuggestionsAgainstSelected(oftenWith, selectedItems)
+    : filterSuggestionsAgainstSelected(latestFoods, selectedItems);
+  const drySaladOftenRows = filterSuggestionsAgainstSelected(oftenWith, selectedItems);
+  const catalogRows = catalogMode && !hasTypedQuery
+    ? filterSuggestionsAgainstSelected(masterItems, selectedItems)
+    : masterItems;
+  const showDrySaladSuggestions = catalogMode && !hasTypedQuery && !showManualForm;
+  const showRegularSuggestions = !catalogMode && !showManualForm && !searching && suggestionRows.length > 0;
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm max-h-[90vh] flex flex-col">
-
-        {/* ── Type Selection Screen ── */}
-        {showTypeSelect && !skipTypeSelect && (
-          <>
-            {/* Header */}
-            <div className="flex items-start justify-between px-4 pt-4 pb-2 flex-shrink-0">
-              <div>
-                <p className="text-sm font-bold text-gray-900 leading-snug">AI Unavailable</p>
-                <p className="text-[11px] text-gray-400 mt-0.5 leading-snug max-w-[220px]">
-                  AI couldn't detect your input. Please log manually.
-                </p>
-              </div>
-              <button
-                onClick={handleClose}
-                className="p-1.5 rounded-xl hover:bg-gray-100 active:bg-gray-200 transition-colors flex-shrink-0"
-              >
-                <X className="w-4 h-4 text-gray-400" />
-              </button>
-            </div>
-
-            {/* Primary food card */}
-            <div className="px-4 pb-3">
-              <button
-                onClick={() => setShowTypeSelect(false)}
-                className="w-full text-white rounded-[16px] py-3 px-4 flex flex-col items-center justify-center gap-1 transition-all active:scale-[0.97]"
-                style={{
-                  background: "linear-gradient(135deg, #f97316 0%, #fb923c 60%, #fdba74 100%)",
-                  boxShadow: "0 6px 18px rgba(249,115,22,0.30)",
-                }}
-              >
-                <span className="text-2xl leading-none">🍽️</span>
-                <span className="text-sm font-bold tracking-tight">Log Food</span>
-                <span className="text-[11px] font-normal opacity-80">{timeLabel || "Add it manually"}</span>
-              </button>
-            </div>
-
-          </>
-        )}
-
-        {/* ── Food Entry Screen ── */}
-        {(skipTypeSelect || !showTypeSelect) && (
-          <>
-        {/* ── Header ── */}
-        <div className="flex items-center justify-between px-4 pt-3 pb-2.5 border-b border-gray-100 flex-shrink-0">
-          <div className="flex items-center gap-2">
-            <button
-              onClick={handleBackFromFoodEntry}
-              className="p-1.5 rounded-xl hover:bg-gray-100 active:bg-gray-200 transition-colors"
-              aria-label="Back"
-            >
-              <svg className="w-4 h-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-              </svg>
-            </button>
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-sm font-bold text-gray-900">{headerTitle || "Regular food"}</h2>
-                {hasSelected && (
-                  <span
-                    className="inline-flex items-center gap-1 rounded-full bg-orange-100 text-orange-700 px-2 py-0.5 text-[11px] font-semibold"
-                    aria-label={`Cart ${selectedItems.length}`}
-                  >
-                    <ShoppingCart className="w-3 h-3" aria-hidden />
-                    Cart {selectedItems.length}
-                  </span>
-                )}
-              </div>
-              <p className="text-xs text-gray-400">{headerSubtitle || "Type the food item below"}</p>
-            </div>
+  const searchBar = !showManualForm && (
+    <div className="relative">
+      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+      <input
+        ref={inputRef}
+        type="text"
+        value={searchQuery}
+        onChange={(e) => setSearchQuery(e.target.value)}
+        placeholder={catalogMode ? "Search dry salad…" : "Search for food..."}
+        className="w-full pl-9 pr-10 py-3 border-2 border-gray-200 focus:border-green-500 rounded-xl outline-none text-sm bg-white transition-colors"
+        style={{ fontSize: "16px" }}
+      />
+      <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-0.5">
+        {isSearching && (
+          <div className="p-1.5">
+            <svg className="animate-spin w-4 h-4 text-green-500" viewBox="0 0 24 24" fill="none">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+            </svg>
           </div>
+        )}
+        {searchQuery.length > 0 && !isSearching && (
+          <button
+            type="button"
+            onClick={() => setSearchQuery("")}
+            className="p-1.5 text-gray-400 hover:text-gray-600"
+            aria-label="Clear search"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        )}
+      </div>
+    </div>
+  );
+
+  const renderFoodRows = (items, keyPrefix, mealBuilder) =>
+    items.map((item) => (
+      <FoodItemRow
+        key={`${keyPrefix}-${item.name}`}
+        item={item}
+        selected={selectedItems.some((s) => s.name === item.name)}
+        onToggle={handleToggleItem}
+        mealBuilder={mealBuilder}
+      />
+    ));
+
+  // ── Full-screen Meal Builder ──────────────────────────────────────────────
+  if (useFullScreen) {
+    return (
+      <div
+        className="fixed inset-0 z-50 bg-white flex flex-col"
+        style={{ paddingTop: "env(safe-area-inset-top)", paddingBottom: "env(safe-area-inset-bottom)" }}
+      >
+        <div className="flex items-center gap-2 px-4 pt-3 pb-2 border-b border-gray-100 flex-shrink-0">
+          <button
+            type="button"
+            onClick={handleBackFromFoodEntry}
+            className="p-1.5 rounded-xl hover:bg-gray-100"
+            aria-label="Back"
+          >
+            <svg className="w-5 h-5 text-gray-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+            </svg>
+          </button>
+          <h1 className="flex-1 text-center text-base font-bold text-gray-900 pr-8">
+            {catalogMode ? (headerTitle || "Dry Salad") : "Add Food"}
+          </h1>
         </div>
 
-        {/* ── Scrollable body ── */}
-        <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2.5">
+        <div className={`flex-1 overflow-y-auto px-4 py-3 space-y-3 ${hasSelected ? "pb-28" : ""}`}>
+          {searchBar}
 
-          {/* Search bar */}
-          {!showManualForm && (
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-              <input
-                ref={inputRef}
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder={catalogMode ? "Search dry salad (e.g. herbalife…)" : "Search food (e.g. chicken, rice…)"}
-                className="w-full pl-9 pr-10 py-3 border-2 border-gray-200 focus:border-orange-400 rounded-xl outline-none text-sm bg-white transition-colors"
-                style={{ fontSize: "16px" }}
-              />
-              {isSearching && (
-                <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                  <svg className="animate-spin w-4 h-4 text-orange-400" viewBox="0 0 24 24" fill="none">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-                  </svg>
-                </div>
-              )}
-              {searchQuery.length > 0 && !isSearching && (
-                <button
-                  onClick={() => setSearchQuery("")}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              )}
-            </div>
+          {addToast && (
+            <p className="text-[11px] text-green-700 font-medium px-1" role="status">
+              {addToast}
+            </p>
           )}
 
-          {/* ── Selected items with portions ── */}
-          {!showManualForm && hasSelected && (
-            <div className="bg-orange-50 border border-orange-200 rounded-xl px-3 py-2.5">
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-xs font-semibold text-orange-700">{selectedItems.length} item{selectedItems.length > 1 ? "s" : ""} · {selectedTotal} kcal total</p>
-                <button onClick={() => setSelectedItems([])} className="text-[11px] text-orange-400 hover:text-orange-600 font-medium">Clear all</button>
+          {showRegularSuggestions && (
+            <div>
+              <div className="flex items-center justify-between mb-2 px-0.5">
+                <p className="text-sm font-bold text-gray-900">
+                  {hasSelected ? "Often added with" : "Latest"}
+                </p>
               </div>
               <div className="space-y-1.5">
-                {selectedItems.map(item => {
-                  const count = Number(item.servings);
-                  const servings = Number.isFinite(count) && count > 0 ? count : 1;
-                  const kcal = Math.round((item.calories ?? 0) * servings);
-                  const unitLabel = item.quantityLabel || resolveQuantityUnit(item).shortLabel;
-                  return (
-                    <div key={item.name} className="flex items-center gap-2 bg-white border border-orange-100 rounded-xl px-2.5 py-1.5">
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs font-medium text-gray-800 truncate">{item.name}</p>
-                        <p className="text-[11px] text-orange-600 font-semibold">
-                          {kcal} kcal
-                          {(item.portion || item.portion_label) ? (
-                            <span className="font-normal text-gray-400"> · {formatServingPortion(item, servings)}</span>
-                          ) : null}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-1 flex-shrink-0">
-                        <input
-                          type="text"
-                          inputMode="decimal"
-                          pattern="[0-9]*"
-                          value={item.servings ?? 1}
-                          onChange={(e) => handleQuantityChange(item.name, e.target.value)}
-                          className="w-12 text-center border border-orange-200 rounded-lg px-1.5 py-1 text-xs focus:outline-none focus:border-orange-400"
-                          style={{ fontSize: "14px" }}
-                          aria-label={`Number of ${unitLabel}`}
-                        />
-                        <span className="text-[11px] text-gray-500 min-w-[2.5rem]">{unitLabel}</span>
-                      </div>
-                      <button onClick={() => handleToggleItem(item)} className="flex-shrink-0 text-gray-300 hover:text-red-400 transition-colors">
-                        <X className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  );
-                })}
+                {renderFoodRows(suggestionRows, hasSelected ? "often" : "latest", true)}
               </div>
             </div>
           )}
 
-          {/* ── Search results ── */}
-          {!showManualForm && (searchQuery.trim().length >= 1 || catalogMode) && (
+          {showDrySaladSuggestions && usualCombo.length > 0 && (
+            <div>
+              <p className="text-[11px] text-green-700 font-medium px-0.5 mb-2">
+                Usual {drySaladSlot || "time"} combo selected — remove or add items, then save
+              </p>
+              <p className="text-sm font-bold text-gray-900 mb-2 px-0.5">
+                {drySaladUsualComboTitle(drySaladSlot)}
+              </p>
+              <div className="space-y-1.5">
+                {renderFoodRows(usualCombo, "usual", true)}
+              </div>
+            </div>
+          )}
+
+          {showDrySaladSuggestions && drySaladOftenRows.length > 0 && (
+            <div>
+              <p className="text-sm font-bold text-gray-900 mb-2 px-0.5">
+                {drySaladOftenTitle(drySaladSlot)}
+              </p>
+              <div className="space-y-1.5">
+                {renderFoodRows(drySaladOftenRows, "often-slot", true)}
+              </div>
+            </div>
+          )}
+
+          {!showManualForm && showCatalogResults && (
             <div className="space-y-4">
-              {hasMasterItems && (
+              {(catalogRows.length > 0) && (
                 <div>
                   <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5 px-1">
                     {catalogMode ? "Dry Salad catalog" : "Nutrition library"}
                   </p>
                   <div className="space-y-1.5">
-                    {masterItems.map((item) => (
-                      <FoodItemRow
-                        key={`master-${item.name}`}
-                        item={item}
-                        selected={selectedItems.some(s => s.name === item.name)}
-                        onToggle={handleToggleItem}
-                      />
-                    ))}
+                    {renderFoodRows(catalogRows, "master", true)}
                   </div>
                 </div>
               )}
-
-              {/* My items */}
               {!catalogMode && hasMyItems && (
                 <div>
                   <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5 px-1">My History</p>
-                  <div className="space-y-1.5">
-                    {myItems.map((item) => (
-                      <FoodItemRow
-                        key={`my-${item.name}`}
-                        item={item}
-                        selected={selectedItems.some(s => s.name === item.name)}
-                        onToggle={handleToggleItem}
-                      />
-                    ))}
-                  </div>
+                  <div className="space-y-1.5">{renderFoodRows(myItems, "my", true)}</div>
                 </div>
               )}
-
-              {/* Community items */}
               {!catalogMode && hasCommunityItems && (
                 <div>
                   <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5 px-1">Community</p>
-                  <div className="space-y-1.5">
-                    {communityItems.map((item) => (
-                      <FoodItemRow
-                        key={`community-${item.name}`}
-                        item={item}
-                        selected={selectedItems.some(s => s.name === item.name)}
-                        onToggle={handleToggleItem}
-                      />
-                    ))}
-                  </div>
+                  <div className="space-y-1.5">{renderFoodRows(communityItems, "community", true)}</div>
                 </div>
               )}
-
-              {/* No results */}
-              {!isSearching && !hasMasterItems && !hasMyItems && !hasCommunityItems && (
+              {!isSearching && catalogRows.length === 0 && !hasMyItems && !hasCommunityItems && !usualCombo.length && (
                 <p className="text-sm text-gray-400 text-center py-4">
-                  {catalogMode
-                    ? "No dry salad found — try a different name or add manually"
-                    : "No food found — try a different name or add manually"}
+                  No food found — try a different name
                 </p>
               )}
             </div>
           )}
 
-          {/* ── Empty state (only when nothing selected) ── */}
-          {!showManualForm && searchQuery.trim().length < 1 && !hasSelected && !catalogMode && (
-            <div className="flex flex-col items-center justify-center py-10 text-center">
-              <div className="w-14 h-14 rounded-2xl bg-orange-50 flex items-center justify-center mb-3">
-                <Search className="w-6 h-6 text-orange-400" />
+          {!showManualForm && !searching && !catalogMode && suggestionRows.length === 0 && !hasSelected && (
+            <div className="flex flex-col items-center justify-center py-14 text-center">
+              <div className="w-14 h-14 rounded-2xl bg-green-50 flex items-center justify-center mb-3">
+                <MealBowlIcon size={36} />
               </div>
-              <p className="text-sm font-medium text-gray-600">Search food suggestions</p>
-              <p className="text-xs text-gray-400 mt-1">Type a letter to see matching foods</p>
+              <p className="text-sm font-medium text-gray-600">Build your meal</p>
+              <p className="text-xs text-gray-400 mt-1">Search or tap + to build your meal</p>
             </div>
           )}
 
-          {/* ── Manual form ── */}
           {showManualForm && (
             <div className="space-y-4">
               <div>
@@ -537,7 +546,7 @@ const SmartFoodSearchModal = ({
                   value={manualName}
                   onChange={(e) => setManualName(e.target.value)}
                   placeholder="e.g., Grilled Chicken Breast"
-                  className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-orange-400 outline-none text-sm transition-colors"
+                  className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-green-500 outline-none text-sm"
                   style={{ fontSize: "16px" }}
                   autoFocus
                 />
@@ -552,7 +561,6 @@ const SmartFoodSearchModal = ({
             </div>
           )}
 
-          {/* Error */}
           {error && (
             <div className="flex items-center gap-2 bg-red-50 border border-red-200 text-red-600 text-sm px-4 py-3 rounded-xl">
               <span>⚠️</span>
@@ -561,71 +569,288 @@ const SmartFoodSearchModal = ({
           )}
         </div>
 
-        {/* ── Footer ── */}
-        <div className="flex gap-3 px-5 pb-3 pt-3 border-t border-gray-100 flex-shrink-0">
-          {showManualForm ? (
-            <>
-              <button
-                onClick={() => { setShowManualForm(false); setError(""); }}
-                className="px-4 py-3 border-2 border-gray-200 text-gray-600 rounded-xl text-sm font-semibold hover:bg-gray-50 transition-colors"
-              >
-                ← Back
-              </button>
-              <button
-                onClick={handleManualSave}
-                className="flex-1 px-4 py-3 bg-orange-500 text-white rounded-xl text-sm font-semibold hover:bg-orange-600 active:bg-orange-700 transition-colors flex items-center justify-center gap-2"
-              >
-                Save Food
-              </button>
-            </>
-          ) : hasSelected ? (
-            <>
-              <button
-                onClick={() => setSelectedItems([])}
-                className="px-4 py-3 border-2 border-gray-200 text-gray-600 rounded-xl text-sm font-semibold hover:bg-gray-50 transition-colors"
-              >
-                Clear
-              </button>
-              <button
-                onClick={handleAddSelected}
-                className="flex-1 px-4 py-3 bg-green-600 text-white rounded-xl text-sm font-semibold hover:bg-green-700 active:bg-green-800 transition-colors flex items-center justify-center gap-2"
-              >
-                <Check className="w-4 h-4" />
-                Save
-              </button>
-            </>
-          ) : (
+        {showManualForm ? (
+          <div className="flex gap-3 px-4 pb-4 pt-3 border-t border-gray-100 flex-shrink-0">
             <button
-              onClick={handleClose}
-              className="flex-1 px-4 py-3 border-2 border-gray-300 text-gray-700 rounded-xl text-sm font-semibold hover:bg-gray-50 transition-colors"
+              type="button"
+              onClick={() => { setShowManualForm(false); setError(""); }}
+              className="px-4 py-3 border-2 border-gray-200 text-gray-600 rounded-xl text-sm font-semibold"
             >
-              Cancel
+              ← Back
             </button>
-          )}
-        </div>
+            <button
+              type="button"
+              onClick={handleManualSave}
+              className="flex-1 px-4 py-3 bg-green-600 text-white rounded-xl text-sm font-semibold"
+            >
+              Save Food
+            </button>
+          </div>
+        ) : hasSelected ? (
+          <FloatingMealTray
+            items={selectedItems}
+            totalKcal={selectedTotal}
+            onOpenSheet={() => setMealSheetOpen(true)}
+            onSave={handleAddSelected}
+          />
+        ) : null}
 
+        <MealBuilderSheet
+          open={mealSheetOpen && hasSelected}
+          items={selectedItems}
+          totalKcal={selectedTotal}
+          macroSummary={macroSummary}
+          onClose={() => setMealSheetOpen(false)}
+          onSave={handleAddSelected}
+          onClear={() => {
+            setSelectedItems([]);
+            setMealSheetOpen(false);
+          }}
+          onRemove={(item) => {
+            handleToggleItem(item);
+          }}
+          onQuantityChange={handleQuantityChange}
+        />
+      </div>
+    );
+  }
+
+  // ── Legacy modal (flag OFF or type-select) ────────────────────────────────
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm max-h-[90vh] flex flex-col relative">
+
+        {showTypeSelect && !skipTypeSelect && (
+          <>
+            <div className="flex items-start justify-between px-4 pt-4 pb-2 flex-shrink-0">
+              <div>
+                <p className="text-sm font-bold text-gray-900 leading-snug">AI Unavailable</p>
+                <p className="text-[11px] text-gray-400 mt-0.5 leading-snug max-w-[220px]">
+                  AI couldn&apos;t detect your input. Please log manually.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={handleClose}
+                className="p-1.5 rounded-xl hover:bg-gray-100 flex-shrink-0"
+              >
+                <X className="w-4 h-4 text-gray-400" />
+              </button>
+            </div>
+            <div className="px-4 pb-3">
+              <button
+                type="button"
+                onClick={() => setShowTypeSelect(false)}
+                className="w-full text-white rounded-[16px] py-3 px-4 flex flex-col items-center justify-center gap-1 transition-all active:scale-[0.97]"
+                style={{
+                  background: "linear-gradient(135deg, #f97316 0%, #fb923c 60%, #fdba74 100%)",
+                  boxShadow: "0 6px 18px rgba(249,115,22,0.30)",
+                }}
+              >
+                <span className="text-2xl leading-none">🍽️</span>
+                <span className="text-sm font-bold tracking-tight">Log Food</span>
+                <span className="text-[11px] font-normal opacity-80">{timeLabel || "Add it manually"}</span>
+              </button>
+            </div>
           </>
         )}
 
+        {showFoodEntry && (
+          <>
+            <div className="flex items-center justify-between px-4 pt-3 pb-2.5 border-b border-gray-100 flex-shrink-0">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleBackFromFoodEntry}
+                  className="p-1.5 rounded-xl hover:bg-gray-100"
+                  aria-label="Back"
+                >
+                  <svg className="w-4 h-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+                  </svg>
+                </button>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-sm font-bold text-gray-900">{headerTitle || "Regular food"}</h2>
+                    {hasSelected && (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-orange-100 text-orange-700 px-2 py-0.5 text-[11px] font-semibold">
+                        <ShoppingCart className="w-3 h-3" aria-hidden />
+                        Cart {selectedItems.length}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-gray-400">{headerSubtitle || "Type the food item below"}</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2.5">
+              {searchBar}
+
+              {!showManualForm && hasSelected && (
+                <div className="bg-orange-50 border border-orange-200 rounded-xl px-3 py-2.5">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-xs font-semibold text-orange-700">
+                      {selectedItems.length} item{selectedItems.length > 1 ? "s" : ""} · {selectedTotal} kcal total
+                    </p>
+                    <button type="button" onClick={() => setSelectedItems([])} className="text-[11px] text-orange-400 font-medium">
+                      Clear all
+                    </button>
+                  </div>
+                  <div className="space-y-1.5">
+                    {selectedItems.map((item) => {
+                      const count = Number(item.servings);
+                      const servings = Number.isFinite(count) && count > 0 ? count : 1;
+                      const kcal = Math.round((item.calories ?? 0) * servings);
+                      const unitLabel = item.quantityLabel || resolveQuantityUnit(item).shortLabel;
+                      return (
+                        <div key={item.name} className="flex items-center gap-2 bg-white border border-orange-100 rounded-xl px-2.5 py-1.5">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-medium text-gray-800 truncate">{item.name}</p>
+                            <p className="text-[11px] text-orange-600 font-semibold">
+                              {kcal} kcal
+                              {(item.portion || item.portion_label) ? (
+                                <span className="font-normal text-gray-400"> · {formatServingPortion(item, servings)}</span>
+                              ) : null}
+                            </p>
+                          </div>
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            value={item.servings ?? 1}
+                            onChange={(e) => handleQuantityChange(item.name, e.target.value)}
+                            className="w-12 text-center border border-orange-200 rounded-lg px-1.5 py-1 text-xs"
+                            style={{ fontSize: "14px" }}
+                            aria-label={`Number of ${unitLabel}`}
+                          />
+                          <span className="text-[11px] text-gray-500 min-w-[2.5rem]">{unitLabel}</span>
+                          <button type="button" onClick={() => handleToggleItem(item)} className="text-gray-300 hover:text-red-400">
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {!showManualForm && catalogMode && usualCombo.length > 0 && !hasTypedQuery && (
+                <div>
+                  <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5 px-1">
+                    {drySaladUsualComboTitle(drySaladSlot)}
+                  </p>
+                  <div className="space-y-1.5">{renderFoodRows(usualCombo, "usual", false)}</div>
+                </div>
+              )}
+
+              {!showManualForm && showCatalogResults && (
+                <div className="space-y-4">
+                  {catalogRows.length > 0 && (
+                    <div>
+                      <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5 px-1">
+                        {catalogMode ? "Dry Salad catalog" : "Nutrition library"}
+                      </p>
+                      <div className="space-y-1.5">{renderFoodRows(catalogRows, "master", false)}</div>
+                    </div>
+                  )}
+                  {!catalogMode && hasMyItems && (
+                    <div>
+                      <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5 px-1">My History</p>
+                      <div className="space-y-1.5">{renderFoodRows(myItems, "my", false)}</div>
+                    </div>
+                  )}
+                  {!catalogMode && hasCommunityItems && (
+                    <div>
+                      <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5 px-1">Community</p>
+                      <div className="space-y-1.5">{renderFoodRows(communityItems, "community", false)}</div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {showManualForm && (
+                <div className="space-y-4">
+                  <MacroField label="Food Name" required value={manualName} onChange={setManualName} placeholder="e.g. Chicken" />
+                  <div className="grid grid-cols-2 gap-3">
+                    <MacroField label="Calories (kcal)" required value={manualCalories} onChange={setManualCalories} placeholder="250" />
+                    <MacroField label="Protein (g)" value={manualProtein} onChange={setManualProtein} placeholder="30" />
+                    <MacroField label="Carbs (g)" value={manualCarbs} onChange={setManualCarbs} placeholder="20" />
+                    <MacroField label="Fat (g)" value={manualFat} onChange={setManualFat} placeholder="5" />
+                  </div>
+                </div>
+              )}
+
+              {error && (
+                <div className="bg-red-50 border border-red-200 text-red-600 text-sm px-4 py-3 rounded-xl">{error}</div>
+              )}
+            </div>
+
+            <div className="flex gap-3 px-5 pb-3 pt-3 border-t border-gray-100 flex-shrink-0">
+              {showManualForm ? (
+                <>
+                  <button type="button" onClick={() => setShowManualForm(false)} className="px-4 py-3 border-2 border-gray-200 rounded-xl text-sm font-semibold">← Back</button>
+                  <button type="button" onClick={handleManualSave} className="flex-1 px-4 py-3 bg-orange-500 text-white rounded-xl text-sm font-semibold">Save Food</button>
+                </>
+              ) : hasSelected ? (
+                <>
+                  <button type="button" onClick={() => setSelectedItems([])} className="px-4 py-3 border-2 border-gray-200 rounded-xl text-sm font-semibold">Clear</button>
+                  <button type="button" onClick={handleAddSelected} className="flex-1 px-4 py-3 bg-green-600 text-white rounded-xl text-sm font-semibold flex items-center justify-center gap-2">
+                    <Check className="w-4 h-4" /> Save
+                  </button>
+                </>
+              ) : (
+                <button type="button" onClick={handleClose} className="flex-1 px-4 py-3 border-2 border-gray-300 rounded-xl text-sm font-semibold">Cancel</button>
+              )}
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
 };
 
-// ── Sub-components ──────────────────────────────────────────────────────────
-
-const FoodItemRow = ({ item, selected, onToggle }) => {
+const FoodItemRow = ({ item, selected, onToggle, mealBuilder = false }) => {
   const portion = item.portion || item.portion_label;
+  if (mealBuilder) {
+    return (
+      <div
+        className={`w-full flex items-center gap-3 rounded-xl px-3 py-2.5 border-2 transition-colors text-left ${
+          selected ? "bg-green-50 border-green-500" : "bg-white border-gray-200"
+        }`}
+      >
+        <div className="flex-1 min-w-0">
+          <p className={`text-sm font-medium truncate ${selected ? "text-green-900" : "text-gray-800"}`}>{item.name}</p>
+          <p className="text-xs text-gray-400 mt-0.5">
+            {portion ? <span>{portion} · </span> : null}
+            {item.calories ?? "?"} kcal
+            {item.protein ? ` · ${item.protein}g protein` : ""}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => onToggle(item)}
+          aria-label={selected ? `Remove ${item.name}` : `Add ${item.name}`}
+          className={`flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center font-bold text-lg transition-colors ${
+            selected
+              ? "bg-green-600 text-white"
+              : "bg-green-50 text-green-700 border-2 border-green-300 hover:bg-green-100"
+          }`}
+        >
+          {selected ? <Check className="w-4 h-4" /> : "+"}
+        </button>
+      </div>
+    );
+  }
+
   return (
     <button
+      type="button"
       onClick={() => onToggle(item)}
       className={`w-full flex items-center gap-3 rounded-xl px-3 py-2.5 border-2 transition-colors text-left ${
-        selected
-          ? "bg-orange-50 border-orange-400"
-          : "bg-white border-gray-200 hover:border-orange-300"
+        selected ? "bg-orange-50 border-orange-400" : "bg-white border-gray-200 hover:border-orange-300"
       }`}
     >
-      <div className={`flex-shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors ${
+      <div className={`flex-shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center ${
         selected ? "bg-orange-500 border-orange-500" : "border-gray-300"
       }`}>
         {selected && <Check className="w-3 h-3 text-white" />}
@@ -635,7 +860,6 @@ const FoodItemRow = ({ item, selected, onToggle }) => {
         <p className="text-xs text-gray-400 mt-0.5">
           {portion ? <span>{portion} · </span> : null}
           {item.calories ?? "?"} kcal
-          {item.protein ? ` · ${item.protein}g protein` : ""}
         </p>
       </div>
     </button>
@@ -650,7 +874,6 @@ const MacroField = ({ label, value, onChange, placeholder, required, span }) => 
     <input
       type="text"
       inputMode="decimal"
-      pattern="[0-9]*"
       value={value}
       onChange={(e) => onChange(e.target.value)}
       placeholder={placeholder}

@@ -23,15 +23,15 @@ export default function EmailGateModal({ user, apiBaseUrl, onComplete }) {
   const trimmedEmail = email.trim();
   const emailValid = EMAIL_RE.test(trimmedEmail);
   const nameValid = trimmedName.length >= 2
-    && hasValidProfileName(trimmedName, { email: trimmedEmail.toLowerCase() });
+    && hasValidProfileName(trimmedName, {
+      phoneNumber: user?.phoneNumber || user?.PhoneNumber || user?.phone,
+    });
   const formValid = nameValid && emailValid;
 
   const handleSave = async () => {
     setError('');
     if (!nameValid) {
-      setError(trimmedName.length < 2
-        ? 'Please enter your full name.'
-        : 'Please enter your full name (not your email address).');
+      setError('Please enter your full name.');
       return;
     }
     if (!emailValid) {

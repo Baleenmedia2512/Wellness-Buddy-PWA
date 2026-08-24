@@ -82,7 +82,7 @@ const CATEGORIES = [
   {
     id: MANUAL_LOG_CATEGORY.DRY_SALAD,
     Icon: Salad,
-    label: 'Dry Salad',
+    label: 'Target Nutrition',
   },
   // smartwatch flow = calories burned; label is Workout (green weightlifter / Lucide on iOS)
   {
@@ -449,7 +449,6 @@ export default function ManualEntryPage({
         fromDrySalad: true,
         headerTitle: DRY_SALAD_META.headerTitle,
         headerSubtitle: DRY_SALAD_META.headerSubtitle,
-        initialQuery: DRY_SALAD_META.searchHint,
       });
       setActiveForm(MANUAL_LOG_CATEGORY.FOOD);
       return;
@@ -910,7 +909,7 @@ export default function ManualEntryPage({
       </main>
 
       <SmartFoodSearchModal
-        key={foodEntryMeta?.initialQuery || 'food'}
+        key={foodEntryMeta?.fromDrySalad ? 'dry-salad' : 'food'}
         isOpen={activeForm === MANUAL_LOG_CATEGORY.FOOD}
         onClose={closeFoodSearch}
         onSave={handleFoodSave}
@@ -922,7 +921,7 @@ export default function ManualEntryPage({
         initialQuery={foodEntryMeta?.initialQuery || ''}
         catalogMode={Boolean(foodEntryMeta?.fromDrySalad)}
       />
-      <GoodHabitFlow
+      <GoodHabitFlow 
         isOpen={activeForm === MANUAL_LOG_CATEGORY.GOOD_HABIT}
         onClose={() => setActiveForm(null)}
         capturedPreview={previewSrc}

@@ -21,18 +21,36 @@ export function getCachedProfile(email) {
  * GET /api/user/profile — shared cache + in-flight dedup across Header,
  * NutritionDashboard, WeightDashboard, and nutrition BMR/macro hooks.
  * Pass `cacheBust: true` after a profile save to force a fresh read.
+ * Accepts email string (legacy) or `{ email, userId, cacheBust, signal }`.
  */
-export async function getProfile(email, { cacheBust = false, signal } = {}) {
-  if (!email) throw new Error('getProfile: email required');
-  const key = cacheManager.generateKey('userProfile', String(email).toLowerCase());
+export async function getProfile(emailOrOpts, maybeOpts = {}) {
+  let email;
+  let userId;
+  let cacheBust = false;
+  let signal;
+  if (emailOrOpts && typeof emailOrOpts === 'object' && !Array.isArray(emailOrOpts)) {
+    ({ email, userId, cacheBust = false, signal } = emailOrOpts);
+  } else {
+    email = emailOrOpts;
+    ({ cacheBust = false, signal } = maybeOpts);
+  }
+  if (!email && (userId == null || userId === '')) {
+    throw new Error('getProfile: email or userId required');
+  }
+  const key = email
+    ? cacheManager.generateKey('userProfile', String(email).toLowerCase())
+    : cacheManager.generateKey('userProfile', `id:${userId}`);
   if (cacheBust) cacheManager.clear(key);
 
   return cacheManager.execute(
     key,
     async () => {
       const ts = cacheBust ? `&_t=${Date.now()}` : '';
+      const qs = email
+        ? `email=${encodeURIComponent(email)}`
+        : `userId=${encodeURIComponent(String(userId))}`;
       const res = await apiFetch(
-        `${base()}/api/user/profile?email=${encodeURIComponent(email)}${ts}`,
+        `${base()}/api/user/profile?${qs}${ts}`,
         signal ? { signal } : undefined,
       );
       const data = await res.json();
@@ -124,8 +142,16 @@ export async function skipSetup(payload) {
   return res.json();
 }
 
-export async function getStatus(email) {
-  const res = await apiFetch(`${base()}/api/user/status?email=${encodeURIComponent(email)}`);
+/** GET /api/user/status — pass email string (legacy) or { email, userId }. */
+export async function getStatus(emailOrOpts) {
+  const opts = typeof emailOrOpts === 'string'
+    ? { email: emailOrOpts }
+    : (emailOrOpts || {});
+  const { email, userId } = opts;
+  const qs = email
+    ? `email=${encodeURIComponent(email)}`
+    : `userId=${encodeURIComponent(String(userId))}`;
+  const res = await apiFetch(`${base()}/api/user/status?${qs}`);
   const data = await res.json();
   handlePossibleAppUpdateRequired(res, data);
   return data;

@@ -512,7 +512,8 @@ function MemberCard({
     draftAfter?.imageBase64  && 'after',
     draftHealthPath          && 'health',
     draftBusinessPath        && 'business',
-    draftIssues !== null     && 'issues',
+    // Only mark issues dirty when the list actually has labels (empty [] caused 422 on complete photo submit).
+    Array.isArray(draftIssues) && draftIssues.filter(Boolean).length > 0 && 'issues',
   ].filter(Boolean);
   // hasDirtySlots: true for ANY pending change including weight-only edits
   const hasDirtySlots = dirtySlots.length > 0 || !!draftBefore || !!draftAfter;
@@ -814,15 +815,17 @@ function MemberCard({
       } : {}),
       ...(draftHealthPath ? { healthVideoPath: draftHealthPath } : {}),
       ...(draftBusinessPath ? { businessVideoPath: draftBusinessPath } : {}),
-      ...(draftIssues !== null ? { recoveredHealthIssues: draftIssues } : {}),
+      ...(Array.isArray(draftIssues) && draftIssues.filter(Boolean).length > 0
+        ? { recoveredHealthIssues: draftIssues.filter(Boolean) }
+        : {}),
     };
 
     // Completing both photos requires at least one health issue (same rule as backend).
     const willComplete =
       Boolean(draftBefore?.imageBase64 || testimonial?.beforeImageUrl)
       && Boolean(draftAfter?.imageBase64 || (hasAfter && testimonial?.afterImageUrl));
-    const issuesForSubmit = draftIssues !== null
-      ? draftIssues
+    const issuesForSubmit = Array.isArray(draftIssues) && draftIssues.filter(Boolean).length > 0
+      ? draftIssues.filter(Boolean)
       : (testimonial?.recoveredHealthIssues || []);
     if (
       willComplete
@@ -838,7 +841,11 @@ function MemberCard({
       setSubmitError('Before photo failed to prepare. Please pick it again.');
       return;
     }
-    if (!testimonial?.id && !dirtySlots.includes('before')) {
+    if (!testimonial?.id && dirtySlots.includes('after') && !dirtySlots.includes('before') && !testimonial?.beforeImageUrl) {
+      setSubmitError('Please add a before photo before submitting.');
+      return;
+    }
+    if (!testimonial?.id && !dirtySlots.includes('before') && !testimonial?.beforeImageUrl) {
       setSubmitError('Please add a before photo before submitting.');
       return;
     }
@@ -1289,7 +1296,7 @@ function MemberCard({
           {/* "Lost X kgs in Y duration" sentence */}
           {diff && hasAfter && (
             <div className="flex items-center gap-2 flex-wrap">
-              <span className={`inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-sm font-bold border-2 ${displayGoalType === 'loss' ? 'bg-green-600 text-white border-green-700' : 'bg-blue-600 text-white border-blue-700'} shadow-sm`}>
+              <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold border ${displayGoalType === 'loss' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-blue-50 text-blue-700 border-blue-200'}`}>
                 {displayGoalType === 'loss'
                   ? <TrendingDown className="h-3 w-3 shrink-0" />
                   : <TrendingUp   className="h-3 w-3 shrink-0" />

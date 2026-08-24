@@ -31,6 +31,7 @@ import UserProfileBodyMetrics from './profile/UserProfileBodyMetrics';
 import IdealWeightCards from './profile/IdealWeightCards';
 import DietDropdown from './profile/DietDropdown';
 import WeightModeSelector from './profile/WeightModeSelector';
+import HealthIssuesFilterSelect from '../../body-parameters-card/components/HealthIssuesFilterSelect';
 import { EmojiOrNative } from '../../../shared/components/icons/EmojiImage';
 import { deriveWeightGoalMode } from '../../weight/services/weightFormService';
 import DeleteAccountModal from './DeleteAccountModal';
@@ -98,10 +99,13 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
         bodyFat: data?.latestWeightBodyFat != null
           ? String(data.latestWeightBodyFat)
           : (data?.bodyFat != null ? String(data.bodyFat) : ''),
-        needsBodyFat: Boolean(data?.needsBodyFat),
+        latestWeightBodyFat: data?.latestWeightBodyFat ?? null,
         email: data?.email || user?.email || '',
         communityId: data?.communityId != null ? String(data.communityId) : '',
         bodyMetrics: data?.bodyMetrics || null,
+        recoveredHealthIssues: Array.isArray(data?.recoveredHealthIssues)
+          ? data.recoveredHealthIssues
+          : [],
       };
 
       form.reload(profileData);
@@ -212,7 +216,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
   const saveDisabled = isSaving || !form.nameValid ||
     !form.height || form.height.trim() === '' ||
     !form.phone || form.phone.trim() === '' ||
-    (form.needsBodyFat && !form.bodyFatValid);
+    !form.fatPercentValid;
 
   const derivedWeightGoalMode = useMemo(
     () => deriveWeightGoalMode({ heightCm: form.height, currentWeightKg: latestWeight }),
@@ -345,12 +349,19 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
                   bmrReadOnly
                   physicalActivityLevel={form.physicalActivityLevel}
                   setPhysicalActivityLevel={form.setPhysicalActivityLevel}
-                  bodyFat={form.bodyFat} setBodyFat={form.setBodyFat}
-                  showBodyFat={form.needsBodyFat}
                   communityId={form.communityId}
                   setCommunityId={form.setCommunityId}
                 />
-                <UserProfileBodyMetrics bodyMetrics={form.bodyMetrics} />
+                <UserProfileBodyMetrics
+                  bodyMetrics={form.bodyMetrics}
+                  onChange={form.setBodyMetricField}
+                  heightCm={form.height}
+                  weightKg={latestWeight}
+                />
+                <HealthIssuesFilterSelect
+                  value={form.recoveredHealthIssues || []}
+                  onChange={form.setRecoveredHealthIssues}
+                />
                 <IdealWeightCards
                   height={form.height}
                   latestWeight={latestWeight}
