@@ -685,6 +685,7 @@ const NutritionCenterRegistration = ({ user, onBack, initialCenter }) => {
       }
 
       setSuccess('Centre unregistered successfully');
+      setAlertModal(prev => ({ ...prev, isOpen: false }));
       fetchMyCenters();
 
       setTimeout(() => setSuccess(null), 3000);
