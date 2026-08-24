@@ -13,42 +13,46 @@ import { useAutoScrollStrip } from '../../../shared/hooks/useAutoScrollStrip.js'
 import LeaderboardAvatar from '../../leaderboard/components/LeaderboardAvatar.js';
 
 // ---------------------------------------------------------------------------
-// SWR cache — global leaderboard is identical for all users, no userId key.
+// SWR cache — hierarchy-scoped (per logged-in user).
 // Stale data shows instantly on back-navigation; fresh data arrives quietly.
 // ---------------------------------------------------------------------------
 const WEIGHT_LB_CACHE_TTL = 5 * 60 * 1000;
-const WEIGHT_LB_CACHE_KEY = 'wv.lb.weight.v3';
-const WEIGHT_LB_LEGACY_KEYS = ['wv.lb.weight', 'wv.lb.weight.v2'];
+// v4: hierarchy-scoped Top N (per logged-in user)
+const WEIGHT_LB_CACHE_KEY_PREFIX = 'wv.lb.weight.v4.';
+const WEIGHT_LB_LEGACY_KEYS = ['wv.lb.weight', 'wv.lb.weight.v2', 'wv.lb.weight.v3'];
+
+const cacheKeyFor = (userId) => `${WEIGHT_LB_CACHE_KEY_PREFIX}${userId || 'anon'}`;
 
 const stripWeightAvatars = (data) =>
   (data || []).map(({ profileImage, ...rest }) => rest);
 
-const readWeightLBCache = () => {
+const readWeightLBCache = (userId) => {
   try {
     WEIGHT_LB_LEGACY_KEYS.forEach((k) => localStorage.removeItem(k));
-    const raw = localStorage.getItem(WEIGHT_LB_CACHE_KEY);
+    const raw = localStorage.getItem(cacheKeyFor(userId));
     if (!raw) return null;
     const c = JSON.parse(raw);
     return Date.now() - c.ts < WEIGHT_LB_CACHE_TTL ? c.data : null;
   } catch { return null; }
 };
-const writeWeightLBCache = (data) => {
+const writeWeightLBCache = (userId, data) => {
   try {
     // Do not cache base64 avatars — quota blows and leaves stale null-avatar data.
     localStorage.setItem(
-      WEIGHT_LB_CACHE_KEY,
+      cacheKeyFor(userId),
       JSON.stringify({ data: stripWeightAvatars(data), ts: Date.now() }),
     );
   } catch {
-    try { localStorage.removeItem(WEIGHT_LB_CACHE_KEY); } catch { /* ignore */ }
+    try { localStorage.removeItem(cacheKeyFor(userId)); } catch { /* ignore */ }
   }
 };
 
 /**
  * WeightLossLeaderboard Component
- * Displays global weight loss leaderboard strip showing top performers
+ * Displays hierarchy-scoped weight loss leaderboard strip (Today vs Yesterday)
  *
  * Features:
+ * - Ranked among logged-in user's allowed hierarchy (upline + sibling peers + own downline)
  * - Shows rank, profile avatar, user name, coach name, weight loss
  * - Auto-scroll with native swipe / drag
  * - Smooth fade-in when data arrives
@@ -57,20 +61,30 @@ const writeWeightLBCache = (data) => {
  *
  * @param {string} apiBaseUrl - API base URL
  * @param {number} topN - Number of top users to show (default: 10)
+ * @param {number|string} userId - Logged-in user id (required for hierarchy scope)
  */
-const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
-  const [leaderboardData, setLeaderboardData] = useState(() => readWeightLBCache() ?? []);
-  const [isVisible, setIsVisible] = useState(() => (readWeightLBCache()?.length ?? 0) > 0);
-  const [hasEntered, setHasEntered] = useState(() => (readWeightLBCache()?.length ?? 0) > 0);
+const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId }, ref) => {
+  const [leaderboardData, setLeaderboardData] = useState(() => readWeightLBCache(userId) ?? []);
+  const [isVisible, setIsVisible] = useState(() => (readWeightLBCache(userId)?.length ?? 0) > 0);
+  const [hasEntered, setHasEntered] = useState(() => (readWeightLBCache(userId)?.length ?? 0) > 0);
   const { viewportRef, trackRef, interactionHandlers } = useAutoScrollStrip({
     enabled: isVisible && leaderboardData.length > 0,
   });
 
   // Fetch leaderboard data
   const fetchLeaderboard = useCallback(async () => {
+    if (userId == null || userId === '') {
+      setLeaderboardData([]);
+      setIsVisible(false);
+      return;
+    }
     try {
+      const params = new URLSearchParams({
+        topN: String(topN),
+        userId: String(userId),
+      });
       const response = await fetch(
-        `${apiBaseUrl}/api/leaderboard/get-global-leaderboard?topN=${topN}`,
+        `${apiBaseUrl}/api/leaderboard/get-global-leaderboard?${params}`,
         {
           method: "GET",
           headers: {
@@ -89,7 +103,7 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
       if (result.success && result.data && result.data.length > 0) {
         setLeaderboardData(result.data);
         setIsVisible(true);
-        writeWeightLBCache(result.data);
+        writeWeightLBCache(userId, result.data);
       } else {
         debugLog(
           "⚠ [LEADERBOARD] No data available:",
@@ -103,7 +117,7 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
       setLeaderboardData([]);
       setIsVisible(false);
     }
-  }, [apiBaseUrl, topN]);
+  }, [apiBaseUrl, topN, userId]);
 
   // Expose methods to parent via ref
   useImperativeHandle(ref, () => ({
@@ -113,14 +127,14 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
     },
     // injectEntry: instantly show the current user's entry in the strip
     // without waiting for any API call. The next refresh will replace with real data.
-    injectEntry: ({ userId, userName, email, weightLoss, profileImage, coachName }) => {
+    injectEntry: ({ userId: entryUserId, userName, email, weightLoss, profileImage, coachName }) => {
       // Match API: loss-only and ≤ 3 kg for Today vs Yesterday strip
       if (!weightLoss || weightLoss <= 0 || weightLoss > 3) return;
       setLeaderboardData((prev) => {
         // Remove any existing entry for this user, then add new one at top
-        const filtered = prev.filter((u) => u.userId !== userId);
+        const filtered = prev.filter((u) => u.userId !== entryUserId);
         const injected = [{
-          userId,
+          userId: entryUserId,
           userName: userName || "You",
           email: email || "",
           coachName: coachName || "",
@@ -139,11 +153,15 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
 
   // Skip network if SWR cache is fresh; refresh every 5 min while visible
   useEffect(() => {
-    if (!readWeightLBCache()) {
+    const cached = readWeightLBCache(userId);
+    if (cached?.length) {
+      setLeaderboardData(cached);
+      setIsVisible(true);
+    } else {
       fetchLeaderboard();
     }
     return setVisibilityAwareInterval(fetchLeaderboard, WEIGHT_LB_CACHE_TTL);
-  }, [fetchLeaderboard]);
+  }, [fetchLeaderboard, userId]);
 
   // Smooth fade-in when the strip becomes visible
   useEffect(() => {

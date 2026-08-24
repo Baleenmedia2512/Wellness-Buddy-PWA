@@ -21,7 +21,7 @@ const ACTIVITY = Object.freeze({
  *   scoops: number|null,
  *   servings: number,
  *   shakeProducts: Array<{ name: string, scoops: number }>|null,
- *   items: Array<{ name: string, calories: number }>,
+ *   items: Array<{ name: string, calories: number, glycemicIndex: number|null }>,
  * }}
  */
 export function extractFoodListSummary(analysisData, processedBy = null) {
@@ -38,6 +38,7 @@ export function extractFoodListSummary(analysisData, processedBy = null) {
   const items = foods.slice(0, 20).map((item) => ({
     name: String(item?.name || item?.foodName || 'Item'),
     calories: Math.round(Number(item?.calories ?? item?.nutrition?.calories ?? 0) || 0),
+    glycemicIndex: readItemGlycemicIndex(item),
   }));
 
   return {
@@ -193,4 +194,14 @@ function extractShakeProducts(foods) {
     });
   }
   return products.length ? products : null;
+}
+
+function readItemGlycemicIndex(item) {
+  const raw = item?.nutrition?.glycemic_index
+    ?? item?.glycemic_index
+    ?? item?.glycemicIndex
+    ?? item?.per100g?.glycemic_index;
+  if (raw == null || raw === '') return null;
+  const n = Number(raw);
+  return Number.isFinite(n) ? Math.round(n) : null;
 }

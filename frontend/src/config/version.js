@@ -74,32 +74,41 @@
 
 export const APP_VERSION = {
   // Current version number (displayed to users)
-  VERSION: '3.4.4',
+  VERSION: '3.4.6',
   
   // Version code (for Android builds - must match build.gradle)
   // Also used as CFBundleVersion for iOS builds - must match Info.plist
   // NOTE: versionCode must never decrease for Play Store compatibility.
-  VERSION_CODE: 63,
+  VERSION_CODE: 66,
   
   // iOS build number (CFBundleVersion in Info.plist) - must match Info.plist / pbxproj
-  IOS_BUILD_NUMBER: 64,
+  IOS_BUILD_NUMBER: 67,
   
   // Release name (for Play Store / App Store)
-  RELEASE_NAME: 'Version  3.4.4',
+  RELEASE_NAME: 'Version  3.4.6',
   
   // Build date
-  BUILD_DATE: '2026-08-13',
+  BUILD_DATE: '2026-08-20',
   
   // Platform release notes..
   PLATFORMS: {
-    ANDROID: { versionCode: 63, versionName: '3.4.4' },
-    IOS: { buildNumber: 64, versionName: '3.4.4' },
+    ANDROID: { versionCode: 66, versionName: '3.4.6' },
+    IOS: { buildNumber: 67, versionName: '3.4.6' },
   },
 };
 
 /**
  * 📋 CHANGE LOG
  * 
+ * Version 3.4.7 (Code 66 / iOS build 67) - 2026-08-20 [ANDROID + iOS RELEASE]
+ *   🐛 Patch release — bug fixes and stability improvements
+ *
+ * Version 3.4.6 (Code 65 / iOS build 66) - 2026-08-19 [ANDROID + iOS RELEASE]
+ *   🐛 Patch — BCM health issues, transformation submit/contacts, venue short contact names
+ *
+ * Version 3.4.5 (Code 64 / iOS build 65) - 2026-08-14 [ANDROID + iOS RELEASE]
+ *   🐛 Patch release — bug fixes and stability improvements
+ *
  * Version 3.4.4 (Code 63 / iOS build 64) - 2026-08-13 [ANDROID + iOS RELEASE]
  *   🐛 Patch — Gemini Flash→Pro retry ownership, timeout/telemetry, credit-after-save
  *

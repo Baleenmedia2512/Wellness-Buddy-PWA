@@ -5,11 +5,14 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  buildFormPrefillFromMember,
   buildTeamMemberInsert,
   computeBmiFromHeightWeight,
   isPersistableBmi,
   shouldClearBpcLeadCoachId,
   shouldDetachCounsellorCoachAssignment,
+  isMemberActivatedForBcmExclusion,
+  BCM_ACTIVATED_MEMBER_MESSAGE,
 } from './card.rules.js';
 
 describe('buildTeamMemberInsert', () => {
@@ -95,6 +98,18 @@ describe('shouldClearBpcLeadCoachId', () => {
   });
 });
 
+describe('isMemberActivatedForBcmExclusion', () => {
+  it('blocks BCM only when coach/sponsor OTP is approved', () => {
+    assert.equal(isMemberActivatedForBcmExclusion({ hasApprovedCoachSelection: true }), true);
+    assert.equal(isMemberActivatedForBcmExclusion({ hasApprovedCoachSelection: false }), false);
+    assert.equal(isMemberActivatedForBcmExclusion({}), false);
+  });
+
+  it('exposes a stable user-facing message', () => {
+    assert.equal(BCM_ACTIVATED_MEMBER_MESSAGE, 'User already exists');
+  });
+});
+
 describe('shouldDetachCounsellorCoachAssignment', () => {
   it('clears legacy BPC lead where counsellor was auto-assigned as coach', () => {
     assert.equal(
@@ -146,5 +161,57 @@ describe('isPersistableBmi', () => {
     assert.equal(isPersistableBmi(4.9), false);
     assert.equal(isPersistableBmi(71), false);
     assert.equal(isPersistableBmi(null), false);
+  });
+});
+
+describe('buildFormPrefillFromMember', () => {
+  it('returns empty object when member is missing', () => {
+    assert.deepEqual(buildFormPrefillFromMember(null), {});
+  });
+
+  it('includes optional body metrics when present', () => {
+    const patch = buildFormPrefillFromMember({
+      userName: 'Ada',
+      heightCm: 170,
+      bmr: 1500,
+      gender: 'Female',
+      age: 32,
+      visceralFat: 6,
+      bodyAge: 28,
+      chestCm: 90,
+      waistCm: 72,
+      hipCm: 96,
+      fatPercent: 22,
+      bmi: 23.1,
+      weightKg: 65,
+    });
+    assert.equal(patch.name, 'Ada');
+    assert.equal(patch.heightCm, '170');
+    assert.equal(patch.bmr, '1500');
+    assert.equal(patch.gender, 'Female');
+    assert.equal(patch.age, '32');
+    assert.equal(patch.visceralFat, '6');
+    assert.equal(patch.bodyAge, '28');
+    assert.equal(patch.chestCm, '90');
+    assert.equal(patch.waistCm, '72');
+    assert.equal(patch.hipCm, '96');
+    assert.equal(patch.fatPercent, '22');
+    assert.equal(patch.bmi, '23.1');
+    assert.equal(patch.weightKg, '65');
+  });
+
+  it('omits null optional metrics', () => {
+    const patch = buildFormPrefillFromMember({
+      userName: 'Ada',
+      heightCm: 170,
+      age: null,
+      visceralFat: null,
+      chestCm: null,
+    });
+    assert.equal(patch.name, 'Ada');
+    assert.equal(patch.heightCm, '170');
+    assert.equal(patch.age, undefined);
+    assert.equal(patch.visceralFat, undefined);
+    assert.equal(patch.chestCm, undefined);
   });
 });

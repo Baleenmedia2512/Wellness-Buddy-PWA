@@ -30,6 +30,7 @@ describe('parameterContributions', () => {
     expect(parameterNeedsMeals('protein')).toBe(true);
     expect(parameterNeedsMeals('dinner_post')).toBe(true);
     expect(parameterNeedsMeals('weight_post')).toBe(false);
+    expect(parameterNeedsMeals('good_habit_post')).toBe(false);
   });
 
   test('extractNutrientContributions sorts by amount', () => {

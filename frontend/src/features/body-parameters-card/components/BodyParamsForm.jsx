@@ -10,6 +10,7 @@ import { X, AlertCircle } from 'lucide-react';
 import { useBodyParamsCard } from '../hooks/useBodyParamsCard.js';
 import PhoneAutocomplete from './PhoneAutocomplete.jsx';
 import NativeInput from '../../../shared/components/NativeInput.jsx';
+import HealthIssuesFilterSelect from './HealthIssuesFilterSelect.jsx';
 
 const InputField = ({
   label, value, onChange, type = 'text', placeholder = '', inputRef, onEnter,
@@ -130,10 +131,6 @@ const BodyParamsForm = ({
 
   const handleSave = async () => {
     await vm.handleSave();
-    // Only reset for new-card flow; edit mode reloads from existingCard on next open.
-    if (!vm.error && !vm.isEditMode) {
-      vm.resetForm();
-    }
   };
 
   const handleBackdropClick = (e) => {
@@ -167,7 +164,7 @@ const BodyParamsForm = ({
         </div>
 
         <div className="p-5 space-y-4">
-          {vm.error && (
+          {vm.error && !/user already exists/i.test(String(vm.error)) && (
             <div className="flex items-center gap-2 bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded-lg text-sm">
               <AlertCircle size={16} className="flex-shrink-0" />
               {vm.error}
@@ -244,6 +241,8 @@ const BodyParamsForm = ({
             isLoading={vm.phoneSearchLoading}
             inputRef={phoneRef}
             onEnter={() => focusNextField(genderRef)}
+            onBlur={vm.recheckPhoneStatus}
+            error={vm.phoneFieldError}
           />
 
           {/* Gender - Full Width */}
@@ -499,6 +498,14 @@ const BodyParamsForm = ({
             placeholder="cm"
             inputRef={hipRef}
           />
+
+          {/* Health Issues — filter-style multi-select */}
+          <div className="mt-1">
+            <HealthIssuesFilterSelect
+              value={vm.form.recoveredHealthIssues || []}
+              onChange={(next) => vm.setField('recoveredHealthIssues', next)}
+            />
+          </div>
         </div>
 
         {/* Actions */}

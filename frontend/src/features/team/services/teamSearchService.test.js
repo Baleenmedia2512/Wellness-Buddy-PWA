@@ -4,6 +4,7 @@ import {
   filterMembers,
   subtitleCommunityId,
   withDirectCoachCommunityIds,
+  toSelectedUser,
 } from './teamSearchService';
 
 describe('resolveTeamSearchDisplayName', () => {
@@ -22,8 +23,8 @@ describe('resolveTeamSearchDisplayName', () => {
     expect(resolveTeamSearchDisplayName('Adithya', user)).toBe('Adithya');
   });
 
-  it('rejects saved name that matches email local-part', () => {
-    expect(resolveTeamSearchDisplayName('adhithya5518', user)).toBe('');
+  it('allows a name that matches email local-part', () => {
+    expect(resolveTeamSearchDisplayName('adhithya5518', user)).toBe('adhithya5518');
   });
 
   it('accepts a valid auth userName when saved name is empty', () => {
@@ -129,5 +130,30 @@ describe('filterMembers', () => {
 
   it('does not match the direct coach community id', () => {
     expect(filterMembers(members, 'c0')).toHaveLength(0);
+  });
+});
+
+describe('toSelectedUser', () => {
+  it('copies owner timezone so diary clocks use Qatar / USA / India locally', () => {
+    const selected = toSelectedUser({
+      userId: 9,
+      userName: 'Priya',
+      email: 'priya@example.com',
+      timezone: 'Asia/Qatar',
+      role: 'user',
+    });
+    expect(selected.timezone).toBe('Asia/Qatar');
+    expect(selected.timezoneIana).toBe('Asia/Qatar');
+  });
+
+  it('leaves timezone empty when the team row has none', () => {
+    const selected = toSelectedUser({
+      userId: 9,
+      userName: 'Priya',
+      email: 'priya@example.com',
+      role: 'user',
+    });
+    expect(selected.timezone).toBeNull();
+    expect(selected.timezoneIana).toBeNull();
   });
 });

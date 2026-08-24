@@ -25,7 +25,8 @@ import { buildProfileCardSyncPayload } from '../body-parameters-card/domain/sync
 import { computeBmiFromHeightWeight } from '../body-parameters-card/domain/card.rules.js';
 import { deriveWeightGoalMode } from '../../utils/weightValidation.js';
 import { resolveProfileTimezone } from './domain/profileTimezone.js';
-import { mapCardToProfileBodyMetrics, hasCoachRecordedBodyMetrics } from './domain/profileBodyMetrics.rules.js';
+import { mapTeamRowToProfileBodyMetrics, mergeProfileBodyMetrics, mapCardToProfileBodyMetrics } from './domain/profileBodyMetrics.rules.js';
+import { mapTeamRecoveredHealthIssues } from './domain/recoveredHealthIssues.rules.js';
 import { findLatestLinkedBodyMetricsCard } from '../body-parameters-card/data/card.repo.js';
 import { isEnabled } from '../../shared/lib/feature-flags.js';
 import { isConsentRecorded } from '../auth/domain/consent.rules.js';
@@ -34,14 +35,18 @@ import * as weightRepo from '../weight/weight.repository.js';
 
 const notFound = () => ({ httpStatus: 404, body: { success: false, message: 'User not found' } });
 
-export async function getProfile({ email }) {
-  const cacheKey = cacheKeys.userProfile(String(email || '').toLowerCase());
+export async function getProfile({ email, userId = null }) {
+  const cacheKey = email
+    ? cacheKeys.userProfile(String(email || '').toLowerCase())
+    : cacheKeys.userProfile(`id:${userId}`);
   try {
     const cached = cache.get(cacheKey);
     if (cached) return cached;
   } catch { /* non-fatal */ }
 
-  const user = await repo.getProfile(email);
+  const user = userId
+    ? await repo.getProfileByUserId(userId)
+    : await repo.getProfile(email);
   if (!user) return notFound();
 
   const [latestWeight, initialWeightRow, latestBodyMetricsCard, sponsorIdeal, latestWeightBodyFatResolved] = await Promise.all([
@@ -51,15 +56,33 @@ export async function getProfile({ email }) {
     resolveSponsorAndIdealCoach(user.UserId, { viewerUserId: user.UserId }),
     repo.getLatestWeightBodyFat(user.UserId),
   ]);
-  const bodyMetricsMapped = mapCardToProfileBodyMetrics(latestBodyMetricsCard);
-  const bodyMetrics = hasCoachRecordedBodyMetrics(bodyMetricsMapped) ? bodyMetricsMapped : null;
-  const height = user.Height ? parseFloat(user.Height) : null;
-  const latestWeightKg = latestWeight?.Weight ? parseFloat(latestWeight.Weight) : null;
+  const cardMetrics = mapCardToProfileBodyMetrics(latestBodyMetricsCard);
+  const teamMetrics = mapTeamRowToProfileBodyMetrics(user);
+  const cardHeight = latestBodyMetricsCard?.height_cm != null
+    ? parseFloat(latestBodyMetricsCard.height_cm)
+    : null;
+  const height = user.Height
+    ? parseFloat(user.Height)
+    : (Number.isFinite(cardHeight) ? cardHeight : null);
+  const weightFromRecord = latestWeight?.Weight ? parseFloat(latestWeight.Weight) : null;
+  const cardWeight = latestBodyMetricsCard?.weight_kg != null
+    ? parseFloat(latestBodyMetricsCard.weight_kg)
+    : null;
+  const latestWeightKg = Number.isFinite(weightFromRecord)
+    ? weightFromRecord
+    : (Number.isFinite(cardWeight) ? cardWeight : null);
   const initialWeightKg = initialWeightRow?.Weight != null ? parseFloat(initialWeightRow.Weight) : null;
   const latestWeightBodyFat = hasValidBodyFatPercent(latestWeightBodyFatResolved)
     ? latestWeightBodyFatResolved
     : (latestWeight?.BodyFat != null ? parseFloat(latestWeight.BodyFat) : null);
   const resolvedWeightBodyFat = hasValidBodyFatPercent(latestWeightBodyFat) ? latestWeightBodyFat : null;
+  const weightBmi = latestWeight?.Bmi != null ? parseFloat(latestWeight.Bmi) : null;
+  const bodyMetrics = mergeProfileBodyMetrics({
+    cardMetrics,
+    teamMetrics,
+    weightFatPercent: resolvedWeightBodyFat,
+    weightBmi: Number.isFinite(weightBmi) ? weightBmi : null,
+  });
   const derivedGoalMode = deriveWeightGoalMode({ heightCm: height, currentWeightKg: latestWeightKg });
   const dietType = user.DietType || null;
   const phoneNumber = user.PhoneNumber || null;
@@ -70,7 +93,7 @@ export async function getProfile({ email }) {
   const profileImage = user.ProfileImage || null;
   const resolvedBodyFatForBmr = hasValidBodyFatPercent(resolvedWeightBodyFat)
     ? resolvedWeightBodyFat
-    : (bodyMetricsMapped?.fatPercent ?? null);
+    : (bodyMetrics?.fatPercent ?? null);
   const latestBmr = resolveBmrForDisplay({
     storedBmr: user.Bmr,
     weightKg: latestWeightKg,
@@ -93,13 +116,23 @@ export async function getProfile({ email }) {
   // Backward-compatible alias: coachName remains the direct parent (sponsor).
   const coachName = sponsorName;
 
+  const cardName = latestBodyMetricsCard?.name != null
+    ? String(latestBodyMetricsCard.name).trim()
+    : '';
+  const resolvedUserName = hasValidProfileName(user.UserName, {
+    email: user.Email,
+    phoneNumber,
+  })
+    ? user.UserName
+    : (cardName || user.UserName);
+
   const result = {
     httpStatus: 200,
     body: {
       success: true,
       data: {
         userId: user.UserId,
-        userName: user.UserName,
+        userName: resolvedUserName,
         email: user.Email,
         height, dietType, phoneNumber, gender,
         weightGoalMode: derivedGoalMode || user.WeightGoalMode || 'loss',
@@ -108,7 +141,7 @@ export async function getProfile({ email }) {
           height,
           dietType,
           phoneNumber,
-          userName: user.UserName,
+          userName: resolvedUserName,
           email: user.Email,
           gender,
           bodyMetrics,
@@ -117,12 +150,13 @@ export async function getProfile({ email }) {
           // Body fat lives on weight rows; only require it once a weight exists (or will be collected with weight).
           bodyFatRequired: true,
         }),
-        needsName: !hasValidProfileName(user.UserName, {
+        needsName: !hasValidProfileName(resolvedUserName, {
           email: user.Email,
           phoneNumber,
         }),
         needsBodyFat,
-        needsCurrentWeight: latestWeightKg == null,
+        // Still prompt to confirm weight when only BCM card has it (no weight row yet).
+        needsCurrentWeight: weightFromRecord == null,
         profileImage,
         coachId: user.CoachId || null,
         coachName,
@@ -146,6 +180,7 @@ export async function getProfile({ email }) {
         tdeeBreakdown,
         weightRecordDate: latestWeight?.CreatedAt || null,
         bodyMetrics,
+        recoveredHealthIssues: mapTeamRecoveredHealthIssues(user.recovered_health_issues),
       },
     },
   };
@@ -157,6 +192,7 @@ export async function getProfile({ email }) {
 
 function buildProfileUpdate({
   name, height, dietType, phoneNumber, profileImage, gender, weightGoalMode, physicalActivityLevel, communityId, timezoneIana,
+  age, visceralFat, bodyAge, chestCm, waistCm, hipCm, recoveredHealthIssues,
 }) {
   const updateData = {};
   let cleanedPhoneNumber;
@@ -181,6 +217,17 @@ function buildProfileUpdate({
   if (profileImage != null && profileImage.startsWith('data:image/')) {
     updateData.ProfileImage = profileImage;
     updateData.profile_pic_snooze = null;
+  }
+  if (age !== undefined) updateData.Age = age;
+  if (visceralFat !== undefined) updateData.VisceralFat = visceralFat;
+  if (bodyAge !== undefined) updateData.BodyAge = bodyAge;
+  if (chestCm !== undefined) updateData.ChestCm = chestCm;
+  if (waistCm !== undefined) updateData.WaistCm = waistCm;
+  if (hipCm !== undefined) updateData.HipCm = hipCm;
+  if (recoveredHealthIssues !== undefined) {
+    updateData.recovered_health_issues = Array.isArray(recoveredHealthIssues)
+      ? recoveredHealthIssues
+      : [];
   }
   return { updateData, cleanedPhoneNumber };
 }

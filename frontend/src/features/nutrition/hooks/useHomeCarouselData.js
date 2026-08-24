@@ -6,9 +6,16 @@
  *
  * Speed: multi-day ranges use 2 batch APIs (meals + watch) instead of 2×N
  * per-day calls; results are cached so Today ↔ Last 10 Days is instant on revisit.
+ * Meal rows for Top Contributing Foods load in the background after totals paint.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { fetchDayAnalyses, fetchWatchBurnedCalories, fetchRangeMealTotals, fetchWatchBurnedCaloriesRange } from '../services/nutritionDashboard';
+import {
+  fetchDayAnalyses,
+  fetchWatchBurnedCalories,
+  fetchRangeMealTotals,
+  fetchRangeDayAnalyses,
+  fetchWatchBurnedCaloriesRange,
+} from '../services/nutritionDashboard';
 import { computeDailyStatsFromAnalyses, EMPTY_DAILY_STATS } from '../domain/dailyStatsRules';
 import {
   aggregateWellnessPeriodScore,
@@ -16,6 +23,7 @@ import {
   sumDailyStatsForPeriod,
 } from '../domain/carouselPeriodProgress';
 import { enumerateDatesYmd, resolveWellnessDateRange, ymdToLocalDate } from '../../wellness-score-sheet/domain/dateRange';
+import { scoreIsForDate } from '../../wellness-score-sheet/domain/historyPaint';
 import { fetchDailyWellnessScore, fetchWellnessScoreHistory } from '../../wellness-score-sheet/services/wellnessScore.api';
 import {
   getPinnedDailyWellnessScore,
@@ -38,6 +46,7 @@ const EMPTY_NUTRITION = {
   dailyStats: EMPTY_DAILY_STATS,
   burnedCalories: 0,
   analyses: [],
+  mealDates: [],
   loggedDayCount: 0,
   dayCount: 1,
 };
@@ -47,6 +56,14 @@ const rangeCache = new Map();
 
 function cacheKey(userId, startDate, endDate) {
   return `${userId}|${startDate}|${endDate}`;
+}
+
+function wellnessForRange(score, range) {
+  if (!score) return null;
+  if (range.isMultiDay) return score;
+  if (Number(score.dayCount) > 1) return null;
+  if (score.date && !scoreIsForDate(score, range.endDate)) return null;
+  return score;
 }
 
 function readCache(userId, startDate, endDate) {
@@ -89,6 +106,7 @@ async function loadDayNutrition({ apiBaseUrl, userId, dayYmd }) {
     dailyStats: stats,
     burnedCalories: burned,
     analyses: dayResult.list || [],
+    mealDates: stats.mealCount > 0 ? [dayYmd] : [],
     loggedDayCount: stats.mealCount > 0 ? 1 : 0,
     dayCount: 1,
   };
@@ -103,7 +121,8 @@ async function loadRangeNutrition({ apiBaseUrl, userId, startDate, endDate, date
 
   const byDate = mealsResult.byDate || {};
   const dailyStatsList = dates.map((ymd) => dailyTotalsToStats(byDate[ymd]));
-  const loggedDayCount = dailyStatsList.filter((stats) => (stats.mealCount ?? 0) > 0).length;
+  const mealDates = dates.filter((ymd) => (byDate[ymd]?.mealCount ?? 0) > 0);
+  const loggedDayCount = mealDates.length;
   const burnedCalories = dates.reduce(
     (sum, ymd) => sum + (Number(burnByDate?.[ymd]) || 0),
     0,
@@ -112,8 +131,9 @@ async function loadRangeNutrition({ apiBaseUrl, userId, startDate, endDate, date
   return {
     dailyStats: sumDailyStatsForPeriod(dailyStatsList),
     burnedCalories,
-    // Multi-day carousel uses totals only — meal breakdown stays for single-day.
+    // Totals paint first; meal rows load in background for Top Contributing Foods.
     analyses: [],
+    mealDates,
     loggedDayCount,
     dayCount: dates.length,
   };
@@ -164,6 +184,7 @@ export function useHomeCarouselData({
   );
 
   const [loading, setLoading] = useState(false);
+  const [analysesLoading, setAnalysesLoading] = useState(false);
   const [nutrition, setNutrition] = useState(EMPTY_NUTRITION);
   const [wellnessScore, setWellnessScore] = useState(null);
 
@@ -171,16 +192,79 @@ export function useHomeCarouselData({
   const lastUserIdRef = useRef(null);
   const resolvedUserIdRef = useRef(null);
   const loadDataRef = useRef(null);
+  const rangeStamp = `${range.startDate}|${range.endDate}`;
+  const rangeStampRef = useRef(rangeStamp);
+  if (rangeStampRef.current !== rangeStamp) {
+    rangeStampRef.current = rangeStamp;
+    const uid = resolvedUserIdRef.current;
+    const cached = uid ? readCache(uid, range.startDate, range.endDate) : null;
+    if (cached) {
+      setNutrition(cached.nutrition);
+      setWellnessScore(wellnessForRange(cached.wellnessScore, range));
+      setAnalysesLoading(
+        range.isMultiDay
+        && (cached.nutrition?.mealDates?.length || 0) > 0
+        && !(cached.nutrition?.analyses?.length),
+      );
+    } else {
+      setNutrition({ ...EMPTY_NUTRITION, dayCount: expectedDayCount });
+      setWellnessScore(null);
+      setAnalysesLoading(range.isMultiDay);
+    }
+  }
 
   const applyPayload = useCallback((payload) => {
     setNutrition(payload.nutrition);
-    setWellnessScore(payload.wellnessScore);
-  }, []);
+    setWellnessScore(wellnessForRange(payload.wellnessScore, range));
+  }, [range]);
+
+  /** After multi-day totals paint, load meal rows for Top Contributing Foods. */
+  const warmRangeAnalyses = useCallback(async ({
+    requestId,
+    userId,
+    startDate,
+    endDate,
+    mealDates,
+    wellnessScore: cachedWellness,
+  }) => {
+    if (!mealDates?.length) {
+      setAnalysesLoading(false);
+      return;
+    }
+    setAnalysesLoading(true);
+    try {
+      const { list } = await fetchRangeDayAnalyses({
+        apiBaseUrl,
+        userId,
+        dates: mealDates,
+      });
+      if (requestId !== requestIdRef.current) return;
+
+      setNutrition((prev) => {
+        const nextNutrition = {
+          ...prev,
+          analyses: list,
+          mealDates,
+        };
+        const existing = readCache(userId, startDate, endDate);
+        writeCache(userId, startDate, endDate, {
+          nutrition: nextNutrition,
+          wellnessScore: existing?.wellnessScore ?? cachedWellness ?? null,
+        });
+        return nextNutrition;
+      });
+    } catch {
+      // Breakdown warm is best-effort; rings already show correct totals.
+    } finally {
+      if (requestId === requestIdRef.current) setAnalysesLoading(false);
+    }
+  }, [apiBaseUrl]);
 
   const loadData = useCallback(async ({ force = false } = {}) => {
     if (!user) {
       setNutrition(EMPTY_NUTRITION);
       setWellnessScore(null);
+      setAnalysesLoading(false);
       return;
     }
 
@@ -202,6 +286,7 @@ export function useHomeCarouselData({
       if (!userId) {
         setNutrition(EMPTY_NUTRITION);
         setWellnessScore(null);
+        setAnalysesLoading(false);
         return;
       }
 
@@ -217,6 +302,21 @@ export function useHomeCarouselData({
         applyPayload(cached);
         setLoading(false);
         markHomeDashboardProcessed(activityLogAtFetch);
+        const needsWarm = range.isMultiDay
+          && (cached.nutrition?.mealDates?.length || 0) > 0
+          && !(cached.nutrition?.analyses?.length);
+        if (needsWarm) {
+          warmRangeAnalyses({
+            requestId,
+            userId,
+            startDate: range.startDate,
+            endDate: range.endDate,
+            mealDates: cached.nutrition.mealDates,
+            wellnessScore: cached.wellnessScore,
+          });
+        } else {
+          setAnalysesLoading(false);
+        }
         return;
       }
 
@@ -224,6 +324,7 @@ export function useHomeCarouselData({
       setNutrition(placeholderNutrition);
       setWellnessScore(null);
       setLoading(true);
+      if (range.isMultiDay) setAnalysesLoading(true);
 
       const nutritionPromise = range.isMultiDay
         ? loadRangeNutrition({
@@ -281,6 +382,20 @@ export function useHomeCarouselData({
       }
       markHomeDashboardProcessed(activityLogAtFetch);
 
+      // Multi-day: rings already painted — load meal foods for contribution modal.
+      if (range.isMultiDay) {
+        warmRangeAnalyses({
+          requestId,
+          userId,
+          startDate: range.startDate,
+          endDate: range.endDate,
+          mealDates: nextNutrition.mealDates,
+          wellnessScore: nextWellness,
+        });
+      } else {
+        setAnalysesLoading(false);
+      }
+
       // Warm Yesterday after Today so the common switch is cache-hit instant.
       if (!range.isMultiDay && range.endDate === today) {
         const yRange = resolveWellnessDateRange({ preset: 'yesterday', today });
@@ -295,10 +410,12 @@ export function useHomeCarouselData({
               isMultiDay: false,
             }).catch(() => null),
           ]).then(([nutritionWarm, wellnessWarm]) => {
+            const wellness = wellnessForRange(wellnessWarm, yRange);
             writeCache(userId, yRange.startDate, yRange.endDate, {
               nutrition: nutritionWarm,
-              wellnessScore: wellnessWarm,
+              wellnessScore: wellness,
             });
+            if (wellness) setDailyWellnessScoreCached(userId, yRange.endDate, wellness);
           }).catch(() => { /* prefetch is best-effort */ });
         }
       }
@@ -313,6 +430,7 @@ export function useHomeCarouselData({
     apiBaseUrl,
     resolveUserId,
     applyPayload,
+    warmRangeAnalyses,
     today,
   ]);
 
@@ -420,9 +538,10 @@ export function useHomeCarouselData({
     rangeKey: range.isMultiDay ? `${range.startDate}_${range.endDate}` : range.endDate,
     selectedDate,
     analyses: nutrition.analyses,
+    analysesLoading,
     dailyStats: nutrition.dailyStats,
     burnedCalories,
-    wellnessScore,
+    wellnessScore: wellnessForRange(wellnessScore, range),
     wellnessLoading: loading,
     nutritionLoading: loading,
     periodContext,

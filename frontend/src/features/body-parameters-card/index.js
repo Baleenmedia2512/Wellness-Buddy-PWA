@@ -11,6 +11,7 @@ export { default as BodyParamsSearchBar } from './components/BodyParamsSearchBar
 // API services
 export {
   fetchPublicCard,
+  fetchBodyParamsCardHistory,
   listBodyParamsCards,
   getBodyParamsCard,
   deleteBodyParamsCard,

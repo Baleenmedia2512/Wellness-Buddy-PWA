@@ -1,15 +1,10 @@
-// Editable name / height / phone / community ID / gender / bodyFat fields + email.
+// Editable name / height / phone / community ID / gender fields + email.
 // BMR is display-only when bmrReadOnly (profile page) — calculated from weight/formula.
-// Body fat is shown only when the user has no existing weight/BPC source.
 import React from 'react';
-import { Flame, Hash, Mail, Percent } from 'lucide-react';
+import { Flame, Hash, Mail } from 'lucide-react';
 import { COMMUNITY_ID_MAX_LENGTH, sanitizeCommunityIdInput } from '../../domain/communityId';
 import PhysicalActivityField from './PhysicalActivityField';
-import {
-  VALID_GENDERS,
-  MIN_BODY_FAT_PCT,
-  MAX_BODY_FAT_PCT,
-} from '../../domain/profileCompleteness';
+import { VALID_GENDERS } from '../../domain/profileCompleteness';
 
 const inputCls =
   'w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none';
@@ -29,8 +24,6 @@ const UserProfileFields = ({
   bmrReadOnly = false,
   gender, setGender,
   physicalActivityLevel, setPhysicalActivityLevel,
-  bodyFat, setBodyFat,
-  showBodyFat = false,
   communityId, setCommunityId,
 }) => (
   <div className="space-y-4">
@@ -134,26 +127,6 @@ const UserProfileFields = ({
       value={physicalActivityLevel}
       onChange={setPhysicalActivityLevel}
     />
-
-    {showBodyFat && (
-      <Field label="Body Fat (%)" required>
-        <div className="relative">
-          <Percent className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-          <input
-            type="text"
-            inputMode="decimal"
-            value={bodyFat || ''}
-            onChange={(e) => setBodyFat(e.target.value)}
-            placeholder="e.g. 22"
-            className={`${inputCls} pl-9`}
-            style={{ fontSize: '16px' }}
-          />
-        </div>
-        <p className="text-xs text-gray-400 mt-1">
-          Required for BMR. Range: {MIN_BODY_FAT_PCT}–{MAX_BODY_FAT_PCT}%
-        </p>
-      </Field>
-    )}
   </div>
 );
 

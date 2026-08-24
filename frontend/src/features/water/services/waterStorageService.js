@@ -12,6 +12,7 @@
 import { getApiBaseUrl } from '../../../config/api.config.js';
 import { saveNutritionAnalysis } from '../../../shared/services/nutritionPersistence';
 import { todayBusinessDate, DEFAULT_BUSINESS_TIMEZONE } from '../../../shared/utils/datetimeUtils';
+import { lookupUserId } from '../../../shared/services/nutritionPersistence/userIdLookup.js';
 
 const STORAGE_KEY_USER_ID = 'dbUserId';
 const STORAGE_KEY_EMAIL = 'userEmail';
@@ -41,12 +42,7 @@ export function getCachedUserEmail() {
 /** Looks up a user id via /api/user/lookup and caches it. Returns id or null. */
 export async function resolveUserIdByEmail(email) {
   if (!email) return null;
-  const res = await fetch(`${getApiBaseUrl()}/api/user/lookup`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email }),
-  });
-  const data = await res.json().catch(() => ({}));
+  const data = await lookupUserId(email);
   if (data?.success && data.userId) {
     localStorage.setItem(STORAGE_KEY_USER_ID, String(data.userId));
     return data.userId;

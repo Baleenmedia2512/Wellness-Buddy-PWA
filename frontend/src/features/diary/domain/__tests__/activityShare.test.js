@@ -270,16 +270,16 @@ describe('buildDiaryShareSuffix', () => {
     expect(buildDiaryShareSuffix('water', { volumeMl: 500 }))
       .toBe('Consumed: 500 mL water so far today');
     expect(buildDiaryShareSuffix('afresh', { scoops: 2 }))
-      .toBe('Consumed: 2 scoops Afresh so far today');
+      .toBe('*Consumed: 2 scoops* Afresh so far today,');
     expect(buildDiaryShareSuffix('afresh', { scoops: 1 }))
-      .toBe('Consumed: 1 scoop Afresh so far today');
+      .toBe('*Consumed: 1 scoop* Afresh so far today,');
     expect(buildDiaryShareSuffix('afresh', { scoops: 1, soFarToday: false }))
-      .toBe('Consumed: 1 scoop Afresh');
+      .toBe('*Consumed: 1 scoop* Afresh,');
     expect(buildDiaryShareSuffix('water', { volumeMl: 200, soFarToday: false }))
       .toBe('Consumed: 200 mL water');
   });
 
-  test('food suffix is item names and total kcal only', () => {
+  test('food suffix is total kcal then each item on its own line', () => {
     expect(buildDiaryShareSuffix('food', {
       foodName: 'White Rice+4more',
       calories: 875,
@@ -288,36 +288,84 @@ describe('buildDiaryShareSuffix', () => {
       fat: 12,
       fiber: 16,
       glycemicIndex: 66,
-    })).toBe('White Rice+4more, 875 kcal');
+    })).toBe('*875 kcal, GI : 66 (MEDIUM)*\n*White Rice+4more,*');
   });
 
-  test('food suffix lists every item name plus total kcal', () => {
+  test('food suffix lists overall kcal and GI first, then every bold item name', () => {
     expect(buildDiaryShareSuffix('food', {
       foodName: 'White Rice+2more',
-      itemNames: ['White Rice', 'Sambar', 'Onion'],
+      foodItems: [
+        { name: 'White Rice', glycemicIndex: 73 },
+        { name: 'Sambar', glycemicIndex: 50 },
+        { name: 'Onion', glycemicIndex: 10 },
+      ],
       calories: 875,
       protein: 28,
       carbs: 160,
       fat: 12,
       fiber: 16,
       glycemicIndex: 66,
-    })).toBe('White Rice, Sambar, Onion, 875 kcal');
+    })).toBe('*875 kcal, GI : 66 (MEDIUM)*\n*White Rice*\n*Sambar*\n*Onion*');
+  });
+
+  test('food suffix keeps a trailing comma only for items missing GI', () => {
+    expect(buildDiaryShareSuffix('food', {
+      foodName: 'White Rice+2more',
+      foodItems: [
+        { name: 'Masala Chai (Indian spiced tea)' },
+        { name: 'Masala Dosa', glycemicIndex: 65 },
+        { name: 'Chana Masala', glycemicIndex: 33 },
+      ],
+      calories: 875,
+      glycemicIndex: 55,
+    })).toBe('*875 kcal, GI : 55 (LOW)*\n*Masala Chai (Indian spiced tea),*\n*Masala Dosa*\n*Chana Masala*');
   });
 
   test('weight suffix includes previous, current, and arrow', () => {
     expect(buildDiaryShareSuffix('weight', {
       previousWeight: 55.7,
       currentWeight: 55.6,
-    })).toBe('Previous: 55.7 kg, Current: 55.6 kg ⬇️');
+    })).toBe('Prev: 55.7 kg\nCurr: 55.6 kg ⬇️');
 
     expect(buildDiaryShareSuffix('weight', {
       previousWeight: 70,
       currentWeight: 71,
-    })).toBe('Previous: 70 kg, Current: 71 kg ⬆️');
+    })).toBe('Prev: 70 kg\nCurr: 71 kg ⬆️');
 
     expect(buildDiaryShareSuffix('weight', {
       currentWeight: 55.6,
-    })).toBe('weight 55.6 kg');
+    })).toBe('Curr: 55.6 kg');
+  });
+
+  test('weight suffix lists Ideal, Prev, Curr with arrow on current', () => {
+    expect(buildDiaryShareSuffix('weight', {
+      previousWeight: 73.65,
+      currentWeight: 73.4,
+      idealWeight: 73.6,
+    })).toBe('Ideal: 73.6 kg\nPrev: 73.65 kg\nCurr: 73.4 kg ⬇️');
+
+    expect(buildDiaryShareSuffix('weight', {
+      previousWeight: 73.4,
+      currentWeight: 72.9,
+      idealWeight: 73.7,
+    })).toBe('Ideal: 73.7 kg\nPrev: 73.4 kg\nCurr: 72.9 kg ⬇️');
+
+    expect(buildDiaryShareSuffix('weight', {
+      previousWeight: 72.9,
+      currentWeight: 72.85,
+      idealWeight: 73.7,
+    })).toBe('Ideal: 73.7 kg\nPrev: 72.9 kg\nCurr: 72.85 kg ⬇️');
+
+    expect(buildDiaryShareSuffix('weight', {
+      previousWeight: 73.4,
+      currentWeight: 74.1,
+      idealWeight: 73.7,
+    })).toBe('Ideal: 73.7 kg\nPrev: 73.4 kg\nCurr: 74.1 kg ⬆️');
+
+    expect(buildDiaryShareSuffix('weight', {
+      currentWeight: 55.6,
+      idealWeight: 62.4,
+    })).toBe('Ideal: 62.4 kg\nCurr: 55.6 kg');
   });
 
   test('workout suffix shows calories burnt so far today', () => {
@@ -331,23 +379,41 @@ describe('buildDiaryShareSuffix', () => {
     expect(buildDiaryShareSuffix('education', {
       platform: 'Zoom',
       session: 'Academy',
-    })).toBe('Academy · Zoom');
+    })).toBe('*Academy · Zoom,*');
 
     expect(buildDiaryShareSuffix('education', {
       session: 'Daily Education',
       platform: 'Zoom',
-    })).toBe('Daily Education · Zoom');
+    })).toBe('*Daily Education · Zoom,*');
 
     expect(buildDiaryShareSuffix('education', {
       session: 'Academy',
     })).toBe('Academy');
   });
 
+  test('good-habit suffix is Good Habit, with notes when present', () => {
+    expect(buildDiaryShareSuffix('good-habit', {
+      habitType: 'image_notes',
+      notes: 'Morning walk',
+    })).toBe('Good Habit — Morning walk');
+    expect(buildDiaryShareSuffix('good-habit', {
+      habitType: 'image_notes',
+    })).toBe('Good Habit');
+    expect(buildDiaryShareSuffix('good-habit', {
+      habitType: 'before_after',
+    })).toBe('Good Habit');
+  });
+
   test('shake suffix includes Formula 1, Shakemate, and Protein scoops', () => {
     expect(buildDiaryShareSuffix('shake', {
       shakeName: 'Herbalife Shake',
       shakeProducts: { formula1: 3, shakemate: 2, protein: 1 },
-    })).toBe('Herbalife Shake, Formula 1: 3 scoops, Shakemate: 2 scoops, Personalized Protein: 1 scoop');
+    })).toBe('*Herbalife Shake,*\n*Formula 1: 3 scoops,*\n*Shakemate: 2 scoops,*\n*Personalized Protein: 1 scoop,*');
+
+    expect(buildDiaryShareSuffix('shake', {
+      shakeName: 'Herbalife Shake',
+      shakeProducts: { formula1: 3, shakemate: 0, protein: 1 },
+    })).toBe('*Herbalife Shake,*\n*Formula 1: 3 scoops,*\n*Personalized Protein: 1 scoop,*');
 
     expect(buildDiaryShareSuffix('shake', {
       shakeName: 'Herbalife Shake',
@@ -443,7 +509,7 @@ describe('resolveFoodRowPresentation', () => {
     expect(view.primaryValue).toBe('7');
     expect(view.primaryUnit).toBe('kcal');
     expect(view.secondaryLabel).toBe('2 scoops');
-    expect(view.shareText).toBe('Consumed: 2 scoops Afresh');
+    expect(view.shareText).toBe('*Consumed: 2 scoops* Afresh,');
     expect(view.thumbFallback).toBe('🥤');
   });
 
@@ -457,7 +523,7 @@ describe('resolveFoodRowPresentation', () => {
       },
       calories: 4,
     });
-    expect(view.shareText).toBe('Consumed: 1 scoop Afresh');
+    expect(view.shareText).toBe('*Consumed: 1 scoop* Afresh,');
   });
 
   test('food row share caption lists every item and total kcal', () => {
@@ -465,14 +531,14 @@ describe('resolveFoodRowPresentation', () => {
       foodData: {
         name: 'White Rice+2more',
         detailedItems: [
-          { name: 'White Rice', calories: 200 },
-          { name: 'Sambar', calories: 80 },
-          { name: 'Onion', calories: 20 },
+          { name: 'White Rice', calories: 200, nutrition: { glycemic_index: 73 } },
+          { name: 'Sambar', calories: 80, nutrition: { glycemic_index: 50 } },
+          { name: 'Onion', calories: 20, nutrition: { glycemic_index: 10 } },
         ],
         nutrition: { calories: 300, protein: 8, carbs: 50, fat: 4, fiber: 3, glycemic_index: 70 },
       },
       calories: 300,
     });
-    expect(view.shareText).toBe('White Rice, Sambar, Onion, 300 kcal');
+    expect(view.shareText).toBe('*300 kcal, GI : 70 (HIGH)*\n*White Rice*\n*Sambar*\n*Onion*');
   });
 });

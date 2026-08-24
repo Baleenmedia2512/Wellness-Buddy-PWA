@@ -8,11 +8,6 @@ const VALID_GENDERS = ['Male', 'Female'];
 const MIN_BODY_FAT_PCT = 1;
 const MAX_BODY_FAT_PCT = 70;
 
-function emailLocalPart(email) {
-  const local = String(email || '').split('@')[0]?.trim().toLowerCase();
-  return local || '';
-}
-
 function usernameFromPhoneE164(phoneNumber) {
   const cleaned = String(phoneNumber || '').replace(/[^\d]/g, '');
   return cleaned ? `user_${cleaned}` : '';
@@ -20,14 +15,13 @@ function usernameFromPhoneE164(phoneNumber) {
 
 /**
  * True when UserName was auto-generated at signup and the user has not chosen a real name.
+ * Phone OTP may set `user_<digits>`; empty names are also treated as incomplete.
+ * Matching an email local-part is NOT a placeholder — people often use name@gmail.com.
  */
-export function isPlaceholderUserName(userName, { email, phoneNumber } = {}) {
+export function isPlaceholderUserName(userName, { phoneNumber } = {}) {
   const name = String(userName || '').trim();
   if (!name) return true;
   if (PLACEHOLDER_PHONE_USER_RE.test(name)) return true;
-
-  const emailLocal = emailLocalPart(email);
-  if (emailLocal && name.toLowerCase() === emailLocal) return true;
 
   const fromPhone = usernameFromPhoneE164(phoneNumber);
   if (fromPhone && name.toLowerCase() === fromPhone.toLowerCase()) return true;
@@ -38,6 +32,20 @@ export function isPlaceholderUserName(userName, { email, phoneNumber } = {}) {
 export function hasValidProfileName(userName, context = {}) {
   const name = String(userName || '').trim();
   return name.length > 0 && !isPlaceholderUserName(userName, context);
+}
+
+/**
+ * First onboarding gate: chosen display name only (before sponsor / OTP).
+ * Email is collected later on the remaining-profile step.
+ * @param {{ userName?: string|null, email?: string|null, phoneNumber?: string|null }} input
+ * @returns {boolean}
+ */
+export function isOnboardingIdentityComplete({
+  userName,
+  email,
+  phoneNumber,
+} = {}) {
+  return hasValidProfileName(userName, { email, phoneNumber });
 }
 
 /**

@@ -8,7 +8,7 @@
 /** Bytes in 1 MB (1024 * 1024). */
 export const ONE_MB = 1024 * 1024;
 
-/** Maximum request body size accepted by image-upload endpoints. */
+/** API body budget after client compression (not a pick-time photo cap). */
 export const MAX_UPLOAD_BYTES = 10 * ONE_MB;
 
 /** Maximum dimension (px) for any user-uploaded image after resize. */
@@ -17,14 +17,14 @@ export const MAX_IMAGE_DIMENSION_PX = 1600;
 /** JPEG quality used by client-side image compression. */
 export const IMAGE_JPEG_QUALITY = 0.82;
 
-/** Profile avatar: max side length (px) after crop — keeps saved size ~50–80 KB. */
-export const PROFILE_IMAGE_MAX_DIMENSION_PX = 320;
+/** Profile avatar: max side length (px) after crop. */
+export const PROFILE_IMAGE_MAX_DIMENSION_PX = 640;
 
 /** Profile avatar: starting JPEG quality (may step down to hit target bytes). */
-export const PROFILE_IMAGE_JPEG_QUALITY = 0.8;
+export const PROFILE_IMAGE_JPEG_QUALITY = 0.85;
 
-/** Profile avatar: max decoded JPEG size before base64 (~80 KB). */
-export const PROFILE_IMAGE_TARGET_BYTES = 80 * 1024;
+/** Profile avatar: max decoded JPEG size before base64 (~200 KB). */
+export const PROFILE_IMAGE_TARGET_BYTES = 200 * 1024;
 
 /**
  * Diary / capture storage thumb after AI (or on pending capture write).
@@ -37,6 +37,15 @@ export const STORAGE_IMAGE_JPEG_QUALITY = 0.65;
 
 /** Storage thumb: max decoded JPEG size (~22 KB). */
 export const STORAGE_IMAGE_TARGET_BYTES = 22 * 1024;
+
+/** Good Habit Manual Log images: ~30 KB after compression. */
+export const GOOD_HABIT_IMAGE_TARGET_BYTES = 30 * 1024;
+
+/** Good Habit share/storage max side length (px). */
+export const GOOD_HABIT_IMAGE_MAX_DIMENSION_PX = 480;
+
+/** Good Habit notes field. */
+export const GOOD_HABIT_NOTES_MAX_LEN = 200;
 
 /** Default network request timeout (ms). */
 export const DEFAULT_FETCH_TIMEOUT_MS = 15_000;

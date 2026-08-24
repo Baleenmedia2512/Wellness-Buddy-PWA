@@ -117,19 +117,24 @@ export function deriveWeightGoalMode({ heightCm, currentWeightKg }) {
   return 'maintain';
 }
 
+/**
+ * Numeric ideal-weight target (kg) for the user's current weight vs BMI 19–23.
+ * Overweight → BMI 23 upper bound; underweight → BMI 19 lower bound.
+ */
+export function pickIdealWeightKg(currentKg, idealWeight) {
+  if (!idealWeight) return null;
+  const current = parseFloat(currentKg);
+  if (!Number.isFinite(current)) return idealWeight.value;
+  if (current > idealWeight.value + 0.5) return idealWeight.value;
+  if (current < idealWeight.min - 0.5) return idealWeight.min;
+  return idealWeight.value;
+}
+
 /** Pick the display target for the user's current weight vs ideal range. */
 export function pickIdealWeightDisplay(currentKg, idealWeight) {
-  if (!idealWeight || currentKg == null || Number.isNaN(Number(currentKg))) {
-    return idealWeight ? `${idealWeight.value} ${idealWeight.unit}` : null;
-  }
-  const current = parseFloat(currentKg);
-  if (current > idealWeight.value + 0.5) {
-    return `${idealWeight.value} ${idealWeight.unit}`;
-  }
-  if (current < idealWeight.min - 0.5) {
-    return `${idealWeight.min} ${idealWeight.unit}`;
-  }
-  return `${idealWeight.value} ${idealWeight.unit}`;
+  const kg = pickIdealWeightKg(currentKg, idealWeight);
+  if (kg == null) return null;
+  return `${kg} ${idealWeight.unit}`;
 }
 
 /** Human-readable delta since the prior weight log. */

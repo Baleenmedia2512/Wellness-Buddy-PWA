@@ -10,11 +10,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { fetchDiary, DIARY_PAGE_SIZE } from '../api/diaryClient';
 import { isAbortError } from '../../../shared/utils/fetchWithAbort';
 import { debugLog } from '../../../shared/utils/logger';
-import {
-  dateToBusinessYmd,
-  DEFAULT_BUSINESS_TIMEZONE,
-} from '../../../shared/utils/datetimeUtils';
-import { resolveDiaryTimezone } from '../utils/diaryTimezone';
+import { resolveDiaryTimezone, toYmd } from '../utils/diaryTimezone';
 
 /**
  * @param {Object} params
@@ -249,15 +245,4 @@ export function useDiary({
     loadMoreSentinelRef,
     refresh,
   };
-}
-
-/**
- * Normalise a Date | YYYY-MM-DD string to business-calendar YYYY-MM-DD.
- * @internal — exported for tests only.
- */
-export function toYmd(date, timezoneIana = DEFAULT_BUSINESS_TIMEZONE) {
-  if (typeof date === 'string') {
-    return /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null;
-  }
-  return dateToBusinessYmd(date, timezoneIana);
 }

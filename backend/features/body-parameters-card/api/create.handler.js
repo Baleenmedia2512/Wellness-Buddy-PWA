@@ -9,16 +9,19 @@ import {
   insertCard,
   createTeamMemberFromPhone,
   findPreviousCardByUserId,
-  findLatestCardByUserId,
+  findLatestCardByUserIdAndCreatedBy,
   updateCard,
   findTeamPhoneByUserId,
   linkCardToUser,
   enforceBpcLeadNoCoachUntilOnboarding,
   invalidateBpcListCache,
+  isUserActivatedForBcm,
+  hardDeleteCardsForUserId,
 } from '../data/card.repo.js';
 import { syncCardToProfileAfterSave } from '../data/sync.repo.js';
 import { ValidationError } from '../../../shared/lib/ValidationError.js';
 import logger from '../../../shared/lib/logger.js';
+import { BCM_ACTIVATED_MEMBER_MESSAGE } from '../domain/card.rules.js';
 
 /**
  * @param {object} body - raw request body
@@ -39,6 +42,8 @@ export async function handleCreateCard(body) {
   }
 
   let userId = payload.userId;
+  /** True when createTeamMemberFromPhone inserted a brand-new team_table row. */
+  let isNewMember = false;
 
   if (payload.phoneNumber) {
     logger.info('[body-params-card] 📞 Creating team_table member from phone', {
@@ -58,19 +63,36 @@ export async function handleCreateCard(body) {
       fatPercent:    payload.fatPercent,
     });
     userId = memberId;
-    logger.info('[body-params-card] ✅ Team member ready', { userId, isNew, type: typeof userId });
+    isNewMember = Boolean(isNew);
+    logger.info('[body-params-card] ✅ Team member ready', { userId, isNew: isNewMember, type: typeof userId });
+  } else if (userId) {
+    if (await isUserActivatedForBcm(userId)) {
+      try {
+        await hardDeleteCardsForUserId(userId);
+      } catch (purgeErr) {
+        logger.warn('[handleCreateCard] purge before activated reject failed', {
+          userId,
+          message: purgeErr?.message,
+        });
+      }
+      throw new ValidationError(409, BCM_ACTIVATED_MEMBER_MESSAGE);
+    }
   }
 
-  // Check if user already has a card
-  const existingCard = userId ? await findLatestCardByUserId(userId) : null;
+  // Prefer this coach's existing card so Save keeps it on THEIR BCM list.
+  // Do not update another coach's card (that made the card "disappear" from My BCM).
+  const existingCard = userId
+    ? await findLatestCardByUserIdAndCreatedBy(userId, payload.createdBy)
+    : null;
   logger.info('[handleCreateCard] 🔍 Checking for existing card', { 
-    userId, 
+    userId,
+    createdBy: payload.createdBy,
     existingCardId: existingCard?.id || 'none' 
   });
 
   let card;
   if (existingCard) {
-    // UPDATE existing card (override)
+    // UPDATE this coach's existing card
     logger.info('[body-params-card] 🔄 UPDATING existing card', { cardId: existingCard.id, userId });
     card = await updateCard(existingCard.id, {
       name:         payload.name,
@@ -88,6 +110,7 @@ export async function handleCreateCard(body) {
       hipCm:        payload.hipCm,
       recordedDate: payload.recordedDate,
       locationName: payload.locationName,
+      recoveredHealthIssues: payload.recoveredHealthIssues,
     });
     logger.info('[body-params-card] ✅ Card updated', { cardId: card.id, created_by: card.created_by });
     if (userId && !card.user_id) {
@@ -95,7 +118,7 @@ export async function handleCreateCard(body) {
       card.user_id = userId;
     }
   } else {
-    // CREATE new card
+    // CREATE new card owned by this coach
     logger.info('[body-params-card] 🆕 CREATING new card', { userId, createdBy: payload.createdBy });
     card = await insertCard({ ...payload, userId });
     logger.info('[body-params-card] ✅ Card created', { 
@@ -183,9 +206,13 @@ export async function handleCreateCard(body) {
         hipCm:            card.hip_cm,
         recordedDate:     card.recorded_date,
         locationName:     card.location_name,
+        recoveredHealthIssues: Array.isArray(card.recovered_health_issues)
+          ? card.recovered_health_issues
+          : (payload.recoveredHealthIssues || []),
         phoneNumber:      phoneNumber || payload.phoneNumber || null,
         userId:           card.user_id ?? userId ?? null,
         profileSynced:    syncResult.synced,
+        isNewMember,
         previousCard,
       },
     },

@@ -111,6 +111,24 @@ export function shouldClearBpcLeadCoachId({
 }
 
 /**
+ * Message when BCM is blocked for an activated member (coach OTP approved).
+ * Approved coach/sponsor selection only happens after the member signed in and
+ * selected a coach — that is the product definition of "activated".
+ */
+export const BCM_ACTIVATED_MEMBER_MESSAGE = 'User already exists';
+
+/**
+ * True when this member must be excluded from BCM create/list.
+ * Gate: approved coach/sponsor OTP selection (`hasApprovedCoachSelection`).
+ *
+ * @param {{ hasApprovedCoachSelection?: boolean }} input
+ * @returns {boolean}
+ */
+export function isMemberActivatedForBcmExclusion({ hasApprovedCoachSelection = false } = {}) {
+  return hasApprovedCoachSelection === true;
+}
+
+/**
  * @deprecated Prefer shouldClearBpcLeadCoachId — kept for callers that only
  * detached when counsellorId matched CoachId.
  */
@@ -253,8 +271,8 @@ export function classifyFatPercent(fatPercent, gender) {
  * phone-search endpoint. Only populates fields that are present and non-null.
  * Caller must merge this onto the existing form state (do not replace).
  *
- * @param {{ userId: number, userName: string, heightCm: number|null, bmr: number|null }} member
- * @returns {{ name: string, heightCm: string, bmr: string }}
+ * @param {object} member
+ * @returns {object}
  */
 export function buildFormPrefillFromMember(member) {
   if (!member) return {};
@@ -267,6 +285,28 @@ export function buildFormPrefillFromMember(member) {
   }
   if (member.bmr != null && !isNaN(Number(member.bmr))) {
     patch.bmr = String(member.bmr);
+  }
+  if (member.gender === 'Male' || member.gender === 'Female' || member.gender === 'Other') {
+    patch.gender = member.gender;
+  }
+  const copyNum = (key, dest = key) => {
+    if (member[key] != null && !isNaN(Number(member[key]))) {
+      patch[dest] = String(member[key]);
+    }
+  };
+  copyNum('age');
+  copyNum('visceralFat');
+  copyNum('bodyAge');
+  copyNum('chestCm');
+  copyNum('waistCm');
+  copyNum('hipCm');
+  copyNum('fatPercent');
+  copyNum('bmi');
+  copyNum('weightKg');
+  if (Array.isArray(member.recoveredHealthIssues) && member.recoveredHealthIssues.length) {
+    patch.recoveredHealthIssues = member.recoveredHealthIssues
+      .filter((x) => typeof x === 'string' && x.trim())
+      .map((x) => x.trim());
   }
   return patch;
 }

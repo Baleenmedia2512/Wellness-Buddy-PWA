@@ -147,7 +147,7 @@ const TeamMemberProfileModal = ({ isOpen, onClose, memberEmail, apiBaseUrl }) =>
                 }
               />
               <ProfileRow
-                icon={<span className="text-base">⚖️</span>}
+                icon={<EmojiOrNative emoji="⚖️" className="w-5 h-5" nativeClassName="text-base leading-none" />}
                 label="Ideal Weight"
                 value={
                   profile.height
@@ -159,7 +159,7 @@ const TeamMemberProfileModal = ({ isOpen, onClose, memberEmail, apiBaseUrl }) =>
               {/* Initial Weight — first upload, read-only */}
               {profile.initialWeight != null && Number.isFinite(Number(profile.initialWeight)) && (
                 <ProfileRow
-                  icon={<span className="text-base">🏁</span>}
+                  icon={<EmojiOrNative emoji="🏁" className="w-5 h-5" nativeClassName="text-base leading-none" />}
                   label="Initial Weight"
                   value={`${parseFloat(profile.initialWeight).toFixed(1)} kg`}
                   sub={profile.initialWeightDate
@@ -175,7 +175,7 @@ const TeamMemberProfileModal = ({ isOpen, onClose, memberEmail, apiBaseUrl }) =>
               {/* Current Weight */}
               {profile.latestWeight && (
                 <ProfileRow
-                  icon={<span className="text-base">📊</span>}
+                  icon={<EmojiOrNative emoji="📊" className="w-5 h-5" nativeClassName="text-base leading-none" />}
                   label="Current Weight"
                   value={`${parseFloat(profile.latestWeight).toFixed(1)} kg`}
                 />
@@ -190,7 +190,7 @@ const TeamMemberProfileModal = ({ isOpen, onClose, memberEmail, apiBaseUrl }) =>
                 if (isLoss) return (
                   <div className="flex items-center gap-3 p-3 rounded-xl bg-red-50 border border-red-200">
                     <div className="flex-shrink-0 w-10 h-10 rounded-xl bg-red-100 shadow-sm flex items-center justify-center">
-                      <span className="text-base">🔥</span>
+                      <EmojiOrNative emoji="🔥" className="w-5 h-5" nativeClassName="text-base leading-none" />
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-xs font-medium text-red-400">Weight Mode</p>
@@ -201,7 +201,7 @@ const TeamMemberProfileModal = ({ isOpen, onClose, memberEmail, apiBaseUrl }) =>
                 if (isGain) return (
                   <div className="flex items-center gap-3 p-3 rounded-xl bg-orange-50 border border-orange-200">
                     <div className="flex-shrink-0 w-10 h-10 rounded-xl bg-orange-100 shadow-sm flex items-center justify-center">
-                      <span className="text-base">🏋️</span>
+                      <EmojiOrNative emoji="🏋️" className="w-5 h-5" nativeClassName="text-base leading-none" />
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-xs font-medium text-orange-400">Weight Mode</p>
@@ -212,11 +212,14 @@ const TeamMemberProfileModal = ({ isOpen, onClose, memberEmail, apiBaseUrl }) =>
                 return (
                   <div className="flex items-center gap-3 p-3 rounded-xl bg-green-50 border border-green-200">
                     <div className="flex-shrink-0 w-10 h-10 rounded-xl bg-green-100 shadow-sm flex items-center justify-center">
-                      <span className="text-base">✅</span>
+                      <EmojiOrNative emoji="✅" className="w-5 h-5" nativeClassName="text-base leading-none" />
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-xs font-medium text-green-500">Weight Mode</p>
-                      <p className="text-sm font-semibold text-green-700">At Ideal Weight 🎯</p>
+                      <p className="text-sm font-semibold text-green-700 inline-flex items-center gap-1">
+                        At Ideal Weight
+                        <EmojiOrNative emoji="🎯" className="w-4 h-4" nativeClassName="text-sm leading-none" />
+                      </p>
                     </div>
                   </div>
                 );

@@ -55,7 +55,7 @@ const UserProfileModal = ({ isOpen, onClose, user, userRole = 'user', onProfileU
           bodyFat: data.latestWeightBodyFat != null
             ? String(data.latestWeightBodyFat)
             : (data.bodyFat != null ? String(data.bodyFat) : ''),
-          needsBodyFat: Boolean(data.needsBodyFat),
+          latestWeightBodyFat: data.latestWeightBodyFat ?? null,
           email: data.email || user?.email || '',
           communityId: data.communityId != null ? String(data.communityId) : '',
           bodyMetrics: data.bodyMetrics || null,
@@ -120,7 +120,8 @@ const UserProfileModal = ({ isOpen, onClose, user, userRole = 'user', onProfileU
   if (!isOpen) return null;
 
   const saveDisabled = isSaving || !form.nameValid ||
-    !form.height || form.height.trim() === '' || !form.phone || form.phone.trim() === '';
+    !form.height || form.height.trim() === '' || !form.phone || form.phone.trim() === '' ||
+    !form.fatPercentValid;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">

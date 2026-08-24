@@ -60,8 +60,9 @@ export default function TestimonialSearchBar({
           }`}
           aria-hidden="true"
         />
+        {/* type="text" so WebKit does not render a second native clear "X" */}
         <input
-          type="search"
+          type="text"
           value={value}
           onChange={(e) => onChange(e.target.value)}
           onFocus={() => onOpenChange(true)}
@@ -73,6 +74,8 @@ export default function TestimonialSearchBar({
           aria-controls={showSuggestions ? listId : undefined}
           aria-autocomplete="list"
           autoComplete="off"
+          autoCorrect="off"
+          spellCheck={false}
           className={`w-full pl-9 pr-9 py-2.5 rounded-xl border bg-white text-sm text-gray-800 placeholder-gray-400 shadow-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all disabled:opacity-50 ${
             isIssue ? 'border-green-200' : 'border-gray-200'
           }`}

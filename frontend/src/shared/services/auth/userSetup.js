@@ -94,7 +94,7 @@ export async function fetchUserStatus({ apiBaseUrl, email }) {
 /**
  * GET /api/user/status → setup-status discriminated union.
  *
- * @param {{ apiBaseUrl: string, email: string }} params
+ * @param {{ apiBaseUrl: string, email?: string, userId?: string|number }} params
  * @returns {Promise<{
  *   result: 'skipped' | 'complete' | 'pendingOtp' | 'incomplete' | 'error',
  *   raw?: object,
@@ -108,12 +108,15 @@ export async function fetchUserStatus({ apiBaseUrl, email }) {
  *   - statusData.setupComplete===true                           → 'complete'
  *   - HTTP non-OK or thrown error                               → 'error'
  */
-export async function fetchSetupStatus({ apiBaseUrl, email }) {
-  if (!email) return { result: "error" };
+export async function fetchSetupStatus({ apiBaseUrl, email, userId }) {
+  if (!email && (userId == null || userId === '')) return { result: "error" };
 
   try {
+    const qs = email
+      ? `email=${encodeURIComponent(email)}`
+      : `userId=${encodeURIComponent(String(userId))}`;
     const statusResponse = await apiFetch(
-      `${apiBaseUrl}/api/user/status?email=${encodeURIComponent(email)}`,
+      `${apiBaseUrl}/api/user/status?${qs}`,
     );
 
     if (!statusResponse.ok) {

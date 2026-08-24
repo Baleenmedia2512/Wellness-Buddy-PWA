@@ -35,13 +35,16 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Get email and Team ID from request body
-    const { email, teamId } = req.body;
+    // Get email / userId and Team ID from request body
+    const { email, userId, teamId } = req.body;
+    const uid = userId != null && String(userId).trim() !== ''
+      ? Number(userId)
+      : null;
 
-    if (!email) {
+    if (!email && !(uid && Number.isFinite(uid))) {
       res.status(400).json({
         success: false,
-        error: 'Email is required'
+        error: 'Email or userId is required'
       });
       return;
     }
@@ -68,10 +71,15 @@ export default async function handler(req, res) {
     const supabase = getSupabaseClient();
 
     // Check if user exists and get their current TeamId and Role
-    const { data: userRows, error: userError } = await supabase
+    let userQuery = supabase
       .from('team_table')
-      .select('UserId, TeamId, Role')
-      .eq('Email', email);
+      .select('UserId, TeamId, Role');
+    if (uid && Number.isFinite(uid)) {
+      userQuery = userQuery.eq('UserId', uid);
+    } else {
+      userQuery = userQuery.eq('Email', email);
+    }
+    const { data: userRows, error: userError } = await userQuery;
 
     if (userError) throw userError;
 
