@@ -71,6 +71,7 @@ export const markSetupSkipped = () => safeSet("setupSkipped", "true");
 // Suppresses re-prompting on subsequent setup-status checks within the session.
 export const isCoachOtpVerified = () => safeGet("coachOtpVerified") === "true";
 export const markCoachOtpVerified = () => safeSet("coachOtpVerified", "true");
+export const clearCoachOtpVerified = () => safeRemove("coachOtpVerified");
 
 // ─── userSignedOut ─────────────────────────────────────────────────────────
 // CRITICAL iOS GATE — DO NOT REMOVE.

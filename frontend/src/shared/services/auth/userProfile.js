@@ -45,22 +45,32 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
  *   error?: any,
  * }>}
  */
-export async function fetchProfileCompletion({ apiBaseUrl, email, afterSave = false }) {
-  if (!email) return { status: "error", data: null, identityComplete: false };
+export async function fetchProfileCompletion({ apiBaseUrl, email, userId, afterSave = false }) {
+  if (!email && (userId == null || userId === '')) {
+    return { status: "error", data: null, identityComplete: false };
+  }
   void apiBaseUrl; // getProfile uses config base URL
 
   const maxAttempts = afterSave ? 3 : 1;
   let latestData = null;
 
-  const identityFrom = (data) => isOnboardingIdentityComplete({
-    userName: data?.userName,
-    email: data?.email || email,
-    phoneNumber: data?.phoneNumber,
-  });
+  const identityFrom = (data) => {
+    if (data?.needsName === true) return false;
+    if (data?.needsName === false) return true;
+    return isOnboardingIdentityComplete({
+      userName: data?.userName,
+      email: data?.email || email,
+      phoneNumber: data?.phoneNumber,
+    });
+  };
 
   try {
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
-      const payload = await getProfile(email, { cacheBust: afterSave || attempt > 0 });
+      const payload = await getProfile(
+        email
+          ? { email, cacheBust: afterSave || attempt > 0 }
+          : { userId, cacheBust: afterSave || attempt > 0 },
+      );
       if (!payload?.success || !payload?.data) {
         if (attempt < maxAttempts - 1) await sleep(450);
         continue;
@@ -70,7 +80,7 @@ export async function fetchProfileCompletion({ apiBaseUrl, email, afterSave = fa
       if (latestData.profileComplete) {
         // Cache the per-email fast-path flag so subsequent boots can skip
         // the gate before the network responds.
-        Session.markProfileComplete(email);
+        if (email) Session.markProfileComplete(email);
         return {
           status: "complete",
           identityComplete: true,

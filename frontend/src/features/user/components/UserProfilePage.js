@@ -32,6 +32,8 @@ import IdealWeightCards from './profile/IdealWeightCards';
 import DietDropdown from './profile/DietDropdown';
 import WeightModeSelector from './profile/WeightModeSelector';
 import HealthIssuesFilterSelect from '../../body-parameters-card/components/HealthIssuesFilterSelect';
+import TransformationPhotosSection from './profile/TransformationPhotosSection';
+import useTransformationPhotos from '../hooks/useTransformationPhotos';
 import { EmojiOrNative } from '../../../shared/components/icons/EmojiImage';
 import { deriveWeightGoalMode } from '../../weight/services/weightFormService';
 import DeleteAccountModal from './DeleteAccountModal';
@@ -45,6 +47,7 @@ const ROLE_LABELS = { admin: 'Admin', developer: 'Developer', coach: 'Coach', up
 
 const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfileUpdate }) => {
   const form = useProfileForm();
+  const transformationPhotos = useTransformationPhotos();
   const [profileImagePreview, setProfileImagePreview] = useState(null);
   const [profileImage, setProfileImage] = useState(null);
   const [latestWeight, setLatestWeight] = useState(null);
@@ -109,6 +112,10 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
       };
 
       form.reload(profileData);
+      transformationPhotos.loadFromProfile(
+        data?.transformationPhotos,
+        data?.transformationPhotoHistory,
+      );
       setLatestWeight(data?.latestWeight ? parseFloat(data.latestWeight) : null);
       setInitialWeight(data?.initialWeight != null ? parseFloat(data.initialWeight) : null);
       setInitialWeightDate(data?.initialWeightDate || null);
@@ -183,7 +190,10 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
     try {
       const err = form.validate({ requireDiet: false, maxHeight: 198 });
       if (err) { setError(err); return; }
-      const payload = form.payload(user.email, profileImage ? { profileImage } : {});
+      const payload = form.payload(user.email, {
+        ...(profileImage ? { profileImage } : {}),
+        ...transformationPhotos.payloadExtras(),
+      });
       // BMR is system-calculated on the profile page — never write it from this form.
       delete payload.bmr;
       const data = await saveProfile(payload);
@@ -205,7 +215,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
     } finally {
       setIsSaving(false);
     }
-  }, [form, profileImage, profileImagePreview, user, loadProfile, onProfileUpdate]);
+  }, [form, profileImage, profileImagePreview, user, loadProfile, onProfileUpdate, transformationPhotos]);
 
   handleSaveRef.current = handleSave;
 
@@ -367,6 +377,18 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
                   latestWeight={latestWeight}
                   initialWeight={initialWeight}
                   initialWeightDate={initialWeightDate}
+                />
+                <TransformationPhotosSection
+                  previews={transformationPhotos.previews}
+                  history={transformationPhotos.history}
+                  onSelectFile={async (slot, file) => {
+                    try {
+                      await transformationPhotos.setSlotFromFile(slot, file);
+                    } catch (e) {
+                      setError(e.message || 'Failed to prepare photo.');
+                    }
+                  }}
+                  disabled={isSaving}
                 />
                 <DietDropdown value={form.dietType} onChange={form.setDietType} />
                 <WeightModeSelector
