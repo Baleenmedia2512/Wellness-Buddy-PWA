@@ -1969,7 +1969,6 @@ test(
         )
       ).toBeVisible();
 
-
       await expect(
         page.getByText(
           'Enter OTP',
@@ -1978,7 +1977,7 @@ test(
           }
         )
       ).not.toBeVisible();
-    }
+    } 
   );
 
 
