@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import { motion, AnimatePresence } from "framer-motion";
 import wellnessValleyIcon from "../assets/wellness-valley-icon.png";
@@ -29,6 +29,7 @@ const SetupWizard = ({
   const [checkingTeamId, setCheckingTeamId] = useState(false);
   const [claimingTeamId, setClaimingTeamId] = useState(false);
   const [sendingRequest, setSendingRequest] = useState(false);
+  const sendingRequestRef = useRef(false);
 
   // General
   const [error, setError] = useState("");
@@ -197,11 +198,13 @@ const SetupWizard = ({
 
   // Skip Team ID - Send approval request WITHOUT claiming Team ID (but still requires OTP)
   const skipTeamIdAndSendRequest = async () => {
+    if (sendingRequestRef.current) return;
     if (!selectedCoach) {
       setError("Please select a coach first");
       return;
     }
 
+    sendingRequestRef.current = true;
     setSendingRequest(true);
     setError("");
 
@@ -209,7 +212,6 @@ const SetupWizard = ({
       const { email: userEmail, userId } = resolveRequester();
       if (!userEmail && !userId) {
         setError("Session expired. Please login again.");
-        setSendingRequest(false);
         return;
       }
 
@@ -223,8 +225,6 @@ const SetupWizard = ({
         },
       );
 
-      // Send approval request directly WITHOUT claiming Team ID
-      // Backend will generate OTP and send to coach
       const requestBody = { coachId: selectedCoach.userId };
       if (userEmail) requestBody.email = userEmail;
       else requestBody.userId = userId;
@@ -236,21 +236,19 @@ const SetupWizard = ({
       debugLog("Approval request sent (no Team ID):", requestResponse.data);
 
       setSuccess(`Request sent!`);
-
-      // Navigate to OTP validation after delay
-      setTimeout(() => {
-        if (onNavigateToOTP) {
-          onNavigateToOTP();
-        } else if (onClose) {
-          onClose();
-        }
-      }, 1500);
+      if (onNavigateToOTP) {
+        onNavigateToOTP();
+      } else if (onClose) {
+        onClose();
+      }
     } catch (err) {
       console.error("Skip setup error:", err);
       console.error("Error response:", err.response?.data);
       const errorMessage =
         err.response?.data?.error || err.message || "Failed to send request";
       setError(errorMessage);
+    } finally {
+      sendingRequestRef.current = false;
       setSendingRequest(false);
     }
   };
@@ -301,21 +299,18 @@ const SetupWizard = ({
       debugLog("Approval request sent:", requestResponse.data);
 
       setSuccess(`Request sent!`);
-
-      // Navigate to OTP validation after delay
-      setTimeout(() => {
-        if (onNavigateToOTP) {
-          onNavigateToOTP();
-        } else if (onClose) {
-          onClose();
-        }
-      }, 1500);
+      if (onNavigateToOTP) {
+        onNavigateToOTP();
+      } else if (onClose) {
+        onClose();
+      }
     } catch (err) {
       console.error("Setup error:", err);
       console.error("Error response:", err.response?.data);
       const errorMessage =
         err.response?.data?.error || err.message || "Failed to complete setup";
       setError(errorMessage);
+    } finally {
       setClaimingTeamId(false);
     }
   };
