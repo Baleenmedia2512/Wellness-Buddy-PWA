@@ -3791,7 +3791,6 @@ function WellnessValleyApp() {
             );
             checkProfileCompletion(userEmail, user, { silent: true });
           }
-  }, [user, checkProfileCompletion]);
         }
       }),
     )
