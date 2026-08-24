@@ -3784,17 +3784,16 @@ function WellnessValleyApp() {
           // all typed input (height, phone, diet, selected photo).
           if (_profileGateActiveRef.current) return;
           const userEmail = user.email || user.Email;
-          const uid = user.id || user.UserId || user.userId || Session.getDbUserId();
           if (userEmail) {
             debugLog(
               "?? [Foreground] App resumed ? running immediate profile check",
             );
             checkProfileCompletion(userEmail, user, { silent: true });
           }
-  }, [user, checkProfileCompletion]);
         }
       }),
     )
+
       .then((h) => {
         if (cancelled) {
           h?.remove?.();
