@@ -429,6 +429,20 @@ jobs:
           npx playwright test \
             tests/frontend/authenticated/club.spec.js
 
+      # ==========================================================
+      # 21. RUN ACTIVITY TESTS
+      # ==========================================================
+
+      - name: Run Playwright Activity Tests
+        run: |
+
+          echo "=========================================="
+          echo "Running Activity Tests"
+          echo "=========================================="
+
+          npx playwright test \
+            tests/frontend/authenticated/activity.spec.js
+
       # # ==========================================================
       # # 20. RUN COMPLETE PROFILE TESTS
       # # ==========================================================
