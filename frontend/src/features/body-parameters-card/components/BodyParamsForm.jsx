@@ -164,7 +164,7 @@ const BodyParamsForm = ({
         </div>
 
         <div className="p-5 space-y-4">
-          {vm.error && (
+          {vm.error && !/user already exists/i.test(String(vm.error)) && (
             <div className="flex items-center gap-2 bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded-lg text-sm">
               <AlertCircle size={16} className="flex-shrink-0" />
               {vm.error}
@@ -241,6 +241,8 @@ const BodyParamsForm = ({
             isLoading={vm.phoneSearchLoading}
             inputRef={phoneRef}
             onEnter={() => focusNextField(genderRef)}
+            onBlur={vm.recheckPhoneStatus}
+            error={vm.phoneFieldError}
           />
 
           {/* Gender - Full Width */}

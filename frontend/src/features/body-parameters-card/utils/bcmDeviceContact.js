@@ -10,6 +10,7 @@
  * Never blocks WhatsApp share.
  */
 import { Capacitor } from '@capacitor/core';
+import { Contacts, PhoneType } from '@capacitor-community/contacts';
 import { debugLog } from '../../../shared/utils/logger.js';
 import { buildBcmContactDisplayName } from '../domain/bcmContactName.rules.js';
 import { normalizePhoneDigits, phonesMatch } from '../domain/bcmContactPhone.rules.js';
@@ -83,7 +84,16 @@ function looksLikeBcmContact(contact) {
   return BCM_NAME_DATE_RE.test(contactDisplayName(contact));
 }
 
+/**
+ * Best-effort OS prompt. Always call createContact afterward — native plugin
+ * also requests permission when needed. Do not gate only on canRequest
+ * (Android first-install often reports denied).
+ */
 async function ensureContactsPermission() {
+  const nativeOk = await PermissionManager.isContactsNativeAvailable();
+  if (!nativeOk) {
+    return false;
+  }
   const { granted, status } = await PermissionManager.checkPermission('contacts');
   if (granted || status === 'limited') return true;
   const { granted: nowGranted, status: nowStatus } = await PermissionManager.requestPermission('contacts');
@@ -92,11 +102,10 @@ async function ensureContactsPermission() {
 
 /**
  * Find existing BCM-managed contact ids for this phone (stored id + address-book scan).
- * @param {object} Contacts
  * @param {string} phone
  * @returns {Promise<string[]>}
  */
-async function findBcmContactIds(Contacts, phone) {
+async function findBcmContactIds(phone) {
   const ids = new Set();
   const stored = readStoredContactId(phone);
   if (stored) ids.add(stored);
@@ -146,16 +155,23 @@ export async function upsertBcmMemberToDeviceContacts(opts = {}) {
   }
 
   try {
-    const allowed = await ensureContactsPermission();
-    if (!allowed) {
-      // Always visible in Xcode / Safari remote console — silent skip was hard to debug.
-      console.warn('[BCM contact] Contacts permission denied — enable in Settings → Wellness Valley → Contacts');
-      debugLog('📱 [BCM contact] permission denied — skip save');
-      return { ok: false, skipped: true, reason: 'permission' };
+    const nativeOk = await PermissionManager.isContactsNativeAvailable();
+    if (!nativeOk) {
+      console.error(
+        '[BCM contact] Native Contacts plugin missing — rebuild iOS after: npx cap sync ios && pod install',
+      );
+      return { ok: false, skipped: true, reason: 'plugin-missing' };
     }
 
-    const { Contacts, PhoneType } = await import('@capacitor-community/contacts');
-    const existingIds = await findBcmContactIds(Contacts, phone);
+    // Prompt when possible; still attempt createContact (native re-requests).
+    const allowed = await ensureContactsPermission();
+    if (!allowed) {
+      console.warn(
+        '[BCM contact] Contacts not granted — enable in Settings → Wellness Valley → Contacts',
+      );
+    }
+
+    const existingIds = await findBcmContactIds(phone);
     let updated = false;
 
     for (const contactId of existingIds) {

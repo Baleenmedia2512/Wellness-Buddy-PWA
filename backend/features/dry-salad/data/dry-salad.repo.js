@@ -104,3 +104,28 @@ export async function searchItems(term, { status = 'approved', limit = 20 } = {}
 
   return sortByFoodNameMatch(rows, safe).slice(0, limit);
 }
+
+/**
+ * Recent meal rows for slot-combo suggestions (newest first).
+ * @param {string|number} userId
+ * @param {number} [limit]
+ * @returns {Promise<object[]>}
+ */
+export async function listRecentUserMeals(userId, limit = 150) {
+  const supabase = getSupabaseClient();
+  const cap = Number.isFinite(limit) ? Math.min(300, Math.max(1, Math.floor(limit))) : 150;
+  const { data, error } = await supabase
+    .from('food_nutrition_data_table')
+    .select('"ID","AnalysisData","CreatedAt"')
+    .eq('"UserID"', String(userId))
+    .eq('"IsDeleted"', 0)
+    .not('"AnalysisData"', 'is', null)
+    .order('"CreatedAt"', { ascending: false })
+    .limit(cap);
+
+  if (error) {
+    logger.warn('[dry-salad.repo] listRecentUserMeals failed', { err: error.message });
+    return [];
+  }
+  return data || [];
+}

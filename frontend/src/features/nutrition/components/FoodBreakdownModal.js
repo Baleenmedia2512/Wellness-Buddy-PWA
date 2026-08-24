@@ -12,6 +12,7 @@ const FoodBreakdownModal = ({
   totalConsumed,
   target = 0,
   foodBreakdown = [],
+  foodsLoading = false,
 }) => {
   if (!isOpen) return null;
 
@@ -65,7 +66,11 @@ const FoodBreakdownModal = ({
 
         {/* Food List - Scrollable */}
         <div className="flex-1 overflow-y-auto px-4 py-2">
-          {foodBreakdown.length === 0 ? (
+          {foodsLoading ? (
+            <div className="text-center py-8">
+              <p className="text-sm text-gray-500">Loading foods…</p>
+            </div>
+          ) : foodBreakdown.length === 0 ? (
             <div className="text-center py-8">
               <p className="text-sm text-gray-500">No foods logged</p>
             </div>

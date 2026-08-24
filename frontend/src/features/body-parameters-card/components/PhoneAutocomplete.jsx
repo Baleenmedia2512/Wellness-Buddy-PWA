@@ -18,7 +18,17 @@ import NativeInput from '../../../shared/components/NativeInput.jsx';
 /**
  * @param {{ value, onChange, suggestions, onSelect, isLoading, inputRef, onEnter }} props
  */
-const PhoneAutocomplete = ({ value, onChange, suggestions = [], onSelect, isLoading = false, inputRef, onEnter }) => {
+const PhoneAutocomplete = ({
+  value,
+  onChange,
+  suggestions = [],
+  onSelect,
+  isLoading = false,
+  inputRef,
+  onEnter,
+  error = '',
+  onBlur,
+}) => {
   const [isOpen, setIsOpen] = useState(false);
   const wrapperRef = useRef(null);
 
@@ -59,6 +69,10 @@ const PhoneAutocomplete = ({ value, onChange, suggestions = [], onSelect, isLoad
     if (suggestions.length > 0) setIsOpen(true);
   };
 
+  const borderClass = error
+    ? 'border-red-400 focus:ring-red-400'
+    : 'border-indigo-200 focus:ring-indigo-400';
+
   return (
     <div ref={wrapperRef} className="relative flex flex-col gap-1">
       <label className="text-xs font-semibold text-indigo-800 uppercase tracking-wide">
@@ -74,10 +88,12 @@ const PhoneAutocomplete = ({ value, onChange, suggestions = [], onSelect, isLoad
           onChange={handleInputChange}
           onKeyDown={handleKeyDown}
           onFocus={handleFocus}
+          onBlur={onBlur}
           placeholder="Client phone — creates team member"
           maxLength={10}
-          className="w-full border border-indigo-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white pr-8"
+          className={`w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 bg-white pr-8 ${borderClass}`}
           autoComplete="off"
+          aria-invalid={Boolean(error)}
         />
         {isLoading && (
           <span className="absolute right-2 top-1/2 -translate-y-1/2 text-indigo-400 text-xs animate-pulse">
@@ -85,6 +101,12 @@ const PhoneAutocomplete = ({ value, onChange, suggestions = [], onSelect, isLoad
           </span>
         )}
       </div>
+
+      {error ? (
+        <p className="text-xs text-red-600 font-medium mt-0.5" role="alert">
+          {error}
+        </p>
+      ) : null}
 
       {isOpen && suggestions.length > 0 && (
         <ul className="absolute z-50 top-full left-0 right-0 mt-1 bg-white border border-indigo-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">

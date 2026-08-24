@@ -14,7 +14,7 @@ const parseSaveResponse = async (res) => {
   const text = await res.text();
   console.error('Non-JSON response:', text);
   if (text.includes('Body exceeded') || text.includes('Request entity too large')) {
-    throw new Error('Image file is too large. Please try with a smaller image (max 10MB).');
+    throw new Error('Could not send this photo. Please try again.');
   }
   if (res.status === 500) throw new Error('Internal Server Error');
   if (res.status === 503) throw new Error('Server is currently overloaded');

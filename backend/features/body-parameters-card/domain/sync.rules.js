@@ -3,10 +3,8 @@
  * and Profile (team_table + latest weight_records_table).
  *
  * Syncable intersection (fields that exist in both modules):
- *   Name, Height, BMR, Gender → team_table
+ *   Name, Height, BMR, Gender, Age, VisceralFat, BodyAge, Chest/Waist/Hip → team_table
  *   Weight, Fat %, BMI        → weight_records_table (latest)
- *
- * Card-only (Age, Visceral Fat, Body Age, Chest, Waist, Hip) stay on the card.
  *
  * No I/O. Callers must skip the reciprocal sync path (write via repo, not
  * through the other feature's update pipeline) to prevent circular updates.
@@ -89,8 +87,19 @@ export function resolveCardBmiForPatch(card, diff = {}) {
  * Build a team_table patch from a card row, including only changed fields.
  *
  * @param {object} card - body_parameters_cards row (snake_case)
- * @param {{ userName?: string|null, height?: number|null, bmr?: number|null, gender?: string|null }} currentProfile
- * @returns {{ UserName?: string, Height?: number, Bmr?: number, Gender?: string }}
+ * @param {{
+ *   userName?: string|null,
+ *   height?: number|null,
+ *   bmr?: number|null,
+ *   gender?: string|null,
+ *   age?: number|null,
+ *   visceralFat?: number|null,
+ *   bodyAge?: number|null,
+ *   chestCm?: number|null,
+ *   waistCm?: number|null,
+ *   hipCm?: number|null,
+ * }} currentProfile
+ * @returns {object}
  */
 export function buildTeamTableDiff(card, currentProfile = {}) {
   if (!card) return {};
@@ -101,6 +110,17 @@ export function buildTeamTableDiff(card, currentProfile = {}) {
   const nextHeight = card.height_cm ?? null;
   const nextBmr = resolveSyncedBmrFromCard(card);
   const nextGender = normalizeSyncGender(card.gender);
+  const nextAge = card.age != null && Number.isFinite(Number(card.age)) ? Number(card.age) : null;
+  const nextVisceral = card.visceral_fat != null && Number.isFinite(Number(card.visceral_fat))
+    ? Number(card.visceral_fat) : null;
+  const nextBodyAge = card.body_age != null && Number.isFinite(Number(card.body_age))
+    ? Number(card.body_age) : null;
+  const nextChest = card.chest_cm != null && Number.isFinite(Number(card.chest_cm))
+    ? Number(card.chest_cm) : null;
+  const nextWaist = card.waist_cm != null && Number.isFinite(Number(card.waist_cm))
+    ? Number(card.waist_cm) : null;
+  const nextHip = card.hip_cm != null && Number.isFinite(Number(card.hip_cm))
+    ? Number(card.hip_cm) : null;
 
   const diff = {};
   if (nextName != null && !syncValuesEqual(nextName, currentProfile.userName)) {
@@ -114,6 +134,24 @@ export function buildTeamTableDiff(card, currentProfile = {}) {
   }
   if (nextGender != null && !syncValuesEqual(nextGender, currentProfile.gender)) {
     diff.Gender = nextGender;
+  }
+  if (nextAge != null && !syncValuesEqual(nextAge, currentProfile.age)) {
+    diff.Age = nextAge;
+  }
+  if (nextVisceral != null && !syncValuesEqual(nextVisceral, currentProfile.visceralFat)) {
+    diff.VisceralFat = nextVisceral;
+  }
+  if (nextBodyAge != null && !syncValuesEqual(nextBodyAge, currentProfile.bodyAge)) {
+    diff.BodyAge = nextBodyAge;
+  }
+  if (nextChest != null && !syncValuesEqual(nextChest, currentProfile.chestCm)) {
+    diff.ChestCm = nextChest;
+  }
+  if (nextWaist != null && !syncValuesEqual(nextWaist, currentProfile.waistCm)) {
+    diff.WaistCm = nextWaist;
+  }
+  if (nextHip != null && !syncValuesEqual(nextHip, currentProfile.hipCm)) {
+    diff.HipCm = nextHip;
   }
   return diff;
 }

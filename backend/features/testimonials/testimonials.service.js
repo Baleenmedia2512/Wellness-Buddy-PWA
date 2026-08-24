@@ -1271,13 +1271,9 @@ export async function submitAllEdits(rawBody) {
 
   let existing = await repo.findByUserId(payload.userId);
 
-  // Unified Transformation UI keeps photos as local drafts until Submit ("Not Uploaded").
-  // First submit must create the row — update-only previously always 404'd.
+  // Unified Transformation UI keeps photos as local drafts until Submit.
+  // First submit must create the row — never 404 when validation already passed.
   if (!existing) {
-    const createSlots = new Set(payload.dirtySlots);
-    if (!createSlots.has('before') || !payload.beforeImageBase64) {
-      throw new ValidationError(404, 'No testimonial found. Please submit your before photo first.');
-    }
     existing = await repo.insertVideoOnlyTestimonial({
       userId:  payload.userId,
       coachId: userInfo.coachId,
@@ -1285,6 +1281,9 @@ export async function submitAllEdits(rawBody) {
     logger.info('[testimonials.service] Created testimonial stub for first unified submit', {
       userId: payload.userId,
       testimonialId: existing.id,
+      dirtySlots: payload.dirtySlots,
+      hasBeforeImage: Boolean(payload.beforeImageBase64),
+      hasAfterImage: Boolean(payload.afterImageBase64),
     });
   }
 
@@ -1368,7 +1367,10 @@ export async function submitAllEdits(rawBody) {
   const resolvedHealthIssues = mergedIssues;
 
   if (photoNeedsOtp && resolvedHealthIssues.length === 0) {
-    throw new ValidationError(422, 'At least one recovered health issue is required.');
+    throw new ValidationError(
+      422,
+      'At least one recovered health issue is required before submitting before + after photos.',
+    );
   }
 
   // Capture previous photo paths for email diff BEFORE saving

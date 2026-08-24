@@ -12,7 +12,15 @@ import { isAppUpdateRequiredResponse } from '../shared/services/appVersionEnforc
 
 const API_BASE = process.env.REACT_APP_API_BASE_URL;
 
-const ValidateOTP = ({ onClose, onSuccess, onLogout, isReactivationFlow = false, userEmail: userEmailProp = '', coachName: coachNameProp = '' }) => {
+const ValidateOTP = ({
+  onClose,
+  onSuccess,
+  onLogout,
+  isReactivationFlow = false,
+  userEmail: userEmailProp = '',
+  userId: userIdProp = null,
+  coachName: coachNameProp = '',
+}) => {
   // Canonical OTP input controller — handles change, keydown, paste, iOS autofill, fillAll.
   const {
     otp, refs, value: otpValue, isComplete,
@@ -93,13 +101,17 @@ const ValidateOTP = ({ onClose, onSuccess, onLogout, isReactivationFlow = false,
 
     try {
       const userEmail = userEmailProp || storage.get('userEmail');
-      if (!userEmail) {
-        setError('User email not found. Please login again.');
+      const userId = userIdProp
+        || storage.get('userId')
+        || storage.get('dbUserId')
+        || null;
+      if (!userEmail && !userId) {
+        setError('Session expired. Please login again.');
         return;
       }
 
       debugLog("\ud83d\udfe6 [ValidateOTP] Fetching user status from API...");
-      const data = await getStatus(userEmail);
+      const data = await getStatus(userEmail ? { email: userEmail } : { userId });
       if (isAppUpdateRequiredResponse(data)) return;
 
       debugLog("\ud83d\udfe6 [ValidateOTP] API Response:", data);
@@ -141,8 +153,12 @@ const ValidateOTP = ({ onClose, onSuccess, onLogout, isReactivationFlow = false,
 
     try {
       const userEmail = userEmailProp || storage.get('userEmail');
-      if (!userEmail) {
-        setError('User email not found. Please login again.');
+      const userId = userIdProp
+        || storage.get('userId')
+        || storage.get('dbUserId')
+        || null;
+      if (!userEmail && !userId) {
+        setError('Session expired. Please login again.');
         return;
       }
 
@@ -160,10 +176,10 @@ const ValidateOTP = ({ onClose, onSuccess, onLogout, isReactivationFlow = false,
       }
 
       debugLog("\ud83d\udfe6 [ValidateOTP] Sending validation request to API...");
-      await axios.post(
-        `${API_BASE}/api/upline/validate-otp`,
-        { otp: otpCode, email: userEmail }
-      );
+      const body = { otp: otpCode };
+      if (userEmail) body.email = userEmail;
+      else body.userId = userId;
+      await axios.post(`${API_BASE}/api/upline/validate-otp`, body);
 
       debugLog("\u2705 [ValidateOTP] OTP verified successfully!");
       setSuccess('Verified!');

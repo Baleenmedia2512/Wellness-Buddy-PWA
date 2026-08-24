@@ -215,12 +215,26 @@ export function buildAnalysisFromManualFood(m) {
     return item;
   };
 
+  const mealKind = typeof m.mealKind === 'string' && m.mealKind.trim()
+    ? m.mealKind.trim()
+    : undefined;
+  const intakeSlot = typeof m.intakeSlot === 'string' && m.intakeSlot.trim()
+    ? m.intakeSlot.trim()
+    : undefined;
+
+  const withMeta = (base) => {
+    const out = { ...base };
+    if (mealKind) out.mealKind = mealKind;
+    if (intakeSlot) out.intakeSlot = intakeSlot;
+    return out;
+  };
+
   if (m.isPlate && Array.isArray(m.items)) {
     const foods = m.items.map(toItem);
     const total = m.total && Object.keys(pickNutrition(m.total)).length > 0
       ? pickNutrition(m.total)
       : sumNutrition(foods.map((f) => f.nutrition));
-    return { foods, total, confidence: 'high' };
+    return withMeta({ foods, total, confidence: 'high' });
   }
 
   const item = toItem({
@@ -235,5 +249,5 @@ export function buildAnalysisFromManualFood(m) {
     portion: m.portion,
     weight_g: m.weight_g,
   });
-  return { foods: [item], total: item.nutrition, confidence: 'high' };
+  return withMeta({ foods: [item], total: item.nutrition, confidence: 'high' });
 }

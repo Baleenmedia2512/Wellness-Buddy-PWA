@@ -135,16 +135,7 @@ const ImageUpload = forwardRef(
           try { onCameraStateChange?.('closed', { source, hadResult: false }); } catch (_) {}
           return;
         }
-        if (file.size > 10 * 1024 * 1024) {
-          setAlertModal({
-            isOpen: true,
-            title: "File Too Large",
-            message: "Image size should be less than 10MB",
-            type: "error",
-          });
-          try { onCameraStateChange?.('closed', { source, hadResult: false }); } catch (_) {}
-          return;
-        }
+        // No pick-time size cap — App.js compresses before upload.
 
         // 🚨 VALIDATE IMAGE FRESHNESS (Prevent proxy/old images)
         if (imageType === "education") {
