@@ -10,11 +10,9 @@ import CropOverlay from './shared/CropOverlay';
 import UserProfileHeader from './profile/UserProfileHeader';
 import UserProfileBody from './profile/UserProfileBody';
 import UserProfileFooter from './profile/UserProfileFooter';
-import useTransformationPhotos from '../hooks/useTransformationPhotos';
 
 const UserProfileModal = ({ isOpen, onClose, user, userRole = 'user', onProfileUpdate }) => {
   const form = useProfileForm();
-  const transformationPhotos = useTransformationPhotos();
   const [profileImagePreview, setProfileImagePreview] = useState(null);
   const [profileImage, setProfileImage] = useState(null);
   const [latestWeight, setLatestWeight] = useState(null);
@@ -66,10 +64,6 @@ const UserProfileModal = ({ isOpen, onClose, user, userRole = 'user', onProfileU
         setInitialWeight(data.initialWeight != null ? parseFloat(data.initialWeight) : null);
         setInitialWeightDate(data.initialWeightDate || null);
         if (data.profileImage) setProfileImagePreview(data.profileImage);
-        transformationPhotos.loadFromProfile(
-          data.transformationPhotos,
-          data.transformationPhotoHistory,
-        );
       }
     } catch (e) { setError(e.message || 'Failed to load profile.'); }
     finally { setIsLoading(false); }
@@ -99,7 +93,6 @@ const UserProfileModal = ({ isOpen, onClose, user, userRole = 'user', onProfileU
       if (err) { setError(err); return; }
       const data = await saveProfile(form.payload(user.email, {
         ...(profileImage ? { profileImage } : {}),
-        ...transformationPhotos.payloadExtras(),
       }));
       onProfileUpdate?.({
         name: form.name,
@@ -116,7 +109,7 @@ const UserProfileModal = ({ isOpen, onClose, user, userRole = 'user', onProfileU
       setHasSaved(true); setProfileImage(null);
     } catch (e) { setError(e.message || 'Failed to save profile'); }
     finally { setIsSaving(false); }
-  }, [form, profileImage, profileImagePreview, user, loadProfile, onProfileUpdate, transformationPhotos]);
+  }, [form, profileImage, profileImagePreview, user, loadProfile, onProfileUpdate]);
 
   handleSaveRef.current = handleSave;
 
@@ -149,18 +142,6 @@ const UserProfileModal = ({ isOpen, onClose, user, userRole = 'user', onProfileU
           latestWeight={latestWeight} initialWeight={initialWeight}
           initialWeightDate={initialWeightDate}
           error={error} successMessage={successMessage}
-          transformationPhotos={{
-            previews: transformationPhotos.previews,
-            history: transformationPhotos.history,
-            onSelectFile: async (slot, file) => {
-              try {
-                await transformationPhotos.setSlotFromFile(slot, file);
-              } catch (e) {
-                setError(e.message || 'Failed to prepare photo.');
-              }
-            },
-            disabled: isSaving,
-          }}
         />
         {!isLoading && (
           <UserProfileFooter isSaving={isSaving} hasSaved={hasSaved} disabled={saveDisabled}

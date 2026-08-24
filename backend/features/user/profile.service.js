@@ -27,15 +27,6 @@ import { deriveWeightGoalMode } from '../../utils/weightValidation.js';
 import { resolveProfileTimezone } from './domain/profileTimezone.js';
 import { mapTeamRowToProfileBodyMetrics, mergeProfileBodyMetrics, mapCardToProfileBodyMetrics } from './domain/profileBodyMetrics.rules.js';
 import { mapTeamRecoveredHealthIssues } from './domain/recoveredHealthIssues.rules.js';
-import {
-  hasTransformationPhotoUpdates,
-  mapTransformationPhotos,
-  mergeTransformationPhotos,
-  buildTransformationPhotoInserts,
-  mapLatestTransformationPhotosFromRecords,
-  mapTransformationPhotoRecord,
-} from './domain/transformationPhotos.rules.js';
-import * as transformationPhotosRepo from './transformationPhotos.repository.js';
 import { findLatestLinkedBodyMetricsCard } from '../body-parameters-card/data/card.repo.js';
 import { isEnabled } from '../../shared/lib/feature-flags.js';
 import { isConsentRecorded } from '../auth/domain/consent.rules.js';
@@ -58,13 +49,12 @@ export async function getProfile({ email, userId = null }) {
     : await repo.getProfile(email);
   if (!user) return notFound();
 
-  const [latestWeight, initialWeightRow, latestBodyMetricsCard, sponsorIdeal, latestWeightBodyFatResolved, transformationPhotoRows] = await Promise.all([
+  const [latestWeight, initialWeightRow, latestBodyMetricsCard, sponsorIdeal, latestWeightBodyFatResolved] = await Promise.all([
     repo.getLatestWeight(user.UserId),
     repo.getInitialWeight(user.UserId),
     findLatestLinkedBodyMetricsCard(user.UserId),
     resolveSponsorAndIdealCoach(user.UserId, { viewerUserId: user.UserId }),
     repo.getLatestWeightBodyFat(user.UserId),
-    transformationPhotosRepo.listByUserId(user.UserId),
   ]);
   const cardMetrics = mapCardToProfileBodyMetrics(latestBodyMetricsCard);
   const teamMetrics = mapTeamRowToProfileBodyMetrics(user);
@@ -187,20 +177,6 @@ export async function getProfile({ email, userId = null }) {
         weightRecordDate: latestWeight?.CreatedAt || null,
         bodyMetrics,
         recoveredHealthIssues: mapTeamRecoveredHealthIssues(user.recovered_health_issues),
-        transformationPhotos: (() => {
-          const fromHistory = mapLatestTransformationPhotosFromRecords(transformationPhotoRows);
-          const fromJson = mapTransformationPhotos(user.transformation_photos);
-          return {
-            front: fromHistory.front || fromJson.front,
-            left: fromHistory.left || fromJson.left,
-            right: fromHistory.right || fromJson.right,
-          };
-        })(),
-        transformationPhotoHistory: transformationPhotoRows
-          .slice()
-          .reverse()
-          .map(mapTransformationPhotoRecord)
-          .filter(Boolean),
       },
     },
   };
@@ -213,7 +189,6 @@ export async function getProfile({ email, userId = null }) {
 function buildProfileUpdate({
   name, height, dietType, phoneNumber, profileImage, gender, weightGoalMode, physicalActivityLevel, communityId, timezoneIana,
   age, visceralFat, bodyAge, chestCm, waistCm, hipCm, recoveredHealthIssues,
-  transformationPhotos, existingTransformationPhotos,
 }) {
   const updateData = {};
   let cleanedPhoneNumber;
@@ -250,42 +225,7 @@ function buildProfileUpdate({
       ? recoveredHealthIssues
       : [];
   }
-  if (hasTransformationPhotoUpdates(transformationPhotos)) {
-    updateData.transformation_photos = mergeTransformationPhotos(
-      existingTransformationPhotos,
-      transformationPhotos,
-    );
-  }
   return { updateData, cleanedPhoneNumber };
-}
-
-function resolveTransformationWeightSnapshot(latestWeightRow, latestBodyMetricsCard) {
-  const fromRecord = latestWeightRow?.Weight != null ? parseFloat(latestWeightRow.Weight) : null;
-  if (Number.isFinite(fromRecord)) return fromRecord;
-  const cardWeight = latestBodyMetricsCard?.weight_kg != null
-    ? parseFloat(latestBodyMetricsCard.weight_kg)
-    : null;
-  return Number.isFinite(cardWeight) ? cardWeight : null;
-}
-
-async function persistTransformationPhotoHistory(userId, transformationPhotos, weightKg) {
-  const inserts = buildTransformationPhotoInserts(transformationPhotos, weightKg);
-  for (const item of inserts) {
-    const result = await transformationPhotosRepo.insertIfNew({
-      userId,
-      imageType: item.imageType,
-      imageUrl: item.imageUrl,
-      weightKg: item.weightKg,
-      contentHash: item.contentHash,
-    });
-    logger.info('[profile/update] transformation photo record', {
-      userId,
-      imageType: item.imageType,
-      weightKg: item.weightKg,
-      inserted: result.inserted,
-      skipped: result.skipped,
-    });
-  }
 }
 
 function verifySaved(verifyRow, { cleanedPhoneNumber, height, dietType, gender, updateData, communityId, timezoneIana }) {
@@ -319,7 +259,7 @@ export async function updateProfile(input) {
   const {
     email, name, height, bmr, dietType, profileImage, phoneNumber, gender,
     weightGoalMode, physicalActivityLevel, communityId, timezoneIana, bodyFat,
-    currentWeight, transformationPhotos,
+    currentWeight,
   } = input;
 
   logger.info('[profile/update] incoming request', {
@@ -336,32 +276,15 @@ export async function updateProfile(input) {
     });
   }
 
-  let user;
-  try {
-    user = await repo.findByEmail(email, 'UserId, transformation_photos');
-  } catch (err) {
-    const msg = String(err?.message || err || '');
-    if (!/transformation_photos/i.test(msg)) throw err;
-    user = await repo.findByEmail(email, 'UserId');
-  }
+  const user = await repo.findByEmail(email, 'UserId');
   if (!user) return notFound();
   const userId = user.UserId;
 
-  const { updateData, cleanedPhoneNumber } = buildProfileUpdate({
-    ...input,
-    existingTransformationPhotos: user.transformation_photos,
-  });
+  const { updateData, cleanedPhoneNumber } = buildProfileUpdate(input);
 
   let savedPhysicalActivityLevel = null;
   if (physicalActivityLevel != null && isValidPhysicalActivityLevel(physicalActivityLevel)) {
     savedPhysicalActivityLevel = physicalActivityLevel;
-  }
-
-  const transformationPhotosPatch = updateData.transformation_photos !== undefined
-    ? { transformation_photos: updateData.transformation_photos }
-    : null;
-  if (transformationPhotosPatch) {
-    delete updateData.transformation_photos;
   }
 
   let savedCommunityId;
@@ -478,22 +401,6 @@ export async function updateProfile(input) {
   } else if (latestWeightRow?.BodyFat != null) {
     const existing = parseFloat(latestWeightRow.BodyFat);
     if (hasValidBodyFatPercent(existing)) savedBodyFat = existing;
-  }
-
-  const snapshotWeightKg = resolveTransformationWeightSnapshot(latestWeightRow, latestBodyMetricsCard);
-  if (hasTransformationPhotoUpdates(transformationPhotos)) {
-    await persistTransformationPhotoHistory(userId, transformationPhotos, snapshotWeightKg);
-    if (transformationPhotosPatch) {
-      try {
-        await repo.updateUserById(userId, transformationPhotosPatch);
-      } catch (photoErr) {
-        const msg = String(photoErr?.message || photoErr || '');
-        if (!/transformation_photos|column/i.test(msg)) throw photoErr;
-        logger.warn('[profile/update] transformation_photos column missing; skipped latest-slot cache', {
-          userId,
-        });
-      }
-    }
   }
 
   let savedBmr = null;
