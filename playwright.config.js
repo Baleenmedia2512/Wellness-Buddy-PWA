@@ -69,12 +69,11 @@ module.exports = defineConfig({
   // REPORTERS
   // ============================================================
 
-  reporter: [
-    ['list'],
-    ['html', {
-      open: 'never',
-    }],
-  ],
+reporter: [
+  ["list"],
+  ["json", { outputFile: "test-results/results.json" }],
+  ["html", { outputFolder: "playwright-report", open: "never" }],
+],
 
 
   // ============================================================

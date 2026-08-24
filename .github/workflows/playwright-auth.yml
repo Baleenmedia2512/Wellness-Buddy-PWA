@@ -47,6 +47,8 @@ jobs:
         uses: actions/checkout@v4
 
 
+
+
       # ==========================================================
       # 2. NODE.JS
       # ==========================================================
@@ -405,10 +407,17 @@ jobs:
       # ==========================================================
 
       - name: Run Playwright Authentication Tests
+        run: npx playwright test tests/frontend/auth/login.spec.js
+
+      - name: Sync Playwright results to QA Dashboard
+        if: always()
+        shell: bash
+        env:
+          DASHBOARD_IMPORT_URL: ${{ secrets.DASHBOARD_IMPORT_URL }}
         run: |
 
           echo "=========================================="
-          echo "Running Authentication Tests"
+          echo "Syncing Playwright results to QA Dashboard"
           echo "=========================================="
 
           npx playwright test \
@@ -483,35 +492,21 @@ jobs:
         if: always()
         shell: bash
         run: |
-
           echo ""
           echo "=========================================="
           echo "BACKEND LOG"
           echo "=========================================="
-
           cat backend.log || true
-
-
-      # ==========================================================
-      # 23. FRONTEND LOGS
-      # ==========================================================
 
       - name: Show Frontend Logs
         if: always()
         shell: bash
         run: |
-
           echo ""
           echo "=========================================="
           echo "FRONTEND LOG"
           echo "=========================================="
-
           cat frontend.log || true
-
-
-      # ==========================================================
-      # 24. UPLOAD PLAYWRIGHT REPORT
-      # ==========================================================
 
       - name: Upload Playwright Report
         if: always()
@@ -520,11 +515,6 @@ jobs:
           name: playwright-report
           path: playwright-report/
           retention-days: 7
-
-
-      # ==========================================================
-      # 25. UPLOAD FAILED TEST RESULTS
-      # ==========================================================
 
       - name: Upload Test Results
         if: failure()
