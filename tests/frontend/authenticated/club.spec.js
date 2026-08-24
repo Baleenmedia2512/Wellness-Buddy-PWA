@@ -933,4 +933,383 @@ test.describe('Club Module (Nutrition Centers)', () => {
     // Verify it's deleted from the Club page map/list
     await expect(page.getByRole('heading', { name: 'Super Wellness Club' })).not.toBeVisible();
   });
+
+  test('CLUB-017 Attendee List Modal Verification', async ({ page }) => {
+    page.on('console', msg => console.log('BROWSER:', msg.text()));
+    page.on('request', request => console.log('>>', request.method(), request.url()));
+    page.on('requestfinished', async (request) => {
+      const response = await request.response();
+      console.log('<<', request.method(), request.url(), response ? response.status() : 'NO_RESPONSE');
+    });
+    page.on('requestfailed', request => console.log('XX', request.method(), request.url(), request.failure()?.errorText));
+
+    // Mock API responses for centers and attendees
+    await page.route('**/api/nutrition-centers/**', async (route) => {
+      const url = new URL(route.request().url());
+      
+      if (route.request().method() === 'OPTIONS') {
+        return route.fulfill({
+          status: 200,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'POST, GET, OPTIONS, DELETE',
+            'Access-Control-Allow-Headers': '*'
+          }
+        });
+      }
+
+      if (url.pathname.includes('/attendees')) {
+        return route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          headers: { 'Access-Control-Allow-Origin': '*' },
+          body: JSON.stringify({
+            success: true,
+            data: [
+              {
+                id: 101,
+                userId: 202,
+                userName: 'BALAJI SEKAR',
+                centerId: 1,
+                logType: 'Education',
+                timestamp: new Date().toISOString()
+              },
+              {
+                id: 102,
+                userId: 202,
+                userName: 'BALAJI SEKAR',
+                centerId: 1,
+                logType: 'Weight',
+                timestamp: new Date(Date.now() - 3600000).toISOString() // 1 hour ago
+              },
+              {
+                id: 103,
+                userId: 203,
+                userName: 'Leenah Grace',
+                centerId: 1,
+                logType: 'Weight',
+                timestamp: new Date().toISOString()
+              }
+            ]
+          })
+        });
+      }
+
+      if (route.request().method() === 'GET') {
+        // Return mock centers with attendance
+        return route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          headers: { 'Access-Control-Allow-Origin': '*' },
+          body: JSON.stringify({ success: true, data: MOCK_CENTERS })
+        });
+      }
+      
+      return route.fallback();
+    });
+
+    // 1. Navigate to Club Page
+    await page.goto('/');
+    const clubTab = page.getByRole('button', { name: 'Physical Club' });
+    await expect(clubTab).toBeVisible();
+    await clubTab.evaluate((element) => element.dispatchEvent(new Event('click', { bubbles: true })));
+    await page.waitForTimeout(1000);
+
+    // 2. Locate center card
+    const firstCard = page.getByRole('heading', { name: 'Super Wellness Club' }).locator('xpath=ancestor::div[contains(@class, "bg-white")]').first();
+    await expect(firstCard).toBeVisible();
+
+    // 3. Click the 'attended' pill on the card (e.g., '5 attended')
+    const attendedBtn = firstCard.getByRole('button', { name: /attendees/i });
+    await expect(attendedBtn).toBeVisible();
+    await attendedBtn.click({ force: true });
+
+    // 4. Wait for modal to open and check title
+    const modalTitle = page.getByRole('heading', { name: 'Super Wellness Club' }).last();
+    await expect(modalTitle).toBeVisible();
+    await expect(page.getByText('Today Attendees')).toBeVisible();
+
+    // 5. Verify attendees list appears
+    const attendeeBalaji = page.getByRole('button', { name: /BALAJI SEKAR/i });
+    try {
+      await expect(attendeeBalaji).toBeVisible({ timeout: 5000 });
+    } catch (e) {
+      console.log('FAILED TO FIND BALAJI SEKAR. PAGE HTML:');
+      console.log(await page.content());
+      throw e;
+    }
+    const attendeeLeenah = page.getByRole('button', { name: /Leenah Grace/i });
+    await expect(attendeeLeenah).toBeVisible();
+
+    // 6. Expand attendee details (toggle user logs)
+    await attendeeBalaji.click({ force: true });
+
+    // 7. Verify log entries are visible
+    await expect(page.getByText('Education', { exact: true })).toBeVisible();
+    await expect(page.getByText('Weight', { exact: true }).first()).toBeVisible();
+
+    // 8. Close modal
+    const closeBtn = page.getByRole('button', { name: 'Close' });
+    await expect(closeBtn).toBeVisible();
+    await closeBtn.click({ force: true });
+
+    // 9. Verify modal closed
+    await expect(page.getByText('Today Attendees')).not.toBeVisible();
+  });
+
+  test('CLUB-018 Search Center Verification', async ({ page }) => {
+    page.on('console', msg => console.log('BROWSER:', msg.text()));
+    page.on('request', request => console.log('>>', request.method(), request.url()));
+    page.on('requestfinished', async (request) => {
+      const response = await request.response();
+      console.log('<<', request.method(), request.url(), response ? response.status() : 'NO_RESPONSE');
+    });
+    page.on('requestfailed', request => console.log('XX', request.method(), request.url(), request.failure()?.errorText));
+
+    // 1. Intercept search API calls
+    await page.route('**/api/nutrition-centers*', async (route) => {
+      const url = new URL(route.request().url());
+      
+      // Fallback for other endpoints under nutrition-centers
+      if (url.pathname.includes('/attendees') || url.pathname.includes('/stats')) {
+        return route.fallback();
+      }
+
+      if (route.request().method() === 'OPTIONS') {
+        return route.fulfill({
+          status: 200,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'POST, GET, OPTIONS, DELETE',
+            'Access-Control-Allow-Headers': '*'
+          }
+        });
+      }
+
+      const search = url.searchParams.get('search') || '';
+
+      if (search.toLowerCase() === 'wellness') {
+        return route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          headers: { 'Access-Control-Allow-Origin': '*' },
+          body: JSON.stringify({
+            success: true,
+            data: [
+              {
+                id: 999,
+                center_name: 'wellness',
+                ownerName: 'Nitheeshlingam',
+                owner_user_id: 111,
+                owner_phone: '+919876543210',
+                todayAttendance: 3,
+                latitude: 12.9716,
+                longitude: 77.5946,
+              }
+            ],
+            pagination: { totalRecords: 1, totalAttendance: 3 }
+          })
+        });
+      } else if (search.toLowerCase() === 'wrongname') {
+        return route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          headers: { 'Access-Control-Allow-Origin': '*' },
+          body: JSON.stringify({
+            success: true,
+            data: [],
+            pagination: { totalRecords: 0, totalAttendance: 0 }
+          })
+        });
+      }
+
+      // Default empty list or mock centers for initial load
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ 
+          success: true, 
+          data: MOCK_CENTERS
+        })
+      });
+    });
+
+    // 2. Navigate to club module
+    await page.goto('/');
+    const clubTab = page.getByRole('button', { name: 'Physical Club' });
+    await expect(clubTab).toBeVisible();
+    await clubTab.evaluate((element) => element.dispatchEvent(new Event('click', { bubbles: true })));
+    await page.waitForTimeout(1000);
+
+    // Wait for the centers list to be loaded initially
+    await expect(page.getByRole('heading', { name: 'Super Wellness Club' }).first()).toBeVisible();
+
+    // 3. Search for a valid center name
+    const searchInput = page.getByPlaceholder('Search club or owner name...');
+    await expect(searchInput).toBeVisible();
+    await searchInput.fill('wellness');
+
+    // 4. Verify search results are displayed
+    const wellnessCard = page.getByRole('heading', { name: 'wellness', exact: true }).first();
+    await expect(wellnessCard).toBeVisible();
+    await expect(page.getByText('Nitheeshlingam').first()).toBeVisible();
+    await expect(page.getByRole('button', { name: /3 attendees/i }).first()).toBeVisible();
+
+    // 5. Search for a non-existent center name
+    await searchInput.fill('wrongname');
+    
+    // 6. Verify empty state message
+    const emptyMessage = page.getByText('No clubs match your search');
+    await expect(emptyMessage).toBeVisible();
+  });
+
+  test('CLUB-019 Center Edit Submission Flow', async ({ page }) => {
+    // Override PUT request
+    await page.route('**/api/nutrition-centers/*', async (route) => {
+      if (route.request().method() === 'PUT') {
+        return route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ success: true, message: 'Center updated successfully', data: {} })
+        });
+      }
+      return route.fallback();
+    });
+
+    await page.goto('/');
+    const clubTab = page.getByRole('button', { name: 'Physical Club' });
+    await expect(clubTab).toBeVisible();
+    await clubTab.click();
+    await page.waitForTimeout(2000);
+
+    await page.getByRole('button', { name: 'My Club' }).click();
+    await page.waitForTimeout(1000);
+
+    const firstCard = page.getByRole('heading', { name: 'Super Wellness Club' }).locator('xpath=ancestor::div[contains(@class, "bg-white")]').first();
+    const editBtn = firstCard.getByRole('button', { name: /Edit/i });
+    await expect(editBtn).toBeVisible();
+    await editBtn.click({ force: true });
+
+    // Wait for the form to appear
+    await expect(page.getByRole('heading', { name: /Edit Centre Details/i })).toBeVisible();
+
+    // Fill in a new value
+    const centerNameInput = page.getByPlaceholder('e.g., Downtown Wellness Hub').first();
+    await centerNameInput.fill('Updated Wellness Club', { force: true });
+
+    // Submit the form
+    const saveBtn = page.getByRole('button', { name: 'Save' });
+    await saveBtn.click();
+
+    // Verify it returned to the map (edit mode is closed)
+    await expect(page.getByRole('heading', { name: /Edit Centre Details/i })).not.toBeVisible();
+  });
+
+  test('CLUB-020 Center Edit Cancellation', async ({ page }) => {
+    await page.goto('/');
+    const clubTab = page.getByRole('button', { name: 'Physical Club' });
+    await expect(clubTab).toBeVisible();
+    await clubTab.click();
+    await page.waitForTimeout(2000);
+
+    await page.getByRole('button', { name: 'My Club' }).click();
+    await page.waitForTimeout(1000);
+
+    const firstCard = page.getByRole('heading', { name: 'Super Wellness Club' }).locator('xpath=ancestor::div[contains(@class, "bg-white")]').first();
+    const editBtn = firstCard.getByRole('button', { name: /Edit/i });
+    await expect(editBtn).toBeVisible();
+    await editBtn.click({ force: true });
+
+    await expect(page.getByRole('heading', { name: /Edit Centre Details/i })).toBeVisible();
+
+    // Click cancel
+    const cancelBtn = page.getByRole('button', { name: 'Cancel', exact: true });
+    await expect(cancelBtn).toBeVisible();
+    await cancelBtn.click();
+
+    // Verify we are back to 'New Centre Details' or at least Edit Centre Details is hidden
+    await expect(page.getByRole('heading', { name: /Edit Centre Details/i })).not.toBeVisible();
+  });
+
+  test('CLUB-021 "My Centres" List Visibility', async ({ page }) => {
+    await page.goto('/');
+    const clubTab = page.getByRole('button', { name: 'Physical Club' });
+    await expect(clubTab).toBeVisible();
+    await clubTab.evaluate((element) => element.dispatchEvent(new Event('click', { bubbles: true })));
+    await page.waitForTimeout(2000);
+    
+    // Open registration normally first
+    const fab = page.getByRole('button', { name: /Register new nutrition centre/i });
+    await fab.click({ force: true });
+    
+    // My Centres should be visible
+    const myCentresHeading = page.getByRole('heading', { name: /My Registered Centres/i });
+    await expect(myCentresHeading).toBeVisible();
+
+    // Go back using the visible back button
+    const backBtn = page.locator('button[aria-label="Go back"]').filter({ hasVisibleText: false }); 
+    // We just filter by visible state, but hasVisibleText: false is wrong.
+    // Let's use standard visible filter:
+    const visibleBackBtn = page.locator('button[aria-label="Go back"]').locator('visible=true').first();
+    await visibleBackBtn.click({ force: true });
+    
+    // Wait for the modal to disappear
+    await expect(page.getByRole('heading', { name: 'Register Nutrition Centre' })).not.toBeVisible();
+    await page.waitForTimeout(1000);
+
+    // Go to Edit mode
+    await page.getByRole('button', { name: 'My Club' }).click();
+    await page.waitForTimeout(1000);
+    const firstCard = page.getByRole('heading', { name: 'Super Wellness Club' }).locator('xpath=ancestor::div[contains(@class, "bg-white")]').first();
+    const editBtn = firstCard.getByRole('button', { name: /Edit/i });
+    await editBtn.click({ force: true });
+    await page.waitForTimeout(500);
+
+    // My Centres should NOT be visible
+    await expect(page.getByRole('heading', { name: /My Registered Centres/i })).not.toBeVisible();
+  });
+
+  test('CLUB-022 Attendee Modal Empty State Verification', async ({ page }) => {
+    // Mock the attendee list to return empty
+    await page.route('**/api/nutrition-centers/*/attendees*', async (route) => {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ success: true, data: [] })
+      });
+    });
+
+    await page.goto('/');
+    const clubTab = page.getByRole('button', { name: 'Physical Club' });
+    await expect(clubTab).toBeVisible();
+    await clubTab.click();
+    await page.waitForTimeout(2000);
+
+    const firstCard = page.getByRole('heading', { name: 'Super Wellness Club' }).locator('xpath=ancestor::div[contains(@class, "bg-white")]').first();
+    const attendedBtn = firstCard.getByRole('button', { name: /attendees?/i }).first();
+    await expect(attendedBtn).toBeVisible();
+    await attendedBtn.click();
+
+    // Verify empty state
+    await expect(page.getByText('No attendees yet', { exact: false })).toBeVisible();
+    
+    // Close modal
+    const closeBtn = page.getByLabel('Close modal').or(page.getByRole('button', { name: 'Close' })).first();
+    await closeBtn.click();
+  });
+
+  test('CLUB-023 Call Owner Link Validation', async ({ page }) => {
+    await page.goto('/');
+    const clubTab = page.getByRole('button', { name: 'Physical Club' });
+    await expect(clubTab).toBeVisible();
+    await clubTab.click();
+    await page.waitForTimeout(2000);
+
+    const firstCard = page.getByRole('heading', { name: 'Super Wellness Club' }).locator('xpath=ancestor::div[contains(@class, "bg-white")]').first();
+    
+    // Find the link with href tel:
+    const callLink = firstCard.locator('a[href^="tel:"]').first();
+    await expect(callLink).toBeVisible();
+    await expect(callLink).toHaveAttribute('href', 'tel:+919876543210');
+  });
 });
