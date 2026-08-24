@@ -97,6 +97,8 @@ export async function findByUsername(username) {
 export async function getProfile(email) {
   // Consent / optional body-metric columns are optional until migrations are applied.
   // Body fat is stored on weight_records_table, not team_table.
+  const withPhotos =
+    '"UserId", "UserName", "Email", "Height", "DietType", "ProfileImage", "CoachId", "PhoneNumber", "Gender", "Bmr", profile_pic_snooze, "WeightGoalMode", "PhysicalActivityLevel", "CommunityId", timezone_iana, "ConsentAcceptedAt", "ConsentVersion", "Age", "VisceralFat", "BodyAge", "ChestCm", "WaistCm", "HipCm", recovered_health_issues, transformation_photos';
   const fullCols =
     '"UserId", "UserName", "Email", "Height", "DietType", "ProfileImage", "CoachId", "PhoneNumber", "Gender", "Bmr", profile_pic_snooze, "WeightGoalMode", "PhysicalActivityLevel", "CommunityId", timezone_iana, "ConsentAcceptedAt", "ConsentVersion", "Age", "VisceralFat", "BodyAge", "ChestCm", "WaistCm", "HipCm", recovered_health_issues';
   const withMetricsNoHealth =
@@ -108,6 +110,16 @@ export async function getProfile(email) {
 
   async function load(cols) {
     return findByEmail(email, cols);
+  }
+
+  try {
+    return await load(withPhotos);
+  } catch (errPhotos) {
+    const msgPhotos = String(errPhotos?.message || errPhotos || '');
+    if (!/column/i.test(msgPhotos)) throw errPhotos;
+    if (!/transformation_photos/i.test(msgPhotos)) {
+      // Fall through to the existing column-missing ladder using this error.
+    }
   }
 
   try {
@@ -144,6 +156,8 @@ export async function getProfile(email) {
 
 /** Same columns as getProfile, resolved by UserId (phone / pre-email onboarding). */
 export async function getProfileByUserId(userId) {
+  const withPhotos =
+    '"UserId", "UserName", "Email", "Height", "DietType", "ProfileImage", "CoachId", "PhoneNumber", "Gender", "Bmr", profile_pic_snooze, "WeightGoalMode", "PhysicalActivityLevel", "CommunityId", timezone_iana, "ConsentAcceptedAt", "ConsentVersion", "Age", "VisceralFat", "BodyAge", "ChestCm", "WaistCm", "HipCm", recovered_health_issues, transformation_photos';
   const fullCols =
     '"UserId", "UserName", "Email", "Height", "DietType", "ProfileImage", "CoachId", "PhoneNumber", "Gender", "Bmr", profile_pic_snooze, "WeightGoalMode", "PhysicalActivityLevel", "CommunityId", timezone_iana, "ConsentAcceptedAt", "ConsentVersion", "Age", "VisceralFat", "BodyAge", "ChestCm", "WaistCm", "HipCm", recovered_health_issues';
   const withMetricsNoHealth =
@@ -155,6 +169,16 @@ export async function getProfileByUserId(userId) {
 
   async function load(cols) {
     return findByUserId(userId, cols);
+  }
+
+  try {
+    return await load(withPhotos);
+  } catch (errPhotos) {
+    const msgPhotos = String(errPhotos?.message || errPhotos || '');
+    if (!/column/i.test(msgPhotos)) throw errPhotos;
+    if (!/transformation_photos/i.test(msgPhotos)) {
+      // Fall through to the existing column-missing ladder using this error.
+    }
   }
 
   try {
@@ -518,6 +542,7 @@ export async function purgeUserData(userId, normalizedEmail) {
     // Null-out ownership before team_table row is removed — prevents the FK
     // constraint violation on nutrition_centers_table.owner_user_id.
     supabase.from('nutrition_centers_table').update({ owner_user_id: null }).eq('owner_user_id', userId),
+    supabase.from('profile_transformation_photos_table').delete().eq('user_id', userId),
   ]);
   return results;
 }

@@ -6,8 +6,12 @@ import UserProfileBodyMetrics from './UserProfileBodyMetrics';
 import IdealWeightCards from './IdealWeightCards';
 import DietDropdown from './DietDropdown';
 import HealthIssuesFilterSelect from '../../../body-parameters-card/components/HealthIssuesFilterSelect';
+import TransformationPhotosSection from './TransformationPhotosSection';
 
-const UserProfileBody = ({ isLoading, form, email, latestWeight, initialWeight, initialWeightDate, error, successMessage }) => (
+const UserProfileBody = ({
+  isLoading, form, email, latestWeight, initialWeight, initialWeightDate,
+  error, successMessage, transformationPhotos,
+}) => (
   <div className="p-6 space-y-5">
     {isLoading ? (
       <div className="flex items-center justify-center py-12">
@@ -46,6 +50,14 @@ const UserProfileBody = ({ isLoading, form, email, latestWeight, initialWeight, 
           initialWeight={initialWeight}
           initialWeightDate={initialWeightDate}
         />
+        {transformationPhotos && (
+          <TransformationPhotosSection
+            previews={transformationPhotos.previews}
+            onSelectFile={transformationPhotos.onSelectFile}
+            history={transformationPhotos.history}
+            disabled={transformationPhotos.disabled}
+          />
+        )}
         <DietDropdown value={form.dietType} onChange={form.setDietType} />
         {error && <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm font-medium">{error}</div>}
         {successMessage && (

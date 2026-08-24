@@ -69,3 +69,27 @@ describe('validateUpdateProfile optional body metrics', () => {
     );
   });
 });
+
+describe('validateUpdateProfile optional transformation photos', () => {
+  it('omits photos when the key is absent so save still works', () => {
+    const parsed = validateUpdateProfile(baseBody);
+    assert.equal(parsed.transformationPhotos, undefined);
+  });
+
+  it('accepts a single optional slot', () => {
+    const parsed = validateUpdateProfile({
+      ...baseBody,
+      transformationPhotos: { front: 'data:image/jpeg;base64,abc' },
+    });
+    assert.equal(parsed.transformationPhotos.front, 'data:image/jpeg;base64,abc');
+    assert.equal(parsed.transformationPhotos.left, undefined);
+  });
+
+  it('treats an empty object as no photo update', () => {
+    const parsed = validateUpdateProfile({
+      ...baseBody,
+      transformationPhotos: {},
+    });
+    assert.equal(parsed.transformationPhotos, undefined);
+  });
+});

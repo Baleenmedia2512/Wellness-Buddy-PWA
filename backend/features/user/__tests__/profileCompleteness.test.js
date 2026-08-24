@@ -99,6 +99,16 @@ describe('isOnboardingIdentityComplete', () => {
       false,
     );
   });
+
+  it('does not treat a BCM-style name as replacing a missing team UserName', () => {
+    assert.equal(
+      isOnboardingIdentityComplete({
+        userName: 'user_919876543210',
+        phoneNumber: '+919876543210',
+      }),
+      false,
+    );
+  });
 });
 
 describe('isProfileComplete', () => {
