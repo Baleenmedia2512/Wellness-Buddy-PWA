@@ -1,9 +1,8 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo } from 'react';
 import {
   DEFAULT_TRANSFORMATION_COMPARE_TYPE,
   TRANSFORMATION_COMPARE_TYPES,
   formatTransformationRecordWeight,
-  historyWithLatestSlotFallback,
   selectTransformationBeforeAfter,
 } from '../../domain/transformationBeforeAfter';
 
@@ -27,29 +26,28 @@ const WeightLine = ({ kg }) => (
   </p>
 );
 
-const TransformationBeforeAfter = ({ history = [], latestSlots = null }) => {
-  const [selectedType, setSelectedType] = useState(DEFAULT_TRANSFORMATION_COMPARE_TYPE);
-  const records = useMemo(
-    () => historyWithLatestSlotFallback(history, latestSlots),
-    [history, latestSlots],
-  );
+const TransformationBeforeAfter = ({
+  history = [],
+  selectedType = DEFAULT_TRANSFORMATION_COMPARE_TYPE,
+  onSelectType,
+}) => {
   const pair = useMemo(
-    () => selectTransformationBeforeAfter(records, selectedType),
-    [records, selectedType],
+    () => selectTransformationBeforeAfter(history, selectedType),
+    [history, selectedType],
   );
   const beforeKg = formatTransformationRecordWeight(pair.before);
   const afterKg = formatTransformationRecordWeight(pair.after);
   const typeLabel = TAB_LABELS[selectedType];
 
   return (
-    <div className="space-y-3 pt-2 border-t border-gray-100">
+    <div className="space-y-3 pt-2">
       <p className="text-sm font-semibold text-gray-800">Before vs After</p>
       <div className="grid grid-cols-3 gap-1 rounded-xl bg-gray-100 p-1">
         {TRANSFORMATION_COMPARE_TYPES.map((type) => (
           <button
             key={type}
             type="button"
-            onClick={() => setSelectedType(type)}
+            onClick={() => onSelectType?.(type)}
             className={`py-1.5 rounded-lg text-xs font-semibold ${
               selectedType === type
                 ? 'bg-white text-green-700 shadow-sm'

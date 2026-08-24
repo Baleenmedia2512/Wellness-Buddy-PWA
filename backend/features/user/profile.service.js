@@ -272,7 +272,7 @@ export async function updateProfile(input) {
   const {
     email, name, height, bmr, dietType, profileImage, phoneNumber, gender,
     weightGoalMode, physicalActivityLevel, communityId, timezoneIana, bodyFat,
-    currentWeight,
+    currentWeight, transformationPhotos,
   } = input;
 
   logger.info('[profile/update] incoming request', {
@@ -289,15 +289,32 @@ export async function updateProfile(input) {
     });
   }
 
-  const user = await repo.findByEmail(email, 'UserId');
+  let user;
+  try {
+    user = await repo.findByEmail(email, 'UserId, transformation_photos');
+  } catch (err) {
+    const msg = String(err?.message || err || '');
+    if (!/transformation_photos/i.test(msg)) throw err;
+    user = await repo.findByEmail(email, 'UserId');
+  }
   if (!user) return notFound();
   const userId = user.UserId;
 
-  const { updateData, cleanedPhoneNumber } = buildProfileUpdate(input);
+  const { updateData, cleanedPhoneNumber } = buildProfileUpdate({
+    ...input,
+    existingTransformationPhotos: user.transformation_photos,
+  });
 
   let savedPhysicalActivityLevel = null;
   if (physicalActivityLevel != null && isValidPhysicalActivityLevel(physicalActivityLevel)) {
     savedPhysicalActivityLevel = physicalActivityLevel;
+  }
+
+  const transformationPhotosPatch = updateData.transformation_photos !== undefined
+    ? { transformation_photos: updateData.transformation_photos }
+    : null;
+  if (transformationPhotosPatch) {
+    delete updateData.transformation_photos;
   }
 
   let savedCommunityId;
@@ -313,6 +330,16 @@ export async function updateProfile(input) {
     if (!verifyRow) throw new Error(`Unable to verify profile update for UserId ${userId}`);
     verifySaved(verifyRow, { cleanedPhoneNumber, height, dietType, gender, updateData, communityId, timezoneIana });
     if (communityId !== undefined) savedCommunityId = communityId;
+  }
+
+  if (transformationPhotosPatch) {
+    try {
+      await repo.updateUserById(userId, transformationPhotosPatch);
+    } catch (photoErr) {
+      const msg = String(photoErr?.message || photoErr || '');
+      if (!/transformation_photos|column/i.test(msg)) throw photoErr;
+      logger.warn('[profile/update] transformation_photos column missing; skipped', { userId });
+    }
   }
 
   let latestWeightRow = await repo.getLatestWeight(userId);

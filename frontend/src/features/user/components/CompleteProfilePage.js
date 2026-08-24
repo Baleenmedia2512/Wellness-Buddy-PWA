@@ -16,6 +16,9 @@ import UserProfileBodyMetrics from './profile/UserProfileBodyMetrics';
 import HealthIssuesFilterSelect from '../../body-parameters-card/components/HealthIssuesFilterSelect';
 import TransformationPhotosSection from './profile/TransformationPhotosSection';
 import useTransformationPhotos from '../hooks/useTransformationPhotos';
+import { persistOnboardingTestimonialPhotos } from '../services/persistOnboardingTestimonialPhotos';
+import { getMyTestimonial } from '../../testimonials/services/testimonialApi';
+import { deriveWeightGoalMode } from '../../weight/services/weightFormService';
 import {
   hasValidProfileName,
   hasValidProfileGender,
@@ -170,10 +173,18 @@ const CompleteProfilePage = ({
         setRecoveredHealthIssues(
           Array.isArray(profile?.recoveredHealthIssues) ? profile.recoveredHealthIssues : [],
         );
-        transformationPhotos.loadFromProfile(
-          profile?.transformationPhotos,
-          profile?.transformationPhotoHistory,
-        );
+        transformationPhotos.loadFromProfile(profile?.transformationPhotos);
+        transformationPhotos.loadFromTestimonial(null, profile?.latestWeight);
+        const uidForT = user?.id || user?.userId || user?.UserId;
+        if (uidForT) {
+          getMyTestimonial(uidForT)
+            .then((testimonial) => {
+              if (mounted) {
+                transformationPhotos.loadFromTestimonial(testimonial, profile?.latestWeight);
+              }
+            })
+            .catch(() => {});
+        }
 
         if (profile?.profileImage && (
           profile.profileImage.startsWith('data:image/')
@@ -226,6 +237,12 @@ const CompleteProfilePage = ({
     })();
     return () => { mounted = false; };
   }, [user]);
+
+  useEffect(() => {
+    transformationPhotos.setSnapshotWeight(
+      isValidCurrentWeight(currentWeight) ? parseFloat(currentWeight) : null,
+    );
+  }, [currentWeight, transformationPhotos.setSnapshotWeight]);
 
   const heightNum = parseFloat(height);
   const trimmedName = name.trim();
@@ -282,7 +299,7 @@ const CompleteProfilePage = ({
     }
     setSaving(true);
     try {
-      const uid = user?.id || user?.UserId;
+      const uid = user?.id || user?.userId || user?.UserId;
       const hadEmail = !!(user?.email || user?.Email);
 
       if (!hadEmail) {
@@ -340,6 +357,23 @@ const CompleteProfilePage = ({
       Object.assign(payload, transformationPhotos.payloadExtras());
 
       await saveProfile(payload);
+
+      const photos = transformationPhotos.testimonialPayload();
+      if (uid && (photos.beforeImageBase64 || photos.afterImageBase64)) {
+        const weightNum = isValidCurrentWeight(currentWeight)
+          ? parseFloat(currentWeight)
+          : null;
+        await persistOnboardingTestimonialPhotos({
+          userId: uid,
+          photos,
+          weightKg: weightNum,
+          goalType: deriveWeightGoalMode({
+            heightCm: heightNum,
+            currentWeightKg: weightNum,
+          }) || 'loss',
+          recoveredHealthIssues,
+        });
+      }
 
       onComplete({
         email: trimmedEmail,
@@ -407,8 +441,9 @@ const CompleteProfilePage = ({
             currentWeightValid={currentWeightValid}
           />
           <TransformationPhotosSection
-            previews={transformationPhotos.previews}
             history={transformationPhotos.history}
+            selectedType={transformationPhotos.selectedType}
+            onSelectType={transformationPhotos.setSelectedType}
             onSelectFile={async (slot, file) => {
               try {
                 await transformationPhotos.setSlotFromFile(slot, file);

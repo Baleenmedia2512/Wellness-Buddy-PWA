@@ -117,9 +117,7 @@ export async function getProfile(email) {
   } catch (errPhotos) {
     const msgPhotos = String(errPhotos?.message || errPhotos || '');
     if (!/column/i.test(msgPhotos)) throw errPhotos;
-    if (!/transformation_photos/i.test(msgPhotos)) {
-      // Fall through to the existing column-missing ladder using this error.
-    }
+    if (!/transformation_photos/i.test(msgPhotos)) throw errPhotos;
   }
 
   try {
@@ -176,9 +174,7 @@ export async function getProfileByUserId(userId) {
   } catch (errPhotos) {
     const msgPhotos = String(errPhotos?.message || errPhotos || '');
     if (!/column/i.test(msgPhotos)) throw errPhotos;
-    if (!/transformation_photos/i.test(msgPhotos)) {
-      // Fall through to the existing column-missing ladder using this error.
-    }
+    if (!/transformation_photos/i.test(msgPhotos)) throw errPhotos;
   }
 
   try {
@@ -542,7 +538,6 @@ export async function purgeUserData(userId, normalizedEmail) {
     // Null-out ownership before team_table row is removed — prevents the FK
     // constraint violation on nutrition_centers_table.owner_user_id.
     supabase.from('nutrition_centers_table').update({ owner_user_id: null }).eq('owner_user_id', userId),
-    supabase.from('profile_transformation_photos_table').delete().eq('user_id', userId),
   ]);
   return results;
 }

@@ -1,6 +1,6 @@
 /**
- * Before vs After pairing for profile transformation photos.
- * Uses GET /api/user/profile transformationPhotoHistory only — never live Profile Weight.
+ * Before vs After pairing from testimonials_table (not a new table).
+ * Front / Left / Right tabs stay; stored before/after maps to Left only.
  */
 
 export const TRANSFORMATION_COMPARE_TYPES = ['front', 'left', 'right'];
@@ -39,11 +39,6 @@ export function filterTransformationHistoryByType(rows, imageType) {
     });
 }
 
-/**
- * @param {Array<object>} rows transformationPhotoHistory from profile API
- * @param {string} imageType
- * @returns {{ before: object|null, after: object|null }}
- */
 export function selectTransformationBeforeAfter(rows, imageType) {
   const list = filterTransformationHistoryByType(rows, imageType);
   if (list.length === 0) return { before: null, after: null };
@@ -54,16 +49,83 @@ export function selectTransformationBeforeAfter(rows, imageType) {
 }
 
 /**
- * JSON latest-slot cache (existing users) when history table has no rows.
- * Does not invent weights or extra types.
+ * Map GET /api/testimonials/my-testimonial onto Left history.
+ * Incomplete rows copy after_path = before_path — those must not become After.
  */
-export function historyWithLatestSlotFallback(history, latestSlots) {
-  const out = Array.isArray(history) ? history.slice() : [];
-  const present = new Set(
-    out.map((row) => recordType(row)).filter((type) => TRANSFORMATION_COMPARE_TYPES.includes(type)),
-  );
+export function mapTestimonialToCompareHistory(testimonial) {
+  if (!testimonial) return [];
+  const beforeUrl = testimonial.beforeImageUrl;
+  const afterUrl = testimonial.afterImageUrl;
+  const incomplete = !testimonial.status || testimonial.status === 'incomplete';
+  const rows = [];
+  if (isStoredPhoto(beforeUrl)) {
+    const bw = testimonial.beforeWeightKg != null ? parseFloat(testimonial.beforeWeightKg) : NaN;
+    rows.push({
+      id: testimonial.id || 1,
+      imageType: 'left',
+      imageUrl: String(beforeUrl).trim(),
+      weight: Number.isFinite(bw) ? bw : null,
+      createdAt: testimonial.createdAt || null,
+    });
+  }
+  const realAfter = !incomplete
+    && isStoredPhoto(afterUrl)
+    && afterUrl !== beforeUrl;
+  if (realAfter) {
+    const aw = testimonial.afterWeightKg != null ? parseFloat(testimonial.afterWeightKg) : NaN;
+    rows.push({
+      id: (testimonial.id || 1) + 1,
+      imageType: 'left',
+      imageUrl: String(afterUrl).trim(),
+      weight: Number.isFinite(aw) ? aw : null,
+      createdAt: testimonial.updatedAt || testimonial.createdAt || null,
+    });
+  }
+  return rows;
+}
+
+export function overlayPendingCompareHistory(history, pending, snapshotWeightKg) {
+  const weight = Number.isFinite(snapshotWeightKg) ? snapshotWeightKg : null;
+  const left = filterTransformationHistoryByType(history, 'left');
+  let before = left[0] || null;
+  let after = left.length > 1 ? left[left.length - 1] : null;
+
+  if (pending?.before && isStoredPhoto(pending.before)) {
+    before = {
+      id: before?.id || 0,
+      imageType: 'left',
+      imageUrl: pending.before,
+      weight: before?.weight ?? weight,
+      createdAt: before?.createdAt || null,
+    };
+  }
+  if (pending?.after && isStoredPhoto(pending.after)) {
+    after = {
+      id: 999999,
+      imageType: 'left',
+      imageUrl: pending.after,
+      weight,
+      createdAt: null,
+    };
+  }
+
+  const others = (Array.isArray(history) ? history : []).filter((row) => recordType(row) !== 'left');
+  const out = others.slice();
+  if (before) out.push(before);
+  if (after) out.push(after);
+  return out;
+}
+
+export function formatTransformationRecordWeight(row) {
+  const raw = row?.weight != null ? row.weight : row?.weightKg ?? row?.weight_kg;
+  const n = raw != null && raw !== '' ? parseFloat(raw) : NaN;
+  return Number.isFinite(n) ? n : null;
+}
+
+/** Latest Front/Left/Right images from team_table.transformation_photos. */
+export function historyFromLatestSlots(latestSlots) {
+  const out = [];
   TRANSFORMATION_COMPARE_TYPES.forEach((type) => {
-    if (present.has(type)) return;
     const url = latestSlots?.[type];
     if (isStoredPhoto(url)) {
       out.push({
@@ -78,8 +140,11 @@ export function historyWithLatestSlotFallback(history, latestSlots) {
   return out;
 }
 
-export function formatTransformationRecordWeight(row) {
-  const raw = row?.weight != null ? row.weight : row?.weightKg ?? row?.weight_kg;
-  const n = raw != null && raw !== '' ? parseFloat(raw) : NaN;
-  return Number.isFinite(n) ? n : null;
+/** Testimonials before/after (with weights) replace Left JSON-only rows. */
+export function mergeCompareHistory(slotHistory, testimonialHistory) {
+  const fromSlots = Array.isArray(slotHistory) ? slotHistory : [];
+  const leftFromTestimonials = filterTransformationHistoryByType(testimonialHistory, 'left');
+  const withoutLeft = fromSlots.filter((row) => recordType(row) !== 'left');
+  if (leftFromTestimonials.length > 0) return withoutLeft.concat(leftFromTestimonials);
+  return fromSlots;
 }

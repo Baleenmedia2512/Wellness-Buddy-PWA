@@ -7,7 +7,8 @@ import {
   DEFAULT_TRANSFORMATION_COMPARE_TYPE,
   filterTransformationHistoryByType,
   formatTransformationRecordWeight,
-  historyWithLatestSlotFallback,
+  historyFromLatestSlots,
+  mapTestimonialToCompareHistory,
   selectTransformationBeforeAfter,
 } from './transformationBeforeAfter.js';
 
@@ -32,13 +33,6 @@ const FRONT = {
   weight: 50,
   createdAt: '2026-08-25T00:00:00.000Z',
 };
-const RIGHT = {
-  id: 4,
-  imageType: 'right',
-  imageUrl: 'data:image/jpeg;base64,right',
-  weight: 51,
-  createdAt: '2026-08-26T00:00:00.000Z',
-};
 
 describe('transformation Before vs After pairing', () => {
   it('defaults the compare type to left', () => {
@@ -47,7 +41,7 @@ describe('transformation Before vs After pairing', () => {
 
   it('pairs earliest left with later left and keeps historical weights', () => {
     const pair = selectTransformationBeforeAfter(
-      [LEFT_LATE, FRONT, LEFT_EARLY, RIGHT],
+      [LEFT_LATE, FRONT, LEFT_EARLY],
       'left',
     );
     assert.equal(pair.before.imageUrl, LEFT_EARLY.imageUrl);
@@ -57,14 +51,38 @@ describe('transformation Before vs After pairing', () => {
   });
 
   it('never mixes types even when left is missing', () => {
-    const pair = selectTransformationBeforeAfter([FRONT, RIGHT], 'left');
+    const pair = selectTransformationBeforeAfter([FRONT], 'left');
     assert.equal(pair.before, null);
     assert.equal(pair.after, null);
-    assert.equal(filterTransformationHistoryByType([FRONT, RIGHT], 'front').length, 1);
+    assert.equal(filterTransformationHistoryByType([FRONT], 'front').length, 1);
   });
 
-  it('returns empty pair with no images', () => {
-    assert.deepEqual(selectTransformationBeforeAfter([], 'left'), { before: null, after: null });
+  it('maps testimonials_table before/after onto Left only', () => {
+    const rows = mapTestimonialToCompareHistory({
+      id: 9,
+      status: 'pending',
+      beforeImageUrl: 'https://cdn.example/before.jpg',
+      afterImageUrl: 'https://cdn.example/after.jpg',
+      beforeWeightKg: 48,
+      afterWeightKg: 52,
+    });
+    const pair = selectTransformationBeforeAfter(rows, 'left');
+    assert.equal(pair.before.weight, 48);
+    assert.equal(pair.after.weight, 52);
+    assert.equal(selectTransformationBeforeAfter(rows, 'front').before, null);
+  });
+
+  it('does not treat incomplete duplicate after path as After', () => {
+    const rows = mapTestimonialToCompareHistory({
+      status: 'incomplete',
+      beforeImageUrl: 'https://cdn.example/before.jpg',
+      afterImageUrl: 'https://cdn.example/before.jpg',
+      beforeWeightKg: 48,
+      afterWeightKg: 48,
+    });
+    const pair = selectTransformationBeforeAfter(rows, 'left');
+    assert.equal(pair.before.weight, 48);
+    assert.equal(pair.after, null);
   });
 
   it('does not invent weight from profile', () => {
@@ -72,32 +90,14 @@ describe('transformation Before vs After pairing', () => {
     assert.equal(formatTransformationRecordWeight({}), null);
   });
 
-  it('falls back to latest JSON slots without inventing weight', () => {
-    const rows = historyWithLatestSlotFallback([], {
-      left: LEFT_EARLY.imageUrl,
-      front: FRONT.imageUrl,
+  it('reads Front Left Right from the existing JSON column', () => {
+    const rows = historyFromLatestSlots({
+      front: 'data:image/jpeg;base64,front',
+      left: 'data:image/jpeg;base64,left',
+      right: 'data:image/jpeg;base64,right',
     });
-    const pair = selectTransformationBeforeAfter(rows, 'left');
-    assert.equal(pair.before.imageUrl, LEFT_EARLY.imageUrl);
-    assert.equal(pair.before.weight, null);
-    assert.equal(pair.after, null);
-  });
-
-  it('keeps Left empty when only Front and Right exist (does not auto-switch)', () => {
-    const rows = historyWithLatestSlotFallback([FRONT, RIGHT], { front: FRONT.imageUrl, right: RIGHT.imageUrl });
-    const left = selectTransformationBeforeAfter(rows, DEFAULT_TRANSFORMATION_COMPARE_TYPE);
-    assert.equal(DEFAULT_TRANSFORMATION_COMPARE_TYPE, 'left');
-    assert.equal(left.before, null);
-    assert.equal(left.after, null);
-  });
-
-  it('fills a JSON-only type when history already has other types', () => {
-    const rows = historyWithLatestSlotFallback([FRONT], {
-      front: FRONT.imageUrl,
-      left: LEFT_EARLY.imageUrl,
-    });
-    const left = selectTransformationBeforeAfter(rows, 'left');
-    assert.equal(left.before.imageUrl, LEFT_EARLY.imageUrl);
-    assert.equal(left.before.weight, null);
+    assert.equal(selectTransformationBeforeAfter(rows, 'front').before.imageUrl, 'data:image/jpeg;base64,front');
+    assert.equal(selectTransformationBeforeAfter(rows, 'left').before.imageUrl, 'data:image/jpeg;base64,left');
+    assert.equal(selectTransformationBeforeAfter(rows, 'right').before.imageUrl, 'data:image/jpeg;base64,right');
   });
 });
