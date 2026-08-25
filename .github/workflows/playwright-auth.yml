@@ -452,6 +452,20 @@ jobs:
           npx playwright test \
             tests/frontend/authenticated/activity.spec.js
 
+      # ==========================================================
+      # 22. RUN BCM TESTS
+      # ==========================================================
+
+      - name: Run Playwright BCM Tests
+        run: |
+
+          echo "=========================================="
+          echo "Running BCM (Body Composition Metrics) Tests"
+          echo "=========================================="
+
+          npx playwright test \
+            tests/frontend/authenticated/bcm.spec.js
+
       # # ==========================================================
       # # 20. RUN COMPLETE PROFILE TESTS
       # # ==========================================================

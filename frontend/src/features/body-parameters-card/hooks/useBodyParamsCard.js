@@ -158,7 +158,7 @@ const EMPTY_FORM = {
 };
 
 function cardToFormState(card) {
-  if (!card?.id) return EMPTY_FORM;
+  if (!card?.id) return { ...EMPTY_FORM };
   const issues = Array.isArray(card.recoveredHealthIssues)
     ? card.recoveredHealthIssues.filter(Boolean)
     : [];
@@ -200,8 +200,6 @@ export function useBodyParamsCard({
   const [savedCard, setSavedCard]         = useState(null);
   const [shareUrl, setShareUrl]           = useState('');
 
-  // Track whether the user manually typed in the BMI field.
-  // When true, BMI auto-fill is disabled.
   const [bmiUserEdited, setBmiUserEdited] = useState(false);
   const [bmrUserEdited, setBmrUserEdited] = useState(false);
   const [coachUserId, setCoachUserId] = useState(() => user?.id || null);
@@ -329,8 +327,6 @@ export function useBodyParamsCard({
     ].map((v) => (v == null ? '' : String(v))).join('\u0001');
   }, [existingCard]);
 
-  // Reload form when the modal opens or the card values actually change.
-  // useLayoutEffect so saved / fetched values paint on the first open frame.
   // Create: prefill Venue from header. Edit: use the card's saved Venue.
   useLayoutEffect(() => {
     if (!isOpen) return;
@@ -347,7 +343,7 @@ export function useBodyParamsCard({
     setPhoneFieldError('');
     lastBcmPrefillPhoneRef.current = '';
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, existingCardSnapshot, isEditMode]);
+  }, [isOpen, existingCardSnapshot, isEditMode, externalVenue]);
 
   // Create flow: keep form Venue in sync with the header Venue immediately.
   useLayoutEffect(() => {
