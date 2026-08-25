@@ -3,6 +3,7 @@ import axios from "axios";
 import { motion, AnimatePresence } from "framer-motion";
 import wellnessValleyIcon from "../assets/wellness-valley-icon.png";
 import { debugLog } from '../shared/utils/logger.js';
+import { APP_VERSION } from "../config/version";
 
 const API_BASE = process.env.REACT_APP_API_BASE_URL || "http://localhost:3000";
 
@@ -357,9 +358,8 @@ const SetupWizard = ({
         </button>
 
         <div className="shrink-0">
-          {/* Header Icon */}
-          <div className="flex justify-center pt-8 pb-4">
-            <div className="w-20 h-20 rounded-2xl flex items-center justify-center overflow-hidden">
+          <div className="flex items-center gap-3 px-5 pt-6 pb-4 pr-14">
+            <div className="w-14 h-14 shrink-0 rounded-2xl flex items-center justify-center overflow-hidden">
               <img
                 src={wellnessValleyIcon}
                 alt="Wellness Valley"
@@ -373,17 +373,13 @@ const SetupWizard = ({
                 }}
               />
             </div>
+            <div className="min-w-0 text-left">
+              <h1 className="text-lg font-bold text-gray-900 leading-tight">
+                Welcome Wellness Valley
+              </h1>
+              <p className="text-sm text-gray-500 mt-0.5">v{APP_VERSION.VERSION}</p>
+            </div>
           </div>
-
-          <div className="px-8 text-center mb-8">
-            <h1 className="text-2xl font-bold text-gray-900 mb-2">
-              Welcome to Wellness Valley
-            </h1>
-            <p className="text-gray-500 text-sm leading-relaxed">
-              Search for the person who invited you and activate your account.
-            </p>
-          </div>
-
         </div>
 
         <div className="px-8 pb-8 flex-1 overflow-y-auto custom-scrollbar">
@@ -398,10 +394,9 @@ const SetupWizard = ({
               >
                 <div className="mb-6">
                   {/* find your coach */}
-                  <h3 className="text-lg font-bold text-gray-900 mb-1">
-                    Person who invited you for this Program
+                  <h3 className="text-base font-semibold text-gray-900 mb-3 leading-snug">
+                    Search and select the person name (sponsor) who invited you to this program
                   </h3>
-                  {/* <p className="text-gray-500 text-sm mb-4">Search for the person who invited you to Wellness Valley. They will be your mentor.</p> */}
 
                   <div className="relative group">
                     <input

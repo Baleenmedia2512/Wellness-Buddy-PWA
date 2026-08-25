@@ -20,7 +20,7 @@ const ValidateOTP = ({
   isReactivationFlow = false,
   userEmail: userEmailProp = '',
   userId: userIdProp = null,
-  coachName: coachNameProp = '',
+  coachName: _coachNameProp = '',
 }) => {
   // Canonical OTP input controller — handles change, keydown, paste, iOS autofill, fillAll.
   const {
@@ -287,36 +287,32 @@ const ValidateOTP = ({
              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
         </button>
 
-        <div className="px-8 pt-10 pb-6 text-center shrink-0">
-          <div className="w-20 h-20 rounded-2xl flex items-center justify-center mx-auto mb-4 overflow-hidden">
-            <img 
-              src={wellnessValleyIcon} 
-              alt="Wellness Valley" 
-              className="w-full h-full object-contain brand-logo"
-              draggable="false"
-              style={{ 
-                WebkitUserSelect: 'none', 
-                userSelect: 'none',
-                WebkitTouchCallout: 'none',
-                WebkitUserDrag: 'none'
-              }}
-            />
+        <div className="px-8 pt-6 pb-6 shrink-0">
+          <div className="flex items-center gap-3 pr-12 mb-4">
+            <div className="w-14 h-14 shrink-0 rounded-2xl flex items-center justify-center overflow-hidden">
+              <img 
+                src={wellnessValleyIcon} 
+                alt="Wellness Valley" 
+                className="w-full h-full object-contain brand-logo"
+                draggable="false"
+                style={{ 
+                  WebkitUserSelect: 'none', 
+                  userSelect: 'none',
+                  WebkitTouchCallout: 'none',
+                  WebkitUserDrag: 'none'
+                }}
+              />
+            </div>
+            <h1 className="text-2xl font-bold text-gray-900 text-left">
+              {otpExpired ? 'Code Expired' : 'Verify Request'}
+            </h1>
           </div>
-          
-          <h1 className="text-2xl font-bold text-gray-900 mb-2">
-            {otpExpired ? 'Code Expired' : 'Verify Request'}
-          </h1>
           
           <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 mb-4 text-left">
             <p className="text-blue-800 text-sm leading-relaxed">
               {otpExpired
                 ? 'The previous verification code is no longer valid. Request a new code for your coach.'
-                : (
-                  <>
-                    We've sent a request to <span className="font-bold">{requestInfo?.coachName || coachNameProp || 'your sponsor'}</span>. 
-                    Please contact them to approve your request and provide your 6-digit verification code.
-                  </>
-                )}
+                : "We've sent OTP to your sponsor's email ID. Please contact them and get the OTP to proceed further."}
             </p>
           </div>
         </div>
