@@ -717,6 +717,7 @@ function WellnessValleyApp() {
         );
         return withMarathonWhatsAppNotice(
           composeQuickShareCaption(brand, activityCaption),
+          { user },
         );
       };
 
@@ -837,6 +838,7 @@ function WellnessValleyApp() {
       }
       const shareText = withMarathonWhatsAppNotice(
         buildQuickShareText(shareDisplayName, getVersionString()),
+        { user },
       );
       const ok = await shareTextViaWhatsApp(shareText);
       if (cancelled) return;

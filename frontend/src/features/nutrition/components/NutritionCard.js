@@ -859,6 +859,7 @@ const NutritionCard = ({
         title: `${mealName} - Wellness Valley`,
         text: withMarathonWhatsAppNotice(
           composeBrandedShareCaption(activityCaption, { savedUserName, user }),
+          { user },
         ),
         fileName: `wellness-valley-${mealName
           .toLowerCase()
