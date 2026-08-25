@@ -75,11 +75,12 @@ export default function EducationFormFields({
             {PLATFORMS.map((p) => (
               <button
                 key={p}
+                type="button"
                 onClick={() => onSelectPlatform(p)}
                 className={`px-3 py-1.5 rounded-full border text-xs font-medium transition-colors ${
                   platform === p
-                    ? 'bg-emerald-600 border-emerald-600 text-white'
-                    : 'bg-white border-gray-200 text-gray-600 hover:border-emerald-300 hover:bg-emerald-50'
+                    ? 'bg-emerald-50 border-emerald-300 text-emerald-800'
+                    : 'bg-white border-gray-200 text-gray-600 hover:border-emerald-200 hover:bg-emerald-50/60'
                 }`}
               >
                 {p}
@@ -100,8 +101,8 @@ export default function EducationFormFields({
                 onClick={() => onSelectTopic(session)}
                 className={`px-3 py-1.5 rounded-full border text-xs font-medium transition-colors ${
                   topic === session
-                    ? 'bg-emerald-600 border-emerald-600 text-white'
-                    : 'bg-white border-gray-200 text-gray-600 hover:border-emerald-300 hover:bg-emerald-50'
+                    ? 'bg-emerald-50 border-emerald-300 text-emerald-800'
+                    : 'bg-white border-gray-200 text-gray-600 hover:border-emerald-200 hover:bg-emerald-50/60'
                 }`}
               >
                 {session}

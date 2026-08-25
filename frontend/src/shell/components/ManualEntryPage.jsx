@@ -979,7 +979,7 @@ export default function ManualEntryPage({
       <ServingStepperModal
         isOpen={activeForm === MANUAL_LOG_CATEGORY.WATER}
         title="Water"
-        subtitle="How much you drank so far today"
+        subtitle="How much you consumed so far today"
         iconSrc="/water.svg"
         unitLabel=""
         min={waterTodayMl}

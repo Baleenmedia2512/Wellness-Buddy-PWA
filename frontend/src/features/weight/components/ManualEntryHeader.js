@@ -41,7 +41,7 @@ export default function ManualEntryHeader({ onBack, onCancel }) {
         <WeighingScaleIcon className="w-5 h-5 text-emerald-600" />
       </div>
       <h2 className="text-sm font-bold text-gray-800">Weight</h2>
-      <p className="text-xs text-gray-400 mt-0.5">How much weight logged so far today</p>
+      <p className="text-xs text-gray-400 mt-0.5">Today’s Empty-Stomach Weight</p>
     </div>
   );
 }

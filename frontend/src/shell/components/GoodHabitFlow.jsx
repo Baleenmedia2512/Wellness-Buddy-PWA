@@ -132,7 +132,7 @@ export default function GoodHabitFlow({
           <div>
             <p id="good-habit-title" className="text-sm font-bold leading-snug text-emerald-900">Good Habit</p>
             <p className="mt-0.5 text-[11px] leading-snug text-emerald-700/70">
-              Any size photo — we compress it before saving
+              Click Save if this photo shows a good habit you started today.
             </p>
           </div>
           <button type="button" onClick={onClose} className="flex-shrink-0 rounded-xl p-1.5 hover:bg-emerald-50" aria-label="Close">
