@@ -476,7 +476,6 @@ jobs:
             tests/frontend/programs/programs.spec.js \
             tests/frontend/authenticated/bcm.spec.js
 
-
       # ==========================================================
       # 20. OPTIONAL COMPLETE PROFILE TESTS
       #
