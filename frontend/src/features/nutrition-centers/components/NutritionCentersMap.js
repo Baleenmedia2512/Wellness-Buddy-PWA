@@ -501,6 +501,9 @@ const NutritionCentersMap = ({ user, onBack, onEditCenter, onRegisterCenter, emb
     });
     markersRef.current = [];
     markersMapRef.current = {};
+    if (infoWindowRef.current) {
+      infoWindowRef.current.close();
+    }
 
     if (!centersData || centersData.length === 0) {
       if (fitBounds) {
@@ -619,6 +622,7 @@ const NutritionCentersMap = ({ user, onBack, onEditCenter, onRegisterCenter, emb
   const handleRefresh = useCallback(() => {
     pageCacheRef.current.clear();
     fetchAbortRef.current?.abort();
+    inFlightKeyRef.current = null;
     const controller = new AbortController();
     fetchAbortRef.current = controller;
     setCenters([]);

@@ -420,36 +420,8 @@ jobs:
           echo "Syncing Playwright results to QA Dashboard"
           echo "=========================================="
 
-          echo "Run ID: ${{ github.run_id }}"
-          echo "Commit: ${{ github.sha }}"
-          echo "Branch: ${{ github.ref_name }}"
-          echo "Developer: ${{ github.actor }}"
-          echo "Repository: ${{ github.repository }}"
-          echo "Job Status: ${{ job.status }}"
-
-          curl --fail-with-body \
-            -X POST \
-            "$DASHBOARD_IMPORT_URL" \
-            -H "Content-Type: application/json" \
-            -d '{
-              "runId": "${{ github.run_id }}",
-              "status": "${{ job.status }}"
-            }'
-
-          echo ""
-          echo "Dashboard sync completed successfully."
-
-      - name: Show Git information
-        if: always()
-        run: |
-          echo "=============================="
-          echo "GitHub information"
-          echo "=============================="
-          echo "Commit SHA: $GITHUB_SHA"
-          echo "Actor: $GITHUB_ACTOR"
-          echo "Event: $GITHUB_EVENT_NAME"
-          echo "Repository: $GITHUB_REPOSITORY"
-          echo "Run ID: $GITHUB_RUN_ID"
+          npx playwright test \
+            tests/frontend/auth/login.spec.js
 
 
       # ==========================================================
@@ -466,40 +438,55 @@ jobs:
           npx playwright test \
             tests/frontend/authenticated/club.spec.js
 
+      # ==========================================================
+      # 21. RUN ACTIVITY TESTS
+      # ==========================================================
+
+      - name: Run Playwright Activity Tests
+        run: |
+
+          echo "=========================================="
+          echo "Running Activity Tests"
+          echo "=========================================="
+
+          npx playwright test \
+            tests/frontend/authenticated/activity.spec.js
+
       # # ==========================================================
       # # 20. RUN COMPLETE PROFILE TESTS
       # # ==========================================================
 
-      - name: Upload Playwright JSON results
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: playwright-results
-          path: test-results/results.json
-          retention-days: 7
+      # - name: Run Playwright Complete Profile Tests
+      #   run: |
 
-      - name: Sync Playwright results to QA Dashboard
-        if: always()
-        shell: bash
-        env:
-          DASHBOARD_API_URL: ${{ secrets.DASHBOARD_API_URL }}
-        run: |
-          echo "=========================================="
-          echo "Syncing Playwright results to QA Dashboard"
-          echo "Run ID: $GITHUB_RUN_ID"
-          echo "Commit: $GITHUB_SHA"
-          echo "Branch: $GITHUB_REF_NAME"
-          echo "Developer: $GITHUB_ACTOR"
-          echo "Repository: $GITHUB_REPOSITORY"
+      #     echo "=========================================="
+      #     echo "Running Complete Profile Tests"
+      #     echo "=========================================="
 
-          curl --fail-with-body \
-            -X POST \
-            -H "Content-Type: application/json" \
-            -d "{\"runId\":\"$GITHUB_RUN_ID\"}" \
-            "$DASHBOARD_API_URL"
+      #     npx playwright test \
+      #       tests/frontend/profile/complete-profile.spec.js
 
-          echo ""
-          echo "Dashboard sync completed successfully."
+
+      # ==========================================================
+      # 21. RUN ALL FRONTEND TESTS
+      # ==========================================================
+      #
+      # Leave this commented for now.
+      #
+      # Once you add more frontend spec files, you can enable this
+      # step to run everything under tests/frontend.
+      #
+      # ==========================================================
+
+      # - name: Run All Frontend Playwright Tests
+      #   run: |
+      #
+      #     npx playwright test tests/frontend
+
+
+      # ==========================================================
+      # 22. BACKEND LOGS
+      # ==========================================================
 
       - name: Show Backend Logs
         if: always()

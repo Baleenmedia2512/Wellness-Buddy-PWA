@@ -933,6 +933,7 @@ function WellnessValleyApp() {
   // Setup wizard state
   const [showSetupWizard, setShowSetupWizard] = useState(false);
   const [showValidateOTP, setShowValidateOTP] = useState(false);
+  const coachSetupEpochRef = useRef(0);
 
   // Hard = a full-screen onboarding UI is up (must block tabs).
   // Soft = background resolve flags still settling (must NOT swallow tab taps).
@@ -958,7 +959,8 @@ function WellnessValleyApp() {
       !physicalActivityResolved ||
       !coachSetupResolved
     );
-  // Full block for camera / force-close Profile during unresolved onboarding.
+  // Full block for camera only while soft resolve flags may still flap.
+  // Profile open/render uses hard blocking — soft flaps must not keep Home stuck.
   const onboardingBlocking = onboardingHardBlocking || onboardingSoftBlocking;
   const onboardingHardBlockingRef = useRef(false);
   onboardingHardBlockingRef.current = onboardingHardBlocking;
@@ -1256,35 +1258,61 @@ function WellnessValleyApp() {
     _userIdRef.current = user?.id || user?.UserId || Session.getDbUserId() || null;
   }, [user]);
 
-  // Phone users without email: name gate first (email comes on remaining profile).
+  // Phone users without email: name gate from persisted profile (not session cache).
   useEffect(() => {
     if (!user) return;
     if (!isOtpVerified) return;
     const email = (user.email && user.email.trim()) || Session.getUserEmail();
     if (email) return;
 
-    const sessionName = String(
-      user.userName || user.UserName || user.username || user.name || '',
-    ).trim();
+    const uid = user.id || user.UserId || user.userId || Session.getDbUserId();
     const phone = user.phoneNumber || user.PhoneNumber || user.phone || null;
-    if (hasValidProfileName(sessionName, { phoneNumber: phone })) {
-      setShowOnboardingIdentity(false);
-      setIdentityResolved(true);
-      setShowCompleteProfile(false);
-    } else {
+    let cancelled = false;
+
+    (async () => {
+      if (!uid) {
+        const sessionName = String(
+          user.userName || user.UserName || user.username || user.name || '',
+        ).trim();
+        if (hasValidProfileName(sessionName, { phoneNumber: phone })) {
+          setShowOnboardingIdentity(false);
+          setIdentityResolved(true);
+        } else {
+          setShowOnboardingIdentity(true);
+        }
+        return;
+      }
+
+      const result = await fetchProfileCompletion({
+        apiBaseUrl,
+        userId: uid,
+      });
+      if (cancelled) return;
+
+      const identityOk = result.identityComplete === true;
+      if (identityOk) {
+        setShowOnboardingIdentity(false);
+        setIdentityResolved(true);
+        setShowCompleteProfile(false);
+        return;
+      }
+
       setShowOnboardingIdentity(true);
       setShowCompleteProfile(false);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: fire on user/auth change
-  }, [user?.id, user?.email, user?.userName, user?.username, isOtpVerified]);
+    })();
 
-  // Never leave My Profile / other sub-pages open while onboarding is in progress.
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: fire on user/auth change
+  }, [user?.id, user?.email, user?.userName, user?.username, isOtpVerified, apiBaseUrl]);
+
+  // Force-close Profile only for visible onboarding wizards — not soft resolve flaps
+  // (those used to set showProfilePage then immediately clear it → "stuck on Home").
   useEffect(() => {
-    if (!onboardingBlocking) return;
+    if (!onboardingHardBlocking) return;
     setShowProfilePage(false);
     setShowDashboard(false);
     setShowNewUserProfileModal(false);
-  }, [onboardingBlocking]);
+  }, [onboardingHardBlocking]);
 
   // Physical activity gate: after remaining profile fields (post sponsor OTP).
   useEffect(() => {
@@ -3108,7 +3136,7 @@ function WellnessValleyApp() {
 
       const result = await fetchProfileCompletion({
         apiBaseUrl,
-        email: userEmail,
+        email: userEmail || undefined,
         afterSave,
       });
 
@@ -3158,8 +3186,7 @@ function WellnessValleyApp() {
         // Remaining profile only after sponsor setup is done (or caller opts in).
         const setupAlreadyDone =
           allowRemainingProfile
-          || Session.isSetupSkipped()
-          || Session.isCoachOtpVerified();
+          || Session.isSetupSkipped();
         if (setupAlreadyDone) {
           debugLog("?? [Profile] Remaining fields missing — showing CompleteProfilePage");
           setShowCompleteProfile(true);
@@ -3768,6 +3795,7 @@ function WellnessValleyApp() {
         }
       }),
     )
+
       .then((h) => {
         if (cancelled) {
           h?.remove?.();
@@ -3868,8 +3896,9 @@ function WellnessValleyApp() {
   // May run with userId only when email is collected later on CompleteProfile.
   const resolveCoachSetupStatus = useCallback(async (userEmail, { openRemainingProfile = true, userId = null } = {}) => {
     const email = (userEmail || '').trim();
-    const uid = userId || user?.id || user?.UserId || user?.userId || null;
+    const uid = userId || user?.id || user?.UserId || user?.userId || Session.getDbUserId() || null;
     if (!email && !uid) return;
+    const epoch = ++coachSetupEpochRef.current;
 
     const openRemaining = async () => {
       if (!openRemainingProfile) return;
@@ -3896,6 +3925,7 @@ function WellnessValleyApp() {
         email: email || undefined,
         userId: email ? undefined : uid,
       });
+      if (epoch !== coachSetupEpochRef.current) return;
       authFsm.send({
         type: authFsm.E.SETUP_STATUS_RESOLVED,
         result: status.result,
@@ -3905,30 +3935,70 @@ function WellnessValleyApp() {
 
       if (status.result === "skipped") {
         Session.markSetupSkipped();
+        setShowSetupWizard(false);
+        setShowValidateOTP(false);
         await openRemaining();
       } else if (status.result === "pendingOtp") {
-        if (Session.isCoachOtpVerified()) {
-          await openRemaining();
-        } else if (email.toLowerCase() === DEMO_EMAIL) {
+        if (email.toLowerCase() === DEMO_EMAIL) {
           await silentlyCompleteDemoSetup(email);
+          setShowSetupWizard(false);
+          setShowValidateOTP(false);
           await openRemaining();
         } else if (!isInactiveReactivationFlowRef.current) {
+          setShowSetupWizard(false);
           setShowValidateOTP(true);
         }
       } else if (status.result === "incomplete") {
         if (email.toLowerCase() === DEMO_EMAIL) {
           await silentlyCompleteDemoSetup(email);
+          setShowSetupWizard(false);
+          setShowValidateOTP(false);
           await openRemaining();
         } else {
+          setShowValidateOTP(false);
           setShowSetupWizard(true);
         }
       } else if (status.result === "complete") {
+        setShowSetupWizard(false);
+        setShowValidateOTP(false);
         await openRemaining();
       }
     } catch (setupError) {
       console.warn("?? [Setup Check] Failed to check setup status:", setupError);
     }
   }, [apiBaseUrl, checkProfileCompletion, user]);
+
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return undefined;
+    if (!user || !isOtpVerified) return undefined;
+
+    let handle = null;
+    let cancelled = false;
+    Promise.resolve(
+      nativeLifecycle.addAppStateListener(({ isActive }) => {
+        if (!isActive || cancelled) return;
+        if (_profileGateActiveRef.current) return;
+        if (showOnboardingIdentity) return;
+        const userEmail = user.email || user.Email || Session.getUserEmail();
+        const uid = user.id || user.UserId || user.userId || Session.getDbUserId();
+        if (!userEmail && !uid) return;
+        void resolveCoachSetupStatus(userEmail, {
+          userId: uid,
+          openRemainingProfile: false,
+        });
+      }),
+    )
+      .then((h) => {
+        if (cancelled) h?.remove?.();
+        else handle = h;
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+      try { handle?.remove?.(); } catch { /* ignore */ }
+    };
+  }, [user, isOtpVerified, showOnboardingIdentity, resolveCoachSetupStatus]);
 
   useEffect(() => {
     if (!user || !isUserActive || isInactiveReactivationFlow) {
@@ -6818,6 +6888,7 @@ function WellnessValleyApp() {
       Session.clearUserEmail();
       Session.clearOtpVerified();
       Session.clearOtpUser();
+      Session.clearCoachOtpVerified();
       Session.clearCurrentPage();
       Session.clearDbUserId();
       // ? Clear nutrition / background analysis caches so a new login never sees old images
@@ -6834,6 +6905,7 @@ function WellnessValleyApp() {
       Session.clearUserEmail();
       Session.clearOtpVerified();
       Session.clearOtpUser();
+      Session.clearCoachOtpVerified();
       Session.clearCurrentPage();
       Session.clearDbUserId();
       localStorage.removeItem("backgroundAnalyses");
@@ -7322,8 +7394,8 @@ function WellnessValleyApp() {
   ) : null;
 
   // Inline Profile Page — full-screen, below nav bar (no modal overlay)
-  // Never show during onboarding (My Profile is not part of the setup wizard).
-  if (showProfilePage && !onboardingBlocking) {
+  // Hard onboarding wizards only — soft resolve flags must not hide Profile on Home.
+  if (showProfilePage && !onboardingHardBlocking) {
     homeOverlay = (
       <div className="ios-full-page bg-gray-50">
         <Header

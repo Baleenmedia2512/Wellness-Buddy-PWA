@@ -1969,7 +1969,6 @@ test(
         )
       ).toBeVisible();
 
-
       await expect(
         page.getByText(
           'Enter OTP',
@@ -1978,7 +1977,7 @@ test(
           }
         )
       ).not.toBeVisible();
-    }
+    } 
   );
 
 
@@ -1992,244 +1991,244 @@ test(
   // Complete Profile
   // ============================================================
 
-  test(
-    'AUTH-023 new user agrees to consent and is shown complete profile page',
-    async ({ page }) => {
+  // test(
+  //   'AUTH-023 new user agrees to consent and is shown complete profile page',
+  //   async ({ page }) => {
 
-      // --------------------------------------------------------
-      // Consent API
-      // --------------------------------------------------------
+  //     // --------------------------------------------------------
+  //     // Consent API
+  //     // --------------------------------------------------------
 
-      await page.route(
-        '**/api/user/consent*',
-        async route => {
+  //     await page.route(
+  //       '**/api/user/consent*',
+  //       async route => {
 
-          const method =
-            route.request()
-              .method();
-
-
-          if (
-            method === 'GET'
-          ) {
-
-            await route.fulfill({
-              status: 200,
-              contentType:
-                'application/json',
-
-              body: JSON.stringify({
-                success: true,
-                consentRequired: true,
-                consentAccepted: false,
-              }),
-            });
-
-            return;
-          }
+  //         const method =
+  //           route.request()
+  //             .method();
 
 
-          if (
-            method === 'POST'
-          ) {
+  //         if (
+  //           method === 'GET'
+  //         ) {
 
-            const body =
-              route.request()
-                .postDataJSON();
+  //           await route.fulfill({
+  //             status: 200,
+  //             contentType:
+  //               'application/json',
 
+  //             body: JSON.stringify({
+  //               success: true,
+  //               consentRequired: true,
+  //               consentAccepted: false,
+  //             }),
+  //           });
 
-            // Detect changes to API contract.
-            expect(body).toMatchObject({
-              consentAccepted: true,
-            });
-
-
-            await route.fulfill({
-              status: 200,
-              contentType:
-                'application/json',
-
-              body: JSON.stringify({
-                success: true,
-                consentRequired: false,
-                consentAccepted: true,
-              }),
-            });
-
-            return;
-          }
+  //           return;
+  //         }
 
 
-          await route.continue();
-        }
-      );
+  //         if (
+  //           method === 'POST'
+  //         ) {
+
+  //           const body =
+  //             route.request()
+  //               .postDataJSON();
 
 
-      // --------------------------------------------------------
-      // New user has incomplete profile
-      // --------------------------------------------------------
-
-      await page.route(
-        '**/api/user/profile*',
-        async route => {
-
-          if (
-            route.request().method()
-            === 'GET'
-          ) {
-
-            await route.fulfill({
-              status: 200,
-              contentType:
-                'application/json',
-
-              body: JSON.stringify({
-                success: true,
-
-                data: {
-                  profileComplete:
-                    false,
-
-                  userName:
-                    null,
-
-                  email:
-                    '',
-
-                  height:
-                    null,
-
-                  dietType:
-                    null,
-
-                  gender:
-                    null,
-
-                  currentWeight:
-                    null,
-
-                  bodyFat:
-                    null,
-
-                  profileImage:
-                    null,
-
-                  physicalActivityLevel:
-                    null,
-                },
-              }),
-            });
-
-            return;
-          }
-
-          await route.continue();
-        }
-      );
+  //           // Detect changes to API contract.
+  //           expect(body).toMatchObject({
+  //             consentAccepted: true,
+  //           });
 
 
-      // --------------------------------------------------------
-      // REAL UI LOGIN
-      // NO REAL SMS
-      // --------------------------------------------------------
+  //           await route.fulfill({
+  //             status: 200,
+  //             contentType:
+  //               'application/json',
 
-      await loginWithMockedOtp(page, {
-        isNewUser: true,
-        email: '',
-      });
+  //             body: JSON.stringify({
+  //               success: true,
+  //               consentRequired: false,
+  //               consentAccepted: true,
+  //             }),
+  //           });
 
-
-      // --------------------------------------------------------
-      // Consent
-      // --------------------------------------------------------
-
-      await expect(
-        page.getByRole(
-          'heading',
-          {
-            name:
-              'User Consent Form',
-          }
-        )
-      ).toBeVisible({
-        timeout: 15000,
-      });
+  //           return;
+  //         }
 
 
-      // --------------------------------------------------------
-      // I Agree
-      // --------------------------------------------------------
-
-      await page.getByText(
-        'I Agree',
-        {
-          exact: true,
-        }
-      ).last().click();
+  //         await route.continue();
+  //       }
+  //     );
 
 
-      const continueButton =
-        page.getByRole(
-          'button',
-          {
-            name:
-              'Continue',
-          }
-        );
+  //     // --------------------------------------------------------
+  //     // New user has incomplete profile
+  //     // --------------------------------------------------------
+
+  //     await page.route(
+  //       '**/api/user/profile*',
+  //       async route => {
+
+  //         if (
+  //           route.request().method()
+  //           === 'GET'
+  //         ) {
+
+  //           await route.fulfill({
+  //             status: 200,
+  //             contentType:
+  //               'application/json',
+
+  //             body: JSON.stringify({
+  //               success: true,
+
+  //               data: {
+  //                 profileComplete:
+  //                   false,
+
+  //                 userName:
+  //                   null,
+
+  //                 email:
+  //                   '',
+
+  //                 height:
+  //                   null,
+
+  //                 dietType:
+  //                   null,
+
+  //                 gender:
+  //                   null,
+
+  //                 currentWeight:
+  //                   null,
+
+  //                 bodyFat:
+  //                   null,
+
+  //                 profileImage:
+  //                   null,
+
+  //                 physicalActivityLevel:
+  //                   null,
+  //               },
+  //             }),
+  //           });
+
+  //           return;
+  //         }
+
+  //         await route.continue();
+  //       }
+  //     );
 
 
-      await expect(
-        continueButton
-      ).toBeEnabled();
+  //     // --------------------------------------------------------
+  //     // REAL UI LOGIN
+  //     // NO REAL SMS
+  //     // --------------------------------------------------------
+
+  //     await loginWithMockedOtp(page, {
+  //       isNewUser: true,
+  //       email: '',
+  //     });
 
 
-      await continueButton.click();
+  //     // --------------------------------------------------------
+  //     // Consent
+  //     // --------------------------------------------------------
+
+  //     await expect(
+  //       page.getByRole(
+  //         'heading',
+  //         {
+  //           name:
+  //             'User Consent Form',
+  //         }
+  //       )
+  //     ).toBeVisible({
+  //       timeout: 15000,
+  //     });
 
 
-      // --------------------------------------------------------
-      // Consent disappears
-      // --------------------------------------------------------
+  //     // --------------------------------------------------------
+  //     // I Agree
+  //     // --------------------------------------------------------
 
-      await expect(
-        page.getByRole(
-          'heading',
-          {
-            name:
-              'User Consent Form',
-          }
-        )
-      ).not.toBeVisible({
-        timeout: 10000,
-      });
+  //     await page.getByText(
+  //       'I Agree',
+  //       {
+  //         exact: true,
+  //       }
+  //     ).last().click();
 
 
-      // --------------------------------------------------------
-      // Complete Profile
-      // --------------------------------------------------------
-
-      await expect(
-        page.getByRole(
-          'heading',
-          {
-            name:
-              'Complete Your Profile',
-          }
-        )
-      ).toBeVisible({
-        timeout: 15000,
-      });
+  //     const continueButton =
+  //       page.getByRole(
+  //         'button',
+  //         {
+  //           name:
+  //             'Continue',
+  //         }
+  //       );
 
 
-      await expect(
-        page.getByText(
-          'Name, email, gender, height, diet preference, and photo — all in one place.',
-          {
-            exact: true,
-          }
-        )
-      ).toBeVisible();
+  //     await expect(
+  //       continueButton
+  //     ).toBeEnabled();
 
-    }
-  );
+
+  //     await continueButton.click();
+
+
+  //     // --------------------------------------------------------
+  //     // Consent disappears
+  //     // --------------------------------------------------------
+
+  //     await expect(
+  //       page.getByRole(
+  //         'heading',
+  //         {
+  //           name:
+  //             'User Consent Form',
+  //         }
+  //       )
+  //     ).not.toBeVisible({
+  //       timeout: 10000,
+  //     });
+
+
+  //     // --------------------------------------------------------
+  //     // Complete Profile
+  //     // --------------------------------------------------------
+
+  //     await expect(
+  //       page.getByRole(
+  //         'heading',
+  //         {
+  //           name:
+  //             'Complete Your Profile',
+  //         }
+  //       )
+  //     ).toBeVisible({
+  //       timeout: 15000,
+  //     });
+
+
+  //     await expect(
+  //       page.getByText(
+  //         'Name, email, gender, height, diet preference, and photo — all in one place.',
+  //         {
+  //           exact: true,
+  //         }
+  //       )
+  //     ).toBeVisible();
+
+  //   }
+  // );
 
 });

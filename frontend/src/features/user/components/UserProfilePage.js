@@ -183,7 +183,9 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
     try {
       const err = form.validate({ requireDiet: false, maxHeight: 198 });
       if (err) { setError(err); return; }
-      const payload = form.payload(user.email, profileImage ? { profileImage } : {});
+      const payload = form.payload(user.email, {
+        ...(profileImage ? { profileImage } : {}),
+      });
       // BMR is system-calculated on the profile page — never write it from this form.
       delete payload.bmr;
       const data = await saveProfile(payload);

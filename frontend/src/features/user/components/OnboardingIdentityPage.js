@@ -51,6 +51,25 @@ const OnboardingIdentityPage = ({ user, onComplete }) => {
 
       try {
         if (!loginEmail) {
+          const uid = user?.id || user?.UserId || user?.userId;
+          if (uid) {
+            try {
+              const result = await fetchProfile({ userId: uid });
+              if (!mounted) return;
+              const profile = result?.data;
+              if (hasValidProfileName(profile?.userName, {
+                phoneNumber: profile?.phoneNumber || phone,
+              })) {
+                setName(String(profile.userName).trim());
+              } else {
+                applySessionName('');
+              }
+            } catch {
+              if (mounted) applySessionName('');
+            }
+            if (mounted) setLoading(false);
+            return;
+          }
           if (mounted) {
             applySessionName('');
             setLoading(false);

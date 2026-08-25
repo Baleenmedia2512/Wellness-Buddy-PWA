@@ -91,7 +91,9 @@ const UserProfileModal = ({ isOpen, onClose, user, userRole = 'user', onProfileU
     try {
       const err = form.validate({ requireDiet: false, maxHeight: 198 });
       if (err) { setError(err); return; }
-      const data = await saveProfile(form.payload(user.email, profileImage ? { profileImage } : {}));
+      const data = await saveProfile(form.payload(user.email, {
+        ...(profileImage ? { profileImage } : {}),
+      }));
       onProfileUpdate?.({
         name: form.name,
         height: form.height ? parseFloat(form.height) : null,
@@ -139,7 +141,8 @@ const UserProfileModal = ({ isOpen, onClose, user, userRole = 'user', onProfileU
         <UserProfileBody isLoading={isLoading} form={form} email={form.email}
           latestWeight={latestWeight} initialWeight={initialWeight}
           initialWeightDate={initialWeightDate}
-          error={error} successMessage={successMessage} />
+          error={error} successMessage={successMessage}
+        />
         {!isLoading && (
           <UserProfileFooter isSaving={isSaving} hasSaved={hasSaved} disabled={saveDisabled}
             onCancel={handleCancel} onSave={handleSave} />
