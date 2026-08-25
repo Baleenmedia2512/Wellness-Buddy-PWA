@@ -23,6 +23,7 @@
 
 import * as Session from "../sessionStorage";
 import { getProfile } from "../../../features/user/services/user.api.js";
+import { isOnboardingIdentityComplete } from "../../../features/user/domain/profileCompleteness";
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -37,18 +38,25 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
  *   with 450 ms gaps (data can be briefly stale right after a profile save).
  * @returns {Promise<{
  *   status: 'complete' | 'incomplete' | 'error',
+ *   identityComplete?: boolean,
  *   data?: object | null,
  *   snooze?: object | null,
- *   missingFields?: { height: any, dietType: any, phoneNumber: any },
+ *   missingFields?: object,
  *   error?: any,
  * }>}
  */
 export async function fetchProfileCompletion({ apiBaseUrl, email, afterSave = false }) {
-  if (!email) return { status: "error", data: null };
+  if (!email) return { status: "error", data: null, identityComplete: false };
   void apiBaseUrl; // getProfile uses config base URL
 
   const maxAttempts = afterSave ? 3 : 1;
   let latestData = null;
+
+  const identityFrom = (data) => isOnboardingIdentityComplete({
+    userName: data?.userName,
+    email: data?.email || email,
+    phoneNumber: data?.phoneNumber,
+  });
 
   try {
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
@@ -65,6 +73,7 @@ export async function fetchProfileCompletion({ apiBaseUrl, email, afterSave = fa
         Session.markProfileComplete(email);
         return {
           status: "complete",
+          identityComplete: true,
           data: latestData,
           snooze: latestData.profilePicSnooze || null,
         };
@@ -77,6 +86,7 @@ export async function fetchProfileCompletion({ apiBaseUrl, email, afterSave = fa
 
     return {
       status: "incomplete",
+      identityComplete: identityFrom(latestData),
       data: latestData,
       snooze: latestData?.profilePicSnooze || null,
       missingFields: {
@@ -90,7 +100,12 @@ export async function fetchProfileCompletion({ apiBaseUrl, email, afterSave = fa
     };
   } catch (err) {
     // Fail-open: caller handles spinner/state cleanup. No throw.
-    return { status: "error", data: latestData, error: err };
+    return {
+      status: "error",
+      identityComplete: identityFrom(latestData),
+      data: latestData,
+      error: err,
+    };
   }
 }
 

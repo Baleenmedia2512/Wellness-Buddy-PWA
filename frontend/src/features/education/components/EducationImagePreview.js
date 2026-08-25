@@ -8,7 +8,7 @@ import { Monitor, Calendar, Clock, BookOpen, X } from 'lucide-react';
 import { formatLogDate, formatLogTime } from '../services/educationFormatter';
 
 export default function EducationImagePreview({
-  log, imageSrc, imageLoading, onClose,
+  log, imageSrc, imageLoading, onClose, timezoneIana,
 }) {
   return (
     <div className="relative">
@@ -32,15 +32,15 @@ export default function EducationImagePreview({
               {log.Topic || 'Education Meeting'}
             </h2>
             <p className="text-xs text-white/70 mt-0.5">
-              Logged at {formatLogTime(log.CreatedAt)}
+              Logged at {formatLogTime(log.CreatedAt, timezoneIana)}
             </p>
           </div>
         </div>
 
         <div className="flex flex-wrap gap-2 pt-1">
           <Chip icon={Monitor} label={log.Platform || 'Online Meeting'} />
-          <Chip icon={Calendar} label={formatLogDate(log.CreatedAt)} />
-          <Chip icon={Clock} label={formatLogTime(log.CreatedAt)} />
+          <Chip icon={Calendar} label={formatLogDate(log.CreatedAt, timezoneIana)} />
+          <Chip icon={Clock} label={formatLogTime(log.CreatedAt, timezoneIana)} />
         </div>
       </div>
 

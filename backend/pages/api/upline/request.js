@@ -147,7 +147,8 @@ export default async function handler(req, res) {
     // ── Demo account: auto-assign Yasheer J as coach with fixed OTP 000000 ──
     // No email is sent; the tester enters 000000 to complete setup.
     const DEMO_ACCOUNTS = ['testereasywork@gmail.com'];
-    if (DEMO_ACCOUNTS.includes(email.toLowerCase().trim())) {
+    const emailNorm = typeof email === 'string' ? email.toLowerCase().trim() : '';
+    if (emailNorm && DEMO_ACCOUNTS.includes(emailNorm)) {
       logger.debug('ℹ️ [upline/request] Demo account — auto-assigning Yasheer J as coach');
 
       // Look up Yasheer J from DB dynamically (no hardcoded ID)
@@ -384,7 +385,7 @@ export default async function handler(req, res) {
               <div class="info-box">
                 <div class="info-label">Requester Details</div>
                 <div class="info-value">👤 ${requester.UserName}</div>
-                <div class="info-value">📧 ${requester.Email}</div>
+                <div class="info-value">📧 ${requester.Email || requester.PhoneNumber || 'Email not set yet'}</div>
                 ${requester.TeamId ? `<div class="info-value">🔖 Team ID: ${requester.TeamId}</div>` : ""}
               </div>
               

@@ -16,7 +16,7 @@ export const teamHierarchyService = {
    * @returns {Promise<Object>} - Hierarchical team data
    */
   async getTeamHierarchy(coachId, includeInactive = false) {
-    const cacheKey = cacheManager.generateKey("teamHierarchy", coachId, includeInactive);
+    const cacheKey = cacheManager.generateKey("teamHierarchy", "v2-bcm-weight", coachId, includeInactive);
     return cacheManager.execute(
       cacheKey,
       async () => {
@@ -55,6 +55,7 @@ export const teamHierarchyService = {
           userId: member.UserId,
           userName: member.UserName,
           email: member.Email || "",
+          communityId: member.CommunityId || member.communityId || null,
           role: member.Role || "user",
           coachId: member.CoachId,
           coCoachId: member.CoCoachId,
@@ -67,6 +68,16 @@ export const teamHierarchyService = {
           phoneNumber: member.phoneNumber || member.PhoneNumber || null,
           heightCm: member.height != null ? member.height : (member.heightCm != null ? member.heightCm : null),
           bmr: member.bmr != null ? member.bmr : null,
+          gender: member.gender || member.Gender || null,
+          age: member.age != null ? member.age : null,
+          visceralFat: member.visceralFat != null ? member.visceralFat : null,
+          bodyAge: member.bodyAge != null ? member.bodyAge : null,
+          chestCm: member.chestCm != null ? member.chestCm : null,
+          waistCm: member.waistCm != null ? member.waistCm : null,
+          hipCm: member.hipCm != null ? member.hipCm : null,
+          weightKg: member.weightKg != null ? member.weightKg : null,
+          fatPercent: member.fatPercent != null ? member.fatPercent : null,
+          bmi: member.bmi != null ? member.bmi : null,
         }));
       }
 
@@ -81,6 +92,7 @@ export const teamHierarchyService = {
             userId: node.userId,
             userName: node.userName,
             email: node.email,
+            communityId: node.communityId || null,
             role: node.role,
             coachId: node.coachId,
             coCoachId: node.coCoachId,
@@ -93,6 +105,16 @@ export const teamHierarchyService = {
             phoneNumber: node.phoneNumber || null,
             heightCm: node.height != null ? node.height : (node.heightCm != null ? node.heightCm : null),
             bmr: node.bmr != null ? node.bmr : null,
+            gender: node.gender || null,
+            age: node.age != null ? node.age : null,
+            visceralFat: node.visceralFat != null ? node.visceralFat : null,
+            bodyAge: node.bodyAge != null ? node.bodyAge : null,
+            chestCm: node.chestCm != null ? node.chestCm : null,
+            waistCm: node.waistCm != null ? node.waistCm : null,
+            hipCm: node.hipCm != null ? node.hipCm : null,
+            weightKg: node.weightKg != null ? node.weightKg : null,
+            fatPercent: node.fatPercent != null ? node.fatPercent : null,
+            bmi: node.bmi != null ? node.bmi : null,
           });
         }
         if (node.teamMembers && node.teamMembers.length > 0) {

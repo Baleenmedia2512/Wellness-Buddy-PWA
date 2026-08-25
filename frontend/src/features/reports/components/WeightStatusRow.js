@@ -22,8 +22,11 @@ function getBarProps(currentWeight, idealMin, idealMax) {
 }
 
 export default function WeightStatusRow({ row, teamPerformance = null }) {
-  const { userName, currentWeight, idealMin, idealMax, status } = row;
+  const { userName, email, communityId, currentWeight, idealMin, idealMax, status } = row;
   const bar = getBarProps(currentWeight, idealMin, idealMax);
+  const mail = String(email || '').trim();
+  const cid = String(communityId || '').trim();
+  const subtitle = mail && cid ? `${mail} | ${cid}` : (mail || cid);
 
   let deltaLabel = null;
   if (currentWeight !== null && idealMin !== null && idealMax !== null) {
@@ -44,7 +47,12 @@ export default function WeightStatusRow({ row, teamPerformance = null }) {
           <div className="flex-shrink-0 h-8 w-8 rounded-full bg-green-50 flex items-center justify-center">
             <User className="h-4 w-4 text-green-600" />
           </div>
-          <span className="font-semibold text-gray-800 text-sm truncate">{userName}</span>
+          <div className="min-w-0">
+            <span className="font-semibold text-gray-800 text-sm truncate block">{userName}</span>
+            {subtitle ? (
+              <span className="text-[11px] text-gray-500 truncate block">{subtitle}</span>
+            ) : null}
+          </div>
         </div>
         <WeightStatusBadge status={status} />
       </div>

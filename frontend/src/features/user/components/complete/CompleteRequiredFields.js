@@ -1,13 +1,9 @@
-// Name, email, gender, height, diet, conditional weight + body fat.
+// Name, email, gender, height, diet, conditional weight.
 import React from 'react';
-import { Mail, Percent, Ruler, Scale, User } from 'lucide-react';
+import { Mail, Ruler, Scale, User } from 'lucide-react';
 import { DIET_OPTIONS } from '../../services/dietOptions';
 import DietIcon from '../../../../shared/components/icons/DietIcon';
-import {
-  VALID_GENDERS,
-  MIN_BODY_FAT_PCT,
-  MAX_BODY_FAT_PCT,
-} from '../../domain/profileCompleteness';
+import { VALID_GENDERS } from '../../domain/profileCompleteness';
 
 const MIN_WEIGHT_KG = 20;
 const MAX_WEIGHT_KG = 300;
@@ -20,13 +16,15 @@ const inputCls = (invalid) =>
 const CompleteRequiredFields = ({
   name, setName, nameValid,
   email, setEmail, emailValid, emailLocked,
+  identityLocked = false,
+  hideName = false,
   gender, setGender, showGender,
   height, setHeight, heightValid,
   dietType, setDietType,
   currentWeight, setCurrentWeight, showCurrentWeight, currentWeightValid,
-  bodyFat, setBodyFat, showBodyFat, bodyFatValid,
 }) => (
   <>
+    {!hideName && (
     <div>
       <label className="block text-sm font-semibold text-gray-700 mb-2">
         Full Name <span className="text-red-500">*</span>
@@ -39,11 +37,16 @@ const CompleteRequiredFields = ({
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="Enter your full name"
-          className={inputCls(name && !nameValid)}
+          disabled={identityLocked}
+          className={`${inputCls(name && !nameValid)} ${identityLocked ? 'bg-gray-50 text-gray-600' : ''}`}
           style={{ fontSize: '16px' }}
         />
       </div>
+      {identityLocked && (
+        <p className="text-xs text-gray-400 mt-1">Saved earlier in onboarding</p>
+      )}
     </div>
+    )}
 
     <div>
       <label className="block text-sm font-semibold text-gray-700 mb-2">
@@ -64,6 +67,9 @@ const CompleteRequiredFields = ({
       </div>
       {emailLocked && (
         <p className="text-xs text-gray-400 mt-1">Email from your login account</p>
+      )}
+      {!emailLocked && (
+        <p className="text-xs text-gray-400 mt-1">Required to finish your profile</p>
       )}
     </div>
 
@@ -159,29 +165,6 @@ const CompleteRequiredFields = ({
         </div>
         <p className="text-xs text-gray-400 mt-1">
           Saved to your weight log. Range: {MIN_WEIGHT_KG}–{MAX_WEIGHT_KG} kg
-        </p>
-      </div>
-    )}
-
-    {showBodyFat && (
-      <div>
-        <label className="block text-sm font-semibold text-gray-700 mb-2">
-          Body Fat (%) <span className="text-red-500">*</span>
-        </label>
-        <div className="relative">
-          <Percent className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" />
-          <input
-            type="text"
-            inputMode="decimal"
-            value={bodyFat || ''}
-            onChange={(e) => setBodyFat(e.target.value)}
-            placeholder="e.g. 22"
-            className={inputCls(bodyFat && !bodyFatValid)}
-            style={{ fontSize: '16px' }}
-          />
-        </div>
-        <p className="text-xs text-gray-400 mt-1">
-          Saved on the same weight log as current weight. Range: {MIN_BODY_FAT_PCT}–{MAX_BODY_FAT_PCT}%
         </p>
       </div>
     )}

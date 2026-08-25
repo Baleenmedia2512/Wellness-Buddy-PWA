@@ -217,6 +217,7 @@ export function validateListForCoach(query) {
     page: normalized.page,
     limit: normalized.limit,
     search: normalized.search,
+    healthIssue: normalized.healthIssue,
     uploadFilter: normalized.uploadFilter,
   };
 }
@@ -253,9 +254,9 @@ export function validateMyTestimonial(query) {
 
 // ─── Video validators ─────────────────────────────────────────────────────────
 
-// Binary size limits for direct storage uploads (not base64)
-export const MAX_HEALTH_VIDEO_BYTES   = 20 * 1024 * 1024;
-export const MAX_BUSINESS_VIDEO_BYTES = 40 * 1024 * 1024;
+// Binary size limits for direct storage uploads (not base64).
+export const MAX_HEALTH_VIDEO_BYTES   = 15 * 1024 * 1024;
+export const MAX_BUSINESS_VIDEO_BYTES = 15 * 1024 * 1024;
 
 function validateOptionalVideoPath(value, fieldName, userId, slot) {
   if (value === undefined || value === null || value === '') return undefined;
@@ -549,6 +550,35 @@ const result = {
   }
 
   return result;
+}
+
+/**
+ * Validate payload for POST /api/testimonials/update-health-issues
+ * Coach updates a reporting member's recovered health issues (no OTP).
+ */
+export function validateUpdateMemberHealthIssues(body) {
+  if (!body) throw new ValidationError(400, 'Request body is missing');
+
+  const { coachId, userId } = body;
+  const recoveredHealthIssues = normalizeRecoveredHealthIssues(body);
+
+  if (!coachId) throw new ValidationError(400, 'coachId is required');
+  const coachIdN = parseInt(coachId, 10);
+  if (isNaN(coachIdN) || coachIdN < 1) throw new ValidationError(400, 'coachId must be a valid integer');
+
+  if (!userId) throw new ValidationError(400, 'userId is required');
+  const userIdN = parseInt(userId, 10);
+  if (isNaN(userIdN) || userIdN < 1) throw new ValidationError(400, 'userId must be a valid integer');
+
+  if (recoveredHealthIssues === undefined) {
+    throw new ValidationError(400, 'recoveredHealthIssues is required');
+  }
+
+  return {
+    coachId: coachIdN,
+    userId: userIdN,
+    recoveredHealthIssues: validateRecoveredHealthIssues(recoveredHealthIssues, { required: true }),
+  };
 }
 
 /**

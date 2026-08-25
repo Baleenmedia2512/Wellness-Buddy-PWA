@@ -24,8 +24,8 @@ import {
   Bone,
   Zap,
   Shield,
-  Brain,
   Sparkles,
+  Star,
   TrendingDown,
   Dumbbell,
   CircleDot,
@@ -38,6 +38,7 @@ export const PARAMETER_ICONS = {
   breakfast_post: Coffee,
   lunch_post: Utensils,
   dinner_post: Moon,
+  good_habit_post: Star,
   water_qty: Droplets,
 
   calories: Flame,
@@ -143,6 +144,8 @@ function getBinaryScoringHint(parameterKey, timeWindows) {
   return SCORING_MODE_HINTS.binary;
 }
 
+const GOOD_HABIT_HINT = 'Full points when logged any time today; missed = 0.';
+
 const LIMIT_HINT_LOSS = 'Start from full point; exceeding limit = 0';
 const LIMIT_HINT_GAIN = SCORING_MODE_HINTS.limit;
 const GI_HINT_LOSS = 'Low and medium GI = full points; high GI = 0';
@@ -157,6 +160,10 @@ const GI_HINT_GAIN = 'Full points when average GI ≤ 55; above limit = 0';
  */
 export function getScoringModeHint(scoringMode, parameterKey, goalMode, { adminView = false, timeWindows = null } = {}) {
   const isGain = String(goalMode || 'loss').toLowerCase() === 'gain';
+
+  if (parameterKey === 'good_habit_post') {
+    return GOOD_HABIT_HINT;
+  }
 
   if (scoringMode === 'binary') {
     return getBinaryScoringHint(parameterKey, timeWindows);

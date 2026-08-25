@@ -89,11 +89,11 @@ export function useWaterTracker({ user, userId: propUserId } = {}) {
           userEmail: user?.email || getCachedUserEmail(),
         });
         setSaveSuccess({ amount: ml });
-        await refresh();
-        // Async activity log → Home dashboard refreshes when this watermark is newer
+        // Score/Home first — do not wait on the water-history refetch.
         if (triggerRefresh) {
           triggerRefresh({ immediate: true, source: 'water-intake' });
         }
+        await refresh();
       } catch (err) {
         console.error('[useWaterTracker] logWater error:', err);
         setError(err.message || 'Failed to log water. Please try again.');

@@ -10,10 +10,13 @@
  * avoid a nutrition ↔ diary circular import via the diary barrel).
  */
 import React, { useRef, useState, useMemo } from 'react';
-import { X, Flame, Trash2, Share2, Droplets } from 'lucide-react';
-import { captureAndShare } from '../../../shared/utils/shareUtils';
+import { X, Flame, Trash2, Share2, Droplets, ChevronRight } from 'lucide-react';
+import { captureAndShare, composeBrandedShareCaption } from '../../../shared/utils/shareUtils';
+import { withMarathonWhatsAppNotice } from '../../marathon';
 import { parseAnalysisData, getMealCategory } from '../services/nutritionDashboard/analysisHelpers';
 import { buildDiaryShareSuffix } from '../../diary/domain/share/suffixes';
+import { extractFoodShareItems } from '../../diary/domain/activityType';
+import FoodItemNutritionModal from './FoodItemNutritionModal';
 
 function macro(n) {
   const v = Number(n);
@@ -29,8 +32,8 @@ function extractItems(analysisData) {
   const foods = parsed?.foods || parsed?.detailedItems || [];
   if (!Array.isArray(foods)) return [];
   return foods.map((f) => ({
+    ...f,
     name: f.name || f.foodName || 'Item',
-    calories: macro(f.calories ?? f.nutrition?.calories ?? 0),
   }));
 }
 
@@ -127,14 +130,17 @@ const MEAL_LABELS = {
 function buildShareText({
   activityType, foodName, calories, volumeMl, scoops, servings, shakeProducts, nutrition = {},
   glycemicIndex = null,
+  itemNames = null,
+  foodItems = null,
 }) {
   if (activityType === 'water') {
-    return buildDiaryShareSuffix('water', { volumeMl });
+    return buildDiaryShareSuffix('water', { volumeMl, soFarToday: false });
   }
   if (activityType === 'afresh') {
     return buildDiaryShareSuffix('afresh', {
       scoops: scoops ?? 1,
       calories,
+      soFarToday: false,
     });
   }
   if (activityType === 'shake') {
@@ -146,6 +152,8 @@ function buildShareText({
   }
   return buildDiaryShareSuffix('food', {
     foodName,
+    foodItems,
+    itemNames,
     calories,
     protein: nutrition.protein ?? 0,
     carbs: nutrition.carbs ?? 0,
@@ -158,6 +166,7 @@ function buildShareText({
 const FoodDetailModal = ({ payload, capturedAt, onClose, onDelete }) => {
   const cardRef = useRef(null);
   const [isSharing, setIsSharing] = useState(false);
+  const [selectedItem, setSelectedItem] = useState(null);
 
   const foodData = useMemo(
     () => parseAnalysisData(payload?.analysisData),
@@ -197,6 +206,8 @@ const FoodDetailModal = ({ payload, capturedAt, onClose, onDelete }) => {
     scoops,
     servings: 1,
     shakeProducts,
+    itemNames: items.map((item) => item.name).filter(Boolean),
+    foodItems: extractFoodShareItems(foodData, payload?.analysisData),
     nutrition: {
       protein: totals.protein ?? foodData?.nutrition?.protein ?? 0,
       carbs: totals.carbs ?? foodData?.nutrition?.carbs ?? 0,
@@ -231,7 +242,7 @@ const FoodDetailModal = ({ payload, capturedAt, onClose, onDelete }) => {
     try {
       await captureAndShare(cardRef.current, {
         title: foodName,
-        text: shareText,
+        text: withMarathonWhatsAppNotice(composeBrandedShareCaption(shareText)),
         fileName: `wellness-${activityType}-${Date.now()}.png`,
       });
     } catch (err) {
@@ -329,12 +340,21 @@ const FoodDetailModal = ({ payload, capturedAt, onClose, onDelete }) => {
                   <h4 className="text-sm font-semibold text-gray-700 mb-2">Items</h4>
                   <ul className="space-y-1.5">
                     {items.map((it, i) => (
-                      <li
-                        key={`${it.name}-${i}`}
-                        className="flex justify-between items-center bg-white border border-gray-100 rounded-lg px-3 py-2"
-                      >
-                        <span className="text-sm text-gray-800 truncate pr-2">{it.name}</span>
-                        <span className="text-sm font-medium text-gray-600 shrink-0">{it.calories} kcal</span>
+                      <li key={`${it.name}-${i}`}>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedItem(it)}
+                          className="w-full flex justify-between items-center bg-white border border-gray-100 rounded-lg px-3 py-2 text-left hover:border-emerald-200 hover:bg-emerald-50/40 active:scale-[0.99] transition-colors"
+                          aria-label={`View nutrition facts for ${it.name}`}
+                        >
+                          <span className="text-sm text-gray-800 truncate pr-2">{it.name}</span>
+                          <span className="flex items-center gap-1 shrink-0">
+                            <span className="text-sm font-medium text-gray-600">
+                              {macro(it.calories ?? it.nutrition?.calories ?? 0)} kcal
+                            </span>
+                            <ChevronRight className="w-4 h-4 text-gray-300" aria-hidden="true" />
+                          </span>
+                        </button>
                       </li>
                     ))}
                   </ul>
@@ -368,6 +388,12 @@ const FoodDetailModal = ({ payload, capturedAt, onClose, onDelete }) => {
           )}
         </div>
       </div>
+      {selectedItem && (
+        <FoodItemNutritionModal
+          item={selectedItem}
+          onClose={() => setSelectedItem(null)}
+        />
+      )}
     </div>
   );
 };

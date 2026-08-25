@@ -1,6 +1,7 @@
 // Auto-derived weight goal mode — read-only display (not user-switchable).
 import React, { useMemo } from 'react';
 import { deriveWeightGoalMode } from '../../../weight/services/weightFormService';
+import { EmojiOrNative } from '../../../../shared/components/icons/EmojiImage';
 
 const MODE_META = {
   loss: {
@@ -46,7 +47,7 @@ const WeightModeSelector = ({ height, currentWeight, fallbackMode = 'loss' }) =>
         <span
           className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-bold text-white shadow-md ${meta.pill}`}
         >
-          <span>{meta.icon}</span>
+          <EmojiOrNative emoji={meta.icon} className="w-4 h-4" nativeClassName="text-sm leading-none" />
           <span>{meta.label}</span>
         </span>
       </div>

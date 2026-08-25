@@ -13,23 +13,46 @@ import CircularProgress from './CircularProgress';
  * Reuse criteria (claude.md §2.4): used in 3 cards (Vit fat-soluble,
  * Vit B-Complex, Minerals) → shared component.
  */
-const MicroNutrientTile = ({ label, unit, consumed, target, pct, color, nutrientKey, onOpenModal }) => {
+const MicroNutrientTile = ({
+  label, unit, consumed, target, pct, color, nutrientKey, onOpenModal,
+  layout = 'grid',
+}) => {
+  const isRow = layout === 'row';
+  const open = onOpenModal && nutrientKey
+    ? () => onOpenModal(nutrientKey)
+    : undefined;
+
   return (
-    <div className="text-center">
+    <div
+      className={`text-center ${isRow ? 'min-w-[4.5rem] shrink-0 flex-1' : ''} ${open ? 'cursor-pointer active:scale-95 transition-transform' : ''}`}
+      onClick={open}
+      role={open ? 'button' : undefined}
+      tabIndex={open ? 0 : undefined}
+      onKeyPress={open ? (e) => { if (e.key === 'Enter' || e.key === ' ') open(); } : undefined}
+    >
       <CircularProgress
         percentage={pct}
         color={color}
-        size={44}
+        size={isRow ? 48 : 44}
         strokeWidth={4}
-        onClick={() => onOpenModal && nutrientKey && onOpenModal(nutrientKey)}
       />
       <p className="text-[10px] font-semibold text-gray-700 mt-0.5 leading-tight">
         {label}
       </p>
-      <p className="text-[10px] font-bold text-gray-900 leading-tight">
-        {consumed}
-        <span className="text-[9px] font-normal text-gray-500">/{target}{unit}</span>
-      </p>
+      {isRow ? (
+        <>
+          <p className="text-[10px] font-bold text-gray-900 leading-tight">
+            {consumed}
+            <span className="text-[9px] font-normal text-gray-500"> / {target}</span>
+          </p>
+          <p className="text-[9px] font-normal text-gray-500 leading-tight">{unit}</p>
+        </>
+      ) : (
+        <p className="text-[10px] font-bold text-gray-900 leading-tight">
+          {consumed}
+          <span className="text-[9px] font-normal text-gray-500">/{target}{unit}</span>
+        </p>
+      )}
     </div>
   );
 };

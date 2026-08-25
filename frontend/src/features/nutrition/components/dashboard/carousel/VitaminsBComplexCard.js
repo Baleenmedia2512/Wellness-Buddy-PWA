@@ -5,9 +5,12 @@ import CarouselPeriodHeader from './CarouselPeriodHeader';
 
 /**
  * VitaminsBComplexCard — Card 7 of the Nutrition Carousel.
- * Vitamins B1, B2, B3, B6, B9, B12. Six tiles in a 3-col × 2-row grid.
+ * Vitamins B1, B2, B3, B6, B9, B12.
+ * layout="grid" (default): 3-col × 2-row for the Home carousel.
+ * layout="row": all six in one row on desktop; horizontal scroll on mobile.
  */
-const VitaminsBComplexCard = ({ tiles, periodContext, onOpenModal }) => {
+const VitaminsBComplexCard = ({ tiles, periodContext, onOpenModal, layout = 'grid' }) => {
+  const isRow = layout === 'row';
   return (
     <div className="h-full flex items-center justify-center py-2">
       <div className="bg-white rounded-xl shadow-lg p-2.5 w-full">
@@ -22,7 +25,11 @@ const VitaminsBComplexCard = ({ tiles, periodContext, onOpenModal }) => {
           </div>
         </div>
 
-        <div className="grid grid-cols-3 gap-y-1.5 gap-x-2">
+        <div
+          className={isRow
+            ? 'flex gap-2 overflow-x-auto pb-1 md:grid md:grid-cols-6 md:overflow-visible'
+            : 'grid grid-cols-3 gap-y-1.5 gap-x-2'}
+        >
           {tiles.map((t) => (
             <MicroNutrientTile
               key={t.key}
@@ -34,6 +41,7 @@ const VitaminsBComplexCard = ({ tiles, periodContext, onOpenModal }) => {
               color="from-sky-400 to-indigo-500"
               nutrientKey={t.key}
               onOpenModal={onOpenModal}
+              layout={isRow ? 'row' : 'grid'}
             />
           ))}
         </div>

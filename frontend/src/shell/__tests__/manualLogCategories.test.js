@@ -1,48 +1,54 @@
 /**
- * Manual Log category + Healthy Snacks subtype navigation.
+ * Manual Log category + Dry Salad navigation.
  * Run: node --test frontend/src/shell/__tests__/manualLogCategories.test.js
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   MANUAL_LOG_CATEGORY,
-  HEALTHY_SNACKS_SUBTYPE,
-  HEALTHY_SNACKS_SUBOPTIONS,
+  DRY_SALAD_META,
+  GOOD_HABIT_SUBTYPE,
+  GOOD_HABIT_SUBOPTIONS,
   isManualLogCategory,
-  isHealthySnacksSubtype,
-  getHealthySnacksSuboption,
   resolveManualLogCategoryClick,
-  resolveHealthySnacksSubtypeClick,
 } from '../domain/manualLogCategories.js';
 
 describe('manualLogCategories', () => {
-  it('includes healthy-snacks among known category ids', () => {
-    assert.equal(MANUAL_LOG_CATEGORY.HEALTHY_SNACKS, 'healthy-snacks');
-    assert.equal(isManualLogCategory('healthy-snacks'), true);
+  it('includes dry-salad among known category ids', () => {
+    assert.equal(MANUAL_LOG_CATEGORY.DRY_SALAD, 'dry-salad');
+    assert.equal(isManualLogCategory('dry-salad'), true);
+    assert.equal(isManualLogCategory('good-habit'), true);
     assert.equal(isManualLogCategory('food'), true);
     assert.equal(isManualLogCategory('nope'), false);
   });
 
-  it('exposes Soups, Salads, Sprouts subtypes', () => {
-    assert.deepEqual(
-      HEALTHY_SNACKS_SUBOPTIONS.map((o) => o.id),
-      [
-        HEALTHY_SNACKS_SUBTYPE.SOUPS,
-        HEALTHY_SNACKS_SUBTYPE.SALADS,
-        HEALTHY_SNACKS_SUBTYPE.SPROUTS,
-      ],
-    );
-    assert.equal(HEALTHY_SNACKS_SUBOPTIONS.length, 3);
-    assert.equal(isHealthySnacksSubtype('soups'), true);
-    assert.equal(isHealthySnacksSubtype('salads'), true);
-    assert.equal(isHealthySnacksSubtype('sprouts'), true);
-    assert.equal(isHealthySnacksSubtype('food'), false);
+  it('does not include healthy-snacks (Snacks & Soups removed)', () => {
+    assert.equal(isManualLogCategory('healthy-snacks'), false);
   });
 
-  it('routes healthy-snacks tile to the subtype picker', () => {
-    assert.deepEqual(resolveManualLogCategoryClick('healthy-snacks'), {
-      kind: 'healthy-snacks-picker',
+  it('exposes DRY_SALAD_META with required fields', () => {
+    assert.equal(DRY_SALAD_META.id, 'dry-salad');
+    assert.ok(DRY_SALAD_META.headerTitle);
+    assert.ok(DRY_SALAD_META.headerSubtitle);
+  });
+
+  it('routes dry-salad tile to the dry-salad flow', () => {
+    assert.deepEqual(resolveManualLogCategoryClick('dry-salad'), {
+      kind: 'dry-salad',
     });
+  });
+
+  it('routes good-habit tile to the Good Habit flow', () => {
+    assert.deepEqual(resolveManualLogCategoryClick('good-habit'), {
+      kind: 'good-habit-picker',
+    });
+  });
+
+  it('Good Habit Manual Log is a single photo', () => {
+    assert.deepEqual(
+      GOOD_HABIT_SUBOPTIONS.map((o) => o.id),
+      [GOOD_HABIT_SUBTYPE.IMAGE_NOTES],
+    );
   });
 
   it('routes other tiles straight to their form id', () => {
@@ -55,23 +61,5 @@ describe('manualLogCategories', () => {
       formId: 'weight',
     });
     assert.equal(resolveManualLogCategoryClick('unknown'), null);
-  });
-
-  it('routes each subtype into the shared food search flow', () => {
-    for (const id of ['soups', 'salads', 'sprouts']) {
-      const next = resolveHealthySnacksSubtypeClick(id);
-      assert.equal(next.formId, 'food');
-      assert.equal(next.subtype.id, id);
-      assert.ok(next.subtype.headerTitle);
-      assert.ok(next.subtype.searchHint);
-    }
-    assert.equal(resolveHealthySnacksSubtypeClick('nope'), null);
-  });
-
-  it('looks up subtype metadata', () => {
-    const soups = getHealthySnacksSuboption('soups');
-    assert.equal(soups.label, 'Soups');
-    assert.equal(soups.emoji, '🥣');
-    assert.equal(getHealthySnacksSuboption('x'), null);
   });
 });

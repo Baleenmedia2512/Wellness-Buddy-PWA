@@ -7,6 +7,11 @@ import { getSupabaseClient } from '../../../utils/supabaseClient.js';
 import { cache, cacheKeys } from '../../../utils/cache.js';
 import logger from '../../../shared/lib/logger.js';
 import {
+  nowUtc,
+  utcInstantToLegacyIstWallStorage,
+  IANA_IST,
+} from '../../../shared/lib/datetime/index.js';
+import {
   buildTeamTableDiff,
   buildWeightInsertIfChanged,
   hasSyncWrites,
@@ -25,17 +30,49 @@ export async function getTeamProfileSnapshot(userId) {
   const supabase = getSupabaseClient();
   const { data, error } = await supabase
     .from(TEAM)
-    .select('"UserName", "Height", "Bmr", "Email", "Gender"')
+    .select('"UserName", "Height", "Bmr", "Email", "Gender", "Age", "VisceralFat", "BodyAge", "ChestCm", "WaistCm", "HipCm"')
     .eq('UserId', uid)
     .maybeSingle();
-  if (error) throw error;
+  if (error) {
+    const msg = String(error?.message || error || '');
+    if (/Age|VisceralFat|BodyAge|ChestCm|WaistCm|HipCm/i.test(msg) && /column/i.test(msg)) {
+      const { data: fallback, error: err2 } = await supabase
+        .from(TEAM)
+        .select('"UserName", "Height", "Bmr", "Email", "Gender"')
+        .eq('UserId', uid)
+        .maybeSingle();
+      if (err2) throw err2;
+      if (!fallback) return null;
+      return {
+        userName: fallback.UserName ?? null,
+        height: fallback.Height != null ? parseFloat(fallback.Height) : null,
+        bmr: fallback.Bmr != null ? parseFloat(fallback.Bmr) : null,
+        email: fallback.Email ?? null,
+        gender: fallback.Gender ?? null,
+        age: null,
+        visceralFat: null,
+        bodyAge: null,
+        chestCm: null,
+        waistCm: null,
+        hipCm: null,
+      };
+    }
+    throw error;
+  }
   if (!data) return null;
+  const num = (v) => (v != null && Number.isFinite(Number(v)) ? Number(v) : null);
   return {
     userName: data.UserName ?? null,
     height: data.Height != null ? parseFloat(data.Height) : null,
     bmr: data.Bmr != null ? parseFloat(data.Bmr) : null,
     email: data.Email ?? null,
     gender: data.Gender ?? null,
+    age: num(data.Age),
+    visceralFat: num(data.VisceralFat),
+    bodyAge: num(data.BodyAge),
+    chestCm: num(data.ChestCm),
+    waistCm: num(data.WaistCm),
+    hipCm: num(data.HipCm),
   };
 }
 
@@ -92,8 +129,17 @@ export async function patchTeamProfile(userId, diff) {
  */
 export async function insertWeightRecord(row) {
   if (!row) return;
+  // Match weight.service: store CreatedAt as legacy IST wall clock (no Z).
+  // Diary parses timezone-less timestamps as IST. DB default `now()` is UTC —
+  // omitting CreatedAt made BCM weights show ~5.5h early in Diary.
+  const legacyNow = utcInstantToLegacyIstWallStorage(nowUtc(), IANA_IST);
+  const payload = {
+    ...row,
+    CreatedAt: row.CreatedAt ?? legacyNow,
+    UpdatedAt: row.UpdatedAt ?? legacyNow,
+  };
   const supabase = getSupabaseClient();
-  const { error } = await supabase.from(WEIGHT).insert(row);
+  const { error } = await supabase.from(WEIGHT).insert(payload);
   if (error) throw error;
 }
 

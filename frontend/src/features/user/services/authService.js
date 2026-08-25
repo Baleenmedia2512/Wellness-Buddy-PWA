@@ -3,10 +3,13 @@ import * as Session from '../../../shared/services/sessionStorage';
 import { getApiBaseUrl } from '../../../config/api.config.js';
 import { debugLog } from '../../../shared/utils/logger.js';
 import { getDeviceTimezoneIana } from '../../../shared/utils/deviceTimezone.js';
+import { apiFetch } from '../../../shared/services/apiFetch.js';
+import { handlePossibleAppUpdateRequired } from '../../../shared/services/appVersionEnforce.client.js';
+
 const post = async (path, body) => {
   const apiBase = getApiBaseUrl();
   const payload = body && typeof body === 'object' ? body : {};
-  const res = await fetch(`${apiBase}${path}`, {
+  const res = await apiFetch(`${apiBase}${path}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
@@ -35,6 +38,7 @@ const post = async (path, body) => {
       _httpStatus: res.status,
     };
   }
+  handlePossibleAppUpdateRequired(res, data);
   const hasOtpField = Object.prototype.hasOwnProperty.call(data || {}, 'otp');
   const logPayload = {
     apiBase,
@@ -57,7 +61,6 @@ const post = async (path, body) => {
   }
   return { ...data, _httpStatus: res.status };
 };
-
 export const sendOtp = (recipient, contactType = 'email') =>
   post('/api/auth/send-otp', { recipient, contactType });
 

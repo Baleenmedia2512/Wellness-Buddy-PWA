@@ -438,6 +438,9 @@ const BodyParamsCardPreview = React.forwardRef(({ card, previousCard = null }, r
         <div style={{ background: '#fff', padding: '18px 22px 12px' }}>
 
           <InfoRow icon="📅" label="Date"     value={fmtDate(card.recordedDate)} />
+          {card.locationName ? (
+            <InfoRow icon="📍" label="Venue" value={card.locationName} />
+          ) : null}
           <InfoRow icon="👤" label="Name"     value={(card.name || '—').toUpperCase()} />
           <InfoRow icon="🎂" label="Age"      value={card.age ? card.age + ' Yrs' : '—'} />
           <InfoRow icon={<HeightIcon />} label="Height"   value={fmt(card.heightCm, ' cm')} />
@@ -583,6 +586,46 @@ const BodyParamsCardPreview = React.forwardRef(({ card, previousCard = null }, r
               prevValue={previousCard?.hipCm != null ? previousCard.hipCm + ' cm' : '—'}
               isExistingUser={isExistingUser}
             />
+          )}
+
+          {Array.isArray(card.recoveredHealthIssues) && card.recoveredHealthIssues.filter(Boolean).length > 0 && (
+            <div style={{
+              marginTop: 12,
+              paddingTop: 10,
+              borderTop: '1px dashed #bbf7d0',
+              textAlign: 'center',
+            }}>
+              <p style={{
+                margin: '0 0 8px',
+                fontSize: 10,
+                fontWeight: 700,
+                color: '#9ca3af',
+                textTransform: 'uppercase',
+                letterSpacing: '1px',
+              }}>
+                Health Issues
+              </p>
+              {card.recoveredHealthIssues.filter(Boolean).map((issue) => (
+                <span
+                  key={issue}
+                  style={{
+                    display: 'inline-block',
+                    margin: '0 4px 4px',
+                    background: '#fef2f2',
+                    border: '1px solid #fecaca',
+                    borderRadius: 20,
+                    padding: '5px 14px',
+                    fontSize: 12,
+                    fontWeight: 600,
+                    lineHeight: '16px',
+                    color: '#991b1b',
+                    textAlign: 'center',
+                  }}
+                >
+                  {issue}
+                </span>
+              ))}
+            </div>
           )}
 
           {/* Footer brand */}

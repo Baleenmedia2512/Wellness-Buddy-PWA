@@ -15,13 +15,37 @@ function dailyKey(userId, date) {
   return `${userId || ''}|${date || ''}`;
 }
 
+function scoreDateMismatches(score, date) {
+  return Boolean(score?.date) && String(score.date) !== String(date);
+}
+
 export function getDailyWellnessScoreCached(userId, date) {
-  if (userId == null || !date) return null;
-  return dailyScoreCache.get(dailyKey(userId, date)) || null;
+  if (!date) return null;
+  let score = null;
+  // Known identity: only that user's row. Never fall through to another
+  // person's same-date score (Reports Nutrition viewing a downline).
+  if (userId != null && userId !== '') {
+    score = dailyScoreCache.get(dailyKey(userId, date)) || null;
+  } else {
+    // Home first paint before userId resolves — date-only match is OK.
+    const suffix = `|${date}`;
+    for (const [key, cached] of dailyScoreCache.entries()) {
+      if (key.endsWith(suffix)) {
+        score = cached;
+        break;
+      }
+    }
+  }
+  if (scoreDateMismatches(score, date)) {
+    if (userId != null && userId !== '') dailyScoreCache.delete(dailyKey(userId, date));
+    return null;
+  }
+  return score;
 }
 
 export function setDailyWellnessScoreCached(userId, date, score) {
   if (userId == null || !date || !score) return;
+  if (scoreDateMismatches(score, date)) return;
   dailyScoreCache.set(dailyKey(userId, date), score);
 }
 
@@ -31,6 +55,7 @@ export function setDailyWellnessScoreCached(userId, date, score) {
  */
 export function seedDailyWellnessScoreCache(userId, date, score) {
   if (userId == null || !date || !score) return;
+  if (scoreDateMismatches(score, date)) return;
   const key = dailyKey(userId, date);
   const activityLogId = getLatestActivityLogId();
   dailyScoreCache.set(key, score);

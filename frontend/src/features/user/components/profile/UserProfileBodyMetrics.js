@@ -1,40 +1,45 @@
-// Read-only body metrics from body_parameters_cards (coach-recorded).
+// Editable body metrics (Age, Fat %, V-Fat, Body Age, Chest/Waist/Hip).
+// Fat % is required. BMI is calculated from height + weight (BCM formula) — not editable.
 import React, { useMemo } from 'react';
-import { Activity } from 'lucide-react';
 import { getBodyMetricReferences } from '../../../body-parameters-card/domain/bodyMetricReferences';
+import { computeBmiFromHeightWeight } from '../../domain/bmi';
 
-const valueCls =
-  'flex-1 min-w-0 px-3 py-2 border border-gray-200 rounded-lg bg-gray-50 text-gray-800 text-sm font-medium';
+const inputCls =
+  'flex-1 min-w-0 px-3 py-2 border border-gray-200 rounded-lg bg-white text-gray-800 text-sm font-medium focus:outline-none focus:border-green-400';
 
 const referenceCls =
   'w-[88px] shrink-0 px-2 py-2 border border-gray-100 rounded-lg bg-white text-[11px] text-gray-500 text-center leading-tight flex items-center justify-center';
 
-const displayValue = (value) => {
-  if (value === null || value === undefined || value === '') return '—';
-  return String(value);
-};
-
-const hasValue = (value) => value !== null && value !== undefined && value !== '';
-
 const FIELDS = [
-  { key: 'age', label: 'Age' },
-  // gender is edited on the main profile form and synced to both tables
-  { key: 'fatPercent', label: 'Fat %' },
-  { key: 'visceralFat', label: 'V-Fat' },
-  { key: 'bmi', label: 'BMI' },
-  { key: 'bodyAge', label: 'Body Age' },
-  { key: 'chestCm', label: 'Chest (cm)' },
-  { key: 'waistCm', label: 'Waist (cm)' },
-  { key: 'hipCm', label: 'Hip (cm)' },
+  { key: 'age', label: 'Age', inputMode: 'numeric' },
+  { key: 'fatPercent', label: 'Fat %', inputMode: 'decimal', required: true },
+  { key: 'visceralFat', label: 'V-Fat', inputMode: 'decimal' },
+  { key: 'bmi', label: 'BMI', inputMode: 'decimal', readOnly: true },
+  { key: 'bodyAge', label: 'Body Age', inputMode: 'decimal' },
+  { key: 'chestCm', label: 'Chest (cm)', inputMode: 'decimal' },
+  { key: 'waistCm', label: 'Waist (cm)', inputMode: 'decimal' },
+  { key: 'hipCm', label: 'Hip (cm)', inputMode: 'decimal' },
 ];
 
-const MetricField = ({ label, value, reference }) => (
+const MetricField = ({ label, value, reference, inputMode, onChange, readOnly, required }) => (
   <div>
-    <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
+    <label className="block text-sm font-medium text-gray-700 mb-1">
+      {label}{required ? <span className="text-red-500"> *</span> : null}
+    </label>
     <div className="flex items-stretch gap-2">
-      <div className={valueCls} aria-readonly="true">
-        {displayValue(value)}
-      </div>
+      {readOnly ? (
+        <div className={`${inputCls} bg-gray-50`} aria-readonly="true">
+          {value === null || value === undefined || value === '' ? '—' : String(value)}
+        </div>
+      ) : (
+        <input
+          type="text"
+          inputMode={inputMode}
+          value={value == null ? '' : String(value)}
+          onChange={(e) => onChange?.(e.target.value)}
+          className={inputCls}
+        />
+      )}
       {reference ? (
         <div className={referenceCls} title="Reference range">
           {reference}
@@ -44,28 +49,45 @@ const MetricField = ({ label, value, reference }) => (
   </div>
 );
 
-const UserProfileBodyMetrics = ({ bodyMetrics }) => {
-  const references = useMemo(
-    () => getBodyMetricReferences(bodyMetrics),
-    [bodyMetrics],
+/**
+ * @param {{
+ *   bodyMetrics: object|null,
+ *   onChange?: (key: string, value: string) => void,
+ *   readOnly?: boolean,
+ *   heightCm?: number|string|null,
+ *   weightKg?: number|string|null,
+ * }} props
+ */
+const UserProfileBodyMetrics = ({
+  bodyMetrics,
+  onChange,
+  readOnly = false,
+  heightCm = null,
+  weightKg = null,
+}) => {
+  const metrics = bodyMetrics || {};
+  const derivedBmi = useMemo(
+    () => computeBmiFromHeightWeight(heightCm, weightKg),
+    [heightCm, weightKg],
   );
 
-  if (!bodyMetrics) return null;
+  const displayMetrics = useMemo(() => ({
+    ...metrics,
+    bmi: derivedBmi != null ? derivedBmi : (metrics.bmi ?? ''),
+  }), [metrics, derivedBmi]);
 
-  const populatedFields = FIELDS.filter(({ key }) => hasValue(bodyMetrics[key]));
-  if (populatedFields.length === 0) return null;
+  const references = useMemo(
+    () => getBodyMetricReferences(displayMetrics),
+    [displayMetrics],
+  );
 
-  const hasAnyReference = populatedFields.some(({ key }) => references[key]);
+  const hasAnyReference = FIELDS.some(({ key }) => references[key]);
 
   return (
     <div className="space-y-4">
-      {/* <div className="flex items-center gap-2">
-        <Activity className="w-4 h-4 text-indigo-500" />
+      <div>
         <h3 className="text-sm font-semibold text-gray-800">Body Parameters</h3>
       </div>
-      <p className="text-xs text-gray-500">
-        Recorded by your sponsor. These values are read-only here.
-      </p> */}
 
       {hasAnyReference && (
         <div className="hidden sm:grid grid-cols-[1fr_88px] gap-2 px-0.5">
@@ -75,12 +97,16 @@ const UserProfileBodyMetrics = ({ bodyMetrics }) => {
       )}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        {populatedFields.map(({ key, label }) => (
+        {FIELDS.map(({ key, label, inputMode, required, readOnly: fieldReadOnly }) => (
           <MetricField
             key={key}
             label={label}
-            value={bodyMetrics[key]}
+            value={displayMetrics[key]}
             reference={references[key]}
+            inputMode={inputMode}
+            required={Boolean(required)}
+            readOnly={readOnly || Boolean(fieldReadOnly)}
+            onChange={fieldReadOnly ? undefined : (v) => onChange?.(key, v)}
           />
         ))}
       </div>
@@ -89,3 +115,4 @@ const UserProfileBodyMetrics = ({ bodyMetrics }) => {
 };
 
 export default UserProfileBodyMetrics;
+export { FIELDS as PROFILE_BODY_METRIC_FORM_FIELDS };

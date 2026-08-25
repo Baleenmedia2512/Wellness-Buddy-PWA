@@ -26,7 +26,7 @@ const TeamMemberSearch = ({ user, userRole, selectedMember, onMemberSelect }) =>
             value={vm.inputValue}
             searchQuery={vm.searchQuery}
             onChange={vm.handleQueryChange}
-            onFocus={() => vm.setIsOpen(true)}
+            onFocus={vm.handleFocus}
             onClear={vm.clearQuery}
             showViewMine={Boolean(selectedMember && !selectedMember.isSelf)}
             onClearSelection={vm.clearSelection}

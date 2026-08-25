@@ -59,9 +59,12 @@ export async function saveWeight(payload) {
   return result;
 }
 
-export function getWeightHistory(userId, { includeImage = false, cacheBust = true } = {}) {
+export function getWeightHistory(userId, { includeImage = false, cacheBust = true, viewerUserId } = {}) {
   const params = new URLSearchParams({ userId, includeImage: String(includeImage) });
   if (cacheBust) params.set('_t', String(Date.now()));
+  if (viewerUserId != null && viewerUserId !== '') {
+    params.set('viewerUserId', String(viewerUserId));
+  }
   return request(`/api/weight/history?${params.toString()}`, {
     method: 'GET',
     headers: { 'Cache-Control': 'no-cache', Pragma: 'no-cache' },

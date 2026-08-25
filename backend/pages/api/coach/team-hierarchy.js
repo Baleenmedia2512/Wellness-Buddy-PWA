@@ -1,6 +1,8 @@
 import { getSupabaseClient } from "../../../utils/supabaseClient.js";
 import logger from '../../../shared/lib/logger.js';
 import { isActiveTeamStatus } from '../../../utils/teamHierarchyBuilder.js';
+import { getLatestWeightMetricsByUserIds } from '../../../features/user/user.repository.js';
+import { computeBmiFromHeightWeight } from '../../../features/body-parameters-card/domain/card.rules.js';
 
 /**
  * API: Get Hierarchical Team Structure
@@ -94,13 +96,29 @@ export default async function handler(req, res) {
 
     // Fetch all users in the hierarchy (omit ProfileImage base64 — ~16MB on large trees).
     // Leaderboard strips load avatars separately for top-N only.
-    let query = supabase
-      .from("team_table")
-      .select("UserId, UserName, Email, Role, CoachId, CoachTeamId, Status, PhoneNumber, Height, Bmr");
+    // Optional body-metric columns may be missing until migration — fall back.
+    const SELECT_FULL =
+      "UserId, UserName, Email, Role, CoachId, CoachTeamId, Status, PhoneNumber, Height, Bmr, CommunityId, Gender, Age, VisceralFat, BodyAge, ChestCm, WaistCm, HipCm";
+    const SELECT_BASIC =
+      "UserId, UserName, Email, Role, CoachId, CoachTeamId, Status, PhoneNumber, Height, Bmr, CommunityId, Gender";
 
-    // Always fetch ALL users (Active + Inactive) so inactive intermediate coaches
-    // can be detected and their members promoted up to the nearest active ancestor.
-    const { data: allUsers, error: usersError } = await query.order("UserName");
+    let allUsers;
+    let usersError;
+    ({ data: allUsers, error: usersError } = await supabase
+      .from("team_table")
+      .select(SELECT_FULL)
+      .order("UserName"));
+
+    if (
+      usersError &&
+      /Age|VisceralFat|BodyAge|ChestCm|WaistCm|HipCm/i.test(String(usersError.message || "")) &&
+      /column/i.test(String(usersError.message || ""))
+    ) {
+      ({ data: allUsers, error: usersError } = await supabase
+        .from("team_table")
+        .select(SELECT_BASIC)
+        .order("UserName"));
+    }
 
     if (usersError) {
       console.error("Error fetching users:", usersError);
@@ -177,12 +195,18 @@ export default async function handler(req, res) {
     };
 
     // Build user map for quick lookup
+    const numOrNull = (v) => {
+      if (v == null || v === "") return null;
+      const n = Number(v);
+      return Number.isFinite(n) ? n : null;
+    };
     const userMap = new Map();
     allUsers.forEach((user) => {
       userMap.set(user.UserId, {
         userId: user.UserId,
         userName: user.UserName,
         email: user.Email || "",
+        communityId: user.CommunityId ? String(user.CommunityId).trim() : null,
         role: user.Role || "user",
         coachId: user.CoachId,
         coCoachId: deriveCoCoachId(user), // Dynamically derived from coach_teams_table
@@ -191,6 +215,13 @@ export default async function handler(req, res) {
         phoneNumber: user.PhoneNumber ? String(user.PhoneNumber).trim() : null,
         height: user.Height != null ? Number(user.Height) : null,
         bmr: user.Bmr != null ? Number(user.Bmr) : null,
+        gender: user.Gender || null,
+        age: numOrNull(user.Age),
+        visceralFat: numOrNull(user.VisceralFat),
+        bodyAge: numOrNull(user.BodyAge),
+        chestCm: numOrNull(user.ChestCm),
+        waistCm: numOrNull(user.WaistCm),
+        hipCm: numOrNull(user.HipCm),
         teamMembers: [],
         directMemberCount: 0,
         totalMemberCount: 0,
@@ -532,6 +563,7 @@ export default async function handler(req, res) {
           UserId: node.userId,
           UserName: node.userName,
           Email: node.email,
+          CommunityId: node.communityId || null,
           Role: node.role,
           CoachId: node.coachId,
           CoCoachId: node.coCoachId,
@@ -539,6 +571,13 @@ export default async function handler(req, res) {
           phoneNumber: node.phoneNumber || null,
           height: node.height != null ? node.height : null,
           bmr: node.bmr != null ? node.bmr : null,
+          gender: node.gender || null,
+          age: node.age != null ? node.age : null,
+          visceralFat: node.visceralFat != null ? node.visceralFat : null,
+          bodyAge: node.bodyAge != null ? node.bodyAge : null,
+          chestCm: node.chestCm != null ? node.chestCm : null,
+          waistCm: node.waistCm != null ? node.waistCm : null,
+          hipCm: node.hipCm != null ? node.hipCm : null,
         };
         if (node.isCoCoach) entry.isCoCoach = true;
         result.set(node.userId, entry);
@@ -566,6 +605,7 @@ export default async function handler(req, res) {
         UserId: hierarchy.coCoachInfo.userId,
         UserName: hierarchy.coCoachInfo.userName,
         Email: hierarchy.coCoachInfo.email,
+        CommunityId: hierarchy.coCoachInfo.communityId || null,
         Role: hierarchy.coCoachInfo.role,
         CoachId: hierarchy.coCoachInfo.coachId,
         CoCoachId: hierarchy.coCoachInfo.coCoachId,
@@ -573,11 +613,41 @@ export default async function handler(req, res) {
         phoneNumber: hierarchy.coCoachInfo.phoneNumber || null,
         height: hierarchy.coCoachInfo.height != null ? hierarchy.coCoachInfo.height : null,
         bmr: hierarchy.coCoachInfo.bmr != null ? hierarchy.coCoachInfo.bmr : null,
+        gender: hierarchy.coCoachInfo.gender || null,
+        age: hierarchy.coCoachInfo.age != null ? hierarchy.coCoachInfo.age : null,
+        visceralFat: hierarchy.coCoachInfo.visceralFat != null ? hierarchy.coCoachInfo.visceralFat : null,
+        bodyAge: hierarchy.coCoachInfo.bodyAge != null ? hierarchy.coCoachInfo.bodyAge : null,
+        chestCm: hierarchy.coCoachInfo.chestCm != null ? hierarchy.coCoachInfo.chestCm : null,
+        waistCm: hierarchy.coCoachInfo.waistCm != null ? hierarchy.coCoachInfo.waistCm : null,
+        hipCm: hierarchy.coCoachInfo.hipCm != null ? hierarchy.coCoachInfo.hipCm : null,
         isCoCoach: true
       });
     }
     
     const allMembers = Array.from(memberMap.values());
+
+    // Attach latest weight / fat% / BMI for BCM phone prefill (best-effort).
+    try {
+      const weightByUser = await getLatestWeightMetricsByUserIds(
+        allMembers.map((m) => m.UserId),
+      );
+      for (const m of allMembers) {
+        const w = weightByUser.get(Number(m.UserId));
+        if (!w) continue;
+        m.weightKg = w.weightKg;
+        m.fatPercent = w.fatPercent;
+        let bmi = w.bmi;
+        if (bmi == null && w.weightKg != null && m.height != null) {
+          bmi = computeBmiFromHeightWeight(m.height, w.weightKg);
+        }
+        m.bmi = bmi;
+        if (m.bmr == null && w.bmr != null) m.bmr = w.bmr;
+      }
+    } catch (weightErr) {
+      logger.warn('[team-hierarchy] weight enrich failed', {
+        message: weightErr?.message || String(weightErr),
+      });
+    }
 
     logger.debug(
       `✅ [team-hierarchy] Team hierarchy built for coach ${coachIdInt}: ${allMembers.length} unique members`,

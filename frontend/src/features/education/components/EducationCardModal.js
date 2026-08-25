@@ -14,7 +14,10 @@ import {
   isCaloriesBurnedTopic, extractCaloriesValue,
 } from '../services/educationFormatter';
 
-const EducationCardModal = ({ log, onClose, onDelete, isDeleting, apiBaseUrl, userId }) => {
+const EducationCardModal = ({
+  log, onClose, onDelete, isDeleting, apiBaseUrl, userId,
+  timezoneIana,
+}) => {
   const { imageSrc, imageLoading } = useEducationDetailImage({ apiBaseUrl, userId, log });
   const cardRef = useRef(null);
   const [isSharing, setIsSharing] = useState(false);
@@ -50,6 +53,7 @@ const EducationCardModal = ({ log, onClose, onDelete, isDeleting, apiBaseUrl, us
           imageSrc={imageSrc}
           imageLoading={imageLoading}
           onClose={onClose}
+          timezoneIana={timezoneIana}
         />
 
         <div className="p-4 overflow-y-auto" style={{ maxHeight: '40vh' }}>
@@ -62,8 +66,8 @@ const EducationCardModal = ({ log, onClose, onDelete, isDeleting, apiBaseUrl, us
             <div className="bg-gray-50 rounded-xl p-4 space-y-3">
               <DetailRow label="Topic" value={log.Topic || 'Education Meeting'} truncate />
               <DetailRow label="Platform" value={log.Platform || 'Online Meeting'} />
-              <DetailRow label="Date" value={formatLogDate(log.CreatedAt)} />
-              <DetailRow label="Time" value={formatLogTime(log.CreatedAt)} />
+              <DetailRow label="Date" value={formatLogDate(log.CreatedAt, timezoneIana)} />
+              <DetailRow label="Time" value={formatLogTime(log.CreatedAt, timezoneIana)} />
 
               {isCaloriesBurnedTopic(log.Topic) && (
                 <div className="flex justify-between items-center pt-1 border-t border-gray-100 mt-1">

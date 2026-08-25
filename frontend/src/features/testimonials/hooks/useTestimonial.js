@@ -11,6 +11,10 @@ import {
   validateWeightKg,
 } from '../services/testimonialFormUtils.js';
 import { setCaptureFlowBusy } from '../../../shared/services/captureFlowBusy';
+import { compressImage } from '../utils/compressTestimonialImage.js';
+import { jpegDataUrlToObjectUrl, revokeBlobUrl } from '../utils/testimonialMediaUrl.js';
+
+export { compressImage };
 
 const INITIAL_FORM = {
   beforeWeightKg: '',
@@ -19,66 +23,6 @@ const INITIAL_FORM = {
   durationUnit:   'months',
   durationValue:  '',
 };
-
-// Target binary size after compression: 900 KB (leaves headroom for base64 overhead)
-const TARGET_BYTES = 900 * 1024;
-// Max canvas dimension â€” keeps resolution reasonable while shrinking file size
-const MAX_DIM = 1200;
-
-/**
- * Compress a File using HTML5 Canvas.
- * Scales the image down if wider/taller than MAX_DIM, then encodes as JPEG
- * at progressively lower quality until the result fits within TARGET_BYTES.
- * @param {File} file
- * @returns {Promise<{ base64: string, preview: string }>}
- */
-export function compressImage(file) {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    const objectUrl = URL.createObjectURL(file);
-
-    img.onload = () => {
-      URL.revokeObjectURL(objectUrl);
-
-      let { width, height } = img;
-      if (height <= width) {
-        reject(new Error('Please upload a portrait photo (vertical orientation). Landscape photos are not allowed.'));
-        return;
-      }
-      // Scale down large images proportionally
-      if (width > MAX_DIM || height > MAX_DIM) {
-        const ratio = Math.min(MAX_DIM / width, MAX_DIM / height);
-        width  = Math.round(width  * ratio);
-        height = Math.round(height * ratio);
-      }
-
-      const canvas = document.createElement('canvas');
-      canvas.width  = width;
-      canvas.height = height;
-      canvas.getContext('2d').drawImage(img, 0, 0, width, height);
-
-      // base64 string length Ã— 0.75 â‰ˆ binary bytes (base64 overhead is ~33%)
-      const maxBase64Len = Math.ceil(TARGET_BYTES / 0.75);
-      let quality = 0.85;
-      let dataUrl;
-
-      do {
-        dataUrl = canvas.toDataURL('image/jpeg', quality);
-        quality -= 0.1;
-      } while (dataUrl.length > maxBase64Len && quality > 0.15);
-
-      const base64 = dataUrl.split(',')[1];
-      resolve({ base64, preview: dataUrl });
-    };
-
-    img.onerror = () => {
-      URL.revokeObjectURL(objectUrl);
-      reject(new Error('Failed to read image. Please try a different photo.'));
-    };
-
-    img.src = objectUrl;
-  });
-}
 
 /**
  * @param {{ userId: number, healthIssues?: string[] }} opts
@@ -136,16 +80,26 @@ export function useTestimonial({ userId, healthIssues = [] }) {
     if (!file) return;
     e.target.value = '';
     const objectUrl = URL.createObjectURL(file);
-    setter({ base64: null, preview: objectUrl, compressing: true });
+    setter((prev) => {
+      revokeBlobUrl(prev?.preview);
+      return { base64: null, preview: objectUrl, compressing: true };
+    });
     setError(null);
     setCaptureFlowBusy(true);
     void compressImage(file)
       .then((result) => {
-        URL.revokeObjectURL(objectUrl);
-        setter({ ...result, compressing: false });
+        const compressedPreview = jpegDataUrlToObjectUrl(result.preview) || objectUrl;
+        setter((prev) => {
+          if (!prev) {
+            if (compressedPreview !== objectUrl) revokeBlobUrl(compressedPreview);
+            return prev;
+          }
+          if (compressedPreview !== objectUrl) revokeBlobUrl(objectUrl);
+          return { ...result, preview: compressedPreview, compressing: false };
+        });
       })
       .catch((err) => {
-        URL.revokeObjectURL(objectUrl);
+        revokeBlobUrl(objectUrl);
         setter(null);
         setError(err.message);
       })
@@ -252,8 +206,10 @@ export function useTestimonial({ userId, healthIssues = [] }) {
         await fn(payload);
       }
 
-      const updated = await getMyTestimonial(userId);
+      const updated = await getMyTestimonial(userId, { cacheBust: true });
       setExisting(updated);
+      setBeforeImage(null);
+      setAfterImage(null);
       setIsEditMode(false);
       setIsCompletingMode(false);
 

@@ -25,6 +25,7 @@
  */
 
 import { getDeviceTimezoneIana } from "../../utils/deviceTimezone.js";
+import { apiFetch } from "../apiFetch.js";
 
 /**
  * POST /api/user/lookup → user-status discriminated union.
@@ -46,7 +47,7 @@ export async function fetchUserStatus({ apiBaseUrl, email }) {
   if (!email) return { result: "active" };
 
   try {
-    const response = await fetch(`${apiBaseUrl}/api/user/lookup`, {
+    const response = await apiFetch(`${apiBaseUrl}/api/user/lookup`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -55,12 +56,24 @@ export async function fetchUserStatus({ apiBaseUrl, email }) {
       }),
     });
 
-    if (!response.ok) {
-      // Legacy threw and caught → fail-open. Preserve.
-      return { result: "active" };
+    let data = {};
+    try {
+      data = await response.json();
+    } catch {
+      data = {};
     }
 
-    const data = await response.json();
+    // Account hard-deleted — must NOT fail-open (404 previously treated as active).
+    if (response.status === 404 || data.userNotFound || data.success === false) {
+      if (data.userNotFound || response.status === 404) {
+        return { result: "userNotFound" };
+      }
+    }
+
+    if (!response.ok) {
+      // Legacy threw and caught → fail-open for transient errors only.
+      return { result: "active" };
+    }
 
     if (!data.success || data.userNotFound) {
       return { result: "userNotFound" };
@@ -81,7 +94,7 @@ export async function fetchUserStatus({ apiBaseUrl, email }) {
 /**
  * GET /api/user/status → setup-status discriminated union.
  *
- * @param {{ apiBaseUrl: string, email: string }} params
+ * @param {{ apiBaseUrl: string, email?: string, userId?: string|number }} params
  * @returns {Promise<{
  *   result: 'skipped' | 'complete' | 'pendingOtp' | 'incomplete' | 'error',
  *   raw?: object,
@@ -95,12 +108,15 @@ export async function fetchUserStatus({ apiBaseUrl, email }) {
  *   - statusData.setupComplete===true                           → 'complete'
  *   - HTTP non-OK or thrown error                               → 'error'
  */
-export async function fetchSetupStatus({ apiBaseUrl, email }) {
-  if (!email) return { result: "error" };
+export async function fetchSetupStatus({ apiBaseUrl, email, userId }) {
+  if (!email && (userId == null || userId === '')) return { result: "error" };
 
   try {
-    const statusResponse = await fetch(
-      `${apiBaseUrl}/api/user/status?email=${encodeURIComponent(email)}`,
+    const qs = email
+      ? `email=${encodeURIComponent(email)}`
+      : `userId=${encodeURIComponent(String(userId))}`;
+    const statusResponse = await apiFetch(
+      `${apiBaseUrl}/api/user/status?${qs}`,
     );
 
     if (!statusResponse.ok) {
