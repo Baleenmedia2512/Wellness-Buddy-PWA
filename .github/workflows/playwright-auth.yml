@@ -32,7 +32,9 @@ jobs:
   playwright-tests:
 
     name: Playwright Auth + Complete Profile Tests
+
     runs-on: ubuntu-latest
+
     timeout-minutes: 40
 
     steps:
@@ -88,6 +90,7 @@ jobs:
 
       - name: Create frontend environment
         shell: bash
+
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           REACT_APP_GOOGLE_MAPS_API_KEY: ${{ secrets.REACT_APP_GOOGLE_MAPS_API_KEY }}
@@ -419,13 +422,11 @@ jobs:
 
 
       # ==========================================================
-      # 19. RUN ALL CURRENT PLAYWRIGHT FRONTEND TESTS
+      # 19. RUN PLAYWRIGHT TESTS
       #
-      # IMPORTANT:
-      # Login + Club + Activity are executed in ONE command.
+      # All current suites execute in ONE Playwright process.
       #
-      # This prevents the JSON report from being overwritten by
-      # separate Playwright executions.
+      # This produces ONE results.json for the GitHub run.
       # ==========================================================
 
       - name: Run Playwright Frontend Tests
@@ -442,9 +443,9 @@ jobs:
 
 
       # ==========================================================
-      # 20. COMPLETE PROFILE TESTS
+      # 20. OPTIONAL COMPLETE PROFILE TESTS
       #
-      # Enable this when you are ready.
+      # Uncomment when ready.
       # ==========================================================
 
       # - name: Run Complete Profile Tests
@@ -455,22 +456,17 @@ jobs:
 
 
       # ==========================================================
-      # 21. VERIFY PLAYWRIGHT JSON RESULT
-      #
-      # Your project currently produces:
-      #
-      # test-results/results.json
-      #
+      # 21. VERIFY JSON RESULTS
       # ==========================================================
 
-      - name: Verify Playwright Result File
+      - name: Verify Playwright JSON results
         if: always()
         shell: bash
 
         run: |
 
           echo "=========================================="
-          echo "Checking Playwright result files"
+          echo "Checking Playwright results"
           echo "=========================================="
 
           find test-results \
@@ -478,18 +474,7 @@ jobs:
             -type f \
             -print || true
 
-          if [ -f "test-results/results.json" ]; then
-
-            echo ""
-            echo "Playwright JSON result found:"
-            echo "test-results/results.json"
-
-            echo ""
-
-            ls -lh \
-              test-results/results.json
-
-          else
+          if [ ! -f "test-results/results.json" ]; then
 
             echo ""
             echo "ERROR: test-results/results.json was not found."
@@ -498,17 +483,116 @@ jobs:
 
           fi
 
+          echo ""
+          echo "Found Playwright results:"
+          ls -lh test-results/results.json
+
 
       # ==========================================================
-      # 22. SYNC RESULTS TO QA DASHBOARD
+      # 22. UPLOAD PLAYWRIGHT RESULTS
+      #
+      # Dashboard backend searches for:
+      #
+      # item.name === "playwright-results"
+      #
+      # Therefore the artifact name MUST remain exactly this.
+      # ==========================================================
+
+      - name: Upload Playwright JSON results
+        if: always()
+        uses: actions/upload-artifact@v4
+
+        with:
+
+          name: playwright-results
+
+          path: test-results/results.json
+
+          if-no-files-found: error
+
+          retention-days: 7
+
+
+      # ==========================================================
+      # 23. UPLOAD HTML REPORT
+      # ==========================================================
+
+      - name: Upload Playwright HTML report
+        if: always()
+        uses: actions/upload-artifact@v4
+
+        with:
+
+          name: playwright-report
+
+          path: playwright-report/
+
+          if-no-files-found: warn
+
+          retention-days: 7
+
+
+      # ==========================================================
+      # 24. SHOW GITHUB INFORMATION
+      # ==========================================================
+
+      - name: Show GitHub information
+        if: always()
+        shell: bash
+
+        run: |
+
+          echo "=============================="
+
+          echo "GitHub information"
+
+          echo "=============================="
+
+          echo "Repository:"
+          echo "$GITHUB_REPOSITORY"
+
+          echo ""
+
+          echo "Run ID:"
+          echo "$GITHUB_RUN_ID"
+
+          echo ""
+
+          echo "Commit SHA:"
+          echo "$GITHUB_SHA"
+
+          echo ""
+
+          echo "Branch:"
+          echo "${GITHUB_REF_NAME:-unknown}"
+
+          echo ""
+
+          echo "Actor:"
+          echo "$GITHUB_ACTOR"
+
+          echo ""
+
+          echo "Event:"
+          echo "$GITHUB_EVENT_NAME"
+
+
+      # ==========================================================
+      # 25. SYNC RUN TO QA DASHBOARD
       #
       # IMPORTANT:
-      # This step DOES NOT run Playwright.
       #
-      # It only uploads the results created by step 19.
+      # Your dashboard API expects:
+      #
+      # {
+      #   "runId": GITHUB_RUN_ID
+      # }
+      #
+      # It then fetches the GitHub workflow run and downloads
+      # the "playwright-results" artifact itself.
       # ==========================================================
 
-      - name: Sync Playwright Results to QA Dashboard
+      - name: Sync Playwright results to QA Dashboard
         if: always()
         shell: bash
 
@@ -518,8 +602,11 @@ jobs:
         run: |
 
           echo "=========================================="
+
           echo "Syncing Playwright results to QA Dashboard"
+
           echo "=========================================="
+
 
           if [ -z "$DASHBOARD_API_URL" ]; then
 
@@ -530,18 +617,9 @@ jobs:
           fi
 
 
-          if [ ! -f "test-results/results.json" ]; then
+          if [ -z "$GITHUB_RUN_ID" ]; then
 
-            echo "ERROR: test-results/results.json was not found."
-
-            echo ""
-
-            echo "Available test-results files:"
-
-            find test-results \
-              -maxdepth 2 \
-              -type f \
-              -print || true
+            echo "ERROR: GITHUB_RUN_ID is not available."
 
             exit 1
 
@@ -550,8 +628,27 @@ jobs:
 
           echo "Dashboard API URL is configured."
 
-          echo "Uploading:"
-          echo "test-results/results.json"
+          echo ""
+
+          echo "GitHub repository:"
+          echo "$GITHUB_REPOSITORY"
+
+          echo ""
+
+          echo "GitHub run ID:"
+          echo "$GITHUB_RUN_ID"
+
+
+          PAYLOAD=$(printf \
+            '{"runId":%s}' \
+            "$GITHUB_RUN_ID"
+          )
+
+
+          echo ""
+
+          echo "Request payload:"
+          echo "$PAYLOAD"
 
 
           RESPONSE_FILE="/tmp/dashboard-response.txt"
@@ -566,7 +663,7 @@ jobs:
               --request POST \
               "$DASHBOARD_API_URL" \
               --header "Content-Type: application/json" \
-              --data-binary "@test-results/results.json"
+              --data "$PAYLOAD"
           )
 
 
@@ -600,7 +697,7 @@ jobs:
 
 
       # ==========================================================
-      # 23. BACKEND LOGS
+      # 26. SHOW BACKEND LOGS
       # ==========================================================
 
       - name: Show Backend Logs
@@ -621,7 +718,7 @@ jobs:
 
 
       # ==========================================================
-      # 24. FRONTEND LOGS
+      # 27. SHOW FRONTEND LOGS
       # ==========================================================
 
       - name: Show Frontend Logs
@@ -642,22 +739,7 @@ jobs:
 
 
       # ==========================================================
-      # 25. UPLOAD PLAYWRIGHT HTML REPORT
-      # ==========================================================
-
-      - name: Upload Playwright Report
-        if: always()
-        uses: actions/upload-artifact@v4
-
-        with:
-          name: playwright-report
-          path: playwright-report/
-          if-no-files-found: warn
-          retention-days: 7
-
-
-      # ==========================================================
-      # 26. UPLOAD RAW PLAYWRIGHT RESULTS
+      # 28. UPLOAD TEST RESULTS
       # ==========================================================
 
       - name: Upload Test Results
@@ -665,14 +747,18 @@ jobs:
         uses: actions/upload-artifact@v4
 
         with:
+
           name: test-results
+
           path: test-results/
+
           if-no-files-found: warn
+
           retention-days: 7
 
 
       # ==========================================================
-      # 27. UPLOAD SERVER LOGS
+      # 29. UPLOAD SERVER LOGS
       # ==========================================================
 
       - name: Upload Server Logs
@@ -680,6 +766,7 @@ jobs:
         uses: actions/upload-artifact@v4
 
         with:
+
           name: server-logs
 
           path: |
@@ -687,4 +774,5 @@ jobs:
             frontend.log
 
           if-no-files-found: warn
+
           retention-days: 7
