@@ -449,15 +449,15 @@ jobs:
         if: always()
         shell: bash
         env:
-          DASHBOARD_IMPORT_URL: ${{ secrets.DASHBOARD_IMPORT_URL }}
+          DASHBOARD_API_URL: ${{ secrets.DASHBOARD_API_URL }}
         run: |
 
           echo "=========================================="
           echo "Syncing Playwright results to QA Dashboard"
           echo "=========================================="
 
-          if [ -z "$DASHBOARD_IMPORT_URL" ]; then
-            echo "ERROR: DASHBOARD_IMPORT_URL is not configured."
+          if [ -z "$DASHBOARD_API_URL" ]; then
+            echo "ERROR: DASHBOARD_API_URL is not configured."
             exit 1
           fi
 
@@ -476,7 +476,7 @@ jobs:
             --silent \
             --show-error \
             --request POST \
-            "$DASHBOARD_IMPORT_URL" \
+            "$DASHBOARD_API_URL" \
             --header "Content-Type: application/json" \
             --data-binary "@test-results/playwright-results.json"
 
