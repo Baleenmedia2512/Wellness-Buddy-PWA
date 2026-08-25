@@ -32,7 +32,6 @@ jobs:
   playwright-tests:
 
     name: Playwright Tests
-    name: Playwright Tests
 
     runs-on: ubuntu-latest
 
@@ -91,24 +90,16 @@ jobs:
 
       - name: Create frontend environment
         shell: bash
-
-
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           REACT_APP_GOOGLE_MAPS_API_KEY: ${{ secrets.REACT_APP_GOOGLE_MAPS_API_KEY }}
 
         run: |
-
           cat > frontend/.env <<EOF
-
           GEMINI_API_KEY=$GEMINI_API_KEY
-
           REACT_APP_GOOGLE_MAPS_API_KEY=$REACT_APP_GOOGLE_MAPS_API_KEY
-
           REACT_APP_API_BASE_URL=http://127.0.0.1:3000
-
           DISABLE_ESLINT_PLUGIN=true
-
           EOF
 
           echo "Frontend .env created."
@@ -121,9 +112,7 @@ jobs:
       - name: Create backend environment
         shell: bash
 
-
         env:
-
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
 
           SMTP_USER: ${{ secrets.SMTP_USER }}
@@ -155,9 +144,7 @@ jobs:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
 
         run: |
-
           cat > backend/.env <<EOF
-
           GEMINI_API_KEY=$GEMINI_API_KEY
 
           SMTP_USER=$SMTP_USER
@@ -187,7 +174,6 @@ jobs:
           SUPABASE_SERVICE_KEY=$SUPABASE_SERVICE_KEY
 
           CRON_SECRET=$CRON_SECRET
-
           EOF
 
           echo "Backend .env created."
@@ -203,7 +189,6 @@ jobs:
 
       # ==========================================================
       # 9. INSTALL PLAYWRIGHT CHROMIUM
-      # 9. INSTALL PLAYWRIGHT CHROMIUM
       # ==========================================================
 
       - name: Install Playwright Chromium
@@ -216,24 +201,15 @@ jobs:
 
       - name: Verify React Scripts
         working-directory: ./frontend
-
-
         run: |
-
           echo "Checking react-scripts..."
 
           if [ -f "node_modules/.bin/react-scripts" ]; then
-
             echo "react-scripts is installed."
-
           else
-
             echo "ERROR: react-scripts was not found."
-
             ls -la node_modules/.bin || true
-
             exit 1
-
           fi
 
 
@@ -244,16 +220,12 @@ jobs:
       - name: Start Backend
         working-directory: ./backend
         shell: bash
-
-
         run: |
-
           echo "=========================================="
           echo "Starting backend on port 3000"
           echo "=========================================="
 
           npm run dev:local > ../backend.log 2>&1 &
-
           echo $! > ../backend.pid
 
           echo "Backend PID:"
@@ -266,10 +238,7 @@ jobs:
 
       - name: Wait for Backend
         shell: bash
-
-
         run: |
-
           echo "Waiting for backend on port 3000..."
 
           npx wait-on \
@@ -285,34 +254,18 @@ jobs:
 
       - name: Verify Backend Process
         shell: bash
-
-
         run: |
-
           echo "Checking backend process..."
 
           if kill -0 "$(cat backend.pid)" 2>/dev/null; then
-          if kill -0 "$(cat backend.pid)" 2>/dev/null; then
-
             echo "Backend process is running."
-
           else
-
             echo "Backend process stopped."
-
             echo ""
-
-
             echo "================ BACKEND LOG ================"
-
-
             cat backend.log || true
-
-
             echo "=============================================="
-
             exit 1
-
           fi
 
 
@@ -323,13 +276,10 @@ jobs:
       - name: Start Frontend
         working-directory: ./frontend
         shell: bash
-
-
         env:
           PORT: 3001
 
         run: |
-
           echo "=========================================="
           echo "Starting frontend on port 3001"
           echo "=========================================="
@@ -337,7 +287,6 @@ jobs:
           echo "PORT=$PORT"
 
           npm start > ../frontend.log 2>&1 &
-
           echo $! > ../frontend.pid
 
           echo "Frontend PID:"
@@ -346,28 +295,18 @@ jobs:
 
       # ==========================================================
       # 15. CHECK FRONTEND STARTUP
-      # 15. CHECK FRONTEND STARTUP
       # ==========================================================
 
       - name: Check Frontend Startup
         shell: bash
-
-
         run: |
-
           echo "Waiting for frontend startup..."
 
           sleep 10
 
           echo ""
-
-
           echo "================ FRONTEND LOG ================"
-
-
           cat frontend.log || true
-
-
           echo "==============================================="
 
 
@@ -377,34 +316,18 @@ jobs:
 
       - name: Verify Frontend Process
         shell: bash
-
-
         run: |
-
           echo "Checking frontend process..."
 
           if kill -0 "$(cat frontend.pid)" 2>/dev/null; then
-          if kill -0 "$(cat frontend.pid)" 2>/dev/null; then
-
             echo "Frontend process is running."
-
           else
-
             echo "Frontend process stopped."
-
             echo ""
-
-
             echo "================ FRONTEND LOG ================"
-
-
             cat frontend.log || true
-
-
             echo "==============================================="
-
             exit 1
-
           fi
 
 
@@ -414,10 +337,7 @@ jobs:
 
       - name: Wait for Frontend
         shell: bash
-
-
         run: |
-
           echo "Waiting for frontend on port 3001..."
 
           npx wait-on \
@@ -433,39 +353,24 @@ jobs:
 
       - name: Verify Frontend
         shell: bash
-
-
         run: |
-
           echo "Checking frontend HTTP response..."
 
           curl -I http://127.0.0.1:3001
 
           echo ""
-
-
           echo "Frontend is responding correctly."
 
 
       # ==========================================================
       # 19. RUN PLAYWRIGHT TESTS
       #
-      # All current suites execute in ONE Playwright process.
-      #
-      # This produces ONE results.json for the GitHub run.
-      # 19. RUN PLAYWRIGHT TESTS
-      #
-      # All current suites execute in ONE Playwright process.
-      #
-      # This produces ONE results.json for the GitHub run.
+      # All current suites run in ONE Playwright invocation.
       # ==========================================================
 
       - name: Run Playwright Frontend Tests
-      - name: Run Playwright Frontend Tests
         run: |
-
           echo "=========================================="
-          echo "Running Playwright Frontend Tests"
           echo "Running Playwright Frontend Tests"
           echo "=========================================="
 
@@ -476,6 +381,7 @@ jobs:
             tests/frontend/programs/programs.spec.js \
             tests/frontend/authenticated/bcm.spec.js
 
+
       # ==========================================================
       # 20. OPTIONAL COMPLETE PROFILE TESTS
       #
@@ -484,28 +390,20 @@ jobs:
 
       # - name: Run Complete Profile Tests
       #   run: |
-      #
       #     npx playwright test \
       #       tests/frontend/profile/complete-profile.spec.js
 
 
       # ==========================================================
-      # 21. VERIFY JSON RESULTS
-      # 21. VERIFY JSON RESULTS
+      # 21. VERIFY PLAYWRIGHT JSON RESULTS
       # ==========================================================
-
-      - name: Verify Playwright JSON results
-        if: always()
-        shell: bash
 
       - name: Verify Playwright JSON results
         if: always()
         shell: bash
 
         run: |
-
           echo "=========================================="
-          echo "Checking Playwright results"
           echo "Checking Playwright results"
           echo "=========================================="
 
@@ -515,30 +413,9 @@ jobs:
             -print || true
 
           if [ ! -f "test-results/results.json" ]; then
-
             echo ""
             echo "ERROR: test-results/results.json was not found."
-
             exit 1
-
-          fi
-
-          echo ""
-          echo "Found Playwright results:"
-          ls -lh test-results/results.json
-
-          find test-results \
-            -maxdepth 2 \
-            -type f \
-            -print || true
-
-          if [ ! -f "test-results/results.json" ]; then
-
-            echo ""
-            echo "ERROR: test-results/results.json was not found."
-
-            exit 1
-
           fi
 
           echo ""
@@ -547,20 +424,10 @@ jobs:
 
 
       # ==========================================================
-      # 22. UPLOAD PLAYWRIGHT RESULTS
+      # 22. UPLOAD PLAYWRIGHT JSON RESULTS
       #
-      # Dashboard backend searches for:
-      #
-      # item.name === "playwright-results"
-      #
-      # Therefore the artifact name MUST remain exactly this.
-      # 22. UPLOAD PLAYWRIGHT RESULTS
-      #
-      # Dashboard backend searches for:
-      #
-      # item.name === "playwright-results"
-      #
-      # Therefore the artifact name MUST remain exactly this.
+      # MUST be named playwright-results.
+      # Your dashboard API searches for this exact artifact name.
       # ==========================================================
 
       - name: Upload Playwright JSON results
@@ -568,31 +435,9 @@ jobs:
         uses: actions/upload-artifact@v4
 
         with:
-
           name: playwright-results
-
           path: test-results/results.json
-
           if-no-files-found: error
-
-          retention-days: 7
-
-
-      # ==========================================================
-      # 23. UPLOAD HTML REPORT
-      # ==========================================================
-      - name: Upload Playwright JSON results
-        if: always()
-        uses: actions/upload-artifact@v4
-
-        with:
-
-          name: playwright-results
-
-          path: test-results/results.json
-
-          if-no-files-found: error
-
           retention-days: 7
 
 
@@ -605,26 +450,9 @@ jobs:
         uses: actions/upload-artifact@v4
 
         with:
-
           name: playwright-report
-
           path: playwright-report/
-
           if-no-files-found: warn
-
-          retention-days: 7
-      - name: Upload Playwright HTML report
-        if: always()
-        uses: actions/upload-artifact@v4
-
-        with:
-
-          name: playwright-report
-
-          path: playwright-report/
-
-          if-no-files-found: warn
-
           retention-days: 7
 
 
@@ -637,55 +465,8 @@ jobs:
         shell: bash
 
         run: |
-
           echo "=============================="
-
           echo "GitHub information"
-
-          echo "=============================="
-
-          echo "Repository:"
-          echo "$GITHUB_REPOSITORY"
-
-          echo ""
-
-          echo "Run ID:"
-          echo "$GITHUB_RUN_ID"
-
-          echo ""
-
-          echo "Commit SHA:"
-          echo "$GITHUB_SHA"
-
-          echo ""
-
-          echo "Branch:"
-          echo "${GITHUB_REF_NAME:-unknown}"
-
-          echo ""
-
-          echo "Actor:"
-          echo "$GITHUB_ACTOR"
-
-          echo ""
-
-          echo "Event:"
-          echo "$GITHUB_EVENT_NAME"
-
-
-      # 24. SHOW GITHUB INFORMATION
-      # ==========================================================
-
-      - name: Show GitHub information
-        if: always()
-        shell: bash
-
-        run: |
-
-          echo "=============================="
-
-          echo "GitHub information"
-
           echo "=============================="
 
           echo "Repository:"
@@ -720,25 +501,14 @@ jobs:
       # ==========================================================
       # 25. SYNC RUN TO QA DASHBOARD
       #
-      # IMPORTANT:
-      # 25. SYNC RUN TO QA DASHBOARD
-      #
-      # IMPORTANT:
-      #
-      # Your dashboard API expects:
-      # Your dashboard API expects:
+      # Dashboard API expects:
       #
       # {
       #   "runId": GITHUB_RUN_ID
       # }
-      # {
-      #   "runId": GITHUB_RUN_ID
-      # }
       #
-      # It then fetches the GitHub workflow run and downloads
-      # the "playwright-results" artifact itself.
-      # It then fetches the GitHub workflow run and downloads
-      # the "playwright-results" artifact itself.
+      # It then retrieves the GitHub run and the
+      # playwright-results artifact.
       # ==========================================================
 
       - name: Sync Playwright results to QA Dashboard
@@ -749,59 +519,37 @@ jobs:
           DASHBOARD_API_URL: ${{ secrets.DASHBOARD_API_URL }}
 
         run: |
-
           echo "=========================================="
-
           echo "Syncing Playwright results to QA Dashboard"
-
           echo "=========================================="
-
 
           if [ -z "$DASHBOARD_API_URL" ]; then
-
             echo "ERROR: DASHBOARD_API_URL is not configured."
-
             exit 1
-
           fi
-
 
           if [ -z "$GITHUB_RUN_ID" ]; then
-
             echo "ERROR: GITHUB_RUN_ID is not available."
-
             exit 1
-
           fi
-
 
           echo "Dashboard API URL is configured."
 
           echo ""
-
           echo "GitHub repository:"
           echo "$GITHUB_REPOSITORY"
 
           echo ""
-
           echo "GitHub run ID:"
           echo "$GITHUB_RUN_ID"
 
-
-          PAYLOAD=$(printf \
-            '{"runId":%s}' \
-            "$GITHUB_RUN_ID"
-          )
-
+          PAYLOAD=$(printf '{"runId":%s}' "$GITHUB_RUN_ID")
 
           echo ""
-
           echo "Request payload:"
           echo "$PAYLOAD"
 
-
           RESPONSE_FILE="/tmp/dashboard-response.txt"
-
 
           HTTP_STATUS=$(
             curl \
@@ -815,140 +563,25 @@ jobs:
               --data "$PAYLOAD"
           )
 
-
           echo ""
-
           echo "Dashboard HTTP status:"
           echo "$HTTP_STATUS"
 
-
           echo ""
-
           echo "Dashboard response:"
-
           cat "$RESPONSE_FILE" || true
 
-
           if [[ "$HTTP_STATUS" -lt 200 || "$HTTP_STATUS" -ge 300 ]]; then
-
             echo ""
-
             echo "ERROR: Dashboard import failed."
-
             exit 1
-
           fi
 
-
           echo ""
-
-          echo "Dashboard sync completed successfully."
-      - name: Sync Playwright results to QA Dashboard
-        if: always()
-        shell: bash
-
-        env:
-          DASHBOARD_API_URL: ${{ secrets.DASHBOARD_API_URL }}
-
-        run: |
-
-          echo "=========================================="
-
-          echo "Syncing Playwright results to QA Dashboard"
-
-          echo "=========================================="
-
-
-          if [ -z "$DASHBOARD_API_URL" ]; then
-
-            echo "ERROR: DASHBOARD_API_URL is not configured."
-
-            exit 1
-
-          fi
-
-
-          if [ -z "$GITHUB_RUN_ID" ]; then
-
-            echo "ERROR: GITHUB_RUN_ID is not available."
-
-            exit 1
-
-          fi
-
-
-          echo "Dashboard API URL is configured."
-
-          echo ""
-
-          echo "GitHub repository:"
-          echo "$GITHUB_REPOSITORY"
-
-          echo ""
-
-          echo "GitHub run ID:"
-          echo "$GITHUB_RUN_ID"
-
-
-          PAYLOAD=$(printf \
-            '{"runId":%s}' \
-            "$GITHUB_RUN_ID"
-          )
-
-
-          echo ""
-
-          echo "Request payload:"
-          echo "$PAYLOAD"
-
-
-          RESPONSE_FILE="/tmp/dashboard-response.txt"
-
-
-          HTTP_STATUS=$(
-            curl \
-              --silent \
-              --show-error \
-              --output "$RESPONSE_FILE" \
-              --write-out "%{http_code}" \
-              --request POST \
-              "$DASHBOARD_API_URL" \
-              --header "Content-Type: application/json" \
-              --data "$PAYLOAD"
-          )
-
-
-          echo ""
-
-          echo "Dashboard HTTP status:"
-          echo "$HTTP_STATUS"
-
-
-          echo ""
-
-          echo "Dashboard response:"
-
-          cat "$RESPONSE_FILE" || true
-
-
-          if [[ "$HTTP_STATUS" -lt 200 || "$HTTP_STATUS" -ge 300 ]]; then
-
-            echo ""
-
-            echo "ERROR: Dashboard import failed."
-
-            exit 1
-
-          fi
-
-
-          echo ""
-
           echo "Dashboard sync completed successfully."
 
 
       # ==========================================================
-      # 26. SHOW BACKEND LOGS
       # 26. SHOW BACKEND LOGS
       # ==========================================================
 
@@ -956,28 +589,13 @@ jobs:
         if: always()
         shell: bash
 
-
         run: |
-
-
           echo ""
-
-
           echo "=========================================="
-
-
           echo "BACKEND LOG"
-
-
           echo "=========================================="
-
 
           cat backend.log || true
-
-
-      # ==========================================================
-      # 27. SHOW FRONTEND LOGS
-      # ==========================================================
 
 
       # ==========================================================
@@ -988,30 +606,13 @@ jobs:
         if: always()
         shell: bash
 
-
         run: |
-
-
           echo ""
-
-
           echo "=========================================="
-
-
           echo "FRONTEND LOG"
-
-
           echo "=========================================="
-
 
           cat frontend.log || true
-
-
-      # ==========================================================
-      # 28. UPLOAD TEST RESULTS
-      # ==========================================================
-
-      - name: Upload Test Results
 
       # ==========================================================
       # 28. UPLOAD TEST RESULTS
@@ -1021,22 +622,10 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
 
-
         with:
-
           name: test-results
-
           path: test-results/
-
           if-no-files-found: warn
-
-
-          name: test-results
-
-          path: test-results/
-
-          if-no-files-found: warn
-
           retention-days: 7
 
 
@@ -1046,18 +635,9 @@ jobs:
 
       - name: Upload Server Logs
         if: always()
-
-      # ==========================================================
-      # 29. UPLOAD SERVER LOGS
-      # ==========================================================
-
-      - name: Upload Server Logs
-        if: always()
         uses: actions/upload-artifact@v4
 
-
         with:
-
           name: server-logs
 
           path: |
@@ -1065,14 +645,4 @@ jobs:
             frontend.log
 
           if-no-files-found: warn
-
-
-          name: server-logs
-
-          path: |
-            backend.log
-            frontend.log
-
-          if-no-files-found: warn
-
           retention-days: 7
