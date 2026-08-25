@@ -499,7 +499,7 @@ test.describe('Complete Profile', () => {
 
       await expect(
         page.getByText(
-          'Name, email, gender, height, diet preference, and photo — all in one place.',
+          "Gender, height, diet, body metrics, and photo — then you're set.",
           {
             exact: true,
           }
@@ -662,6 +662,8 @@ test(
     // ============================================================
 
     await goToCompleteProfile(page);
+
+    
 
 
     // ============================================================
