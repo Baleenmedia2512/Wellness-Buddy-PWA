@@ -264,11 +264,11 @@ describe('diary share builders', () => {
 describe('buildDiaryShareSuffix', () => {
   test('water and afresh suffixes show total consumed so far today', () => {
     expect(buildDiaryShareSuffix('water', { volumeMl: 1000 }))
-      .toBe('Consumed: 1 L water so far today');
+      .toBe('*Consumed: 1 L* water so far today');
     expect(buildDiaryShareSuffix('water', { volumeMl: 2500 }))
-      .toBe('Consumed: 2.5 L water so far today');
+      .toBe('*Consumed: 2.5 L* water so far today');
     expect(buildDiaryShareSuffix('water', { volumeMl: 500 }))
-      .toBe('Consumed: 500 mL water so far today');
+      .toBe('*Consumed: 500 mL* water so far today');
     expect(buildDiaryShareSuffix('afresh', { scoops: 2 }))
       .toBe('*Consumed: 2 scoops* Afresh so far today,');
     expect(buildDiaryShareSuffix('afresh', { scoops: 1 }))
@@ -276,7 +276,7 @@ describe('buildDiaryShareSuffix', () => {
     expect(buildDiaryShareSuffix('afresh', { scoops: 1, soFarToday: false }))
       .toBe('*Consumed: 1 scoop* Afresh,');
     expect(buildDiaryShareSuffix('water', { volumeMl: 200, soFarToday: false }))
-      .toBe('Consumed: 200 mL water');
+      .toBe('*Consumed: 200 mL* water');
   });
 
   test('food suffix is total kcal then each item on its own line', () => {
@@ -428,7 +428,7 @@ describe('resolveBeverageDayShareText', () => {
       activityType: 'water',
       totalMl: 3500,
       fallbackVolumeMl: 2000,
-    })).toBe('Consumed: 3.5 L water so far today');
+    })).toBe('*Consumed: 3.5 L* water so far today');
   });
 
   test('water falls back to card volume when day total missing', () => {
@@ -436,7 +436,7 @@ describe('resolveBeverageDayShareText', () => {
       activityType: 'water',
       totalMl: null,
       fallbackVolumeMl: 2000,
-    })).toBe('Consumed: 2 L water so far today');
+    })).toBe('*Consumed: 2 L* water so far today');
   });
 
   test('afresh prefers day scoops over this-card fallback', () => {
@@ -476,7 +476,7 @@ describe('resolveFoodRowPresentation', () => {
     expect(view.showMealBadge).toBe(false);
     expect(view.primaryValue).toBe('1');
     expect(view.primaryUnit).toBe('L');
-    expect(view.shareText).toBe('Consumed: 1 L water');
+    expect(view.shareText).toBe('*Consumed: 1 L* water');
     expect(view.thumbFallback).toBe('💧');
   });
 
@@ -490,7 +490,7 @@ describe('resolveFoodRowPresentation', () => {
       },
       calories: 0,
     });
-    expect(view.shareText).toBe('Consumed: 200 mL water');
+    expect(view.shareText).toBe('*Consumed: 200 mL* water');
   });
 
   test('afresh row shows kcal with scoops secondary and hides meal badge', () => {
