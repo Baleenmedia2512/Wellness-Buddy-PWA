@@ -31,63 +31,18 @@ jobs:
 
   playwright-tests:
 
-    name: Playwright Auth + Complete Profile Tests
+    name: Playwright Auth, Club, and Activity Tests
 
     runs-on: ubuntu-latest
 
     timeout-minutes: 40
 
+    permissions:
+      actions: read
+      contents: read
+
     steps:
 
-      # ==========================================================
-      # 1. CHECKOUT
-      # ==========================================================
-
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-
-
-
-      # ==========================================================
-      # 2. NODE.JS
-      # ==========================================================
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-
-
-      # ==========================================================
-      # 3. ROOT DEPENDENCIES
-      # ==========================================================
-
-      - name: Install root dependencies
-        run: npm ci
-
-
-      # ==========================================================
-      # 4. FRONTEND DEPENDENCIES
-      # ==========================================================
-
-      - name: Install frontend dependencies
-        working-directory: ./frontend
-        run: npm ci
-
-
-      # ==========================================================
-      # 5. BACKEND DEPENDENCIES
-      # ==========================================================
-
-      - name: Install backend dependencies
-        working-directory: ./backend
-        run: npm ci
-
-
-      # ==========================================================
-      # 6. CREATE FRONTEND ENVIRONMENT
       # ==========================================================
 
       - name: Create frontend environment
@@ -402,55 +357,52 @@ jobs:
           echo "Frontend is responding correctly."
 
 
-      # ==========================================================
-      # 19. RUN AUTH TESTS
-      # ==========================================================
+      # ============================================================
+      # 19. RUN LOGIN, CLUB, AND ACTIVITY TESTS ONCE
+      # ============================================================
 
-      - name: Run Playwright Authentication Tests
-        run: npx playwright test tests/frontend/auth/login.spec.js
+      - name: Run Playwright Login, Club, and Activity Tests
+        id: playwright
+        continue-on-error: true
+        run: |
+
+          echo "=========================================="
+          echo "Running Login, Club, and Activity Tests"
+          echo "=========================================="
+
+          npx playwright test \
+            tests/frontend/auth/login.spec.js \
+            tests/frontend/authenticated/club.spec.js \
+            tests/frontend/authenticated/activity.spec.js
+
+
+      # ============================================================
+      # 20. SYNC THE SINGLE REPORT TO QA DASHBOARD
+      # ============================================================
 
       - name: Sync Playwright results to QA Dashboard
         if: always()
         shell: bash
         env:
-          DASHBOARD_IMPORT_URL: ${{ secrets.DASHBOARD_IMPORT_URL }}
+          DASHBOARD_API_URL: ${{ secrets.DASHBOARD_IMPORT_URL }}
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
         run: |
 
           echo "=========================================="
           echo "Syncing Playwright results to QA Dashboard"
           echo "=========================================="
 
-          npx playwright test \
-            tests/frontend/auth/login.spec.js
+          node scripts/send-results.js
 
 
-      # ==========================================================
-      # 20. RUN CLUB TESTS
-      # ==========================================================
+      # ============================================================
+      # 21. PRESERVE TEST FAILURE STATUS
+      # ============================================================
 
-      - name: Run Playwright Club Tests
-        run: |
-
-          echo "=========================================="
-          echo "Running Club Tests"
-          echo "=========================================="
-
-          npx playwright test \
-            tests/frontend/authenticated/club.spec.js
-
-      # ==========================================================
-      # 21. RUN ACTIVITY TESTS
-      # ==========================================================
-
-      - name: Run Playwright Activity Tests
-        run: |
-
-          echo "=========================================="
-          echo "Running Activity Tests"
-          echo "=========================================="
-
-          npx playwright test \
-            tests/frontend/authenticated/activity.spec.js
+      - name: Fail workflow when Playwright tests fail
+        if: steps.playwright.outcome == 'failure'
+        run: exit 1
 
       # # ==========================================================
       # # 20. RUN COMPLETE PROFILE TESTS
