@@ -2,6 +2,7 @@ import React, {
   useState,
   useEffect,
   useCallback,
+  useRef,
   forwardRef,
   useImperativeHandle,
 } from 'react';
@@ -70,6 +71,8 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, vi
     enabled: isVisible && leaderboardData.length > 0,
   });
 
+  const fetchInFlightRef = useRef(false);
+
   const fetchLeaderboard = useCallback(async () => {
     const emailTrim = String(email || '').trim();
     if ((userId == null || userId === '') && !emailTrim) {
@@ -77,6 +80,8 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, vi
       setIsVisible(false);
       return;
     }
+    if (fetchInFlightRef.current) return;
+    fetchInFlightRef.current = true;
     try {
       const params = new URLSearchParams({
         topN: String(topN),
@@ -109,6 +114,8 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, vi
       console.error('[WELLNESS-LB] Error fetching data:', error);
       setLeaderboardData([]);
       setIsVisible(false);
+    } finally {
+      fetchInFlightRef.current = false;
     }
   }, [apiBaseUrl, topN, userId, email]);
 
