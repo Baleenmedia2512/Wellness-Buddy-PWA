@@ -22,25 +22,32 @@ on:
 
   workflow_dispatch:
 
+
 jobs:
+
+  # ============================================================
+  # PLAYWRIGHT TESTS
+  # ============================================================
+
   playwright-tests:
+
     name: Playwright Auth + Complete Profile Tests
     runs-on: ubuntu-latest
     timeout-minutes: 40
 
     steps:
 
-      # ============================================================
+      # ==========================================================
       # 1. CHECKOUT
-      # ============================================================
+      # ==========================================================
 
       - name: Checkout repository
         uses: actions/checkout@v4
 
 
-      # ============================================================
+      # ==========================================================
       # 2. NODE.JS
-      # ============================================================
+      # ==========================================================
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -49,59 +56,68 @@ jobs:
           cache: npm
 
 
-      # ============================================================
+      # ==========================================================
       # 3. ROOT DEPENDENCIES
-      # ============================================================
+      # ==========================================================
 
       - name: Install root dependencies
         run: npm ci
 
 
-      # ============================================================
+      # ==========================================================
       # 4. FRONTEND DEPENDENCIES
-      # ============================================================
+      # ==========================================================
 
       - name: Install frontend dependencies
         working-directory: ./frontend
         run: npm ci
 
 
-      # ============================================================
+      # ==========================================================
       # 5. BACKEND DEPENDENCIES
-      # ============================================================
+      # ==========================================================
 
       - name: Install backend dependencies
         working-directory: ./backend
         run: npm ci
 
 
-      # ============================================================
+      # ==========================================================
       # 6. CREATE FRONTEND ENVIRONMENT
-      # ============================================================
+      # ==========================================================
 
       - name: Create frontend environment
         shell: bash
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           REACT_APP_GOOGLE_MAPS_API_KEY: ${{ secrets.REACT_APP_GOOGLE_MAPS_API_KEY }}
+
         run: |
+
           cat > frontend/.env <<EOF
+
           GEMINI_API_KEY=$GEMINI_API_KEY
+
           REACT_APP_GOOGLE_MAPS_API_KEY=$REACT_APP_GOOGLE_MAPS_API_KEY
+
           REACT_APP_API_BASE_URL=http://127.0.0.1:3000
+
           DISABLE_ESLINT_PLUGIN=true
+
           EOF
 
           echo "Frontend .env created."
 
 
-      # ============================================================
+      # ==========================================================
       # 7. CREATE BACKEND ENVIRONMENT
-      # ============================================================
+      # ==========================================================
 
       - name: Create backend environment
         shell: bash
+
         env:
+
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
 
           SMTP_USER: ${{ secrets.SMTP_USER }}
@@ -133,7 +149,9 @@ jobs:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
 
         run: |
+
           cat > backend/.env <<EOF
+
           GEMINI_API_KEY=$GEMINI_API_KEY
 
           SMTP_USER=$SMTP_USER
@@ -163,71 +181,85 @@ jobs:
           SUPABASE_SERVICE_KEY=$SUPABASE_SERVICE_KEY
 
           CRON_SECRET=$CRON_SECRET
+
           EOF
 
           echo "Backend .env created."
 
 
-      # ============================================================
+      # ==========================================================
       # 8. INSTALL WAIT-ON
-      # ============================================================
+      # ==========================================================
 
       - name: Install wait-on
         run: npm install --no-save wait-on
 
 
-      # ============================================================
-      # 9. INSTALL PLAYWRIGHT
-      # ============================================================
+      # ==========================================================
+      # 9. INSTALL PLAYWRIGHT CHROMIUM
+      # ==========================================================
 
       - name: Install Playwright Chromium
         run: npx playwright install --with-deps chromium
 
 
-      # ============================================================
+      # ==========================================================
       # 10. VERIFY REACT-SCRIPTS
-      # ============================================================
+      # ==========================================================
 
       - name: Verify React Scripts
         working-directory: ./frontend
+
         run: |
+
           echo "Checking react-scripts..."
 
           if [ -f "node_modules/.bin/react-scripts" ]; then
+
             echo "react-scripts is installed."
+
           else
+
             echo "ERROR: react-scripts was not found."
+
             ls -la node_modules/.bin || true
+
             exit 1
+
           fi
 
 
-      # ============================================================
+      # ==========================================================
       # 11. START BACKEND
-      # ============================================================
+      # ==========================================================
 
       - name: Start Backend
         working-directory: ./backend
         shell: bash
+
         run: |
+
           echo "=========================================="
           echo "Starting backend on port 3000"
           echo "=========================================="
 
           npm run dev:local > ../backend.log 2>&1 &
+
           echo $! > ../backend.pid
 
           echo "Backend PID:"
           cat ../backend.pid
 
 
-      # ============================================================
+      # ==========================================================
       # 12. WAIT FOR BACKEND
-      # ============================================================
+      # ==========================================================
 
       - name: Wait for Backend
         shell: bash
+
         run: |
+
           echo "Waiting for backend on port 3000..."
 
           npx wait-on \
@@ -237,37 +269,51 @@ jobs:
           echo "Backend port 3000 is ready."
 
 
-      # ============================================================
+      # ==========================================================
       # 13. VERIFY BACKEND PROCESS
-      # ============================================================
+      # ==========================================================
 
       - name: Verify Backend Process
         shell: bash
+
         run: |
+
           echo "Checking backend process..."
 
           if kill -0 "$(cat backend.pid)" 2>/dev/null; then
+
             echo "Backend process is running."
+
           else
+
             echo "Backend process stopped."
+
             echo ""
+
             echo "================ BACKEND LOG ================"
+
             cat backend.log || true
+
             echo "=============================================="
+
             exit 1
+
           fi
 
 
-      # ============================================================
+      # ==========================================================
       # 14. START FRONTEND
-      # ============================================================
+      # ==========================================================
 
       - name: Start Frontend
         working-directory: ./frontend
         shell: bash
+
         env:
           PORT: 3001
+
         run: |
+
           echo "=========================================="
           echo "Starting frontend on port 3001"
           echo "=========================================="
@@ -275,56 +321,76 @@ jobs:
           echo "PORT=$PORT"
 
           npm start > ../frontend.log 2>&1 &
+
           echo $! > ../frontend.pid
 
           echo "Frontend PID:"
           cat ../frontend.pid
 
 
-      # ============================================================
-      # 15. WAIT FOR FRONTEND STARTUP
-      # ============================================================
+      # ==========================================================
+      # 15. CHECK FRONTEND STARTUP
+      # ==========================================================
 
       - name: Check Frontend Startup
         shell: bash
+
         run: |
+
           echo "Waiting for frontend startup..."
+
           sleep 10
 
           echo ""
+
           echo "================ FRONTEND LOG ================"
+
           cat frontend.log || true
+
           echo "==============================================="
 
 
-      # ============================================================
+      # ==========================================================
       # 16. VERIFY FRONTEND PROCESS
-      # ============================================================
+      # ==========================================================
 
       - name: Verify Frontend Process
         shell: bash
+
         run: |
+
           echo "Checking frontend process..."
 
           if kill -0 "$(cat frontend.pid)" 2>/dev/null; then
+
             echo "Frontend process is running."
+
           else
+
             echo "Frontend process stopped."
+
             echo ""
+
             echo "================ FRONTEND LOG ================"
+
             cat frontend.log || true
+
             echo "==============================================="
+
             exit 1
+
           fi
 
 
-      # ============================================================
+      # ==========================================================
       # 17. WAIT FOR FRONTEND
-      # ============================================================
+      # ==========================================================
 
       - name: Wait for Frontend
         shell: bash
+
         run: |
+
           echo "Waiting for frontend on port 3001..."
 
           npx wait-on \
@@ -334,122 +400,121 @@ jobs:
           echo "Frontend is ready."
 
 
-      # ============================================================
+      # ==========================================================
       # 18. VERIFY FRONTEND HTTP RESPONSE
-      # ============================================================
+      # ==========================================================
 
       - name: Verify Frontend
         shell: bash
+
         run: |
+
           echo "Checking frontend HTTP response..."
 
           curl -I http://127.0.0.1:3001
 
           echo ""
+
           echo "Frontend is responding correctly."
 
 
-      # ============================================================
-      # 19. RUN LOGIN TESTS ONCE
+      # ==========================================================
+      # 19. RUN ALL CURRENT PLAYWRIGHT FRONTEND TESTS
       #
       # IMPORTANT:
-      # This is the ONLY place login.spec.js is executed.
-      # The dashboard step below uploads the generated JSON.
-      # ============================================================
+      # Login + Club + Activity are executed in ONE command.
+      #
+      # This prevents the JSON report from being overwritten by
+      # separate Playwright executions.
+      # ==========================================================
 
-      - name: Run Playwright Authentication Tests
+      - name: Run Playwright Frontend Tests
         run: |
-          mkdir -p test-results
+
+          echo "=========================================="
+          echo "Running Playwright Frontend Tests"
+          echo "=========================================="
 
           npx playwright test \
-            tests/frontend/auth/login.spec.js
-
-
-      # ============================================================
-      # 20. RUN CLUB TESTS ONCE
-      # ============================================================
-
-      - name: Run Playwright Club Tests
-        run: |
-          npx playwright test \
-            tests/frontend/authenticated/club.spec.js
-
-
-      # ============================================================
-      # 21. RUN ACTIVITY TESTS ONCE
-      # ============================================================
-
-      - name: Run Playwright Activity Tests
-        run: |
-          npx playwright test \
+            tests/frontend/auth/login.spec.js \
+            tests/frontend/authenticated/club.spec.js \
             tests/frontend/authenticated/activity.spec.js
 
 
-      # ============================================================
-      # 22. COMPLETE PROFILE TESTS
+      # ==========================================================
+      # 20. COMPLETE PROFILE TESTS
       #
-      # Uncomment when you are ready to enable them.
-      # ============================================================
+      # Enable this when you are ready.
+      # ==========================================================
 
-      # - name: Run Playwright Complete Profile Tests
+      # - name: Run Complete Profile Tests
       #   run: |
+      #
       #     npx playwright test \
       #       tests/frontend/profile/complete-profile.spec.js
 
 
-      # ============================================================
-      # 23. ALL FRONTEND TESTS
+      # ==========================================================
+      # 21. VERIFY PLAYWRIGHT JSON RESULT
       #
-      # Keep disabled until you want every frontend test to run.
-      # ============================================================
-
-      # - name: Run All Frontend Playwright Tests
-      #   run: |
-      #     npx playwright test tests/frontend
-
-
-      # ============================================================
-      # 24. GENERATE PLAYWRIGHT JSON REPORT
+      # Your project currently produces:
       #
-      # IMPORTANT:
-      # Playwright has already executed the tests.
-      # This step must NOT run the tests again.
-      # ============================================================
+      # test-results/results.json
+      #
+      # ==========================================================
 
-      - name: Generate Playwright JSON Report
+      - name: Verify Playwright Result File
         if: always()
         shell: bash
+
         run: |
-          echo "Generating Playwright JSON report..."
 
-          if [ ! -d "test-results" ]; then
-            mkdir -p test-results
-          fi
+          echo "=========================================="
+          echo "Checking Playwright result files"
+          echo "=========================================="
 
-          # This uses the existing Playwright result data.
-          # If your playwright.config.js already has a JSON reporter,
-          # this file will already exist.
-          if [ -f "test-results/playwright-results.json" ]; then
-            echo "Playwright JSON report already exists."
+          find test-results \
+            -maxdepth 2 \
+            -type f \
+            -print || true
+
+          if [ -f "test-results/results.json" ]; then
+
+            echo ""
+            echo "Playwright JSON result found:"
+            echo "test-results/results.json"
+
+            echo ""
+
+            ls -lh \
+              test-results/results.json
+
           else
-            echo "WARNING: test-results/playwright-results.json was not found."
-            echo "Configure the JSON reporter in playwright.config.js."
+
+            echo ""
+            echo "ERROR: test-results/results.json was not found."
+
+            exit 1
+
           fi
 
 
-      # ============================================================
-      # 25. SYNC PLAYWRIGHT RESULTS TO QA DASHBOARD
+      # ==========================================================
+      # 22. SYNC RESULTS TO QA DASHBOARD
       #
       # IMPORTANT:
-      # Do NOT execute playwright here.
-      # This step only uploads the result file.
-      # ============================================================
+      # This step DOES NOT run Playwright.
+      #
+      # It only uploads the results created by step 19.
+      # ==========================================================
 
-      - name: Sync Playwright results to QA Dashboard
+      - name: Sync Playwright Results to QA Dashboard
         if: always()
         shell: bash
+
         env:
           DASHBOARD_API_URL: ${{ secrets.DASHBOARD_API_URL }}
+
         run: |
 
           echo "=========================================="
@@ -457,72 +522,133 @@ jobs:
           echo "=========================================="
 
           if [ -z "$DASHBOARD_API_URL" ]; then
+
             echo "ERROR: DASHBOARD_API_URL is not configured."
+
             exit 1
+
           fi
 
-          if [ ! -f "test-results/playwright-results.json" ]; then
-            echo "ERROR: Playwright JSON result was not found."
+
+          if [ ! -f "test-results/results.json" ]; then
+
+            echo "ERROR: test-results/results.json was not found."
+
             echo ""
+
             echo "Available test-results files:"
-            find test-results -maxdepth 2 -type f -print || true
+
+            find test-results \
+              -maxdepth 2 \
+              -type f \
+              -print || true
+
             exit 1
+
           fi
+
+
+          echo "Dashboard API URL is configured."
 
           echo "Uploading:"
-          echo "test-results/playwright-results.json"
+          echo "test-results/results.json"
 
-          curl --fail-with-body \
-            --silent \
-            --show-error \
-            --request POST \
-            "$DASHBOARD_API_URL" \
-            --header "Content-Type: application/json" \
-            --data-binary "@test-results/playwright-results.json"
+
+          RESPONSE_FILE="/tmp/dashboard-response.txt"
+
+
+          HTTP_STATUS=$(
+            curl \
+              --silent \
+              --show-error \
+              --output "$RESPONSE_FILE" \
+              --write-out "%{http_code}" \
+              --request POST \
+              "$DASHBOARD_API_URL" \
+              --header "Content-Type: application/json" \
+              --data-binary "@test-results/results.json"
+          )
+
 
           echo ""
+
+          echo "Dashboard HTTP status:"
+          echo "$HTTP_STATUS"
+
+
+          echo ""
+
+          echo "Dashboard response:"
+
+          cat "$RESPONSE_FILE" || true
+
+
+          if [[ "$HTTP_STATUS" -lt 200 || "$HTTP_STATUS" -ge 300 ]]; then
+
+            echo ""
+
+            echo "ERROR: Dashboard import failed."
+
+            exit 1
+
+          fi
+
+
+          echo ""
+
           echo "Dashboard sync completed successfully."
 
 
-      # ============================================================
-      # 26. SHOW BACKEND LOGS
-      # ============================================================
+      # ==========================================================
+      # 23. BACKEND LOGS
+      # ==========================================================
 
       - name: Show Backend Logs
         if: always()
         shell: bash
+
         run: |
+
           echo ""
+
           echo "=========================================="
+
           echo "BACKEND LOG"
+
           echo "=========================================="
 
           cat backend.log || true
 
 
-      # ============================================================
-      # 27. SHOW FRONTEND LOGS
-      # ============================================================
+      # ==========================================================
+      # 24. FRONTEND LOGS
+      # ==========================================================
 
       - name: Show Frontend Logs
         if: always()
         shell: bash
+
         run: |
+
           echo ""
+
           echo "=========================================="
+
           echo "FRONTEND LOG"
+
           echo "=========================================="
 
           cat frontend.log || true
 
 
-      # ============================================================
-      # 28. UPLOAD PLAYWRIGHT HTML REPORT
-      # ============================================================
+      # ==========================================================
+      # 25. UPLOAD PLAYWRIGHT HTML REPORT
+      # ==========================================================
 
       - name: Upload Playwright Report
         if: always()
         uses: actions/upload-artifact@v4
+
         with:
           name: playwright-report
           path: playwright-report/
@@ -530,13 +656,14 @@ jobs:
           retention-days: 7
 
 
-      # ============================================================
-      # 29. UPLOAD TEST RESULTS
-      # ============================================================
+      # ==========================================================
+      # 26. UPLOAD RAW PLAYWRIGHT RESULTS
+      # ==========================================================
 
       - name: Upload Test Results
         if: always()
         uses: actions/upload-artifact@v4
+
         with:
           name: test-results
           path: test-results/
@@ -544,17 +671,20 @@ jobs:
           retention-days: 7
 
 
-      # ============================================================
-      # 30. UPLOAD LOG FILES
-      # ============================================================
+      # ==========================================================
+      # 27. UPLOAD SERVER LOGS
+      # ==========================================================
 
       - name: Upload Server Logs
         if: always()
         uses: actions/upload-artifact@v4
+
         with:
           name: server-logs
+
           path: |
             backend.log
             frontend.log
+
           if-no-files-found: warn
           retention-days: 7
