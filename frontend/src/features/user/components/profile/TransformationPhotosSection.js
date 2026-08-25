@@ -31,21 +31,23 @@ const TransformationPhotosSection = ({
           <Camera className="w-4 h-4 text-green-600" />
           <h3 className="text-sm font-semibold text-gray-800">Transformation Photos (Optional)</h3>
         </div>
-        <p className="text-xs text-gray-500 mt-1">
-          Upload Front, Left, and Right. Left is shown as Before and After on Transformation.
-        </p>
       </div>
-      <CameraGalleryButtons
-        disabled={disabled || busy}
-        onCameraSelect={handleFile}
-        onGallerySelect={handleFile}
-      />
-      <p className="text-xs text-gray-400">You can upload any combination, or skip this section.</p>
       <TransformationBeforeAfter
         history={history}
         selectedType={selectedType}
         onSelectType={onSelectType}
+        slotActions={(
+          <CameraGalleryButtons
+            layout="inSlot"
+            disabled={disabled || busy}
+            onCameraSelect={handleFile}
+            onGallerySelect={handleFile}
+          />
+        )}
       />
+      <p className="text-xs text-gray-400 text-center">
+        You can upload any combination, or skip this section.
+      </p>
     </div>
   );
 };
