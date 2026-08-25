@@ -1,6 +1,7 @@
 import { textToNumber } from "./quantityParser";
 import { NUMBER_WORDS, NUMBER_WORD_LIST } from "./numberWords";
 import { decimalToFraction } from "./decimalToFraction";
+import { computeNutrition } from "./computeNutrition";
 
 /**
  * Generate dynamic serving-size options around a detected portion quantity.
@@ -102,21 +103,12 @@ export function generateServingOptions(
       .filter((ml) => ml > 0)
       .sort((a, b) => a - b);
 
-    return sizes.map((ml) => {
-      const nutritionMultiplier = ml / 100;
-      return {
-        description: `${ml} ml`,
-        grams: ml,
-        nutrition: {
-          calories: Math.round(per100g.calories * nutritionMultiplier),
-          protein: Math.ceil(per100g.protein * nutritionMultiplier),
-          carbs: Math.ceil(per100g.carbs * nutritionMultiplier),
-          fat: Math.ceil(per100g.fat * nutritionMultiplier),
-          fiber: Math.ceil((per100g.fiber || 0) * nutritionMultiplier),
-        },
-        isOriginal: Math.abs(ml - baseMl) < 0.5,
-      };
-    });
+    return sizes.map((ml) => ({
+      description: `${ml} ml`,
+      grams: ml,
+      nutrition: computeNutrition(per100g, ml),
+      isOriginal: Math.abs(ml - baseMl) < 0.5,
+    }));
   }
 
   // Generate serving options dynamically following the pattern:
@@ -214,7 +206,6 @@ export function generateServingOptions(
   uniqueSizes.forEach((qty) => {
     const multiplier = qty / detectedQuantity;
     const gramsForQty = Math.round(baseServing.grams * multiplier);
-    const nutritionMultiplier = gramsForQty / 100;
 
     // Format display based on original format
     let qtyDisplay;
@@ -233,13 +224,7 @@ export function generateServingOptions(
         ? `${qtyDisplay} ${itemUnit} (original)`
         : `${qtyDisplay} ${itemUnit}`,
       grams: gramsForQty,
-      nutrition: {
-        calories: Math.round(per100g.calories * nutritionMultiplier),
-        protein: Math.ceil(per100g.protein * nutritionMultiplier),
-        carbs: Math.ceil(per100g.carbs * nutritionMultiplier),
-        fat: Math.ceil(per100g.fat * nutritionMultiplier),
-        fiber: Math.ceil((per100g.fiber || 0) * nutritionMultiplier),
-      },
+      nutrition: computeNutrition(per100g, gramsForQty),
       isOriginal: isOriginal,
     });
   });
