@@ -216,17 +216,7 @@ export async function upsertBcmMemberToDeviceContacts(opts = {}) {
     }
 
     const existingIds = await findBcmContactIds(phone);
-    let updated = false;
-
-    for (const contactId of existingIds) {
-      try {
-        await Contacts.deleteContact({ contactId });
-        updated = true;
-      } catch (err) {
-        console.warn('[BCM contact] delete failed', contactId, err?.message || err);
-      }
-    }
-    if (existingIds.length) clearStoredContactId(phone);
+    let updated = existingIds.length > 0;
 
     let createResult;
     try {
@@ -241,6 +231,15 @@ export async function upsertBcmMemberToDeviceContacts(opts = {}) {
         skipped: true,
         reason: denied ? 'permission' : (formatted.message || 'error'),
       };
+    }
+
+    if (createResult?.openedEditor) {
+      console.warn('[BCM contact] opened system contact editor', {
+        displayName,
+        phoneTail: phone.slice(-4),
+        permissionGranted: allowed,
+      });
+      return { ok: true, updated, openedEditor: true };
     }
 
     const contactId = createResult?.contactId;
@@ -258,6 +257,15 @@ export async function upsertBcmMemberToDeviceContacts(opts = {}) {
       };
     }
 
+    for (const oldId of existingIds) {
+      if (String(oldId) === String(contactId)) continue;
+      try {
+        await Contacts.deleteContact({ contactId: oldId });
+      } catch (err) {
+        console.warn('[BCM contact] delete failed', oldId, err?.message || err);
+      }
+    }
+    if (existingIds.length) clearStoredContactId(phone);
     writeStoredContactId(phone, contactId);
 
     console.warn('[BCM contact] saved', {
