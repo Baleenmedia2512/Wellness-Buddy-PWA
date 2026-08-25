@@ -31,7 +31,7 @@ jobs:
 
   playwright-tests:
 
-    name: Playwright Auth + Complete Profile Tests
+    name: Playwright Tests
 
     runs-on: ubuntu-latest
 
@@ -439,7 +439,8 @@ jobs:
           npx playwright test \
             tests/frontend/auth/login.spec.js \
             tests/frontend/authenticated/club.spec.js \
-            tests/frontend/authenticated/activity.spec.js
+            tests/frontend/authenticated/activity.spec.js \
+            tests/frontend/programs/programs.spec.js \
 
 
       # ==========================================================
