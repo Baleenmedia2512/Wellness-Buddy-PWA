@@ -35,4 +35,40 @@ describe('resolveDashboardUserId', () => {
     assert.equal(capturedHeaders[APP_VERSION_HEADER], APP_VERSION.VERSION);
     assert.equal(userId, 11);
   });
+
+  it('does not treat a Firebase uid as the dashboard userId', async () => {
+    let lookupCalled = false;
+    mock.method(global, 'fetch', async () => {
+      lookupCalled = true;
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ success: true, userId: 77 }),
+      };
+    });
+
+    const userId = await resolveDashboardUserId(
+      { id: 'firebaseUidAbc', email: 'ada@example.com' },
+      'https://api.example.com',
+    );
+
+    assert.equal(lookupCalled, true);
+    assert.equal(userId, 77);
+  });
+
+  it('uses numeric UserId without lookup', async () => {
+    let lookupCalled = false;
+    mock.method(global, 'fetch', async () => {
+      lookupCalled = true;
+      return { ok: true, status: 200, json: async () => ({}) };
+    });
+
+    const userId = await resolveDashboardUserId(
+      { id: 'firebaseUidAbc', UserId: 19, email: 'ada@example.com' },
+      'https://api.example.com',
+    );
+
+    assert.equal(lookupCalled, false);
+    assert.equal(userId, 19);
+  });
 });

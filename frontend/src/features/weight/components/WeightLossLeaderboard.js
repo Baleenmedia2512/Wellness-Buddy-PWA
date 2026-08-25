@@ -63,7 +63,7 @@ const writeWeightLBCache = (userId, data) => {
  * @param {number} topN - Number of top users to show (default: 10)
  * @param {number|string} userId - Logged-in user id (required for hierarchy scope)
  */
-const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId }, ref) => {
+const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, email }, ref) => {
   const [leaderboardData, setLeaderboardData] = useState(() => readWeightLBCache(userId) ?? []);
   const [isVisible, setIsVisible] = useState(() => (readWeightLBCache(userId)?.length ?? 0) > 0);
   const [hasEntered, setHasEntered] = useState(() => (readWeightLBCache(userId)?.length ?? 0) > 0);
@@ -73,7 +73,8 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId }, ref
 
   // Fetch leaderboard data
   const fetchLeaderboard = useCallback(async () => {
-    if (userId == null || userId === '') {
+    const emailTrim = String(email || '').trim();
+    if ((userId == null || userId === '') && !emailTrim) {
       setLeaderboardData([]);
       setIsVisible(false);
       return;
@@ -81,8 +82,9 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId }, ref
     try {
       const params = new URLSearchParams({
         topN: String(topN),
-        userId: String(userId),
       });
+      if (userId != null && userId !== '') params.set('userId', String(userId));
+      if (emailTrim) params.set('email', emailTrim);
       const response = await fetch(
         `${apiBaseUrl}/api/leaderboard/get-global-leaderboard?${params}`,
         {
@@ -117,7 +119,7 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId }, ref
       setLeaderboardData([]);
       setIsVisible(false);
     }
-  }, [apiBaseUrl, topN, userId]);
+  }, [apiBaseUrl, topN, userId, email]);
 
   // Expose methods to parent via ref
   useImperativeHandle(ref, () => ({

@@ -43,10 +43,21 @@ export function getDailyWellnessScoreCached(userId, date) {
   return score;
 }
 
+function notifyDailyScoreListeners({ userId, date, score }) {
+  listeners.forEach((fn) => {
+    try {
+      fn({ userId: String(userId), date: String(date), score });
+    } catch {
+      /* listener errors must not break cache writes */
+    }
+  });
+}
+
 export function setDailyWellnessScoreCached(userId, date, score) {
   if (userId == null || !date || !score) return;
   if (scoreDateMismatches(score, date)) return;
   dailyScoreCache.set(dailyKey(userId, date), score);
+  notifyDailyScoreListeners({ userId, date, score });
 }
 
 /**
@@ -66,13 +77,7 @@ export function seedDailyWellnessScoreCache(userId, date, score) {
     score,
     activityLogId,
   };
-  listeners.forEach((fn) => {
-    try {
-      fn({ userId: pinnedSeed.userId, date: pinnedSeed.date, score });
-    } catch {
-      /* listener errors must not break seed */
-    }
-  });
+  notifyDailyScoreListeners({ userId, date, score });
 }
 
 /**
