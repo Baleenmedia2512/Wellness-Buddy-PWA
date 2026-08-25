@@ -5,12 +5,20 @@
       "origin": "http://127.0.0.1:3001",
       "localStorage": [
         {
+          "name": "userEmail",
+          "value": "test@example.com"
+        },
+        {
           "name": "otpUser",
-          "value": "{\"isNewUser\":false}"
+          "value": "{\"id\":99999,\"UserId\":99999,\"UserName\":\"Test Coach\",\"phone\":\"+917695834209\",\"role\":\"coach\",\"email\":\"test@example.com\"}"
         },
         {
           "name": "isOtpVerified",
           "value": "true"
+        },
+        {
+          "name": "dbUserId",
+          "value": "99999"
         }
       ]
     }

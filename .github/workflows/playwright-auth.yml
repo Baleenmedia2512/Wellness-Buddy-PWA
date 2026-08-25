@@ -9,6 +9,7 @@ on:
       - PH1_BACKUP
       - Development
       - Nitheesh_test
+      - Avinash_test
 
   pull_request:
     branches:
@@ -451,6 +452,23 @@ jobs:
           echo "Run ID: $GITHUB_RUN_ID"
 
 
+      # ==========================================================
+      # 20. RUN CLUB TESTS
+      # ==========================================================
+
+      - name: Run Playwright Club Tests
+        run: |
+
+          echo "=========================================="
+          echo "Running Club Tests"
+          echo "=========================================="
+
+          npx playwright test \
+            tests/frontend/authenticated/club.spec.js
+
+      # # ==========================================================
+      # # 20. RUN COMPLETE PROFILE TESTS
+      # # ==========================================================
 
       - name: Upload Playwright JSON results
         if: always()

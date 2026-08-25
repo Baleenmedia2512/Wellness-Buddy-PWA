@@ -23,6 +23,7 @@ setup('authenticate', async ({ page }) => {
       body: JSON.stringify({
         success: true,
         isNewUser: false,
+        user: { id: 99999, UserId: 99999, UserName: 'Test Coach', phone: '+917695834209', role: 'coach', email: 'test@example.com' }
       }),
     });
   });
@@ -64,6 +65,13 @@ setup('authenticate', async ({ page }) => {
   .toBe('true');
 
   // Save authentication state
+  await page.evaluate(() => {
+    localStorage.removeItem('userSignedOut');
+    localStorage.setItem('otpUser', JSON.stringify({ id: 99999, UserId: 99999, UserName: 'Test Coach', phone: '+917695834209', role: 'coach', email: 'test@example.com' }));
+    localStorage.setItem('dbUserId', '99999');
+    localStorage.setItem('userEmail', 'test@example.com');
+  });
+  
   await page.context().storageState({
     path: authFile,
   });
