@@ -385,7 +385,7 @@ const SmartFoodSearchModal = ({
         type="text"
         value={searchQuery}
         onChange={(e) => setSearchQuery(e.target.value)}
-        placeholder={catalogMode ? "Search dry salad…" : "Search for food..."}
+        placeholder={catalogMode ? "Search target nutrition…" : "Search for food..."}
         className="w-full pl-9 pr-10 py-3 border-2 border-gray-200 focus:border-green-500 rounded-xl outline-none text-sm bg-white transition-colors"
         style={{ fontSize: "16px" }}
       />
@@ -442,7 +442,7 @@ const SmartFoodSearchModal = ({
             </svg>
           </button>
           <h1 className="flex-1 text-center text-base font-bold text-gray-900 pr-8">
-            {catalogMode ? (headerTitle || "Dry Salad") : "Add Food"}
+            {catalogMode ? (headerTitle || "Target Nutrition") : "Add Food"}
           </h1>
         </div>
 
@@ -498,7 +498,7 @@ const SmartFoodSearchModal = ({
               {(catalogRows.length > 0) && (
                 <div>
                   <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5 px-1">
-                    {catalogMode ? "Dry Salad catalog" : "Nutrition library"}
+                    {catalogMode ? "Target Nutrition catalog" : "Nutrition library"}
                   </p>
                   <div className="space-y-1.5">
                     {renderFoodRows(catalogRows, "master", true)}
@@ -748,7 +748,7 @@ const SmartFoodSearchModal = ({
                   {catalogRows.length > 0 && (
                     <div>
                       <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5 px-1">
-                        {catalogMode ? "Dry Salad catalog" : "Nutrition library"}
+                        {catalogMode ? "Target Nutrition catalog" : "Nutrition library"}
                       </p>
                       <div className="space-y-1.5">{renderFoodRows(catalogRows, "master", false)}</div>
                     </div>
