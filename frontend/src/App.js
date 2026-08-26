@@ -7774,6 +7774,7 @@ function WellnessValleyApp() {
           key={manualEntryPayload.clientKey || manualEntryPayload.captureId}
           userId={manualEntryPayload.userId}
           userEmail={user?.email || user?.Email || null}
+          userName={user?.userName || user?.username || user?.name || null}
           apiBaseUrl={apiBaseUrl}
           captureId={manualEntryPayload.captureId}
           imageBase64={manualEntryPayload.imageBase64}

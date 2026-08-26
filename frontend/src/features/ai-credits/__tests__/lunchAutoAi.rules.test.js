@@ -9,6 +9,7 @@ import {
   isWithinActivityWindow,
   decideLunchAutoAi,
   DEFAULT_LUNCH_WINDOW,
+  DEFAULT_DINNER_WINDOW,
 } from '../domain/lunchAutoAi.rules.js';
 
 describe('timeStringToMinutes', () => {
@@ -30,10 +31,17 @@ describe('isWithinActivityWindow', () => {
     const morning = new Date('2026-08-20T04:30:00.000Z');
     assert.equal(isWithinActivityWindow(morning, DEFAULT_LUNCH_WINDOW), false);
   });
+
+  it('is true inside dinner defaults (IST)', () => {
+    // 2026-08-20 18:00 IST = 12:30 UTC
+    const dinner = new Date('2026-08-20T12:30:00.000Z');
+    assert.equal(isWithinActivityWindow(dinner, DEFAULT_DINNER_WINDOW), true);
+  });
 });
 
 describe('decideLunchAutoAi', () => {
   const lunchNow = new Date('2026-08-20T07:30:00.000Z'); // 13:00 IST
+  const dinnerNow = new Date('2026-08-20T12:30:00.000Z'); // 18:00 IST
   const morningNow = new Date('2026-08-20T04:30:00.000Z'); // 10:00 IST
   const creditsOk = {
     enabled: true,
@@ -60,17 +68,28 @@ describe('decideLunchAutoAi', () => {
       creditStatus: creditsOk,
     });
     assert.equal(d.shouldAutoAi, true);
-    assert.equal(d.reason, 'lunch-auto');
+    assert.equal(d.reason, 'meal-auto');
   });
 
-  it('manual outside lunch even with credits', () => {
+  it('auto-AI during dinner with remaining credits', () => {
+    const d = decideLunchAutoAi({
+      now: dinnerNow,
+      dinnerWindow: DEFAULT_DINNER_WINDOW,
+      creditsFlagEnabled: true,
+      creditStatus: creditsOk,
+    });
+    assert.equal(d.shouldAutoAi, true);
+    assert.equal(d.reason, 'meal-auto');
+  });
+
+  it('manual outside lunch/dinner even with credits', () => {
     const d = decideLunchAutoAi({
       now: morningNow,
       creditsFlagEnabled: true,
       creditStatus: creditsOk,
     });
     assert.equal(d.shouldAutoAi, false);
-    assert.equal(d.reason, 'outside-lunch');
+    assert.equal(d.reason, 'outside-meal-window');
   });
 
   it('manual when credits exhausted in lunch', () => {
@@ -97,5 +116,37 @@ describe('decideLunchAutoAi', () => {
     });
     assert.equal(d.shouldAutoAi, false);
     assert.equal(d.reason, 'credits-flag-off');
+  });
+
+  it('manual when backend marks not eligible downline', () => {
+    const d = decideLunchAutoAi({
+      now: lunchNow,
+      creditsFlagEnabled: true,
+      creditStatus: {
+        ...creditsOk,
+        eligibleForAiFoodAnalysis: false,
+        aiFoodAnalysisWindowOpen: true,
+        aiFoodAnalysisAllowed: false,
+        aiFoodAnalysisDenyReason: 'not_eligible_downline',
+      },
+    });
+    assert.equal(d.shouldAutoAi, false);
+    assert.equal(d.reason, 'not-eligible-downline');
+  });
+
+  it('manual when backend marks AI window closed', () => {
+    const d = decideLunchAutoAi({
+      now: lunchNow,
+      creditsFlagEnabled: true,
+      creditStatus: {
+        ...creditsOk,
+        eligibleForAiFoodAnalysis: true,
+        aiFoodAnalysisWindowOpen: false,
+        aiFoodAnalysisAllowed: false,
+        aiFoodAnalysisDenyReason: 'outside_ai_window',
+      },
+    });
+    assert.equal(d.shouldAutoAi, false);
+    assert.equal(d.reason, 'outside-meal-window');
   });
 });

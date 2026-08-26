@@ -658,27 +658,45 @@ export default function ManualEntryPage({
     }
   }, [creditsEnabled, userId, apiBaseUrl]);
 
-  const handleAiModalSave = useCallback(async () => {
-    if (!aiAnalysisResult || !captureId || !userId || aiSaving) return;
+  const handleAiModalSave = useCallback(async (editedAnalysis = null) => {
+    const analysisToSave = editedAnalysis || aiAnalysisResult;
+    if (!analysisToSave || !captureId || !userId || aiSaving) return;
     setAiSaving(true);
+    setAiAnalysisResult(analysisToSave);
     try {
       const result = await promoteUnknownToFood({
         captureId,
         viewerUserId: userId,
-        analysisResult: aiAnalysisResult,
+        analysisResult: analysisToSave,
         originalCapturedAt: originalCapturedAt || null,
       });
       seedMealAfterPromotion({
         ownerUserId: userId,
         result,
-        analysisResult: aiAnalysisResult,
+        analysisResult: analysisToSave,
         capturedAt: originalCapturedAt || null,
       });
       refreshAfterPersist('manual-ai-food-saved');
       onToast?.('Food saved');
       setAiModalOpen(false);
+
+      // Tell-in-chat: same food caption as Manual Food Log (items + macros).
+      const foodName = analysisToSave?.foods?.[0]?.name || 'Food';
+      const foodItems = extractFoodShareItems(analysisToSave);
+      const n = analysisToSave?.total || {};
+      const activityCaption = buildDiaryShareSuffix('food', {
+        foodName,
+        foodItems,
+        calories: n.calories ?? 0,
+        protein: n.protein ?? 0,
+        carbs: n.carbs ?? 0,
+        fat: n.fat ?? 0,
+        fiber: n.fiber ?? 0,
+        glycemicIndex: n.glycemic_index ?? n.glycemicIndex ?? null,
+      });
+
       exit({
-        activityCaption: null,
+        activityCaption,
         shareImage: imageBase64,
       });
     } catch (err) {
@@ -694,7 +712,6 @@ export default function ManualEntryPage({
     refreshAfterPersist,
     onToast,
     imageBase64,
-    exit,
   ]);
 
   const handleAiModalManual = useCallback(() => {
@@ -723,6 +740,7 @@ export default function ManualEntryPage({
       const decision = decideLunchAutoAi({
         now: new Date(),
         lunchWindow: windows?.lunch ?? null,
+        dinnerWindow: windows?.dinner ?? null,
         creditStatus: creditsEnabled ? credits : null,
         creditsFlagEnabled: creditsEnabled,
         timezoneIana: credits?.timezoneIana,
@@ -1249,6 +1267,7 @@ export default function ManualEntryPage({
         analysisResult={aiAnalysisResult}
         errorMessage={aiModalError}
         saving={aiSaving}
+        user={{ id: userId, email: userEmail, userName }}
         onCancel={handleAiModalCancel}
         onSave={handleAiModalSave}
         onRetry={() => {

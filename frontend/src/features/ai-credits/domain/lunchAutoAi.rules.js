@@ -1,7 +1,7 @@
 /**
  * lunchAutoAi.rules.js
- * Pure policy: during lunch window + AI credits remaining → auto-run AI
- * (no Auto Detect button). Outside lunch or out of credits → manual only.
+ * Pure policy: during lunch or dinner window + AI credits remaining + eligible
+ * leaf downline → auto-run AI (no Auto Detect button). Otherwise → manual only.
  */
 import { APP_TIMEZONE } from '../../../shared/constants/timeWindows.js';
 import { getAiCreditUiState } from './creditUiState.js';
@@ -10,6 +10,12 @@ import { getAiCreditUiState } from './creditUiState.js';
 export const DEFAULT_LUNCH_WINDOW = Object.freeze({
   start: '12:00:00',
   end: '16:00:00',
+});
+
+/** Default dinner window when API windows are missing (IST). */
+export const DEFAULT_DINNER_WINDOW = Object.freeze({
+  start: '17:30:00',
+  end: '20:30:00',
 });
 
 /**
@@ -61,11 +67,38 @@ export function isWithinActivityWindow(now, window, timeZone = APP_TIMEZONE) {
 }
 
 /**
- * Decide post-capture behaviour for lunch auto-AI.
+ * True when now is inside lunch or dinner (configured or defaults).
+ * @param {Date} now
+ * @param {{ start?: string, end?: string }|null|undefined} lunchWindow
+ * @param {{ start?: string, end?: string }|null|undefined} dinnerWindow
+ * @param {string} [timeZone]
+ * @returns {boolean}
+ */
+export function isWithinLunchOrDinnerWindow(
+  now,
+  lunchWindow = null,
+  dinnerWindow = null,
+  timeZone = APP_TIMEZONE,
+) {
+  const lunch = lunchWindow?.start && lunchWindow?.end
+    ? lunchWindow
+    : DEFAULT_LUNCH_WINDOW;
+  const dinner = dinnerWindow?.start && dinnerWindow?.end
+    ? dinnerWindow
+    : DEFAULT_DINNER_WINDOW;
+  return (
+    isWithinActivityWindow(now, lunch, timeZone)
+    || isWithinActivityWindow(now, dinner, timeZone)
+  );
+}
+
+/**
+ * Decide post-capture behaviour for meal-window auto-AI.
  *
  * @param {{
  *   now?: Date,
  *   lunchWindow?: { start?: string, end?: string }|null,
+ *   dinnerWindow?: { start?: string, end?: string }|null,
  *   creditStatus?: object|null,
  *   creditsFlagEnabled?: boolean,
  *   timezoneIana?: string,
@@ -75,23 +108,35 @@ export function isWithinActivityWindow(now, window, timeZone = APP_TIMEZONE) {
 export function decideLunchAutoAi({
   now = new Date(),
   lunchWindow = null,
+  dinnerWindow = null,
   creditStatus = null,
   creditsFlagEnabled = false,
   timezoneIana = APP_TIMEZONE,
 } = {}) {
-  // Product: never show Auto Detect — lunch auto or manual only.
+  // Product: never show Auto Detect — meal-window auto or manual only.
   const hideAiButton = true;
 
   if (!creditsFlagEnabled) {
     return { shouldAutoAi: false, hideAiButton, reason: 'credits-flag-off' };
   }
 
-  const window = lunchWindow?.start && lunchWindow?.end
-    ? lunchWindow
-    : DEFAULT_LUNCH_WINDOW;
+  // Backend access facts (leaf downline + window). When present, honour them.
+  if (creditStatus && creditStatus.eligibleForAiFoodAnalysis === false) {
+    return { shouldAutoAi: false, hideAiButton, reason: 'not-eligible-downline' };
+  }
+  if (creditStatus && creditStatus.aiFoodAnalysisWindowOpen === false) {
+    return { shouldAutoAi: false, hideAiButton, reason: 'outside-meal-window' };
+  }
+  if (creditStatus && creditStatus.aiFoodAnalysisAllowed === false) {
+    return {
+      shouldAutoAi: false,
+      hideAiButton,
+      reason: creditStatus.aiFoodAnalysisDenyReason || 'access-denied',
+    };
+  }
 
-  if (!isWithinActivityWindow(now, window, timezoneIana)) {
-    return { shouldAutoAi: false, hideAiButton, reason: 'outside-lunch' };
+  if (!isWithinLunchOrDinnerWindow(now, lunchWindow, dinnerWindow, timezoneIana)) {
+    return { shouldAutoAi: false, hideAiButton, reason: 'outside-meal-window' };
   }
 
   const ui = getAiCreditUiState(creditStatus);
@@ -108,5 +153,5 @@ export function decideLunchAutoAi({
     return { shouldAutoAi: false, hideAiButton, reason: 'no-credits' };
   }
 
-  return { shouldAutoAi: true, hideAiButton, reason: 'lunch-auto' };
+  return { shouldAutoAi: true, hideAiButton, reason: 'meal-auto' };
 }

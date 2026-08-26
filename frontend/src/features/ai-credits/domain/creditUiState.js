@@ -49,6 +49,10 @@ export function reserveFailureMessage(reason) {
       return 'You\'ve used today\'s AI detections — pick a type below. More unlock at midnight.';
     case 'disabled':
       return 'AI detect is unavailable right now — pick a type below to log manually.';
+    case 'not_eligible_downline':
+      return 'AI food analysis is only available for eligible downline members. You can still log food manually.';
+    case 'outside_ai_window':
+      return 'AI food analysis is available during lunch (12:00–4:00 PM) and dinner (5:30–8:30 PM). You can still log food manually.';
     default:
       return 'Could not start AI — pick a type below to log manually.';
   }
