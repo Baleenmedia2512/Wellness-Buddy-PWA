@@ -88,25 +88,16 @@ function transformationFileName(userName) {
   return `transformation-${String(userName || 'result').replace(/\s+/g, '-').toLowerCase()}.png`;
 }
 
-function buildTransformationShareText(userName, testimonial) {
-  const name = String(userName || 'Member').trim() || 'Member';
-  const bw = Number(testimonial?.beforeWeightKg ?? 0);
-  const aw = Number(testimonial?.afterWeightKg ?? 0);
-  if (bw > 0 && aw > 0) {
-    return `${name} · Before vs After · ${bw} kg → ${aw} kg`;
-  }
-  return `${name} · Before vs After`;
-}
-
-export async function shareTransformationCard(element, userName, testimonial = null) {
+export async function shareTransformationCard(element, userName, _testimonial = null) {
   if (!element) throw new Error('Transformation card is not ready');
   // Use the local capture (no scrollY) so the green header is not clipped when
   // the page is scrolled; captureAndShare's scrollY offset cuts the top off.
+  // Share image only — no WhatsApp caption (weights/name are already on the card).
   const blob = await captureTransformationCardAsBlob(element);
   const dataUrl = await blobToDataUrl(blob);
   await shareImageDirectly(dataUrl, {
     title: 'My Wellness Transformation',
-    text: buildTransformationShareText(userName, testimonial),
+    text: '',
     fileName: transformationFileName(userName),
   });
 }
