@@ -17,14 +17,14 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, authorization');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, authorization, X-App-Version, X-App-Version-Code, X-App-Platform');
     res.status(200).end();
     return;
   }
 
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, authorization');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, authorization, X-App-Version, X-App-Version-Code, X-App-Platform');
 
   // Only allow POST requests
   if (req.method !== 'POST') {

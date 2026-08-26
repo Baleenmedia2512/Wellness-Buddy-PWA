@@ -21,14 +21,14 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, authorization, cache-control, pragma');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, authorization, cache-control, pragma, X-App-Version, X-App-Version-Code, X-App-Platform');
     res.status(200).end();
     return;
   }
 
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, authorization, cache-control, pragma');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, authorization, cache-control, pragma, X-App-Version, X-App-Version-Code, X-App-Platform');
 
   // Only allow GET requests
   if (req.method !== 'GET') {
