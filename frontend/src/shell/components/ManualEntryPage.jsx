@@ -1,6 +1,8 @@
 /**
- * CaptureClassifyPage — full-screen post-capture: pick type manually, or
- * during lunch (eligible leaf + AI credits) auto-open in-modal AI analysis.
+ * CaptureClassifyPage — full-screen post-capture Manual Log.
+ * Upload opens this screen; AI food analysis starts only when the user taps
+ * Food (eligible leaf / staff, lunch or dinner window). Weight / education /
+ * other Log-as types stay manual.
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -269,18 +271,16 @@ export default function ManualEntryPage({
   // background — UI stays interactive; taps are queued until captureId arrives.
   const captureReady = Boolean(captureId);
   const [pendingLogAsId, setPendingLogAsId] = useState(null);
-  const [pendingAi, setPendingAi] = useState(false);
-  /** Lunch auto-AI may run once per capture (no Auto Detect button). */
-  const lunchAutoAttemptedRef = useRef(false);
+  /** True while waiting for captureId after user tapped Food (AI path). */
+  const [pendingFoodAi, setPendingFoodAi] = useState(false);
 
   // New capture while this screen stays mounted — close any open sub-form.
-  // Do not clear pendingLogAsId / pendingAi here: captureId often flips null → id
+  // Do not clear pendingLogAsId / pendingFoodAi here: captureId often flips null → id
   // on the same mount, and those pending taps must flush once ready.
   useEffect(() => {
     setActiveForm(null);
     setFoodEntryMeta(null);
     setPreviewExpanded(false);
-    lunchAutoAttemptedRef.current = false;
   }, [captureId]);
 
   const previewSrc = useMemo(() => {
@@ -425,10 +425,10 @@ export default function ManualEntryPage({
   /** Close classify — optionally discard a new capture (not when opened from Diary). */
   const handleCloseWithoutLog = () => {
     if (closingWithoutLog) return;
-    // Allow cancel while Auto Detect is only queued (photo still saving).
-    if (aiStarting && !pendingAi) return;
+    // Allow cancel while Food AI is only queued (photo still saving).
+    if (aiStarting && !pendingFoodAi) return;
     setPendingLogAsId(null);
-    setPendingAi(false);
+    setPendingFoodAi(false);
     setAiStarting(false);
     setClosingWithoutLog(true);
     const id = captureId;
@@ -721,81 +721,99 @@ export default function ManualEntryPage({
     setActiveForm(MANUAL_LOG_CATEGORY.FOOD);
   }, []);
 
-  // Lunch window + remaining AI credits + eligible leaf → auto-open AI modal.
-  // Breakfast / dinner / coaches / nested leaders stay on manual Log-as.
-  // Diary re-classify (discardCaptureOnCancel=false) stays manual — no surprise AI.
-  useEffect(() => {
-    if (!discardCaptureOnCancel) return undefined;
-    if (!captureReady || !userId || !imageBase64) return undefined;
-    if (lunchAutoAttemptedRef.current) return undefined;
-    if (aiStarting || pendingAi || closingWithoutLog || aiModalOpen) return undefined;
-    if (creditsEnabled && (creditsLoading || credits == null)) return undefined;
+  /**
+   * Food tile only: start AI when eligible + meal window; otherwise manual food search.
+   * Weight / education / other categories never call this.
+   */
+  const openFoodWithOptionalAi = useCallback(async () => {
+    if (!userId || !imageBase64) {
+      openCategory(MANUAL_LOG_CATEGORY.FOOD);
+      return;
+    }
+    if (!creditsEnabled) {
+      openCategory(MANUAL_LOG_CATEGORY.FOOD);
+      return;
+    }
+    if (creditsLoading || credits == null) {
+      openCategory(MANUAL_LOG_CATEGORY.FOOD);
+      return;
+    }
 
-    let cancelled = false;
+    const windows = await prefetchTimeWindows();
+    const decision = decideLunchAutoAi({
+      now: new Date(),
+      lunchWindow: windows?.lunch ?? null,
+      dinnerWindow: windows?.dinner ?? null,
+      creditStatus: credits,
+      creditsFlagEnabled: creditsEnabled,
+      timezoneIana: credits?.timezoneIana,
+    });
 
-    (async () => {
-      const windows = await prefetchTimeWindows();
-      if (cancelled || lunchAutoAttemptedRef.current) return;
+    if (!decision.shouldAutoAi) {
+      if (decision.reason === 'not-eligible-downline') {
+        setHint(reserveFailureMessage('not_eligible_downline'));
+      } else if (
+        decision.reason === 'outside-meal-window'
+        || decision.reason === 'outside-lunch'
+      ) {
+        setHint(reserveFailureMessage('outside_ai_window'));
+      }
+      openCategory(MANUAL_LOG_CATEGORY.FOOD);
+      return;
+    }
 
-      const decision = decideLunchAutoAi({
-        now: new Date(),
-        lunchWindow: windows?.lunch ?? null,
-        dinnerWindow: windows?.dinner ?? null,
-        creditStatus: creditsEnabled ? credits : null,
-        creditsFlagEnabled: creditsEnabled,
-        timezoneIana: credits?.timezoneIana,
-      });
-
-      if (!decision.shouldAutoAi) return;
-      lunchAutoAttemptedRef.current = true;
-      void startAiAnalyze();
-    })();
-
-    return () => {
-      cancelled = true;
-    };
+    setHint(null);
+    void startAiAnalyze();
   }, [
-    discardCaptureOnCancel,
-    captureReady,
     userId,
     imageBase64,
     creditsEnabled,
     creditsLoading,
     credits,
-    aiStarting,
-    pendingAi,
-    closingWithoutLog,
-    aiModalOpen,
+    openCategory,
     startAiAnalyze,
   ]);
 
   const handleCategoryClick = (id) => {
     if (closingWithoutLog) return;
-    // Queued Auto Detect can still be switched to a Log-as type.
-    if (aiStarting && !pendingAi) return;
+    // Block other taps while AI modal is analysing.
+    if (aiStarting && !pendingFoodAi) return;
     if (!captureReady) {
-      setPendingLogAsId(id);
-      setPendingAi(false);
+      if (id === MANUAL_LOG_CATEGORY.FOOD) {
+        setPendingFoodAi(true);
+        setPendingLogAsId(null);
+      } else {
+        setPendingLogAsId(id);
+        setPendingFoodAi(false);
+      }
       setAiStarting(false);
+      return;
+    }
+    if (id === MANUAL_LOG_CATEGORY.FOOD) {
+      void openFoodWithOptionalAi();
       return;
     }
     openCategory(id);
   };
 
-  // Flush queued Log-as once the background capture POST finishes.
+  // Flush queued Log-as / Food AI once the background capture POST finishes.
   useEffect(() => {
     if (!captureReady) return;
+    if (pendingFoodAi) {
+      setPendingFoodAi(false);
+      void openFoodWithOptionalAi();
+      return;
+    }
     if (pendingLogAsId) {
       const id = pendingLogAsId;
       setPendingLogAsId(null);
-      openCategory(id);
-      return;
+      if (id === MANUAL_LOG_CATEGORY.FOOD) {
+        void openFoodWithOptionalAi();
+      } else {
+        openCategory(id);
+      }
     }
-    if (pendingAi) {
-      setPendingAi(false);
-      void startAiAnalyze();
-    }
-  }, [captureReady, pendingLogAsId, pendingAi, openCategory, startAiAnalyze]);
+  }, [captureReady, pendingLogAsId, pendingFoodAi, openCategory, openFoodWithOptionalAi]);
 
   const closeFoodSearch = () => {
     setFoodEntryMeta(null);
@@ -1017,7 +1035,7 @@ export default function ManualEntryPage({
 
   // Don't treat credits as available until status has loaded — avoids green CTA flash then lock.
   const aiTemporarilyBusy = creditsEnabled && creditUi.phase === 'busy';
-  const logAsDisabled = closingWithoutLog || (aiStarting && !pendingAi);
+  const logAsDisabled = closingWithoutLog || (aiStarting && !pendingFoodAi);
 
   return (
     <div className="fixed inset-0 z-40 flex flex-col" style={{ background: BRAND.pageBg }}>
@@ -1028,8 +1046,8 @@ export default function ManualEntryPage({
             What is this image?
           </h1>
           <p className="text-[11px] leading-snug text-green-600 min-[360px]:text-xs">
-            {aiStarting && !pendingAi
-              ? 'Starting AI detection…'
+            {aiStarting && !pendingFoodAi
+              ? 'Starting AI food analysis…'
               : 'Select one button below — Weight, Afresh, Food…'}
           </p>
         </div>
@@ -1085,7 +1103,9 @@ export default function ManualEntryPage({
             {CATEGORIES.filter((cat) => goodHabitEnabled || cat.id !== MANUAL_LOG_CATEGORY.GOOD_HABIT).map(({ id, Icon, src, label, isImgIcon }) => {
               // iOS WebView often blanks custom emoji SVGs — use Lucide for Workout.
               const useLucideOnIos = id === MANUAL_LOG_CATEGORY.SMARTWATCH && isIOS() && Icon;
-              const isPending = pendingLogAsId === id;
+              const isPending =
+                pendingLogAsId === id
+                || (id === MANUAL_LOG_CATEGORY.FOOD && pendingFoodAi);
               return (
               <button
                 key={id}
@@ -1130,7 +1150,7 @@ export default function ManualEntryPage({
         <button
           type="button"
           onClick={handleCloseWithoutLog}
-          disabled={closingWithoutLog || (aiStarting && !pendingAi)}
+          disabled={closingWithoutLog || (aiStarting && !pendingFoodAi)}
           className={`safe-bottom log-as-btn log-as-btn--idle inline-flex w-full shrink-0 items-center justify-center gap-2 rounded-xl border-2 py-3 text-sm font-bold shadow-[0_3px_0_0_rgba(0,0,0,0.08)] transition-[transform,box-shadow] duration-150 active:translate-y-[2px] disabled:opacity-50 min-[360px]:py-3.5 ${
             discardCaptureOnCancel
               ? 'border-red-200 bg-gradient-to-b from-white to-red-50/40 text-red-600 shadow-[0_3px_0_0_rgba(220,38,38,0.2)] active:shadow-[0_1px_0_0_rgba(220,38,38,0.18)]'
@@ -1271,7 +1291,6 @@ export default function ManualEntryPage({
         onCancel={handleAiModalCancel}
         onSave={handleAiModalSave}
         onRetry={() => {
-          lunchAutoAttemptedRef.current = false;
           void startAiAnalyze();
         }}
         onManualLog={handleAiModalManual}
