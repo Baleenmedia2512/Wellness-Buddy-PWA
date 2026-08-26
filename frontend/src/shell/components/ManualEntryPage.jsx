@@ -31,6 +31,8 @@ import {
   fetchWatchBurnedCalories,
 } from '../../features/nutrition';
 import { seedMealAfterPromotion } from '../../features/nutrition/services/seedMealAfterPromotion';
+import { extractMealIdFromPromotionResult } from '../../features/nutrition/services/buildMealFromAnalysis';
+import { analysisResultToNutritionCardData } from '../domain/analysisToNutritionCard';
 import {
   ManualWeightEntryModal,
   saveWeight,
@@ -231,6 +233,8 @@ export default function ManualEntryPage({
   const [aiSaving, setAiSaving] = useState(false);
   const aiReservationIdRef = useRef(null);
   const aiCancelledRef = useRef(false);
+  /** Set after persistAiFoodAndShowOnHome is defined — avoids TDZ with startAiAnalyze. */
+  const persistAiFoodRef = useRef(null);
   // Today's hydration total (all exempted beverages) — water stepper tracks this.
   const [waterTodayMl, setWaterTodayMl] = useState(0);
   const [waterTodayLoading, setWaterTodayLoading] = useState(false);
@@ -594,9 +598,12 @@ export default function ManualEntryPage({
 
       if (detectedType.type === 'food' && hasRecognizedFood(detectedType.details)) {
         await settleCredit();
-        setAiAnalysisResult(buildAnalysisFromGeminiAnalysis(detectedType.details));
-        setAiModalStage('success');
+        const analysis = buildAnalysisFromGeminiAnalysis(detectedType.details);
+        setAiAnalysisResult(analysis);
+        setAiModalStage('saving');
         setAiStarting(false);
+        // Auto-save and open NutritionCard on Home (no Save / Edit manually).
+        void persistAiFoodRef.current?.(analysis);
         return;
       }
 
@@ -645,6 +652,7 @@ export default function ManualEntryPage({
     const reservationId = aiReservationIdRef.current;
     setAiModalOpen(false);
     setAiStarting(false);
+    setAiSaving(false);
     setAiAnalysisResult(null);
     setAiModalError(null);
     if (creditsEnabled && reservationId && userId) {
@@ -658,11 +666,11 @@ export default function ManualEntryPage({
     }
   }, [creditsEnabled, userId, apiBaseUrl]);
 
-  const handleAiModalSave = useCallback(async (editedAnalysis = null) => {
-    const analysisToSave = editedAnalysis || aiAnalysisResult;
-    if (!analysisToSave || !captureId || !userId || aiSaving) return;
+  /** Auto-save AI food → Home NutritionCard (totals + items) + tell-in-chat. */
+  const persistAiFoodAndShowOnHome = useCallback(async (analysisToSave) => {
+    if (!analysisToSave || !captureId || !userId) return;
     setAiSaving(true);
-    setAiAnalysisResult(analysisToSave);
+    setAiModalStage('saving');
     try {
       const result = await promoteUnknownToFood({
         captureId,
@@ -677,10 +685,9 @@ export default function ManualEntryPage({
         capturedAt: originalCapturedAt || null,
       });
       refreshAfterPersist('manual-ai-food-saved');
-      onToast?.('Food saved');
-      setAiModalOpen(false);
 
-      // Tell-in-chat: same food caption as Manual Food Log (items + macros).
+      const cardData = analysisResultToNutritionCardData(analysisToSave);
+      const mealId = extractMealIdFromPromotionResult(result);
       const foodName = analysisToSave?.foods?.[0]?.name || 'Food';
       const foodItems = extractFoodShareItems(analysisToSave);
       const n = analysisToSave?.total || {};
@@ -695,28 +702,43 @@ export default function ManualEntryPage({
         glycemicIndex: n.glycemic_index ?? n.glycemicIndex ?? null,
       });
 
+      setAiModalOpen(false);
+      setAiSaving(false);
+      onToast?.('Food saved');
       exit({
         activityCaption,
         shareImage: imageBase64,
+        aiHomeResult: cardData
+          ? {
+              cardData,
+              imageBase64,
+              mealId,
+              foodNames: (analysisToSave.foods || [])
+                .map((f) => f?.name)
+                .filter(Boolean),
+            }
+          : null,
       });
     } catch (err) {
       setAiModalError(err?.message || "Couldn't save — please try again.");
+      setAiModalStage('failed');
       setAiSaving(false);
     }
   }, [
-    aiAnalysisResult,
     captureId,
     userId,
-    aiSaving,
     originalCapturedAt,
     refreshAfterPersist,
     onToast,
     imageBase64,
   ]);
 
+  persistAiFoodRef.current = persistAiFoodAndShowOnHome;
+
   const handleAiModalManual = useCallback(() => {
     setAiModalOpen(false);
     setAiStarting(false);
+    setAiSaving(false);
     setAiAnalysisResult(null);
     setActiveForm(MANUAL_LOG_CATEGORY.FOOD);
   }, []);
@@ -1284,12 +1306,8 @@ export default function ManualEntryPage({
         open={aiModalOpen}
         stage={aiModalStage}
         imageBase64={imageBase64}
-        analysisResult={aiAnalysisResult}
         errorMessage={aiModalError}
-        saving={aiSaving}
-        user={{ id: userId, email: userEmail, userName }}
         onCancel={handleAiModalCancel}
-        onSave={handleAiModalSave}
         onRetry={() => {
           void startAiAnalyze();
         }}
