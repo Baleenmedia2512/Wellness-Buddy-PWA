@@ -5,7 +5,7 @@ import { todayInTimezone, IANA_IST } from '../../shared/lib/datetime/index.js';
 import { getUserTimezoneIana } from '../user/domain/userTimezone.js';
 import { ValidationError } from '../../shared/lib/ValidationError.js';
 import * as userRepo from '../user/user.repository.js';
-import { getSupabaseClient } from '../../../utils/supabaseClient.js';
+import { getSupabaseClient } from '../../utils/supabaseClient.js';
 import { compareSemver } from '../app-version/domain/version.rules.js';
 import { assertAiCreditsAdmin } from './domain/permissions/credits.policy.js';
 import {
