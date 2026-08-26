@@ -35,6 +35,27 @@ export const FOOD_MICRO_FIELDS = Object.freeze([
   'calcium', 'iron', 'magnesium', 'potassium', 'zinc', 'phosphorus',
 ]);
 
+/** AI JSON key → PUT body key → meal table column (keep in sync with dailyStatsRules). */
+export const MICRO_PERSIST_FIELDS = Object.freeze([
+  { aiKey: 'vitamin_a', apiKey: 'totalVitaminA', dbCol: 'TotalVitaminA' },
+  { aiKey: 'vitamin_c', apiKey: 'totalVitaminC', dbCol: 'TotalVitaminC' },
+  { aiKey: 'vitamin_d', apiKey: 'totalVitaminD', dbCol: 'TotalVitaminD' },
+  { aiKey: 'vitamin_e', apiKey: 'totalVitaminE', dbCol: 'TotalVitaminE' },
+  { aiKey: 'vitamin_k', apiKey: 'totalVitaminK', dbCol: 'TotalVitaminK' },
+  { aiKey: 'vitamin_b1', apiKey: 'totalVitaminB1', dbCol: 'TotalVitaminB1' },
+  { aiKey: 'vitamin_b2', apiKey: 'totalVitaminB2', dbCol: 'TotalVitaminB2' },
+  { aiKey: 'vitamin_b3', apiKey: 'totalVitaminB3', dbCol: 'TotalVitaminB3' },
+  { aiKey: 'vitamin_b6', apiKey: 'totalVitaminB6', dbCol: 'TotalVitaminB6' },
+  { aiKey: 'vitamin_b9', apiKey: 'totalVitaminB9', dbCol: 'TotalVitaminB9' },
+  { aiKey: 'vitamin_b12', apiKey: 'totalVitaminB12', dbCol: 'TotalVitaminB12' },
+  { aiKey: 'calcium', apiKey: 'totalCalcium', dbCol: 'TotalCalcium' },
+  { aiKey: 'iron', apiKey: 'totalIron', dbCol: 'TotalIron' },
+  { aiKey: 'magnesium', apiKey: 'totalMagnesium', dbCol: 'TotalMagnesium' },
+  { aiKey: 'potassium', apiKey: 'totalPotassium', dbCol: 'TotalPotassium' },
+  { aiKey: 'zinc', apiKey: 'totalZinc', dbCol: 'TotalZinc' },
+  { aiKey: 'phosphorus', apiKey: 'totalPhosphorus', dbCol: 'TotalPhosphorus' },
+]);
+
 const ALL_SUMMABLE_FIELDS = Object.freeze([...FOOD_TOTAL_FIELDS, ...FOOD_MICRO_FIELDS]);
 
 const pick = (food, field) => {

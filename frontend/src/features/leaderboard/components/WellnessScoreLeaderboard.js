@@ -2,6 +2,7 @@ import React, {
   useState,
   useEffect,
   useCallback,
+  useRef,
   forwardRef,
   useImperativeHandle,
 } from 'react';
@@ -11,6 +12,11 @@ import { resolveSponsorCoachNames } from '../../../shared/utils/sponsorCoachLabe
 import { setVisibilityAwareInterval } from '../../../shared/utils/visibilityAwareInterval.js';
 import { useAutoScrollStrip } from '../../../shared/hooks/useAutoScrollStrip.js';
 import LeaderboardAvatar from './LeaderboardAvatar.js';
+import {
+  hasValidProfileName,
+  isPlaceholderUserName,
+} from '../../user/domain/profileCompleteness';
+import { subscribeDailyWellnessScoreSeed } from '../../wellness-score-sheet/services/dailyWellnessScoreCache';
 
 const CACHE_TTL = 5 * 60 * 1000;
 // v5: hierarchy-scoped Top 10 (per logged-in user)
@@ -57,7 +63,7 @@ const writeCache = (userId, data) => {
  * Display order: Rank N → Rank 1 (descending).
  * Ranked among the logged-in user's allowed hierarchy (not global Top 10).
  */
-const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId }, ref) => {
+const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, viewerName, email }, ref) => {
   const [leaderboardData, setLeaderboardData] = useState(() => readCache(userId) ?? []);
   const [isVisible, setIsVisible] = useState(() => (readCache(userId)?.length ?? 0) > 0);
   const [hasEntered, setHasEntered] = useState(() => (readCache(userId)?.length ?? 0) > 0);
@@ -65,17 +71,23 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId }, 
     enabled: isVisible && leaderboardData.length > 0,
   });
 
+  const fetchInFlightRef = useRef(false);
+
   const fetchLeaderboard = useCallback(async () => {
-    if (userId == null || userId === '') {
+    const emailTrim = String(email || '').trim();
+    if ((userId == null || userId === '') && !emailTrim) {
       setLeaderboardData([]);
       setIsVisible(false);
       return;
     }
+    if (fetchInFlightRef.current) return;
+    fetchInFlightRef.current = true;
     try {
       const params = new URLSearchParams({
         topN: String(topN),
-        userId: String(userId),
       });
+      if (userId != null && userId !== '') params.set('userId', String(userId));
+      if (emailTrim) params.set('email', emailTrim);
       const response = await fetch(
         `${apiBaseUrl}/api/leaderboard/get-wellness-score-leaderboard?${params}`,
         {
@@ -102,14 +114,15 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId }, 
       console.error('[WELLNESS-LB] Error fetching data:', error);
       setLeaderboardData([]);
       setIsVisible(false);
+    } finally {
+      fetchInFlightRef.current = false;
     }
-  }, [apiBaseUrl, topN, userId]);
+  }, [apiBaseUrl, topN, userId, email]);
 
   useImperativeHandle(ref, () => ({
     refresh: fetchLeaderboard,
   }));
 
-  // Skip network if SWR cache is fresh; background refresh on CACHE_TTL
   useEffect(() => {
     const cached = readCache(userId);
     if (cached?.length) {
@@ -118,7 +131,22 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId }, 
     } else {
       fetchLeaderboard();
     }
-    return setVisibilityAwareInterval(fetchLeaderboard, CACHE_TTL);
+    const retryEmpty = setTimeout(() => {
+      if (userId == null || userId === '') return;
+      if (!readCache(userId)?.length) fetchLeaderboard();
+    }, 1600);
+    const stopInterval = setVisibilityAwareInterval(fetchLeaderboard, CACHE_TTL);
+    return () => {
+      clearTimeout(retryEmpty);
+      stopInterval();
+    };
+  }, [fetchLeaderboard, userId]);
+
+  useEffect(() => {
+    return subscribeDailyWellnessScoreSeed(({ userId: seedUserId }) => {
+      if (userId == null || String(seedUserId) !== String(userId)) return;
+      fetchLeaderboard();
+    });
   }, [fetchLeaderboard, userId]);
 
   // Smooth enter once data is ready

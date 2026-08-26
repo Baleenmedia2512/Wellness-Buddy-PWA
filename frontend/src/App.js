@@ -94,12 +94,18 @@ import Header from "./shared/components/Header";
 import {
   getUserContext,
   clearContextCache,
+  getUserId,
+  clearUserIdCache,
+  verifyAndAttachDbUserId,
+  verifyAccountSession,
+  attachNumericDbUserId,
+  snapshotUserWithDbId,
+  readNumericDbUserId,
 } from "./shared/services/userIdentity";
 import {
   initializeBackButton,
   cleanupBackButton,
 } from "./shared/utils/backButtonHandler";
-import { getUserId, clearUserIdCache, verifyAndAttachDbUserId, verifyAccountSession } from "./shared/services/userIdentity";
 import { getVersionString } from "./config/version";
 import { useAppVersionPolicy } from "./shared/hooks/useAppVersionPolicy";
 import AppVersionHardBlock, {
@@ -333,11 +339,7 @@ function WellnessValleyApp() {
     if (!Session.isOtpVerified()) return null;
     const u = Session.getOtpUser();
     if (!u) return null;
-    // Attach cached DB userId so user.id is available from the first render.
-    if (!u.id) {
-      const dbId = Session.getDbUserId();
-      if (dbId) u.id = dbId;
-    }
+    attachNumericDbUserId(u, u.id || u.UserId || u.userId || Session.getDbUserId());
     return u;
   });
   // ? iOS Sign-out gate: persisted in localStorage so it survives app restarts
@@ -715,6 +717,7 @@ function WellnessValleyApp() {
         );
         return withMarathonWhatsAppNotice(
           composeQuickShareCaption(brand, activityCaption),
+          { user },
         );
       };
 
@@ -835,6 +838,7 @@ function WellnessValleyApp() {
       }
       const shareText = withMarathonWhatsAppNotice(
         buildQuickShareText(shareDisplayName, getVersionString()),
+        { user },
       );
       const ok = await shareTextViaWhatsApp(shareText);
       if (cancelled) return;
@@ -2354,6 +2358,14 @@ function WellnessValleyApp() {
     }
   }, []);
 
+  const homeDbUserId = readNumericDbUserId(user);
+  useEffect(() => {
+    if (homeDbUserId == null) return undefined;
+    handleLeaderboardRefresh();
+    const retry = setTimeout(() => handleLeaderboardRefresh(), 1800);
+    return () => clearTimeout(retry);
+  }, [homeDbUserId, handleLeaderboardRefresh, nutritionRefreshKey]);
+
   const showDashboardPage = useCallback(
     (preferredTab = null) => {
       // Guard: prevent duplicate concurrent navigation calls.
@@ -3420,8 +3432,7 @@ function WellnessValleyApp() {
           return;
         }
         if (attachResult.ok && attachResult.user) {
-          user.id = attachResult.user.id;
-          user.UserId = attachResult.user.id;
+          attachNumericDbUserId(user, attachResult.user.id);
         }
 
         // Store user email in localStorage for API calls
@@ -3465,7 +3476,7 @@ function WellnessValleyApp() {
           // Fast path for returning users: surface home immediately.
           // Profile completeness runs here; physical activity → coach → OTP
           // are sequenced by dedicated effects so camera never opens mid-onboarding.
-          setUser(user);
+          setUser(snapshotUserWithDbId(user));
           setAuthLoading(false);
 
           // Background validation � fire and forget. All inner awaits only
@@ -3498,7 +3509,7 @@ function WellnessValleyApp() {
         }
       }
 
-      setUser(user);
+      setUser(snapshotUserWithDbId(user));
       setAuthLoading(false);
 
       // Skip handleSaveUserCache for fresh sign-ins - let sign-in handler do it after save
@@ -6567,7 +6578,7 @@ function WellnessValleyApp() {
           }
 
           if (isActive) {
-            setUser(user);
+            setUser(snapshotUserWithDbId(user));
             // Check mandatory profile fields (covers both new and returning users)
             const userEmail = user.email || user.Email;
             if (userEmail) {
@@ -6582,7 +6593,7 @@ function WellnessValleyApp() {
             }
           } else {
             // User was saved but is inactive or not found - modal will show
-            setUser(user); // Keep user state so modal can show user email
+            setUser(snapshotUserWithDbId(user)); // Keep user state so modal can show user email
           }
         } catch (saveError) {
           // If save fails, still allow user to proceed (fail-open for backend issues)
@@ -6593,7 +6604,7 @@ function WellnessValleyApp() {
           setError(
             "Warning: Could not verify account status. You can still use the app.",
           );
-          setUser(user); // Allow access despite backend failure
+          setUser(snapshotUserWithDbId(user)); // Allow access despite backend failure
           clearTimeout(safetyTimeout); // Clear timeout even on error
           sessionStorage.removeItem("freshGoogleSignIn"); // Clean up flag
         }
@@ -6703,7 +6714,7 @@ function WellnessValleyApp() {
           }
 
           if (isActive) {
-            setUser(user);
+            setUser(snapshotUserWithDbId(user));
             // Check mandatory profile fields (covers both new and returning users)
             const userEmail = user.email || user.Email;
             if (userEmail) {
@@ -6718,7 +6729,7 @@ function WellnessValleyApp() {
             }
           } else {
             // User was saved but is inactive or not found - modal will show
-            setUser(user); // Keep user state so modal can show user email
+            setUser(snapshotUserWithDbId(user)); // Keep user state so modal can show user email
           }
         } catch (saveError) {
           // If save fails, still allow user to proceed (fail-open for backend issues)
@@ -6729,7 +6740,7 @@ function WellnessValleyApp() {
           setError(
             "Warning: Could not verify account status. You can still use the app.",
           );
-          setUser(user); // Allow access despite backend failure
+          setUser(snapshotUserWithDbId(user)); // Allow access despite backend failure
           clearTimeout(safetyTimeout); // Clear timeout even on error
           sessionStorage.removeItem("freshGoogleSignIn"); // Clean up flag
         }
@@ -6793,6 +6804,7 @@ function WellnessValleyApp() {
       }
 
       if (data.success) {
+        attachNumericDbUserId(user, data.user?.userId);
         debugLog(
           "? [saveUserToBackend] User saved successfully, isNewUser:",
           data.isNewUser,
@@ -6958,6 +6970,10 @@ function WellnessValleyApp() {
     if (otpUserRaw) {
       try {
         const parsedUser = JSON.parse(otpUserRaw);
+        attachNumericDbUserId(
+          parsedUser,
+          parsedUser.id || parsedUser.UserId || parsedUser.userId,
+        );
 
         // DEBUG: Log the parsed user object to see what status value we're getting
         console.log("?? [handleOtpVerified] Parsed user object:", parsedUser);
@@ -7007,7 +7023,7 @@ function WellnessValleyApp() {
           // past the login gate and shows the InactiveUserModal (which fires in
           // checkUserStatus via setShowInactiveModal). Without isOtpVerified=true
           // the modal never renders and the user is stuck on the OTP screen.
-          setUser(parsedUser);
+          setUser(snapshotUserWithDbId(parsedUser));
           setIsOtpVerified(true);
           Session.markOtpVerified();
           setPostAuthBridge(false);
@@ -7020,7 +7036,7 @@ function WellnessValleyApp() {
           isFlagEnabled("ff.consent-gate") &&
           parsedUser?.consentRequired === true;
         setShowConsentGate(needsConsent);
-        setUser(parsedUser);
+        setUser(snapshotUserWithDbId(parsedUser));
         setIsOtpVerified(true);
         Session.markOtpVerified();
         setPostAuthBridge(false);
@@ -8238,7 +8254,8 @@ function WellnessValleyApp() {
           ref={leaderboardRef}
           apiBaseUrl={apiBaseUrl}
           topN={LEADERBOARD_CONFIG.TOP_N}
-          userId={user?.id || user?.UserId}
+          userId={readNumericDbUserId(user)}
+          email={user?.email || user?.Email || Session.getUserEmail() || ''}
         />
 
         {/* Wellness Score Leaderboard — top 10 today's IST wellness % */}
@@ -8247,7 +8264,9 @@ function WellnessValleyApp() {
             ref={wellnessLeaderboardRef}
             apiBaseUrl={apiBaseUrl}
             topN={10}
-            userId={user?.id || user?.UserId}
+            userId={readNumericDbUserId(user)}
+            email={user?.email || user?.Email || Session.getUserEmail() || ''}
+            viewerName={savedUserName}
           />
         )}
 

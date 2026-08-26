@@ -11,6 +11,12 @@
 
 export { getUserId, clearUserIdCache, lookupUserByEmail } from './getUserId.js';
 export {
+  parseNumericDbUserId,
+  readNumericDbUserId,
+  attachNumericDbUserId,
+  snapshotUserWithDbId,
+} from './numericDbUserId.js';
+export {
   verifyAccountSession,
   verifyAndAttachDbUserId,
   invalidateLocalAccountSession,

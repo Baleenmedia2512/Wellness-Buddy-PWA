@@ -16,4 +16,7 @@ export {
   appendMarathonWhatsAppNotice,
   MARATHON_WHATSAPP_ADVANCE_SPECIALS,
 } from './domain/marathonShareCaption.js';
-export { withMarathonWhatsAppNotice } from './withMarathonWhatsAppNotice.js';
+export {
+  withMarathonWhatsAppNotice,
+  resolveMarathonTimezoneSource,
+} from './withMarathonWhatsAppNotice.js';

@@ -119,6 +119,10 @@ describe('appendMarathonWhatsAppNotice', () => {
       `${CURRENT_DAY_CAPTION}, Tomorrow is Day 0 - Marathon Starts`,
     );
     assert.equal(
+      appendMarathonWhatsAppNotice(CURRENT_DAY_CAPTION, '2026-08-14'),
+      `${CURRENT_DAY_CAPTION}, Tomorrow is Day 0 - Marathon Starts`,
+    );
+    assert.equal(
       appendMarathonWhatsAppNotice(CURRENT_DAY_CAPTION, '2026-08-01'),
       `${CURRENT_DAY_CAPTION}, Day 0 - Marathon Starts`,
     );

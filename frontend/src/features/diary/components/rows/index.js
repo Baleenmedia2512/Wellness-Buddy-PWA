@@ -384,7 +384,10 @@ export function FoodRow({
     try {
       await captureAndShare(target, {
         title: shareMealName,
-        text: withMarathonWhatsAppNotice(composeBrandedShareCaption(shareText, { user: shareUser })),
+        text: withMarathonWhatsAppNotice(
+          composeBrandedShareCaption(shareText, { user: shareUser }),
+          { user: shareUser, timezoneIana },
+        ),
         fileName: `wellness-${activityType}-${Date.now()}.png`,
       });
     } catch (err) {
@@ -605,7 +608,7 @@ export function WeightRow({
     try {
       await captureAndShare(target, {
         title: `Weight ${p.weight} kg`,
-        text: withMarathonWhatsAppNotice(shareText),
+        text: withMarathonWhatsAppNotice(shareText, { timezoneIana }),
         fileName: `wellness-weight-${Date.now()}.png`,
       });
     } catch (err) {
@@ -767,7 +770,7 @@ export function EducationRow({
     try {
       await captureAndShare(swipe.elRef.current, {
         title: `Education - ${p.topic || 'Session'}`,
-        text: withMarathonWhatsAppNotice(shareText),
+        text: withMarathonWhatsAppNotice(shareText, { timezoneIana }),
         fileName: `wellness-education-${Date.now()}.png`,
       });
     } catch (err) {
@@ -875,7 +878,7 @@ export function GoodHabitRow({
     try {
       await captureAndShare(swipe.elRef.current, {
         title,
-        text: withMarathonWhatsAppNotice(shareText),
+        text: withMarathonWhatsAppNotice(shareText, { timezoneIana }),
         fileName: `wellness-good-habit-${Date.now()}.png`,
       });
     } catch (err) {
