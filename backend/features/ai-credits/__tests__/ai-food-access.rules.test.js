@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import {
   isEligibleAiFoodAnalysisMember,
   isWithinAiFoodAnalysisWindow,
+  isWithinAnyAiFoodAnalysisWindow,
   evaluateAiFoodAnalysisAccess,
   shouldEnforceAiFoodAccess,
   AI_FOOD_ACCESS_MIN_APP_VERSION,
@@ -21,14 +22,25 @@ describe('isEligibleAiFoodAnalysisMember', () => {
     );
   });
 
-  it('blocks coach / upline / admin roles', () => {
-    for (const role of ['coach', 'upline', 'admin', 'developer', 'coccoach']) {
+  it('blocks coach / upline roles', () => {
+    for (const role of ['coach', 'upline', 'coccoach']) {
       assert.equal(
         isEligibleAiFoodAnalysisMember({ role, hasDownlineMembers: false, coachId: 10 }),
         false,
         role,
       );
     }
+  });
+
+  it('allows admin and developer (staff bypass)', () => {
+    assert.equal(
+      isEligibleAiFoodAnalysisMember({ role: 'admin', hasDownlineMembers: true, coachId: null }),
+      true,
+    );
+    assert.equal(
+      isEligibleAiFoodAnalysisMember({ role: 'developer', hasDownlineMembers: false, coachId: null }),
+      true,
+    );
   });
 
   it('blocks nested leader (has downline) even with Role=user', () => {
@@ -75,6 +87,24 @@ describe('isWithinAiFoodAnalysisWindow', () => {
     // 16:01 IST = 10:31 UTC
     assert.equal(
       isWithinAiFoodAnalysisWindow(new Date('2026-08-26T10:31:00.000Z'), 'Asia/Kolkata'),
+      false,
+    );
+  });
+});
+
+describe('isWithinAnyAiFoodAnalysisWindow', () => {
+  it('is open during dinner 18:00 IST', () => {
+    // 18:00 IST = 12:30 UTC
+    assert.equal(
+      isWithinAnyAiFoodAnalysisWindow(new Date('2026-08-26T12:30:00.000Z'), 'Asia/Kolkata'),
+      true,
+    );
+  });
+
+  it('is closed between lunch and dinner (16:30 IST)', () => {
+    // 16:30 IST = 11:00 UTC
+    assert.equal(
+      isWithinAnyAiFoodAnalysisWindow(new Date('2026-08-26T11:00:00.000Z'), 'Asia/Kolkata'),
       false,
     );
   });

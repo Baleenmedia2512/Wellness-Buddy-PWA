@@ -21,8 +21,11 @@ export {
 export {
   isEligibleAiFoodAnalysisMember,
   isWithinAiFoodAnalysisWindow,
+  isWithinAnyAiFoodAnalysisWindow,
   evaluateAiFoodAnalysisAccess,
   shouldEnforceAiFoodAccess,
   AI_FOOD_ANALYSIS_WINDOW,
+  AI_FOOD_DINNER_WINDOW,
+  AI_FOOD_ANALYSIS_WINDOWS,
   AI_FOOD_ACCESS_MIN_APP_VERSION,
 } from './domain/ai-food-access.rules.js';

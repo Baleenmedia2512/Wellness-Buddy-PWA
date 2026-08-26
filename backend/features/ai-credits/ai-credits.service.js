@@ -213,7 +213,7 @@ export async function assertAiFoodAnalysisAccess({ userId, appVersion = null }) 
   const err = new ValidationError(
     403,
     access.aiFoodAnalysisDenyReason === 'outside_ai_window'
-      ? 'AI food analysis is only available from 12:00 PM to 4:00 PM'
+      ? 'AI food analysis is only available during lunch (12:00–4:00 PM) and dinner (5:30–8:30 PM)'
       : 'AI food analysis is only available for eligible downline members',
   );
   err.code = access.aiFoodAnalysisDenyReason === 'outside_ai_window'
