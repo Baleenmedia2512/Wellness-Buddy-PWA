@@ -36,6 +36,8 @@ import { EmojiOrNative } from '../../../shared/components/icons/EmojiImage';
 import { deriveWeightGoalMode } from '../../weight/services/weightFormService';
 import DeleteAccountModal from './DeleteAccountModal';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
+import ProfileTeamCodeSection from './profile/ProfileTeamCodeSection';
+import cacheManager from '../../../shared/services/cacheManager.js';
 
 const COLORS = ['bg-blue-500', 'bg-green-500', 'bg-purple-500', 'bg-pink-500', 'bg-indigo-500', 'bg-yellow-500', 'bg-red-500', 'bg-teal-500'];
 const colorOf = (name, email) => COLORS[(name || email || '').length % COLORS.length];
@@ -52,6 +54,9 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
   const [initialWeightDate, setInitialWeightDate] = useState(null);
   const [coachName, setCoachName] = useState('');
   const [idealCoachName, setIdealCoachName] = useState('');
+  const [teamId, setTeamId] = useState(null);
+  const [teamSeat, setTeamSeat] = useState(null);
+  const [canClaimTeamCode, setCanClaimTeamCode] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState('');
@@ -118,6 +123,9 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
           : '',
       );
       setIdealCoachName(data?.idealCoachName ? String(data.idealCoachName).trim() : '');
+      setTeamId(data?.teamId || null);
+      setTeamSeat(data?.teamSeat || null);
+      setCanClaimTeamCode(!!data?.canClaimTeamCode);
       if (data?.profileImage) setProfileImagePreview(data.profileImage);
       // Stop spinner as soon as core profile is ready — do not wait on counselling.
       setIsLoading(false);
@@ -416,6 +424,26 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
               'Save Profile'
             )}
           </TouchFeedbackButton>
+        )}
+
+        {!isLoading && (
+          <ProfileTeamCodeSection
+            email={form.email || user?.email}
+            userId={user?.id || user?.userId}
+            teamId={teamId}
+            teamSeat={teamSeat}
+            canClaimTeamCode={canClaimTeamCode}
+            onClaimed={({ teamId: claimedId, teamSeat: claimedSeat }) => {
+              setTeamId(claimedId || null);
+              setTeamSeat(claimedSeat || null);
+              setCanClaimTeamCode(false);
+              setSuccessMessage('Team Code saved');
+              const emailKey = (form.email || user?.email || '').toLowerCase();
+              if (emailKey) {
+                cacheManager.clear(cacheManager.generateKey('userProfile', emailKey));
+              }
+            }}
+          />
         )}
 
         {/* Settings Card */}

@@ -403,6 +403,14 @@ function UnifiedOtpInline({ userId, onVerified }) {
   );
 }
 
+const EMPTY_HEALTH_ISSUES = Object.freeze([]);
+
+function sameIssueList(a, b) {
+  if (a === b) return true;
+  if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
+  return a.every((value, index) => value === b[index]);
+}
+
 function MemberCard({
   row,
   teamStats,
@@ -464,9 +472,10 @@ function MemberCard({
 
   const [expandedPhoto, setExpandedPhoto] = useState(null);
   const hasAfter  = testimonial?.afterImageUrl  && testimonial?.status !== 'incomplete';
-  const issues    = Array.isArray(testimonial?.recoveredHealthIssues)
+  // Stable empty fallback — a fresh `[]` each render re-triggers setState forever.
+  const issues = Array.isArray(testimonial?.recoveredHealthIssues)
     ? testimonial.recoveredHealthIssues
-    : [];
+    : EMPTY_HEALTH_ISSUES;
   const [approvedIssues, setApprovedIssues] = useState(issues);
 
   // ── Inline editing state (Mine card only) ────────────────────────────────
@@ -482,7 +491,7 @@ function MemberCard({
   useEffect(() => {
     if (draftIssues != null) return;
     if (testimonial?.status === 'pending') return;
-    setApprovedIssues(issues);
+    setApprovedIssues((prev) => (sameIssueList(prev, issues) ? prev : issues));
   }, [issues, draftIssues, testimonial?.status]);
   // Local text while weight field is open — needed for Android WebView typing
   const [beforeWeightText, setBeforeWeightText] = useState(null);

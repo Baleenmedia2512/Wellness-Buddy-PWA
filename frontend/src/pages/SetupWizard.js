@@ -201,7 +201,7 @@ const SetupWizard = ({
   const skipTeamIdAndSendRequest = async () => {
     if (sendingRequestRef.current) return;
     if (!selectedCoach) {
-      setError("Please select a coach first");
+      setError("Please select a guide first");
       return;
     }
 
@@ -256,11 +256,17 @@ const SetupWizard = ({
 
   // Claim Team ID and send approval request
   const claimTeamIdAndSendRequest = async () => {
+    if (sendingRequestRef.current) return;
     if (!selectedCoach) {
-      setError("Please select a coach first");
+      setError("Please select a guide first");
+      return;
+    }
+    if (teamIdStatus === 'taken') {
+      setError('This Team Code is full. Enter another code or skip.');
       return;
     }
 
+    sendingRequestRef.current = true;
     setClaimingTeamId(true);
     setError("");
 
@@ -268,7 +274,6 @@ const SetupWizard = ({
       const { email: userEmail, userId } = resolveRequester();
       if (!userEmail && !userId) {
         setError("Session expired. Please login again.");
-        setClaimingTeamId(false);
         return;
       }
 
@@ -288,7 +293,7 @@ const SetupWizard = ({
         userId: userId || null,
       });
 
-      // Step 2: Send approval request to coach
+      // Step 2: Send approval request to selected guide (not necessarily Sponsor)
       const requestBody = { coachId: selectedCoach.userId };
       if (userEmail) requestBody.email = userEmail;
       else requestBody.userId = userId;
@@ -312,6 +317,7 @@ const SetupWizard = ({
         err.response?.data?.error || err.message || "Failed to complete setup";
       setError(errorMessage);
     } finally {
+      sendingRequestRef.current = false;
       setClaimingTeamId(false);
     }
   };
@@ -494,40 +500,230 @@ const SetupWizard = ({
 
                 <button
                   className={`w-full py-3.5 rounded-xl font-bold text-base transition-all flex items-center justify-center gap-2 ${
-                    selectedCoach && !sendingRequest
+                    selectedCoach
                       ? "bg-green-600 text-white hover:bg-green-700 shadow-lg shadow-green-200"
                       : "bg-gray-100 text-gray-400 cursor-not-allowed"
                   }`}
-                  onClick={() => selectedCoach && skipTeamIdAndSendRequest()}
-                  disabled={!selectedCoach || sendingRequest}
+                  onClick={() => {
+                    if (!selectedCoach) return;
+                    setError("");
+                    setSuccess("");
+                    setStep(2);
+                  }}
+                  disabled={!selectedCoach}
                 >
-                  {sendingRequest ? (
-                    <>
-                      <div className="animate-spin h-5 w-5 border-2 border-white border-t-transparent rounded-full"></div>
-                      <span>Sending...</span>
-                    </>
-                  ) : (
-                    <>
-                      <span>Continue</span>
-                      <svg
-                        className="w-5 h-5"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M13 7l5 5m0 0l-5 5m5-5H6"
-                        />
-                      </svg>
-                    </>
-                  )}
+                  <span>Continue</span>
+                  <svg
+                    className="w-5 h-5"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M13 7l5 5m0 0l-5 5m5-5H6"
+                    />
+                  </svg>
                 </button>
               </motion.div>
             )}
 
+            {step === 2 && (
+              <motion.div
+                key="step2"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                transition={{ duration: 0.2 }}
+              >
+                <div className="bg-green-50 rounded-xl p-4 flex items-center justify-between mb-6 border border-green-100">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-green-200 rounded-full flex items-center justify-center text-green-700 font-bold">
+                      {selectedCoach?.userName?.charAt(0)?.toUpperCase()}
+                    </div>
+                    <div>
+                      <p className="text-xs text-green-600 font-medium">
+                        Selected guide
+                      </p>
+                      <div className="text-sm font-bold text-gray-900">
+                        {selectedCoach?.userName}
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setStep(1)}
+                    className="text-green-600 text-sm font-bold hover:text-green-700"
+                  >
+                    Change
+                  </button>
+                </div>
+
+                <div className="mb-6">
+                  <h3 className="text-base font-semibold text-gray-900 mb-1 leading-snug">
+                    Do you have a Team Code?
+                  </h3>
+                  <p className="text-gray-500 text-sm mb-4">
+                    Create a new code as Sponsor, join an open seat as Co-Sponsor,
+                    or skip to join as a member under your guide.
+                  </p>
+
+                  <div className="relative">
+                    <input
+                      type="text"
+                      className={`w-full py-6 bg-gray-50 rounded-xl text-center text-2xl font-mono tracking-widest border-2 focus:ring-0 transition-all ${
+                        teamIdStatus === "new"
+                          ? "border-blue-500 text-blue-700"
+                          : teamIdStatus === "available"
+                          ? "border-green-500 text-green-700"
+                          : teamIdStatus === "taken"
+                          ? "border-red-300 text-red-600"
+                          : teamIdStatus === "taken-by-you"
+                          ? "border-yellow-500 text-yellow-700"
+                          : "border-transparent text-gray-500"
+                      }`}
+                      value={teamId}
+                      onChange={(e) => {
+                        setTeamId(formatTeamId(e.target.value));
+                        setTeamIdStatus(null);
+                        setTeamIdInfo(null);
+                        setError("");
+                        setSuccess("");
+                      }}
+                      placeholder="TEAM001ABC"
+                      maxLength={10}
+                      autoFocus
+                    />
+                    <div className="absolute right-4 top-1/2 -translate-y-1/2">
+                      {checkingTeamId ? (
+                        <div className="animate-spin h-6 w-6 border-2 border-green-500 border-t-transparent rounded-full" />
+                      ) : null}
+                    </div>
+                  </div>
+
+                  {teamIdStatus && !error && (
+                    <div className="mt-4">
+                      {teamIdStatus === "new" && (
+                        <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 text-left">
+                          <h4 className="text-blue-900 font-bold text-sm">
+                            New Team Code
+                          </h4>
+                          <p className="text-blue-600/80 text-xs font-medium">
+                            You will become the Sponsor. Co-Sponsor seat stays open.
+                          </p>
+                        </div>
+                      )}
+                      {teamIdStatus === "available" && (
+                        <div className="bg-green-50 border border-green-100 rounded-xl p-3 text-left">
+                          <h4 className="text-green-900 font-bold text-sm">
+                            Join as Co-Sponsor
+                          </h4>
+                          <p className="text-green-600/80 text-xs font-medium">
+                            {teamIdInfo?.existingCoach?.name
+                              ? `Sponsor: ${teamIdInfo.existingCoach.name}`
+                              : "One lead seat is open on this team."}
+                          </p>
+                        </div>
+                      )}
+                      {teamIdStatus === "taken" && (
+                        <div className="bg-red-50 border border-red-100 rounded-xl p-3 text-left">
+                          <h4 className="text-red-900 font-bold text-sm">
+                            Team code unavailable
+                          </h4>
+                          <p className="text-red-600/80 text-xs font-medium">
+                            Sponsor and Co-Sponsor seats are full. Enter another code or skip.
+                          </p>
+                        </div>
+                      )}
+                      {teamIdStatus === "taken-by-you" && (
+                        <div className="bg-yellow-50 border border-yellow-100 rounded-xl p-3 text-left">
+                          <h4 className="text-yellow-900 font-bold text-sm">
+                            You already claimed this code
+                          </h4>
+                          <p className="text-yellow-600/80 text-xs font-medium">
+                            Continue to send the approval request to your guide.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {error && (
+                    <p className="text-red-500 text-xs mt-2 text-center">{error}</p>
+                  )}
+                  {success && (
+                    <p className="text-green-600 text-xs mt-2 text-center">{success}</p>
+                  )}
+
+                  <div className="mt-3 text-center">
+                    <p className="text-gray-400 text-xs">
+                      {teamId.length}/10 characters · Letters & numbers only
+                    </p>
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  <div className="flex gap-3">
+                    <button
+                      type="button"
+                      className="w-14 py-3.5 rounded-xl font-bold text-base bg-gray-100 text-gray-600 hover:bg-gray-200 transition-all flex items-center justify-center"
+                      onClick={() => setStep(1)}
+                      aria-label="Back"
+                      disabled={claimingTeamId || sendingRequest}
+                    >
+                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                      </svg>
+                    </button>
+                    <button
+                      type="button"
+                      className={`flex-1 py-3.5 rounded-xl font-bold text-base transition-all flex items-center justify-center gap-2 ${
+                        (teamIdStatus === "new" ||
+                          teamIdStatus === "available" ||
+                          teamIdStatus === "taken-by-you") &&
+                        !claimingTeamId
+                          ? "bg-green-600 text-white hover:bg-green-700 shadow-lg shadow-green-200"
+                          : "bg-gray-100 text-gray-400 cursor-not-allowed"
+                      }`}
+                      onClick={claimTeamIdAndSendRequest}
+                      disabled={
+                        (teamIdStatus !== "new" &&
+                          teamIdStatus !== "available" &&
+                          teamIdStatus !== "taken-by-you") ||
+                        claimingTeamId
+                      }
+                    >
+                      {claimingTeamId ? (
+                        <>
+                          <div className="animate-spin h-5 w-5 border-2 border-white border-t-transparent rounded-full" />
+                          <span>Processing...</span>
+                        </>
+                      ) : (
+                        <span>Continue with Team Code</span>
+                      )}
+                    </button>
+                  </div>
+
+                  <button
+                    type="button"
+                    className="w-full py-3 rounded-xl font-semibold text-sm bg-transparent border-2 border-gray-300 text-gray-600 hover:border-green-500 hover:text-green-600 transition-all flex items-center justify-center gap-2"
+                    onClick={skipTeamIdAndSendRequest}
+                    disabled={sendingRequest || claimingTeamId}
+                  >
+                    {sendingRequest ? (
+                      <>
+                        <div className="animate-spin h-4 w-4 border-2 border-gray-600 border-t-transparent rounded-full" />
+                        <span>Sending...</span>
+                      </>
+                    ) : (
+                      <span>Skip Team Code</span>
+                    )}
+                  </button>
+                </div>
+              </motion.div>
+            )}
           </AnimatePresence>
         </div>
       </motion.div>
