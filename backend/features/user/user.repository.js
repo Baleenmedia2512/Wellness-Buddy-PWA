@@ -209,6 +209,11 @@ export async function getProfileByUserId(userId) {
   }
 }
 
+/** Team Code / shared-team fields for profile Team Code card. */
+export async function getTeamCodeFields(userId) {
+  return findByUserId(userId, '"UserId", "TeamId", "CoachTeamId", "CoachId"');
+}
+
 function isMissingIsDeletedColumn(error) {
   const msg = String(error?.message || error || '');
   return /IsDeleted/i.test(msg) && /column/i.test(msg) && /does not exist|not find|unknown/i.test(msg);

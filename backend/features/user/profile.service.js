@@ -23,6 +23,8 @@ import {
 } from './domain/profileCompleteness.js';
 import { buildProfileCardSyncPayload } from '../body-parameters-card/domain/sync.rules.js';
 import { computeBmiFromHeightWeight } from '../body-parameters-card/domain/card.rules.js';
+import { getSupabaseClient } from '../../utils/supabaseClient.js';
+import { resolveLeadSeatForUser } from '../../utils/coachTeamSeats.js';
 import { deriveWeightGoalMode } from '../../utils/weightValidation.js';
 import { resolveProfileTimezone } from './domain/profileTimezone.js';
 import { mapTeamRowToProfileBodyMetrics, mergeProfileBodyMetrics, mapCardToProfileBodyMetrics } from './domain/profileBodyMetrics.rules.js';
@@ -54,13 +56,19 @@ export async function getProfile({ email, userId = null }) {
     : await repo.getProfile(email);
   if (!user) return notFound();
 
-  const [latestWeight, initialWeightRow, latestBodyMetricsCard, sponsorIdeal, latestWeightBodyFatResolved] = await Promise.all([
+  const [latestWeight, initialWeightRow, latestBodyMetricsCard, sponsorIdeal, latestWeightBodyFatResolved, teamCodeFields] = await Promise.all([
     repo.getLatestWeight(user.UserId),
     repo.getInitialWeight(user.UserId),
     findLatestLinkedBodyMetricsCard(user.UserId),
     resolveSponsorAndIdealCoach(user.UserId, { viewerUserId: user.UserId }),
     repo.getLatestWeightBodyFat(user.UserId),
+    repo.getTeamCodeFields(user.UserId),
   ]);
+  const leadSeat = await resolveLeadSeatForUser(getSupabaseClient(), user.UserId);
+  const teamId = teamCodeFields?.TeamId || leadSeat.teamId || null;
+  const coachTeamId = teamCodeFields?.CoachTeamId || null;
+  const teamSeat = leadSeat.seat || null;
+  const canClaimTeamCode = !teamId && !teamSeat;
   const cardMetrics = mapCardToProfileBodyMetrics(latestBodyMetricsCard);
   const teamMetrics = mapTeamRowToProfileBodyMetrics(user);
   const cardHeight = latestBodyMetricsCard?.height_cm != null
@@ -164,6 +172,10 @@ export async function getProfile({ email, userId = null }) {
         sponsorName,
         idealCoachId: sponsorIdeal.idealCoachId || null,
         idealCoachName: sponsorIdeal.idealCoachName || null,
+        teamId,
+        coachTeamId,
+        teamSeat,
+        canClaimTeamCode,
         profilePicSnooze: user.profile_pic_snooze || null,
         latestWeight: latestWeightKg,
         initialWeight: Number.isFinite(initialWeightKg) ? initialWeightKg : null,
