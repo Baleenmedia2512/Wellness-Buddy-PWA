@@ -57,6 +57,8 @@ import { PORTRAIT_IMAGE_CLASS_SM } from '../services/testimonialFormUtils.js';
 import { resolveRowTeamUploadPerformance } from '../utils/testimonialTeamPerformance.js';
 import { uniqueConditions, isSameIssueList, withoutHealthIssue } from '../utils/uniqueConditions.js';
 import { getApiBaseUrl } from '../../../config/api.config.js';
+import { getProfile } from '../../user/services/user.api.js';
+import { seedMineTestimonialFromLeftSlot } from '../../user/domain/transformationBeforeAfter';
 
 // â”€â”€ Constants â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -401,6 +403,14 @@ function UnifiedOtpInline({ userId, onVerified }) {
   );
 }
 
+const EMPTY_HEALTH_ISSUES = Object.freeze([]);
+
+function sameIssueList(a, b) {
+  if (a === b) return true;
+  if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
+  return a.every((value, index) => value === b[index]);
+}
+
 function MemberCard({
   row,
   teamStats,
@@ -462,9 +472,10 @@ function MemberCard({
 
   const [expandedPhoto, setExpandedPhoto] = useState(null);
   const hasAfter  = testimonial?.afterImageUrl  && testimonial?.status !== 'incomplete';
-  const issues    = Array.isArray(testimonial?.recoveredHealthIssues)
+  // Stable empty fallback — a fresh `[]` each render re-triggers setState forever.
+  const issues = Array.isArray(testimonial?.recoveredHealthIssues)
     ? testimonial.recoveredHealthIssues
-    : [];
+    : EMPTY_HEALTH_ISSUES;
   const [approvedIssues, setApprovedIssues] = useState(issues);
 
   // ── Inline editing state (Mine card only) ────────────────────────────────
@@ -480,7 +491,7 @@ function MemberCard({
   useEffect(() => {
     if (draftIssues != null) return;
     if (testimonial?.status === 'pending') return;
-    setApprovedIssues(issues);
+    setApprovedIssues((prev) => (sameIssueList(prev, issues) ? prev : issues));
   }, [issues, draftIssues, testimonial?.status]);
   // Local text while weight field is open — needed for Android WebView typing
   const [beforeWeightText, setBeforeWeightText] = useState(null);
@@ -520,8 +531,15 @@ function MemberCard({
   const anyVideoUploading = uploadingHealth || uploadingBusiness;
 
   // Prefer draft edits so the "Lost/Gained X kgs" badge updates live while editing
-  const displayBeforeKg = Number(draftBefore?.weightKg ?? testimonial?.beforeWeightKg ?? 0);
-  const displayAfterKg  = Number(draftAfter?.weightKg ?? (hasAfter ? testimonial?.afterWeightKg : 0) ?? 0);
+  const shownBeforeKg = draftBefore?.weightKg
+    ?? testimonial?.beforeWeightKg
+    ?? (editable ? user?.latestWeightKg : null);
+  const displayBeforeKg = Number(shownBeforeKg ?? 0);
+  const shownAfterKg = draftAfter?.weightKg
+    ?? (hasAfter ? testimonial?.afterWeightKg : null)
+    ?? testimonial?.afterWeightKg
+    ?? shownBeforeKg;
+  const displayAfterKg  = Number(shownAfterKg ?? 0);
   const displayGoalType = draftBefore?.goalType ?? testimonial?.goalType;
   const displayDuration = draftBefore?.durationText ?? testimonial?.durationText;
   const diff = testimonial && hasAfter && displayBeforeKg > 0 && displayAfterKg > 0
@@ -529,10 +547,31 @@ function MemberCard({
     : null;
 
   const mediaVersion = `${testimonial?.updatedAt ?? testimonial?.id ?? ''}-${mediaEpoch}`;
-  const beforeImageSrc = draftBefore?.previewUrl
+  const beforeRaw = draftBefore?.previewUrl
     || withTestimonialMediaCacheBust(testimonial?.beforeImageUrl, mediaVersion);
-  const afterImageSrc = draftAfter?.previewUrl
-    || withTestimonialMediaCacheBust(hasAfter ? testimonial?.afterImageUrl : null, mediaVersion);
+  const afterRaw = draftAfter?.previewUrl
+    || withTestimonialMediaCacheBust(
+      hasAfter || editable
+        ? (testimonial?.afterImageUrl || (editable ? testimonial?.beforeImageUrl : null))
+        : null,
+      mediaVersion,
+    );
+  const beforeFromData = typeof beforeRaw === 'string' && beforeRaw.startsWith('data:image');
+  const afterFromData = typeof afterRaw === 'string' && afterRaw.startsWith('data:image');
+  const beforeImageSrc = useMemo(() => (
+    beforeFromData ? jpegDataUrlToObjectUrl(beforeRaw) : beforeRaw
+  ), [beforeRaw, beforeFromData]);
+  const afterImageSrc = useMemo(() => (
+    afterFromData ? jpegDataUrlToObjectUrl(afterRaw) : afterRaw
+  ), [afterRaw, afterFromData]);
+  useEffect(() => {
+    if (!beforeFromData) return undefined;
+    return () => revokeBlobUrl(beforeImageSrc);
+  }, [beforeFromData, beforeImageSrc]);
+  useEffect(() => {
+    if (!afterFromData) return undefined;
+    return () => revokeBlobUrl(afterImageSrc);
+  }, [afterFromData, afterImageSrc]);
 
   // Photo-only drafts — weight/duration edits must NOT open this strip (Android focus loss)
   const hasPhotoDraft = Boolean(
@@ -561,13 +600,13 @@ function MemberCard({
   }, [parseWeightInput]);
 
   const openBeforeWeightEdit = useCallback(() => {
-    setBeforeWeightText(String(draftBefore?.weightKg ?? testimonial?.beforeWeightKg ?? ''));
+    setBeforeWeightText(String(draftBefore?.weightKg ?? testimonial?.beforeWeightKg ?? user?.latestWeightKg ?? ''));
     setExpandedSlots((prev) => {
       const next = new Set(prev);
       next.add('beforeWeight');
       return next;
     });
-  }, [draftBefore?.weightKg, testimonial?.beforeWeightKg]);
+  }, [draftBefore?.weightKg, testimonial?.beforeWeightKg, user?.latestWeightKg]);
 
   const closeBeforeWeightEdit = useCallback((raw) => {
     if (raw != null) commitBeforeWeight(raw);
@@ -580,13 +619,13 @@ function MemberCard({
   }, [commitBeforeWeight]);
 
   const openAfterWeightEdit = useCallback(() => {
-    setAfterWeightText(String(draftAfter?.weightKg ?? (hasAfter ? testimonial?.afterWeightKg : '') ?? ''));
+    setAfterWeightText(String(draftAfter?.weightKg ?? testimonial?.afterWeightKg ?? user?.latestWeightKg ?? ''));
     setExpandedSlots((prev) => {
       const next = new Set(prev);
       next.add('afterWeight');
       return next;
     });
-  }, [draftAfter?.weightKg, hasAfter, testimonial?.afterWeightKg]);
+  }, [draftAfter?.weightKg, testimonial?.afterWeightKg, user?.latestWeightKg]);
 
   const closeAfterWeightEdit = useCallback((raw) => {
     if (raw != null) commitAfterWeight(raw);
@@ -779,9 +818,6 @@ function MemberCard({
       || testimonial?.healthVideoUrl || testimonial?.businessVideoUrl,
     );
     const issuesNeedOtp = dirtySlots.includes('issues') && (hasAfter || hasResultVideo);
-    const needsOtpUi = dirtySlots.some((s) => ['after', 'health', 'business'].includes(s))
-      || (dirtySlots.includes('before') && hasAfter)
-      || issuesNeedOtp;
     const isSilentSave = !photoOrVideoChanged && !issuesNeedOtp;
     // Photos still compressing — wait so we do not submit without image bytes.
     if (draftBefore?.compressing || draftAfter?.compressing) {
@@ -870,13 +906,19 @@ function MemberCard({
       setMediaEpoch((n) => n + 1);
     };
 
-    // Weight / issues only — save in background, reload, then clear drafts.
+    const finishSubmit = async (result) => {
+      await reloadMine(result?.testimonial);
+      clearDrafts();
+      if (result?.otpSent !== false) {
+        setUnifiedOtpVerified(false);
+        setSubmitDone(true);
+      }
+    };
+
+    // Weight / issues only — still show OTP when the server emailed a code.
     if (isSilentSave) {
       void submitAllEdits(payload)
-        .then(async (result) => {
-          await reloadMine(result?.testimonial);
-          clearDrafts();
-        })
+        .then(finishSubmit)
         .catch((err) => {
           setSubmitError(err?.message || 'Failed to save. Please try again.');
         });
@@ -887,11 +929,7 @@ function MemberCard({
     setIsSubmitting(true);
     setCaptureFlowBusy(true);
     void submitAllEdits(payload)
-      .then(async (result) => {
-        await reloadMine(result?.testimonial);
-        clearDrafts();
-        if (needsOtpUi) setSubmitDone(true);
-      })
+      .then(finishSubmit)
       .catch((err) => {
         setSubmitError(err?.message || 'Failed to submit. Please try again.');
       })
@@ -1086,8 +1124,8 @@ function MemberCard({
               ) : (
                 <div className="flex items-center justify-center gap-1">
                   <p className="text-sm font-bold text-gray-800">
-                    {draftBefore?.weightKg ?? testimonial?.beforeWeightKg ?? '—'}
-                    {(draftBefore?.weightKg ?? testimonial?.beforeWeightKg) && <span className="text-xs font-normal text-gray-400"> kg</span>}
+                    {shownBeforeKg ?? '—'}
+                    {shownBeforeKg != null && shownBeforeKg !== '' && <span className="text-xs font-normal text-gray-400"> kg</span>}
                   </p>
                   {editable && (
                     <button type="button" onClick={openBeforeWeightEdit}
@@ -1216,8 +1254,8 @@ function MemberCard({
               ) : (
                 <div className="flex items-center justify-center gap-1">
                   <p className="text-sm font-bold text-gray-800">
-                    {draftAfter?.weightKg ?? (hasAfter ? testimonial?.afterWeightKg : null) ?? '—'}
-                    {(draftAfter?.weightKg ?? (hasAfter ? testimonial?.afterWeightKg : null)) && <span className="text-xs font-normal text-gray-400"> kg</span>}
+                    {shownAfterKg ?? '—'}
+                    {shownAfterKg != null && shownAfterKg !== '' && <span className="text-xs font-normal text-gray-400"> kg</span>}
                   </p>
                   {editable && (
                     <button type="button" onClick={openAfterWeightEdit}
@@ -1276,13 +1314,13 @@ function MemberCard({
         </div>
       )}
 
-      {/* Unified OTP — after submitting all edits */}
-      {editable && submitDone && (
+      {/* Unified OTP — after submit, including weight-only updates that emailed a code */}
+      {editable && (submitDone || testimonial?.otpPending) && !unifiedOtpVerified && (
         <UnifiedOtpInline userId={userId} onVerified={handleUnifiedOtpVerified} />
       )}
 
-      {/* Existing pending OTP (from old per-slot flow) — only show if not yet in new submit flow */}
-      {editable && !submitDone && testimonial?.status === 'pending' && testimonial?.id && (
+      {/* Existing pending OTP (from old per-slot flow) — only show if unified OTP is not already up */}
+      {editable && !submitDone && !testimonial?.otpPending && testimonial?.status === 'pending' && testimonial?.id && (
         <OtpInline
           testimonialId={testimonial.id}
           type="photo"
@@ -1688,24 +1726,37 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
       phoneNumber,
     };
     try {
-      const [testimonial, video] = await Promise.all([
+      const [testimonial, video, profileResult] = await Promise.all([
         getMyTestimonial(coachId),
         getMyVideoTestimonial(coachId).catch(() => null),
+        getProfile({ userId: coachId, cacheBust: true }).catch(() => null),
       ]);
-      if (!testimonial && !video) {
+      const latestWeightKg = profileResult?.success && profileResult?.data?.latestWeight != null
+        ? Number(profileResult.data.latestWeight)
+        : NaN;
+      if (Number.isFinite(latestWeightKg) && latestWeightKg > 0) {
+        userPayload.latestWeightKg = latestWeightKg;
+      }
+      const leftUrl = profileResult?.success
+        ? profileResult?.data?.transformationPhotos?.left
+        : null;
+      const seeded = seedMineTestimonialFromLeftSlot(testimonial, {
+        leftUrl,
+        weightKg: Number.isFinite(latestWeightKg) ? latestWeightKg : null,
+      });
+      if (!seeded && !video) {
         return { user: userPayload, testimonial: null };
       }
-      // Merge video verification fields so Mine can show "Videos verified"
       const merged = {
-        ...(testimonial || {
+        ...(seeded || {
           healthVideoUrl: null,
           businessVideoUrl: null,
           status: 'incomplete',
           recoveredHealthIssues: [],
         }),
-        id:              testimonial?.id ?? video?.testimonialId ?? null,
-        videoStatus:     video?.videoStatus ?? testimonial?.videoStatus ?? 'none',
-        videoVerifiedAt: video?.videoVerifiedAt ?? testimonial?.videoVerifiedAt ?? null,
+        id:              seeded?.id ?? testimonial?.id ?? video?.testimonialId ?? null,
+        videoStatus:     video?.videoStatus ?? seeded?.videoStatus ?? testimonial?.videoStatus ?? 'none',
+        videoVerifiedAt: video?.videoVerifiedAt ?? seeded?.videoVerifiedAt ?? testimonial?.videoVerifiedAt ?? null,
       };
       return { user: userPayload, testimonial: merged };
     } catch {

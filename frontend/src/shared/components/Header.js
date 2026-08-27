@@ -5,15 +5,7 @@ import TouchFeedbackButton from "./TouchFeedbackButton";
 import AppNavTabs from "./AppNavTabs";
 import wellnessValleyIcon from "../../assets/wellness-valley-icon.png";
 import { getProfile } from "../../features/user/services/user.api";
-import { fetchHasTeamMembers } from "../../features/team/services/teamSearchService";
 import { isFlagEnabled } from "../../config/featureFlags";
-
-/** Roles that always see the Reports Dashboard nav tab (ff.reports-module). */
-const REPORTS_TAB_ROLES = ['coach', 'coccoach', 'upline', 'admin', 'developer'];
-
-function canAccessReportsTab(role, hasTeamMembers) {
-  return REPORTS_TAB_ROLES.includes(role) || Boolean(hasTeamMembers);
-}
 
 const Header = ({
   user,
@@ -41,24 +33,10 @@ const Header = ({
 }) => {
   const [savedUserName, setSavedUserName] = useState(null);
   const [savedProfileImage, setSavedProfileImage] = useState(null);
-  const [hasTeamMembers, setHasTeamMembers] = useState(false);
   const prevProfileKeyRef = useRef(profileKey);
 
-  const reportsEnabled = isFlagEnabled('ff.reports-module')
-    && canAccessReportsTab(userRole, hasTeamMembers);
-
-  // Grant report tab to downline leaders even when Role is still "user" (e.g. u2, a3).
-  useEffect(() => {
-    if (!user?.id || REPORTS_TAB_ROLES.includes(userRole)) {
-      setHasTeamMembers(false);
-      return undefined;
-    }
-    let cancelled = false;
-    fetchHasTeamMembers(user.id)
-      .then((has) => { if (!cancelled) setHasTeamMembers(has); })
-      .catch(() => { if (!cancelled) setHasTeamMembers(false); });
-    return () => { cancelled = true; };
-  }, [user?.id, userRole]);
+  // All signed-in users see Reports when the flag is on (including leaf members with no downline).
+  const reportsEnabled = isFlagEnabled('ff.reports-module');
 
   // Fetch saved user name + avatar for header display.
   // Re-runs when email changes OR when profileKey is incremented (after a save).

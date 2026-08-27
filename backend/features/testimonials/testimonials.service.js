@@ -239,6 +239,7 @@ async function enrichTestimonialForDisplay(testimonial, opts = {}) {
     videoStatus:            testimonial.video_status        ?? 'none',
     videoVerifiedAt:        testimonial.video_verified_at   ?? null,
     recoveredHealthIssues:  testimonial.recovered_health_issues ?? [],
+    otpPending:             Boolean(testimonial.otp_hash),
   };
 }
 
@@ -1316,6 +1317,7 @@ export async function submitAllEdits(rawBody) {
         testimonialId: existing.id,
         status:     existing.status,
         videoStatus: existing.video_status ?? 'none',
+        otpSent:    false,
         testimonial: display,
       },
     };
@@ -1458,6 +1460,7 @@ export async function submitAllEdits(rawBody) {
       testimonialId: existing.id,
       status:        finalStatus,
       videoStatus:   finalVideoStatus,
+      otpSent:       true,
       testimonial:   display,
     },
   };

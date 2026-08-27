@@ -23,10 +23,17 @@ import {
 } from './domain/profileCompleteness.js';
 import { buildProfileCardSyncPayload } from '../body-parameters-card/domain/sync.rules.js';
 import { computeBmiFromHeightWeight } from '../body-parameters-card/domain/card.rules.js';
+import { getSupabaseClient } from '../../utils/supabaseClient.js';
+import { resolveLeadSeatForUser } from '../../utils/coachTeamSeats.js';
 import { deriveWeightGoalMode } from '../../utils/weightValidation.js';
 import { resolveProfileTimezone } from './domain/profileTimezone.js';
 import { mapTeamRowToProfileBodyMetrics, mergeProfileBodyMetrics, mapCardToProfileBodyMetrics } from './domain/profileBodyMetrics.rules.js';
 import { mapTeamRecoveredHealthIssues } from './domain/recoveredHealthIssues.rules.js';
+import {
+  hasTransformationPhotoUpdates,
+  mapTransformationPhotos,
+  mergeTransformationPhotos,
+} from './domain/transformationPhotos.rules.js';
 import { findLatestLinkedBodyMetricsCard } from '../body-parameters-card/data/card.repo.js';
 import { isEnabled } from '../../shared/lib/feature-flags.js';
 import { isConsentRecorded } from '../auth/domain/consent.rules.js';
@@ -49,13 +56,19 @@ export async function getProfile({ email, userId = null }) {
     : await repo.getProfile(email);
   if (!user) return notFound();
 
-  const [latestWeight, initialWeightRow, latestBodyMetricsCard, sponsorIdeal, latestWeightBodyFatResolved] = await Promise.all([
+  const [latestWeight, initialWeightRow, latestBodyMetricsCard, sponsorIdeal, latestWeightBodyFatResolved, teamCodeFields] = await Promise.all([
     repo.getLatestWeight(user.UserId),
     repo.getInitialWeight(user.UserId),
     findLatestLinkedBodyMetricsCard(user.UserId),
     resolveSponsorAndIdealCoach(user.UserId, { viewerUserId: user.UserId }),
     repo.getLatestWeightBodyFat(user.UserId),
+    repo.getTeamCodeFields(user.UserId),
   ]);
+  const leadSeat = await resolveLeadSeatForUser(getSupabaseClient(), user.UserId);
+  const teamId = teamCodeFields?.TeamId || leadSeat.teamId || null;
+  const coachTeamId = teamCodeFields?.CoachTeamId || null;
+  const teamSeat = leadSeat.seat || null;
+  const canClaimTeamCode = !teamId && !teamSeat;
   const cardMetrics = mapCardToProfileBodyMetrics(latestBodyMetricsCard);
   const teamMetrics = mapTeamRowToProfileBodyMetrics(user);
   const cardHeight = latestBodyMetricsCard?.height_cm != null
@@ -159,6 +172,10 @@ export async function getProfile({ email, userId = null }) {
         sponsorName,
         idealCoachId: sponsorIdeal.idealCoachId || null,
         idealCoachName: sponsorIdeal.idealCoachName || null,
+        teamId,
+        coachTeamId,
+        teamSeat,
+        canClaimTeamCode,
         profilePicSnooze: user.profile_pic_snooze || null,
         latestWeight: latestWeightKg,
         initialWeight: Number.isFinite(initialWeightKg) ? initialWeightKg : null,
@@ -177,6 +194,7 @@ export async function getProfile({ email, userId = null }) {
         weightRecordDate: latestWeight?.CreatedAt || null,
         bodyMetrics,
         recoveredHealthIssues: mapTeamRecoveredHealthIssues(user.recovered_health_issues),
+        transformationPhotos: mapTransformationPhotos(user.transformation_photos),
       },
     },
   };
@@ -189,6 +207,7 @@ export async function getProfile({ email, userId = null }) {
 function buildProfileUpdate({
   name, height, dietType, phoneNumber, profileImage, gender, weightGoalMode, physicalActivityLevel, communityId, timezoneIana,
   age, visceralFat, bodyAge, chestCm, waistCm, hipCm, recoveredHealthIssues,
+  transformationPhotos, existingTransformationPhotos,
 }) {
   const updateData = {};
   let cleanedPhoneNumber;
@@ -225,6 +244,12 @@ function buildProfileUpdate({
       ? recoveredHealthIssues
       : [];
   }
+  if (hasTransformationPhotoUpdates(transformationPhotos)) {
+    updateData.transformation_photos = mergeTransformationPhotos(
+      existingTransformationPhotos,
+      transformationPhotos,
+    );
+  }
   return { updateData, cleanedPhoneNumber };
 }
 
@@ -259,7 +284,7 @@ export async function updateProfile(input) {
   const {
     email, name, height, bmr, dietType, profileImage, phoneNumber, gender,
     weightGoalMode, physicalActivityLevel, communityId, timezoneIana, bodyFat,
-    currentWeight,
+    currentWeight, transformationPhotos,
   } = input;
 
   logger.info('[profile/update] incoming request', {
@@ -276,15 +301,32 @@ export async function updateProfile(input) {
     });
   }
 
-  const user = await repo.findByEmail(email, 'UserId');
+  let user;
+  try {
+    user = await repo.findByEmail(email, 'UserId, transformation_photos');
+  } catch (err) {
+    const msg = String(err?.message || err || '');
+    if (!/transformation_photos/i.test(msg)) throw err;
+    user = await repo.findByEmail(email, 'UserId');
+  }
   if (!user) return notFound();
   const userId = user.UserId;
 
-  const { updateData, cleanedPhoneNumber } = buildProfileUpdate(input);
+  const { updateData, cleanedPhoneNumber } = buildProfileUpdate({
+    ...input,
+    existingTransformationPhotos: user.transformation_photos,
+  });
 
   let savedPhysicalActivityLevel = null;
   if (physicalActivityLevel != null && isValidPhysicalActivityLevel(physicalActivityLevel)) {
     savedPhysicalActivityLevel = physicalActivityLevel;
+  }
+
+  const transformationPhotosPatch = updateData.transformation_photos !== undefined
+    ? { transformation_photos: updateData.transformation_photos }
+    : null;
+  if (transformationPhotosPatch) {
+    delete updateData.transformation_photos;
   }
 
   let savedCommunityId;
@@ -300,6 +342,16 @@ export async function updateProfile(input) {
     if (!verifyRow) throw new Error(`Unable to verify profile update for UserId ${userId}`);
     verifySaved(verifyRow, { cleanedPhoneNumber, height, dietType, gender, updateData, communityId, timezoneIana });
     if (communityId !== undefined) savedCommunityId = communityId;
+  }
+
+  if (transformationPhotosPatch) {
+    try {
+      await repo.updateUserById(userId, transformationPhotosPatch);
+    } catch (photoErr) {
+      const msg = String(photoErr?.message || photoErr || '');
+      if (!/transformation_photos|column/i.test(msg)) throw photoErr;
+      logger.warn('[profile/update] transformation_photos column missing; skipped', { userId });
+    }
   }
 
   let latestWeightRow = await repo.getLatestWeight(userId);

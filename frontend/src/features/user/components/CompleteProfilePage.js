@@ -14,6 +14,11 @@ import CompleteRequiredFields, {
 import CompletePictureSection from './complete/CompletePictureSection';
 import UserProfileBodyMetrics from './profile/UserProfileBodyMetrics';
 import HealthIssuesFilterSelect from '../../body-parameters-card/components/HealthIssuesFilterSelect';
+import TransformationPhotosSection from './profile/TransformationPhotosSection';
+import useTransformationPhotos from '../hooks/useTransformationPhotos';
+import { persistOnboardingTestimonialPhotos } from '../services/persistOnboardingTestimonialPhotos';
+import { getMyTestimonial } from '../../testimonials/services/testimonialApi';
+import { deriveWeightGoalMode } from '../../weight/services/weightFormService';
 import {
   hasValidProfileName,
   hasValidProfileGender,
@@ -75,6 +80,7 @@ const CompleteProfilePage = ({
   const [showCurrentWeight, setShowCurrentWeight] = useState(false);
   const [optionalMetrics, setOptionalMetrics] = useState(EMPTY_OPTIONAL_METRICS);
   const [recoveredHealthIssues, setRecoveredHealthIssues] = useState([]);
+  const transformationPhotos = useTransformationPhotos();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -167,6 +173,18 @@ const CompleteProfilePage = ({
         setRecoveredHealthIssues(
           Array.isArray(profile?.recoveredHealthIssues) ? profile.recoveredHealthIssues : [],
         );
+        transformationPhotos.loadFromProfile(profile?.transformationPhotos);
+        transformationPhotos.loadFromTestimonial(null, profile?.latestWeight);
+        const uidForT = user?.id || user?.userId || user?.UserId;
+        if (uidForT) {
+          getMyTestimonial(uidForT)
+            .then((testimonial) => {
+              if (mounted) {
+                transformationPhotos.loadFromTestimonial(testimonial, profile?.latestWeight);
+              }
+            })
+            .catch(() => {});
+        }
 
         if (profile?.profileImage && (
           profile.profileImage.startsWith('data:image/')
@@ -219,6 +237,12 @@ const CompleteProfilePage = ({
     })();
     return () => { mounted = false; };
   }, [user]);
+
+  useEffect(() => {
+    transformationPhotos.setSnapshotWeight(
+      isValidCurrentWeight(currentWeight) ? parseFloat(currentWeight) : null,
+    );
+  }, [currentWeight, transformationPhotos.setSnapshotWeight]);
 
   const heightNum = parseFloat(height);
   const trimmedName = name.trim();
@@ -275,7 +299,7 @@ const CompleteProfilePage = ({
     }
     setSaving(true);
     try {
-      const uid = user?.id || user?.UserId;
+      const uid = user?.id || user?.userId || user?.UserId;
       const hadEmail = !!(user?.email || user?.Email);
 
       if (!hadEmail) {
@@ -330,8 +354,25 @@ const CompleteProfilePage = ({
       payload.recoveredHealthIssues = Array.isArray(recoveredHealthIssues)
         ? recoveredHealthIssues
         : [];
+      Object.assign(payload, transformationPhotos.payloadExtras());
 
       await saveProfile(payload);
+
+      if (uid && (isValidCurrentWeight(currentWeight) || transformationPhotos.leftImageBase64())) {
+        const weightNum = isValidCurrentWeight(currentWeight)
+          ? parseFloat(currentWeight)
+          : null;
+        await persistOnboardingTestimonialPhotos({
+          userId: uid,
+          weightKg: weightNum,
+          leftImageBase64: transformationPhotos.leftImageBase64(),
+          goalType: deriveWeightGoalMode({
+            heightCm: heightNum,
+            currentWeightKg: weightNum,
+          }) || 'loss',
+          recoveredHealthIssues,
+        });
+      }
 
       onComplete({
         email: trimmedEmail,
@@ -355,7 +396,7 @@ const CompleteProfilePage = ({
     currentWeightValid, fatPercentValid, pictureValid,
     showPictureSection, profileImage, user, apiBaseUrl,
     trimmedName, trimmedEmail, heightNum, dietType, showGender, gender, previewUrl, onComplete,
-    showCurrentWeight, currentWeight, optionalMetrics, recoveredHealthIssues,
+    showCurrentWeight, currentWeight, optionalMetrics, recoveredHealthIssues, transformationPhotos,
   ]);
 
   return (
@@ -397,6 +438,19 @@ const CompleteProfilePage = ({
             setCurrentWeight={setCurrentWeight}
             showCurrentWeight={showCurrentWeight}
             currentWeightValid={currentWeightValid}
+          />
+          <TransformationPhotosSection
+            history={transformationPhotos.history}
+            selectedType={transformationPhotos.selectedType}
+            onSelectType={transformationPhotos.setSelectedType}
+            onSelectFile={async (slot, file) => {
+              try {
+                await transformationPhotos.setSlotFromFile(slot, file);
+              } catch (e) {
+                setError(e.message || 'Failed to prepare photo.');
+              }
+            }}
+            disabled={saving}
           />
           <div className="pt-2 border-t border-gray-100">
             <UserProfileBodyMetrics

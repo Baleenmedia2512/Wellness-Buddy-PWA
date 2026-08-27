@@ -533,6 +533,8 @@ function WellnessValleyApp() {
   // can be reconstructed from a single log dump.
   const captureFlowStartRef = useRef(0);
   const foodShareImageReadyAtRef = useRef(0);
+  /** When AI food lands on Home NutritionCard, onBack must not clear the preview. */
+  const keepHomeFoodPreviewRef = useRef(false);
 
   // Refs for analysis results - used by resume listener to check if results are visible
   // without closure staleness issues (the effect is mount-only with [] deps).
@@ -1307,7 +1309,7 @@ function WellnessValleyApp() {
 
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: fire on user/auth change
-  }, [user?.id, user?.email, user?.userName, user?.username, isOtpVerified, apiBaseUrl]);
+  }, [user?.id, user?.email, isOtpVerified, apiBaseUrl, apiBaseUrl]);
 
   // Force-close Profile only for visible onboarding wizards — not soft resolve flaps
   // (those used to set showProfilePage then immediately clear it → "stuck on Home").
@@ -3797,6 +3799,7 @@ function WellnessValleyApp() {
           // all typed input (height, phone, diet, selected photo).
           if (_profileGateActiveRef.current) return;
           const userEmail = user.email || user.Email;
+          const uid = user.id || user.UserId || user.userId || Session.getDbUserId();
           if (userEmail) {
             debugLog(
               "?? [Foreground] App resumed ? running immediate profile check",
@@ -7773,6 +7776,7 @@ function WellnessValleyApp() {
           key={manualEntryPayload.clientKey || manualEntryPayload.captureId}
           userId={manualEntryPayload.userId}
           userEmail={user?.email || user?.Email || null}
+          userName={user?.userName || user?.username || user?.name || null}
           apiBaseUrl={apiBaseUrl}
           captureId={manualEntryPayload.captureId}
           imageBase64={manualEntryPayload.imageBase64}
@@ -7789,7 +7793,11 @@ function WellnessValleyApp() {
             setCaptureFlowBusy(false);
             setShowManualEntry(false);
             setManualEntryPayload(null);
-            setImagePreview(null);
+            // Keep preview when AI food result is shown on Home NutritionCard.
+            if (!keepHomeFoodPreviewRef.current) {
+              setImagePreview(null);
+            }
+            keepHomeFoodPreviewRef.current = false;
             setShowDashboard(false);
             Session.setCurrentPage('main');
             // Always land on Home — history.back() can pop to a stale Diary entry.
@@ -7800,6 +7808,24 @@ function WellnessValleyApp() {
             // Do NOT refresh score here — ManualEntryPage refreshes after DB promote/save
             // so Home + sheet do not lock in a pre-save total.
             const image = shareMeta?.shareImage || manualEntryPayload?.imageBase64;
+            if (shareMeta?.aiHomeResult?.cardData) {
+              keepHomeFoodPreviewRef.current = true;
+              const {
+                cardData,
+                imageBase64: aiImage,
+                mealId,
+                foodNames,
+              } = shareMeta.aiHomeResult;
+              setNutritionData(cardData);
+              setImageType('food');
+              setImagePreview(aiImage || image);
+              setSelectedImage(null);
+              setSavedNutritionMealId(mealId || null);
+              setDetectedFoodNames(
+                Array.isArray(foodNames) ? foodNames : [],
+              );
+              processedImageRef.current = aiImage || image || null;
+            }
             void shareCaptureAfterClassify(image, {
               activityCaption: shareMeta?.activityCaption || null,
             });

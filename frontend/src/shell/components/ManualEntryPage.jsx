@@ -1,6 +1,8 @@
 /**
- * CaptureClassifyPage — full-screen post-capture: pick type manually, or
- * during lunch (with AI credits) auto-start background AI (no Auto Detect button).
+ * CaptureClassifyPage — full-screen post-capture Manual Log.
+ * Upload opens this screen; AI food analysis starts only when the user taps
+ * Food (eligible leaf / staff, lunch or dinner window). Weight / education /
+ * other Log-as types stay manual.
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -15,6 +17,8 @@ import { isFlagEnabled } from '../../config/featureFlags';
 import {
   promoteUnknownToFood,
   deleteCapture,
+  buildAnalysisFromGeminiAnalysis,
+  hasRecognizedFood,
 } from '../../features/captures';
 import {
   SmartFoodSearchModal,
@@ -27,6 +31,8 @@ import {
   fetchWatchBurnedCalories,
 } from '../../features/nutrition';
 import { seedMealAfterPromotion } from '../../features/nutrition/services/seedMealAfterPromotion';
+import { extractMealIdFromPromotionResult } from '../../features/nutrition/services/buildMealFromAnalysis';
+import { analysisResultToNutritionCardData } from '../domain/analysisToNutritionCard';
 import {
   ManualWeightEntryModal,
   saveWeight,
@@ -41,10 +47,13 @@ import { ManualWatchEntryModal } from '../../features/activity';
 import {
   fetchAiCreditsStatus,
   reserveAiCredit,
+  confirmAiCredit,
+  releaseReservedAiCredit,
   getAiCreditUiState,
   reserveFailureMessage,
   decideLunchAutoAi,
 } from '../../features/ai-credits';
+import { analyzeImage } from '../../shared/services/orchestratorService';
 import { fetchWaterIntake, todayLocal } from '../../features/water';
 import { isIOS } from '../../shared/utils/platform';
 import { buildDiaryShareSuffix, extractFoodShareItems } from '../../features/diary';
@@ -52,12 +61,23 @@ import { useNutritionRefreshOptional } from '../../shared/context/NutritionRefre
 import { refreshDailyWellnessScoreAfterSave } from '../../features/wellness-score-sheet/services/refreshDailyWellnessScoreNow';
 import { prefetchTimeWindows } from '../../features/wellness-score-sheet/hooks/useTimeWindows';
 import GoodHabitFlow from './GoodHabitFlow';
+import ManualFoodAiAnalysisModal from './ManualFoodAiAnalysisModal';
 import { saveGoodHabit } from '../../features/good-habits';
 import {
   MANUAL_LOG_CATEGORY,
   DRY_SALAD_META,
   resolveManualLogCategoryClick,
 } from '../domain/manualLogCategories';
+
+function base64ToImageFile(b64, filename = 'capture.jpg') {
+  const dataUrl = b64.startsWith('data:') ? b64 : `data:image/jpeg;base64,${b64}`;
+  const [meta, content] = dataUrl.split(',');
+  const mime = (meta.match(/data:(.*?);/) || [, 'image/jpeg'])[1];
+  const bin = atob(content);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new File([bytes], filename, { type: mime });
+}
 
 /** PNG/SVG from `frontend/public` — same pattern as BathroomScaleIcon. */
 function PublicIcon({ src, className = '', alt = '' }) {
@@ -170,6 +190,7 @@ function shakePayloadToAnalysis(payload) {
 export default function ManualEntryPage({
   userId,
   userEmail = null,
+  userName = null,
   apiBaseUrl,
   captureId,
   imageBase64,
@@ -204,6 +225,16 @@ export default function ManualEntryPage({
   const [closingWithoutLog, setClosingWithoutLog] = useState(false);
   /** Full-screen preview of the captured photo. */
   const [previewExpanded, setPreviewExpanded] = useState(false);
+  /** In-modal AI food analysis (eligible leaf members during window). */
+  const [aiModalOpen, setAiModalOpen] = useState(false);
+  const [aiModalStage, setAiModalStage] = useState('analysing');
+  const [aiAnalysisResult, setAiAnalysisResult] = useState(null);
+  const [aiModalError, setAiModalError] = useState(null);
+  const [aiSaving, setAiSaving] = useState(false);
+  const aiReservationIdRef = useRef(null);
+  const aiCancelledRef = useRef(false);
+  /** Set after persistAiFoodAndShowOnHome is defined — avoids TDZ with startAiAnalyze. */
+  const persistAiFoodRef = useRef(null);
   // Today's hydration total (all exempted beverages) — water stepper tracks this.
   const [waterTodayMl, setWaterTodayMl] = useState(0);
   const [waterTodayLoading, setWaterTodayLoading] = useState(false);
@@ -244,18 +275,16 @@ export default function ManualEntryPage({
   // background — UI stays interactive; taps are queued until captureId arrives.
   const captureReady = Boolean(captureId);
   const [pendingLogAsId, setPendingLogAsId] = useState(null);
-  const [pendingAi, setPendingAi] = useState(false);
-  /** Lunch auto-AI may run once per capture (no Auto Detect button). */
-  const lunchAutoAttemptedRef = useRef(false);
+  /** True while waiting for captureId after user tapped Food (AI path). */
+  const [pendingFoodAi, setPendingFoodAi] = useState(false);
 
   // New capture while this screen stays mounted — close any open sub-form.
-  // Do not clear pendingLogAsId / pendingAi here: captureId often flips null → id
+  // Do not clear pendingLogAsId / pendingFoodAi here: captureId often flips null → id
   // on the same mount, and those pending taps must flush once ready.
   useEffect(() => {
     setActiveForm(null);
     setFoodEntryMeta(null);
     setPreviewExpanded(false);
-    lunchAutoAttemptedRef.current = false;
   }, [captureId]);
 
   const previewSrc = useMemo(() => {
@@ -400,10 +429,10 @@ export default function ManualEntryPage({
   /** Close classify — optionally discard a new capture (not when opened from Diary). */
   const handleCloseWithoutLog = () => {
     if (closingWithoutLog) return;
-    // Allow cancel while Auto Detect is only queued (photo still saving).
-    if (aiStarting && !pendingAi) return;
+    // Allow cancel while Food AI is only queued (photo still saving).
+    if (aiStarting && !pendingFoodAi) return;
     setPendingLogAsId(null);
-    setPendingAi(false);
+    setPendingFoodAi(false);
     setAiStarting(false);
     setClosingWithoutLog(true);
     const id = captureId;
@@ -464,102 +493,349 @@ export default function ManualEntryPage({
 
   const startAiAnalyze = useCallback(async () => {
     if (!userId || !imageBase64 || !captureId) return;
+    if (aiModalOpen && aiModalStage === 'analysing') return;
     setHint(null);
     setAiStarting(true);
+    aiCancelledRef.current = false;
+    setAiAnalysisResult(null);
+    setAiModalError(null);
+    setAiModalStage('analysing');
+    setAiModalOpen(true);
+
+    let reservationId = null;
     try {
-      let reservationId = null;
       if (creditsEnabled) {
+        // Backend enforces leaf downline + 12–4 window for versioned clients.
+        if (credits?.eligibleForAiFoodAnalysis === false) {
+          setAiModalOpen(false);
+          setHint(reserveFailureMessage('not_eligible_downline'));
+          setAiStarting(false);
+          return;
+        }
+        if (credits?.aiFoodAnalysisWindowOpen === false) {
+          setAiModalOpen(false);
+          setHint(reserveFailureMessage('outside_ai_window'));
+          setAiStarting(false);
+          return;
+        }
         const reserved = await reserveAiCredit({ userId, apiBaseUrl });
         setCredits(reserved);
         if (!reserved?.allowed || !reserved.reservationId) {
+          setAiModalOpen(false);
           setHint(reserveFailureMessage(reserved?.reason));
           setAiStarting(false);
           return;
         }
         reservationId = reserved.reservationId;
+        aiReservationIdRef.current = reservationId;
       }
-      // Pass ids directly — App must not re-read manualEntryPayload (stale closure).
-      onStartBackgroundAi?.({ reservationId, captureId, imageBase64, userId });
-      exit();
-    } catch (err) {
-      setHint(err?.message || 'Could not start AI — pick a type below.');
-      setAiStarting(false);
-    }
-  }, [userId, imageBase64, captureId, creditsEnabled, apiBaseUrl, onStartBackgroundAi, exit]);
 
-  // Lunch window + remaining AI credits → auto-start detection (no button).
-  // Breakfast / dinner / exhausted credits stay on manual Log-as.
-  // Diary re-classify (discardCaptureOnCancel=false) stays manual — no surprise AI.
-  useEffect(() => {
-    if (!discardCaptureOnCancel) return undefined;
-    if (!captureReady || !userId || !imageBase64) return undefined;
-    if (lunchAutoAttemptedRef.current) return undefined;
-    if (aiStarting || pendingAi || closingWithoutLog) return undefined;
-    if (creditsEnabled && (creditsLoading || credits == null)) return undefined;
+      if (aiCancelledRef.current) {
+        if (creditsEnabled && reservationId) {
+          await releaseReservedAiCredit({
+            userId,
+            reservationId,
+            apiBaseUrl,
+            reason: 'manual_ai_cancelled',
+          });
+        }
+        setAiStarting(false);
+        return;
+      }
 
-    let cancelled = false;
-
-    (async () => {
-      const windows = await prefetchTimeWindows();
-      if (cancelled || lunchAutoAttemptedRef.current) return;
-
-      const decision = decideLunchAutoAi({
-        now: new Date(),
-        lunchWindow: windows?.lunch ?? null,
-        creditStatus: creditsEnabled ? credits : null,
-        creditsFlagEnabled: creditsEnabled,
-        timezoneIana: credits?.timezoneIana,
+      const file = base64ToImageFile(imageBase64);
+      const detectedType = await analyzeImage(file, {
+        captureId: String(captureId),
+        userId: userId ? String(userId) : null,
+        userName: userName || null,
+        userEmail: userEmail || null,
+        reservationId,
+        creditGated: Boolean(creditsEnabled && !!reservationId),
       });
 
-      if (!decision.shouldAutoAi) return;
-      lunchAutoAttemptedRef.current = true;
-      void startAiAnalyze();
-    })();
+      if (aiCancelledRef.current) {
+        if (creditsEnabled && reservationId) {
+          await releaseReservedAiCredit({
+            userId,
+            reservationId,
+            apiBaseUrl,
+            reason: 'manual_ai_cancelled_after_orchestrate',
+          });
+        }
+        setAiStarting(false);
+        return;
+      }
 
-    return () => {
-      cancelled = true;
-    };
+      const creditPayload = {
+        imageType: detectedType.type,
+        type: detectedType.type,
+        confidence: detectedType.confidence,
+        defaulted: detectedType.details?.defaulted === true,
+        error: detectedType.details?.error || null,
+        details: detectedType.details,
+        fastNutrition: detectedType.fastNutrition,
+      };
+      const settleCredit = async () => {
+        if (!creditsEnabled || !reservationId) return;
+        await confirmAiCredit({
+          userId,
+          reservationId,
+          analysisResult: creditPayload,
+          apiBaseUrl,
+        }).catch(() => {});
+        aiReservationIdRef.current = null;
+      };
+      const releaseCredit = async (reason) => {
+        if (!creditsEnabled || !reservationId) return;
+        await releaseReservedAiCredit({
+          userId,
+          reservationId,
+          apiBaseUrl,
+          reason,
+        });
+        aiReservationIdRef.current = null;
+      };
+
+      if (detectedType.type === 'food' && hasRecognizedFood(detectedType.details)) {
+        await settleCredit();
+        const analysis = buildAnalysisFromGeminiAnalysis(detectedType.details);
+        setAiAnalysisResult(analysis);
+        setAiModalStage('saving');
+        setAiStarting(false);
+        // Auto-save and open NutritionCard on Home (no Save / Edit manually).
+        void persistAiFoodRef.current?.(analysis);
+        return;
+      }
+
+      if (detectedType.type === 'food') {
+        await releaseCredit('manual_ai_food_unrecognized');
+        setAiModalStage('unidentified');
+        setAiStarting(false);
+        return;
+      }
+
+      // Non-food result on Manual Log food-AI path — fall back to manual.
+      await releaseCredit('manual_ai_not_food');
+      setAiModalStage('unidentified');
+      setAiStarting(false);
+    } catch (err) {
+      if (creditsEnabled && reservationId) {
+        await releaseReservedAiCredit({
+          userId,
+          reservationId,
+          apiBaseUrl,
+          reason: 'manual_ai_orchestrate_failed',
+        }).catch(() => {});
+        aiReservationIdRef.current = null;
+      }
+      if (!aiCancelledRef.current) {
+        setAiModalError(err?.message || null);
+        setAiModalStage('failed');
+      }
+      setAiStarting(false);
+    }
   }, [
-    discardCaptureOnCancel,
-    captureReady,
+    userId,
+    imageBase64,
+    captureId,
+    creditsEnabled,
+    credits,
+    apiBaseUrl,
+    userName,
+    userEmail,
+    aiModalOpen,
+    aiModalStage,
+  ]);
+
+  const handleAiModalCancel = useCallback(() => {
+    aiCancelledRef.current = true;
+    const reservationId = aiReservationIdRef.current;
+    setAiModalOpen(false);
+    setAiStarting(false);
+    setAiSaving(false);
+    setAiAnalysisResult(null);
+    setAiModalError(null);
+    if (creditsEnabled && reservationId && userId) {
+      void releaseReservedAiCredit({
+        userId,
+        reservationId,
+        apiBaseUrl,
+        reason: 'manual_ai_modal_closed',
+      });
+      aiReservationIdRef.current = null;
+    }
+  }, [creditsEnabled, userId, apiBaseUrl]);
+
+  /** Auto-save AI food → Home NutritionCard (totals + items) + tell-in-chat. */
+  const persistAiFoodAndShowOnHome = useCallback(async (analysisToSave) => {
+    if (!analysisToSave || !captureId || !userId) return;
+    setAiSaving(true);
+    setAiModalStage('saving');
+    try {
+      const result = await promoteUnknownToFood({
+        captureId,
+        viewerUserId: userId,
+        analysisResult: analysisToSave,
+        originalCapturedAt: originalCapturedAt || null,
+      });
+      seedMealAfterPromotion({
+        ownerUserId: userId,
+        result,
+        analysisResult: analysisToSave,
+        capturedAt: originalCapturedAt || null,
+      });
+      refreshAfterPersist('manual-ai-food-saved');
+
+      const cardData = analysisResultToNutritionCardData(analysisToSave);
+      const mealId = extractMealIdFromPromotionResult(result);
+      const foodName = analysisToSave?.foods?.[0]?.name || 'Food';
+      const foodItems = extractFoodShareItems(analysisToSave);
+      const n = analysisToSave?.total || {};
+      const activityCaption = buildDiaryShareSuffix('food', {
+        foodName,
+        foodItems,
+        calories: n.calories ?? 0,
+        protein: n.protein ?? 0,
+        carbs: n.carbs ?? 0,
+        fat: n.fat ?? 0,
+        fiber: n.fiber ?? 0,
+        glycemicIndex: n.glycemic_index ?? n.glycemicIndex ?? null,
+      });
+
+      setAiModalOpen(false);
+      setAiSaving(false);
+      onToast?.('Food saved');
+      exit({
+        activityCaption,
+        shareImage: imageBase64,
+        aiHomeResult: cardData
+          ? {
+              cardData,
+              imageBase64,
+              mealId,
+              foodNames: (analysisToSave.foods || [])
+                .map((f) => f?.name)
+                .filter(Boolean),
+            }
+          : null,
+      });
+    } catch (err) {
+      setAiModalError(err?.message || "Couldn't save — please try again.");
+      setAiModalStage('failed');
+      setAiSaving(false);
+    }
+  }, [
+    captureId,
+    userId,
+    originalCapturedAt,
+    refreshAfterPersist,
+    onToast,
+    imageBase64,
+  ]);
+
+  persistAiFoodRef.current = persistAiFoodAndShowOnHome;
+
+  const handleAiModalManual = useCallback(() => {
+    setAiModalOpen(false);
+    setAiStarting(false);
+    setAiSaving(false);
+    setAiAnalysisResult(null);
+    setActiveForm(MANUAL_LOG_CATEGORY.FOOD);
+  }, []);
+
+  /**
+   * Food tile only: start AI when eligible + meal window; otherwise manual food search.
+   * Weight / education / other categories never call this.
+   */
+  const openFoodWithOptionalAi = useCallback(async () => {
+    if (!userId || !imageBase64) {
+      openCategory(MANUAL_LOG_CATEGORY.FOOD);
+      return;
+    }
+    if (!creditsEnabled) {
+      openCategory(MANUAL_LOG_CATEGORY.FOOD);
+      return;
+    }
+    if (creditsLoading || credits == null) {
+      openCategory(MANUAL_LOG_CATEGORY.FOOD);
+      return;
+    }
+
+    const windows = await prefetchTimeWindows();
+    const decision = decideLunchAutoAi({
+      now: new Date(),
+      lunchWindow: windows?.lunch ?? null,
+      dinnerWindow: windows?.dinner ?? null,
+      creditStatus: credits,
+      creditsFlagEnabled: creditsEnabled,
+      timezoneIana: credits?.timezoneIana,
+    });
+
+    if (!decision.shouldAutoAi) {
+      if (decision.reason === 'not-eligible-downline') {
+        setHint(reserveFailureMessage('not_eligible_downline'));
+      } else if (
+        decision.reason === 'outside-meal-window'
+        || decision.reason === 'outside-lunch'
+      ) {
+        setHint(reserveFailureMessage('outside_ai_window'));
+      }
+      openCategory(MANUAL_LOG_CATEGORY.FOOD);
+      return;
+    }
+
+    setHint(null);
+    void startAiAnalyze();
+  }, [
     userId,
     imageBase64,
     creditsEnabled,
     creditsLoading,
     credits,
-    aiStarting,
-    pendingAi,
-    closingWithoutLog,
+    openCategory,
     startAiAnalyze,
   ]);
 
   const handleCategoryClick = (id) => {
     if (closingWithoutLog) return;
-    // Queued Auto Detect can still be switched to a Log-as type.
-    if (aiStarting && !pendingAi) return;
+    // Block other taps while AI modal is analysing.
+    if (aiStarting && !pendingFoodAi) return;
     if (!captureReady) {
-      setPendingLogAsId(id);
-      setPendingAi(false);
+      if (id === MANUAL_LOG_CATEGORY.FOOD) {
+        setPendingFoodAi(true);
+        setPendingLogAsId(null);
+      } else {
+        setPendingLogAsId(id);
+        setPendingFoodAi(false);
+      }
       setAiStarting(false);
+      return;
+    }
+    if (id === MANUAL_LOG_CATEGORY.FOOD) {
+      void openFoodWithOptionalAi();
       return;
     }
     openCategory(id);
   };
 
-  // Flush queued Log-as once the background capture POST finishes.
+  // Flush queued Log-as / Food AI once the background capture POST finishes.
   useEffect(() => {
     if (!captureReady) return;
+    if (pendingFoodAi) {
+      setPendingFoodAi(false);
+      void openFoodWithOptionalAi();
+      return;
+    }
     if (pendingLogAsId) {
       const id = pendingLogAsId;
       setPendingLogAsId(null);
-      openCategory(id);
-      return;
+      if (id === MANUAL_LOG_CATEGORY.FOOD) {
+        void openFoodWithOptionalAi();
+      } else {
+        openCategory(id);
+      }
     }
-    if (pendingAi) {
-      setPendingAi(false);
-      void startAiAnalyze();
-    }
-  }, [captureReady, pendingLogAsId, pendingAi, openCategory, startAiAnalyze]);
+  }, [captureReady, pendingLogAsId, pendingFoodAi, openCategory, openFoodWithOptionalAi]);
 
   const closeFoodSearch = () => {
     setFoodEntryMeta(null);
@@ -781,7 +1057,7 @@ export default function ManualEntryPage({
 
   // Don't treat credits as available until status has loaded — avoids green CTA flash then lock.
   const aiTemporarilyBusy = creditsEnabled && creditUi.phase === 'busy';
-  const logAsDisabled = closingWithoutLog || (aiStarting && !pendingAi);
+  const logAsDisabled = closingWithoutLog || (aiStarting && !pendingFoodAi);
 
   return (
     <div className="fixed inset-0 z-40 flex flex-col" style={{ background: BRAND.pageBg }}>
@@ -792,8 +1068,8 @@ export default function ManualEntryPage({
             What is this image?
           </h1>
           <p className="text-[11px] leading-snug text-green-600 min-[360px]:text-xs">
-            {aiStarting && !pendingAi
-              ? 'Starting AI detection…'
+            {aiStarting && !pendingFoodAi
+              ? 'Starting AI food analysis…'
               : 'Select one button below — Weight, Afresh, Food…'}
           </p>
         </div>
@@ -849,7 +1125,9 @@ export default function ManualEntryPage({
             {CATEGORIES.filter((cat) => goodHabitEnabled || cat.id !== MANUAL_LOG_CATEGORY.GOOD_HABIT).map(({ id, Icon, src, label, isImgIcon }) => {
               // iOS WebView often blanks custom emoji SVGs — use Lucide for Workout.
               const useLucideOnIos = id === MANUAL_LOG_CATEGORY.SMARTWATCH && isIOS() && Icon;
-              const isPending = pendingLogAsId === id;
+              const isPending =
+                pendingLogAsId === id
+                || (id === MANUAL_LOG_CATEGORY.FOOD && pendingFoodAi);
               return (
               <button
                 key={id}
@@ -894,7 +1172,7 @@ export default function ManualEntryPage({
         <button
           type="button"
           onClick={handleCloseWithoutLog}
-          disabled={closingWithoutLog || (aiStarting && !pendingAi)}
+          disabled={closingWithoutLog || (aiStarting && !pendingFoodAi)}
           className={`safe-bottom log-as-btn log-as-btn--idle inline-flex w-full shrink-0 items-center justify-center gap-2 rounded-xl border-2 py-3 text-sm font-bold shadow-[0_3px_0_0_rgba(0,0,0,0.08)] transition-[transform,box-shadow] duration-150 active:translate-y-[2px] disabled:opacity-50 min-[360px]:py-3.5 ${
             discardCaptureOnCancel
               ? 'border-red-200 bg-gradient-to-b from-white to-red-50/40 text-red-600 shadow-[0_3px_0_0_rgba(220,38,38,0.2)] active:shadow-[0_1px_0_0_rgba(220,38,38,0.18)]'
@@ -952,7 +1230,7 @@ export default function ManualEntryPage({
         onSave={handleEducationSave}
         skipTypeSelect
         formTitle="Education"
-        formSubtitle="Choose platform and meeting session"
+        formSubtitle="Select the meeting and platform you’re using"
       />
       <ShakeCalculatorModal
         isOpen={activeForm === MANUAL_LOG_CATEGORY.SHAKE}
@@ -979,7 +1257,7 @@ export default function ManualEntryPage({
       <ServingStepperModal
         isOpen={activeForm === MANUAL_LOG_CATEGORY.WATER}
         title="Water"
-        subtitle="How much you drank so far today"
+        subtitle="How much you consumed so far today"
         iconSrc="/water.svg"
         unitLabel=""
         min={waterTodayMl}
@@ -1023,6 +1301,18 @@ export default function ManualEntryPage({
           />
         </div>
       )}
+
+      <ManualFoodAiAnalysisModal
+        open={aiModalOpen}
+        stage={aiModalStage}
+        imageBase64={imageBase64}
+        errorMessage={aiModalError}
+        onCancel={handleAiModalCancel}
+        onRetry={() => {
+          void startAiAnalyze();
+        }}
+        onManualLog={handleAiModalManual}
+      />
     </div>
   );
 }

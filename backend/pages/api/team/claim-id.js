@@ -1,29 +1,30 @@
 ﻿/**
  * Claim Team ID
  * POST /api/team/claim-id
- * 
- * Allows authenticated user to claim an available Team ID
- * Updates team_table.TeamId for the user
- * 
- * Note: coach_teams_table entry is created later during OTP validation
- * when the user is approved by their coach (see validate-otp.js)
+ *
+ * Allows user to claim an available Team ID (Sponsor / Co-Sponsor seat).
+ * Updates team_table.TeamId.
+ *
+ * During onboarding (no CoachId yet): coach_teams seat is finalized at OTP.
+ * After setup (already has CoachId): assigns lead seat immediately and sets CoachTeamId.
  */
 
 import { getSupabaseClient } from '../../../utils/supabaseClient.js';
+import { assignLeadSeat } from '../../../utils/coachTeamSeats.js';
 
 export default async function handler(req, res) {
   // Handle CORS
   if (req.method === 'OPTIONS') {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, authorization');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, authorization, X-App-Version, X-App-Version-Code, X-App-Platform');
     res.status(200).end();
     return;
   }
 
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, authorization');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, authorization, X-App-Version, X-App-Version-Code, X-App-Platform');
 
   // Only allow POST requests
   if (req.method !== 'POST') {
@@ -70,10 +71,10 @@ export default async function handler(req, res) {
     // Connect to Supabase
     const supabase = getSupabaseClient();
 
-    // Check if user exists and get their current TeamId and Role
+    // Check if user exists and get their current TeamId / activation state
     let userQuery = supabase
       .from('team_table')
-      .select('UserId, TeamId, Role');
+      .select('UserId, TeamId, Role, CoachId, Status');
     if (uid && Number.isFinite(uid)) {
       userQuery = userQuery.eq('UserId', uid);
     } else {
@@ -93,9 +94,36 @@ export default async function handler(req, res) {
 
     const user = userRows[0];
     const currentUserId = user.UserId;
+    const alreadyActivated = !!user.CoachId;
 
     // If user already has this same TeamId, just proceed (they're continuing setup)
     if (user.TeamId && user.TeamId === teamId) {
+      // Post-setup: ensure lead seat exists if they somehow have TeamId without a seat
+      if (alreadyActivated) {
+        const seatResult = await assignLeadSeat(supabase, teamId, currentUserId);
+        if (!seatResult.ok) {
+          res.status(409).json({
+            success: false,
+            error: seatResult.error || 'Team is full',
+            status: 'taken',
+          });
+          return;
+        }
+        await supabase
+          .from('team_table')
+          .update({ CoachTeamId: teamId })
+          .eq('UserId', currentUserId);
+        res.status(200).json({
+          success: true,
+          message: 'Team ID already assigned to you',
+          teamId,
+          alreadyOwned: true,
+          seat: seatResult.seat === 'already' ? undefined : seatResult.seat,
+          finalized: true,
+        });
+        return;
+      }
+
       res.status(200).json({
         success: true,
         message: 'Team ID already assigned to you',
@@ -140,7 +168,7 @@ export default async function handler(req, res) {
     let isReactivatingTeam = false;
 
     if (existingTeamId && existingTeamId.length > 0) {
-      // TeamId exists in team_table - check coach_teams_table
+      // TeamId exists on other users — check coach_teams_table / pending claims
       if (activeCoachTeams.length > 0) {
         const team = activeCoachTeams[0];
         
@@ -148,31 +176,56 @@ export default async function handler(req, res) {
         if (team.CoachId && team.CoCoachId) {
           res.status(409).json({
             success: false,
-            error: 'This Team ID is already taken (2 coaches)',
+            error: 'This Team ID is already taken (Sponsor and Co-Sponsor)',
             status: 'taken'
           });
           return;
         }
-        // If only 1 slot filled, allow joining as co-coach
+        // If only 1 slot filled, allow joining as Co-Sponsor
         isJoiningExistingTeam = true;
       } else if (allCoachTeams && allCoachTeams.length > 0 && allCoachTeams[0].Status === 'inactive') {
         // Team exists but is inactive - allow reactivation
         isReactivatingTeam = true;
+      } else if (existingTeamId.length === 1) {
+        // First lead claimed TeamId but OTP not done yet (no coach_teams row) — Co-Sponsor OK
+        isJoiningExistingTeam = true;
       } else {
-        // TeamId exists but not in coach_teams_table at all
+        // Two+ other users already claimed this code
         res.status(409).json({
           success: false,
-          error: 'This Team ID is already taken',
-          status: 'taken-by-other'
+          error: 'This Team ID is full (Sponsor and Co-Sponsor already assigned)',
+          status: 'taken'
         });
         return;
       }
     }
 
-    // Update user's Team ID using Supabase
+    // Post-setup claim: assign Sponsor/Co-Sponsor seat immediately (race-safe)
+    let finalizedSeat = isJoiningExistingTeam ? 'co-sponsor' : 'sponsor';
+    if (alreadyActivated) {
+      const seatResult = await assignLeadSeat(supabase, teamId, currentUserId);
+      if (!seatResult.ok) {
+        res.status(409).json({
+          success: false,
+          error: seatResult.error || 'Team is full',
+          status: 'taken',
+        });
+        return;
+      }
+      finalizedSeat = seatResult.seat === 'already'
+        ? (isJoiningExistingTeam ? 'co-sponsor' : 'sponsor')
+        : seatResult.seat;
+    }
+
+    // Update user's Team ID (+ CoachTeamId when already activated)
+    const updatePayload = { TeamId: teamId };
+    if (alreadyActivated) {
+      updatePayload.CoachTeamId = teamId;
+    }
+
     const { error: updateError } = await supabase
       .from('team_table')
-      .update({ TeamId: teamId })
+      .update(updatePayload)
       .eq('UserId', currentUserId);
 
     if (updateError) {
@@ -193,11 +246,21 @@ export default async function handler(req, res) {
 
     res.status(200).json({
       success: true,
-      message: isReactivatingTeam ? 'Team ID claimed (was inactive)' : isJoiningExistingTeam ? 'Team ID claimed (will join as co-coach)' : 'Team ID claimed successfully',
+      message: alreadyActivated
+        ? (finalizedSeat === 'co-sponsor'
+          ? 'Joined as Co-Sponsor'
+          : 'Team Code claimed — you are the Sponsor')
+        : isReactivatingTeam
+          ? 'Team ID claimed (was inactive)'
+          : isJoiningExistingTeam
+            ? 'Team ID claimed (will join as Co-Sponsor)'
+            : 'Team ID claimed successfully',
       teamId: teamId,
       joiningExisting: isJoiningExistingTeam,
       reactivated: isReactivatingTeam,
-      nextStep: 'search-coach'
+      seat: finalizedSeat,
+      finalized: alreadyActivated,
+      nextStep: alreadyActivated ? null : 'search-coach'
     });
     return;
 

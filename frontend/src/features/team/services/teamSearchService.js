@@ -19,12 +19,18 @@ export function isCoachRole(role) {
   return COACH_ROLES.has(String(role || '').toLowerCase());
 }
 
-/** True when role grants search or user coaches at least one team_table row. */
+/**
+ * True when role grants search, or backend says the user has team UI:
+ * own downline and/or Sponsor/Co-Sponsor lead seat.
+ */
 export function canUseTeamSearch(role, hasTeamMembers) {
   return isCoachRole(role) || Boolean(hasTeamMembers);
 }
 
-/** Check team_table: does any user list this userId as their CoachId? */
+/**
+ * Backend /api/team/has-members — true for own CoachId downline OR shared-team lead.
+ * Gates Diary / Programs search and Activity Mine-Direct-Full elevation.
+ */
 export async function fetchHasTeamMembers(userId) {
   if (!userId) return false;
   const key = cacheManager.generateKey('hasTeamMembers', String(userId));

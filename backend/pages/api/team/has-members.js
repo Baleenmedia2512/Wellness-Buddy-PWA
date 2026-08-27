@@ -1,13 +1,17 @@
 /**
- * Check if a user is a coach by team_table linkage.
+ * Check if a user should get team UI (search / Mine-Direct-Full).
  * GET /api/team/has-members?userId=123
  *
- * Returns true when any row in team_table has CoachId equal to the given userId.
- * Used by the frontend to grant coach capabilities (e.g. enrollment member search)
- * without relying on the Role column.
+ * True when:
+ * - any team_table row has CoachId = userId (own downline), OR
+ * - user is Sponsor / Co-Sponsor on an active coach_teams row
+ *   (shared-team lead — may have 0 own members but still sees partner roster UI)
+ *
+ * Used by Diary search, Programs enrollment search, Activity Report scope.
  */
 
 import { getSupabaseClient } from '../../../utils/supabaseClient.js';
+import { resolveLeadSeatForUser } from '../../../utils/coachTeamSeats.js';
 
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
@@ -56,9 +60,16 @@ export default async function handler(req, res) {
       return;
     }
 
+    const hasOwnDownline = (count ?? 0) > 0;
+    let isSharedLead = false;
+    if (!hasOwnDownline) {
+      const seat = await resolveLeadSeatForUser(supabase, userId);
+      isSharedLead = seat.seat === 'sponsor' || seat.seat === 'co-sponsor';
+    }
+
     res.status(200).json({
       success: true,
-      hasTeamMembers: (count ?? 0) > 0,
+      hasTeamMembers: hasOwnDownline || isSharedLead,
     });
   } catch (err) {
     console.error('[has-members] Server error:', err);
