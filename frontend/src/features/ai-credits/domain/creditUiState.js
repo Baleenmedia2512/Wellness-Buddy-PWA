@@ -4,7 +4,7 @@
  */
 
 /**
- * @typedef {'disabled'|'available'|'busy'|'exhausted'} AiCreditPhase
+ * @typedef {'disabled'|'outside_window'|'available'|'busy'|'exhausted'} AiCreditPhase
  */
 
 /**
@@ -12,6 +12,7 @@
  * - available: user can start AI now
  * - busy: slots held by in-flight AI (pending) — not consumed yet
  * - exhausted: today's detections fully used (confirmed charges)
+ * - outside_window: AI mode on but outside admin-enabled meal windows
  * - disabled: AI mode off or zero limit
  *
  * @param {object|null|undefined} status
@@ -26,6 +27,9 @@ export function getAiCreditUiState(status) {
 
   if (!status?.enabled || limit <= 0) {
     return { phase: 'disabled', used, limit, pending, remaining, leftToday: 0 };
+  }
+  if (status.availableInWindow === false) {
+    return { phase: 'outside_window', used, limit, pending, remaining, leftToday };
   }
   if (used >= limit) {
     return { phase: 'exhausted', used, limit, pending, remaining: 0, leftToday: 0 };
@@ -47,6 +51,8 @@ export function reserveFailureMessage(reason) {
     case 'daily_exhausted':
     case 'limit_reached':
       return 'You\'ve used today\'s AI detections — pick a type below. More unlock at midnight.';
+    case 'outside_window':
+      return 'AI detect is only available during configured meal times — pick a type below to log manually.';
     case 'disabled':
       return 'AI detect is unavailable right now — pick a type below to log manually.';
     default:
@@ -63,6 +69,7 @@ export function autoDetectButtonLabel(ui, { running = false } = {}) {
   if (running) return 'Starting…';
   if (ui.phase === 'busy') return 'Unavailable';
   if (ui.phase === 'exhausted') return 'Unlock on';
+  if (ui.phase === 'outside_window') return 'Meal times only';
   return 'Auto Detect';
 }
 
@@ -72,6 +79,7 @@ export function autoDetectButtonLabel(ui, { running = false } = {}) {
  */
 export function autoDetectButtonSubtitle(ui) {
   if (ui.phase === 'busy') return 'Try again later';
+  if (ui.phase === 'outside_window') return 'Outside AI window';
   return null;
 }
 
@@ -82,6 +90,7 @@ export function autoDetectButtonSubtitle(ui) {
 export function autoDetectCreditsBadge(ui) {
   if (ui.phase === 'disabled' || ui.limit <= 0) return null;
   if (ui.phase === 'exhausted') return null;
+  if (ui.phase === 'outside_window') return null;
   return `${ui.leftToday} of ${ui.limit} left today`;
 }
 
@@ -91,6 +100,8 @@ export function autoDetectCreditsBadge(ui) {
  */
 export function isAutoDetectEnabled(ui, { running = false, closing = false } = {}) {
   if (closing || running) return false;
-  if (ui.phase === 'disabled' || ui.phase === 'exhausted') return false;
+  if (ui.phase === 'disabled' || ui.phase === 'exhausted' || ui.phase === 'outside_window') {
+    return false;
+  }
   return true;
 }

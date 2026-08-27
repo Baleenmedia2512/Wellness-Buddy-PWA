@@ -43,14 +43,13 @@ import {
   reserveAiCredit,
   getAiCreditUiState,
   reserveFailureMessage,
-  decideLunchAutoAi,
+  decideMealWindowAutoAi,
 } from '../../features/ai-credits';
 import { fetchWaterIntake, todayLocal } from '../../features/water';
 import { isIOS } from '../../shared/utils/platform';
 import { buildDiaryShareSuffix, extractFoodShareItems } from '../../features/diary';
 import { useNutritionRefreshOptional } from '../../shared/context/NutritionRefreshContext';
 import { refreshDailyWellnessScoreAfterSave } from '../../features/wellness-score-sheet/services/refreshDailyWellnessScoreNow';
-import { prefetchTimeWindows } from '../../features/wellness-score-sheet/hooks/useTimeWindows';
 import GoodHabitFlow from './GoodHabitFlow';
 import { saveGoodHabit } from '../../features/good-habits';
 import {
@@ -469,6 +468,11 @@ export default function ManualEntryPage({
     try {
       let reservationId = null;
       if (creditsEnabled) {
+        if (credits?.availableInWindow === false) {
+          setHint(reserveFailureMessage('outside_window'));
+          setAiStarting(false);
+          return;
+        }
         const reserved = await reserveAiCredit({ userId, apiBaseUrl });
         setCredits(reserved);
         if (!reserved?.allowed || !reserved.reservationId) {
@@ -485,10 +489,10 @@ export default function ManualEntryPage({
       setHint(err?.message || 'Could not start AI — pick a type below.');
       setAiStarting(false);
     }
-  }, [userId, imageBase64, captureId, creditsEnabled, apiBaseUrl, onStartBackgroundAi, exit]);
+  }, [userId, imageBase64, captureId, creditsEnabled, credits, apiBaseUrl, onStartBackgroundAi, exit]);
 
-  // Lunch window + remaining AI credits → auto-start detection (no button).
-  // Breakfast / dinner / exhausted credits stay on manual Log-as.
+  // Admin-enabled meal window + remaining AI credits → auto-start detection.
+  // Outside windows / exhausted credits stay on manual Log-as.
   // Diary re-classify (discardCaptureOnCancel=false) stays manual — no surprise AI.
   useEffect(() => {
     if (!discardCaptureOnCancel) return undefined;
@@ -497,28 +501,17 @@ export default function ManualEntryPage({
     if (aiStarting || pendingAi || closingWithoutLog) return undefined;
     if (creditsEnabled && (creditsLoading || credits == null)) return undefined;
 
-    let cancelled = false;
+    const decision = decideMealWindowAutoAi({
+      now: new Date(),
+      creditStatus: creditsEnabled ? credits : null,
+      creditsFlagEnabled: creditsEnabled,
+      timezoneIana: credits?.timezoneIana,
+    });
 
-    (async () => {
-      const windows = await prefetchTimeWindows();
-      if (cancelled || lunchAutoAttemptedRef.current) return;
-
-      const decision = decideLunchAutoAi({
-        now: new Date(),
-        lunchWindow: windows?.lunch ?? null,
-        creditStatus: creditsEnabled ? credits : null,
-        creditsFlagEnabled: creditsEnabled,
-        timezoneIana: credits?.timezoneIana,
-      });
-
-      if (!decision.shouldAutoAi) return;
-      lunchAutoAttemptedRef.current = true;
-      void startAiAnalyze();
-    })();
-
-    return () => {
-      cancelled = true;
-    };
+    if (!decision.shouldAutoAi) return undefined;
+    lunchAutoAttemptedRef.current = true;
+    void startAiAnalyze();
+    return undefined;
   }, [
     discardCaptureOnCancel,
     captureReady,

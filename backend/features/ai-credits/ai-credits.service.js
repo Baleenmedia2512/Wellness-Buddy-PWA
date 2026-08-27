@@ -13,6 +13,11 @@ import {
   shouldDeductAiCredit,
   STALE_PENDING_RESERVATION_MS,
 } from './domain/credits.rules.js';
+import {
+  evaluateAiAvailability,
+  normalizeAvailabilityWindows,
+  hasAnyAvailabilitySlotEnabled,
+} from './domain/availability.rules.js';
 import * as repo from './data/ai-credits.repo.js';
 
 const REQUESTER_COLUMNS = '"UserId", "Role"';
@@ -34,6 +39,11 @@ async function loadDayContext(userId) {
   const usageDate = todayInTimezone(timezoneIana);
   const configRow = await repo.getLatestConfig();
   const config = repo.configOrDefault(configRow);
+  const availability = evaluateAiAvailability({
+    now: new Date(),
+    timezoneIana,
+    availabilityWindows: config.availabilityWindows,
+  });
   // Syncs credits_limit_snapshot to live admin config (mid-day changes take effect).
   const usage = await repo.ensureUsageRow(userId, usageDate, config.dailyAiCredits);
   await repo.expireStalePendingReservations(userId, usageDate, STALE_PENDING_RESERVATION_MS);
@@ -49,10 +59,12 @@ async function loadDayContext(userId) {
     pending,
     limit,
     used,
+    availability,
   };
 }
 
 function statusFromContext(ctx) {
+  const avail = ctx.availability || {};
   return buildStatus({
     enabled: ctx.config.aiModeEnabled,
     dailyLimit: ctx.limit,
@@ -60,6 +72,11 @@ function statusFromContext(ctx) {
     usageDate: ctx.usageDate,
     timezoneIana: ctx.timezoneIana,
     pendingReservations: ctx.pending,
+    availableInWindow: avail.availableInWindow !== false,
+    activeMealWindow: avail.activeMealWindow ?? null,
+    availabilityWindows: avail.availabilityWindows
+      ?? normalizeAvailabilityWindows(ctx.config.availabilityWindows),
+    anySlotEnabled: avail.anySlotEnabled !== false,
   });
 }
 
@@ -82,11 +99,14 @@ export async function reserveCredit({ userId }) {
     throw new ValidationError(400, 'userId is required');
   }
   const ctx = await loadDayContext(uid);
+  const effectiveEnabled = Boolean(ctx.config.aiModeEnabled)
+    && ctx.availability?.anySlotEnabled !== false;
   const gate = canReserve({
-    enabled: ctx.config.aiModeEnabled,
+    enabled: effectiveEnabled,
     dailyLimit: ctx.limit,
     used: ctx.used,
     pendingReservations: ctx.pending,
+    availableInWindow: ctx.availability?.availableInWindow !== false,
   });
   if (!gate.allowed) {
     const status = statusFromContext(ctx);
@@ -333,13 +353,18 @@ export async function getAdminConfig({ requesterUserId, requesterEmail }) {
   assertAiCreditsAdmin(requester);
   const row = await repo.getLatestConfig();
   const config = repo.configOrDefault(row);
+  const availabilityWindows = normalizeAvailabilityWindows(config.availabilityWindows);
+  // Display AI Mode as Off when no slots are enabled (even if DB flag was left true).
+  const aiModeEnabled = Boolean(config.aiModeEnabled)
+    && hasAnyAvailabilitySlotEnabled(availabilityWindows);
   return {
     httpStatus: 200,
     body: {
       ok: true,
       data: {
         dailyAiCredits: config.dailyAiCredits,
-        aiModeEnabled: config.aiModeEnabled,
+        aiModeEnabled,
+        availabilityWindows,
         updatedAt: config.updatedAt,
         updatedByUserId: config.updatedByUserId,
       },
@@ -352,14 +377,16 @@ export async function putAdminConfig({
   requesterEmail,
   dailyAiCredits,
   aiModeEnabled,
+  availabilityWindows,
 }) {
   const requester = await resolveRequester({ requesterUserId, requesterEmail });
   if (!requester) throw new ValidationError(404, 'Requester not found');
   assertAiCreditsAdmin(requester);
-  const normalized = normalizeConfig({ dailyAiCredits, aiModeEnabled });
+  const normalized = normalizeConfig({ dailyAiCredits, aiModeEnabled, availabilityWindows });
   const saved = await repo.insertConfig({
     dailyAiCredits: normalized.dailyAiCredits,
     aiModeEnabled: normalized.aiModeEnabled,
+    availabilityWindows: normalized.availabilityWindows,
     updatedByUserId: requester.UserId,
   });
   return {
@@ -369,6 +396,9 @@ export async function putAdminConfig({
       data: {
         dailyAiCredits: saved.daily_ai_credits,
         aiModeEnabled: saved.ai_mode_enabled,
+        availabilityWindows: normalizeAvailabilityWindows(
+          saved.availability_windows ?? normalized.availabilityWindows,
+        ),
         updatedAt: saved.updated_at,
         updatedByUserId: saved.updated_by_user_id,
       },

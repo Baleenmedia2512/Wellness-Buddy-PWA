@@ -10,31 +10,67 @@ export async function getLatestConfig() {
   const supabase = getSupabaseClient();
   const { data, error } = await supabase
     .from('ai_credits_config_table')
-    .select('id, daily_ai_credits, ai_mode_enabled, updated_at, updated_by_user_id')
+    .select('id, daily_ai_credits, ai_mode_enabled, availability_windows, updated_at, updated_by_user_id')
     .order('id', { ascending: false })
     .limit(1)
     .maybeSingle();
   if (error) {
+    // Column may not exist until migration runs — retry without it.
+    if (/availability_windows/i.test(error.message || '')) {
+      const fallback = await supabase
+        .from('ai_credits_config_table')
+        .select('id, daily_ai_credits, ai_mode_enabled, updated_at, updated_by_user_id')
+        .order('id', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (fallback.error) {
+        logger.error('[ai-credits.repo] config fetch failed', { err: fallback.error.message });
+        return null;
+      }
+      return fallback.data;
+    }
     logger.error('[ai-credits.repo] config fetch failed', { err: error.message });
     return null;
   }
   return data;
 }
 
-export async function insertConfig({ dailyAiCredits, aiModeEnabled, updatedByUserId }) {
+export async function insertConfig({
+  dailyAiCredits,
+  aiModeEnabled,
+  availabilityWindows,
+  updatedByUserId,
+}) {
   const supabase = getSupabaseClient();
   const now = nowUtc();
+  const row = {
+    daily_ai_credits: dailyAiCredits,
+    ai_mode_enabled: aiModeEnabled,
+    updated_at: now,
+    updated_by_user_id: updatedByUserId ?? null,
+  };
+  if (availabilityWindows != null) {
+    row.availability_windows = availabilityWindows;
+  }
   const { data, error } = await supabase
     .from('ai_credits_config_table')
-    .insert({
-      daily_ai_credits: dailyAiCredits,
-      ai_mode_enabled: aiModeEnabled,
-      updated_at: now,
-      updated_by_user_id: updatedByUserId ?? null,
-    })
-    .select('id, daily_ai_credits, ai_mode_enabled, updated_at, updated_by_user_id')
+    .insert(row)
+    .select('id, daily_ai_credits, ai_mode_enabled, availability_windows, updated_at, updated_by_user_id')
     .single();
-  if (error) throw error;
+  if (error) {
+    // Pre-migration DB: insert without the new column.
+    if (/availability_windows/i.test(error.message || '')) {
+      const { availability_windows: _omit, ...legacyRow } = row;
+      const legacy = await supabase
+        .from('ai_credits_config_table')
+        .insert(legacyRow)
+        .select('id, daily_ai_credits, ai_mode_enabled, updated_at, updated_by_user_id')
+        .single();
+      if (legacy.error) throw legacy.error;
+      return legacy.data;
+    }
+    throw error;
+  }
   return data;
 }
 
@@ -42,6 +78,7 @@ export function configOrDefault(row) {
   return {
     dailyAiCredits: row?.daily_ai_credits ?? DEFAULT_DAILY_AI_CREDITS,
     aiModeEnabled: row?.ai_mode_enabled ?? DEFAULT_AI_MODE_ENABLED,
+    availabilityWindows: row?.availability_windows ?? null,
     updatedAt: row?.updated_at ?? null,
     updatedByUserId: row?.updated_by_user_id ?? null,
   };
