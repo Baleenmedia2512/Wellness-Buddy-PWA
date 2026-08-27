@@ -1000,7 +1000,13 @@ function MemberCard({
     };
 
     const finishSubmit = async (result) => {
-      const otpSent = result?.otpSent !== false;
+      // Prefer explicit otpSent from API; fall back to pending OTP fields if older responses omit it.
+      const otpSent = result?.otpSent === true
+        || (result?.otpSent == null && Boolean(
+          result?.testimonial?.hasPendingOtp
+          || result?.testimonial?.otpPending
+          || result?.otpExpiresAt,
+        ));
       const patched = result?.testimonial
         ? {
             ...result.testimonial,
@@ -1008,10 +1014,8 @@ function MemberCard({
             otpExpiresAt: result.otpExpiresAt ?? result.testimonial.otpExpiresAt ?? null,
             otpValidityHours: result.otpValidityHours ?? result.testimonial.otpValidityHours ?? 24,
             otpExpired: false,
-            hasPendingOtp: otpSent && (
-              needsOtpUi
-              || Boolean(result.testimonial.hasPendingOtp)
-              || Boolean(result.testimonial.otpPending)
+            hasPendingOtp: otpSent || Boolean(
+              result.testimonial.hasPendingOtp || result.testimonial.otpPending,
             ),
           }
         : null;
