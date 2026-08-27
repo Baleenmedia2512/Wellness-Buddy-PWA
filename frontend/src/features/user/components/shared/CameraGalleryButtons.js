@@ -2,7 +2,14 @@
 import React from 'react';
 import { Camera, Upload } from 'lucide-react';
 
-const CameraGalleryButtons = ({ onCameraSelect, onGallerySelect, disabled, layout = 'wide' }) => {
+const CameraGalleryButtons = ({
+  onCameraSelect,
+  onGallerySelect,
+  /** If set, Take Photo calls this instead of opening the file/camera input. */
+  onCameraClick = null,
+  disabled,
+  layout = 'wide',
+}) => {
   const cameraRef = React.useRef(null);
   const galleryRef = React.useRef(null);
   const inSlot = layout === 'inSlot';
@@ -24,8 +31,15 @@ const CameraGalleryButtons = ({ onCameraSelect, onGallerySelect, disabled, layou
           onGallerySelect?.(e.target.files?.[0]);
           e.target.value = '';
         }} className="hidden" />
-      <button type="button" disabled={disabled} onClick={() => cameraRef.current?.click()}
-        className={`${baseBtn} border-blue-300 text-blue-600 hover:bg-blue-50`}>
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => {
+          if (onCameraClick) onCameraClick();
+          else cameraRef.current?.click();
+        }}
+        className={`${baseBtn} border-blue-300 text-blue-600 hover:bg-blue-50`}
+      >
         <Camera className={layout === 'compact' ? 'w-6 h-6' : inSlot ? 'w-7 h-7 mb-1.5' : 'w-8 h-8 mb-2'} />
         <span className={layout === 'compact' ? '' : `text-sm font-medium text-blue-700 ${inSlot ? 'text-xs' : ''}`}>Take Photo</span>
       </button>

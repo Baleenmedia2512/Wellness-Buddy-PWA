@@ -44,6 +44,28 @@ export default function useTransformationPhotos() {
     setPendingSlots((prev) => ({ ...prev, [slot]: dataUrl }));
   }, []);
 
+  const applyGuidedSlots = useCallback(async (slots = {}) => {
+    const nextPreviews = { ...EMPTY_SLOTS };
+    const nextPending = { ...EMPTY_SLOTS };
+    for (const key of TRANSFORMATION_COMPARE_TYPES) {
+      const value = slots[key];
+      if (typeof value === 'string' && value.startsWith('data:image/')) {
+        nextPreviews[key] = value;
+        nextPending[key] = value;
+      }
+    }
+    setPreviews((prev) => ({
+      front: nextPreviews.front || prev.front,
+      left: nextPreviews.left || prev.left,
+      right: nextPreviews.right || prev.right,
+    }));
+    setPendingSlots((prev) => ({
+      front: nextPending.front || prev.front,
+      left: nextPending.left || prev.left,
+      right: nextPending.right || prev.right,
+    }));
+  }, []);
+
   const history = useMemo(
     () => historyFromLatestSlots(previews, snapshotWeightKg),
     [previews, snapshotWeightKg],
@@ -73,6 +95,7 @@ export default function useTransformationPhotos() {
     loadFromTestimonial,
     setSnapshotWeight,
     setSlotFromFile,
+    applyGuidedSlots,
     payloadExtras,
     leftImageBase64,
   };

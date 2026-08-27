@@ -20,6 +20,7 @@
     "@capawesome/capacitor-android-edge-to-edge-support": "^8.0.8",
     "@capgo/capacitor-navigation-bar": "^8.2.6",
     "@ionic/react": "^8.6.4",
+    "@mediapipe/tasks-vision": "^1.0.1",
     "@southdevs/capacitor-google-auth": "^7.0.0",
     "axios": "^1.13.2",
     "date-fns": "^2.30.0",
