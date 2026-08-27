@@ -41,6 +41,7 @@ import {
   isCaptureFlowBusy,
   subscribeCaptureFlowBusy,
 } from '../../../shared/services/captureFlowBusy';
+import { parseNumericDbUserId, readNumericDbUserId } from '../../../shared/services/numericDbUserId';
 
 const EMPTY_NUTRITION = {
   dailyStats: EMPTY_DAILY_STATS,
@@ -274,13 +275,24 @@ export function useHomeCarouselData({
     const placeholderNutrition = { ...EMPTY_NUTRITION, dayCount: dates.length };
 
     try {
-      // Resolve userId once and reuse — avoids an extra await on every range tap.
-      let userId = resolvedUserIdRef.current;
+      // Prefer numeric team_table id; never keep a Firebase uid in the ref.
+      const knownId = readNumericDbUserId(user);
+      let userId = knownId || resolvedUserIdRef.current;
+      if (knownId && parseNumericDbUserId(resolvedUserIdRef.current) !== knownId) {
+        resolvedUserIdRef.current = knownId;
+        userId = knownId;
+      }
       if (!userId) {
         setLoading(true);
         userId = await resolveUserId();
         if (requestId !== requestIdRef.current) return;
-        if (userId) resolvedUserIdRef.current = userId;
+        const numericResolved = parseNumericDbUserId(userId);
+        if (numericResolved) {
+          resolvedUserIdRef.current = numericResolved;
+          userId = numericResolved;
+        } else if (userId) {
+          resolvedUserIdRef.current = userId;
+        }
       }
 
       if (!userId) {

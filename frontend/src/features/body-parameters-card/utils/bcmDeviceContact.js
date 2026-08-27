@@ -16,10 +16,12 @@ import { debugLog } from '../../../shared/utils/logger.js';
 import { buildBcmContactDisplayName } from '../domain/bcmContactName.rules.js';
 import { normalizePhoneDigits, phonesMatch } from '../domain/bcmContactPhone.rules.js';
 import * as PermissionManager from '../../../shared/services/permissionManager.js';
+import BcmContacts from '../../../shared/plugins/bcmContactsPlugin.js';
 import {
   isBcmContactsNeverAsk,
   promptBcmContactsEnable,
 } from './bcmContactsEnablePrompt.js';
+
 
 export { buildBcmContactDisplayName, formatBcmContactDate } from '../domain/bcmContactName.rules.js';
 export { normalizePhoneDigits, phonesMatch } from '../domain/bcmContactPhone.rules.js';
@@ -87,25 +89,6 @@ function looksLikeBcmContact(contact) {
   const note = String(contact?.note || '');
   if (note.includes(BCM_CONTACT_NOTE)) return true;
   return BCM_NAME_DATE_RE.test(contactDisplayName(contact));
-}
-
-/**
- * TEMP debug (OPPO F29 Pro): show createContact failure on device screen.
- * Remove once the OEM Contacts issue is diagnosed.
- */
-function showBcmContactSaveFailedAlert(details) {
-  try {
-    const text = typeof details === 'string'
-      ? details
-      : Object.entries(details || {})
-        .filter(([, v]) => v != null && v !== '')
-        .map(([k, v]) => `${k}: ${v}`)
-        .join('\n');
-    // eslint-disable-next-line no-alert -- temporary BCM contact debug on OPPO F29 Pro
-    window.alert(`BCM Contact Save Failed\n\n${text || '(no details)'}`);
-  } catch {
-    /* ignore alert failures */
-  }
 }
 
 /** Pull message/code from Capacitor / plugin Error shapes. */
@@ -199,6 +182,26 @@ async function findBcmContactIds(phone) {
 }
 
 /**
+ * Android: OEM-safe native insert. iOS: community Contacts plugin.
+ */
+async function createBcmDeviceContact({ displayName, phone }) {
+  if (Capacitor.getPlatform() === 'android') {
+    return BcmContacts.createContact({
+      displayName,
+      phone,
+      note: BCM_CONTACT_NOTE,
+    });
+  }
+  return Contacts.createContact({
+    contact: {
+      name: { given: displayName },
+      note: BCM_CONTACT_NOTE,
+      phones: [{ type: PhoneType?.Mobile ?? 'mobile', number: phone }],
+    },
+  });
+}
+
+/**
  * Create or overwrite device contact for a BCM member (venue/name/date changes).
  * @param {{
  *   name?: string|null,
@@ -230,7 +233,7 @@ export async function upsertBcmMemberToDeviceContacts(opts = {}) {
 
   try {
     const nativeOk = await PermissionManager.isContactsNativeAvailable();
-    if (!nativeOk) {
+    if (!nativeOk && Capacitor.getPlatform() !== 'android') {
       console.error(
         '[BCM contact] Native Contacts plugin missing — rebuild iOS after: npx cap sync ios && pod install',
       );
@@ -246,45 +249,30 @@ export async function upsertBcmMemberToDeviceContacts(opts = {}) {
     }
 
     const existingIds = await findBcmContactIds(phone);
-    let updated = false;
-
-    for (const contactId of existingIds) {
-      try {
-        await Contacts.deleteContact({ contactId });
-        updated = true;
-      } catch (err) {
-        console.warn('[BCM contact] delete failed', contactId, err?.message || err);
-      }
-    }
-    if (existingIds.length) clearStoredContactId(phone);
+    let updated = existingIds.length > 0;
 
     let createResult;
     try {
-      createResult = await Contacts.createContact({
-        contact: {
-          name: { given: displayName },
-          note: BCM_CONTACT_NOTE,
-          phones: [{ type: PhoneType?.Mobile ?? 'mobile', number: phone }],
-        },
-      });
+      createResult = await createBcmDeviceContact({ displayName, phone });
     } catch (createErr) {
       const formatted = formatCreateContactError(createErr);
       console.warn('[BCM contact] upsert failed', formatted.message, formatted);
       debugLog('📱 [BCM contact] upsert failed', formatted);
-      showBcmContactSaveFailedAlert({
-        platform: Capacitor.getPlatform(),
-        permissionGranted: allowed,
-        message: formatted.message,
-        code: formatted.code,
-        name: formatted.name,
-        raw: formatted.raw,
-      });
-      const denied = /permission|denied|not authorized|access/i.test(formatted.message);
+      const denied = /permission|denied|not authorized|access|WRITE_CONTACTS/i.test(formatted.message);
       return {
         ok: false,
         skipped: true,
         reason: denied ? 'permission' : (formatted.message || 'error'),
       };
+    }
+
+    if (createResult?.openedEditor) {
+      console.warn('[BCM contact] opened system contact editor', {
+        displayName,
+        phoneTail: phone.slice(-4),
+        permissionGranted: allowed,
+      });
+      return { ok: true, updated, openedEditor: true };
     }
 
     const contactId = createResult?.contactId;
@@ -295,19 +283,6 @@ export async function upsertBcmMemberToDeviceContacts(opts = {}) {
         permissionGranted: allowed,
         createResult,
       });
-      let rawResult = '';
-      try {
-        rawResult = JSON.stringify(createResult ?? null);
-      } catch {
-        rawResult = String(createResult);
-      }
-      showBcmContactSaveFailedAlert({
-        platform: Capacitor.getPlatform(),
-        permissionGranted: allowed,
-        message: 'createContact returned no contactId',
-        code: '(none)',
-        raw: rawResult,
-      });
       return {
         ok: false,
         skipped: true,
@@ -315,6 +290,15 @@ export async function upsertBcmMemberToDeviceContacts(opts = {}) {
       };
     }
 
+    for (const oldId of existingIds) {
+      if (String(oldId) === String(contactId)) continue;
+      try {
+        await Contacts.deleteContact({ contactId: oldId });
+      } catch (err) {
+        console.warn('[BCM contact] delete failed', oldId, err?.message || err);
+      }
+    }
+    if (existingIds.length) clearStoredContactId(phone);
     writeStoredContactId(phone, contactId);
 
     console.warn('[BCM contact] saved', {
@@ -330,14 +314,7 @@ export async function upsertBcmMemberToDeviceContacts(opts = {}) {
     const formatted = formatCreateContactError(err);
     console.warn('[BCM contact] upsert failed', formatted.message, formatted);
     debugLog('📱 [BCM contact] upsert failed', formatted);
-    showBcmContactSaveFailedAlert({
-      platform: Capacitor.getPlatform(),
-      message: formatted.message,
-      code: formatted.code,
-      name: formatted.name,
-      raw: formatted.raw,
-    });
-    const denied = /permission|denied|not authorized|access/i.test(formatted.message);
+    const denied = /permission|denied|not authorized|access|WRITE_CONTACTS/i.test(formatted.message);
     return {
       ok: false,
       skipped: true,

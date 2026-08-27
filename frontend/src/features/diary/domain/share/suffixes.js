@@ -33,7 +33,7 @@ export function buildDiaryShareSuffix(activityType, payload = {}) {
         || (payload.volumeMl != null ? formatWaterVolume(payload.volumeMl) : null);
       const day = dayTotalSuffix(payload);
       return consumed
-        ? `Consumed: ${consumed} water${day}`
+        ? `${waBold(`Consumed: ${consumed}`)} water${day}`
         : `Consumed water${day}`;
     }
     case DIARY_FOOD_ACTIVITY.AFRESH:

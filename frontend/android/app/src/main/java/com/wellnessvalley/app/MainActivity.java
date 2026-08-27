@@ -48,6 +48,9 @@ public class MainActivity extends BridgeActivity {
 
         // ✅ Save transformation / share cards into the device photo gallery
         registerPlugin(com.wellnessvalley.app.plugins.SaveToGalleryPlugin.class);
+
+        // OEM-safe BCM address-book insert (OPPO/ColorOS rejects community Contacts plugin)
+        registerPlugin(com.wellnessvalley.app.plugins.BcmContactsPlugin.class);
         
         // ✅ ANDROID PERFORMANCE: Enable hardware acceleration for faster image rendering
         getWindow().setFlags(
