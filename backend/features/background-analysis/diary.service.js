@@ -62,6 +62,31 @@ import {
 export { dedupePendingDiaryEntries } from './domain/diary-feed-dedup.js';
 
 /**
+ * Shared-team diary access for Sponsor/Co-Sponsor partners.
+ * Allows a viewer when they are an active co-coach partner of any coach
+ * in the owner's chain (including the owner when the owner is a lead).
+ *
+ * @param {string|number|null|undefined} viewerUserId
+ * @param {Array<string|number>} coachChain
+ * @param {(viewerUserId: string, candidateUserId: string) => Promise<boolean>} [isCoCoachPaired]
+ * @returns {Promise<boolean>}
+ */
+export async function canAccessDiaryViaSharedLead(
+  viewerUserId,
+  coachChain = [],
+  isCoCoachPaired = repo.isCoCoachPaired,
+) {
+  if (viewerUserId == null || viewerUserId === '') return false;
+  const viewer = String(viewerUserId);
+  for (const chainId of coachChain || []) {
+    const candidate = String(chainId);
+    if (!candidate || candidate === viewer) continue;
+    if (await isCoCoachPaired(viewer, candidate)) return true;
+  }
+  return false;
+}
+
+/**
  * Lazy capture photo for diary thumbs (unknown / pending).
  * Auth: owner or upline coach (same gate as listDiaryEntries).
  *
@@ -408,15 +433,24 @@ export async function listDiaryEntries(input) {
     coachChain,
   });
   if (!decision.allowed) {
-    if (decision.reason === 'NO_VIEWER') {
-      const err = new Error('Authentication required');
-      err.status = 401; err.code = 'UNAUTHENTICATED';
+    const sharedLeadAllowed = await canAccessDiaryViaSharedLead(viewerUserId, coachChain);
+    if (sharedLeadAllowed) {
+      logger.info('listDiaryEntries: shared-team co-coach reading member diary', {
+        actorId: viewerUserId,
+        ownerId: ownerUserId,
+        date,
+      });
+    } else {
+      if (decision.reason === 'NO_VIEWER') {
+        const err = new Error('Authentication required');
+        err.status = 401; err.code = 'UNAUTHENTICATED';
+        throw err;
+      }
+      const err = new Error('You do not have access to this diary');
+      err.status = 403; err.code = 'FORBIDDEN_DIARY';
+      err.reason = decision.reason;
       throw err;
     }
-    const err = new Error('You do not have access to this diary');
-    err.status = 403; err.code = 'FORBIDDEN_DIARY';
-    err.reason = decision.reason;
-    throw err;
   }
   const isSelf = decision.actorRole === 'OWNER';
 

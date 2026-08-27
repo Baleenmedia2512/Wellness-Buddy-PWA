@@ -6,6 +6,11 @@ import { assertIanaTimezone, IANA_IST } from '../../shared/lib/datetime/index.js
 import { VALID_PHYSICAL_ACTIVITY_LEVELS, isValidPhysicalActivityLevel } from '../../utils/tdeeCalculations.js';
 import { parseOptionalBodyMetric } from './domain/profileBodyMetrics.rules.js';
 import { normalizeRecoveredHealthIssues } from '../body-parameters-card/validation/card.schema.js';
+import {
+  TRANSFORMATION_PHOTO_SLOTS,
+  hasTransformationPhotoUpdates,
+  isStoredTransformationPhoto,
+} from './domain/transformationPhotos.rules.js';
 
 const VALID_DIETS = ['Vegetarian', 'Non-Vegetarian', 'Vegan', 'Pescatarian'];
 const VALID_GOAL_MODES = ['loss', 'gain', 'maintain'];
@@ -171,6 +176,30 @@ export function validateUpdateProfile(body) {
     recoveredHealthIssues = normalizeRecoveredHealthIssues(body);
   }
 
+  let transformationPhotos;
+  if ('transformationPhotos' in body || 'transformation_photos' in body) {
+    const raw = body.transformationPhotos !== undefined
+      ? body.transformationPhotos
+      : body.transformation_photos;
+    if (raw == null || raw === '') {
+      transformationPhotos = undefined;
+    } else if (typeof raw !== 'object' || Array.isArray(raw)) {
+      throw new ValidationError(400, 'Invalid transformationPhotos. Must be an object with optional front, left, and right images.');
+    } else {
+      const normalized = {};
+      TRANSFORMATION_PHOTO_SLOTS.forEach((slot) => {
+        if (!(slot in raw)) return;
+        const value = raw[slot];
+        if (value == null || value === '') return;
+        if (!isStoredTransformationPhoto(value)) {
+          throw new ValidationError(400, `Invalid transformationPhotos.${slot}. Provide an image data URL.`);
+        }
+        normalized[slot] = String(value).trim();
+      });
+      transformationPhotos = hasTransformationPhotoUpdates(normalized) ? normalized : undefined;
+    }
+  }
+
   return {
     email,
     name: body.name,
@@ -193,6 +222,7 @@ export function validateUpdateProfile(body) {
     waistCm,
     hipCm,
     recoveredHealthIssues,
+    transformationPhotos,
   };
 }
 

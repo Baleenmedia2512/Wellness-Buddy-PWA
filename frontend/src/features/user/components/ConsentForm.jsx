@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import TermsAndConditions from '../../../shared/components/TermsAndConditions';
 import PrivacyPolicy from '../../../shared/components/PrivacyPolicy';
+import CustomAlertModal from '../../../shared/components/CustomAlertModal';
 import wellnessValleyIcon from '../../../assets/wellness-valley-icon.png';
 
 const BRAND = '#047857';
@@ -15,7 +16,7 @@ const Section = ({ title, children }) => (
 
 const ConsentForm = ({
   onAgree,
-  onDecline,
+  onDecline: _onDecline,
   submitting = false,
   mode = 'post-auth',
   identityLabel = '',
@@ -23,7 +24,13 @@ const ConsentForm = ({
   const [choice, setChoice] = useState(null);
   const [showTerms, setShowTerms] = useState(false);
   const [showPrivacy, setShowPrivacy] = useState(false);
+  const [showDisagreeAlert, setShowDisagreeAlert] = useState(false);
   const [localError, setLocalError] = useState('');
+
+  const openDisagreeAlert = () => {
+    setLocalError('');
+    setShowDisagreeAlert(true);
+  };
 
   const handleContinue = () => {
     setLocalError('');
@@ -32,7 +39,7 @@ const ConsentForm = ({
       return;
     }
     if (choice === 'disagree') {
-      onDecline?.();
+      openDisagreeAlert();
       return;
     }
     setLocalError('Please select I Agree or I Don\'t Agree to continue.');
@@ -348,7 +355,10 @@ const ConsentForm = ({
                 name="consentChoice"
                 className="mt-1 shrink-0 accent-[#047857]"
                 checked={choice === 'disagree'}
-                onChange={() => setChoice('disagree')}
+                onChange={() => {
+                  setChoice('disagree');
+                  openDisagreeAlert();
+                }}
                 disabled={submitting}
               />
               <span className="min-w-0">
@@ -402,6 +412,17 @@ const ConsentForm = ({
 
       {showTerms && <TermsAndConditions onClose={() => setShowTerms(false)} />}
       {showPrivacy && <PrivacyPolicy onClose={() => setShowPrivacy(false)} />}
+
+      <CustomAlertModal
+        isOpen={showDisagreeAlert}
+        onClose={() => setShowDisagreeAlert(false)}
+        title="Agreement required"
+        type="warning"
+        confirmText="OK"
+        message={
+          'You can’t continue without agreeing.\n\nIf you choose “Don’t Agree,” you will be unable to use this app. To continue, please select “Agree & Continue.”'
+        }
+      />
     </div>
   );
 };

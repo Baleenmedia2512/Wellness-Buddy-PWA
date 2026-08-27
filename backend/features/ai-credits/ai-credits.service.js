@@ -1,10 +1,12 @@
 /**
  * ai-credits service — status, reserve, confirm, release, admin config.
  */
-import { todayInTimezone } from '../../shared/lib/datetime/index.js';
+import { todayInTimezone, IANA_IST } from '../../shared/lib/datetime/index.js';
 import { getUserTimezoneIana } from '../user/domain/userTimezone.js';
 import { ValidationError } from '../../shared/lib/ValidationError.js';
 import * as userRepo from '../user/user.repository.js';
+import { getSupabaseClient } from '../../utils/supabaseClient.js';
+import { compareSemver } from '../app-version/domain/version.rules.js';
 import { assertAiCreditsAdmin } from './domain/permissions/credits.policy.js';
 import {
   buildStatus,
@@ -18,9 +20,54 @@ import {
   normalizeAvailabilityWindows,
   hasAnyAvailabilitySlotEnabled,
 } from './domain/availability.rules.js';
+import {
+  evaluateAiFoodAnalysisAccess,
+  shouldEnforceAiFoodAccess,
+} from './domain/ai-food-access.rules.js';
 import * as repo from './data/ai-credits.repo.js';
 
 const REQUESTER_COLUMNS = '"UserId", "Role"';
+const ACCESS_COLUMNS = '"UserId", "Role", "CoachId"';
+
+/**
+ * Server-side leaf-downline + AI window facts for a user (never trust client role).
+ * @param {number} userId
+ * @param {string} [timezoneIana]
+ */
+async function loadAiFoodAccessContext(userId, timezoneIana = IANA_IST) {
+  const row = await userRepo.findByUserId(userId, ACCESS_COLUMNS);
+  const supabase = getSupabaseClient();
+  const { count, error } = await supabase
+    .from('team_table')
+    .select('UserId', { count: 'exact', head: true })
+    .eq('CoachId', userId);
+  if (error) {
+    throw new ValidationError(500, 'Failed to resolve team membership');
+  }
+  const decision = evaluateAiFoodAnalysisAccess({
+    role: row?.Role ?? null,
+    hasDownlineMembers: (count ?? 0) > 0,
+    coachId: row?.CoachId ?? null,
+    now: new Date(),
+    timezoneIana: timezoneIana || IANA_IST,
+  });
+  return {
+    eligibleForAiFoodAnalysis: decision.eligible,
+    aiFoodAnalysisWindowOpen: decision.windowOpen,
+    aiFoodAnalysisAllowed: decision.allowed,
+    aiFoodAnalysisDenyReason: decision.reason,
+  };
+}
+
+function withAccessFields(status, access) {
+  return {
+    ...status,
+    eligibleForAiFoodAnalysis: access?.eligibleForAiFoodAnalysis ?? false,
+    aiFoodAnalysisWindowOpen: access?.aiFoodAnalysisWindowOpen ?? false,
+    aiFoodAnalysisAllowed: access?.aiFoodAnalysisAllowed ?? false,
+    aiFoodAnalysisDenyReason: access?.aiFoodAnalysisDenyReason ?? null,
+  };
+}
 
 async function resolveRequester({ requesterUserId, requesterEmail }) {
   if (requesterEmail) {
@@ -80,20 +127,23 @@ function statusFromContext(ctx) {
   });
 }
 
-export async function getStatus({ userId }) {
+export async function getStatus({ userId, appVersion = null }) {
   const uid = Number.parseInt(String(userId), 10);
   if (!Number.isFinite(uid) || uid <= 0) {
     throw new ValidationError(400, 'userId is required');
   }
   const ctx = await loadDayContext(uid);
   const status = statusFromContext(ctx);
+  const access = await loadAiFoodAccessContext(uid, ctx.timezoneIana);
+  // Always surface access facts for UI; enforcement uses appVersion on reserve.
+  void appVersion;
   return {
     httpStatus: 200,
-    body: { ok: true, data: status },
+    body: { ok: true, data: withAccessFields(status, access) },
   };
 }
 
-export async function reserveCredit({ userId }) {
+export async function reserveCredit({ userId, appVersion = null }) {
   const uid = Number.parseInt(String(userId), 10);
   if (!Number.isFinite(uid) || uid <= 0) {
     throw new ValidationError(400, 'userId is required');
@@ -101,6 +151,9 @@ export async function reserveCredit({ userId }) {
   const ctx = await loadDayContext(uid);
   const effectiveEnabled = Boolean(ctx.config.aiModeEnabled)
     && ctx.availability?.anySlotEnabled !== false;
+  const access = await loadAiFoodAccessContext(uid, ctx.timezoneIana);
+  const status = withAccessFields(statusFromContext(ctx), access);
+
   const gate = canReserve({
     enabled: effectiveEnabled,
     dailyLimit: ctx.limit,
@@ -109,7 +162,6 @@ export async function reserveCredit({ userId }) {
     availableInWindow: ctx.availability?.availableInWindow !== false,
   });
   if (!gate.allowed) {
-    const status = statusFromContext(ctx);
     return {
       httpStatus: 200,
       body: {
@@ -124,11 +176,26 @@ export async function reserveCredit({ userId }) {
     };
   }
 
+  // §5.1: leaf + window gates for versioned clients; missing version → legacy.
+  if (shouldEnforceAiFoodAccess(appVersion, compareSemver) && !access.aiFoodAnalysisAllowed) {
+    return {
+      httpStatus: 200,
+      body: {
+        ok: true,
+        data: {
+          allowed: false,
+          reason: access.aiFoodAnalysisDenyReason || 'not_eligible_downline',
+          reservationId: null,
+          ...status,
+        },
+      },
+    };
+  }
+
   const reservation = await repo.createReservation({
     userId: uid,
     usageDate: ctx.usageDate,
   });
-  const status = statusFromContext(ctx);
   return {
     httpStatus: 200,
     body: {
@@ -143,6 +210,36 @@ export async function reserveCredit({ userId }) {
       },
     },
   };
+}
+
+/**
+ * Defense-in-depth for /api/ai/orchestrate — reject non-eligible / outside-window
+ * callers when the client version enforces AI food access rules.
+ *
+ * @param {{ userId: string|number|null|undefined, appVersion?: string|null }}
+ * @throws {ValidationError}
+ */
+export async function assertAiFoodAnalysisAccess({ userId, appVersion = null }) {
+  if (!shouldEnforceAiFoodAccess(appVersion, compareSemver)) return;
+  const uid = Number.parseInt(String(userId), 10);
+  if (!Number.isFinite(uid) || uid <= 0) {
+    const err = new ValidationError(400, 'userId is required for AI food analysis');
+    err.code = 'MISSING_USER_ID';
+    throw err;
+  }
+  const timezoneIana = await getUserTimezoneIana(uid);
+  const access = await loadAiFoodAccessContext(uid, timezoneIana);
+  if (access.aiFoodAnalysisAllowed) return;
+  const err = new ValidationError(
+    403,
+    access.aiFoodAnalysisDenyReason === 'outside_ai_window'
+      ? 'AI food analysis is only available during lunch (12:00–4:00 PM) and dinner (5:30–8:30 PM)'
+      : 'AI food analysis is only available for eligible downline members',
+  );
+  err.code = access.aiFoodAnalysisDenyReason === 'outside_ai_window'
+    ? 'OUTSIDE_AI_WINDOW'
+    : 'NOT_ELIGIBLE_DOWNLINE';
+  throw err;
 }
 
 export async function confirmCredit({ userId, reservationId, analysisResult = null }) {

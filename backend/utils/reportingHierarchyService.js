@@ -372,11 +372,12 @@ export function buildReportingChildrenIndex(context, rootCoachId) {
 
 const TEAM_USER_SELECT =
   // Never select ProfileImage here — base64 avatars made list-for-coach ~14MB for ~35 members.
-  'UserId, UserName, Email, Role, CoachId, CoachTeamId, Status, PhoneNumber, Height, CommunityId';
+  // TeamId required so Sponsor/Co-Sponsor partnership resolves without a second round-trip.
+  'UserId, UserName, Email, Role, CoachId, CoachTeamId, TeamId, Status, PhoneNumber, Height, CommunityId';
 const MAX_SUBTREE_DEPTH = 12;
 const SUBTREE_CONTEXT_CACHE = new Map();
 const SUBTREE_CONTEXT_TTL_MS = 60_000;
-const SUBTREE_CACHE_KEY_PREFIX = 'v5:'; // bump when select columns or rollup rules change
+const SUBTREE_CACHE_KEY_PREFIX = 'v6:'; // bump when select columns or rollup rules change
 
 /**
  * @param {object} supabase
@@ -410,23 +411,45 @@ async function fetchTeamUsersByCoachIds(supabase, coachIds) {
 }
 
 /**
- * Co-coaching partners share the same downline (dual-coaching model).
+ * Sponsor + Co-Sponsor share the same team downline (dual-lead model).
+ * Resolves partnership from coach_teams_table when the viewer is a lead.
  * @param {object} supabase
  * @param {TeamUser} rootUser
  * @returns {Promise<number[]>}
  */
 async function resolveCoCoachRootCoachIds(supabase, rootUser) {
-  if (!rootUser?.TeamId) return [rootUser.UserId];
+  const rootId = Number(rootUser?.UserId);
+  if (!Number.isFinite(rootId)) return [];
+
+  // Prefer: viewer is already a lead on an active coach_teams row.
+  const { data: byRole, error: byRoleError } = await supabase
+    .from('coach_teams_table')
+    .select('CoachId, CoCoachId')
+    .or(`CoachId.eq.${rootId},CoCoachId.eq.${rootId}`)
+    .eq('Status', 'active')
+    .maybeSingle();
+
+  if (!byRoleError && byRole?.CoachId && byRole?.CoCoachId) {
+    return [...new Set([byRole.CoachId, byRole.CoCoachId].filter(Boolean))];
+  }
+
+  const teamCode = rootUser.TeamId || rootUser.CoachTeamId;
+  if (!teamCode) return [rootId];
 
   const { data: coachTeam, error } = await supabase
     .from('coach_teams_table')
     .select('CoachId, CoCoachId')
-    .eq('TeamId', rootUser.TeamId)
+    .eq('TeamId', teamCode)
     .eq('Status', 'active')
     .maybeSingle();
 
   if (error || !coachTeam?.CoachId || !coachTeam?.CoCoachId) {
-    return [rootUser.UserId];
+    return [rootId];
+  }
+
+  // Only merge partner downlines when the viewer is one of the two leads.
+  if (rootId !== Number(coachTeam.CoachId) && rootId !== Number(coachTeam.CoCoachId)) {
+    return [rootId];
   }
 
   return [...new Set([coachTeam.CoachId, coachTeam.CoCoachId].filter(Boolean))];
@@ -505,6 +528,11 @@ export async function loadReportingContextForCoach(supabase, rootCoachId) {
   }
 
   const context = buildReportingContext([...usersById.values()]);
+  // Partner leads (Sponsor ↔ Co-Sponsor) — used by collectVisibleHierarchyUsers
+  // to include the partner's full downline for shared-team surfaces.
+  context.partnerRootIds = rootCoachIds
+    .map((id) => Number(id))
+    .filter((id) => Number.isFinite(id) && id !== rootId);
   SUBTREE_CONTEXT_CACHE.set(cacheKey, { value: context, expiresAt: now + SUBTREE_CONTEXT_TTL_MS });
   return context;
 }
@@ -517,7 +545,8 @@ export async function loadReportingContextForCoach(supabase, rootCoachId) {
  * - every ancestor on the CoachId chain (the people only — not their other branches)
  * - the viewer's full downline at every level
  * - sibling peers only (same direct parent as the viewer; peer nodes only)
- * - optional partnerIds as peer nodes only (no partner downline)
+ * - Sponsor/Co-Sponsor partner lead + partner full downline (shared CoachTeamId team)
+ * - optional partnerIds as peer nodes only (no partner downline) — legacy callers
  *
  * Does NOT include another branch under an upline. Seeing Prem does not mean
  * seeing Prem's entire downline (e.g. Balaji must not see A1/B1/B2).
@@ -584,6 +613,20 @@ export function collectVisibleHierarchyUsers(viewerUserId, context, { partnerIds
   // ── Own downline: full recursive descendants of the selected coach ────
   for (const member of collectFullSubtreeUnderActiveCoach(viewerId, context)) {
     result.set(Number(member.UserId), member);
+  }
+
+  // ── Shared Sponsor/Co-Sponsor: partner lead + partner full downline ────
+  const sharedPartners = Array.isArray(context.partnerRootIds)
+    ? context.partnerRootIds
+    : [];
+  for (const pidRaw of sharedPartners) {
+    const pid = Number(pidRaw);
+    if (!Number.isFinite(pid) || pid === viewerId) continue;
+    const partner = getUser(pid);
+    if (partner) result.set(pid, partner);
+    for (const member of collectFullSubtreeUnderActiveCoach(pid, context)) {
+      result.set(Number(member.UserId), member);
+    }
   }
 
   // ── Optional partnerIds: peer nodes only (no partner downline) ──────────

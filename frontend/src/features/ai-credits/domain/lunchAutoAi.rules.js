@@ -1,9 +1,11 @@
 /**
  * lunchAutoAi.rules.js
  * Pure policy: during an admin-enabled meal window + AI credits remaining
- * → auto-run AI. Outside windows or out of credits → manual only.
+ * + eligible leaf downline → auto-run AI. Outside windows, ineligible, or
+ * out of credits → manual only.
  *
  * Prefer status.availabilityWindows from GET /api/ai-credits/status.
+ * Also honour backend access facts (eligibleForAiFoodAnalysis / window flags).
  */
 import { APP_TIMEZONE } from '../../../shared/constants/timeWindows.js';
 import { getAiCreditUiState } from './creditUiState.js';
@@ -73,7 +75,7 @@ export function isWithinActivityWindow(now, window, timeZone = APP_TIMEZONE) {
 }
 
 /**
- * True when now falls in any enabled meal slot.
+ * True when now falls in any enabled meal slot (admin availability windows).
  * @param {Date} now
  * @param {object|null|undefined} availabilityWindows
  * @param {string} [timeZone]
@@ -94,12 +96,40 @@ export function isWithinEnabledAiWindow(now, availabilityWindows, timeZone = APP
 }
 
 /**
- * Decide post-capture auto-AI behaviour.
+ * True when now is inside lunch or dinner (configured or defaults).
+ * Legacy helper — prefer isWithinEnabledAiWindow when admin windows exist.
+ * @param {Date} now
+ * @param {{ start?: string, end?: string }|null|undefined} lunchWindow
+ * @param {{ start?: string, end?: string }|null|undefined} dinnerWindow
+ * @param {string} [timeZone]
+ * @returns {boolean}
+ */
+export function isWithinLunchOrDinnerWindow(
+  now,
+  lunchWindow = null,
+  dinnerWindow = null,
+  timeZone = APP_TIMEZONE,
+) {
+  const lunch = lunchWindow?.start && lunchWindow?.end
+    ? lunchWindow
+    : DEFAULT_LUNCH_WINDOW;
+  const dinner = dinnerWindow?.start && dinnerWindow?.end
+    ? dinnerWindow
+    : DEFAULT_DINNER_WINDOW;
+  return (
+    isWithinActivityWindow(now, lunch, timeZone)
+    || isWithinActivityWindow(now, dinner, timeZone)
+  );
+}
+
+/**
+ * Decide post-capture / Food-tap auto-AI behaviour.
  *
  * @param {{
  *   now?: Date,
  *   availabilityWindows?: object|null,
  *   lunchWindow?: { start?: string, end?: string }|null,
+ *   dinnerWindow?: { start?: string, end?: string }|null,
  *   creditStatus?: object|null,
  *   creditsFlagEnabled?: boolean,
  *   timezoneIana?: string,
@@ -110,26 +140,56 @@ export function decideMealWindowAutoAi({
   now = new Date(),
   availabilityWindows = null,
   lunchWindow = null,
+  dinnerWindow = null,
   creditStatus = null,
   creditsFlagEnabled = false,
   timezoneIana = APP_TIMEZONE,
 } = {}) {
+  // Product: never show Auto Detect — meal-window auto or manual only.
   const hideAiButton = true;
 
   if (!creditsFlagEnabled) {
     return { shouldAutoAi: false, hideAiButton, reason: 'credits-flag-off' };
   }
 
-  // Prefer server status windows; fall back to arg / lunch-only legacy.
+  // Backend access facts (leaf downline + window). When present, honour them.
+  if (creditStatus && creditStatus.eligibleForAiFoodAnalysis === false) {
+    return { shouldAutoAi: false, hideAiButton, reason: 'not-eligible-downline' };
+  }
+  if (creditStatus && creditStatus.aiFoodAnalysisWindowOpen === false) {
+    return { shouldAutoAi: false, hideAiButton, reason: 'outside-meal-window' };
+  }
+  if (creditStatus && creditStatus.aiFoodAnalysisAllowed === false) {
+    return {
+      shouldAutoAi: false,
+      hideAiButton,
+      reason: creditStatus.aiFoodAnalysisDenyReason || 'access-denied',
+    };
+  }
+
+  // Prefer server status windows; fall back to arg / lunch+dinner legacy.
   const windows = creditStatus?.availabilityWindows
     || availabilityWindows
-    || (lunchWindow ? { lunch: { enabled: true, ...lunchWindow } } : null);
+    || (lunchWindow || dinnerWindow
+      ? {
+          lunch: lunchWindow
+            ? { enabled: true, ...lunchWindow }
+            : DEFAULT_LUNCH_WINDOW,
+          dinner: dinnerWindow
+            ? { enabled: true, ...dinnerWindow }
+            : DEFAULT_DINNER_WINDOW,
+        }
+      : null);
 
   if (creditStatus && creditStatus.availableInWindow === false) {
     return { shouldAutoAi: false, hideAiButton, reason: 'outside-meal-window' };
   }
 
-  if (!isWithinEnabledAiWindow(now, windows, timezoneIana)) {
+  if (windows) {
+    if (!isWithinEnabledAiWindow(now, windows, timezoneIana)) {
+      return { shouldAutoAi: false, hideAiButton, reason: 'outside-meal-window' };
+    }
+  } else if (!isWithinLunchOrDinnerWindow(now, lunchWindow, dinnerWindow, timezoneIana)) {
     return { shouldAutoAi: false, hideAiButton, reason: 'outside-meal-window' };
   }
 

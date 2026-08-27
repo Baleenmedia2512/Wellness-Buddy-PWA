@@ -294,4 +294,32 @@ describe('collectVisibleHierarchyUsers — upline people, own downline, not othe
     assert.equal(idSet.has(Y), true);
     assert.equal(idSet.has(A1), false);
   });
+
+  it('partnerRootIds include shared Sponsor/Co-Sponsor partner downline', () => {
+    // Riya (Sponsor) and Kabir (Co-Sponsor) share a team; members under either lead.
+    const Riya = 9001;
+    const Kabir = 9002;
+    const Amit = 9003;
+    const Priya = 9004;
+    const shared = buildReportingContext([
+      { UserId: Riya, UserName: 'Riya', Role: 'user', CoachId: null, Status: 'Active' },
+      { UserId: Kabir, UserName: 'Kabir', Role: 'user', CoachId: null, Status: 'Active' },
+      { UserId: Amit, UserName: 'Amit', Role: 'user', CoachId: Riya, Status: 'Active' },
+      { UserId: Priya, UserName: 'Priya', Role: 'user', CoachId: Kabir, Status: 'Active' },
+    ]);
+    shared.partnerRootIds = [Kabir];
+
+    const riyaVisible = collectVisibleHierarchyUsers(Riya, shared);
+    const riyaIds = new Set(riyaVisible.map((m) => m.UserId));
+    assert.equal(riyaIds.has(Kabir), true);
+    assert.equal(riyaIds.has(Amit), true);
+    assert.equal(riyaIds.has(Priya), true);
+
+    shared.partnerRootIds = [Riya];
+    const kabirVisible = collectVisibleHierarchyUsers(Kabir, shared);
+    const kabirIds = new Set(kabirVisible.map((m) => m.UserId));
+    assert.equal(kabirIds.has(Riya), true);
+    assert.equal(kabirIds.has(Amit), true);
+    assert.equal(kabirIds.has(Priya), true);
+  });
 });

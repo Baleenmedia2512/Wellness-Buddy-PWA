@@ -258,6 +258,8 @@ async function enrichTestimonialForDisplay(testimonial, opts = {}) {
       : false,
     otpValidityHours:       TESTIMONIAL_OTP_VALIDITY_HOURS,
     hasPendingOtp:          Boolean(testimonial.otp_hash),
+    // Alias kept for older clients that read otpPending.
+    otpPending:             Boolean(testimonial.otp_hash),
   };
 }
 
@@ -1346,6 +1348,7 @@ export async function submitAllEdits(rawBody) {
         testimonialId: existing.id,
         status:     existing.status,
         videoStatus: existing.video_status ?? 'none',
+        otpSent:    false,
         testimonial: display,
       },
     };
@@ -1491,6 +1494,7 @@ export async function submitAllEdits(rawBody) {
       testimonialId: existing.id,
       status:        finalStatus,
       videoStatus:   finalVideoStatus,
+      otpSent:       true,
       testimonial:   display,
       otpExpiresAt:  otpExpiry,
       otpValidityHours: TESTIMONIAL_OTP_VALIDITY_HOURS,

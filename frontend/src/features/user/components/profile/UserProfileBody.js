@@ -7,7 +7,10 @@ import IdealWeightCards from './IdealWeightCards';
 import DietDropdown from './DietDropdown';
 import HealthIssuesFilterSelect from '../../../body-parameters-card/components/HealthIssuesFilterSelect';
 
-const UserProfileBody = ({ isLoading, form, email, latestWeight, initialWeight, initialWeightDate, error, successMessage }) => (
+const UserProfileBody = ({
+  isLoading, form, email, latestWeight, initialWeight, initialWeightDate,
+  error, successMessage,
+}) => (
   <div className="p-6 space-y-5">
     {isLoading ? (
       <div className="flex items-center justify-center py-12">

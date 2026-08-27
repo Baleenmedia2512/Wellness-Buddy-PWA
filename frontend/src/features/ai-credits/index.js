@@ -25,6 +25,7 @@ export {
   DEFAULT_DINNER_WINDOW,
   isWithinActivityWindow,
   isWithinEnabledAiWindow,
+  isWithinLunchOrDinnerWindow,
 } from './domain/lunchAutoAi.rules.js';
 
 export { default as AiCreditsSetup } from './components/AiCreditsSetup.jsx';
