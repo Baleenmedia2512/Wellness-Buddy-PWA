@@ -19,9 +19,12 @@ export {
 
 export {
   decideLunchAutoAi,
+  decideMealWindowAutoAi,
   DEFAULT_LUNCH_WINDOW,
+  DEFAULT_BREAKFAST_WINDOW,
   DEFAULT_DINNER_WINDOW,
   isWithinActivityWindow,
+  isWithinEnabledAiWindow,
   isWithinLunchOrDinnerWindow,
 } from './domain/lunchAutoAi.rules.js';
 

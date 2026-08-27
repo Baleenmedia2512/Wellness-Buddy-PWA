@@ -9,6 +9,11 @@ CREATE TABLE IF NOT EXISTS ai_credits_config_table (
   daily_ai_credits    integer      NOT NULL DEFAULT 3
                                    CHECK (daily_ai_credits >= 0 AND daily_ai_credits <= 1000),
   ai_mode_enabled     boolean      NOT NULL DEFAULT true,
+  availability_windows jsonb       NOT NULL DEFAULT '{
+    "breakfast": {"enabled": true, "start": "05:30:00", "end": "08:30:00"},
+    "lunch":     {"enabled": true, "start": "12:00:00", "end": "16:00:00"},
+    "dinner":    {"enabled": true, "start": "17:30:00", "end": "20:30:00"}
+  }'::jsonb,
   updated_at          timestamptz  NOT NULL DEFAULT (now() AT TIME ZONE 'utc'),
   updated_by_user_id  bigint
 );

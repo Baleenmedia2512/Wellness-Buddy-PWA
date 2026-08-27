@@ -245,6 +245,7 @@ import TouchFeedbackButton from "./shared/components/TouchFeedbackButton";
 import LocationGuard from "./shared/components/LocationGuard";
 import AdminFab from "./shared/components/AdminFab";
 import { isAdminLikeRole } from "./shared/constants/roles";
+import { canAccessReportsModule } from "./features/reports/domain/reportsAccess.rules.js";
 import { DIARY_ANALYZING_POLL_MS } from "./shared/constants/limits";
 
 // ? PERFORMANCE: Lazy-load leaderboards ? they fire API calls on mount and are below the fold
@@ -994,9 +995,16 @@ function WellnessValleyApp() {
   const [showActivityTimeReport, setShowActivityTimeReport] = useState(false);
   // Testimonials page � member upload + coach verification
   const [showTestimonials, setShowTestimonials] = useState(false);
-  // Reports page � coach/upline analytics (downline weight status, etc.)
+  // Reports page — coach/upline analytics (downline weight status, etc.)
   const [showReports, setShowReports] = useState(false);
   const [reportsDashboardTab, setReportsDashboardTab] = useState(REPORT_DASHBOARD_TABS.IDEAL_WEIGHT);
+
+  // Drop Reports overlay if role is not allowed (e.g. leaf member / role load race).
+  useEffect(() => {
+    if (showReports && !canAccessReportsModule(userRole)) {
+      setShowReports(false);
+    }
+  }, [showReports, userRole]);
   const [showWellnessScore, setShowWellnessScore] = useState(false);
   const [showWellnessScoreSetup, setShowWellnessScoreSetup] = useState(false);
   /** Remount key so each open picks up the Home date-range selection cleanly. */
@@ -1127,6 +1135,9 @@ function WellnessValleyApp() {
         startTransition(() => setShowTestimonials(true));
         Session.setCurrentPage('main');
       } else if (page === 'reports' || page === 'wellness-score-report') {
+        if (!isFlagEnabled('ff.reports-module') || !canAccessReportsModule(userRole)) {
+          return;
+        }
         bumpTabVisitKeyRef.current('reports');
         setReportsDashboardTab(
           page === 'wellness-score-report'
@@ -2623,13 +2634,17 @@ function WellnessValleyApp() {
         setShowTestimonials(true);
         break;
       case 'reports':
-        setReportsDashboardTab(REPORT_DASHBOARD_TABS.IDEAL_WEIGHT);
-        setShowReports(true);
+        if (isFlagEnabled('ff.reports-module') && canAccessReportsModule(userRole)) {
+          setReportsDashboardTab(REPORT_DASHBOARD_TABS.IDEAL_WEIGHT);
+          setShowReports(true);
+        }
         break;
       case 'wellness-score-report':
         // Legacy history key → Reports Dashboard / Wellness Score tab
-        setReportsDashboardTab(REPORT_DASHBOARD_TABS.WELLNESS_SCORE);
-        setShowReports(true);
+        if (isFlagEnabled('ff.reports-module') && canAccessReportsModule(userRole)) {
+          setReportsDashboardTab(REPORT_DASHBOARD_TABS.WELLNESS_SCORE);
+          setShowReports(true);
+        }
         break;
       case 'profile':
         setShowProfilePage(true);
@@ -7888,7 +7903,11 @@ function WellnessValleyApp() {
         />
       </Suspense>
     );
-  } else if (showReports && isFlagEnabled('ff.reports-module')) {
+  } else if (
+    showReports
+    && isFlagEnabled('ff.reports-module')
+    && canAccessReportsModule(userRole)
+  ) {
     homeOverlay = (
       <div className="ios-full-page bg-gray-50">
         <Header
