@@ -6,7 +6,7 @@ import {
   formatTransformationRecordWeight,
 } from '../../domain/transformationBeforeAfter';
 
-const TAB_LABELS = { front: 'Front', left: 'Left', right: 'Right' };
+const TAB_LABELS = { front: 'Centre', left: 'Left', right: 'Right' };
 
 const PhotoFrame = ({ src, alt, children = null }) => (
   <div
@@ -15,7 +15,7 @@ const PhotoFrame = ({ src, alt, children = null }) => (
     }`}
   >
     {src ? (
-      <img src={src} alt={alt} className="absolute inset-0 w-full h-full object-cover" />
+      <img src={src} alt={alt} className="absolute inset-0 w-full h-full object-contain bg-gray-900" />
     ) : null}
     {children ? (
       <div className={`absolute inset-0 flex items-center justify-center p-2 ${src ? 'bg-black/25' : ''}`}>

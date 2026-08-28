@@ -7,6 +7,8 @@ const CameraGalleryButtons = ({
   onGallerySelect,
   /** If set, Take Photo calls this instead of opening the file/camera input. */
   onCameraClick = null,
+  /** HTML capture attribute: 'user' | 'environment' | undefined */
+  capture = 'user',
   disabled,
   layout = 'wide',
 }) => {
@@ -21,11 +23,17 @@ const CameraGalleryButtons = ({
   return (
     <div className="flex justify-center w-full">
       <div className={`grid grid-cols-2 ${inSlot ? 'gap-2 w-full px-2' : 'gap-3 max-w-sm mx-auto'}`}>
-      <input ref={cameraRef} type="file" accept="image/*" capture="user"
+      <input
+        ref={cameraRef}
+        type="file"
+        accept="image/*"
+        {...(capture ? { capture } : {})}
         onChange={(e) => {
           onCameraSelect?.(e.target.files?.[0]);
           e.target.value = '';
-        }} className="hidden" />
+        }}
+        className="hidden"
+      />
       <input ref={galleryRef} type="file" accept="image/*"
         onChange={(e) => {
           onGallerySelect?.(e.target.files?.[0]);

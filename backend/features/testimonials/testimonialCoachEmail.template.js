@@ -16,6 +16,18 @@ function escapeHtml(value) {
     .replace(/'/g, '&#39;');
 }
 
+/**
+ * Email-safe photo. Set a width hint only — never a locked height.
+ * Gmail (and similar clients) honour max-width:100% / width:100% by changing
+ * the rendered width while keeping a declared height, which stretches
+ * portrait photos in narrow columns and squashes them in full-width rows.
+ */
+function buildPhotoImg(src, alt, maxWidthPx, extraStyle = '') {
+  const safeSrc = escapeHtml(src);
+  const safeAlt = escapeHtml(alt);
+  return `<img src="${safeSrc}" alt="${safeAlt}" width="${maxWidthPx}" class="photo-img" style="display:block;width:100%;max-width:${maxWidthPx}px;height:auto;margin:0 auto;border:0;border-radius:6px;${extraStyle}" />`;
+}
+
 function formatWeight(value) {
   const n = Number(value);
   if (!Number.isFinite(n)) return escapeHtml(value);
@@ -94,8 +106,6 @@ function formatHealthIssuesPlain(issues) {
 
 function buildPhotosRow(beforeUrl, afterUrl) {
   if (!beforeUrl || !afterUrl) return '';
-  const safeBefore = escapeHtml(beforeUrl);
-  const safeAfter = escapeHtml(afterUrl);
 
   return `
     <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="margin:0 0 12px 0;">
@@ -105,7 +115,7 @@ function buildPhotosRow(beforeUrl, afterUrl) {
             <tr>
               <td align="center" style="background-color:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:6px;">
                 <p style="margin:0 0 6px;color:#6b7280;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;font-family:Arial,Helvetica,sans-serif;">Before</p>
-                <img src="${safeBefore}" alt="Before" width="260" height="320" class="photo-img" style="display:block;width:260px;max-width:100%;height:320px;margin:0 auto;border:0;border-radius:6px;" />
+                ${buildPhotoImg(beforeUrl, 'Before', 260)}
               </td>
             </tr>
           </table>
@@ -115,7 +125,7 @@ function buildPhotosRow(beforeUrl, afterUrl) {
             <tr>
               <td align="center" style="background-color:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:6px;">
                 <p style="margin:0 0 6px;color:#6b7280;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;font-family:Arial,Helvetica,sans-serif;">After</p>
-                <img src="${safeAfter}" alt="After" width="260" height="320" class="photo-img" style="display:block;width:260px;max-width:100%;height:320px;margin:0 auto;border:0;border-radius:6px;" />
+                ${buildPhotoImg(afterUrl, 'After', 260)}
               </td>
             </tr>
           </table>
@@ -161,13 +171,13 @@ export function buildTestimonialCoachEmailHtml({
     @media only screen and (max-width: 480px) {
       .wrapper { width: 100% !important; }
       .body-pad { padding: 14px 12px !important; }
-      .photo-img { width: 100% !important; max-width: 148px !important; height: 190px !important; }
+      .photo-img { width: 100% !important; height: auto !important; }
       .header-pad { padding: 14px 12px !important; }
       .footer-pad { padding: 12px !important; }
     }
     @media only screen and (max-width: 360px) {
       .photo-col { display: block !important; width: 100% !important; padding: 0 0 8px 0 !important; }
-      .photo-img { max-width: 220px !important; height: 260px !important; }
+      .photo-img { height: auto !important; }
     }
   </style>
   <!--<![endif]-->
@@ -490,29 +500,15 @@ function buildChangedSlotsBlock(changedSlots) {
 /**
  * Shows a single photo with label. Renders "First Upload" placeholder when no previous URL.
  */
-function buildSinglePhotoCell(url, label, isFirst) {
+function buildSinglePhotoCell(url, label) {
   if (!url) return '';
-  const safeUrl = escapeHtml(url);
-  if (isFirst) {
-    return `
-      <td width="50%" valign="top" align="center" class="photo-col" style="padding:0 3px 0 3px;">
-        <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
-          <tr>
-            <td align="center" style="background-color:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:6px;">
-              <p style="margin:0 0 6px;color:#6b7280;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;font-family:Arial,Helvetica,sans-serif;">${escapeHtml(label)}</p>
-              <img src="${safeUrl}" alt="${escapeHtml(label)}" width="260" height="320" class="photo-img" style="display:block;width:260px;max-width:100%;height:320px;margin:0 auto;border:0;border-radius:6px;" />
-            </td>
-          </tr>
-        </table>
-      </td>`;
-  }
   return `
     <td width="50%" valign="top" align="center" class="photo-col" style="padding:0 3px 0 3px;">
       <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
         <tr>
           <td align="center" style="background-color:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:6px;">
             <p style="margin:0 0 6px;color:#6b7280;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;font-family:Arial,Helvetica,sans-serif;">${escapeHtml(label)}</p>
-            <img src="${safeUrl}" alt="${escapeHtml(label)}" width="260" height="320" class="photo-img" style="display:block;width:260px;max-width:100%;height:320px;margin:0 auto;border:0;border-radius:6px;" />
+            ${buildPhotoImg(url, label, 260)}
           </td>
         </tr>
       </table>
@@ -538,7 +534,7 @@ function buildPhotoDiffBlock(previousUrl, newUrl, slotLabel, isFirstUpload) {
       <tr>
         <td align="center" style="background-color:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:8px;">
           <p style="margin:0 0 6px;color:#047857;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;font-family:Arial,Helvetica,sans-serif;">New Upload</p>
-          <img src="${escapeHtml(newUrl)}" alt="${escapeHtml(slotLabel)}" width="280" height="340" class="photo-img" style="display:block;width:280px;max-width:100%;height:340px;margin:0 auto;border:0;border-radius:6px;" />
+          ${buildPhotoImg(newUrl, slotLabel, 280)}
         </td>
       </tr>
     </table>`;
@@ -552,7 +548,7 @@ function buildPhotoDiffBlock(previousUrl, newUrl, slotLabel, isFirstUpload) {
           <tr>
             <td align="center" style="background-color:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:4px;">
               <p style="margin:0 0 4px;color:#9ca3af;font-size:9px;font-weight:700;text-transform:uppercase;font-family:Arial,Helvetica,sans-serif;">PREVIOUS</p>
-              <img src="${escapeHtml(previousUrl)}" alt="Previous ${escapeHtml(slotLabel)}" width="200" height="250" class="photo-img" style="display:block;width:200px;max-width:100%;height:250px;margin:0 auto;border:0;border-radius:4px;opacity:0.6;" />
+              ${buildPhotoImg(previousUrl, `Previous ${slotLabel}`, 200, 'opacity:0.6;')}
             </td>
           </tr>
         </table>
@@ -570,7 +566,7 @@ function buildPhotoDiffBlock(previousUrl, newUrl, slotLabel, isFirstUpload) {
         <tr>
           <td align="center" style="background-color:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:4px;">
             <p style="margin:0 0 4px;color:#047857;font-size:9px;font-weight:700;text-transform:uppercase;font-family:Arial,Helvetica,sans-serif;">NEW</p>
-            <img src="${escapeHtml(newUrl)}" alt="New ${escapeHtml(slotLabel)}" width="200" height="250" class="photo-img" style="display:block;width:200px;max-width:100%;height:250px;margin:0 auto;border:0;border-radius:4px;" />
+            ${buildPhotoImg(newUrl, `New ${slotLabel}`, 200)}
           </td>
         </tr>
       </table>
@@ -696,7 +692,7 @@ export function buildUnifiedSubmitEmailHtml({
     @media only screen and (max-width: 480px) {
       .wrapper { width: 100% !important; }
       .body-pad { padding: 14px 12px !important; }
-      .photo-img { width: 100% !important; max-width: 140px !important; height: 180px !important; }
+      .photo-img { width: 100% !important; height: auto !important; }
     }
   </style>
   <!--<![endif]-->
