@@ -171,16 +171,18 @@ const SetupWizard = ({
     setError("");
 
     try {
-      const userEmail = userEmailProp || localStorage.getItem("userEmail");
-      if (!userEmail) {
+      const { email: userEmail, userId } = resolveRequester();
+      if (!userEmail && !userId) {
         setError("Session expired. Please login again.");
         return;
       }
 
+      const params = new URLSearchParams({ teamId });
+      if (userEmail) params.set('email', userEmail);
+      else params.set('userId', String(userId));
+
       const response = await axios.get(
-        `${API_BASE}/api/team/check-availability?teamId=${teamId}&email=${encodeURIComponent(
-          userEmail,
-        )}`,
+        `${API_BASE}/api/team/check-availability?${params.toString()}`,
       );
 
       setTeamIdStatus(response.data.status);

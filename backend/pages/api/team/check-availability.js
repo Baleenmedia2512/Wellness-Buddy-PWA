@@ -61,13 +61,17 @@ export default async function handler(req, res) {
       return;
     }
 
-    // Get email from query parameter
-    const { email } = req.query;
-    
-    if (!email) {
+    // Identify requester by email OR userId (phone-first users often have no email yet).
+    const email = typeof req.query.email === 'string' ? req.query.email.trim() : '';
+    const userIdRaw = req.query.userId;
+    const userIdNum = userIdRaw != null && String(userIdRaw).trim() !== ''
+      ? parseInt(userIdRaw, 10)
+      : NaN;
+
+    if (!email && (!Number.isFinite(userIdNum) || userIdNum <= 0)) {
       res.status(400).json({
         success: false,
-        error: 'Email is required'
+        error: 'Email or userId is required'
       });
       return;
     }
@@ -76,11 +80,15 @@ export default async function handler(req, res) {
     const supabase = getSupabaseClient();
 
     // Get current user's UserId and existing TeamId
-    const { data: currentUserRows, error: userError } = await supabase
+    let userQuery = supabase
       .from('team_table')
       .select('UserId, TeamId')
-      .eq('Email', email)
       .limit(1);
+    userQuery = email
+      ? userQuery.eq('Email', email)
+      : userQuery.eq('UserId', userIdNum);
+
+    const { data: currentUserRows, error: userError } = await userQuery;
 
     if (userError) throw userError;
 
