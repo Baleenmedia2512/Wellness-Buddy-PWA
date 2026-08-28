@@ -1,6 +1,6 @@
 /**
  * Transformation photos — Centre / Left / Right tabs.
- * Compact: pose tip + in-frame preview with Camera / Gallery (mandatory, no ML).
+ * Empty frame shows pose teaching graphic; Camera / Gallery at bottom.
  */
 import React, { useState } from 'react';
 import { Camera, CheckCircle2, Images } from 'lucide-react';
@@ -66,29 +66,26 @@ const TransformationPhotosSection = ({
         })}
       </div>
 
-      <TransformationPoseGuideCard poseType={poseType} />
-
       <div
-        className={`relative flex-1 min-h-0 w-full rounded-xl overflow-hidden bg-gray-900 ${
+        className={`relative flex-1 min-h-0 w-full rounded-xl overflow-hidden ${
           preview
-            ? 'border border-emerald-200'
-            : 'border-2 border-dashed border-gray-200 bg-gray-50'
+            ? 'bg-gray-900 border border-emerald-200'
+            : 'bg-gradient-to-b from-emerald-50/90 to-gray-50 border-2 border-dashed border-emerald-200'
         }`}
       >
         {preview ? (
           <img
             src={preview}
             alt={guide.label}
-            className="absolute inset-0 w-full h-full object-contain"
+            className="absolute inset-0 w-full h-full object-contain pb-16"
           />
         ) : (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 px-4 bg-gray-50">
-            <Camera className="w-8 h-8 text-gray-300" />
-            <p className="text-xs text-gray-400 font-medium">{guide.label} photo</p>
+          <div className="absolute inset-0 pb-16 flex items-center justify-center">
+            <TransformationPoseGuideCard poseType={poseType} variant="frame" />
           </div>
         )}
 
-        <div className="absolute inset-x-0 bottom-0 p-2.5 bg-gradient-to-t from-black/55 to-transparent">
+        <div className="absolute inset-x-0 bottom-0 p-2.5 bg-gradient-to-t from-black/55 via-black/25 to-transparent">
           <div className="grid grid-cols-2 gap-2">
             <input
               ref={cameraRef}

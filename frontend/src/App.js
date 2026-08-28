@@ -1001,11 +1001,11 @@ function WellnessValleyApp() {
   const [showActivityTimeReport, setShowActivityTimeReport] = useState(false);
   // Testimonials page � member upload + coach verification
   const [showTestimonials, setShowTestimonials] = useState(false);
-  // Reports page — coach/upline analytics (downline weight status, etc.)
+  // Reports page — common module (Ideal Weight, Wellness Score, Nutrition, Trend).
   const [showReports, setShowReports] = useState(false);
   const [reportsDashboardTab, setReportsDashboardTab] = useState(REPORT_DASHBOARD_TABS.IDEAL_WEIGHT);
 
-  // Drop Reports overlay if role is not allowed (e.g. leaf member / role load race).
+  // Drop Reports overlay if the module is no longer allowed (flag / access rule).
   useEffect(() => {
     if (showReports && !canAccessReportsModule(userRole)) {
       setShowReports(false);
@@ -7571,6 +7571,7 @@ function WellnessValleyApp() {
               embedded
               user={user}
               userRole={userRole}
+              savedUserName={savedUserName}
               tabVisitKey={tabVisitKeys.enrollment ?? 0}
               onBack={() => {
                 enrollmentHistoryPushedRef.current = false;
