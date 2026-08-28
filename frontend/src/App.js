@@ -3229,22 +3229,25 @@ function WellnessValleyApp() {
         }
 
         setShowOnboardingIdentity(false);
-        profileCompletedRef.current = false;
 
         // Remaining profile only after sponsor setup is done (or caller opts in).
-        const setupAlreadyDone =
-          allowRemainingProfile
-          || Session.isSetupSkipped();
-        if (setupAlreadyDone) {
-          debugLog("?? [Profile] Remaining fields missing — showing CompleteProfilePage");
-          setShowCompleteProfile(true);
-          transformationPhotosGateRef.current = false;
-          setShowOnboardingTransformationPhotos(false);
-        } else {
+        // While Transformation Photos is the active next step, never steal the
+        // screen back to Complete Profile (async re-checks after save/setUser).
+        if (transformationPhotosGateRef.current) {
+          profileCompletedRef.current = true;
           setShowCompleteProfile(false);
-          if (transformationPhotosGateRef.current) {
-            setShowOnboardingTransformationPhotos(true);
+          setShowOnboardingTransformationPhotos(true);
+        } else {
+          profileCompletedRef.current = false;
+          const setupAlreadyDone =
+            allowRemainingProfile
+            || Session.isSetupSkipped();
+          if (setupAlreadyDone) {
+            debugLog("?? [Profile] Remaining fields missing — showing CompleteProfilePage");
+            setShowCompleteProfile(true);
+            setShowOnboardingTransformationPhotos(false);
           } else {
+            setShowCompleteProfile(false);
             setShowOnboardingTransformationPhotos(false);
           }
         }

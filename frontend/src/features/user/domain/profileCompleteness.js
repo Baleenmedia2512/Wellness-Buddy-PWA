@@ -77,6 +77,10 @@ export function hasValidBodyFatSource({
   return false;
 }
 
+/**
+ * Field completeness for remaining-profile onboarding.
+ * Avatar is Centre transformation photo (separate step) — not required here.
+ */
 export function isProfileComplete({
   height,
   dietType,
@@ -85,7 +89,7 @@ export function isProfileComplete({
   phoneNumber,
   gender = null,
   bodyMetrics = null,
-  profileImage = undefined,
+  profileImage: _profileImage = undefined,
   bodyFat = null,
   latestWeightBodyFat = null,
   bodyFatRequired = true,
@@ -97,9 +101,5 @@ export function isProfileComplete({
   const hasGender = hasValidProfileGender(gender, bodyMetrics);
   const hasBodyFat = !bodyFatRequired
     || hasValidBodyFatSource({ bodyFat, latestWeightBodyFat, bodyMetrics });
-  const hasPhoto = profileImage === undefined
-    ? true
-    : typeof profileImage === 'string'
-      && (profileImage.startsWith('data:image/') || profileImage.startsWith('https://'));
-  return !!(hasHeight && hasDiet && hasEmail && hasName && hasGender && hasBodyFat && hasPhoto);
+  return !!(hasHeight && hasDiet && hasEmail && hasName && hasGender && hasBodyFat);
 }

@@ -226,7 +226,7 @@ describe('isProfileComplete', () => {
     );
   });
 
-  it('requires profileImage when provided', () => {
+  it('does not require profileImage (avatar is Centre transform photo)', () => {
     assert.equal(
       isProfileComplete({
         height: 170,
@@ -237,7 +237,7 @@ describe('isProfileComplete', () => {
         bodyFat: 22,
         profileImage: null,
       }),
-      false,
+      true,
     );
     assert.equal(
       isProfileComplete({

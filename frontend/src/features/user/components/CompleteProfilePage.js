@@ -369,7 +369,7 @@ const CompleteProfilePage = ({
           <h1 className="text-2xl font-bold text-white">Complete Your Profile</h1>
         </div>
         <p className="text-green-100 text-sm">
-          Gender, height, diet, body metrics, and photo — then transformation photos.
+          Gender, height, diet, and body metrics — then transformation photos.
         </p>
       </div>
       <div className="max-w-md mx-auto p-5 space-y-5">
