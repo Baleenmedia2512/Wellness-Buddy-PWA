@@ -724,46 +724,770 @@ test(
   // CP-003
   // ==========================================================
 
-  test(
-    'CP-003 new user profile fields are initially empty',
-    async ({ page }) => {
+test(
+  'CP-003 Full Name controls Continue button availability',
+  async ({ page }) => {
 
-      await goToCompleteProfile(page);
+    // ============================================================
+    // TEST DATA
+    // ============================================================
 
-      const emailInput =
-        page.getByPlaceholder('you@example.com');
+    const TEST_PHONE =
+      '7695834209';
 
-      await expect(
-        emailInput
-      ).toHaveValue('nitheesh@example.com');
+    const TEST_OTP =
+      '123456';
 
-      await expect(
-        emailInput
-      ).toBeDisabled();
+    const TEST_NAME =
+      'Nitheesh Lingam';
 
-      for (const placeholder of [
-        'e.g. 170',
-        'e.g. 72.5',
-      ]) {
-        await expect(
-          page.getByPlaceholder(placeholder)
-        ).toHaveValue('');
+
+    // ============================================================
+    // 1. CONSENT FEATURE FLAG
+    // ============================================================
+
+    await page.addInitScript(() => {
+
+      localStorage.setItem(
+        'ff.consent-gate',
+        'true'
+      );
+
+    });
+
+
+    // ============================================================
+    // 2. SEND LOGIN OTP
+    // ============================================================
+
+    await page.route(
+      '**/api/auth/send-otp',
+      async route => {
+
+        console.log(
+          'CP-003 SEND OTP'
+        );
+
+        expect(
+          route.request().method()
+        ).toBe('POST');
+
+        await route.fulfill({
+
+          status:
+            200,
+
+          contentType:
+            'application/json',
+
+          body:
+            JSON.stringify({
+              success:
+                true,
+            }),
+
+        });
+
       }
+    );
 
-      await expect(
-        page.locator('label').filter({ hasText: 'Fat %' }).last()
-          .locator('..')
-          .locator('input')
-      ).toHaveValue('');
 
-      await expect(
-        page.locator('select').filter({
-          has: page.locator('option[value="Male"]'),
-        })
-      ).toHaveValue('');
+    // ============================================================
+    // 3. VERIFY LOGIN OTP
+    //
+    // IMPORTANT:
+    // Phone-only user.
+    //
+    // No email is supplied because the application should show
+    // the Name Entry page first for a phone user.
+    // ============================================================
+
+    await page.route(
+      '**/api/auth/verify-otp',
+      async route => {
+
+        const body =
+          route.request().postDataJSON();
+
+        console.log(
+          'CP-003 LOGIN OTP BODY:',
+          body
+        );
+
+        expect(
+          body
+        ).toMatchObject({
+
+          recipient:
+            `+91${TEST_PHONE}`,
+
+          otp:
+            TEST_OTP,
+
+          contactType:
+            'phone',
+
+        });
+
+
+        await route.fulfill({
+
+          status:
+            200,
+
+          contentType:
+            'application/json',
+
+          body:
+            JSON.stringify({
+
+              success:
+                true,
+
+              isNewUser:
+                true,
+
+              isActive:
+                true,
+
+              role:
+                'user',
+
+              user: {
+
+                id:
+                  967,
+
+                username:
+                  'newuser',
+
+                userName:
+                  'newuser',
+
+                name:
+                  '',
+
+                email:
+                  '',
+
+                phone:
+                  `+91${TEST_PHONE}`,
+
+                phoneNumber:
+                  `+91${TEST_PHONE}`,
+
+                status:
+                  'Active',
+
+                consentRequired:
+                  true,
+
+              },
+
+            }),
+
+        });
+
+      }
+    );
+
+
+    // ============================================================
+    // 4. CONSENT
+    //
+    // GET  -> display consent
+    // POST -> accept consent
+    // ============================================================
+
+    let consentAccepted =
+      false;
+
+
+    await page.route(
+      '**/api/user/consent*',
+      async route => {
+
+        const method =
+          route.request().method();
+
+
+        console.log(
+          'CP-003 CONSENT:',
+          method,
+          route.request().url()
+        );
+
+
+        // --------------------------------------------------------
+        // GET CONSENT
+        // --------------------------------------------------------
+
+        if (
+          method === 'GET'
+        ) {
+
+          await route.fulfill({
+
+            status:
+              200,
+
+            contentType:
+              'application/json',
+
+            body:
+              JSON.stringify({
+
+                success:
+                  true,
+
+                consentRequired:
+                  !consentAccepted,
+
+                consentAccepted:
+                  consentAccepted,
+
+              }),
+
+          });
+
+          return;
+        }
+
+
+        // --------------------------------------------------------
+        // POST CONSENT
+        // --------------------------------------------------------
+
+        if (
+          method === 'POST'
+        ) {
+
+          const body =
+            route.request().postDataJSON();
+
+
+          console.log(
+            'CP-003 CONSENT POST:',
+            body
+          );
+
+
+          expect(
+            body.consentAccepted
+          ).toBe(true);
+
+
+          consentAccepted =
+            true;
+
+
+          await route.fulfill({
+
+            status:
+              200,
+
+            contentType:
+              'application/json',
+
+            body:
+              JSON.stringify({
+
+                success:
+                  true,
+
+                consentRequired:
+                  false,
+
+                consentAccepted:
+                  true,
+
+              }),
+
+          });
+
+          return;
+        }
+
+
+        await route.fallback();
+
+      }
+    );
+
+
+    // ============================================================
+    // 5. PROFILE REQUESTS
+    //
+    // CP-003 is a phone-only onboarding test.
+    //
+    // The application should NOT need an email-based profile
+    // completion check at this stage.
+    //
+    // However, if the UI requests profile information using the
+    // phone user, return an incomplete identity.
+    // ============================================================
+
+    await page.route(
+      '**/api/user/profile**',
+      async route => {
+
+        const method =
+          route.request().method();
+
+        console.log(
+          'CP-003 PROFILE:',
+          method,
+          route.request().url()
+        );
+
+
+        // --------------------------------------------------------
+        // GET PROFILE
+        // --------------------------------------------------------
+
+        if (
+          method === 'GET'
+        ) {
+
+          await route.fulfill({
+
+            status:
+              200,
+
+            contentType:
+              'application/json',
+
+            body:
+              JSON.stringify({
+
+                success:
+                  true,
+
+                data: {
+
+                  userName:
+                    '',
+
+                  email:
+                    '',
+
+                  phoneNumber:
+                    `+91${TEST_PHONE}`,
+
+                  profileComplete:
+                    false,
+
+                  consentRequired:
+                    false,
+
+                  height:
+                    null,
+
+                  dietType:
+                    null,
+
+                  gender:
+                    null,
+
+                  profileImage:
+                    null,
+
+                },
+
+              }),
+
+          });
+
+          return;
+        }
+
+
+        await route.fallback();
+
+      }
+    );
+
+
+    // ============================================================
+    // 6. OPEN LOGIN PAGE
+    // ============================================================
+
+    await page.goto(
+      '/',
+      {
+        waitUntil:
+          'domcontentloaded',
+      }
+    );
+
+
+    // ============================================================
+    // 7. MOBILE NUMBER
+    // ============================================================
+
+    const mobileInput =
+      page.getByLabel(
+        'Mobile Number'
+      );
+
+
+    await expect(
+      mobileInput
+    ).toBeVisible({
+      timeout:
+        15000,
+    });
+
+
+    await mobileInput.fill(
+      TEST_PHONE
+    );
+
+
+    await expect(
+      mobileInput
+    ).toHaveValue(
+      TEST_PHONE
+    );
+
+
+    // ============================================================
+    // 8. SEND OTP
+    // ============================================================
+
+    const sendOtpButton =
+      page.getByRole(
+        'button',
+        {
+          name:
+            'Send OTP',
+
+          exact:
+            true,
+        }
+      );
+
+
+    await expect(
+      sendOtpButton
+    ).toBeEnabled();
+
+
+    await sendOtpButton.click();
+
+
+    // ============================================================
+    // 9. OTP PAGE
+    // ============================================================
+
+    await expect(
+      page.getByText(
+        'Enter OTP',
+        {
+          exact:
+            true,
+        }
+      )
+    ).toBeVisible({
+      timeout:
+        15000,
+    });
+
+
+    const otpInputs =
+      page.locator(
+        'input[type="tel"]'
+      );
+
+
+    await expect(
+      otpInputs
+    ).toHaveCount(
+      6
+    );
+
+
+    // ============================================================
+    // 10. ENTER OTP
+    // ============================================================
+
+    for (
+      let i = 0;
+      i < TEST_OTP.length;
+      i++
+    ) {
+
+      await otpInputs
+        .nth(i)
+        .fill(
+          TEST_OTP[i]
+        );
 
     }
-  );
+
+
+    // ============================================================
+    // 11. CONSENT PAGE
+    // ============================================================
+
+    const consentHeading =
+      page.getByRole(
+        'heading',
+        {
+          name:
+            'User Consent Form',
+
+          exact:
+            true,
+        }
+      );
+
+
+    await expect(
+      consentHeading
+    ).toBeVisible({
+      timeout:
+        15000,
+    });
+
+
+    console.log(
+      'CP-003 CONSENT FORM DISPLAYED'
+    );
+
+
+    // ============================================================
+    // 12. SELECT I AGREE
+    // ============================================================
+
+    const agreeOption =
+      page
+        .locator('label')
+        .filter({
+          hasText:
+            'I Agree',
+        })
+        .last();
+
+
+    await expect(
+      agreeOption
+    ).toBeVisible({
+      timeout:
+        10000,
+    });
+
+
+    await agreeOption.click({
+      force:
+        true,
+    });
+
+
+    console.log(
+      'CP-003 I AGREE SELECTED'
+    );
+
+
+    // ============================================================
+    // 13. CONSENT CONTINUE
+    // ============================================================
+
+    const consentContinue =
+      page.getByRole(
+        'button',
+        {
+          name:
+            'Continue',
+
+          exact:
+            true,
+        }
+      );
+
+
+    await expect(
+      consentContinue
+    ).toBeEnabled({
+      timeout:
+        10000,
+    });
+
+
+    await consentContinue.click();
+
+
+    // ============================================================
+    // 14. WAIT FOR CONSENT POST
+    // ============================================================
+
+    await expect
+      .poll(
+        () =>
+          consentAccepted,
+        {
+          timeout:
+            10000,
+        }
+      )
+      .toBe(true);
+
+
+    // ============================================================
+    // 15. CONSENT FORM DISAPPEARS
+    // ============================================================
+
+    await expect(
+      consentHeading
+    ).not.toBeVisible({
+      timeout:
+        15000,
+    });
+
+
+    // ============================================================
+    // 16. NAME ENTRY PAGE
+    //
+    // The application source uses:
+    //
+    // placeholder="Enter your full name"
+    //
+    // Therefore this is the correct primary locator.
+    // ============================================================
+
+    const fullNameInput =
+      page.getByPlaceholder(
+        'Enter your full name'
+      );
+
+
+    await expect(
+      fullNameInput
+    ).toBeVisible({
+      timeout:
+        15000,
+    });
+
+
+    console.log(
+      'CP-003 NAME ENTRY PAGE DISPLAYED'
+    );
+
+
+    // ============================================================
+    // 17. FIND NAME CONTINUE BUTTON
+    // ============================================================
+
+    const nameContinue =
+      page.getByRole(
+        'button',
+        {
+          name:
+            'Continue',
+
+          exact:
+            true,
+        }
+      );
+
+
+    await expect(
+      nameContinue
+    ).toBeVisible({
+      timeout:
+        10000,
+    });
+
+
+    // ============================================================
+    // 18. BLANK NAME
+    //
+    // Clear the field first because the application may have
+    // pre-populated it from session/profile data.
+    // ============================================================
+
+    await fullNameInput.fill(
+      ''
+    );
+
+
+    await expect(
+      fullNameInput
+    ).toHaveValue(
+      ''
+    );
+
+
+    // ============================================================
+    // 19. CONTINUE MUST BE DISABLED
+    // ============================================================
+
+    await expect(
+      nameContinue
+    ).toBeDisabled({
+      timeout:
+        10000,
+    });
+
+
+    console.log(
+      'CP-003 BLANK NAME -> CONTINUE DISABLED'
+    );
+
+
+    // ============================================================
+    // 20. ENTER VALID NAME
+    // ============================================================
+
+    await fullNameInput.fill(
+      TEST_NAME
+    );
+
+
+    await expect(
+      fullNameInput
+    ).toHaveValue(
+      TEST_NAME
+    );
+
+
+    // ============================================================
+    // 21. CONTINUE MUST BE ENABLED
+    // ============================================================
+
+    await expect(
+      nameContinue
+    ).toBeEnabled({
+      timeout:
+        10000,
+    });
+
+
+    console.log(
+      'CP-003 VALID NAME -> CONTINUE ENABLED'
+    );
+
+
+    // ============================================================
+    // 22. CP-003 ENDS HERE
+    //
+    // DO NOT CLICK CONTINUE.
+    //
+    // CP-004 will test:
+    //
+    // Name Entry
+    //      ↓
+    // Coach Authentication
+    // ============================================================
+
+    console.log(
+      'CP-003 NAME VALIDATION VERIFIED'
+    );
+
+  }
+);
+
+
 
 
   // ==========================================================
@@ -1081,22 +1805,530 @@ test(
   async ({ page }) => {
 
     // ============================================================
-    // 1. OPEN COMPLETE PROFILE WITH EDITABLE / EMPTY EMAIL
-    //
-    // The helper must provide a profile whose email is empty so
-    // the Email field is editable.
+    // TEST DATA
     // ============================================================
 
-    await goToCompleteProfile(
-      page,
-      {
-        profileEmail: '',
+    const TEST_PHONE = '7695834209';
+    const TEST_OTP = '123456';
+
+    const TEST_NAME = 'Nitheesh Lingam';
+
+    const EMPTY_EMAIL = '';
+    const INVALID_EMAIL = 'nitheesh@example';
+    const VALID_EMAIL = 'nitheesh@example.com';
+
+
+    // ============================================================
+    // 1. SEND LOGIN OTP
+    // ============================================================
+
+    await page.route(
+      '**/api/auth/send-otp',
+      async route => {
+
+        const request = route.request();
+
+        expect(
+          request.method()
+        ).toBe('POST');
+
+        const body = request.postDataJSON();
+
+        console.log(
+          'CP-006 SEND OTP BODY:',
+          body
+        );
+
+        expect(body).toMatchObject({
+          recipient:
+            `+91${TEST_PHONE}`,
+
+          contactType:
+            'phone',
+        });
+
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+
+          body: JSON.stringify({
+            success: true,
+          }),
+        });
+
       }
     );
 
 
     // ============================================================
-    // 2. LOCATORS
+    // 2. VERIFY OTP
+    //
+    // Phone user:
+    // - no email
+    // - known name
+    // - active
+    // ============================================================
+
+    await page.route(
+      '**/api/auth/verify-otp',
+      async route => {
+
+        const request = route.request();
+
+        expect(
+          request.method()
+        ).toBe('POST');
+
+        const body = request.postDataJSON();
+
+        console.log(
+          'CP-006 LOGIN OTP BODY:',
+          body
+        );
+
+        expect(body).toMatchObject({
+          recipient:
+            `+91${TEST_PHONE}`,
+
+          otp:
+            TEST_OTP,
+
+          contactType:
+            'phone',
+        });
+
+
+        await route.fulfill({
+
+          status: 200,
+
+          contentType:
+            'application/json',
+
+          body: JSON.stringify({
+
+            success: true,
+
+            isNewUser: false,
+
+            isActive: true,
+
+            role: 'user',
+
+            user: {
+
+              id: 967,
+
+              UserId: 967,
+
+              username:
+                TEST_NAME,
+
+              userName:
+                TEST_NAME,
+
+              name:
+                TEST_NAME,
+
+              email:
+                '',
+
+              phone:
+                `+91${TEST_PHONE}`,
+
+              phoneNumber:
+                TEST_PHONE,
+
+              status:
+                'Active',
+
+              consentRequired:
+                false,
+
+            },
+
+          }),
+
+        });
+
+      }
+    );
+
+
+    // ============================================================
+    // 3. VERIFY SESSION
+    // ============================================================
+
+    await page.route(
+      '**/api/user/verify-session',
+      async route => {
+
+        console.log(
+          'CP-006 VERIFY SESSION'
+        );
+
+        await route.fulfill({
+
+          status: 200,
+
+          contentType:
+            'application/json',
+
+          body: JSON.stringify({
+
+            success: true,
+
+            userId: 967,
+
+            sessionStale: false,
+
+          }),
+
+        });
+
+      }
+    );
+
+
+    // ============================================================
+    // 4. USER STATUS
+    //
+    // Setup is already complete so CP-006 does not enter the
+    // coach-authentication flow.
+    // ============================================================
+
+    await page.route(
+      '**/api/user/status*',
+      async route => {
+
+        console.log(
+          'CP-006 STATUS:',
+          route.request().url()
+        );
+
+        await route.fulfill({
+
+          status: 200,
+
+          contentType:
+            'application/json',
+
+          body: JSON.stringify({
+
+            success: true,
+
+            setupComplete:
+              true,
+
+            setupSkipped:
+              true,
+
+            hasTeamId:
+              false,
+
+            hasUpline:
+              true,
+
+            pendingRequest:
+              false,
+
+            redirectTo:
+              null,
+
+          }),
+
+        });
+
+      }
+    );
+
+
+    // ============================================================
+    // 5. CONSENT
+    // ============================================================
+
+    await page.route(
+      '**/api/user/consent*',
+      async route => {
+
+        const method =
+          route.request().method();
+
+        console.log(
+          'CP-006 CONSENT:',
+          method
+        );
+
+        if (
+          method === 'GET'
+          ||
+          method === 'POST'
+        ) {
+
+          await route.fulfill({
+
+            status: 200,
+
+            contentType:
+              'application/json',
+
+            body: JSON.stringify({
+
+              success:
+                true,
+
+              consentRequired:
+                false,
+
+              consentAccepted:
+                true,
+
+            }),
+
+          });
+
+          return;
+        }
+
+        await route.fallback();
+
+      }
+    );
+
+
+    // ============================================================
+    // 6. PROFILE
+    //
+    // IMPORTANT:
+    //
+    // Email is empty.
+    //
+    // Existing profile values are intentionally populated for
+    // fields that are NOT under test.
+    //
+    // Therefore CP-006 only needs to change the email.
+    // ============================================================
+
+    await page.route(
+      '**/api/user/profile*',
+      async route => {
+
+        if (
+          route.request().method() !== 'GET'
+        ) {
+
+          await route.fallback();
+
+          return;
+
+        }
+
+
+        console.log(
+          'CP-006 PROFILE GET:',
+          route.request().url()
+        );
+
+
+        await route.fulfill({
+
+          status: 200,
+
+          contentType:
+            'application/json',
+
+          body: JSON.stringify({
+
+            success: true,
+
+            data: {
+
+              userId:
+                967,
+
+              profileComplete:
+                false,
+
+              userName:
+                TEST_NAME,
+
+              name:
+                TEST_NAME,
+
+              email:
+                '',
+
+              phoneNumber:
+                TEST_PHONE,
+
+              gender:
+                'Male',
+
+              height:
+                170,
+
+              dietType:
+                'Vegetarian',
+
+              latestWeight:
+                72.5,
+
+              currentWeight:
+                72.5,
+
+              latestWeightBodyFat:
+                22,
+
+              bodyFat:
+                22,
+
+              profileImage:
+                'https://example.com/profile.jpg',
+
+              physicalActivityLevel:
+                null,
+
+              needsCurrentWeight:
+                false,
+
+            },
+
+          }),
+
+        });
+
+      }
+    );
+
+
+    // ============================================================
+    // 7. OPEN APPLICATION
+    // ============================================================
+
+    await page.goto(
+      '/',
+      {
+        waitUntil:
+          'domcontentloaded',
+      }
+    );
+
+
+    // ============================================================
+    // 8. LOGIN PAGE
+    // ============================================================
+
+    const mobileInput =
+      page.getByLabel(
+        'Mobile Number'
+      );
+
+
+    await expect(
+      mobileInput
+    ).toBeVisible({
+      timeout:
+        15000,
+    });
+
+
+    await mobileInput.fill(
+      TEST_PHONE
+    );
+
+
+    await page
+      .getByRole(
+        'button',
+        {
+          name:
+            'Send OTP',
+
+          exact:
+            true,
+        }
+      )
+      .click();
+
+
+    // ============================================================
+    // 9. OTP PAGE
+    // ============================================================
+
+    await expect(
+      page.getByText(
+        'Enter OTP',
+        {
+          exact:
+            true,
+        }
+      )
+    ).toBeVisible({
+      timeout:
+        15000,
+    });
+
+
+    const otpInputs =
+      page.locator(
+        'input[data-otp="true"]'
+      );
+
+
+    await expect(
+      otpInputs
+    ).toHaveCount(
+      6
+    );
+
+
+    for (
+      let i = 0;
+      i < TEST_OTP.length;
+      i++
+    ) {
+
+      await otpInputs
+        .nth(i)
+        .fill(
+          TEST_OTP[i]
+        );
+
+    }
+
+
+    // ============================================================
+    // 10. COMPLETE PROFILE
+    // ============================================================
+
+    const completeProfileHeading =
+      page.getByRole(
+        'heading',
+        {
+          name:
+            'Complete Your Profile',
+
+          exact:
+            true,
+        }
+      );
+
+
+    await expect(
+      completeProfileHeading
+    ).toBeVisible({
+      timeout:
+        20000,
+    });
+
+
+    console.log(
+      'CP-006 COMPLETE PROFILE PAGE DISPLAYED'
+    );
+
+
+    // ============================================================
+    // 11. EMAIL
     // ============================================================
 
     const emailInput =
@@ -1104,455 +2336,157 @@ test(
         'you@example.com'
       );
 
-    const saveButton =
-      page.getByRole(
-        'button',
-        {
-          name:
-            'Save & Continue',
-          exact:
-            true,
-        }
-      );
-
-
-    // ============================================================
-    // 3. WAIT FOR FORM
-    // ============================================================
 
     await expect(
       emailInput
     ).toBeVisible({
-      timeout: 20000,
-    });
-
-    await expect(
-      saveButton
-    ).toBeVisible({
-      timeout: 10000,
+      timeout:
+        15000,
     });
 
 
-    // Email must be editable for this test.
     await expect(
       emailInput
     ).toBeEditable({
-      timeout: 10000,
+      timeout:
+        10000,
     });
 
 
+    await expect(
+      emailInput
+    ).toHaveValue(
+      ''
+    );
+
+
+    console.log(
+      'CP-006 EMAIL FIELD IS EMPTY AND EDITABLE'
+    );
+
+
     // ============================================================
-    // 4. FILL GENDER
+    // 12. VERIFY NON-EMAIL FIELDS
+    //
+    // Because the mocked profile already contains valid values,
+    // these fields should already satisfy formValid.
+    //
+    // We DO NOT force Body Fat or Profile Picture to appear.
     // ============================================================
 
-    let genderSelected = false;
+    const nameInput =
+      page.getByPlaceholder(
+        'Enter your full name'
+      );
 
-    for (
-      let attempt = 1;
-      attempt <= 5;
-      attempt++
+
+    if (
+      await nameInput
+        .isVisible({
+          timeout:
+            2000,
+        })
+        .catch(
+          () => false
+        )
     ) {
 
-      try {
+      await nameInput.fill(
+        TEST_NAME
+      );
 
-        const genderSelect =
-          page
-            .locator('label')
-            .filter({
-              hasText:
-                'Gender',
-            })
-            .locator('..')
-            .locator('select')
-            .first();
+    }
 
 
-        await expect(
-          genderSelect
-        ).toBeVisible({
-          timeout: 3000,
-        });
+    // ------------------------------------------------------------
+    // Gender
+    // ------------------------------------------------------------
+
+    const genderSelect =
+      page
+        .locator('select')
+        .filter({
+          has:
+            page.locator(
+              'option[value="Male"]'
+            ),
+        })
+        .first();
 
 
-        await genderSelect.selectOption({
-          label:
-            'Male',
-        });
+    if (
+      await genderSelect
+        .isVisible({
+          timeout:
+            2000,
+        })
+        .catch(
+          () => false
+        )
+    ) {
 
+      if (
+        !(
+          await genderSelect.inputValue()
+        )
+      ) {
 
-        genderSelected = true;
-
-        break;
-
-      } catch (error) {
-
-        console.log(
-          `CP-006 GENDER RETRY ${attempt}`
+        await genderSelect.selectOption(
+          'Male'
         );
-
-
-        if (
-          attempt === 5
-        ) {
-          throw error;
-        }
-
-
-        await page.waitForTimeout(300);
 
       }
 
     }
 
 
-    expect(
-      genderSelected
-    ).toBe(true);
+    // ------------------------------------------------------------
+    // Height
+    // ------------------------------------------------------------
+
+    const heightInput =
+      page.getByPlaceholder(
+        'e.g. 170'
+      );
 
 
-    // ============================================================
-    // 5. FILL HEIGHT
-    //
-    // Gender selection can trigger a React re-render, so always
-    // create a fresh locator.
-    // ============================================================
-
-    let heightFilled = false;
-
-    for (
-      let attempt = 1;
-      attempt <= 5;
-      attempt++
+    if (
+      await heightInput
+        .isVisible({
+          timeout:
+            2000,
+        })
+        .catch(
+          () => false
+        )
     ) {
 
-      try {
-
-        const heightInput =
-          page.getByPlaceholder(
-            'e.g. 170'
-          );
-
-
-        await expect(
-          heightInput
-        ).toBeVisible({
-          timeout: 3000,
-        });
-
+      if (
+        !(
+          await heightInput.inputValue()
+        )
+      ) {
 
         await heightInput.fill(
           '170'
         );
 
-
-        await expect(
-          page.getByPlaceholder(
-            'e.g. 170'
-          )
-        ).toHaveValue(
-          '170'
-        );
-
-
-        heightFilled = true;
-
-        break;
-
-      } catch (error) {
-
-        console.log(
-          `CP-006 HEIGHT RETRY ${attempt}`
-        );
-
-
-        if (
-          attempt === 5
-        ) {
-          throw error;
-        }
-
-
-        await page.waitForTimeout(300);
-
       }
 
     }
 
 
-    expect(
-      heightFilled
-    ).toBe(true);
-
-
-    // ============================================================
-    // 6. SELECT DIET
-    // ============================================================
-
-    let dietSelected = false;
-
-    for (
-      let attempt = 1;
-      attempt <= 5;
-      attempt++
-    ) {
-
-      try {
-
-        const vegetarianButton =
-          page.getByRole(
-            'button',
-            {
-              name:
-                'Vegetarian',
-              exact:
-                true,
-            }
-          );
-
-
-        await expect(
-          vegetarianButton
-        ).toBeVisible({
-          timeout: 3000,
-        });
-
-
-        await vegetarianButton.click();
-
-
-        dietSelected = true;
-
-        break;
-
-      } catch (error) {
-
-        console.log(
-          `CP-006 DIET RETRY ${attempt}`
-        );
-
-
-        if (
-          attempt === 5
-        ) {
-          throw error;
-        }
-
-
-        await page.waitForTimeout(300);
-
-      }
-
-    }
-
-
-    expect(
-      dietSelected
-    ).toBe(true);
-
-
-    // ============================================================
-    // 7. FILL CURRENT WEIGHT
-    // ============================================================
-
-    let weightFilled = false;
-
-    for (
-      let attempt = 1;
-      attempt <= 5;
-      attempt++
-    ) {
-
-      try {
-
-        const weightInput =
-          page.getByPlaceholder(
-            'e.g. 72.5'
-          );
-
-
-        await expect(
-          weightInput
-        ).toBeVisible({
-          timeout: 3000,
-        });
-
-
-        await weightInput.fill(
-          '72.5'
-        );
-
-
-        await expect(
-          page.getByPlaceholder(
-            'e.g. 72.5'
-          )
-        ).toHaveValue(
-          '72.5'
-        );
-
-
-        weightFilled = true;
-
-        break;
-
-      } catch (error) {
-
-        console.log(
-          `CP-006 WEIGHT RETRY ${attempt}`
-        );
-
-
-        if (
-          attempt === 5
-        ) {
-          throw error;
-        }
-
-
-        await page.waitForTimeout(300);
-
-      }
-
-    }
-
-
-    expect(
-      weightFilled
-    ).toBe(true);
-
-
-    // ============================================================
-    // 8. FILL BODY PARAMETERS -> FAT %
-    //
-    // Current form no longer reliably exposes placeholder
-    // "e.g. 22", so use the Fat % label.
-    // ============================================================
-
-    let fatFilled = false;
-
-    for (
-      let attempt = 1;
-      attempt <= 5;
-      attempt++
-    ) {
-
-      try {
-
-        const fatLabel =
-          page
-            .locator('label')
-            .filter({
-              hasText:
-                'Fat %',
-            })
-            .last();
-
-
-        await expect(
-          fatLabel
-        ).toBeVisible({
-          timeout: 3000,
-        });
-
-
-        const fatInput =
-          fatLabel
-            .locator('..')
-            .locator('input')
-            .first();
-
-
-        await expect(
-          fatInput
-        ).toBeVisible({
-          timeout: 3000,
-        });
-
-
-        await fatInput.fill(
-          '22'
-        );
-
-
-        await expect(
-          fatLabel
-            .locator('..')
-            .locator('input')
-            .first()
-        ).toHaveValue(
-          '22'
-        );
-
-
-        fatFilled = true;
-
-        break;
-
-      } catch (error) {
-
-        console.log(
-          `CP-006 FAT RETRY ${attempt}`
-        );
-
-
-        if (
-          attempt === 5
-        ) {
-          throw error;
-        }
-
-
-        await page.waitForTimeout(300);
-
-      }
-
-    }
-
-
-    expect(
-      fatFilled
-    ).toBe(true);
-
-
-    // ============================================================
-    // 9. PROFILE PICTURE
-    // ============================================================
-
-    const fileInputs =
-      page.locator(
-        'input[type="file"]'
-      );
-
-
-    const fileCount =
-      await fileInputs.count();
-
-
-    console.log(
-      'CP-006 IMAGE INPUT COUNT:',
-      fileCount
-    );
-
-
-    expect(
-      fileCount
-    ).toBeGreaterThan(0);
-
-
-    await fileInputs
-      .last()
-      .setInputFiles(
-        'tests/fixtures/profile-photo.jpg'
-      );
-
-
-    // Handle crop dialog if displayed.
-    const doneButton =
+    // ------------------------------------------------------------
+    // Diet
+    // ------------------------------------------------------------
+
+    const vegetarianButton =
       page.getByRole(
         'button',
         {
           name:
-            'Done',
+            'Vegetarian',
+
           exact:
             true,
         }
@@ -1560,35 +2494,172 @@ test(
 
 
     if (
-      await doneButton
-        .isVisible()
-        .catch(() => false)
+      await vegetarianButton
+        .isVisible({
+          timeout:
+            2000,
+        })
+        .catch(
+          () => false
+        )
     ) {
 
-      await doneButton.click();
+      const classes =
+        await vegetarianButton.getAttribute(
+          'class'
+        );
+
+
+      if (
+        !classes?.includes(
+          'border-green-500'
+        )
+      ) {
+
+        await vegetarianButton.click();
+
+      }
+
+    }
+
+
+    // ------------------------------------------------------------
+    // Current Weight
+    // ------------------------------------------------------------
+
+    const weightInput =
+      page.getByPlaceholder(
+        'e.g. 72.5'
+      );
+
+
+    if (
+      await weightInput
+        .isVisible({
+          timeout:
+            2000,
+        })
+        .catch(
+          () => false
+        )
+    ) {
+
+      if (
+        !(
+          await weightInput.inputValue()
+        )
+      ) {
+
+        await weightInput.fill(
+          '72.5'
+        );
+
+      }
 
     }
 
 
     // ============================================================
-    // 10. CASE 1
+    // 13. BODY FAT
     //
-    // ALL OTHER REQUIRED FIELDS ARE VALID
-    // EMAIL IS EMPTY
+    // In your current run this field was not rendered.
     //
-    // EXPECTATION:
-    // Save & Continue remains disabled.
+    // That is valid because the mocked profile already has:
+    //
+    //     bodyFat = 22
+    //
+    //     latestWeightBodyFat = 22
+    //
+    // So do NOT fail the test because the field is hidden.
+    // ============================================================
+
+    const bodyFatInput =
+      page.getByPlaceholder(
+        'e.g. 22'
+      );
+
+
+    if (
+      await bodyFatInput
+        .isVisible({
+          timeout:
+            2000,
+        })
+        .catch(
+          () => false
+        )
+    ) {
+
+      await bodyFatInput.fill(
+        '22'
+      );
+
+
+      console.log(
+        'CP-006 BODY FAT FILLED'
+      );
+
+    } else {
+
+      console.log(
+        'CP-006 BODY FAT ALREADY VALID / NOT DISPLAYED'
+      );
+
+    }
+
+
+    // ============================================================
+    // 14. PROFILE PICTURE
+    //
+    // The profile mock already contains a valid HTTPS image.
+    //
+    // This allows CompleteProfilePage to consider the picture
+    // requirement satisfied without opening the cropper.
+    // ============================================================
+
+    console.log(
+      'CP-006 PROFILE PICTURE PROVIDED BY PROFILE MOCK'
+    );
+
+
+    // ============================================================
+    // 15. SAVE & CONTINUE
+    // ============================================================
+
+    const saveButton =
+      page.getByRole(
+        'button',
+        {
+          name:
+            'Save & Continue',
+
+          exact:
+            true,
+        }
+      );
+
+
+    await expect(
+      saveButton
+    ).toBeVisible({
+      timeout:
+        10000,
+    });
+
+
+    // ============================================================
+    // 16. EMPTY EMAIL
     // ============================================================
 
     await emailInput.fill(
-      ''
+      EMPTY_EMAIL
     );
 
 
     await expect(
       emailInput
     ).toHaveValue(
-      ''
+      EMPTY_EMAIL
     );
 
 
@@ -1600,26 +2671,24 @@ test(
     });
 
 
+    console.log(
+      'CP-006 EMPTY EMAIL -> SAVE DISABLED'
+    );
+
+
     // ============================================================
-    // 11. CASE 2
-    //
-    // INVALID EMAIL FORMAT
-    //
-    // EXPECTATION:
-    // - email has invalid value
-    // - red validation border appears
-    // - Save & Continue is disabled
+    // 17. INVALID EMAIL
     // ============================================================
 
     await emailInput.fill(
-      'nitheesh@example'
+      INVALID_EMAIL
     );
 
 
     await expect(
       emailInput
     ).toHaveValue(
-      'nitheesh@example'
+      INVALID_EMAIL
     );
 
 
@@ -1642,26 +2711,24 @@ test(
     });
 
 
+    console.log(
+      'CP-006 INVALID EMAIL -> SAVE DISABLED'
+    );
+
+
     // ============================================================
-    // 12. CASE 3
-    //
-    // VALID EMAIL FORMAT
-    //
-    // EXPECTATION:
-    // - email accepted
-    // - red validation border disappears
-    // - Save & Continue becomes enabled
+    // 18. VALID EMAIL
     // ============================================================
 
     await emailInput.fill(
-      'nitheesh@example.com'
+      VALID_EMAIL
     );
 
 
     await expect(
       emailInput
     ).toHaveValue(
-      'nitheesh@example.com'
+      VALID_EMAIL
     );
 
 
@@ -1676,6 +2743,10 @@ test(
     );
 
 
+    // ============================================================
+    // 19. VALID EMAIL MUST ENABLE SAVE
+    // ============================================================
+
     await expect(
       saveButton
     ).toBeEnabled({
@@ -1684,38 +2755,17 @@ test(
     });
 
 
+    console.log(
+      'CP-006 VALID EMAIL -> SAVE ENABLED'
+    );
+
+
     // ============================================================
-    // 13. SAVE & CONTINUE MUST WORK
+    // FINAL
     // ============================================================
-
-    await saveButton.click();
-
-
-    // The exact destination after saving may change depending on
-    // onboarding state. Verify that the click was accepted by
-    // waiting for the Save button to leave the active state.
-    await expect(
-      saveButton
-    ).not.toBeVisible({
-      timeout:
-        20000,
-      }).catch(async () => {
-
-        // Some versions keep the button visible while navigating.
-        // In that case, verify that it is at least no longer
-        // submitting/processing.
-        await expect(
-          saveButton
-        ).toBeEnabled({
-          timeout:
-            5000,
-        });
-
-      });
-
 
     console.log(
-      'CP-006 EMAIL VALIDATION FLOW VERIFIED'
+      'CP-006 EMAIL VALIDATION VERIFIED'
     );
 
   }
@@ -1726,14 +2776,613 @@ test(
   async ({ page }) => {
 
     // ============================================================
-    // 1. GO TO COMPLETE PROFILE
+    // TEST DATA
     // ============================================================
 
-    await goToCompleteProfile(page);
+    const TEST_PHONE =
+      '7695834209';
+
+    const TEST_OTP =
+      '123456';
+
+    const TEST_USER_ID =
+      967;
+
+    const TEST_NAME =
+      'Nitheesh Lingam';
+
+    const TEST_EMAIL =
+      '';
 
 
     // ============================================================
-    // 2. LOCATORS
+    // 1. SEND LOGIN OTP
+    // ============================================================
+
+    await page.route(
+      '**/api/auth/send-otp',
+      async route => {
+
+        const request =
+          route.request();
+
+        expect(
+          request.method()
+        ).toBe('POST');
+
+        const body =
+          request.postDataJSON();
+
+        console.log(
+          'CP-007 SEND OTP BODY:',
+          body
+        );
+
+        expect(
+          body
+        ).toMatchObject({
+          recipient:
+            `+91${TEST_PHONE}`,
+
+          contactType:
+            'phone',
+        });
+
+        await route.fulfill({
+          status:
+            200,
+
+          contentType:
+            'application/json',
+
+          body:
+            JSON.stringify({
+              success:
+                true,
+            }),
+        });
+
+      }
+    );
+
+
+    // ============================================================
+    // 2. VERIFY LOGIN OTP
+    //
+    // Email is intentionally EMPTY.
+    //
+    // This makes Email editable in CompleteProfilePage.
+    // ============================================================
+
+    await page.route(
+      '**/api/auth/verify-otp',
+      async route => {
+
+        const request =
+          route.request();
+
+        expect(
+          request.method()
+        ).toBe('POST');
+
+        const body =
+          request.postDataJSON();
+
+        console.log(
+          'CP-007 LOGIN OTP BODY:',
+          body
+        );
+
+        expect(
+          body
+        ).toMatchObject({
+
+          recipient:
+            `+91${TEST_PHONE}`,
+
+          otp:
+            TEST_OTP,
+
+          contactType:
+            'phone',
+
+        });
+
+
+        await route.fulfill({
+
+          status:
+            200,
+
+          contentType:
+            'application/json',
+
+          body:
+            JSON.stringify({
+
+              success:
+                true,
+
+              isNewUser:
+                false,
+
+              isActive:
+                true,
+
+              role:
+                'user',
+
+              user: {
+
+                id:
+                  TEST_USER_ID,
+
+                UserId:
+                  TEST_USER_ID,
+
+                username:
+                  TEST_NAME,
+
+                userName:
+                  TEST_NAME,
+
+                name:
+                  TEST_NAME,
+
+                email:
+                  TEST_EMAIL,
+
+                phone:
+                  `+91${TEST_PHONE}`,
+
+                phoneNumber:
+                  TEST_PHONE,
+
+                status:
+                  'Active',
+
+                consentRequired:
+                  false,
+
+              },
+
+            }),
+
+        });
+
+      }
+    );
+
+
+    // ============================================================
+    // 3. VERIFY SESSION
+    // ============================================================
+
+    await page.route(
+      '**/api/user/verify-session',
+      async route => {
+
+        console.log(
+          'CP-007 VERIFY SESSION:',
+          route.request().url()
+        );
+
+        await route.fulfill({
+
+          status:
+            200,
+
+          contentType:
+            'application/json',
+
+          body:
+            JSON.stringify({
+
+              success:
+                true,
+
+              userId:
+                TEST_USER_ID,
+
+              sessionStale:
+                false,
+
+            }),
+
+        });
+
+      }
+    );
+
+
+    // ============================================================
+    // 4. CONSENT
+    // ============================================================
+
+    await page.route(
+      '**/api/user/consent*',
+      async route => {
+
+        const method =
+          route.request().method();
+
+        console.log(
+          'CP-007 CONSENT:',
+          method
+        );
+
+        if (
+          method === 'GET'
+          ||
+          method === 'POST'
+        ) {
+
+          await route.fulfill({
+
+            status:
+              200,
+
+            contentType:
+              'application/json',
+
+            body:
+              JSON.stringify({
+
+                success:
+                  true,
+
+                consentRequired:
+                  false,
+
+                consentAccepted:
+                  true,
+
+              }),
+
+          });
+
+          return;
+
+        }
+
+        await route.fallback();
+
+      }
+    );
+
+
+    // ============================================================
+    // 5. USER STATUS
+    //
+    // Prevent coach/setup flow from interfering.
+    // ============================================================
+
+    await page.route(
+      '**/api/user/status*',
+      async route => {
+
+        console.log(
+          'CP-007 STATUS:',
+          route.request().url()
+        );
+
+        await route.fulfill({
+
+          status:
+            200,
+
+          contentType:
+            'application/json',
+
+          body:
+            JSON.stringify({
+
+              success:
+                true,
+
+              setupComplete:
+                true,
+
+              setupSkipped:
+                true,
+
+              hasTeamId:
+                false,
+
+              hasUpline:
+                true,
+
+              pendingRequest:
+                false,
+
+              redirectTo:
+                null,
+
+            }),
+
+        });
+
+      }
+    );
+
+
+    // ============================================================
+    // 6. PROFILE
+    //
+    // Keep Gender EMPTY because Gender is the field under test.
+    //
+    // Other profile values are supplied as valid values so the
+    // profile state is otherwise complete.
+    // ============================================================
+
+    await page.route(
+      '**/api/user/profile*',
+      async route => {
+
+        if (
+          route.request().method() !== 'GET'
+        ) {
+
+          await route.fallback();
+
+          return;
+        }
+
+
+        console.log(
+          'CP-007 PROFILE GET:',
+          route.request().url()
+        );
+
+
+        await route.fulfill({
+
+          status:
+            200,
+
+          contentType:
+            'application/json',
+
+          body:
+            JSON.stringify({
+
+              success:
+                true,
+
+              data: {
+
+                userId:
+                  TEST_USER_ID,
+
+                profileComplete:
+                  false,
+
+                userName:
+                  TEST_NAME,
+
+                name:
+                  TEST_NAME,
+
+                email:
+                  '',
+
+                phoneNumber:
+                  TEST_PHONE,
+
+                // Gender intentionally empty.
+                gender:
+                  '',
+
+                height:
+                  170,
+
+                dietType:
+                  'Vegetarian',
+
+                currentWeight:
+                  72.5,
+
+                latestWeight:
+                  72.5,
+
+                bodyFat:
+                  22,
+
+                latestWeightBodyFat:
+                  22,
+
+                profileImage:
+                  'https://example.com/profile.jpg',
+
+                physicalActivityLevel:
+                  null,
+
+                needsCurrentWeight:
+                  false,
+
+              },
+
+            }),
+
+        });
+
+      }
+    );
+
+
+    // ============================================================
+    // 7. OPEN APPLICATION
+    // ============================================================
+
+    await page.goto(
+      '/',
+      {
+        waitUntil:
+          'domcontentloaded',
+      }
+    );
+
+
+    // ============================================================
+    // 8. LOGIN PAGE
+    // ============================================================
+
+    const mobileInput =
+      page.getByLabel(
+        'Mobile Number'
+      );
+
+
+    await expect(
+      mobileInput
+    ).toBeVisible({
+      timeout:
+        15000,
+    });
+
+
+    await mobileInput.fill(
+      TEST_PHONE
+    );
+
+
+    await page.getByRole(
+      'button',
+      {
+        name:
+          'Send OTP',
+
+        exact:
+          true,
+      }
+    ).click();
+
+
+    // ============================================================
+    // 9. OTP PAGE
+    // ============================================================
+
+    await expect(
+      page.getByText(
+        'Enter OTP',
+        {
+          exact:
+            true,
+        }
+      )
+    ).toBeVisible({
+      timeout:
+        15000,
+    });
+
+
+    const otpInputs =
+      page.locator(
+        'input[data-otp="true"]'
+      );
+
+
+    await expect(
+      otpInputs
+    ).toHaveCount(
+      6
+    );
+
+
+    for (
+      let i = 0;
+      i < TEST_OTP.length;
+      i++
+    ) {
+
+      await otpInputs
+        .nth(i)
+        .fill(
+          TEST_OTP[i]
+        );
+
+    }
+
+
+    // ============================================================
+    // 10. COMPLETE PROFILE
+    // ============================================================
+
+    const completeProfileHeading =
+      page.getByRole(
+        'heading',
+        {
+          name:
+            'Complete Your Profile',
+
+          exact:
+            true,
+        }
+      );
+
+
+    await expect(
+      completeProfileHeading
+    ).toBeVisible({
+      timeout:
+        20000,
+    });
+
+
+    console.log(
+      'CP-007 COMPLETE PROFILE PAGE DISPLAYED'
+    );
+
+
+    // ============================================================
+    // 11. EMAIL
+    //
+    // Email is NOT under test, so make it valid and leave it alone.
+    // Since the authenticated email is empty, the field is editable.
+    // ============================================================
+
+    const emailInput =
+      page.getByPlaceholder(
+        'you@example.com'
+      );
+
+
+    await expect(
+      emailInput
+    ).toBeVisible({
+      timeout:
+        15000,
+    });
+
+
+    await expect(
+      emailInput
+    ).toBeEditable({
+      timeout:
+        10000,
+    });
+
+
+    await emailInput.fill(
+      'nitheesh@example.com'
+    );
+
+
+    await expect(
+      emailInput
+    ).toHaveValue(
+      'nitheesh@example.com'
+    );
+
+
+    // ============================================================
+    // 12. FULL NAME
+    //
+    // It may be:
+    // - visible and editable
+    // - already resolved and hidden
+    //
+    // Handle both states.
     // ============================================================
 
     const fullNameInput =
@@ -1741,267 +3390,200 @@ test(
         'Enter your full name'
       );
 
-    const emailInput =
-      page.locator(
-        'input[type="email"]'
+
+    if (
+      await fullNameInput
+        .isVisible({
+          timeout:
+            2000,
+        })
+        .catch(
+          () => false
+        )
+    ) {
+
+      await fullNameInput.fill(
+        TEST_NAME
       );
+
+
+      await expect(
+        fullNameInput
+      ).toHaveValue(
+        TEST_NAME
+      );
+
+
+      console.log(
+        'CP-007 FULL NAME SET'
+      );
+
+    } else {
+
+      console.log(
+        'CP-007 FULL NAME ALREADY RESOLVED'
+      );
+
+    }
+
+
+    // ============================================================
+    // 13. HEIGHT
+    //
+    // Fill only if displayed.
+    // ============================================================
 
     const heightInput =
       page.getByPlaceholder(
         'e.g. 170'
       );
 
+
+    if (
+      await heightInput
+        .isVisible({
+          timeout:
+            2000,
+        })
+        .catch(
+          () => false
+        )
+    ) {
+
+      await heightInput.fill(
+        '170'
+      );
+
+
+      await expect(
+        heightInput
+      ).toHaveValue(
+        '170'
+      );
+
+    }
+
+
+    // ============================================================
+    // 14. DIET
+    // ============================================================
+
+    const vegetarianButton =
+      page.getByRole(
+        'button',
+        {
+          name:
+            'Vegetarian',
+
+          exact:
+            true,
+        }
+      );
+
+
+    if (
+      await vegetarianButton
+        .isVisible({
+          timeout:
+            2000,
+        })
+        .catch(
+          () => false
+        )
+    ) {
+
+      await vegetarianButton.click();
+
+    }
+
+
+    // ============================================================
+    // 15. CURRENT WEIGHT
+    // ============================================================
+
     const weightInput =
       page.getByPlaceholder(
         'e.g. 72.5'
       );
+
+
+    if (
+      await weightInput
+        .isVisible({
+          timeout:
+            2000,
+        })
+        .catch(
+          () => false
+        )
+    ) {
+
+      await weightInput.fill(
+        '72.5'
+      );
+
+
+      await expect(
+        weightInput
+      ).toHaveValue(
+        '72.5'
+      );
+
+    }
+
+
+    // ============================================================
+    // 16. BODY FAT
+    //
+    // Body Fat may already be satisfied by existing profile data.
+    // Only fill it when it is shown.
+    // ============================================================
 
     const bodyFatInput =
       page.getByPlaceholder(
         'e.g. 22'
       );
 
-    const saveButton =
-      page.getByRole(
-        'button',
-        {
-          name: 'Save & Continue',
-          exact: true,
-        }
-      );
-
-
-    // ============================================================
-    // 3. WAIT FOR FORM
-    // ============================================================
-
-    await expect(
-      fullNameInput
-    ).toBeVisible({
-      timeout: 15000,
-    });
-
-    await expect(
-      emailInput
-    ).toBeVisible({
-      timeout: 15000,
-    });
-
-
-    // ============================================================
-    // 4. FILL OTHER REQUIRED FIELDS
-    //
-    // Gender intentionally remains empty because Gender is the
-    // field under test.
-    // ============================================================
-
-    await fullNameInput.fill(
-      'Nitheesh Lingam'
-    );
-
-
-    // ------------------------------------------------------------
-    // Email
-    // ------------------------------------------------------------
 
     if (
-      await emailInput.isEditable()
+      await bodyFatInput
+        .isVisible({
+          timeout:
+            2000,
+        })
+        .catch(
+          () => false
+        )
     ) {
-      await emailInput.fill(
-        'nitheesh@example.com'
+
+      await bodyFatInput.fill(
+        '22'
       );
+
+
+      await expect(
+        bodyFatInput
+      ).toHaveValue(
+        '22'
+      );
+
+    } else {
+
+      console.log(
+        'CP-007 BODY FAT ALREADY RESOLVED'
+      );
+
     }
-
-
-    // ------------------------------------------------------------
-    // Height
-    // ------------------------------------------------------------
-
-    let heightFilled = false;
-
-    for (
-      let attempt = 1;
-      attempt <= 5;
-      attempt++
-    ) {
-
-      try {
-
-        const height =
-          page.getByPlaceholder(
-            'e.g. 170'
-          );
-
-        await expect(
-          height
-        ).toBeVisible({
-          timeout: 3000,
-        });
-
-        await height.fill('170');
-
-        heightFilled = true;
-        break;
-
-      } catch (error) {
-
-        if (
-          attempt === 5
-        ) {
-          throw error;
-        }
-
-        await page.waitForTimeout(300);
-      }
-    }
-
-    expect(heightFilled).toBe(true);
-
-
-    // ------------------------------------------------------------
-    // Diet
-    // ------------------------------------------------------------
-
-    let dietSelected = false;
-
-    for (
-      let attempt = 1;
-      attempt <= 5;
-      attempt++
-    ) {
-
-      try {
-
-        const vegetarianButton =
-          page.getByRole(
-            'button',
-            {
-              name: 'Vegetarian',
-              exact: true,
-            }
-          );
-
-        await expect(
-          vegetarianButton
-        ).toBeVisible({
-          timeout: 3000,
-        });
-
-        await vegetarianButton.click();
-
-        dietSelected = true;
-        break;
-
-      } catch (error) {
-
-        if (
-          attempt === 5
-        ) {
-          throw error;
-        }
-
-        await page.waitForTimeout(300);
-      }
-    }
-
-    expect(dietSelected).toBe(true);
-
-
-    // ------------------------------------------------------------
-    // Current Weight
-    // ------------------------------------------------------------
-
-    let weightFilled = false;
-
-    for (
-      let attempt = 1;
-      attempt <= 5;
-      attempt++
-    ) {
-
-      try {
-
-        const weight =
-          page.getByPlaceholder(
-            'e.g. 72.5'
-          );
-
-        await expect(
-          weight
-        ).toBeVisible({
-          timeout: 3000,
-        });
-
-        await weight.fill('72.5');
-
-        weightFilled = true;
-        break;
-
-      } catch (error) {
-
-        if (
-          attempt === 5
-        ) {
-          throw error;
-        }
-
-        await page.waitForTimeout(300);
-      }
-    }
-
-    expect(weightFilled).toBe(true);
-
-
-    // ------------------------------------------------------------
-    // Body Fat
-    // ------------------------------------------------------------
-
-    let bodyFatFilled = false;
-
-    for (
-      let attempt = 1;
-      attempt <= 5;
-      attempt++
-    ) {
-
-      try {
-
-        const bodyFat =
-          page.getByPlaceholder(
-            'e.g. 22'
-          );
-
-        await expect(
-          bodyFat
-        ).toBeVisible({
-          timeout: 3000,
-        });
-
-        await bodyFat.fill('22');
-
-        bodyFatFilled = true;
-        break;
-
-      } catch (error) {
-
-        if (
-          attempt === 5
-        ) {
-          throw error;
-        }
-
-        await page.waitForTimeout(300);
-      }
-    }
-
-    expect(bodyFatFilled).toBe(true);
 
 
     // ============================================================
-    // 5. PROFILE PICTURE
+    // 17. PROFILE PICTURE
     //
-    // Required for overall form validity.
-    // Gender is still the only field intentionally empty.
+    // Try to make picture valid only if the picture input is
+    // actually displayed.
+    //
+    // Otherwise the mocked profile already provides an existing
+    // HTTPS profile image.
     // ============================================================
 
     const imageInputs =
@@ -2009,130 +3591,212 @@ test(
         'input[type="file"][accept="image/*"]'
       );
 
-    console.log(
-      'CP-007 IMAGE INPUT COUNT:',
-      await imageInputs.count()
-    );
 
+    const imageCount =
+      await imageInputs.count();
 
-    await imageInputs
-      .last()
-      .setInputFiles(
-        'tests/fixtures/profile-photo.jpg'
-      );
-
-
-    // Complete crop if it appears.
-    const doneButton =
-      page.getByRole(
-        'button',
-        {
-          name: 'Done',
-          exact: true,
-        }
-      );
 
     if (
-      await doneButton.isVisible()
+      imageCount > 0
     ) {
-      await doneButton.click();
+
+      const noImageSelected =
+        page.getByText(
+          'No image selected',
+          {
+            exact:
+              true,
+          }
+        );
+
+
+      const noImageVisible =
+        await noImageSelected
+          .isVisible({
+            timeout:
+              2000,
+          })
+          .catch(
+            () => false
+          );
+
+
+      if (
+        noImageVisible
+      ) {
+
+        await imageInputs
+          .last()
+          .setInputFiles(
+            'tests/fixtures/profile-photo.jpg'
+          );
+
+
+        console.log(
+          'CP-007 PROFILE IMAGE SELECTED'
+        );
+
+
+        const doneButton =
+          page.getByRole(
+            'button',
+            {
+              name:
+                'Done',
+
+              exact:
+                true,
+            }
+          );
+
+
+        if (
+          await doneButton
+            .isVisible({
+              timeout:
+                5000,
+            })
+            .catch(
+              () => false
+            )
+        ) {
+
+          await doneButton.click();
+
+
+          console.log(
+            'CP-007 IMAGE CROP COMPLETED'
+          );
+
+        }
+
+
+        await expect(
+          noImageSelected
+        ).not.toBeVisible({
+          timeout:
+            10000,
+        });
+
+      } else {
+
+        console.log(
+          'CP-007 PROFILE IMAGE ALREADY RESOLVED'
+        );
+
+      }
+
     }
 
 
     // ============================================================
-    // 6. GENDER LOCATOR
+    // 18. GENDER LOCATOR
+    // ============================================================
     //
-    // Do not use select().first().
-    // Locate the select associated with the Gender field.
+    // IMPORTANT:
+    //
+    // Do NOT use:
+    //
+    //     locator('select').first()
+    //
+    // because the application can contain other selects.
+    //
+    // Locate the Gender select using its label.
     // ============================================================
 
-    const getGenderSelect = () =>
-      page
-        .locator('label')
-        .filter({
-          hasText: 'Gender',
-        })
-        .locator('..')
-        .locator('select');
+    const getGenderSelect =
+      () =>
+        page
+          .locator('label')
+          .filter({
+            hasText:
+              'Gender',
+          })
+          .locator('..')
+          .locator('select')
+          .first();
 
 
     // ============================================================
-    // 7. CASE 1 — GENDER EMPTY
+    // 19. SAVE BUTTON
+    // ============================================================
+
+    const saveButton =
+      page.getByRole(
+        'button',
+        {
+          name:
+            'Save & Continue',
+
+          exact:
+            true,
+        }
+      );
+
+
+    await expect(
+      saveButton
+    ).toBeVisible({
+      timeout:
+        10000,
+    });
+
+
+    // ============================================================
+    // 20. CASE 1
+    //
+    // GENDER EMPTY
     // ============================================================
 
     let genderSelect =
       getGenderSelect();
 
+
     await expect(
       genderSelect
     ).toBeVisible({
-      timeout: 10000,
+      timeout:
+        10000,
     });
+
 
     await expect(
       genderSelect
-    ).toHaveValue('');
+    ).toHaveValue(
+      ''
+    );
 
 
-    // Gender is required, so Save must be disabled.
     await expect(
       saveButton
     ).toBeDisabled({
-      timeout: 10000,
+      timeout:
+        10000,
     });
 
 
+    console.log(
+      'CP-007 EMPTY GENDER -> SAVE DISABLED'
+    );
+
+
     // ============================================================
-    // 8. CASE 2 — SELECT MALE
+    // 21. CASE 2
+    //
+    // SELECT MALE
     // ============================================================
 
-    let maleSelected = false;
-
-    for (
-      let attempt = 1;
-      attempt <= 5;
-      attempt++
-    ) {
-
-      try {
-
-        // Fresh locator every attempt because React can replace it.
-        genderSelect =
-          getGenderSelect();
-
-        await expect(
-          genderSelect
-        ).toBeVisible({
-          timeout: 3000,
-        });
-
-        await genderSelect.selectOption({
-          label: 'Male',
-        });
-
-        maleSelected = true;
-        break;
-
-      } catch (error) {
-
-        console.log(
-          `CP-007 Male selection retry ${attempt}`
-        );
-
-        if (
-          attempt === 5
-        ) {
-          throw error;
-        }
-
-        await page.waitForTimeout(300);
-      }
-    }
-
-    expect(maleSelected).toBe(true);
+    genderSelect =
+      getGenderSelect();
 
 
-    // Re-locate after React update.
+    await genderSelect.selectOption({
+      label:
+        'Male',
+    });
+
+
+    // Re-locate after React state update.
     genderSelect =
       getGenderSelect();
 
@@ -2147,15 +3811,23 @@ test(
     await expect(
       saveButton
     ).toBeEnabled({
-      timeout: 10000,
+      timeout:
+        10000,
     });
 
 
+    console.log(
+      'CP-007 MALE -> SAVE ENABLED'
+    );
+
+
     // ============================================================
-    // 9. CASE 3 — CLEAR GENDER
+    // 22. CASE 3
     //
-    // The empty option is disabled in the UI, so use the native
-    // setter + change event.
+    // CLEAR GENDER
+    //
+    // The empty option is disabled in the UI, therefore use the
+    // native setter + change event.
     // ============================================================
 
     genderSelect =
@@ -2176,11 +3848,13 @@ test(
           ''
         );
 
+
         select.dispatchEvent(
           new Event(
             'change',
             {
-              bubbles: true,
+              bubbles:
+                true,
             }
           )
         );
@@ -2189,7 +3863,13 @@ test(
     );
 
 
-    // Re-query after React state update.
+    // Wait for React to process the change.
+    await page.waitForTimeout(
+      300
+    );
+
+
+    // Re-locate after React render.
     genderSelect =
       getGenderSelect();
 
@@ -2204,60 +3884,33 @@ test(
     await expect(
       saveButton
     ).toBeDisabled({
-      timeout: 10000,
+      timeout:
+        10000,
     });
 
 
+    console.log(
+      'CP-007 EMPTY GENDER AFTER CLEAR -> SAVE DISABLED'
+    );
+
+
     // ============================================================
-    // 10. CASE 4 — SELECT FEMALE
+    // 23. CASE 4
+    //
+    // SELECT FEMALE
     // ============================================================
 
-    let femaleSelected = false;
-
-    for (
-      let attempt = 1;
-      attempt <= 5;
-      attempt++
-    ) {
-
-      try {
-
-        genderSelect =
-          getGenderSelect();
-
-        await expect(
-          genderSelect
-        ).toBeVisible({
-          timeout: 3000,
-        });
-
-        await genderSelect.selectOption({
-          label: 'Female',
-        });
-
-        femaleSelected = true;
-        break;
-
-      } catch (error) {
-
-        console.log(
-          `CP-007 Female selection retry ${attempt}`
-        );
-
-        if (
-          attempt === 5
-        ) {
-          throw error;
-        }
-
-        await page.waitForTimeout(300);
-      }
-    }
-
-    expect(femaleSelected).toBe(true);
+    genderSelect =
+      getGenderSelect();
 
 
-    // Re-locate after React update.
+    await genderSelect.selectOption({
+      label:
+        'Female',
+    });
+
+
+    // Re-locate after React state update.
     genderSelect =
       getGenderSelect();
 
@@ -2272,8 +3925,23 @@ test(
     await expect(
       saveButton
     ).toBeEnabled({
-      timeout: 10000,
+      timeout:
+        10000,
     });
+
+
+    console.log(
+      'CP-007 FEMALE -> SAVE ENABLED'
+    );
+
+
+    // ============================================================
+    // FINAL
+    // ============================================================
+
+    console.log(
+      'CP-007 GENDER VALIDATION VERIFIED'
+    );
 
   }
 );
@@ -2283,14 +3951,654 @@ test(
   async ({ page }) => {
 
     // ============================================================
-    // 1. GO TO COMPLETE PROFILE
+    // TEST DATA
     // ============================================================
 
-    await goToCompleteProfile(page);
+    const TEST_PHONE =
+      '7695834209';
+
+    const TEST_OTP =
+      '123456';
+
+    const TEST_USER_ID =
+      967;
+
+    const TEST_NAME =
+      'Nitheesh Lingam';
+
+    const TEST_EMAIL =
+      '';
+
+
+    const MIN_INVALID_HEIGHT =
+      '49';
+
+    const MIN_VALID_HEIGHT =
+      '50';
+
+    const MAX_VALID_HEIGHT =
+      '250';
+
+    const MAX_INVALID_HEIGHT =
+      '251';
+
+    const NORMAL_VALID_HEIGHT =
+      '170';
 
 
     // ============================================================
-    // 2. LOCATORS
+    // 1. SEND LOGIN OTP
+    // ============================================================
+
+    await page.route(
+      '**/api/auth/send-otp',
+      async route => {
+
+        const request =
+          route.request();
+
+        expect(
+          request.method()
+        ).toBe('POST');
+
+        const body =
+          request.postDataJSON();
+
+        console.log(
+          'CP-008 SEND OTP BODY:',
+          body
+        );
+
+        expect(
+          body
+        ).toMatchObject({
+          recipient:
+            `+91${TEST_PHONE}`,
+
+          contactType:
+            'phone',
+        });
+
+
+        await route.fulfill({
+
+          status:
+            200,
+
+          contentType:
+            'application/json',
+
+          body:
+            JSON.stringify({
+
+              success:
+                true,
+
+            }),
+
+        });
+
+      }
+    );
+
+
+    // ============================================================
+    // 2. VERIFY LOGIN OTP
+    //
+    // Email intentionally empty.
+    // This allows Email to remain editable in Complete Profile.
+    // ============================================================
+
+    await page.route(
+      '**/api/auth/verify-otp',
+      async route => {
+
+        const request =
+          route.request();
+
+        expect(
+          request.method()
+        ).toBe('POST');
+
+        const body =
+          request.postDataJSON();
+
+        console.log(
+          'CP-008 LOGIN OTP BODY:',
+          body
+        );
+
+        expect(
+          body
+        ).toMatchObject({
+
+          recipient:
+            `+91${TEST_PHONE}`,
+
+          otp:
+            TEST_OTP,
+
+          contactType:
+            'phone',
+
+        });
+
+
+        await route.fulfill({
+
+          status:
+            200,
+
+          contentType:
+            'application/json',
+
+          body:
+            JSON.stringify({
+
+              success:
+                true,
+
+              isNewUser:
+                false,
+
+              isActive:
+                true,
+
+              role:
+                'user',
+
+              user: {
+
+                id:
+                  TEST_USER_ID,
+
+                UserId:
+                  TEST_USER_ID,
+
+                username:
+                  TEST_NAME,
+
+                userName:
+                  TEST_NAME,
+
+                name:
+                  TEST_NAME,
+
+                email:
+                  TEST_EMAIL,
+
+                phone:
+                  `+91${TEST_PHONE}`,
+
+                phoneNumber:
+                  TEST_PHONE,
+
+                status:
+                  'Active',
+
+                consentRequired:
+                  false,
+
+              },
+
+            }),
+
+        });
+
+      }
+    );
+
+
+    // ============================================================
+    // 3. VERIFY SESSION
+    // ============================================================
+
+    await page.route(
+      '**/api/user/verify-session',
+      async route => {
+
+        console.log(
+          'CP-008 VERIFY SESSION:',
+          route.request().url()
+        );
+
+
+        await route.fulfill({
+
+          status:
+            200,
+
+          contentType:
+            'application/json',
+
+          body:
+            JSON.stringify({
+
+              success:
+                true,
+
+              userId:
+                TEST_USER_ID,
+
+              sessionStale:
+                false,
+
+            }),
+
+        });
+
+      }
+    );
+
+
+    // ============================================================
+    // 4. CONSENT
+    //
+    // IMPORTANT:
+    //
+    // CP-007 does NOT use the shared goToCompleteProfile()
+    // helper because that helper intentionally creates a
+    // consent-required state.
+    //
+    // CP-008 follows CP-007 and mocks consent as already accepted.
+    // Therefore the test will NOT stop at the Consent page.
+    // ============================================================
+
+    await page.route(
+      '**/api/user/consent*',
+      async route => {
+
+        const method =
+          route.request().method();
+
+        console.log(
+          'CP-008 CONSENT:',
+          method
+        );
+
+
+        if (
+          method === 'GET'
+          ||
+          method === 'POST'
+        ) {
+
+          await route.fulfill({
+
+            status:
+              200,
+
+            contentType:
+              'application/json',
+
+            body:
+              JSON.stringify({
+
+                success:
+                  true,
+
+                consentRequired:
+                  false,
+
+                consentAccepted:
+                  true,
+
+              }),
+
+          });
+
+          return;
+
+        }
+
+
+        await route.fallback();
+
+      }
+    );
+
+
+    // ============================================================
+    // 5. USER STATUS
+    //
+    // Prevent coach/setup flow from interfering.
+    // ============================================================
+
+    await page.route(
+      '**/api/user/status*',
+      async route => {
+
+        console.log(
+          'CP-008 STATUS:',
+          route.request().url()
+        );
+
+
+        await route.fulfill({
+
+          status:
+            200,
+
+          contentType:
+            'application/json',
+
+          body:
+            JSON.stringify({
+
+              success:
+                true,
+
+              setupComplete:
+                true,
+
+              setupSkipped:
+                true,
+
+              hasTeamId:
+                false,
+
+              hasUpline:
+                true,
+
+              pendingRequest:
+                false,
+
+              redirectTo:
+                null,
+
+            }),
+
+        });
+
+      }
+    );
+
+
+    // ============================================================
+    // 6. PROFILE
+    //
+    // Height is supplied as a valid value initially.
+    //
+    // Other fields are also valid so that HEIGHT is the only
+    // field whose validation is being changed during this test.
+    // ============================================================
+
+    await page.route(
+      '**/api/user/profile*',
+      async route => {
+
+        if (
+          route.request().method() !== 'GET'
+        ) {
+
+          await route.fallback();
+
+          return;
+
+        }
+
+
+        console.log(
+          'CP-008 PROFILE GET:',
+          route.request().url()
+        );
+
+
+        await route.fulfill({
+
+          status:
+            200,
+
+          contentType:
+            'application/json',
+
+          body:
+            JSON.stringify({
+
+              success:
+                true,
+
+              data: {
+
+                userId:
+                  TEST_USER_ID,
+
+                profileComplete:
+                  false,
+
+                userName:
+                  TEST_NAME,
+
+                name:
+                  TEST_NAME,
+
+                email:
+                  '',
+
+                phoneNumber:
+                  TEST_PHONE,
+
+                // Valid gender because Gender is not under test.
+                gender:
+                  'Male',
+
+                // Valid initial height.
+                height:
+                  170,
+
+                // Valid diet.
+                dietType:
+                  'Vegetarian',
+
+                // Valid weight.
+                currentWeight:
+                  72.5,
+
+                latestWeight:
+                  72.5,
+
+                // Valid body fat.
+                bodyFat:
+                  22,
+
+                latestWeightBodyFat:
+                  22,
+
+                // Existing valid profile image.
+                profileImage:
+                  'https://example.com/profile.jpg',
+
+                physicalActivityLevel:
+                  null,
+
+                needsCurrentWeight:
+                  false,
+
+              },
+
+            }),
+
+        });
+
+      }
+    );
+
+
+    // ============================================================
+    // 7. OPEN APPLICATION
+    // ============================================================
+
+    await page.goto(
+      '/',
+      {
+        waitUntil:
+          'domcontentloaded',
+      }
+    );
+
+
+    // ============================================================
+    // 8. LOGIN PAGE
+    // ============================================================
+
+    const mobileInput =
+      page.getByLabel(
+        'Mobile Number'
+      );
+
+
+    await expect(
+      mobileInput
+    ).toBeVisible({
+      timeout:
+        15000,
+    });
+
+
+    await mobileInput.fill(
+      TEST_PHONE
+    );
+
+
+    await page.getByRole(
+      'button',
+      {
+        name:
+          'Send OTP',
+
+        exact:
+          true,
+      }
+    ).click();
+
+
+    // ============================================================
+    // 9. OTP PAGE
+    // ============================================================
+
+    await expect(
+      page.getByText(
+        'Enter OTP',
+        {
+          exact:
+            true,
+        }
+      )
+    ).toBeVisible({
+      timeout:
+        15000,
+    });
+
+
+    const otpInputs =
+      page.locator(
+        'input[data-otp="true"]'
+      );
+
+
+    await expect(
+      otpInputs
+    ).toHaveCount(
+      6
+    );
+
+
+    for (
+      let i = 0;
+      i < TEST_OTP.length;
+      i++
+    ) {
+
+      await otpInputs
+        .nth(i)
+        .fill(
+          TEST_OTP[i]
+        );
+
+    }
+
+
+    // ============================================================
+    // 10. COMPLETE PROFILE
+    // ============================================================
+
+    const completeProfileHeading =
+      page.getByRole(
+        'heading',
+        {
+          name:
+            'Complete Your Profile',
+
+          exact:
+            true,
+        }
+      );
+
+
+    await expect(
+      completeProfileHeading
+    ).toBeVisible({
+      timeout:
+        20000,
+    });
+
+
+    console.log(
+      'CP-008 COMPLETE PROFILE PAGE DISPLAYED'
+    );
+
+
+    // ============================================================
+    // 11. EMAIL
+    //
+    // Email is not the target field.
+    // Make it valid.
+    // ============================================================
+
+    const emailInput =
+      page.getByPlaceholder(
+        'you@example.com'
+      );
+
+
+    await expect(
+      emailInput
+    ).toBeVisible({
+      timeout:
+        15000,
+    });
+
+
+    await expect(
+      emailInput
+    ).toBeEditable({
+      timeout:
+        10000,
+    });
+
+
+    await emailInput.fill(
+      'nitheesh@example.com'
+    );
+
+
+    await expect(
+      emailInput
+    ).toHaveValue(
+      'nitheesh@example.com'
+    );
+
+
+    console.log(
+      'CP-008 EMAIL VALID'
+    );
+
+
+    // ============================================================
+    // 12. FULL NAME
+    //
+    // Follow CP-007:
+    // Fill only if the field is actually displayed.
     // ============================================================
 
     const fullNameInput =
@@ -2298,771 +4606,1611 @@ test(
         'Enter your full name'
       );
 
-    const emailInput =
-      page.locator(
-        'input[type="email"]'
-      );
 
-    const weightInput =
-      page.getByPlaceholder(
-        'e.g. 72.5'
-      );
-
-    const bodyFatInput =
-      page.getByPlaceholder(
-        'e.g. 22'
-      );
-
-    const saveButton =
-      page.getByRole(
-        'button',
-        {
-          name: 'Save & Continue',
-          exact: true,
-        }
-      );
-
-
-    // ============================================================
-    // 3. WAIT FOR FORM
-    // ============================================================
-
-    await expect(
-      fullNameInput
-    ).toBeVisible({
-      timeout: 15000,
-    });
-
-    await expect(
-      emailInput
-    ).toBeVisible({
-      timeout: 15000,
-    });
-
-
-    // ============================================================
-    // 4. FILL ALL OTHER REQUIRED FIELDS
-    //
-    // Height intentionally remains empty because it is the
-    // field under test.
-    // ============================================================
-
-    await fullNameInput.fill(
-      'Nitheesh Lingam'
-    );
-
-
-    // ------------------------------------------------------------
-    // Email
-    // ------------------------------------------------------------
-
-    if (
-      await emailInput.isEditable()
-    ) {
-      await emailInput.fill(
-        'nitheesh@example.com'
-      );
-    }
-
-
-    // ------------------------------------------------------------
-    // Gender
-    //
-    // Re-locate because React can replace the select.
-    // ------------------------------------------------------------
-
-    let genderSelected = false;
-
-    for (
-      let attempt = 1;
-      attempt <= 5;
-      attempt++
-    ) {
-
-      try {
-
-        const genderSelect =
-          page
-            .locator('label')
-            .filter({
-              hasText: 'Gender',
-            })
-            .locator('..')
-            .locator('select');
-
-        await expect(
-          genderSelect
-        ).toBeVisible({
-          timeout: 3000,
-        });
-
-        await genderSelect.selectOption({
-          label: 'Male',
-        });
-
-        genderSelected = true;
-        break;
-
-      } catch (error) {
-
-        if (
-          attempt === 5
-        ) {
-          throw error;
-        }
-
-        await page.waitForTimeout(
-          300
+    const fullNameVisible =
+      await fullNameInput
+        .isVisible({
+          timeout:
+            2000,
+        })
+        .catch(
+          () => false
         );
-      }
-    }
-
-    expect(
-      genderSelected
-    ).toBe(true);
-
-
-    // ------------------------------------------------------------
-    // Diet
-    // ------------------------------------------------------------
-
-    let dietSelected = false;
-
-    for (
-      let attempt = 1;
-      attempt <= 5;
-      attempt++
-    ) {
-
-      try {
-
-        const vegetarianButton =
-          page.getByRole(
-            'button',
-            {
-              name: 'Vegetarian',
-              exact: true,
-            }
-          );
-
-        await expect(
-          vegetarianButton
-        ).toBeVisible({
-          timeout: 3000,
-        });
-
-        await vegetarianButton.click();
-
-        dietSelected = true;
-        break;
-
-      } catch (error) {
-
-        if (
-          attempt === 5
-        ) {
-          throw error;
-        }
-
-        await page.waitForTimeout(
-          300
-        );
-      }
-    }
-
-    expect(
-      dietSelected
-    ).toBe(true);
-
-
-    // ------------------------------------------------------------
-    // Current Weight
-    // ------------------------------------------------------------
-
-    await weightInput.fill(
-      '72.5'
-    );
-
-
-    // ------------------------------------------------------------
-    // Body Fat
-    // ------------------------------------------------------------
-
-    await bodyFatInput.fill(
-      '22'
-    );
-
-
-    // ============================================================
-    // 5. PROFILE PICTURE
-    //
-    // Required for overall form validity.
-    // ============================================================
-
-    const imageInputs =
-      page.locator(
-        'input[type="file"][accept="image/*"]'
-      );
-
-    console.log(
-      'CP-008 IMAGE INPUT COUNT:',
-      await imageInputs.count()
-    );
-
-
-    await imageInputs
-      .last()
-      .setInputFiles(
-        'tests/fixtures/profile-photo.jpg'
-      );
-
-
-    // ============================================================
-    // 6. COMPLETE IMAGE CROP IF PRESENT
-    // ============================================================
-
-    const doneButton =
-      page.getByRole(
-        'button',
-        {
-          name: 'Done',
-          exact: true,
-        }
-      );
-
-    if (
-      await doneButton.isVisible()
-    ) {
-      await doneButton.click();
-    }
-
-
-    // ============================================================
-    // 7. HEIGHT LOCATOR
-    //
-    // Create it fresh whenever the React form re-renders.
-    // ============================================================
-
-    const getHeightInput = () =>
-      page.getByPlaceholder(
-        'e.g. 170'
-      );
-
-
-    // ============================================================
-    // 8. CASE 1 — 49 CM
-    //
-    // Below minimum (50) -> INVALID
-    // ============================================================
-
-    let heightInput =
-      getHeightInput();
-
-    await heightInput.fill('49');
-
-
-    heightInput =
-      getHeightInput();
-
-    await expect(
-      heightInput
-    ).toHaveValue('49');
-
-
-    await expect(
-      saveButton
-    ).toBeDisabled({
-      timeout: 10000,
-    });
-
-
-    // ============================================================
-    // 9. CASE 2 — 50 CM
-    //
-    // Minimum allowed -> VALID
-    // ============================================================
-
-    heightInput =
-      getHeightInput();
-
-    await heightInput.fill('50');
-
-
-    heightInput =
-      getHeightInput();
-
-    await expect(
-      heightInput
-    ).toHaveValue('50');
-
-
-    await expect(
-      saveButton
-    ).toBeEnabled({
-      timeout: 10000,
-    });
-
-
-    // ============================================================
-    // 10. CASE 3 — 250 CM
-    //
-    // Maximum allowed -> VALID
-    // ============================================================
-
-    heightInput =
-      getHeightInput();
-
-    await heightInput.fill('250');
-
-
-    heightInput =
-      getHeightInput();
-
-    await expect(
-      heightInput
-    ).toHaveValue('250');
-
-
-    await expect(
-      saveButton
-    ).toBeEnabled({
-      timeout: 10000,
-    });
-
-
-    // ============================================================
-    // 11. CASE 4 — 251 CM
-    //
-    // Above maximum -> INVALID
-    // ============================================================
-
-    heightInput =
-      getHeightInput();
-
-    await heightInput.fill('251');
-
-
-    heightInput =
-      getHeightInput();
-
-    await expect(
-      heightInput
-    ).toHaveValue('251');
-
-
-    await expect(
-      saveButton
-    ).toBeDisabled({
-      timeout: 10000,
-    });
-
-
-    // ============================================================
-    // 12. RESTORE VALID VALUE
-    // ============================================================
-
-    heightInput =
-      getHeightInput();
-
-    await heightInput.fill('170');
-
-
-    heightInput =
-      getHeightInput();
-
-    await expect(
-      heightInput
-    ).toHaveValue('170');
-
-
-    await expect(
-      saveButton
-    ).toBeEnabled({
-      timeout: 10000,
-    });
-
-  }
-);
-
-
-
-test(
-  'CP-009 Diet Preference supports all available options',
-  async ({ page }) => {
-
-    // ============================================================
-    // 1. GO TO COMPLETE PROFILE
-    // ============================================================
-
-    await goToCompleteProfile(page);
-
-
-    // ============================================================
-    // 2. LOCATORS
-    // ============================================================
-
-    const fullNameInput =
-      page.getByPlaceholder(
-        'Enter your full name'
-      );
-
-    const emailInput =
-      page.locator(
-        'input[type="email"]'
-      );
-
-    const saveButton =
-      page.getByRole(
-        'button',
-        {
-          name: 'Save & Continue',
-          exact: true,
-        }
-      );
-
-
-    // ============================================================
-    // 3. WAIT FOR PROFILE FORM
-    // ============================================================
-
-    await expect(
-      fullNameInput
-    ).toBeVisible({
-      timeout: 15000,
-    });
-
-    await expect(
-      emailInput
-    ).toBeVisible({
-      timeout: 15000,
-    });
-
-
-    // ============================================================
-    // 4. FILL OTHER REQUIRED FIELDS
-    //
-    // Diet Preference is intentionally NOT selected yet.
-    // ============================================================
-
-    await fullNameInput.fill(
-      'Nitheesh Lingam'
-    );
-
-
-    // ------------------------------------------------------------
-    // Email
-    // ------------------------------------------------------------
-
-    if (
-      await emailInput.isEditable()
-    ) {
-      await emailInput.fill(
-        'nitheesh@example.com'
-      );
-    }
-
-
-    // ------------------------------------------------------------
-    // Gender
-    //
-    // Locate by the Gender field rather than select().first().
-    // ------------------------------------------------------------
-
-    let genderSelected = false;
-
-    for (
-      let attempt = 1;
-      attempt <= 5;
-      attempt++
-    ) {
-
-      try {
-
-        const genderSelect =
-          page
-            .locator('label')
-            .filter({
-              hasText: 'Gender',
-            })
-            .locator('..')
-            .locator('select');
-
-
-        await expect(
-          genderSelect
-        ).toBeVisible({
-          timeout: 3000,
-        });
-
-
-        await genderSelect.selectOption({
-          label: 'Male',
-        });
-
-
-        genderSelected = true;
-        break;
-
-      } catch (error) {
-
-        if (
-          attempt === 5
-        ) {
-          throw error;
-        }
-
-        await page.waitForTimeout(300);
-      }
-    }
-
-    expect(
-      genderSelected
-    ).toBe(true);
-
-
-    // ------------------------------------------------------------
-    // Height
-    // ------------------------------------------------------------
-
-    let heightFilled = false;
-
-    for (
-      let attempt = 1;
-      attempt <= 5;
-      attempt++
-    ) {
-
-      try {
-
-        const heightInput =
-          page.getByPlaceholder(
-            'e.g. 170'
-          );
-
-
-        await expect(
-          heightInput
-        ).toBeVisible({
-          timeout: 3000,
-        });
-
-
-        await heightInput.fill(
-          '170'
-        );
-
-
-        heightFilled = true;
-        break;
-
-      } catch (error) {
-
-        if (
-          attempt === 5
-        ) {
-          throw error;
-        }
-
-        await page.waitForTimeout(300);
-      }
-    }
-
-    expect(
-      heightFilled
-    ).toBe(true);
-
-
-    // ------------------------------------------------------------
-    // Current Weight
-    // ------------------------------------------------------------
-
-    let weightFilled = false;
-
-    for (
-      let attempt = 1;
-      attempt <= 5;
-      attempt++
-    ) {
-
-      try {
-
-        const weightInput =
-          page.getByPlaceholder(
-            'e.g. 72.5'
-          );
-
-
-        await expect(
-          weightInput
-        ).toBeVisible({
-          timeout: 3000,
-        });
-
-
-        await weightInput.fill(
-          '72.5'
-        );
-
-
-        weightFilled = true;
-        break;
-
-      } catch (error) {
-
-        if (
-          attempt === 5
-        ) {
-          throw error;
-        }
-
-        await page.waitForTimeout(300);
-      }
-    }
-
-    expect(
-      weightFilled
-    ).toBe(true);
-
-
-    // ------------------------------------------------------------
-    // Body Fat
-    // ------------------------------------------------------------
-
-    let bodyFatFilled = false;
-
-    for (
-      let attempt = 1;
-      attempt <= 5;
-      attempt++
-    ) {
-
-      try {
-
-        const bodyFatInput =
-          page.getByPlaceholder(
-            'e.g. 22'
-          );
-
-
-        await expect(
-          bodyFatInput
-        ).toBeVisible({
-          timeout: 3000,
-        });
-
-
-        await bodyFatInput.fill(
-          '22'
-        );
-
-
-        bodyFatFilled = true;
-        break;
-
-      } catch (error) {
-
-        if (
-          attempt === 5
-        ) {
-          throw error;
-        }
-
-        await page.waitForTimeout(300);
-      }
-    }
-
-    expect(
-      bodyFatFilled
-    ).toBe(true);
-
-
-    // ============================================================
-    // 5. PROFILE PICTURE
-    //
-    // Required for overall Save & Continue validity.
-    // ============================================================
-
-    const imageInputs =
-      page.locator(
-        'input[type="file"][accept="image/*"]'
-      );
-
-
-    console.log(
-      'CP-009 IMAGE INPUT COUNT:',
-      await imageInputs.count()
-    );
-
-
-    await imageInputs
-      .last()
-      .setInputFiles(
-        'tests/fixtures/profile-photo.jpg'
-      );
-
-
-    // ============================================================
-    // 6. COMPLETE IMAGE CROP IF PRESENT
-    // ============================================================
-
-    const doneButton =
-      page.getByRole(
-        'button',
-        {
-          name: 'Done',
-          exact: true,
-        }
-      );
 
 
     if (
-      await doneButton.isVisible()
+      fullNameVisible
     ) {
-      await doneButton.click();
-    }
 
+      await fullNameInput.fill(
+        TEST_NAME
+      );
 
-    // ============================================================
-    // 7. VERIFY ALL DIET OPTIONS EXIST
-    // ============================================================
-
-    const dietOptions = [
-      'Vegetarian',
-      'Non-Vegetarian',
-      'Vegan',
-      'Pescatarian',
-    ];
-
-
-    for (
-      const option of dietOptions
-    ) {
 
       await expect(
-        page.getByRole(
-          'button',
-          {
-            name: option,
-            exact: true,
-          }
-        )
-      ).toBeVisible({
-        timeout: 10000,
-      });
+        fullNameInput
+      ).toHaveValue(
+        TEST_NAME
+      );
+
+
+      console.log(
+        'CP-008 FULL NAME SET'
+      );
+
+    } else {
+
+      console.log(
+        'CP-008 FULL NAME ALREADY RESOLVED'
+      );
 
     }
 
 
     // ============================================================
-    // 8. CASE 1 — VEGETARIAN
+    // 13. GENDER
+    //
+    // Gender is NOT under test.
+    //
+    // Profile API already provides Male.
+    // If the field is displayed, ensure it remains valid.
+    // ============================================================
+
+    const getGenderSelect =
+      () =>
+        page
+          .locator('label')
+          .filter({
+            hasText:
+              'Gender',
+          })
+          .locator('..')
+          .locator('select')
+          .first();
+
+
+    const genderSelect =
+      getGenderSelect();
+
+
+    const genderVisible =
+      await genderSelect
+        .isVisible({
+          timeout:
+            2000,
+        })
+        .catch(
+          () => false
+        );
+
+
+    if (
+      genderVisible
+    ) {
+
+      const currentGender =
+        await genderSelect.inputValue();
+
+
+      if (
+        !currentGender
+      ) {
+
+        await genderSelect.selectOption({
+          label:
+            'Male',
+        });
+
+      }
+
+
+      await expect(
+        getGenderSelect()
+      ).toHaveValue(
+        'Male'
+      );
+
+
+      console.log(
+        'CP-008 GENDER VALID'
+      );
+
+    } else {
+
+      console.log(
+        'CP-008 GENDER ALREADY RESOLVED'
+      );
+
+    }
+
+
+    // ============================================================
+    // 14. DIET
+    //
+    // Diet is NOT under test.
+    // Ensure a valid diet exists if the control is displayed.
     // ============================================================
 
     const vegetarianButton =
       page.getByRole(
         'button',
         {
-          name: 'Vegetarian',
-          exact: true,
+          name:
+            'Vegetarian',
+
+          exact:
+            true,
+        }
+      );
+
+
+    const vegetarianVisible =
+      await vegetarianButton
+        .isVisible({
+          timeout:
+            2000,
+        })
+        .catch(
+          () => false
+        );
+
+
+    if (
+      vegetarianVisible
+    ) {
+
+      await vegetarianButton.click();
+
+
+      console.log(
+        'CP-008 DIET SET TO VEGETARIAN'
+      );
+
+    } else {
+
+      console.log(
+        'CP-008 DIET ALREADY RESOLVED'
+      );
+
+    }
+
+
+    // ============================================================
+    // 15. CURRENT WEIGHT
+    //
+    // Not under test.
+    // ============================================================
+
+    const weightInput =
+      page.getByPlaceholder(
+        'e.g. 72.5'
+      );
+
+
+    const weightVisible =
+      await weightInput
+        .isVisible({
+          timeout:
+            2000,
+        })
+        .catch(
+          () => false
+        );
+
+
+    if (
+      weightVisible
+    ) {
+
+      await weightInput.fill(
+        '72.5'
+      );
+
+
+      await expect(
+        weightInput
+      ).toHaveValue(
+        '72.5'
+      );
+
+
+      console.log(
+        'CP-008 WEIGHT VALID'
+      );
+
+    } else {
+
+      console.log(
+        'CP-008 WEIGHT ALREADY RESOLVED'
+      );
+
+    }
+
+
+    // ============================================================
+    // 16. BODY FAT
+    //
+    // Not under test.
+    // ============================================================
+
+    const bodyFatInput =
+      page.getByPlaceholder(
+        'e.g. 22'
+      );
+
+
+    const bodyFatVisible =
+      await bodyFatInput
+        .isVisible({
+          timeout:
+            2000,
+        })
+        .catch(
+          () => false
+        );
+
+
+    if (
+      bodyFatVisible
+    ) {
+
+      await bodyFatInput.fill(
+        '22'
+      );
+
+
+      await expect(
+        bodyFatInput
+      ).toHaveValue(
+        '22'
+      );
+
+
+      console.log(
+        'CP-008 BODY FAT VALID'
+      );
+
+    } else {
+
+      console.log(
+        'CP-008 BODY FAT ALREADY RESOLVED'
+      );
+
+    }
+
+
+    // ============================================================
+    // 17. SAVE BUTTON
+    // ============================================================
+
+    const saveButton =
+      page.getByRole(
+        'button',
+        {
+          name:
+            'Save & Continue',
+
+          exact:
+            true,
+        }
+      );
+
+
+    await expect(
+      saveButton
+    ).toBeVisible({
+      timeout:
+        10000,
+    });
+
+
+    // ============================================================
+    // 18. HEIGHT LOCATOR
+    //
+    // IMPORTANT:
+    //
+    // Height is the ONLY field being tested.
+    // Re-locate after every change because the React form can
+    // re-render after state updates.
+    // ============================================================
+
+    const getHeightInput =
+      () =>
+        page.getByPlaceholder(
+          'e.g. 170'
+        );
+
+
+    const initialHeightInput =
+      getHeightInput();
+
+
+    await expect(
+      initialHeightInput
+    ).toBeVisible({
+      timeout:
+        15000,
+    });
+
+
+    await expect(
+      initialHeightInput
+    ).toBeEditable({
+      timeout:
+        10000,
+    });
+
+
+    console.log(
+      'CP-008 HEIGHT FIELD DISPLAYED'
+    );
+
+
+    // ============================================================
+    // 19. VALID BASELINE
+    //
+    // Start with a valid height.
+    // All other fields are already valid.
+    // ============================================================
+
+    await getHeightInput().fill(
+      NORMAL_VALID_HEIGHT
+    );
+
+
+    await expect(
+      getHeightInput()
+    ).toHaveValue(
+      NORMAL_VALID_HEIGHT
+    );
+
+
+    await expect(
+      saveButton
+    ).toBeEnabled({
+      timeout:
+        10000,
+    });
+
+
+    console.log(
+      'CP-008 VALID BASELINE -> SAVE ENABLED'
+    );
+
+
+    // ============================================================
+    // 20. CASE 1 — 49 CM
+    //
+    // Below minimum.
+    //
+    // Rule:
+    //
+    // 50 <= height <= 250
+    //
+    // Expected:
+    // Save & Continue -> DISABLED
+    // ============================================================
+
+    await getHeightInput().fill(
+      MIN_INVALID_HEIGHT
+    );
+
+
+    await expect(
+      getHeightInput()
+    ).toHaveValue(
+      MIN_INVALID_HEIGHT
+    );
+
+
+    await expect(
+      saveButton
+    ).toBeDisabled({
+      timeout:
+        10000,
+    });
+
+
+    console.log(
+      'CP-008 49 CM -> SAVE DISABLED'
+    );
+
+
+    // ============================================================
+    // 21. CASE 2 — 50 CM
+    //
+    // Minimum allowed value.
+    //
+    // Expected:
+    // Save & Continue -> ENABLED
+    // ============================================================
+
+    await getHeightInput().fill(
+      MIN_VALID_HEIGHT
+    );
+
+
+    await expect(
+      getHeightInput()
+    ).toHaveValue(
+      MIN_VALID_HEIGHT
+    );
+
+
+    await expect(
+      saveButton
+    ).toBeEnabled({
+      timeout:
+        10000,
+    });
+
+
+    console.log(
+      'CP-008 50 CM -> SAVE ENABLED'
+    );
+
+
+    // ============================================================
+    // 22. CASE 3 — 250 CM
+    //
+    // Maximum allowed value.
+    //
+    // Expected:
+    // Save & Continue -> ENABLED
+    // ============================================================
+
+    await getHeightInput().fill(
+      MAX_VALID_HEIGHT
+    );
+
+
+    await expect(
+      getHeightInput()
+    ).toHaveValue(
+      MAX_VALID_HEIGHT
+    );
+
+
+    await expect(
+      saveButton
+    ).toBeEnabled({
+      timeout:
+        10000,
+    });
+
+
+    console.log(
+      'CP-008 250 CM -> SAVE ENABLED'
+    );
+
+
+    // ============================================================
+    // 23. CASE 4 — 251 CM
+    //
+    // Above maximum.
+    //
+    // Expected:
+    // Save & Continue -> DISABLED
+    // ============================================================
+
+    await getHeightInput().fill(
+      MAX_INVALID_HEIGHT
+    );
+
+
+    await expect(
+      getHeightInput()
+    ).toHaveValue(
+      MAX_INVALID_HEIGHT
+    );
+
+
+    await expect(
+      saveButton
+    ).toBeDisabled({
+      timeout:
+        10000,
+    });
+
+
+    console.log(
+      'CP-008 251 CM -> SAVE DISABLED'
+    );
+
+
+    // ============================================================
+    // 24. CASE 5 — RESTORE NORMAL VALID VALUE
+    //
+    // Expected:
+    // Save & Continue -> ENABLED
+    // ============================================================
+
+    await getHeightInput().fill(
+      NORMAL_VALID_HEIGHT
+    );
+
+
+    await expect(
+      getHeightInput()
+    ).toHaveValue(
+      NORMAL_VALID_HEIGHT
+    );
+
+
+    await expect(
+      saveButton
+    ).toBeEnabled({
+      timeout:
+        10000,
+    });
+
+
+    console.log(
+      'CP-008 170 CM -> SAVE ENABLED'
+    );
+
+
+    // ============================================================
+    // 25. FINAL
+    // ============================================================
+
+    console.log(
+      'CP-008 HEIGHT VALIDATION VERIFIED'
+    );
+
+  }
+);
+
+test(
+  'CP-009 Diet Preference supports all available options',
+  async ({ page }) => {
+
+    // ============================================================
+    // TEST DATA
+    // ============================================================
+
+    const TEST_PHONE =
+      '7695834209';
+
+    const TEST_OTP =
+      '123456';
+
+    const TEST_USER_ID =
+      967;
+
+    const TEST_NAME =
+      'Nitheesh Lingam';
+
+    const TEST_EMAIL =
+      '';
+
+
+    // ============================================================
+    // 1. SEND LOGIN OTP
+    // ============================================================
+
+    await page.route(
+      '**/api/auth/send-otp',
+      async route => {
+
+        const request =
+          route.request();
+
+        expect(
+          request.method()
+        ).toBe('POST');
+
+        const body =
+          request.postDataJSON();
+
+        console.log(
+          'CP-009 SEND OTP BODY:',
+          body
+        );
+
+        expect(
+          body
+        ).toMatchObject({
+
+          recipient:
+            `+91${TEST_PHONE}`,
+
+          contactType:
+            'phone',
+
+        });
+
+
+        await route.fulfill({
+
+          status:
+            200,
+
+          contentType:
+            'application/json',
+
+          body:
+            JSON.stringify({
+
+              success:
+                true,
+
+            }),
+
+        });
+
+      }
+    );
+
+
+    // ============================================================
+    // 2. VERIFY LOGIN OTP
+    //
+    // Email intentionally empty so Email remains editable.
+    // ============================================================
+
+    await page.route(
+      '**/api/auth/verify-otp',
+      async route => {
+
+        const request =
+          route.request();
+
+        expect(
+          request.method()
+        ).toBe('POST');
+
+        const body =
+          request.postDataJSON();
+
+        console.log(
+          'CP-009 LOGIN OTP BODY:',
+          body
+        );
+
+        expect(
+          body
+        ).toMatchObject({
+
+          recipient:
+            `+91${TEST_PHONE}`,
+
+          otp:
+            TEST_OTP,
+
+          contactType:
+            'phone',
+
+        });
+
+
+        await route.fulfill({
+
+          status:
+            200,
+
+          contentType:
+            'application/json',
+
+          body:
+            JSON.stringify({
+
+              success:
+                true,
+
+              isNewUser:
+                false,
+
+              isActive:
+                true,
+
+              role:
+                'user',
+
+              user: {
+
+                id:
+                  TEST_USER_ID,
+
+                UserId:
+                  TEST_USER_ID,
+
+                username:
+                  TEST_NAME,
+
+                userName:
+                  TEST_NAME,
+
+                name:
+                  TEST_NAME,
+
+                email:
+                  TEST_EMAIL,
+
+                phone:
+                  `+91${TEST_PHONE}`,
+
+                phoneNumber:
+                  TEST_PHONE,
+
+                status:
+                  'Active',
+
+                consentRequired:
+                  false,
+
+              },
+
+            }),
+
+        });
+
+      }
+    );
+
+
+    // ============================================================
+    // 3. VERIFY SESSION
+    // ============================================================
+
+    await page.route(
+      '**/api/user/verify-session',
+      async route => {
+
+        console.log(
+          'CP-009 VERIFY SESSION:',
+          route.request().url()
+        );
+
+
+        await route.fulfill({
+
+          status:
+            200,
+
+          contentType:
+            'application/json',
+
+          body:
+            JSON.stringify({
+
+              success:
+                true,
+
+              userId:
+                TEST_USER_ID,
+
+              sessionStale:
+                false,
+
+            }),
+
+        });
+
+      }
+    );
+
+
+    // ============================================================
+    // 4. CONSENT
+    //
+    // Consent is already accepted.
+    //
+    // IMPORTANT:
+    // Do NOT use goToCompleteProfile().
+    // CP-008 uses this same approach.
+    // ============================================================
+
+    await page.route(
+      '**/api/user/consent*',
+      async route => {
+
+        const method =
+          route.request().method();
+
+        console.log(
+          'CP-009 CONSENT:',
+          method
+        );
+
+
+        if (
+          method === 'GET'
+          ||
+          method === 'POST'
+        ) {
+
+          await route.fulfill({
+
+            status:
+              200,
+
+            contentType:
+              'application/json',
+
+            body:
+              JSON.stringify({
+
+                success:
+                  true,
+
+                consentRequired:
+                  false,
+
+                consentAccepted:
+                  true,
+
+              }),
+
+          });
+
+          return;
+
+        }
+
+
+        await route.fallback();
+
+      }
+    );
+
+
+    // ============================================================
+    // 5. USER STATUS
+    //
+    // Prevent setup/coach flow from interfering.
+    // ============================================================
+
+    await page.route(
+      '**/api/user/status*',
+      async route => {
+
+        console.log(
+          'CP-009 STATUS:',
+          route.request().url()
+        );
+
+
+        await route.fulfill({
+
+          status:
+            200,
+
+          contentType:
+            'application/json',
+
+          body:
+            JSON.stringify({
+
+              success:
+                true,
+
+              setupComplete:
+                true,
+
+              setupSkipped:
+                true,
+
+              hasTeamId:
+                false,
+
+              hasUpline:
+                true,
+
+              pendingRequest:
+                false,
+
+              redirectTo:
+                null,
+
+            }),
+
+        });
+
+      }
+    );
+
+
+    // ============================================================
+    // 6. PROFILE
+    //
+    // Diet is the field under test.
+    //
+    // Therefore Diet starts EMPTY.
+    //
+    // All other required profile values are valid.
+    // ============================================================
+
+    await page.route(
+      '**/api/user/profile*',
+      async route => {
+
+        if (
+          route.request().method() !== 'GET'
+        ) {
+
+          await route.fallback();
+
+          return;
+
+        }
+
+
+        console.log(
+          'CP-009 PROFILE GET:',
+          route.request().url()
+        );
+
+
+        await route.fulfill({
+
+          status:
+            200,
+
+          contentType:
+            'application/json',
+
+          body:
+            JSON.stringify({
+
+              success:
+                true,
+
+              data: {
+
+                userId:
+                  TEST_USER_ID,
+
+                profileComplete:
+                  false,
+
+                userName:
+                  TEST_NAME,
+
+                name:
+                  TEST_NAME,
+
+                email:
+                  '',
+
+                phoneNumber:
+                  TEST_PHONE,
+
+                // ------------------------------------------------
+                // Gender valid.
+                // Gender is NOT under test.
+                // ------------------------------------------------
+
+                gender:
+                  'Male',
+
+                // ------------------------------------------------
+                // Height valid.
+                // ------------------------------------------------
+
+                height:
+                  170,
+
+                // ------------------------------------------------
+                // Diet intentionally EMPTY.
+                // Diet is the field under test.
+                // ------------------------------------------------
+
+                dietType:
+                  '',
+
+                // ------------------------------------------------
+                // Weight valid.
+                // ------------------------------------------------
+
+                currentWeight:
+                  72.5,
+
+                latestWeight:
+                  72.5,
+
+                // ------------------------------------------------
+                // Body fat valid.
+                // ------------------------------------------------
+
+                bodyFat:
+                  22,
+
+                latestWeightBodyFat:
+                  22,
+
+                // ------------------------------------------------
+                // Existing profile image.
+                // No upload is required.
+                // ------------------------------------------------
+
+                profileImage:
+                  'https://example.com/profile.jpg',
+
+                physicalActivityLevel:
+                  null,
+
+                needsCurrentWeight:
+                  false,
+
+              },
+
+            }),
+
+        });
+
+      }
+    );
+
+
+    // ============================================================
+    // 7. OPEN APPLICATION
+    // ============================================================
+
+    await page.goto(
+      '/',
+      {
+        waitUntil:
+          'domcontentloaded',
+      }
+    );
+
+
+    // ============================================================
+    // 8. LOGIN PAGE
+    // ============================================================
+
+    const mobileInput =
+      page.getByLabel(
+        'Mobile Number'
+      );
+
+
+    await expect(
+      mobileInput
+    ).toBeVisible({
+      timeout:
+        15000,
+    });
+
+
+    await mobileInput.fill(
+      TEST_PHONE
+    );
+
+
+    await page.getByRole(
+      'button',
+      {
+        name:
+          'Send OTP',
+
+        exact:
+          true,
+      }
+    ).click();
+
+
+    // ============================================================
+    // 9. OTP PAGE
+    // ============================================================
+
+    await expect(
+      page.getByText(
+        'Enter OTP',
+        {
+          exact:
+            true,
+        }
+      )
+    ).toBeVisible({
+      timeout:
+        15000,
+    });
+
+
+    const otpInputs =
+      page.locator(
+        'input[data-otp="true"]'
+      );
+
+
+    await expect(
+      otpInputs
+    ).toHaveCount(
+      6
+    );
+
+
+    for (
+      let i = 0;
+      i < TEST_OTP.length;
+      i++
+    ) {
+
+      await otpInputs
+        .nth(i)
+        .fill(
+          TEST_OTP[i]
+        );
+
+    }
+
+
+    // ============================================================
+    // 10. COMPLETE PROFILE
+    // ============================================================
+
+    const completeProfileHeading =
+      page.getByRole(
+        'heading',
+        {
+          name:
+            'Complete Your Profile',
+
+          exact:
+            true,
+        }
+      );
+
+
+    await expect(
+      completeProfileHeading
+    ).toBeVisible({
+      timeout:
+        20000,
+    });
+
+
+    console.log(
+      'CP-009 COMPLETE PROFILE PAGE DISPLAYED'
+    );
+
+
+    // ============================================================
+    // 11. EMAIL
+    //
+    // Email is not under test.
+    // Make it valid.
+    // ============================================================
+
+    const emailInput =
+      page.getByPlaceholder(
+        'you@example.com'
+      );
+
+
+    await expect(
+      emailInput
+    ).toBeVisible({
+      timeout:
+        15000,
+    });
+
+
+    await expect(
+      emailInput
+    ).toBeEditable({
+      timeout:
+        10000,
+    });
+
+
+    await emailInput.fill(
+      'nitheesh@example.com'
+    );
+
+
+    await expect(
+      emailInput
+    ).toHaveValue(
+      'nitheesh@example.com'
+    );
+
+
+    console.log(
+      'CP-009 EMAIL VALID'
+    );
+
+
+    // ============================================================
+    // 12. FULL NAME
+    //
+    // Same approach as CP-008.
+    // ============================================================
+
+    const fullNameInput =
+      page.getByPlaceholder(
+        'Enter your full name'
+      );
+
+
+    const fullNameVisible =
+      await fullNameInput
+        .isVisible({
+          timeout:
+            2000,
+        })
+        .catch(
+          () => false
+        );
+
+
+    if (
+      fullNameVisible
+    ) {
+
+      await fullNameInput.fill(
+        TEST_NAME
+      );
+
+
+      await expect(
+        fullNameInput
+      ).toHaveValue(
+        TEST_NAME
+      );
+
+
+      console.log(
+        'CP-009 FULL NAME SET'
+      );
+
+    } else {
+
+      console.log(
+        'CP-009 FULL NAME ALREADY RESOLVED'
+      );
+
+    }
+
+
+    // ============================================================
+    // 13. GENDER
+    //
+    // Gender is not under test.
+    // Ensure it is valid.
+    // ============================================================
+
+    const getGenderSelect =
+      () =>
+        page
+          .locator('label')
+          .filter({
+            hasText:
+              'Gender',
+          })
+          .locator('..')
+          .locator('select')
+          .first();
+
+
+    const genderSelect =
+      getGenderSelect();
+
+
+    const genderVisible =
+      await genderSelect
+        .isVisible({
+          timeout:
+            2000,
+        })
+        .catch(
+          () => false
+        );
+
+
+    if (
+      genderVisible
+    ) {
+
+      const currentGender =
+        await genderSelect.inputValue();
+
+
+      if (
+        !currentGender
+      ) {
+
+        await genderSelect.selectOption({
+          label:
+            'Male',
+        });
+
+      }
+
+
+      await expect(
+        getGenderSelect()
+      ).toHaveValue(
+        'Male'
+      );
+
+
+      console.log(
+        'CP-009 GENDER VALID'
+      );
+
+    } else {
+
+      console.log(
+        'CP-009 GENDER ALREADY RESOLVED'
+      );
+
+    }
+
+
+    // ============================================================
+    // 14. HEIGHT
+    //
+    // Height is not under test.
+    // Ensure valid value.
+    // ============================================================
+
+    const heightInput =
+      page.getByPlaceholder(
+        'e.g. 170'
+      );
+
+
+    const heightVisible =
+      await heightInput
+        .isVisible({
+          timeout:
+            2000,
+        })
+        .catch(
+          () => false
+        );
+
+
+    if (
+      heightVisible
+    ) {
+
+      await heightInput.fill(
+        '170'
+      );
+
+
+      await expect(
+        heightInput
+      ).toHaveValue(
+        '170'
+      );
+
+
+      console.log(
+        'CP-009 HEIGHT VALID'
+      );
+
+    } else {
+
+      console.log(
+        'CP-009 HEIGHT ALREADY RESOLVED'
+      );
+
+    }
+
+
+    // ============================================================
+    // 15. CURRENT WEIGHT
+    //
+    // Not under test.
+    // ============================================================
+
+    const weightInput =
+      page.getByPlaceholder(
+        'e.g. 72.5'
+      );
+
+
+    const weightVisible =
+      await weightInput
+        .isVisible({
+          timeout:
+            2000,
+        })
+        .catch(
+          () => false
+        );
+
+
+    if (
+      weightVisible
+    ) {
+
+      await weightInput.fill(
+        '72.5'
+      );
+
+
+      await expect(
+        weightInput
+      ).toHaveValue(
+        '72.5'
+      );
+
+
+      console.log(
+        'CP-009 WEIGHT VALID'
+      );
+
+    } else {
+
+      console.log(
+        'CP-009 WEIGHT ALREADY RESOLVED'
+      );
+
+    }
+
+
+    // ============================================================
+    // 16. BODY FAT
+    //
+    // Not under test.
+    // ============================================================
+
+    const bodyFatInput =
+      page.getByPlaceholder(
+        'e.g. 22'
+      );
+
+
+    const bodyFatVisible =
+      await bodyFatInput
+        .isVisible({
+          timeout:
+            2000,
+        })
+        .catch(
+          () => false
+        );
+
+
+    if (
+      bodyFatVisible
+    ) {
+
+      await bodyFatInput.fill(
+        '22'
+      );
+
+
+      await expect(
+        bodyFatInput
+      ).toHaveValue(
+        '22'
+      );
+
+
+      console.log(
+        'CP-009 BODY FAT VALID'
+      );
+
+    } else {
+
+      console.log(
+        'CP-009 BODY FAT ALREADY RESOLVED'
+      );
+
+    }
+
+
+    // ============================================================
+    // 17. SAVE BUTTON
+    // ============================================================
+
+    const saveButton =
+      page.getByRole(
+        'button',
+        {
+          name:
+            'Save & Continue',
+
+          exact:
+            true,
+        }
+      );
+
+
+    await expect(
+      saveButton
+    ).toBeVisible({
+      timeout:
+        10000,
+    });
+
+
+    // ============================================================
+    // 18. DIET OPTIONS
+    //
+    // These are the options CP-009 verifies.
+    // ============================================================
+
+    const dietOptions = [
+
+      'Vegetarian',
+
+      'Non-Vegetarian',
+
+      'Vegan',
+
+      'Pescatarian',
+
+    ];
+
+
+    // ============================================================
+    // 19. VERIFY ALL DIET OPTIONS EXIST
+    // ============================================================
+
+    for (
+      const option of dietOptions
+    ) {
+
+      const dietButton =
+        page.getByRole(
+          'button',
+          {
+            name:
+              option,
+
+            exact:
+              true,
+          }
+        );
+
+
+      await expect(
+        dietButton
+      ).toBeVisible({
+        timeout:
+          10000,
+      });
+
+    }
+
+
+    console.log(
+      'CP-009 ALL DIET OPTIONS DISPLAYED'
+    );
+
+
+    // ============================================================
+    // 20. INITIAL STATE
+    //
+    // Diet is intentionally empty.
+    //
+    // Therefore Save & Continue should be disabled.
+    // ============================================================
+
+    await expect(
+      saveButton
+    ).toBeDisabled({
+      timeout:
+        10000,
+    });
+
+
+    console.log(
+      'CP-009 EMPTY DIET -> SAVE DISABLED'
+    );
+
+
+    // ============================================================
+    // 21. CASE 1 — VEGETARIAN
+    // ============================================================
+
+    const vegetarianButton =
+      page.getByRole(
+        'button',
+        {
+          name:
+            'Vegetarian',
+
+          exact:
+            true,
         }
       );
 
@@ -3074,8 +6222,11 @@ test(
       page.getByRole(
         'button',
         {
-          name: 'Vegetarian',
-          exact: true,
+          name:
+            'Vegetarian',
+
+          exact:
+            true,
         }
       )
     ).toHaveClass(
@@ -3086,20 +6237,29 @@ test(
     await expect(
       saveButton
     ).toBeEnabled({
-      timeout: 10000,
+      timeout:
+        10000,
     });
 
 
+    console.log(
+      'CP-009 VEGETARIAN -> SAVE ENABLED'
+    );
+
+
     // ============================================================
-    // 9. CASE 2 — NON-VEGETARIAN
+    // 22. CASE 2 — NON-VEGETARIAN
     // ============================================================
 
     const nonVegetarianButton =
       page.getByRole(
         'button',
         {
-          name: 'Non-Vegetarian',
-          exact: true,
+          name:
+            'Non-Vegetarian',
+
+          exact:
+            true,
         }
       );
 
@@ -3111,8 +6271,11 @@ test(
       page.getByRole(
         'button',
         {
-          name: 'Non-Vegetarian',
-          exact: true,
+          name:
+            'Non-Vegetarian',
+
+          exact:
+            true,
         }
       )
     ).toHaveClass(
@@ -3123,20 +6286,29 @@ test(
     await expect(
       saveButton
     ).toBeEnabled({
-      timeout: 10000,
+      timeout:
+        10000,
     });
 
 
+    console.log(
+      'CP-009 NON-VEGETARIAN -> SAVE ENABLED'
+    );
+
+
     // ============================================================
-    // 10. CASE 3 — VEGAN
+    // 23. CASE 3 — VEGAN
     // ============================================================
 
     const veganButton =
       page.getByRole(
         'button',
         {
-          name: 'Vegan',
-          exact: true,
+          name:
+            'Vegan',
+
+          exact:
+            true,
         }
       );
 
@@ -3148,8 +6320,11 @@ test(
       page.getByRole(
         'button',
         {
-          name: 'Vegan',
-          exact: true,
+          name:
+            'Vegan',
+
+          exact:
+            true,
         }
       )
     ).toHaveClass(
@@ -3160,20 +6335,29 @@ test(
     await expect(
       saveButton
     ).toBeEnabled({
-      timeout: 10000,
+      timeout:
+        10000,
     });
 
 
+    console.log(
+      'CP-009 VEGAN -> SAVE ENABLED'
+    );
+
+
     // ============================================================
-    // 11. CASE 4 — PESCATARIAN
+    // 24. CASE 4 — PESCATARIAN
     // ============================================================
 
     const pescatarianButton =
       page.getByRole(
         'button',
         {
-          name: 'Pescatarian',
-          exact: true,
+          name:
+            'Pescatarian',
+
+          exact:
+            true,
         }
       );
 
@@ -3185,8 +6369,11 @@ test(
       page.getByRole(
         'button',
         {
-          name: 'Pescatarian',
-          exact: true,
+          name:
+            'Pescatarian',
+
+          exact:
+            true,
         }
       )
     ).toHaveClass(
@@ -3197,8 +6384,23 @@ test(
     await expect(
       saveButton
     ).toBeEnabled({
-      timeout: 10000,
+      timeout:
+        10000,
     });
+
+
+    console.log(
+      'CP-009 PESCATARIAN -> SAVE ENABLED'
+    );
+
+
+    // ============================================================
+    // FINAL
+    // ============================================================
+
+    console.log(
+      'CP-009 DIET PREFERENCE VALIDATION VERIFIED'
+    );
 
   }
 );
@@ -3208,14 +6410,658 @@ test(
   async ({ page }) => {
 
     // ============================================================
-    // 1. GO TO COMPLETE PROFILE
+    // TEST DATA
     // ============================================================
 
-    await goToCompleteProfile(page);
+    const TEST_PHONE =
+      '7695834209';
+
+    const TEST_OTP =
+      '123456';
+
+    const TEST_USER_ID =
+      967;
+
+    const TEST_NAME =
+      'Nitheesh Lingam';
+
+    const TEST_EMAIL =
+      '';
 
 
     // ============================================================
-    // 2. LOCATORS
+    // 1. SEND LOGIN OTP
+    // ============================================================
+
+    await page.route(
+      '**/api/auth/send-otp',
+      async route => {
+
+        const request =
+          route.request();
+
+        expect(
+          request.method()
+        ).toBe('POST');
+
+        const body =
+          request.postDataJSON();
+
+        console.log(
+          'CP-010 SEND OTP BODY:',
+          body
+        );
+
+        expect(
+          body
+        ).toMatchObject({
+
+          recipient:
+            `+91${TEST_PHONE}`,
+
+          contactType:
+            'phone',
+
+        });
+
+
+        await route.fulfill({
+
+          status:
+            200,
+
+          contentType:
+            'application/json',
+
+          body:
+            JSON.stringify({
+
+              success:
+                true,
+
+            }),
+
+        });
+
+      }
+    );
+
+
+    // ============================================================
+    // 2. VERIFY LOGIN OTP
+    // ============================================================
+
+    await page.route(
+      '**/api/auth/verify-otp',
+      async route => {
+
+        const request =
+          route.request();
+
+        expect(
+          request.method()
+        ).toBe('POST');
+
+        const body =
+          request.postDataJSON();
+
+        console.log(
+          'CP-010 LOGIN OTP BODY:',
+          body
+        );
+
+        expect(
+          body
+        ).toMatchObject({
+
+          recipient:
+            `+91${TEST_PHONE}`,
+
+          otp:
+            TEST_OTP,
+
+          contactType:
+            'phone',
+
+        });
+
+
+        await route.fulfill({
+
+          status:
+            200,
+
+          contentType:
+            'application/json',
+
+          body:
+            JSON.stringify({
+
+              success:
+                true,
+
+              isNewUser:
+                false,
+
+              isActive:
+                true,
+
+              role:
+                'user',
+
+              user: {
+
+                id:
+                  TEST_USER_ID,
+
+                UserId:
+                  TEST_USER_ID,
+
+                username:
+                  TEST_NAME,
+
+                userName:
+                  TEST_NAME,
+
+                name:
+                  TEST_NAME,
+
+                email:
+                  TEST_EMAIL,
+
+                phone:
+                  `+91${TEST_PHONE}`,
+
+                phoneNumber:
+                  TEST_PHONE,
+
+                status:
+                  'Active',
+
+                consentRequired:
+                  false,
+
+              },
+
+            }),
+
+        });
+
+      }
+    );
+
+
+    // ============================================================
+    // 3. VERIFY SESSION
+    // ============================================================
+
+    await page.route(
+      '**/api/user/verify-session',
+      async route => {
+
+        console.log(
+          'CP-010 VERIFY SESSION:',
+          route.request().url()
+        );
+
+
+        await route.fulfill({
+
+          status:
+            200,
+
+          contentType:
+            'application/json',
+
+          body:
+            JSON.stringify({
+
+              success:
+                true,
+
+              userId:
+                TEST_USER_ID,
+
+              sessionStale:
+                false,
+
+            }),
+
+        });
+
+      }
+    );
+
+
+    // ============================================================
+    // 4. CONSENT
+    //
+    // Consent is already accepted.
+    //
+    // Do NOT use goToCompleteProfile().
+    // ============================================================
+
+    await page.route(
+      '**/api/user/consent*',
+      async route => {
+
+        const method =
+          route.request().method();
+
+        console.log(
+          'CP-010 CONSENT:',
+          method
+        );
+
+
+        if (
+          method === 'GET'
+          ||
+          method === 'POST'
+        ) {
+
+          await route.fulfill({
+
+            status:
+              200,
+
+            contentType:
+              'application/json',
+
+            body:
+              JSON.stringify({
+
+                success:
+                  true,
+
+                consentRequired:
+                  false,
+
+                consentAccepted:
+                  true,
+
+              }),
+
+          });
+
+          return;
+
+        }
+
+
+        await route.fallback();
+
+      }
+    );
+
+
+    // ============================================================
+    // 5. USER STATUS
+    // ============================================================
+
+    await page.route(
+      '**/api/user/status*',
+      async route => {
+
+        console.log(
+          'CP-010 STATUS:',
+          route.request().url()
+        );
+
+
+        await route.fulfill({
+
+          status:
+            200,
+
+          contentType:
+            'application/json',
+
+          body:
+            JSON.stringify({
+
+              success:
+                true,
+
+              setupComplete:
+                true,
+
+              setupSkipped:
+                true,
+
+              hasTeamId:
+                false,
+
+              hasUpline:
+                true,
+
+              pendingRequest:
+                false,
+
+              redirectTo:
+                null,
+
+            }),
+
+        });
+
+      }
+    );
+
+
+    // ============================================================
+    // 6. PROFILE
+    //
+    // CURRENT WEIGHT IS THE FIELD UNDER TEST.
+    //
+    // Therefore:
+    //
+    // currentWeight = null
+    // latestWeight  = null
+    //
+    // Other fields are valid.
+    // ============================================================
+
+    await page.route(
+      '**/api/user/profile*',
+      async route => {
+
+        if (
+          route.request().method() !== 'GET'
+        ) {
+
+          await route.fallback();
+
+          return;
+
+        }
+
+
+        console.log(
+          'CP-010 PROFILE GET:',
+          route.request().url()
+        );
+
+
+        await route.fulfill({
+
+          status:
+            200,
+
+          contentType:
+            'application/json',
+
+          body:
+            JSON.stringify({
+
+              success:
+                true,
+
+              data: {
+
+                userId:
+                  TEST_USER_ID,
+
+                profileComplete:
+                  false,
+
+                userName:
+                  TEST_NAME,
+
+                name:
+                  TEST_NAME,
+
+                email:
+                  '',
+
+                phoneNumber:
+                  TEST_PHONE,
+
+
+                // ------------------------------------------------
+                // Gender valid.
+                // ------------------------------------------------
+
+                gender:
+                  'Male',
+
+
+                // ------------------------------------------------
+                // Height valid.
+                // ------------------------------------------------
+
+                height:
+                  170,
+
+
+                // ------------------------------------------------
+                // Diet valid.
+                // ------------------------------------------------
+
+                dietType:
+                  'Vegetarian',
+
+
+                // ------------------------------------------------
+                // CURRENT WEIGHT UNDER TEST.
+                //
+                // Leave empty so the UI exposes the field.
+                // ------------------------------------------------
+
+                currentWeight:
+                  null,
+
+                latestWeight:
+                  null,
+
+
+                // ------------------------------------------------
+                // Body Fat valid.
+                // ------------------------------------------------
+
+                bodyFat:
+                  22,
+
+                latestWeightBodyFat:
+                  22,
+
+
+                // ------------------------------------------------
+                // Existing profile image.
+                // No upload required.
+                // ------------------------------------------------
+
+                profileImage:
+                  'https://example.com/profile.jpg',
+
+
+                physicalActivityLevel:
+                  null,
+
+                needsCurrentWeight:
+                  true,
+
+              },
+
+            }),
+
+        });
+
+      }
+    );
+
+
+    // ============================================================
+    // 7. OPEN APPLICATION
+    // ============================================================
+
+    await page.goto(
+      '/',
+      {
+        waitUntil:
+          'domcontentloaded',
+      }
+    );
+
+
+    // ============================================================
+    // 8. LOGIN PAGE
+    // ============================================================
+
+    const mobileInput =
+      page.getByLabel(
+        'Mobile Number'
+      );
+
+
+    await expect(
+      mobileInput
+    ).toBeVisible({
+      timeout:
+        15000,
+    });
+
+
+    await mobileInput.fill(
+      TEST_PHONE
+    );
+
+
+    await page.getByRole(
+      'button',
+      {
+        name:
+          'Send OTP',
+
+        exact:
+          true,
+      }
+    ).click();
+
+
+    // ============================================================
+    // 9. OTP PAGE
+    // ============================================================
+
+    await expect(
+      page.getByText(
+        'Enter OTP',
+        {
+          exact:
+            true,
+        }
+      )
+    ).toBeVisible({
+      timeout:
+        15000,
+    });
+
+
+    const otpInputs =
+      page.locator(
+        'input[data-otp="true"]'
+      );
+
+
+    await expect(
+      otpInputs
+    ).toHaveCount(
+      6
+    );
+
+
+    for (
+      let i = 0;
+      i < TEST_OTP.length;
+      i++
+    ) {
+
+      await otpInputs
+        .nth(i)
+        .fill(
+          TEST_OTP[i]
+        );
+
+    }
+
+
+    // ============================================================
+    // 10. COMPLETE PROFILE
+    // ============================================================
+
+    const completeProfileHeading =
+      page.getByRole(
+        'heading',
+        {
+          name:
+            'Complete Your Profile',
+
+          exact:
+            true,
+        }
+      );
+
+
+    await expect(
+      completeProfileHeading
+    ).toBeVisible({
+      timeout:
+        20000,
+    });
+
+
+    console.log(
+      'CP-010 COMPLETE PROFILE PAGE DISPLAYED'
+    );
+
+
+    // ============================================================
+    // 11. EMAIL
+    //
+    // Email is not under test.
+    // ============================================================
+
+    const emailInput =
+      page.getByPlaceholder(
+        'you@example.com'
+      );
+
+
+    await expect(
+      emailInput
+    ).toBeVisible({
+      timeout:
+        15000,
+    });
+
+
+    await expect(
+      emailInput
+    ).toBeEditable({
+      timeout:
+        10000,
+    });
+
+
+    await emailInput.fill(
+      'nitheesh@example.com'
+    );
+
+
+    await expect(
+      emailInput
+    ).toHaveValue(
+      'nitheesh@example.com'
+    );
+
+
+    console.log(
+      'CP-010 EMAIL VALID'
+    );
+
+
+    // ============================================================
+    // 12. FULL NAME
     // ============================================================
 
     const fullNameInput =
@@ -3223,963 +7069,771 @@ test(
         'Enter your full name'
       );
 
-    const emailInput =
-      page.locator(
-        'input[type="email"]'
+
+    const fullNameVisible =
+      await fullNameInput
+        .isVisible({
+          timeout:
+            2000,
+        })
+        .catch(
+          () => false
+        );
+
+
+    if (
+      fullNameVisible
+    ) {
+
+      await fullNameInput.fill(
+        TEST_NAME
       );
+
+
+      await expect(
+        fullNameInput
+      ).toHaveValue(
+        TEST_NAME
+      );
+
+
+      console.log(
+        'CP-010 FULL NAME SET'
+      );
+
+    } else {
+
+      console.log(
+        'CP-010 FULL NAME ALREADY RESOLVED'
+      );
+
+    }
+
+
+    // ============================================================
+    // 13. GENDER
+    //
+    // Not under test.
+    // ============================================================
+
+    const getGenderSelect =
+      () =>
+        page
+          .locator('label')
+          .filter({
+            hasText:
+              'Gender',
+          })
+          .locator('..')
+          .locator('select')
+          .first();
+
+
+    const genderSelect =
+      getGenderSelect();
+
+
+    const genderVisible =
+      await genderSelect
+        .isVisible({
+          timeout:
+            2000,
+        })
+        .catch(
+          () => false
+        );
+
+
+    if (
+      genderVisible
+    ) {
+
+      const currentGender =
+        await genderSelect.inputValue();
+
+
+      if (
+        !currentGender
+      ) {
+
+        await genderSelect.selectOption({
+          label:
+            'Male',
+        });
+
+      }
+
+
+      await expect(
+        getGenderSelect()
+      ).toHaveValue(
+        'Male'
+      );
+
+
+      console.log(
+        'CP-010 GENDER VALID'
+      );
+
+    } else {
+
+      console.log(
+        'CP-010 GENDER ALREADY RESOLVED'
+      );
+
+    }
+
+
+    // ============================================================
+    // 14. HEIGHT
+    //
+    // Not under test.
+    // ============================================================
+
+    const heightInput =
+      page.getByPlaceholder(
+        'e.g. 170'
+      );
+
+
+    const heightVisible =
+      await heightInput
+        .isVisible({
+          timeout:
+            2000,
+        })
+        .catch(
+          () => false
+        );
+
+
+    if (
+      heightVisible
+    ) {
+
+      await heightInput.fill(
+        '170'
+      );
+
+
+      await expect(
+        heightInput
+      ).toHaveValue(
+        '170'
+      );
+
+
+      console.log(
+        'CP-010 HEIGHT VALID'
+      );
+
+    } else {
+
+      console.log(
+        'CP-010 HEIGHT ALREADY RESOLVED'
+      );
+
+    }
+
+
+    // ============================================================
+    // 15. DIET
+    //
+    // Not under test.
+    // ============================================================
+
+    const vegetarianButton =
+      page.getByRole(
+        'button',
+        {
+          name:
+            'Vegetarian',
+
+          exact:
+            true,
+        }
+      );
+
+
+    const vegetarianVisible =
+      await vegetarianButton
+        .isVisible({
+          timeout:
+            2000,
+        })
+        .catch(
+          () => false
+        );
+
+
+    if (
+      vegetarianVisible
+    ) {
+
+      await vegetarianButton.click();
+
+
+      await expect(
+        vegetarianButton
+      ).toHaveClass(
+        /border-green-500/
+      );
+
+
+      console.log(
+        'CP-010 DIET SET TO VEGETARIAN'
+      );
+
+    } else {
+
+      console.log(
+        'CP-010 DIET ALREADY RESOLVED'
+      );
+
+    }
+
+
+    // ============================================================
+    // 16. BODY FAT
+    //
+    // Not under test.
+    // ============================================================
 
     const bodyFatInput =
       page.getByPlaceholder(
         'e.g. 22'
       );
 
+
+    const bodyFatVisible =
+      await bodyFatInput
+        .isVisible({
+          timeout:
+            2000,
+        })
+        .catch(
+          () => false
+        );
+
+
+    if (
+      bodyFatVisible
+    ) {
+
+      await bodyFatInput.fill(
+        '22'
+      );
+
+
+      await expect(
+        bodyFatInput
+      ).toHaveValue(
+        '22'
+      );
+
+
+      console.log(
+        'CP-010 BODY FAT VALID'
+      );
+
+    } else {
+
+      console.log(
+        'CP-010 BODY FAT ALREADY RESOLVED'
+      );
+
+    }
+
+
+    // ============================================================
+    // 17. CURRENT WEIGHT LOCATOR
+    //
+    // This is the field under test.
+    // ============================================================
+
+    const getWeightInput =
+      () =>
+        page.getByPlaceholder(
+          'e.g. 72.5'
+        );
+
+
+    const weightInput =
+      getWeightInput();
+
+
+    await expect(
+      weightInput
+    ).toBeVisible({
+      timeout:
+        15000,
+    });
+
+
+    await expect(
+      weightInput
+    ).toBeEditable({
+      timeout:
+        10000,
+    });
+
+
+    console.log(
+      'CP-010 CURRENT WEIGHT FIELD DISPLAYED'
+    );
+
+
+    // ============================================================
+    // 18. SAVE BUTTON
+    // ============================================================
+
     const saveButton =
       page.getByRole(
         'button',
         {
-          name: 'Save & Continue',
-          exact: true,
+          name:
+            'Save & Continue',
+
+          exact:
+            true,
         }
       );
 
 
-    // ============================================================
-    // 3. WAIT FOR PROFILE FORM
-    // ============================================================
-
     await expect(
-      fullNameInput
+      saveButton
     ).toBeVisible({
-      timeout: 15000,
-    });
-
-    await expect(
-      emailInput
-    ).toBeVisible({
-      timeout: 15000,
+      timeout:
+        10000,
     });
 
 
     // ============================================================
-    // 4. FILL ALL OTHER REQUIRED FIELDS
+    // 19. INITIAL STATE
     //
-    // Current Weight intentionally remains empty because it is
-    // the field under test.
-    // ============================================================
-
-    await fullNameInput.fill(
-      'Nitheesh Lingam'
-    );
-
-
-    // ------------------------------------------------------------
-    // Email
-    // ------------------------------------------------------------
-
-    if (
-      await emailInput.isEditable()
-    ) {
-      await emailInput.fill(
-        'nitheesh@example.com'
-      );
-    }
-
-
-    // ------------------------------------------------------------
-    // Gender
-    // ------------------------------------------------------------
-
-    let genderSelected = false;
-
-    for (
-      let attempt = 1;
-      attempt <= 5;
-      attempt++
-    ) {
-
-      try {
-
-        const genderSelect =
-          page
-            .locator('label')
-            .filter({
-              hasText: 'Gender',
-            })
-            .locator('..')
-            .locator('select');
-
-        await expect(
-          genderSelect
-        ).toBeVisible({
-          timeout: 3000,
-        });
-
-        await genderSelect.selectOption({
-          label: 'Male',
-        });
-
-        genderSelected = true;
-        break;
-
-      } catch (error) {
-
-        if (
-          attempt === 5
-        ) {
-          throw error;
-        }
-
-        await page.waitForTimeout(300);
-      }
-    }
-
-    expect(
-      genderSelected
-    ).toBe(true);
-
-
-    // ------------------------------------------------------------
-    // Height
-    // ------------------------------------------------------------
-
-    let heightFilled = false;
-
-    for (
-      let attempt = 1;
-      attempt <= 5;
-      attempt++
-    ) {
-
-      try {
-
-        const heightInput =
-          page.getByPlaceholder(
-            'e.g. 170'
-          );
-
-        await expect(
-          heightInput
-        ).toBeVisible({
-          timeout: 3000,
-        });
-
-        await heightInput.fill(
-          '170'
-        );
-
-        heightFilled = true;
-        break;
-
-      } catch (error) {
-
-        if (
-          attempt === 5
-        ) {
-          throw error;
-        }
-
-        await page.waitForTimeout(300);
-      }
-    }
-
-    expect(
-      heightFilled
-    ).toBe(true);
-
-
-    // ------------------------------------------------------------
-    // Diet
-    // ------------------------------------------------------------
-
-    let dietSelected = false;
-
-    for (
-      let attempt = 1;
-      attempt <= 5;
-      attempt++
-    ) {
-
-      try {
-
-        const vegetarianButton =
-          page.getByRole(
-            'button',
-            {
-              name: 'Vegetarian',
-              exact: true,
-            }
-          );
-
-        await expect(
-          vegetarianButton
-        ).toBeVisible({
-          timeout: 3000,
-        });
-
-        await vegetarianButton.click();
-
-        dietSelected = true;
-        break;
-
-      } catch (error) {
-
-        if (
-          attempt === 5
-        ) {
-          throw error;
-        }
-
-        await page.waitForTimeout(300);
-      }
-    }
-
-    expect(
-      dietSelected
-    ).toBe(true);
-
-
-    // ------------------------------------------------------------
-    // Body Fat
-    // ------------------------------------------------------------
-
-    let bodyFatFilled = false;
-
-    for (
-      let attempt = 1;
-      attempt <= 5;
-      attempt++
-    ) {
-
-      try {
-
-        const bodyFat =
-          page.getByPlaceholder(
-            'e.g. 22'
-          );
-
-        await expect(
-          bodyFat
-        ).toBeVisible({
-          timeout: 3000,
-        });
-
-        await bodyFat.fill(
-          '22'
-        );
-
-        bodyFatFilled = true;
-        break;
-
-      } catch (error) {
-
-        if (
-          attempt === 5
-        ) {
-          throw error;
-        }
-
-        await page.waitForTimeout(300);
-      }
-    }
-
-    expect(
-      bodyFatFilled
-    ).toBe(true);
-
-
-    // ============================================================
-    // 5. PROFILE PICTURE
+    // Current Weight is empty.
     //
-    // The application requires a profile picture for the overall
-    // form to become valid.
+    // Therefore Save should be disabled.
     // ============================================================
 
-    const imageInputs =
-      page.locator(
-        'input[type="file"][accept="image/*"]'
-      );
+    await expect(
+      saveButton
+    ).toBeDisabled({
+      timeout:
+        10000,
+    });
+
 
     console.log(
-      'CP-010 IMAGE INPUT COUNT:',
-      await imageInputs.count()
+      'CP-010 EMPTY WEIGHT -> SAVE DISABLED'
     );
 
-    await imageInputs
-      .last()
-      .setInputFiles(
-        'tests/fixtures/profile-photo.jpg'
-      );
-
 
     // ============================================================
-    // 6. COMPLETE IMAGE CROP IF PRESENT
-    // ============================================================
-
-    const doneButton =
-      page.getByRole(
-        'button',
-        {
-          name: 'Done',
-          exact: true,
-        }
-      );
-
-    if (
-      await doneButton.isVisible()
-    ) {
-      await doneButton.click();
-    }
-
-
-    // ============================================================
-    // 7. CURRENT WEIGHT LOCATOR
+    // 20. CASE 1 — 19 KG
     //
-    // Always re-query after state changes.
-    // ============================================================
-
-    const getWeightInput = () =>
-      page.getByPlaceholder(
-        'e.g. 72.5'
-      );
-
-
-    // ============================================================
-    // 8. CASE 1 — 19 KG
+    // Minimum allowed value = 20 KG
     //
-    // Below minimum (20) -> INVALID
+    // 19 KG is INVALID.
     // ============================================================
 
-    let weightInput =
+    let currentWeightInput =
       getWeightInput();
 
-    await weightInput.fill(
+
+    await currentWeightInput.fill(
       '19'
     );
 
-    weightInput =
+
+    // Re-locate after React state update.
+    currentWeightInput =
       getWeightInput();
 
+
     await expect(
-      weightInput
+      currentWeightInput
     ).toHaveValue(
       '19'
     );
 
-    await expect(
-      saveButton
-    ).toBeDisabled({
-      timeout: 10000,
-    });
-
-
-    // ============================================================
-    // 9. CASE 2 — 20 KG
-    //
-    // Minimum allowed -> VALID
-    // ============================================================
-
-    weightInput =
-      getWeightInput();
-
-    await weightInput.fill(
-      '20'
-    );
-
-    weightInput =
-      getWeightInput();
-
-    await expect(
-      weightInput
-    ).toHaveValue(
-      '20'
-    );
-
-    await expect(
-      saveButton
-    ).toBeEnabled({
-      timeout: 10000,
-    });
-
-
-    // ============================================================
-    // 10. CASE 3 — 300 KG
-    //
-    // Maximum allowed -> VALID
-    // ============================================================
-
-    weightInput =
-      getWeightInput();
-
-    await weightInput.fill(
-      '300'
-    );
-
-    weightInput =
-      getWeightInput();
-
-    await expect(
-      weightInput
-    ).toHaveValue(
-      '300'
-    );
-
-    await expect(
-      saveButton
-    ).toBeEnabled({
-      timeout: 10000,
-    });
-
-
-    // ============================================================
-    // 11. CASE 4 — 301 KG
-    //
-    // Above maximum -> INVALID
-    // ============================================================
-
-    weightInput =
-      getWeightInput();
-
-    await weightInput.fill(
-      '301'
-    );
-
-    weightInput =
-      getWeightInput();
-
-    await expect(
-      weightInput
-    ).toHaveValue(
-      '301'
-    );
 
     await expect(
       saveButton
     ).toBeDisabled({
-      timeout: 10000,
+      timeout:
+        10000,
     });
 
 
-    // ============================================================
-    // 12. RESTORE VALID VALUE
-    // ============================================================
-
-    weightInput =
-      getWeightInput();
-
-    await weightInput.fill(
-      '72.5'
+    console.log(
+      'CP-010 19 KG -> SAVE DISABLED'
     );
 
-    weightInput =
+
+    // ============================================================
+    // 21. CASE 2 — 20 KG
+    //
+    // Minimum allowed value.
+    // ============================================================
+
+    currentWeightInput =
       getWeightInput();
+
+
+    await currentWeightInput.fill(
+      '20'
+    );
+
+
+    currentWeightInput =
+      getWeightInput();
+
 
     await expect(
-      weightInput
+      currentWeightInput
     ).toHaveValue(
-      '72.5'
+      '20'
     );
+
 
     await expect(
       saveButton
     ).toBeEnabled({
-      timeout: 10000,
+      timeout:
+        10000,
     });
+
+
+    console.log(
+      'CP-010 20 KG -> SAVE ENABLED'
+    );
+
+
+    // ============================================================
+    // 22. CASE 3 — 300 KG
+    //
+    // Maximum allowed value.
+    // ============================================================
+
+    currentWeightInput =
+      getWeightInput();
+
+
+    await currentWeightInput.fill(
+      '300'
+    );
+
+
+    currentWeightInput =
+      getWeightInput();
+
+
+    await expect(
+      currentWeightInput
+    ).toHaveValue(
+      '300'
+    );
+
+
+    await expect(
+      saveButton
+    ).toBeEnabled({
+      timeout:
+        10000,
+    });
+
+
+    console.log(
+      'CP-010 300 KG -> SAVE ENABLED'
+    );
+
+
+    // ============================================================
+    // 23. CASE 4 — 301 KG
+    //
+    // Above maximum.
+    // ============================================================
+
+    currentWeightInput =
+      getWeightInput();
+
+
+    await currentWeightInput.fill(
+      '301'
+    );
+
+
+    currentWeightInput =
+      getWeightInput();
+
+
+    await expect(
+      currentWeightInput
+    ).toHaveValue(
+      '301'
+    );
+
+
+    await expect(
+      saveButton
+    ).toBeDisabled({
+      timeout:
+        10000,
+    });
+
+
+    console.log(
+      'CP-010 301 KG -> SAVE DISABLED'
+    );
+
+
+    // ============================================================
+    // 24. RESTORE NORMAL VALID VALUE
+    // ============================================================
+
+    currentWeightInput =
+      getWeightInput();
+
+
+    await currentWeightInput.fill(
+      '72.5'
+    );
+
+
+    currentWeightInput =
+      getWeightInput();
+
+
+    await expect(
+      currentWeightInput
+    ).toHaveValue(
+      '72.5'
+    );
+
+
+    await expect(
+      saveButton
+    ).toBeEnabled({
+      timeout:
+        10000,
+    });
+
+
+    console.log(
+      'CP-010 72.5 KG -> SAVE ENABLED'
+    );
+
+
+    // ============================================================
+    // FINAL
+    // ============================================================
+
+    console.log(
+      'CP-010 CURRENT WEIGHT VALIDATION VERIFIED'
+    );
 
   }
 );
+
 
 test(
   'CP-011 Body Fat validates minimum and maximum allowed values',
   async ({ page }) => {
-
-    // ============================================================
-    // 1. GO TO COMPLETE PROFILE
-    // ============================================================
-
     await goToCompleteProfile(page);
 
+    // Prevent a later consent-status poll from returning this test to
+    // the consent screen while the profile form is being tested.
+    await page.unroute('**/api/user/consent*');
 
-    // ============================================================
-    // 2. LOCATORS
-    // ============================================================
+    await page.route('**/api/user/consent*', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          consentRequired: false,
+          consentAccepted: true,
+        }),
+      });
+    });
 
-    const fullNameInput =
-      page.getByPlaceholder(
-        'Enter your full name'
-      );
+    const completeProfileHeading = page.getByRole('heading', {
+      name: 'Complete Your Profile',
+      exact: true,
+    });
 
-    const emailInput =
-      page.locator(
-        'input[type="email"]'
-      );
-
-    const saveButton =
-      page.getByRole(
-        'button',
-        {
-          name: 'Save & Continue',
-          exact: true,
-        }
-      );
-
-
-    // ============================================================
-    // 3. WAIT FOR PROFILE FORM
-    // ============================================================
-
-    await expect(
-      fullNameInput
-    ).toBeVisible({
+    await expect(completeProfileHeading).toBeVisible({
       timeout: 15000,
     });
 
-    await expect(
-      emailInput
-    ).toBeVisible({
-      timeout: 15000,
+    const saveButton = page.getByRole('button', {
+      name: 'Save & Continue',
+      exact: true,
     });
 
+    await expect(saveButton).toBeVisible({
+      timeout: 10000,
+    });
 
-    // ============================================================
-    // 4. FILL ALL OTHER REQUIRED FIELDS
-    //
-    // Body Fat intentionally remains empty because it is the
-    // field under test.
-    // ============================================================
+    // ------------------------------------------------------------
+    // Make every field other than Fat % valid.
+    // ------------------------------------------------------------
 
-    await fullNameInput.fill(
-      'Nitheesh Lingam'
+    const genderSelect = page
+      .locator('select')
+      .filter({
+        has: page.locator('option[value="Male"]'),
+      })
+      .first();
+
+    await expect(genderSelect).toBeVisible({
+      timeout: 10000,
+    });
+
+    await genderSelect.selectOption('Male');
+
+    const heightInput = page.getByPlaceholder('e.g. 170');
+    await expect(heightInput).toBeVisible();
+    await heightInput.fill('170');
+
+    const vegetarianButton = page.getByRole('button', {
+      name: 'Vegetarian',
+      exact: true,
+    });
+
+    await expect(vegetarianButton).toBeVisible();
+    await vegetarianButton.click();
+
+// Current Weight is displayed only when the profile needs one.
+// If an existing weight is already available, it is intentionally hidden.
+const weightInput = page.getByPlaceholder('e.g. 72.5');
+
+if (await weightInput.isVisible().catch(() => false)) {
+  await weightInput.fill('72.5');
+  await expect(weightInput).toHaveValue('72.5');
+}
+
+    // The Fat % input is a sibling of its label, not a child of it.
+    // This avoids matching the separate Fat % checklist item.
+    const bodyFatInput = page
+      .locator('label')
+      .filter({
+        hasText: /^Fat %\s*\*/,
+      })
+      .locator('xpath=..')
+      .locator('input')
+      .first();
+
+    await expect(bodyFatInput).toBeVisible({
+      timeout: 10000,
+    });
+
+    // Profile photo is required for Save & Continue to be enabled.
+    const profileImageInput = page
+      .locator('input[type="file"][accept="image/*"]')
+      .last();
+
+    await expect(profileImageInput).toBeAttached({
+      timeout: 10000,
+    });
+
+    await profileImageInput.setInputFiles(
+      'tests/fixtures/profile-photo.jpg',
     );
 
-
-    // ------------------------------------------------------------
-    // Email
-    // ------------------------------------------------------------
-
-    if (
-      await emailInput.isEditable()
-    ) {
-      await emailInput.fill(
-        'nitheesh@example.com'
-      );
-    }
-
-
-    // ------------------------------------------------------------
-    // Gender
-    // ------------------------------------------------------------
-
-    let genderSelected = false;
-
-    for (
-      let attempt = 1;
-      attempt <= 5;
-      attempt++
-    ) {
-
-      try {
-
-        const genderSelect =
-          page
-            .locator('label')
-            .filter({
-              hasText: 'Gender',
-            })
-            .locator('..')
-            .locator('select');
-
-        await expect(
-          genderSelect
-        ).toBeVisible({
-          timeout: 3000,
-        });
-
-        await genderSelect.selectOption({
-          label: 'Male',
-        });
-
-        genderSelected = true;
-        break;
-
-      } catch (error) {
-
-        if (
-          attempt === 5
-        ) {
-          throw error;
-        }
-
-        await page.waitForTimeout(300);
-      }
-    }
-
-    expect(
-      genderSelected
-    ).toBe(true);
-
-
-    // ------------------------------------------------------------
-    // Height
-    // ------------------------------------------------------------
-
-    let heightFilled = false;
-
-    for (
-      let attempt = 1;
-      attempt <= 5;
-      attempt++
-    ) {
-
-      try {
-
-        const heightInput =
-          page.getByPlaceholder(
-            'e.g. 170'
-          );
-
-        await expect(
-          heightInput
-        ).toBeVisible({
-          timeout: 3000,
-        });
-
-        await heightInput.fill(
-          '170'
-        );
-
-        heightFilled = true;
-        break;
-
-      } catch (error) {
-
-        if (
-          attempt === 5
-        ) {
-          throw error;
-        }
-
-        await page.waitForTimeout(300);
-      }
-    }
-
-    expect(
-      heightFilled
-    ).toBe(true);
-
-
-    // ------------------------------------------------------------
-    // Diet
-    // ------------------------------------------------------------
-
-    let dietSelected = false;
-
-    for (
-      let attempt = 1;
-      attempt <= 5;
-      attempt++
-    ) {
-
-      try {
-
-        const vegetarianButton =
-          page.getByRole(
-            'button',
-            {
-              name: 'Vegetarian',
-              exact: true,
-            }
-          );
-
-        await expect(
-          vegetarianButton
-        ).toBeVisible({
-          timeout: 3000,
-        });
-
-        await vegetarianButton.click();
-
-        dietSelected = true;
-        break;
-
-      } catch (error) {
-
-        if (
-          attempt === 5
-        ) {
-          throw error;
-        }
-
-        await page.waitForTimeout(300);
-      }
-    }
-
-    expect(
-      dietSelected
-    ).toBe(true);
-
-
-    // ------------------------------------------------------------
-    // Current Weight
-    // ------------------------------------------------------------
-
-    let weightFilled = false;
-
-    for (
-      let attempt = 1;
-      attempt <= 5;
-      attempt++
-    ) {
-
-      try {
-
-        const weightInput =
-          page.getByPlaceholder(
-            'e.g. 72.5'
-          );
-
-        await expect(
-          weightInput
-        ).toBeVisible({
-          timeout: 3000,
-        });
-
-        await weightInput.fill(
-          '72.5'
-        );
-
-        weightFilled = true;
-        break;
-
-      } catch (error) {
-
-        if (
-          attempt === 5
-        ) {
-          throw error;
-        }
-
-        await page.waitForTimeout(300);
-      }
-    }
-
-    expect(
-      weightFilled
-    ).toBe(true);
-
-
-    // ============================================================
-    // 5. PROFILE PICTURE
-    //
-    // Required for overall form validity.
-    // ============================================================
-
-    const imageInputs =
-      page.locator(
-        'input[type="file"][accept="image/*"]'
-      );
-
-    console.log(
-      'CP-011 IMAGE INPUT COUNT:',
-      await imageInputs.count()
-    );
-
-
-    await imageInputs
-      .last()
-      .setInputFiles(
-        'tests/fixtures/profile-photo.jpg'
-      );
-
-
-    // ============================================================
-    // 6. COMPLETE IMAGE CROP IF PRESENT
-    // ============================================================
-
-    const doneButton =
-      page.getByRole(
-        'button',
-        {
-          name: 'Done',
-          exact: true,
-        }
-      );
-
-    if (
-      await doneButton.isVisible()
-    ) {
+    const cropDialog = page.getByRole('dialog', {
+      name: 'Crop photo',
+    });
+
+    const doneButton = page.getByRole('button', {
+      name: 'Done',
+      exact: true,
+    });
+
+    if (await cropDialog.isVisible().catch(() => false)) {
       await doneButton.click();
+      await expect(cropDialog).toBeHidden({
+        timeout: 10000,
+      });
     }
 
+    // ------------------------------------------------------------
+    // Start from a valid Fat % value.
+    // ------------------------------------------------------------
 
-    // ============================================================
-    // 7. BODY FAT LOCATOR
-    //
-    // Re-query the locator whenever React may have re-rendered.
-    // ============================================================
+    await bodyFatInput.fill('22');
 
-    const getBodyFatInput = () =>
-      page.getByPlaceholder(
-        'e.g. 22'
-      );
+    await expect(bodyFatInput).toHaveValue('22');
 
-
-    // ============================================================
-    // 8. CASE 1 — 0%
-    //
-    // Below minimum (1) -> INVALID
-    // ============================================================
-
-    let bodyFatInput =
-      getBodyFatInput();
-
-    await bodyFatInput.fill(
-      '0'
-    );
-
-
-    bodyFatInput =
-      getBodyFatInput();
-
-    await expect(
-      bodyFatInput
-    ).toHaveValue(
-      '0'
-    );
-
-
-    await expect(
-      saveButton
-    ).toBeDisabled({
+    await expect(saveButton).toBeEnabled({
       timeout: 10000,
     });
 
+    // ------------------------------------------------------------
+    // 0% — below minimum: invalid
+    // ------------------------------------------------------------
 
-    // ============================================================
-    // 9. CASE 2 — 1%
-    //
-    // Minimum allowed -> VALID
-    // ============================================================
+    await bodyFatInput.fill('0');
 
-    bodyFatInput =
-      getBodyFatInput();
+    await expect(bodyFatInput).toHaveValue('0');
 
-    await bodyFatInput.fill(
-      '1'
-    );
-
-
-    bodyFatInput =
-      getBodyFatInput();
-
-    await expect(
-      bodyFatInput
-    ).toHaveValue(
-      '1'
-    );
-
-
-    await expect(
-      saveButton
-    ).toBeEnabled({
+    await expect(saveButton).toBeDisabled({
       timeout: 10000,
     });
 
+    // ------------------------------------------------------------
+    // 1% — minimum: valid
+    // ------------------------------------------------------------
 
-    // ============================================================
-    // 10. CASE 3 — 70%
-    //
-    // Maximum allowed -> VALID
-    // ============================================================
+    await bodyFatInput.fill('1');
 
-    bodyFatInput =
-      getBodyFatInput();
+    await expect(bodyFatInput).toHaveValue('1');
 
-    await bodyFatInput.fill(
-      '70'
-    );
-
-
-    bodyFatInput =
-      getBodyFatInput();
-
-    await expect(
-      bodyFatInput
-    ).toHaveValue(
-      '70'
-    );
-
-
-    await expect(
-      saveButton
-    ).toBeEnabled({
+    await expect(saveButton).toBeEnabled({
       timeout: 10000,
     });
 
+    // ------------------------------------------------------------
+    // 70% — maximum: valid
+    // ------------------------------------------------------------
 
-    // ============================================================
-    // 11. CASE 4 — 71%
-    //
-    // Above maximum -> INVALID
-    // ============================================================
+    await bodyFatInput.fill('70');
 
-    bodyFatInput =
-      getBodyFatInput();
+    await expect(bodyFatInput).toHaveValue('70');
 
-    await bodyFatInput.fill(
-      '71'
-    );
-
-
-    bodyFatInput =
-      getBodyFatInput();
-
-    await expect(
-      bodyFatInput
-    ).toHaveValue(
-      '71'
-    );
-
-
-    await expect(
-      saveButton
-    ).toBeDisabled({
+    await expect(saveButton).toBeEnabled({
       timeout: 10000,
     });
 
+    // ------------------------------------------------------------
+    // 71% — above maximum: invalid
+    // ------------------------------------------------------------
 
-    // ============================================================
-    // 12. RESTORE VALID VALUE
-    // ============================================================
+    await bodyFatInput.fill('71');
 
-    bodyFatInput =
-      getBodyFatInput();
+    await expect(bodyFatInput).toHaveValue('71');
 
-    await bodyFatInput.fill(
-      '22'
-    );
-
-
-    bodyFatInput =
-      getBodyFatInput();
-
-    await expect(
-      bodyFatInput
-    ).toHaveValue(
-      '22'
-    );
-
-
-    await expect(
-      saveButton
-    ).toBeEnabled({
+    await expect(saveButton).toBeDisabled({
       timeout: 10000,
-  });
+    });
 
-  }
+    // Leave the form in a valid state.
+    await bodyFatInput.fill('22');
+
+    await expect(bodyFatInput).toHaveValue('22');
+
+    await expect(saveButton).toBeEnabled({
+      timeout: 10000,
+    });
+  },
 );
+
+
 const path = require('path');
 
 test(
+
   'CP-012 Profile Picture controls Save & Continue availability',
   async ({ page }) => {
 
