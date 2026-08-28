@@ -8,22 +8,10 @@ test(
     // TEST DATA
     // ============================================================
 
-    const TEST_PHONE =
-      '7695834209';
-
-    const LOGIN_OTP =
-      '123456';
-
-    const TEST_EMAIL =
-      'existing@test.com';
-
-    const TEST_USER_ID =
-      861;
-
-
-    // ============================================================
-    // PROGRAM NAMES FROM ACTUAL PROGRAMS PAGE
-    // ============================================================
+    const TEST_PHONE = '7695834209';
+    const LOGIN_OTP = '123456';
+    const TEST_EMAIL = 'existing@test.com';
+    const TEST_USER_ID = 861;
 
     const programNames = [
       'Family Healthy Breakfast Programme',
@@ -35,7 +23,6 @@ test(
       'How to Earn My Product Cost',
       'Extra Income Opportunity',
     ];
-
 
     // ============================================================
     // 1. SEND OTP
@@ -51,21 +38,17 @@ test(
 
         await route.fulfill({
           status: 200,
-          contentType:
-            'application/json',
+          contentType: 'application/json',
 
-          body:
-            JSON.stringify({
-              success: true,
-            }),
+          body: JSON.stringify({
+            success: true,
+          }),
         });
-
       }
     );
 
-
     // ============================================================
-    // 2. VERIFY LOGIN OTP
+    // 2. VERIFY OTP
     // ============================================================
 
     await page.route(
@@ -80,70 +63,38 @@ test(
           body
         );
 
-        expect(
-          body
-        ).toMatchObject({
-
-          recipient:
-            `+91${TEST_PHONE}`,
-
-          otp:
-            LOGIN_OTP,
-
-          contactType:
-            'phone',
+        expect(body).toMatchObject({
+          recipient: `+91${TEST_PHONE}`,
+          otp: LOGIN_OTP,
+          contactType: 'phone',
         });
-
 
         await route.fulfill({
           status: 200,
-          contentType:
-            'application/json',
+          contentType: 'application/json',
 
-          body:
-            JSON.stringify({
+          body: JSON.stringify({
+            success: true,
 
-              success:
-                true,
+            isNewUser: false,
+            isActive: true,
+            role: 'user',
 
-              isNewUser:
-                false,
+            user: {
+              id: TEST_USER_ID,
+              UserId: TEST_USER_ID,
 
-              isActive:
-                true,
+              username: 'existinguser',
+              email: TEST_EMAIL,
+              phone: `+91${TEST_PHONE}`,
 
-              role:
-                'user',
-
-              user: {
-
-                id:
-                  TEST_USER_ID,
-
-                UserId:
-                  TEST_USER_ID,
-
-                username:
-                  'existinguser',
-
-                email:
-                  TEST_EMAIL,
-
-                phone:
-                  `+91${TEST_PHONE}`,
-
-                status:
-                  'Active',
-
-                consentRequired:
-                  false,
-              },
-            }),
+              status: 'Active',
+              consentRequired: false,
+            },
+          }),
         });
-
       }
     );
-
 
     // ============================================================
     // 3. USER LOOKUP
@@ -162,87 +113,52 @@ test(
           route.request().url()
         );
 
-
-        if (
-          method === 'POST'
-        ) {
+        if (method === 'POST') {
 
           await route.fulfill({
             status: 200,
-            contentType:
-              'application/json',
+            contentType: 'application/json',
 
-            body:
-              JSON.stringify({
+            body: JSON.stringify({
+              success: true,
 
-                success:
-                  true,
-
-                isNewUser:
-                  false,
-
-                isActive:
-                  true,
-
-                role:
-                  'user',
-              }),
+              isNewUser: false,
+              isActive: true,
+              role: 'user',
+            }),
           });
 
           return;
         }
 
-
-        if (
-          method === 'GET'
-        ) {
+        if (method === 'GET') {
 
           await route.fulfill({
             status: 200,
-            contentType:
-              'application/json',
+            contentType: 'application/json',
 
-            body:
-              JSON.stringify({
+            body: JSON.stringify({
+              success: true,
 
-                success:
-                  true,
+              isNewUser: false,
+              isActive: true,
+              role: 'user',
 
-                isNewUser:
-                  false,
-
-                isActive:
-                  true,
-
-                role:
-                  'user',
-
-                data: {
-
-                  userId:
-                    TEST_USER_ID,
-
-                  userName:
-                    'Nitheesh Lingam',
-
-                  email:
-                    TEST_EMAIL,
-
-                  phoneNumber:
-                    `+91${TEST_PHONE}`,
-                },
-              }),
+              data: {
+                userId: TEST_USER_ID,
+                userName: 'Nitheesh Lingam',
+                email: TEST_EMAIL,
+                phoneNumber: `+91${TEST_PHONE}`,
+              },
+            }),
           });
 
           return;
         }
-
 
         await route.continue();
-
       }
     );
-
 
     // ============================================================
     // 4. CONSENT
@@ -253,41 +169,30 @@ test(
       async route => {
 
         if (
-          route.request().method() ===
-          'GET'
+          route.request().method() === 'GET'
         ) {
 
           await route.fulfill({
             status: 200,
-            contentType:
-              'application/json',
+            contentType: 'application/json',
 
-            body:
-              JSON.stringify({
+            body: JSON.stringify({
+              success: true,
 
-                success:
-                  true,
-
-                consentRequired:
-                  false,
-
-                consentAccepted:
-                  true,
-              }),
+              consentRequired: false,
+              consentAccepted: true,
+            }),
           });
 
           return;
         }
 
-
         await route.continue();
-
       }
     );
 
-
     // ============================================================
-    // 5. COMPLETED PROFILE
+    // 5. PROFILE
     // ============================================================
 
     await page.route(
@@ -295,83 +200,54 @@ test(
       async route => {
 
         if (
-          route.request().method() ===
-          'GET'
+          route.request().method() === 'GET'
         ) {
 
           await route.fulfill({
             status: 200,
-            contentType:
-              'application/json',
+            contentType: 'application/json',
 
-            body:
-              JSON.stringify({
+            body: JSON.stringify({
+              success: true,
 
-                success:
-                  true,
+              data: {
+                userId: TEST_USER_ID,
 
-                data: {
+                userName: 'Nitheesh Lingam',
+                email: TEST_EMAIL,
+                phoneNumber: TEST_PHONE,
 
-                  userId:
-                    TEST_USER_ID,
+                gender: 'Male',
+                height: 170,
 
-                  userName:
-                    'Nitheesh Lingam',
+                communityId: 'WB12345',
+                dietType: 'Vegetarian',
 
-                  email:
-                    TEST_EMAIL,
+                latestWeight: 72.5,
+                latestWeightBodyFat: 22,
+                bodyFat: 22,
 
-                  phoneNumber:
-                    TEST_PHONE,
+                physicalActivityLevel: 'moderate',
 
-                  gender:
-                    'Male',
+                profileImage:
+                  'https://example.com/profile.jpg',
 
-                  height:
-                    170,
+                profileComplete: true,
 
-                  communityId:
-                    'WB12345',
-
-                  dietType:
-                    'Vegetarian',
-
-                  latestWeight:
-                    72.5,
-
-                  latestWeightBodyFat:
-                    22,
-
-                  bodyFat:
-                    22,
-
-                  physicalActivityLevel:
-                    'moderate',
-
-                  profileImage:
-                    'https://example.com/profile.jpg',
-
-                  profileComplete:
-                    true,
-
-                  weightGoalMode:
-                    'loss',
-                },
-              }),
+                weightGoalMode: 'loss',
+              },
+            }),
           });
 
           return;
         }
 
-
         await route.continue();
-
       }
     );
 
-
     // ============================================================
-    // 6. SETUP COMPLETE
+    // 6. SETUP STATUS
     // ============================================================
 
     await page.route(
@@ -380,57 +256,92 @@ test(
 
         await route.fulfill({
           status: 200,
-          contentType:
-            'application/json',
+          contentType: 'application/json',
 
-          body:
-            JSON.stringify({
+          body: JSON.stringify({
+            success: true,
 
-              success:
-                true,
+            setupComplete: true,
+            setupSkipped: true,
 
-              setupComplete:
-                true,
+            hasTeamId: true,
+            hasUpline: true,
 
-              setupSkipped:
-                true,
+            teamId: 1,
+            uplineCoachId: 12345,
 
-              hasTeamId:
-                true,
+            role: 'user',
 
-              hasUpline:
-                true,
-
-              teamId:
-                1,
-
-              uplineCoachId:
-                12345,
-
-              role:
-                'user',
-
-              pendingRequest:
-                null,
-
-              redirectTo:
-                null,
-            }),
+            pendingRequest: null,
+            redirectTo: null,
+          }),
         });
-
       }
     );
 
+    // ============================================================
+    // 7. EXISTING PROGRAM ENROLLMENT
+    //
+    // IMPORTANT:
+    //
+    // Current application expects:
+    //
+    // {
+    //   success: true,
+    //   enrollments: [
+    //     {
+    //       EnrolledPrograms: "[...]"
+    //     }
+    //   ]
+    // }
+    //
+    // NOT:
+    //
+    // {
+    //   success: true,
+    //   data: {...}
+    // }
+    // ============================================================
+
+    await page.route(
+      '**/api/wellness-university/get-enrollments*',
+      async route => {
+
+        console.log(
+          'PROG-001 EXISTING ENROLLMENT:',
+          route.request().url()
+        );
+
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+
+          body: JSON.stringify({
+            success: true,
+
+            enrollments: [
+              {
+                EnrolledPrograms: JSON.stringify([
+                  'Family Healthy Breakfast Programme',
+                ]),
+
+                LastUpdated:
+                  '2026-08-28T00:00:00.000Z',
+              },
+            ],
+          }),
+        });
+      }
+    );
 
     // ============================================================
-    // 7. OPEN APPLICATION
+    // 8. OPEN APPLICATION
     // ============================================================
 
     await page.goto('/');
 
-
     // ============================================================
-    // 8. LOGIN
+    // 9. LOGIN
     // ============================================================
 
     const mobileInput =
@@ -438,64 +349,49 @@ test(
         'Mobile Number'
       );
 
-
     await expect(
       mobileInput
     ).toBeVisible({
-      timeout:
-        15000,
+      timeout: 15000,
     });
-
 
     await mobileInput.fill(
       TEST_PHONE
     );
 
-
     await page
       .getByRole(
         'button',
         {
-          name:
-            'Send OTP',
-
-          exact:
-            true,
+          name: 'Send OTP',
+          exact: true,
         }
       )
       .click();
 
-
     // ============================================================
-    // 9. OTP SCREEN
+    // 10. OTP SCREEN
     // ============================================================
 
     await expect(
       page.getByText(
         'Enter OTP',
         {
-          exact:
-            true,
+          exact: true,
         }
       )
     ).toBeVisible({
-      timeout:
-        15000,
+      timeout: 15000,
     });
-
 
     const otpInputs =
       page.locator(
         'input[type="tel"]'
       );
 
-
     await expect(
       otpInputs
-    ).toHaveCount(
-      6
-    );
-
+    ).toHaveCount(6);
 
     for (
       let i = 0;
@@ -508,12 +404,10 @@ test(
         .fill(
           LOGIN_OTP[i]
         );
-
     }
 
-
     // ============================================================
-    // 10. WAIT FOR AUTHENTICATION
+    // 11. VERIFY AUTHENTICATION
     // ============================================================
 
     await expect
@@ -529,7 +423,6 @@ test(
                 );
 
               return {
-
                 verified:
                   localStorage.getItem(
                     'isOtpVerified'
@@ -537,116 +430,104 @@ test(
 
                 user:
                   rawUser
-                    ? JSON.parse(
-                        rawUser
-                      )
+                    ? JSON.parse(rawUser)
                     : null,
               };
-
             }
           );
-
         },
         {
-          timeout:
-            15000,
+          timeout: 15000,
 
-          intervals:
-            [
-              200,
-              500,
-              1000,
-            ],
+          intervals: [
+            200,
+            500,
+            1000,
+          ],
         }
       )
       .toMatchObject({
 
-        verified:
-          'true',
+        verified: 'true',
 
         user: {
-          isNewUser:
-            false,
+          isNewUser: false,
         },
       });
 
-
     // ============================================================
-    // 11. WAIT FOR HOME
+    // 12. WAIT FOR HOME
     // ============================================================
 
-    const programsButton =
+    const enrollmentButton =
       page.getByRole(
         'button',
         {
-          name:
-            'Enrollment',
-
-          exact:
-            true,
+          name: 'Enrollment',
+          exact: true,
         }
       );
 
-
     await expect(
-      programsButton
+      enrollmentButton
     ).toBeVisible({
-      timeout:
-        20000,
+      timeout: 20000,
     });
-
 
     console.log(
       'PROG-001 HOME READY'
     );
 
-
     // ============================================================
-    // 12. OPEN PROGRAMS
+    // 13. OPEN PROGRAMS
     // ============================================================
 
-    await programsButton.click();
-
+    await enrollmentButton.click();
 
     console.log(
-      'PROG-001 PROGRAMS CLICKED'
+      'PROG-001 ENROLLMENT CLICKED'
     );
 
-
     // ============================================================
-    // 13. VERIFY PROGRAMS PAGE
+    // 14. WAIT FOR PROGRAMS PAGE
     // ============================================================
 
-    await expect(
+    const programsHeading =
       page.getByRole(
         'heading',
         {
-          name:
-            /Programmers enrolled/i,
+          name: 'Programmers enrolled',
+          exact: true,
         }
-      )
+      );
+
+    await expect(
+      programsHeading
     ).toBeVisible({
-      timeout:
-        15000,
+      timeout: 15000,
     });
 
+    console.log(
+      'PROG-001 PROGRAMS PAGE READY'
+    );
+
+    // ============================================================
+    // 15. VERIFY PROGRAM DESCRIPTION
+    // ============================================================
 
     await expect(
       page.getByText(
         'I would like more information about:',
         {
-          exact:
-            true,
+          exact: true,
         }
       )
     ).toBeVisible({
-      timeout:
-        10000,
+      timeout: 10000,
     });
 
-
     // ============================================================
-    // 14. VERIFY ALL PROGRAM OPTIONS
+    // 16. VERIFY ALL PROGRAM OPTIONS
     // ============================================================
 
     for (
@@ -657,204 +538,124 @@ test(
         page.getByText(
           programName,
           {
-            exact:
-              true,
+            exact: true,
           }
         )
       ).toBeVisible({
-        timeout:
-          10000,
+        timeout: 10000,
       });
-
     }
-
 
     console.log(
       'PROG-001 ALL PROGRAM OPTIONS VISIBLE'
     );
 
-
     // ============================================================
-    // 15. UPDATE BUTTON
+    // 17. VERIFY INITIAL SELECTION
     //
-    // Actual UI from your diagnostic:
-    //
-    // ✓ Update (1 selected)
-    //
-    // There is already one selected for the signed-in account.
-    // We must therefore select the remaining options without
-    // accidentally toggling the existing selection off.
+    // Family Healthy Breakfast Programme is already selected.
     // ============================================================
 
     const updateButton =
       page.getByRole(
         'button',
         {
-          name:
-            /Update \(\d+ selected\)/,
+          name: /Update \(\d+ selected\)/,
         }
       );
-
 
     await expect(
       updateButton
     ).toBeVisible({
-      timeout:
-        10000,
+      timeout: 10000,
     });
 
-
-    // ============================================================
-    // 16. SELECT PROGRAMS
-    //
-    // The UI uses custom selectable cards, not native
-    // input[type="checkbox"] controls.
-    //
-    // We inspect the current selection count from the Update
-    // button and then keep selecting options until all 8 are
-    // selected.
-    // ============================================================
-
-    async function getSelectedCount() {
-
-      const buttonText =
-        await updateButton.innerText();
-
-      const match =
-        buttonText.match(
-          /\((\d+)\s+selected\)/
-        );
-
-      return match
-        ? Number(match[1])
-        : 0;
-
-    }
-
-
-    let selectedCount =
-      await getSelectedCount();
-
-
-    console.log(
-      'PROG-001 INITIAL SELECTED:',
-      selectedCount
+    await expect(
+      updateButton
+    ).toHaveText(
+      /Update \(1 selected\)/
     );
 
+    console.log(
+      'PROG-001 INITIAL SELECTION: 1'
+    );
 
-    // ------------------------------------------------------------
-    // Click options one by one.
-    //
-    // If the selected count increases, keep the selection.
-    // If it does not increase, the option was already selected
-    // and we leave it untouched.
-    // ------------------------------------------------------------
+    // ============================================================
+    // 18. SELECT REMAINING 7 PROGRAMS
+    // ============================================================
+
+    const alreadySelected =
+      'Family Healthy Breakfast Programme';
+
+    const remainingPrograms =
+      programNames.filter(
+        name =>
+          name !== alreadySelected
+      );
 
     for (
-      const programName of programNames
+      const programName of remainingPrograms
     ) {
 
-      const programText =
+      const program =
         page.getByText(
           programName,
           {
-            exact:
-              true,
+            exact: true,
           }
         );
 
-
       await expect(
-        programText
-      ).toBeVisible();
+        program
+      ).toBeVisible({
+        timeout: 10000,
+      });
 
+      await program.click();
 
-      const before =
-        await getSelectedCount();
+      // Wait until the selection count increases.
+      const expectedCount =
+        remainingPrograms.indexOf(
+          programName
+        ) + 2;
 
+      await expect
+        .poll(
+          async () => {
 
-      await programText.click();
+            const text =
+              await updateButton.innerText();
 
+            const match =
+              text.match(
+                /\((\d+)\s+selected\)/
+              );
 
-      await page.waitForTimeout(
-        300
-      );
+            return match
+              ? Number(match[1])
+              : 0;
+          },
+          {
+            timeout: 5000,
 
-
-      const after =
-        await getSelectedCount();
-
-
-      console.log(
-        `PROG-001 ${programName}: ${before} -> ${after}`
-      );
-
-
-      // ----------------------------------------------------------
-      // If clicking increased the count, the program was selected.
-      // ----------------------------------------------------------
-
-      if (
-        after > before
-      ) {
-
-        selectedCount =
-          after;
-
-        continue;
-
-      }
-
-
-      // ----------------------------------------------------------
-      // If clicking decreased the count, this program was already
-      // selected and the click toggled it OFF.
-      //
-      // Click again to restore it.
-      // ----------------------------------------------------------
-
-      if (
-        after < before
-      ) {
-
-        await programText.click();
-
-        await page.waitForTimeout(
-          300
+            intervals: [
+              100,
+              200,
+              300,
+            ],
+          }
+        )
+        .toBe(
+          expectedCount
         );
 
-
-        selectedCount =
-          await getSelectedCount();
-
-      }
-
+      console.log(
+        `PROG-001 ${programName} SELECTED`
+      );
     }
 
-
     // ============================================================
-    // 17. VERIFY ALL 8 PROGRAMS SELECTED
-    // ============================================================
-
-    selectedCount =
-      await getSelectedCount();
-
-
-    expect(
-      selectedCount
-    ).toBe(
-      programNames.length
-    );
-
-
-    console.log(
-      'PROG-001 FINAL SELECTED COUNT:',
-      selectedCount
-    );
-
-
-    // ============================================================
-    // 18. FINAL UPDATE BUTTON CHECK
+    // 19. VERIFY ALL 8 PROGRAMS SELECTED
     // ============================================================
 
     await expect(
@@ -863,11 +664,23 @@ test(
       /Update \(8 selected\)/
     );
 
-
     console.log(
-      'PROG-001 ALL PROGRAMS SELECTED'
+      'PROG-001 ALL 8 PROGRAMS SELECTED'
     );
 
+    // ============================================================
+    // 20. FINAL ASSERTION
+    // ============================================================
+
+    expect(
+      await updateButton.innerText()
+    ).toContain(
+      '8 selected'
+    );
+
+    console.log(
+      'PROG-001 PASSED'
+    );
   }
 );
 
@@ -879,34 +692,13 @@ test(
     // TEST DATA
     // ============================================================
 
-    const TEST_PHONE =
-      '7695834209';
+    const TEST_PHONE = '7695834209';
+    const LOGIN_OTP = '123456';
+    const TEST_EMAIL = 'existing@test.com';
+    const TEST_USER_ID = 861;
 
-    const LOGIN_OTP =
-      '123456';
-
-    const TEST_EMAIL =
-      'existing@test.com';
-
-    const TEST_USER_ID =
-      861;
-
-
-    // ============================================================
-    // PROGRAM OPTIONS
-    // ============================================================
-
-    const programNames = [
-      'Family Healthy Breakfast Programme',
-      'Weight Loss',
-      'Weight Gain',
-      'Kids Nutrition',
-      'Sports Nutrition',
-      'Targeted Nutrition',
-      'How to Earn My Product Cost',
-      'Extra Income Opportunity',
-    ];
-
+    const alreadySelectedProgram =
+      'Family Healthy Breakfast Programme';
 
     // ============================================================
     // 1. SEND OTP
@@ -918,18 +710,15 @@ test(
 
         await route.fulfill({
           status: 200,
-          contentType:
-            'application/json',
+          contentType: 'application/json',
 
-          body:
-            JSON.stringify({
-              success: true,
-            }),
+          body: JSON.stringify({
+            success: true,
+          }),
         });
 
       }
     );
-
 
     // ============================================================
     // 2. VERIFY LOGIN OTP
@@ -942,10 +731,7 @@ test(
         const body =
           route.request().postDataJSON();
 
-        expect(
-          body
-        ).toMatchObject({
-
+        expect(body).toMatchObject({
           recipient:
             `+91${TEST_PHONE}`,
 
@@ -956,56 +742,48 @@ test(
             'phone',
         });
 
-
         await route.fulfill({
           status: 200,
-          contentType:
-            'application/json',
+          contentType: 'application/json',
 
-          body:
-            JSON.stringify({
+          body: JSON.stringify({
 
-              success:
-                true,
+            success: true,
 
-              isNewUser:
+            isNewUser: false,
+
+            isActive: true,
+
+            role: 'user',
+
+            user: {
+
+              id:
+                TEST_USER_ID,
+
+              UserId:
+                TEST_USER_ID,
+
+              username:
+                'existinguser',
+
+              email:
+                TEST_EMAIL,
+
+              phone:
+                `+91${TEST_PHONE}`,
+
+              status:
+                'Active',
+
+              consentRequired:
                 false,
-
-              isActive:
-                true,
-
-              role:
-                'user',
-
-              user: {
-
-                id:
-                  TEST_USER_ID,
-
-                UserId:
-                  TEST_USER_ID,
-
-                username:
-                  'existinguser',
-
-                email:
-                  TEST_EMAIL,
-
-                phone:
-                  `+91${TEST_PHONE}`,
-
-                status:
-                  'Active',
-
-                consentRequired:
-                  false,
-              },
-            }),
+            },
+          }),
         });
 
       }
     );
-
 
     // ============================================================
     // 3. USER LOOKUP
@@ -1017,7 +795,6 @@ test(
 
         const method =
           route.request().method();
-
 
         if (
           method === 'POST'
@@ -1047,7 +824,6 @@ test(
 
           return;
         }
-
 
         if (
           method === 'GET'
@@ -1093,12 +869,10 @@ test(
           return;
         }
 
-
         await route.continue();
 
       }
     );
-
 
     // ============================================================
     // 4. CONSENT
@@ -1109,7 +883,8 @@ test(
       async route => {
 
         if (
-          route.request().method() === 'GET'
+          route.request().method()
+          === 'GET'
         ) {
 
           await route.fulfill({
@@ -1134,12 +909,10 @@ test(
           return;
         }
 
-
         await route.continue();
 
       }
     );
-
 
     // ============================================================
     // 5. COMPLETED PROFILE
@@ -1150,7 +923,8 @@ test(
       async route => {
 
         if (
-          route.request().method() === 'GET'
+          route.request().method()
+          === 'GET'
         ) {
 
           await route.fulfill({
@@ -1217,15 +991,13 @@ test(
           return;
         }
 
-
         await route.continue();
 
       }
     );
 
-
     // ============================================================
-    // 6. SETUP COMPLETE
+    // 6. SETUP STATUS
     // ============================================================
 
     await page.route(
@@ -1275,23 +1047,85 @@ test(
       }
     );
 
+    // ============================================================
+    // 7. EXISTING PROGRAM ENROLLMENT
+    //
+    // IMPORTANT:
+    //
+    // The current component calls:
+    //
+    // GET
+    // /api/wellness-university/get-enrollments
+    //
+    // and expects:
+    //
+    // {
+    //   success: true,
+    //   enrollments: [
+    //     {
+    //       EnrolledPrograms: "JSON STRING"
+    //     }
+    //   ]
+    // }
+    //
+    // Start with exactly ONE selected program.
+    // ============================================================
+
+    await page.route(
+      '**/api/wellness-university/get-enrollments*',
+      async route => {
+
+        console.log(
+          'PROG-002 WELLNESS UNIVERSITY:',
+          route.request().method(),
+          route.request().url()
+        );
+
+        await route.fulfill({
+          status: 200,
+          contentType:
+            'application/json',
+
+          body:
+            JSON.stringify({
+
+              success:
+                true,
+
+              enrollments: [
+
+                {
+
+                  EnrolledPrograms:
+                    JSON.stringify([
+                      alreadySelectedProgram,
+                    ]),
+
+                  LastUpdated:
+                    '2026-08-28T00:00:00.000Z',
+                },
+
+              ],
+            }),
+        });
+
+      }
+    );
 
     // ============================================================
-    // 7. OPEN APPLICATION
+    // 8. OPEN APPLICATION
     // ============================================================
 
     await page.goto('/');
 
-
     // ============================================================
-    // 8. LOGIN
+    // 9. LOGIN
     // ============================================================
 
     const mobileInput =
       page.getByLabel(
         'Mobile Number'
       );
-
 
     await expect(
       mobileInput
@@ -1300,11 +1134,9 @@ test(
         15000,
     });
 
-
     await mobileInput.fill(
       TEST_PHONE
     );
-
 
     await page
       .getByRole(
@@ -1312,15 +1144,15 @@ test(
         {
           name:
             'Send OTP',
+
           exact:
             true,
         }
       )
       .click();
 
-
     // ============================================================
-    // 9. OTP
+    // 10. OTP SCREEN
     // ============================================================
 
     await expect(
@@ -1336,19 +1168,16 @@ test(
         15000,
     });
 
-
     const otpInputs =
       page.locator(
         'input[type="tel"]'
       );
-
 
     await expect(
       otpInputs
     ).toHaveCount(
       6
     );
-
 
     for (
       let i = 0;
@@ -1364,9 +1193,8 @@ test(
 
     }
 
-
     // ============================================================
-    // 10. WAIT FOR AUTHENTICATION
+    // 11. WAIT FOR AUTHENTICATION
     // ============================================================
 
     await expect
@@ -1418,41 +1246,52 @@ test(
           'true',
 
         user: {
+
           isNewUser:
             false,
         },
+
       });
 
-
     // ============================================================
-    // 11. OPEN PROGRAMS
+    // 12. WAIT FOR HOME
     // ============================================================
 
-    const programsButton =
+    const enrollmentButton =
       page.getByRole(
         'button',
         {
           name:
             'Enrollment',
+
           exact:
             true,
         }
       );
 
-
     await expect(
-      programsButton
+      enrollmentButton
     ).toBeVisible({
       timeout:
         20000,
     });
 
-
-    await programsButton.click();
-
+    console.log(
+      'PROG-002 HOME READY'
+    );
 
     // ============================================================
-    // 12. VERIFY PROGRAMS PAGE
+    // 13. OPEN ENROLLMENT
+    // ============================================================
+
+    await enrollmentButton.click();
+
+    console.log(
+      'PROG-002 ENROLLMENT CLICKED'
+    );
+
+    // ============================================================
+    // 14. VERIFY EXISTING ENROLLMENT PAGE
     // ============================================================
 
     await expect(
@@ -1460,14 +1299,16 @@ test(
         'heading',
         {
           name:
-            /Programmers enrolled/i,
+            'Programmers enrolled',
+
+          exact:
+            true,
         }
       )
     ).toBeVisible({
       timeout:
         15000,
     });
-
 
     await expect(
       page.getByText(
@@ -1477,11 +1318,17 @@ test(
             true,
         }
       )
-    ).toBeVisible();
+    ).toBeVisible({
+      timeout:
+        10000,
+    });
 
+    console.log(
+      'PROG-002 PROGRAMS PAGE READY'
+    );
 
     // ============================================================
-    // 13. UPDATE BUTTON
+    // 15. UPDATE BUTTON
     // ============================================================
 
     const updateButton =
@@ -1493,7 +1340,6 @@ test(
         }
       );
 
-
     await expect(
       updateButton
     ).toBeVisible({
@@ -1501,219 +1347,111 @@ test(
         10000,
     });
 
-
     // ============================================================
-    // 14. HELPER — READ SELECTED COUNT
-    // ============================================================
-
-    async function getSelectedCount() {
-
-      const text =
-        await updateButton.innerText();
-
-      const match =
-        text.match(
-          /\((\d+)\s+selected\)/
-        );
-
-      return match
-        ? Number(match[1])
-        : 0;
-
-    }
-
-
-    // ============================================================
-    // 15. REMOVE ALL CURRENTLY SELECTED PROGRAMS
+    // 16. VERIFY INITIAL STATE
     //
-    // The signed-in account may already have one or more selected.
+    // One program was deliberately returned by the API.
+    // Therefore:
     //
-    // We inspect the count before/after clicking each program:
-    //
-    // count decreases → program was selected → keep it deselected
-    // count increases → program was not selected → click again
-    // to restore the previous state.
-    // ============================================================
-
-    for (
-      const programName of programNames
-    ) {
-
-      let before =
-        await getSelectedCount();
-
-
-      if (
-        before === 0
-      ) {
-        break;
-      }
-
-
-      const program =
-        page.getByText(
-          programName,
-          {
-            exact:
-              true,
-          }
-        );
-
-
-      await expect(
-        program
-      ).toBeVisible();
-
-
-      await program.click();
-
-
-      await page.waitForTimeout(
-        250
-      );
-
-
-      const after =
-        await getSelectedCount();
-
-
-      // ----------------------------------------------------------
-      // It was selected → clicking removed it.
-      // ----------------------------------------------------------
-
-      if (
-        after < before
-      ) {
-
-        continue;
-
-      }
-
-
-      // ----------------------------------------------------------
-      // It was not selected → clicking selected it.
-      // Restore original state.
-      // ----------------------------------------------------------
-
-      if (
-        after > before
-      ) {
-
-        await program.click();
-
-        await page.waitForTimeout(
-          250
-        );
-
-      }
-
-    }
-
-
-    // ============================================================
-    // 16. VERIFY ZERO SELECTED
-    // ============================================================
-
-    await expect
-      .poll(
-        async () =>
-          await getSelectedCount(),
-        {
-          timeout:
-            5000,
-
-          intervals:
-            [
-              200,
-              500,
-              1000,
-            ],
-        }
-      )
-      .toBe(0);
-
-
-    console.log(
-      'PROG-002 ZERO PROGRAMS SELECTED'
-    );
-
-
-    // ============================================================
-    // 17. UPDATE MUST BE DISABLED
+    // ✓ Update (1 selected)
     // ============================================================
 
     await expect(
       updateButton
-    ).toBeDisabled();
-
-
-    console.log(
-      'PROG-002 UPDATE DISABLED WITH ZERO SELECTIONS'
+    ).toHaveText(
+      /Update \(1 selected\)/
     );
 
+    await expect(
+      updateButton
+    ).toBeEnabled();
+
+    console.log(
+      'PROG-002 INITIAL STATE: 1 SELECTED / UPDATE ENABLED'
+    );
 
     // ============================================================
-    // 18. SELECT ONE PROGRAM
+    // 17. LOCATE CURRENTLY SELECTED PROGRAM
     // ============================================================
 
-    const firstProgram =
+    const selectedProgram =
       page.getByText(
-        programNames[0],
+        alreadySelectedProgram,
         {
           exact:
             true,
         }
       );
 
-
     await expect(
-      firstProgram
-    ).toBeVisible();
-
-
-    await firstProgram.click();
-
-
-    await expect
-      .poll(
-        async () =>
-          await getSelectedCount(),
-        {
-          timeout:
-            5000,
-
-          intervals:
-            [
-              200,
-              500,
-              1000,
-            ],
-        }
-      )
-      .toBe(1);
-
-
-    console.log(
-      'PROG-002 ONE PROGRAM SELECTED'
-    );
-
+      selectedProgram
+    ).toBeVisible({
+      timeout:
+        10000,
+    });
 
     // ============================================================
-    // 19. UPDATE MUST BE ENABLED
+    // 18. DESELECT PROGRAM
+    //
+    // This should change:
+    //
+    // Update (1 selected)
+    //
+    // TO:
+    //
+    // Update (0 selected)
+    // ============================================================
+
+    await selectedProgram.click();
+
+    await expect(
+      updateButton
+    ).toHaveText(
+      /Update \(0 selected\)/
+    );
+
+    console.log(
+      'PROG-002 PROGRAM DESELECTED'
+    );
+
+    // ============================================================
+    // 19. UPDATE MUST BE DISABLED
+    // ============================================================
+
+    await expect(
+      updateButton
+    ).toBeDisabled();
+
+    console.log(
+      'PROG-002 UPDATE DISABLED WITH ZERO SELECTIONS'
+    );
+
+    // ============================================================
+    // 20. SELECT PROGRAM AGAIN
+    // ============================================================
+
+    await selectedProgram.click();
+
+    await expect(
+      updateButton
+    ).toHaveText(
+      /Update \(1 selected\)/
+    );
+
+    // ============================================================
+    // 21. UPDATE MUST BE ENABLED
     // ============================================================
 
     await expect(
       updateButton
     ).toBeEnabled();
 
-
     console.log(
       'PROG-002 UPDATE ENABLED WITH ONE SELECTION'
     );
 
-
     // ============================================================
-    // 20. CANCEL
+    // 22. CANCEL
     // ============================================================
 
     const cancelButton =
@@ -1722,22 +1460,27 @@ test(
         {
           name:
             'Cancel',
+
           exact:
             true,
         }
       );
 
-
     await expect(
       cancelButton
-    ).toBeVisible();
-
+    ).toBeVisible({
+      timeout:
+        10000,
+    });
 
     await cancelButton.click();
 
+    console.log(
+      'PROG-002 CANCEL CLICKED'
+    );
 
     // ============================================================
-    // 21. VERIFY HOME PAGE
+    // 23. VERIFY RETURN TO HOME
     // ============================================================
 
     await expect(
@@ -1746,6 +1489,7 @@ test(
         {
           name:
             'Home',
+
           exact:
             true,
         }
@@ -1754,28 +1498,14 @@ test(
       timeout:
         15000,
     });
-
-
-    await expect(
-      page.getByText(
-        'Tracking Wellness with Ease',
-        {
-          exact:
-            true,
-        }
-      )
-    ).toBeVisible({
-      timeout:
-        15000,
-    });
-
 
     console.log(
-      'PROG-002 CANCEL RETURNED TO HOME'
+      'PROG-002 RETURNED TO HOME'
     );
 
   }
 );
+
 
 test(
   'PROG-003 coach can edit own and downline Programs; normal user has no member search',

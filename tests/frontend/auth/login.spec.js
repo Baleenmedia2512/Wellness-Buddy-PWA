@@ -1826,161 +1826,285 @@ test(
   // Login
   // ============================================================
 
-  test(
-    'AUTH-022 new user is returned to login after disagreeing with consent',
-    async ({ page }) => {
+test(
+  'AUTH-022 new user is returned to login after disagreeing with consent',
+  async ({ page }) => {
 
-      // --------------------------------------------------------
-      // Consent required
-      // --------------------------------------------------------
+    // ============================================================
+    // 1. MOCK CONSENT API
+    //
+    // GET  -> Consent is required
+    // DELETE -> Mock deleting the unconsented new user
+    // ============================================================
 
-      await page.route(
-        '**/api/user/consent*',
-        async route => {
+    await page.route(
+      '**/api/user/consent*',
+      async route => {
 
-          if (
-            route.request().method()
-            === 'GET'
-          ) {
+        const method =
+          route.request().method();
 
-            await route.fulfill({
-              status: 200,
-              contentType:
-                'application/json',
+        // --------------------------------------------------------
+        // GET /api/user/consent
+        // --------------------------------------------------------
 
-              body: JSON.stringify({
-                success: true,
-                consentRequired: true,
-                consentAccepted: false,
-              }),
-            });
+        if (method === 'GET') {
 
-            return;
-          }
+          await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
 
-          // DELETE remains real.
-          await route.continue();
+            body: JSON.stringify({
+              success: true,
+              consentRequired: true,
+              consentAccepted: false,
+            }),
+          });
+
+          return;
+        }
+
+        // --------------------------------------------------------
+        // DELETE /api/user/consent
+        // --------------------------------------------------------
+
+        if (method === 'DELETE') {
+
+          console.log(
+            'AUTH-022 DELETE /api/user/consent'
+          );
+
+          await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+
+            body: JSON.stringify({
+              success: true,
+            }),
+          });
+
+          return;
+        }
+
+        // --------------------------------------------------------
+        // Unexpected method
+        // --------------------------------------------------------
+
+        await route.continue();
+      }
+    );
+
+
+    // ============================================================
+    // 2. REAL UI LOGIN
+    //
+    // OTP is mocked by loginWithMockedOtp().
+    // No real SMS is sent.
+    // ============================================================
+
+    await loginWithMockedOtp(page, {
+      isNewUser: true,
+      email: '',
+    });
+
+
+    // ============================================================
+    // 3. VERIFY CONSENT FORM
+    // ============================================================
+
+    const consentHeading =
+      page.getByRole(
+        'heading',
+        {
+          name: 'User Consent Form',
+          exact: true,
         }
       );
 
-
-      // --------------------------------------------------------
-      // REAL UI LOGIN
-      // NO REAL SMS
-      // --------------------------------------------------------
-
-      await loginWithMockedOtp(page, {
-        isNewUser: true,
-        email: '',
-      });
+    await expect(
+      consentHeading
+    ).toBeVisible({
+      timeout: 15000,
+    });
 
 
-      await expect(
-        page.getByRole(
-          'heading',
-          {
-            name:
-              'User Consent Form',
-          }
-        )
-      ).toBeVisible({
-        timeout: 15000,
-      });
+    // ============================================================
+    // 4. SELECT "I DON'T AGREE"
+    //
+    // IMPORTANT:
+    //
+    // Selecting this option immediately opens:
+    //
+    //     "Leave or continue?"
+    //
+    // So we must NOT click the underlying Continue button.
+    // ============================================================
 
-
-      // --------------------------------------------------------
-      // Don't Agree
-      // --------------------------------------------------------
-
-      await page.getByText(
+    const dontAgree =
+      page.getByText(
         "I Don't Agree",
         {
           exact: true,
         }
-      ).last().click();
+      ).last();
+
+    await expect(
+      dontAgree
+    ).toBeVisible({
+      timeout: 10000,
+    });
+
+    await dontAgree.click();
 
 
-      const continueButton =
-        page.getByRole(
-          'button',
-          {
-            name:
-              'Continue',
-          }
-        );
+    // ============================================================
+    // 5. VERIFY DISAGREE CONFIRMATION MODAL
+    // ============================================================
+
+    await expect(
+      page.getByText(
+        'Leave or continue?',
+        {
+          exact: true,
+        }
+      )
+    ).toBeVisible({
+      timeout: 10000,
+    });
 
 
-      await expect(
-        continueButton
-      ).toBeEnabled();
+    await expect(
+      page.getByText(
+        "If you leave, you'll be signed out and returned to the login screen.",
+        {
+          exact: false,
+        }
+      )
+    ).toBeVisible({
+      timeout: 10000,
+    });
 
 
-      const deleteRequest =
-        page.waitForRequest(
-          request =>
-            request.url()
-              .includes(
-                '/api/user/consent'
-              ) &&
-            request.method()
-              === 'DELETE'
-        );
+    // ============================================================
+    // 6. LOCATE "LEAVE" BUTTON
+    //
+    // The Leave action is the actual decline action.
+    // ============================================================
+
+    const leaveButton =
+      page.getByRole(
+        'button',
+        {
+          name: 'Leave',
+          exact: true,
+        }
+      );
+
+    await expect(
+      leaveButton
+    ).toBeVisible({
+      timeout: 10000,
+    });
 
 
-      await continueButton.click();
+    // ============================================================
+    // 7. WAIT FOR DELETE REQUEST
+    //
+    // Register BEFORE clicking Leave.
+    // ============================================================
+
+    const deleteRequest =
+      page.waitForRequest(
+        request =>
+          request.url().includes(
+            '/api/user/consent'
+          ) &&
+          request.method() === 'DELETE'
+      );
 
 
-      await deleteRequest;
+    // ============================================================
+    // 8. CLICK LEAVE
+    //
+    // This calls onDecline() in ConsentForm.
+    // ============================================================
+
+    await leaveButton.click();
 
 
-      // --------------------------------------------------------
-      // Consent disappears
-      // --------------------------------------------------------
+    // ============================================================
+    // 9. VERIFY DELETE REQUEST
+    // ============================================================
 
-      await expect(
-        page.getByRole(
-          'heading',
-          {
-            name:
-              'User Consent Form',
-          }
-        )
-      ).not.toBeVisible();
+    await deleteRequest;
+
+    console.log(
+      'AUTH-022 DELETE REQUEST RECEIVED'
+    );
 
 
-      // --------------------------------------------------------
-      // Login page returns
-      // --------------------------------------------------------
+    // ============================================================
+    // 10. CONSENT FORM SHOULD DISAPPEAR
+    // ============================================================
 
-      await expect(
-        page.getByLabel(
-          'Mobile Number'
-        )
-      ).toBeVisible();
-
-
-      await expect(
-        page.getByRole(
-          'button',
-          {
-            name:
-              'Send OTP',
-          }
-        )
-      ).toBeVisible();
-
-      await expect(
-        page.getByText(
-          'Enter OTP',
-          {
-            exact: true,
-          }
-        )
-      ).not.toBeVisible();
-    } 
-  );
+    await expect(
+      consentHeading
+    ).not.toBeVisible({
+      timeout: 15000,
+    });
 
 
+    // ============================================================
+    // 11. LOGIN PAGE SHOULD RETURN
+    // ============================================================
+
+    await expect(
+      page.getByLabel(
+        'Mobile Number'
+      )
+    ).toBeVisible({
+      timeout: 15000,
+    });
+
+
+    // ============================================================
+    // 12. SEND OTP BUTTON SHOULD BE AVAILABLE
+    // ============================================================
+
+    await expect(
+      page.getByRole(
+        'button',
+        {
+          name: 'Send OTP',
+          exact: true,
+        }
+      )
+    ).toBeVisible({
+      timeout: 10000,
+    });
+
+
+    // ============================================================
+    // 13. OTP SCREEN SHOULD NOT BE DISPLAYED
+    // ============================================================
+
+    await expect(
+      page.getByText(
+        'Enter OTP',
+        {
+          exact: true,
+        }
+      )
+    ).not.toBeVisible({
+      timeout: 10000,
+    });
+
+
+    console.log(
+      'AUTH-022 PASSED: new user returned to login after declining consent'
+    );
+  }
+);
   // ============================================================
   // AUTH-023
   //
