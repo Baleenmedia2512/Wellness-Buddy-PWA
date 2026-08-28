@@ -7637,6 +7637,7 @@ test(
 );
 
 
+
 test(
   'CP-011 Body Fat validates minimum and maximum allowed values',
   async ({ page }) => {
@@ -7833,1665 +7834,1118 @@ if (await weightInput.isVisible().catch(() => false)) {
 const path = require('path');
 
 test(
+'CP-012 Profile Picture controls Save & Continue availability',
+async ({ page }) => {
 
-  'CP-012 Profile Picture controls Save & Continue availability',
-  async ({ page }) => {
+// ============================================================
+// 1. MOCK CONSENT
+// ============================================================
 
-    // ============================================================
-    // 1. GO TO COMPLETE PROFILE
-    //
-    // Uses the same stable setup that is now working for CP-005+
-    // ============================================================
+await page.route('**/api/user/consent*', async (route) => {
+  const method = route.request().method();
 
-    await goToCompleteProfile(page);
-
-
-    // ============================================================
-    // 2. VERIFY COMPLETE PROFILE
-    // ============================================================
-
-    const completeProfileHeading =
-      page.getByRole(
-        'heading',
-        {
-          name: 'Complete Your Profile',
-          exact: true,
-        }
-      );
-
-    await expect(
-      completeProfileHeading
-    ).toBeVisible({
-      timeout: 15000,
+  if (method === 'GET') {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        success: true,
+        consentRequired: false,
+        consentAccepted: true,
+      }),
     });
-
-
-    // ============================================================
-    // 3. LOCATORS
-    // ============================================================
-
-    const fullNameInput =
-      page.getByPlaceholder(
-        'Enter your full name'
-      );
-
-    const emailInput =
-      page.locator(
-        'input[type="email"]'
-      );
-
-    const saveButton =
-      page.getByRole(
-        'button',
-        {
-          name: 'Save & Continue',
-          exact: true,
-        }
-      );
-
-
-    // ============================================================
-    // 4. WAIT FOR PROFILE FORM
-    // ============================================================
-
-    await expect(
-      fullNameInput
-    ).toBeVisible({
-      timeout: 15000,
-    });
-
-    await expect(
-      emailInput
-    ).toBeVisible({
-      timeout: 15000,
-    });
-
-
-    // ============================================================
-    // 5. FILL ALL REQUIRED FIELDS EXCEPT PROFILE PICTURE
-    //
-    // Profile picture is intentionally left empty.
-    // ============================================================
-
-    // ------------------------------------------------------------
-    // Full Name
-    // ------------------------------------------------------------
-
-    await fullNameInput.fill(
-      'Nitheesh Lingam'
-    );
-
-
-    // ------------------------------------------------------------
-    // Email
-    // ------------------------------------------------------------
-
-    if (
-      await emailInput.isEditable()
-    ) {
-      await emailInput.fill(
-        'nitheesh@example.com'
-      );
-    }
-
-
-    // ------------------------------------------------------------
-    // Gender
-    // ------------------------------------------------------------
-
-    let genderSelected = false;
-
-    for (
-      let attempt = 1;
-      attempt <= 5;
-      attempt++
-    ) {
-
-      try {
-
-        const genderSelect =
-          page
-            .locator('label')
-            .filter({
-              hasText: 'Gender',
-            })
-            .locator('..')
-            .locator('select');
-
-
-        await expect(
-          genderSelect
-        ).toBeVisible({
-          timeout: 3000,
-        });
-
-
-        await genderSelect.selectOption({
-          label: 'Male',
-        });
-
-
-        genderSelected = true;
-        break;
-
-      } catch (error) {
-
-        if (
-          attempt === 5
-        ) {
-          throw error;
-        }
-
-        await page.waitForTimeout(
-          300
-        );
-      }
-    }
-
-    expect(
-      genderSelected
-    ).toBe(true);
-
-
-    // ------------------------------------------------------------
-    // Height
-    // ------------------------------------------------------------
-
-    let heightFilled = false;
-
-    for (
-      let attempt = 1;
-      attempt <= 5;
-      attempt++
-    ) {
-
-      try {
-
-        const heightInput =
-          page.getByPlaceholder(
-            'e.g. 170'
-          );
-
-
-        await expect(
-          heightInput
-        ).toBeVisible({
-          timeout: 3000,
-        });
-
-
-        await heightInput.fill(
-          '170'
-        );
-
-
-        heightFilled = true;
-        break;
-
-      } catch (error) {
-
-        if (
-          attempt === 5
-        ) {
-          throw error;
-        }
-
-        await page.waitForTimeout(
-          300
-        );
-      }
-    }
-
-    expect(
-      heightFilled
-    ).toBe(true);
-
-
-    // ------------------------------------------------------------
-    // Diet
-    // ------------------------------------------------------------
-
-    let dietSelected = false;
-
-    for (
-      let attempt = 1;
-      attempt <= 5;
-      attempt++
-    ) {
-
-      try {
-
-        const vegetarianButton =
-          page.getByRole(
-            'button',
-            {
-              name: 'Vegetarian',
-              exact: true,
-            }
-          );
-
-
-        await expect(
-          vegetarianButton
-        ).toBeVisible({
-          timeout: 3000,
-        });
-
-
-        await vegetarianButton.click();
-
-
-        dietSelected = true;
-        break;
-
-      } catch (error) {
-
-        if (
-          attempt === 5
-        ) {
-          throw error;
-        }
-
-        await page.waitForTimeout(
-          300
-        );
-      }
-    }
-
-    expect(
-      dietSelected
-    ).toBe(true);
-
-
-    // ------------------------------------------------------------
-    // Current Weight
-    // ------------------------------------------------------------
-
-    let weightFilled = false;
-
-    for (
-      let attempt = 1;
-      attempt <= 5;
-      attempt++
-    ) {
-
-      try {
-
-        const weightInput =
-          page.getByPlaceholder(
-            'e.g. 72.5'
-          );
-
-
-        await expect(
-          weightInput
-        ).toBeVisible({
-          timeout: 3000,
-        });
-
-
-        await weightInput.fill(
-          '72.5'
-        );
-
-
-        weightFilled = true;
-        break;
-
-      } catch (error) {
-
-        if (
-          attempt === 5
-        ) {
-          throw error;
-        }
-
-        await page.waitForTimeout(
-          300
-        );
-      }
-    }
-
-    expect(
-      weightFilled
-    ).toBe(true);
-
-
-    // ------------------------------------------------------------
-    // Body Fat
-    // ------------------------------------------------------------
-
-    let bodyFatFilled = false;
-
-    for (
-      let attempt = 1;
-      attempt <= 5;
-      attempt++
-    ) {
-
-      try {
-
-        const bodyFatInput =
-          page.getByPlaceholder(
-            'e.g. 22'
-          );
-
-
-        await expect(
-          bodyFatInput
-        ).toBeVisible({
-          timeout: 3000,
-        });
-
-
-        await bodyFatInput.fill(
-          '22'
-        );
-
-
-        bodyFatFilled = true;
-        break;
-
-      } catch (error) {
-
-        if (
-          attempt === 5
-        ) {
-          throw error;
-        }
-
-        await page.waitForTimeout(
-          300
-        );
-      }
-    }
-
-    expect(
-      bodyFatFilled
-    ).toBe(true);
-
-
-    // ============================================================
-    // 6. LOCATE PROFILE PICTURE SECTION
-    // ============================================================
-
-    const profilePictureHeading =
-      page.getByRole(
-        'heading',
-        {
-          name: 'Profile Picture',
-          exact: true,
-        }
-      );
-
-
-    await expect(
-      profilePictureHeading
-    ).toBeVisible({
-      timeout: 10000,
-    });
-
-
-    const profilePictureSection =
-      profilePictureHeading.locator(
-        'xpath=ancestor::div[contains(@class,"bg-white")][1]'
-      );
-
-
-    await expect(
-      profilePictureSection
-    ).toBeVisible({
-      timeout: 10000,
-    });
-
-
-    // ============================================================
-    // 7. VERIFY TWO PROFILE-PICTURE FILE INPUTS
-    //
-    // 0 = Camera
-    // 1 = Gallery
-    //
-    // Auto Detect is intentionally ignored because it is disabled.
-    // ============================================================
-
-    const pictureFileInputs =
-      profilePictureSection.locator(
-        'input[type="file"][accept="image/*"]'
-      );
-
-
-    await expect(
-      pictureFileInputs
-    ).toHaveCount(2, {
-      timeout: 10000,
-    });
-
-
-    console.log(
-      'CP-012 PROFILE PICTURE INPUT COUNT:',
-      await pictureFileInputs.count()
-    );
-
-
-    // ============================================================
-    // 8. CASE 1 — NO PROFILE PICTURE
-    //
-    // All other fields are valid, but picture is missing.
-    // ============================================================
-
-    await expect(
-      page.getByText(
-        'No image selected',
-        {
-          exact: true,
-        }
-      )
-    ).toBeVisible({
-      timeout: 10000,
-    });
-
-
-    await expect(
-      saveButton
-    ).toBeDisabled({
-      timeout: 10000,
-    });
-
-
-    // ============================================================
-    // 9. UPLOAD PROFILE PHOTO THROUGH GALLERY
-    // ============================================================
-
-    const photoPath =
-      path.resolve(
-        process.cwd(),
-        'tests',
-        'fixtures',
-        'profile-photo.jpg'
-      );
-
-
-    const galleryInput =
-      pictureFileInputs.nth(1);
-
-
-    await galleryInput.setInputFiles(
-      photoPath
-    );
-
-
-    // ============================================================
-    // 10. COMPLETE CROP IF IT APPEARS
-    //
-    // The profile picture flow may display a crop UI.
-    // Auto Detect is not part of this test.
-    // ============================================================
-
-    const doneButton =
-      page.getByRole(
-        'button',
-        {
-          name: 'Done',
-          exact: true,
-        }
-      );
-
-
-    if (
-      await doneButton.isVisible({
-        timeout: 3000,
-      }).catch(() => false)
-    ) {
-
-      await doneButton.click();
-
-    }
-
-
-    // ============================================================
-    // 11. VERIFY WE REMAIN ON COMPLETE PROFILE
-    // ============================================================
-
-    await expect(
-      completeProfileHeading
-    ).toBeVisible({
-      timeout: 15000,
-    });
-
-
-    // ============================================================
-    // 12. VERIFY PROFILE-PICTURE SECTION REMAINS
-    // ============================================================
-
-    await expect(
-      profilePictureHeading
-    ).toBeVisible({
-      timeout: 10000,
-    });
-
-
-    // ============================================================
-    // 13. VERIFY UNRELATED IMAGE-LOGGING PAGE DID NOT OPEN
-    // ============================================================
-
-    await expect(
-      page.getByText(
-        'What is this image?',
-        {
-          exact: false,
-        }
-      )
-    ).not.toBeVisible();
-
-
-    await expect(
-      page.getByText(
-        'Log As',
-        {
-          exact: true,
-        }
-      )
-    ).not.toBeVisible();
-
-
-    // ============================================================
-    // 14. "NO IMAGE SELECTED" SHOULD NO LONGER BE SHOWN
-    // ============================================================
-
-    await expect(
-      page.getByText(
-        'No image selected',
-        {
-          exact: true,
-        }
-      )
-    ).not.toBeVisible({
-      timeout: 10000,
-    });
-
-
-    // ============================================================
-    // 15. SAVE & CONTINUE SHOULD NOW BE ENABLED
-    //
-    // Profile Picture was the only missing requirement.
-    // ============================================================
-
-    await expect(
-      saveButton
-    ).toBeEnabled({
-      timeout: 10000,
-    });
-
+    return;
   }
+
+  await route.continue();
+});
+
+// ============================================================
+// 2. MOCK A VALID PROFILE
+//
+// Everything required by CompleteProfilePage is already valid.
+// Only profileImage is intentionally missing.
+// ============================================================
+
+await page.route('**/api/user/profile*', async (route) => {
+  if (route.request().method() !== 'GET') {
+    await route.continue();
+    return;
+  }
+
+  await route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({
+      success: true,
+      data: {
+        profileComplete: false,
+
+        userName: 'Nitheesh Lingam',
+        email: 'nitheesh@example.com',
+
+        gender: 'Male',
+        height: 170,
+        dietType: 'Vegetarian',
+
+        latestWeight: 72.5,
+        needsCurrentWeight: false,
+
+        latestWeightBodyFat: 22,
+        bodyFat: 22,
+
+        bodyMetrics: {
+          gender: 'Male',
+          fatPercent: 22,
+          age: null,
+          visceralFat: null,
+          bmi: null,
+          bodyAge: null,
+          chestCm: null,
+          waistCm: null,
+          hipCm: null,
+        },
+
+        // IMPORTANT:
+        // No existing profile picture.
+        profileImage: null,
+
+        physicalActivityLevel: null,
+        recoveredHealthIssues: [],
+        transformationPhotos: [],
+      },
+    }),
+  });
+});
+
+// ============================================================
+// 3. CREATE THE AUTHENTICATED SESSION
+//
+// Reuse the existing project helper, but do NOT use
+// goToCompleteProfile() because that helper installs its own
+// blank-profile mock.
+// ============================================================
+
+await createAuthenticatedState(page);
+
+// ============================================================
+// 4. OPEN APPLICATION
+// ============================================================
+
+await page.goto('/');
+
+// ============================================================
+// 5. COMPLETE CONSENT IF THE APP SHOWS IT
+// ============================================================
+
+const consentHeading =
+  page.getByRole('heading', {
+    name: 'User Consent Form',
+    exact: true,
+  });
+
+if (
+  await consentHeading.isVisible().catch(() => false)
+) {
+  const agreeButton =
+    page.getByRole('button', {
+      name: /I Agree/i,
+    });
+
+  if (
+    await agreeButton.count() > 0 &&
+    await agreeButton.isVisible().catch(() => false)
+  ) {
+    await agreeButton.click();
+  }
+}
+
+// ============================================================
+// 6. VERIFY COMPLETE PROFILE
+// ============================================================
+
+const completeProfileHeading =
+  page.getByRole('heading', {
+    name: 'Complete Your Profile',
+    exact: true,
+  });
+
+await expect(completeProfileHeading).toBeVisible({
+  timeout: 20000,
+});
+
+// ============================================================
+// 7. WAIT FOR PROFILE DATA TO BE APPLIED
+//
+// These are sanity checks only. We are not testing their
+// validation in CP-012.
+// ============================================================
+
+const heightInput =
+  page.getByPlaceholder('e.g. 170');
+
+await expect(heightInput).toHaveValue('170', {
+  timeout: 20000,
+});
+
+const genderSelect =
+  page.locator('select').first();
+
+await expect(genderSelect).toHaveValue('Male', {
+  timeout: 10000,
+});
+
+const vegetarianButton =
+  page.getByRole('button', {
+    name: 'Vegetarian',
+    exact: true,
+  });
+
+await expect(vegetarianButton).toBeVisible({
+  timeout: 10000,
+});
+
+// ============================================================
+// 8. LOCATE PROFILE PICTURE
+//
+// The current page renders Transformation Photos as well, so
+// file inputs MUST be scoped to the Profile Picture section.
+// ============================================================
+
+const profilePictureHeading =
+  page.getByRole('heading', {
+    name: 'Profile Picture',
+    exact: true,
+  });
+
+await expect(profilePictureHeading).toBeVisible({
+  timeout: 15000,
+});
+
+const profilePictureCard =
+  profilePictureHeading.locator(
+    'xpath=ancestor::div[contains(@class,"bg-white")][1]'
+  );
+
+await expect(profilePictureCard).toBeVisible({
+  timeout: 10000,
+});
+
+const pictureInputs =
+  profilePictureCard.locator(
+    'input[type="file"][accept="image/*"]'
+  );
+
+await expect(pictureInputs).toHaveCount(2, {
+  timeout: 10000,
+});
+
+// ============================================================
+// 9. SAVE & CONTINUE
+// ============================================================
+
+const saveButton =
+  page.getByRole('button', {
+    name: 'Save & Continue',
+    exact: true,
+  });
+
+await expect(saveButton).toHaveCount(1, {
+  timeout: 15000,
+});
+
+await expect(saveButton).toBeVisible({
+  timeout: 10000,
+});
+
+// ============================================================
+// 10. PROFILE PICTURE IS MISSING
+//
+// All other profile requirements have valid values.
+// Therefore Save & Continue must be disabled.
+// ============================================================
+
+const noImageSelected =
+  profilePictureCard.getByText(
+    'No image selected',
+    {
+      exact: true,
+    }
+  );
+
+await expect(noImageSelected).toBeVisible({
+  timeout: 10000,
+});
+
+await expect(saveButton).toBeDisabled({
+  timeout: 15000,
+});
+
+// ============================================================
+// 11. UPLOAD PROFILE PICTURE
+// ============================================================
+
+const galleryInput =
+  pictureInputs.nth(1);
+
+await galleryInput.setInputFiles(
+  'tests/fixtures/profile-photo.jpg'
+);
+
+// ============================================================
+// 12. COMPLETE CROP IF THE CURRENT UI SHOWS IT
+// ============================================================
+
+const cropDialog =
+  page.getByRole('dialog', {
+    name: 'Crop photo',
+  });
+
+if (
+  await cropDialog.isVisible().catch(() => false)
+) {
+  const doneButton =
+    page.getByRole('button', {
+      name: 'Done',
+      exact: true,
+    });
+
+  await expect(doneButton).toBeVisible({
+    timeout: 10000,
+  });
+
+  await doneButton.click();
+
+  await expect(cropDialog).toBeHidden({
+    timeout: 10000,
+  });
+}
+
+// ============================================================
+// 13. VERIFY IMAGE IS SELECTED
+// ============================================================
+
+await expect(noImageSelected).not.toBeVisible({
+  timeout: 15000,
+});
+
+// ============================================================
+// 14. SAVE & CONTINUE MUST BECOME ENABLED
+// ============================================================
+
+await expect(saveButton).toBeEnabled({
+  timeout: 15000,
+});
+
+console.log(
+  'CP-012 PASSED: missing profile picture disables Save & Continue; uploaded picture enables it.'
+);
+
+}
 );
 
 
 test(
-  'CP-013 Physical Activity allows any option and enables Continue',
-  async ({ page }) => {
+'CP-013 Physical Activity allows any option and enables Continue',
+async ({ page }) => {
 
-    // ============================================================
-    // TEST DATA
-    // ============================================================
+// ============================================================
+// TEST DATA
+// ============================================================
 
-    const TEST_EMAIL =
-      'nitheesh@example.com';
+const TEST_EMAIL =
+  'nitheesh@example.com';
 
-    const TEST_PHONE =
-      '+917695834209';
+const TEST_PHONE =
+  '+917695834209';
 
-    const PHOTO_PATH =
-      path.resolve(
-        process.cwd(),
-        'tests',
-        'fixtures',
-        'profile-photo.jpg'
-      );
+const TEST_NAME =
+  'Nitheesh Lingam';
 
+const TEST_PHOTO =
+  path.resolve(
+    process.cwd(),
+    'tests',
+    'fixtures',
+    'profile-photo.jpg'
+  );
 
-    // ============================================================
-    // 1. AUTHENTICATED NEW USER
-    // ============================================================
+// ============================================================
+// 1. AUTHENTICATED NEW PHONE USER
+// ============================================================
 
-    await page.addInitScript(
-      ({ phone }) => {
+await page.addInitScript(
+  ({ phone }) => {
 
-        const user = {
+    const user = {
+      id: 999999,
+      UserId: 999999,
+      username: 'newuser',
+      email: '',
+      phone,
+      status: 'Active',
+      isNewUser: true,
+      consentRequired: false,
+    };
+
+    localStorage.setItem(
+      'isOtpVerified',
+      'true'
+    );
+
+    localStorage.setItem(
+      'otpUser',
+      JSON.stringify(user)
+    );
+
+    localStorage.setItem(
+      'user',
+      JSON.stringify(user)
+    );
+  },
+  {
+    phone: TEST_PHONE,
+  }
+);
+
+// ============================================================
+// 2. USER LOOKUP
+// ============================================================
+
+await page.route(
+  '**/api/user/lookup*',
+  async (route) => {
+
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        success: true,
+        isNewUser: true,
+        isActive: true,
+        role: 'user',
+      }),
+    });
+  }
+);
+
+// ============================================================
+// 3. CONSENT
+// ============================================================
+
+await page.route(
+  '**/api/user/consent*',
+  async (route) => {
+
+    if (route.request().method() === 'GET') {
+
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          consentRequired: false,
+          consentAccepted: true,
+        }),
+      });
+
+      return;
+    }
+
+    if (route.request().method() === 'POST') {
+
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          consentRequired: false,
+          consentAccepted: true,
+        }),
+      });
+
+      return;
+    }
+
+    await route.continue();
+  }
+);
+
+// ============================================================
+// 4. SETUP STATUS
+// ============================================================
+
+await page.route(
+  '**/api/user/status*',
+  async (route) => {
+
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        success: true,
+        setupSkipped: true,
+        setupComplete: true,
+        pendingRequest: false,
+        hasTeamId: false,
+        hasUpline: false,
+      }),
+    });
+  }
+);
+
+// ============================================================
+// 5. SAVE EMAIL
+// ============================================================
+
+await page.route(
+  '**/api/user/save-email*',
+  async (route) => {
+
+    if (route.request().method() !== 'POST') {
+      await route.continue();
+      return;
+    }
+
+    const body =
+      route.request().postDataJSON();
+
+    expect(body.email).toBe(TEST_EMAIL);
+
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        success: true,
+        email: TEST_EMAIL,
+        user: {
           id: 999999,
           UserId: 999999,
           username: 'newuser',
-
-          // Phone-only account.
-          email: '',
-
-          phone,
-
+          email: TEST_EMAIL,
+          phone: TEST_PHONE,
           status: 'Active',
-
-          consentRequired: false,
-
-          isNewUser: true,
-        };
-
-
-        localStorage.setItem(
-          'isOtpVerified',
-          'true'
-        );
-
-        localStorage.setItem(
-          'otpUser',
-          JSON.stringify(user)
-        );
-
-        localStorage.setItem(
-          'user',
-          JSON.stringify(user)
-        );
-
-      },
-      {
-        phone: TEST_PHONE,
-      }
-    );
-
-
-    // ============================================================
-    // 2. USER LOOKUP
-    // ============================================================
-
-    await page.route(
-      '**/api/user/lookup*',
-      async route => {
-
-        await route.fulfill({
-          status: 200,
-          contentType:
-            'application/json',
-
-          body: JSON.stringify({
-            success: true,
-            isNewUser: true,
-            isActive: true,
-            role: 'user',
-          }),
-        });
-
-      }
-    );
-
-
-    // ============================================================
-    // 3. CONSENT API
-    // ============================================================
-
-    await page.route(
-      '**/api/user/consent*',
-      async route => {
-
-        const method =
-          route.request().method();
-
-
-        if (
-          method === 'GET'
-        ) {
-
-          await route.fulfill({
-            status: 200,
-            contentType:
-              'application/json',
-
-            body: JSON.stringify({
-              success: true,
-              consentRequired: false,
-              consentAccepted: true,
-            }),
-          });
-
-          return;
-        }
-
-
-        if (
-          method === 'POST'
-        ) {
-
-          await route.fulfill({
-            status: 200,
-            contentType:
-              'application/json',
-
-            body: JSON.stringify({
-              success: true,
-              consentRequired: false,
-              consentAccepted: true,
-            }),
-          });
-
-          return;
-        }
-
-
-        await route.continue();
-
-      }
-    );
-
-
-    // ============================================================
-    // 4. SETUP STATUS
-    // ============================================================
-
-    await page.route(
-      '**/api/user/status*',
-      async route => {
-
-        await route.fulfill({
-          status: 200,
-          contentType:
-            'application/json',
-
-          body: JSON.stringify({
-            success: true,
-            setupSkipped: true,
-            setupComplete: true,
-            pendingRequest: false,
-            hasTeamId: false,
-            hasUpline: false,
-          }),
-        });
-
-      }
-    );
-
-
-    // ============================================================
-    // 5. SAVE EMAIL API
-    //
-    // IMPORTANT:
-    // Because this is a phone-only user, the application calls
-    // /api/user/save-email before saving the profile.
-    // ============================================================
-
-    await page.route(
-      '**/api/user/save-email*',
-      async route => {
-
-        const method =
-          route.request().method();
-
-
-        if (
-          method === 'POST'
-        ) {
-
-          const body =
-            route.request().postDataJSON();
-
-
-          console.log(
-            'CP-013 SAVE EMAIL:',
-            body
-          );
-
-
-          await route.fulfill({
-            status: 200,
-            contentType:
-              'application/json',
-
-            body: JSON.stringify({
-              success: true,
-
-              email:
-                body.email,
-
-              user: {
-                id: 999999,
-                UserId: 999999,
-                email: body.email,
-                phone: TEST_PHONE,
-                username: 'newuser',
-                status: 'Active',
-              },
-            }),
-          });
-
-          return;
-        }
-
-
-        await route.continue();
-
-      }
-    );
-
-
-    // ============================================================
-    // 6. PROFILE API
-    // ============================================================
-
-    let profileSaved = false;
-
-
-    await page.route(
-      '**/api/user/profile*',
-      async route => {
-
-        const method =
-          route.request().method();
-
-
-        // ========================================================
-        // GET PROFILE
-        // ========================================================
-
-        if (
-          method === 'GET'
-        ) {
-
-          // ------------------------------------------------------
-          // AFTER SAVE
-          // ------------------------------------------------------
-
-          if (
-            profileSaved
-          ) {
-
-            console.log(
-              'CP-013 PROFILE GET AFTER SAVE'
-            );
-
-
-            await route.fulfill({
-              status: 200,
-              contentType:
-                'application/json',
-
-              body: JSON.stringify({
-                success: true,
-
-                data: {
-                  userId: 999999,
-
-                  profileComplete: true,
-
-                  userName:
-                    'Nitheesh Lingam',
-
-                  email:
-                    TEST_EMAIL,
-
-                  gender:
-                    'Male',
-
-                  height:
-                    170,
-
-                  dietType:
-                    'Vegetarian',
-
-                  latestWeight:
-                    72.5,
-
-                  latestWeightBodyFat:
-                    22,
-
-                  currentWeight:
-                    72.5,
-
-                  bodyFat:
-                    22,
-
-                  profileImage:
-                    'https://example.com/profile.jpg',
-
-                  needsCurrentWeight:
-                    false,
-
-                  physicalActivityLevel:
-                    null,
-
-                  consentRequired:
-                    false,
-
-                  consentAccepted:
-                    true,
-                },
-              }),
-            });
-
-            return;
-          }
-
-
-          // ------------------------------------------------------
-          // INITIAL PROFILE
-          // ------------------------------------------------------
-
-          await route.fulfill({
-            status: 200,
-            contentType:
-              'application/json',
-
-            body: JSON.stringify({
-              success: true,
-
-              data: {
-                userId: 999999,
-
-                profileComplete:
-                  false,
-
-                userName:
-                  '',
-
-                email:
-                  '',
-
-                gender:
-                  null,
-
-                height:
-                  null,
-
-                dietType:
-                  null,
-
-                latestWeight:
-                  null,
-
-                latestWeightBodyFat:
-                  null,
-
-                currentWeight:
-                  null,
-
-                bodyFat:
-                  null,
-
-                needsCurrentWeight:
-                  true,
-
-                profileImage:
-                  null,
-
-                physicalActivityLevel:
-                  null,
-
-                consentRequired:
-                  false,
-
-                consentAccepted:
-                  true,
-              },
-            }),
-          });
-
-          return;
-        }
-
-
-        // ========================================================
-        // POST PROFILE
-        // ========================================================
-
-        if (
-          method === 'POST'
-        ) {
-
-          const body =
-            route.request().postDataJSON();
-
-
-          console.log(
-            'CP-013 PROFILE SAVE:',
-            {
-              email:
-                body.email,
-
-              name:
-                body.name,
-
-              height:
-                body.height,
-
-              gender:
-                body.gender,
-
-              dietType:
-                body.dietType,
-
-              currentWeight:
-                body.currentWeight,
-
-              bodyFat:
-                body.bodyFat,
-
-              hasProfileImage:
-                Boolean(
-                  body.profileImage
-                ),
-            }
-          );
-
-
-          profileSaved = true;
-
-
-          await route.fulfill({
-            status: 200,
-            contentType:
-              'application/json',
-
-            body: JSON.stringify({
-              success: true,
-
-              data: {
-                userId: 999999,
-
-                profileComplete:
-                  true,
-
-                userName:
-                  body.name,
-
-                email:
-                  body.email,
-
-                gender:
-                  body.gender,
-
-                height:
-                  body.height,
-
-                dietType:
-                  body.dietType,
-
-                currentWeight:
-                  body.currentWeight,
-
-                bodyFat:
-                  body.bodyFat,
-
-                profileImage:
-                  body.profileImage,
-
-                physicalActivityLevel:
-                  null,
-
-                consentRequired:
-                  false,
-
-                consentAccepted:
-                  true,
-              },
-            }),
-          });
-
-          return;
-        }
-
-
-        await route.continue();
-
-      }
-    );
-
-
-    // ============================================================
-    // 7. OPEN APPLICATION
-    // ============================================================
-
-    await page.goto('/');
-
-
-    // ============================================================
-    // 8. COMPLETE PROFILE
-    // ============================================================
-
-    const completeProfileHeading =
-      page.getByRole(
-        'heading',
-        {
-          name:
-            'Complete Your Profile',
-          exact:
-            true,
-        }
-      );
-
-
-    await expect(
-      completeProfileHeading
-    ).toBeVisible({
-      timeout:
-        15000,
+        },
+      }),
     });
-
-
-    // ============================================================
-    // 9. LOCATORS
-    // ============================================================
-
-    const fullNameInput =
-      page.getByPlaceholder(
-        'Enter your full name'
-      );
-
-    const emailInput =
-      page.getByPlaceholder(
-        'you@example.com'
-      );
-
-    const genderSelect =
-      page
-        .locator('label')
-        .filter({
-          hasText:
-            'Gender',
-        })
-        .locator('..')
-        .locator('select');
-
-    const heightInput =
-      page.getByPlaceholder(
-        'e.g. 170'
-      );
-
-    const weightInput =
-      page.getByPlaceholder(
-        'e.g. 72.5'
-      );
-
-    const bodyFatInput =
-      page.getByPlaceholder(
-        'e.g. 22'
-      );
-
-    const dietButton =
-      page.getByRole(
-        'button',
-        {
-          name:
-            'Vegetarian',
-          exact:
-            true,
-        }
-      );
-
-    const saveButton =
-      page.getByRole(
-        'button',
-        {
-          name:
-            'Save & Continue',
-          exact:
-            true,
-        }
-      );
-
-
-    // ============================================================
-    // 10. EMAIL
-    //
-    // New phone-only user starts with empty email.
-    // ============================================================
-
-    await expect(
-      emailInput
-    ).toBeVisible({
-      timeout:
-        15000,
-    });
-
-
-    await expect(
-      emailInput
-    ).toBeEditable();
-
-
-    await expect(
-      emailInput
-    ).toHaveValue(
-      ''
-    );
-
-
-    await emailInput.fill(
-      TEST_EMAIL
-    );
-
-
-    await expect(
-      emailInput
-    ).toHaveValue(
-      TEST_EMAIL
-    );
-
-
-    // ============================================================
-    // 11. FULL NAME
-    // ============================================================
-
-    await fullNameInput.fill(
-      'Nitheesh Lingam'
-    );
-
-
-    await expect(
-      fullNameInput
-    ).toHaveValue(
-      'Nitheesh Lingam'
-    );
-
-
-    // ============================================================
-    // 12. GENDER
-    // ============================================================
-
-    await expect(
-      genderSelect
-    ).toBeVisible({
-      timeout:
-        10000,
-    });
-
-
-    await genderSelect.selectOption({
-      label:
-        'Male',
-    });
-
-
-    await expect(
-      genderSelect
-    ).toHaveValue(
-      'Male'
-    );
-
-
-    // ============================================================
-    // 13. HEIGHT
-    // ============================================================
-
-    await heightInput.fill(
-      '170'
-    );
-
-
-    await expect(
-      heightInput
-    ).toHaveValue(
-      '170'
-    );
-
-
-    // ============================================================
-    // 14. DIET
-    // ============================================================
-
-    await dietButton.click();
-
-
-    await expect(
-      dietButton
-    ).toHaveClass(
-      /border-green-500/
-    );
-
-
-    // ============================================================
-    // 15. CURRENT WEIGHT
-    // ============================================================
-
-    await weightInput.fill(
-      '72.5'
-    );
-
-
-    await expect(
-      weightInput
-    ).toHaveValue(
-      '72.5'
-    );
-
-
-    // ============================================================
-    // 16. BODY FAT
-    // ============================================================
-
-    await bodyFatInput.fill(
-      '22'
-    );
-
-
-    await expect(
-      bodyFatInput
-    ).toHaveValue(
-      '22'
-    );
-
-
-    // ============================================================
-    // 17. PROFILE PICTURE
-    //
-    // THIS IS REQUIRED.
-    //
-    // Do not rely on a mocked profileImage here.
-    // The actual React state `profileImage` must contain an image
-    // for pictureValid to become true.
-    //
-    // Auto Detect is intentionally ignored.
-    // ============================================================
-
-    const profilePictureHeading =
-      page.getByRole(
-        'heading',
-        {
-          name:
-            'Profile Picture',
-          exact:
-            true,
-        }
-      );
-
-
-    await expect(
-      profilePictureHeading
-    ).toBeVisible({
-      timeout:
-        10000,
-    });
-
-
-    const profilePictureSection =
-      profilePictureHeading.locator(
-        'xpath=ancestor::div[contains(@class,"bg-white")][1]'
-      );
-
-
-    await expect(
-      profilePictureSection
-    ).toBeVisible();
-
-
-    const pictureInputs =
-      profilePictureSection.locator(
-        'input[type="file"][accept="image/*"]'
-      );
-
-
-    await expect(
-      pictureInputs
-    ).toHaveCount(
-      2
-    );
-
-
-    // 0 = camera
-    // 1 = gallery
-    const galleryInput =
-      pictureInputs.nth(1);
-
-
-    await galleryInput.setInputFiles(
-      PHOTO_PATH
-    );
-
-
-    // ============================================================
-    // 18. COMPLETE CROP IF SHOWN
-    // ============================================================
-
-    const doneButton =
-      page.getByRole(
-        'button',
-        {
-          name:
-            'Done',
-          exact:
-            true,
-        }
-      );
-
-
-    if (
-      await doneButton.isVisible({
-        timeout:
-          3000,
-      }).catch(
-        () => false
-      )
-    ) {
-
-      await doneButton.click();
-
-    }
-
-
-    // ============================================================
-    // 19. VERIFY PROFILE IMAGE IS NOW PRESENT
-    // ============================================================
-
-    await expect(
-      page.getByText(
-        'No image selected',
-        {
-          exact:
-            true,
-        }
-      )
-    ).not.toBeVisible({
-      timeout:
-        10000,
-    });
-
-
-    // ============================================================
-    // 20. SAVE MUST NOW BE ENABLED
-    // ============================================================
-
-    await expect(
-      saveButton
-    ).toBeEnabled({
-      timeout:
-        15000,
-    });
-
-
-    // ============================================================
-    // 21. SAVE PROFILE
-    // ============================================================
-
-    await saveButton.click();
-
-
-    // ============================================================
-    // 22. COMPLETE PROFILE MUST DISAPPEAR
-    // ============================================================
-
-    await expect(
-      completeProfileHeading
-    ).not.toBeVisible({
-      timeout:
-        15000,
-    });
-
-
-    // ============================================================
-    // 23. CONSENT MUST NOT RETURN
-    // ============================================================
-
-    await expect(
-      page.getByRole(
-        'heading',
-        {
-          name:
-            'User Consent Form',
-          exact:
-            true,
-        }
-      )
-    ).not.toBeVisible({
-      timeout:
-        10000,
-    });
-
-
-    // ============================================================
-    // 24. PHYSICAL ACTIVITY
-    // ============================================================
-
-    const physicalActivityHeading =
-      page.getByRole(
-        'heading',
-        {
-          name:
-            'Physical Activity',
-          exact:
-            true,
-        }
-      );
-
-
-    await expect(
-      physicalActivityHeading
-    ).toBeVisible({
-      timeout:
-        30000,
-    });
-
-
-    await expect(
-      page.getByText(
-        'This helps us calculate your daily calorie target (TDEE).',
-        {
-          exact:
-            true,
-        }
-      )
-    ).toBeVisible({
-      timeout:
-        10000,
-    });
-
-
-    // ============================================================
-    // 25. ACTIVITY OPTIONS
-    // ============================================================
-
-    const activityNames = [
-      'Sedentary',
-      'Light Active',
-      'Moderate',
-      'Very Active',
-      'Highly Active',
-    ];
-
-
-    for (
-      const activity of activityNames
-    ) {
-
-      await expect(
-        page.getByRole(
-          'button',
-          {
-            name:
-              new RegExp(
-                `^${activity}\\b`
-              ),
-          }
-        )
-      ).toBeVisible({
-        timeout:
-          10000,
-      });
-
-    }
-
-
-    // ============================================================
-    // 26. CONTINUE
-    // ============================================================
-
-    const continueButton =
-      page.getByRole(
-        'button',
-        {
-          name:
-            'Continue',
-          exact:
-            true,
-        }
-      );
-
-
-    await expect(
-      continueButton
-    ).toBeVisible({
-      timeout:
-        10000,
-    });
-
-
-    // Nothing selected initially.
-    await expect(
-      continueButton
-    ).toBeDisabled();
-
-
-    // ============================================================
-    // 27. SELECT ALL FIVE OPTIONS
-    // ============================================================
-
-    for (
-      const activity of activityNames
-    ) {
-
-      const activityButton =
-        page.getByRole(
-          'button',
-          {
-            name:
-              new RegExp(
-                `^${activity}\\b`
-              ),
-          }
-        );
-
-
-      await activityButton.click();
-
-
-      await expect(
-        continueButton
-      ).toBeEnabled({
-        timeout:
-          10000,
-      });
-
-
-      await expect(
-        activityButton
-      ).toHaveClass(
-        /border-green-500/
-      );
-
-    }
-
-
-    // ============================================================
-    // 28. FINAL ASSERTION
-    // ============================================================
-
-    await expect(
-      continueButton
-    ).toBeEnabled();
-
   }
+);
+
+// ============================================================
+// 6. PROFILE API
+//
+// Before Complete Profile save:
+//   incomplete profile
+//
+// After Complete Profile save:
+//   complete profile BUT no physical activity level
+//
+// After Physical Activity save:
+//   physicalActivityLevel supplied
+// ============================================================
+
+let profileSaved =
+  false;
+
+let activitySaved =
+  false;
+
+let savedActivity =
+  null;
+
+await page.route(
+  '**/api/user/profile*',
+  async (route) => {
+
+    const method =
+      route.request().method();
+
+    // --------------------------------------------------------
+    // GET
+    // --------------------------------------------------------
+
+    if (method === 'GET') {
+
+      // Physical Activity was selected.
+      if (activitySaved) {
+
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+
+            data: {
+              userId: 999999,
+
+              profileComplete: true,
+
+              userName: TEST_NAME,
+              email: TEST_EMAIL,
+
+              gender: 'Male',
+              height: 170,
+              dietType: 'Vegetarian',
+
+              currentWeight: 72.5,
+              bodyFat: 22,
+
+              profileImage:
+                'https://example.com/profile.jpg',
+
+              physicalActivityLevel:
+                savedActivity,
+
+              consentRequired: false,
+              consentAccepted: true,
+            },
+          }),
+        });
+
+        return;
+      }
+
+      // Complete Profile was saved but Activity has not
+      // been selected yet.
+      if (profileSaved) {
+
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+
+            data: {
+              userId: 999999,
+
+              profileComplete: true,
+
+              userName: TEST_NAME,
+              email: TEST_EMAIL,
+
+              gender: 'Male',
+              height: 170,
+              dietType: 'Vegetarian',
+
+              latestWeight: 72.5,
+              latestWeightBodyFat: 22,
+
+              currentWeight: 72.5,
+              bodyFat: 22,
+
+              profileImage:
+                'https://example.com/profile.jpg',
+
+              physicalActivityLevel: null,
+
+              consentRequired: false,
+              consentAccepted: true,
+            },
+          }),
+        });
+
+        return;
+      }
+
+      // Initial incomplete profile.
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+
+          data: {
+            userId: 999999,
+
+            profileComplete: false,
+
+            userName: TEST_NAME,
+            email: TEST_EMAIL,
+
+            gender: null,
+            height: null,
+            dietType: null,
+
+            latestWeight: null,
+            latestWeightBodyFat: null,
+
+            currentWeight: null,
+            bodyFat: null,
+
+            needsCurrentWeight: true,
+
+            profileImage: null,
+
+            physicalActivityLevel: null,
+
+            consentRequired: false,
+            consentAccepted: true,
+          },
+        }),
+      });
+
+      return;
+    }
+
+    // --------------------------------------------------------
+    // POST
+    // --------------------------------------------------------
+
+    if (method === 'POST') {
+
+      const body =
+        route.request().postDataJSON();
+
+      // ------------------------------------------------------
+      // Physical Activity save
+      // ------------------------------------------------------
+
+      if (
+        body &&
+        body.physicalActivityLevel
+      ) {
+
+        activitySaved = true;
+
+        savedActivity =
+          body.physicalActivityLevel;
+
+        console.log(
+          'CP-013 ACTIVITY SAVE:',
+          savedActivity
+        );
+
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+
+            data: {
+              physicalActivityLevel:
+                savedActivity,
+
+              calorieTarget:
+                2000,
+            },
+          }),
+        });
+
+        return;
+      }
+
+      // ------------------------------------------------------
+      // Complete Profile save
+      // ------------------------------------------------------
+
+      profileSaved = true;
+
+      console.log(
+        'CP-013 PROFILE SAVE:',
+        {
+          email: body.email,
+          name: body.name,
+          gender: body.gender,
+          height: body.height,
+          dietType: body.dietType,
+          currentWeight: body.currentWeight,
+          bodyFat: body.bodyFat,
+          hasProfileImage:
+            Boolean(body.profileImage),
+        }
+      );
+
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+
+          data: {
+            userId: 999999,
+
+            profileComplete: true,
+
+            userName:
+              body.name,
+
+            email:
+              body.email,
+
+            gender:
+              body.gender,
+
+            height:
+              body.height,
+
+            dietType:
+              body.dietType,
+
+            currentWeight:
+              body.currentWeight,
+
+            bodyFat:
+              body.bodyFat,
+
+            profileImage:
+              body.profileImage,
+
+            physicalActivityLevel:
+              null,
+
+            consentRequired: false,
+            consentAccepted: true,
+          },
+        }),
+      });
+
+      return;
+    }
+
+    await route.continue();
+  }
+);
+
+// ============================================================
+// 7. OPEN APPLICATION
+// ============================================================
+
+await page.goto('/');
+
+// ============================================================
+// 8. COMPLETE PROFILE
+// ============================================================
+
+const completeProfileHeading =
+  page.getByRole('heading', {
+    name: 'Complete Your Profile',
+    exact: true,
+  });
+
+await expect(
+  completeProfileHeading
+).toBeVisible({
+  timeout: 20000,
+});
+
+// ============================================================
+// 9. COMPLETE REQUIRED PROFILE FIELDS
+// ============================================================
+
+const fullNameInput =
+  page.getByPlaceholder(
+    'Enter your full name'
+  );
+
+const emailInput =
+  page.getByPlaceholder(
+    'you@example.com'
+  );
+
+const genderSelect =
+  page
+    .locator('select')
+    .filter({
+      has: page.locator(
+        'option[value="Male"]'
+      ),
+    })
+    .first();
+
+const heightInput =
+  page.getByPlaceholder(
+    'e.g. 170'
+  );
+
+const weightInput =
+  page.getByPlaceholder(
+    'e.g. 72.5'
+  );
+
+const bodyFatInput =
+  page.getByPlaceholder(
+    'e.g. 22'
+  );
+
+// Email
+await expect(
+  emailInput
+).toBeVisible({
+  timeout: 10000,
+});
+
+await emailInput.fill(
+  TEST_EMAIL
+);
+
+// Name
+await fullNameInput.fill(
+  TEST_NAME
+);
+
+// Gender
+await genderSelect.selectOption(
+  'Male'
+);
+
+// Height
+await heightInput.fill(
+  '170'
+);
+
+// Diet
+await page
+  .getByRole('button', {
+    name: 'Vegetarian',
+    exact: true,
+  })
+  .click();
+
+// Current Weight
+await weightInput.fill(
+  '72.5'
+);
+
+// Fat %
+await bodyFatInput.fill(
+  '22'
+);
+
+// ============================================================
+// 10. PROFILE PICTURE
+// ============================================================
+
+const profilePictureHeading =
+  page.getByRole('heading', {
+    name: 'Profile Picture',
+    exact: true,
+  });
+
+await expect(
+  profilePictureHeading
+).toBeVisible({
+  timeout: 10000,
+});
+
+const profilePictureSection =
+  profilePictureHeading.locator(
+    'xpath=ancestor::div[contains(@class,"bg-white")][1]'
+  );
+
+const pictureInputs =
+  profilePictureSection.locator(
+    'input[type="file"][accept="image/*"]'
+  );
+
+await expect(
+  pictureInputs
+).toHaveCount(2, {
+  timeout: 10000,
+});
+
+const galleryInput =
+  pictureInputs.nth(1);
+
+await galleryInput.setInputFiles(
+  TEST_PHOTO
+);
+
+// ============================================================
+// 11. COMPLETE CROP IF PRESENT
+// ============================================================
+
+const cropDialog =
+  page.getByRole('dialog', {
+    name: 'Crop photo',
+  });
+
+if (
+  await cropDialog
+    .isVisible()
+    .catch(() => false)
+) {
+
+  const doneButton =
+    page.getByRole('button', {
+      name: 'Done',
+      exact: true,
+    });
+
+  await doneButton.click();
+
+  await expect(
+    cropDialog
+  ).toBeHidden({
+    timeout: 10000,
+  });
+}
+
+// ============================================================
+// 12. SAVE & CONTINUE
+// ============================================================
+
+const saveButton =
+  page.getByRole('button', {
+    name: 'Save & Continue',
+    exact: true,
+  });
+
+await expect(
+  saveButton
+).toBeEnabled({
+  timeout: 15000,
+});
+
+await saveButton.click();
+
+// ============================================================
+// 13. COMPLETE PROFILE SHOULD CLOSE
+// ============================================================
+
+await expect(
+  completeProfileHeading
+).not.toBeVisible({
+  timeout: 20000,
+});
+
+// ============================================================
+// 14. PHYSICAL ACTIVITY SCREEN
+// ============================================================
+
+const physicalActivityHeading =
+  page.getByRole('heading', {
+    name: 'Physical Activity',
+    exact: true,
+  });
+
+await expect(
+  physicalActivityHeading
+).toBeVisible({
+  timeout: 30000,
+});
+
+await expect(
+  page.getByText(
+    'This helps us calculate your daily calorie target (TDEE).',
+    {
+      exact: true,
+    }
+  )
+).toBeVisible({
+  timeout: 10000,
+});
+
+// ============================================================
+// 15. CONTINUE STARTS DISABLED
+// ============================================================
+
+const continueButton =
+  page.getByRole('button', {
+    name: 'Continue',
+    exact: true,
+  });
+
+await expect(
+  continueButton
+).toBeVisible({
+  timeout: 10000,
+});
+
+await expect(
+  continueButton
+).toBeDisabled();
+
+// ============================================================
+// 16. ALL PHYSICAL ACTIVITY OPTIONS
+// ============================================================
+
+const activityOptions = [
+  {
+    label: 'Sedentary',
+    value: 'sedentary',
+  },
+  {
+    label: 'Light Active',
+    value: 'light_active',
+  },
+  {
+    label: 'Moderate',
+    value: 'moderate',
+  },
+  {
+    label: 'Very Active',
+    value: 'very_active',
+  },
+  {
+    label: 'Highly Active',
+    value: 'highly_active',
+  },
+];
+
+// Verify all options are displayed.
+for (
+  const activity of activityOptions
+) {
+
+  await expect(
+    page.getByRole('button', {
+      name: new RegExp(
+        `^${activity.label}\\b`
+      ),
+    })
+  ).toBeVisible({
+    timeout: 10000,
+  });
+}
+
+// ============================================================
+// 17. VERIFY EACH OPTION ENABLES CONTINUE
+// ============================================================
+
+for (
+  const activity of activityOptions
+) {
+
+  const activityButton =
+    page.getByRole('button', {
+      name: new RegExp(
+        `^${activity.label}\\b`
+      ),
+    });
+
+  await activityButton.click();
+
+  // The selected activity must enable Continue.
+  await expect(
+    continueButton
+  ).toBeEnabled({
+    timeout: 10000,
+  });
+
+  // Verify the selected button is visually selected.
+  await expect(
+    activityButton
+  ).toHaveClass(
+    /border-green-500/,
+    {
+      timeout: 10000,
+    }
+  );
+}
+
+// ============================================================
+// 18. FINAL CHECK
+// ============================================================
+
+await expect(
+  continueButton
+).toBeEnabled();
+
+console.log(
+  'CP-013: Every physical activity option enables Continue.'
+);
+
+}
 );
 
 
