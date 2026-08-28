@@ -2,7 +2,16 @@
 import React from 'react';
 import { Camera, Upload } from 'lucide-react';
 
-const CameraGalleryButtons = ({ onCameraSelect, onGallerySelect, disabled, layout = 'wide' }) => {
+const CameraGalleryButtons = ({
+  onCameraSelect,
+  onGallerySelect,
+  /** If set, Take Photo calls this instead of opening the file/camera input. */
+  onCameraClick = null,
+  /** HTML capture attribute: 'user' | 'environment' | undefined */
+  capture = 'user',
+  disabled,
+  layout = 'wide',
+}) => {
   const cameraRef = React.useRef(null);
   const galleryRef = React.useRef(null);
   const inSlot = layout === 'inSlot';
@@ -14,18 +23,31 @@ const CameraGalleryButtons = ({ onCameraSelect, onGallerySelect, disabled, layou
   return (
     <div className="flex justify-center w-full">
       <div className={`grid grid-cols-2 ${inSlot ? 'gap-2 w-full px-2' : 'gap-3 max-w-sm mx-auto'}`}>
-      <input ref={cameraRef} type="file" accept="image/*" capture="user"
+      <input
+        ref={cameraRef}
+        type="file"
+        accept="image/*"
+        {...(capture ? { capture } : {})}
         onChange={(e) => {
           onCameraSelect?.(e.target.files?.[0]);
           e.target.value = '';
-        }} className="hidden" />
+        }}
+        className="hidden"
+      />
       <input ref={galleryRef} type="file" accept="image/*"
         onChange={(e) => {
           onGallerySelect?.(e.target.files?.[0]);
           e.target.value = '';
         }} className="hidden" />
-      <button type="button" disabled={disabled} onClick={() => cameraRef.current?.click()}
-        className={`${baseBtn} border-blue-300 text-blue-600 hover:bg-blue-50`}>
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => {
+          if (onCameraClick) onCameraClick();
+          else cameraRef.current?.click();
+        }}
+        className={`${baseBtn} border-blue-300 text-blue-600 hover:bg-blue-50`}
+      >
         <Camera className={layout === 'compact' ? 'w-6 h-6' : inSlot ? 'w-7 h-7 mb-1.5' : 'w-8 h-8 mb-2'} />
         <span className={layout === 'compact' ? '' : `text-sm font-medium text-blue-700 ${inSlot ? 'text-xs' : ''}`}>Take Photo</span>
       </button>

@@ -18,11 +18,11 @@ function formatTeamId(value) {
     .trim()
     .replace(/[^a-zA-Z0-9]/g, '')
     .toUpperCase()
-    .slice(0, 10);
+    .slice(0, 100);
 }
 
 function isValidTeamId(id) {
-  return /^[A-Z0-9]{10}$/.test(id);
+  return /^[A-Z0-9]{4,100}$/.test(id);
 }
 
 export default function ProfileTeamCodeSection({
@@ -46,7 +46,7 @@ export default function ProfileTeamCodeSection({
   const showClaimForm = canClaimTeamCode && !displayTeamId;
 
   useEffect(() => {
-    if (!showClaimForm || !isValidTeamId(teamId) || !email) {
+    if (!showClaimForm || !isValidTeamId(teamId) || (!email && !userId)) {
       setStatus(null);
       setInfo(null);
       return undefined;
@@ -56,8 +56,11 @@ export default function ProfileTeamCodeSection({
       setError('');
       try {
         const apiBase = getApiBaseUrl();
+        const params = new URLSearchParams({ teamId });
+        if (email) params.set('email', email);
+        if (userId) params.set('userId', String(userId));
         const res = await apiFetch(
-          `${apiBase}/api/team/check-availability?teamId=${encodeURIComponent(teamId)}&email=${encodeURIComponent(email)}`,
+          `${apiBase}/api/team/check-availability?${params.toString()}`,
         );
         const data = await res.json();
         if (!res.ok || !data.success) {
@@ -75,12 +78,12 @@ export default function ProfileTeamCodeSection({
       }
     }, 450);
     return () => clearTimeout(timer);
-  }, [teamId, email, showClaimForm]);
+  }, [teamId, email, userId, showClaimForm]);
 
   const handleClaim = async () => {
     if (claiming) return;
     if (!isValidTeamId(teamId)) {
-      setError('Team Code must be exactly 10 letters or numbers');
+      setError('Community ID must be at least 4 letters or numbers');
       return;
     }
     if (status === 'taken') {
@@ -171,11 +174,11 @@ export default function ProfileTeamCodeSection({
                 setError('');
                 setSuccess('');
               }}
-              placeholder="TEAM001ABC"
-              maxLength={10}
+              placeholder="W112072XXX"
+              maxLength={100}
               autoCapitalize="characters"
             />
-            <p className="text-center text-xs text-gray-400">{teamId.length}/10</p>
+            <p className="text-center text-xs text-gray-400">{teamId.length} · Min 4 · Letters & numbers only</p>
 
             {checking && (
               <p className="text-xs text-gray-500 text-center">Checking availability…</p>

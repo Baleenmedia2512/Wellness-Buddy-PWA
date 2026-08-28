@@ -13,6 +13,8 @@
  *   - No CSS gap — padding/margin
  *   - No inline-flex — inline-block for pills
  *   - No CSS gradients in the capture target — solid colours only
+ *   - Never rely on object-fit at capture time — bake a cover-top bitmap first
+ *     (html2canvas ignores object-fit and would stretch photos on WhatsApp)
  */
 import React, { useRef, useState, useCallback, forwardRef, useEffect } from 'react';
 import { X, Download, Share2, CheckCircle } from 'lucide-react';
@@ -23,11 +25,27 @@ import { getVersionString } from '../../../config/version';
 import {
   shareResultVideos,
 } from '../utils/downloadVideo.js';
+import { drawImageCoverTop } from '../utils/fitContainSize.js';
 
 const CARD_W = 360;
-const PHOTO_H = 210;
-const TICK_SIZE = 26;
-/** html2canvas paints <img> reliably; inline <svg> often mis-aligns or drops strokes. */
+const PHOTO_H = 270;
+const TICK_SIZE = 22;
+const MAX_VISIBLE_ISSUES = 10;
+const FRAME_BG = '#f3f4f6';
+const CAPTURE_SCALE = 2;
+const CARD_FONT = "'Poppins', Arial, Helvetica, sans-serif";
+
+function ensurePoppinsFont() {
+  if (typeof document === 'undefined') return;
+  if (document.getElementById('wv-poppins-font')) return;
+  const link = document.createElement('link');
+  link.id = 'wv-poppins-font';
+  link.rel = 'stylesheet';
+  link.href = 'https://fonts.googleapis.com/css2?family=Poppins:wght@500;600;700;800&display=swap';
+  document.head.appendChild(link);
+}
+ensurePoppinsFont();
+
 const CHECK_MARK_SRC =
   'data:image/svg+xml,' +
   encodeURIComponent(
@@ -64,13 +82,71 @@ async function inlineImagesForCapture(el) {
   }));
 }
 
+function waitForImage(img) {
+  return new Promise((resolve) => {
+    if (img.complete && img.naturalWidth > 0) {
+      resolve();
+      return;
+    }
+    const done = () => resolve();
+    img.addEventListener('load', done, { once: true });
+    img.addEventListener('error', done, { once: true });
+    setTimeout(done, 8000);
+  });
+}
+
+/**
+ * Paint each photo into a 2× canvas using cover + top crop.
+ * Baking at CSS size made html2canvas upscale a small JPEG and the share looked blurry.
+ */
+function bakeKeepRatioPhotos(el, scale = CAPTURE_SCALE) {
+  const imgs = Array.from(el.querySelectorAll('img[data-keep-ratio]'));
+  imgs.forEach((img) => {
+    const nw = img.naturalWidth;
+    const nh = img.naturalHeight;
+    const w = Math.round(img.clientWidth || img.width || 0);
+    const h = Math.round(img.clientHeight || img.height || 0);
+    if (!nw || !nh || w < 2 || h < 2) return;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(w * scale));
+    canvas.height = Math.max(1, Math.round(h * scale));
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.fillStyle = FRAME_BG;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    drawImageCoverTop(ctx, img, canvas.width, canvas.height);
+    img.removeAttribute('crossorigin');
+    img.src = canvas.toDataURL('image/jpeg', 0.95);
+    img.style.width = `${w}px`;
+    img.style.height = `${h}px`;
+    img.style.objectFit = 'fill';
+    img.setAttribute('width', String(w));
+    img.setAttribute('height', String(h));
+  });
+}
+
 export async function captureTransformationCardAsBlob(el) {
+  ensurePoppinsFont();
+  if (document.fonts?.ready) {
+    try {
+      await document.fonts.ready;
+    } catch {
+      // capture anyway — Arial fallback still paints
+    }
+  }
   await inlineImagesForCapture(el);
+  const photos = Array.from(el.querySelectorAll('img[data-keep-ratio]'));
+  await Promise.all(photos.map(waitForImage));
+  bakeKeepRatioPhotos(el, CAPTURE_SCALE);
+  await Promise.all(photos.map(waitForImage));
   const html2canvas = (await import('html2canvas')).default;
   const canvas = await html2canvas(el, {
     useCORS: true,
     allowTaint: false,
-    scale: 2,
+    scale: CAPTURE_SCALE,
     backgroundColor: '#ffffff',
     logging: false,
     imageTimeout: 15000,
@@ -90,9 +166,6 @@ function transformationFileName(userName) {
 
 export async function shareTransformationCard(element, userName, _testimonial = null) {
   if (!element) throw new Error('Transformation card is not ready');
-  // Use the local capture (no scrollY) so the green header is not clipped when
-  // the page is scrolled; captureAndShare's scrollY offset cuts the top off.
-  // Share image only — no WhatsApp caption (weights/name are already on the card).
   const blob = await captureTransformationCardAsBlob(element);
   const dataUrl = await blobToDataUrl(blob);
   await shareImageDirectly(dataUrl, {
@@ -114,8 +187,8 @@ function VerifiedTick() {
     <span
       style={{
         position: 'absolute',
-        top: 8,
-        left: 8,
+        top: 6,
+        left: 6,
         width: TICK_SIZE,
         height: TICK_SIZE,
         borderRadius: TICK_SIZE / 2,
@@ -152,19 +225,20 @@ function PhotoCell({ src, label, weightKg, isVerified, side }) {
         padding: 0,
       }}
     >
-      <div style={side === 'left' ? { paddingRight: 4 } : { paddingLeft: 4 }}>
+      <div style={side === 'left' ? { paddingRight: 3 } : { paddingLeft: 3 }}>
         <div style={{ position: 'relative' }}>
           {src ? (
             <img
               src={src}
               alt={label}
+              data-keep-ratio="1"
               crossOrigin="anonymous"
               style={{
                 display: 'block',
                 width: '100%',
                 height: PHOTO_H,
                 objectFit: 'cover',
-                borderRadius: 12,
+                borderRadius: 10,
                 objectPosition: 'top',
               }}
             />
@@ -173,33 +247,34 @@ function PhotoCell({ src, label, weightKg, isVerified, side }) {
               style={{
                 width: '100%',
                 height: PHOTO_H,
-                borderRadius: 12,
-                background: '#f3f4f6',
+                borderRadius: 10,
+                background: FRAME_BG,
               }}
             />
           )}
           {isVerified && src ? <VerifiedTick /> : null}
         </div>
         <p style={{
-          margin: '8px 0 2px',
+          margin: '3px 0 0',
           textAlign: 'center',
-          fontSize: 10,
+          fontSize: 9,
           fontWeight: 700,
           color: '#9ca3af',
-          letterSpacing: '1.2px',
+          letterSpacing: '1.1px',
           textTransform: 'uppercase',
+          lineHeight: '12px',
         }}
         >
           {label}
         </p>
         {weightKg > 0 && (
           <p style={{
-            margin: 0,
+            margin: '1px 0 0',
             textAlign: 'center',
-            fontSize: 15,
+            fontSize: 12,
             fontWeight: 800,
             color: '#111827',
-            lineHeight: '20px',
+            lineHeight: '15px',
           }}
           >
             {weightKg} kg
@@ -227,8 +302,8 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
   const isVerified = testimonial?.status === 'verified';
   const isLoss = testimonial?.goalType !== 'gain';
   const verb = isLoss ? 'Lost' : 'Gained';
-  const accentTxt = isLoss ? '#15803d' : '#1d4ed8';
-  const issues = (testimonial?.recoveredHealthIssues ?? []).filter(Boolean);
+  const issues = (testimonial?.recoveredHealthIssues ?? []).filter(Boolean).slice(0, MAX_VISIBLE_ISSUES);
+  const durationText = testimonial?.durationText || '';
 
   return (
     <div
@@ -239,10 +314,10 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
         background: '#ffffff',
         borderRadius: 20,
         overflow: 'hidden',
-        fontFamily: 'Arial, Helvetica, sans-serif',
+        fontFamily: CARD_FONT,
       }}
     >
-      <div style={{ background: '#059669', padding: '12px 16px' }}>
+      <div style={{ background: '#059669', padding: '5px 12px 6px' }}>
         <table
           style={{ width: '100%', borderCollapse: 'collapse' }}
           cellPadding={0}
@@ -250,16 +325,16 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
         >
           <tbody>
             <tr>
-              <td style={{ width: 40, verticalAlign: 'middle', paddingRight: 10 }}>
+              <td style={{ width: 32, verticalAlign: 'middle', padding: 0, paddingRight: 8, lineHeight: 0 }}>
                 <div
                   style={{
-                    width: 36,
-                    height: 36,
-                    borderRadius: 18,
+                    width: 28,
+                    height: 28,
+                    borderRadius: 14,
                     background: '#ffffff',
                     overflow: 'hidden',
                     textAlign: 'center',
-                    lineHeight: '36px',
+                    lineHeight: '28px',
                   }}
                 >
                   <img
@@ -267,23 +342,20 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
                     alt="Wellness Valley"
                     style={{
                       display: 'inline-block',
-                      width: 30,
-                      height: 30,
+                      width: 22,
+                      height: 22,
                       objectFit: 'contain',
                       verticalAlign: 'middle',
                     }}
                   />
                 </div>
               </td>
-              <td style={{ verticalAlign: 'middle' }}>
-                <p style={{ margin: 0, color: '#ffffff', fontSize: 16, fontWeight: 800, lineHeight: '20px' }}>
+              <td style={{ verticalAlign: 'middle', padding: 0, lineHeight: 0 }}>
+                <p style={{ margin: 0, color: '#ffffff', fontSize: 15, fontWeight: 800, lineHeight: '20px' }}>
                   Wellness Valley
-                  <span style={{ fontWeight: 500, fontSize: 12, color: '#d1fae5' }}>
+                  <span style={{ fontWeight: 500, fontSize: 11, color: '#d1fae5' }}>
                     {' '}( {getVersionString()} )
                   </span>
-                </p>
-                <p style={{ margin: '3px 0 0', color: '#d1fae5', fontSize: 11, fontWeight: 400 }}>
-                  Transformation Results
                 </p>
               </td>
             </tr>
@@ -291,14 +363,8 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
         </table>
       </div>
 
-      <div style={{ paddingTop: 14, paddingBottom: 4, textAlign: 'center' }}>
-        <p style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#111827' }}>
-          {userName || 'Member'}
-        </p>
-      </div>
-
       {showPhotoRow && (
-        <div style={{ padding: '8px 20px 12px' }}>
+        <div style={{ padding: '4px 8px 0' }}>
           <table
             style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}
             cellPadding={0}
@@ -326,63 +392,111 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
         </div>
       )}
 
-      {diff && (
-        <div style={{ padding: '4px 20px 10px', textAlign: 'center' }}>
-          <p
-            style={{
-              margin: 0,
-              fontSize: 15,
-              fontWeight: 700,
-              lineHeight: '20px',
-              color: accentTxt,
-            }}
-          >
-            {verb} {diff} kgs{testimonial?.durationText ? ` in ${testimonial.durationText}` : ''}
-          </p>
-        </div>
-      )}
-
-      {issues.length > 0 && (
-        <div style={{ padding: '4px 20px 18px', textAlign: 'center' }}>
-          <p style={{
-            margin: '0 0 8px',
-            fontSize: 10,
-            fontWeight: 700,
-            color: '#9ca3af',
-            textTransform: 'uppercase',
-            letterSpacing: '1px',
-            textAlign: 'center',
-          }}
-          >
-            Health Issues
-          </p>
-          <div style={{ textAlign: 'center', margin: '0 auto' }}>
-            {issues.map((issue) => (
-              <span
-                key={issue}
-                style={{
-                  display: 'inline-block',
-                  margin: '0 4px 6px',
-                  background: '#fef2f2',
-                  border: '1px solid #fecaca',
-                  borderRadius: 20,
-                  padding: '0 14px',
-                  height: 28,
-                  lineHeight: '28px',
-                  fontSize: 12,
-                  fontWeight: 600,
-                  color: '#991b1b',
-                  textAlign: 'center',
-                  whiteSpace: 'nowrap',
-                  verticalAlign: 'middle',
-                }}
+      <table
+        style={{ width: '100%', borderCollapse: 'collapse' }}
+        cellPadding={0}
+        cellSpacing={0}
+      >
+        <tbody>
+          <tr>
+            <td style={{ textAlign: 'center', padding: '6px 10px 6px', verticalAlign: 'top' }}>
+              <p style={{
+                margin: 0,
+                lineHeight: '20px',
+                fontFamily: CARD_FONT,
+                whiteSpace: 'nowrap',
+              }}
               >
-                {issue}
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
+                <span style={{
+                  fontSize: 11,
+                  fontWeight: 600,
+                  color: '#4b5563',
+                  textShadow: '0 0 6px #bbf7d0, 0 0 10px #86efac',
+                }}
+                >
+                  {userName || 'Member'}
+                </span>
+                {diff ? (
+                  <span>
+                    <span style={{ color: '#d1d5db', padding: '0 6px' }}>·</span>
+                    <span style={{
+                      fontSize: 12,
+                      fontWeight: 600,
+                      color: '#4b5563',
+                      textShadow: '0 0 6px #bbf7d0, 0 0 10px #86efac',
+                    }}
+                    >
+                      {verb}
+                      {' '}
+                    </span>
+                    <span style={{
+                      fontSize: 14,
+                      fontWeight: 800,
+                      color: '#16a34a',
+                      textShadow: '0 0 4px #ffffff, 0 0 8px #86efac, 0 0 12px #4ade80',
+                    }}
+                    >
+                      {diff} kg
+                    </span>
+                    {durationText ? (
+                      <span style={{
+                        fontSize: 12,
+                        fontWeight: 500,
+                        color: '#6b7280',
+                        textShadow: '0 0 6px #bbf7d0, 0 0 10px #86efac',
+                      }}
+                      >
+                        {` in ${durationText}`}
+                      </span>
+                    ) : null}
+                  </span>
+                ) : null}
+              </p>
+            </td>
+          </tr>
+          {issues.length > 0 ? (
+            <tr>
+              <td style={{ textAlign: 'center', padding: '6px 12px 8px', verticalAlign: 'top' }}>
+                <p style={{
+                  margin: 0,
+                  fontSize: 8,
+                  fontWeight: 700,
+                  color: '#9ca3af',
+                  textTransform: 'uppercase',
+                  letterSpacing: '1px',
+                  lineHeight: '10px',
+                  fontFamily: CARD_FONT,
+                }}
+                >
+                  Health Issues
+                </p>
+                <p style={{
+                  margin: '4px 0 0',
+                  fontSize: 11,
+                  fontWeight: 600,
+                  color: '#9f1239',
+                  lineHeight: '16px',
+                  fontFamily: CARD_FONT,
+                }}
+                >
+                  {issues.map((issue, index) => (
+                    <span key={issue}>
+                      {index > 0 ? (
+                        <span style={{ color: '#6b7280', fontWeight: 800, fontSize: 13 }}> · </span>
+                      ) : null}
+                      {issue}
+                    </span>
+                  ))}
+                </p>
+              </td>
+            </tr>
+          ) : (
+            <tr>
+              <td style={{ padding: '0 0 10px' }} />
+            </tr>
+          )}
+        </tbody>
+      </table>
     </div>
   );
 });

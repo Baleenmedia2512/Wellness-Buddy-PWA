@@ -36,7 +36,7 @@ const Header = ({
   const [savedProfileImage, setSavedProfileImage] = useState(null);
   const prevProfileKeyRef = useRef(profileKey);
 
-  // Reports: feature flag + coach/upline/admin/developer only (not leaf members).
+  // Reports: common module for every signed-in user when the flag is on.
   const reportsEnabled = isFlagEnabled('ff.reports-module')
     && canAccessReportsModule(userRole);
 

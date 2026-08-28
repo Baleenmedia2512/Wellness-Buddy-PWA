@@ -1,6 +1,6 @@
-// Header bar with avatar, role badge, name, email, recrop link, close.
+// Header bar with avatar (Centre transform photo), role badge, name, email, close.
 import React from 'react';
-import { X, Camera, Crop, Loader } from 'lucide-react';
+import { X } from 'lucide-react';
 import TouchFeedbackButton from '../../../../shared/components/TouchFeedbackButton';
 import { EmojiOrNative } from '../../../../shared/components/icons/EmojiImage';
 
@@ -12,8 +12,8 @@ const colorOf = (name, email) => COLORS[(name || email || '').length % COLORS.le
 const ROLE_LABELS = { admin: 'Admin', developer: 'Developer', coach: 'Coach', user: 'User' };
 
 const UserProfileHeader = ({
-  user, name, userRole, profileImagePreview, faceStatus,
-  showRecrop, onPickImage, onRecrop, onClose, isSaving,
+  user, name, userRole, profileImagePreview,
+  onClose, isSaving,
   weightGoalMode,
 }) => {
   const displayName = name || user?.displayName || user?.name || 'User';
@@ -21,22 +21,13 @@ const UserProfileHeader = ({
   return (
     <div className="flex items-center justify-between p-6 bg-gradient-to-r from-green-500 to-green-600 rounded-t-2xl">
       <div className="flex items-center space-x-3">
-        <div onClick={onPickImage}
-          className="relative w-16 h-16 rounded-full border-2 border-white overflow-hidden cursor-pointer group">
+        <div className="relative w-16 h-16 rounded-full border-2 border-white overflow-hidden">
           {profileImagePreview ? (
             <img src={profileImagePreview} alt={displayName} className="w-full h-full object-cover"
               loading="lazy" decoding="async" referrerPolicy="no-referrer" />
           ) : (
             <div className={`w-full h-full flex items-center justify-center text-white font-bold text-2xl ${colorOf(name, user?.email)}`}>
               {initialOf(name || user?.displayName || user?.name, user?.email)}
-            </div>
-          )}
-          <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-            <Camera className="w-6 h-6 text-white" />
-          </div>
-          {faceStatus === 'detecting' && (
-            <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
-              <Loader className="w-6 h-6 text-white animate-spin" />
             </div>
           )}
         </div>
@@ -48,12 +39,6 @@ const UserProfileHeader = ({
             </span>
           </div>
           <p className="text-sm text-green-50">{user?.email}</p>
-          <p className="text-xs text-green-100 mt-1">Click photo to change</p>
-          {showRecrop && (
-            <button onClick={onRecrop} className="inline-flex items-center gap-1 text-xs text-green-100 hover:text-white font-medium mt-0.5">
-              <Crop className="w-3 h-3" /> Re-crop
-            </button>
-          )}
         </div>
       </div>
       <div className="flex flex-col items-end gap-2">

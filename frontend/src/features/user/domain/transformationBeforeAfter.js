@@ -3,7 +3,7 @@
  * Testimonials before/after pairing stays available for the Transformation tab.
  */
 
-export const TRANSFORMATION_COMPARE_TYPES = ['front', 'left', 'right'];
+export const TRANSFORMATION_COMPARE_TYPES = ['left', 'front', 'right'];
 export const DEFAULT_TRANSFORMATION_COMPARE_TYPE = 'left';
 
 function isStoredPhoto(value) {

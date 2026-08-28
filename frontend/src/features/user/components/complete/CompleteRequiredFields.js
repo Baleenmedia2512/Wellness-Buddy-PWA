@@ -1,4 +1,4 @@
-// Name, email, gender, height, diet, conditional weight.
+// Remaining profile fields. Name/email are hidden when already collected.
 import React from 'react';
 import { Mail, Ruler, Scale, User } from 'lucide-react';
 import { DIET_OPTIONS } from '../../services/dietOptions';
@@ -18,6 +18,7 @@ const CompleteRequiredFields = ({
   email, setEmail, emailValid, emailLocked,
   identityLocked = false,
   hideName = false,
+  hideEmail = false,
   gender, setGender, showGender,
   height, setHeight, heightValid,
   dietType, setDietType,
@@ -48,6 +49,7 @@ const CompleteRequiredFields = ({
     </div>
     )}
 
+    {!hideEmail && (
     <div>
       <label className="block text-sm font-semibold text-gray-700 mb-2">
         Email <span className="text-red-500">*</span>
@@ -72,6 +74,7 @@ const CompleteRequiredFields = ({
         <p className="text-xs text-gray-400 mt-1">Required to finish your profile</p>
       )}
     </div>
+    )}
 
     {showGender && (
       <div>
