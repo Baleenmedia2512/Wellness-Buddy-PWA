@@ -30,7 +30,7 @@ const PoseCentre = ({ className = 'w-28 h-36' }) => (
   </svg>
 );
 
-/** Side profile — full body silhouette; faceRight = nose points right (user's left pose). */
+/** Side profile — full body silhouette; faceRight = nose points right (Right tab). */
 const PoseSide = ({ faceRight = true, className = 'w-24 h-40' }) => (
   <svg
     viewBox="0 0 140 220"
@@ -77,7 +77,7 @@ export default function TransformationPoseGuideCard({
       <PoseCentre className={variant === 'frame' ? 'w-32 h-40 text-emerald-600' : 'w-14 h-16 text-emerald-600'} />
     ) : (
       <PoseSide
-        faceRight={poseType === 'left'}
+        faceRight={poseType === 'right'}
         className={variant === 'frame' ? 'w-28 h-44 text-emerald-600' : 'w-11 h-14 text-emerald-600'}
       />
     );

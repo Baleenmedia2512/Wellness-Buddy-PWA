@@ -5,6 +5,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { getUserContext } from '../../../shared/services/userIdentity';
 import useProfileForm from '../hooks/useProfileForm';
 import { fetchProfile, saveProfile } from '../services/profileService';
+import { resolveDisplayCommunityId } from '../domain/communityId';
 import UserProfileHeader from './profile/UserProfileHeader';
 import UserProfileBody from './profile/UserProfileBody';
 import UserProfileFooter from './profile/UserProfileFooter';
@@ -40,7 +41,10 @@ const UserProfileModal = ({ isOpen, onClose, user, userRole = 'user', onProfileU
             : (data.bodyFat != null ? String(data.bodyFat) : ''),
           latestWeightBodyFat: data.latestWeightBodyFat ?? null,
           email: data.email || user?.email || '',
-          communityId: data.communityId != null ? String(data.communityId) : '',
+          communityId: resolveDisplayCommunityId({
+            communityId: data.communityId,
+            teamId: data.teamId,
+          }),
           bodyMetrics: data.bodyMetrics || null,
         });
         setLatestWeight(data.latestWeight ? parseFloat(data.latestWeight) : null);

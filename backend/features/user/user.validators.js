@@ -15,6 +15,7 @@ import {
 const VALID_DIETS = ['Vegetarian', 'Non-Vegetarian', 'Vegan', 'Pescatarian'];
 const VALID_GOAL_MODES = ['loss', 'gain', 'maintain'];
 export const COMMUNITY_ID_MAX_LENGTH = 100;
+export const COMMUNITY_ID_MIN_LENGTH = 4;
 const COMMUNITY_ID_PATTERN = /^[a-zA-Z0-9]+$/;
 export { VALID_GOAL_MODES, VALID_PHYSICAL_ACTIVITY_LEVELS };
 
@@ -27,6 +28,12 @@ export function normalizeCommunityId(raw) {
 export function validateCommunityId(raw) {
   const normalized = normalizeCommunityId(raw);
   if (normalized === null) return { valid: true, value: null };
+  if (normalized.length < COMMUNITY_ID_MIN_LENGTH) {
+    return {
+      valid: false,
+      message: `Community ID must be at least ${COMMUNITY_ID_MIN_LENGTH} characters.`,
+    };
+  }
   if (normalized.length > COMMUNITY_ID_MAX_LENGTH) {
     return {
       valid: false,

@@ -37,7 +37,7 @@ export default async function handler(req, res) {
 
   try {
     // Get email / userId and Team ID from request body
-    const { email, userId, teamId } = req.body;
+    const { email, userId, teamId: rawTeamId } = req.body;
     const uid = userId != null && String(userId).trim() !== ''
       ? Number(userId)
       : null;
@@ -50,20 +50,21 @@ export default async function handler(req, res) {
       return;
     }
 
-    // Validate Team ID format (10 alphanumeric characters)
-    if (!teamId || teamId.length !== 10) {
+    // Validate Community ID format (4–100 alphanumeric characters)
+    const teamId = String(rawTeamId || '').trim().toUpperCase();
+    if (!teamId || teamId.length < 4 || teamId.length > 100) {
       res.status(400).json({
         success: false,
-        error: 'Team ID must be exactly 10 characters'
+        error: 'Community ID must be 4–100 letters or numbers'
       });
       return;
     }
 
-    const teamIdPattern = /^[A-Z0-9]{10}$/;
+    const teamIdPattern = /^[A-Z0-9]+$/;
     if (!teamIdPattern.test(teamId)) {
       res.status(400).json({
         success: false,
-        error: 'Invalid Team ID format. Use only uppercase letters and numbers'
+        error: 'Invalid Community ID format. Use only letters and numbers'
       });
       return;
     }

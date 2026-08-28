@@ -26,10 +26,16 @@ describe('normalizeCommunityId', () => {
 });
 
 describe('validateCommunityId', () => {
-  it('accepts alphanumeric values up to max length', () => {
+  it('accepts alphanumeric values of 4 or more characters', () => {
     const result = validateCommunityId('124141244');
     assert.equal(result.valid, true);
     assert.equal(result.value, '124141244');
+  });
+
+  it('rejects values shorter than 4 characters', () => {
+    const result = validateCommunityId('AB1');
+    assert.equal(result.valid, false);
+    assert.match(result.message, /at least 4 characters/i);
   });
 
   it('accepts letters and numbers mixed', () => {

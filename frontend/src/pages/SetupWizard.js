@@ -61,12 +61,11 @@ const SetupWizard = ({
       .trim()
       .replace(/[^a-zA-Z0-9]/g, "")
       .toUpperCase();
-    return cleaned.slice(0, 10);
+    return cleaned.slice(0, 100);
   };
 
-  // Validate Team ID format
   const isValidTeamIdFormat = (id) => {
-    return /^[a-zA-Z0-9]{10}$/.test(id);
+    return /^[a-zA-Z0-9]{4,100}$/.test(id);
   };
 
   // ── Demo account: auto-select Yasheer J, skip Team ID, send request ───────
@@ -162,7 +161,7 @@ const SetupWizard = ({
   // Check Team ID availability
   const checkTeamIdAvailability = async () => {
     if (!isValidTeamIdFormat(teamId)) {
-      setError("Team ID must be exactly 10 alphanumeric characters");
+      setError("Community ID must be at least 4 letters or numbers");
       setTeamIdStatus(null);
       return;
     }
@@ -171,16 +170,18 @@ const SetupWizard = ({
     setError("");
 
     try {
-      const userEmail = userEmailProp || localStorage.getItem("userEmail");
-      if (!userEmail) {
+      const { email: userEmail, userId } = resolveRequester();
+      if (!userEmail && !userId) {
         setError("Session expired. Please login again.");
         return;
       }
 
+      const params = new URLSearchParams({ teamId });
+      if (userEmail) params.set('email', userEmail);
+      if (userId) params.set('userId', String(userId));
+
       const response = await axios.get(
-        `${API_BASE}/api/team/check-availability?teamId=${teamId}&email=${encodeURIComponent(
-          userEmail,
-        )}`,
+        `${API_BASE}/api/team/check-availability?${params.toString()}`,
       );
 
       setTeamIdStatus(response.data.status);
@@ -190,7 +191,7 @@ const SetupWizard = ({
         setSuccess("You already own this ID.");
       }
     } catch (err) {
-      setError(err.response?.data?.error || "Failed to check Team ID");
+      setError(err.response?.data?.error || "Failed to check Community ID");
       setTeamIdStatus(null);
     } finally {
       setCheckingTeamId(false);
@@ -262,7 +263,7 @@ const SetupWizard = ({
       return;
     }
     if (teamIdStatus === 'taken') {
-      setError('This Team Code is full. Enter another code or skip.');
+      setError('This Community ID is full. Enter another ID or skip.');
       return;
     }
 
@@ -324,7 +325,7 @@ const SetupWizard = ({
 
   // Auto-check Team ID when user types
   useEffect(() => {
-    if (teamId.length === 10 && isValidTeamIdFormat(teamId)) {
+    if (teamId.length >= 4 && isValidTeamIdFormat(teamId)) {
       const timer = setTimeout(() => {
         checkTeamIdAvailability();
       }, 500);
@@ -563,17 +564,17 @@ const SetupWizard = ({
 
                 <div className="mb-6">
                   <h3 className="text-base font-semibold text-gray-900 mb-1 leading-snug">
-                    Do you have a Team Code?
+                    Enter your Community ID
                   </h3>
                   <p className="text-gray-500 text-sm mb-4">
-                    Create a new code as Sponsor, join an open seat as Co-Sponsor,
+                    Create a new ID as Sponsor, join an open seat as Co-Sponsor,
                     or skip to join as a member under your guide.
                   </p>
 
                   <div className="relative">
                     <input
                       type="text"
-                      className={`w-full py-6 bg-gray-50 rounded-xl text-center text-2xl font-mono tracking-widest border-2 focus:ring-0 transition-all ${
+                      className={`w-full py-6 bg-gray-50 rounded-xl text-center text-2xl font-mono tracking-widest border-2 focus:ring-0 transition-all uppercase ${
                         teamIdStatus === "new"
                           ? "border-blue-500 text-blue-700"
                           : teamIdStatus === "available"
@@ -592,8 +593,9 @@ const SetupWizard = ({
                         setError("");
                         setSuccess("");
                       }}
-                      placeholder="TEAM001ABC"
-                      maxLength={10}
+                      placeholder="W112072XXX"
+                      maxLength={100}
+                      autoCapitalize="characters"
                       autoFocus
                     />
                     <div className="absolute right-4 top-1/2 -translate-y-1/2">
@@ -608,7 +610,7 @@ const SetupWizard = ({
                       {teamIdStatus === "new" && (
                         <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 text-left">
                           <h4 className="text-blue-900 font-bold text-sm">
-                            New Team Code
+                            New Community ID
                           </h4>
                           <p className="text-blue-600/80 text-xs font-medium">
                             You will become the Sponsor. Co-Sponsor seat stays open.
@@ -630,17 +632,17 @@ const SetupWizard = ({
                       {teamIdStatus === "taken" && (
                         <div className="bg-red-50 border border-red-100 rounded-xl p-3 text-left">
                           <h4 className="text-red-900 font-bold text-sm">
-                            Team code unavailable
+                            Community ID unavailable
                           </h4>
                           <p className="text-red-600/80 text-xs font-medium">
-                            Sponsor and Co-Sponsor seats are full. Enter another code or skip.
+                            Sponsor and Co-Sponsor seats are full. Enter another ID or skip.
                           </p>
                         </div>
                       )}
                       {teamIdStatus === "taken-by-you" && (
                         <div className="bg-yellow-50 border border-yellow-100 rounded-xl p-3 text-left">
                           <h4 className="text-yellow-900 font-bold text-sm">
-                            You already claimed this code
+                            You already claimed this Community ID
                           </h4>
                           <p className="text-yellow-600/80 text-xs font-medium">
                             Continue to send the approval request to your guide.
@@ -659,7 +661,7 @@ const SetupWizard = ({
 
                   <div className="mt-3 text-center">
                     <p className="text-gray-400 text-xs">
-                      {teamId.length}/10 characters · Letters & numbers only
+                      {teamId.length} characters · Min 4 · Letters & numbers only
                     </p>
                   </div>
                 </div>
@@ -701,7 +703,7 @@ const SetupWizard = ({
                           <span>Processing...</span>
                         </>
                       ) : (
-                        <span>Continue with Team Code</span>
+                        <span>Continue with Community ID</span>
                       )}
                     </button>
                   </div>
@@ -718,7 +720,7 @@ const SetupWizard = ({
                         <span>Sending...</span>
                       </>
                     ) : (
-                      <span>Skip Team Code</span>
+                      <span>Skip Community ID</span>
                     )}
                   </button>
                 </div>
