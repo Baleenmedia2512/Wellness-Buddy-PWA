@@ -56,7 +56,6 @@ export async function fetchProfileCompletion({ apiBaseUrl, email, userId, afterS
 
   const identityFrom = (data) => {
     if (data?.needsName === true) return false;
-    if (data?.needsName === false) return true;
     return isOnboardingIdentityComplete({
       userName: data?.userName,
       email: data?.email || email,

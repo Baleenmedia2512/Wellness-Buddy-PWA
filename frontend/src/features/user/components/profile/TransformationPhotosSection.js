@@ -1,11 +1,12 @@
 /**
- * Transformation photos — Centre / Left / Right tabs.
+ * Transformation photos — Left / Centre / Right tabs.
  * Empty frame shows pose teaching graphic; Camera / Gallery at bottom.
  */
 import React, { useState } from 'react';
 import { Camera, CheckCircle2, Images } from 'lucide-react';
 import TransformationPoseGuideCard from './TransformationPoseGuideCard';
 import {
+  DEFAULT_POSE_SLOT,
   POSE_SLOT_KEYS,
   POSE_TAB_GUIDE,
   nextEmptyTransformationSlot,
@@ -13,7 +14,7 @@ import {
 
 const TransformationPhotosSection = ({
   onSelectFile,
-  selectedType = 'front',
+  selectedType = DEFAULT_POSE_SLOT,
   onSelectType,
   previews = {},
   disabled = false,
@@ -22,7 +23,7 @@ const TransformationPhotosSection = ({
   const cameraRef = React.useRef(null);
   const galleryRef = React.useRef(null);
 
-  const poseType = POSE_SLOT_KEYS.includes(selectedType) ? selectedType : 'front';
+  const poseType = POSE_SLOT_KEYS.includes(selectedType) ? selectedType : DEFAULT_POSE_SLOT;
   const preview = previews?.[poseType] || null;
   const guide = POSE_TAB_GUIDE[poseType] || POSE_TAB_GUIDE.front;
   const captureFacing = poseType === 'front' ? 'user' : 'environment';
@@ -70,7 +71,7 @@ const TransformationPhotosSection = ({
         className={`relative flex-1 min-h-0 w-full rounded-xl overflow-hidden ${
           preview
             ? 'bg-gray-900 border border-emerald-200'
-            : 'bg-gradient-to-b from-emerald-50/90 to-gray-50 border-2 border-dashed border-emerald-200'
+            : 'bg-gradient-to-b from-slate-50 to-white border-2 border-dashed border-slate-200'
         }`}
       >
         {preview ? (
@@ -80,7 +81,7 @@ const TransformationPhotosSection = ({
             className="absolute inset-0 w-full h-full object-contain pb-16"
           />
         ) : (
-          <div className="absolute inset-0 pb-16 flex items-center justify-center">
+          <div className="absolute inset-0 pb-16">
             <TransformationPoseGuideCard poseType={poseType} variant="frame" />
           </div>
         )}

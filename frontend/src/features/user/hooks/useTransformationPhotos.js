@@ -1,5 +1,5 @@
 /**
- * Centre / Left / Right transformation photos for onboarding / profile.
+ * Left / Centre / Right transformation photos for onboarding / profile.
  * Images: team_table.transformation_photos JSONB.
  * Left slot also seeds testimonial Before via persistOnboardingTestimonialPhotos.
  */
@@ -7,12 +7,12 @@ import { useCallback, useMemo, useState } from 'react';
 import { fileToProfileJpegDataUrl } from '../services/fileToProfileJpegDataUrl';
 import { normalizeImageToPortraitJpeg } from '../services/capturePortraitJpeg';
 import { historyFromLatestSlots } from '../domain/transformationBeforeAfter';
-import { POSE_SLOT_KEYS } from '../domain/transformationPoseGuide';
+import { DEFAULT_POSE_SLOT, POSE_SLOT_KEYS } from '../domain/transformationPoseGuide';
 
 const EMPTY_SLOTS = { front: null, left: null, right: null };
 
 export default function useTransformationPhotos() {
-  const [selectedType, setSelectedType] = useState('front');
+  const [selectedType, setSelectedType] = useState(DEFAULT_POSE_SLOT);
   const [previews, setPreviews] = useState(EMPTY_SLOTS);
   const [pendingSlots, setPendingSlots] = useState(EMPTY_SLOTS);
   const [snapshotWeightKg, setSnapshotWeightKg] = useState(null);

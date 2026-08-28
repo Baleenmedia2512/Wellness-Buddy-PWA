@@ -1,12 +1,11 @@
 import React, { useMemo } from 'react';
+import { POSE_TAB_GUIDE } from '../../domain/transformationPoseGuide';
 import {
   DEFAULT_TRANSFORMATION_COMPARE_TYPE,
   TRANSFORMATION_COMPARE_TYPES,
   filterTransformationHistoryByType,
   formatTransformationRecordWeight,
 } from '../../domain/transformationBeforeAfter';
-
-const TAB_LABELS = { front: 'Centre', left: 'Left', right: 'Right' };
 
 const PhotoFrame = ({ src, alt, children = null }) => (
   <div
@@ -36,7 +35,7 @@ const TransformationBeforeAfter = ({
     return list.length > 0 ? list[list.length - 1] : null;
   }, [history, selectedType]);
   const kg = formatTransformationRecordWeight(current);
-  const typeLabel = TAB_LABELS[selectedType];
+  const typeLabel = POSE_TAB_GUIDE[selectedType]?.label || POSE_TAB_GUIDE.front.label;
 
   return (
     <div className="space-y-3 pt-2">
@@ -53,7 +52,7 @@ const TransformationBeforeAfter = ({
                 : 'text-gray-500'
             }`}
           >
-            {TAB_LABELS[type]}
+            {POSE_TAB_GUIDE[type]?.label || type}
           </button>
         ))}
       </div>

@@ -4,8 +4,23 @@ import { motion, AnimatePresence } from "framer-motion";
 import wellnessValleyIcon from "../assets/wellness-valley-icon.png";
 import { debugLog } from '../shared/utils/logger.js';
 import { APP_VERSION } from "../config/version";
+import * as Session from "../shared/services/sessionStorage.js";
+import { getProfile } from "../features/user/services/user.api.js";
 
 const API_BASE = process.env.REACT_APP_API_BASE_URL || "http://localhost:3000";
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function looksLikeEmail(value) {
+  return EMAIL_RE.test(String(value || "").trim());
+}
+
+function mapSetupApiError(raw, fallback) {
+  const msg = String(raw || "").trim();
+  if (/email is required/i.test(msg)) {
+    return "Email is required. Go back and verify your email first.";
+  }
+  return msg || fallback;
+}
 
 const SetupWizard = ({
   onClose,
@@ -35,14 +50,56 @@ const SetupWizard = ({
   // General
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [resolvedEmail, setResolvedEmail] = useState("");
+
+  const resolveUserId = () =>
+    userIdProp
+    || Session.getDbUserId()
+    || localStorage.getItem("userId")
+    || localStorage.getItem("dbUserId")
+    || null;
+
+  const collectSessionEmail = () => {
+    const otpUser = Session.getOtpUser();
+    const candidates = [
+      resolvedEmail,
+      userEmailProp,
+      Session.getUserEmail(),
+      localStorage.getItem("userEmail"),
+      otpUser?.email,
+      otpUser?.Email,
+    ];
+    return candidates.map((v) => String(v || "").trim()).find(looksLikeEmail) || "";
+  };
 
   const resolveRequester = () => {
-    const email = (userEmailProp || localStorage.getItem('userEmail') || '').trim();
-    const userId = userIdProp
-      || localStorage.getItem('userId')
-      || localStorage.getItem('dbUserId')
-      || null;
+    const email = collectSessionEmail();
+    const userId = resolveUserId();
     return { email, userId };
+  };
+
+  const persistEmail = (email) => {
+    const clean = String(email || "").trim();
+    if (!looksLikeEmail(clean)) return;
+    setResolvedEmail(clean);
+    try {
+      Session.setUserEmail(clean);
+    } catch {
+      /* ignore */
+    }
+    const otpUser = Session.getOtpUser();
+    if (otpUser) {
+      Session.setOtpUser({ ...otpUser, email: clean });
+    }
+  };
+
+  const ensureEmail = async () => {
+    const existing = collectSessionEmail();
+    if (existing) {
+      persistEmail(existing);
+      return existing;
+    }
+    return "";
   };
 
   // Mask email function
@@ -68,10 +125,37 @@ const SetupWizard = ({
     return /^[a-zA-Z0-9]{4,100}$/.test(id);
   };
 
+  useEffect(() => {
+    let cancelled = false;
+    const hydrateEmail = async () => {
+      const fromSession = collectSessionEmail();
+      if (fromSession) {
+        persistEmail(fromSession);
+        return;
+      }
+      const userId = resolveUserId();
+      if (!userId) return;
+      try {
+        const data = await getProfile({ userId: String(userId) });
+        const fromProfile = String(data?.data?.email || data?.data?.Email || "").trim();
+        if (!cancelled && looksLikeEmail(fromProfile)) {
+          persistEmail(fromProfile);
+        }
+      } catch {
+        /* profile may not have email yet */
+      }
+    };
+    hydrateEmail();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userEmailProp, userIdProp]);
+
   // ── Demo account: auto-select Yasheer J, skip Team ID, send request ───────
   const DEMO_EMAIL = 'testereasywork@gmail.com';
   useEffect(() => {
-    const userEmail = userEmailProp || localStorage.getItem('userEmail') || '';
+    const userEmail = collectSessionEmail() || userEmailProp || localStorage.getItem('userEmail') || '';
     if (userEmail.toLowerCase().trim() !== DEMO_EMAIL) return;
 
     const autoComplete = async () => {
@@ -138,7 +222,7 @@ const SetupWizard = ({
     setError("");
 
     try {
-      const userEmail = userEmailProp || localStorage.getItem("userEmail");
+      const { email: userEmail } = resolveRequester();
       const response = await axios.get(
         `${API_BASE}/api/users/search?q=${encodeURIComponent(
           query,
@@ -170,15 +254,16 @@ const SetupWizard = ({
     setError("");
 
     try {
-      const { email: userEmail, userId } = resolveRequester();
-      if (!userEmail && !userId) {
-        setError("Session expired. Please login again.");
+      const userEmail = await ensureEmail();
+      const { userId } = resolveRequester();
+      if (!userEmail) {
+        setError("Email is required. Go back and verify your email first.");
+        setTeamIdStatus(null);
         return;
       }
 
-      const params = new URLSearchParams({ teamId });
-      if (userEmail) params.set('email', userEmail);
-      if (userId) params.set('userId', String(userId));
+      const params = new URLSearchParams({ teamId, email: userEmail });
+      if (userId) params.set("userId", String(userId));
 
       const response = await axios.get(
         `${API_BASE}/api/team/check-availability?${params.toString()}`,
@@ -191,7 +276,7 @@ const SetupWizard = ({
         setSuccess("You already own this ID.");
       }
     } catch (err) {
-      setError(err.response?.data?.error || "Failed to check Community ID");
+      setError(mapSetupApiError(err.response?.data?.error, "Failed to check Community ID"));
       setTeamIdStatus(null);
     } finally {
       setCheckingTeamId(false);
@@ -211,9 +296,10 @@ const SetupWizard = ({
     setError("");
 
     try {
-      const { email: userEmail, userId } = resolveRequester();
-      if (!userEmail && !userId) {
-        setError("Session expired. Please login again.");
+      const userEmail = await ensureEmail();
+      const { userId } = resolveRequester();
+      if (!userEmail) {
+        setError("Email is required. Go back and verify your email first.");
         return;
       }
 
@@ -222,14 +308,13 @@ const SetupWizard = ({
         {
           coachId: selectedCoach.userId,
           coachName: selectedCoach.userName,
-          email: userEmail || null,
+          email: userEmail,
           userId: userId || null,
         },
       );
 
-      const requestBody = { coachId: selectedCoach.userId };
-      if (userEmail) requestBody.email = userEmail;
-      else requestBody.userId = userId;
+      const requestBody = { coachId: selectedCoach.userId, email: userEmail };
+      if (userId) requestBody.userId = userId;
       const requestResponse = await axios.post(
         `${API_BASE}/api/upline/request`,
         requestBody,
@@ -246,9 +331,7 @@ const SetupWizard = ({
     } catch (err) {
       console.error("Skip setup error:", err);
       console.error("Error response:", err.response?.data);
-      const errorMessage =
-        err.response?.data?.error || err.message || "Failed to send request";
-      setError(errorMessage);
+      setError(mapSetupApiError(err.response?.data?.error || err.message, "Failed to send request"));
     } finally {
       sendingRequestRef.current = false;
       setSendingRequest(false);
@@ -272,32 +355,31 @@ const SetupWizard = ({
     setError("");
 
     try {
-      const { email: userEmail, userId } = resolveRequester();
-      if (!userEmail && !userId) {
-        setError("Session expired. Please login again.");
+      const userEmail = await ensureEmail();
+      const { userId } = resolveRequester();
+      if (!userEmail) {
+        setError("Email is required. Go back and verify your email first.");
         return;
       }
 
-      debugLog("Claiming Team ID:", { teamId, email: userEmail || null, userId: userId || null });
+      debugLog("Claiming Team ID:", { teamId, email: userEmail, userId: userId || null });
 
       // Step 1: Claim Team ID
-      const claimBody = { teamId };
-      if (userEmail) claimBody.email = userEmail;
-      else claimBody.userId = userId;
+      const claimBody = { teamId, email: userEmail };
+      if (userId) claimBody.userId = userId;
       const claimResponse = await axios.post(`${API_BASE}/api/team/claim-id`, claimBody);
 
       debugLog("Team ID claimed successfully:", claimResponse.data);
 
       debugLog("Sending approval request:", {
         coachId: selectedCoach.userId,
-        email: userEmail || null,
+        email: userEmail,
         userId: userId || null,
       });
 
       // Step 2: Send approval request to selected guide (not necessarily Sponsor)
-      const requestBody = { coachId: selectedCoach.userId };
-      if (userEmail) requestBody.email = userEmail;
-      else requestBody.userId = userId;
+      const requestBody = { coachId: selectedCoach.userId, email: userEmail };
+      if (userId) requestBody.userId = userId;
       const requestResponse = await axios.post(
         `${API_BASE}/api/upline/request`,
         requestBody,
@@ -314,16 +396,14 @@ const SetupWizard = ({
     } catch (err) {
       console.error("Setup error:", err);
       console.error("Error response:", err.response?.data);
-      const errorMessage =
-        err.response?.data?.error || err.message || "Failed to complete setup";
-      setError(errorMessage);
+      setError(mapSetupApiError(err.response?.data?.error || err.message, "Failed to complete setup"));
     } finally {
       sendingRequestRef.current = false;
       setClaimingTeamId(false);
     }
   };
 
-  // Auto-check Team ID when user types
+  // Auto-check Team ID when user types (needs email — APIs require it)
   useEffect(() => {
     if (teamId.length >= 4 && isValidTeamIdFormat(teamId)) {
       const timer = setTimeout(() => {
@@ -333,6 +413,7 @@ const SetupWizard = ({
     } else {
       setTeamIdStatus(null);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [teamId]);
 
   return (
@@ -710,7 +791,7 @@ const SetupWizard = ({
 
                   <button
                     type="button"
-                    className="w-full py-3 rounded-xl font-semibold text-sm bg-transparent border-2 border-gray-300 text-gray-600 hover:border-green-500 hover:text-green-600 transition-all flex items-center justify-center gap-2"
+                    className="w-full py-3 rounded-xl font-semibold text-sm bg-transparent border-2 border-gray-300 text-gray-600 hover:border-green-500 hover:text-green-600 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:border-gray-300 disabled:hover:text-gray-600"
                     onClick={skipTeamIdAndSendRequest}
                     disabled={sendingRequest || claimingTeamId}
                   >

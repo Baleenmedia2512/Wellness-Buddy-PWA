@@ -1281,11 +1281,11 @@ function WellnessValleyApp() {
     _userIdRef.current = user?.id || user?.UserId || Session.getDbUserId() || null;
   }, [user]);
 
-  // Phone users without email: name gate from persisted profile (not session cache).
+  // Phone users without a verified account email: name + email OTP gate.
   useEffect(() => {
     if (!user) return;
     if (!isOtpVerified) return;
-    const email = (user.email && user.email.trim()) || Session.getUserEmail();
+    const email = (user.email && user.email.trim()) || (user.Email && String(user.Email).trim());
     if (email) return;
 
     const uid = user.id || user.UserId || user.userId || Session.getDbUserId();
@@ -8993,7 +8993,17 @@ function WellnessValleyApp() {
                 || user?.Email
                 || Session.getUserEmail()
                 || "";
-              const uid = user?.id || user?.UserId || user?.userId || Session.getDbUserId();
+              const adoptedUserId = savedData?.adopted && savedData?.userId
+                ? savedData.userId
+                : null;
+              const uid = adoptedUserId
+                || user?.id
+                || user?.UserId
+                || user?.userId
+                || Session.getDbUserId();
+              if (adoptedUserId) {
+                Session.setDbUserId(adoptedUserId);
+              }
               if (savedEmail) {
                 Session.setUserEmail(savedEmail);
                 const cachedRaw = Session.getOtpUserRaw();
@@ -9003,6 +9013,8 @@ function WellnessValleyApp() {
                     Session.setOtpUser({
                       ...cached,
                       email: savedEmail,
+                      ...(adoptedUserId ? { id: adoptedUserId, UserId: adoptedUserId } : {}),
+                      ...(savedData?.phone ? { phone: savedData.phone, phoneNumber: savedData.phone } : {}),
                       ...(savedData?.userName
                         ? { username: savedData.userName, userName: savedData.userName }
                         : {}),
@@ -9029,6 +9041,15 @@ function WellnessValleyApp() {
                   email: savedEmail || prevUser.email,
                   username: savedData?.userName || prevUser.username,
                   userName: savedData?.userName || prevUser.userName,
+                  ...(adoptedUserId
+                    ? {
+                      id: adoptedUserId,
+                      UserId: adoptedUserId,
+                      userId: adoptedUserId,
+                      phone: savedData.phone || prevUser.phone,
+                      phoneNumber: savedData.phone || prevUser.phoneNumber,
+                    }
+                    : {}),
                 };
               });
               if (savedData?.userName) {
@@ -9115,7 +9136,7 @@ function WellnessValleyApp() {
           />
         )}
 
-        {/* -- Transformation photos (mandatory Centre/Left/Right) after Complete Profile */}
+        {/* -- Transformation photos (mandatory Left/Centre/Right) after Complete Profile */}
         {showOnboardingTransformationPhotos && !showOnboardingIdentity && !showCompleteProfile && user && (
           <OnboardingTransformationPhotosPage
             user={user}

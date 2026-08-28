@@ -1,5 +1,5 @@
 /**
- * OnboardingTransformationPhotosPage — mandatory Centre / Left / Right.
+ * OnboardingTransformationPhotosPage — mandatory Left / Centre / Right.
  * Compact no-scroll layout; Continue only when all three photos are set.
  * Left photo still seeds testimonial Before.
  */
@@ -11,6 +11,7 @@ import useTransformationPhotos from '../hooks/useTransformationPhotos';
 import { persistOnboardingTestimonialPhotos } from '../services/persistOnboardingTestimonialPhotos';
 import { deriveWeightGoalMode } from '../../weight/services/weightFormService';
 import {
+  DEFAULT_POSE_SLOT,
   POSE_SLOT_KEYS,
   allTransformationSlotsFilled,
 } from '../domain/transformationPoseGuide';
@@ -63,7 +64,7 @@ export default function OnboardingTransformationPhotosPage({
         if (!mounted) return;
         const profile = result?.data;
         transformationPhotos.loadFromProfile(profile?.transformationPhotos);
-        transformationPhotos.setSelectedType('front');
+        transformationPhotos.setSelectedType(DEFAULT_POSE_SLOT);
         const w = profile?.latestWeight != null ? parseFloat(profile.latestWeight) : NaN;
         const h = profile?.height != null ? parseFloat(profile.height) : NaN;
         const weight = Number.isFinite(w) ? w : null;
@@ -86,7 +87,7 @@ export default function OnboardingTransformationPhotosPage({
 
   const finish = useCallback(async () => {
     if (!allTransformationSlotsFilled(transformationPhotos.previews)) {
-      setError('Add Centre, Left, and Right photos to continue.');
+      setError('Add Left, Centre, and Right photos to continue.');
       return;
     }
     setError('');

@@ -35,8 +35,8 @@ export function hasValidProfileName(userName, context = {}) {
 }
 
 /**
- * First onboarding gate: chosen display name only (before sponsor / OTP).
- * Email is collected later on the remaining-profile step.
+ * First onboarding gate (new app): real name plus a verified email.
+ * Backend `needsName` stays name-only so older app binaries are not blocked.
  * @param {{ userName?: string|null, email?: string|null, phoneNumber?: string|null }} input
  * @returns {boolean}
  */
@@ -45,7 +45,8 @@ export function isOnboardingIdentityComplete({
   email,
   phoneNumber,
 } = {}) {
-  return hasValidProfileName(userName, { email, phoneNumber });
+  const hasEmail = typeof email === 'string' && email.includes('@');
+  return hasValidProfileName(userName, { email, phoneNumber }) && hasEmail;
 }
 
 export function hasValidProfileGender(gender, bodyMetrics = null) {

@@ -1,14 +1,17 @@
 ﻿/**
  * Search Coaches
  * GET /api/users/search?q={query}
- * 
- * Search for coaches by name or email
- * Only returns users with Role='admin' (coaches)
- * Used in upline coach selection
+ *
+ * Search for sponsors by name, email, or phone.
+ * Used in upline / sponsor selection during onboarding.
  */
 
 import { getSupabaseClient } from '../../../utils/supabaseClient.js';
 import { filterPublicAggregateUsers } from '../../../features/user/domain/aggregate-eligibility.rules.js';
+import {
+  rankSponsorSearchUsers,
+  restoreDeveloperBotInSponsorSearch,
+} from '../../../features/user/domain/developerBot.rules.js';
 
 export default async function handler(req, res) {
   // Prevent browser/service worker caching of dynamic data
@@ -51,7 +54,19 @@ export default async function handler(req, res) {
       return;
     }
 
-    const searchQuery = q.trim();
+    const searchQuery = String(q || '')
+      .trim()
+      .replace(/[,.%()]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    const searchDigits = searchQuery.replace(/\D/g, '');
+    if (searchQuery.length < 2 && searchDigits.length < 2) {
+      res.status(400).json({
+        success: false,
+        error: 'Search query must be at least 2 characters'
+      });
+      return;
+    }
 
     // Helper function to mask email like nam*****xyz@gmail.com
     const maskEmail = (email) => {
@@ -72,20 +87,32 @@ export default async function handler(req, res) {
     // Connect to Supabase
     const supabase = getSupabaseClient();
 
-    // Search for coaches by name or email, excluding current user
+    // Search for sponsors by name, email, or 10-digit phone, excluding current user
+    const orParts = [
+      `UserName.ilike.%${searchQuery}%`,
+      `Email.ilike.%${searchQuery}%`,
+    ];
+    if (searchDigits.length >= 2) {
+      orParts.push(`PhoneNumber.ilike.%${searchDigits}%`);
+    }
+
     const { data: coaches, error } = await supabase
       .from('team_table')
-      .select('UserId, UserName, Email, TeamId, Role')
+      .select('UserId, UserName, Email, TeamId, Role, PhoneNumber')
       .eq('Status', 'Active')
       .neq('Email', currentUserEmail || '')
-      .or(`UserName.ilike.%${searchQuery}%,Email.ilike.%${searchQuery}%`)
-      // .or(`"UserName".ilike.%${searchQuery}%,"Email".ilike.%${searchQuery}%`)
+      .or(orParts.join(','))
       .order('UserName', { ascending: true })
       .limit(20);
 
     if (error) throw error;
 
-    const eligibleCoaches = filterPublicAggregateUsers(coaches || []);
+    const eligibleCoaches = rankSponsorSearchUsers(
+      restoreDeveloperBotInSponsorSearch(
+        coaches || [],
+        filterPublicAggregateUsers(coaches || []),
+      ),
+    );
 
     // Format results with masked email, deduplicating by email (case-insensitive)
     const seenEmails = new Set();
