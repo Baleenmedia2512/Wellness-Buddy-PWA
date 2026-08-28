@@ -6,6 +6,7 @@ import AppNavTabs from "./AppNavTabs";
 import wellnessValleyIcon from "../../assets/wellness-valley-icon.png";
 import { getProfile } from "../../features/user/services/user.api";
 import { isFlagEnabled } from "../../config/featureFlags";
+import { canAccessReportsModule } from "../../features/reports/domain/reportsAccess.rules.js";
 
 const Header = ({
   user,
@@ -35,8 +36,9 @@ const Header = ({
   const [savedProfileImage, setSavedProfileImage] = useState(null);
   const prevProfileKeyRef = useRef(profileKey);
 
-  // All signed-in users see Reports when the flag is on (including leaf members with no downline).
-  const reportsEnabled = isFlagEnabled('ff.reports-module');
+  // Reports: common module for every signed-in user when the flag is on.
+  const reportsEnabled = isFlagEnabled('ff.reports-module')
+    && canAccessReportsModule(userRole);
 
   // Fetch saved user name + avatar for header display.
   // Re-runs when email changes OR when profileKey is incremented (after a save).

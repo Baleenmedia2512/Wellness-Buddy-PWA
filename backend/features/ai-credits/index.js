@@ -19,6 +19,13 @@ export {
 } from './domain/credits.rules.js';
 
 export {
+  evaluateAiAvailability,
+  normalizeAvailabilityWindows,
+  hasAnyAvailabilitySlotEnabled,
+  DEFAULT_AVAILABILITY_WINDOWS,
+} from './domain/availability.rules.js';
+
+export {
   isEligibleAiFoodAnalysisMember,
   isWithinAiFoodAnalysisWindow,
   isWithinAnyAiFoodAnalysisWindow,

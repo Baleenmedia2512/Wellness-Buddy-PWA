@@ -1,13 +1,25 @@
 /**
  * ai-credits domain — pure rules (no I/O).
  */
+import { normalizeAvailabilityWindows, hasAnyAvailabilitySlotEnabled } from './availability.rules.js';
+
 /** Pending holds older than this are auto-released (orphaned reserve without orchestrate). */
 export const STALE_PENDING_RESERVATION_MS = 15 * 60 * 1000;
 export const DEFAULT_DAILY_AI_CREDITS = 3;
 export const DEFAULT_AI_MODE_ENABLED = true;
 
 /**
- * @param {{ enabled: boolean, dailyLimit: number, used: number, usageDate: string, timezoneIana: string, pendingReservations?: number }}
+ * @param {{
+ *   enabled: boolean,
+ *   dailyLimit: number,
+ *   used: number,
+ *   usageDate: string,
+ *   timezoneIana: string,
+ *   pendingReservations?: number,
+ *   availableInWindow?: boolean,
+ *   activeMealWindow?: 'breakfast'|'lunch'|'dinner'|null,
+ *   availabilityWindows?: object|null,
+ * }}
  */
 export function buildStatus({
   enabled,
@@ -16,12 +28,19 @@ export function buildStatus({
   usageDate,
   timezoneIana,
   pendingReservations = 0,
+  availableInWindow = true,
+  activeMealWindow = null,
+  availabilityWindows = null,
+  anySlotEnabled = true,
 }) {
   const limit = Math.max(0, Number(dailyLimit) || 0);
   const usedSafe = Math.max(0, Number(used) || 0);
   const pending = Math.max(0, Number(pendingReservations) || 0);
   const remaining = Math.max(0, limit - usedSafe - pending);
-  const modeOn = Boolean(enabled) && limit > 0;
+  const slotsOn = anySlotEnabled !== false;
+  // AI Mode is effectively Off when no meal slot is enabled.
+  const modeOn = Boolean(enabled) && limit > 0 && slotsOn;
+  const inWindow = availableInWindow !== false;
   return {
     enabled: modeOn,
     dailyLimit: limit,
@@ -30,15 +49,34 @@ export function buildStatus({
     remaining,
     usageDate: usageDate || null,
     timezoneIana: timezoneIana || null,
+    availableInWindow: modeOn ? inWindow : false,
+    activeMealWindow: modeOn && inWindow ? (activeMealWindow || null) : null,
+    availabilityWindows: availabilityWindows || null,
+    anySlotEnabled: slotsOn,
   };
 }
 
 /**
- * @param {{ enabled: boolean, dailyLimit: number, used: number, pendingReservations: number }}
+ * @param {{
+ *   enabled: boolean,
+ *   dailyLimit: number,
+ *   used: number,
+ *   pendingReservations?: number,
+ *   availableInWindow?: boolean,
+ * }}
  */
-export function canReserve({ enabled, dailyLimit, used, pendingReservations = 0 }) {
+export function canReserve({
+  enabled,
+  dailyLimit,
+  used,
+  pendingReservations = 0,
+  availableInWindow = true,
+}) {
   if (!enabled || dailyLimit <= 0) {
     return { allowed: false, reason: 'disabled' };
+  }
+  if (availableInWindow === false) {
+    return { allowed: false, reason: 'outside_window' };
   }
   const usedSafe = Math.max(0, Number(used) || 0);
   const pending = Math.max(0, Number(pendingReservations) || 0);
@@ -99,12 +137,22 @@ export function shouldDeductAiCredit(result) {
 /**
  * Normalize admin config payload.
  */
-export function normalizeConfig({ dailyAiCredits, aiModeEnabled } = {}) {
+export function normalizeConfig({
+  dailyAiCredits,
+  aiModeEnabled,
+  availabilityWindows,
+} = {}) {
   let credits = Number(dailyAiCredits);
   if (!Number.isFinite(credits)) credits = DEFAULT_DAILY_AI_CREDITS;
   credits = Math.max(0, Math.min(1000, Math.round(credits)));
+  const windows = normalizeAvailabilityWindows(availabilityWindows);
+  const anySlot = hasAnyAvailabilitySlotEnabled(windows);
+  let mode = aiModeEnabled === undefined ? DEFAULT_AI_MODE_ENABLED : Boolean(aiModeEnabled);
+  // Cannot keep AI Mode On with every meal slot Off.
+  if (!anySlot) mode = false;
   return {
     dailyAiCredits: credits,
-    aiModeEnabled: aiModeEnabled === undefined ? DEFAULT_AI_MODE_ENABLED : Boolean(aiModeEnabled),
+    aiModeEnabled: mode,
+    availabilityWindows: windows,
   };
 }

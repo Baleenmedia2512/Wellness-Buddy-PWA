@@ -600,3 +600,17 @@ export function validateVerifyUnifiedOtp(body) {
   return { userId: userIdN, otp: otp.trim() };
 }
 
+/**
+ * Validate payload for POST /api/testimonials/resend-unified-otp
+ */
+export function validateResendUnifiedOtp(body) {
+  if (!body) throw new ValidationError(400, 'Request body is missing');
+
+  const { userId } = body;
+  if (!userId) throw new ValidationError(400, 'userId is required');
+  const userIdN = parseInt(userId, 10);
+  if (isNaN(userIdN) || userIdN < 1) throw new ValidationError(400, 'userId must be a valid integer');
+
+  return { userId: userIdN };
+}
+

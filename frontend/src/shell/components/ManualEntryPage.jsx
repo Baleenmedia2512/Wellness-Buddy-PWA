@@ -1,8 +1,7 @@
 /**
  * CaptureClassifyPage — full-screen post-capture Manual Log.
- * Upload opens this screen; AI food analysis starts only when the user taps
- * Food (eligible leaf / staff, lunch or dinner window). Weight / education /
- * other Log-as types stay manual.
+ * During an eligible meal window with AI credits, food analysis auto-starts.
+ * Otherwise the user picks Log-as (Food / Weight / …). Diary re-classify stays manual.
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -51,7 +50,7 @@ import {
   releaseReservedAiCredit,
   getAiCreditUiState,
   reserveFailureMessage,
-  decideLunchAutoAi,
+  decideMealWindowAutoAi,
 } from '../../features/ai-credits';
 import { analyzeImage } from '../../shared/services/orchestratorService';
 import { fetchWaterIntake, todayLocal } from '../../features/water';
@@ -233,6 +232,8 @@ export default function ManualEntryPage({
   const [aiSaving, setAiSaving] = useState(false);
   const aiReservationIdRef = useRef(null);
   const aiCancelledRef = useRef(false);
+  /** Prevents double auto-start for the same capture. */
+  const mealAutoAttemptedRef = useRef(false);
   /** Set after persistAiFoodAndShowOnHome is defined — avoids TDZ with startAiAnalyze. */
   const persistAiFoodRef = useRef(null);
   // Today's hydration total (all exempted beverages) — water stepper tracks this.
@@ -285,6 +286,7 @@ export default function ManualEntryPage({
     setActiveForm(null);
     setFoodEntryMeta(null);
     setPreviewExpanded(false);
+    mealAutoAttemptedRef.current = false;
   }, [captureId]);
 
   const previewSrc = useMemo(() => {
@@ -505,16 +507,21 @@ export default function ManualEntryPage({
     let reservationId = null;
     try {
       if (creditsEnabled) {
-        // Backend enforces leaf downline + 12–4 window for versioned clients.
+        // Backend enforces leaf downline + meal windows for versioned clients.
         if (credits?.eligibleForAiFoodAnalysis === false) {
           setAiModalOpen(false);
           setHint(reserveFailureMessage('not_eligible_downline'));
           setAiStarting(false);
           return;
         }
-        if (credits?.aiFoodAnalysisWindowOpen === false) {
+        if (
+          credits?.aiFoodAnalysisWindowOpen === false
+          || credits?.availableInWindow === false
+        ) {
           setAiModalOpen(false);
-          setHint(reserveFailureMessage('outside_ai_window'));
+          setHint(reserveFailureMessage(
+            credits?.availableInWindow === false ? 'outside_window' : 'outside_ai_window',
+          ));
           setAiStarting(false);
           return;
         }
@@ -762,7 +769,7 @@ export default function ManualEntryPage({
     }
 
     const windows = await prefetchTimeWindows();
-    const decision = decideLunchAutoAi({
+    const decision = decideMealWindowAutoAi({
       now: new Date(),
       lunchWindow: windows?.lunch ?? null,
       dinnerWindow: windows?.dinner ?? null,
@@ -778,7 +785,9 @@ export default function ManualEntryPage({
         decision.reason === 'outside-meal-window'
         || decision.reason === 'outside-lunch'
       ) {
-        setHint(reserveFailureMessage('outside_ai_window'));
+        setHint(reserveFailureMessage(
+          credits?.availableInWindow === false ? 'outside_window' : 'outside_ai_window',
+        ));
       }
       openCategory(MANUAL_LOG_CATEGORY.FOOD);
       return;
@@ -793,6 +802,56 @@ export default function ManualEntryPage({
     creditsLoading,
     credits,
     openCategory,
+    startAiAnalyze,
+  ]);
+
+  // Admin-enabled meal window + credits + eligible member → auto-start AI on capture.
+  // Diary re-classify (discardCaptureOnCancel=false) stays manual — no surprise AI.
+  useEffect(() => {
+    if (!discardCaptureOnCancel) return undefined;
+    if (!captureReady || !userId || !imageBase64) return undefined;
+    if (mealAutoAttemptedRef.current) return undefined;
+    if (aiStarting || aiModalOpen || closingWithoutLog) return undefined;
+    if (pendingFoodAi || pendingLogAsId) return undefined;
+    if (creditsEnabled && (creditsLoading || credits == null)) return undefined;
+
+    const decision = decideMealWindowAutoAi({
+      now: new Date(),
+      creditStatus: creditsEnabled ? credits : null,
+      creditsFlagEnabled: creditsEnabled,
+      timezoneIana: credits?.timezoneIana,
+    });
+
+    mealAutoAttemptedRef.current = true;
+
+    if (!decision.shouldAutoAi) {
+      if (decision.reason === 'not-eligible-downline') {
+        setHint(reserveFailureMessage('not_eligible_downline'));
+      } else if (decision.reason === 'outside-meal-window') {
+        setHint(reserveFailureMessage(
+          credits?.availableInWindow === false ? 'outside_window' : 'outside_ai_window',
+        ));
+      }
+      // Exhausted / disabled / no-credits → stay quiet on Log-as (no scary banner).
+      return undefined;
+    }
+
+    setHint(null);
+    void startAiAnalyze();
+    return undefined;
+  }, [
+    discardCaptureOnCancel,
+    captureReady,
+    userId,
+    imageBase64,
+    creditsEnabled,
+    creditsLoading,
+    credits,
+    aiStarting,
+    aiModalOpen,
+    closingWithoutLog,
+    pendingFoodAi,
+    pendingLogAsId,
     startAiAnalyze,
   ]);
 

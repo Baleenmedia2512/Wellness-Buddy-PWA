@@ -1,26 +1,36 @@
 /**
  * lunchAutoAi.rules.js
- * Pure policy: during lunch or dinner window + AI credits remaining + eligible
- * leaf downline → auto-run AI (no Auto Detect button). Otherwise → manual only.
+ * Pure policy: during an admin-enabled meal window + AI credits remaining
+ * + eligible leaf downline → auto-run AI. Outside windows, ineligible, or
+ * out of credits → manual only.
+ *
+ * Prefer status.availabilityWindows from GET /api/ai-credits/status.
+ * Also honour backend access facts (eligibleForAiFoodAnalysis / window flags).
  */
 import { APP_TIMEZONE } from '../../../shared/constants/timeWindows.js';
 import { getAiCreditUiState } from './creditUiState.js';
 
-/** Default lunch window when API windows are missing (IST). */
+export const DEFAULT_BREAKFAST_WINDOW = Object.freeze({
+  enabled: true,
+  start: '05:30:00',
+  end: '08:30:00',
+});
 export const DEFAULT_LUNCH_WINDOW = Object.freeze({
+  enabled: true,
   start: '12:00:00',
   end: '16:00:00',
 });
-
-/** Default dinner window when API windows are missing (IST). */
 export const DEFAULT_DINNER_WINDOW = Object.freeze({
+  enabled: true,
   start: '17:30:00',
   end: '20:30:00',
 });
 
+const MEAL_KEYS = ['breakfast', 'lunch', 'dinner'];
+
 /**
- * @param {string|null|undefined} hhmmss - "HH:MM:SS" or "HH:MM"
- * @returns {number|null} minutes since midnight
+ * @param {string|null|undefined} hhmmss
+ * @returns {number|null}
  */
 export function timeStringToMinutes(hhmmss) {
   if (!hhmmss || typeof hhmmss !== 'string') return null;
@@ -31,7 +41,6 @@ export function timeStringToMinutes(hhmmss) {
 }
 
 /**
- * Current clock minutes in a business timezone (default IST).
  * @param {Date} [now]
  * @param {string} [timeZone]
  * @returns {number}
@@ -51,7 +60,6 @@ export function getMinutesNowInTimezone(now = new Date(), timeZone = APP_TIMEZON
 }
 
 /**
- * Inclusive start/end window check (same convention as App openBestManualModal).
  * @param {Date} now
  * @param {{ start?: string, end?: string }|null|undefined} window
  * @param {string} [timeZone]
@@ -67,7 +75,29 @@ export function isWithinActivityWindow(now, window, timeZone = APP_TIMEZONE) {
 }
 
 /**
+ * True when now falls in any enabled meal slot (admin availability windows).
+ * @param {Date} now
+ * @param {object|null|undefined} availabilityWindows
+ * @param {string} [timeZone]
+ */
+export function isWithinEnabledAiWindow(now, availabilityWindows, timeZone = APP_TIMEZONE) {
+  const defaults = {
+    breakfast: DEFAULT_BREAKFAST_WINDOW,
+    lunch: DEFAULT_LUNCH_WINDOW,
+    dinner: DEFAULT_DINNER_WINDOW,
+  };
+  for (const key of MEAL_KEYS) {
+    const slot = availabilityWindows?.[key] || defaults[key];
+    const enabled = slot?.enabled !== false;
+    if (!enabled) continue;
+    if (isWithinActivityWindow(now, slot, timeZone)) return true;
+  }
+  return false;
+}
+
+/**
  * True when now is inside lunch or dinner (configured or defaults).
+ * Legacy helper — prefer isWithinEnabledAiWindow when admin windows exist.
  * @param {Date} now
  * @param {{ start?: string, end?: string }|null|undefined} lunchWindow
  * @param {{ start?: string, end?: string }|null|undefined} dinnerWindow
@@ -93,10 +123,11 @@ export function isWithinLunchOrDinnerWindow(
 }
 
 /**
- * Decide post-capture behaviour for meal-window auto-AI.
+ * Decide post-capture / Food-tap auto-AI behaviour.
  *
  * @param {{
  *   now?: Date,
+ *   availabilityWindows?: object|null,
  *   lunchWindow?: { start?: string, end?: string }|null,
  *   dinnerWindow?: { start?: string, end?: string }|null,
  *   creditStatus?: object|null,
@@ -105,8 +136,9 @@ export function isWithinLunchOrDinnerWindow(
  * }} opts
  * @returns {{ shouldAutoAi: boolean, hideAiButton: boolean, reason: string }}
  */
-export function decideLunchAutoAi({
+export function decideMealWindowAutoAi({
   now = new Date(),
+  availabilityWindows = null,
   lunchWindow = null,
   dinnerWindow = null,
   creditStatus = null,
@@ -135,13 +167,38 @@ export function decideLunchAutoAi({
     };
   }
 
-  if (!isWithinLunchOrDinnerWindow(now, lunchWindow, dinnerWindow, timezoneIana)) {
+  // Prefer server status windows; fall back to arg / lunch+dinner legacy.
+  const windows = creditStatus?.availabilityWindows
+    || availabilityWindows
+    || (lunchWindow || dinnerWindow
+      ? {
+          lunch: lunchWindow
+            ? { enabled: true, ...lunchWindow }
+            : DEFAULT_LUNCH_WINDOW,
+          dinner: dinnerWindow
+            ? { enabled: true, ...dinnerWindow }
+            : DEFAULT_DINNER_WINDOW,
+        }
+      : null);
+
+  if (creditStatus && creditStatus.availableInWindow === false) {
+    return { shouldAutoAi: false, hideAiButton, reason: 'outside-meal-window' };
+  }
+
+  if (windows) {
+    if (!isWithinEnabledAiWindow(now, windows, timezoneIana)) {
+      return { shouldAutoAi: false, hideAiButton, reason: 'outside-meal-window' };
+    }
+  } else if (!isWithinLunchOrDinnerWindow(now, lunchWindow, dinnerWindow, timezoneIana)) {
     return { shouldAutoAi: false, hideAiButton, reason: 'outside-meal-window' };
   }
 
   const ui = getAiCreditUiState(creditStatus);
   if (ui.phase === 'disabled') {
     return { shouldAutoAi: false, hideAiButton, reason: 'ai-disabled' };
+  }
+  if (ui.phase === 'outside_window') {
+    return { shouldAutoAi: false, hideAiButton, reason: 'outside-meal-window' };
   }
   if (ui.phase === 'exhausted') {
     return { shouldAutoAi: false, hideAiButton, reason: 'exhausted' };
@@ -154,4 +211,9 @@ export function decideLunchAutoAi({
   }
 
   return { shouldAutoAi: true, hideAiButton, reason: 'meal-auto' };
+}
+
+/** @deprecated Use decideMealWindowAutoAi */
+export function decideLunchAutoAi(opts) {
+  return decideMealWindowAutoAi(opts);
 }

@@ -18,3 +18,4 @@ export {
   getConsentStatus,
   discardUnconsentedUser,
 } from './consent.service.js';
+export { checkOnboardingEmail, verifyOnboardingEmail } from './onboarding-email.service.js';

@@ -16,7 +16,7 @@ const Section = ({ title, children }) => (
 
 const ConsentForm = ({
   onAgree,
-  onDecline: _onDecline,
+  onDecline,
   submitting = false,
   mode = 'post-auth',
   identityLabel = '',
@@ -30,6 +30,19 @@ const ConsentForm = ({
   const openDisagreeAlert = () => {
     setLocalError('');
     setShowDisagreeAlert(true);
+  };
+
+  /** Stay on consent form and pre-select Agree so they can Continue. */
+  const handleRemain = () => {
+    setShowDisagreeAlert(false);
+    setChoice('agree');
+    setLocalError('');
+  };
+
+  /** Leave the app → sign out / login (parent onDecline). */
+  const handleLeave = () => {
+    setShowDisagreeAlert(false);
+    onDecline?.();
   };
 
   const handleContinue = () => {
@@ -415,12 +428,15 @@ const ConsentForm = ({
 
       <CustomAlertModal
         isOpen={showDisagreeAlert}
-        onClose={() => setShowDisagreeAlert(false)}
-        title="Agreement required"
+        onClose={handleRemain}
+        title="Leave or continue?"
         type="warning"
-        confirmText="OK"
+        cancelText="Leave"
+        confirmText="Stay and Agree"
+        onCancel={handleLeave}
+        onConfirm={handleRemain}
         message={
-          'You can’t continue without agreeing.\n\nIf you choose “Don’t Agree,” you will be unable to use this app. To continue, please select “Agree & Continue.”'
+          'You need to agree to continue using Wellness Valley.\n\nIf you leave, you\'ll be signed out and returned to the login screen.'
         }
       />
     </div>

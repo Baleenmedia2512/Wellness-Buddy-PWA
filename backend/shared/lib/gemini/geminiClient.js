@@ -197,10 +197,80 @@ async function sendMonitorTelemetry(basePayload, trace) {
 // ── Model configuration catalogue ────────────────────────────────────────────
 // Each entry defines the generation config for a specific task. Keeping them
 // here ensures all endpoints share identical hyperparameters.
+//
+// MODEL PINNING (mandatory):
+// - We call ONLY the model IDs declared below. Google releasing Gemini 3.x
+//   (or any newer family) must NEVER change what we call.
+// - Do NOT use floating aliases: `*-latest`, `gemini-flash`, `gemini-pro`, etc.
+// - Gemini 2.5 stable codes (`gemini-2.5-flash` / `gemini-2.5-pro`) are the
+//   production pins for the Developer API (not auto-updated to 3.x).
+// - Optional env overrides (GEMINI_PRIMARY_MODEL / GEMINI_FALLBACK_MODEL) are
+//   accepted ONLY when the value is in ALLOWED_GEMINI_MODELS — otherwise we
+//   keep the pin and log a warning. Upgrades require a deliberate code change
+//   (and allowlist update), never a silent Google alias rotation.
 
-export const MODEL_NAME          = 'gemini-2.5-flash';
+/** Declared production pins — change only via intentional PR. */
+export const PINNED_PRIMARY_MODEL = 'gemini-2.5-flash';
+export const PINNED_FALLBACK_MODEL = 'gemini-2.5-pro';
+
+/**
+ * Exact model IDs we are willing to call. Add a new ID here only when product
+ * explicitly approves adopting that version.
+ */
+export const ALLOWED_GEMINI_MODELS = Object.freeze([
+  PINNED_PRIMARY_MODEL,
+  PINNED_FALLBACK_MODEL,
+]);
+
+const FLOATING_MODEL_RE = /(?:^gemini-(?:flash|pro)$|-latest$)/i;
+
+/**
+ * Resolve a model id against the allowlist. Never returns a floating alias.
+ * @param {string|null|undefined} requested
+ * @param {string} pinnedDefault
+ * @param {string} [label]
+ * @returns {string}
+ */
+export function resolvePinnedGeminiModel(requested, pinnedDefault, label = 'model') {
+  const fallback = ALLOWED_GEMINI_MODELS.includes(pinnedDefault)
+    ? pinnedDefault
+    : PINNED_PRIMARY_MODEL;
+  const raw = requested == null ? '' : String(requested).trim();
+  if (!raw) return fallback;
+
+  if (FLOATING_MODEL_RE.test(raw)) {
+    logger.warn('geminiClient: rejected floating Gemini model alias — keeping pin', {
+      label,
+      requested: raw,
+      using: fallback,
+    });
+    return fallback;
+  }
+
+  if (!ALLOWED_GEMINI_MODELS.includes(raw)) {
+    logger.warn('geminiClient: rejected undeclared Gemini model — keeping pin', {
+      label,
+      requested: raw,
+      allowed: ALLOWED_GEMINI_MODELS,
+      using: fallback,
+    });
+    return fallback;
+  }
+
+  return raw;
+}
+
+export const MODEL_NAME = resolvePinnedGeminiModel(
+  process.env.GEMINI_PRIMARY_MODEL,
+  PINNED_PRIMARY_MODEL,
+  'primary',
+);
 /** Fallback when the primary model is saturated (502 / 503 / 429 / high-demand). */
-export const FALLBACK_MODEL_NAME = 'gemini-2.5-pro';
+export const FALLBACK_MODEL_NAME = resolvePinnedGeminiModel(
+  process.env.GEMINI_FALLBACK_MODEL,
+  PINNED_FALLBACK_MODEL,
+  'fallback',
+);
 
 /**
  * NOTE: thinkingBudget is intentionally NOT set for gemini-2.5-flash.
@@ -356,7 +426,11 @@ function getGenAI() {
  * @returns {import('@google/generative-ai').GenerativeModel}
  */
 export function getModel(configKey, responseSchema = null, modelOverride = null) {
-  const modelName = modelOverride ?? MODEL_NAME;
+  const modelName = resolvePinnedGeminiModel(
+    modelOverride ?? MODEL_NAME,
+    MODEL_NAME,
+    'getModel',
+  );
   const cacheKey  = responseSchema
     ? `${modelName}:${configKey}:schema`
     : `${modelName}:${configKey}`;
@@ -475,7 +549,7 @@ export async function reportAiCallTelemetry({
 
       await sendMonitorTelemetry({
         provider: 'Gemini',
-        model: modelOverride ?? MODEL_NAME,
+        model: resolvePinnedGeminiModel(modelOverride ?? MODEL_NAME, MODEL_NAME, 'telemetry'),
         usage: usage ?? {},
         latency,
         status,

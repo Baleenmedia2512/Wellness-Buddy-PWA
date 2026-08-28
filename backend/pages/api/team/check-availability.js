@@ -41,34 +41,22 @@ export default async function handler(req, res) {
 
   try {
     // Get Team ID from query parameter
-    const { teamId } = req.query;
+    const { teamId: rawTeamId, email, userId } = req.query;
+    const teamId = String(rawTeamId || '').trim().toUpperCase();
 
-    // Validate Team ID format (10 alphanumeric characters)
-    if (!teamId || teamId.length !== 10) {
+    if (!teamId || teamId.length < 4 || teamId.length > 100 || !/^[A-Z0-9]+$/.test(teamId)) {
       res.status(400).json({
         success: false,
-        error: 'Team ID must be exactly 10 characters'
+        error: 'Community ID must be 4–100 letters or numbers'
       });
       return;
     }
 
-    const teamIdPattern = /^[A-Z0-9]{10}$/;
-    if (!teamIdPattern.test(teamId)) {
-      res.status(400).json({
-        success: false,
-        error: 'Invalid Team ID format. Use only uppercase letters and numbers'
-      });
-      return;
-    }
+    const uid = userId != null && String(userId).trim() !== ''
+      ? Number(userId)
+      : null;
 
-    // Identify requester by email OR userId (phone-first users often have no email yet).
-    const email = typeof req.query.email === 'string' ? req.query.email.trim() : '';
-    const userIdRaw = req.query.userId;
-    const userIdNum = userIdRaw != null && String(userIdRaw).trim() !== ''
-      ? parseInt(userIdRaw, 10)
-      : NaN;
-
-    if (!email && (!Number.isFinite(userIdNum) || userIdNum <= 0)) {
+    if (!email && !(uid && Number.isFinite(uid))) {
       res.status(400).json({
         success: false,
         error: 'Email or userId is required'
@@ -82,13 +70,13 @@ export default async function handler(req, res) {
     // Get current user's UserId and existing TeamId
     let userQuery = supabase
       .from('team_table')
-      .select('UserId, TeamId')
-      .limit(1);
-    userQuery = email
-      ? userQuery.eq('Email', email)
-      : userQuery.eq('UserId', userIdNum);
-
-    const { data: currentUserRows, error: userError } = await userQuery;
+      .select('UserId, TeamId');
+    if (uid && Number.isFinite(uid)) {
+      userQuery = userQuery.eq('UserId', uid);
+    } else {
+      userQuery = userQuery.eq('Email', email);
+    }
+    const { data: currentUserRows, error: userError } = await userQuery.limit(1);
 
     if (userError) throw userError;
 

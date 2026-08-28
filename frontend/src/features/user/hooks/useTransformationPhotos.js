@@ -1,19 +1,18 @@
 /**
- * Optional Front / Left / Right on first-run Complete Profile.
- * Images: existing team_table.transformation_photos JSONB.
+ * Left / Centre / Right transformation photos for onboarding / profile.
+ * Images: team_table.transformation_photos JSONB.
+ * Left slot also seeds testimonial Before via persistOnboardingTestimonialPhotos.
  */
 import { useCallback, useMemo, useState } from 'react';
 import { fileToProfileJpegDataUrl } from '../services/fileToProfileJpegDataUrl';
-import {
-  DEFAULT_TRANSFORMATION_COMPARE_TYPE,
-  TRANSFORMATION_COMPARE_TYPES,
-  historyFromLatestSlots,
-} from '../domain/transformationBeforeAfter';
+import { normalizeImageToPortraitJpeg } from '../services/capturePortraitJpeg';
+import { historyFromLatestSlots } from '../domain/transformationBeforeAfter';
+import { DEFAULT_POSE_SLOT, POSE_SLOT_KEYS } from '../domain/transformationPoseGuide';
 
 const EMPTY_SLOTS = { front: null, left: null, right: null };
 
 export default function useTransformationPhotos() {
-  const [selectedType, setSelectedType] = useState(DEFAULT_TRANSFORMATION_COMPARE_TYPE);
+  const [selectedType, setSelectedType] = useState(DEFAULT_POSE_SLOT);
   const [previews, setPreviews] = useState(EMPTY_SLOTS);
   const [pendingSlots, setPendingSlots] = useState(EMPTY_SLOTS);
   const [snapshotWeightKg, setSnapshotWeightKg] = useState(null);
@@ -38,8 +37,9 @@ export default function useTransformationPhotos() {
   }, []);
 
   const setSlotFromFile = useCallback(async (slot, file) => {
-    if (!file || !TRANSFORMATION_COMPARE_TYPES.includes(slot)) return;
-    const dataUrl = await fileToProfileJpegDataUrl(file);
+    if (!file || !POSE_SLOT_KEYS.includes(slot)) return;
+    const raw = await fileToProfileJpegDataUrl(file);
+    const dataUrl = await normalizeImageToPortraitJpeg(raw);
     setPreviews((prev) => ({ ...prev, [slot]: dataUrl }));
     setPendingSlots((prev) => ({ ...prev, [slot]: dataUrl }));
   }, []);
@@ -64,6 +64,14 @@ export default function useTransformationPhotos() {
     return /^data:image\//.test(trimmed) ? trimmed : null;
   }, [pendingSlots.left, previews.left]);
 
+  /** Centre slot — also used as ProfileImage. */
+  const frontImageBase64 = useCallback(() => {
+    const value = pendingSlots.front || previews.front;
+    if (typeof value !== 'string') return null;
+    const trimmed = value.trim();
+    return /^data:image\//.test(trimmed) ? trimmed : null;
+  }, [pendingSlots.front, previews.front]);
+
   return {
     selectedType,
     setSelectedType,
@@ -75,5 +83,6 @@ export default function useTransformationPhotos() {
     setSlotFromFile,
     payloadExtras,
     leftImageBase64,
+    frontImageBase64,
   };
 }

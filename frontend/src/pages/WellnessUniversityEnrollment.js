@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { motion } from "framer-motion";
-import { TeamMemberSearch } from '../features/team';
+import { TeamMemberSearch, resolveTeamSearchDisplayName } from '../features/team';
 import { EmojiOrNative } from '../shared/components/icons/EmojiImage';
 import { getProfile } from '../features/user/services/user.api.js';
+import { getCachedProfileUserName } from '../shared/utils/shareUtils.js';
 import { getApiBaseUrl } from '../config/api.config.js';
 
 const PROGRAMS = [
@@ -59,7 +60,7 @@ const PROGRAMS = [
   },
 ];
 
-const WellnessUniversityEnrollment = ({ onBack, user, userRole, embedded = false, tabVisitKey = 0 }) => {
+const WellnessUniversityEnrollment = ({ onBack, user, userRole, savedUserName = '', embedded = false, tabVisitKey = 0 }) => {
   // onBack is the canonical prop name (matches App.js). Alias kept for clarity.
   const onClose = onBack;
 
@@ -81,6 +82,13 @@ const WellnessUniversityEnrollment = ({ onBack, user, userRole, embedded = false
   const [checkingEnrollment, setCheckingEnrollment] = useState(true);
   const [coachName, setCoachName] = useState("");
   const [isEditMode, setIsEditMode] = useState(false);
+  // Profile UserName only — never Firebase `user_<phone>` / email local-part.
+  const [viewedUserName, setViewedUserName] = useState(() =>
+    resolveTeamSearchDisplayName(
+      savedUserName || getCachedProfileUserName(user?.email),
+      user,
+    ),
+  );
   const loadGenRef = useRef(0);
 
   const checkExistingEnrollment = useCallback(async () => {
@@ -93,12 +101,12 @@ const WellnessUniversityEnrollment = ({ onBack, user, userRole, embedded = false
     const apiBase = getApiBaseUrl();
 
     try {
-      // Coach name + enrollment in parallel.
+      // Profile name + coach name + enrollment in parallel.
       // getProfile is shared/deduped with TeamMemberSearch — no cache-bust, so
       // Strict Mode remounts and search do not double-hit the 30KB profile payload.
-      const profilePromise = (!isViewingOther && user?.email)
-        ? getProfile(user.email).catch(() => null)
-        : Promise.resolve(null);
+      const profilePromise = isViewingOther
+        ? (viewedUserId ? getProfile({ userId: viewedUserId }).catch(() => null) : Promise.resolve(null))
+        : (user?.email ? getProfile(user.email).catch(() => null) : Promise.resolve(null));
 
       const enrollmentPromise = fetch(
         `${apiBase}/api/wellness-university/get-enrollments?userId=${encodeURIComponent(
@@ -108,6 +116,20 @@ const WellnessUniversityEnrollment = ({ onBack, user, userRole, embedded = false
 
       const [profileData, data] = await Promise.all([profilePromise, enrollmentPromise]);
       if (generation !== loadGenRef.current) return;
+
+      const profileName = profileData?.success ? (profileData.data?.userName || '') : '';
+      const profileUser = {
+        email: profileData?.data?.email || (isViewingOther ? selectedMember?.email : user?.email),
+        phoneNumber: profileData?.data?.phoneNumber
+          || (isViewingOther ? selectedMember?.phoneNumber : user?.phoneNumber),
+        userName: profileName,
+      };
+      setViewedUserName(
+        resolveTeamSearchDisplayName(
+          isViewingOther ? (selectedMember?.userName || selectedMember?.name) : savedUserName,
+          isViewingOther ? { ...selectedMember, ...profileUser } : { ...user, ...profileUser },
+        ),
+      );
 
       if (!isViewingOther) {
         const name = profileData?.success
@@ -134,7 +156,7 @@ const WellnessUniversityEnrollment = ({ onBack, user, userRole, embedded = false
     } finally {
       if (generation === loadGenRef.current) setCheckingEnrollment(false);
     }
-  }, [viewedUserId, isViewingOther, user?.email]);
+  }, [viewedUserId, isViewingOther, user?.email, savedUserName]);
 
   // Debounce collapses React Strict Mode remount into one request pair.
   useEffect(() => {
@@ -157,7 +179,8 @@ const WellnessUniversityEnrollment = ({ onBack, user, userRole, embedded = false
   };
 
   const handleSubmit = async () => {
-    if (selectedPrograms.length === 0) {
+    // First enrollment still needs at least one program. Updates may clear all.
+    if (!existingEnrollment && selectedPrograms.length === 0) {
       setError("Please select at least one program");
       return;
     }
@@ -302,9 +325,7 @@ const WellnessUniversityEnrollment = ({ onBack, user, userRole, embedded = false
             <div className="flex items-center gap-2 mb-2">
               <span className="text-xs sm:text-sm text-gray-600 font-semibold">Name:</span>
               <span className="text-xs sm:text-sm text-gray-800 break-words">
-                {isViewingOther
-                  ? selectedMember?.name || selectedMember?.userName || selectedMember?.email?.split("@")[0]
-                  : user?.displayName || user?.email?.split("@")[0]}
+                {viewedUserName}
               </span>
             </div>
             {coachName && (
@@ -436,7 +457,7 @@ const WellnessUniversityEnrollment = ({ onBack, user, userRole, embedded = false
             )}
             <button
               onClick={handleSubmit}
-              disabled={loading || selectedPrograms.length === 0}
+              disabled={loading || (!existingEnrollment && selectedPrograms.length === 0)}
               className="flex-1 bg-gradient-to-r from-green-400 to-teal-400 text-white py-2.5 sm:py-3 rounded-xl text-sm sm:text-base font-semibold hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? (

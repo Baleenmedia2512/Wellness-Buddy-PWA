@@ -22,7 +22,7 @@ import NativeInput from '../../../shared/components/NativeInput.jsx';
 import LoadingSpinner from '../../../shared/components/LoadingSpinner';
 import {
   listForCoach, getMyTestimonial, getMyVideoTestimonial, getTeamTestimonialReport,
-  getTestimonialDetail, submitAllEdits, verifyUnifiedOtp, prepareTestimonialVideoUpload,
+  getTestimonialDetail, submitAllEdits, verifyUnifiedOtp, resendUnifiedOtp, prepareTestimonialVideoUpload,
 } from '../services/testimonialApi.js';
 import { uploadTestimonialVideoInChunks } from '../services/testimonialVideoUpload.js';
 import TestimonialSearchBar from './TestimonialSearchBar.jsx';
@@ -351,22 +351,93 @@ function UploadFilterChip({ filterKey, count, activeFilter, onToggle }) {
 
 // ── Unified OTP entry (after submit-all-edits) ────────────────────────────────
 
-function UnifiedOtpInline({ userId, onVerified }) {
+const OTP_VALIDITY_HOURS_DEFAULT = 24;
+
+function isOtpExpiredClient(otpExpiresAt) {
+  if (!otpExpiresAt) return false;
+  // Match backend: compare IST-shifted "now" to stored expiry wall clock.
+  const istNow = new Date(Date.now() + 5.5 * 60 * 60 * 1000);
+  return istNow > new Date(otpExpiresAt);
+}
+
+function UnifiedOtpInline({
+  userId,
+  sponsorName = null,
+  otpExpiresAt = null,
+  otpValidityHours = OTP_VALIDITY_HOURS_DEFAULT,
+  otpExpired: otpExpiredProp = null,
+  onVerified,
+  onOtpMetaUpdate,
+}) {
   const [otp,     setOtp]     = React.useState('');
   const [loading, setLoading] = React.useState(false);
+  const [resending, setResending] = React.useState(false);
   const [err,     setErr]     = React.useState(null);
+  const [info,    setInfo]    = React.useState(null);
+  const [expiresAt, setExpiresAt] = React.useState(otpExpiresAt);
+  const [tick, setTick] = React.useState(0);
+
+  React.useEffect(() => {
+    setExpiresAt(otpExpiresAt);
+  }, [otpExpiresAt]);
+
+  React.useEffect(() => {
+    const id = setInterval(() => setTick((n) => n + 1), 30_000);
+    return () => clearInterval(id);
+  }, []);
+
+  const expired = otpExpiredProp === true
+    || (otpExpiredProp !== false && isOtpExpiredClient(expiresAt));
+  void tick; // re-render on interval for expiry flip
+
+  const sponsorLabel = (sponsorName && String(sponsorName).trim()) || 'your sponsor';
+  const hours = Number(otpValidityHours) > 0 ? Number(otpValidityHours) : OTP_VALIDITY_HOURS_DEFAULT;
 
   const submit = async () => {
     setErr(null);
-    if (!/^\d{6}$/.test(otp.trim())) { setErr('Enter the 6-digit OTP from your sponsor'); return; }
+    setInfo(null);
+    if (expired) {
+      setErr('OTP has expired. Resend a new code to your sponsor.');
+      return;
+    }
+    if (!/^\d{6}$/.test(otp.trim())) {
+      setErr(`Enter the 6-digit OTP from ${sponsorLabel}`);
+      return;
+    }
     setLoading(true);
     try {
       await verifyUnifiedOtp({ userId, otp: otp.trim() });
       onVerified();
     } catch (e) {
-      setErr(e.message || 'Invalid OTP. Please check with your sponsor.');
+      const msg = e.message || `Invalid OTP. Please check with ${sponsorLabel}.`;
+      setErr(msg);
+      if (/expired/i.test(msg)) {
+        onOtpMetaUpdate?.({ otpExpired: true });
+      }
     } finally {
       setLoading(false);
+    }
+  };
+
+  const resend = async () => {
+    setErr(null);
+    setInfo(null);
+    setResending(true);
+    try {
+      const result = await resendUnifiedOtp({ userId });
+      setOtp('');
+      setExpiresAt(result?.otpExpiresAt ?? null);
+      setInfo(result?.message || `New OTP sent to ${sponsorLabel}. Valid for ${hours} hours.`);
+      onOtpMetaUpdate?.({
+        otpExpiresAt: result?.otpExpiresAt ?? null,
+        otpExpired: false,
+        sponsorName: result?.sponsorName ?? sponsorName,
+        testimonial: result?.testimonial,
+      });
+    } catch (e) {
+      setErr(e.message || 'Could not resend OTP. Please try again.');
+    } finally {
+      setResending(false);
     }
   };
 
@@ -374,31 +445,53 @@ function UnifiedOtpInline({ userId, onVerified }) {
     <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 space-y-3">
       <div className="flex items-center gap-2">
         <ShieldCheck className="h-4 w-4 text-amber-600 shrink-0" />
-        <p className="text-sm font-semibold text-amber-800">Enter OTP from your sponsor</p>
+        <p className="text-sm font-semibold text-amber-800">
+          Enter OTP from your Sponsor {sponsorLabel}
+        </p>
       </div>
       <p className="text-xs text-amber-700 leading-relaxed">
-        Your sponsor received a single 6-digit OTP covering all your changes. Ask them to share it.
+        {sponsorLabel === 'your sponsor' ? 'Your sponsor' : sponsorLabel}
+        {' '}received a single 6-digit OTP covering all your changes. Ask them to share it.
+        {' '}Valid for <span className="font-semibold">{hours} hours</span>.
       </p>
-      <NativeInput
-        otp
-        type="text"
-        inputMode="numeric"
-        pattern="[0-9]*"
-        autoComplete="off"
-        maxLength={6}
-        placeholder="_ _ _ _ _ _"
-        value={otp}
-        onChange={(e) => { setOtp(e.target.value.replace(/\D/g, '').slice(0, 6)); setErr(null); }}
-        className="w-full text-center text-2xl font-bold tracking-[0.4em] border-2 border-amber-300 rounded-xl py-3 focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white"
-      />
+      {expired && (
+        <p className="text-xs font-semibold text-red-600">
+          This OTP has expired. Resend a new code to {sponsorLabel}.
+        </p>
+      )}
+      {!expired && (
+        <NativeInput
+          otp
+          type="text"
+          inputMode="numeric"
+          pattern="[0-9]*"
+          autoComplete="off"
+          maxLength={6}
+          placeholder="_ _ _ _ _ _"
+          value={otp}
+          onChange={(e) => { setOtp(e.target.value.replace(/\D/g, '').slice(0, 6)); setErr(null); }}
+          className="w-full text-center text-2xl font-bold tracking-[0.4em] border-2 border-amber-300 rounded-xl py-3 focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white"
+        />
+      )}
       {err && <p className="text-xs text-red-600 text-center">{err}</p>}
-      <TouchFeedbackButton
-        onClick={submit}
-        disabled={loading || otp.length !== 6}
-        className="w-full py-3 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-sm font-bold disabled:opacity-60 transition-colors"
-      >
-        {loading ? 'Verifying\u2026' : 'Verify with OTP'}
-      </TouchFeedbackButton>
+      {info && <p className="text-xs text-emerald-700 text-center">{info}</p>}
+      {!expired ? (
+        <TouchFeedbackButton
+          onClick={submit}
+          disabled={loading || otp.length !== 6}
+          className="w-full py-3 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-sm font-bold disabled:opacity-60 transition-colors"
+        >
+          {loading ? 'Verifying\u2026' : 'Verify with OTP'}
+        </TouchFeedbackButton>
+      ) : (
+        <TouchFeedbackButton
+          onClick={resend}
+          disabled={resending}
+          className="w-full py-3 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-sm font-bold disabled:opacity-60 transition-colors"
+        >
+          {resending ? 'Sending\u2026' : `Resend OTP to ${sponsorLabel}`}
+        </TouchFeedbackButton>
+      )}
     </div>
   );
 }
@@ -409,6 +502,13 @@ function sameIssueList(a, b) {
   if (a === b) return true;
   if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
   return a.every((value, index) => value === b[index]);
+}
+
+function afterWeightDiffers(beforeKg, afterKg) {
+  const before = Number(beforeKg);
+  const after = Number(afterKg);
+  if (!Number.isFinite(before) || !Number.isFinite(after)) return false;
+  return before !== after;
 }
 
 function MemberCard({
@@ -471,7 +571,11 @@ function MemberCard({
   }, [testimonial?.healthVideoUrl, testimonial?.businessVideoUrl]);
 
   const [expandedPhoto, setExpandedPhoto] = useState(null);
-  const hasAfter  = testimonial?.afterImageUrl  && testimonial?.status !== 'incomplete';
+  const hasAfter = Boolean(testimonial?.afterImageUrl)
+    && (
+      testimonial?.status !== 'incomplete'
+      || afterWeightDiffers(testimonial?.beforeWeightKg, testimonial?.afterWeightKg)
+    );
   // Stable empty fallback — a fresh `[]` each render re-triggers setState forever.
   const issues = Array.isArray(testimonial?.recoveredHealthIssues)
     ? testimonial.recoveredHealthIssues
@@ -528,6 +632,7 @@ function MemberCard({
   ].filter(Boolean);
   // hasDirtySlots: true for ANY pending change including weight-only edits
   const hasDirtySlots = dirtySlots.length > 0 || !!draftBefore || !!draftAfter;
+  const changedCount = Math.max(dirtySlots.length, hasDirtySlots ? 1 : 0);
   const anyVideoUploading = uploadingHealth || uploadingBusiness;
 
   // Prefer draft edits so the "Lost/Gained X kgs" badge updates live while editing
@@ -817,8 +922,11 @@ function MemberCard({
       testimonial?.healthVideoPath || testimonial?.businessVideoPath
       || testimonial?.healthVideoUrl || testimonial?.businessVideoUrl,
     );
-    const issuesNeedOtp = dirtySlots.includes('issues') && (hasAfter || hasResultVideo);
-    const isSilentSave = !photoOrVideoChanged && !issuesNeedOtp;
+    const hasVisiblePhotoCard = Boolean(testimonial?.beforeImageUrl && testimonial?.afterImageUrl);
+    const issuesNeedOtp = dirtySlots.includes('issues') && (hasAfter || hasResultVideo || hasVisiblePhotoCard);
+    const afterWeightDirty = draftAfter?.weightKg !== undefined
+      && afterWeightDiffers(testimonial?.beforeWeightKg, draftAfter.weightKg);
+    const isSilentSave = !photoOrVideoChanged && !issuesNeedOtp && !afterWeightDirty;
     // Photos still compressing — wait so we do not submit without image bytes.
     if (draftBefore?.compressing || draftAfter?.compressing) {
       setSubmitError('Photo is still preparing — try Submit again in a moment.');
@@ -907,9 +1015,28 @@ function MemberCard({
     };
 
     const finishSubmit = async (result) => {
-      await reloadMine(result?.testimonial);
+      // Prefer explicit otpSent from API; fall back to pending OTP fields if older responses omit it.
+      const otpSent = result?.otpSent === true
+        || (result?.otpSent == null && Boolean(
+          result?.testimonial?.hasPendingOtp
+          || result?.testimonial?.otpPending
+          || result?.otpExpiresAt,
+        ));
+      const patched = result?.testimonial
+        ? {
+            ...result.testimonial,
+            sponsorName: result.sponsorName ?? result.testimonial.sponsorName ?? null,
+            otpExpiresAt: result.otpExpiresAt ?? result.testimonial.otpExpiresAt ?? null,
+            otpValidityHours: result.otpValidityHours ?? result.testimonial.otpValidityHours ?? 24,
+            otpExpired: false,
+            hasPendingOtp: otpSent || Boolean(
+              result.testimonial.hasPendingOtp || result.testimonial.otpPending,
+            ),
+          }
+        : null;
+      await reloadMine(patched);
       clearDrafts();
-      if (result?.otpSent !== false) {
+      if (otpSent || patched?.hasPendingOtp) {
         setUnifiedOtpVerified(false);
         setSubmitDone(true);
       }
@@ -937,15 +1064,42 @@ function MemberCard({
         setIsSubmitting(false);
         setCaptureFlowBusy(false);
       });
-  }, [userId, dirtySlots, draftBefore, draftAfter, draftHealthPath, draftBusinessPath, draftIssues, onMineRefresh, hasAfter, testimonial?.id, testimonial?.beforeImageUrl, testimonial?.afterImageUrl, testimonial?.goalType, testimonial?.durationText, testimonial?.recoveredHealthIssues, testimonial?.healthVideoPath, testimonial?.businessVideoPath, testimonial?.healthVideoUrl, testimonial?.businessVideoUrl]);
+  }, [userId, dirtySlots, draftBefore, draftAfter, draftHealthPath, draftBusinessPath, draftIssues, onMineRefresh, hasAfter, testimonial?.id, testimonial?.beforeImageUrl, testimonial?.afterImageUrl, testimonial?.beforeWeightKg, testimonial?.afterWeightKg, testimonial?.goalType, testimonial?.durationText, testimonial?.recoveredHealthIssues, testimonial?.healthVideoPath, testimonial?.businessVideoPath, testimonial?.healthVideoUrl, testimonial?.businessVideoUrl]);
 
   const anyPhotoCompressing = Boolean(draftBefore?.compressing || draftAfter?.compressing);
+
+  const showUnifiedOtp = editable
+    && !unifiedOtpVerified
+    && (submitDone
+      || Boolean(testimonial?.hasPendingOtp)
+      || Boolean(testimonial?.otpPending));
 
   const handleUnifiedOtpVerified = useCallback(() => {
     setSubmitDone(false);
     setUnifiedOtpVerified(true);
     onOtpVerified?.();
   }, [onOtpVerified]);
+
+  const handleUnifiedOtpMetaUpdate = useCallback(async (meta) => {
+    if (!meta) return;
+    if (meta.testimonial && typeof onMineRefresh === 'function') {
+      await onMineRefresh({
+        ...meta.testimonial,
+        sponsorName: meta.sponsorName ?? meta.testimonial.sponsorName ?? null,
+        otpExpiresAt: meta.otpExpiresAt ?? meta.testimonial.otpExpiresAt ?? null,
+        otpExpired: meta.otpExpired ?? meta.testimonial.otpExpired ?? false,
+        hasPendingOtp: true,
+      });
+      return;
+    }
+    if (typeof onMineRefresh === 'function' && testimonial) {
+      await onMineRefresh({
+        ...testimonial,
+        ...meta,
+        hasPendingOtp: true,
+      });
+    }
+  }, [onMineRefresh, testimonial]);
 
   const handleHealthIssuesSaved = useCallback((nextIssues) => {
     const next = uniqueConditions(nextIssues);
@@ -1314,13 +1468,21 @@ function MemberCard({
         </div>
       )}
 
-      {/* Unified OTP — after submit, including weight-only updates that emailed a code */}
-      {editable && (submitDone || testimonial?.otpPending) && !unifiedOtpVerified && (
-        <UnifiedOtpInline userId={userId} onVerified={handleUnifiedOtpVerified} />
+      {/* Unified OTP — after submit, or when a pending OTP is still open */}
+      {showUnifiedOtp && (
+        <UnifiedOtpInline
+          userId={userId}
+          sponsorName={testimonial?.sponsorName}
+          otpExpiresAt={testimonial?.otpExpiresAt}
+          otpValidityHours={testimonial?.otpValidityHours}
+          otpExpired={testimonial?.otpExpired}
+          onVerified={handleUnifiedOtpVerified}
+          onOtpMetaUpdate={handleUnifiedOtpMetaUpdate}
+        />
       )}
 
-      {/* Existing pending OTP (from old per-slot flow) — only show if unified OTP is not already up */}
-      {editable && !submitDone && !testimonial?.otpPending && testimonial?.status === 'pending' && testimonial?.id && (
+      {/* Legacy per-slot OTP — only when no unified OTP is pending */}
+      {editable && !showUnifiedOtp && testimonial?.status === 'pending' && testimonial?.id && (
         <OtpInline
           testimonialId={testimonial.id}
           type="photo"
@@ -1388,8 +1550,15 @@ function MemberCard({
           {/* Status badge */}
           <div className="flex gap-1.5 flex-wrap items-center">
             {testimonial.status === 'pending' && (
-              <span className="bg-amber-100 border border-amber-200 rounded-full px-2 py-0.5 text-[11px] text-amber-800 font-bold flex items-center gap-0.5">
-                <Clock className="h-2.5 w-2.5" /> Awaiting OTP
+              <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold flex items-center gap-0.5 border ${
+                testimonial.otpExpired || isOtpExpiredClient(testimonial.otpExpiresAt)
+                  ? 'bg-red-100 border-red-200 text-red-800'
+                  : 'bg-amber-100 border-amber-200 text-amber-800'
+              }`}>
+                <Clock className="h-2.5 w-2.5" />
+                {testimonial.otpExpired || isOtpExpiredClient(testimonial.otpExpiresAt)
+                  ? 'OTP expired'
+                  : 'Awaiting OTP'}
               </span>
             )}
           </div>
@@ -1415,7 +1584,7 @@ function MemberCard({
             onRemove={handleHealthIssueRemoved}
           />
           {testimonial && (testimonial.beforeImageUrl || hasAfter) &&
-            (editable ? (isVerified && !hasDirtySlots && !submitDone) : true) && (
+            (editable ? (!hasDirtySlots && !submitDone) : true) && (
             <TransformationShareActions
               kind="photo"
               cardRef={shareCardRef}
@@ -1551,7 +1720,7 @@ function MemberCard({
             </p>
           )}
 
-          {editable && !submitDone && testimonial?.videoStatus === 'pending' && testimonial?.id && (
+          {editable && !showUnifiedOtp && testimonial?.videoStatus === 'pending' && testimonial?.id && (
             <div className="bg-white rounded-2xl border border-amber-200 shadow-sm px-4 py-4 space-y-1 mt-1">
               <p className="text-xs font-bold text-amber-700 uppercase tracking-wide flex items-center gap-1.5">
                 <ShieldCheck className="h-3.5 w-3.5" /> Verify Your Videos
@@ -1606,7 +1775,7 @@ function MemberCard({
             }
           </button>
           <p className="text-[10px] text-gray-400 text-center">
-            {dirtySlots.length} item{dirtySlots.length > 1 ? 's' : ''} changed — your sponsor will receive one verification email
+            {changedCount} item{changedCount === 1 ? '' : 's'} changed — your sponsor will receive one verification email
           </p>
         </div>
       )}
