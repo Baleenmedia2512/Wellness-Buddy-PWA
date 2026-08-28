@@ -32,16 +32,18 @@ export default function ManualEntryHeader({ onBack, onCancel }) {
         </button>
       )}
       <button
+        type="button"
         onClick={onCancel}
-        className="absolute right-3 top-3 p-1.5 rounded-xl hover:bg-gray-100 transition-colors"
+        aria-label="Close"
+        className="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-full bg-red-500 text-white transition-colors hover:bg-red-600"
       >
-        <X className="w-4 h-4 text-gray-400" />
+        <X className="h-5 w-5" strokeWidth={2.25} />
       </button>
       <div className="w-10 h-10 bg-emerald-100 rounded-xl flex items-center justify-center mb-2">
         <WeighingScaleIcon className="w-5 h-5 text-emerald-600" />
       </div>
       <h2 className="text-sm font-bold text-gray-800">Weight</h2>
-      <p className="text-xs text-gray-400 mt-0.5">How much weight logged so far today</p>
+      <p className="text-xs text-gray-400 mt-0.5">Today’s Empty-Stomach Weight</p>
     </div>
   );
 }

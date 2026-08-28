@@ -16,6 +16,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, Camera, LogOut, Trash2, CheckCircle, Sparkles } from 'lucide-react';
 import { getUserContext } from '../../../shared/services/userIdentity';
+import * as Session from '../../../shared/services/sessionStorage';
 import {
   isAutoCameraOnResumeEnabled,
   setAutoCameraOnResumeEnabled,
@@ -36,10 +37,30 @@ import { EmojiOrNative } from '../../../shared/components/icons/EmojiImage';
 import { deriveWeightGoalMode } from '../../weight/services/weightFormService';
 import DeleteAccountModal from './DeleteAccountModal';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
+import ProfileTeamCodeSection from './profile/ProfileTeamCodeSection';
+import cacheManager from '../../../shared/services/cacheManager.js';
 
 const COLORS = ['bg-blue-500', 'bg-green-500', 'bg-purple-500', 'bg-pink-500', 'bg-indigo-500', 'bg-yellow-500', 'bg-red-500', 'bg-teal-500'];
 const colorOf = (name, email) => COLORS[(name || email || '').length % COLORS.length];
 const initialOf = (name, email) => (name || email || 'U').charAt(0).toUpperCase();
+
+/** Prefer any known account email — session `user.email` alone is often empty after phone OTP. */
+function resolveAccountEmail(user, formEmail) {
+  const otpUser = Session.getOtpUser();
+  const candidates = [
+    formEmail,
+    user?.email,
+    user?.Email,
+    otpUser?.email,
+    otpUser?.Email,
+    Session.getUserEmail(),
+  ];
+  for (const c of candidates) {
+    const v = String(c || '').trim();
+    if (v.includes('@')) return v;
+  }
+  return '';
+}
 
 const ROLE_LABELS = { admin: 'Admin', developer: 'Developer', coach: 'Coach', upline: 'Upline', user: 'Member' };
 
@@ -52,6 +73,9 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
   const [initialWeightDate, setInitialWeightDate] = useState(null);
   const [coachName, setCoachName] = useState('');
   const [idealCoachName, setIdealCoachName] = useState('');
+  const [teamId, setTeamId] = useState(null);
+  const [teamSeat, setTeamSeat] = useState(null);
+  const [canClaimTeamCode, setCanClaimTeamCode] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState('');
@@ -78,15 +102,21 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
     },
   });
 
+  const accountEmail = useMemo(
+    () => resolveAccountEmail(user, form.email),
+    [user, form.email],
+  );
+
   const loadProfile = useCallback(async () => {
-    if (!user?.email) {
+    const emailKey = resolveAccountEmail(user, form.email);
+    if (!emailKey) {
       setIsLoading(false);
       return;
     }
     setIsLoading(true);
     setError('');
     try {
-      const { data } = await fetchProfile(user.email);
+      const { data } = await fetchProfile(emailKey);
       const profileData = {
         name: data?.userName || user.name || '',
         height: data?.height ? String(data.height) : '',
@@ -100,7 +130,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
           ? String(data.latestWeightBodyFat)
           : (data?.bodyFat != null ? String(data.bodyFat) : ''),
         latestWeightBodyFat: data?.latestWeightBodyFat ?? null,
-        email: data?.email || user?.email || '',
+        email: data?.email || emailKey || '',
         communityId: data?.communityId != null ? String(data.communityId) : '',
         bodyMetrics: data?.bodyMetrics || null,
         recoveredHealthIssues: Array.isArray(data?.recoveredHealthIssues)
@@ -118,6 +148,9 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
           : '',
       );
       setIdealCoachName(data?.idealCoachName ? String(data.idealCoachName).trim() : '');
+      setTeamId(data?.teamId || null);
+      setTeamSeat(data?.teamSeat || null);
+      setCanClaimTeamCode(!!data?.canClaimTeamCode);
       if (data?.profileImage) setProfileImagePreview(data.profileImage);
       // Stop spinner as soon as core profile is ready — do not wait on counselling.
       setIsLoading(false);
@@ -134,7 +167,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
           counselling = await fetchMyAssessment(user.id);
         }
         if (!counselling) {
-          const phoneForLookup = profileData.phone || user?.phoneNumber || '';
+          const phoneForLookup = profileData.phone || user?.phoneNumber || user?.phone || '';
           if (phoneForLookup) {
             const lead = await fetchLeadByPhone(phoneForLookup);
             if (lead) {
@@ -160,10 +193,10 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
       setIsLoading(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: avoid re-fetch loops from form identity
-  }, [user?.email, user?.id, user?.name, user?.phoneNumber]);
+  }, [user?.email, user?.Email, user?.id, user?.name, user?.phoneNumber, user?.phone]);
 
   useEffect(() => {
-    if (user?.email) {
+    if (accountEmail) {
       setSuccessMessage('');
       setHasSaved(false);
       setError('');
@@ -174,7 +207,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
     }
     setIsLoading(false);
   // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: reload when identity changes
-  }, [user?.email, user?.id, loadProfile]);
+  }, [accountEmail, user?.id, loadProfile]);
 
   const handleSave = useCallback(async () => {
     setError('');
@@ -183,7 +216,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
     try {
       const err = form.validate({ requireDiet: false, maxHeight: 198 });
       if (err) { setError(err); return; }
-      const payload = form.payload(user.email, {
+      const payload = form.payload(accountEmail || user?.email || user?.Email, {
         ...(profileImage ? { profileImage } : {}),
       });
       // BMR is system-calculated on the profile page — never write it from this form.
@@ -207,7 +240,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
     } finally {
       setIsSaving(false);
     }
-  }, [form, profileImage, profileImagePreview, user, loadProfile, onProfileUpdate]);
+  }, [form, profileImage, profileImagePreview, user, accountEmail, loadProfile, onProfileUpdate]);
 
   handleSaveRef.current = handleSave;
 
@@ -269,8 +302,8 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
                 referrerPolicy="no-referrer"
               />
             ) : (
-              <div className={`w-full h-full flex items-center justify-center text-white font-bold text-3xl ${colorOf(form.name, user?.email)}`}>
-                {initialOf(form.name || user?.displayName || user?.name, user?.email)}
+              <div className={`w-full h-full flex items-center justify-center text-white font-bold text-3xl ${colorOf(form.name, accountEmail)}`}>
+                {initialOf(form.name || user?.displayName || user?.name, accountEmail)}
               </div>
             )}
             <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
@@ -286,7 +319,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
           />
           <div className="flex-1 min-w-0">
             <p className="text-xl font-bold text-white truncate">{displayName}</p>
-            <p className="text-sm text-green-100 truncate">{user?.email}</p>
+            <p className="text-sm text-green-100 truncate">{accountEmail || user?.email}</p>
             <div className="flex items-center gap-2 mt-1 flex-wrap">
               <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-green-100 text-green-900">
                 {role}
@@ -418,6 +451,26 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
           </TouchFeedbackButton>
         )}
 
+        {!isLoading && (
+          <ProfileTeamCodeSection
+            email={form.email || accountEmail}
+            userId={user?.id || user?.userId}
+            teamId={teamId}
+            teamSeat={teamSeat}
+            canClaimTeamCode={canClaimTeamCode}
+            onClaimed={({ teamId: claimedId, teamSeat: claimedSeat }) => {
+              setTeamId(claimedId || null);
+              setTeamSeat(claimedSeat || null);
+              setCanClaimTeamCode(false);
+              setSuccessMessage('Team Code saved');
+              const emailKey = (form.email || accountEmail || '').toLowerCase();
+              if (emailKey) {
+                cacheManager.clear(cacheManager.generateKey('userProfile', emailKey));
+              }
+            }}
+          />
+        )}
+
         {/* Settings Card */}
         <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
           <div className="px-4 py-3 border-b border-gray-100">
@@ -495,7 +548,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
       <DeleteAccountModal
         isOpen={showDeleteModal}
         onClose={() => setShowDeleteModal(false)}
-        userEmail={user?.email || ''}
+        userEmail={accountEmail}
         onSignOut={onSignOut}
         onAccountDeleted={() => {
           setShowDeleteModal(false);

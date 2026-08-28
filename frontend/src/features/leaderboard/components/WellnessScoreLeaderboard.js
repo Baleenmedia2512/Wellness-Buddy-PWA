@@ -19,14 +19,28 @@ import {
 import { subscribeDailyWellnessScoreSeed } from '../../wellness-score-sheet/services/dailyWellnessScoreCache';
 
 const CACHE_TTL = 5 * 60 * 1000;
-// v5: hierarchy-scoped Top 10 (per logged-in user)
-const CACHE_KEY_PREFIX = 'wv.lb.wellness.v5.';
+// v6: overlay chosen display name when DB still has user_<phone>
+const CACHE_KEY_PREFIX = 'wv.lb.wellness.v6.';
 const LEGACY_CACHE_KEYS = [
   'wv.lb.wellness',
   'wv.lb.wellness.v2',
   'wv.lb.wellness.v3',
   'wv.lb.wellness.v4',
+  'wv.lb.wellness.v5',
 ];
+
+function displayLeaderboardName(entry, viewerUserId, viewerName) {
+  const stored = String(entry?.userName || '').trim();
+  const isViewer = Number(entry?.userId) === Number(viewerUserId);
+  if (
+    isViewer
+    && hasValidProfileName(viewerName)
+    && isPlaceholderUserName(stored)
+  ) {
+    return String(viewerName).trim();
+  }
+  return stored || 'Unknown';
+}
 
 const cacheKeyFor = (userId) => `${CACHE_KEY_PREFIX}${userId || 'anon'}`;
 
@@ -183,7 +197,9 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, vi
     return null;
   }
 
-  const renderLeaderboardCard = (user, key) => (
+  const renderLeaderboardCard = (user, key) => {
+    const shownName = displayLeaderboardName(user, userId, viewerName);
+    return (
     <div
       key={key}
       className="inline-flex items-center gap-1.5 sm:gap-2 md:gap-3 mx-2 sm:mx-3 md:mx-4 flex-shrink-0"
@@ -204,14 +220,14 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, vi
           apiBaseUrl={apiBaseUrl}
           userId={user.userId}
           email={user.email}
-          userName={user.userName}
+          userName={shownName}
           profileImage={user.profileImage}
         />
       </div>
 
       <div className="flex flex-col justify-center flex-shrink-0 min-w-0 max-w-[120px] sm:max-w-[150px] md:max-w-[180px]">
         <span className="font-bold text-gray-800 text-xs sm:text-sm md:text-base truncate leading-tight">
-          {user.userName}
+          {shownName}
         </span>
         {(() => {
           const { sponsorName, idealCoachName } = resolveSponsorCoachNames(user);
@@ -235,7 +251,8 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, vi
         </span>
       </div>
     </div>
-  );
+    );
+  };
 
   return (
     <div

@@ -51,6 +51,12 @@ export const saveEmailIdentity = async ({ userId, email, name }) => {
   if (!res.ok || !data.success) {
     throw new Error(data.message || 'Failed to save. Please try again.');
   }
+  if (userId != null && userId !== '') {
+    cacheManager.clear(cacheManager.generateKey('userProfile', `id:${userId}`));
+  }
+  if (email) {
+    cacheManager.clear(cacheManager.generateKey('userProfile', String(email).toLowerCase()));
+  }
   return data;
 };
 

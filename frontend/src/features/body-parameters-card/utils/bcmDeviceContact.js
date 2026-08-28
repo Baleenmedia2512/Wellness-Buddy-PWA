@@ -6,7 +6,8 @@
  * Plugin has no updateContact — overwrite = delete prior BCM contact + create.
  * Only deletes contacts we created (stored id / note marker / BCM name pattern).
  *
- * Permission: prefer app-entry grant; else request on save; denial skips quietly.
+ * Permission: prefer app-entry grant; else request on save.
+ * If still denied → ask Enable / Don't need (+ optional Don't ask again).
  * Never blocks WhatsApp share.
  */
 import { Capacitor } from '@capacitor/core';
@@ -16,6 +17,11 @@ import { buildBcmContactDisplayName } from '../domain/bcmContactName.rules.js';
 import { normalizePhoneDigits, phonesMatch } from '../domain/bcmContactPhone.rules.js';
 import * as PermissionManager from '../../../shared/services/permissionManager.js';
 import BcmContacts from '../../../shared/plugins/bcmContactsPlugin.js';
+import {
+  isBcmContactsNeverAsk,
+  promptBcmContactsEnable,
+} from './bcmContactsEnablePrompt.js';
+
 
 export { buildBcmContactDisplayName, formatBcmContactDate } from '../domain/bcmContactName.rules.js';
 export { normalizePhoneDigits, phonesMatch } from '../domain/bcmContactPhone.rules.js';
@@ -104,8 +110,7 @@ function formatCreateContactError(err) {
 }
 
 /**
- * Best-effort OS prompt. Always call createContact afterward — native plugin
- * also requests permission when needed. Do not gate only on canRequest
+ * Best-effort OS prompt. Do not gate only on canRequest
  * (Android first-install often reports denied).
  */
 async function ensureContactsPermission() {
@@ -117,6 +122,34 @@ async function ensureContactsPermission() {
   if (granted || status === 'limited') return true;
   const { granted: nowGranted, status: nowStatus } = await PermissionManager.requestPermission('contacts');
   return Boolean(nowGranted || nowStatus === 'limited');
+}
+
+/**
+ * When Contacts is still denied: ask user to Enable (or Don't need / never ask).
+ * @returns {Promise<boolean>} true if permission is granted and save may proceed
+ */
+async function resolveContactsPermissionWithPrompt() {
+  if (isBcmContactsNeverAsk()) {
+    console.warn('[BCM contact] skipped — user chose Don\'t ask me again');
+    return false;
+  }
+
+  let allowed = await ensureContactsPermission();
+  if (allowed) return true;
+
+  const decision = await promptBcmContactsEnable();
+  if (decision.neverAsk || decision.action === 'dismiss') {
+    console.warn('[BCM contact] skipped — user declined Contacts enable', {
+      neverAsk: Boolean(decision.neverAsk),
+    });
+    return false;
+  }
+
+  if (decision.granted) return true;
+
+  // Enable path already tried request + Settings; re-check once more.
+  const { granted, status } = await PermissionManager.checkPermission('contacts');
+  return Boolean(granted || status === 'limited');
 }
 
 /**
@@ -207,12 +240,12 @@ export async function upsertBcmMemberToDeviceContacts(opts = {}) {
       return { ok: false, skipped: true, reason: 'plugin-missing' };
     }
 
-    // Prompt when possible; still attempt createContact (native re-requests).
-    const allowed = await ensureContactsPermission();
+    const allowed = await resolveContactsPermissionWithPrompt();
     if (!allowed) {
       console.warn(
-        '[BCM contact] Contacts not granted — enable in Settings → Wellness Valley → Contacts',
+        '[BCM contact] Contacts not granted — skipped save (user declined or never-ask)',
       );
+      return { ok: false, skipped: true, reason: 'permission' };
     }
 
     const existingIds = await findBcmContactIds(phone);

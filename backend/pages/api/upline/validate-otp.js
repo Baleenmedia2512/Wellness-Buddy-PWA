@@ -12,6 +12,10 @@ import {
 import { nowUtc } from '../../../shared/lib/datetime/index.js';
 import bcrypt from "bcryptjs";
 import logger from '../../../shared/lib/logger.js';
+import {
+  assignLeadSeat,
+  resolveMemberCoachTeamId,
+} from '../../../utils/coachTeamSeats.js';
 
 const MAX_OTP_ATTEMPTS = 5;
 
@@ -194,7 +198,7 @@ export default async function handler(req, res) {
 
     // OTP is valid! Complete setup
 
-    // Get requester's TeamId (now optional)
+    // Get requester's TeamId (optional lead claim)
     const { data: requesterData, error: requesterDataError } = await supabase
       .from("team_table")
       .select("TeamId")
@@ -202,96 +206,49 @@ export default async function handler(req, res) {
 
     if (requesterDataError) throw requesterDataError;
 
-    const requesterTeamId = requesterData[0]?.TeamId;
+    let requesterTeamId = requesterData[0]?.TeamId || null;
+    let teamSeat = null;
 
     logger.debug(`📊 [validate-otp] Requester TeamId: ${requesterTeamId || 'none'}`);
 
-    // STEP 1: Update coach_teams_table ONLY if user has a TeamId
-    // This is now optional - users can complete account activation without Team ID
+    // STEP 1: Race-safe Sponsor / Co-Sponsor seat if user claimed a TeamId
     if (requesterTeamId) {
-      logger.debug(`🔍 [validate-otp] Checking coach_teams_table for TeamId: ${requesterTeamId}`);
-      // Check if TeamId exists in coach_teams_table (including inactive)
-      const { data: existingTeam, error: existingTeamError } = await supabase
-        .from("coach_teams_table")
-        .select("TeamId, CoachId, CoCoachId, Status")
-        .eq("TeamId", requesterTeamId);
-
-      if (existingTeamError) throw existingTeamError;
-
-      if (existingTeam && existingTeam.length > 0) {
-        const team = existingTeam[0];
-
-        if (team.Status === "active") {
-          // Team is active, add requester as CoCoachId if slot available
-          if (!team.CoCoachId) {
-            const updateTime = nowUtc();
-            const { error: coCoachUpdateError } = await supabase
-              .from("coach_teams_table")
-              .update({ CoCoachId: requesterId, UpdatedAt: updateTime })
-              .eq("TeamId", requesterTeamId)
-              .eq("Status", "active");
-            
-            if (coCoachUpdateError) {
-              console.error("❌ Error adding co-coach to team:", coCoachUpdateError);
-              throw coCoachUpdateError;
-            }
-            logger.debug("✅ Added as co-coach to team:", requesterTeamId);
-          }
-        } else {
-          // Team is inactive, reactivate with requester as primary coach
-          const updateTime = nowUtc();
-          const { error: reactivateError } = await supabase
-            .from("coach_teams_table")
-            .update({
-              CoachId: requesterId,
-              CoCoachId: null,
-              Status: "active",
-              UpdatedAt: updateTime,
-            })
-            .eq("TeamId", requesterTeamId);
-          
-          if (reactivateError) {
-            console.error("❌ Error reactivating team:", reactivateError);
-            throw reactivateError;
-          }
-          logger.debug("✅ Reactivated team:", requesterTeamId);
-        }
+      const seatResult = await assignLeadSeat(supabase, requesterTeamId, requesterId);
+      if (!seatResult.ok) {
+        logger.warn('[validate-otp] Lead seat unavailable; clearing TeamId and continuing as member', {
+          requesterId,
+          teamId: requesterTeamId,
+          error: seatResult.error,
+        });
+        const { error: clearTeamError } = await supabase
+          .from('team_table')
+          .update({ TeamId: null })
+          .eq('UserId', requesterId);
+        if (clearTeamError) throw clearTeamError;
+        requesterTeamId = null;
+        teamSeat = null;
       } else {
-        // Create new entry with requester as primary coach
-        const { error: insertError } = await supabase
-          .from("coach_teams_table")
-          .insert([
-            { 
-              TeamId: requesterTeamId, 
-              CoachId: requesterId, 
-              CoCoachId: null, // Explicitly set to NULL (no co-coach yet)
-              Status: "active" 
-            },
-          ]);
-        
-        if (insertError) {
-          console.error("❌ Error creating coach_teams_table entry:", insertError);
-          throw insertError;
-        }
-        logger.debug("✅ Created coach_teams_table entry for team:", requesterTeamId);
+        teamSeat = seatResult.seat;
+        logger.debug('✅ Lead seat assigned:', { teamId: requesterTeamId, seat: teamSeat });
       }
     } else {
-      logger.debug("ℹ️ User has no TeamId, skipping coach_teams_table creation");
+      logger.debug('ℹ️ User has no TeamId, skipping coach_teams_table creation');
     }
 
-    // STEP 2: Get coach's team details
+    // STEP 2: Guide details — inherit shared CoachTeamId when member skipped Team Code
     const { data: coachData, error: coachDataError } = await supabase
       .from("team_table")
-      .select("TeamId")
+      .select("TeamId, CoachTeamId")
       .eq("UserId", request.UplineCoachId);
 
     if (coachDataError) throw coachDataError;
 
-    const coachTeamId = coachData[0]?.TeamId; // Coach's business team code (e.g., "ABC123")
-    
-    // TEMPORARY: Store TeamId string until database migration is complete
-    // TODO(#0): After migrating CoachTeamId column to integer, store coach_teams_table.id instead
-    let coachTeamIdValue = coachTeamId; // For now, store the TeamId string
+    // Lead claim → own TeamId. Skip → guide CoachTeamId (fallback guide TeamId).
+    // TEMPORARY: CoachTeamId stores TeamId string until integer FK migration.
+    const coachTeamIdValue = resolveMemberCoachTeamId({
+      claimedTeamId: requesterTeamId,
+      guide: coachData?.[0] || null,
+    });
 
     // STEP 3: NOW update team_table
     // Store CoachId, CoachTeamId and reactivate user if they were Inactive.
@@ -357,6 +314,8 @@ export default async function handler(req, res) {
         name: coachDetails[0]?.UserName,
         email: coachDetails[0]?.Email,
       },
+      teamSeat: teamSeat || null,
+      coachTeamId: coachTeamIdValue || null,
       redirectTo: "/dashboard",
     });
     return;

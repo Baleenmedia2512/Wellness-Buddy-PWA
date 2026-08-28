@@ -385,7 +385,7 @@ const SmartFoodSearchModal = ({
         type="text"
         value={searchQuery}
         onChange={(e) => setSearchQuery(e.target.value)}
-        placeholder={catalogMode ? "Search dry salad…" : "Search for food..."}
+        placeholder={catalogMode ? "Search target nutrition…" : "Search for food..."}
         className="w-full pl-9 pr-10 py-3 border-2 border-gray-200 focus:border-green-500 rounded-xl outline-none text-sm bg-white transition-colors"
         style={{ fontSize: "16px" }}
       />
@@ -442,7 +442,7 @@ const SmartFoodSearchModal = ({
             </svg>
           </button>
           <h1 className="flex-1 text-center text-base font-bold text-gray-900 pr-8">
-            {catalogMode ? (headerTitle || "Dry Salad") : "Add Food"}
+            {catalogMode ? (headerTitle || "Target Nutrition") : "Add Food"}
           </h1>
         </div>
 
@@ -498,7 +498,7 @@ const SmartFoodSearchModal = ({
               {(catalogRows.length > 0) && (
                 <div>
                   <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5 px-1">
-                    {catalogMode ? "Dry Salad catalog" : "Nutrition library"}
+                    {catalogMode ? "Target Nutrition catalog" : "Nutrition library"}
                   </p>
                   <div className="space-y-1.5">
                     {renderFoodRows(catalogRows, "master", true)}
@@ -748,7 +748,7 @@ const SmartFoodSearchModal = ({
                   {catalogRows.length > 0 && (
                     <div>
                       <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5 px-1">
-                        {catalogMode ? "Dry Salad catalog" : "Nutrition library"}
+                        {catalogMode ? "Target Nutrition catalog" : "Nutrition library"}
                       </p>
                       <div className="space-y-1.5">{renderFoodRows(catalogRows, "master", false)}</div>
                     </div>
@@ -813,9 +813,12 @@ const FoodItemRow = ({ item, selected, onToggle, mealBuilder = false }) => {
   const portion = item.portion || item.portion_label;
   if (mealBuilder) {
     return (
-      <div
+      <button
+        type="button"
+        onClick={() => onToggle(item)}
+        aria-label={selected ? `Remove ${item.name}` : `Add ${item.name}`}
         className={`w-full flex items-center gap-3 rounded-xl px-3 py-2.5 border-2 transition-colors text-left ${
-          selected ? "bg-green-50 border-green-500" : "bg-white border-gray-200"
+          selected ? "bg-green-50 border-green-500" : "bg-white border-gray-200 hover:border-green-300"
         }`}
       >
         <div className="flex-1 min-w-0">
@@ -826,19 +829,17 @@ const FoodItemRow = ({ item, selected, onToggle, mealBuilder = false }) => {
             {item.protein ? ` · ${item.protein}g protein` : ""}
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => onToggle(item)}
-          aria-label={selected ? `Remove ${item.name}` : `Add ${item.name}`}
-          className={`flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center font-bold text-lg transition-colors ${
+        <span
+          aria-hidden="true"
+          className={`flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center font-bold text-lg ${
             selected
               ? "bg-green-600 text-white"
-              : "bg-green-50 text-green-700 border-2 border-green-300 hover:bg-green-100"
+              : "bg-green-50 text-green-700 border-2 border-green-300"
           }`}
         >
           {selected ? <Check className="w-4 h-4" /> : "+"}
-        </button>
-      </div>
+        </span>
+      </button>
     );
   }
 

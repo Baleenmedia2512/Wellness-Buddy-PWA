@@ -245,6 +245,7 @@ import TouchFeedbackButton from "./shared/components/TouchFeedbackButton";
 import LocationGuard from "./shared/components/LocationGuard";
 import AdminFab from "./shared/components/AdminFab";
 import { isAdminLikeRole } from "./shared/constants/roles";
+import { canAccessReportsModule } from "./features/reports/domain/reportsAccess.rules.js";
 import { DIARY_ANALYZING_POLL_MS } from "./shared/constants/limits";
 
 // ? PERFORMANCE: Lazy-load leaderboards ? they fire API calls on mount and are below the fold
@@ -533,6 +534,8 @@ function WellnessValleyApp() {
   // can be reconstructed from a single log dump.
   const captureFlowStartRef = useRef(0);
   const foodShareImageReadyAtRef = useRef(0);
+  /** When AI food lands on Home NutritionCard, onBack must not clear the preview. */
+  const keepHomeFoodPreviewRef = useRef(false);
 
   // Refs for analysis results - used by resume listener to check if results are visible
   // without closure staleness issues (the effect is mount-only with [] deps).
@@ -992,9 +995,16 @@ function WellnessValleyApp() {
   const [showActivityTimeReport, setShowActivityTimeReport] = useState(false);
   // Testimonials page � member upload + coach verification
   const [showTestimonials, setShowTestimonials] = useState(false);
-  // Reports page � coach/upline analytics (downline weight status, etc.)
+  // Reports page — coach/upline analytics (downline weight status, etc.)
   const [showReports, setShowReports] = useState(false);
   const [reportsDashboardTab, setReportsDashboardTab] = useState(REPORT_DASHBOARD_TABS.IDEAL_WEIGHT);
+
+  // Drop Reports overlay if role is not allowed (e.g. leaf member / role load race).
+  useEffect(() => {
+    if (showReports && !canAccessReportsModule(userRole)) {
+      setShowReports(false);
+    }
+  }, [showReports, userRole]);
   const [showWellnessScore, setShowWellnessScore] = useState(false);
   const [showWellnessScoreSetup, setShowWellnessScoreSetup] = useState(false);
   /** Remount key so each open picks up the Home date-range selection cleanly. */
@@ -1125,6 +1135,9 @@ function WellnessValleyApp() {
         startTransition(() => setShowTestimonials(true));
         Session.setCurrentPage('main');
       } else if (page === 'reports' || page === 'wellness-score-report') {
+        if (!isFlagEnabled('ff.reports-module') || !canAccessReportsModule(userRole)) {
+          return;
+        }
         bumpTabVisitKeyRef.current('reports');
         setReportsDashboardTab(
           page === 'wellness-score-report'
@@ -1307,7 +1320,7 @@ function WellnessValleyApp() {
 
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: fire on user/auth change
-  }, [user?.id, user?.email, user?.userName, user?.username, isOtpVerified, apiBaseUrl]);
+  }, [user?.id, user?.email, isOtpVerified, apiBaseUrl, apiBaseUrl]);
 
   // Force-close Profile only for visible onboarding wizards — not soft resolve flaps
   // (those used to set showProfilePage then immediately clear it → "stuck on Home").
@@ -2621,13 +2634,17 @@ function WellnessValleyApp() {
         setShowTestimonials(true);
         break;
       case 'reports':
-        setReportsDashboardTab(REPORT_DASHBOARD_TABS.IDEAL_WEIGHT);
-        setShowReports(true);
+        if (isFlagEnabled('ff.reports-module') && canAccessReportsModule(userRole)) {
+          setReportsDashboardTab(REPORT_DASHBOARD_TABS.IDEAL_WEIGHT);
+          setShowReports(true);
+        }
         break;
       case 'wellness-score-report':
         // Legacy history key → Reports Dashboard / Wellness Score tab
-        setReportsDashboardTab(REPORT_DASHBOARD_TABS.WELLNESS_SCORE);
-        setShowReports(true);
+        if (isFlagEnabled('ff.reports-module') && canAccessReportsModule(userRole)) {
+          setReportsDashboardTab(REPORT_DASHBOARD_TABS.WELLNESS_SCORE);
+          setShowReports(true);
+        }
         break;
       case 'profile':
         setShowProfilePage(true);
@@ -3797,6 +3814,7 @@ function WellnessValleyApp() {
           // all typed input (height, phone, diet, selected photo).
           if (_profileGateActiveRef.current) return;
           const userEmail = user.email || user.Email;
+          const uid = user.id || user.UserId || user.userId || Session.getDbUserId();
           if (userEmail) {
             debugLog(
               "?? [Foreground] App resumed ? running immediate profile check",
@@ -7773,6 +7791,7 @@ function WellnessValleyApp() {
           key={manualEntryPayload.clientKey || manualEntryPayload.captureId}
           userId={manualEntryPayload.userId}
           userEmail={user?.email || user?.Email || null}
+          userName={user?.userName || user?.username || user?.name || null}
           apiBaseUrl={apiBaseUrl}
           captureId={manualEntryPayload.captureId}
           imageBase64={manualEntryPayload.imageBase64}
@@ -7789,7 +7808,11 @@ function WellnessValleyApp() {
             setCaptureFlowBusy(false);
             setShowManualEntry(false);
             setManualEntryPayload(null);
-            setImagePreview(null);
+            // Keep preview when AI food result is shown on Home NutritionCard.
+            if (!keepHomeFoodPreviewRef.current) {
+              setImagePreview(null);
+            }
+            keepHomeFoodPreviewRef.current = false;
             setShowDashboard(false);
             Session.setCurrentPage('main');
             // Always land on Home — history.back() can pop to a stale Diary entry.
@@ -7800,6 +7823,24 @@ function WellnessValleyApp() {
             // Do NOT refresh score here — ManualEntryPage refreshes after DB promote/save
             // so Home + sheet do not lock in a pre-save total.
             const image = shareMeta?.shareImage || manualEntryPayload?.imageBase64;
+            if (shareMeta?.aiHomeResult?.cardData) {
+              keepHomeFoodPreviewRef.current = true;
+              const {
+                cardData,
+                imageBase64: aiImage,
+                mealId,
+                foodNames,
+              } = shareMeta.aiHomeResult;
+              setNutritionData(cardData);
+              setImageType('food');
+              setImagePreview(aiImage || image);
+              setSelectedImage(null);
+              setSavedNutritionMealId(mealId || null);
+              setDetectedFoodNames(
+                Array.isArray(foodNames) ? foodNames : [],
+              );
+              processedImageRef.current = aiImage || image || null;
+            }
             void shareCaptureAfterClassify(image, {
               activityCaption: shareMeta?.activityCaption || null,
             });
@@ -7862,7 +7903,11 @@ function WellnessValleyApp() {
         />
       </Suspense>
     );
-  } else if (showReports && isFlagEnabled('ff.reports-module')) {
+  } else if (
+    showReports
+    && isFlagEnabled('ff.reports-module')
+    && canAccessReportsModule(userRole)
+  ) {
     homeOverlay = (
       <div className="ios-full-page bg-gray-50">
         <Header

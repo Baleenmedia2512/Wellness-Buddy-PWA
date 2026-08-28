@@ -69,18 +69,12 @@ function ManualWeightEntryForm({
                 )}
               </div>
             </div>
-            <div className="flex items-center gap-2 px-4 py-3 border-t border-gray-200 bg-gray-50">
+            <div className="px-4 py-3 border-t border-gray-200 bg-gray-50">
               <button
-                onClick={vm.handleCancel}
-                disabled={vm.isSaving}
-                className="flex-1 px-4 py-2.5 border-2 border-gray-300 text-gray-700 rounded-xl text-sm font-semibold hover:bg-white transition-colors disabled:opacity-50"
-              >
-                Cancel
-              </button>
-              <button
+                type="button"
                 onClick={vm.handleSave}
                 disabled={!vm.canSubmit}
-                className="flex-1 px-4 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-semibold hover:bg-emerald-700 active:bg-emerald-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full px-4 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-semibold hover:bg-emerald-700 active:bg-emerald-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {vm.isSaving ? (
                   <span className="flex items-center justify-center gap-1.5">
@@ -88,7 +82,7 @@ function ManualWeightEntryForm({
                     Saving...
                   </span>
                 ) : (
-                  'Save Weight'
+                  'Save'
                 )}
               </button>
             </div>
