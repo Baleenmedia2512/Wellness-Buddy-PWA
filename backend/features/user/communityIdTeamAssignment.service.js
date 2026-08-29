@@ -17,6 +17,7 @@ import {
   shouldApplySharedCoachTeamId,
   shouldBackfillCoachTeamIdFromCommunityId,
   shouldClaimLeadSeatOnExplicitCommunityIdUpdate,
+  shouldEnsureCoachTeamRowOnCommunityIdSync,
   teamAssignmentFieldsNeedUpdate,
 } from './domain/communityIdTeamAssignment.rules.js';
 
@@ -188,6 +189,7 @@ async function syncAllTeamFieldsFromExplicitCommunityIdUpdate(
   inputCode,
   teamRow,
   leadSeat,
+  { communityIdExplicitlyUpdated = false } = {},
 ) {
   const supabase = getSupabaseClient();
   const resolved = await resolveSharedTeamCodeFromInput(supabase, inputCode, userId);
@@ -205,10 +207,14 @@ async function syncAllTeamFieldsFromExplicitCommunityIdUpdate(
   });
 
   let resolvedSeat = leadSeat.seat || null;
-  if (needsUpdate && shouldClaimLeadSeatOnExplicitCommunityIdUpdate({
+  const ensureCoachTeamRow = shouldEnsureCoachTeamRowOnCommunityIdSync({
     role: teamRow.Role,
     teamSeat: leadSeat.seat,
-  })) {
+    resolvedFound: resolved.found,
+    communityIdExplicitlyUpdated,
+  });
+
+  if (ensureCoachTeamRow) {
     const seatResult = await assignLeadSeat(supabase, targetCode, Number(userId));
     if (!seatResult.ok) {
       throw new Error(seatResult.error || 'This Community ID is unavailable as a Team Code');
@@ -238,6 +244,8 @@ async function syncAllTeamFieldsFromExplicitCommunityIdUpdate(
     communityId: targetCode,
     teamId: targetCode,
     coachTeamId: targetCode,
+    coachTeamRowEnsured: ensureCoachTeamRow,
+    teamSeat: resolvedSeat,
     resolvedFromExistingTeam: resolved.found,
   });
 
@@ -280,6 +288,7 @@ export async function syncProfileCommunityIdToTeamAssignment(
       code,
       teamRow,
       leadSeat,
+      { communityIdExplicitlyUpdated },
     );
   }
 

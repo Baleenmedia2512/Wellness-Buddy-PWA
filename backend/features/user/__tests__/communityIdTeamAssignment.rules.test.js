@@ -12,6 +12,8 @@ import {
   shouldApplySharedCoachTeamId,
   shouldBackfillCoachTeamIdFromCommunityId,
   shouldClaimLeadSeatOnExplicitCommunityIdUpdate,
+  shouldEnsureCoachTeamRowOnCommunityIdSync,
+  shouldRegisterCoachTeamForCommunityId,
   teamAssignmentFieldsNeedUpdate,
 } from '../domain/communityIdTeamAssignment.rules.js';
 
@@ -221,6 +223,42 @@ describe('shouldAlignAllTeamFieldsFromCommunityId', () => {
         communityIdExplicitlyUpdated: false,
       }),
       false,
+    );
+  });
+});
+
+describe('shouldRegisterCoachTeamForCommunityId', () => {
+  it('registers new team code on explicit profile save', () => {
+    assert.equal(
+      shouldRegisterCoachTeamForCommunityId({
+        resolvedFound: false,
+        communityIdExplicitlyUpdated: true,
+      }),
+      true,
+    );
+  });
+
+  it('skips when joining an existing registered team', () => {
+    assert.equal(
+      shouldRegisterCoachTeamForCommunityId({
+        resolvedFound: true,
+        communityIdExplicitlyUpdated: true,
+      }),
+      false,
+    );
+  });
+});
+
+describe('shouldEnsureCoachTeamRowOnCommunityIdSync', () => {
+  it('allows admin to register a new team code from profile', () => {
+    assert.equal(
+      shouldEnsureCoachTeamRowOnCommunityIdSync({
+        role: 'admin',
+        teamSeat: null,
+        resolvedFound: false,
+        communityIdExplicitlyUpdated: true,
+      }),
+      true,
     );
   });
 });

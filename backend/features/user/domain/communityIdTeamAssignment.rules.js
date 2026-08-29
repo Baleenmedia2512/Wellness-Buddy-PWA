@@ -118,6 +118,38 @@ export function shouldClaimLeadSeatOnExplicitCommunityIdUpdate({
 }
 
 /**
+ * Register coach_teams_table when profile Community ID is a new team code (not joining an existing team).
+ *
+ * @param {{ resolvedFound?: boolean, communityIdExplicitlyUpdated?: boolean }} args
+ * @returns {boolean}
+ */
+export function shouldRegisterCoachTeamForCommunityId({
+  resolvedFound = false,
+  communityIdExplicitlyUpdated = false,
+} = {}) {
+  if (!communityIdExplicitlyUpdated) return false;
+  return !resolvedFound;
+}
+
+/**
+ * Whether assignLeadSeat should run during profile Community ID sync.
+ *
+ * @param {{ role?: string|null, teamSeat?: string|null, resolvedFound?: boolean, communityIdExplicitlyUpdated?: boolean }} args
+ * @returns {boolean}
+ */
+export function shouldEnsureCoachTeamRowOnCommunityIdSync({
+  role = null,
+  teamSeat = null,
+  resolvedFound = false,
+  communityIdExplicitlyUpdated = false,
+} = {}) {
+  if (shouldRegisterCoachTeamForCommunityId({ resolvedFound, communityIdExplicitlyUpdated })) {
+    return true;
+  }
+  return shouldClaimLeadSeatOnExplicitCommunityIdUpdate({ role, teamSeat });
+}
+
+/**
  * Profile save payload for team_table when Community ID is included.
  * Cleared Community ID updates display only; team codes are left unchanged.
  *
