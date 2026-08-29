@@ -23,11 +23,13 @@ const TEAM_LINK_ERROR = 'This Community ID is not linked to a Sponsor/Co-Sponsor
  *
  * @param {object} supabase
  * @param {string|null|undefined} rawCode
+ * @param {number|string|null} [excludeUserId]
  * @returns {Promise<{ found: boolean, teamCode: string|null }>}
  */
-export async function resolveSharedTeamCodeFromInput(supabase, rawCode) {
+export async function resolveSharedTeamCodeFromInput(supabase, rawCode, excludeUserId = null) {
   const code = normalizeTeamCodeFromCommunityId(rawCode);
   if (!code) return { found: false, teamCode: null };
+  const excludeId = excludeUserId != null ? Number(excludeUserId) : null;
 
   const { data: activeTeam, error: activeErr } = await supabase
     .from('coach_teams_table')
@@ -42,22 +44,24 @@ export async function resolveSharedTeamCodeFromInput(supabase, rawCode) {
 
   const { data: teamIdRows, error: teamIdErr } = await supabase
     .from('team_table')
-    .select('TeamId, CoachTeamId')
+    .select('UserId, TeamId, CoachTeamId')
     .eq('TeamId', code)
     .limit(5);
   if (teamIdErr) throw teamIdErr;
   for (const row of teamIdRows || []) {
+    if (Number.isFinite(excludeId) && Number(row.UserId) === excludeId) continue;
     const shared = normalizeStoredTeamCode(row.CoachTeamId || row.TeamId);
     if (shared) return { found: true, teamCode: shared };
   }
 
   const { data: communityRows, error: communityErr } = await supabase
     .from('team_table')
-    .select('TeamId, CoachTeamId, CommunityId')
+    .select('UserId, TeamId, CoachTeamId, CommunityId')
     .eq('CommunityId', code)
     .limit(10);
   if (communityErr) throw communityErr;
   for (const row of communityRows || []) {
+    if (Number.isFinite(excludeId) && Number(row.UserId) === excludeId) continue;
     const shared = normalizeStoredTeamCode(row.CoachTeamId || row.TeamId);
     if (shared) return { found: true, teamCode: shared };
   }
@@ -117,13 +121,13 @@ async function syncSharedCoachTeamIdFromCommunityId(
   communityIdSource,
   teamRow,
   leadSeat,
-  { requireResolvableTeam = false } = {},
+  { requireResolvableTeam = false, allowTeamSwitch = false } = {},
 ) {
   const inputCode = normalizeTeamCodeFromCommunityId(communityIdSource);
   if (!inputCode) return null;
 
   const supabase = getSupabaseClient();
-  const resolved = await resolveSharedTeamCodeFromInput(supabase, inputCode);
+  const resolved = await resolveSharedTeamCodeFromInput(supabase, inputCode, userId);
 
   if (!shouldApplySharedCoachTeamId({
     role: teamRow.Role,
@@ -131,6 +135,8 @@ async function syncSharedCoachTeamIdFromCommunityId(
     teamSeat: leadSeat.seat,
     communityId: inputCode,
     resolvedTeamCode: resolved.found ? resolved.teamCode : null,
+    coachTeamId: teamRow.CoachTeamId,
+    allowTeamSwitch,
   })) {
     if (requireResolvableTeam && !resolved.found) {
       throw new Error(TEAM_LINK_ERROR);
@@ -212,6 +218,9 @@ export async function syncProfileCommunityIdToTeamAssignment(
     code,
     teamRow,
     leadSeat,
-    { requireResolvableTeam: communityIdExplicitlyUpdated },
+    {
+      requireResolvableTeam: communityIdExplicitlyUpdated,
+      allowTeamSwitch: communityIdExplicitlyUpdated,
+    },
   );
 }

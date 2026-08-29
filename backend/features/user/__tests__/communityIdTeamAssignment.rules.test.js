@@ -93,4 +93,19 @@ describe('shouldApplySharedCoachTeamId', () => {
       false,
     );
   });
+
+  it('allows explicit team switch even with lead seat', () => {
+    assert.equal(
+      shouldApplySharedCoachTeamId({
+        role: 'admin',
+        teamId: 'TEAMA',
+        teamSeat: 'sponsor',
+        communityId: 'TEAMB',
+        resolvedTeamCode: 'TEAMB',
+        coachTeamId: 'TEAMA',
+        allowTeamSwitch: true,
+      }),
+      true,
+    );
+  });
 });

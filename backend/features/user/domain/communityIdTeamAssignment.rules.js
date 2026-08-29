@@ -22,7 +22,7 @@ export function normalizeStoredTeamCode(value) {
 /**
  * Member (or non-lead-claim) should inherit CoachTeamId from a resolved shared team code.
  *
- * @param {{ role?: string|null, teamId?: string|null, teamSeat?: string|null, communityId?: string|null, resolvedTeamCode?: string|null }} args
+ * @param {{ role?: string|null, teamId?: string|null, teamSeat?: string|null, communityId?: string|null, resolvedTeamCode?: string|null, coachTeamId?: string|null, allowTeamSwitch?: boolean }} args
  * @returns {boolean}
  */
 export function shouldApplySharedCoachTeamId({
@@ -31,6 +31,8 @@ export function shouldApplySharedCoachTeamId({
   teamSeat = null,
   communityId = null,
   resolvedTeamCode = null,
+  coachTeamId = null,
+  allowTeamSwitch = false,
 } = {}) {
   if (resolveCoachTeamCodeToSync({
     role,
@@ -40,10 +42,16 @@ export function shouldApplySharedCoachTeamId({
   })) {
     return false;
   }
-  if (teamSeat) return false;
   const input = normalizeTeamCodeFromCommunityId(communityId);
   const resolved = normalizeStoredTeamCode(resolvedTeamCode);
-  return !!(input && resolved);
+  if (!input || !resolved) return false;
+
+  if (allowTeamSwitch && coachTeamIdNeedsUpdate({ coachTeamId, resolvedTeamCode: resolved })) {
+    return true;
+  }
+
+  if (teamSeat) return false;
+  return true;
 }
 
 /**
