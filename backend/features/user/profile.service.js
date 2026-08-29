@@ -540,11 +540,12 @@ export async function updateProfile(input) {
   let teamCodeSync = null;
   try {
     const teamRow = await repo.getTeamCodeFields(userId);
-    const communityForSync = savedCommunityId !== undefined
-      ? savedCommunityId
+    const communityIdInRequest = communityId !== undefined;
+    const communityForSync = communityIdInRequest
+      ? communityId
       : (teamRow?.CommunityId ?? null);
     teamCodeSync = await syncProfileCommunityIdToTeamAssignment(userId, communityForSync, {
-      communityIdExplicitlyUpdated: savedCommunityId !== undefined,
+      communityIdExplicitlyUpdated: communityIdInRequest,
     });
   } catch (syncErr) {
     logger.error('[profile/update] Community ID team assignment failed', {

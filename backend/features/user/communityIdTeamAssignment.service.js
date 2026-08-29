@@ -13,6 +13,7 @@ import {
   normalizeTeamCodeFromCommunityId,
   resolveCoachTeamCodeToSync,
   resolveTargetTeamCodeFromExplicitCommunityIdUpdate,
+  shouldAlignAllTeamFieldsFromCommunityId,
   shouldApplySharedCoachTeamId,
   shouldBackfillCoachTeamIdFromCommunityId,
   shouldClaimLeadSeatOnExplicitCommunityIdUpdate,
@@ -268,7 +269,12 @@ export async function syncProfileCommunityIdToTeamAssignment(
   const leadSeat = await resolveLeadSeatForUser(supabase, userId);
 
   const code = normalizeTeamCodeFromCommunityId(communityIdSource);
-  if (communityIdExplicitlyUpdated && code) {
+  if (code && shouldAlignAllTeamFieldsFromCommunityId({
+    communityId: code,
+    teamId: teamRow.TeamId,
+    coachTeamId: teamRow.CoachTeamId,
+    communityIdExplicitlyUpdated,
+  })) {
     return syncAllTeamFieldsFromExplicitCommunityIdUpdate(
       userId,
       code,

@@ -118,6 +118,27 @@ export function shouldClaimLeadSeatOnExplicitCommunityIdUpdate({
 }
 
 /**
+ * Keep CommunityId, TeamId, and CoachTeamId aligned from profile Community ID.
+ *
+ * @param {{ communityId?: string|null, teamId?: string|null, coachTeamId?: string|null, communityIdExplicitlyUpdated?: boolean }} args
+ * @returns {boolean}
+ */
+export function shouldAlignAllTeamFieldsFromCommunityId({
+  communityId = null,
+  teamId = null,
+  coachTeamId = null,
+  communityIdExplicitlyUpdated = false,
+} = {}) {
+  const code = normalizeTeamCodeFromCommunityId(communityId);
+  if (!code) return false;
+  if (communityIdExplicitlyUpdated) return true;
+  const currentTeamId = normalizeStoredTeamCode(teamId);
+  const currentCoachTeamId = normalizeStoredTeamCode(coachTeamId);
+  if (!currentTeamId || !currentCoachTeamId) return true;
+  return currentTeamId !== code || currentCoachTeamId !== code;
+}
+
+/**
  * Backfill CoachTeamId from stored CommunityId when team link was never created.
  *
  * @param {{ communityId?: string|null, coachTeamId?: string|null, teamCode?: string|null }} args

@@ -7,6 +7,7 @@ import {
   coachTeamIdNeedsUpdate,
   normalizeStoredTeamCode,
   resolveTargetTeamCodeFromExplicitCommunityIdUpdate,
+  shouldAlignAllTeamFieldsFromCommunityId,
   shouldApplySharedCoachTeamId,
   shouldBackfillCoachTeamIdFromCommunityId,
   shouldClaimLeadSeatOnExplicitCommunityIdUpdate,
@@ -155,6 +156,44 @@ describe('teamAssignmentFieldsNeedUpdate', () => {
         teamId: 'TEAM123',
         coachTeamId: 'TEAM123',
         targetCode: 'team123',
+      }),
+      false,
+    );
+  });
+});
+
+describe('shouldAlignAllTeamFieldsFromCommunityId', () => {
+  it('aligns when TeamId or CoachTeamId missing but CommunityId exists', () => {
+    assert.equal(
+      shouldAlignAllTeamFieldsFromCommunityId({
+        communityId: 'YASHEER123W1',
+        teamId: null,
+        coachTeamId: null,
+        communityIdExplicitlyUpdated: false,
+      }),
+      true,
+    );
+  });
+
+  it('aligns on explicit profile Community ID save', () => {
+    assert.equal(
+      shouldAlignAllTeamFieldsFromCommunityId({
+        communityId: 'YASHEER123W1',
+        teamId: 'YASHEER123W1',
+        coachTeamId: 'YASHEER123W1',
+        communityIdExplicitlyUpdated: true,
+      }),
+      true,
+    );
+  });
+
+  it('skips when all three fields already match', () => {
+    assert.equal(
+      shouldAlignAllTeamFieldsFromCommunityId({
+        communityId: 'YASHEER123W1',
+        teamId: 'yasheer123w1',
+        coachTeamId: 'YASHEER123W1',
+        communityIdExplicitlyUpdated: false,
       }),
       false,
     );
