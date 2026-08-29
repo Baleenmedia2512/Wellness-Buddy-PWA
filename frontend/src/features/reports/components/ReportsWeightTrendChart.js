@@ -7,9 +7,10 @@ import { formatCustomRangeLabel } from '../../../shared/domain/reportDateRanges'
 import {
   buildChartGeometry,
   buildRecordedTrendSeries,
+  computeTrendChartRenderWidth,
   getFirstAndLatestRecordedValue,
   getRecordedSeriesAxisBounds,
-  isSmallChartDevice,
+  getTrendRangeBounds,
   REPORTS_WEIGHT_TREND_RANGES,
   WEIGHT_TREND_RANGE_CUSTOM,
 } from '../../weight';
@@ -35,6 +36,11 @@ const RANGE_SHORT_LABEL = {
 
 const TOOLTIP_EDGE_PAD = 8;
 const TOOLTIP_HALF_WIDTH = 52;
+/** viewBox min-y; must match the `-24` in the SVG viewBox string. */
+const SVG_VIEW_TOP_PAD = 24;
+/** Space below chartHeight for date labels (viewBox min-y + this + label offset). */
+const SVG_DATE_TAIL_HEIGHT = 52;
+const DATE_LABEL_Y_OFFSET = 18;
 
 function clampTooltipX(rawX, containerWidth) {
   const width = Number.isFinite(containerWidth) && containerWidth > 0
@@ -90,7 +96,6 @@ export default function ReportsWeightTrendChart({
   const chartRef = useRef(null);
   const [chartWidth, setChartWidth] = useState(320);
   const [tooltip, setTooltip] = useState(null);
-  const small = isSmallChartDevice();
   const isCustom = rangeDays === WEIGHT_TREND_RANGE_CUSTOM;
   const hasCustomDates = Boolean(customStartDate && customEndDate);
   const metric = getReportsTrendMetric(metricKey);
@@ -112,13 +117,31 @@ export default function ReportsWeightTrendChart({
     }, { getValue: valueOf }),
     [weightHistory, rangeDays, customStartDate, customEndDate, valueOf],
   );
-  const axisBounds = useMemo(
-    () => getRecordedSeriesAxisBounds(series),
-    [series],
+  const axisBounds = useMemo(() => {
+    if (rangeDays === 5 || rangeDays === 10) {
+      return getTrendRangeBounds(rangeDays, {
+        startDate: customStartDate,
+        endDate: customEndDate,
+      });
+    }
+    return getRecordedSeriesAxisBounds(series);
+  }, [series, rangeDays, customStartDate, customEndDate]);
+
+  const narrowChart = chartWidth < 420;
+  const renderWidth = useMemo(
+    () => computeTrendChartRenderWidth(
+      chartWidth,
+      axisBounds?.start ?? null,
+      axisBounds?.end ?? null,
+      narrowChart,
+    ),
+    [chartWidth, axisBounds, narrowChart],
   );
+  const chartScrollable = renderWidth > chartWidth;
+
   const geom = useMemo(
     () => (series.length
-      ? buildChartGeometry(series, chartWidth, {
+      ? buildChartGeometry(series, renderWidth, {
         maxMarkers: series.length,
         showAllDateLabels: true,
         plotAllPoints: true,
@@ -126,7 +149,7 @@ export default function ReportsWeightTrendChart({
         rangeEnd: axisBounds?.end ?? null,
       })
       : null),
-    [series, chartWidth, axisBounds],
+    [series, renderWidth, axisBounds],
   );
 
   useEffect(() => {
@@ -186,7 +209,9 @@ export default function ReportsWeightTrendChart({
       ) : (
         <div
           ref={chartRef}
-          className="relative w-full min-w-0 overflow-x-clip overflow-y-visible pb-1"
+          className={`relative w-full min-w-0 overflow-y-visible pb-1 ${
+            chartScrollable ? 'overflow-x-auto' : 'overflow-x-clip'
+          }`}
           onMouseLeave={hideTooltip}
         >
           {tooltip && (
@@ -199,9 +224,11 @@ export default function ReportsWeightTrendChart({
             </div>
           )}
           <svg
-            viewBox={`0 -24 ${geom.chartWidth} ${geom.chartHeight + 52}`}
-            className="block"
-            style={{ width: '100%', height: `${geom.chartHeight + 52}px`, overflow: 'visible' }}
+            viewBox={`0 -${SVG_VIEW_TOP_PAD} ${geom.chartWidth} ${geom.chartHeight + SVG_DATE_TAIL_HEIGHT}`}
+            className="block overflow-visible"
+            width={geom.chartWidth}
+            height={geom.chartHeight + SVG_DATE_TAIL_HEIGHT}
+            style={chartScrollable ? { minWidth: '100%' } : { width: '100%' }}
             preserveAspectRatio="none"
           >
             <defs>
@@ -223,7 +250,7 @@ export default function ReportsWeightTrendChart({
                 key={`pt-${p.key}`}
                 cx={p.x}
                 cy={p.y}
-                r={small ? 4 : 5}
+                r={narrowChart ? 4 : 5}
                 fill="#16a34a"
                 className="cursor-pointer"
                 onMouseEnter={(e) => showPoint(p, e)}
@@ -240,7 +267,7 @@ export default function ReportsWeightTrendChart({
                   x={0}
                   y={y + 3}
                   textAnchor="start"
-                  fontSize={small ? 7 : 8}
+                  fontSize={narrowChart ? 7 : 8}
                   fontWeight="500"
                   fill="#94a3b8"
                 >
@@ -252,20 +279,15 @@ export default function ReportsWeightTrendChart({
               if (!geom.dateLabelIndices.has(i)) return null;
               const isFirst = i === geom.firstDateLabelIndex;
               const isLast = i === geom.lastDateLabelIndex;
-              const textAnchor = isFirst ? 'start' : isLast ? 'end' : 'middle';
               const dateText = p.compactLabel ?? p.label;
-              const prevPoint = i > 0 ? geom.points[i - 1] : null;
-              const tightWithPrev = prevPoint
-                && geom.dateLabelIndices.has(i - 1)
-                && (p.x - prevPoint.x) < 18;
-              const staggerY = tightWithPrev && i % 2 === 1 ? 8 : 0;
+              const textAnchor = isFirst ? 'start' : isLast ? 'end' : 'middle';
               return (
                 <text
                   key={`${p.key}-label`}
                   x={p.x}
-                  y={geom.chartHeight + (small ? 16 : 18) + staggerY}
+                  y={geom.chartHeight + DATE_LABEL_Y_OFFSET}
                   textAnchor={textAnchor}
-                  fontSize={small ? 8 : 10}
+                  fontSize={narrowChart ? 8 : 10}
                   fontWeight="500"
                   fill="#6b7280"
                 >

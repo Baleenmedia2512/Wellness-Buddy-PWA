@@ -79,6 +79,17 @@ function resolvePointX(point, index, plotLeft, stepX, plotWidth, rangeStart, ran
   return plotLeft + index * stepX;
 }
 
+/** Minimum plot width so day labels fit horizontally on narrow screens. */
+export function computeTrendChartRenderWidth(containerWidth, rangeStart, rangeEnd, narrowChart) {
+  const container = Math.max(containerWidth, 1);
+  if (!rangeStart || !rangeEnd) return container;
+  const spanMs = Math.max(rangeEnd.getTime() - rangeStart.getTime(), 86400000);
+  const spanDays = Math.max(1, Math.round(spanMs / 86400000));
+  const minDayPx = narrowChart ? 20 : 14;
+  const minWidth = 44 + spanDays * minDayPx;
+  return Math.max(container, minWidth);
+}
+
 /** Responsive x-axis label density from container width and point count. */
 export function computeResponsiveDateLabelOptions(chartWidth, pointCount, small = false) {
   const width = Math.max(chartWidth, 1);

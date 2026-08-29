@@ -3,7 +3,7 @@
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildChartGeometry, computeResponsiveDateLabelOptions } from '../weightChartGeometry.js';
+import { buildChartGeometry, computeResponsiveDateLabelOptions, computeTrendChartRenderWidth } from '../weightChartGeometry.js';
 
 function point(key, value) {
   return { key, value, label: key, hasRecorded: true };
@@ -151,6 +151,26 @@ describe('buildChartGeometry date-proportional axis', () => {
     });
 
     assert.equal(geom.dateLabelIndices.size, series.length);
+  });
+});
+
+describe('computeTrendChartRenderWidth', () => {
+  it('expands width on narrow screens when the date span needs more room', () => {
+    const start = new Date(2026, 7, 10);
+    const end = new Date(2026, 7, 29);
+    start.setHours(0, 0, 0, 0);
+    end.setHours(0, 0, 0, 0);
+    const width = computeTrendChartRenderWidth(320, start, end, true);
+    assert.ok(width > 320);
+  });
+
+  it('keeps container width for short 5-day spans', () => {
+    const start = new Date(2026, 7, 25);
+    const end = new Date(2026, 7, 29);
+    start.setHours(0, 0, 0, 0);
+    end.setHours(0, 0, 0, 0);
+    const width = computeTrendChartRenderWidth(320, start, end, true);
+    assert.equal(width, 320);
   });
 });
 

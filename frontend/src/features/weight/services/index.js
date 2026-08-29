@@ -14,4 +14,4 @@ export {
   getTrendRangeBounds,
   getRecordedSeriesAxisBounds,
 } from './weightDashboardFormatter';
-export { buildChartGeometry, computeResponsiveDateLabelOptions } from './weightChartGeometry';
+export { buildChartGeometry, computeResponsiveDateLabelOptions, computeTrendChartRenderWidth } from './weightChartGeometry';
