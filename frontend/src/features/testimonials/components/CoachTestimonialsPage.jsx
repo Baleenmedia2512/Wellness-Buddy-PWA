@@ -30,6 +30,8 @@ import OtpInline from './OtpInline.jsx';
 import VideoThumbnailCard from './VideoThumbnailCard.jsx';
 import HealthIssueCoachEditor from './HealthIssueCoachEditor.jsx';
 import {
+  CARD_W,
+  CARD_H,
   TransformationCardContent,
   TransformationShareActions,
 } from './TransformationShareCard.jsx';
@@ -1817,7 +1819,8 @@ function MemberCard({
             position: 'fixed',
             left: 0,
             top: 0,
-            width: 360,
+            width: CARD_W,
+            height: CARD_H,
             opacity: 0,
             pointerEvents: 'none',
             zIndex: -1,

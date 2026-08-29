@@ -408,7 +408,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
           </TouchFeedbackButton>
         )}
 
-        )}
+      
 
         {/* Settings Card */}
         <div className="bg-white rounded-2xl shadow-sm overflow-hidden">

@@ -166,9 +166,9 @@ const CompleteRequiredFields = ({
             style={{ fontSize: '16px' }}
           />
         </div>
-        <p className="text-xs text-gray-400 mt-1">
+        {/* <p className="text-xs text-gray-400 mt-1">
           Saved to your weight log. Range: {MIN_WEIGHT_KG}–{MAX_WEIGHT_KG} kg
-        </p>
+        </p> */}
       </div>
     )}
   </>

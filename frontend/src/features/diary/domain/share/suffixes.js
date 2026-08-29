@@ -10,6 +10,7 @@
  */
 
 import { DIARY_FOOD_ACTIVITY } from '../activityType';
+import { formatPositiveWeightKg } from './weightShare';
 import { formatWaterVolume } from '../formatVolume';
 import { formatShakeProductScoops } from './shakeShare';
 import { giZone } from '../../../nutrition/domain/foodItemNutritionFacts';
@@ -74,15 +75,15 @@ export function buildDiaryShareSuffix(activityType, payload = {}) {
 
       const lines = [];
       if (ideal != null) lines.push(`Ideal: ${ideal} kg`);
-      if (previous != null) lines.push(`Prev: ${previous} kg`);
+      if (previous != null) lines.push(`Before: ${previous} kg`);
 
-      let curr = `Curr: ${current} kg`;
+      let after = `After: ${current} kg`;
       if (previous != null) {
         const delta = Math.round((current - previous) * 100) / 100;
-        if (delta < 0) curr += ' ⬇️';
-        else if (delta > 0) curr += ' ⬆️';
+        if (delta < 0) after += ' ⬇️';
+        else if (delta > 0) after += ' ⬆️';
       }
-      lines.push(curr);
+      lines.push(after);
       return lines.join('\n');
     }
     case 'workout':
@@ -205,7 +206,5 @@ function dayTotalSuffix(payload) {
 
 /** Weight kg for share captions (2 decimal places max). */
 function formatShareKg(value) {
-  const n = Number(value);
-  if (!Number.isFinite(n)) return null;
-  return Math.round(n * 100) / 100;
+  return formatPositiveWeightKg(value);
 }

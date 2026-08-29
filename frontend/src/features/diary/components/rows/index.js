@@ -31,8 +31,9 @@ import { resolveFoodRowPresentation } from '../../domain/foodRowDisplay';
 import {
   buildDiaryShareSuffix,
   resolveWeightDeltaDisplay,
+  formatPositiveWeightKg,
 } from '../../domain/share';
-import { resolveDiaryThumbSource } from '../../utils/diaryThumbUrl';
+import { resolveDiaryThumbSource, fetchDiaryShareImageSrc, waitForShareImageDecode } from '../../utils/diaryThumbUrl';
 
 /** Red up / green down arrow for weight delta (SVG — avoids blue emoji squares). */
 function WeightDeltaArrow({ direction, className = '' }) {
@@ -73,6 +74,8 @@ function resolveFoodShareTotals(payload, foodData) {
     cholesterol: pick('cholesterol'),
   };
 }
+
+const WEIGHT_MANUAL_LOG_ICON_SRC = `${process.env.PUBLIC_URL || ''}/scale.png`;
 
 const WeighingScaleIcon = ({ className }) => (
   <svg
@@ -590,14 +593,30 @@ export function WeightRow({
   const p = entry.payload || {};
   const { swipe, swipeEnabled } = useDiaryRowSwipe({ canDelete, onDelete, entry });
   const [isSharing, setIsSharing] = useState(false);
+  const [shareImgSrc, setShareImgSrc] = useState(null);
   const shareCardRef = useRef(null);
+  const shareImgRef = useRef(null);
   const thumb = thumbPropsFromEntry(entry, { ownerUserId, viewerUserId });
   const delta = resolveWeightDeltaDisplay(previousWeight, p.weight);
+  const previousLabel = formatPositiveWeightKg(previousWeight);
   const shareText = buildDiaryShareSuffix('weight', {
     previousWeight,
     currentWeight: p.weight,
   });
   const shareTime = formatShareDateTime(entry.capturedAt, timezoneIana);
+
+  useEffect(() => {
+    if (!thumb.hasImage) {
+      setShareImgSrc(null);
+      return undefined;
+    }
+    let cancelled = false;
+    (async () => {
+      const src = await fetchDiaryShareImageSrc(thumb);
+      if (!cancelled) setShareImgSrc(src);
+    })();
+    return () => { cancelled = true; };
+  }, [thumb.hasImage, thumb.imageBase64, thumb.imageUrl, thumb.imageUrlFormat, thumb.imagePath]);
 
   const handleShare = async (e) => {
     e.stopPropagation();
@@ -606,6 +625,23 @@ export function WeightRow({
     if (!target) return;
     setIsSharing(true);
     try {
+      await waitForShareImageDecode(WEIGHT_MANUAL_LOG_ICON_SRC);
+      let imgSrc = shareImgSrc;
+      if (!imgSrc && thumb.hasImage) {
+        imgSrc = await fetchDiaryShareImageSrc(thumb);
+        if (imgSrc) setShareImgSrc(imgSrc);
+      }
+      if (imgSrc) {
+        if (shareImgRef.current) {
+          shareImgRef.current.src = imgSrc;
+          shareImgRef.current.style.display = 'block';
+        }
+        setShareImgSrc(imgSrc);
+        await waitForShareImageDecode(imgSrc);
+        await new Promise((resolve) => {
+          requestAnimationFrame(() => requestAnimationFrame(resolve));
+        });
+      }
       await captureAndShare(target, {
         title: `Weight ${p.weight} kg`,
         text: withMarathonWhatsAppNotice(shareText, { timezoneIana }),
@@ -630,19 +666,56 @@ export function WeightRow({
       >
         <div style={{ background: 'linear-gradient(135deg, #16a34a 0%, #15803d 100%)', padding: '16px 20px 12px' }}>
           <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.7)', margin: 0, letterSpacing: 0.3 }}>WELLNESS VALLEY · {shareTime}</p>
-          <p style={{ fontSize: 20, fontWeight: 700, color: '#fff', margin: '4px 0 0', lineHeight: 1.2 }}>⚖️ Weight Update</p>
+          <div style={{ marginTop: 8, lineHeight: '24px', fontSize: 0 }}>
+            <img
+              src={WEIGHT_MANUAL_LOG_ICON_SRC}
+              alt=""
+              style={{
+                width: 22,
+                height: 22,
+                objectFit: 'contain',
+                display: 'inline-block',
+                verticalAlign: 'middle',
+                marginRight: 8,
+              }}
+            />
+            <span style={{
+              display: 'inline-block',
+              verticalAlign: 'middle',
+              fontSize: 20,
+              fontWeight: 700,
+              color: '#fff',
+              lineHeight: '24px',
+            }}
+            >
+              Weight Update
+            </span>
+          </div>
         </div>
+        {thumb.hasImage && (
+          <img
+            ref={shareImgRef}
+            src={shareImgSrc || ''}
+            alt=""
+            style={{
+              width: '100%',
+              height: 'auto',
+              display: shareImgSrc ? 'block' : 'none',
+              maxHeight: 420,
+              objectFit: 'contain',
+              background: '#f9fafb',
+            }}
+          />
+        )}
         <div style={{ padding: '18px 20px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10 }}>
-            <span style={{ fontSize: 13, color: '#6b7280' }}>Previous Weight</span>
+            <span style={{ fontSize: 13, color: '#6b7280' }}>Before</span>
             <span style={{ fontSize: 15, fontWeight: 700, color: '#111827' }}>
-              {previousWeight != null && Number.isFinite(Number(previousWeight))
-                ? `${Number(previousWeight)} kg`
-                : '—'}
+              {previousLabel != null ? `${previousLabel} kg` : '—'}
             </span>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 14 }}>
-            <span style={{ fontSize: 13, color: '#6b7280' }}>Current Weight</span>
+            <span style={{ fontSize: 13, color: '#6b7280' }}>After</span>
             <span style={{ fontSize: 15, fontWeight: 700, color: '#111827' }}>{p.weight} kg</span>
           </div>
           {delta.label && (
