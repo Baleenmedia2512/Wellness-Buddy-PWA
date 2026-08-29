@@ -876,7 +876,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
   const showingTo = Math.min((pagination.currentPage || currentPage) * pageSize, totalRecords);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-green-50 to-green-100 pb-20">
+    <div className="bg-gradient-to-br from-green-50 to-green-100 pb-16">
       {/* Header */}
       <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-4 py-2">
@@ -895,9 +895,9 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 py-6">
+      <div className="max-w-7xl mx-auto px-4 py-3">
         {/* Date Range Filter */}
-        <div className="mb-4">
+        <div className="mb-2">
           <ReportDateRangeFilter
             ranges={ACTIVITY_REPORT_DATE_RANGES}
             dateRange={dateRange}
@@ -912,7 +912,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
         {/* Team scope: Mine / Direct / Full */}
         {showTeamScope && (
           <div
-            className="mb-4 bg-white rounded-xl border border-gray-200 shadow-sm px-1 py-1 flex gap-1 w-full"
+            className="mb-2 bg-white rounded-lg border border-gray-200 shadow-sm px-0.5 py-0.5 flex gap-0.5 w-full"
             role="group"
             aria-label="Team scope filter"
           >
@@ -927,7 +927,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
                   key={value}
                   onClick={() => handleTeamScopeChange(value)}
                   disabled={summaryLoading || detailLoading}
-                  className={`flex-1 min-w-0 py-2 rounded-lg text-[11px] sm:text-xs font-semibold transition-all px-1 sm:px-2 disabled:opacity-50 ${
+                  className={`flex-1 min-w-0 py-1 rounded-md text-[10px] sm:text-[11px] font-semibold transition-all px-1 disabled:opacity-50 ${
                     isActive
                       ? 'bg-green-600 text-white shadow-sm'
                       : 'text-green-800 hover:bg-green-50'
@@ -943,7 +943,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
         )}
 
         {(showTeamScope || summary) && (
-          <p className="mb-3 text-[11px] sm:text-xs text-gray-500">
+          <p className="mb-2 text-[10px] sm:text-[11px] text-gray-500">
             Activity counts for{' '}
             <span className="font-semibold text-gray-700">{activeScopeLabel || 'your team'}</span>
             {' · '}
@@ -960,7 +960,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
 
         {/* Activity Type Tabs */}
         {summary && (
-          <div className="flex flex-wrap gap-2 pb-2 mb-5">
+          <div className="flex flex-wrap gap-1.5 pb-1 mb-2">
             {ACTIVITY_TYPES.map((activity) => {
               const Icon = activity.icon;
               const isActive = selectedActivity === activity.id;
@@ -968,17 +968,17 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
                 <TouchFeedbackButton
                   key={activity.id}
                   onClick={() => handleActivityClick(activity.id)}
-                  className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full border shadow-sm active:scale-95 transition-all ${
+                  className={`flex-shrink-0 flex items-center gap-1 px-2 py-1 rounded-full border shadow-sm active:scale-95 transition-all ${
                     isActive
                       ? `${activity.bgColor} ${activity.borderColor}`
                       : 'bg-white border-gray-200'
                   }`}
                 >
-                  <Icon className={`w-3.5 h-3.5 ${isActive ? activity.textColor : 'text-gray-400'}`} />
-                  <span className={`text-sm font-bold ${isActive ? activity.textColor : 'text-gray-500'}`}>
+                  <Icon className={`w-3 h-3 ${isActive ? activity.textColor : 'text-gray-400'}`} />
+                  <span className={`text-xs font-bold leading-none ${isActive ? activity.textColor : 'text-gray-500'}`}>
                     {summary[activity.id] || 0}
                   </span>
-                  <span className={`text-xs font-medium whitespace-nowrap ${isActive ? 'text-gray-600' : 'text-gray-400'}`}>
+                  <span className={`text-[10px] sm:text-[11px] font-medium whitespace-nowrap leading-none ${isActive ? 'text-gray-600' : 'text-gray-400'}`}>
                     {activity.label}
                   </span>
                 </TouchFeedbackButton>
@@ -990,29 +990,29 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
         {/* Detail Grid */}
         {selectedActivity && (
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-            <div className="p-4 border-b border-gray-200">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-bold text-gray-900">
+            <div className="px-3 py-2 sm:px-4 border-b border-gray-200">
+              <div className="flex items-center justify-between mb-2">
+                <h2 className="text-base font-bold text-gray-900">
                   {ACTIVITY_TYPES.find(a => a.id === selectedActivity)?.label} Records
                 </h2>
-                <div className="flex items-center gap-2 flex-shrink-0">
+                <div className="flex items-center gap-1 flex-shrink-0">
                   {(totalRecords > 0 || detailRecords.length > 0) && (
                     <>
                       <TouchFeedbackButton
                         onClick={handleShare}
                         disabled={shareLoading || exportLoading || detailLoading}
-                        className="flex items-center gap-2 px-3 py-1.5 bg-white border border-green-600 text-green-700 text-sm font-semibold rounded-lg hover:bg-green-50 disabled:opacity-50"
+                        ariaLabel={shareLoading ? 'Sharing report' : 'Share report'}
+                        className="flex items-center justify-center p-1.5 bg-white border border-green-600 text-green-700 rounded-md hover:bg-green-50 disabled:opacity-50"
                       >
-                        <Share2 className={`w-4 h-4 ${shareLoading ? 'animate-pulse' : ''}`} />
-                        <span className="hidden sm:inline">{shareLoading ? 'Sharing…' : 'Share'}</span>
+                        <Share2 className={`w-3.5 h-3.5 ${shareLoading ? 'animate-pulse' : ''}`} />
                       </TouchFeedbackButton>
                       <TouchFeedbackButton
                         onClick={handleDownload}
                         disabled={exportLoading || shareLoading || detailLoading}
-                        className="flex items-center gap-2 px-3 py-1.5 bg-green-600 text-white text-sm font-semibold rounded-lg hover:bg-green-700 disabled:opacity-50"
+                        ariaLabel={exportLoading ? 'Exporting report' : 'Export report'}
+                        className="flex items-center justify-center p-1.5 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50"
                       >
-                        <Download className={`w-4 h-4 ${exportLoading ? 'animate-pulse' : ''}`} />
-                        <span className="hidden sm:inline">{exportLoading ? 'Exporting…' : 'Export'}</span>
+                        <Download className={`w-3.5 h-3.5 ${exportLoading ? 'animate-pulse' : ''}`} />
                       </TouchFeedbackButton>
                     </>
                   )}
@@ -1021,13 +1021,13 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
 
               <div className="flex flex-row items-stretch gap-2">
                 <div className="relative min-w-0 basis-[80%] shrink-0 grow-0">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 text-gray-400" />
+                  <Search className="absolute left-2.5 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
                   <input
                     type="text"
                     placeholder="Search by name, phone, coach, city, village, or club..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full pl-9 sm:pl-10 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                    className="w-full pl-8 pr-2 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
                   />
                 </div>
                 <div className="min-w-0 basis-[20%] shrink-0 grow-0">
@@ -1039,7 +1039,8 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
                     value={clubFilter}
                     onChange={handleClubFilterChange}
                     disabled={detailLoading || availableClubs.length === 0}
-                    className="w-full h-full min-h-[2.5rem] px-1.5 sm:px-2 py-2 border border-gray-200 rounded-lg text-xs sm:text-sm text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-green-500 disabled:bg-gray-50 disabled:text-gray-400 truncate"
+                    title={clubFilter === ACTIVITY_REPORT_CLUB_REMOTE ? 'Remote' : (clubFilter || 'All Clubs')}
+                    className="w-full h-full min-h-[2.125rem] px-1 sm:px-1.5 py-1.5 border border-gray-200 rounded-lg text-[11px] sm:text-xs text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-green-500 disabled:bg-gray-50 disabled:text-gray-400 truncate"
                   >
                     <option value="">All Clubs</option>
                     {availableClubs.map((clubName) => (
@@ -1052,7 +1053,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
               </div>
             </div>
 
-            <div className="overflow-x-auto overflow-y-auto max-h-[65vh] relative">
+            <div className="overflow-x-auto overflow-y-auto max-h-[42vh] sm:max-h-[48vh] relative">
               {detailLoading && (
                 <div className="absolute inset-0 z-40 flex items-center justify-center bg-white/70">
                   <RefreshCw className="w-8 h-8 text-green-600 animate-spin" />
@@ -1062,7 +1063,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
                 <thead className="border-b border-gray-200 sticky top-0 z-20">
                   <tr>
                     <th
-                      className="sticky left-0 z-30 bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase min-w-[130px] cursor-pointer hover:bg-gray-100 shadow-[2px_0_5px_-1px_rgba(0,0,0,0.08)]"
+                      className="sticky left-0 z-30 bg-gray-50 px-3 py-2 text-left text-[10px] sm:text-xs font-semibold text-gray-600 uppercase min-w-[130px] cursor-pointer hover:bg-gray-100 shadow-[2px_0_5px_-1px_rgba(0,0,0,0.08)]"
                       onClick={() => handleSort('memberName')}
                     >
                       Member Name {sortColumn === 'memberName' && (sortDirection === 'asc' ? '↑' : '↓')}
