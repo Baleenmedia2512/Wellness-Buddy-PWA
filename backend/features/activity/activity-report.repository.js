@@ -213,9 +213,33 @@ export async function fetchEducationRecords(userIds, startDate, endDate, timezon
 }
 
 /**
+ * Fetch smartwatch / manual exercise calorie logs for given user IDs and date range.
+ * Stored in education_logs_table with Topic "Calories Burned: N kcal".
+ */
+export async function fetchWatchCalorieRecords(userIds, startDate, endDate, timezoneIana = IANA_IST) {
+  if (!userIds || userIds.length === 0) return [];
+
+  const supabase = getSupabaseClient();
+  const userIdsAsString = userIds.map(String);
+  const data = await fetchRowsInChunks(userIdsAsString, (chunk) => {
+    let query = supabase
+      .from('education_logs_table')
+      .select('"UserId", "Topic", "CreatedAt", center_name, nutrition_center_id, "City", "Village"')
+      .in('"UserId"', chunk)
+      .or('"IsDeleted".is.null,IsDeleted.eq.0')
+      .ilike('"Topic"', 'Calories Burned:%')
+      .order('"CreatedAt"', { ascending: false });
+    query = applyDateRangeFilterWidened(query, '"CreatedAt"', startDate, endDate, timezoneIana);
+    return query;
+  });
+
+  return filterRowsByCalendarDateRange(data, startDate, endDate, timezoneIana, 'CreatedAt');
+}
+
+/**
  * Fetch food records for given user IDs and date range.
- * AnalysisData is omitted by default — report beverage detection uses ProcessedBy
- * (water_preset / afresh_preset). Pull AnalysisData only when water volume is needed.
+ * AnalysisData is omitted by default. Enable it for water volume or beverage
+ * detection when ProcessedBy was not persisted as a preset (legacy water tracker).
  */
 export async function fetchFoodRecords(
   userIds,
@@ -264,7 +288,17 @@ export async function fetchFoodAnalysisForUsers(userIds, startDate, endDate, tim
 export function isReportBeverageRecord(record) {
   const by = String(record?.ProcessedBy || '').toLowerCase().trim();
   if (by === 'water_preset' || by === 'afresh_preset') return true;
-  if (record?.AnalysisData) return isExemptedBeverageOnly(record.AnalysisData);
+  if (record?.AnalysisData) {
+    try {
+      const parsed = typeof record.AnalysisData === 'string'
+        ? JSON.parse(record.AnalysisData) : record.AnalysisData;
+      const embedded = String(parsed?.processedBy || '').toLowerCase().trim();
+      if (embedded === 'water_preset' || embedded === 'afresh_preset') return true;
+    } catch {
+      /* fall through to beverage-only check */
+    }
+    return isExemptedBeverageOnly(record.AnalysisData);
+  }
   return false;
 }
 
