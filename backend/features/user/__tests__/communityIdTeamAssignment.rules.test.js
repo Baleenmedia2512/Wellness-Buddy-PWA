@@ -4,6 +4,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  buildTeamFieldsFromProfileCommunityId,
   coachTeamIdNeedsUpdate,
   normalizeStoredTeamCode,
   resolveTargetTeamCodeFromExplicitCommunityIdUpdate,
@@ -13,6 +14,30 @@ import {
   shouldClaimLeadSeatOnExplicitCommunityIdUpdate,
   teamAssignmentFieldsNeedUpdate,
 } from '../domain/communityIdTeamAssignment.rules.js';
+
+describe('buildTeamFieldsFromProfileCommunityId', () => {
+  it('sets CommunityId, TeamId, and CoachTeamId together', () => {
+    assert.deepEqual(
+      buildTeamFieldsFromProfileCommunityId('yasheer123w1'),
+      {
+        CommunityId: 'YASHEER123W1',
+        TeamId: 'YASHEER123W1',
+        CoachTeamId: 'YASHEER123W1',
+      },
+    );
+  });
+
+  it('clears display CommunityId only when input is empty', () => {
+    assert.deepEqual(
+      buildTeamFieldsFromProfileCommunityId(null),
+      { CommunityId: null },
+    );
+  });
+
+  it('returns null when CommunityId was not sent', () => {
+    assert.equal(buildTeamFieldsFromProfileCommunityId(undefined), null);
+  });
+});
 
 describe('normalizeStoredTeamCode', () => {
   it('uppercases stored codes', () => {

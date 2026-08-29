@@ -26,6 +26,7 @@ import { computeBmiFromHeightWeight } from '../body-parameters-card/domain/card.
 import { getSupabaseClient } from '../../utils/supabaseClient.js';
 import { resolveLeadSeatForUser } from '../../utils/coachTeamSeats.js';
 import { syncProfileCommunityIdToTeamAssignment } from './communityIdTeamAssignment.service.js';
+import { buildTeamFieldsFromProfileCommunityId } from './domain/communityIdTeamAssignment.rules.js';
 import { deriveWeightGoalMode } from '../../utils/weightValidation.js';
 import { resolveProfileTimezone } from './domain/profileTimezone.js';
 import { mapTeamRowToProfileBodyMetrics, mergeProfileBodyMetrics, mapCardToProfileBodyMetrics } from './domain/profileBodyMetrics.rules.js';
@@ -318,6 +319,11 @@ export async function updateProfile(input) {
     existingTransformationPhotos: user.transformation_photos,
   });
 
+  const teamFieldsFromCommunityId = buildTeamFieldsFromProfileCommunityId(communityId);
+  if (teamFieldsFromCommunityId) {
+    Object.assign(updateData, teamFieldsFromCommunityId);
+  }
+
   let savedPhysicalActivityLevel = null;
   if (physicalActivityLevel != null && isValidPhysicalActivityLevel(physicalActivityLevel)) {
     savedPhysicalActivityLevel = physicalActivityLevel;
@@ -337,6 +343,8 @@ export async function updateProfile(input) {
       userId,
       updatedFields: Object.keys(updateData),
       communityIdSaved: updateData.CommunityId ?? null,
+      teamIdSaved: updateData.TeamId ?? null,
+      coachTeamIdSaved: updateData.CoachTeamId ?? null,
     });
     try { await repo.updateUserById(userId, { LastActiveAt: nowUtc() }); } catch { /* non-fatal */ }
     const verifyRow = await repo.verifyProfile(userId);

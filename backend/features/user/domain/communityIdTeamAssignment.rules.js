@@ -118,6 +118,26 @@ export function shouldClaimLeadSeatOnExplicitCommunityIdUpdate({
 }
 
 /**
+ * Profile save payload for team_table when Community ID is included.
+ * Cleared Community ID updates display only; team codes are left unchanged.
+ *
+ * @param {string|null|undefined} communityId
+ * @returns {Record<string, string|null>|null}
+ */
+export function buildTeamFieldsFromProfileCommunityId(communityId) {
+  if (communityId === undefined) return null;
+  const teamCode = normalizeTeamCodeFromCommunityId(communityId);
+  if (!teamCode) {
+    return { CommunityId: null };
+  }
+  return {
+    CommunityId: teamCode,
+    TeamId: teamCode,
+    CoachTeamId: teamCode,
+  };
+}
+
+/**
  * Keep CommunityId, TeamId, and CoachTeamId aligned from profile Community ID.
  *
  * @param {{ communityId?: string|null, teamId?: string|null, coachTeamId?: string|null, communityIdExplicitlyUpdated?: boolean }} args
