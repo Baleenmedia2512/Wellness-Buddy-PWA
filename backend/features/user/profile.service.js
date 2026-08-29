@@ -25,6 +25,7 @@ import { buildProfileCardSyncPayload } from '../body-parameters-card/domain/sync
 import { computeBmiFromHeightWeight } from '../body-parameters-card/domain/card.rules.js';
 import { getSupabaseClient } from '../../utils/supabaseClient.js';
 import { resolveLeadSeatForUser } from '../../utils/coachTeamSeats.js';
+import { syncProfileCommunityIdToTeamAssignment } from './communityIdTeamAssignment.service.js';
 import { deriveWeightGoalMode } from '../../utils/weightValidation.js';
 import { resolveProfileTimezone } from './domain/profileTimezone.js';
 import { mapTeamRowToProfileBodyMetrics, mergeProfileBodyMetrics, mapCardToProfileBodyMetrics } from './domain/profileBodyMetrics.rules.js';
@@ -536,6 +537,23 @@ export async function updateProfile(input) {
     });
   }
 
+  let teamCodeSync = null;
+  try {
+    const teamRow = await repo.getTeamCodeFields(userId);
+    const communityForSync = savedCommunityId !== undefined
+      ? savedCommunityId
+      : (teamRow?.CommunityId ?? null);
+    teamCodeSync = await syncProfileCommunityIdToTeamAssignment(userId, communityForSync, {
+      communityIdExplicitlyUpdated: savedCommunityId !== undefined,
+    });
+  } catch (syncErr) {
+    logger.error('[profile/update] Community ID team assignment failed', {
+      userId,
+      message: syncErr?.message,
+    });
+    throw syncErr;
+  }
+
   try { cache.delete(cacheKeys.userProfile(String(email || '').toLowerCase())); } catch { /* non-fatal */ }
 
   const refreshedUser = await repo.getProfile(email);
@@ -568,6 +586,10 @@ export async function updateProfile(input) {
       profileImageUpdated: !!profileImage,
       bodyFat: savedBodyFat || undefined,
       currentWeight: savedCurrentWeight || undefined,
+      teamId: teamCodeSync?.teamId || undefined,
+      teamSeat: teamCodeSync?.teamSeat || undefined,
+      coachTeamId: teamCodeSync?.coachTeamId || undefined,
+      teamCodeSynced: !!(teamCodeSync?.synced),
     },
   };
 

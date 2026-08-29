@@ -30,7 +30,12 @@ const UserProfileFields = ({
   gender, setGender,
   physicalActivityLevel, setPhysicalActivityLevel,
   communityId, setCommunityId,
-}) => (
+  userRole = 'user',
+}) => {
+  const isCoachLeadRole = userRole === 'coach' || userRole === 'upline';
+  const communityIdLabel = isCoachLeadRole ? 'Community ID (Team Code)' : 'Display Community ID';
+
+  return (
   <div className="space-y-4">
     <Field label="Email" required>
       <div className="relative">
@@ -88,7 +93,7 @@ const UserProfileFields = ({
       <input type="text" inputMode="numeric" pattern="[0-9]*" value={phone} onChange={(e) => setPhone(e.target.value)}
         placeholder="e.g. +91 9876543210" className={inputCls} style={{ fontSize: '16px' }} />
     </Field>
-    <Field label="Community ID">
+    <Field label={communityIdLabel}>
       <div className="relative">
         <Hash className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
         <input
@@ -107,7 +112,9 @@ const UserProfileFields = ({
         />
       </div>
       <p className="text-xs text-gray-500 mt-1">
-        Enter your Community ID
+        {isCoachLeadRole
+          ? 'For coaches: this is your Sponsor Team Code. Saving creates your Sponsor seat when you do not have one yet.'
+          : 'Links you to a Sponsor / Co-Sponsor shared team when the code exists. Also shown in search and team lists.'}
       </p>
       <p className="text-xs text-gray-400 mt-0.5">
         {(communityId || '').length}/{COMMUNITY_ID_MAX_LENGTH} · Min {COMMUNITY_ID_MIN_LENGTH} · Letters and numbers only
@@ -142,6 +149,7 @@ const UserProfileFields = ({
       onChange={setPhysicalActivityLevel}
     />
   </div>
-);
+  );
+};
 
 export default UserProfileFields;

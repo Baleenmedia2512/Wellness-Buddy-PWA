@@ -83,7 +83,7 @@ export default function ProfileTeamCodeSection({
   const handleClaim = async () => {
     if (claiming) return;
     if (!isValidTeamId(teamId)) {
-      setError('Community ID must be at least 4 letters or numbers');
+      setError('Team Code must be at least 4 letters or numbers');
       return;
     }
     if (status === 'taken') {
@@ -136,9 +136,13 @@ export default function ProfileTeamCodeSection({
     <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
       <div className="px-4 py-3 border-b border-gray-100 flex items-center gap-2">
         <Users className="w-4 h-4 text-green-600" />
-        <h2 className="text-sm font-semibold text-gray-700">Team Code</h2>
+        <h2 className="text-sm font-semibold text-gray-700">Sponsor Team Code</h2>
       </div>
       <div className="p-4 space-y-3">
+        <p className="text-xs text-gray-500 leading-relaxed">
+          This code controls Sponsor / Co-Sponsor seats and shared team visibility.
+          It is separate from Display Community ID in Personal Details.
+        </p>
         {displayTeamId ? (
           <div className="rounded-xl border border-green-100 bg-green-50 px-3 py-3">
             <p className="text-xs text-green-700 font-medium">Your Team Code</p>
