@@ -69,6 +69,55 @@ export function coachTeamIdNeedsUpdate({
 }
 
 /**
+ * Target team code when the user explicitly saves Community ID in profile.
+ * Prefer a resolved shared team; otherwise use the typed code.
+ *
+ * @param {{ inputCode?: string|null, resolvedFound?: boolean, resolvedTeamCode?: string|null }} args
+ * @returns {string|null}
+ */
+export function resolveTargetTeamCodeFromExplicitCommunityIdUpdate({
+  inputCode = null,
+  resolvedFound = false,
+  resolvedTeamCode = null,
+} = {}) {
+  const input = normalizeTeamCodeFromCommunityId(inputCode);
+  if (!input) return null;
+  if (resolvedFound) {
+    return normalizeStoredTeamCode(resolvedTeamCode) || input;
+  }
+  return input;
+}
+
+/**
+ * @param {{ teamId?: string|null, coachTeamId?: string|null, targetCode?: string|null }} args
+ * @returns {boolean}
+ */
+export function teamAssignmentFieldsNeedUpdate({
+  teamId = null,
+  coachTeamId = null,
+  targetCode = null,
+} = {}) {
+  const target = normalizeStoredTeamCode(targetCode);
+  if (!target) return false;
+  const currentTeamId = normalizeStoredTeamCode(teamId);
+  const currentCoachTeamId = normalizeStoredTeamCode(coachTeamId);
+  return currentTeamId !== target || currentCoachTeamId !== target;
+}
+
+/**
+ * Sponsor / Co-Sponsor leads must claim a seat when profile Community ID changes team code.
+ *
+ * @param {{ role?: string|null, teamSeat?: string|null }} args
+ * @returns {boolean}
+ */
+export function shouldClaimLeadSeatOnExplicitCommunityIdUpdate({
+  role = null,
+  teamSeat = null,
+} = {}) {
+  return isCoachTeamCodeSyncRole(role) || !!teamSeat;
+}
+
+/**
  * Backfill CoachTeamId from stored CommunityId when team link was never created.
  *
  * @param {{ communityId?: string|null, coachTeamId?: string|null, teamCode?: string|null }} args

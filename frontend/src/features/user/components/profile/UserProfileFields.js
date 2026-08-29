@@ -113,8 +113,8 @@ const UserProfileFields = ({
       </div>
       <p className="text-xs text-gray-500 mt-1">
         {isCoachLeadRole
-          ? 'For coaches: this is your Sponsor Team Code. Saving creates your Sponsor seat when you do not have one yet.'
-          : 'Links you to a Sponsor / Co-Sponsor shared team when the code exists. Also shown in search and team lists.'}
+          ? 'For coaches: saving updates Community ID, Team Code, and shared team link together.'
+          : 'Saving updates Community ID, Team Code, and shared team link together.'}
       </p>
       <p className="text-xs text-gray-400 mt-0.5">
         {(communityId || '').length}/{COMMUNITY_ID_MAX_LENGTH} · Min {COMMUNITY_ID_MIN_LENGTH} · Letters and numbers only

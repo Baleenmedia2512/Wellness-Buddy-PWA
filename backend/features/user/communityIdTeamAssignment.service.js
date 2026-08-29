@@ -12,8 +12,11 @@ import {
   normalizeStoredTeamCode,
   normalizeTeamCodeFromCommunityId,
   resolveCoachTeamCodeToSync,
+  resolveTargetTeamCodeFromExplicitCommunityIdUpdate,
   shouldApplySharedCoachTeamId,
   shouldBackfillCoachTeamIdFromCommunityId,
+  shouldClaimLeadSeatOnExplicitCommunityIdUpdate,
+  teamAssignmentFieldsNeedUpdate,
 } from './domain/communityIdTeamAssignment.rules.js';
 
 const TEAM_LINK_ERROR = 'This Community ID is not linked to a Sponsor/Co-Sponsor team.';
@@ -176,6 +179,76 @@ async function syncSharedCoachTeamIdFromCommunityId(
 }
 
 /**
+ * Explicit profile Community ID save → keep CommunityId, TeamId, CoachTeamId aligned.
+ * @returns {Promise<{ teamId: string, teamSeat?: string|null, coachTeamId: string, synced: boolean }|null>}
+ */
+async function syncAllTeamFieldsFromExplicitCommunityIdUpdate(
+  userId,
+  inputCode,
+  teamRow,
+  leadSeat,
+) {
+  const supabase = getSupabaseClient();
+  const resolved = await resolveSharedTeamCodeFromInput(supabase, inputCode, userId);
+  const targetCode = resolveTargetTeamCodeFromExplicitCommunityIdUpdate({
+    inputCode,
+    resolvedFound: resolved.found,
+    resolvedTeamCode: resolved.teamCode,
+  });
+  if (!targetCode) return null;
+
+  const needsUpdate = teamAssignmentFieldsNeedUpdate({
+    teamId: teamRow.TeamId,
+    coachTeamId: teamRow.CoachTeamId,
+    targetCode,
+  });
+
+  let resolvedSeat = leadSeat.seat || null;
+  if (needsUpdate && shouldClaimLeadSeatOnExplicitCommunityIdUpdate({
+    role: teamRow.Role,
+    teamSeat: leadSeat.seat,
+  })) {
+    const seatResult = await assignLeadSeat(supabase, targetCode, Number(userId));
+    if (!seatResult.ok) {
+      throw new Error(seatResult.error || 'This Community ID is unavailable as a Team Code');
+    }
+    resolvedSeat = seatResult.seat === 'already'
+      ? (leadSeat.seat || 'sponsor')
+      : seatResult.seat;
+  }
+
+  if (!needsUpdate) {
+    return {
+      teamId: targetCode,
+      teamSeat: resolvedSeat,
+      coachTeamId: targetCode,
+      synced: false,
+    };
+  }
+
+  await repo.updateUserById(userId, {
+    TeamId: targetCode,
+    CoachTeamId: targetCode,
+    CommunityId: targetCode,
+  });
+
+  logger.info('[profile/update] Community ID synced to TeamId + CoachTeamId', {
+    userId,
+    communityId: targetCode,
+    teamId: targetCode,
+    coachTeamId: targetCode,
+    resolvedFromExistingTeam: resolved.found,
+  });
+
+  return {
+    teamId: targetCode,
+    teamSeat: resolvedSeat,
+    coachTeamId: targetCode,
+    synced: true,
+  };
+}
+
+/**
  * Sync profile Community ID to TeamId / CoachTeamId / lead seat when applicable.
  *
  * @param {number|string} userId
@@ -194,6 +267,16 @@ export async function syncProfileCommunityIdToTeamAssignment(
   const supabase = getSupabaseClient();
   const leadSeat = await resolveLeadSeatForUser(supabase, userId);
 
+  const code = normalizeTeamCodeFromCommunityId(communityIdSource);
+  if (communityIdExplicitlyUpdated && code) {
+    return syncAllTeamFieldsFromExplicitCommunityIdUpdate(
+      userId,
+      code,
+      teamRow,
+      leadSeat,
+    );
+  }
+
   const leadSync = await syncCoachLeadTeamCodeFromCommunityId(
     userId,
     communityIdSource,
@@ -202,14 +285,10 @@ export async function syncProfileCommunityIdToTeamAssignment(
   );
   if (leadSync) return leadSync;
 
-  const code = normalizeTeamCodeFromCommunityId(communityIdSource);
-  const shouldTryMemberLink = code && (
-    communityIdExplicitlyUpdated
-    || shouldBackfillCoachTeamIdFromCommunityId({
-      communityId: code,
-      coachTeamId: teamRow.CoachTeamId,
-    })
-  );
+  const shouldTryMemberLink = code && shouldBackfillCoachTeamIdFromCommunityId({
+    communityId: code,
+    coachTeamId: teamRow.CoachTeamId,
+  });
 
   if (!shouldTryMemberLink) return null;
 
@@ -219,8 +298,8 @@ export async function syncProfileCommunityIdToTeamAssignment(
     teamRow,
     leadSeat,
     {
-      requireResolvableTeam: communityIdExplicitlyUpdated,
-      allowTeamSwitch: communityIdExplicitlyUpdated,
+      requireResolvableTeam: false,
+      allowTeamSwitch: false,
     },
   );
 }

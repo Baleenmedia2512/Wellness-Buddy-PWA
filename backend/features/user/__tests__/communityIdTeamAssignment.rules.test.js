@@ -6,8 +6,11 @@ import assert from 'node:assert/strict';
 import {
   coachTeamIdNeedsUpdate,
   normalizeStoredTeamCode,
+  resolveTargetTeamCodeFromExplicitCommunityIdUpdate,
   shouldApplySharedCoachTeamId,
   shouldBackfillCoachTeamIdFromCommunityId,
+  shouldClaimLeadSeatOnExplicitCommunityIdUpdate,
+  teamAssignmentFieldsNeedUpdate,
 } from '../domain/communityIdTeamAssignment.rules.js';
 
 describe('normalizeStoredTeamCode', () => {
@@ -106,6 +109,77 @@ describe('shouldApplySharedCoachTeamId', () => {
         allowTeamSwitch: true,
       }),
       true,
+    );
+  });
+});
+
+describe('resolveTargetTeamCodeFromExplicitCommunityIdUpdate', () => {
+  it('uses resolved shared team when found', () => {
+    assert.equal(
+      resolveTargetTeamCodeFromExplicitCommunityIdUpdate({
+        inputCode: 'DISPLAY1',
+        resolvedFound: true,
+        resolvedTeamCode: 'TEAM123',
+      }),
+      'TEAM123',
+    );
+  });
+
+  it('uses typed code when team is not registered yet', () => {
+    assert.equal(
+      resolveTargetTeamCodeFromExplicitCommunityIdUpdate({
+        inputCode: 'moha123yas',
+        resolvedFound: false,
+        resolvedTeamCode: 'MOHA123YAS',
+      }),
+      'MOHA123YAS',
+    );
+  });
+});
+
+describe('teamAssignmentFieldsNeedUpdate', () => {
+  it('detects when TeamId or CoachTeamId differ from target', () => {
+    assert.equal(
+      teamAssignmentFieldsNeedUpdate({
+        teamId: 'TEAMA',
+        coachTeamId: 'TEAMA',
+        targetCode: 'TEAMB',
+      }),
+      true,
+    );
+  });
+
+  it('skips when already aligned', () => {
+    assert.equal(
+      teamAssignmentFieldsNeedUpdate({
+        teamId: 'TEAM123',
+        coachTeamId: 'TEAM123',
+        targetCode: 'team123',
+      }),
+      false,
+    );
+  });
+});
+
+describe('shouldClaimLeadSeatOnExplicitCommunityIdUpdate', () => {
+  it('requires seat claim for coach/upline roles', () => {
+    assert.equal(
+      shouldClaimLeadSeatOnExplicitCommunityIdUpdate({ role: 'coach', teamSeat: null }),
+      true,
+    );
+  });
+
+  it('requires seat claim when user already holds a lead seat', () => {
+    assert.equal(
+      shouldClaimLeadSeatOnExplicitCommunityIdUpdate({ role: 'admin', teamSeat: 'sponsor' }),
+      true,
+    );
+  });
+
+  it('skips seat claim for plain members', () => {
+    assert.equal(
+      shouldClaimLeadSeatOnExplicitCommunityIdUpdate({ role: 'user', teamSeat: null }),
+      false,
     );
   });
 });
