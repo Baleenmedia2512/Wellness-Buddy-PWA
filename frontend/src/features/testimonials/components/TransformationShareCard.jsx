@@ -166,20 +166,6 @@ function transformationFileName(userName) {
   return `transformation-${String(userName || 'result').replace(/\s+/g, '-').toLowerCase()}.png`;
 }
 
-/** Split full name into two centered lines (e.g. "Mohamed Yasheer" / "Jafar Ali"). */
-function splitUserNameForCard(name) {
-  const trimmed = String(name || 'Member').trim() || 'Member';
-  const words = trimmed.split(/\s+/).filter(Boolean);
-  if (words.length <= 1) {
-    return { line1: trimmed, line2: null };
-  }
-  const mid = Math.ceil(words.length / 2);
-  return {
-    line1: words.slice(0, mid).join(' '),
-    line2: words.slice(mid).join(' '),
-  };
-}
-
 export async function shareTransformationCard(element, userName, _testimonial = null) {
   if (!element) throw new Error('Transformation card is not ready');
   const blob = await captureTransformationCardAsBlob(element);
@@ -320,7 +306,7 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
   const verb = isLoss ? 'Lost' : 'Gained';
   const issues = (testimonial?.recoveredHealthIssues ?? []).filter(Boolean).slice(0, MAX_VISIBLE_ISSUES);
   const durationText = testimonial?.durationText || '';
-  const { line1: nameLine1, line2: nameLine2 } = splitUserNameForCard(userName);
+  const displayName = String(userName || 'Member').trim() || 'Member';
 
   return (
     <div
@@ -400,24 +386,11 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
           lineHeight: '28px',
           letterSpacing: '0.3px',
           fontFamily: CARD_FONT,
+          whiteSpace: 'nowrap',
         }}
         >
-          {nameLine1}
+          {displayName}
         </p>
-        {nameLine2 ? (
-          <p style={{
-            margin: '2px 0 0',
-            fontSize: 22,
-            fontWeight: 800,
-            color: '#111827',
-            lineHeight: '28px',
-            letterSpacing: '0.3px',
-            fontFamily: CARD_FONT,
-          }}
-          >
-            {nameLine2}
-          </p>
-        ) : null}
       </div>
 
       {showPhotoRow && (
@@ -486,19 +459,19 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
                 }}
                 >
                   <span style={{
-                    fontSize: 10,
+                    fontSize: 13,
                     fontWeight: 700,
                     color: '#9ca3af',
-                    letterSpacing: '1.2px',
+                    letterSpacing: '0.2px',
                   }}
                   >
-                    Health issue while joining in the community
+                    Health issues while joining in the community
                   </span>
                   <span style={{
-                    fontSize: 10,
+                    fontSize: 13,
                     fontWeight: 700,
                     color: '#9ca3af',
-                    letterSpacing: '1.2px',
+                    letterSpacing: '0.2px',
                   }}
                   >
                     {' : '}
@@ -507,7 +480,7 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
                     <React.Fragment key={issue}>
                       {index > 0 ? (
                         <span style={{
-                          fontSize: 13,
+                          fontSize: 10,
                           fontWeight: 700,
                           color: '#9f1239',
                         }}
@@ -516,7 +489,7 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
                         </span>
                       ) : null}
                       <span style={{
-                        fontSize: 13,
+                        fontSize: 10,
                         fontWeight: 700,
                         color: '#9f1239',
                       }}
