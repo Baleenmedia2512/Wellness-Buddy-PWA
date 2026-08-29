@@ -5,7 +5,7 @@
 //
 // Sections:
 //   1. Avatar (Centre transformation photo — display only)
-//   2. Profile fields (name, height, phone, community ID, email, diet, BMR, PAL)
+//   2. Profile fields (name, height, phone, community ID / team code, email, diet, BMR, PAL)
 //   3. Weight goal mode
 //   4. Settings  (auto camera toggle)
 //   5. Account actions (sign out, delete account)
@@ -32,7 +32,6 @@ import WeightModeSelector from './profile/WeightModeSelector';
 import HealthIssuesFilterSelect from '../../body-parameters-card/components/HealthIssuesFilterSelect';
 import { EmojiOrNative } from '../../../shared/components/icons/EmojiImage';
 import { deriveWeightGoalMode } from '../../weight/services/weightFormService';
-import ProfileTeamCodeSection from './profile/ProfileTeamCodeSection';
 import DeleteAccountModal from './DeleteAccountModal';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
 import { invalidateHasTeamMembersCache } from '../../team/services/teamSearchService';
@@ -69,9 +68,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
   const [initialWeightDate, setInitialWeightDate] = useState(null);
   const [coachName, setCoachName] = useState('');
   const [idealCoachName, setIdealCoachName] = useState('');
-  const [teamId, setTeamId] = useState(null);
   const [teamSeat, setTeamSeat] = useState(null);
-  const [canClaimTeamCode, setCanClaimTeamCode] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState('');
@@ -116,8 +113,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
         communityId: (() => {
           const fromProfile = data?.communityId != null ? String(data.communityId).trim() : '';
           if (fromProfile) return fromProfile;
-          const isLeadRole = userRole === 'coach' || userRole === 'upline';
-          if (isLeadRole && data?.teamId) return String(data.teamId).trim();
+          if (data?.teamId) return String(data.teamId).trim();
           return '';
         })(),
         bodyMetrics: data?.bodyMetrics || null,
@@ -136,9 +132,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
           : '',
       );
       setIdealCoachName(data?.idealCoachName ? String(data.idealCoachName).trim() : '');
-      setTeamId(data?.teamId ? String(data.teamId).trim() : null);
       setTeamSeat(data?.teamSeat || null);
-      setCanClaimTeamCode(!!data?.canClaimTeamCode);
       if (data?.profileImage) {
         setProfileImagePreview(data.profileImage);
       } else if (data?.transformationPhotos?.front) {
@@ -326,26 +320,6 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
 
       {/* Page Content */}
       <div className="px-4 -mt-2 space-y-4">
-        {!isLoading && (
-          <ProfileTeamCodeSection
-            email={accountEmail || undefined}
-            userId={user?.id || undefined}
-            teamId={teamId}
-            teamSeat={teamSeat}
-            canClaimTeamCode={canClaimTeamCode}
-            onClaimed={({ teamId: claimedId, teamSeat: claimedSeat }) => {
-              setTeamId(claimedId || null);
-              setTeamSeat(claimedSeat || null);
-              setCanClaimTeamCode(false);
-              if (user?.id) {
-                invalidateHasTeamMembersCache(user.id);
-              }
-              onProfileUpdate?.({ teamSearchRefresh: true });
-              loadProfile();
-            }}
-          />
-        )}
-
         {/* Profile Form Card */}
         <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
           <div className="px-4 py-3 border-b border-gray-100">
@@ -377,7 +351,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
                   setPhysicalActivityLevel={form.setPhysicalActivityLevel}
                   communityId={form.communityId}
                   setCommunityId={form.setCommunityId}
-                  userRole={userRole}
+                  teamSeat={teamSeat}
                 />
                 <UserProfileBodyMetrics
                   bodyMetrics={form.bodyMetrics}

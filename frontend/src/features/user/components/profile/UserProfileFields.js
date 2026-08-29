@@ -14,6 +14,11 @@ import { VALID_GENDERS } from '../../domain/profileCompleteness';
 const inputCls =
   'w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none';
 
+const SEAT_LABEL = {
+  sponsor: 'Sponsor',
+  'co-sponsor': 'Co-Sponsor',
+};
+
 const Field = ({ label, required, children }) => (
   <div>
     <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -30,12 +35,8 @@ const UserProfileFields = ({
   gender, setGender,
   physicalActivityLevel, setPhysicalActivityLevel,
   communityId, setCommunityId,
-  userRole = 'user',
-}) => {
-  const isCoachLeadRole = userRole === 'coach' || userRole === 'upline';
-  const communityIdLabel = isCoachLeadRole ? 'Community ID (Team Code)' : 'Display Community ID';
-
-  return (
+  teamSeat = null,
+}) => (
   <div className="space-y-4">
     <Field label="Email" required>
       <div className="relative">
@@ -93,7 +94,7 @@ const UserProfileFields = ({
       <input type="text" inputMode="numeric" pattern="[0-9]*" value={phone} onChange={(e) => setPhone(e.target.value)}
         placeholder="e.g. +91 9876543210" className={inputCls} style={{ fontSize: '16px' }} />
     </Field>
-    <Field label={communityIdLabel}>
+    <Field label="Community ID">
       <div className="relative">
         <Hash className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
         <input
@@ -111,10 +112,13 @@ const UserProfileFields = ({
           style={{ fontSize: '16px' }}
         />
       </div>
+      {teamSeat && (
+        <p className="text-xs text-green-700 font-medium mt-1.5">
+          Role: {SEAT_LABEL[teamSeat] || teamSeat}
+        </p>
+      )}
       <p className="text-xs text-gray-500 mt-1">
-        {isCoachLeadRole
-          ? 'For coaches: saving updates Community ID, Team Code, and shared team link together.'
-          : 'Saving updates Community ID, Team Code, and shared team link together.'}
+        Your shared team code for Sponsor / Co-Sponsor. Tap Save Profile after editing.
       </p>
       <p className="text-xs text-gray-400 mt-0.5">
         {(communityId || '').length}/{COMMUNITY_ID_MAX_LENGTH} · Min {COMMUNITY_ID_MIN_LENGTH} · Letters and numbers only
@@ -149,7 +153,6 @@ const UserProfileFields = ({
       onChange={setPhysicalActivityLevel}
     />
   </div>
-  );
-};
+);
 
 export default UserProfileFields;
