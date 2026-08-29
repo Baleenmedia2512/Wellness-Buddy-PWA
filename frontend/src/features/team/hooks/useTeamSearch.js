@@ -93,6 +93,9 @@ export function useTeamSearch({
   // Re-run when coachCommunityId arrives so direct-downline rows get Your CID.
   useEffect(() => {
     if (!isCoach || !user?.id) return undefined;
+    if (refreshKey > 0) {
+      invalidateHasTeamMembersCache(user.id);
+    }
     let cancelled = false;
     setLoading(true);
     fetchTeamMembers({
