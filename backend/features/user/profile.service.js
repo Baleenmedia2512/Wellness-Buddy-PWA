@@ -68,7 +68,7 @@ export async function getProfile({ email, userId = null }) {
   const teamId = teamCodeFields?.TeamId || leadSeat.teamId || null;
   const coachTeamId = teamCodeFields?.CoachTeamId || null;
   const teamSeat = leadSeat.seat || null;
-  const canClaimTeamCode = !teamId && !teamSeat;
+  const canClaimTeamCode = !!user.CoachId && !teamId && !teamSeat;
   const cardMetrics = mapCardToProfileBodyMetrics(latestBodyMetricsCard);
   const teamMetrics = mapTeamRowToProfileBodyMetrics(user);
   const cardHeight = latestBodyMetricsCard?.height_cm != null
