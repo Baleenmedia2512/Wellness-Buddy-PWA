@@ -1,5 +1,6 @@
 import { ValidationError } from '../../shared/lib/ValidationError.js';
 import { isValidPhoneE164 } from './domain/contactIdentifier.js';
+import { OTP_REGEX } from '../../shared/lib/otp.constants.js';
 
 function normalizeRecipient(raw, contactType) {
   const trimmed = raw ? String(raw).trim() : raw;
@@ -37,12 +38,16 @@ export function validateVerifyOtp(body) {
   const recipient = normalizeRecipient(body.recipient, contactType);
   const { otp } = body;
   if (!recipient || !otp) throw new ValidationError(400, 'Recipient and OTP are required');
+  const otpStr = String(otp).trim();
+  if (!OTP_REGEX.test(otpStr)) {
+    throw new ValidationError(400, 'Enter the 4-digit code sent to you');
+  }
   if (contactType === 'phone' && !isValidPhoneE164(recipient)) {
     throw new ValidationError(400, 'Invalid phone number');
   }
   return {
     recipient,
-    otp: String(otp),
+    otp: otpStr,
     contactType,
     purpose: body.purpose || '',
     timezoneIana: body.timezoneIana ?? body.timezone ?? undefined,

@@ -213,7 +213,7 @@ export function buildTestimonialCoachEmailHtml({
                 <tr>
                   <td align="center" style="background-color:#f0fdf4;border:2px dashed #6ee7b7;border-radius:8px;padding:14px 12px;">
                     <p style="margin:0;color:#6b7280;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;font-family:Arial,Helvetica,sans-serif;">Verification OTP</p>
-                    <p style="margin:8px 0 0;color:#047857;font-size:32px;font-weight:700;letter-spacing:6px;font-family:'Courier New',Courier,monospace;line-height:1.1;">${safeOtp}</p>
+                    <p style="margin:8px 0 0;color:#047857;font-size:32px;font-weight:700;letter-spacing:4px;font-family:'Courier New',Courier,monospace;line-height:1.1;">${safeOtp}</p>
                     <p style="margin:6px 0 0;color:#9ca3af;font-size:12px;font-family:Arial,Helvetica,sans-serif;">Valid for 24 hours</p>
                   </td>
                 </tr>
@@ -389,7 +389,7 @@ export function buildVideoCoachEmailHtml({ memberName, otp, healthVideoUrl, busi
                 <tr>
                   <td align="center" style="background-color:#f0fdf4;border:2px dashed #6ee7b7;border-radius:8px;padding:14px 12px;">
                     <p style="margin:0;color:#6b7280;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;font-family:Arial,Helvetica,sans-serif;">Video Verification OTP</p>
-                    <p style="margin:8px 0 0;color:#047857;font-size:32px;font-weight:700;letter-spacing:6px;font-family:'Courier New',Courier,monospace;line-height:1.1;">${safeOtp}</p>
+                    <p style="margin:8px 0 0;color:#047857;font-size:32px;font-weight:700;letter-spacing:4px;font-family:'Courier New',Courier,monospace;line-height:1.1;">${safeOtp}</p>
                     <p style="margin:6px 0 0;color:#9ca3af;font-size:12px;font-family:Arial,Helvetica,sans-serif;">Valid for 24 hours</p>
                   </td>
                 </tr>
@@ -730,7 +730,7 @@ export function buildUnifiedSubmitEmailHtml({
                 <tr>
                   <td align="center" style="background-color:#f0fdf4;border:2px dashed #6ee7b7;border-radius:8px;padding:14px 12px;">
                     <p style="margin:0;color:#6b7280;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;font-family:Arial,Helvetica,sans-serif;">Verification OTP</p>
-                    <p style="margin:8px 0 0;color:#047857;font-size:32px;font-weight:700;letter-spacing:6px;font-family:'Courier New',Courier,monospace;line-height:1.1;">${safeOtp}</p>
+                    <p style="margin:8px 0 0;color:#047857;font-size:32px;font-weight:700;letter-spacing:4px;font-family:'Courier New',Courier,monospace;line-height:1.1;">${safeOtp}</p>
                     <p style="margin:6px 0 0;color:#9ca3af;font-size:12px;font-family:Arial,Helvetica,sans-serif;">Valid for 24 hours</p>
                   </td>
                 </tr>

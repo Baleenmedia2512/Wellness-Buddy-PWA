@@ -16,6 +16,7 @@ import {
   assignLeadSeat,
   resolveMemberCoachTeamId,
 } from '../../../utils/coachTeamSeats.js';
+import { OTP_LENGTH, OTP_REGEX } from '../../../shared/lib/otp.constants.js';
 
 const MAX_OTP_ATTEMPTS = 5;
 
@@ -61,10 +62,10 @@ export default async function handler(req, res) {
     }
 
     // Get OTP from request body
-    if (!otp || otp.length !== 6 || !/^\d{6}$/.test(otp)) {
+    if (!otp || otp.length !== OTP_LENGTH || !OTP_REGEX.test(otp)) {
       res.status(400).json({
         success: false,
-        error: "OTP must be exactly 6 digits",
+        error: `OTP must be exactly ${OTP_LENGTH} digits`,
       });
       return;
     }
@@ -72,11 +73,11 @@ export default async function handler(req, res) {
     // Connect to Supabase
     const supabase = getSupabaseClient();
 
-    // ── Demo account: fixed OTP 000000 accepted, but do real DB ops ──────────
+    // ── Demo account: fixed OTP 0000 accepted, but do real DB ops ──────────
     // No OTP is emailed to the demo account, so we accept the fixed code and
     // then continue through the normal flow (DB records already exist after login).
     const DEMO_ACCOUNTS = ['testereasywork@gmail.com'];
-    const DEMO_OTP = '000000';
+    const DEMO_OTP = '0000';
     const isDemoAccount = !!(email && DEMO_ACCOUNTS.includes(String(email).toLowerCase().trim()));
     // ─────────────────────────────────────────────────────────────────────────
 
@@ -175,7 +176,7 @@ export default async function handler(req, res) {
       requestId: request.Id,
     });
 
-    const isValid = (isDemoAccount && otp === '000000') || await bcrypt.compare(otp, request.OtpHash);
+    const isValid = (isDemoAccount && otp === DEMO_OTP) || await bcrypt.compare(otp, request.OtpHash);
 
     logger.debug("OTP validation result:", isValid);
 

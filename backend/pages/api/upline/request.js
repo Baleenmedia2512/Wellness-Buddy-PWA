@@ -15,6 +15,7 @@ import bcrypt from "bcryptjs";
 import logger from '../../../shared/lib/logger.js';
 import { sendTransactionalMail } from '../../../shared/lib/smtp-mail.js';
 import { buildSponsorOtpEmail } from '../../../features/auth/domain/otp-email.rules.js';
+import { generateOtp } from '../../../shared/lib/otp.constants.js';
 
 /** Resolve requester row by userId, email (case-insensitive), or phone. */
 async function findRequester(supabase, { userId, email, phone }) {
@@ -84,9 +85,9 @@ const sendEmail = async ({ to, subject, text, html }) => {
   }
 };
 
-// Generate 6-digit OTP
+// Generate 4-digit OTP
 function generateOTP() {
-  return Math.floor(100000 + Math.random() * 900000).toString();
+  return generateOtp();
 }
 
 export default async function handler(req, res) {
@@ -128,8 +129,8 @@ export default async function handler(req, res) {
 
     const supabase = getSupabaseClient();
 
-    // ── Demo account: auto-assign Yasheer J as coach with fixed OTP 000000 ──
-    // No email is sent; the tester enters 000000 to complete setup.
+    // ── Demo account: auto-assign Yasheer J as coach with fixed OTP 0000 ──
+    // No email is sent; the tester enters 0000 to complete setup.
     const DEMO_ACCOUNTS = ['testereasywork@gmail.com'];
     const emailNorm = typeof email === 'string' ? email.toLowerCase().trim() : '';
     if (emailNorm && DEMO_ACCOUNTS.includes(emailNorm)) {
@@ -173,8 +174,8 @@ export default async function handler(req, res) {
         .eq('RequesterId', demoRequester.UserId)
         .eq('Status', 'pending');
 
-      // Hash fixed OTP 000000
-      const demoOtpHash = await bcrypt.hash('000000', 10);
+      // Hash fixed OTP 0000
+      const demoOtpHash = await bcrypt.hash('0000', 10);
       const requestedAt = new Date();
       const otpExpiresAt = new Date(requestedAt.getTime() + 24 * 60 * 60 * 1000);
 
@@ -194,10 +195,10 @@ export default async function handler(req, res) {
 
       if (demoInsertErr) throw demoInsertErr;
 
-      logger.debug('✅ [upline/request] Demo request created with Yasheer J. OTP: 000000');
+      logger.debug('✅ [upline/request] Demo request created with Yasheer J. OTP: 0000');
       return res.status(200).json({
         success: true,
-        message: 'Request sent! Enter OTP 000000 to complete setup.',
+        message: 'Request sent! Enter OTP 0000 to complete setup.',
         requestId: demoInsert[0].Id,
         coachName: demoCoach.UserName,
         nextStep: 'validate-otp',
@@ -316,7 +317,7 @@ export default async function handler(req, res) {
 
     const coach = coachRows[0];
 
-    // Generate 6-digit OTP
+    // Generate 4-digit OTP
     const otp = generateOTP();
     const otpHash = await bcrypt.hash(otp, 10);
     // ─────────────────────────────────────────────────────────────────
