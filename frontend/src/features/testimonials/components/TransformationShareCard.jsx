@@ -166,6 +166,20 @@ function transformationFileName(userName) {
   return `transformation-${String(userName || 'result').replace(/\s+/g, '-').toLowerCase()}.png`;
 }
 
+/** Split full name into two centered lines (e.g. "Mohamed Yasheer" / "Jafar Ali"). */
+function splitUserNameForCard(name) {
+  const trimmed = String(name || 'Member').trim() || 'Member';
+  const words = trimmed.split(/\s+/).filter(Boolean);
+  if (words.length <= 1) {
+    return { line1: trimmed, line2: null };
+  }
+  const mid = Math.ceil(words.length / 2);
+  return {
+    line1: words.slice(0, mid).join(' '),
+    line2: words.slice(mid).join(' '),
+  };
+}
+
 export async function shareTransformationCard(element, userName, _testimonial = null) {
   if (!element) throw new Error('Transformation card is not ready');
   const blob = await captureTransformationCardAsBlob(element);
@@ -306,6 +320,7 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
   const verb = isLoss ? 'Lost' : 'Gained';
   const issues = (testimonial?.recoveredHealthIssues ?? []).filter(Boolean).slice(0, MAX_VISIBLE_ISSUES);
   const durationText = testimonial?.durationText || '';
+  const { line1: nameLine1, line2: nameLine2 } = splitUserNameForCard(userName);
 
   return (
     <div
@@ -376,19 +391,34 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
         </table>
       </div>
 
-      <p style={{
-        margin: 0,
-        padding: '14px 16px 10px',
-        textAlign: 'center',
-        fontSize: 22,
-        fontWeight: 800,
-        color: '#111827',
-        lineHeight: '28px',
-        letterSpacing: '0.3px',
-      }}
-      >
-        {userName || 'Member'}
-      </p>
+      <div style={{ padding: '14px 16px 10px', textAlign: 'center' }}>
+        <p style={{
+          margin: 0,
+          fontSize: 22,
+          fontWeight: 800,
+          color: '#111827',
+          lineHeight: '28px',
+          letterSpacing: '0.3px',
+          fontFamily: CARD_FONT,
+        }}
+        >
+          {nameLine1}
+        </p>
+        {nameLine2 ? (
+          <p style={{
+            margin: '2px 0 0',
+            fontSize: 22,
+            fontWeight: 800,
+            color: '#111827',
+            lineHeight: '28px',
+            letterSpacing: '0.3px',
+            fontFamily: CARD_FONT,
+          }}
+          >
+            {nameLine2}
+          </p>
+        ) : null}
+      </div>
 
       {showPhotoRow && (
         <div style={{ padding: '0 12px' }}>
@@ -448,42 +478,52 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
           ) : null}
           {issues.length > 0 ? (
             <tr>
-              <td style={{ textAlign: 'center', padding: '14px 16px 20px', verticalAlign: 'top' }}>
+              <td style={{ textAlign: 'left', padding: '14px 16px 20px', verticalAlign: 'top' }}>
                 <p style={{
                   margin: 0,
-                  fontSize: 10,
-                  fontWeight: 700,
-                  color: '#9ca3af',
-                  textTransform: 'uppercase',
-                  letterSpacing: '1.2px',
-                  lineHeight: '12px',
+                  lineHeight: '20px',
                   fontFamily: CARD_FONT,
                 }}
                 >
-                  Health Issues
-                </p>
-                <p style={{
-                  margin: '8px 0 0',
-                  lineHeight: '24px',
-                  fontFamily: CARD_FONT,
-                }}
-                >
-                  {issues.map((issue) => (
-                    <span
-                      key={issue}
-                      style={{
-                        display: 'inline-block',
-                        margin: '3px 4px',
-                        padding: '4px 12px',
-                        borderRadius: 999,
-                        background: '#fce7f3',
-                        color: '#9f1239',
+                  <span style={{
+                    fontSize: 10,
+                    fontWeight: 700,
+                    color: '#9ca3af',
+                    letterSpacing: '1.2px',
+                  }}
+                  >
+                    Health issue while joining in the community
+                  </span>
+                  <span style={{
+                    fontSize: 10,
+                    fontWeight: 700,
+                    color: '#9ca3af',
+                    letterSpacing: '1.2px',
+                  }}
+                  >
+                    {' : '}
+                  </span>
+                  {issues.map((issue, index) => (
+                    <React.Fragment key={issue}>
+                      {index > 0 ? (
+                        <span style={{
+                          fontSize: 13,
+                          fontWeight: 700,
+                          color: '#9f1239',
+                        }}
+                        >
+                          {', '}
+                        </span>
+                      ) : null}
+                      <span style={{
                         fontSize: 13,
-                        fontWeight: 600,
+                        fontWeight: 700,
+                        color: '#9f1239',
                       }}
-                    >
-                      {issue}
-                    </span>
+                      >
+                        {issue}
+                      </span>
+                    </React.Fragment>
                   ))}
                 </p>
               </td>
