@@ -29,7 +29,7 @@ describe('testimonial coach email photos keep aspect ratio', () => {
       beforeWeight: 80,
       afterWeight: 70,
       durationText: '12 weeks',
-      otp: '1234',
+      otp: '123456',
       beforeUrl: 'https://example.com/before.jpg',
       afterUrl: 'https://example.com/after.jpg',
       recoveredHealthIssues: [],
@@ -43,7 +43,7 @@ describe('testimonial coach email photos keep aspect ratio', () => {
   it('does not lock img height on first-upload or previous/new comparison photos', () => {
     const html = buildUnifiedSubmitEmailHtml({
       memberName: 'Alex',
-      otp: '1234',
+      otp: '123456',
       changedSlots: ['before', 'after'],
       goalType: 'loss',
       beforeWeight: 80,

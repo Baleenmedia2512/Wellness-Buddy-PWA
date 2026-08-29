@@ -43,7 +43,6 @@ import {
   countTestimonialsUploadLevels,
 } from './domain/testimonials-list.pagination.js';
 import { nowUtc } from '../../shared/lib/datetime/index.js';
-import { generateOtp } from '../../shared/lib/otp.constants.js';
 import {
   buildTestimonialCoachEmailHtml,
   buildTestimonialCoachEmailText,
@@ -60,6 +59,10 @@ import {
 
 /** How long a coach verification OTP remains valid (product copy + expiry). */
 export const TESTIMONIAL_OTP_VALIDITY_HOURS = 24;
+
+function generateOtp() {
+  return Math.floor(100000 + Math.random() * 900000).toString();
+}
 
 function otpExpiryIst(hoursFromNow = TESTIMONIAL_OTP_VALIDITY_HOURS) {
   const now = new Date();

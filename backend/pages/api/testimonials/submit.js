@@ -1,7 +1,7 @@
 /**
  * POST /api/testimonials/submit
  * Member submits a new before/after testimonial.
- * Triggers a verification email to their coach with a 4-digit OTP.
+ * Triggers a verification email to their coach with a 6-digit OTP.
  */
 import { applyCors, methodNotAllowed, runService } from '../../../shared/lib/handler.js';
 import { submitTestimonial } from '../../../features/testimonials/testimonials.service.js';

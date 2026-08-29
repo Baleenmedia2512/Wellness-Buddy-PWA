@@ -13,7 +13,6 @@ import { nowUtc } from '../../shared/lib/datetime/index.js';
 import { syncUserTimezoneIfChanged } from '../user/timezone-sync.service.js';
 import { isEnabled } from '../../shared/lib/feature-flags.js';
 import { isConsentRecorded } from './domain/consent.rules.js';
-import { generateOtp } from '../../shared/lib/otp.constants.js';
 
 const DEMO_ACCOUNTS = ['testereasywork@gmail.com'];
 
@@ -73,7 +72,7 @@ async function createAndDeliverOtp({ recipient, contactType }) {
 
   await repo.deactivateActiveOtps(recipient, contactType);
 
-  const otp = generateOtp();
+  const otp = Math.floor(100000 + Math.random() * 900000).toString();
   const otpHash = await bcrypt.hash(otp, 10);
   const expiryMinutes = contactType === 'phone' ? MDT_OTP_EXPIRY_MINUTES : 5;
 
@@ -306,8 +305,8 @@ export async function sendOtp({ recipient, contactType }) {
 }
 
 async function handleDemoVerify({ recipient, otp, purpose }) {
-  const validDeleteOtp = purpose === 'delete' && otp === '6543';
-  const validLoginOtp = purpose !== 'delete' && otp === '1234';
+  const validDeleteOtp = purpose === 'delete' && otp === '654321';
+  const validLoginOtp = purpose !== 'delete' && otp === '123456';
   if (!validDeleteOtp && !validLoginOtp) {
     return { httpStatus: 400, body: { success: false, message: 'Invalid OTP. Please try again.' } };
   }
@@ -423,7 +422,7 @@ export async function verifyEmailOwnershipOtp({ recipient, otp }) {
   const code = String(otp || '').trim();
 
   if (DEMO_ACCOUNTS.includes(email)) {
-    if (code !== '1234') {
+    if (code !== '123456') {
       return { httpStatus: 400, body: { success: false, message: 'Invalid OTP. Please try again.' } };
     }
     return { httpStatus: 200, body: { success: true, verified: true } };
