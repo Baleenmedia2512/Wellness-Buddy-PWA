@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import {
-  RefreshCw, Download, Search,
+  RefreshCw, Download, Search, Share2,
   Scale, BookOpen, Coffee, Utensils, Moon, Droplets, Flame,
 } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
@@ -11,9 +11,18 @@ import ReportDateRangeFilter from '../../../shared/components/common/ReportDateR
 import { ACTIVITY_REPORT_DATE_RANGES, formatCustomRangeLabel } from '../../../shared/domain/reportDateRanges';
 import { fetchHasTeamMembers } from '../../team/services/teamSearchService';
 import { TEAM_SCOPES, TEAM_SCOPE_OPTIONS } from '../../reports/utils/reportFilters';
+import {
+  ACTIVITY_REPORT_CLUB_REMOTE,
+  buildActivityReportShareText,
+} from '../utils/activityReportShareText';
 
 const DEFAULT_PAGE_SIZE = 10;
 const SEARCH_DEBOUNCE_MS = 300;
+
+function clubDisplayToFilterValue(displayName) {
+  if (displayName === 'Remote') return ACTIVITY_REPORT_CLUB_REMOTE;
+  return displayName;
+}
 
 function mapRoleForApi(userRole) {
   const n = String(userRole || 'member').toLowerCase();
@@ -83,6 +92,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const [exportLoading, setExportLoading] = useState(false);
+  const [shareLoading, setShareLoading] = useState(false);
   const [error, setError] = useState('');
   const [dateRange, setDateRange] = useState('today');
   const [customStartDate, setCustomStartDate] = useState(null);
@@ -92,6 +102,8 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
   const [detailRecords, setDetailRecords] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [clubFilter, setClubFilter] = useState('');
+  const [availableClubs, setAvailableClubs] = useState([]);
   const [sortColumn, setSortColumn] = useState('date');
   const [sortDirection, setSortDirection] = useState('desc');
   const [currentPage, setCurrentPage] = useState(1);
@@ -134,7 +146,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  const detailCacheKey = useCallback((activityType, page, search, sort, sortDir) => (
+  const detailCacheKey = useCallback((activityType, page, search, sort, sortDir, club) => (
     [
       teamScope,
       dateRange,
@@ -144,6 +156,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
       String(page || 1),
       String(itemsPerPage),
       search || '',
+      club || '',
       sort || 'date',
       sortDir || 'desc',
     ].join('|')
@@ -235,14 +248,18 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
     return preset?.label || 'Today';
   }, [dateRange, customStartDate, customEndDate]);
 
-  const paginationQuery = useCallback((page = currentPage, overrides = {}) => ({
-    page: overrides.page ?? page,
-    limit: overrides.limit ?? itemsPerPage,
-    search: overrides.search ?? debouncedSearch,
-    sort: overrides.sort ?? sortColumn,
-    sortDir: overrides.sortDir ?? sortDirection,
-    ...(overrides.exportAll ? { exportAll: '1' } : {}),
-  }), [currentPage, itemsPerPage, debouncedSearch, sortColumn, sortDirection]);
+  const paginationQuery = useCallback((page = currentPage, overrides = {}) => {
+    const club = overrides.clubName ?? overrides.clubFilter ?? clubFilter;
+    return {
+      page: overrides.page ?? page,
+      limit: overrides.limit ?? itemsPerPage,
+      search: overrides.search ?? debouncedSearch,
+      sort: overrides.sort ?? sortColumn,
+      sortDir: overrides.sortDir ?? sortDirection,
+      ...(club ? { clubName: club } : {}),
+      ...(overrides.exportAll ? { exportAll: '1' } : {}),
+    };
+  }, [currentPage, itemsPerPage, debouncedSearch, sortColumn, sortDirection, clubFilter]);
 
   const fetchLegacyReportBundle = useCallback(async (detailActivity = 'education') => {
     // Parallelize independent report GETs — previously sequential waterfalls (~3× RTT)
@@ -284,10 +301,10 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
     setDetailRecords(records);
     applyPaginationMeta(detailData, 1);
     detailCacheRef.current.set(
-      detailCacheKey(detailActivity, 1, pageParams.search, pageParams.sort, pageParams.sortDir),
+      detailCacheKey(detailActivity, 1, pageParams.search, pageParams.sort, pageParams.sortDir, clubFilter),
       { records, pagination: detailData.pagination || emptyPagination(1) },
     );
-  }, [apiBaseUrl, buildReportParams, applyReportMeta, applyPaginationMeta, paginationQuery, detailCacheKey]);
+  }, [apiBaseUrl, buildReportParams, applyReportMeta, applyPaginationMeta, paginationQuery, detailCacheKey, clubFilter]);
 
   const fetchDetails = useCallback(async (activityType, {
     signal,
@@ -295,11 +312,12 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
     search = debouncedSearch,
     sort = sortColumn,
     sortDir = sortDirection,
+    club = clubFilter,
   } = {}) => {
     if (!user?.id || !apiBaseUrl || !activityType) return;
     if (dateRange === 'custom' && (!customStartDate || !customEndDate)) return;
 
-    const cacheKey = detailCacheKey(activityType, page, search, sort, sortDir);
+    const cacheKey = detailCacheKey(activityType, page, search, sort, sortDir, club);
     if (detailCacheRef.current.has(cacheKey)) {
       const cached = detailCacheRef.current.get(cacheKey);
       setDetailRecords(cached.records || []);
@@ -325,6 +343,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
           search,
           sort,
           sortDir,
+          ...(club ? { clubName: club } : {}),
         })}`,
         { cache: 'no-store', signal },
       );
@@ -337,6 +356,9 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
 
       const records = data.records || [];
       const pageMeta = data.pagination || emptyPagination(page);
+      if (Array.isArray(data.availableClubs)) {
+        setAvailableClubs(data.availableClubs);
+      }
       detailCacheRef.current.set(cacheKey, { records, pagination: pageMeta });
       setDetailRecords(records);
       setPagination(pageMeta);
@@ -361,6 +383,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
     debouncedSearch,
     sortColumn,
     sortDirection,
+    clubFilter,
     itemsPerPage,
   ]);
 
@@ -510,6 +533,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
         search: debouncedSearch,
         sort: sortColumn,
         sortDir: sortDirection,
+        club: clubFilter,
       });
     }, 80);
 
@@ -519,7 +543,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
     };
   // intentionally omit selectedActivity — tab switches use handleActivityClick
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [debouncedSearch, sortColumn, sortDirection, roleReady, user?.id, apiBaseUrl, summary]);
+  }, [debouncedSearch, sortColumn, sortDirection, clubFilter, roleReady, user?.id, apiBaseUrl, summary]);
 
   const handleRefresh = () => {
     fetchAbortRef.current?.abort();
@@ -531,13 +555,14 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
 
   const handleActivityClick = (activityId) => {
     if (activityId === selectedActivity && !detailLoading) {
-      // Already showing this tab — avoid a duplicate detail GET.
       const cacheKey = detailCacheKey(
-        activityId, currentPage, debouncedSearch, sortColumn, sortDirection,
+        activityId, currentPage, debouncedSearch, sortColumn, sortDirection, clubFilter,
       );
       if (detailCacheRef.current.has(cacheKey)) return;
     }
     setSelectedActivity(activityId);
+    setClubFilter('');
+    setAvailableClubs([]);
     setCurrentPage(1);
     fetchAbortRef.current?.abort();
     const controller = new AbortController();
@@ -548,6 +573,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
       search: debouncedSearch,
       sort: sortColumn,
       sortDir: sortDirection,
+      club: '',
     });
   };
 
@@ -566,13 +592,21 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
       search: debouncedSearch,
       sort: sortColumn,
       sortDir: sortDirection,
+      club: clubFilter,
     });
+  };
+
+  const handleClubFilterChange = (event) => {
+    setClubFilter(event.target.value);
+    setCurrentPage(1);
   };
 
   const handleTeamScopeChange = (scope) => {
     setTeamScope(scope);
     setSearchQuery('');
     setDebouncedSearch('');
+    setClubFilter('');
+    setAvailableClubs([]);
     setCurrentPage(1);
     setDetailRecords([]);
     setPagination(emptyPagination());
@@ -583,6 +617,8 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
 
   const handleDateRangeChange = (range) => {
     setDateRange(range);
+    setClubFilter('');
+    setAvailableClubs([]);
     setCurrentPage(1);
     setDetailRecords([]);
     setPagination(emptyPagination());
@@ -601,6 +637,8 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
   const handleCustomDateSelect = (start, end) => {
     setCustomStartDate(start);
     setCustomEndDate(end);
+    setClubFilter('');
+    setAvailableClubs([]);
     setCurrentPage(1);
     setDetailRecords([]);
     setPagination(emptyPagination());
@@ -757,6 +795,80 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
     }
   };
 
+  const handleShare = async () => {
+    if ((pagination.totalRecords || 0) === 0 && detailRecords.length === 0) {
+      alert('No records to share');
+      return;
+    }
+
+    setShareLoading(true);
+    try {
+      const response = await fetch(
+        `${apiBaseUrl}/api/activity/report?${buildReportParams(selectedActivity, {
+          ...paginationQuery(1, { exportAll: true }),
+        })}`,
+        { cache: 'no-store' },
+      );
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || 'Failed to load activity report for sharing');
+      }
+
+      const exportRecords = Array.isArray(data.records) ? data.records : [];
+      if (exportRecords.length === 0) {
+        alert('No records to share');
+        return;
+      }
+
+      const activityMeta = ACTIVITY_TYPES.find((a) => a.id === selectedActivity);
+      const text = buildActivityReportShareText({
+        activityLabel: activityMeta?.label || 'Activity',
+        dateLabel: activeDateLabel,
+        scopeLabel: activeScopeLabel,
+        clubFilter,
+        searchQuery,
+        totalRecords: data.pagination?.totalRecords ?? exportRecords.length,
+        records: exportRecords,
+        activityId: selectedActivity,
+      });
+
+      const isNative = Capacitor.isNativePlatform();
+      if (isNative) {
+        const canShare = await Share.canShare().catch(() => ({ value: false }));
+        if (canShare.value) {
+          await Share.share({
+            title: 'Activity Report',
+            text,
+            dialogTitle: 'Share Activity Report',
+          });
+        } else if (navigator.clipboard?.writeText) {
+          await navigator.clipboard.writeText(text);
+          alert('Report copied to clipboard');
+        } else {
+          alert('Sharing is not available on this device');
+        }
+      } else if (navigator.share) {
+        try {
+          await navigator.share({ title: 'Activity Report', text });
+        } catch (shareErr) {
+          const cancelled = (shareErr?.name === 'AbortError')
+            || (shareErr?.message || '').toLowerCase().includes('cancel');
+          if (!cancelled) throw shareErr;
+        }
+      } else if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+        alert('Report copied to clipboard');
+      } else {
+        alert('Sharing is not supported in this browser');
+      }
+    } catch (err) {
+      console.error('Share failed:', err);
+      alert('Failed to share report. Please try again.');
+    } finally {
+      setShareLoading(false);
+    }
+  };
+
   const totalPages = pagination.totalPages || 0;
   const totalRecords = pagination.totalRecords || 0;
   const pageSize = pagination.pageSize || itemsPerPage;
@@ -883,29 +995,60 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
                 <h2 className="text-lg font-bold text-gray-900">
                   {ACTIVITY_TYPES.find(a => a.id === selectedActivity)?.label} Records
                 </h2>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-shrink-0">
                   {(totalRecords > 0 || detailRecords.length > 0) && (
-                    <TouchFeedbackButton
-                      onClick={handleDownload}
-                      disabled={exportLoading || detailLoading}
-                      className="flex items-center gap-2 px-3 py-1.5 bg-green-600 text-white text-sm font-semibold rounded-lg hover:bg-green-700 disabled:opacity-50"
-                    >
-                      <Download className={`w-4 h-4 ${exportLoading ? 'animate-pulse' : ''}`} />
-                      {exportLoading ? 'Exporting…' : 'Export'}
-                    </TouchFeedbackButton>
+                    <>
+                      <TouchFeedbackButton
+                        onClick={handleShare}
+                        disabled={shareLoading || exportLoading || detailLoading}
+                        className="flex items-center gap-2 px-3 py-1.5 bg-white border border-green-600 text-green-700 text-sm font-semibold rounded-lg hover:bg-green-50 disabled:opacity-50"
+                      >
+                        <Share2 className={`w-4 h-4 ${shareLoading ? 'animate-pulse' : ''}`} />
+                        <span className="hidden sm:inline">{shareLoading ? 'Sharing…' : 'Share'}</span>
+                      </TouchFeedbackButton>
+                      <TouchFeedbackButton
+                        onClick={handleDownload}
+                        disabled={exportLoading || shareLoading || detailLoading}
+                        className="flex items-center gap-2 px-3 py-1.5 bg-green-600 text-white text-sm font-semibold rounded-lg hover:bg-green-700 disabled:opacity-50"
+                      >
+                        <Download className={`w-4 h-4 ${exportLoading ? 'animate-pulse' : ''}`} />
+                        <span className="hidden sm:inline">{exportLoading ? 'Exporting…' : 'Export'}</span>
+                      </TouchFeedbackButton>
+                    </>
                   )}
                 </div>
               </div>
 
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
-                <input
-                  type="text"
-                  placeholder="Search by name, phone, coach, city, or village..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
-                />
+              <div className="flex flex-row items-stretch gap-2">
+                <div className="relative min-w-0 basis-[80%] shrink-0 grow-0">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 text-gray-400" />
+                  <input
+                    type="text"
+                    placeholder="Search by name, phone, coach, city, village, or club..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full pl-9 sm:pl-10 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                  />
+                </div>
+                <div className="min-w-0 basis-[20%] shrink-0 grow-0">
+                  <label htmlFor="activity-report-club-filter" className="sr-only">
+                    Filter by club
+                  </label>
+                  <select
+                    id="activity-report-club-filter"
+                    value={clubFilter}
+                    onChange={handleClubFilterChange}
+                    disabled={detailLoading || availableClubs.length === 0}
+                    className="w-full h-full min-h-[2.5rem] px-1.5 sm:px-2 py-2 border border-gray-200 rounded-lg text-xs sm:text-sm text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-green-500 disabled:bg-gray-50 disabled:text-gray-400 truncate"
+                  >
+                    <option value="">All Clubs</option>
+                    {availableClubs.map((clubName) => (
+                      <option key={clubName} value={clubDisplayToFilterValue(clubName)}>
+                        {clubName}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
             </div>
 
