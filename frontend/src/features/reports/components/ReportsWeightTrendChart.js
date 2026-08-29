@@ -8,6 +8,7 @@ import {
   buildChartGeometry,
   buildRecordedTrendSeries,
   getFirstAndLatestRecordedValue,
+  getRecordedSeriesAxisBounds,
   isSmallChartDevice,
   REPORTS_WEIGHT_TREND_RANGES,
   WEIGHT_TREND_RANGE_CUSTOM,
@@ -111,15 +112,21 @@ export default function ReportsWeightTrendChart({
     }, { getValue: valueOf }),
     [weightHistory, rangeDays, customStartDate, customEndDate, valueOf],
   );
+  const axisBounds = useMemo(
+    () => getRecordedSeriesAxisBounds(series),
+    [series],
+  );
   const geom = useMemo(
     () => (series.length
       ? buildChartGeometry(series, chartWidth, {
         maxMarkers: series.length,
-        maxDateLabels: 7,
+        showAllDateLabels: true,
         plotAllPoints: true,
+        rangeStart: axisBounds?.start ?? null,
+        rangeEnd: axisBounds?.end ?? null,
       })
       : null),
-    [series, chartWidth],
+    [series, chartWidth, axisBounds],
   );
 
   useEffect(() => {
@@ -241,29 +248,32 @@ export default function ReportsWeightTrendChart({
                 </text>
               );
             })}
-          </svg>
-          <div
-            className={`relative mt-1 h-4 text-gray-500 ${small ? 'text-[8px]' : 'text-[10px] md:text-xs'}`}
-            style={{ width: '100%' }}
-          >
             {geom.points.map((p, i) => {
               if (!geom.dateLabelIndices.has(i)) return null;
-              const transform = i === geom.firstDateLabelIndex
-                ? 'translateX(0)'
-                : i === geom.lastDateLabelIndex
-                  ? 'translateX(-100%)'
-                  : 'translateX(-50%)';
+              const isFirst = i === geom.firstDateLabelIndex;
+              const isLast = i === geom.lastDateLabelIndex;
+              const textAnchor = isFirst ? 'start' : isLast ? 'end' : 'middle';
+              const dateText = p.compactLabel ?? p.label;
+              const prevPoint = i > 0 ? geom.points[i - 1] : null;
+              const tightWithPrev = prevPoint
+                && geom.dateLabelIndices.has(i - 1)
+                && (p.x - prevPoint.x) < 18;
+              const staggerY = tightWithPrev && i % 2 === 1 ? 8 : 0;
               return (
-                <span
+                <text
                   key={`${p.key}-label`}
-                  className="absolute whitespace-nowrap"
-                  style={{ left: `${(p.x / geom.chartWidth) * 100}%`, transform }}
+                  x={p.x}
+                  y={geom.chartHeight + (small ? 16 : 18) + staggerY}
+                  textAnchor={textAnchor}
+                  fontSize={small ? 8 : 10}
+                  fontWeight="500"
+                  fill="#6b7280"
                 >
-                  {p.label}
-                </span>
+                  {dateText}
+                </text>
               );
             })}
-          </div>
+          </svg>
         </div>
       )}
     </div>
