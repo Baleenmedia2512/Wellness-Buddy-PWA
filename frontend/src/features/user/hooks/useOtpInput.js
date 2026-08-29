@@ -1,6 +1,7 @@
-// 6-digit OTP input controller — supports native keyboard, custom keypad, paste,
+// OTP input controller — supports native keyboard, custom keypad, paste,
 // WebOTP API auto-fill, and iOS autoComplete="one-time-code" multi-char input.
 import { useRef, useState } from 'react';
+import { extractOtpFromText } from '../domain/otpLength';
 
 export default function useOtpInput(length = 6) {
   const [otp, setOtp] = useState(() => new Array(length).fill(''));
@@ -13,14 +14,7 @@ export default function useOtpInput(length = 6) {
     setOtp(new Array(length).fill(''));
   };
 
-  /**
-   * Fill all cells at once — used by WebOTP API auto-read and iOS autofill
-   * when the system delivers multiple digits into a single onChange event.
-   * Returns the full OTP string when exactly `length` digits were provided,
-   * otherwise returns null (partial fill — caller decides what to do).
-   */
-  const fillAll = (raw) => {
-    const digits = String(raw || '').replace(/\D/g, '').slice(0, length);
+  const applyDigits = (digits) => {
     if (!digits) return null;
     const next = new Array(length).fill('');
     digits.split('').forEach((d, i) => { next[i] = d; });
@@ -29,12 +23,21 @@ export default function useOtpInput(length = 6) {
     return digits.length === length ? digits : null;
   };
 
+  /**
+   * Fill all cells at once — used by WebOTP API auto-read, iOS autofill,
+   * clipboard paste, and prose such as "Your OTP is 1234".
+   */
+  const fillAll = (raw) => {
+    const digits = extractOtpFromText(raw, length);
+    return applyDigits(digits);
+  };
+
   const handleChange = (idx, raw) => {
-    // iOS autoComplete="one-time-code" autofill delivers ALL `length` digits
-    // into the first cell as a single onChange (e.g. value = "123456").
-    // Only delegate to fillAll when the raw string is >= length chars so that
-    // normal single-char rapid-typing (e.g. raw = "47" from a fast keypress)
-    // falls through to the existing slice(-1) behaviour.
+    const extracted = extractOtpFromText(raw, length);
+    if (extracted) {
+      fillAll(extracted);
+      return;
+    }
     if (raw.length >= length) {
       fillAll(raw);
       return;
@@ -57,13 +60,8 @@ export default function useOtpInput(length = 6) {
 
   const handlePaste = (e) => {
     e.preventDefault();
-    const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, length);
-    if (!pasted) return null;
-    const next = new Array(length).fill('');
-    pasted.split('').forEach((d, i) => { next[i] = d; });
-    setOtp(next);
-    refs.current[Math.min(pasted.length, length - 1)]?.focus();
-    return next.every((d) => d !== '') ? next.join('') : null;
+    const pasted = e.clipboardData?.getData('text') ?? '';
+    return fillAll(pasted);
   };
 
   const handleKeypadDigit = (digit) => {

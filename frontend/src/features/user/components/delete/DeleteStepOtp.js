@@ -3,6 +3,7 @@ import React from 'react';
 import { Loader, Mail, ShieldCheck, X } from 'lucide-react';
 import TouchFeedbackButton from '../../../../shared/components/TouchFeedbackButton';
 import NativeInput, { otpAutoCompleteForCell, otpMaxLengthForCell } from '../../../../shared/components/NativeInput.jsx';
+import { EMAIL_OTP_LENGTH } from '../../domain/otpLength';
 
 const DeleteStepOtp = ({
   userEmail, otpCtl, onVerify, verifying,
@@ -28,7 +29,7 @@ const DeleteStepOtp = ({
         <div className="flex justify-center mb-3">
           <div className="h-14 w-14 rounded-full bg-red-50 flex items-center justify-center"><Mail className="h-7 w-7 text-red-500" /></div>
         </div>
-        <p className="text-sm text-gray-700 text-center mb-1">We sent a 6-digit OTP to:</p>
+        <p className="text-sm text-gray-700 text-center mb-1">We sent a 4-digit OTP to:</p>
         <p className="text-sm font-semibold text-gray-900 text-center mb-5 truncate px-2">{userEmail}</p>
         <div className="flex justify-center gap-2 mb-3" onPaste={handlePaste}>
           {otp.map((digit, i) => (
@@ -36,8 +37,8 @@ const DeleteStepOtp = ({
               type="text"
               inputMode="numeric"
               pattern="[0-9]*"
-              autoComplete={otpAutoCompleteForCell(i)}
-              maxLength={otpMaxLengthForCell(i, otp.length)}
+              autoComplete={otpAutoCompleteForCell(i, EMAIL_OTP_LENGTH, { emailOtp: true })}
+              maxLength={otpMaxLengthForCell(i, EMAIL_OTP_LENGTH, { emailOtp: true })}
               value={digit}
               onChange={(e) => handleChange(i, e.target.value)}
               onKeyDown={(e) => handleKeyDown(i, e)}

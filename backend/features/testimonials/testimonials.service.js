@@ -4,6 +4,7 @@
  * Zero HTTP concerns.
  */
 import bcrypt from 'bcryptjs';
+import { generateEmailOtp } from '../auth/domain/otp-length.rules.js';
 import crypto from 'node:crypto';
 import nodemailer from 'nodemailer';
 import * as repo from './testimonials.repository.js';
@@ -61,7 +62,7 @@ import {
 export const TESTIMONIAL_OTP_VALIDITY_HOURS = 24;
 
 function generateOtp() {
-  return Math.floor(100000 + Math.random() * 900000).toString();
+  return generateEmailOtp();
 }
 
 function otpExpiryIst(hoursFromNow = TESTIMONIAL_OTP_VALIDITY_HOURS) {

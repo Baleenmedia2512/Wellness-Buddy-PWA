@@ -16,6 +16,7 @@ import {
   EMAIL_TAKEN_ADOPT_MESSAGE,
 } from '../domain/onboardingEmail.js';
 import useOtpInput from '../hooks/useOtpInput';
+import { EMAIL_OTP_LENGTH } from '../domain/otpLength';
 import useResendCountdown from '../hooks/useResendCountdown';
 import NativeInput, {
   otpAutoCompleteForCell,
@@ -63,7 +64,7 @@ const OnboardingIdentityPage = ({ user, onComplete }) => {
   const [adoptExisting, setAdoptExisting] = useState(false);
   const [otpExpiresIn, setOtpExpiresIn] = useState(ONBOARDING_EMAIL_OTP_SECONDS);
 
-  const otpCtl = useOtpInput(6);
+  const otpCtl = useOtpInput(EMAIL_OTP_LENGTH);
   const resend = useResendCountdown(60, step === 'otp');
 
   const loginEmail = (user?.email || user?.Email || '').trim();
@@ -379,7 +380,7 @@ const OnboardingIdentityPage = ({ user, onComplete }) => {
           {step === 'otp' && (
             <div className="space-y-4">
               <p className="text-sm text-gray-700 text-center">
-                We sent a 6-digit code to
+                We sent a 4-digit code to
               </p>
               <p className="text-sm font-semibold text-gray-900 text-center truncate">{typedEmail}</p>
               <p className="text-xs text-gray-500 text-center">
@@ -397,8 +398,8 @@ const OnboardingIdentityPage = ({ user, onComplete }) => {
                     type="text"
                     inputMode="numeric"
                     pattern="[0-9]*"
-                    autoComplete={otpAutoCompleteForCell(i)}
-                    maxLength={otpMaxLengthForCell(i, otpCtl.otp.length)}
+                    autoComplete={otpAutoCompleteForCell(i, EMAIL_OTP_LENGTH, { emailOtp: true })}
+                    maxLength={otpMaxLengthForCell(i, EMAIL_OTP_LENGTH, { emailOtp: true })}
                     value={digit}
                     onChange={(e) => otpCtl.handleChange(i, e.target.value)}
                     onKeyDown={(e) => otpCtl.handleKeyDown(i, e)}

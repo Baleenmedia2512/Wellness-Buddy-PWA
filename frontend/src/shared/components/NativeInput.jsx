@@ -67,16 +67,18 @@ const NativeInput = forwardRef(function NativeInput(
   );
 });
 
-/** OTP first cell: one-time-code on iOS only (Android uses WebOTP + type=tel). */
-export function otpAutoCompleteForCell(index) {
+/** OTP first cell: one-time-code on iOS and email OTP on all platforms. */
+export function otpAutoCompleteForCell(index, length = 6, { emailOtp = false } = {}) {
   if (index !== 0) return 'off';
-  return Capacitor.getPlatform() === 'ios' ? 'one-time-code' : 'off';
+  if (emailOtp || Capacitor.getPlatform() === 'ios') return 'one-time-code';
+  return 'off';
 }
 
-/** First OTP cell on iOS must accept the full code — maxLength=1 truncates SMS autofill. */
-export function otpMaxLengthForCell(index, length = 6) {
+/** First OTP cell must accept the full code — maxLength=1 truncates paste/autofill. */
+export function otpMaxLengthForCell(index, length = 6, { emailOtp = false } = {}) {
   if (index !== 0) return 1;
-  return Capacitor.getPlatform() === 'ios' ? length : 1;
+  if (emailOtp || Capacitor.getPlatform() === 'ios') return length;
+  return 1;
 }
 
 export default NativeInput;
