@@ -652,7 +652,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
     } else if (selectedActivity === 'water') {
       headers.splice(1, 0, 'Water (L)');
     } else if (selectedActivity === 'calories') {
-      headers.splice(1, 0, 'Steps', 'Calories Burned');
+      headers.splice(1, 0, 'Calories Burned');
     }
 
     const csvRows = [headers.join(',')];
@@ -678,7 +678,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
       } else if (selectedActivity === 'water') {
         baseRow.splice(1, 0, record.waterLiters || 0);
       } else if (selectedActivity === 'calories') {
-        baseRow.splice(1, 0, record.steps || 0, record.caloriesBurned || 0);
+        baseRow.splice(1, 0, record.caloriesBurned || 0);
       }
 
       csvRows.push(baseRow.join(','));
@@ -940,10 +940,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
                       <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Water (L)</th>
                     )}
                     {selectedActivity === 'calories' && (
-                      <>
-                        <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Steps</th>
-                        <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Calories Burned</th>
-                      </>
+                      <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Calories Burned</th>
                     )}
 
                     {/* --- COMMON COLUMNS REORDERED --- */}
@@ -984,10 +981,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
                         <td className="px-4 py-3 text-sm font-semibold text-cyan-600">{record.waterLiters}</td>
                       )}
                       {selectedActivity === 'calories' && (
-                        <>
-                          <td className="px-4 py-3 text-sm text-gray-600">{record.steps}</td>
-                          <td className="px-4 py-3 text-sm font-semibold text-red-600">{record.caloriesBurned}</td>
-                        </>
+                        <td className="px-4 py-3 text-sm font-semibold text-red-600">{record.caloriesBurned}</td>
                       )}
 
                       {/* --- COMMON DATA REORDERED --- */}
