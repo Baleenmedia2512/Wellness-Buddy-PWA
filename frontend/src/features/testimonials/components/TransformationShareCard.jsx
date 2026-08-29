@@ -13,7 +13,7 @@
  *   - No CSS gap — padding/margin
  *   - No inline-flex — inline-block for pills
  *   - No CSS gradients in the capture target — solid colours only
- *   - Never rely on object-fit at capture time — bake a cover-top bitmap first
+ *   - 9:16 portrait (540×960 → 1080×1920 @ scale 2) for full-screen mobile WhatsApp share
  *     (html2canvas ignores object-fit and would stretch photos on WhatsApp)
  */
 import React, { useRef, useState, useCallback, forwardRef, useEffect } from 'react';
@@ -27,9 +27,11 @@ import {
 } from '../utils/downloadVideo.js';
 import { drawImageCoverTop } from '../utils/fitContainSize.js';
 
-const CARD_W = 360;
-const PHOTO_H = 270;
-const TICK_SIZE = 22;
+/** 9:16 mobile portrait — 540×960 CSS px → 1080×1920 PNG @ CAPTURE_SCALE 2 */
+export const CARD_W = 540;
+export const CARD_H = 960;
+const PHOTO_H = 655;
+const TICK_SIZE = 28;
 const MAX_VISIBLE_ISSUES = 10;
 const FRAME_BG = '#f3f4f6';
 const CAPTURE_SCALE = 2;
@@ -187,8 +189,8 @@ function VerifiedTick() {
     <span
       style={{
         position: 'absolute',
-        top: 6,
-        left: 6,
+        top: 8,
+        left: 8,
         width: TICK_SIZE,
         height: TICK_SIZE,
         borderRadius: TICK_SIZE / 2,
@@ -225,7 +227,7 @@ function PhotoCell({ src, label, weightKg, isVerified, side }) {
         padding: 0,
       }}
     >
-      <div style={side === 'left' ? { paddingRight: 3 } : { paddingLeft: 3 }}>
+      <div style={side === 'left' ? { paddingRight: 4 } : { paddingLeft: 4 }}>
         <div style={{ position: 'relative' }}>
           {src ? (
             <img
@@ -238,7 +240,7 @@ function PhotoCell({ src, label, weightKg, isVerified, side }) {
                 width: '100%',
                 height: PHOTO_H,
                 objectFit: 'cover',
-                borderRadius: 10,
+                borderRadius: 12,
                 objectPosition: 'top',
               }}
             />
@@ -247,7 +249,7 @@ function PhotoCell({ src, label, weightKg, isVerified, side }) {
               style={{
                 width: '100%',
                 height: PHOTO_H,
-                borderRadius: 10,
+                borderRadius: 12,
                 background: FRAME_BG,
               }}
             />
@@ -255,26 +257,26 @@ function PhotoCell({ src, label, weightKg, isVerified, side }) {
           {isVerified && src ? <VerifiedTick /> : null}
         </div>
         <p style={{
-          margin: '3px 0 0',
+          margin: '6px 0 0',
           textAlign: 'center',
-          fontSize: 9,
+          fontSize: 11,
           fontWeight: 700,
           color: '#9ca3af',
-          letterSpacing: '1.1px',
+          letterSpacing: '1.2px',
           textTransform: 'uppercase',
-          lineHeight: '12px',
+          lineHeight: '14px',
         }}
         >
           {label}
         </p>
         {weightKg > 0 && (
           <p style={{
-            margin: '1px 0 0',
+            margin: '2px 0 0',
             textAlign: 'center',
-            fontSize: 12,
+            fontSize: 16,
             fontWeight: 800,
             color: '#111827',
-            lineHeight: '15px',
+            lineHeight: '20px',
           }}
           >
             {weightKg} kg
@@ -311,13 +313,14 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
       id="wv-transformation-share-card"
       style={{
         width: CARD_W,
+        height: CARD_H,
         background: '#ffffff',
-        borderRadius: 20,
         overflow: 'hidden',
         fontFamily: CARD_FONT,
+        boxSizing: 'border-box',
       }}
     >
-      <div style={{ background: '#059669', padding: '5px 12px 6px' }}>
+      <div style={{ background: '#059669', padding: '10px 16px 8px' }}>
         <table
           style={{ width: '100%', borderCollapse: 'collapse' }}
           cellPadding={0}
@@ -325,16 +328,16 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
         >
           <tbody>
             <tr>
-              <td style={{ width: 32, verticalAlign: 'middle', padding: 0, paddingRight: 8, lineHeight: 0 }}>
+              <td style={{ width: 44, verticalAlign: 'middle', padding: 0, paddingRight: 10, lineHeight: 0 }}>
                 <div
                   style={{
-                    width: 28,
-                    height: 28,
-                    borderRadius: 14,
+                    width: 38,
+                    height: 38,
+                    borderRadius: 19,
                     background: '#ffffff',
                     overflow: 'hidden',
                     textAlign: 'center',
-                    lineHeight: '28px',
+                    lineHeight: '38px',
                   }}
                 >
                   <img
@@ -342,8 +345,8 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
                     alt="Wellness Valley"
                     style={{
                       display: 'inline-block',
-                      width: 22,
-                      height: 22,
+                      width: 30,
+                      height: 30,
                       objectFit: 'contain',
                       verticalAlign: 'middle',
                     }}
@@ -351,11 +354,21 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
                 </div>
               </td>
               <td style={{ verticalAlign: 'middle', padding: 0, lineHeight: 0 }}>
-                <p style={{ margin: 0, color: '#ffffff', fontSize: 15, fontWeight: 800, lineHeight: '20px' }}>
+                <p style={{ margin: 0, color: '#ffffff', fontSize: 20, fontWeight: 800, lineHeight: '26px' }}>
                   Wellness Valley
-                  <span style={{ fontWeight: 500, fontSize: 11, color: '#d1fae5' }}>
+                  <span style={{ fontWeight: 500, fontSize: 13, color: '#d1fae5' }}>
                     {' '}( {getVersionString()} )
                   </span>
+                </p>
+                <p style={{
+                  margin: '2px 0 0',
+                  color: '#a7f3d0',
+                  fontSize: 13,
+                  fontWeight: 600,
+                  lineHeight: '18px',
+                }}
+                >
+                  Transformation Results
                 </p>
               </td>
             </tr>
@@ -363,8 +376,22 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
         </table>
       </div>
 
+      <p style={{
+        margin: 0,
+        padding: '14px 16px 10px',
+        textAlign: 'center',
+        fontSize: 22,
+        fontWeight: 800,
+        color: '#111827',
+        lineHeight: '28px',
+        letterSpacing: '0.3px',
+      }}
+      >
+        {userName || 'Member'}
+      </p>
+
       {showPhotoRow && (
-        <div style={{ padding: '4px 8px 0' }}>
+        <div style={{ padding: '0 12px' }}>
           <table
             style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}
             cellPadding={0}
@@ -398,92 +425,63 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
         cellSpacing={0}
       >
         <tbody>
-          <tr>
-            <td style={{ textAlign: 'center', padding: '6px 10px 6px', verticalAlign: 'top' }}>
-              <p style={{
-                margin: 0,
-                lineHeight: '20px',
-                fontFamily: CARD_FONT,
-                whiteSpace: 'nowrap',
-              }}
-              >
-                <span style={{
-                  fontSize: 11,
-                  fontWeight: 600,
-                  color: '#4b5563',
-                  textShadow: '0 0 6px #bbf7d0, 0 0 10px #86efac',
-                }}
-                >
-                  {userName || 'Member'}
-                </span>
-                {diff ? (
-                  <span>
-                    <span style={{ color: '#d1d5db', padding: '0 6px' }}>·</span>
-                    <span style={{
-                      fontSize: 12,
-                      fontWeight: 600,
-                      color: '#4b5563',
-                      textShadow: '0 0 6px #bbf7d0, 0 0 10px #86efac',
-                    }}
-                    >
-                      {verb}
-                      {' '}
-                    </span>
-                    <span style={{
-                      fontSize: 14,
-                      fontWeight: 800,
-                      color: '#16a34a',
-                      textShadow: '0 0 4px #ffffff, 0 0 8px #86efac, 0 0 12px #4ade80',
-                    }}
-                    >
-                      {diff} kg
-                    </span>
-                    {durationText ? (
-                      <span style={{
-                        fontSize: 12,
-                        fontWeight: 500,
-                        color: '#6b7280',
-                        textShadow: '0 0 6px #bbf7d0, 0 0 10px #86efac',
-                      }}
-                      >
-                        {` in ${durationText}`}
-                      </span>
-                    ) : null}
-                  </span>
-                ) : null}
-              </p>
-            </td>
-          </tr>
-          {issues.length > 0 ? (
+          {diff ? (
             <tr>
-              <td style={{ textAlign: 'center', padding: '6px 12px 8px', verticalAlign: 'top' }}>
+              <td style={{ textAlign: 'center', padding: '10px 16px 0', verticalAlign: 'top' }}>
                 <p style={{
                   margin: 0,
-                  fontSize: 8,
+                  lineHeight: '26px',
+                  fontFamily: CARD_FONT,
+                  fontSize: 18,
+                  fontWeight: 800,
+                  color: '#2563eb',
+                }}
+                >
+                  {verb}
+                  {' '}
+                  {diff}
+                  {' kgs'}
+                  {durationText ? ` in ${durationText}` : ''}
+                </p>
+              </td>
+            </tr>
+          ) : null}
+          {issues.length > 0 ? (
+            <tr>
+              <td style={{ textAlign: 'center', padding: '14px 16px 20px', verticalAlign: 'top' }}>
+                <p style={{
+                  margin: 0,
+                  fontSize: 10,
                   fontWeight: 700,
                   color: '#9ca3af',
                   textTransform: 'uppercase',
-                  letterSpacing: '1px',
-                  lineHeight: '10px',
+                  letterSpacing: '1.2px',
+                  lineHeight: '12px',
                   fontFamily: CARD_FONT,
                 }}
                 >
                   Health Issues
                 </p>
                 <p style={{
-                  margin: '4px 0 0',
-                  fontSize: 11,
-                  fontWeight: 600,
-                  color: '#9f1239',
-                  lineHeight: '16px',
+                  margin: '8px 0 0',
+                  lineHeight: '24px',
                   fontFamily: CARD_FONT,
                 }}
                 >
-                  {issues.map((issue, index) => (
-                    <span key={issue}>
-                      {index > 0 ? (
-                        <span style={{ color: '#6b7280', fontWeight: 800, fontSize: 13 }}> · </span>
-                      ) : null}
+                  {issues.map((issue) => (
+                    <span
+                      key={issue}
+                      style={{
+                        display: 'inline-block',
+                        margin: '3px 4px',
+                        padding: '4px 12px',
+                        borderRadius: 999,
+                        background: '#fce7f3',
+                        color: '#9f1239',
+                        fontSize: 13,
+                        fontWeight: 600,
+                      }}
+                    >
                       {issue}
                     </span>
                   ))}
@@ -492,7 +490,7 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
             </tr>
           ) : (
             <tr>
-              <td style={{ padding: '0 0 10px' }} />
+              <td style={{ padding: '0 0 20px' }} />
             </tr>
           )}
         </tbody>
@@ -543,7 +541,7 @@ export default function TransformationShareCard({
       className="fixed inset-0 z-[110] bg-black/75 flex flex-col items-center justify-center p-4"
       onClick={onClose}
     >
-      <div className="w-full max-w-[380px] space-y-4" onClick={(e) => e.stopPropagation()}>
+      <div className="w-full max-w-[340px] space-y-4" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between">
           <p className="text-white text-sm font-semibold">Your Transformation Card</p>
           <button type="button" onClick={onClose} className="p-1.5 rounded-full bg-white/20 text-white hover:bg-white/30">
