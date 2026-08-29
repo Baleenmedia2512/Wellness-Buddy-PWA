@@ -134,7 +134,7 @@ export function shouldRegisterCoachTeamForCommunityId({
 /**
  * Whether assignLeadSeat should run during profile Community ID sync.
  *
- * @param {{ role?: string|null, teamSeat?: string|null, resolvedFound?: boolean, communityIdExplicitlyUpdated?: boolean }} args
+ * @param {{ role?: string|null, teamSeat?: string|null, resolvedFound?: boolean, communityIdExplicitlyUpdated?: boolean, targetCode?: string|null, teamId?: string|null }} args
  * @returns {boolean}
  */
 export function shouldEnsureCoachTeamRowOnCommunityIdSync({
@@ -142,11 +142,33 @@ export function shouldEnsureCoachTeamRowOnCommunityIdSync({
   teamSeat = null,
   resolvedFound = false,
   communityIdExplicitlyUpdated = false,
+  targetCode = null,
+  teamId = null,
 } = {}) {
+  if (communityIdExplicitlyUpdated) return true;
   if (shouldRegisterCoachTeamForCommunityId({ resolvedFound, communityIdExplicitlyUpdated })) {
     return true;
   }
+  if (
+    !teamSeat
+    && resolvedFound
+    && normalizeStoredTeamCode(teamId) === normalizeStoredTeamCode(targetCode)
+  ) {
+    return true;
+  }
   return shouldClaimLeadSeatOnExplicitCommunityIdUpdate({ role, teamSeat });
+}
+
+/**
+ * When joining an existing team, a full co-sponsor slot is non-fatal — link as member only.
+ *
+ * @param {{ resolvedFound?: boolean }} args
+ * @returns {boolean}
+ */
+export function shouldTreatLeadSeatFailureAsMemberLinkOnly({
+  resolvedFound = false,
+} = {}) {
+  return !!resolvedFound;
 }
 
 /**

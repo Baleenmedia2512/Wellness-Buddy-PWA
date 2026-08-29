@@ -18,6 +18,7 @@ import {
   shouldBackfillCoachTeamIdFromCommunityId,
   shouldClaimLeadSeatOnExplicitCommunityIdUpdate,
   shouldEnsureCoachTeamRowOnCommunityIdSync,
+  shouldTreatLeadSeatFailureAsMemberLinkOnly,
   teamAssignmentFieldsNeedUpdate,
 } from './domain/communityIdTeamAssignment.rules.js';
 
@@ -212,16 +213,27 @@ async function syncAllTeamFieldsFromExplicitCommunityIdUpdate(
     teamSeat: leadSeat.seat,
     resolvedFound: resolved.found,
     communityIdExplicitlyUpdated,
+    targetCode,
+    teamId: teamRow.TeamId,
   });
 
   if (ensureCoachTeamRow) {
     const seatResult = await assignLeadSeat(supabase, targetCode, Number(userId));
     if (!seatResult.ok) {
-      throw new Error(seatResult.error || 'This Community ID is unavailable as a Team Code');
+      if (shouldTreatLeadSeatFailureAsMemberLinkOnly({ resolvedFound: resolved.found })) {
+        logger.info('[profile/update] Co-Sponsor seat unavailable; linked as team member only', {
+          userId,
+          teamId: targetCode,
+          reason: seatResult.error,
+        });
+      } else {
+        throw new Error(seatResult.error || 'This Community ID is unavailable as a Team Code');
+      }
+    } else {
+      resolvedSeat = seatResult.seat === 'already'
+        ? (leadSeat.seat || (resolved.found ? 'co-sponsor' : 'sponsor'))
+        : seatResult.seat;
     }
-    resolvedSeat = seatResult.seat === 'already'
-      ? (leadSeat.seat || 'sponsor')
-      : seatResult.seat;
   }
 
   if (!needsUpdate) {

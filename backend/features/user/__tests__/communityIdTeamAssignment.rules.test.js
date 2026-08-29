@@ -14,6 +14,7 @@ import {
   shouldClaimLeadSeatOnExplicitCommunityIdUpdate,
   shouldEnsureCoachTeamRowOnCommunityIdSync,
   shouldRegisterCoachTeamForCommunityId,
+  shouldTreatLeadSeatFailureAsMemberLinkOnly,
   teamAssignmentFieldsNeedUpdate,
 } from '../domain/communityIdTeamAssignment.rules.js';
 
@@ -259,6 +260,48 @@ describe('shouldEnsureCoachTeamRowOnCommunityIdSync', () => {
         communityIdExplicitlyUpdated: true,
       }),
       true,
+    );
+  });
+
+  it('attempts co-sponsor claim when joining an existing shared team code', () => {
+    assert.equal(
+      shouldEnsureCoachTeamRowOnCommunityIdSync({
+        role: 'user',
+        teamSeat: null,
+        resolvedFound: true,
+        communityIdExplicitlyUpdated: true,
+      }),
+      true,
+    );
+  });
+
+  it('backfills co-sponsor when TeamId already matches shared code but seat missing', () => {
+    assert.equal(
+      shouldEnsureCoachTeamRowOnCommunityIdSync({
+        role: 'user',
+        teamSeat: null,
+        resolvedFound: true,
+        communityIdExplicitlyUpdated: false,
+        targetCode: 'YASHEER1234',
+        teamId: 'YASHEER1234',
+      }),
+      true,
+    );
+  });
+});
+
+describe('shouldTreatLeadSeatFailureAsMemberLinkOnly', () => {
+  it('allows member-only link when joining existing team', () => {
+    assert.equal(
+      shouldTreatLeadSeatFailureAsMemberLinkOnly({ resolvedFound: true }),
+      true,
+    );
+  });
+
+  it('requires seat for brand-new team codes', () => {
+    assert.equal(
+      shouldTreatLeadSeatFailureAsMemberLinkOnly({ resolvedFound: false }),
+      false,
     );
   });
 });
