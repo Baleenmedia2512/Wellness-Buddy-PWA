@@ -329,6 +329,7 @@ function WellnessValleyApp() {
   const [dashboardInitialDate, setDashboardInitialDate] = useState(null);
   const [dashboardInitialMealId, setDashboardInitialMealId] = useState(null);
   const [bmrUpdateKey, setBmrUpdateKey] = useState(0); // Increment to force BMR re-fetch in NutritionDashboard
+  const [teamSearchRefreshKey, setTeamSearchRefreshKey] = useState(0); // Co-Sponsor / team-code saves → refresh Diary search
   const [bodyParamsRefreshKey, setBodyParamsRefreshKey] = useState(0); // Increment to refresh Body Parameters cards after profile edits
 
   // -- Instant OTP session restore ------------------------------------------
@@ -7460,6 +7461,9 @@ function WellnessValleyApp() {
               if (profileData?.physicalActivityLevel) {
                 physicalActivityConfirmedRef.current = true;
               }
+              if (profileData?.teamSearchRefresh) {
+                setTeamSearchRefreshKey((k) => k + 1);
+              }
               // Increment profileKey so Header re-fetches avatar/name
               setHeaderProfileKey((k) => k + 1);
               // Activity log: Home should refresh cards when returning from profile edits
@@ -7498,6 +7502,7 @@ function WellnessValleyApp() {
               initialTab={dashboardInitialTab}
               userRole={userRole}
               bmrUpdateKey={bmrUpdateKey}
+              teamSearchRefreshKey={teamSearchRefreshKey}
               educationRefreshKey={educationRefreshKey}
               watchBurnedCalories={watchBurnedCalories}
               onWatchBurnedCaloriesReset={() => setWatchBurnedCalories(0)}
@@ -7573,6 +7578,7 @@ function WellnessValleyApp() {
               userRole={userRole}
               savedUserName={savedUserName}
               tabVisitKey={tabVisitKeys.enrollment ?? 0}
+              teamSearchRefreshKey={teamSearchRefreshKey}
               onBack={() => {
                 enrollmentHistoryPushedRef.current = false;
                 setShowUniversityEnrollment(false);
@@ -7607,6 +7613,7 @@ function WellnessValleyApp() {
               userRole={userRole}
               apiBaseUrl={apiBaseUrl}
               tabVisitKey={tabVisitKeys['activity-report'] ?? 0}
+              teamSearchRefreshKey={teamSearchRefreshKey}
               onBack={() => {
                 setShowActivityReport(false);
                 const currentWvPage = window.history.state?.wvPage;
@@ -7925,6 +7932,7 @@ function WellnessValleyApp() {
               user={user}
               userRole={userRole}
               tabVisitKey={tabVisitKeys.reports ?? 0}
+              teamSearchRefreshKey={teamSearchRefreshKey}
               initialTab={reportsDashboardTab}
             />
           </Suspense>

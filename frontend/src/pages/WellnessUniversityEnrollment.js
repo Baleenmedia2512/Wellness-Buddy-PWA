@@ -60,7 +60,9 @@ const PROGRAMS = [
   },
 ];
 
-const WellnessUniversityEnrollment = ({ onBack, user, userRole, savedUserName = '', embedded = false, tabVisitKey = 0 }) => {
+const WellnessUniversityEnrollment = ({
+  onBack, user, userRole, savedUserName = '', embedded = false, tabVisitKey = 0, teamSearchRefreshKey = 0,
+}) => {
   // onBack is the canonical prop name (matches App.js). Alias kept for clarity.
   const onClose = onBack;
 
@@ -317,6 +319,7 @@ const WellnessUniversityEnrollment = ({ onBack, user, userRole, savedUserName = 
               userRole={userRole}
               selectedMember={selectedMember}
               onMemberSelect={setSelectedMember}
+              refreshKey={teamSearchRefreshKey}
             />
           </div>
 

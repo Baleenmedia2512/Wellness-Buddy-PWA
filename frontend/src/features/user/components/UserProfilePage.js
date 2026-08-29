@@ -35,6 +35,7 @@ import { deriveWeightGoalMode } from '../../weight/services/weightFormService';
 import ProfileTeamCodeSection from './profile/ProfileTeamCodeSection';
 import DeleteAccountModal from './DeleteAccountModal';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
+import { invalidateHasTeamMembersCache } from '../../team/services/teamSearchService';
 
 const COLORS = ['bg-blue-500', 'bg-green-500', 'bg-purple-500', 'bg-pink-500', 'bg-indigo-500', 'bg-yellow-500', 'bg-red-500', 'bg-teal-500'];
 const colorOf = (name, email) => COLORS[(name || email || '').length % COLORS.length];
@@ -210,6 +211,9 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
       // BMR is system-calculated on the profile page — never write it from this form.
       delete payload.bmr;
       const data = await saveProfile(payload);
+      if (user?.id) {
+        invalidateHasTeamMembersCache(user.id);
+      }
       onProfileUpdate?.({
         name: form.name,
         height: form.height ? parseFloat(form.height) : null,
@@ -217,6 +221,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
         dietType: form.dietType || null,
         communityId: form.communityId || null,
         profileImage: profileImagePreview || null,
+        teamSearchRefresh: true,
       });
       if (user?.id) getUserContext(user.id).catch(() => {});
       await loadProfile();
@@ -332,6 +337,10 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
               setTeamId(claimedId || null);
               setTeamSeat(claimedSeat || null);
               setCanClaimTeamCode(false);
+              if (user?.id) {
+                invalidateHasTeamMembersCache(user.id);
+              }
+              onProfileUpdate?.({ teamSearchRefresh: true });
               loadProfile();
             }}
           />
