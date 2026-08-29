@@ -264,7 +264,7 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, vi
         <div className="relative h-[68px] sm:h-[72px] overflow-hidden">
           <div className="absolute inset-y-0 left-0 z-10 pointer-events-none flex items-stretch">
             <div
-              className="flex h-full w-[58px] sm:w-[62px] items-center justify-center rounded-r-md bg-white px-1 py-2 text-center text-[9px] sm:text-[10px] font-semibold leading-[1.2] text-purple-700 shadow-sm"
+              className="flex h-full w-[60px] sm:w-[64px] items-center justify-center rounded-r-md bg-white px-1 py-2 text-center text-[9px] sm:text-[10px] font-semibold leading-[1.2] text-purple-700 shadow-sm"
               aria-label={`Top ${topN} Wellness Score`}
             >
               Top {topN}<br />Wellness<br />Score
