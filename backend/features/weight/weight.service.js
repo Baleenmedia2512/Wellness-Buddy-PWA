@@ -28,7 +28,6 @@ import { getUserTimezoneIana } from '../user/domain/userTimezone.js';
 import { getSupabaseClient } from '../../utils/supabaseClient.js';
 import { assertViewerCanAccessMember } from '../../utils/reportingHierarchyService.js';
 import { resolveMarathonWeightComparison } from '../marathon/domain/marathonWeightComparison.service.js';
-import { getUserTimezoneIana } from '../user/domain/userTimezone.js';
 
 function toNumberOrNull(v) {
   if (v === undefined || v === null || v === '') return null;
