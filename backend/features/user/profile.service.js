@@ -39,6 +39,7 @@ import { isEnabled } from '../../shared/lib/feature-flags.js';
 import { isConsentRecorded } from '../auth/domain/consent.rules.js';
 import { resolveSponsorAndIdealCoach } from '../../utils/sponsorCoachResolution.js';
 import * as weightRepo from '../weight/weight.repository.js';
+import { resolveMarathonWeightComparison } from '../marathon/domain/marathonWeightComparison.service.js';
 
 const notFound = () => ({ httpStatus: 404, body: { success: false, message: 'User not found' } });
 
@@ -128,6 +129,11 @@ export async function getProfile({ email, userId = null }) {
   const sponsorName = sponsorIdeal.sponsorName || null;
   // Backward-compatible alias: coachName remains the direct parent (sponsor).
   const coachName = sponsorName;
+  const profileTimezone = resolveProfileTimezone(user.timezone_iana);
+  const marathonWeightComparison = await resolveMarathonWeightComparison({
+    userId: user.UserId,
+    timezoneIana: profileTimezone,
+  });
 
   // Onboarding identity uses team_table.UserName only. A BCM card name must
   // not skip the name gate for users who still have a placeholder login name.
@@ -185,13 +191,14 @@ export async function getProfile({ email, userId = null }) {
         latestBmr,
         physicalActivityLevel,
         communityId: user.CommunityId ?? null,
-        timezone: resolveProfileTimezone(user.timezone_iana),
+        timezone: profileTimezone,
         consentAccepted: isConsentRecorded(user),
         consentRequired: isEnabled('ff.consent-gate') && !isConsentRecorded(user),
         consentVersion: user.ConsentVersion || null,
         calorieTarget,
         tdeeBreakdown,
         weightRecordDate: latestWeight?.CreatedAt || null,
+        marathonWeightComparison,
         bodyMetrics,
         recoveredHealthIssues: mapTeamRecoveredHealthIssues(user.recovered_health_issues),
         transformationPhotos: mapTransformationPhotos(user.transformation_photos),

@@ -3,6 +3,7 @@ export {
   getMarathonCalendarState,
   getDetoxReminder,
   resolveMarathonToday,
+  getMarathonWeightComparisonDates,
   MARATHON_START_DAYS_OF_MONTH,
   MARATHON_LAST_DAY_INDEX,
   DETOX_MARATHON_DAYS,
@@ -20,3 +21,7 @@ export {
   withMarathonWhatsAppNotice,
   resolveMarathonTimezoneSource,
 } from './withMarathonWhatsAppNotice.js';
+export {
+  buildMarathonWeightComparison,
+  formatMarathonWeightChangeLabel,
+} from './domain/marathonWeightComparison.js';
