@@ -86,16 +86,20 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
     [user, form.email],
   );
 
-  const loadProfile = useCallback(async () => {
+  const loadProfile = useCallback(async ({ cacheBust = false } = {}) => {
     const emailKey = resolveAccountEmail(user, form.email);
-    if (!emailKey) {
+    if (!emailKey && !user?.id) {
       setIsLoading(false);
       return;
     }
     setIsLoading(true);
     setError('');
     try {
-      const { data } = await fetchProfile(emailKey);
+      const { data } = await fetchProfile({
+        email: emailKey || undefined,
+        userId: user?.id || undefined,
+        cacheBust,
+      });
       const profileData = {
         name: data?.userName || user.name || '',
         height: data?.height ? String(data.height) : '',
@@ -201,7 +205,9 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
     try {
       const err = form.validate({ requireDiet: false, maxHeight: 198 });
       if (err) { setError(err); return; }
-      const payload = form.payload(accountEmail || user?.email || user?.Email, {});
+      const payload = form.payload(accountEmail || user?.email || user?.Email, {
+        userId: user?.id || undefined,
+      });
       // BMR is system-calculated on the profile page — never write it from this form.
       delete payload.bmr;
       const data = await saveProfile(payload);
@@ -218,7 +224,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
         teamSearchRefresh: true,
       });
       if (user?.id) getUserContext(user.id).catch(() => {});
-      await loadProfile();
+      await loadProfile({ cacheBust: true });
       setSuccessMessage(data.message || 'Profile saved successfully!');
       setHasSaved(true);
     } catch (e) {

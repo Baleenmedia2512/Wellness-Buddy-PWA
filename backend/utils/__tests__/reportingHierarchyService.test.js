@@ -12,6 +12,8 @@ import {
   buildReportingChildrenIndex,
   isReportingDownlineMember,
   collectVisibleHierarchyUsers,
+  isSharedCoachTeamAccessible,
+  normalizeCoachTeamId,
 } from '../reportingHierarchyService.js';
 
 const X = 1;
@@ -219,6 +221,35 @@ describe('inactive nested leader (Role=user) rollup — coach→a3→b1→c1', (
     assert.equal(isReportingDownlineMember(X, B1, context), true);
     assert.equal(isReportingDownlineMember(X, C1, context), true);
     assert.equal(isReportingDownlineMember(X, 9999, context), false);
+  });
+});
+
+describe('isSharedCoachTeamAccessible — team-hierarchy search parity', () => {
+  const sponsor = 100;
+  const coCoach = 101;
+  const member = 200;
+  const outsider = 300;
+  const teamRow = { TeamId: 'TEAM42', CoachId: sponsor, CoCoachId: coCoach };
+
+  it('normalizeCoachTeamId trims and uppercases', () => {
+    assert.equal(normalizeCoachTeamId(' team42 '), 'TEAM42');
+    assert.equal(normalizeCoachTeamId(null), null);
+  });
+
+  it('allows Sponsor/Co-Sponsor leads to view active shared-team members', () => {
+    const memberRow = { Status: 'Active', CoachTeamId: 'team42' };
+    assert.equal(isSharedCoachTeamAccessible(sponsor, memberRow, teamRow), true);
+    assert.equal(isSharedCoachTeamAccessible(coCoach, memberRow, teamRow), true);
+  });
+
+  it('rejects inactive members, outsiders, and different team codes', () => {
+    const activeMember = { Status: 'Active', CoachTeamId: 'TEAM42' };
+    const inactiveMember = { Status: 'Inactive', CoachTeamId: 'TEAM42' };
+    const otherTeamMember = { Status: 'Active', CoachTeamId: 'OTHER' };
+    assert.equal(isSharedCoachTeamAccessible(outsider, activeMember, teamRow), false);
+    assert.equal(isSharedCoachTeamAccessible(sponsor, inactiveMember, teamRow), false);
+    assert.equal(isSharedCoachTeamAccessible(sponsor, otherTeamMember, teamRow), false);
+    assert.equal(isSharedCoachTeamAccessible(sponsor, activeMember, null), false);
   });
 });
 
