@@ -7,6 +7,7 @@ import { getMarathonWeightComparisonDates } from '../marathonCalendar.js';
 import {
   buildMarathonWeightComparison,
   formatMarathonWeightChangeLabel,
+  formatMarathonWeightWhatsAppNotice,
 } from '../marathonWeightComparison.js';
 
 describe('getMarathonWeightComparisonDates', () => {
@@ -109,5 +110,24 @@ describe('buildMarathonWeightComparison', () => {
 
   it('formats zero change label', () => {
     assert.equal(formatMarathonWeightChangeLabel(0, 'unchanged'), '0 kg — No Change');
+  });
+});
+
+describe('formatMarathonWeightWhatsAppNotice', () => {
+  it('formats multi-line WhatsApp block', () => {
+    const line = formatMarathonWeightWhatsAppNotice({
+      previousMarathonEndWeight: 70.5,
+      currentMarathonDay0Weight: 71.8,
+      changeLabel: '+1.3 kg ↑ Increase',
+    });
+    assert.equal(
+      line,
+      'Previous Marathon End: 70.5 kg\nCurrent Marathon Start: 71.8 kg\nWeight Change: +1.3 kg ↑ Increase',
+    );
+  });
+
+  it('returns null for invalid comparison', () => {
+    assert.equal(formatMarathonWeightWhatsAppNotice(null), null);
+    assert.equal(formatMarathonWeightWhatsAppNotice({ previousMarathonEndWeight: 70 }), null);
   });
 });

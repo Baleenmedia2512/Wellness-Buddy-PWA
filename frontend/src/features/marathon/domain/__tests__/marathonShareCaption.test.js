@@ -194,4 +194,34 @@ describe('appendMarathonWhatsAppNotice', () => {
       'Tomorrow is Day 4 - Detox Day',
     );
   });
+
+  it('appends marathon weight comparison on Day 0 when data exists', () => {
+    const comparison = {
+      previousMarathonEndWeight: 75,
+      currentMarathonDay0Weight: 73,
+      changeLabel: '−2.0 kg ↓ Decrease',
+    };
+    const result = appendMarathonWhatsAppNotice(CURRENT_DAY_CAPTION, '2026-09-01', comparison);
+    assert.match(result, /Day 0 - Marathon Starts/);
+    assert.match(result, /Previous Marathon End: 75\.0 kg/);
+    assert.match(result, /Current Marathon Start: 73\.0 kg/);
+    assert.match(result, /Weight Change: −2\.0 kg ↓ Decrease/);
+  });
+
+  it('does not append marathon weight comparison outside Day 0', () => {
+    const comparison = {
+      previousMarathonEndWeight: 75,
+      currentMarathonDay0Weight: 73,
+      changeLabel: '−2.0 kg ↓ Decrease',
+    };
+    const result = appendMarathonWhatsAppNotice(CURRENT_DAY_CAPTION, '2026-09-02', comparison);
+    assert.equal(result, `${CURRENT_DAY_CAPTION}, Day 1`);
+    assert.equal(result.includes('Previous Marathon End:'), false);
+  });
+
+  it('does not append marathon weight comparison on Day 0 when data is missing', () => {
+    const result = appendMarathonWhatsAppNotice(CURRENT_DAY_CAPTION, '2026-09-01', null);
+    assert.equal(result, `${CURRENT_DAY_CAPTION}, Day 0 - Marathon Starts`);
+    assert.equal(result.includes('Previous Marathon End:'), false);
+  });
 });

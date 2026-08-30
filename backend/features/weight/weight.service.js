@@ -27,6 +27,8 @@ import { confirmPersisted, confirmFailed } from '../../shared/lib/ai-orchestrati
 import { getUserTimezoneIana } from '../user/domain/userTimezone.js';
 import { getSupabaseClient } from '../../utils/supabaseClient.js';
 import { assertViewerCanAccessMember } from '../../utils/reportingHierarchyService.js';
+import { resolveMarathonWeightComparison } from '../marathon/domain/marathonWeightComparison.service.js';
+import { getUserTimezoneIana } from '../user/domain/userTimezone.js';
 
 function toNumberOrNull(v) {
   if (v === undefined || v === null || v === '') return null;
@@ -388,5 +390,21 @@ export async function undoDeleteWeight({ id, userId }) {
   return {
     httpStatus: 200,
     body: { success: true, message: 'Weight entry restored successfully', restoredId: id },
+  };
+}
+
+/**
+ * Marathon Day 0 weight comparison for WhatsApp shares and profile.
+ * @param {{ userId: string|number }} input
+ */
+export async function getMarathonWeightComparison({ userId }) {
+  const timezoneIana = await getUserTimezoneIana(userId);
+  const comparison = await resolveMarathonWeightComparison({ userId, timezoneIana });
+  return {
+    httpStatus: 200,
+    body: {
+      success: true,
+      data: comparison,
+    },
   };
 }

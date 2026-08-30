@@ -23,6 +23,7 @@ import {
 } from '../../../shared/utils/autoCameraPreference';
 import useProfileForm from '../hooks/useProfileForm';
 import { fetchProfile, saveProfile } from '../services/profileService';
+import { syncMarathonWeightComparisonFromProfile } from '../../marathon/marathonWeightComparisonCache';
 import { fetchMyAssessment, fetchLeadByPhone } from '../../counselling/services/counsellingApi';
 import UserProfileFields from './profile/UserProfileFields';
 import UserProfileBodyMetrics from './profile/UserProfileBodyMetrics';
@@ -132,6 +133,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
       setInitialWeight(data?.initialWeight != null ? parseFloat(data.initialWeight) : null);
       setInitialWeightDate(data?.initialWeightDate || null);
       setMarathonWeightComparison(data?.marathonWeightComparison || null);
+      syncMarathonWeightComparisonFromProfile(data);
       setCoachName(
         (data?.sponsorName || data?.coachName)
           ? String(data.sponsorName || data.coachName).trim()

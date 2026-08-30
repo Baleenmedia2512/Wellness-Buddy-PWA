@@ -66,3 +66,25 @@ export function buildMarathonWeightComparison({
     changeLabel: formatMarathonWeightChangeLabel(weightDifference, direction),
   };
 }
+
+/**
+ * WhatsApp caption block for Day 0 marathon weight progress.
+ * @param {object|null|undefined} comparison
+ * @returns {string|null}
+ */
+export function formatMarathonWeightWhatsAppNotice(comparison) {
+  if (!comparison || typeof comparison !== 'object') return null;
+  const previous = comparison.previousMarathonEndWeight;
+  const current = comparison.currentMarathonDay0Weight;
+  const changeLabel = comparison.changeLabel;
+  if (!isValidMarathonWeightKg(previous) || !isValidMarathonWeightKg(current) || !changeLabel) {
+    return null;
+  }
+  const prev = roundMarathonWeightKg(Number(previous));
+  const cur = roundMarathonWeightKg(Number(current));
+  return [
+    `Previous Marathon End: ${prev.toFixed(1)} kg`,
+    `Current Marathon Start: ${cur.toFixed(1)} kg`,
+    `Weight Change: ${changeLabel}`,
+  ].join('\n');
+}

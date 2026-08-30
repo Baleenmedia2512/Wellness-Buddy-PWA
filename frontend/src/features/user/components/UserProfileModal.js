@@ -5,6 +5,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { getUserContext } from '../../../shared/services/userIdentity';
 import useProfileForm from '../hooks/useProfileForm';
 import { fetchProfile, saveProfile } from '../services/profileService';
+import { syncMarathonWeightComparisonFromProfile } from '../../marathon/marathonWeightComparisonCache';
 import UserProfileHeader from './profile/UserProfileHeader';
 import UserProfileBody from './profile/UserProfileBody';
 import UserProfileFooter from './profile/UserProfileFooter';
@@ -48,6 +49,7 @@ const UserProfileModal = ({ isOpen, onClose, user, userRole = 'user', onProfileU
         setInitialWeight(data.initialWeight != null ? parseFloat(data.initialWeight) : null);
         setInitialWeightDate(data.initialWeightDate || null);
         setMarathonWeightComparison(data.marathonWeightComparison || null);
+        syncMarathonWeightComparisonFromProfile(data);
         if (data.profileImage) {
           setProfileImagePreview(data.profileImage);
         } else if (data.transformationPhotos?.front) {

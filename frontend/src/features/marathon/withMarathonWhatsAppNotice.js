@@ -14,6 +14,8 @@ import {
   MARATHON_TEST_DATE_STORAGE_KEY,
 } from './domain/marathonCalendar';
 import { appendMarathonWhatsAppNotice } from './domain/marathonShareCaption';
+import { getMarathonWeightComparisonFromCache } from './marathonWeightComparisonCache';
+import { getCachedProfile } from '../user/services/user.api';
 
 /**
  * Profile IANA when set; otherwise the device timezone (same as DetoxDayReminder).
@@ -35,14 +37,28 @@ export function resolveMarathonTimezoneSource(timezoneSource) {
 }
 
 /**
+ * @param {unknown} user
+ * @returns {object|null}
+ */
+function resolveMarathonWeightComparisonFromProfileCache(user) {
+  if (!user || typeof user !== 'object') return null;
+  const email = user.email || user.Email;
+  if (!email) return null;
+  const profile = getCachedProfile(email);
+  return profile?.data?.marathonWeightComparison ?? null;
+}
+
+/**
  * @param {unknown} caption
- * @param {string|{ ymd?: string, user?: object, timezoneSource?: unknown, timezoneIana?: string, now?: Date }} [ymdOrOptions]
+ * @param {string|{ ymd?: string, user?: object, timezoneSource?: unknown, timezoneIana?: string, now?: Date, marathonWeightComparison?: object|null }} [ymdOrOptions]
  * @returns {string}
  */
 export function withMarathonWhatsAppNotice(caption, ymdOrOptions) {
   let ymdOverride = null;
   let timezoneSource;
   let now;
+  let marathonWeightComparison = null;
+  let user;
 
   if (typeof ymdOrOptions === 'string') {
     ymdOverride = ymdOrOptions;
@@ -52,6 +68,15 @@ export function withMarathonWhatsAppNotice(caption, ymdOrOptions) {
       ?? ymdOrOptions.timezoneIana
       ?? ymdOrOptions.user;
     now = ymdOrOptions.now;
+    user = ymdOrOptions.user;
+    if (ymdOrOptions.marathonWeightComparison !== undefined) {
+      marathonWeightComparison = ymdOrOptions.marathonWeightComparison;
+    }
+  }
+
+  if (marathonWeightComparison === null) {
+    marathonWeightComparison = getMarathonWeightComparisonFromCache()
+      ?? resolveMarathonWeightComparisonFromProfileCache(user);
   }
 
   const tz = resolveMarathonTimezoneSource(timezoneSource);
@@ -60,5 +85,9 @@ export function withMarathonWhatsAppNotice(caption, ymdOrOptions) {
     now instanceof Date ? now : new Date(),
   );
   const stored = ymdOverride ? null : storage.get(MARATHON_TEST_DATE_STORAGE_KEY);
-  return appendMarathonWhatsAppNotice(caption, resolveMarathonToday(live, stored));
+  return appendMarathonWhatsAppNotice(
+    caption,
+    resolveMarathonToday(live, stored),
+    marathonWeightComparison,
+  );
 }

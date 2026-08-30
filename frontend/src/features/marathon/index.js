@@ -24,4 +24,10 @@ export {
 export {
   buildMarathonWeightComparison,
   formatMarathonWeightChangeLabel,
+  formatMarathonWeightWhatsAppNotice,
 } from './domain/marathonWeightComparison.js';
+export {
+  setMarathonWeightComparisonCache,
+  getMarathonWeightComparisonFromCache,
+  syncMarathonWeightComparisonFromProfile,
+} from './marathonWeightComparisonCache.js';

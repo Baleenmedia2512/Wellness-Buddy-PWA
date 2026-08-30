@@ -11,6 +11,7 @@ import {
   DETOX_MARATHON_DAYS,
   getMarathonCalendarState,
 } from './marathonCalendar.js';
+import { formatMarathonWeightWhatsAppNotice } from './marathonWeightComparison.js';
 
 export const MARATHON_START_WHATSAPP_LABEL = 'Marathon Starts';
 export const DETOX_DAY_WHATSAPP_LABEL = 'Detox Day';
@@ -104,9 +105,10 @@ export function getMarathonWhatsAppAdvanceNotice(ymd) {
  *
  * @param {unknown} caption
  * @param {unknown} ymd YYYY-MM-DD
+ * @param {object|null} [marathonWeightComparison]
  * @returns {string}
  */
-export function appendMarathonWhatsAppNotice(caption, ymd) {
+export function appendMarathonWhatsAppNotice(caption, ymd, marathonWeightComparison = null) {
   const notice = getMarathonWhatsAppAdvanceNotice(ymd);
   const currentDay = notice ? null : getMarathonWhatsAppCurrentDayNotice(ymd);
   const base = String(caption || '').trim();
@@ -114,6 +116,14 @@ export function appendMarathonWhatsAppNotice(caption, ymd) {
 
   if (currentDay && !base.includes(currentDay)) additions.push(currentDay);
   if (notice && !base.includes(notice)) additions.push(notice);
+
+  const state = getMarathonCalendarState(ymd);
+  if (state.inMarathon && state.marathonDay === 0 && marathonWeightComparison) {
+    const weightNotice = formatMarathonWeightWhatsAppNotice(marathonWeightComparison);
+    if (weightNotice && !base.includes('Previous Marathon End:')) {
+      additions.push(weightNotice);
+    }
+  }
 
   if (additions.length === 0) return base;
   if (!base) return additions.join('\n');
