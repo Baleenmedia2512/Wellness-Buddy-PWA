@@ -11,6 +11,7 @@ import {
   getReportingMemberIds,
   buildReportingChildrenIndex,
   isReportingDownlineMember,
+  isCoCoachPartnerDownlineMember,
   collectVisibleHierarchyUsers,
   isSharedCoachTeamAccessible,
   normalizeCoachTeamId,
@@ -221,6 +222,45 @@ describe('inactive nested leader (Role=user) rollup — coach→a3→b1→c1', (
     assert.equal(isReportingDownlineMember(X, B1, context), true);
     assert.equal(isReportingDownlineMember(X, C1, context), true);
     assert.equal(isReportingDownlineMember(X, 9999, context), false);
+  });
+});
+
+describe('isCoCoachPartnerDownlineMember — Sponsor/Co-Sponsor shared tree', () => {
+  const sponsor = 339;
+  const coCoach = 341;
+  const usharaj = 306;
+
+  const SHARED_TEAM = [
+    { UserId: sponsor, UserName: 'Sponsor', Role: 'coach', CoachId: null, Status: 'Active' },
+    { UserId: coCoach, UserName: 'CoSponsor', Role: 'coach', CoachId: null, Status: 'Active' },
+    { UserId: 735, UserName: 'Prethip', Role: 'coach', CoachId: sponsor, Status: 'Active' },
+    { UserId: 279, UserName: 'BALAJI', Role: 'coach', CoachId: 735, Status: 'Active' },
+    { UserId: usharaj, UserName: 'Usharaj', Role: 'coach', CoachId: 279, Status: 'Active' },
+    { UserId: 609, UserName: 'thilagavathi', Role: 'user', CoachId: usharaj, Status: 'Active' },
+  ];
+
+  it('Co-Sponsor can view Sponsor downline members (e.g. Usharaj)', () => {
+    const context = buildReportingContext(SHARED_TEAM);
+    context.coCoachPartnershipRootIds = [sponsor, coCoach];
+    context.partnerRootIds = [sponsor];
+    assert.equal(isReportingDownlineMember(coCoach, usharaj, context), false);
+    assert.equal(isCoCoachPartnerDownlineMember(coCoach, usharaj, context), true);
+    assert.equal(isCoCoachPartnerDownlineMember(coCoach, 609, context), true);
+  });
+
+  it('Sponsor can view Co-Sponsor partner node via partnerRootIds', () => {
+    const context = buildReportingContext(SHARED_TEAM);
+    context.coCoachPartnershipRootIds = [sponsor, coCoach];
+    context.partnerRootIds = [coCoach];
+    assert.equal(isCoCoachPartnerDownlineMember(sponsor, coCoach, context), true);
+  });
+
+  it('rejects outsiders and unrelated branches', () => {
+    const context = buildReportingContext(SHARED_TEAM);
+    context.coCoachPartnershipRootIds = [sponsor, coCoach];
+    context.partnerRootIds = [sponsor];
+    assert.equal(isCoCoachPartnerDownlineMember(coCoach, 9999, context), false);
+    assert.equal(isCoCoachPartnerDownlineMember(9999, usharaj, context), false);
   });
 });
 
