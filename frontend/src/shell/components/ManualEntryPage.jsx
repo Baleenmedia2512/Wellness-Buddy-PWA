@@ -941,6 +941,7 @@ export default function ManualEntryPage({
         currentWeight: weightValue,
         idealWeight: pickIdealWeightKg(weightValue, idealRange),
       }),
+      currentMarathonDay0Weight: weightValue,
     });
 
     void saveWeight({

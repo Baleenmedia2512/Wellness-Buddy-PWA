@@ -28,7 +28,7 @@ function formatInitialWeightDate(value) {
 }
 
 function MarathonWeightProgress({ comparison }) {
-  if (!comparison) return null;
+  if (!comparison || comparison.partial) return null;
 
   const {
     previousMarathonEndWeight,

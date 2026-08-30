@@ -72,19 +72,57 @@ export function buildMarathonWeightComparison({
  * @param {object|null|undefined} comparison
  * @returns {string|null}
  */
-export function formatMarathonWeightWhatsAppNotice(comparison) {
-  if (!comparison || typeof comparison !== 'object') return null;
+/**
+ * @param {'increase'|'decrease'|'unchanged'} direction
+ * @returns {string}
+ */
+export function formatMarathonWeightDirectionArrow(direction) {
+  if (direction === 'increase') return ' ↑';
+  if (direction === 'decrease') return ' ↓';
+  return '';
+}
+
+/**
+ * @param {object|null|undefined} comparison
+ * @returns {string[]}
+ */
+export function formatMarathonWeightWhatsAppNoticeLines(comparison) {
+  if (!comparison || typeof comparison !== 'object') return [];
   const previous = comparison.previousMarathonEndWeight;
   const current = comparison.currentMarathonDay0Weight;
-  const changeLabel = comparison.changeLabel;
-  if (!isValidMarathonWeightKg(previous) || !isValidMarathonWeightKg(current) || !changeLabel) {
-    return null;
+  if (!isValidMarathonWeightKg(previous) || !isValidMarathonWeightKg(current)) {
+    return [];
   }
   const prev = roundMarathonWeightKg(Number(previous));
   const cur = roundMarathonWeightKg(Number(current));
+  const direction = comparison.direction
+    || resolveMarathonWeightDirection(prev, cur);
+  const arrow = formatMarathonWeightDirectionArrow(direction);
   return [
-    `Previous Marathon End: ${prev.toFixed(1)} kg`,
-    `Current Marathon Start: ${cur.toFixed(1)} kg`,
-    `Weight Change: ${changeLabel}`,
-  ].join('\n');
+    `Previous Marathon End weight : ${prev.toFixed(1)} kg`,
+    `Current Marathon Start weight : ${cur.toFixed(1)} kg${arrow}`,
+  ];
+}
+
+export function formatMarathonWeightWhatsAppNotice(comparison) {
+  const lines = formatMarathonWeightWhatsAppNoticeLines(comparison);
+  return lines.length > 0 ? lines.join('\n') : null;
+}
+
+/**
+ * Merge a partial/full cached comparison with the weight being shared on Day 0.
+ * @param {object|null|undefined} source
+ * @param {unknown} currentWeightKg
+ * @returns {object|null}
+ */
+export function mergeMarathonWeightComparisonForShare(source, currentWeightKg) {
+  if (!source || typeof source !== 'object') return null;
+  if (!isValidMarathonWeightKg(source.previousMarathonEndWeight)) return null;
+  if (!isValidMarathonWeightKg(currentWeightKg)) {
+    return source.partial ? null : source;
+  }
+  return buildMarathonWeightComparison({
+    previousMarathonEndWeight: source.previousMarathonEndWeight,
+    currentMarathonDay0Weight: currentWeightKg,
+  });
 }

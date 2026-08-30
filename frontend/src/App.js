@@ -675,7 +675,7 @@ function WellnessValleyApp() {
   // Optional `activityCaption` is the activity-specific WhatsApp template
   // (water volume, food macros, etc.) — appended above the branding line.
   const shareCaptureAfterClassify = useCallback(
-    async (imageBase64, { activityCaption = null } = {}) => {
+    async (imageBase64, { activityCaption = null, currentMarathonDay0Weight = null } = {}) => {
       const autoShareEnabled =
         localStorage.getItem("autoShareOnCapture") !== "false";
       if (!autoShareEnabled || foodAutoSharedRef.current || !imageBase64) {
@@ -722,7 +722,7 @@ function WellnessValleyApp() {
         );
         return withMarathonWhatsAppNotice(
           composeQuickShareCaption(brand, activityCaption),
-          { user },
+          { user, currentMarathonDay0Weight },
         );
       };
 
@@ -7845,6 +7845,7 @@ function WellnessValleyApp() {
             }
             void shareCaptureAfterClassify(image, {
               activityCaption: shareMeta?.activityCaption || null,
+              currentMarathonDay0Weight: shareMeta?.currentMarathonDay0Weight ?? null,
             });
           }}
           onToast={(msg) => showToast(msg)}

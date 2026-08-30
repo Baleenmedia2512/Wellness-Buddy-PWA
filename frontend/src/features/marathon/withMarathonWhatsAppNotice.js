@@ -14,6 +14,7 @@ import {
   MARATHON_TEST_DATE_STORAGE_KEY,
 } from './domain/marathonCalendar';
 import { appendMarathonWhatsAppNotice } from './domain/marathonShareCaption';
+import { mergeMarathonWeightComparisonForShare } from './domain/marathonWeightComparison';
 import { getMarathonWeightComparisonFromCache } from './marathonWeightComparisonCache';
 import { getCachedProfile } from '../user/services/user.api';
 
@@ -50,7 +51,7 @@ function resolveMarathonWeightComparisonFromProfileCache(user) {
 
 /**
  * @param {unknown} caption
- * @param {string|{ ymd?: string, user?: object, timezoneSource?: unknown, timezoneIana?: string, now?: Date, marathonWeightComparison?: object|null }} [ymdOrOptions]
+ * @param {string|{ ymd?: string, user?: object, timezoneSource?: unknown, timezoneIana?: string, now?: Date, marathonWeightComparison?: object|null, currentMarathonDay0Weight?: unknown }} [ymdOrOptions]
  * @returns {string}
  */
 export function withMarathonWhatsAppNotice(caption, ymdOrOptions) {
@@ -58,6 +59,7 @@ export function withMarathonWhatsAppNotice(caption, ymdOrOptions) {
   let timezoneSource;
   let now;
   let marathonWeightComparison = null;
+  let currentMarathonDay0Weight;
   let user;
 
   if (typeof ymdOrOptions === 'string') {
@@ -72,11 +74,21 @@ export function withMarathonWhatsAppNotice(caption, ymdOrOptions) {
     if (ymdOrOptions.marathonWeightComparison !== undefined) {
       marathonWeightComparison = ymdOrOptions.marathonWeightComparison;
     }
+    if (ymdOrOptions.currentMarathonDay0Weight !== undefined) {
+      currentMarathonDay0Weight = ymdOrOptions.currentMarathonDay0Weight;
+    }
   }
 
   if (marathonWeightComparison === null) {
     marathonWeightComparison = getMarathonWeightComparisonFromCache()
       ?? resolveMarathonWeightComparisonFromProfileCache(user);
+  }
+
+  if (currentMarathonDay0Weight !== undefined) {
+    marathonWeightComparison = mergeMarathonWeightComparisonForShare(
+      marathonWeightComparison,
+      currentMarathonDay0Weight,
+    );
   }
 
   const tz = resolveMarathonTimezoneSource(timezoneSource);
