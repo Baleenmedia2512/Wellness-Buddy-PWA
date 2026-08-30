@@ -43,6 +43,7 @@ import {
   paginateTestimonialsList,
   countTestimonialsUploadLevels,
 } from './domain/testimonials-list.pagination.js';
+import { isInlineImageReference } from './domain/profileTransformationPhotos.seed.js';
 import { nowUtc } from '../../shared/lib/datetime/index.js';
 import {
   buildTestimonialCoachEmailHtml,
@@ -170,6 +171,12 @@ async function sendHealthIssueOtpEmail({
   return 'Health issues updated. Your coach received a new video OTP by email with your latest videos.';
 }
 
+async function resolveDisplayImageUrl(path) {
+  if (!path) return null;
+  if (isInlineImageReference(path)) return path;
+  return repo.getSignedUrl(path);
+}
+
 /**
  * Build API testimonial payload with signed photo/video URLs.
  * Video-only rows (placeholder before image) still return video URLs when present.
@@ -186,8 +193,8 @@ async function enrichTestimonialForDisplay(testimonial, opts = {}) {
   if (videoOnly && !hasVideos) return null;
 
   const [beforeUrl, afterUrl, healthVideoUrl, businessVideoUrl] = await Promise.all([
-    videoOnly ? Promise.resolve(null) : repo.getSignedUrl(testimonial.before_image_path),
-    videoOnly ? Promise.resolve(null) : repo.getSignedUrl(testimonial.after_image_path),
+    videoOnly ? Promise.resolve(null) : resolveDisplayImageUrl(testimonial.before_image_path),
+    videoOnly ? Promise.resolve(null) : resolveDisplayImageUrl(testimonial.after_image_path),
     includeVideos && testimonial.health_video_path
       ? repo.getSignedUrl(testimonial.health_video_path)
       : Promise.resolve(null),
@@ -679,14 +686,16 @@ export async function listForCoach(rawQuery) {
   const data = await Promise.all(
     pageRows.map(async (lean) => {
       const [beforeThumb, afterThumb] = await Promise.all([
-        lean.beforeImagePath ? repo.getSignedUrl(lean.beforeImagePath) : null,
-        lean.afterImagePath ? repo.getSignedUrl(lean.afterImagePath) : null,
+        lean.beforeImagePath ? resolveDisplayImageUrl(lean.beforeImagePath) : null,
+        lean.afterImagePath ? resolveDisplayImageUrl(lean.afterImagePath) : null,
       ]);
       if (lean.beforeImagePath) queryCount += 1;
       if (lean.afterImagePath) queryCount += 1;
 
       // Shape matches existing MemberCard contract; thumbs stand in for list display.
-      const testimonial = lean.testimonialId == null && !lean.healthVideoPath && !lean.businessVideoPath
+      const hasListMedia = !!(lean.beforeImagePath || lean.afterImagePath
+        || lean.healthVideoPath || lean.businessVideoPath);
+      const testimonial = lean.testimonialId == null && !hasListMedia
         ? null
         : {
             id: lean.testimonialId,
@@ -770,7 +779,7 @@ export async function getTestimonialDetail(rawQuery) {
   const { userId, coachId } = validateTestimonialDetail(rawQuery);
 
   const sqlStarted = Date.now();
-  const row = await repo.findByUserId(userId);
+  let row = await repo.findByUserId(userId);
   const sqlMs = Date.now() - sqlStarted;
 
   // Optional coach-tree gate when coachId provided (hierarchy only — no SELECT *)
@@ -779,6 +788,10 @@ export async function getTestimonialDetail(rawQuery) {
     if (!allowed) {
       throw new ValidationError(403, 'Member is not in your team hierarchy');
     }
+  }
+
+  if (!row) {
+    row = await repo.buildTestimonialFromProfilePhotos(userId);
   }
 
   const enriched = await enrichTestimonialForDisplay(row, { includeVideos: true });
