@@ -15,12 +15,13 @@ export default function useOtpInput(length = 6) {
   };
 
   const applyDigits = (digits) => {
-    if (!digits) return null;
+    const clean = String(digits ?? '').replace(/\D/g, '').slice(0, length);
+    if (!clean) return null;
     const next = new Array(length).fill('');
-    digits.split('').forEach((d, i) => { next[i] = d; });
+    clean.split('').forEach((d, i) => { next[i] = d; });
     setOtp(next);
-    refs.current[Math.min(digits.length, length - 1)]?.focus();
-    return digits.length === length ? digits : null;
+    refs.current[Math.min(clean.length, length - 1)]?.focus();
+    return clean.length === length ? clean : null;
   };
 
   /**
@@ -28,22 +29,21 @@ export default function useOtpInput(length = 6) {
    * clipboard paste, and prose such as "Your OTP is 1234".
    */
   const fillAll = (raw) => {
-    const digits = extractOtpFromText(raw, length);
+    const extracted = extractOtpFromText(raw, length);
+    if (extracted) return applyDigits(extracted);
+    const digits = String(raw ?? '').replace(/\D/g, '').slice(0, length);
     return applyDigits(digits);
   };
 
   const handleChange = (idx, raw) => {
-    const extracted = extractOtpFromText(raw, length);
-    if (extracted) {
-      fillAll(extracted);
+    const text = String(raw ?? '');
+    // Autofill, paste-as-typing, and multi-char input (all platforms).
+    if (text.length > 1) {
+      fillAll(text);
       return;
     }
-    if (raw.length >= length) {
-      fillAll(raw);
-      return;
-    }
-    if (!/^\d*$/.test(raw)) return;
-    const v = raw.slice(-1);
+    if (!/^\d*$/.test(text)) return;
+    const v = text.slice(-1);
     setOtp((prev) => {
       const next = [...prev];
       next[idx] = v;
@@ -59,8 +59,8 @@ export default function useOtpInput(length = 6) {
   };
 
   const handlePaste = (e) => {
-    e.preventDefault();
-    const pasted = e.clipboardData?.getData('text') ?? '';
+    if (e?.preventDefault) e.preventDefault();
+    const pasted = e?.clipboardData?.getData('text') ?? String(e ?? '');
     return fillAll(pasted);
   };
 

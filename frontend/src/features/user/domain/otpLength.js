@@ -28,6 +28,6 @@ export function extractOtpFromText(raw, length = EMAIL_OTP_LENGTH) {
   if (exactRun?.[1]) return exactRun[1];
 
   const digitsOnly = text.replace(/\D/g, '');
-  if (digitsOnly.length === length) return digitsOnly;
+  if (digitsOnly.length >= length) return digitsOnly.slice(0, length);
   return null;
 }

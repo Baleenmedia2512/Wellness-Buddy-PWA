@@ -74,7 +74,8 @@ describe('extractOtpFromText', () => {
     assert.equal(extractOtpFromText('Your OTP is 1234'), '1234');
     assert.equal(extractOtpFromText('Code: 1234\n'), '1234');
     assert.equal(extractOtpFromText('123'), null);
-    assert.equal(extractOtpFromText('12345'), null);
+    assert.equal(extractOtpFromText('12345'), '1234');
+    assert.equal(extractOtpFromText('123456', EMAIL_OTP_LENGTH), '1234');
   });
 
   it('supports 6-digit SMS extraction', () => {

@@ -18,10 +18,7 @@ import {
 import useOtpInput from '../hooks/useOtpInput';
 import { EMAIL_OTP_LENGTH } from '../domain/otpLength';
 import useResendCountdown from '../hooks/useResendCountdown';
-import NativeInput, {
-  otpAutoCompleteForCell,
-  otpMaxLengthForCell,
-} from '../../../shared/components/NativeInput.jsx';
+import OtpInputCells from '../../../shared/components/OtpInputCells.jsx';
 
 const inputCls = (invalid) =>
   `w-full pl-10 pr-4 py-3 border-2 rounded-xl focus:outline-none text-base bg-white ${
@@ -386,28 +383,14 @@ const OnboardingIdentityPage = ({ user, onComplete }) => {
               <p className="text-xs text-gray-500 text-center">
                 The code expires in 5 minutes. Check your inbox.
               </p>
-              <div className="flex justify-center gap-2" onPaste={(e) => {
-                const filled = otpCtl.handlePaste(e);
-                if (filled) setError('');
-              }}>
-                {otpCtl.otp.map((digit, i) => (
-                  <NativeInput
-                    key={i}
-                    otp
-                    ref={(el) => { otpCtl.refs.current[i] = el; }}
-                    type="text"
-                    inputMode="numeric"
-                    pattern="[0-9]*"
-                    autoComplete={otpAutoCompleteForCell(i, EMAIL_OTP_LENGTH, { emailOtp: true })}
-                    maxLength={otpMaxLengthForCell(i, EMAIL_OTP_LENGTH, { emailOtp: true })}
-                    value={digit}
-                    onChange={(e) => otpCtl.handleChange(i, e.target.value)}
-                    onKeyDown={(e) => otpCtl.handleKeyDown(i, e)}
-                    className="w-11 h-12 text-center text-lg font-bold border-2 rounded-xl focus:outline-none focus:border-green-500 transition-colors text-[16px]"
-                    style={{ borderColor: digit ? '#16a34a' : '#e5e7eb' }}
-                  />
-                ))}
-              </div>
+              <OtpInputCells
+                otpCtl={otpCtl}
+                length={EMAIL_OTP_LENGTH}
+                emailOtp
+                className="flex justify-center gap-2"
+                cellClassName="w-11 h-12 text-center text-lg font-bold border-2 rounded-xl focus:outline-none focus:border-green-500 transition-colors text-[16px]"
+                cellStyle={(digit) => ({ borderColor: digit ? '#16a34a' : '#e5e7eb' })}
+              />
               <p className={`text-center text-xs ${otpExpiresIn <= 0 ? 'text-red-500' : 'text-gray-500'}`}>
                 {otpExpiresIn <= 0
                   ? 'Code expired. Resend a new one.'

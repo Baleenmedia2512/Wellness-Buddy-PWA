@@ -12,14 +12,13 @@
 // fields for autofill.
 import React, { useCallback, useEffect } from 'react';
 import useWebOtp from '../../hooks/useWebOtp';
-import NativeInput, { otpAutoCompleteForCell, otpMaxLengthForCell } from '../../../../shared/components/NativeInput.jsx';
+import OtpInputCells from '../../../../shared/components/OtpInputCells.jsx';
 
 const LoginOtpEntry = ({
   otpCtl, onVerify, loading, verified, errorMessage, successMessage,
   countdown, canResend, onResend, onBack,
 }) => {
-  const { otp, refs, handleChange, handleKeyDown, handlePaste, fillAll } = otpCtl;
-  const isComplete = otp.every((d) => d !== '');
+  const { otp, refs, isComplete, value, fillAll } = otpCtl;
 
   // Auto-focus the first cell when the OTP screen mounts so the numeric
   // keyboard appears immediately and iOS QuickType can surface the OTP
@@ -33,50 +32,28 @@ const LoginOtpEntry = ({
   // WebOTP API: Android Chrome auto-reads the OTP from the SMS and populates
   // all cells + triggers verify without any user interaction.
   const handleWebOtp = useCallback((code) => {
-    const filled = fillAll(code);
-    if (filled) onVerify(filled);
-  }, [fillAll, onVerify]);
+    fillAll(code);
+  }, [fillAll]);
 
   useWebOtp(handleWebOtp, !verified && !loading);
 
-  const onCellChange = (e, index) => {
-    const raw = e.target.value;
-    // iOS autoComplete="one-time-code" delivers all OTP digits into the first
-    // cell in a single onChange. Trigger fillAll only for full-length input so
-    // normal single-char typing is unaffected.
-    if (raw.length >= otp.length) {
-      const filled = fillAll(raw);
-      if (filled) onVerify(filled);
-      return;
-    }
-    handleChange(index, raw);
-    const next = [...otp]; next[index] = raw.slice(-1);
-    if (next.every((d) => d !== '')) onVerify(next.join(''));
-  };
+  // Auto-verify when the last digit is entered (typing, paste, or autofill).
+  useEffect(() => {
+    if (!isComplete || verified || loading) return;
+    onVerify(value);
+  }, [isComplete, value, verified, loading, onVerify]);
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-center gap-2 xs:gap-3">
-        {otp.map((digit, index) => (
-          <NativeInput
-            key={index}
-            otp
-            ref={(el) => { refs.current[index] = el; }}
-            type="text"
-            inputMode="numeric"
-            pattern="[0-9]*"
-            autoComplete={otpAutoCompleteForCell(index)}
-            maxLength={otpMaxLengthForCell(index, otp.length)}
-            value={digit}
-            onChange={(e) => onCellChange(e, index)}
-            onKeyDown={(e) => handleKeyDown(index, e)}
-            onPaste={(e) => { const v = handlePaste(e); if (v) onVerify(v); }}
-            className={`w-11 h-12 xs:w-12 xs:h-12 text-center text-xl xs:text-2xl font-bold border-2 rounded-lg focus:outline-none transition-all duration-300 ${
-              digit ? 'border-green-400 bg-green-50' : 'border-gray-200 hover:border-green-300 focus:border-green-400'
-            }`}
-          />
-        ))}
-      </div>
+      <OtpInputCells
+        otpCtl={otpCtl}
+        length={otp.length}
+        className="flex justify-center gap-2 xs:gap-3"
+        cellClassName="w-11 h-12 xs:w-12 xs:h-12 text-center text-xl xs:text-2xl font-bold border-2 rounded-lg focus:outline-none transition-all duration-300 hover:border-green-300 focus:border-green-400"
+        cellStyle={(digit) => (digit
+          ? { borderColor: '#4ade80', backgroundColor: '#f0fdf4' }
+          : { borderColor: '#e5e7eb' })}
+      />
 
       {/* Status indicator — replaces the manual Verify button */}
       <div className="flex items-center justify-center min-h-[48px]">

@@ -74,11 +74,9 @@ export function otpAutoCompleteForCell(index, length = 6, { emailOtp = false } =
   return 'off';
 }
 
-/** First OTP cell must accept the full code — maxLength=1 truncates paste/autofill. */
-export function otpMaxLengthForCell(index, length = 6, { emailOtp = false } = {}) {
-  if (index !== 0) return 1;
-  if (emailOtp || Capacitor.getPlatform() === 'ios') return length;
-  return 1;
+/** First OTP cell must accept the full code — maxLength=1 truncates paste/autofill on all platforms. */
+export function otpMaxLengthForCell(index, length = 6) {
+  return index === 0 ? length : 1;
 }
 
 export default NativeInput;
