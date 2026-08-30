@@ -15,6 +15,7 @@ const UserProfileModal = ({ isOpen, onClose, user, userRole = 'user', onProfileU
   const [latestWeight, setLatestWeight] = useState(null);
   const [initialWeight, setInitialWeight] = useState(null);
   const [initialWeightDate, setInitialWeightDate] = useState(null);
+  const [marathonWeightComparison, setMarathonWeightComparison] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState('');
@@ -46,6 +47,7 @@ const UserProfileModal = ({ isOpen, onClose, user, userRole = 'user', onProfileU
         setLatestWeight(data.latestWeight ? parseFloat(data.latestWeight) : null);
         setInitialWeight(data.initialWeight != null ? parseFloat(data.initialWeight) : null);
         setInitialWeightDate(data.initialWeightDate || null);
+        setMarathonWeightComparison(data.marathonWeightComparison || null);
         if (data.profileImage) {
           setProfileImagePreview(data.profileImage);
         } else if (data.transformationPhotos?.front) {
@@ -116,6 +118,7 @@ const UserProfileModal = ({ isOpen, onClose, user, userRole = 'user', onProfileU
         <UserProfileBody isLoading={isLoading} form={form} email={form.email}
           latestWeight={latestWeight} initialWeight={initialWeight}
           initialWeightDate={initialWeightDate}
+          marathonWeightComparison={marathonWeightComparison}
           error={error} successMessage={successMessage}
         />
         {!isLoading && (

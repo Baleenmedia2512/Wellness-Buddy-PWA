@@ -66,6 +66,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
   const [latestWeight, setLatestWeight] = useState(null);
   const [initialWeight, setInitialWeight] = useState(null);
   const [initialWeightDate, setInitialWeightDate] = useState(null);
+  const [marathonWeightComparison, setMarathonWeightComparison] = useState(null);
   const [coachName, setCoachName] = useState('');
   const [idealCoachName, setIdealCoachName] = useState('');
   const [teamSeat, setTeamSeat] = useState(null);
@@ -130,6 +131,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
       setLatestWeight(data?.latestWeight ? parseFloat(data.latestWeight) : null);
       setInitialWeight(data?.initialWeight != null ? parseFloat(data.initialWeight) : null);
       setInitialWeightDate(data?.initialWeightDate || null);
+      setMarathonWeightComparison(data?.marathonWeightComparison || null);
       setCoachName(
         (data?.sponsorName || data?.coachName)
           ? String(data.sponsorName || data.coachName).trim()
@@ -374,6 +376,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
                   latestWeight={latestWeight}
                   initialWeight={initialWeight}
                   initialWeightDate={initialWeightDate}
+                  marathonWeightComparison={marathonWeightComparison}
                 />
                 <DietDropdown value={form.dietType} onChange={form.setDietType} />
                 <WeightModeSelector
