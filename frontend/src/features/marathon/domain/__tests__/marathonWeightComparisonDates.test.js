@@ -123,6 +123,25 @@ describe('formatMarathonWeightWhatsAppNotice', () => {
     ]);
   });
 
+  it('formats Day 0 running as previous marathon end vs current weight', () => {
+    const progress = buildMarathonRunningProgress({
+      currentDay0Ymd: '2026-09-01',
+      marathonNumber: 1,
+      currentMarathonDay: 0,
+      dayYmds: Array.from({ length: 11 }, (_, day) => `2026-09-${String(day + 1).padStart(2, '0')}`),
+      weightsByDay: { 0: 73 },
+      previousMarathonEndWeight: 75,
+      previousDay10Ymd: '2026-08-11',
+    });
+    assert.deepEqual(formatMarathonWeightWhatsAppNoticeLines(progress, {
+      inMarathon: true,
+      marathonDay: 0,
+    }), [
+      'Previous Marathon End weight : 75.0 kg',
+      'Current Weight : 73.0 kg ⬇️',
+    ]);
+  });
+
   it('formats zero change label', () => {
     assert.equal(formatMarathonWeightChangeLabel(0, 'unchanged'), '0 kg — No Change');
   });
@@ -131,7 +150,15 @@ describe('formatMarathonWeightWhatsAppNotice', () => {
 describe('mergeMarathonWeightComparisonForShare', () => {
   it('builds minimal running share progress when cached days are empty on Day 0', () => {
     const merged = mergeMarathonWeightComparisonForShare(
-      { mode: 'running', partial: true, days: [], marathonDay: 0 },
+      {
+        mode: 'running',
+        partial: true,
+        days: [],
+        marathonDay: 0,
+        currentDay0Ymd: '2026-09-01',
+        previousMarathonEndWeight: 76,
+        previousDay10Ymd: '2026-08-11',
+      },
       77.8,
       0,
     );
@@ -140,7 +167,10 @@ describe('mergeMarathonWeightComparisonForShare', () => {
     assert.deepEqual(formatMarathonWeightWhatsAppNoticeLines(merged, {
       inMarathon: true,
       marathonDay: 0,
-    }), ['77.8 kg']);
+    }), [
+      'Previous Marathon End weight : 76.0 kg',
+      'Current Weight : 77.8 kg ⬆️',
+    ]);
   });
 
   it('overrides the current marathon day weight while sharing', () => {

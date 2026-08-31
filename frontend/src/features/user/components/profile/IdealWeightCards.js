@@ -32,8 +32,8 @@ function formatInitialWeightDate(value) {
   });
 }
 
-function MarathonGapWeightProgress({ comparison }) {
-  if (!comparison || comparison.mode !== 'gap') return null;
+function MarathonCrossMarathonWeightProgress({ comparison, title = 'Marathon Weight' }) {
+  if (!comparison) return null;
 
   const hasPrevious = isValidMarathonWeightKg(comparison.previousMarathonEndWeight);
   const hasCurrent = isValidMarathonWeightKg(comparison.currentWeight);
@@ -49,8 +49,8 @@ function MarathonGapWeightProgress({ comparison }) {
   }
 
   return (
-    <div className="space-y-2" data-testid="marathon-gap-weight-progress">
-      <p className="text-xs font-semibold text-gray-500 px-1">Marathon Weight</p>
+    <div className="space-y-2" data-testid="marathon-cross-marathon-weight-progress">
+      <p className="text-xs font-semibold text-gray-500 px-1">{title}</p>
       <Row
         wrapper="bg-indigo-50 border border-indigo-200 text-indigo-600"
         label="Previous Marathon End"
@@ -70,6 +70,11 @@ function MarathonGapWeightProgress({ comparison }) {
       />
     </div>
   );
+}
+
+function MarathonGapWeightProgress({ comparison }) {
+  if (!comparison || comparison.mode !== 'gap') return null;
+  return <MarathonCrossMarathonWeightProgress comparison={comparison} />;
 }
 
 function MarathonDaysProgress({ comparison }) {
@@ -96,7 +101,15 @@ function MarathonDaysProgress({ comparison }) {
 function MarathonWeightProgress({ comparison }) {
   if (!comparison) return null;
   if (comparison.mode === 'running') {
-    return <MarathonDaysProgress comparison={comparison} />;
+    const showCrossMarathon = comparison.marathonDay === 0;
+    return (
+      <>
+        {showCrossMarathon && (
+          <MarathonCrossMarathonWeightProgress comparison={comparison} />
+        )}
+        <MarathonDaysProgress comparison={comparison} />
+      </>
+    );
   }
   if (comparison.mode === 'gap') {
     return <MarathonGapWeightProgress comparison={comparison} />;

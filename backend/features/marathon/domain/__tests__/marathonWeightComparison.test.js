@@ -86,6 +86,23 @@ describe('backend marathon day formatting', () => {
     assert.equal(day2.displayLine, '75.0 kg → 74.0 kg ↓ 1.0 kg');
   });
 
+  it('builds running progress for Day 0 with previous marathon end comparison', () => {
+    const dayYmds = Array.from({ length: 11 }, (_, day) => `2026-09-${String(day + 1).padStart(2, '0')}`);
+    const result = buildMarathonRunningProgress({
+      currentDay0Ymd: '2026-09-01',
+      marathonNumber: 1,
+      currentMarathonDay: 0,
+      dayYmds,
+      weightsByDay: { 0: 73 },
+      previousMarathonEndWeight: 75,
+      previousDay10Ymd: '2026-08-11',
+    });
+    assert.equal(result.previousMarathonEndWeight, 75);
+    assert.equal(result.currentWeight, 73);
+    assert.equal(result.direction, 'decrease');
+    assert.equal(result.weightDifference, -2);
+  });
+
   it('builds running progress for Day 0 through Day 10', () => {
     const dayYmds = Array.from({ length: 11 }, (_, day) => `2026-09-${String(day + 1).padStart(2, '0')}`);
     const result = buildMarathonRunningProgress({
