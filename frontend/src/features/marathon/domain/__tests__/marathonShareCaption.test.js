@@ -174,14 +174,15 @@ describe('appendMarathonWhatsAppNotice', () => {
     assert.match(result, /Current Weight : 74\.2 kg ↑/);
   });
 
-  it('does not append weight lines on marathon eve reminders', () => {
+  it('appends gap comparison on marathon eve (day before Day 0)', () => {
     const progress = buildMarathonGapProgress({
-      previousMarathonEndWeight: 74,
-      currentWeight: 74.2,
+      previousMarathonEndWeight: 75,
+      currentWeight: 77.3,
     });
-    const result = appendMarathonWhatsAppNotice(CURRENT_DAY_CAPTION, '2026-08-14', progress);
-    assert.equal(result, `${CURRENT_DAY_CAPTION}, Tomorrow is Day 0 - Marathon Starts`);
-    assert.equal(result.includes('Previous Marathon End weight'), false);
+    const result = appendMarathonWhatsAppNotice(CURRENT_DAY_CAPTION, '2026-08-31', progress);
+    assert.match(result, /Tomorrow is Day 0 - Marathon Starts/);
+    assert.match(result, /Previous Marathon End weight : 75\.0 kg/);
+    assert.match(result, /Current Weight : 77\.3 kg ↑/);
   });
 
   it('returns the day sequence when the caption is empty', () => {

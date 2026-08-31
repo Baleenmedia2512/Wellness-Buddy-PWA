@@ -277,7 +277,7 @@ export function formatMarathonWeightWhatsAppNoticeLines(progress, state = {}) {
     return [dayEntry.displayLine];
   }
 
-  if (progress.mode === 'gap' && !state.inMarathon && !state.showMarathonStartReminder) {
+  if (progress.mode === 'gap' && !state.inMarathon) {
     const hasPrevious = isValidMarathonWeightKg(progress.previousMarathonEndWeight);
     const hasCurrent = isValidMarathonWeightKg(progress.currentWeight);
     if (!hasPrevious && !hasCurrent) return [];

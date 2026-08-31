@@ -162,10 +162,6 @@ export async function ensureMarathonWeightComparisonForShare({
   const resolvedUserId = resolveShareUserId(user, userId);
   if (!resolvedUserId) return comparison;
 
-  if (!state.inMarathon && state.showMarathonStartReminder) {
-    return comparison;
-  }
-
   if (!comparison) {
     comparison = state.inMarathon
       ? { mode: 'running', partial: true, days: [] }
@@ -237,11 +233,9 @@ export function withMarathonWhatsAppNotice(caption, ymdOrOptions) {
   const state = getMarathonCalendarState(ymd);
 
   if (marathonWeightComparison == null) {
-    if (state.inMarathon) {
-      marathonWeightComparison = { mode: 'running', partial: true, days: [] };
-    } else if (!state.showMarathonStartReminder) {
-      marathonWeightComparison = { mode: 'gap', partial: true };
-    }
+    marathonWeightComparison = state.inMarathon
+      ? { mode: 'running', partial: true, days: [] }
+      : { mode: 'gap', partial: true };
   }
 
   if (currentMarathonDay0Weight !== undefined) {

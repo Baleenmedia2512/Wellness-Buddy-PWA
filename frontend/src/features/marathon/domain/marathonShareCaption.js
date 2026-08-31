@@ -118,7 +118,7 @@ export function appendMarathonWhatsAppNotice(caption, ymd, marathonWeightCompari
   if (currentDay && !base.includes(currentDay)) additions.push(currentDay);
   if (notice && !base.includes(notice)) additions.push(notice);
 
-  if (marathonWeightComparison && !state.showMarathonStartReminder) {
+  if (marathonWeightComparison) {
     const weightLines = formatMarathonWeightWhatsAppNoticeLines(marathonWeightComparison, state);
     const hasWeightLine = weightLines.some((line) => base.includes(line));
     if (weightLines.length > 0 && !hasWeightLine) {
