@@ -5,7 +5,8 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { getUserContext } from '../../../shared/services/userIdentity';
 import useProfileForm from '../hooks/useProfileForm';
 import { fetchProfile, saveProfile } from '../services/profileService';
-import { resolveDisplayCommunityId } from '../domain/communityId';
+import { syncMarathonWeightComparisonFromProfile } from '../../marathon/marathonWeightComparisonCache';
+import { loadProfileMarathonWeightComparison } from '../../marathon';
 import UserProfileHeader from './profile/UserProfileHeader';
 import UserProfileBody from './profile/UserProfileBody';
 import UserProfileFooter from './profile/UserProfileFooter';
@@ -42,16 +43,24 @@ const UserProfileModal = ({ isOpen, onClose, user, userRole = 'user', onProfileU
             : (data.bodyFat != null ? String(data.bodyFat) : ''),
           latestWeightBodyFat: data.latestWeightBodyFat ?? null,
           email: data.email || user?.email || '',
-          communityId: resolveDisplayCommunityId({
-            communityId: data.communityId,
-            teamId: data.teamId,
-          }),
+          communityId: data.communityId != null ? String(data.communityId) : '',
           bodyMetrics: data.bodyMetrics || null,
         });
         setLatestWeight(data.latestWeight ? parseFloat(data.latestWeight) : null);
         setInitialWeight(data.initialWeight != null ? parseFloat(data.initialWeight) : null);
         setInitialWeightDate(data.initialWeightDate || null);
-        setMarathonWeightComparison(data.marathonWeightComparison || null);
+        const comparisonFromServer = data.marathonWeightComparison || null;
+        setMarathonWeightComparison(comparisonFromServer);
+        syncMarathonWeightComparisonFromProfile(data);
+        void loadProfileMarathonWeightComparison({
+          userId: user?.id,
+          timezoneSource: data.timezone || user,
+          fromProfile: comparisonFromServer,
+        }).then((resolved) => {
+          if (!resolved) return;
+          setMarathonWeightComparison(resolved);
+          syncMarathonWeightComparisonFromProfile({ marathonWeightComparison: resolved });
+        });
         if (data.profileImage) {
           setProfileImagePreview(data.profileImage);
         } else if (data.transformationPhotos?.front) {

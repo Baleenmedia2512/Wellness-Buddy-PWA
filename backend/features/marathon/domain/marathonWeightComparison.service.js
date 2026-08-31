@@ -4,7 +4,11 @@
 import { todayInTimezone } from '../../../shared/lib/datetime/index.js';
 import * as weightRepo from '../../weight/weight.repository.js';
 import { getMarathonWeightComparisonDates } from './marathonCalendar.js';
-import { buildMarathonWeightComparison } from './marathonWeightComparison.js';
+import {
+  buildMarathonWeightComparison,
+  isValidMarathonWeightKg,
+  roundMarathonWeightKg,
+} from './marathonWeightComparison.js';
 
 /**
  * @param {object} params
@@ -17,6 +21,7 @@ export async function resolveMarathonWeightComparison({
   userId,
   timezoneIana,
   todayYmd = null,
+  currentMarathonDay0WeightOverride = null,
 }) {
   const today = todayYmd || todayInTimezone(timezoneIana);
   const dates = getMarathonWeightComparisonDates(today);
@@ -27,12 +32,29 @@ export async function resolveMarathonWeightComparison({
     weightRepo.findLatestWeightOnCalendarDay(userId, dates.currentDay0Ymd, timezoneIana),
   ]);
 
-  if (!previousRow?.Weight || !currentRow?.Weight) return null;
+  const previousWeight = previousRow?.Weight;
+  const currentWeight = currentMarathonDay0WeightOverride ?? currentRow?.Weight;
+  const hasPrevious = isValidMarathonWeightKg(previousWeight);
+  const hasCurrent = isValidMarathonWeightKg(currentWeight);
 
-  return buildMarathonWeightComparison({
-    previousMarathonEndWeight: previousRow.Weight,
-    currentMarathonDay0Weight: currentRow.Weight,
+  if (hasPrevious && hasCurrent) {
+    return buildMarathonWeightComparison({
+      previousMarathonEndWeight: previousWeight,
+      currentMarathonDay0Weight: currentWeight,
+      previousDay10Ymd: dates.previousDay10Ymd,
+      currentDay0Ymd: dates.currentDay0Ymd,
+    });
+  }
+
+  return {
+    partial: true,
+    previousMarathonEndWeight: hasPrevious
+      ? roundMarathonWeightKg(Number(previousWeight))
+      : null,
+    currentMarathonDay0Weight: hasCurrent
+      ? roundMarathonWeightKg(Number(currentWeight))
+      : null,
     previousDay10Ymd: dates.previousDay10Ymd,
     currentDay0Ymd: dates.currentDay0Ymd,
-  });
+  };
 }

@@ -1,6 +1,11 @@
 // Read-only ideal/current weight + phase badge cards.
 import React from 'react';
 import { EmojiOrNative } from '../../../../shared/components/icons/EmojiImage';
+import {
+  formatMarathonWeightDisplayValue,
+  isValidMarathonWeightKg,
+  resolveMarathonWeightDirection,
+} from '../../../marathon/domain/marathonWeightComparison';
 
 const Row = ({ wrapper, label, labelIcon, value, valueClass, sub }) => (
   <div className={`flex items-center justify-between rounded-xl px-4 py-3 ${wrapper}`}>
@@ -30,23 +35,18 @@ function formatInitialWeightDate(value) {
 function MarathonWeightProgress({ comparison }) {
   if (!comparison) return null;
 
-  const {
-    previousMarathonEndWeight,
-    currentMarathonDay0Weight,
-    changeLabel,
-    direction,
-  } = comparison;
+  const hasPrevious = isValidMarathonWeightKg(comparison.previousMarathonEndWeight);
+  const hasCurrent = isValidMarathonWeightKg(comparison.currentMarathonDay0Weight);
+  if (!comparison.partial && !hasPrevious && !hasCurrent) return null;
 
-  const changeWrapper = direction === 'increase'
-    ? 'bg-red-50 border border-red-200 text-red-600'
-    : direction === 'decrease'
-      ? 'bg-green-50 border border-green-200 text-green-600'
-      : 'bg-gray-50 border border-gray-200 text-gray-600';
-  const changeValueClass = direction === 'increase'
-    ? 'text-red-500'
-    : direction === 'decrease'
-      ? 'text-green-600'
-      : 'text-gray-700';
+  let direction = null;
+  if (hasPrevious && hasCurrent) {
+    direction = comparison.direction
+      || resolveMarathonWeightDirection(
+        comparison.previousMarathonEndWeight,
+        comparison.currentMarathonDay0Weight,
+      );
+  }
 
   return (
     <div className="space-y-2" data-testid="marathon-weight-progress">
@@ -55,22 +55,18 @@ function MarathonWeightProgress({ comparison }) {
         wrapper="bg-indigo-50 border border-indigo-200 text-indigo-600"
         label="Previous Marathon End"
         labelIcon={<EmojiOrNative emoji="🏁" className="w-4 h-4" nativeClassName="text-sm" />}
-        value={`${previousMarathonEndWeight.toFixed(1)} kg`}
+        value={formatMarathonWeightDisplayValue(comparison.previousMarathonEndWeight)}
         valueClass="text-indigo-700"
       />
       <Row
         wrapper="bg-violet-50 border border-violet-200 text-violet-600"
         label="Current Marathon Start"
         labelIcon={<EmojiOrNative emoji="🏃" className="w-4 h-4" nativeClassName="text-sm" />}
-        value={`${currentMarathonDay0Weight.toFixed(1)} kg`}
+        value={formatMarathonWeightDisplayValue(comparison.currentMarathonDay0Weight, {
+          withDirection: true,
+          direction,
+        })}
         valueClass="text-violet-700"
-      />
-      <Row
-        wrapper={changeWrapper}
-        label="Weight Change"
-        labelIcon={<EmojiOrNative emoji="📈" className="w-4 h-4" nativeClassName="text-sm" />}
-        value={changeLabel}
-        valueClass={changeValueClass}
       />
     </div>
   );

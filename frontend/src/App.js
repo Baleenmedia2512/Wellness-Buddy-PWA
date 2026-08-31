@@ -71,7 +71,11 @@ import {
   FoodImageShareCard,
   HomeNutritionCarousel,
 } from "./features/nutrition";
-import { DetoxDayReminder, withMarathonWhatsAppNotice } from "./features/marathon";
+import {
+  DetoxDayReminder,
+  ensureMarathonWeightComparisonForShare,
+  withMarathonWhatsAppNotice,
+} from "./features/marathon";
 import { EducationLogCard } from "./features/education";
 import { WatchActivityCard } from "./features/activity";
 import LoadingSpinner from "./shared/components/LoadingSpinner";
@@ -329,6 +333,7 @@ function WellnessValleyApp() {
   const [dashboardInitialDate, setDashboardInitialDate] = useState(null);
   const [dashboardInitialMealId, setDashboardInitialMealId] = useState(null);
   const [bmrUpdateKey, setBmrUpdateKey] = useState(0); // Increment to force BMR re-fetch in NutritionDashboard
+  const [teamSearchRefreshKey, setTeamSearchRefreshKey] = useState(0); // Co-Sponsor / team-code saves → refresh Diary search
   const [bodyParamsRefreshKey, setBodyParamsRefreshKey] = useState(0); // Increment to refresh Body Parameters cards after profile edits
 
   // -- Instant OTP session restore ------------------------------------------
@@ -674,7 +679,7 @@ function WellnessValleyApp() {
   // Optional `activityCaption` is the activity-specific WhatsApp template
   // (water volume, food macros, etc.) — appended above the branding line.
   const shareCaptureAfterClassify = useCallback(
-    async (imageBase64, { activityCaption = null } = {}) => {
+    async (imageBase64, { activityCaption = null, currentMarathonDay0Weight = null } = {}) => {
       const autoShareEnabled =
         localStorage.getItem("autoShareOnCapture") !== "false";
       if (!autoShareEnabled || foodAutoSharedRef.current || !imageBase64) {
@@ -714,6 +719,11 @@ function WellnessValleyApp() {
         requestAnimationFrame(resolve);
       });
 
+      const marathonWeightComparison = await ensureMarathonWeightComparisonForShare({
+        user,
+        currentMarathonDay0Weight,
+      });
+
       const buildCaption = (shareDisplayName) => {
         const brand = buildQuickShareText(
           shareDisplayName,
@@ -721,7 +731,7 @@ function WellnessValleyApp() {
         );
         return withMarathonWhatsAppNotice(
           composeQuickShareCaption(brand, activityCaption),
-          { user },
+          { user, currentMarathonDay0Weight, marathonWeightComparison },
         );
       };
 
@@ -7460,6 +7470,9 @@ function WellnessValleyApp() {
               if (profileData?.physicalActivityLevel) {
                 physicalActivityConfirmedRef.current = true;
               }
+              if (profileData?.teamSearchRefresh) {
+                setTeamSearchRefreshKey((k) => k + 1);
+              }
               // Increment profileKey so Header re-fetches avatar/name
               setHeaderProfileKey((k) => k + 1);
               // Activity log: Home should refresh cards when returning from profile edits
@@ -7498,6 +7511,7 @@ function WellnessValleyApp() {
               initialTab={dashboardInitialTab}
               userRole={userRole}
               bmrUpdateKey={bmrUpdateKey}
+              teamSearchRefreshKey={teamSearchRefreshKey}
               educationRefreshKey={educationRefreshKey}
               watchBurnedCalories={watchBurnedCalories}
               onWatchBurnedCaloriesReset={() => setWatchBurnedCalories(0)}
@@ -7573,6 +7587,7 @@ function WellnessValleyApp() {
               userRole={userRole}
               savedUserName={savedUserName}
               tabVisitKey={tabVisitKeys.enrollment ?? 0}
+              teamSearchRefreshKey={teamSearchRefreshKey}
               onBack={() => {
                 enrollmentHistoryPushedRef.current = false;
                 setShowUniversityEnrollment(false);
@@ -7607,6 +7622,7 @@ function WellnessValleyApp() {
               userRole={userRole}
               apiBaseUrl={apiBaseUrl}
               tabVisitKey={tabVisitKeys['activity-report'] ?? 0}
+              teamSearchRefreshKey={teamSearchRefreshKey}
               onBack={() => {
                 setShowActivityReport(false);
                 const currentWvPage = window.history.state?.wvPage;
@@ -7838,6 +7854,7 @@ function WellnessValleyApp() {
             }
             void shareCaptureAfterClassify(image, {
               activityCaption: shareMeta?.activityCaption || null,
+              currentMarathonDay0Weight: shareMeta?.currentMarathonDay0Weight ?? null,
             });
           }}
           onToast={(msg) => showToast(msg)}
@@ -7925,6 +7942,7 @@ function WellnessValleyApp() {
               user={user}
               userRole={userRole}
               tabVisitKey={tabVisitKeys.reports ?? 0}
+              teamSearchRefreshKey={teamSearchRefreshKey}
               initialTab={reportsDashboardTab}
             />
           </Suspense>

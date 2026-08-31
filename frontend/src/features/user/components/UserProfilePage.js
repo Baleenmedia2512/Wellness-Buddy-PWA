@@ -5,7 +5,7 @@
 //
 // Sections:
 //   1. Avatar (Centre transformation photo — display only)
-//   2. Profile fields (name, height, phone, community ID, email, diet, BMR, PAL)
+//   2. Profile fields (name, height, phone, community ID / team code, email, diet, BMR, PAL)
 //   3. Weight goal mode
 //   4. Settings  (auto camera toggle)
 //   5. Account actions (sign out, delete account)
@@ -23,6 +23,8 @@ import {
 } from '../../../shared/utils/autoCameraPreference';
 import useProfileForm from '../hooks/useProfileForm';
 import { fetchProfile, saveProfile } from '../services/profileService';
+import { syncMarathonWeightComparisonFromProfile } from '../../marathon/marathonWeightComparisonCache';
+import { loadProfileMarathonWeightComparison } from '../../marathon';
 import { fetchMyAssessment, fetchLeadByPhone } from '../../counselling/services/counsellingApi';
 import UserProfileFields from './profile/UserProfileFields';
 import UserProfileBodyMetrics from './profile/UserProfileBodyMetrics';
@@ -34,7 +36,7 @@ import { EmojiOrNative } from '../../../shared/components/icons/EmojiImage';
 import { deriveWeightGoalMode } from '../../weight/services/weightFormService';
 import DeleteAccountModal from './DeleteAccountModal';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
-import { resolveDisplayCommunityId } from '../domain/communityId';
+import { invalidateHasTeamMembersCache } from '../../team/services/teamSearchService';
 
 const COLORS = ['bg-blue-500', 'bg-green-500', 'bg-purple-500', 'bg-pink-500', 'bg-indigo-500', 'bg-yellow-500', 'bg-red-500', 'bg-teal-500'];
 const colorOf = (name, email) => COLORS[(name || email || '').length % COLORS.length];
@@ -69,6 +71,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
   const [marathonWeightComparison, setMarathonWeightComparison] = useState(null);
   const [coachName, setCoachName] = useState('');
   const [idealCoachName, setIdealCoachName] = useState('');
+  const [teamSeat, setTeamSeat] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState('');
@@ -86,16 +89,20 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
     [user, form.email],
   );
 
-  const loadProfile = useCallback(async () => {
+  const loadProfile = useCallback(async ({ cacheBust = false } = {}) => {
     const emailKey = resolveAccountEmail(user, form.email);
-    if (!emailKey) {
+    if (!emailKey && !user?.id) {
       setIsLoading(false);
       return;
     }
     setIsLoading(true);
     setError('');
     try {
-      const { data } = await fetchProfile(emailKey);
+      const { data } = await fetchProfile({
+        email: emailKey || undefined,
+        userId: user?.id || undefined,
+        cacheBust,
+      });
       const profileData = {
         name: data?.userName || user.name || '',
         height: data?.height ? String(data.height) : '',
@@ -110,10 +117,12 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
           : (data?.bodyFat != null ? String(data.bodyFat) : ''),
         latestWeightBodyFat: data?.latestWeightBodyFat ?? null,
         email: data?.email || emailKey || '',
-        communityId: resolveDisplayCommunityId({
-          communityId: data?.communityId,
-          teamId: data?.teamId,
-        }),
+        communityId: (() => {
+          const fromProfile = data?.communityId != null ? String(data.communityId).trim() : '';
+          if (fromProfile) return fromProfile;
+          if (data?.teamId) return String(data.teamId).trim();
+          return '';
+        })(),
         bodyMetrics: data?.bodyMetrics || null,
         recoveredHealthIssues: Array.isArray(data?.recoveredHealthIssues)
           ? data.recoveredHealthIssues
@@ -124,13 +133,25 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
       setLatestWeight(data?.latestWeight ? parseFloat(data.latestWeight) : null);
       setInitialWeight(data?.initialWeight != null ? parseFloat(data.initialWeight) : null);
       setInitialWeightDate(data?.initialWeightDate || null);
-      setMarathonWeightComparison(data?.marathonWeightComparison || null);
+      const comparisonFromServer = data?.marathonWeightComparison || null;
+      setMarathonWeightComparison(comparisonFromServer);
+      syncMarathonWeightComparisonFromProfile(data);
+      void loadProfileMarathonWeightComparison({
+        userId: user?.id,
+        timezoneSource: data?.timezone || user,
+        fromProfile: comparisonFromServer,
+      }).then((resolved) => {
+        if (!resolved) return;
+        setMarathonWeightComparison(resolved);
+        syncMarathonWeightComparisonFromProfile({ marathonWeightComparison: resolved });
+      });
       setCoachName(
         (data?.sponsorName || data?.coachName)
           ? String(data.sponsorName || data.coachName).trim()
           : '',
       );
       setIdealCoachName(data?.idealCoachName ? String(data.idealCoachName).trim() : '');
+      setTeamSeat(data?.teamSeat || null);
       if (data?.profileImage) {
         setProfileImagePreview(data.profileImage);
       } else if (data?.transformationPhotos?.front) {
@@ -199,10 +220,15 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
     try {
       const err = form.validate({ requireDiet: false, maxHeight: 198 });
       if (err) { setError(err); return; }
-      const payload = form.payload(accountEmail || user?.email || user?.Email, {});
+      const payload = form.payload(accountEmail || user?.email || user?.Email, {
+        userId: user?.id || undefined,
+      });
       // BMR is system-calculated on the profile page — never write it from this form.
       delete payload.bmr;
       const data = await saveProfile(payload);
+      if (user?.id) {
+        invalidateHasTeamMembersCache(user.id);
+      }
       onProfileUpdate?.({
         name: form.name,
         height: form.height ? parseFloat(form.height) : null,
@@ -210,9 +236,10 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
         dietType: form.dietType || null,
         communityId: form.communityId || null,
         profileImage: profileImagePreview || null,
+        teamSearchRefresh: true,
       });
       if (user?.id) getUserContext(user.id).catch(() => {});
-      await loadProfile();
+      await loadProfile({ cacheBust: true });
       setSuccessMessage(data.message || 'Profile saved successfully!');
       setHasSaved(true);
     } catch (e) {
@@ -345,6 +372,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
                   setPhysicalActivityLevel={form.setPhysicalActivityLevel}
                   communityId={form.communityId}
                   setCommunityId={form.setCommunityId}
+                  teamSeat={teamSeat}
                 />
                 <UserProfileBodyMetrics
                   bodyMetrics={form.bodyMetrics}

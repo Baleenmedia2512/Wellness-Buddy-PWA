@@ -20,7 +20,10 @@ import { Smartphone, GraduationCap, HelpCircle, Share2, ArrowUp, ArrowDown, Star
 import { useSwipeToDelete } from '../../../../shared/hooks/useSwipeToDelete';
 import { parseAnalysisData, recalculateTotals, getMealCategory } from '../../../nutrition/services/nutritionDashboard/analysisHelpers';
 import { captureAndShare, composeBrandedShareCaption } from '../../../../shared/utils/shareUtils';
-import { withMarathonWhatsAppNotice } from '../../../marathon';
+import {
+  ensureMarathonWeightComparisonForShare,
+  withMarathonWhatsAppNotice,
+} from '../../../marathon';
 import {
   formatBusinessTime,
   formatBusinessDateTime,
@@ -642,9 +645,21 @@ export function WeightRow({
           requestAnimationFrame(() => requestAnimationFrame(resolve));
         });
       }
+      const marathonWeightComparison = await ensureMarathonWeightComparisonForShare({
+        userId: ownerUserId,
+        timezoneSource: timezoneIana,
+        currentMarathonDay0Weight: p.weight,
+      });
       await captureAndShare(target, {
         title: `Weight ${p.weight} kg`,
-        text: withMarathonWhatsAppNotice(shareText, { timezoneIana }),
+        text: withMarathonWhatsAppNotice(
+          composeBrandedShareCaption(shareText),
+          {
+            timezoneIana,
+            currentMarathonDay0Weight: p.weight,
+            marathonWeightComparison,
+          },
+        ),
         fileName: `wellness-weight-${Date.now()}.png`,
       });
     } catch (err) {

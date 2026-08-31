@@ -4,7 +4,11 @@
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { resolveMemberCoachTeamId } from '../coachTeamSeats.js';
+import {
+  buildTeamTableClearOnCancelRequest,
+  resolveInactiveTeamSeatAssignment,
+  resolveMemberCoachTeamId,
+} from '../coachTeamSeats.js';
 
 describe('resolveMemberCoachTeamId', () => {
   it('uses claimed TeamId for Sponsor / Co-Sponsor', () => {
@@ -55,5 +59,44 @@ describe('resolveMemberCoachTeamId', () => {
       }),
       'TEAM001ABC',
     );
+  });
+});
+
+describe('buildTeamTableClearOnCancelRequest', () => {
+  it('clears coach fields for first-time setup users', () => {
+    assert.deepEqual(buildTeamTableClearOnCancelRequest({ coachId: null }), {
+      TeamId: null,
+      CoachId: null,
+      CoachTeamId: null,
+    });
+  });
+
+  it('keeps established CoachId and CoachTeamId on cancel', () => {
+    assert.deepEqual(buildTeamTableClearOnCancelRequest({ coachId: 42 }), {
+      TeamId: null,
+    });
+  });
+});
+
+describe('resolveInactiveTeamSeatAssignment', () => {
+  it('reactivates without wiping CoCoachId when user is existing Sponsor', () => {
+    const result = resolveInactiveTeamSeatAssignment(
+      { CoachId: 10, CoCoachId: 20, Status: 'inactive' },
+      10,
+    );
+    assert.equal(result.ok, true);
+    assert.equal(result.seat, 'already');
+    assert.deepEqual(result.update, { Status: 'active' });
+  });
+
+  it('assigns Co-Sponsor on inactive team with open second seat', () => {
+    const result = resolveInactiveTeamSeatAssignment(
+      { CoachId: 10, CoCoachId: null, Status: 'inactive' },
+      30,
+    );
+    assert.equal(result.ok, true);
+    assert.equal(result.seat, 'co-sponsor');
+    assert.equal(result.update.CoCoachId, 30);
+    assert.equal(result.update.CoachId, undefined);
   });
 });
