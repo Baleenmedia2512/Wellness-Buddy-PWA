@@ -269,3 +269,93 @@ export function getMarathonWeightComparisonDates(ymd) {
     marathonNumber: state.marathonNumber,
   };
 }
+
+/**
+ * Add whole calendar days to a YYYY-MM-DD (UTC date math).
+ * @param {unknown} ymd
+ * @param {number} deltaDays
+ * @returns {string}
+ */
+export function addCalendarDaysYmd(ymd, deltaDays) {
+  if (typeof ymd !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return '';
+  if (!Number.isInteger(deltaDays)) return '';
+  const year = Number.parseInt(ymd.slice(0, 4), 10);
+  const month = Number.parseInt(ymd.slice(5, 7), 10);
+  const day = Number.parseInt(ymd.slice(8, 10), 10);
+  const utc = new Date(Date.UTC(year, month - 1, day + deltaDays));
+  return utc.toISOString().slice(0, 10);
+}
+
+/**
+ * YYYY-MM-DD for each marathon day index from Day 0 through Day 10.
+ * @param {unknown} currentDay0Ymd
+ * @returns {string[]}
+ */
+export function listMarathonDayYmds(currentDay0Ymd) {
+  if (typeof currentDay0Ymd !== 'string' || !currentDay0Ymd) return [];
+  return Array.from({ length: MARATHON_LAST_DAY_INDEX + 1 }, (_, day) => (
+    addCalendarDaysYmd(currentDay0Ymd, day)
+  ));
+}
+
+/**
+ * Gap-day marathon weight anchors (not in an active marathon window).
+ * @param {unknown} ymd YYYY-MM-DD
+ * @returns {{ previousDay10Ymd: string, upcomingDay0Ymd: string, upcomingMarathonNumber: number }|null}
+ */
+export function getMarathonGapComparisonDates(ymd) {
+  const state = getMarathonCalendarState(ymd);
+  if (state.inMarathon) return null;
+
+  const parts = parseYmdParts(ymd);
+  if (parts == null) return null;
+
+  const { year, month, day: dayOfMonth } = parts;
+
+  if (state.showMarathonStartReminder) {
+    const tomorrowYmd = addCalendarDaysYmd(ymd, 1);
+    const tomorrowState = getMarathonCalendarState(tomorrowYmd);
+    const tomorrowParts = parseYmdParts(tomorrowYmd);
+    if (
+      tomorrowState.inMarathon
+      && tomorrowState.marathonDay === 0
+      && tomorrowParts != null
+      && tomorrowState.marathonNumber != null
+    ) {
+      const previousDay10Ymd = tomorrowState.marathonNumber === 1
+        ? previousMarathon1EndYmd(tomorrowParts)
+        : previousMarathon2EndYmd(tomorrowParts);
+      return {
+        previousDay10Ymd,
+        upcomingDay0Ymd: tomorrowYmd,
+        upcomingMarathonNumber: tomorrowState.marathonNumber,
+      };
+    }
+    return null;
+  }
+
+  if (dayOfMonth >= 12 && dayOfMonth <= 14) {
+    return {
+      previousDay10Ymd: previousMarathon2EndYmd(parts),
+      upcomingDay0Ymd: formatYmdParts(year, month, MARATHON_START_DAYS_OF_MONTH[1]),
+      upcomingMarathonNumber: 2,
+    };
+  }
+
+  if (dayOfMonth >= 26) {
+    let nextMonth = month + 1;
+    let nextYear = year;
+    if (nextMonth > 12) {
+      nextMonth = 1;
+      nextYear += 1;
+    }
+    const upcomingParts = { year: nextYear, month: nextMonth };
+    return {
+      previousDay10Ymd: previousMarathon1EndYmd(upcomingParts),
+      upcomingDay0Ymd: formatYmdParts(nextYear, nextMonth, MARATHON_START_DAYS_OF_MONTH[0]),
+      upcomingMarathonNumber: 1,
+    };
+  }
+
+  return null;
+}

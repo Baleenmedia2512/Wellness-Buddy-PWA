@@ -4,6 +4,9 @@ export {
   getDetoxReminder,
   resolveMarathonToday,
   getMarathonWeightComparisonDates,
+  getMarathonGapComparisonDates,
+  listMarathonDayYmds,
+  addCalendarDaysYmd,
   MARATHON_START_DAYS_OF_MONTH,
   MARATHON_LAST_DAY_INDEX,
   DETOX_MARATHON_DAYS,
@@ -26,6 +29,9 @@ export {
 } from './withMarathonWhatsAppNotice.js';
 export {
   buildMarathonWeightComparison,
+  buildMarathonRunningProgress,
+  buildMarathonGapProgress,
+  formatMarathonDayComparisonLine,
   formatMarathonWeightChangeLabel,
   formatMarathonWeightWhatsAppNotice,
 } from './domain/marathonWeightComparison.js';

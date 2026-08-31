@@ -11,6 +11,7 @@ export {
   timestampToCalendarYmd,
   filterRowsByCalendarDay,
   filterRowsByCalendarDateRange,
+  filterRowsOnOrBeforeCalendarDay,
   timeOfDayInTimezone,
   parseClientTimestampToUtc,
   normalizeStoredTimestampToUtcIso,

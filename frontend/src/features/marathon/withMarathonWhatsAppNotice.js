@@ -69,15 +69,13 @@ export async function loadProfileMarathonWeightComparison({
 } = {}) {
   const ymd = getClientMarathonBusinessYmd(timezoneSource);
   const state = getMarathonCalendarState(ymd);
-  if (!state.inMarathon || state.marathonDay == null) {
-    return fromProfile;
-  }
+  const inMarathonWindow = state.inMarathon && state.marathonDay != null;
 
   if (fromProfile) {
     return fromProfile;
   }
 
-  if (userId) {
+  if (userId && (inMarathonWindow || !state.inMarathon)) {
     try {
       const fetched = await refreshMarathonWeightComparisonCache(userId, { todayYmd: ymd });
       if (fetched) return fetched;
@@ -86,7 +84,11 @@ export async function loadProfileMarathonWeightComparison({
     }
   }
 
-  return { partial: true };
+  if (inMarathonWindow) {
+    return { mode: 'running', partial: true, days: [] };
+  }
+
+  return { mode: 'gap', partial: true };
 }
 
 /**
@@ -138,32 +140,36 @@ export async function ensureMarathonWeightComparisonForShare({
       ?? resolveMarathonWeightComparisonFromProfileCache(user);
   }
 
+  const tz = resolveMarathonTimezoneSource(timezoneSource ?? user);
+  const liveToday = todayBusinessDate(tz, new Date());
+  const stored = storage.get(MARATHON_TEST_DATE_STORAGE_KEY);
+  const ymd = resolveMarathonToday(liveToday, stored);
+  const state = getMarathonCalendarState(ymd);
+
   if (currentMarathonDay0Weight !== undefined) {
     const merged = mergeMarathonWeightComparisonForShare(
       comparison,
       currentMarathonDay0Weight,
+      state.marathonDay,
     );
-    if (formatMarathonWeightWhatsAppNoticeLines(merged).length > 0) {
+    if (formatMarathonWeightWhatsAppNoticeLines(merged, state).length > 0) {
       return merged;
     }
-  } else if (formatMarathonWeightWhatsAppNoticeLines(comparison).length > 0) {
+  } else if (formatMarathonWeightWhatsAppNoticeLines(comparison, state).length > 0) {
     return comparison;
   }
 
   const resolvedUserId = resolveShareUserId(user, userId);
   if (!resolvedUserId) return comparison;
 
-  const tz = resolveMarathonTimezoneSource(timezoneSource ?? user);
-  const liveToday = todayBusinessDate(tz, new Date());
-  const stored = storage.get(MARATHON_TEST_DATE_STORAGE_KEY);
-  const ymd = resolveMarathonToday(liveToday, stored);
-  const state = getMarathonCalendarState(ymd);
-  if (!state.inMarathon || state.marathonDay == null) {
+  if (!state.inMarathon && state.showMarathonStartReminder) {
     return comparison;
   }
 
   if (!comparison) {
-    comparison = { partial: true };
+    comparison = state.inMarathon
+      ? { mode: 'running', partial: true, days: [] }
+      : { mode: 'gap', partial: true };
   }
 
   try {
@@ -177,10 +183,13 @@ export async function ensureMarathonWeightComparisonForShare({
   }
 
   if (currentMarathonDay0Weight !== undefined) {
-    return mergeMarathonWeightComparisonForShare(comparison, currentMarathonDay0Weight)
-      ?? { partial: true, previousMarathonEndWeight: null, currentMarathonDay0Weight: null };
+    return mergeMarathonWeightComparisonForShare(
+      comparison,
+      currentMarathonDay0Weight,
+      state.marathonDay,
+    ) ?? { mode: 'gap', partial: true, previousMarathonEndWeight: null, currentWeight: null };
   }
-  return comparison ?? { partial: true };
+  return comparison ?? { mode: 'gap', partial: true };
 }
 
 /**
@@ -218,13 +227,6 @@ export function withMarathonWhatsAppNotice(caption, ymdOrOptions) {
       ?? resolveMarathonWeightComparisonFromProfileCache(user);
   }
 
-  if (currentMarathonDay0Weight !== undefined) {
-    marathonWeightComparison = mergeMarathonWeightComparisonForShare(
-      marathonWeightComparison,
-      currentMarathonDay0Weight,
-    );
-  }
-
   const tz = resolveMarathonTimezoneSource(timezoneSource);
   const live = ymdOverride || todayBusinessDate(
     tz,
@@ -233,15 +235,21 @@ export function withMarathonWhatsAppNotice(caption, ymdOrOptions) {
   const stored = ymdOverride ? null : storage.get(MARATHON_TEST_DATE_STORAGE_KEY);
   const ymd = resolveMarathonToday(live, stored);
   const state = getMarathonCalendarState(ymd);
-  if (marathonWeightComparison == null && state.inMarathon && state.marathonDay === 0) {
-    marathonWeightComparison = { partial: true };
+
+  if (marathonWeightComparison == null) {
+    if (state.inMarathon) {
+      marathonWeightComparison = { mode: 'running', partial: true, days: [] };
+    } else if (!state.showMarathonStartReminder) {
+      marathonWeightComparison = { mode: 'gap', partial: true };
+    }
   }
 
   if (currentMarathonDay0Weight !== undefined) {
     marathonWeightComparison = mergeMarathonWeightComparisonForShare(
       marathonWeightComparison,
       currentMarathonDay0Weight,
-    ) ?? { partial: true, previousMarathonEndWeight: null, currentMarathonDay0Weight: null };
+      state.marathonDay,
+    ) ?? { mode: 'gap', partial: true, previousMarathonEndWeight: null, currentWeight: null };
   }
 
   return appendMarathonWhatsAppNotice(
