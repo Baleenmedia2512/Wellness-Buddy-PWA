@@ -33,22 +33,28 @@ export async function resolveMarathonWeightComparison({
   ]);
 
   const previousWeight = previousRow?.Weight;
-  if (!isValidMarathonWeightKg(previousWeight)) return null;
-
   const currentWeight = currentMarathonDay0WeightOverride ?? currentRow?.Weight;
-  if (!isValidMarathonWeightKg(currentWeight)) {
-    return {
-      previousMarathonEndWeight: roundMarathonWeightKg(Number(previousWeight)),
-      partial: true,
+  const hasPrevious = isValidMarathonWeightKg(previousWeight);
+  const hasCurrent = isValidMarathonWeightKg(currentWeight);
+
+  if (hasPrevious && hasCurrent) {
+    return buildMarathonWeightComparison({
+      previousMarathonEndWeight: previousWeight,
+      currentMarathonDay0Weight: currentWeight,
       previousDay10Ymd: dates.previousDay10Ymd,
       currentDay0Ymd: dates.currentDay0Ymd,
-    };
+    });
   }
 
-  return buildMarathonWeightComparison({
-    previousMarathonEndWeight: previousWeight,
-    currentMarathonDay0Weight: currentWeight,
+  return {
+    partial: true,
+    previousMarathonEndWeight: hasPrevious
+      ? roundMarathonWeightKg(Number(previousWeight))
+      : null,
+    currentMarathonDay0Weight: hasCurrent
+      ? roundMarathonWeightKg(Number(currentWeight))
+      : null,
     previousDay10Ymd: dates.previousDay10Ymd,
     currentDay0Ymd: dates.currentDay0Ymd,
-  });
+  };
 }
