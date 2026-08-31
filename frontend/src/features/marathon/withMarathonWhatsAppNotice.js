@@ -17,6 +17,7 @@ import {
 import { appendMarathonWhatsAppNotice } from './domain/marathonShareCaption';
 import {
   formatMarathonWeightWhatsAppNoticeLines,
+  isValidMarathonWeightKg,
   mergeMarathonWeightComparisonForShare,
 } from './domain/marathonWeightComparison';
 import { getMarathonWeightComparisonFromCache } from './marathonWeightComparisonCache';
@@ -189,8 +190,24 @@ export async function ensureMarathonWeightComparisonForShare({
 }
 
 /**
+ * Weight comparison lines (Previous Marathon End / Current Weight, or Day 0 vs today)
+ * belong only on weight shares. Food, water, education, and other captions still get
+ * the Day N / Tomorrow marathon sequence.
+ *
+ * @param {string|{ includeWeightComparison?: boolean, currentMarathonDay0Weight?: unknown }|null|undefined} ymdOrOptions
+ * @param {unknown} currentMarathonDay0Weight
+ * @returns {boolean}
+ */
+function resolveIncludeWeightComparison(ymdOrOptions, currentMarathonDay0Weight) {
+  if (ymdOrOptions && typeof ymdOrOptions === 'object' && typeof ymdOrOptions.includeWeightComparison === 'boolean') {
+    return ymdOrOptions.includeWeightComparison;
+  }
+  return isValidMarathonWeightKg(currentMarathonDay0Weight);
+}
+
+/**
  * @param {unknown} caption
- * @param {string|{ ymd?: string, user?: object, timezoneSource?: unknown, timezoneIana?: string, now?: Date, marathonWeightComparison?: object|null, currentMarathonDay0Weight?: unknown }} [ymdOrOptions]
+ * @param {string|{ ymd?: string, user?: object, timezoneSource?: unknown, timezoneIana?: string, now?: Date, marathonWeightComparison?: object|null, currentMarathonDay0Weight?: unknown, includeWeightComparison?: boolean }} [ymdOrOptions]
  * @returns {string}
  */
 export function withMarathonWhatsAppNotice(caption, ymdOrOptions) {
@@ -218,7 +235,14 @@ export function withMarathonWhatsAppNotice(caption, ymdOrOptions) {
     }
   }
 
-  if (marathonWeightComparison === null) {
+  const includeWeightComparison = resolveIncludeWeightComparison(
+    ymdOrOptions,
+    currentMarathonDay0Weight,
+  );
+
+  if (!includeWeightComparison) {
+    marathonWeightComparison = null;
+  } else if (marathonWeightComparison === null) {
     marathonWeightComparison = getMarathonWeightComparisonFromCache()
       ?? resolveMarathonWeightComparisonFromProfileCache(user);
   }
@@ -232,13 +256,13 @@ export function withMarathonWhatsAppNotice(caption, ymdOrOptions) {
   const ymd = resolveMarathonToday(live, stored);
   const state = getMarathonCalendarState(ymd);
 
-  if (marathonWeightComparison == null) {
+  if (includeWeightComparison && marathonWeightComparison == null) {
     marathonWeightComparison = state.inMarathon
       ? { mode: 'running', partial: true, days: [] }
       : { mode: 'gap', partial: true };
   }
 
-  if (currentMarathonDay0Weight !== undefined) {
+  if (includeWeightComparison && isValidMarathonWeightKg(currentMarathonDay0Weight)) {
     marathonWeightComparison = mergeMarathonWeightComparisonForShare(
       marathonWeightComparison,
       currentMarathonDay0Weight,
@@ -249,6 +273,7 @@ export function withMarathonWhatsAppNotice(caption, ymdOrOptions) {
   return appendMarathonWhatsAppNotice(
     caption,
     ymd,
-    marathonWeightComparison,
+    includeWeightComparison ? marathonWeightComparison : null,
+    { includeWeightComparison },
   );
 }

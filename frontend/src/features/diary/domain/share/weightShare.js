@@ -19,8 +19,8 @@ export function buildWeightShareText({
   const lines = [
     '⚖️ Weight Update',
     '',
-    `Before: ${previous != null ? `${previous} kg` : '—'}`,
-    `After: ${current != null ? `${current} kg` : '—'}`,
+    `Prev: ${previous != null ? `${previous} kg` : '—'}`,
+    `Curr: ${current != null ? `${current} kg` : '—'}`,
   ];
 
   if (previous != null && current != null) {

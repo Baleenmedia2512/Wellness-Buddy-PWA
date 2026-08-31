@@ -34,6 +34,7 @@ export {
   formatMarathonDayComparisonLine,
   formatMarathonWeightChangeLabel,
   formatMarathonWeightWhatsAppNotice,
+  isValidMarathonWeightKg,
 } from './domain/marathonWeightComparison.js';
 export {
   setMarathonWeightComparisonCache,

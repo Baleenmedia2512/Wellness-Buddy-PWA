@@ -250,6 +250,17 @@ export function formatMarathonWeightDirectionArrow(direction) {
 }
 
 /**
+ * WhatsApp uses emoji arrows so the direction is visible in the caption.
+ * @param {'increase'|'decrease'|'unchanged'|null|undefined} direction
+ * @returns {string}
+ */
+export function formatMarathonWeightWhatsAppDirectionEmoji(direction) {
+  if (direction === 'increase') return ' ⬆️';
+  if (direction === 'decrease') return ' ⬇️';
+  return '';
+}
+
+/**
  * @param {unknown} value
  * @param {{ withDirection?: boolean, direction?: 'increase'|'decrease'|'unchanged'|null }} [options]
  * @returns {string}
@@ -292,10 +303,7 @@ export function formatMarathonWeightWhatsAppNoticeLines(progress, state = {}) {
 
     return [
       `Previous Marathon End weight : ${formatMarathonWeightDisplayValue(progress.previousMarathonEndWeight)}`,
-      `Current Weight : ${formatMarathonWeightDisplayValue(progress.currentWeight, {
-        withDirection: true,
-        direction,
-      })}`,
+      `Current Weight : ${formatMarathonWeightDisplayValue(progress.currentWeight)}${formatMarathonWeightWhatsAppDirectionEmoji(direction)}`,
     ];
   }
 

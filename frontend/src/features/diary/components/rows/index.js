@@ -658,6 +658,7 @@ export function WeightRow({
             timezoneIana,
             currentMarathonDay0Weight: p.weight,
             marathonWeightComparison,
+            includeWeightComparison: true,
           },
         ),
         fileName: `wellness-weight-${Date.now()}.png`,
@@ -724,13 +725,13 @@ export function WeightRow({
         )}
         <div style={{ padding: '18px 20px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10 }}>
-            <span style={{ fontSize: 13, color: '#6b7280' }}>Before</span>
+            <span style={{ fontSize: 13, color: '#6b7280' }}>Prev</span>
             <span style={{ fontSize: 15, fontWeight: 700, color: '#111827' }}>
               {previousLabel != null ? `${previousLabel} kg` : '—'}
             </span>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 14 }}>
-            <span style={{ fontSize: 13, color: '#6b7280' }}>After</span>
+            <span style={{ fontSize: 13, color: '#6b7280' }}>Curr</span>
             <span style={{ fontSize: 15, fontWeight: 700, color: '#111827' }}>{p.weight} kg</span>
           </div>
           {delta.label && (

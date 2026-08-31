@@ -74,6 +74,7 @@ import {
 import {
   DetoxDayReminder,
   ensureMarathonWeightComparisonForShare,
+  isValidMarathonWeightKg,
   withMarathonWhatsAppNotice,
 } from "./features/marathon";
 import { EducationLogCard } from "./features/education";
@@ -719,10 +720,13 @@ function WellnessValleyApp() {
         requestAnimationFrame(resolve);
       });
 
-      const marathonWeightComparison = await ensureMarathonWeightComparisonForShare({
-        user,
-        currentMarathonDay0Weight,
-      });
+      const isWeightShare = isValidMarathonWeightKg(currentMarathonDay0Weight);
+      const marathonWeightComparison = isWeightShare
+        ? await ensureMarathonWeightComparisonForShare({
+          user,
+          currentMarathonDay0Weight,
+        })
+        : null;
 
       const buildCaption = (shareDisplayName) => {
         const brand = buildQuickShareText(
@@ -731,7 +735,12 @@ function WellnessValleyApp() {
         );
         return withMarathonWhatsAppNotice(
           composeQuickShareCaption(brand, activityCaption),
-          { user, currentMarathonDay0Weight, marathonWeightComparison },
+          {
+            user,
+            currentMarathonDay0Weight: isWeightShare ? currentMarathonDay0Weight : undefined,
+            marathonWeightComparison,
+            includeWeightComparison: isWeightShare,
+          },
         );
       };
 

@@ -119,7 +119,7 @@ describe('formatMarathonWeightWhatsAppNotice', () => {
       showMarathonStartReminder: false,
     }), [
       'Previous Marathon End weight : 75.0 kg',
-      'Current Weight : 74.2 kg ↓',
+      'Current Weight : 74.2 kg ⬇️',
     ]);
   });
 

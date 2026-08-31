@@ -6,7 +6,7 @@
  * Food: kcal on the brand line, then each item on its own line with GI:
  *   "YASHEER J · Wellness Valley v 3.4.5, 1890 kcal\nMasala Dosa - GI 65 m"
  * Weight (other multi-line) sits under the brand with a blank line:
- *   "Balaji Sekar · Wellness Valley v 3.4.5\n\nIdeal: 73.7 kg\nBefore: 72.9 kg"
+ *   "Balaji Sekar · Wellness Valley v 3.4.5\n\nIdeal: 73.7 kg\nPrev: 72.9 kg"
  */
 
 /** UTF-8 middle dot separator for share captions: "Name · Wellness Valley v X.Y.Z" */
