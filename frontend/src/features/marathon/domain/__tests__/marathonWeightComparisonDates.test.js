@@ -129,6 +129,20 @@ describe('formatMarathonWeightWhatsAppNotice', () => {
 });
 
 describe('mergeMarathonWeightComparisonForShare', () => {
+  it('builds minimal running share progress when cached days are empty on Day 0', () => {
+    const merged = mergeMarathonWeightComparisonForShare(
+      { mode: 'running', partial: true, days: [], marathonDay: 0 },
+      77.8,
+      0,
+    );
+    assert.equal(merged.mode, 'running');
+    assert.equal(merged.currentDay.displayLine, '77.8 kg');
+    assert.deepEqual(formatMarathonWeightWhatsAppNoticeLines(merged, {
+      inMarathon: true,
+      marathonDay: 0,
+    }), ['77.8 kg']);
+  });
+
   it('overrides the current marathon day weight while sharing', () => {
     const source = buildMarathonRunningProgress({
       currentDay0Ymd: '2026-09-01',

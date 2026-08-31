@@ -3,7 +3,7 @@
  * Date resolution lives in marathonCalendar.js; weight lookup is server-side.
  */
 
-import { MARATHON_LAST_DAY_INDEX } from './marathonCalendar.js';
+import { MARATHON_LAST_DAY_INDEX, listMarathonDayYmds } from './marathonCalendar.js';
 
 /** Shown in profile and WhatsApp when a marathon anchor weight is not logged yet. */
 export const MARATHON_WEIGHT_MISSING_LABEL = '—';
@@ -314,36 +314,109 @@ export function formatMarathonWeightWhatsAppNotice(progress, state = {}) {
  * @param {number|null} [marathonDay]
  * @returns {object|null}
  */
+function buildMinimalRunningShareProgress({
+  dayIndex,
+  currentWeightKg,
+  source = null,
+}) {
+  const weightsByDay = {};
+  if (source?.mode === 'running' && Array.isArray(source.days)) {
+    source.days.forEach((entry) => {
+      weightsByDay[entry.day] = entry.dayWeight;
+    });
+  }
+  if (isValidMarathonWeightKg(source?.day0Weight)) {
+    weightsByDay[0] = source.day0Weight;
+  } else if (isValidMarathonWeightKg(source?.currentMarathonDay0Weight)) {
+    weightsByDay[0] = source.currentMarathonDay0Weight;
+  }
+  if (isValidMarathonWeightKg(currentWeightKg)) {
+    weightsByDay[dayIndex] = currentWeightKg;
+    if (dayIndex === 0) weightsByDay[0] = currentWeightKg;
+  }
+
+  const day0Weight = weightsByDay[0] ?? null;
+  const todayWeight = weightsByDay[dayIndex] ?? null;
+  const currentDay = buildMarathonDayEntry({
+    day: dayIndex,
+    ymd: source?.days?.[dayIndex]?.ymd ?? '',
+    day0Weight,
+    dayWeight: todayWeight,
+  });
+
+  const roundedDay0 = isValidMarathonWeightKg(day0Weight)
+    ? roundMarathonWeightKg(Number(day0Weight))
+    : null;
+
+  return {
+    mode: 'running',
+    partial: true,
+    marathonNumber: source?.marathonNumber ?? 1,
+    marathonDay: dayIndex,
+    currentDay0Ymd: source?.currentDay0Ymd ?? null,
+    day0Weight: roundedDay0,
+    currentMarathonDay0Weight: roundedDay0,
+    previousMarathonEndWeight: null,
+    currentWeight: isValidMarathonWeightKg(todayWeight)
+      ? roundMarathonWeightKg(Number(todayWeight))
+      : null,
+    days: [currentDay],
+    currentDay,
+  };
+}
+
 export function mergeMarathonWeightComparisonForShare(source, currentWeightKg, marathonDay = null) {
+  const dayIndex = Number.isInteger(marathonDay)
+    ? marathonDay
+    : (source?.mode === 'running' && Number.isInteger(source?.marathonDay)
+      ? source.marathonDay
+      : null);
+
+  if (Number.isInteger(dayIndex) && dayIndex >= 0 && dayIndex <= MARATHON_LAST_DAY_INDEX) {
+    const weightsByDay = {};
+    let dayYmds = [];
+    let currentDay0Ymd = source?.currentDay0Ymd ?? null;
+    let marathonNumber = source?.marathonNumber ?? 1;
+
+    if (source?.mode === 'running' && Array.isArray(source.days) && source.days.length > 0) {
+      source.days.forEach((entry) => {
+        weightsByDay[entry.day] = entry.dayWeight;
+      });
+      dayYmds = source.days.map((entry) => entry.ymd);
+      currentDay0Ymd = source.currentDay0Ymd ?? dayYmds[0] ?? null;
+      marathonNumber = source.marathonNumber ?? marathonNumber;
+    } else if (currentDay0Ymd) {
+      dayYmds = listMarathonDayYmds(currentDay0Ymd);
+    }
+
+    weightsByDay[0] = source?.day0Weight ?? source?.currentMarathonDay0Weight ?? weightsByDay[0] ?? null;
+    if (isValidMarathonWeightKg(currentWeightKg)) {
+      weightsByDay[dayIndex] = currentWeightKg;
+      if (dayIndex === 0) weightsByDay[0] = currentWeightKg;
+    }
+
+    if (currentDay0Ymd && dayYmds.length > 0) {
+      return buildMarathonRunningProgress({
+        currentDay0Ymd,
+        marathonNumber,
+        currentMarathonDay: dayIndex,
+        dayYmds,
+        weightsByDay,
+      });
+    }
+
+    return buildMinimalRunningShareProgress({
+      dayIndex,
+      currentWeightKg,
+      source,
+    });
+  }
+
   if (!source || typeof source !== 'object') {
     if (!isValidMarathonWeightKg(currentWeightKg)) return null;
     return buildMarathonGapProgress({
       previousMarathonEndWeight: null,
       currentWeight: currentWeightKg,
-    });
-  }
-
-  if (source.mode === 'running' && Array.isArray(source.days)) {
-    const dayIndex = Number.isInteger(marathonDay) ? marathonDay : source.marathonDay;
-    if (!Number.isInteger(dayIndex) || dayIndex < 0 || dayIndex > MARATHON_LAST_DAY_INDEX) {
-      return source;
-    }
-
-    const weightsByDay = Object.fromEntries(
-      source.days.map((entry) => [entry.day, entry.dayWeight]),
-    );
-    weightsByDay[0] = source.day0Weight ?? weightsByDay[0] ?? null;
-    if (isValidMarathonWeightKg(currentWeightKg)) {
-      weightsByDay[dayIndex] = currentWeightKg;
-    }
-
-    const dayYmds = source.days.map((entry) => entry.ymd);
-    return buildMarathonRunningProgress({
-      currentDay0Ymd: source.currentDay0Ymd,
-      marathonNumber: source.marathonNumber,
-      currentMarathonDay: dayIndex,
-      dayYmds,
-      weightsByDay,
     });
   }
 
