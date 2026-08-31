@@ -496,7 +496,6 @@ jobs:
           echo "Event:"
           echo "$GITHUB_EVENT_NAME"
 
-
       # ==========================================================
       # 25. SYNC RUN TO QA DASHBOARD
       #
