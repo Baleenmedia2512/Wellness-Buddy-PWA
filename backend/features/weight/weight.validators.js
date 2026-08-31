@@ -62,5 +62,15 @@ export function validateUndoInput(body) {
 
 export function validateMarathonComparisonInput(query) {
   if (!query?.userId) throw new ValidationError(400, 'Missing required field: userId');
-  return { userId: query.userId };
+  const todayYmd = typeof query.todayYmd === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(query.todayYmd)
+    ? query.todayYmd
+    : null;
+  const rawCurrent = query.currentDay0Weight ?? query.currentMarathonDay0Weight;
+  const currentDay0Weight = rawCurrent != null && rawCurrent !== ''
+    ? parseFloat(rawCurrent)
+    : null;
+  if (currentDay0Weight != null && (!Number.isFinite(currentDay0Weight) || currentDay0Weight <= 0)) {
+    throw new ValidationError(400, 'Invalid currentDay0Weight');
+  }
+  return { userId: query.userId, todayYmd, currentDay0Weight };
 }
