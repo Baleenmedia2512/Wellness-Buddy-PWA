@@ -3,12 +3,9 @@
  * Date resolution lives in marathonCalendar.js; weight lookup is server-side.
  */
 
-<<<<<<< HEAD
-=======
 /** Shown in profile and WhatsApp when a marathon anchor weight is not logged yet. */
 export const MARATHON_WEIGHT_MISSING_LABEL = '—';
 
->>>>>>> Phase1_Yasheer
 /** @param {unknown} value */
 export function isValidMarathonWeightKg(value) {
   const n = typeof value === 'number' ? value : parseFloat(value);
