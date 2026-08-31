@@ -5,6 +5,7 @@
  */
 import { getApiBaseUrl } from '../../../config/api.config.js';
 import { toStorageThumbnail } from '../../../shared/utils/storageThumbnail.js';
+import { setMarathonWeightComparisonCache } from '../../marathon/marathonWeightComparisonCache.js';
 
 /** In-memory latest-weight cache — sync read for instant manual-entry pre-fill. */
 const latestWeightCache = new Map();
@@ -55,8 +56,27 @@ export async function saveWeight(payload) {
         date: result.data.data?.createdAt || new Date().toISOString(),
       });
     }
+    void refreshMarathonWeightComparisonCache(next.userId);
   }
   return result;
+}
+
+/**
+ * Refresh cached marathon Day 0 weight comparison (WhatsApp shares).
+ * @param {string|number} userId
+ */
+export async function refreshMarathonWeightComparisonCache(userId) {
+  if (!userId) return null;
+  const { ok, data } = await request(
+    `/api/weight/marathon-comparison?userId=${encodeURIComponent(String(userId))}`,
+    {
+      method: 'GET',
+      headers: { 'Cache-Control': 'no-cache', Pragma: 'no-cache' },
+    },
+  );
+  if (!ok || !data?.success) return null;
+  setMarathonWeightComparisonCache(data.data ?? null);
+  return data.data ?? null;
 }
 
 export function getWeightHistory(userId, { includeImage = false, cacheBust = true, viewerUserId } = {}) {

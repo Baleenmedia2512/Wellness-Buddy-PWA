@@ -9,6 +9,8 @@ import {
   WEIGHT_TREND_RANGE_CUSTOM,
   buildRecordedTrendSeries,
   getFirstAndLatestRecordedWeight,
+  getTrendRangeBounds,
+  getRecordedSeriesAxisBounds,
 } from '../weightDashboardFormatter.js';
 import {
   formatCalendarPickerDate,
@@ -119,5 +121,42 @@ describe('buildRecordedTrendSeries', () => {
       },
     });
     assert.deepEqual(series.map((p) => p.value), [22, 21.5]);
+  });
+
+  it('adds compact day-only labels when all points are in the same month', () => {
+    const compactHistory = [
+      entry(1, 90, addDaysYmd(today, -5)),
+      entry(2, 91, addDaysYmd(today, -3)),
+    ];
+    const series = buildRecordedTrendSeries(compactHistory, 10);
+    assert.equal(series[0].compactLabel, String(Number(addDaysYmd(today, -5).split('-')[2])));
+    assert.match(series[0].label, /^[A-Za-z]{3} \d+$/);
+  });
+});
+
+describe('getTrendRangeBounds', () => {
+  it('returns inclusive bounds for preset day ranges ending today', () => {
+    const today = todayBusinessDate();
+    const bounds = getTrendRangeBounds(5);
+    assert.ok(bounds);
+    assert.equal(formatCalendarPickerDate(bounds.end), today);
+    assert.equal(formatCalendarPickerDate(bounds.start), addDaysYmd(today, -4));
+  });
+
+  it('returns null for custom range until both dates are chosen', () => {
+    assert.equal(getTrendRangeBounds(WEIGHT_TREND_RANGE_CUSTOM, null), null);
+  });
+});
+
+describe('getRecordedSeriesAxisBounds', () => {
+  it('spans first to last recorded point only', () => {
+    const series = buildRecordedTrendSeries([
+      entry(1, 90, '2026-08-10'),
+      entry(2, 91, '2026-08-15'),
+      entry(3, 92, '2026-08-29'),
+    ], 30);
+    const bounds = getRecordedSeriesAxisBounds(series);
+    assert.equal(formatCalendarPickerDate(bounds.start), '2026-08-10');
+    assert.equal(formatCalendarPickerDate(bounds.end), '2026-08-29');
   });
 });

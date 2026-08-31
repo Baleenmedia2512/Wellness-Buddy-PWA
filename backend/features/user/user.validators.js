@@ -15,6 +15,7 @@ import {
 const VALID_DIETS = ['Vegetarian', 'Non-Vegetarian', 'Vegan', 'Pescatarian'];
 const VALID_GOAL_MODES = ['loss', 'gain', 'maintain'];
 export const COMMUNITY_ID_MAX_LENGTH = 100;
+export const COMMUNITY_ID_MIN_LENGTH = 4;
 const COMMUNITY_ID_PATTERN = /^[a-zA-Z0-9]+$/;
 export { VALID_GOAL_MODES, VALID_PHYSICAL_ACTIVITY_LEVELS };
 
@@ -27,6 +28,12 @@ export function normalizeCommunityId(raw) {
 export function validateCommunityId(raw) {
   const normalized = normalizeCommunityId(raw);
   if (normalized === null) return { valid: true, value: null };
+  if (normalized.length < COMMUNITY_ID_MIN_LENGTH) {
+    return {
+      valid: false,
+      message: `Community ID must be at least ${COMMUNITY_ID_MIN_LENGTH} characters.`,
+    };
+  }
   if (normalized.length > COMMUNITY_ID_MAX_LENGTH) {
     return {
       valid: false,
@@ -334,6 +341,37 @@ export function validateVerifySession(req) {
     ? (source?.timezoneIana ?? source?.timezone)
     : (source?.timezoneIana ?? source?.timezone);
   return { userId, email, phone, timezoneIana: timezoneRaw };
+}
+
+export function validateCheckOnboardingEmail(body) {
+  const userIdRaw = body?.userId;
+  const userId = userIdRaw != null && String(userIdRaw).trim() !== ''
+    ? Number(userIdRaw)
+    : null;
+  const email = normalizeEmail(body?.email);
+  if (!userId || !Number.isFinite(userId)) {
+    throw new ValidationError(400, 'userId is required');
+  }
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    throw new ValidationError(400, 'A valid email address is required');
+  }
+  return { userId, email, sendOtp: body?.sendOtp === true };
+}
+
+export function validateVerifyOnboardingEmail(body) {
+  const { userId, email } = validateCheckOnboardingEmail(body);
+  const otp = body?.otp != null ? String(body.otp).trim() : '';
+  if (!otp || !/^\d{6}$/.test(otp)) {
+    throw new ValidationError(400, 'Enter the 6-digit code sent to your email');
+  }
+  const name = body?.name != null ? String(body.name).trim() : '';
+  return {
+    userId,
+    email,
+    otp,
+    name,
+    adoptExisting: body?.adoptExisting === true,
+  };
 }
 
 export { VALID_DIETS, VALID_GENDERS };

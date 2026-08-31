@@ -320,6 +320,99 @@ export function isReportingDownlineMember(coachId, memberId, context, scope = 'f
 }
 
 /**
+ * True when memberId is in a shared Sponsor/Co-Sponsor partner's full downline.
+ * Mirrors team-hierarchy co-coach merge — Co-Sponsor may view Sponsor's tree (and vice versa).
+ * Pure — requires context.partnerRootIds from loadReportingContextForCoach.
+ *
+ * @param {number|string} viewerUserId
+ * @param {number|string} memberId
+ * @param {ReportingContext} context
+ * @returns {boolean}
+ */
+export function isCoCoachPartnerDownlineMember(viewerUserId, memberId, context) {
+  const viewerId = Number(viewerUserId);
+  const leadIds = Array.isArray(context?.coCoachPartnershipRootIds)
+    ? context.coCoachPartnershipRootIds.map(Number).filter(Number.isFinite)
+    : [];
+  if (leadIds.length < 2 || !leadIds.includes(viewerId)) return false;
+
+  const partnerIds = Array.isArray(context?.partnerRootIds) ? context.partnerRootIds : [];
+  for (const partnerIdRaw of partnerIds) {
+    const partnerId = Number(partnerIdRaw);
+    if (!Number.isFinite(partnerId) || partnerId === viewerId) continue;
+    if (isReportingDownlineMember(partnerId, memberId, context, 'full')) return true;
+  }
+  return false;
+}
+
+/**
+ * Normalize coach_teams_table.TeamId / team_table.CoachTeamId for comparison.
+ * @param {string|null|undefined} value
+ * @returns {string|null}
+ */
+export function normalizeCoachTeamId(value) {
+  if (value == null || String(value).trim() === '') return null;
+  return String(value).trim().toUpperCase();
+}
+
+/**
+ * True when viewer is Sponsor/Co-Sponsor lead on an active team and member
+ * shares that team's CoachTeamId (team-hierarchy search parity).
+ *
+ * @param {number|string} viewerUserId
+ * @param {{ Status?: string, CoachTeamId?: string|null }} memberRow
+ * @param {{ TeamId?: string, CoachId?: number, CoCoachId?: number }|null|undefined} coachTeamRow
+ * @returns {boolean}
+ */
+export function isSharedCoachTeamAccessible(viewerUserId, memberRow, coachTeamRow) {
+  if (!memberRow || !coachTeamRow) return false;
+  if (!isActiveTeamStatus(memberRow.Status)) return false;
+
+  const viewerId = Number(viewerUserId);
+  const isLead = viewerId === Number(coachTeamRow.CoachId)
+    || viewerId === Number(coachTeamRow.CoCoachId);
+  if (!isLead) return false;
+
+  const teamId = normalizeCoachTeamId(coachTeamRow.TeamId);
+  const memberTeamId = normalizeCoachTeamId(memberRow.CoachTeamId);
+  return Boolean(teamId && memberTeamId && teamId === memberTeamId);
+}
+
+/**
+ * Shared CoachTeamId access — members linked by team code only (Community ID path).
+ * Mirrors team-hierarchy `onSharedTeam` so search picks match Trend/Nutrition APIs.
+ *
+ * @param {object} supabase
+ * @param {number|string} viewerUserId
+ * @param {number|string} memberUserId
+ * @returns {Promise<boolean>}
+ */
+export async function isAccessibleViaSharedCoachTeamId(supabase, viewerUserId, memberUserId) {
+  const memberId = Number(memberUserId);
+  if (!Number.isFinite(memberId)) return false;
+
+  const { data: memberRow, error: memberError } = await supabase
+    .from('team_table')
+    .select('UserId, Status, CoachTeamId')
+    .eq('UserId', memberId)
+    .maybeSingle();
+  if (memberError || !memberRow) return false;
+
+  const memberTeamId = normalizeCoachTeamId(memberRow.CoachTeamId);
+  if (!memberTeamId) return false;
+
+  const { data: coachTeamRow, error: teamError } = await supabase
+    .from('coach_teams_table')
+    .select('TeamId, CoachId, CoCoachId')
+    .eq('TeamId', memberTeamId)
+    .eq('Status', 'active')
+    .maybeSingle();
+  if (teamError || !coachTeamRow) return false;
+
+  return isSharedCoachTeamAccessible(viewerUserId, memberRow, coachTeamRow);
+}
+
+/**
  * 403 when viewerUserId is set and memberUserId is outside the viewer's
  * recursive reporting downline. No-op when viewer is omitted (legacy callers).
  */
@@ -330,6 +423,8 @@ export async function assertViewerCanAccessMember(supabase, viewerUserId, member
 
   const context = await loadReportingContextForCoach(supabase, viewerUserId);
   if (isReportingDownlineMember(viewerUserId, memberUserId, context, 'full')) return;
+  if (isCoCoachPartnerDownlineMember(viewerUserId, memberUserId, context)) return;
+  if (await isAccessibleViaSharedCoachTeamId(supabase, viewerUserId, memberUserId)) return;
 
   const err = new Error('You do not have permission to view this member');
   err.status = 403;
@@ -530,9 +625,11 @@ export async function loadReportingContextForCoach(supabase, rootCoachId) {
   const context = buildReportingContext([...usersById.values()]);
   // Partner leads (Sponsor ↔ Co-Sponsor) — used by collectVisibleHierarchyUsers
   // to include the partner's full downline for shared-team surfaces.
-  context.partnerRootIds = rootCoachIds
+  const partnershipLeadIds = rootCoachIds
     .map((id) => Number(id))
-    .filter((id) => Number.isFinite(id) && id !== rootId);
+    .filter((id) => Number.isFinite(id));
+  context.coCoachPartnershipRootIds = partnershipLeadIds.length >= 2 ? partnershipLeadIds : [];
+  context.partnerRootIds = partnershipLeadIds.filter((id) => id !== rootId);
   SUBTREE_CONTEXT_CACHE.set(cacheKey, { value: context, expiresAt: now + SUBTREE_CONTEXT_TTL_MS });
   return context;
 }

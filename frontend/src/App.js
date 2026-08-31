@@ -187,6 +187,7 @@ import { UserProfileModal } from "./features/user";
 import { UserProfilePage } from "./features/user";
 import { CompleteProfilePage } from "./features/user";
 import { OnboardingIdentityPage } from "./features/user";
+import { OnboardingTransformationPhotosPage } from "./features/user";
 import { MandatoryProfilePictureModal } from "./features/user";
 import { ClubSelectionModal } from "./features/nutrition-centers";
 import CustomAlertModal from "./shared/components/CustomAlertModal";
@@ -328,6 +329,7 @@ function WellnessValleyApp() {
   const [dashboardInitialDate, setDashboardInitialDate] = useState(null);
   const [dashboardInitialMealId, setDashboardInitialMealId] = useState(null);
   const [bmrUpdateKey, setBmrUpdateKey] = useState(0); // Increment to force BMR re-fetch in NutritionDashboard
+  const [teamSearchRefreshKey, setTeamSearchRefreshKey] = useState(0); // Co-Sponsor / team-code saves → refresh Diary search
   const [bodyParamsRefreshKey, setBodyParamsRefreshKey] = useState(0); // Increment to refresh Body Parameters cards after profile edits
 
   // -- Instant OTP session restore ------------------------------------------
@@ -673,7 +675,7 @@ function WellnessValleyApp() {
   // Optional `activityCaption` is the activity-specific WhatsApp template
   // (water volume, food macros, etc.) — appended above the branding line.
   const shareCaptureAfterClassify = useCallback(
-    async (imageBase64, { activityCaption = null } = {}) => {
+    async (imageBase64, { activityCaption = null, currentMarathonDay0Weight = null } = {}) => {
       const autoShareEnabled =
         localStorage.getItem("autoShareOnCapture") !== "false";
       if (!autoShareEnabled || foodAutoSharedRef.current || !imageBase64) {
@@ -720,7 +722,7 @@ function WellnessValleyApp() {
         );
         return withMarathonWhatsAppNotice(
           composeQuickShareCaption(brand, activityCaption),
-          { user },
+          { user, currentMarathonDay0Weight },
         );
       };
 
@@ -917,6 +919,10 @@ function WellnessValleyApp() {
   const [showOnboardingIdentity, setShowOnboardingIdentity] = useState(false);
   const [identityResolved, setIdentityResolved] = useState(false);
   const [showCompleteProfile, setShowCompleteProfile] = useState(false);
+  const [showOnboardingTransformationPhotos, setShowOnboardingTransformationPhotos] = useState(false);
+  // Survives async checkProfileCompletion after Complete Profile save — without this,
+  // status:"complete" immediately clears the Transformation Photos step on mobile.
+  const transformationPhotosGateRef = useRef(false);
   // ADR-0006 — existing users without ConsentAcceptedAt must accept before using the app.
   const [showConsentGate, setShowConsentGate] = useState(false);
   const [consentSubmitting, setConsentSubmitting] = useState(false);
@@ -952,6 +958,7 @@ function WellnessValleyApp() {
       showConsentGate ||
       showOnboardingIdentity ||
       showCompleteProfile ||
+      showOnboardingTransformationPhotos ||
       showPhysicalActivitySetup ||
       showSetupWizard ||
       (showValidateOTP && !isInactiveReactivationFlow) ||
@@ -995,11 +1002,11 @@ function WellnessValleyApp() {
   const [showActivityTimeReport, setShowActivityTimeReport] = useState(false);
   // Testimonials page � member upload + coach verification
   const [showTestimonials, setShowTestimonials] = useState(false);
-  // Reports page — coach/upline analytics (downline weight status, etc.)
+  // Reports page — common module (Ideal Weight, Wellness Score, Nutrition, Trend).
   const [showReports, setShowReports] = useState(false);
   const [reportsDashboardTab, setReportsDashboardTab] = useState(REPORT_DASHBOARD_TABS.IDEAL_WEIGHT);
 
-  // Drop Reports overlay if role is not allowed (e.g. leaf member / role load race).
+  // Drop Reports overlay if the module is no longer allowed (flag / access rule).
   useEffect(() => {
     if (showReports && !canAccessReportsModule(userRole)) {
       setShowReports(false);
@@ -1275,11 +1282,11 @@ function WellnessValleyApp() {
     _userIdRef.current = user?.id || user?.UserId || Session.getDbUserId() || null;
   }, [user]);
 
-  // Phone users without email: name gate from persisted profile (not session cache).
+  // Phone users without a verified account email: name + email OTP gate.
   useEffect(() => {
     if (!user) return;
     if (!isOtpVerified) return;
-    const email = (user.email && user.email.trim()) || Session.getUserEmail();
+    const email = (user.email && user.email.trim()) || (user.Email && String(user.Email).trim());
     if (email) return;
 
     const uid = user.id || user.UserId || user.userId || Session.getDbUserId();
@@ -1341,6 +1348,8 @@ function WellnessValleyApp() {
     if (
       showOnboardingIdentity
       || showCompleteProfile
+      || showOnboardingTransformationPhotos
+      || transformationPhotosGateRef.current
       || profileChecking
       || showSetupWizard
       || (showValidateOTP && !isInactiveReactivationFlow)
@@ -1411,6 +1420,7 @@ function WellnessValleyApp() {
     isOtpVerified,
     showOnboardingIdentity,
     showCompleteProfile,
+    showOnboardingTransformationPhotos,
     profileChecking,
     showSetupWizard,
     showValidateOTP,
@@ -1424,8 +1434,10 @@ function WellnessValleyApp() {
   // ? LoadingSpinner replaces the page ? form unmounts ? all input is lost.
   const _profileGateActiveRef = useRef(false);
   useEffect(() => {
-    _profileGateActiveRef.current = showCompleteProfile || showOnboardingIdentity;
-  }, [showCompleteProfile, showOnboardingIdentity]);
+    _profileGateActiveRef.current = showCompleteProfile
+      || showOnboardingIdentity
+      || showOnboardingTransformationPhotos;
+  }, [showCompleteProfile, showOnboardingIdentity, showOnboardingTransformationPhotos]);
 
   // Tracks whether user has completed their first share (any image type).
   // Foreground-resume camera auto-open is DISABLED until this is true,
@@ -3189,6 +3201,12 @@ function WellnessValleyApp() {
         setIdentityResolved(true);
         setShowOnboardingIdentity(false);
         setShowCompleteProfile(false);
+        // Do not steal the next onboarding step after Complete Profile save.
+        if (transformationPhotosGateRef.current) {
+          setShowOnboardingTransformationPhotos(true);
+        } else {
+          setShowOnboardingTransformationPhotos(false);
+        }
         if (!silent) setProfileChecking(false);
         // Profile fields complete — check picture gate separately
         if (userObj) setTimeout(() => checkProfilePicture(userObj), 400);
@@ -3204,23 +3222,35 @@ function WellnessValleyApp() {
           debugLog("?? [Profile] Identity incomplete — showing name/email gate");
           setShowOnboardingIdentity(true);
           setShowCompleteProfile(false);
+          transformationPhotosGateRef.current = false;
+          setShowOnboardingTransformationPhotos(false);
           profileCompletedRef.current = false;
           if (!silent) setProfileChecking(false);
           return;
         }
 
         setShowOnboardingIdentity(false);
-        profileCompletedRef.current = false;
 
         // Remaining profile only after sponsor setup is done (or caller opts in).
-        const setupAlreadyDone =
-          allowRemainingProfile
-          || Session.isSetupSkipped();
-        if (setupAlreadyDone) {
-          debugLog("?? [Profile] Remaining fields missing — showing CompleteProfilePage");
-          setShowCompleteProfile(true);
-        } else {
+        // While Transformation Photos is the active next step, never steal the
+        // screen back to Complete Profile (async re-checks after save/setUser).
+        if (transformationPhotosGateRef.current) {
+          profileCompletedRef.current = true;
           setShowCompleteProfile(false);
+          setShowOnboardingTransformationPhotos(true);
+        } else {
+          profileCompletedRef.current = false;
+          const setupAlreadyDone =
+            allowRemainingProfile
+            || Session.isSetupSkipped();
+          if (setupAlreadyDone) {
+            debugLog("?? [Profile] Remaining fields missing — showing CompleteProfilePage");
+            setShowCompleteProfile(true);
+            setShowOnboardingTransformationPhotos(false);
+          } else {
+            setShowCompleteProfile(false);
+            setShowOnboardingTransformationPhotos(false);
+          }
         }
         if (!silent) setProfileChecking(false);
         return;
@@ -3277,23 +3307,18 @@ function WellnessValleyApp() {
   // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: identity only
   }, [user?.id, user?.UserId, user?.email, isOtpVerified]);
 
-  // -- Profile Picture Validation ------------------------------------------
-  // Checks if user has a valid profile picture (not a letter avatar)
+  // Profile avatar comes from Centre transformation photo — do not force a separate upload.
   const checkProfilePicture = useCallback(
     async (user) => {
       if (!user) return;
-
       const userEmail = user.email || user.Email;
       if (!userEmail) return;
-
-      debugLog("??? [Profile Picture] Checking for valid profile picture...");
 
       const result = await fetchProfilePicture({
         apiBaseUrl,
         email: userEmail,
       });
 
-      // Phase 3d-a: Observe in shadow FSM (no behaviour change).
       authFsm.send({
         type: authFsm.E.PROFILE_PICTURE_CHECK_COMPLETED,
         status: result.status,
@@ -3301,44 +3326,12 @@ function WellnessValleyApp() {
         snooze: result.snooze,
       });
 
-      if (result.status === "valid") {
-        if (result.source === "custom") {
-          debugLog(
-            "? [Profile Picture] User has custom uploaded profile picture",
-          );
-        } else {
-          debugLog(
-            "? [Profile Picture] User has Google profile picture:",
-            (result.profileImage || "").substring(0, 50) + "...",
-          );
-        }
+      // Never open MandatoryProfilePictureModal — Centre transform photo is the avatar.
+      if (result.status === "valid" || result.status === "snoozed" || result.status === "missing") {
         return;
       }
-
-      if (result.status === "snoozed") {
-        const snoozeUntil = new Date(result.snooze.until).getTime();
-        debugLog(
-          "? [Profile Picture] Snoozed (DB) until",
-          new Date(snoozeUntil).toLocaleString(),
-        );
-        return;
-      }
-
-      if (result.status === "missing") {
-        // Store snooze data in state so modal can use count/max
-        setProfilePicSnoozeData(result.snooze || null);
-        debugLog(
-          "?? [Profile Picture] No valid profile picture found, showing mandatory upload modal",
-        );
-        setShowMandatoryProfilePictureModal(true);
-        return;
-      }
-
-      // result.status === "error" ? don't block the user
       if (result.error) {
         console.error("? [Profile Picture] Check failed:", result.error);
-      } else {
-        console.warn("?? [Profile Picture] Failed to fetch profile");
       }
     },
     [apiBaseUrl],
@@ -6486,6 +6479,8 @@ function WellnessValleyApp() {
     setShowOnboardingIdentity(false);
     setIdentityResolved(false);
     setShowCompleteProfile(false);
+    transformationPhotosGateRef.current = false;
+    setShowOnboardingTransformationPhotos(false);
     setShowSetupWizard(false);
     setShowValidateOTP(false);
     setShowConsentGate(false);
@@ -7466,6 +7461,9 @@ function WellnessValleyApp() {
               if (profileData?.physicalActivityLevel) {
                 physicalActivityConfirmedRef.current = true;
               }
+              if (profileData?.teamSearchRefresh) {
+                setTeamSearchRefreshKey((k) => k + 1);
+              }
               // Increment profileKey so Header re-fetches avatar/name
               setHeaderProfileKey((k) => k + 1);
               // Activity log: Home should refresh cards when returning from profile edits
@@ -7504,6 +7502,7 @@ function WellnessValleyApp() {
               initialTab={dashboardInitialTab}
               userRole={userRole}
               bmrUpdateKey={bmrUpdateKey}
+              teamSearchRefreshKey={teamSearchRefreshKey}
               educationRefreshKey={educationRefreshKey}
               watchBurnedCalories={watchBurnedCalories}
               onWatchBurnedCaloriesReset={() => setWatchBurnedCalories(0)}
@@ -7577,7 +7576,9 @@ function WellnessValleyApp() {
               embedded
               user={user}
               userRole={userRole}
+              savedUserName={savedUserName}
               tabVisitKey={tabVisitKeys.enrollment ?? 0}
+              teamSearchRefreshKey={teamSearchRefreshKey}
               onBack={() => {
                 enrollmentHistoryPushedRef.current = false;
                 setShowUniversityEnrollment(false);
@@ -7612,6 +7613,7 @@ function WellnessValleyApp() {
               userRole={userRole}
               apiBaseUrl={apiBaseUrl}
               tabVisitKey={tabVisitKeys['activity-report'] ?? 0}
+              teamSearchRefreshKey={teamSearchRefreshKey}
               onBack={() => {
                 setShowActivityReport(false);
                 const currentWvPage = window.history.state?.wvPage;
@@ -7843,6 +7845,7 @@ function WellnessValleyApp() {
             }
             void shareCaptureAfterClassify(image, {
               activityCaption: shareMeta?.activityCaption || null,
+              currentMarathonDay0Weight: shareMeta?.currentMarathonDay0Weight ?? null,
             });
           }}
           onToast={(msg) => showToast(msg)}
@@ -7930,6 +7933,7 @@ function WellnessValleyApp() {
               user={user}
               userRole={userRole}
               tabVisitKey={tabVisitKeys.reports ?? 0}
+              teamSearchRefreshKey={teamSearchRefreshKey}
               initialTab={reportsDashboardTab}
             />
           </Suspense>
@@ -8946,7 +8950,7 @@ function WellnessValleyApp() {
 
         {/* Email Gate removed — name on OnboardingIdentityPage; email on CompleteProfilePage */}
 
-        {showPhysicalActivitySetup && user && !showCompleteProfile && !showOnboardingIdentity && !showSetupWizard && !showValidateOTP && (
+        {showPhysicalActivitySetup && user && !showCompleteProfile && !showOnboardingTransformationPhotos && !transformationPhotosGateRef.current && !showOnboardingIdentity && !showSetupWizard && !showValidateOTP && (
           <PhysicalActivitySetup
             user={user}
             onComplete={async () => {
@@ -8998,7 +9002,17 @@ function WellnessValleyApp() {
                 || user?.Email
                 || Session.getUserEmail()
                 || "";
-              const uid = user?.id || user?.UserId || user?.userId || Session.getDbUserId();
+              const adoptedUserId = savedData?.adopted && savedData?.userId
+                ? savedData.userId
+                : null;
+              const uid = adoptedUserId
+                || user?.id
+                || user?.UserId
+                || user?.userId
+                || Session.getDbUserId();
+              if (adoptedUserId) {
+                Session.setDbUserId(adoptedUserId);
+              }
               if (savedEmail) {
                 Session.setUserEmail(savedEmail);
                 const cachedRaw = Session.getOtpUserRaw();
@@ -9008,6 +9022,8 @@ function WellnessValleyApp() {
                     Session.setOtpUser({
                       ...cached,
                       email: savedEmail,
+                      ...(adoptedUserId ? { id: adoptedUserId, UserId: adoptedUserId } : {}),
+                      ...(savedData?.phone ? { phone: savedData.phone, phoneNumber: savedData.phone } : {}),
                       ...(savedData?.userName
                         ? { username: savedData.userName, userName: savedData.userName }
                         : {}),
@@ -9034,6 +9050,15 @@ function WellnessValleyApp() {
                   email: savedEmail || prevUser.email,
                   username: savedData?.userName || prevUser.username,
                   userName: savedData?.userName || prevUser.userName,
+                  ...(adoptedUserId
+                    ? {
+                      id: adoptedUserId,
+                      UserId: adoptedUserId,
+                      userId: adoptedUserId,
+                      phone: savedData.phone || prevUser.phone,
+                      phoneNumber: savedData.phone || prevUser.phoneNumber,
+                    }
+                    : {}),
                 };
               });
               if (savedData?.userName) {
@@ -9054,13 +9079,13 @@ function WellnessValleyApp() {
         )}
 
         {/* -- Remaining profile fields (after sponsor OTP) ---------------------
-           Gender, height, diet, metrics, photo — then physical activity.
+           Gender, height, diet, metrics — then mandatory transformation photos.
       ------------------------------------------------------------------- */}
-        {showCompleteProfile && !profileChecking && !showOnboardingIdentity && user && (
+        {showCompleteProfile && !profileChecking && !showOnboardingIdentity && !showOnboardingTransformationPhotos && user && (
           <CompleteProfilePage
             user={user}
             apiBaseUrl={apiBaseUrl}
-            showPictureSection={true}
+            showPictureSection={false}
             identityLocked
             snoozeData={profilePicSnoozeData}
             userId={user.id || user.UserId || Session.getDbUserId()}
@@ -9089,6 +9114,12 @@ function WellnessValleyApp() {
                 }
               }
               profileCompletedRef.current = true;
+              // Set gate BEFORE setUser — email change re-runs checkProfileCompletion
+              // and must not clear the Transformation Photos step.
+              transformationPhotosGateRef.current = true;
+              setShowCompleteProfile(false);
+              setShowOnboardingTransformationPhotos(true);
+              setProfileChecking(false);
 
               setUser((prevUser) => {
                 if (!prevUser) return prevUser;
@@ -9110,7 +9141,34 @@ function WellnessValleyApp() {
                 cacheProfileUserName(savedEmail, savedData.userName);
                 setSavedUserName(savedData.userName);
               }
+            }}
+          />
+        )}
 
+        {/* -- Transformation photos (mandatory Left/Centre/Right) after Complete Profile */}
+        {showOnboardingTransformationPhotos && !showOnboardingIdentity && !showCompleteProfile && user && (
+          <OnboardingTransformationPhotosPage
+            user={user}
+            onComplete={async (savedData) => {
+              transformationPhotosGateRef.current = false;
+              setShowOnboardingTransformationPhotos(false);
+              if (savedData?.profileImage) {
+                setSavedProfileImage(savedData.profileImage);
+                setUser((prevUser) => {
+                  if (!prevUser) return prevUser;
+                  return {
+                    ...prevUser,
+                    profileImage: savedData.profileImage,
+                    ProfileImage: savedData.profileImage,
+                    photoURL: savedData.profileImage,
+                  };
+                });
+              }
+              const savedEmail =
+                user?.email
+                || user?.Email
+                || Session.getUserEmail()
+                || "";
               let needActivity = true;
               if (savedEmail) {
                 try {
@@ -9120,7 +9178,6 @@ function WellnessValleyApp() {
                   needActivity = true;
                 }
               }
-
               if (needActivity) {
                 setShowPhysicalActivitySetup(true);
                 setPhysicalActivityResolved(true);
@@ -9129,9 +9186,6 @@ function WellnessValleyApp() {
                 setShowPhysicalActivitySetup(false);
                 setPhysicalActivityResolved(true);
               }
-
-              setShowCompleteProfile(false);
-              setProfileChecking(false);
             }}
           />
         )}
@@ -9224,7 +9278,7 @@ function WellnessValleyApp() {
         )}
 
         {/* Setup Wizard - Sponsor selection (after name+email, before remaining profile) */}
-        {showSetupWizard && !showCompleteProfile && !showOnboardingIdentity && !showPhysicalActivitySetup && (
+        {showSetupWizard && !showCompleteProfile && !showOnboardingTransformationPhotos && !showOnboardingIdentity && !showPhysicalActivitySetup && (
           <Suspense fallback={null}>
             <SetupWizard
               userEmail={user?.email || user?.Email || Session.getUserEmail()}

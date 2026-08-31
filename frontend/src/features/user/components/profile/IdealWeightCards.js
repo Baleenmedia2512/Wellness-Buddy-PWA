@@ -1,6 +1,10 @@
 // Read-only ideal/current weight + phase badge cards.
 import React from 'react';
 import { EmojiOrNative } from '../../../../shared/components/icons/EmojiImage';
+import {
+  formatMarathonWeightDirectionArrow,
+  resolveMarathonWeightDirection,
+} from '../../../marathon/domain/marathonWeightComparison';
 
 const Row = ({ wrapper, label, labelIcon, value, valueClass, sub }) => (
   <div className={`flex items-center justify-between rounded-xl px-4 py-3 ${wrapper}`}>
@@ -27,7 +31,47 @@ function formatInitialWeightDate(value) {
   });
 }
 
-const IdealWeightCards = ({ height, latestWeight, initialWeight, initialWeightDate }) => {
+function MarathonWeightProgress({ comparison }) {
+  if (!comparison || comparison.partial) return null;
+
+  const {
+    previousMarathonEndWeight,
+    currentMarathonDay0Weight,
+    direction: comparisonDirection,
+  } = comparison;
+
+  const direction = comparisonDirection
+    || resolveMarathonWeightDirection(previousMarathonEndWeight, currentMarathonDay0Weight);
+  const directionArrow = formatMarathonWeightDirectionArrow(direction);
+
+  return (
+    <div className="space-y-2" data-testid="marathon-weight-progress">
+      <p className="text-xs font-semibold text-gray-500 px-1">Weight Progress</p>
+      <Row
+        wrapper="bg-indigo-50 border border-indigo-200 text-indigo-600"
+        label="Previous Marathon End"
+        labelIcon={<EmojiOrNative emoji="🏁" className="w-4 h-4" nativeClassName="text-sm" />}
+        value={`${previousMarathonEndWeight.toFixed(1)} kg`}
+        valueClass="text-indigo-700"
+      />
+      <Row
+        wrapper="bg-violet-50 border border-violet-200 text-violet-600"
+        label="Current Marathon Start"
+        labelIcon={<EmojiOrNative emoji="🏃" className="w-4 h-4" nativeClassName="text-sm" />}
+        value={`${currentMarathonDay0Weight.toFixed(1)} kg${directionArrow}`}
+        valueClass="text-violet-700"
+      />
+    </div>
+  );
+}
+
+const IdealWeightCards = ({
+  height,
+  latestWeight,
+  initialWeight,
+  initialWeightDate,
+  marathonWeightComparison = null,
+}) => {
   const h = parseFloat(height);
   if (!h || h < 50) return null;
   const m = h / 100;
@@ -59,6 +103,7 @@ const IdealWeightCards = ({ height, latestWeight, initialWeight, initialWeightDa
           labelIcon={<EmojiOrNative emoji="⚖️" className="w-4 h-4" nativeClassName="text-sm" />}
           value={`${current.toFixed(1)} kg`} valueClass="text-gray-700" />
       )}
+      <MarathonWeightProgress comparison={marathonWeightComparison} />
       {current != null && isLoss && (
         <Row wrapper="bg-red-50 border border-red-200 text-red-600"
           label="Weight Loss Phase"

@@ -16,6 +16,54 @@ import { nowUtc } from '../shared/lib/datetime/index.js';
  * @param {{ claimedTeamId?: string|null, guide?: { CoachTeamId?: string|null, TeamId?: string|null }|null }} args
  * @returns {string|null}
  */
+/**
+ * team_table fields to clear when a pending upline OTP request is cancelled.
+ * Established members (already have CoachId) keep their tree link and CoachTeamId.
+ *
+ * @param {{ coachId?: number|string|null }} args
+ * @returns {{ TeamId: null, CoachId?: null, CoachTeamId?: null }}
+ */
+export function buildTeamTableClearOnCancelRequest({ coachId = null } = {}) {
+  const hadEstablishedCoach = coachId != null && String(coachId).trim() !== '';
+  const update = { TeamId: null };
+  if (!hadEstablishedCoach) {
+    update.CoachId = null;
+    update.CoachTeamId = null;
+  }
+  return update;
+}
+
+/**
+ * Seat + update payload when reactivating an inactive coach_teams row.
+ *
+ * @param {{ CoachId?: number|null, CoCoachId?: number|null, Status?: string }} team
+ * @param {number} userId
+ * @returns {{ ok: boolean, seat?: 'sponsor'|'co-sponsor'|'already', update?: object, error?: string }}
+ */
+export function resolveInactiveTeamSeatAssignment(team, userId) {
+  if (!team || team.Status === 'active') {
+    return { ok: false, error: 'Team is not inactive' };
+  }
+
+  const sponsorId = team.CoachId != null ? Number(team.CoachId) : null;
+  const coId = team.CoCoachId != null ? Number(team.CoCoachId) : null;
+  const uid = Number(userId);
+
+  if (sponsorId === uid) {
+    return { ok: true, seat: 'already', update: { Status: 'active' } };
+  }
+  if (coId === uid) {
+    return { ok: true, seat: 'already', update: { Status: 'active' } };
+  }
+  if (!Number.isFinite(sponsorId) || sponsorId <= 0) {
+    return { ok: true, seat: 'sponsor', update: { CoachId: uid, Status: 'active' } };
+  }
+  if ((!Number.isFinite(coId) || coId <= 0) && sponsorId !== uid) {
+    return { ok: true, seat: 'co-sponsor', update: { CoCoachId: uid, Status: 'active' } };
+  }
+  return { ok: false, error: 'Team is full' };
+}
+
 export function resolveMemberCoachTeamId({ claimedTeamId = null, guide = null } = {}) {
   const claimed = claimedTeamId && String(claimedTeamId).trim() ? String(claimedTeamId).trim() : null;
   if (claimed) return claimed;
@@ -121,21 +169,21 @@ export async function assignLeadSeat(supabase, teamId, userId) {
   const updateTime = nowUtc();
 
   if (fresh.Status !== 'active') {
+    const reactivation = resolveInactiveTeamSeatAssignment(fresh, userId);
+    if (!reactivation.ok) {
+      return { ok: false, seat: null, error: reactivation.error || 'Team is unavailable' };
+    }
+
     const { data: reactivated, error: reactivateError } = await supabase
       .from('coach_teams_table')
-      .update({
-        CoachId: userId,
-        CoCoachId: null,
-        Status: 'active',
-        UpdatedAt: updateTime,
-      })
+      .update({ ...reactivation.update, UpdatedAt: updateTime })
       .eq('TeamId', teamId)
       .neq('Status', 'active')
       .select('TeamId');
 
     if (reactivateError) throw reactivateError;
     if (reactivated?.length) {
-      return { ok: true, seat: 'sponsor' };
+      return { ok: true, seat: reactivation.seat };
     }
     // Status flipped by a concurrent claim — fall through
   }

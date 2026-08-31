@@ -211,7 +211,7 @@ export async function getProfileByUserId(userId) {
 
 /** Team Code / shared-team fields for profile Team Code card. */
 export async function getTeamCodeFields(userId) {
-  return findByUserId(userId, '"UserId", "TeamId", "CoachTeamId", "CoachId"');
+  return findByUserId(userId, '"UserId", "TeamId", "CoachTeamId", "CoachId", "Role", "CommunityId"');
 }
 
 function isMissingIsDeletedColumn(error) {

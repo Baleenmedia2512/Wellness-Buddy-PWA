@@ -4,8 +4,23 @@ import { motion, AnimatePresence } from "framer-motion";
 import wellnessValleyIcon from "../assets/wellness-valley-icon.png";
 import { debugLog } from '../shared/utils/logger.js';
 import { APP_VERSION } from "../config/version";
+import * as Session from "../shared/services/sessionStorage.js";
+import { getProfile } from "../features/user/services/user.api.js";
 
 const API_BASE = process.env.REACT_APP_API_BASE_URL || "http://localhost:3000";
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function looksLikeEmail(value) {
+  return EMAIL_RE.test(String(value || "").trim());
+}
+
+function mapSetupApiError(raw, fallback) {
+  const msg = String(raw || "").trim();
+  if (/email is required/i.test(msg)) {
+    return "Email is required. Go back and verify your email first.";
+  }
+  return msg || fallback;
+}
 
 const SetupWizard = ({
   onClose,
@@ -35,14 +50,56 @@ const SetupWizard = ({
   // General
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [resolvedEmail, setResolvedEmail] = useState("");
+
+  const resolveUserId = () =>
+    userIdProp
+    || Session.getDbUserId()
+    || localStorage.getItem("userId")
+    || localStorage.getItem("dbUserId")
+    || null;
+
+  const collectSessionEmail = () => {
+    const otpUser = Session.getOtpUser();
+    const candidates = [
+      resolvedEmail,
+      userEmailProp,
+      Session.getUserEmail(),
+      localStorage.getItem("userEmail"),
+      otpUser?.email,
+      otpUser?.Email,
+    ];
+    return candidates.map((v) => String(v || "").trim()).find(looksLikeEmail) || "";
+  };
 
   const resolveRequester = () => {
-    const email = (userEmailProp || localStorage.getItem('userEmail') || '').trim();
-    const userId = userIdProp
-      || localStorage.getItem('userId')
-      || localStorage.getItem('dbUserId')
-      || null;
+    const email = collectSessionEmail();
+    const userId = resolveUserId();
     return { email, userId };
+  };
+
+  const persistEmail = (email) => {
+    const clean = String(email || "").trim();
+    if (!looksLikeEmail(clean)) return;
+    setResolvedEmail(clean);
+    try {
+      Session.setUserEmail(clean);
+    } catch {
+      /* ignore */
+    }
+    const otpUser = Session.getOtpUser();
+    if (otpUser) {
+      Session.setOtpUser({ ...otpUser, email: clean });
+    }
+  };
+
+  const ensureEmail = async () => {
+    const existing = collectSessionEmail();
+    if (existing) {
+      persistEmail(existing);
+      return existing;
+    }
+    return "";
   };
 
   // Mask email function
@@ -61,18 +118,44 @@ const SetupWizard = ({
       .trim()
       .replace(/[^a-zA-Z0-9]/g, "")
       .toUpperCase();
-    return cleaned.slice(0, 10);
+    return cleaned.slice(0, 100);
   };
 
-  // Validate Team ID format
   const isValidTeamIdFormat = (id) => {
-    return /^[a-zA-Z0-9]{10}$/.test(id);
+    return /^[a-zA-Z0-9]{4,100}$/.test(id);
   };
+
+  useEffect(() => {
+    let cancelled = false;
+    const hydrateEmail = async () => {
+      const fromSession = collectSessionEmail();
+      if (fromSession) {
+        persistEmail(fromSession);
+        return;
+      }
+      const userId = resolveUserId();
+      if (!userId) return;
+      try {
+        const data = await getProfile({ userId: String(userId) });
+        const fromProfile = String(data?.data?.email || data?.data?.Email || "").trim();
+        if (!cancelled && looksLikeEmail(fromProfile)) {
+          persistEmail(fromProfile);
+        }
+      } catch {
+        /* profile may not have email yet */
+      }
+    };
+    hydrateEmail();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userEmailProp, userIdProp]);
 
   // ── Demo account: auto-select Yasheer J, skip Team ID, send request ───────
   const DEMO_EMAIL = 'testereasywork@gmail.com';
   useEffect(() => {
-    const userEmail = userEmailProp || localStorage.getItem('userEmail') || '';
+    const userEmail = collectSessionEmail() || userEmailProp || localStorage.getItem('userEmail') || '';
     if (userEmail.toLowerCase().trim() !== DEMO_EMAIL) return;
 
     const autoComplete = async () => {
@@ -139,7 +222,7 @@ const SetupWizard = ({
     setError("");
 
     try {
-      const userEmail = userEmailProp || localStorage.getItem("userEmail");
+      const { email: userEmail } = resolveRequester();
       const response = await axios.get(
         `${API_BASE}/api/users/search?q=${encodeURIComponent(
           query,
@@ -162,7 +245,7 @@ const SetupWizard = ({
   // Check Team ID availability
   const checkTeamIdAvailability = async () => {
     if (!isValidTeamIdFormat(teamId)) {
-      setError("Team ID must be exactly 10 alphanumeric characters");
+      setError("Community ID must be at least 4 letters or numbers");
       setTeamIdStatus(null);
       return;
     }
@@ -171,16 +254,19 @@ const SetupWizard = ({
     setError("");
 
     try {
-      const userEmail = userEmailProp || localStorage.getItem("userEmail");
+      const userEmail = await ensureEmail();
+      const { userId } = resolveRequester();
       if (!userEmail) {
-        setError("Session expired. Please login again.");
+        setError("Email is required. Go back and verify your email first.");
+        setTeamIdStatus(null);
         return;
       }
 
+      const params = new URLSearchParams({ teamId, email: userEmail });
+      if (userId) params.set("userId", String(userId));
+
       const response = await axios.get(
-        `${API_BASE}/api/team/check-availability?teamId=${teamId}&email=${encodeURIComponent(
-          userEmail,
-        )}`,
+        `${API_BASE}/api/team/check-availability?${params.toString()}`,
       );
 
       setTeamIdStatus(response.data.status);
@@ -190,7 +276,7 @@ const SetupWizard = ({
         setSuccess("You already own this ID.");
       }
     } catch (err) {
-      setError(err.response?.data?.error || "Failed to check Team ID");
+      setError(mapSetupApiError(err.response?.data?.error, "Failed to check Community ID"));
       setTeamIdStatus(null);
     } finally {
       setCheckingTeamId(false);
@@ -210,9 +296,10 @@ const SetupWizard = ({
     setError("");
 
     try {
-      const { email: userEmail, userId } = resolveRequester();
-      if (!userEmail && !userId) {
-        setError("Session expired. Please login again.");
+      const userEmail = await ensureEmail();
+      const { userId } = resolveRequester();
+      if (!userEmail) {
+        setError("Email is required. Go back and verify your email first.");
         return;
       }
 
@@ -221,14 +308,13 @@ const SetupWizard = ({
         {
           coachId: selectedCoach.userId,
           coachName: selectedCoach.userName,
-          email: userEmail || null,
+          email: userEmail,
           userId: userId || null,
         },
       );
 
-      const requestBody = { coachId: selectedCoach.userId };
-      if (userEmail) requestBody.email = userEmail;
-      else requestBody.userId = userId;
+      const requestBody = { coachId: selectedCoach.userId, email: userEmail };
+      if (userId) requestBody.userId = userId;
       const requestResponse = await axios.post(
         `${API_BASE}/api/upline/request`,
         requestBody,
@@ -245,9 +331,7 @@ const SetupWizard = ({
     } catch (err) {
       console.error("Skip setup error:", err);
       console.error("Error response:", err.response?.data);
-      const errorMessage =
-        err.response?.data?.error || err.message || "Failed to send request";
-      setError(errorMessage);
+      setError(mapSetupApiError(err.response?.data?.error || err.message, "Failed to send request"));
     } finally {
       sendingRequestRef.current = false;
       setSendingRequest(false);
@@ -262,7 +346,7 @@ const SetupWizard = ({
       return;
     }
     if (teamIdStatus === 'taken') {
-      setError('This Team Code is full. Enter another code or skip.');
+      setError('This Community ID is full. Enter another ID or skip.');
       return;
     }
 
@@ -271,32 +355,31 @@ const SetupWizard = ({
     setError("");
 
     try {
-      const { email: userEmail, userId } = resolveRequester();
-      if (!userEmail && !userId) {
-        setError("Session expired. Please login again.");
+      const userEmail = await ensureEmail();
+      const { userId } = resolveRequester();
+      if (!userEmail) {
+        setError("Email is required. Go back and verify your email first.");
         return;
       }
 
-      debugLog("Claiming Team ID:", { teamId, email: userEmail || null, userId: userId || null });
+      debugLog("Claiming Team ID:", { teamId, email: userEmail, userId: userId || null });
 
       // Step 1: Claim Team ID
-      const claimBody = { teamId };
-      if (userEmail) claimBody.email = userEmail;
-      else claimBody.userId = userId;
+      const claimBody = { teamId, email: userEmail };
+      if (userId) claimBody.userId = userId;
       const claimResponse = await axios.post(`${API_BASE}/api/team/claim-id`, claimBody);
 
       debugLog("Team ID claimed successfully:", claimResponse.data);
 
       debugLog("Sending approval request:", {
         coachId: selectedCoach.userId,
-        email: userEmail || null,
+        email: userEmail,
         userId: userId || null,
       });
 
       // Step 2: Send approval request to selected guide (not necessarily Sponsor)
-      const requestBody = { coachId: selectedCoach.userId };
-      if (userEmail) requestBody.email = userEmail;
-      else requestBody.userId = userId;
+      const requestBody = { coachId: selectedCoach.userId, email: userEmail };
+      if (userId) requestBody.userId = userId;
       const requestResponse = await axios.post(
         `${API_BASE}/api/upline/request`,
         requestBody,
@@ -313,18 +396,16 @@ const SetupWizard = ({
     } catch (err) {
       console.error("Setup error:", err);
       console.error("Error response:", err.response?.data);
-      const errorMessage =
-        err.response?.data?.error || err.message || "Failed to complete setup";
-      setError(errorMessage);
+      setError(mapSetupApiError(err.response?.data?.error || err.message, "Failed to complete setup"));
     } finally {
       sendingRequestRef.current = false;
       setClaimingTeamId(false);
     }
   };
 
-  // Auto-check Team ID when user types
+  // Auto-check Team ID when user types (needs email — APIs require it)
   useEffect(() => {
-    if (teamId.length === 10 && isValidTeamIdFormat(teamId)) {
+    if (teamId.length >= 4 && isValidTeamIdFormat(teamId)) {
       const timer = setTimeout(() => {
         checkTeamIdAvailability();
       }, 500);
@@ -332,6 +413,7 @@ const SetupWizard = ({
     } else {
       setTeamIdStatus(null);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [teamId]);
 
   return (
@@ -563,17 +645,17 @@ const SetupWizard = ({
 
                 <div className="mb-6">
                   <h3 className="text-base font-semibold text-gray-900 mb-1 leading-snug">
-                    Do you have a Team Code?
+                    Enter your Community ID
                   </h3>
                   <p className="text-gray-500 text-sm mb-4">
-                    Create a new code as Sponsor, join an open seat as Co-Sponsor,
+                    Create a new ID as Sponsor, join an open seat as Co-Sponsor,
                     or skip to join as a member under your guide.
                   </p>
 
                   <div className="relative">
                     <input
                       type="text"
-                      className={`w-full py-6 bg-gray-50 rounded-xl text-center text-2xl font-mono tracking-widest border-2 focus:ring-0 transition-all ${
+                      className={`w-full py-6 bg-gray-50 rounded-xl text-center text-2xl font-mono tracking-widest border-2 focus:ring-0 transition-all uppercase ${
                         teamIdStatus === "new"
                           ? "border-blue-500 text-blue-700"
                           : teamIdStatus === "available"
@@ -592,8 +674,9 @@ const SetupWizard = ({
                         setError("");
                         setSuccess("");
                       }}
-                      placeholder="TEAM001ABC"
-                      maxLength={10}
+                      placeholder="W112072XXX"
+                      maxLength={100}
+                      autoCapitalize="characters"
                       autoFocus
                     />
                     <div className="absolute right-4 top-1/2 -translate-y-1/2">
@@ -608,7 +691,7 @@ const SetupWizard = ({
                       {teamIdStatus === "new" && (
                         <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 text-left">
                           <h4 className="text-blue-900 font-bold text-sm">
-                            New Team Code
+                            New Community ID
                           </h4>
                           <p className="text-blue-600/80 text-xs font-medium">
                             You will become the Sponsor. Co-Sponsor seat stays open.
@@ -630,17 +713,17 @@ const SetupWizard = ({
                       {teamIdStatus === "taken" && (
                         <div className="bg-red-50 border border-red-100 rounded-xl p-3 text-left">
                           <h4 className="text-red-900 font-bold text-sm">
-                            Team code unavailable
+                            Community ID unavailable
                           </h4>
                           <p className="text-red-600/80 text-xs font-medium">
-                            Sponsor and Co-Sponsor seats are full. Enter another code or skip.
+                            Sponsor and Co-Sponsor seats are full. Enter another ID or skip.
                           </p>
                         </div>
                       )}
                       {teamIdStatus === "taken-by-you" && (
                         <div className="bg-yellow-50 border border-yellow-100 rounded-xl p-3 text-left">
                           <h4 className="text-yellow-900 font-bold text-sm">
-                            You already claimed this code
+                            You already claimed this Community ID
                           </h4>
                           <p className="text-yellow-600/80 text-xs font-medium">
                             Continue to send the approval request to your guide.
@@ -659,7 +742,7 @@ const SetupWizard = ({
 
                   <div className="mt-3 text-center">
                     <p className="text-gray-400 text-xs">
-                      {teamId.length}/10 characters · Letters & numbers only
+                      {teamId.length} characters · Min 4 · Letters & numbers only
                     </p>
                   </div>
                 </div>
@@ -701,14 +784,14 @@ const SetupWizard = ({
                           <span>Processing...</span>
                         </>
                       ) : (
-                        <span>Continue with Team Code</span>
+                        <span>Continue with Community ID</span>
                       )}
                     </button>
                   </div>
 
                   <button
                     type="button"
-                    className="w-full py-3 rounded-xl font-semibold text-sm bg-transparent border-2 border-gray-300 text-gray-600 hover:border-green-500 hover:text-green-600 transition-all flex items-center justify-center gap-2"
+                    className="w-full py-3 rounded-xl font-semibold text-sm bg-transparent border-2 border-gray-300 text-gray-600 hover:border-green-500 hover:text-green-600 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:border-gray-300 disabled:hover:text-gray-600"
                     onClick={skipTeamIdAndSendRequest}
                     disabled={sendingRequest || claimingTeamId}
                   >
@@ -718,7 +801,7 @@ const SetupWizard = ({
                         <span>Sending...</span>
                       </>
                     ) : (
-                      <span>Skip Team Code</span>
+                      <span>Skip Community ID</span>
                     )}
                   </button>
                 </div>

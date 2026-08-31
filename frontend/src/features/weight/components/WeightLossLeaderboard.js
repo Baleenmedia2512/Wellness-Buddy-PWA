@@ -49,7 +49,7 @@ const writeWeightLBCache = (userId, data) => {
 
 /**
  * WeightLossLeaderboard Component
- * Displays hierarchy-scoped weight loss leaderboard strip (Today vs Yesterday)
+ * Displays hierarchy-scoped weight loss leaderboard strip (Weight Loss Today vs Yesterday)
  *
  * Features:
  * - Ranked among logged-in user's allowed hierarchy (upline + sibling peers + own downline)
@@ -130,7 +130,7 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, email
     // injectEntry: instantly show the current user's entry in the strip
     // without waiting for any API call. The next refresh will replace with real data.
     injectEntry: ({ userId: entryUserId, userName, email, weightLoss, profileImage, coachName }) => {
-      // Match API: loss-only and ≤ 3 kg for Today vs Yesterday strip
+      // Match API: loss-only and ≤ 3 kg for Weight Loss Today vs Yesterday strip
       if (!weightLoss || weightLoss <= 0 || weightLoss > 3) return;
       setLeaderboardData((prev) => {
         // Remove any existing entry for this user, then add new one at top
@@ -271,16 +271,19 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, email
       }`}
     >
       <div className="py-0 px-0">
-        <div className="relative h-[56px] sm:h-[60px] overflow-hidden">
-          <div className="absolute inset-y-0 left-0 z-10 pointer-events-none">
-            <div className="flex h-full w-[68px] sm:w-[72px] items-center justify-center border-r border-gray-200 bg-white shadow-sm px-1.5 text-center text-[9px] sm:text-[10px] font-medium leading-tight text-green-700">
-              Today vs<br />Yesterday
+        <div className="relative h-[68px] sm:h-[72px] overflow-hidden">
+          <div className="absolute inset-y-0 left-0 z-10 pointer-events-none flex items-stretch">
+            <div
+              className="flex h-full w-[60px] sm:w-[64px] items-center justify-center rounded-r-md bg-white px-1 py-2 text-center text-[9px] sm:text-[10px] font-semibold leading-[1.2] text-green-700 shadow-sm"
+              aria-label="Weight Loss Today vs Yesterday"
+            >
+              Weight Loss<br />Today vs<br />Yesterday
             </div>
           </div>
 
           <div
             ref={viewportRef}
-            className="h-full overflow-hidden pl-[68px] sm:pl-[72px] cursor-pointer"
+            className="h-full overflow-hidden pl-[58px] sm:pl-[62px] cursor-pointer"
             style={{ touchAction: 'pan-y' }}
             {...interactionHandlers}
           >

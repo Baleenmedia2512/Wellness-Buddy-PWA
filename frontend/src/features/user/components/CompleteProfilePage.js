@@ -14,11 +14,6 @@ import CompleteRequiredFields, {
 import CompletePictureSection from './complete/CompletePictureSection';
 import UserProfileBodyMetrics from './profile/UserProfileBodyMetrics';
 import HealthIssuesFilterSelect from '../../body-parameters-card/components/HealthIssuesFilterSelect';
-import TransformationPhotosSection from './profile/TransformationPhotosSection';
-import useTransformationPhotos from '../hooks/useTransformationPhotos';
-import { persistOnboardingTestimonialPhotos } from '../services/persistOnboardingTestimonialPhotos';
-import { getMyTestimonial } from '../../testimonials/services/testimonialApi';
-import { deriveWeightGoalMode } from '../../weight/services/weightFormService';
 import {
   hasValidProfileName,
   hasValidProfileGender,
@@ -53,6 +48,20 @@ function isValidCurrentWeight(value) {
   return Number.isFinite(n) && n >= MIN_WEIGHT_KG && n <= MAX_WEIGHT_KG;
 }
 
+function loginEmailFromUser(user) {
+  return String(user?.email || user?.Email || '').trim();
+}
+
+function sessionNameFromUser(user) {
+  return String(
+    user?.userName || user?.UserName || user?.username || user?.name || '',
+  ).trim();
+}
+
+function sessionPhoneFromUser(user) {
+  return user?.phoneNumber || user?.PhoneNumber || user?.phone || null;
+}
+
 /**
  * @param {{
  *   user: object,
@@ -69,9 +78,18 @@ const CompleteProfilePage = ({
   showPictureSection = true,
   identityLocked = true,
 }) => {
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
-  const [emailLocked, setEmailLocked] = useState(false);
+  const initialLoginEmail = loginEmailFromUser(user);
+  const initialEmailLocked = EMAIL_RE.test(initialLoginEmail);
+  const initialName = (() => {
+    const fromSession = sessionNameFromUser(user);
+    return hasValidProfileName(fromSession, { phoneNumber: sessionPhoneFromUser(user) })
+      ? fromSession
+      : '';
+  })();
+
+  const [name, setName] = useState(initialName);
+  const [email, setEmail] = useState(initialEmailLocked ? initialLoginEmail : '');
+  const [emailLocked, setEmailLocked] = useState(initialEmailLocked);
   const [gender, setGender] = useState('');
   const [showGender, setShowGender] = useState(true);
   const [height, setHeight] = useState('');
@@ -80,7 +98,6 @@ const CompleteProfilePage = ({
   const [showCurrentWeight, setShowCurrentWeight] = useState(false);
   const [optionalMetrics, setOptionalMetrics] = useState(EMPTY_OPTIONAL_METRICS);
   const [recoveredHealthIssues, setRecoveredHealthIssues] = useState([]);
-  const transformationPhotos = useTransformationPhotos();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -98,12 +115,10 @@ const CompleteProfilePage = ({
   useEffect(() => {
     let mounted = true;
     (async () => {
-      const loginEmail = (user?.email || user?.Email || '').trim();
+      const loginEmail = loginEmailFromUser(user);
       const uid = user?.id || user?.UserId || user?.userId || null;
-      const phone = user?.phoneNumber || user?.PhoneNumber || user?.phone || null;
-      const sessionName = String(
-        user?.userName || user?.UserName || user?.username || user?.name || '',
-      ).trim();
+      const phone = sessionPhoneFromUser(user);
+      const sessionName = sessionNameFromUser(user);
 
       const applySessionNameFallback = () => {
         if (hasValidProfileName(sessionName, { phoneNumber: phone })) {
@@ -173,18 +188,6 @@ const CompleteProfilePage = ({
         setRecoveredHealthIssues(
           Array.isArray(profile?.recoveredHealthIssues) ? profile.recoveredHealthIssues : [],
         );
-        transformationPhotos.loadFromProfile(profile?.transformationPhotos);
-        transformationPhotos.loadFromTestimonial(null, profile?.latestWeight);
-        const uidForT = user?.id || user?.userId || user?.UserId;
-        if (uidForT) {
-          getMyTestimonial(uidForT)
-            .then((testimonial) => {
-              if (mounted) {
-                transformationPhotos.loadFromTestimonial(testimonial, profile?.latestWeight);
-              }
-            })
-            .catch(() => {});
-        }
 
         if (profile?.profileImage && (
           profile.profileImage.startsWith('data:image/')
@@ -238,19 +241,13 @@ const CompleteProfilePage = ({
     return () => { mounted = false; };
   }, [user]);
 
-  useEffect(() => {
-    transformationPhotos.setSnapshotWeight(
-      isValidCurrentWeight(currentWeight) ? parseFloat(currentWeight) : null,
-    );
-  }, [currentWeight, transformationPhotos.setSnapshotWeight]);
-
   const heightNum = parseFloat(height);
   const trimmedName = name.trim();
   const trimmedEmail = email.trim().toLowerCase();
   // Name already collected on Welcome — keep valid even after email is entered.
   const nameValid = trimmedName.length >= 2
     && hasValidProfileName(trimmedName, {
-      phoneNumber: user?.phoneNumber || user?.PhoneNumber || user?.phone,
+      phoneNumber: sessionPhoneFromUser(user),
     });
   const emailValid = EMAIL_RE.test(trimmedEmail);
   const genderValid = !showGender || hasValidProfileGender(gender, null);
@@ -264,10 +261,12 @@ const CompleteProfilePage = ({
   const formValid = nameValid && emailValid && genderValid && heightValid && dietValid
     && currentWeightValid && fatPercentValid && pictureValid;
 
-  const nameLocked = identityLocked && nameValid;
+  // Name/email already collected on Welcome / identity — never flash them here.
+  const hideName = identityLocked;
+  const hideEmail = identityLocked || emailLocked;
   const checks = [
-    ...(nameLocked ? [] : [{ label: 'Name', done: nameValid }]),
-    { label: 'Email', done: emailValid },
+    ...(hideName ? [] : [{ label: 'Name', done: nameValid }]),
+    ...(hideEmail ? [] : [{ label: 'Email', done: emailValid }]),
     ...(showGender ? [{ label: 'Gender', done: genderValid }] : []),
     { label: 'Height', done: heightValid },
     { label: 'Diet Preference', done: dietValid },
@@ -354,25 +353,8 @@ const CompleteProfilePage = ({
       payload.recoveredHealthIssues = Array.isArray(recoveredHealthIssues)
         ? recoveredHealthIssues
         : [];
-      Object.assign(payload, transformationPhotos.payloadExtras());
 
       await saveProfile(payload);
-
-      if (uid && (isValidCurrentWeight(currentWeight) || transformationPhotos.leftImageBase64())) {
-        const weightNum = isValidCurrentWeight(currentWeight)
-          ? parseFloat(currentWeight)
-          : null;
-        await persistOnboardingTestimonialPhotos({
-          userId: uid,
-          weightKg: weightNum,
-          leftImageBase64: transformationPhotos.leftImageBase64(),
-          goalType: deriveWeightGoalMode({
-            heightCm: heightNum,
-            currentWeightKg: weightNum,
-          }) || 'loss',
-          recoveredHealthIssues,
-        });
-      }
 
       onComplete({
         email: trimmedEmail,
@@ -396,7 +378,7 @@ const CompleteProfilePage = ({
     currentWeightValid, fatPercentValid, pictureValid,
     showPictureSection, profileImage, user, apiBaseUrl,
     trimmedName, trimmedEmail, heightNum, dietType, showGender, gender, previewUrl, onComplete,
-    showCurrentWeight, currentWeight, optionalMetrics, recoveredHealthIssues, transformationPhotos,
+    showCurrentWeight, currentWeight, optionalMetrics, recoveredHealthIssues,
   ]);
 
   return (
@@ -410,7 +392,7 @@ const CompleteProfilePage = ({
           <h1 className="text-2xl font-bold text-white">Complete Your Profile</h1>
         </div>
         <p className="text-green-100 text-sm">
-          Gender, height, diet, body metrics, and photo — then you&apos;re set.
+          Gender, height, diet, and body metrics — then transformation photos.
         </p>
       </div>
       <div className="max-w-md mx-auto p-5 space-y-5">
@@ -424,8 +406,9 @@ const CompleteProfilePage = ({
             setEmail={setEmail}
             emailValid={emailValid}
             emailLocked={emailLocked}
-            identityLocked={nameLocked}
-            hideName={nameLocked}
+            identityLocked={identityLocked}
+            hideName={hideName}
+            hideEmail={hideEmail}
             gender={gender}
             setGender={setGender}
             showGender={showGender}
@@ -438,19 +421,6 @@ const CompleteProfilePage = ({
             setCurrentWeight={setCurrentWeight}
             showCurrentWeight={showCurrentWeight}
             currentWeightValid={currentWeightValid}
-          />
-          <TransformationPhotosSection
-            history={transformationPhotos.history}
-            selectedType={transformationPhotos.selectedType}
-            onSelectType={transformationPhotos.setSelectedType}
-            onSelectFile={async (slot, file) => {
-              try {
-                await transformationPhotos.setSlotFromFile(slot, file);
-              } catch (e) {
-                setError(e.message || 'Failed to prepare photo.');
-              }
-            }}
-            disabled={saving}
           />
           <div className="pt-2 border-t border-gray-100">
             <UserProfileBodyMetrics

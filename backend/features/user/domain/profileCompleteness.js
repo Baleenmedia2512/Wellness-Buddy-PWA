@@ -96,9 +96,8 @@ export function hasValidBodyFatSource({
 }
 
 /**
- * Profile gate fields for unified onboarding (phone is not blocking).
- * Photo is enforced on the CompleteProfile UI; when profileImage is passed,
- * a custom data-URL image is required for completeness.
+ * Field completeness for remaining-profile onboarding (gender, height, diet, fat%).
+ * Avatar is the Centre transformation photo (separate step) — not required here.
  * Body fat is required when no weight / BPC source exists.
  */
 export function isProfileComplete({
@@ -109,7 +108,7 @@ export function isProfileComplete({
   phoneNumber,
   gender = null,
   bodyMetrics = null,
-  profileImage = undefined,
+  profileImage: _profileImage = undefined,
   bodyFat = null,
   latestWeightBodyFat = null,
   bodyFatRequired = true,
@@ -121,11 +120,7 @@ export function isProfileComplete({
   const hasGender = hasValidProfileGender(gender, bodyMetrics);
   const hasBodyFat = !bodyFatRequired
     || hasValidBodyFatSource({ bodyFat, latestWeightBodyFat, bodyMetrics });
-  const hasPhoto = profileImage === undefined
-    ? true
-    : typeof profileImage === 'string'
-      && (profileImage.startsWith('data:image/') || profileImage.startsWith('https://'));
-  return !!(hasHeight && hasDiet && hasEmail && hasName && hasGender && hasBodyFat && hasPhoto);
+  return !!(hasHeight && hasDiet && hasEmail && hasName && hasGender && hasBodyFat);
 }
 
 export { VALID_GENDERS, MIN_BODY_FAT_PCT, MAX_BODY_FAT_PCT };

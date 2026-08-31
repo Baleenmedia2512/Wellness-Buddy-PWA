@@ -19,8 +19,8 @@ export function buildWeightShareText({
   const lines = [
     '⚖️ Weight Update',
     '',
-    `Previous Weight: ${previous != null ? `${previous} kg` : '—'}`,
-    `Current Weight: ${current != null ? `${current} kg` : '—'}`,
+    `Before: ${previous != null ? `${previous} kg` : '—'}`,
+    `After: ${current != null ? `${current} kg` : '—'}`,
   ];
 
   if (previous != null && current != null) {
@@ -86,10 +86,14 @@ export function resolveWeightDeltaDisplay(previousWeight, currentWeight) {
 }
 
 /** Body weight must be a positive finite kg value. */
-function formatKg(value) {
+export function formatPositiveWeightKg(value) {
   const n = Number(value);
   if (!Number.isFinite(n) || n <= 0) return null;
   return Math.round(n * 100) / 100;
+}
+
+function formatKg(value) {
+  return formatPositiveWeightKg(value);
 }
 
 /**

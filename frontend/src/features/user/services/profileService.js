@@ -9,6 +9,15 @@ export const isDemoAccount = (email) =>
   DEMO_ACCOUNTS.includes((email || '').toLowerCase().trim());
 export const demoStorageKey = (email) => `demo_profile_${email}`;
 
+function clearProfileCaches({ email, userId } = {}) {
+  if (email) {
+    cacheManager.clear(cacheManager.generateKey('userProfile', String(email).toLowerCase()));
+  }
+  if (userId != null && String(userId).trim() !== '') {
+    cacheManager.clear(cacheManager.generateKey('userProfile', `id:${userId}`));
+  }
+}
+
 export const fetchProfile = async (emailOrUserId) => {
   try {
     const opts = typeof emailOrUserId === 'object' && emailOrUserId != null
@@ -78,8 +87,8 @@ export const saveProfile = async (payload) => {
     const isDbInternals = /PGRST|JSON object requested|multiple.*rows|no rows returned|relation.*does not exist|violates check constraint|check constraint/i.test(raw);
     throw new Error(isDbInternals ? 'Failed to save profile. Please try again.' : raw || 'Failed to save profile.');
   }
-  if (payload?.email) {
-    cacheManager.clear(cacheManager.generateKey('userProfile', String(payload.email).toLowerCase()));
+  if (payload?.email || payload?.userId) {
+    clearProfileCaches({ email: payload.email, userId: payload.userId });
   }
   // Persist demo-account profiles locally since backend skips demo writes.
   if (isDemoAccount(payload.email)) {

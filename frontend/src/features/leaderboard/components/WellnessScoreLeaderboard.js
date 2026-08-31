@@ -261,16 +261,19 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, vi
       }`}
     >
       <div className="py-0 px-0">
-        <div className="relative h-[56px] sm:h-[60px] overflow-hidden">
-          <div className="absolute inset-y-0 left-0 z-10 pointer-events-none">
-            <div className="flex h-full w-[68px] sm:w-[72px] items-center justify-center border-r border-purple-100 bg-white shadow-sm px-1.5 text-center text-[9px] sm:text-[10px] font-medium leading-tight text-purple-700">
-              Top {topN}<br />Score
+        <div className="relative h-[68px] sm:h-[72px] overflow-hidden">
+          <div className="absolute inset-y-0 left-0 z-10 pointer-events-none flex items-stretch">
+            <div
+              className="flex h-full w-[60px] sm:w-[64px] items-center justify-center rounded-r-md bg-white px-1 py-2 text-center text-[9px] sm:text-[10px] font-semibold leading-[1.2] text-purple-700 shadow-sm"
+              aria-label={`Top ${topN} Wellness Score`}
+            >
+              Top {topN}<br />Wellness<br />Score
             </div>
           </div>
 
           <div
             ref={viewportRef}
-            className="h-full overflow-hidden pl-[68px] sm:pl-[72px] cursor-pointer"
+            className="h-full overflow-hidden pl-[58px] sm:pl-[62px] cursor-pointer"
             style={{ touchAction: 'pan-y' }}
             {...interactionHandlers}
           >

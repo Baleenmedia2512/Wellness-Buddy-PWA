@@ -81,16 +81,16 @@ const REGISTRY = Object.freeze({
     description:    'Before/after testimonial upload + coach OTP verification flow.',
   },
 
-  // Reports module — coach/upline analytics.
-  // Currently: direct-downline weight status (current vs BMI 19–23 ideal range).
-  // Tab is only shown to coach / upline / admin / developer roles.
+  // Reports module — common analytics (Ideal Weight, Wellness Score, Nutrition, Trend).
+  // Shown to every signed-in user. Leaf members see their own data; coaches
+  // still see downline search / team scopes.
   // Default ON. Set REACT_APP_FF_REPORTS_MODULE=false or
   // localStorage 'ff.reports-module'='false' to disable.
   'ff.reports-module': {
     envKey:         'REACT_APP_FF_REPORTS_MODULE',
     storageKey:     'ff.reports-module',
     defaultEnabled: true,
-    description:    'Reports module: Ideal Weight + Wellness Score Report for coaches.',
+    description:    'Reports module: Ideal Weight + Wellness Score + Nutrition + Trend for all users.',
   },
 
   // Wellness Score Sheet — home tile + 34-parameter score view + coach config.

@@ -30,6 +30,8 @@ import OtpInline from './OtpInline.jsx';
 import VideoThumbnailCard from './VideoThumbnailCard.jsx';
 import HealthIssueCoachEditor from './HealthIssueCoachEditor.jsx';
 import {
+  CARD_W,
+  CARD_H,
   TransformationCardContent,
   TransformationShareActions,
 } from './TransformationShareCard.jsx';
@@ -504,6 +506,13 @@ function sameIssueList(a, b) {
   return a.every((value, index) => value === b[index]);
 }
 
+function afterWeightDiffers(beforeKg, afterKg) {
+  const before = Number(beforeKg);
+  const after = Number(afterKg);
+  if (!Number.isFinite(before) || !Number.isFinite(after)) return false;
+  return before !== after;
+}
+
 function MemberCard({
   row,
   teamStats,
@@ -564,7 +573,11 @@ function MemberCard({
   }, [testimonial?.healthVideoUrl, testimonial?.businessVideoUrl]);
 
   const [expandedPhoto, setExpandedPhoto] = useState(null);
-  const hasAfter  = testimonial?.afterImageUrl  && testimonial?.status !== 'incomplete';
+  const hasAfter = Boolean(testimonial?.afterImageUrl)
+    && (
+      testimonial?.status !== 'incomplete'
+      || afterWeightDiffers(testimonial?.beforeWeightKg, testimonial?.afterWeightKg)
+    );
   // Stable empty fallback — a fresh `[]` each render re-triggers setState forever.
   const issues = Array.isArray(testimonial?.recoveredHealthIssues)
     ? testimonial.recoveredHealthIssues
@@ -621,6 +634,7 @@ function MemberCard({
   ].filter(Boolean);
   // hasDirtySlots: true for ANY pending change including weight-only edits
   const hasDirtySlots = dirtySlots.length > 0 || !!draftBefore || !!draftAfter;
+  const changedCount = Math.max(dirtySlots.length, hasDirtySlots ? 1 : 0);
   const anyVideoUploading = uploadingHealth || uploadingBusiness;
 
   // Prefer draft edits so the "Lost/Gained X kgs" badge updates live while editing
@@ -910,8 +924,11 @@ function MemberCard({
       testimonial?.healthVideoPath || testimonial?.businessVideoPath
       || testimonial?.healthVideoUrl || testimonial?.businessVideoUrl,
     );
-    const issuesNeedOtp = dirtySlots.includes('issues') && (hasAfter || hasResultVideo);
-    const isSilentSave = !photoOrVideoChanged && !issuesNeedOtp;
+    const hasVisiblePhotoCard = Boolean(testimonial?.beforeImageUrl && testimonial?.afterImageUrl);
+    const issuesNeedOtp = dirtySlots.includes('issues') && (hasAfter || hasResultVideo || hasVisiblePhotoCard);
+    const afterWeightDirty = draftAfter?.weightKg !== undefined
+      && afterWeightDiffers(testimonial?.beforeWeightKg, draftAfter.weightKg);
+    const isSilentSave = !photoOrVideoChanged && !issuesNeedOtp && !afterWeightDirty;
     // Photos still compressing — wait so we do not submit without image bytes.
     if (draftBefore?.compressing || draftAfter?.compressing) {
       setSubmitError('Photo is still preparing — try Submit again in a moment.');
@@ -1021,7 +1038,7 @@ function MemberCard({
         : null;
       await reloadMine(patched);
       clearDrafts();
-      if (otpSent) {
+      if (otpSent || patched?.hasPendingOtp) {
         setUnifiedOtpVerified(false);
         setSubmitDone(true);
       }
@@ -1049,7 +1066,7 @@ function MemberCard({
         setIsSubmitting(false);
         setCaptureFlowBusy(false);
       });
-  }, [userId, dirtySlots, draftBefore, draftAfter, draftHealthPath, draftBusinessPath, draftIssues, onMineRefresh, hasAfter, testimonial?.id, testimonial?.beforeImageUrl, testimonial?.afterImageUrl, testimonial?.goalType, testimonial?.durationText, testimonial?.recoveredHealthIssues, testimonial?.healthVideoPath, testimonial?.businessVideoPath, testimonial?.healthVideoUrl, testimonial?.businessVideoUrl]);
+  }, [userId, dirtySlots, draftBefore, draftAfter, draftHealthPath, draftBusinessPath, draftIssues, onMineRefresh, hasAfter, testimonial?.id, testimonial?.beforeImageUrl, testimonial?.afterImageUrl, testimonial?.beforeWeightKg, testimonial?.afterWeightKg, testimonial?.goalType, testimonial?.durationText, testimonial?.recoveredHealthIssues, testimonial?.healthVideoPath, testimonial?.businessVideoPath, testimonial?.healthVideoUrl, testimonial?.businessVideoUrl]);
 
   const anyPhotoCompressing = Boolean(draftBefore?.compressing || draftAfter?.compressing);
 
@@ -1569,7 +1586,7 @@ function MemberCard({
             onRemove={handleHealthIssueRemoved}
           />
           {testimonial && (testimonial.beforeImageUrl || hasAfter) &&
-            (editable ? (isVerified && !hasDirtySlots && !submitDone) : true) && (
+            (editable ? (!hasDirtySlots && !submitDone) : true) && (
             <TransformationShareActions
               kind="photo"
               cardRef={shareCardRef}
@@ -1760,7 +1777,7 @@ function MemberCard({
             }
           </button>
           <p className="text-[10px] text-gray-400 text-center">
-            {dirtySlots.length} item{dirtySlots.length > 1 ? 's' : ''} changed — your sponsor will receive one verification email
+            {changedCount} item{changedCount === 1 ? '' : 's'} changed — your sponsor will receive one verification email
           </p>
         </div>
       )}
@@ -1802,7 +1819,8 @@ function MemberCard({
             position: 'fixed',
             left: 0,
             top: 0,
-            width: 360,
+            width: CARD_W,
+            height: CARD_H,
             opacity: 0,
             pointerEvents: 'none',
             zIndex: -1,

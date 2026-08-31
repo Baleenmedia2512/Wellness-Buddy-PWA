@@ -6,20 +6,24 @@ import assert from 'node:assert/strict';
 import { canAccessReportsModule } from '../reportsAccess.rules.js';
 
 describe('canAccessReportsModule', () => {
-  it('allows coach, upline, admin, developer (and co-coach variants)', () => {
-    assert.equal(canAccessReportsModule('coach'), true);
-    assert.equal(canAccessReportsModule('Coach'), true);
-    assert.equal(canAccessReportsModule('upline'), true);
-    assert.equal(canAccessReportsModule('admin'), true);
-    assert.equal(canAccessReportsModule('developer'), true);
-    assert.equal(canAccessReportsModule('coccoach'), true);
-    assert.equal(canAccessReportsModule('co-coach'), true);
+  it('allows every signed-in role, including leaf members', () => {
+    for (const role of [
+      'user',
+      'member',
+      'coach',
+      'Coach',
+      'upline',
+      'coccoach',
+      'co-coach',
+      'admin',
+      'developer',
+    ]) {
+      assert.equal(canAccessReportsModule(role), true, role);
+    }
   });
 
-  it('denies regular members and empty role', () => {
-    assert.equal(canAccessReportsModule('user'), false);
-    assert.equal(canAccessReportsModule('member'), false);
-    assert.equal(canAccessReportsModule(''), false);
-    assert.equal(canAccessReportsModule(null), false);
+  it('allows empty role so nav does not flicker while profile loads', () => {
+    assert.equal(canAccessReportsModule(''), true);
+    assert.equal(canAccessReportsModule(null), true);
   });
 });
