@@ -72,8 +72,6 @@ export function buildMarathonWeightComparison({
     changeLabel: formatMarathonWeightChangeLabel(weightDifference, direction),
   };
 }
-<<<<<<< HEAD
-=======
 
 /**
  * WhatsApp caption block for Day 0 marathon weight progress.
@@ -175,4 +173,3 @@ export function mergeMarathonWeightComparisonForShare(source, currentWeightKg) {
     currentMarathonDay0Weight: current,
   };
 }
->>>>>>> Phase1_Yasheer
