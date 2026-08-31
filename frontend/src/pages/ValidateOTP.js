@@ -249,16 +249,21 @@ const ValidateOTP = ({
   const handleCancel = async () => {
     try {
       const userEmail = userEmailProp || storage.get('userEmail');
-      if (!userEmail) {
-        setError('User email not found. Please login again.');
+      const userId = userIdProp || storage.get('userId');
+      if (!userEmail && !userId) {
+        setError('Account not found. Please login again.');
         return;
       }
 
       setCancelling(true);
 
+      const body = {};
+      if (userEmail) body.email = userEmail;
+      if (userId) body.userId = userId;
+
       await axios.post(
         `${API_BASE}/api/upline/cancel-request`,
-        { email: userEmail }
+        body,
       );
 
       debugLog("\ud83d\udfe6 [ValidateOTP] User clicked Cancel, closing modal");

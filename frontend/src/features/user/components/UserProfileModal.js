@@ -5,7 +5,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { getUserContext } from '../../../shared/services/userIdentity';
 import useProfileForm from '../hooks/useProfileForm';
 import { fetchProfile, saveProfile } from '../services/profileService';
-import { resolveDisplayCommunityId } from '../domain/communityId';
+import { syncMarathonWeightComparisonFromProfile } from '../../marathon/marathonWeightComparisonCache';
 import UserProfileHeader from './profile/UserProfileHeader';
 import UserProfileBody from './profile/UserProfileBody';
 import UserProfileFooter from './profile/UserProfileFooter';
@@ -16,6 +16,7 @@ const UserProfileModal = ({ isOpen, onClose, user, userRole = 'user', onProfileU
   const [latestWeight, setLatestWeight] = useState(null);
   const [initialWeight, setInitialWeight] = useState(null);
   const [initialWeightDate, setInitialWeightDate] = useState(null);
+  const [marathonWeightComparison, setMarathonWeightComparison] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState('');
@@ -41,15 +42,14 @@ const UserProfileModal = ({ isOpen, onClose, user, userRole = 'user', onProfileU
             : (data.bodyFat != null ? String(data.bodyFat) : ''),
           latestWeightBodyFat: data.latestWeightBodyFat ?? null,
           email: data.email || user?.email || '',
-          communityId: resolveDisplayCommunityId({
-            communityId: data.communityId,
-            teamId: data.teamId,
-          }),
+          communityId: data.communityId != null ? String(data.communityId) : '',
           bodyMetrics: data.bodyMetrics || null,
         });
         setLatestWeight(data.latestWeight ? parseFloat(data.latestWeight) : null);
         setInitialWeight(data.initialWeight != null ? parseFloat(data.initialWeight) : null);
         setInitialWeightDate(data.initialWeightDate || null);
+        setMarathonWeightComparison(data.marathonWeightComparison || null);
+        syncMarathonWeightComparisonFromProfile(data);
         if (data.profileImage) {
           setProfileImagePreview(data.profileImage);
         } else if (data.transformationPhotos?.front) {
@@ -120,6 +120,7 @@ const UserProfileModal = ({ isOpen, onClose, user, userRole = 'user', onProfileU
         <UserProfileBody isLoading={isLoading} form={form} email={form.email}
           latestWeight={latestWeight} initialWeight={initialWeight}
           initialWeightDate={initialWeightDate}
+          marathonWeightComparison={marathonWeightComparison}
           error={error} successMessage={successMessage}
         />
         {!isLoading && (

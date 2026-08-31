@@ -49,7 +49,6 @@ import {
   confirmAiCredit,
   releaseReservedAiCredit,
   getAiCreditUiState,
-  reserveFailureMessage,
   decideMealWindowAutoAi,
 } from '../../features/ai-credits';
 import { analyzeImage } from '../../shared/services/orchestratorService';
@@ -217,7 +216,6 @@ export default function ManualEntryPage({
   // Start loading=true so first paint never flashes green "Analyze" before status returns.
   const [creditsLoading, setCreditsLoading] = useState(() => isFlagEnabled('ff.ai-credits'));
   const [aiStarting, setAiStarting] = useState(false);
-  const [hint, setHint] = useState(null);
   const [activeForm, setActiveForm] = useState(null);
   /** When food search opened from Snacks & Soups subtypes. */
   const [foodEntryMeta, setFoodEntryMeta] = useState(null);
@@ -496,7 +494,6 @@ export default function ManualEntryPage({
   const startAiAnalyze = useCallback(async () => {
     if (!userId || !imageBase64 || !captureId) return;
     if (aiModalOpen && aiModalStage === 'analysing') return;
-    setHint(null);
     setAiStarting(true);
     aiCancelledRef.current = false;
     setAiAnalysisResult(null);
@@ -510,7 +507,6 @@ export default function ManualEntryPage({
         // Backend enforces leaf downline + meal windows for versioned clients.
         if (credits?.eligibleForAiFoodAnalysis === false) {
           setAiModalOpen(false);
-          setHint(reserveFailureMessage('not_eligible_downline'));
           setAiStarting(false);
           return;
         }
@@ -519,9 +515,6 @@ export default function ManualEntryPage({
           || credits?.availableInWindow === false
         ) {
           setAiModalOpen(false);
-          setHint(reserveFailureMessage(
-            credits?.availableInWindow === false ? 'outside_window' : 'outside_ai_window',
-          ));
           setAiStarting(false);
           return;
         }
@@ -529,7 +522,6 @@ export default function ManualEntryPage({
         setCredits(reserved);
         if (!reserved?.allowed || !reserved.reservationId) {
           setAiModalOpen(false);
-          setHint(reserveFailureMessage(reserved?.reason));
           setAiStarting(false);
           return;
         }
@@ -779,21 +771,10 @@ export default function ManualEntryPage({
     });
 
     if (!decision.shouldAutoAi) {
-      if (decision.reason === 'not-eligible-downline') {
-        setHint(reserveFailureMessage('not_eligible_downline'));
-      } else if (
-        decision.reason === 'outside-meal-window'
-        || decision.reason === 'outside-lunch'
-      ) {
-        setHint(reserveFailureMessage(
-          credits?.availableInWindow === false ? 'outside_window' : 'outside_ai_window',
-        ));
-      }
       openCategory(MANUAL_LOG_CATEGORY.FOOD);
       return;
     }
 
-    setHint(null);
     void startAiAnalyze();
   }, [
     userId,
@@ -825,18 +806,9 @@ export default function ManualEntryPage({
     mealAutoAttemptedRef.current = true;
 
     if (!decision.shouldAutoAi) {
-      if (decision.reason === 'not-eligible-downline') {
-        setHint(reserveFailureMessage('not_eligible_downline'));
-      } else if (decision.reason === 'outside-meal-window') {
-        setHint(reserveFailureMessage(
-          credits?.availableInWindow === false ? 'outside_window' : 'outside_ai_window',
-        ));
-      }
-      // Exhausted / disabled / no-credits → stay quiet on Log-as (no scary banner).
       return undefined;
     }
 
-    setHint(null);
     void startAiAnalyze();
     return undefined;
   }, [
@@ -969,6 +941,7 @@ export default function ManualEntryPage({
         currentWeight: weightValue,
         idealWeight: pickIdealWeightKg(weightValue, idealRange),
       }),
+      currentMarathonDay0Weight: weightValue,
     });
 
     void saveWeight({
@@ -1114,8 +1087,6 @@ export default function ManualEntryPage({
     });
   };
 
-  // Don't treat credits as available until status has loaded — avoids green CTA flash then lock.
-  const aiTemporarilyBusy = creditsEnabled && creditUi.phase === 'busy';
   const logAsDisabled = closingWithoutLog || (aiStarting && !pendingFoodAi);
 
   return (
@@ -1160,18 +1131,6 @@ export default function ManualEntryPage({
             />
           )}
         </section>
-
-        {hint && (
-          <p className="shrink-0 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-            {hint}
-          </p>
-        )}
-
-        {aiTemporarilyBusy && !hint && (
-          <p className="shrink-0 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-            AI detect is temporarily unavailable. Try again in a few minutes — your credits are not used yet.
-          </p>
-        )}
 
         {/* Type grid — large Log-as tiles matching original layout */}
         <section className="flex min-h-0 flex-1 flex-col">

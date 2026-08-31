@@ -14,6 +14,11 @@ import { VALID_GENDERS } from '../../domain/profileCompleteness';
 const inputCls =
   'w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none';
 
+const SEAT_LABEL = {
+  sponsor: 'Sponsor',
+  'co-sponsor': 'Co-Sponsor',
+};
+
 const Field = ({ label, required, children }) => (
   <div>
     <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -30,6 +35,7 @@ const UserProfileFields = ({
   gender, setGender,
   physicalActivityLevel, setPhysicalActivityLevel,
   communityId, setCommunityId,
+  teamSeat = null,
 }) => (
   <div className="space-y-4">
     <Field label="Email" required>
@@ -106,8 +112,13 @@ const UserProfileFields = ({
           style={{ fontSize: '16px' }}
         />
       </div>
+      {teamSeat && (
+        <p className="text-xs text-green-700 font-medium mt-1.5">
+          Role: {SEAT_LABEL[teamSeat] || teamSeat}
+        </p>
+      )}
       <p className="text-xs text-gray-500 mt-1">
-        Enter your Community ID
+        Your shared team code for Sponsor / Co-Sponsor. Tap Save Profile after editing.
       </p>
       <p className="text-xs text-gray-400 mt-0.5">
         {(communityId || '').length}/{COMMUNITY_ID_MAX_LENGTH} · Min {COMMUNITY_ID_MIN_LENGTH} · Letters and numbers only

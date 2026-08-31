@@ -31,6 +31,15 @@ export function canUseTeamSearch(role, hasTeamMembers) {
  * Backend /api/team/has-members — true for own CoachId downline OR shared-team lead.
  * Gates Diary / Programs search and Activity Mine-Direct-Full elevation.
  */
+/** Drop cached team-search payloads after Co-Sponsor / team-code profile saves. */
+export function invalidateHasTeamMembersCache(userId) {
+  if (userId == null || userId === '') return;
+  cacheManager.clear(cacheManager.generateKey('hasTeamMembers', String(userId)));
+  // Keys match teamHierarchyService.getTeamHierarchy (service + version + coachId + includeInactive).
+  cacheManager.clear(cacheManager.generateKey('teamHierarchy', 'v2-bcm-weight', userId, false));
+  cacheManager.clear(cacheManager.generateKey('teamHierarchy', 'v2-bcm-weight', userId, true));
+}
+
 export async function fetchHasTeamMembers(userId) {
   if (!userId) return false;
   const key = cacheManager.generateKey('hasTeamMembers', String(userId));

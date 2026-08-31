@@ -55,6 +55,27 @@ const EMPTY_STATE = Object.freeze({
 });
 
 /**
+ * @param {number} year
+ * @param {number} month 1–12
+ * @param {number} day 1–31
+ * @returns {string}
+ */
+function formatYmdParts(year, month, day) {
+  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
+/**
+ * Previous marathon Day 10 for a Marathon 1 Day 0 (1st of month).
+ * @param {{ year: number, month: number }} parts
+ * @returns {string}
+ */
+function previousMarathonDay10FromMonthStart(parts) {
+  const { year, month } = parts;
+  if (month === 1) return formatYmdParts(year - 1, 12, 25);
+  return formatYmdParts(year, month - 1, 25);
+}
+
+/**
  * @param {unknown} ymd
  * @returns {{ year: number, month: number, day: number }|null}
  */
@@ -188,5 +209,37 @@ export function getDetoxReminder(ymd) {
     marathonDay: state.marathonDay,
     marathonNumber: state.marathonNumber,
     kind: 'detox',
+  };
+}
+
+/**
+ * @typedef {object} MarathonWeightComparisonDates
+ * @property {string} currentDay0Ymd YYYY-MM-DD for the current marathon Day 0
+ * @property {string} previousDay10Ymd YYYY-MM-DD for the previous marathon Day 10
+ * @property {number} marathonNumber 1 or 2 for the current marathon
+ */
+
+/**
+ * Resolve calendar dates for marathon weight comparison on Marathon Day 0 only.
+ * Returns null on every other day (including Day -1 / outside marathon).
+ *
+ * @param {unknown} ymd YYYY-MM-DD
+ * @returns {MarathonWeightComparisonDates|null}
+ */
+export function getMarathonWeightComparisonDates(ymd) {
+  const state = getMarathonCalendarState(ymd);
+  if (!state.inMarathon || state.marathonDay !== 0) return null;
+
+  const parts = parseYmdParts(ymd);
+  if (parts == null) return null;
+
+  const previousDay10Ymd = state.marathonNumber === 1
+    ? previousMarathonDay10FromMonthStart(parts)
+    : formatYmdParts(parts.year, parts.month, 11);
+
+  return {
+    currentDay0Ymd: ymd,
+    previousDay10Ymd,
+    marathonNumber: state.marathonNumber,
   };
 }

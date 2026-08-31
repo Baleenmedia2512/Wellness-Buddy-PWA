@@ -644,7 +644,10 @@ export function WeightRow({
       }
       await captureAndShare(target, {
         title: `Weight ${p.weight} kg`,
-        text: withMarathonWhatsAppNotice(shareText, { timezoneIana }),
+        text: withMarathonWhatsAppNotice(
+          composeBrandedShareCaption(shareText),
+          { timezoneIana, currentMarathonDay0Weight: p.weight },
+        ),
         fileName: `wellness-weight-${Date.now()}.png`,
       });
     } catch (err) {

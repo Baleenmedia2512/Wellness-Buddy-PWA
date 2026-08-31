@@ -194,4 +194,43 @@ describe('appendMarathonWhatsAppNotice', () => {
       'Tomorrow is Day 4 - Detox Day',
     );
   });
+
+  it('appends marathon weight comparison on Day 0 when data exists', () => {
+    const comparison = {
+      previousMarathonEndWeight: 75,
+      currentMarathonDay0Weight: 73,
+      changeLabel: '−2.0 kg ↓ Decrease',
+    };
+    const weightSuffix = 'Ideal: 73.7 kg\nBefore: 72.9 kg\nAfter: 73.4 kg ⬇️';
+    const base = `${CURRENT_DAY_CAPTION.split(',')[0]}\n\n${weightSuffix}`;
+    const result = appendMarathonWhatsAppNotice(base, '2026-09-01', comparison);
+    assert.match(result, /Day 0 - Marathon Starts/);
+    assert.match(result, /Previous Marathon End weight : 75\.0 kg/);
+    assert.match(result, /Current Marathon Start weight : 73\.0 kg ↓/);
+    assert.equal(result.includes('Weight Change:'), false);
+    const lines = result.split('\n');
+    const day0Index = lines.findIndex((line) => line.includes('Day 0 - Marathon Starts'));
+    const previousIndex = lines.findIndex((line) => line.includes('Previous Marathon End weight'));
+    const currentIndex = lines.findIndex((line) => line.includes('Current Marathon Start weight'));
+    assert.ok(day0Index >= 0);
+    assert.ok(previousIndex > day0Index);
+    assert.ok(currentIndex > previousIndex);
+  });
+
+  it('does not append marathon weight comparison outside Day 0', () => {
+    const comparison = {
+      previousMarathonEndWeight: 75,
+      currentMarathonDay0Weight: 73,
+      changeLabel: '−2.0 kg ↓ Decrease',
+    };
+    const result = appendMarathonWhatsAppNotice(CURRENT_DAY_CAPTION, '2026-09-02', comparison);
+    assert.equal(result, `${CURRENT_DAY_CAPTION}, Day 1`);
+    assert.equal(result.includes('Previous Marathon End weight'), false);
+  });
+
+  it('does not append marathon weight comparison on Day 0 when data is missing', () => {
+    const result = appendMarathonWhatsAppNotice(CURRENT_DAY_CAPTION, '2026-09-01', null);
+    assert.equal(result, `${CURRENT_DAY_CAPTION}, Day 0 - Marathon Starts`);
+    assert.equal(result.includes('Previous Marathon End weight'), false);
+  });
 });

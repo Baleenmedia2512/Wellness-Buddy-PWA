@@ -9,7 +9,7 @@ import { Share } from '@capacitor/share';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
 import ReportDateRangeFilter from '../../../shared/components/common/ReportDateRangeFilter';
 import { ACTIVITY_REPORT_DATE_RANGES, formatCustomRangeLabel } from '../../../shared/domain/reportDateRanges';
-import { fetchHasTeamMembers } from '../../team/services/teamSearchService';
+import { fetchHasTeamMembers, invalidateHasTeamMembersCache } from '../../team/services/teamSearchService';
 import { TEAM_SCOPES, TEAM_SCOPE_OPTIONS } from '../../reports/utils/reportFilters';
 
 const DEFAULT_PAGE_SIZE = 10;
@@ -79,7 +79,7 @@ const ActivityBadge = ({ activity, count, onClick, isSelected }) => {
 const display = (val) => (!val || val === 'N/A') ? '—' : val;
 
 // Main Component
-const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 }) => {
+const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0, teamSearchRefreshKey = 0 }) => {
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const [exportLoading, setExportLoading] = useState(false);
@@ -159,6 +159,9 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
       return undefined;
     }
     setRoleReady(false);
+    if (teamSearchRefreshKey > 0) {
+      invalidateHasTeamMembersCache(user.id);
+    }
     fetchHasTeamMembers(user.id)
       .then((hasTeam) => {
         if (!cancelled) {
@@ -173,7 +176,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
         }
       });
     return () => { cancelled = true; };
-  }, [user?.id, userRole]);
+  }, [user?.id, userRole, teamSearchRefreshKey]);
 
   const buildReportParams = useCallback((activityType, extra = {}) => {
     const params = new URLSearchParams({
