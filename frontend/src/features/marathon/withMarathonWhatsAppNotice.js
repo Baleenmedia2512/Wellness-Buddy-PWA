@@ -43,6 +43,53 @@ export function resolveMarathonTimezoneSource(timezoneSource) {
 }
 
 /**
+ * Client business date for marathon UI (profile + share), honouring test override.
+ * @param {unknown} timezoneSource
+ * @returns {string}
+ */
+export function getClientMarathonBusinessYmd(timezoneSource) {
+  const tz = resolveMarathonTimezoneSource(timezoneSource);
+  const liveToday = todayBusinessDate(tz, new Date());
+  const stored = storage.get(MARATHON_TEST_DATE_STORAGE_KEY);
+  return resolveMarathonToday(liveToday, stored);
+}
+
+/**
+ * Load marathon Day 0 comparison for profile using the same calendar as share.
+ * @param {object} [options]
+ * @param {string|number|null} [options.userId]
+ * @param {unknown} [options.timezoneSource]
+ * @param {object|null} [options.fromProfile]
+ * @returns {Promise<object|null>}
+ */
+export async function loadProfileMarathonWeightComparison({
+  userId = null,
+  timezoneSource,
+  fromProfile = null,
+} = {}) {
+  const ymd = getClientMarathonBusinessYmd(timezoneSource);
+  const state = getMarathonCalendarState(ymd);
+  if (!state.inMarathon || state.marathonDay == null) {
+    return fromProfile;
+  }
+
+  if (fromProfile) {
+    return fromProfile;
+  }
+
+  if (userId) {
+    try {
+      const fetched = await refreshMarathonWeightComparisonCache(userId, { todayYmd: ymd });
+      if (fetched) return fetched;
+    } catch {
+      /* profile must stay usable */
+    }
+  }
+
+  return { partial: true };
+}
+
+/**
  * @param {unknown} user
  * @returns {object|null}
  */
@@ -111,7 +158,7 @@ export async function ensureMarathonWeightComparisonForShare({
   const stored = storage.get(MARATHON_TEST_DATE_STORAGE_KEY);
   const ymd = resolveMarathonToday(liveToday, stored);
   const state = getMarathonCalendarState(ymd);
-  if (!state.inMarathon || state.marathonDay !== 0) {
+  if (!state.inMarathon || state.marathonDay == null) {
     return comparison;
   }
 

@@ -65,14 +65,35 @@ function formatYmdParts(year, month, day) {
 }
 
 /**
- * Previous marathon Day 10 for a Marathon 1 Day 0 (1st of month).
+ * Calendar day-of-month for Marathon N Day 10 (last day of that marathon).
+ * @param {number} marathonNumber 1 or 2
+ * @returns {number}
+ */
+function marathonEndCalendarDay(marathonNumber) {
+  const startDay = MARATHON_START_DAYS_OF_MONTH[marathonNumber - 1];
+  return startDay + MARATHON_LAST_DAY_INDEX;
+}
+
+/**
+ * Previous marathon end date for Marathon 1 (Day 10 of prior month's Marathon 1).
  * @param {{ year: number, month: number }} parts
  * @returns {string}
  */
-function previousMarathonDay10FromMonthStart(parts) {
+function previousMarathon1EndYmd(parts) {
+  const endDay = marathonEndCalendarDay(1);
   const { year, month } = parts;
-  if (month === 1) return formatYmdParts(year - 1, 12, 25);
-  return formatYmdParts(year, month - 1, 25);
+  if (month === 1) return formatYmdParts(year - 1, 12, endDay);
+  return formatYmdParts(year, month - 1, endDay);
+}
+
+/**
+ * Previous marathon end date for Marathon 2 (Day 10 of same month's Marathon 2).
+ * @param {{ year: number, month: number }} parts
+ * @returns {string}
+ */
+function previousMarathon2EndYmd(parts) {
+  const endDay = marathonEndCalendarDay(2);
+  return formatYmdParts(parts.year, parts.month, endDay);
 }
 
 /**
@@ -220,25 +241,30 @@ export function getDetoxReminder(ymd) {
  */
 
 /**
- * Resolve calendar dates for marathon weight comparison on Marathon Day 0 only.
- * Returns null on every other day (including Day -1 / outside marathon).
+ * Resolve calendar dates for marathon weight comparison during the active marathon.
+ * Returns null outside Day 0–10 or in the gap between monthly marathons.
+ *
+ * Marathon 1 (starts 1st): previous end = prior month Day 10 (11th).
+ * Marathon 2 (starts 15th): previous end = same month Day 10 (25th).
  *
  * @param {unknown} ymd YYYY-MM-DD
  * @returns {MarathonWeightComparisonDates|null}
  */
 export function getMarathonWeightComparisonDates(ymd) {
   const state = getMarathonCalendarState(ymd);
-  if (!state.inMarathon || state.marathonDay !== 0) return null;
+  if (!state.inMarathon || state.marathonDay == null) return null;
 
   const parts = parseYmdParts(ymd);
   if (parts == null) return null;
 
+  const startDay = MARATHON_START_DAYS_OF_MONTH[state.marathonNumber - 1];
+  const currentDay0Ymd = formatYmdParts(parts.year, parts.month, startDay);
   const previousDay10Ymd = state.marathonNumber === 1
-    ? previousMarathonDay10FromMonthStart(parts)
-    : formatYmdParts(parts.year, parts.month, 11);
+    ? previousMarathon1EndYmd(parts)
+    : previousMarathon2EndYmd(parts);
 
   return {
-    currentDay0Ymd: ymd,
+    currentDay0Ymd,
     previousDay10Ymd,
     marathonNumber: state.marathonNumber,
   };

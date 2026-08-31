@@ -13,45 +13,75 @@ import {
 } from '../marathonWeightComparison.js';
 
 describe('getMarathonWeightComparisonDates', () => {
-  it('returns null outside Marathon Day 0', () => {
-    assert.equal(getMarathonWeightComparisonDates('2026-08-02'), null);
-    assert.equal(getMarathonWeightComparisonDates('2026-08-11'), null);
+  it('returns null outside marathon windows', () => {
+    assert.equal(getMarathonWeightComparisonDates('2026-08-12'), null);
     assert.equal(getMarathonWeightComparisonDates('2026-08-14'), null);
     assert.equal(getMarathonWeightComparisonDates('2026-08-31'), null);
   });
 
-  it('maps Marathon 1 Day 0 to previous month Day 10', () => {
+  it('maps Marathon 1 Day 0 to previous month Day 10 (11th)', () => {
     assert.deepEqual(getMarathonWeightComparisonDates('2026-08-01'), {
       currentDay0Ymd: '2026-08-01',
-      previousDay10Ymd: '2026-07-25',
+      previousDay10Ymd: '2026-07-11',
       marathonNumber: 1,
     });
     assert.deepEqual(getMarathonWeightComparisonDates('2026-09-01'), {
       currentDay0Ymd: '2026-09-01',
-      previousDay10Ymd: '2026-08-25',
+      previousDay10Ymd: '2026-08-11',
       marathonNumber: 1,
     });
     assert.deepEqual(getMarathonWeightComparisonDates('2026-03-01'), {
       currentDay0Ymd: '2026-03-01',
-      previousDay10Ymd: '2026-02-25',
+      previousDay10Ymd: '2026-02-11',
       marathonNumber: 1,
     });
     assert.deepEqual(getMarathonWeightComparisonDates('2026-01-01'), {
       currentDay0Ymd: '2026-01-01',
-      previousDay10Ymd: '2025-12-25',
+      previousDay10Ymd: '2025-12-11',
       marathonNumber: 1,
     });
   });
 
-  it('maps Marathon 2 Day 0 to Day 10 of the same month', () => {
+  it('keeps Marathon 1 anchors through Day 10', () => {
+    assert.deepEqual(getMarathonWeightComparisonDates('2026-08-05'), {
+      currentDay0Ymd: '2026-08-01',
+      previousDay10Ymd: '2026-07-11',
+      marathonNumber: 1,
+    });
+    assert.deepEqual(getMarathonWeightComparisonDates('2026-08-11'), {
+      currentDay0Ymd: '2026-08-01',
+      previousDay10Ymd: '2026-07-11',
+      marathonNumber: 1,
+    });
+  });
+
+  it('maps Marathon 2 Day 0 to same month Day 10 (25th)', () => {
     assert.deepEqual(getMarathonWeightComparisonDates('2026-08-15'), {
       currentDay0Ymd: '2026-08-15',
-      previousDay10Ymd: '2026-08-11',
+      previousDay10Ymd: '2026-08-25',
+      marathonNumber: 2,
+    });
+    assert.deepEqual(getMarathonWeightComparisonDates('2026-09-15'), {
+      currentDay0Ymd: '2026-09-15',
+      previousDay10Ymd: '2026-09-25',
       marathonNumber: 2,
     });
     assert.deepEqual(getMarathonWeightComparisonDates('2026-02-15'), {
       currentDay0Ymd: '2026-02-15',
-      previousDay10Ymd: '2026-02-11',
+      previousDay10Ymd: '2026-02-25',
+      marathonNumber: 2,
+    });
+  });
+
+  it('keeps Marathon 2 anchors through Day 10 without mixing Marathon 1', () => {
+    assert.deepEqual(getMarathonWeightComparisonDates('2026-08-20'), {
+      currentDay0Ymd: '2026-08-15',
+      previousDay10Ymd: '2026-08-25',
+      marathonNumber: 2,
+    });
+    assert.deepEqual(getMarathonWeightComparisonDates('2026-08-25'), {
+      currentDay0Ymd: '2026-08-15',
+      previousDay10Ymd: '2026-08-25',
       marathonNumber: 2,
     });
   });

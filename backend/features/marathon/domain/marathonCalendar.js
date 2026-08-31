@@ -27,13 +27,33 @@ function formatYmdParts(year, month, day) {
 }
 
 /**
+ * Calendar day-of-month for Marathon N Day 10 (last day of that marathon).
+ * @param {number} marathonNumber 1 or 2
+ * @returns {number}
+ */
+function marathonEndCalendarDay(marathonNumber) {
+  const startDay = MARATHON_START_DAYS_OF_MONTH[marathonNumber - 1];
+  return startDay + MARATHON_LAST_DAY_INDEX;
+}
+
+/**
  * @param {{ year: number, month: number }} parts
  * @returns {string}
  */
-function previousMarathonDay10FromMonthStart(parts) {
+function previousMarathon1EndYmd(parts) {
+  const endDay = marathonEndCalendarDay(1);
   const { year, month } = parts;
-  if (month === 1) return formatYmdParts(year - 1, 12, 25);
-  return formatYmdParts(year, month - 1, 25);
+  if (month === 1) return formatYmdParts(year - 1, 12, endDay);
+  return formatYmdParts(year, month - 1, endDay);
+}
+
+/**
+ * @param {{ year: number, month: number }} parts
+ * @returns {string}
+ */
+function previousMarathon2EndYmd(parts) {
+  const endDay = marathonEndCalendarDay(2);
+  return formatYmdParts(parts.year, parts.month, endDay);
 }
 
 /**
@@ -92,17 +112,19 @@ export function getMarathonCalendarState(ymd) {
  */
 export function getMarathonWeightComparisonDates(ymd) {
   const state = getMarathonCalendarState(ymd);
-  if (!state.inMarathon || state.marathonDay !== 0) return null;
+  if (!state.inMarathon || state.marathonDay == null) return null;
 
   const parts = parseYmdParts(ymd);
   if (parts == null) return null;
 
+  const startDay = MARATHON_START_DAYS_OF_MONTH[state.marathonNumber - 1];
+  const currentDay0Ymd = formatYmdParts(parts.year, parts.month, startDay);
   const previousDay10Ymd = state.marathonNumber === 1
-    ? previousMarathonDay10FromMonthStart(parts)
-    : formatYmdParts(parts.year, parts.month, 11);
+    ? previousMarathon1EndYmd(parts)
+    : previousMarathon2EndYmd(parts);
 
   return {
-    currentDay0Ymd: ymd,
+    currentDay0Ymd,
     previousDay10Ymd,
     marathonNumber: state.marathonNumber,
   };

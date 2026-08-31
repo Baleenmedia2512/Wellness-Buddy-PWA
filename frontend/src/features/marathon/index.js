@@ -20,6 +20,8 @@ export {
 export {
   withMarathonWhatsAppNotice,
   ensureMarathonWeightComparisonForShare,
+  getClientMarathonBusinessYmd,
+  loadProfileMarathonWeightComparison,
   resolveMarathonTimezoneSource,
 } from './withMarathonWhatsAppNotice.js';
 export {
