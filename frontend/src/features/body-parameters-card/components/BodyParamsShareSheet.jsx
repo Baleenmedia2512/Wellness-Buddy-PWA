@@ -1,11 +1,8 @@
 /**
  * BodyParamsShareSheet.jsx
  *
- * Invisible component — renders the card off-screen for html2canvas,
- * then immediately fires WhatsApp share. No modal, no buttons shown.
- *
- * Accepts `preCapCard` (form data before API save completes) so html2canvas
- * runs IN PARALLEL with the API call — making share feel instant.
+ * Invisible: off-screen card for html2canvas, then native share.
+ * Pre-captures while API saves; reuses image when capture key matches.
  */
 import React, { useRef, useEffect, useCallback } from 'react';
 import BodyParamsCardPreview from './BodyParamsCardPreview.jsx';
@@ -15,157 +12,122 @@ import {
   shareTextViaWhatsApp,
 } from '../../../shared/utils/shareUtils.js';
 import { buildShareCaptionForImage } from '../domain/platform-store.rules.js';
+import { getShareCardCaptureKey } from '../domain/shareCardCaptureKey.js';
+import { mergeDisplayCard } from '../domain/mergeDisplayCard.js';
+import {
+  setShareCapturePromise,
+  setShareCaptureResult,
+  getShareCaptureForKey,
+  clearShareCaptureCache,
+} from '../utils/bcmShareCaptureCache.js';
 import { debugLog } from '../../../shared/utils/logger.js';
 
 const CAPTURE_OPTS = { scale: 1.25, quality: 0.8, immediate: true };
-
-/** Wait two animation frames so the off-screen card is painted before capture. */
-const waitForPaint = () => new Promise((resolve) => {
-  requestAnimationFrame(() => requestAnimationFrame(resolve));
+const waitForPaint = () => new Promise((r) => {
+  requestAnimationFrame(() => requestAnimationFrame(r));
 });
 
-/**
- * @param {{ isOpen, onClose, card, shareUrl, preCapCard, previousCard }} props
- */
-const BodyParamsShareSheet = ({ isOpen, onClose, card, preCapCard, previousCard = null }) => {
-  const cardRef           = useRef(null);
-  const preCapRef         = useRef(null);
-  const capturePromiseRef = useRef(null);
-  const captureGenRef     = useRef(0);
-  const capturedWithPrev  = useRef(false);
-  const capturedKeyRef    = useRef('');
-  const firedRef          = useRef(false);
+const BodyParamsShareSheet = ({
+  isOpen, onClose, card, preCapCard, previousCard = null,
+  preparedImageUrl = null, preparedImageKey = null,
+}) => {
+  const cardRef = useRef(null);
+  const firedRef = useRef(false);
+  const captureGenRef = useRef(0);
 
-  const typedVenue = String(preCapCard?.locationName || '').trim();
-  const savedVenue = String(card?.locationName || '').trim();
-  const venue = savedVenue || typedVenue;
-
-  // Saved card is source of truth after persist; pre-cap fills in until then.
-  // Health issues: prefer non-empty list (pre-cap may race before API; API may
-  // return [] if column missing — never wipe a non-empty form selection).
-  const preIssues = Array.isArray(preCapCard?.recoveredHealthIssues)
-    ? preCapCard.recoveredHealthIssues.filter(Boolean)
-    : [];
-  const apiIssues = Array.isArray(card?.recoveredHealthIssues)
-    ? card.recoveredHealthIssues.filter(Boolean)
-    : [];
-  const recoveredHealthIssues = apiIssues.length > 0 ? apiIssues : preIssues;
-
-  const displayCard = card
-    ? {
-        ...preCapCard,
-        ...card,
-        locationName: venue,
-        creatorName: card.creatorName || preCapCard?.creatorName || '',
-        recoveredHealthIssues,
-      }
-    : preCapCard
-      ? { ...preCapCard, recoveredHealthIssues }
-      : null;
-
+  const displayCard = mergeDisplayCard(card, preCapCard);
   const captureKey = displayCard
-    ? [
-        displayCard.locationName,
-        displayCard.name,
-        displayCard.weightKg,
-        displayCard.bmi,
-        displayCard.fatPercent,
-        displayCard.visceralFat,
-        displayCard.bmr,
-        recoveredHealthIssues.join(','),
-        previousCard?.id,
-      ].map((v) => (v == null ? '' : String(v))).join('\u0001')
+    ? getShareCardCaptureKey(displayCard, card ? previousCard : null)
     : '';
 
-  const doShare = useCallback(async () => {
+  const doShare = useCallback(async (dataUrl) => {
     const userName = card?.name || preCapCard?.name || '';
     const coachName = card?.creatorName || card?.coachName || preCapCard?.creatorName || '';
+    const venue = String(card?.locationName || preCapCard?.locationName || '').trim();
     const caption = buildShareCaptionForImage(userName, venue, coachName);
     try {
-      const dataUrl = preCapRef.current;
       if (dataUrl) {
         const result = await shareViaCapacitorAPI(dataUrl, {
-          title:    `${card?.name || preCapCard?.name || 'Body'} Parameters`,
-          text:     caption,
+          title: `${card?.name || preCapCard?.name || 'Body'} Parameters`,
+          text: caption,
           fileName: `wellness-body-params-${Date.now()}.jpg`,
         });
-        if (!result?.ok && !result?.dismissed) {
-          await shareTextViaWhatsApp(caption);
-        }
+        if (!result?.ok && !result?.dismissed) await shareTextViaWhatsApp(caption);
       } else {
         await shareTextViaWhatsApp(caption);
       }
-      debugLog('✅ [BodyParamsShare] Auto-share completed');
+      debugLog('✅ [BodyParamsShare] share completed', { hadImage: Boolean(dataUrl) });
     } catch {
-      // User cancelled share sheet — that's fine.
+      /* user cancelled */
     } finally {
       onClose();
     }
-  }, [card, preCapCard, venue, onClose]);
+  }, [card, preCapCard, onClose]);
 
-  // Recapture whenever Venue (or other painted fields) change. Do not reuse a
-  // stale pre-capture from an earlier venue / card.
+  // Pre-capture while API runs (preCapCard only — no previousCard yet).
   useEffect(() => {
-    if (!displayCard || !captureKey) return;
-    if (capturedKeyRef.current === captureKey && preCapRef.current) return;
-
-    const needsPreviousLayout = Boolean(previousCard);
+    if (!displayCard || !captureKey || card) return undefined;
     const gen = ++captureGenRef.current;
-    preCapRef.current = null;
-    capturedWithPrev.current = false;
-    capturePromiseRef.current = (async () => {
+    const run = (async () => {
       await waitForPaint();
       if (gen !== captureGenRef.current || !cardRef.current) return null;
+      const t0 = performance.now();
       const dataUrl = await precaptureShareImage(cardRef.current, CAPTURE_OPTS);
+      debugLog('⚡ [BodyParamsShare] pre-capture', { ms: Math.round(performance.now() - t0), ok: Boolean(dataUrl) });
       if (gen !== captureGenRef.current) return null;
-      preCapRef.current = dataUrl;
-      capturedKeyRef.current = captureKey;
-      capturedWithPrev.current = needsPreviousLayout;
-      debugLog('⚡ [BodyParamsShare] Pre-capture ready', { venue: displayCard.locationName });
+      if (dataUrl) setShareCaptureResult(captureKey, dataUrl);
       return dataUrl;
     })();
-  }, [captureKey, displayCard, previousCard]);
+    setShareCapturePromise(captureKey, run);
+    return undefined;
+  }, [captureKey, displayCard, card]);
 
-  // Share only after the capture for the current Venue is ready.
+  // Share when saved card is ready — reuse pre-cap if key matches.
   useEffect(() => {
-    if (!isOpen || !card) return;
+    if (!isOpen || !card || !captureKey) return undefined;
     firedRef.current = false;
     let cancelled = false;
 
     const run = async () => {
-      if (capturePromiseRef.current) {
-        await capturePromiseRef.current;
-      }
-      if (!preCapRef.current && cardRef.current) {
-        preCapRef.current = await precaptureShareImage(cardRef.current, CAPTURE_OPTS);
+      const t0 = performance.now();
+      let dataUrl = (preparedImageUrl && preparedImageKey === captureKey)
+        ? preparedImageUrl
+        : await getShareCaptureForKey(captureKey);
+
+      if (!dataUrl && cardRef.current) {
+        await waitForPaint();
+        if (cancelled) return;
+        const tCap = performance.now();
+        dataUrl = await precaptureShareImage(cardRef.current, CAPTURE_OPTS);
+        debugLog('⚡ [BodyParamsShare] final capture', { ms: Math.round(performance.now() - tCap), ok: Boolean(dataUrl) });
+        if (dataUrl) setShareCaptureResult(captureKey, dataUrl);
+      } else if (dataUrl) {
+        debugLog('⚡ [BodyParamsShare] reused pre-capture', { ms: Math.round(performance.now() - t0) });
       }
 
       if (cancelled || firedRef.current) return;
       firedRef.current = true;
-      await doShare();
+      debugLog('⏱️ [BodyParamsShare] ready→sheet', { ms: Math.round(performance.now() - t0) });
+      await doShare(dataUrl);
     };
 
     run();
     return () => { cancelled = true; };
-  }, [isOpen, card, captureKey, doShare]);
+  }, [isOpen, card, captureKey, preparedImageUrl, preparedImageKey, doShare]);
 
-  // Reset capture state when closed
   useEffect(() => {
     if (!isOpen && !preCapCard) {
       captureGenRef.current += 1;
-      capturePromiseRef.current = null;
-      preCapRef.current = null;
-      capturedWithPrev.current = false;
-      capturedKeyRef.current = '';
+      clearShareCaptureCache();
+      firedRef.current = false;
     }
   }, [isOpen, preCapCard]);
 
   if (!displayCard) return null;
 
-  // Off-screen card — captured by html2canvas for WhatsApp image share.
   return (
     <div style={{ position: 'fixed', left: -9999, top: -9999, opacity: 0, pointerEvents: 'none' }}>
-      <BodyParamsCardPreview ref={cardRef} card={displayCard} previousCard={previousCard} />
+      <BodyParamsCardPreview ref={cardRef} card={displayCard} previousCard={card ? previousCard : null} />
     </div>
   );
 };

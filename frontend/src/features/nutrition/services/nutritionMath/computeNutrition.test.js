@@ -28,6 +28,18 @@ describe('computeNutrition', () => {
     assert.equal(n.fiber, 4);
   });
 
+  it('scales vitamins and minerals with portion size', () => {
+    const n = computeNutrition({
+      ...per100g,
+      phosphorus: 1230,
+      calcium: 40,
+    }, 50);
+    assert.equal(n.phosphorus, 615);
+    assert.equal(n.calcium, 20);
+    const doubled = computeNutrition({ ...per100g, phosphorus: 1230 }, 40);
+    assert.equal(doubled.phosphorus, 492);
+  });
+
   it('preserves glycemic_index without scaling (portion edit)', () => {
     const at100 = computeNutrition(per100g, 100);
     const at600 = computeNutrition(per100g, 600);

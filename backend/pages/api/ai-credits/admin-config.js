@@ -24,6 +24,7 @@ export default async function handler(req, res) {
       requesterEmail: req.body?.requesterEmail,
       dailyAiCredits: req.body?.dailyAiCredits,
       aiModeEnabled: req.body?.aiModeEnabled,
+      availabilityWindows: req.body?.availabilityWindows,
     }));
   }
   return methodNotAllowed(res);

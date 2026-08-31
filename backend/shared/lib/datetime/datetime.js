@@ -257,6 +257,35 @@ export function filterRowsByCalendarDateRange(
 }
 
 /**
+ * Keep rows whose timestamp column falls on or before `dateYmd` in `timezoneIana`.
+ *
+ * @param {object[]} rows
+ * @param {string} dateYmd - `YYYY-MM-DD` (inclusive upper bound)
+ * @param {string} [timezoneIana=IANA_IST]
+ * @param {string} [column='CreatedAt']
+ * @returns {object[]}
+ */
+export function filterRowsOnOrBeforeCalendarDay(
+  rows,
+  dateYmd,
+  timezoneIana = IANA_IST,
+  column = 'CreatedAt',
+) {
+  if (!Array.isArray(rows) || rows.length === 0) return [];
+  return rows.filter((row) => {
+    const raw = row?.[column];
+    if (raw == null) return false;
+    try {
+      const utcIso = normalizeStoredTimestampToUtcIso(raw, IANA_IST);
+      const ymd = timestampToCalendarYmd(utcIso, timezoneIana);
+      return ymd <= dateYmd;
+    } catch {
+      return false;
+    }
+  });
+}
+
+/**
  * Wall-clock HH:mm:ss for a stored UTC timestamp in a business timezone.
  *
  * @param {string|Date} utcTimestamp

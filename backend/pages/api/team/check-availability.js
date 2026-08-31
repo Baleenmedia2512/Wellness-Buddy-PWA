@@ -21,14 +21,14 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, authorization, cache-control, pragma');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, authorization, cache-control, pragma, X-App-Version, X-App-Version-Code, X-App-Platform');
     res.status(200).end();
     return;
   }
 
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, authorization, cache-control, pragma');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, authorization, cache-control, pragma, X-App-Version, X-App-Version-Code, X-App-Platform');
 
   // Only allow GET requests
   if (req.method !== 'GET') {
@@ -41,33 +41,25 @@ export default async function handler(req, res) {
 
   try {
     // Get Team ID from query parameter
-    const { teamId } = req.query;
+    const { teamId: rawTeamId, email, userId } = req.query;
+    const teamId = String(rawTeamId || '').trim().toUpperCase();
 
-    // Validate Team ID format (10 alphanumeric characters)
-    if (!teamId || teamId.length !== 10) {
+    if (!teamId || teamId.length < 4 || teamId.length > 100 || !/^[A-Z0-9]+$/.test(teamId)) {
       res.status(400).json({
         success: false,
-        error: 'Team ID must be exactly 10 characters'
+        error: 'Community ID must be 4–100 letters or numbers'
       });
       return;
     }
 
-    const teamIdPattern = /^[A-Z0-9]{10}$/;
-    if (!teamIdPattern.test(teamId)) {
-      res.status(400).json({
-        success: false,
-        error: 'Invalid Team ID format. Use only uppercase letters and numbers'
-      });
-      return;
-    }
+    const uid = userId != null && String(userId).trim() !== ''
+      ? Number(userId)
+      : null;
 
-    // Get email from query parameter
-    const { email } = req.query;
-    
-    if (!email) {
+    if (!email && !(uid && Number.isFinite(uid))) {
       res.status(400).json({
         success: false,
-        error: 'Email is required'
+        error: 'Email or userId is required'
       });
       return;
     }
@@ -75,12 +67,16 @@ export default async function handler(req, res) {
     // Connect to Supabase
     const supabase = getSupabaseClient();
 
-    // Get current user's UserId
-    const { data: currentUserRows, error: userError } = await supabase
+    // Get current user's UserId and existing TeamId
+    let userQuery = supabase
       .from('team_table')
-      .select('UserId')
-      .eq('Email', email)
-      .limit(1);
+      .select('UserId, TeamId');
+    if (uid && Number.isFinite(uid)) {
+      userQuery = userQuery.eq('UserId', uid);
+    } else {
+      userQuery = userQuery.eq('Email', email);
+    }
+    const { data: currentUserRows, error: userError } = await userQuery.limit(1);
 
     if (userError) throw userError;
 
@@ -94,6 +90,16 @@ export default async function handler(req, res) {
 
     const currentUserId = currentUserRows[0].UserId;
 
+    if (currentUserRows[0].TeamId === teamId) {
+      res.status(200).json({
+        success: true,
+        status: 'taken-by-you',
+        teamId: teamId,
+        message: 'You already own this Team ID'
+      });
+      return;
+    }
+
     // Check if Team ID exists in coach_teams_table (only active)
     const { data: teamRows, error: teamError } = await supabase
       .from('coach_teams_table')
@@ -103,37 +109,63 @@ export default async function handler(req, res) {
 
     if (teamError) throw teamError;
 
-    // Also check if TeamId exists in team_table but inactive
+    // Other users who already claimed this TeamId (pending OTP or active leads)
     const { data: teamTableCheck, error: teamTableError } = await supabase
       .from('team_table')
       .select('UserId')
-      .eq('TeamId', teamId);
+      .eq('TeamId', teamId)
+      .neq('UserId', currentUserId);
 
     if (teamTableError) throw teamTableError;
 
+    const otherClaimants = teamTableCheck || [];
+
     if (!teamRows || teamRows.length === 0) {
-      // Check if it's truly new or just inactive
-      if (!teamTableCheck || teamTableCheck.length === 0) {
-        // Completely new Team ID
+      // No active coach_teams row — infer seats from pending TeamId claims
+      if (otherClaimants.length === 0) {
         res.status(200).json({
           success: true,
           status: 'new',
           teamId: teamId,
           coachCount: 0,
-          message: 'This is a new Team ID - you will be the first coach'
-        });
-        return;
-      } else {
-        // Exists in team_table but inactive in coach_teams_table
-        res.status(200).json({
-          success: true,
-          status: 'new',
-          teamId: teamId,
-          coachCount: 0,
-          message: 'This Team ID is available - you can reactivate it'
+          seat: 'sponsor',
+          message: 'This is a new Team ID - you will be the Sponsor'
         });
         return;
       }
+
+      if (otherClaimants.length === 1) {
+        const { data: coachRows, error: coachError } = await supabase
+          .from('team_table')
+          .select('UserName, Email')
+          .eq('UserId', otherClaimants[0].UserId)
+          .limit(1);
+
+        if (coachError) throw coachError;
+
+        const coach = coachRows?.[0];
+        res.status(200).json({
+          success: true,
+          status: 'available',
+          teamId: teamId,
+          coachCount: 1,
+          seat: 'co-sponsor',
+          existingCoach: coach
+            ? { name: coach.UserName, email: coach.Email }
+            : null,
+          message: 'This Team ID has 1 lead - you can join as Co-Sponsor'
+        });
+        return;
+      }
+
+      res.status(200).json({
+        success: true,
+        status: 'taken',
+        teamId: teamId,
+        coachCount: 2,
+        message: 'This Team ID is full (Sponsor and Co-Sponsor already assigned)'
+      });
+      return;
     }
 
     const team = teamRows[0];
@@ -170,7 +202,8 @@ export default async function handler(req, res) {
           name: coach.UserName,
           email: coach.Email
         },
-        message: 'This Team ID has 1 coach - you can join as co-coach'
+        message: 'This Team ID has 1 lead - you can join as Co-Sponsor',
+        seat: 'co-sponsor',
       });
       return;
     }
@@ -181,7 +214,7 @@ export default async function handler(req, res) {
       status: 'taken',
       teamId: teamId,
       coachCount: 2,
-      message: 'This Team ID is full (2 coaches already)'
+      message: 'This Team ID is full (Sponsor and Co-Sponsor already assigned)'
     });
     return;
 

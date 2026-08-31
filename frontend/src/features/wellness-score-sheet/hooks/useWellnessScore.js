@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { getUserId } from '../../../shared/services/userIdentity';
+import { parseNumericDbUserId } from '../../../shared/services/numericDbUserId';
 import {
   getLatestActivityLogId,
   getActivityLogDebug,
@@ -48,7 +49,9 @@ export function useWellnessScore({ user, apiBaseUrl, date, nutritionRefreshKey =
   // Drop the previous pill's total during render (effects run too late and flash Today ↔ Yesterday).
   if (date !== dataDate) {
     setDataDate(date);
-    const uid = user?.id || userIdRef.current;
+    const uid = parseNumericDbUserId(user?.id)
+      || parseNumericDbUserId(user?.UserId)
+      || userIdRef.current;
     const cached = uid ? cachedScoreForDate(uid, date) : null;
     setData(cached);
     setError(null);
@@ -64,7 +67,10 @@ export function useWellnessScore({ user, apiBaseUrl, date, nutritionRefreshKey =
 
     const requestId = ++requestIdRef.current;
     try {
-      const userId = user.id || userIdRef.current || (await getUserId(user));
+      const userId = parseNumericDbUserId(user.id)
+        || parseNumericDbUserId(user.UserId)
+        || userIdRef.current
+        || (await getUserId(user));
       if (!userId) throw new Error('Unable to resolve user');
       if (requestId !== requestIdRef.current) return;
       userIdRef.current = userId;

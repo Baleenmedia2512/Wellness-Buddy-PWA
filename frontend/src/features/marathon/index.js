@@ -3,6 +3,10 @@ export {
   getMarathonCalendarState,
   getDetoxReminder,
   resolveMarathonToday,
+  getMarathonWeightComparisonDates,
+  getMarathonGapComparisonDates,
+  listMarathonDayYmds,
+  addCalendarDaysYmd,
   MARATHON_START_DAYS_OF_MONTH,
   MARATHON_LAST_DAY_INDEX,
   DETOX_MARATHON_DAYS,
@@ -16,4 +20,24 @@ export {
   appendMarathonWhatsAppNotice,
   MARATHON_WHATSAPP_ADVANCE_SPECIALS,
 } from './domain/marathonShareCaption.js';
-export { withMarathonWhatsAppNotice } from './withMarathonWhatsAppNotice.js';
+export {
+  withMarathonWhatsAppNotice,
+  ensureMarathonWeightComparisonForShare,
+  getClientMarathonBusinessYmd,
+  loadProfileMarathonWeightComparison,
+  resolveMarathonTimezoneSource,
+} from './withMarathonWhatsAppNotice.js';
+export {
+  buildMarathonWeightComparison,
+  buildMarathonRunningProgress,
+  buildMarathonGapProgress,
+  formatMarathonDayComparisonLine,
+  formatMarathonWeightChangeLabel,
+  formatMarathonWeightWhatsAppNotice,
+  isValidMarathonWeightKg,
+} from './domain/marathonWeightComparison.js';
+export {
+  setMarathonWeightComparisonCache,
+  getMarathonWeightComparisonFromCache,
+  syncMarathonWeightComparisonFromProfile,
+} from './marathonWeightComparisonCache.js';

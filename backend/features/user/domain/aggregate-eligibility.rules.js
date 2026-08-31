@@ -4,6 +4,8 @@
  * for production test plans.
  */
 
+import { isDeveloperBotName } from './developerBot.rules.js';
+
 export const DEVELOPER_ROLE = 'developer';
 
 export function isProductionEnvironment() {
@@ -92,12 +94,18 @@ export function sanitizeSponsorCoachLabels(resolved, {
   };
 
   // Only a developer viewing their own profile keeps developer sponsor/coach labels
-  // visible for production test plans. Regular members never see developer labels.
+  // visible for production test plans. Regular members never see developer labels,
+  // except the dedicated onboarding-test bot so testers can confirm sponsor OTP.
   const allowDeveloperLabels = isSelfView && isDeveloperRole(roleFor(memberId));
 
   let out = { ...resolved };
 
-  if (out.sponsorId && isDeveloperRole(roleFor(out.sponsorId)) && !allowDeveloperLabels) {
+  if (
+    out.sponsorId
+    && isDeveloperRole(roleFor(out.sponsorId))
+    && !allowDeveloperLabels
+    && !isDeveloperBotName(out.sponsorName)
+  ) {
     out = { ...out, sponsorId: null, sponsorName: null };
   }
   if (out.idealCoachId && isDeveloperRole(roleFor(out.idealCoachId)) && !allowDeveloperLabels) {

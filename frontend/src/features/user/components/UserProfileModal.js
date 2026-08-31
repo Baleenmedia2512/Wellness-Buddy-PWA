@@ -1,12 +1,12 @@
 // src/features/user/components/UserProfileModal.js
-// Modal: view/edit profile (name, height, phone, BMR, diet, picture).
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+// Modal: view/edit profile (name, height, phone, BMR, diet).
+// Avatar is Centre transformation photo (display only).
+import React, { useCallback, useEffect, useState } from 'react';
 import { getUserContext } from '../../../shared/services/userIdentity';
 import useProfileForm from '../hooks/useProfileForm';
-import useImageCropper from '../hooks/useImageCropper';
-import useFaceDetection from '../hooks/useFaceDetection';
 import { fetchProfile, saveProfile } from '../services/profileService';
-import CropOverlay from './shared/CropOverlay';
+import { syncMarathonWeightComparisonFromProfile } from '../../marathon/marathonWeightComparisonCache';
+import { loadProfileMarathonWeightComparison } from '../../marathon';
 import UserProfileHeader from './profile/UserProfileHeader';
 import UserProfileBody from './profile/UserProfileBody';
 import UserProfileFooter from './profile/UserProfileFooter';
@@ -14,29 +14,15 @@ import UserProfileFooter from './profile/UserProfileFooter';
 const UserProfileModal = ({ isOpen, onClose, user, userRole = 'user', onProfileUpdate }) => {
   const form = useProfileForm();
   const [profileImagePreview, setProfileImagePreview] = useState(null);
-  const [profileImage, setProfileImage] = useState(null);
   const [latestWeight, setLatestWeight] = useState(null);
   const [initialWeight, setInitialWeight] = useState(null);
   const [initialWeightDate, setInitialWeightDate] = useState(null);
+  const [marathonWeightComparison, setMarathonWeightComparison] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
   const [hasSaved, setHasSaved] = useState(false);
-  const face = useFaceDetection();
-  const handleSaveRef = useRef(null);
-
-  const cropper = useImageCropper({
-    onError: setError,
-    onCropped: (img) => {
-      setError('');
-      setProfileImage(img);
-      setProfileImagePreview(img);
-      face.reset();
-      // Accept any photo (no AI face check) — mark ready for auto-save.
-      face.run(img, user?.id ?? null);
-    },
-  });
 
   const loadProfile = useCallback(async () => {
     setIsLoading(true); setError('');
@@ -63,7 +49,23 @@ const UserProfileModal = ({ isOpen, onClose, user, userRole = 'user', onProfileU
         setLatestWeight(data.latestWeight ? parseFloat(data.latestWeight) : null);
         setInitialWeight(data.initialWeight != null ? parseFloat(data.initialWeight) : null);
         setInitialWeightDate(data.initialWeightDate || null);
-        if (data.profileImage) setProfileImagePreview(data.profileImage);
+        const comparisonFromServer = data.marathonWeightComparison || null;
+        setMarathonWeightComparison(comparisonFromServer);
+        syncMarathonWeightComparisonFromProfile(data);
+        void loadProfileMarathonWeightComparison({
+          userId: user?.id,
+          timezoneSource: data.timezone || user,
+          fromProfile: comparisonFromServer,
+        }).then((resolved) => {
+          if (!resolved) return;
+          setMarathonWeightComparison(resolved);
+          syncMarathonWeightComparisonFromProfile({ marathonWeightComparison: resolved });
+        });
+        if (data.profileImage) {
+          setProfileImagePreview(data.profileImage);
+        } else if (data.transformationPhotos?.front) {
+          setProfileImagePreview(data.transformationPhotos.front);
+        }
       }
     } catch (e) { setError(e.message || 'Failed to load profile.'); }
     finally { setIsLoading(false); }
@@ -73,10 +75,8 @@ const UserProfileModal = ({ isOpen, onClose, user, userRole = 'user', onProfileU
   useEffect(() => {
     if (isOpen && user?.email) {
       setSuccessMessage(''); setHasSaved(false); setError('');
-      setProfileImage(null); face.reset();
       loadProfile();
     }
-    if (!isOpen) { face.reset(); }
   // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: listed deps would cause an infinite re-render
   }, [isOpen, user?.email]);
 
@@ -91,7 +91,7 @@ const UserProfileModal = ({ isOpen, onClose, user, userRole = 'user', onProfileU
     try {
       const err = form.validate({ requireDiet: false, maxHeight: 198 });
       if (err) { setError(err); return; }
-      const data = await saveProfile(form.payload(user.email, profileImage ? { profileImage } : {}));
+      const data = await saveProfile(form.payload(user.email, {}));
       onProfileUpdate?.({
         name: form.name,
         height: form.height ? parseFloat(form.height) : null,
@@ -104,16 +104,10 @@ const UserProfileModal = ({ isOpen, onClose, user, userRole = 'user', onProfileU
       if (user?.id) getUserContext(user.id).catch(() => {});
       await loadProfile();
       setSuccessMessage(data.message || 'Profile saved successfully!');
-      setHasSaved(true); setProfileImage(null);
+      setHasSaved(true);
     } catch (e) { setError(e.message || 'Failed to save profile'); }
     finally { setIsSaving(false); }
-  }, [form, profileImage, profileImagePreview, user, loadProfile, onProfileUpdate]);
-
-  handleSaveRef.current = handleSave;
-
-  useEffect(() => {
-    if (face.status === 'face_found' && profileImage) handleSaveRef.current?.();
-  }, [face.status, profileImage]);
+  }, [form, profileImagePreview, user, loadProfile, onProfileUpdate]);
 
   const handleCancel = () => { if (!isSaving) { setError(''); onClose(); } };
 
@@ -125,21 +119,21 @@ const UserProfileModal = ({ isOpen, onClose, user, userRole = 'user', onProfileU
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">
-      {cropper.showCropper && cropper.rawImageSrc && (
-        <CropOverlay {...cropper} onCancel={cropper.cancelCropper} onDone={cropper.apply} zIndex={60} />
-      )}
       <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full max-h-[90vh] overflow-y-auto">
-        <UserProfileHeader user={user} name={form.name} userRole={userRole}
-          profileImagePreview={profileImagePreview} faceStatus={face.status}
-          showRecrop={!!profileImagePreview && !!cropper.rawImageSrc}
-          onPickImage={() => cropper.fileInputRef.current?.click()}
-          onRecrop={cropper.reopenCropper} onClose={handleCancel} isSaving={isSaving} />
-        <input ref={cropper.fileInputRef} type="file" accept="image/*" className="hidden"
-          onChange={(e) => cropper.selectFile(e.target.files?.[0])} />
+        <UserProfileHeader
+          user={user}
+          name={form.name}
+          userRole={userRole}
+          profileImagePreview={profileImagePreview}
+          onClose={handleCancel}
+          isSaving={isSaving}
+        />
         <UserProfileBody isLoading={isLoading} form={form} email={form.email}
           latestWeight={latestWeight} initialWeight={initialWeight}
           initialWeightDate={initialWeightDate}
-          error={error} successMessage={successMessage} />
+          marathonWeightComparison={marathonWeightComparison}
+          error={error} successMessage={successMessage}
+        />
         {!isLoading && (
           <UserProfileFooter isSaving={isSaving} hasSaved={hasSaved} disabled={saveDisabled}
             onCancel={handleCancel} onSave={handleSave} />
