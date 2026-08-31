@@ -19,6 +19,7 @@ export {
 } from './domain/marathonShareCaption.js';
 export {
   withMarathonWhatsAppNotice,
+  ensureMarathonWeightComparisonForShare,
   resolveMarathonTimezoneSource,
 } from './withMarathonWhatsAppNotice.js';
 export {

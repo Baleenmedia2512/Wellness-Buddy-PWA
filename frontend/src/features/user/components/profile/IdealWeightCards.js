@@ -2,7 +2,8 @@
 import React from 'react';
 import { EmojiOrNative } from '../../../../shared/components/icons/EmojiImage';
 import {
-  formatMarathonWeightDirectionArrow,
+  formatMarathonWeightDisplayValue,
+  isValidMarathonWeightKg,
   resolveMarathonWeightDirection,
 } from '../../../marathon/domain/marathonWeightComparison';
 
@@ -32,17 +33,20 @@ function formatInitialWeightDate(value) {
 }
 
 function MarathonWeightProgress({ comparison }) {
-  if (!comparison || comparison.partial) return null;
+  if (!comparison) return null;
 
-  const {
-    previousMarathonEndWeight,
-    currentMarathonDay0Weight,
-    direction: comparisonDirection,
-  } = comparison;
+  const hasPrevious = isValidMarathonWeightKg(comparison.previousMarathonEndWeight);
+  const hasCurrent = isValidMarathonWeightKg(comparison.currentMarathonDay0Weight);
+  if (!comparison.partial && !hasPrevious && !hasCurrent) return null;
 
-  const direction = comparisonDirection
-    || resolveMarathonWeightDirection(previousMarathonEndWeight, currentMarathonDay0Weight);
-  const directionArrow = formatMarathonWeightDirectionArrow(direction);
+  let direction = null;
+  if (hasPrevious && hasCurrent) {
+    direction = comparison.direction
+      || resolveMarathonWeightDirection(
+        comparison.previousMarathonEndWeight,
+        comparison.currentMarathonDay0Weight,
+      );
+  }
 
   return (
     <div className="space-y-2" data-testid="marathon-weight-progress">
@@ -51,14 +55,17 @@ function MarathonWeightProgress({ comparison }) {
         wrapper="bg-indigo-50 border border-indigo-200 text-indigo-600"
         label="Previous Marathon End"
         labelIcon={<EmojiOrNative emoji="🏁" className="w-4 h-4" nativeClassName="text-sm" />}
-        value={`${previousMarathonEndWeight.toFixed(1)} kg`}
+        value={formatMarathonWeightDisplayValue(comparison.previousMarathonEndWeight)}
         valueClass="text-indigo-700"
       />
       <Row
         wrapper="bg-violet-50 border border-violet-200 text-violet-600"
         label="Current Marathon Start"
         labelIcon={<EmojiOrNative emoji="🏃" className="w-4 h-4" nativeClassName="text-sm" />}
-        value={`${currentMarathonDay0Weight.toFixed(1)} kg${directionArrow}`}
+        value={formatMarathonWeightDisplayValue(comparison.currentMarathonDay0Weight, {
+          withDirection: true,
+          direction,
+        })}
         valueClass="text-violet-700"
       />
     </div>

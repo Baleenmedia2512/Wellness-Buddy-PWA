@@ -3,6 +3,9 @@
  * Date resolution lives in marathonCalendar.js; weight lookup is server-side.
  */
 
+/** Shown in profile and WhatsApp when a marathon anchor weight is not logged yet. */
+export const MARATHON_WEIGHT_MISSING_LABEL = '—';
+
 /** @param {unknown} value */
 export function isValidMarathonWeightKg(value) {
   const n = typeof value === 'number' ? value : parseFloat(value);
@@ -83,24 +86,43 @@ export function formatMarathonWeightDirectionArrow(direction) {
 }
 
 /**
+ * @param {unknown} value
+ * @param {{ withDirection?: boolean, direction?: 'increase'|'decrease'|'unchanged'|null }} [options]
+ * @returns {string}
+ */
+export function formatMarathonWeightDisplayValue(value, { withDirection = false, direction = null } = {}) {
+  if (!isValidMarathonWeightKg(value)) return MARATHON_WEIGHT_MISSING_LABEL;
+  const kg = roundMarathonWeightKg(Number(value));
+  const arrow = withDirection && direction ? formatMarathonWeightDirectionArrow(direction) : '';
+  return `${kg.toFixed(1)} kg${arrow}`;
+}
+
+/**
  * @param {object|null|undefined} comparison
  * @returns {string[]}
  */
 export function formatMarathonWeightWhatsAppNoticeLines(comparison) {
   if (!comparison || typeof comparison !== 'object') return [];
-  const previous = comparison.previousMarathonEndWeight;
-  const current = comparison.currentMarathonDay0Weight;
-  if (!isValidMarathonWeightKg(previous) || !isValidMarathonWeightKg(current)) {
-    return [];
+
+  const hasPrevious = isValidMarathonWeightKg(comparison.previousMarathonEndWeight);
+  const hasCurrent = isValidMarathonWeightKg(comparison.currentMarathonDay0Weight);
+
+  if (!comparison.partial && !hasPrevious && !hasCurrent) return [];
+  if (!comparison.partial && !(hasPrevious && hasCurrent)) return [];
+
+  let direction = null;
+  if (hasPrevious && hasCurrent) {
+    const prev = roundMarathonWeightKg(Number(comparison.previousMarathonEndWeight));
+    const cur = roundMarathonWeightKg(Number(comparison.currentMarathonDay0Weight));
+    direction = comparison.direction || resolveMarathonWeightDirection(prev, cur);
   }
-  const prev = roundMarathonWeightKg(Number(previous));
-  const cur = roundMarathonWeightKg(Number(current));
-  const direction = comparison.direction
-    || resolveMarathonWeightDirection(prev, cur);
-  const arrow = formatMarathonWeightDirectionArrow(direction);
+
   return [
-    `Previous Marathon End weight : ${prev.toFixed(1)} kg`,
-    `Current Marathon Start weight : ${cur.toFixed(1)} kg${arrow}`,
+    `Previous Marathon End weight : ${formatMarathonWeightDisplayValue(comparison.previousMarathonEndWeight)}`,
+    `Current Marathon Start weight : ${formatMarathonWeightDisplayValue(comparison.currentMarathonDay0Weight, {
+      withDirection: true,
+      direction,
+    })}`,
   ];
 }
 
@@ -116,13 +138,35 @@ export function formatMarathonWeightWhatsAppNotice(comparison) {
  * @returns {object|null}
  */
 export function mergeMarathonWeightComparisonForShare(source, currentWeightKg) {
-  if (!source || typeof source !== 'object') return null;
-  if (!isValidMarathonWeightKg(source.previousMarathonEndWeight)) return null;
-  if (!isValidMarathonWeightKg(currentWeightKg)) {
-    return source.partial ? null : source;
+  const hasCurrentOverride = isValidMarathonWeightKg(currentWeightKg);
+  const currentFromSource = source && typeof source === 'object'
+    ? source.currentMarathonDay0Weight
+    : null;
+  const hasCurrentFromSource = isValidMarathonWeightKg(currentFromSource);
+  const previousFromSource = source && typeof source === 'object'
+    ? source.previousMarathonEndWeight
+    : null;
+  const hasPrevious = isValidMarathonWeightKg(previousFromSource);
+
+  const current = hasCurrentOverride
+    ? roundMarathonWeightKg(Number(currentWeightKg))
+    : (hasCurrentFromSource ? roundMarathonWeightKg(Number(currentFromSource)) : null);
+  const previous = hasPrevious
+    ? roundMarathonWeightKg(Number(previousFromSource))
+    : null;
+
+  if (previous != null && current != null) {
+    return buildMarathonWeightComparison({
+      previousMarathonEndWeight: previous,
+      currentMarathonDay0Weight: current,
+    });
   }
-  return buildMarathonWeightComparison({
-    previousMarathonEndWeight: source.previousMarathonEndWeight,
-    currentMarathonDay0Weight: currentWeightKg,
-  });
+
+  if (previous == null && current == null) return null;
+
+  return {
+    partial: true,
+    previousMarathonEndWeight: previous,
+    currentMarathonDay0Weight: current,
+  };
 }

@@ -71,7 +71,11 @@ import {
   FoodImageShareCard,
   HomeNutritionCarousel,
 } from "./features/nutrition";
-import { DetoxDayReminder, withMarathonWhatsAppNotice } from "./features/marathon";
+import {
+  DetoxDayReminder,
+  ensureMarathonWeightComparisonForShare,
+  withMarathonWhatsAppNotice,
+} from "./features/marathon";
 import { EducationLogCard } from "./features/education";
 import { WatchActivityCard } from "./features/activity";
 import LoadingSpinner from "./shared/components/LoadingSpinner";
@@ -715,6 +719,11 @@ function WellnessValleyApp() {
         requestAnimationFrame(resolve);
       });
 
+      const marathonWeightComparison = await ensureMarathonWeightComparisonForShare({
+        user,
+        currentMarathonDay0Weight,
+      });
+
       const buildCaption = (shareDisplayName) => {
         const brand = buildQuickShareText(
           shareDisplayName,
@@ -722,7 +731,7 @@ function WellnessValleyApp() {
         );
         return withMarathonWhatsAppNotice(
           composeQuickShareCaption(brand, activityCaption),
-          { user, currentMarathonDay0Weight },
+          { user, currentMarathonDay0Weight, marathonWeightComparison },
         );
       };
 

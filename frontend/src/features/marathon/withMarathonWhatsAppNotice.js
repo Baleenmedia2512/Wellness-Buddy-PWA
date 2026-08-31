@@ -10,13 +10,18 @@ import {
 import { getDeviceTimezoneIana } from '../../shared/utils/deviceTimezone';
 import storage from '../../shared/lib/storage';
 import {
+  getMarathonCalendarState,
   resolveMarathonToday,
   MARATHON_TEST_DATE_STORAGE_KEY,
 } from './domain/marathonCalendar';
 import { appendMarathonWhatsAppNotice } from './domain/marathonShareCaption';
-import { mergeMarathonWeightComparisonForShare } from './domain/marathonWeightComparison';
+import {
+  formatMarathonWeightWhatsAppNoticeLines,
+  mergeMarathonWeightComparisonForShare,
+} from './domain/marathonWeightComparison';
 import { getMarathonWeightComparisonFromCache } from './marathonWeightComparisonCache';
 import { getCachedProfile } from '../user/services/user.api';
+import { refreshMarathonWeightComparisonCache } from '../weight/services/weight.api';
 
 /**
  * Profile IANA when set; otherwise the device timezone (same as DetoxDayReminder).
@@ -47,6 +52,88 @@ function resolveMarathonWeightComparisonFromProfileCache(user) {
   if (!email) return null;
   const profile = getCachedProfile(email);
   return profile?.data?.marathonWeightComparison ?? null;
+}
+
+/**
+ * @param {unknown} user
+ * @param {unknown} userId
+ * @returns {string|null}
+ */
+function resolveShareUserId(user, userId) {
+  if (userId != null && userId !== '') return String(userId);
+  if (!user || typeof user !== 'object') return null;
+  const id = user.id ?? user.userId ?? user.UserId;
+  return id != null && id !== '' ? String(id) : null;
+}
+
+/**
+ * Load marathon Day 0 comparison for share when cache is empty or partial.
+ * Uses the same business date as the Day 0 caption (profile/device tz + test override).
+ *
+ * @param {object} [options]
+ * @param {object|null} [options.user]
+ * @param {string|number|null} [options.userId]
+ * @param {unknown} [options.timezoneSource]
+ * @param {unknown} [options.currentMarathonDay0Weight]
+ * @param {object|null|undefined} [options.marathonWeightComparison]
+ * @returns {Promise<object|null>}
+ */
+export async function ensureMarathonWeightComparisonForShare({
+  user = null,
+  userId = null,
+  timezoneSource,
+  currentMarathonDay0Weight,
+  marathonWeightComparison,
+} = {}) {
+  let comparison = marathonWeightComparison ?? null;
+  if (comparison == null) {
+    comparison = getMarathonWeightComparisonFromCache()
+      ?? resolveMarathonWeightComparisonFromProfileCache(user);
+  }
+
+  if (currentMarathonDay0Weight !== undefined) {
+    const merged = mergeMarathonWeightComparisonForShare(
+      comparison,
+      currentMarathonDay0Weight,
+    );
+    if (formatMarathonWeightWhatsAppNoticeLines(merged).length > 0) {
+      return merged;
+    }
+  } else if (formatMarathonWeightWhatsAppNoticeLines(comparison).length > 0) {
+    return comparison;
+  }
+
+  const resolvedUserId = resolveShareUserId(user, userId);
+  if (!resolvedUserId) return comparison;
+
+  const tz = resolveMarathonTimezoneSource(timezoneSource ?? user);
+  const liveToday = todayBusinessDate(tz, new Date());
+  const stored = storage.get(MARATHON_TEST_DATE_STORAGE_KEY);
+  const ymd = resolveMarathonToday(liveToday, stored);
+  const state = getMarathonCalendarState(ymd);
+  if (!state.inMarathon || state.marathonDay !== 0) {
+    return comparison;
+  }
+
+  if (!comparison) {
+    comparison = { partial: true };
+  }
+
+  try {
+    const fetched = await refreshMarathonWeightComparisonCache(resolvedUserId, {
+      todayYmd: ymd,
+      currentDay0Weight: currentMarathonDay0Weight,
+    });
+    if (fetched) comparison = fetched;
+  } catch {
+    /* share must stay non-blocking */
+  }
+
+  if (currentMarathonDay0Weight !== undefined) {
+    return mergeMarathonWeightComparisonForShare(comparison, currentMarathonDay0Weight)
+      ?? { partial: true, previousMarathonEndWeight: null, currentMarathonDay0Weight: null };
+  }
+  return comparison ?? { partial: true };
 }
 
 /**
@@ -97,9 +184,22 @@ export function withMarathonWhatsAppNotice(caption, ymdOrOptions) {
     now instanceof Date ? now : new Date(),
   );
   const stored = ymdOverride ? null : storage.get(MARATHON_TEST_DATE_STORAGE_KEY);
+  const ymd = resolveMarathonToday(live, stored);
+  const state = getMarathonCalendarState(ymd);
+  if (marathonWeightComparison == null && state.inMarathon && state.marathonDay === 0) {
+    marathonWeightComparison = { partial: true };
+  }
+
+  if (currentMarathonDay0Weight !== undefined) {
+    marathonWeightComparison = mergeMarathonWeightComparisonForShare(
+      marathonWeightComparison,
+      currentMarathonDay0Weight,
+    ) ?? { partial: true, previousMarathonEndWeight: null, currentMarathonDay0Weight: null };
+  }
+
   return appendMarathonWhatsAppNotice(
     caption,
-    resolveMarathonToday(live, stored),
+    ymd,
     marathonWeightComparison,
   );
 }

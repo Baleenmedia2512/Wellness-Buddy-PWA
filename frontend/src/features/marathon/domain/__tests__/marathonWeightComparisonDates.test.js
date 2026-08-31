@@ -144,6 +144,21 @@ describe('formatMarathonWeightWhatsAppNotice', () => {
     assert.equal(formatMarathonWeightWhatsAppNotice({ previousMarathonEndWeight: 70 }), null);
     assert.deepEqual(formatMarathonWeightWhatsAppNoticeLines({ previousMarathonEndWeight: 70 }), []);
   });
+
+  it('shows dashes for missing marathon anchor weights on Day 0', () => {
+    assert.deepEqual(formatMarathonWeightWhatsAppNoticeLines({ partial: true }), [
+      'Previous Marathon End weight : —',
+      'Current Marathon Start weight : —',
+    ]);
+    assert.deepEqual(formatMarathonWeightWhatsAppNoticeLines({
+      partial: true,
+      previousMarathonEndWeight: 75,
+      currentMarathonDay0Weight: null,
+    }), [
+      'Previous Marathon End weight : 75.0 kg',
+      'Current Marathon Start weight : —',
+    ]);
+  });
 });
 
 describe('mergeMarathonWeightComparisonForShare', () => {
@@ -157,10 +172,24 @@ describe('mergeMarathonWeightComparisonForShare', () => {
     assert.equal(merged.direction, 'decrease');
   });
 
-  it('returns null when partial cache has no current share weight', () => {
-    assert.equal(mergeMarathonWeightComparisonForShare({
+  it('keeps partial comparison when only previous marathon end weight exists', () => {
+    const merged = mergeMarathonWeightComparisonForShare({
       previousMarathonEndWeight: 75,
       partial: true,
-    }, null), null);
+    }, null);
+    assert.deepEqual(merged, {
+      partial: true,
+      previousMarathonEndWeight: 75,
+      currentMarathonDay0Weight: null,
+    });
+  });
+
+  it('builds partial comparison from current share weight only', () => {
+    const merged = mergeMarathonWeightComparisonForShare(null, 73);
+    assert.deepEqual(merged, {
+      partial: true,
+      previousMarathonEndWeight: null,
+      currentMarathonDay0Weight: 73,
+    });
   });
 });
