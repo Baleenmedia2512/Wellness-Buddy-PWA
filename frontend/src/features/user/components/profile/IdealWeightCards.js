@@ -82,20 +82,21 @@ function MarathonDaysProgress({ comparison }) {
     return null;
   }
 
-  return (
-    <div className="space-y-2" data-testid="marathon-days-progress">
-      <p className="text-xs font-semibold text-gray-500 px-1">Marathon Days</p>
-      {comparison.days.map((entry) => (
-        <div
-          key={`marathon-day-${entry.day}`}
-          className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-emerald-700"
-        >
-          <p className="text-xs font-semibold">Day {entry.day}</p>
-          <p className="text-base font-bold mt-1">{entry.displayLine}</p>
-        </div>
-      ))}
-    </div>
-  );
+  return
+  //  (
+  //   <div className="space-y-2" data-testid="marathon-days-progress">
+  //     <p className="text-xs font-semibold text-gray-500 px-1">Marathon Days</p>
+  //     {comparison.days.map((entry) => (
+  //       <div
+  //         key={`marathon-day-${entry.day}`}
+  //         className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-emerald-700"
+  //       >
+  //         <p className="text-xs font-semibold">Day {entry.day}</p>
+  //         <p className="text-base font-bold mt-1">{entry.displayLine}</p>
+  //       </div>
+  //     ))}
+  //   </div>
+  // );
 }
 
 function MarathonWeightProgress({ comparison }) {
