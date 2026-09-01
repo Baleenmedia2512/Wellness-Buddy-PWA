@@ -3,6 +3,7 @@ import { Capacitor } from '@capacitor/core';
 import { App } from '@capacitor/app';
 import { Download, RefreshCw } from 'lucide-react';
 import APP_VERSION from '../../config/version.js';
+import { getClientPlatform } from '../services/appVersionPolicy.api.js';
 
 async function openStoreUrl(url) {
   if (!url) return;
@@ -19,12 +20,31 @@ async function openStoreUrl(url) {
 
 /**
  * Full-screen block when client is below server minimum supported version.
+ * Android: Play IMMEDIATE update is started automatically; this screen is a fallback
+ * when Play is unavailable. iOS: user must tap Update Now to open the App Store.
  */
-export default function AppVersionHardBlock({ policy }) {
+export default function AppVersionHardBlock({
+  policy,
+  onUpdateNow,
+  playUnavailable = false,
+  androidUpdating = false,
+}) {
+  const platform = getClientPlatform();
   const message =
     policy?.messages?.required
-    || 'Please update Wellness Valley to the latest version to continue.';
+    || 'A new version of Wellness Valley is available. Please update the app to continue using it.';
   const storeUrl = policy?.storeUrl;
+
+  const handleUpdateNow = () => {
+    if (platform === 'android' && onUpdateNow && !playUnavailable) {
+      onUpdateNow();
+      return;
+    }
+    openStoreUrl(storeUrl);
+  };
+
+  const showAndroidPlayHint = platform === 'android' && androidUpdating && !playUnavailable;
+  const showPlayFallback = platform === 'android' && playUnavailable;
 
   return (
     <div className="fixed inset-0 z-[20000] flex items-center justify-center bg-gradient-to-b from-emerald-50 to-white p-6">
@@ -32,18 +52,29 @@ export default function AppVersionHardBlock({ policy }) {
         <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100">
           <Download className="h-8 w-8 text-emerald-700" />
         </div>
-        <h1 className="text-xl font-bold text-gray-900 mb-2">Update required</h1>
+        <h1 className="text-xl font-bold text-gray-900 mb-2">Update Required</h1>
         <p className="text-sm text-gray-600 mb-1">{message}</p>
+        {showAndroidPlayHint && (
+          <p className="text-xs text-emerald-700 mb-2">
+            Opening Google Play update…
+          </p>
+        )}
+        {showPlayFallback && (
+          <p className="text-xs text-amber-700 mb-2">
+            In-app update is unavailable. Use the button below to update from the Play Store.
+          </p>
+        )}
         <p className="text-xs text-gray-400 mb-6">
           Your version: v{APP_VERSION.VERSION}
           {policy?.effectiveMinVersion ? ` · Required: v${policy.effectiveMinVersion}+` : ''}
+          {policy?.latestVersion ? ` · Latest: v${policy.latestVersion}` : ''}
         </p>
         <button
           type="button"
-          onClick={() => openStoreUrl(storeUrl)}
+          onClick={handleUpdateNow}
           className="w-full rounded-xl bg-emerald-600 py-3.5 text-white font-semibold shadow-md hover:bg-emerald-700 transition-colors"
         >
-          Update from Store
+          Update Now
         </button>
       </div>
     </div>

@@ -8,6 +8,7 @@ import {
 import {
   APP_UPDATE_EVENT,
   readForcedUpdatePolicy,
+  clearForcedUpdatePolicy,
 } from '../services/appVersionEnforce.client.js';
 
 /**
@@ -31,31 +32,35 @@ export function useAppVersionPolicy() {
   }, []);
 
   const refresh = useCallback(async () => {
-    const forced = readForcedUpdatePolicy();
-    if (forced) {
-      applyForcedFromApi(forced);
-      return;
-    }
-
     const result = await fetchAppVersionPolicy();
     if (!result.ok) {
+      // Network fail: fall back to persisted 426 block so old clients stay blocked.
+      const forced = readForcedUpdatePolicy();
+      if (forced) {
+        applyForcedFromApi(forced);
+        return 'update_required';
+      }
       if (!hardBlocked) {
         setStatus('ok');
         setPolicy(null);
       }
       setLoading(false);
-      return;
+      return hardBlocked ? 'update_required' : 'ok';
     }
 
     const data = result.data || {};
     const nextStatus = data.status || 'ok';
     if (nextStatus === 'update_required') {
       setHardBlocked(true);
+    } else if (nextStatus === 'ok') {
+      setHardBlocked(false);
+      clearForcedUpdatePolicy();
     }
     setPolicy(data);
     setStatus(nextStatus);
     setSoftDismissed(isSoftUpdateDismissed(data.recommendedVersion));
     setLoading(false);
+    return nextStatus;
   }, [hardBlocked, applyForcedFromApi]);
 
   useEffect(() => {
