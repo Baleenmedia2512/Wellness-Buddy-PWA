@@ -24,6 +24,7 @@ import {
 import useProfileForm from '../hooks/useProfileForm';
 import { fetchProfile, saveProfile } from '../services/profileService';
 import { syncMarathonWeightComparisonFromProfile } from '../../marathon/marathonWeightComparisonCache';
+import { loadProfileMarathonWeightComparison } from '../../marathon';
 import { fetchMyAssessment, fetchLeadByPhone } from '../../counselling/services/counsellingApi';
 import UserProfileFields from './profile/UserProfileFields';
 import UserProfileBodyMetrics from './profile/UserProfileBodyMetrics';
@@ -132,8 +133,18 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
       setLatestWeight(data?.latestWeight ? parseFloat(data.latestWeight) : null);
       setInitialWeight(data?.initialWeight != null ? parseFloat(data.initialWeight) : null);
       setInitialWeightDate(data?.initialWeightDate || null);
-      setMarathonWeightComparison(data?.marathonWeightComparison || null);
+      const comparisonFromServer = data?.marathonWeightComparison || null;
+      setMarathonWeightComparison(comparisonFromServer);
       syncMarathonWeightComparisonFromProfile(data);
+      void loadProfileMarathonWeightComparison({
+        userId: user?.id,
+        timezoneSource: data?.timezone || user,
+        fromProfile: comparisonFromServer,
+      }).then((resolved) => {
+        if (!resolved) return;
+        setMarathonWeightComparison(resolved);
+        syncMarathonWeightComparisonFromProfile({ marathonWeightComparison: resolved });
+      });
       setCoachName(
         (data?.sponsorName || data?.coachName)
           ? String(data.sponsorName || data.coachName).trim()

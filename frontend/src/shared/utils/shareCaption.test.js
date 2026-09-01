@@ -20,9 +20,9 @@ describe('composeQuickShareCaption', () => {
     assert.equal(
       composeQuickShareCaption(
         'Balaji Sekar · Wellness Valley v 3.4.5',
-        'Ideal: 73.7 kg\nBefore: 73.4 kg\nAfter: 72.9 kg ⬇️',
+        'Ideal: 73.7 kg\nPrev: 73.4 kg\nCurr: 72.9 kg ⬇️',
       ),
-      'Balaji Sekar · Wellness Valley v 3.4.5\n\nIdeal: 73.7 kg\nBefore: 73.4 kg\nAfter: 72.9 kg ⬇️',
+      'Balaji Sekar · Wellness Valley v 3.4.5\n\nIdeal: 73.7 kg\nPrev: 73.4 kg\nCurr: 72.9 kg ⬇️',
     );
   });
 });

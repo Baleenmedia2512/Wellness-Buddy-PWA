@@ -394,11 +394,20 @@ export async function undoDeleteWeight({ id, userId }) {
 
 /**
  * Marathon Day 0 weight comparison for WhatsApp shares and profile.
- * @param {{ userId: string|number }} input
+ * @param {{ userId: string|number, todayYmd?: string|null, currentDay0Weight?: number|null }} input
  */
-export async function getMarathonWeightComparison({ userId }) {
+export async function getMarathonWeightComparison({
+  userId,
+  todayYmd = null,
+  currentDay0Weight = null,
+}) {
   const timezoneIana = await getUserTimezoneIana(userId);
-  const comparison = await resolveMarathonWeightComparison({ userId, timezoneIana });
+  const comparison = await resolveMarathonWeightComparison({
+    userId,
+    timezoneIana,
+    todayYmd,
+    currentMarathonDay0WeightOverride: currentDay0Weight,
+  });
   return {
     httpStatus: 200,
     body: {

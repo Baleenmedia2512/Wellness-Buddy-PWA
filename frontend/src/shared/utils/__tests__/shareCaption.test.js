@@ -33,8 +33,8 @@ describe('composeQuickShareCaption', () => {
 
   it('keeps a blank line before weight suffixes', () => {
     assert.equal(
-      composeQuickShareCaption(BRAND, 'Ideal: 73.7 kg\nBefore: 72.9 kg\nAfter: 72.85 kg ⬇️'),
-      `${BRAND}\n\nIdeal: 73.7 kg\nBefore: 72.9 kg\nAfter: 72.85 kg ⬇️`,
+      composeQuickShareCaption(BRAND, 'Ideal: 73.7 kg\nPrev: 72.9 kg\nCurr: 72.85 kg ⬇️'),
+      `${BRAND}\n\nIdeal: 73.7 kg\nPrev: 72.9 kg\nCurr: 72.85 kg ⬇️`,
     );
   });
 

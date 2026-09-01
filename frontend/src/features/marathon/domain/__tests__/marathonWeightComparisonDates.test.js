@@ -3,9 +3,14 @@
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { getMarathonWeightComparisonDates } from '../marathonCalendar.js';
 import {
-  buildMarathonWeightComparison,
+  getMarathonGapComparisonDates,
+  getMarathonWeightComparisonDates,
+} from '../marathonCalendar.js';
+import {
+  buildMarathonGapProgress,
+  buildMarathonRunningProgress,
+  formatMarathonDayComparisonLine,
   formatMarathonWeightChangeLabel,
   formatMarathonWeightWhatsAppNotice,
   formatMarathonWeightWhatsAppNoticeLines,
@@ -13,101 +18,128 @@ import {
 } from '../marathonWeightComparison.js';
 
 describe('getMarathonWeightComparisonDates', () => {
-  it('returns null outside Marathon Day 0', () => {
-    assert.equal(getMarathonWeightComparisonDates('2026-08-02'), null);
-    assert.equal(getMarathonWeightComparisonDates('2026-08-11'), null);
+  it('returns null outside marathon windows', () => {
+    assert.equal(getMarathonWeightComparisonDates('2026-08-12'), null);
     assert.equal(getMarathonWeightComparisonDates('2026-08-14'), null);
     assert.equal(getMarathonWeightComparisonDates('2026-08-31'), null);
   });
 
-  it('maps Marathon 1 Day 0 to previous month Day 10', () => {
+  it('maps Marathon 1 Day 0 to previous month Day 10 (11th)', () => {
     assert.deepEqual(getMarathonWeightComparisonDates('2026-08-01'), {
       currentDay0Ymd: '2026-08-01',
-      previousDay10Ymd: '2026-07-25',
+      previousDay10Ymd: '2026-07-11',
       marathonNumber: 1,
     });
     assert.deepEqual(getMarathonWeightComparisonDates('2026-09-01'), {
       currentDay0Ymd: '2026-09-01',
-      previousDay10Ymd: '2026-08-25',
-      marathonNumber: 1,
-    });
-    assert.deepEqual(getMarathonWeightComparisonDates('2026-03-01'), {
-      currentDay0Ymd: '2026-03-01',
-      previousDay10Ymd: '2026-02-25',
-      marathonNumber: 1,
-    });
-    assert.deepEqual(getMarathonWeightComparisonDates('2026-01-01'), {
-      currentDay0Ymd: '2026-01-01',
-      previousDay10Ymd: '2025-12-25',
+      previousDay10Ymd: '2026-08-11',
       marathonNumber: 1,
     });
   });
 
-  it('maps Marathon 2 Day 0 to Day 10 of the same month', () => {
+  it('maps Marathon 2 Day 0 to same month Day 10 (25th)', () => {
     assert.deepEqual(getMarathonWeightComparisonDates('2026-08-15'), {
       currentDay0Ymd: '2026-08-15',
-      previousDay10Ymd: '2026-08-11',
+      previousDay10Ymd: '2026-08-25',
       marathonNumber: 2,
     });
-    assert.deepEqual(getMarathonWeightComparisonDates('2026-02-15'), {
-      currentDay0Ymd: '2026-02-15',
-      previousDay10Ymd: '2026-02-11',
+    assert.deepEqual(getMarathonWeightComparisonDates('2026-09-15'), {
+      currentDay0Ymd: '2026-09-15',
+      previousDay10Ymd: '2026-09-25',
       marathonNumber: 2,
     });
   });
 });
 
-describe('buildMarathonWeightComparison', () => {
-  it('formats increase, decrease, and unchanged deltas', () => {
-    const increase = buildMarathonWeightComparison({
-      previousMarathonEndWeight: 70,
-      currentMarathonDay0Weight: 72,
+describe('getMarathonGapComparisonDates', () => {
+  it('resolves gap days between marathons', () => {
+    assert.deepEqual(getMarathonGapComparisonDates('2026-09-12'), {
+      previousDay10Ymd: '2026-09-25',
+      upcomingDay0Ymd: '2026-09-15',
+      upcomingMarathonNumber: 2,
     });
-    assert.equal(increase.weightDifference, 2);
-    assert.equal(increase.direction, 'increase');
-    assert.equal(increase.changeLabel, '+2.0 kg ↑ Increase');
+    assert.deepEqual(getMarathonGapComparisonDates('2026-09-26'), {
+      previousDay10Ymd: '2026-09-11',
+      upcomingDay0Ymd: '2026-10-01',
+      upcomingMarathonNumber: 1,
+    });
+  });
+});
 
-    const decrease = buildMarathonWeightComparison({
+describe('marathon day comparison formatting', () => {
+  it('formats increase, decrease, unchanged, and missing weights', () => {
+    assert.equal(formatMarathonDayComparisonLine(75, 74.5), '75.0 kg → 74.5 kg ↓ 0.5 kg');
+    assert.equal(formatMarathonDayComparisonLine(75, 76), '75.0 kg → 76.0 kg ↑ 1.0 kg');
+    assert.equal(formatMarathonDayComparisonLine(75, 75), '75.0 kg → 75.0 kg');
+    assert.equal(formatMarathonDayComparisonLine(75, null), '75.0 kg → —');
+    assert.equal(formatMarathonDayComparisonLine(null, 74.5), '— → 74.5 kg');
+  });
+
+  it('builds running progress for profile and share', () => {
+    const dayYmds = Array.from({ length: 11 }, (_, day) => `2026-09-${String(day + 1).padStart(2, '0')}`);
+    const result = buildMarathonRunningProgress({
+      currentDay0Ymd: '2026-09-01',
+      marathonNumber: 1,
+      currentMarathonDay: 2,
+      dayYmds,
+      weightsByDay: { 0: 75, 1: 74.5, 2: 74 },
+    });
+    assert.equal(result.mode, 'running');
+    assert.equal(result.days[2].displayLine, '75.0 kg → 74.0 kg ↓ 1.0 kg');
+  });
+});
+
+describe('formatMarathonWeightWhatsAppNotice', () => {
+  it('formats running-day comparison for the current marathon day', () => {
+    const progress = buildMarathonRunningProgress({
+      currentDay0Ymd: '2026-09-01',
+      marathonNumber: 1,
+      currentMarathonDay: 2,
+      dayYmds: Array.from({ length: 11 }, (_, day) => `2026-09-${String(day + 1).padStart(2, '0')}`),
+      weightsByDay: { 0: 75, 2: 74 },
+    });
+    const lines = formatMarathonWeightWhatsAppNoticeLines(progress, {
+      inMarathon: true,
+      marathonDay: 2,
+    });
+    assert.deepEqual(lines, ['75.0 kg → 74.0 kg ↓ 1.0 kg']);
+    assert.equal(formatMarathonWeightWhatsAppNotice(progress, {
+      inMarathon: true,
+      marathonDay: 2,
+    }), '75.0 kg → 74.0 kg ↓ 1.0 kg');
+  });
+
+  it('formats gap-day previous end vs current weight', () => {
+    const progress = buildMarathonGapProgress({
       previousMarathonEndWeight: 75,
-      currentMarathonDay0Weight: 73,
+      currentWeight: 74.2,
     });
-    assert.equal(decrease.weightDifference, -2);
-    assert.equal(decrease.direction, 'decrease');
-    assert.equal(decrease.changeLabel, '−2.0 kg ↓ Decrease');
-
-    const unchanged = buildMarathonWeightComparison({
-      previousMarathonEndWeight: 70,
-      currentMarathonDay0Weight: 70,
-    });
-    assert.equal(unchanged.weightDifference, 0);
-    assert.equal(unchanged.direction, 'unchanged');
-    assert.equal(unchanged.changeLabel, '0 kg — No Change');
+    assert.deepEqual(formatMarathonWeightWhatsAppNoticeLines(progress, {
+      inMarathon: false,
+      showMarathonStartReminder: false,
+    }), [
+      'Previous Marathon End weight : 75.0 kg',
+      'Current Weight : 74.2 kg ⬇️',
+    ]);
   });
 
-  it('supports decimal weights without float noise', () => {
-    const result = buildMarathonWeightComparison({
-      previousMarathonEndWeight: 70.5,
-      currentMarathonDay0Weight: 71.8,
+  it('formats Day 0 running as previous marathon end vs current weight', () => {
+    const progress = buildMarathonRunningProgress({
+      currentDay0Ymd: '2026-09-01',
+      marathonNumber: 1,
+      currentMarathonDay: 0,
+      dayYmds: Array.from({ length: 11 }, (_, day) => `2026-09-${String(day + 1).padStart(2, '0')}`),
+      weightsByDay: { 0: 73 },
+      previousMarathonEndWeight: 75,
+      previousDay10Ymd: '2026-08-11',
     });
-    assert.equal(result.previousMarathonEndWeight, 70.5);
-    assert.equal(result.currentMarathonDay0Weight, 71.8);
-    assert.equal(result.weightDifference, 1.3);
-    assert.equal(result.changeLabel, '+1.3 kg ↑ Increase');
-  });
-
-  it('returns null when either weight is missing or invalid', () => {
-    assert.equal(buildMarathonWeightComparison({
-      previousMarathonEndWeight: 70,
-      currentMarathonDay0Weight: null,
-    }), null);
-    assert.equal(buildMarathonWeightComparison({
-      previousMarathonEndWeight: 0,
-      currentMarathonDay0Weight: 70,
-    }), null);
-    assert.equal(buildMarathonWeightComparison({
-      previousMarathonEndWeight: 70,
-      currentMarathonDay0Weight: -1,
-    }), null);
+    assert.deepEqual(formatMarathonWeightWhatsAppNoticeLines(progress, {
+      inMarathon: true,
+      marathonDay: 0,
+    }), [
+      'Previous Marathon End weight : 75.0 kg',
+      'Current Weight : 73.0 kg ⬇️',
+    ]);
   });
 
   it('formats zero change label', () => {
@@ -115,52 +147,48 @@ describe('buildMarathonWeightComparison', () => {
   });
 });
 
-describe('formatMarathonWeightWhatsAppNotice', () => {
-  it('formats multi-line WhatsApp block', () => {
-    const line = formatMarathonWeightWhatsAppNotice({
-      previousMarathonEndWeight: 70.5,
-      currentMarathonDay0Weight: 71.8,
-      changeLabel: '+1.3 kg ↑ Increase',
-    });
-    assert.equal(
-      line,
-      'Previous Marathon End weight : 70.5 kg\nCurrent Marathon Start weight : 71.8 kg ↑',
+describe('mergeMarathonWeightComparisonForShare', () => {
+  it('builds minimal running share progress when cached days are empty on Day 0', () => {
+    const merged = mergeMarathonWeightComparisonForShare(
+      {
+        mode: 'running',
+        partial: true,
+        days: [],
+        marathonDay: 0,
+        currentDay0Ymd: '2026-09-01',
+        previousMarathonEndWeight: 76,
+        previousDay10Ymd: '2026-08-11',
+      },
+      77.8,
+      0,
     );
-  });
-
-  it('returns notice lines as separate entries', () => {
-    assert.deepEqual(formatMarathonWeightWhatsAppNoticeLines({
-      previousMarathonEndWeight: 75,
-      currentMarathonDay0Weight: 73,
-      direction: 'decrease',
+    assert.equal(merged.mode, 'running');
+    assert.equal(merged.currentDay.displayLine, '77.8 kg');
+    assert.deepEqual(formatMarathonWeightWhatsAppNoticeLines(merged, {
+      inMarathon: true,
+      marathonDay: 0,
     }), [
-      'Previous Marathon End weight : 75.0 kg',
-      'Current Marathon Start weight : 73.0 kg ↓',
+      'Previous Marathon End weight : 76.0 kg',
+      'Current Weight : 77.8 kg ⬆️',
     ]);
   });
 
-  it('returns null for invalid comparison', () => {
-    assert.equal(formatMarathonWeightWhatsAppNotice(null), null);
-    assert.equal(formatMarathonWeightWhatsAppNotice({ previousMarathonEndWeight: 70 }), null);
-    assert.deepEqual(formatMarathonWeightWhatsAppNoticeLines({ previousMarathonEndWeight: 70 }), []);
-  });
-});
-
-describe('mergeMarathonWeightComparisonForShare', () => {
-  it('builds a full comparison from partial cache and current share weight', () => {
-    const merged = mergeMarathonWeightComparisonForShare({
-      previousMarathonEndWeight: 75,
-      partial: true,
-    }, 73);
-    assert.equal(merged.previousMarathonEndWeight, 75);
-    assert.equal(merged.currentMarathonDay0Weight, 73);
-    assert.equal(merged.direction, 'decrease');
+  it('overrides the current marathon day weight while sharing', () => {
+    const source = buildMarathonRunningProgress({
+      currentDay0Ymd: '2026-09-01',
+      marathonNumber: 1,
+      currentMarathonDay: 1,
+      dayYmds: Array.from({ length: 11 }, (_, day) => `2026-09-${String(day + 1).padStart(2, '0')}`),
+      weightsByDay: { 0: 75, 1: 74.5 },
+    });
+    const merged = mergeMarathonWeightComparisonForShare(source, 74, 1);
+    assert.equal(merged.currentDay.displayLine, '75.0 kg → 74.0 kg ↓ 1.0 kg');
   });
 
-  it('returns null when partial cache has no current share weight', () => {
-    assert.equal(mergeMarathonWeightComparisonForShare({
-      previousMarathonEndWeight: 75,
-      partial: true,
-    }, null), null);
+  it('builds gap comparison from current share weight only', () => {
+    const merged = mergeMarathonWeightComparisonForShare(null, 73);
+    assert.equal(merged.mode, 'gap');
+    assert.equal(merged.currentWeight, 73);
+    assert.equal(merged.previousMarathonEndWeight, null);
   });
 });

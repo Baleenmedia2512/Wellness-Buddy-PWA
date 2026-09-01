@@ -65,10 +65,18 @@ export async function saveWeight(payload) {
  * Refresh cached marathon Day 0 weight comparison (WhatsApp shares).
  * @param {string|number} userId
  */
-export async function refreshMarathonWeightComparisonCache(userId) {
+export async function refreshMarathonWeightComparisonCache(userId, {
+  todayYmd = null,
+  currentDay0Weight = null,
+} = {}) {
   if (!userId) return null;
+  const params = new URLSearchParams({ userId: String(userId) });
+  if (todayYmd) params.set('todayYmd', todayYmd);
+  if (currentDay0Weight != null && currentDay0Weight !== '') {
+    params.set('currentDay0Weight', String(currentDay0Weight));
+  }
   const { ok, data } = await request(
-    `/api/weight/marathon-comparison?userId=${encodeURIComponent(String(userId))}`,
+    `/api/weight/marathon-comparison?${params.toString()}`,
     {
       method: 'GET',
       headers: { 'Cache-Control': 'no-cache', Pragma: 'no-cache' },

@@ -20,7 +20,10 @@ import { Smartphone, GraduationCap, HelpCircle, Share2, ArrowUp, ArrowDown, Star
 import { useSwipeToDelete } from '../../../../shared/hooks/useSwipeToDelete';
 import { parseAnalysisData, recalculateTotals, getMealCategory } from '../../../nutrition/services/nutritionDashboard/analysisHelpers';
 import { captureAndShare, composeBrandedShareCaption } from '../../../../shared/utils/shareUtils';
-import { withMarathonWhatsAppNotice } from '../../../marathon';
+import {
+  ensureMarathonWeightComparisonForShare,
+  withMarathonWhatsAppNotice,
+} from '../../../marathon';
 import {
   formatBusinessTime,
   formatBusinessDateTime,
@@ -642,11 +645,21 @@ export function WeightRow({
           requestAnimationFrame(() => requestAnimationFrame(resolve));
         });
       }
+      const marathonWeightComparison = await ensureMarathonWeightComparisonForShare({
+        userId: ownerUserId,
+        timezoneSource: timezoneIana,
+        currentMarathonDay0Weight: p.weight,
+      });
       await captureAndShare(target, {
         title: `Weight ${p.weight} kg`,
         text: withMarathonWhatsAppNotice(
           composeBrandedShareCaption(shareText),
-          { timezoneIana, currentMarathonDay0Weight: p.weight },
+          {
+            timezoneIana,
+            currentMarathonDay0Weight: p.weight,
+            marathonWeightComparison,
+            includeWeightComparison: true,
+          },
         ),
         fileName: `wellness-weight-${Date.now()}.png`,
       });
@@ -712,13 +725,13 @@ export function WeightRow({
         )}
         <div style={{ padding: '18px 20px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10 }}>
-            <span style={{ fontSize: 13, color: '#6b7280' }}>Before</span>
+            <span style={{ fontSize: 13, color: '#6b7280' }}>Prev</span>
             <span style={{ fontSize: 15, fontWeight: 700, color: '#111827' }}>
               {previousLabel != null ? `${previousLabel} kg` : '—'}
             </span>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 14 }}>
-            <span style={{ fontSize: 13, color: '#6b7280' }}>After</span>
+            <span style={{ fontSize: 13, color: '#6b7280' }}>Curr</span>
             <span style={{ fontSize: 15, fontWeight: 700, color: '#111827' }}>{p.weight} kg</span>
           </div>
           {delta.label && (

@@ -3,8 +3,15 @@
  * The ONLY place in this feature allowed to talk to Supabase / weight_records_table.
  */
 import { getSupabaseClient } from '../../utils/supabaseClient.js';
-import { nowUtc, utcInstantToLegacyIstWallStorage, IANA_IST, filterRowsByCalendarDay } from '../../shared/lib/datetime/index.js';
-import { applyDayFilterWidened } from '../../shared/lib/datetime/applyDayFilter.js';
+import {
+  nowUtc,
+  utcInstantToLegacyIstWallStorage,
+  IANA_IST,
+  filterRowsByCalendarDay,
+  filterRowsOnOrBeforeCalendarDay,
+  shiftDateYmd,
+} from '../../shared/lib/datetime/index.js';
+import { applyDayFilterWidened, applyDateRangeFilterWidened } from '../../shared/lib/datetime/applyDayFilter.js';
 
 function legacyIstWallNow() {
   return utcInstantToLegacyIstWallStorage(nowUtc(), IANA_IST);
@@ -107,6 +114,59 @@ export async function findLatestWeightOnCalendarDay(userId, dateYmd, timezoneIan
   if (!dayRows.length) return null;
 
   const sorted = [...dayRows].sort((a, b) => {
+    const aMs = new Date(a.CreatedAt).getTime();
+    const bMs = new Date(b.CreatedAt).getTime();
+    return bMs - aMs;
+  });
+  const latest = sorted[0];
+  const weight = parseFloat(latest.Weight);
+  if (!Number.isFinite(weight) || weight <= 0) return null;
+  return latest;
+}
+
+/** Max calendar lookback when resolving marathon anchor weights before an end date. */
+const MARATHON_ANCHOR_WEIGHT_LOOKBACK_DAYS = 120;
+
+/**
+ * Latest weight on `dateYmd`, or the most recent weight logged on an earlier calendar day.
+ * Used when a marathon end anchor day has no weight log.
+ *
+ * @param {number|string} userId
+ * @param {string} dateYmd YYYY-MM-DD inclusive upper bound
+ * @param {string} [timezoneIana]
+ * @returns {Promise<{ Weight: number|string, CreatedAt: string }|null>}
+ */
+export async function findLatestWeightOnOrBeforeCalendarDay(userId, dateYmd, timezoneIana = IANA_IST) {
+  const onDay = await findLatestWeightOnCalendarDay(userId, dateYmd, timezoneIana);
+  if (onDay) return onDay;
+
+  const uid = Number.parseInt(String(userId), 10);
+  if (!Number.isFinite(uid) || uid <= 0 || !dateYmd) return null;
+
+  const lookbackStartYmd = shiftDateYmd(
+    dateYmd,
+    -MARATHON_ANCHOR_WEIGHT_LOOKBACK_DAYS,
+    timezoneIana,
+  );
+  const supabase = getSupabaseClient();
+  const run = (withDeletedFilter) => {
+    let q = supabase
+      .from(TABLE)
+      .select('Weight, CreatedAt')
+      .eq('UserId', uid);
+    if (withDeletedFilter) q = q.or(ACTIVE_WEIGHT_FILTER);
+    return applyDateRangeFilterWidened(q, 'CreatedAt', lookbackStartYmd, dateYmd, timezoneIana)
+      .order('CreatedAt', { ascending: false })
+      .limit(100);
+  };
+
+  const { data, error } = await withOptionalIsDeletedFilter(run);
+  if (error || !Array.isArray(data) || data.length === 0) return null;
+
+  const eligible = filterRowsOnOrBeforeCalendarDay(data, dateYmd, timezoneIana, 'CreatedAt');
+  if (!eligible.length) return null;
+
+  const sorted = [...eligible].sort((a, b) => {
     const aMs = new Date(a.CreatedAt).getTime();
     const bMs = new Date(b.CreatedAt).getTime();
     return bMs - aMs;

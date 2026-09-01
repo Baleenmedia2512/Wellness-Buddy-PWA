@@ -75,15 +75,15 @@ export function buildDiaryShareSuffix(activityType, payload = {}) {
 
       const lines = [];
       if (ideal != null) lines.push(`Ideal: ${ideal} kg`);
-      if (previous != null) lines.push(`Before: ${previous} kg`);
+      if (previous != null) lines.push(`Prev: ${previous} kg`);
 
-      let after = `After: ${current} kg`;
+      let curr = `Curr: ${current} kg`;
       if (previous != null) {
         const delta = Math.round((current - previous) * 100) / 100;
-        if (delta < 0) after += ' ⬇️';
-        else if (delta > 0) after += ' ⬆️';
+        if (delta < 0) curr += ' ⬇️';
+        else if (delta > 0) curr += ' ⬆️';
       }
-      lines.push(after);
+      lines.push(curr);
       return lines.join('\n');
     }
     case 'workout':
