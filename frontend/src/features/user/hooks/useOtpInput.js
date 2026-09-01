@@ -1,9 +1,10 @@
 // OTP input controller — supports native keyboard, custom keypad, paste,
 // WebOTP API auto-fill, and iOS autoComplete="one-time-code" multi-char input.
 import { useRef, useState } from 'react';
-import { extractOtpFromText } from '../domain/otpLength';
+import { SMS_OTP_LENGTH } from '../domain/otpLength';
+import { resolveOtpDigits } from '../domain/otpInputPaste';
 
-export default function useOtpInput(length = 6) {
+export default function useOtpInput(length = SMS_OTP_LENGTH) {
   const [otp, setOtp] = useState(() => new Array(length).fill(''));
   const refs = useRef([]);
 
@@ -28,12 +29,7 @@ export default function useOtpInput(length = 6) {
    * Fill all cells at once — used by WebOTP API auto-read, iOS autofill,
    * clipboard paste, and prose such as "Your OTP is 1234".
    */
-  const fillAll = (raw) => {
-    const extracted = extractOtpFromText(raw, length);
-    if (extracted) return applyDigits(extracted);
-    const digits = String(raw ?? '').replace(/\D/g, '').slice(0, length);
-    return applyDigits(digits);
-  };
+  const fillAll = (raw) => applyDigits(resolveOtpDigits(raw, length));
 
   const handleChange = (idx, raw) => {
     const text = String(raw ?? '');
@@ -53,9 +49,16 @@ export default function useOtpInput(length = 6) {
   };
 
   const handleKeyDown = (idx, e) => {
-    if (e.key === 'Backspace' && otp[idx] === '' && idx > 0) {
-      refs.current[idx - 1]?.focus();
-    }
+    if (e.key !== 'Backspace') return;
+    if (otp[idx] !== '') return;
+    if (idx <= 0) return;
+    e.preventDefault();
+    setOtp((prev) => {
+      const next = [...prev];
+      next[idx - 1] = '';
+      return next;
+    });
+    refs.current[idx - 1]?.focus();
   };
 
   const handlePaste = (e) => {

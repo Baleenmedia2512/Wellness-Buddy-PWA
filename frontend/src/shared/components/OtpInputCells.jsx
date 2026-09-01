@@ -1,8 +1,9 @@
 /**
  * Multi-cell OTP input — shared paste, autofill, and manual typing behaviour.
- * First cell accepts the full code length so OS autofill / paste is not truncated.
+ * Bulk input (paste / OS autofill) is intercepted before per-cell maxLength truncates it.
  */
 import React from 'react';
+import { isOtpBulkInputType } from '../../features/user/domain/otpInputPaste';
 import NativeInput, { otpAutoCompleteForCell, otpMaxLengthForCell } from './NativeInput.jsx';
 
 /**
@@ -27,7 +28,7 @@ export default function OtpInputCells({
   cellStyle,
   onComplete,
 }) {
-  const { otp, refs, handleChange, handleKeyDown, handlePaste, fillAll } = otpCtl;
+  const { otp, refs, handleChange, handleKeyDown, fillAll } = otpCtl;
 
   const dispatchMultiDigit = (raw) => {
     const filled = fillAll(raw);
@@ -42,13 +43,34 @@ export default function OtpInputCells({
     handleChange(index, raw);
   };
 
-  const onCellPaste = (e) => {
+  const onCellBeforeInput = (e) => {
+    if (!isOtpBulkInputType(e.inputType)) return;
+    const data = e.data ?? '';
+    if (!data) return;
     e.preventDefault();
-    const pasted = e.clipboardData?.getData('text') ?? '';
-    dispatchMultiDigit(pasted);
+    dispatchMultiDigit(data);
   };
 
-  // Some Android WebViews deliver autofill via input before/on change.
+  const onCellPaste = (e) => {
+    e.preventDefault();
+    const fromEvent = e.clipboardData?.getData('text') ?? '';
+    if (fromEvent) {
+      dispatchMultiDigit(fromEvent);
+      return;
+    }
+    // iOS / Capacitor WebView: clipboardData is sometimes empty on long-press paste.
+    if (typeof navigator !== 'undefined' && navigator.clipboard?.readText) {
+      navigator.clipboard.readText()
+        .then((text) => {
+          if (text) dispatchMultiDigit(text);
+        })
+        .catch(() => {
+          // Permission denied or unsupported — ignore.
+        });
+    }
+  };
+
+  // Android WebViews may deliver autofill only via input/change after beforeinput.
   const onCellInput = (e) => {
     const raw = e.currentTarget.value;
     if (raw.length > 1) dispatchMultiDigit(raw);
@@ -60,6 +82,7 @@ export default function OtpInputCells({
         <NativeInput
           key={index}
           otp
+          data-no-select-all="true"
           ref={(el) => { refs.current[index] = el; }}
           type="text"
           inputMode="numeric"
@@ -68,6 +91,7 @@ export default function OtpInputCells({
           maxLength={otpMaxLengthForCell(index, length)}
           value={digit}
           onChange={(e) => onCellChange(index, e.target.value)}
+          onBeforeInput={onCellBeforeInput}
           onInput={onCellInput}
           onKeyDown={(e) => handleKeyDown(index, e)}
           onPaste={onCellPaste}

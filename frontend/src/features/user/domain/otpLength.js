@@ -1,10 +1,10 @@
 /** Email (SMTP) vs SMS (MDT) OTP lengths — keep in sync with backend otp-length.rules.js */
 
 export const EMAIL_OTP_LENGTH = 4;
-export const SMS_OTP_LENGTH = 6;
+export const SMS_OTP_LENGTH = 4;
 
 export const EMAIL_OTP_REGEX = /^\d{4}$/;
-export const SMS_OTP_REGEX = /^\d{6}$/;
+export const SMS_OTP_REGEX = /^\d{4}$/;
 
 export function isValidEmailOtp(otp) {
   return EMAIL_OTP_REGEX.test(String(otp ?? '').trim());

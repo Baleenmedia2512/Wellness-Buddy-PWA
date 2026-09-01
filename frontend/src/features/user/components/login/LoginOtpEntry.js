@@ -1,4 +1,4 @@
-// OTP entry step — 6 input cells.
+// OTP entry step — 4 input cells (SMS OTP length).
 // Auto-verifies when all digits are filled: no explicit Verify button required.
 //
 // Android: WebOTP API (navigator.credentials.get) auto-reads OTP from SMS.
@@ -75,7 +75,7 @@ const LoginOtpEntry = ({
         ) : isComplete ? (
           <span className="text-sm text-gray-400">Verifying automatically…</span>
         ) : (
-          <span className="text-sm text-gray-400">Enter the 6-digit code</span>
+          <span className="text-sm text-gray-400">Enter the {otp.length}-digit code</span>
         )}
       </div>
 

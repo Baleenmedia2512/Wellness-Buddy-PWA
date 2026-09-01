@@ -27,16 +27,16 @@ describe('generateEmailOtp', () => {
 });
 
 describe('generateSmsOtp', () => {
-  it('always returns exactly 6 numeric digits', () => {
+  it('always returns exactly 4 numeric digits', () => {
     for (let i = 0; i < 20; i += 1) {
       const otp = generateSmsOtp();
-      assert.match(otp, /^\d{6}$/);
+      assert.match(otp, /^\d{4}$/);
     }
   });
 });
 
 describe('generateOtpForContactType', () => {
-  it('returns 4 digits for email and 6 for phone', () => {
+  it('returns 4 digits for email and phone', () => {
     assert.equal(generateOtpForContactType('email').length, EMAIL_OTP_LENGTH);
     assert.equal(generateOtpForContactType('phone').length, SMS_OTP_LENGTH);
   });
@@ -52,18 +52,18 @@ describe('isValidEmailOtp', () => {
 });
 
 describe('isValidSmsOtp', () => {
-  it('accepts exactly 6 digits only', () => {
-    assert.equal(isValidSmsOtp('123456'), true);
-    assert.equal(isValidSmsOtp('1234'), false);
+  it('accepts exactly 4 digits only', () => {
+    assert.equal(isValidSmsOtp('1234'), true);
+    assert.equal(isValidSmsOtp('123456'), false);
   });
 });
 
 describe('isValidOtpForContactType', () => {
   it('routes by contact type', () => {
     assert.equal(isValidOtpForContactType('1234', 'email'), true);
-    assert.equal(isValidOtpForContactType('123456', 'phone'), true);
+    assert.equal(isValidOtpForContactType('1234', 'phone'), true);
     assert.equal(isValidOtpForContactType('123456', 'email'), false);
-    assert.equal(isValidOtpForContactType('1234', 'phone'), false);
+    assert.equal(isValidOtpForContactType('123456', 'phone'), false);
   });
 });
 
@@ -78,8 +78,9 @@ describe('extractOtpFromText', () => {
     assert.equal(extractOtpFromText('123456', EMAIL_OTP_LENGTH), '1234');
   });
 
-  it('supports 6-digit SMS extraction', () => {
-    assert.equal(extractOtpFromText('123456', SMS_OTP_LENGTH), '123456');
-    assert.equal(extractOtpFromText('Your code is 482193', SMS_OTP_LENGTH), '482193');
+  it('supports 4-digit SMS extraction', () => {
+    assert.equal(extractOtpFromText('1234', SMS_OTP_LENGTH), '1234');
+    assert.equal(extractOtpFromText('Your code is 4821', SMS_OTP_LENGTH), '4821');
+    assert.equal(extractOtpFromText('123456', SMS_OTP_LENGTH), '1234');
   });
 });

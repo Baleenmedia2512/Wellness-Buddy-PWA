@@ -4,19 +4,19 @@
  */
 
 export const EMAIL_OTP_LENGTH = 4;
-export const SMS_OTP_LENGTH = 6;
+export const SMS_OTP_LENGTH = 4;
 
 export const EMAIL_OTP_REGEX = /^\d{4}$/;
-export const SMS_OTP_REGEX = /^\d{6}$/;
+export const SMS_OTP_REGEX = /^\d{4}$/;
 
 /** Generate a 4-digit email OTP in range 1000–9999. */
 export function generateEmailOtp() {
   return Math.floor(1000 + Math.random() * 9000).toString();
 }
 
-/** Generate a 6-digit SMS OTP in range 100000–999999. */
+/** Generate a 4-digit SMS OTP in range 1000–9999 (same length as email OTP). */
 export function generateSmsOtp() {
-  return Math.floor(100000 + Math.random() * 900000).toString();
+  return generateEmailOtp();
 }
 
 export function generateOtpForContactType(contactType) {
