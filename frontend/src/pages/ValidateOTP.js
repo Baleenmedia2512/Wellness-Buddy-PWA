@@ -3,10 +3,11 @@ import axios from 'axios';
 import { motion } from 'framer-motion';
 import wellnessValleyIcon from '../assets/wellness-valley-icon.png';
 import useOtpInput from '../features/user/hooks/useOtpInput';
+import { EMAIL_OTP_LENGTH } from '../features/user/domain/otpLength';
 import useWebOtp from '../features/user/hooks/useWebOtp';
 import storage from '../shared/lib/storage';
 import { debugLog } from '../shared/utils/logger';
-import NativeInput, { otpAutoCompleteForCell, otpMaxLengthForCell } from '../shared/components/NativeInput.jsx';
+import OtpInputCells from '../shared/components/OtpInputCells.jsx';
 import { getStatus } from '../features/user/services/user.api.js';
 import { isAppUpdateRequiredResponse } from '../shared/services/appVersionEnforce.client.js';
 
@@ -23,10 +24,8 @@ const ValidateOTP = ({
   coachName: _coachNameProp = '',
 }) => {
   // Canonical OTP input controller — handles change, keydown, paste, iOS autofill, fillAll.
-  const {
-    otp, refs, value: otpValue, isComplete,
-    handleChange, handleKeyDown: otpKeyDown, handlePaste: otpPaste, fillAll, reset: resetOtp,
-  } = useOtpInput(6);
+  const otpCtl = useOtpInput(EMAIL_OTP_LENGTH);
+  const { refs, value: otpValue, isComplete, fillAll, reset: resetOtp } = otpCtl;
   const [validating, setValidating] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [error, setError] = useState('');
@@ -75,14 +74,14 @@ const ValidateOTP = ({
     fetchRequestInfo();
   }, [isReactivationFlow]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Demo account: auto-fill 000000 — verification runs via isComplete effect below.
+  // Demo account: auto-fill 0000 — verification runs via isComplete effect below.
   useEffect(() => {
     if (isReactivationFlow) return;
     const userEmail = userEmailProp || storage.get('userEmail') || '';
     if (userEmail.toLowerCase().trim() !== DEMO_EMAIL) return;
     const timer = setTimeout(() => {
       debugLog("\ud83d\udfe6 [ValidateOTP] Demo account - auto-filling OTP");
-      fillAll('000000');
+      fillAll('0000');
     }, 800);
     return () => clearTimeout(timer);
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -152,8 +151,8 @@ const ValidateOTP = ({
     const otpCode = typeof otpCodeArg === 'string' ? otpCodeArg : otpValue;
     debugLog("\ud83d\udfe6 [ValidateOTP] Validating OTP (length):", otpCode.length);
 
-    if (otpCode.length !== 6) {
-      setError('Please enter all 6 digits');
+    if (otpCode.length !== EMAIL_OTP_LENGTH) {
+      setError(`Please enter all ${EMAIL_OTP_LENGTH} digits`);
       return;
     }
 
@@ -208,7 +207,7 @@ const ValidateOTP = ({
     }
   };
 
-  // Auto-verify as soon as all 6 digits are entered (typing, paste, SMS autofill).
+  // Auto-verify as soon as all digits are entered (typing, paste, autofill).
   useEffect(() => {
     if (!isComplete || validating || success || otpExpired) return;
     validateOtp(otpValue);
@@ -323,38 +322,22 @@ const ValidateOTP = ({
         </div>
 
         <div className="px-8 pb-10 flex-1 overflow-y-auto custom-scrollbar">
-          <div className="flex justify-center gap-2 sm:gap-3 mb-6">
-            {otp.map((digit, index) => (
-              <NativeInput
-                key={index}
-                otp
-                ref={(el) => { refs.current[index] = el; }}
-                type="text"
-                inputMode="numeric"
-                pattern="[0-9]*"
-                autoComplete={otpAutoCompleteForCell(index)}
-                maxLength={otpMaxLengthForCell(index, otp.length)}
-                className={`w-12 h-14 sm:w-14 sm:h-16 text-center text-2xl font-bold bg-gray-50 border-2 rounded-2xl transition-all outline-none focus:bg-white ${
-                  error ? 'border-red-200 bg-red-50 text-red-600' :
-                  success ? 'border-green-500 bg-green-50 text-green-600' :
-                  digit ? 'border-green-500 bg-white' : 'border-transparent focus:border-green-500'
-                }`}
-                value={digit}
-                onChange={(e) => {
-                  const raw = e.target.value;
-                  // iOS autoComplete="one-time-code" delivers all digits into first cell at once.
-                  if (raw.length >= 6) {
-                    fillAll(raw);
-                    return;
-                  }
-                  handleChange(index, raw);
-                }}
-                onKeyDown={(e) => otpKeyDown(index, e)}
-                onPaste={otpPaste}
-                disabled={validating || otpExpired}
-              />
-            ))}
-          </div>
+          <OtpInputCells
+            otpCtl={otpCtl}
+            length={EMAIL_OTP_LENGTH}
+            emailOtp
+            disabled={validating || otpExpired}
+            className="flex justify-center gap-2 sm:gap-3 mb-6"
+            cellClassName={`w-12 h-14 sm:w-14 sm:h-16 text-center text-2xl font-bold bg-gray-50 border-2 rounded-2xl transition-all outline-none focus:bg-white focus:border-green-500 ${
+              error ? 'border-red-200 bg-red-50 text-red-600' :
+              success ? 'border-green-500 bg-green-50 text-green-600' : ''
+            }`}
+            cellStyle={(digit) => (
+              !error && !success && digit
+                ? { borderColor: '#22c55e', backgroundColor: '#ffffff' }
+                : undefined
+            )}
+          />
 
           <div className="text-center mb-8 min-h-[24px]">
             {error ? (
@@ -411,7 +394,7 @@ const ValidateOTP = ({
             <button
               className="w-full mt-3 py-3 rounded-xl font-semibold text-sm text-gray-500 border border-gray-200 hover:bg-gray-50 transition-all flex items-center justify-center gap-2"
               onClick={() => {
-                const filled = fillAll('000000');
+                const filled = fillAll('0000');
                 if (filled) validateOtp(filled);
               }}
               disabled={validating}

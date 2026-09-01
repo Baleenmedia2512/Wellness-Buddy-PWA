@@ -1,6 +1,7 @@
-// 6-digit OTP input controller — supports native keyboard, custom keypad, paste,
+// OTP input controller — supports native keyboard, custom keypad, paste,
 // WebOTP API auto-fill, and iOS autoComplete="one-time-code" multi-char input.
 import { useRef, useState } from 'react';
+import { extractOtpFromText } from '../domain/otpLength';
 
 export default function useOtpInput(length = 6) {
   const [otp, setOtp] = useState(() => new Array(length).fill(''));
@@ -13,34 +14,36 @@ export default function useOtpInput(length = 6) {
     setOtp(new Array(length).fill(''));
   };
 
+  const applyDigits = (digits) => {
+    const clean = String(digits ?? '').replace(/\D/g, '').slice(0, length);
+    if (!clean) return null;
+    const next = new Array(length).fill('');
+    clean.split('').forEach((d, i) => { next[i] = d; });
+    setOtp(next);
+    refs.current[Math.min(clean.length, length - 1)]?.focus();
+    return clean.length === length ? clean : null;
+  };
+
   /**
-   * Fill all cells at once — used by WebOTP API auto-read and iOS autofill
-   * when the system delivers multiple digits into a single onChange event.
-   * Returns the full OTP string when exactly `length` digits were provided,
-   * otherwise returns null (partial fill — caller decides what to do).
+   * Fill all cells at once — used by WebOTP API auto-read, iOS autofill,
+   * clipboard paste, and prose such as "Your OTP is 1234".
    */
   const fillAll = (raw) => {
-    const digits = String(raw || '').replace(/\D/g, '').slice(0, length);
-    if (!digits) return null;
-    const next = new Array(length).fill('');
-    digits.split('').forEach((d, i) => { next[i] = d; });
-    setOtp(next);
-    refs.current[Math.min(digits.length, length - 1)]?.focus();
-    return digits.length === length ? digits : null;
+    const extracted = extractOtpFromText(raw, length);
+    if (extracted) return applyDigits(extracted);
+    const digits = String(raw ?? '').replace(/\D/g, '').slice(0, length);
+    return applyDigits(digits);
   };
 
   const handleChange = (idx, raw) => {
-    // iOS autoComplete="one-time-code" autofill delivers ALL `length` digits
-    // into the first cell as a single onChange (e.g. value = "123456").
-    // Only delegate to fillAll when the raw string is >= length chars so that
-    // normal single-char rapid-typing (e.g. raw = "47" from a fast keypress)
-    // falls through to the existing slice(-1) behaviour.
-    if (raw.length >= length) {
-      fillAll(raw);
+    const text = String(raw ?? '');
+    // Autofill, paste-as-typing, and multi-char input (all platforms).
+    if (text.length > 1) {
+      fillAll(text);
       return;
     }
-    if (!/^\d*$/.test(raw)) return;
-    const v = raw.slice(-1);
+    if (!/^\d*$/.test(text)) return;
+    const v = text.slice(-1);
     setOtp((prev) => {
       const next = [...prev];
       next[idx] = v;
@@ -56,14 +59,9 @@ export default function useOtpInput(length = 6) {
   };
 
   const handlePaste = (e) => {
-    e.preventDefault();
-    const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, length);
-    if (!pasted) return null;
-    const next = new Array(length).fill('');
-    pasted.split('').forEach((d, i) => { next[i] = d; });
-    setOtp(next);
-    refs.current[Math.min(pasted.length, length - 1)]?.focus();
-    return next.every((d) => d !== '') ? next.join('') : null;
+    if (e?.preventDefault) e.preventDefault();
+    const pasted = e?.clipboardData?.getData('text') ?? String(e ?? '');
+    return fillAll(pasted);
   };
 
   const handleKeypadDigit = (digit) => {

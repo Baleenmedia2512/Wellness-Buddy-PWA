@@ -9,6 +9,7 @@ import {
   getDirectReportingMembers,
   getFullReportingMembers,
   getReportingMemberIds,
+  getUplineMembers,
   buildReportingChildrenIndex,
   isReportingDownlineMember,
   isCoCoachPartnerDownlineMember,
@@ -120,6 +121,21 @@ describe('getFullReportingMembers', () => {
       ids(getFullReportingMembers(X, context)),
       [A, B, C, M1, M2, M3, A1, A2, A3, B1, B2],
     );
+  });
+});
+
+describe('getUplineMembers', () => {
+  it('returns ancestors on the CoachId chain (nearest first)', () => {
+    const U1 = 5;
+    const U2 = 6;
+    const context = buildReportingContext([
+      { UserId: U1, UserName: 'Top', Role: 'coach', CoachId: null, Status: 'Active' },
+      { UserId: U2, UserName: 'Mid', Role: 'coach', CoachId: U1, Status: 'Active' },
+      { UserId: X, UserName: 'Viewer', Role: 'coach', CoachId: U2, Status: 'Active' },
+      { UserId: A, UserName: 'Member A', Role: 'user', CoachId: X, Status: 'Active' },
+    ]);
+
+    assert.deepEqual(getUplineMembers(X, context).map((m) => m.UserId), [U2, U1]);
   });
 });
 

@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import useDeleteAccountFlow from '../hooks/useDeleteAccountFlow';
 import useOtpInput from '../hooks/useOtpInput';
+import { EMAIL_OTP_LENGTH } from '../domain/otpLength';
 import useResendCountdown from '../hooks/useResendCountdown';
 import { sendOtp, verifyOtp, deleteAccountRequest, purgeLocalAfterDelete } from '../services/authService';
 import { deleteFirebaseUser } from '../../../shared/services/firebase';
@@ -15,7 +16,7 @@ const CONFIRM_WORD = 'DELETE';
 
 const DeleteAccountModal = ({ isOpen, onClose, userEmail, onAccountDeleted, onSignOut }) => {
   const flow = useDeleteAccountFlow({ isOpen, userEmail });
-  const otpCtl = useOtpInput(6);
+  const otpCtl = useOtpInput(EMAIL_OTP_LENGTH);
   const resend = useResendCountdown(flow.restoredCountdown, flow.step === 2);
 
   const [otpSending, setOtpSending] = useState(false);
