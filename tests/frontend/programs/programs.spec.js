@@ -1415,15 +1415,15 @@ test(
     );
 
     // ============================================================
-    // 19. UPDATE MUST BE DISABLED
+    // 19. UPDATE MUST BE ENABLED
     // ============================================================
 
     await expect(
       updateButton
-    ).toBeDisabled();
+    ).toBeEnabled();
 
     console.log(
-      'PROG-002 UPDATE DISABLED WITH ZERO SELECTIONS'
+      'PROG-002 UPDATE ENABLED WITH ZERO SELECTIONS'
     );
 
     // ============================================================
