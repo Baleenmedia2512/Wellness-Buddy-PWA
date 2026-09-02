@@ -9,6 +9,11 @@ import { CheckCircle, Clock, Pencil, ShieldCheck } from 'lucide-react';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
 import NativeInput from '../../../shared/components/NativeInput.jsx';
 import { verifyTestimonialOtp } from '../services/testimonialApi.js';
+import {
+  EMAIL_OTP_LENGTH,
+  extractOtpFromText,
+  isValidEmailOtp,
+} from '../../user/domain/otpLength';
 import { PORTRAIT_IMAGE_CLASS_SM } from '../services/testimonialFormUtils.js';
 
 function StatusBadge({ status }) {
@@ -38,10 +43,16 @@ export default function TestimonialStatusCard({ testimonial, onEdit, onAddAfter,
   const arrow     = testimonial.goalType === 'loss' ? '↓' : '↑';
   const goalLabel = testimonial.goalType === 'loss' ? 'Weight Loss' : 'Weight Gain';
 
+  const handleOtpInput = (raw) => {
+    const extracted = extractOtpFromText(raw, EMAIL_OTP_LENGTH);
+    setOtp(extracted ?? String(raw ?? '').replace(/\D/g, '').slice(0, EMAIL_OTP_LENGTH));
+    setOtpError(null);
+  };
+
   const handleVerify = async () => {
     setOtpError(null);
-    if (!/^\d{6}$/.test(otp.trim())) {
-      setOtpError('Enter the 6-digit OTP your sponsor shared with you');
+    if (!isValidEmailOtp(otp.trim())) {
+      setOtpError('Enter the 4-digit OTP your sponsor shared with you');
       return;
     }
     setVerifying(true);
@@ -142,7 +153,7 @@ export default function TestimonialStatusCard({ testimonial, onEdit, onAddAfter,
       {testimonial.status === 'pending' && (
         <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 space-y-3">
           <p className="text-sm text-amber-800 font-medium">
-            📧 Your sponsor received a verification email with a 6-digit OTP.
+            📧 Your sponsor received a verification email with a 4-digit OTP.
             Ask them to share it with you, then enter it below.
           </p>
           {!showOtpBox ? (
@@ -160,13 +171,14 @@ export default function TestimonialStatusCard({ testimonial, onEdit, onAddAfter,
                 type="text"
                 inputMode="numeric"
                 pattern="[0-9]*"
-                autoComplete="off"
-                maxLength={6}
-                placeholder="_ _ _ _ _ _"
+                autoComplete="one-time-code"
+                maxLength={EMAIL_OTP_LENGTH}
+                placeholder="_ _ _ _"
                 value={otp}
-                onChange={(e) => {
-                  setOtp(e.target.value.replace(/\D/g, '').slice(0, 6));
-                  setOtpError(null);
+                onChange={(e) => handleOtpInput(e.target.value)}
+                onPaste={(e) => {
+                  e.preventDefault();
+                  handleOtpInput(e.clipboardData?.getData('text') ?? '');
                 }}
                 className="w-full text-center text-2xl font-bold tracking-[0.4em] border-2 border-amber-300 rounded-xl py-3 focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white"
                 autoFocus
@@ -183,7 +195,7 @@ export default function TestimonialStatusCard({ testimonial, onEdit, onAddAfter,
                 </TouchFeedbackButton>
                 <TouchFeedbackButton
                   onClick={handleVerify}
-                  disabled={verifying || otp.length !== 6}
+                  disabled={verifying || otp.length !== EMAIL_OTP_LENGTH}
                   className="flex-1 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-sm font-bold transition-colors disabled:opacity-60"
                 >
                   {verifying ? 'Verifying…' : 'Verify'}
