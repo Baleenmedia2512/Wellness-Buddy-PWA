@@ -93,6 +93,7 @@ import {
   clearLocalConsentAcceptance,
   CURRENT_CONSENT_VERSION,
   consentPayload,
+  shouldOpenConsentGate,
 } from "./features/user/domain/consent";
 import { fetchInactiveCoachInfo } from "./features/user/services/inactiveCoachService";
 import Header from "./shared/components/Header";
@@ -199,7 +200,7 @@ import { WeightProgressTipsModal } from "./features/weight-progress-tips/compone
 import PhysicalActivitySetup from "./features/user/components/PhysicalActivitySetup";
 import { fetchProfile } from "./features/user/services/profileService";
 import { resolvePhysicalActivityGate } from "./features/user/domain/physicalActivityGate";
-import { getProfile } from "./features/user/services/user.api";
+import { getProfile, clearProfileCache } from "./features/user/services/user.api";
 import {
   NutritionRefreshProvider,
   useNutritionRefresh,
@@ -3212,7 +3213,7 @@ function WellnessValleyApp() {
 
       if (
         isFlagEnabled("ff.consent-gate") &&
-        result.data?.consentRequired === true
+        shouldOpenConsentGate(result.data?.consentRequired === true, userObj)
       ) {
         setShowConsentGate(true);
       }
@@ -3315,7 +3316,7 @@ function WellnessValleyApp() {
           email: email || undefined,
         });
         if (cancelled || !consent.ok) return;
-        if (consent.consentRequired) {
+        if (shouldOpenConsentGate(consent.consentRequired, user)) {
           setShowConsentGate(true);
         } else {
           setShowConsentGate(false);
@@ -3713,7 +3714,7 @@ function WellnessValleyApp() {
                   email: userEmail || undefined,
                 });
                 if (consent.ok) {
-                  if (consent.consentRequired) {
+                  if (shouldOpenConsentGate(consent.consentRequired, parsedUser)) {
                     setShowConsentGate(true);
                   } else {
                     setShowConsentGate(false);
@@ -3721,11 +3722,11 @@ function WellnessValleyApp() {
                     Session.setOtpUser(refreshed);
                     setUser(refreshed);
                   }
-                } else if (parsedUser?.consentRequired === true) {
+                } else if (shouldOpenConsentGate(parsedUser?.consentRequired === true, parsedUser)) {
                   setShowConsentGate(true);
                 }
               } catch {
-                if (parsedUser?.consentRequired === true) {
+                if (shouldOpenConsentGate(parsedUser?.consentRequired === true, parsedUser)) {
                   setShowConsentGate(true);
                 }
               }
@@ -4214,7 +4215,7 @@ function WellnessValleyApp() {
         if (
           isFlagEnabled("ff.consent-gate") &&
           data?.success &&
-          data?.data?.consentRequired === true
+          shouldOpenConsentGate(data?.data?.consentRequired === true, user)
         ) {
           setShowConsentGate(true);
         }
@@ -6859,7 +6860,7 @@ function WellnessValleyApp() {
           "? [saveUserToBackend] User saved successfully, isNewUser:",
           data.isNewUser,
         );
-        if (data.user?.consentRequired) {
+        if (shouldOpenConsentGate(data.user?.consentRequired === true, data.user)) {
           setShowConsentGate(true);
         }
 
@@ -7084,7 +7085,7 @@ function WellnessValleyApp() {
         // so we never flash Login → consent/home.
         const needsConsent =
           isFlagEnabled("ff.consent-gate") &&
-          parsedUser?.consentRequired === true;
+          shouldOpenConsentGate(parsedUser?.consentRequired === true, parsedUser);
         setShowConsentGate(needsConsent);
         setUser(snapshotUserWithDbId(parsedUser));
         setIsOtpVerified(true);
@@ -7309,6 +7310,10 @@ function WellnessValleyApp() {
               return;
             }
             persistLocalConsentAcceptance(CURRENT_CONSENT_VERSION);
+            clearProfileCache({
+              email: consentEmail || undefined,
+              userId: consentUserId,
+            });
             setUser((prev) => {
               if (!prev) return prev;
               const next = { ...prev, consentRequired: false };
