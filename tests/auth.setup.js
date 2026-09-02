@@ -52,17 +52,17 @@ setup('authenticate', async ({ page }) => {
 
   // Wait for authentication state
   await expect
-  .poll(
-    async () =>
-      page.evaluate(() =>
-        localStorage.getItem('isOtpVerified')
-      ),
-    {
-      timeout: 30000,
-      intervals: [500, 1000, 2000],
-    }
-  )
-  .toBe('true');
+    .poll(
+      async () =>
+        page.evaluate(() =>
+          localStorage.getItem('isOtpVerified')
+        ),
+      {
+        timeout: 30000,
+        intervals: [500, 1000, 2000],
+      }
+    )
+    .toBe('true');
 
   // Save authentication state
   await page.evaluate(() => {
@@ -71,7 +71,7 @@ setup('authenticate', async ({ page }) => {
     localStorage.setItem('dbUserId', '99999');
     localStorage.setItem('userEmail', 'test@example.com');
   });
-  
+
   await page.context().storageState({
     path: authFile,
   });
