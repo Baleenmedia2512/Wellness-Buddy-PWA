@@ -318,49 +318,67 @@ const NutritionDashboard = ({
 
   // Initialize local editable data when meal changes
   useEffect(() => {
-    if (selectedMeal) {
-      const foodData = parseAnalysisData(selectedMeal.AnalysisData);
+    if (!selectedMeal) return;
 
-      // Ã°Å¸â€Â DEBUG: Log what we're loading from database
-      debugLog("Ã°Å¸â€Â [NutritionDashboard] Loading from database:", {
-        foods: foodData.detailedItems?.map((item) => ({
-          name: item.name,
-          weight_g: item.weight_g,
-          volume_ml: item.volume_ml,
-          grams: item.grams,
-          unit: item.unit,
-          isLiquid: item.isLiquid,
-          portion: item.portion,
-        })),
-      });
-
-      // Transform database format to EditableFoodItem expected format
-      const transformedItems = (foodData.detailedItems || []).map((item) => {
-        const transformed = transformDbItemToEditable(item);
-        debugLog("[NutritionDashboard] Transformed item:", {
-          name: item.name,
-          originalAiName: transformed.originalAiName,
-          wasAutoCorrected: transformed.wasAutoCorrected,
-          needsReverseLookup: transformed.needsReverseLookup,
-          correctionMetadataAiDetected: item.correctionMetadata?.aiDetected,
-        });
-        return transformed;
-      });
-      setLocalDetailedItems(transformedItems);
-      const nutrition = { ...(foodData.nutrition || {}) };
-      const mealGi = computeMealGlycemicIndex(transformedItems);
-      if (mealGi != null) nutrition.glycemic_index = mealGi;
-      setLocalNutrition(nutrition);
-
-      // Only reset editing states if NOT from auto-save
-      if (!isAutoSaveUpdateRef.current) {
-        setIsEditing(false);
-        setEditingStates({});
-      }
-
-      // Reset the flag
-      isAutoSaveUpdateRef.current = false;
+    const foodData = parseAnalysisData(selectedMeal.AnalysisData);
+    let items = foodData.detailedItems || [];
+    // Lean diary rows have listSummary but no AnalysisData until detail fetch.
+    if (items.length === 0 && Array.isArray(selectedMeal.listSummary?.items)) {
+      items = selectedMeal.listSummary.items.map((item) => ({
+        name: item.name,
+        calories: item.calories,
+        nutrition: { calories: item.calories || 0 },
+      }));
     }
+
+    // Ã°Å¸â€Â DEBUG: Log what we're loading from database
+    debugLog("Ã°Å¸â€Â [NutritionDashboard] Loading from database:", {
+      foods: items.map((item) => ({
+        name: item.name,
+        weight_g: item.weight_g,
+        volume_ml: item.volume_ml,
+        grams: item.grams,
+        unit: item.unit,
+        isLiquid: item.isLiquid,
+        portion: item.portion,
+      })),
+    });
+
+    // Transform database format to EditableFoodItem expected format
+    const transformedItems = items.map((item) => {
+      const transformed = transformDbItemToEditable(item, true);
+      debugLog("[NutritionDashboard] Transformed item:", {
+        name: item.name,
+        originalAiName: transformed.originalAiName,
+        wasAutoCorrected: transformed.wasAutoCorrected,
+        needsReverseLookup: transformed.needsReverseLookup,
+        correctionMetadataAiDetected: item.correctionMetadata?.aiDetected,
+      });
+      return transformed;
+    });
+    setLocalDetailedItems(transformedItems);
+    const fromParse = foodData.nutrition || {};
+    const hasParsedCalories = Number(fromParse.calories) > 0;
+    const nutrition = hasParsedCalories ? { ...fromParse } : {
+      calories: selectedMeal.TotalCalories ?? fromParse.calories ?? 0,
+      protein: selectedMeal.TotalProtein ?? fromParse.protein ?? 0,
+      carbs: selectedMeal.TotalCarbs ?? fromParse.carbs ?? 0,
+      fat: selectedMeal.TotalFat ?? fromParse.fat ?? 0,
+      fiber: selectedMeal.TotalFiber ?? fromParse.fiber ?? 0,
+      glycemic_index: selectedMeal.GlycemicIndex ?? fromParse.glycemic_index ?? null,
+    };
+    const mealGi = computeMealGlycemicIndex(transformedItems);
+    if (mealGi != null) nutrition.glycemic_index = mealGi;
+    setLocalNutrition(nutrition);
+
+    // Only reset editing states if NOT from auto-save
+    if (!isAutoSaveUpdateRef.current) {
+      setIsEditing(false);
+      setEditingStates({});
+    }
+
+    // Reset the flag
+    isAutoSaveUpdateRef.current = false;
   }, [selectedMeal]);
 
   // Check if any item is being edited

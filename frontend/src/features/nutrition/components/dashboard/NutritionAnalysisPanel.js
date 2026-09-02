@@ -262,7 +262,9 @@ const NutritionAnalysisPanel = ({
                           foodItem={item} index={originalIndex}
                           onUpdate={handleFoodUpdate} onDelete={handleDeleteFoodItem}
                           onRestore={handleRestoreFoodItem} onEditingChange={handleEditingChange}
-                          disabled={isEditing && !editingStates[originalIndex]} hideButtons={false} user={user} />
+                          disabled={isEditing && !editingStates[originalIndex]} hideButtons={false} user={user}
+                          mealRow={selectedMeal}
+                          mealDetailStatus={mealDetailStatus} />
                       </div>
                     ))}
                 </div>

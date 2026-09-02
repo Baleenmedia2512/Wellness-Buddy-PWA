@@ -34,8 +34,11 @@ function FactRow({ row }) {
   );
 }
 
-function FoodItemNutritionModal({ item, onClose }) {
-  const facts = useMemo(() => buildFoodItemNutritionFacts(item), [item]);
+function FoodItemNutritionModal({ item, mealFallback = null, onClose }) {
+  const facts = useMemo(
+    () => buildFoodItemNutritionFacts(item, { mealFallback }),
+    [item, mealFallback],
+  );
   if (!item || typeof document === 'undefined') return null;
 
   const giRow = facts.rows.find((row) => row.key === 'glycemic_index');

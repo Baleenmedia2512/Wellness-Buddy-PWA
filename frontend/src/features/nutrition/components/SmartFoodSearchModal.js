@@ -20,6 +20,7 @@ import { fetchFoodSuggestions } from "../services/foodSuggestionsApi";
 import { fetchDrySaladSuggestions } from "../services/drySaladSuggestionsApi";
 import {
   filterSuggestionsAgainstSelected,
+  filterRegularFoodSearchItems,
   drySaladUsualComboTitle,
   drySaladOftenTitle,
   drySaladSlotFromDeviceNow,
@@ -154,8 +155,8 @@ const SmartFoodSearchModal = ({
       signal: controller.signal,
     })
       .then((data) => {
-        setLatestFoods(data.latest || []);
-        setOftenWith(data.oftenWith || []);
+        setLatestFoods(filterRegularFoodSearchItems(data.latest || []));
+        setOftenWith(filterRegularFoodSearchItems(data.oftenWith || []));
       })
       .catch(() => {
         /* abort / network — leave prior suggestions */
@@ -249,9 +250,10 @@ const SmartFoodSearchModal = ({
           myItems: data.myItems || [],
           communityItems: data.communityItems || [],
         }, query);
-        setMasterItems(buckets.masterItems);
-        setMyItems(buckets.myItems);
-        setCommunityItems(buckets.communityItems);
+        const filterItems = catalogMode ? (items) => items : filterRegularFoodSearchItems;
+        setMasterItems(filterItems(buckets.masterItems));
+        setMyItems(filterItems(buckets.myItems));
+        setCommunityItems(filterItems(buckets.communityItems));
       } else {
         setMasterItems([]);
         setMyItems([]);
