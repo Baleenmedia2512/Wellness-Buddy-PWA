@@ -114,9 +114,7 @@ import {
 import { getVersionString } from "./config/version";
 import { useAppVersionPolicy } from "./shared/hooks/useAppVersionPolicy";
 import { useMandatoryAppUpdate } from "./shared/hooks/useMandatoryAppUpdate";
-import AppVersionHardBlock, {
-  AppVersionUpdateBanner,
-} from "./shared/components/AppVersionGate";
+import AppVersionHardBlock from "./shared/components/AppVersionGate";
 import { getApiBaseUrl } from "./config/api.config";
 import { apiFetch } from "./shared/services/apiFetch";
 import { handlePossibleAppUpdateRequired } from "./shared/services/appVersionEnforce.client";
@@ -7461,12 +7459,6 @@ function WellnessValleyApp() {
   // dashboard API reloads unless a newer async activity log exists
   // (see homeDashboardActivity + NutritionRefreshContext.triggerRefresh).
   let homeOverlay = null;
-  const versionSoftBanner = versionPolicy.showSoftBanner ? (
-    <AppVersionUpdateBanner
-      policy={versionPolicy.policy}
-      onDismiss={versionPolicy.dismissRecommended}
-    />
-  ) : null;
 
   // Inline Profile Page — full-screen, below nav bar (no modal overlay)
   // Hard onboarding wizards only — soft resolve flags must not hide Profile on Home.
@@ -9675,7 +9667,6 @@ function WellnessValleyApp() {
     </LocationGuard>
       </div>
       {homeOverlay}
-      {versionSoftBanner}
     </>
   );
 }
