@@ -27,10 +27,10 @@ export const MINERAL_FACT_KEYS = Object.freeze([
 ]);
 
 export const FACT_SECTIONS = Object.freeze([
-  { id: 'macros', label: null },
-  { id: 'other', label: 'Sodium & cholesterol' },
   { id: 'vitamins', label: 'Vitamins' },
   { id: 'minerals', label: 'Minerals' },
+  { id: 'other', label: 'Sodium & cholesterol' },
+  { id: 'macros', label: null },
 ]);
 
 export const FACT_FIELD_META = Object.freeze({
