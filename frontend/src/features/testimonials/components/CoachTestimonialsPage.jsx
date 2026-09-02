@@ -27,6 +27,11 @@ import {
 import { uploadTestimonialVideoInChunks } from '../services/testimonialVideoUpload.js';
 import TestimonialSearchBar from './TestimonialSearchBar.jsx';
 import OtpInline from './OtpInline.jsx';
+import {
+  EMAIL_OTP_LENGTH,
+  extractOtpFromText,
+  isValidEmailOtp,
+} from '../../user/domain/otpLength';
 import VideoThumbnailCard from './VideoThumbnailCard.jsx';
 import HealthIssueCoachEditor from './HealthIssueCoachEditor.jsx';
 import {
@@ -395,6 +400,12 @@ function UnifiedOtpInline({
   const sponsorLabel = (sponsorName && String(sponsorName).trim()) || 'your sponsor';
   const hours = Number(otpValidityHours) > 0 ? Number(otpValidityHours) : OTP_VALIDITY_HOURS_DEFAULT;
 
+  const handleOtpInput = (raw) => {
+    const extracted = extractOtpFromText(raw, EMAIL_OTP_LENGTH);
+    setOtp(extracted ?? String(raw ?? '').replace(/\D/g, '').slice(0, EMAIL_OTP_LENGTH));
+    setErr(null);
+  };
+
   const submit = async () => {
     setErr(null);
     setInfo(null);
@@ -402,8 +413,8 @@ function UnifiedOtpInline({
       setErr('OTP has expired. Resend a new code to your sponsor.');
       return;
     }
-    if (!/^\d{6}$/.test(otp.trim())) {
-      setErr(`Enter the 6-digit OTP from ${sponsorLabel}`);
+    if (!isValidEmailOtp(otp.trim())) {
+      setErr(`Enter the 4-digit OTP from ${sponsorLabel}`);
       return;
     }
     setLoading(true);
@@ -453,7 +464,7 @@ function UnifiedOtpInline({
       </div>
       <p className="text-xs text-amber-700 leading-relaxed">
         {sponsorLabel === 'your sponsor' ? 'Your sponsor' : sponsorLabel}
-        {' '}received a single 6-digit OTP covering all your changes. Ask them to share it.
+        {' '}received a single 4-digit OTP covering all your changes. Ask them to share it.
         {' '}Valid for <span className="font-semibold">{hours} hours</span>.
       </p>
       {expired && (
@@ -467,11 +478,15 @@ function UnifiedOtpInline({
           type="text"
           inputMode="numeric"
           pattern="[0-9]*"
-          autoComplete="off"
-          maxLength={6}
-          placeholder="_ _ _ _ _ _"
+          autoComplete="one-time-code"
+          maxLength={EMAIL_OTP_LENGTH}
+          placeholder="_ _ _ _"
           value={otp}
-          onChange={(e) => { setOtp(e.target.value.replace(/\D/g, '').slice(0, 6)); setErr(null); }}
+          onChange={(e) => handleOtpInput(e.target.value)}
+          onPaste={(e) => {
+            e.preventDefault();
+            handleOtpInput(e.clipboardData?.getData('text') ?? '');
+          }}
           className="w-full text-center text-2xl font-bold tracking-[0.4em] border-2 border-amber-300 rounded-xl py-3 focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white"
         />
       )}
@@ -480,7 +495,7 @@ function UnifiedOtpInline({
       {!expired ? (
         <TouchFeedbackButton
           onClick={submit}
-          disabled={loading || otp.length !== 6}
+          disabled={loading || otp.length !== EMAIL_OTP_LENGTH}
           className="w-full py-3 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-sm font-bold disabled:opacity-60 transition-colors"
         >
           {loading ? 'Verifying\u2026' : 'Verify with OTP'}

@@ -21,7 +21,6 @@ import com.wellnessvalley.app.plugins.WhatsAppSharePlugin;
 import androidx.core.splashscreen.SplashScreen;
 
 public class MainActivity extends BridgeActivity {
-    private InAppUpdateManager updateManager;
     
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -137,8 +136,8 @@ public class MainActivity extends BridgeActivity {
         // ✅ Background service enabled — will run silently without notifications
         android.util.Log.d("MainActivity", "✅ Background service enabled (silent mode)");
         
-        // ✅ Check for app updates after app is fully initialized
-        checkForAppUpdates();
+        // Mandatory updates are driven by the JS version-policy gate + InAppUpdatePlugin
+        // (server update_required → Play IMMEDIATE). No unconditional native check here.
         
         // Check if app was opened from notification
         handleNotificationIntent(getIntent());
@@ -440,87 +439,6 @@ public class MainActivity extends BridgeActivity {
                 };
             }
             requestPermissions(permissions, 1001);
-        }
-    }
-    
-    /**
-     * ✅ IN-APP UPDATES: Check for app updates on launch
-     */
-    private void checkForAppUpdates() {
-        // Delay update check to not interfere with app initialization
-        new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
-            try {
-                updateManager = new InAppUpdateManager(this);
-                updateManager.setUpdateListener(new InAppUpdateManager.UpdateListener() {
-                    @Override
-                    public void onUpdateAvailable(int updateType, int availableVersionCode) {
-                        android.util.Log.d("MainActivity", "✅ Update available: " + availableVersionCode);
-                    }
-                    
-                    @Override
-                    public void onUpdateNotAvailable() {
-                        android.util.Log.d("MainActivity", "✅ App is up to date");
-                    }
-                    
-                    @Override
-                    public void onUpdateDownloading(long bytesDownloaded, long totalBytes) {
-                        int progress = totalBytes > 0 ? (int) ((bytesDownloaded * 100) / totalBytes) : 0;
-                        android.util.Log.d("MainActivity", "⬇️ Downloading update: " + progress + "%");
-                    }
-                    
-                    @Override
-                    public void onUpdateDownloaded() {
-                        android.util.Log.d("MainActivity", "✅ Update downloaded, ready to install");
-                    }
-                    
-                    @Override
-                    public void onUpdateInstalling() {
-                        android.util.Log.d("MainActivity", "⚙️ Installing update...");
-                    }
-                    
-                    @Override
-                    public void onUpdateInstalled() {
-                        android.util.Log.d("MainActivity", "✅ Update installed successfully");
-                    }
-                    
-                    @Override
-                    public void onUpdateFailed(int errorCode, String message) {
-                        android.util.Log.e("MainActivity", "❌ Update failed: " + message);
-                    }
-                    
-                    @Override
-                    public void onUpdateCanceled() {
-                        android.util.Log.w("MainActivity", "⚠️ Update canceled by user");
-                    }
-                });
-                
-                updateManager.checkForUpdate();
-                android.util.Log.d("MainActivity", "✅ Update check initiated");
-            } catch (Exception e) {
-                android.util.Log.e("MainActivity", "Failed to check for updates", e);
-            }
-        }, 2000); // 2 second delay
-    }
-    
-    /**
-     * ✅ IN-APP UPDATES: Handle onResume for immediate updates
-     */
-    @Override
-    public void onResume() {
-        super.onResume();
-        if (updateManager != null) {
-            updateManager.onResume();
-        }
-    }
-    
-    /**
-     * ✅ IN-APP UPDATES: Handle activity result
-     */
-    @Override
-    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
-        super.onActivityResult(requestCode, resultCode, data);
-        if (updateManager != null) {
-            updateManager.handleActivityResult(requestCode, resultCode);
         }
     }
 

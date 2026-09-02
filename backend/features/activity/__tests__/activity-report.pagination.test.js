@@ -4,9 +4,12 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  ACTIVITY_REPORT_CLUB_REMOTE,
   ACTIVITY_REPORT_DEFAULT_PAGE_SIZE,
   buildActivityReportPaginationMeta,
+  collectActivityReportClubNames,
   filterActivityReportRecords,
+  filterActivityReportRecordsByClub,
   normalizeActivityReportPagination,
   paginateActivityReportRecords,
   slicePreparedActivityReportRows,
@@ -29,6 +32,53 @@ describe('normalizeActivityReportPagination', () => {
     assert.equal(p.limit, 100);
     assert.equal(p.exportAll, true);
     assert.equal(p.search, 'ana');
+  });
+
+  it('accepts clubName filter', () => {
+    const p = normalizeActivityReportPagination({ clubName: ' Pune Club ' });
+    assert.equal(p.clubFilter, 'Pune Club');
+  });
+});
+
+describe('club filter', () => {
+  const rows = [
+    { memberName: 'Alice', clubName: 'Club A', date: '2026-08-05' },
+    { memberName: 'Bob', clubName: 'Club B', date: '2026-08-06' },
+    { memberName: 'Carol', clubName: 'N/A', date: '2026-08-04' },
+  ];
+
+  it('returns all rows when club filter is empty', () => {
+    assert.equal(filterActivityReportRecordsByClub(rows, '').length, 3);
+  });
+
+  it('filters by exact club name (case-insensitive)', () => {
+    const filtered = filterActivityReportRecordsByClub(rows, 'club a');
+    assert.equal(filtered.length, 1);
+    assert.equal(filtered[0].memberName, 'Alice');
+  });
+
+  it('filters remote rows with ACTIVITY_REPORT_CLUB_REMOTE', () => {
+    const filtered = filterActivityReportRecordsByClub(rows, ACTIVITY_REPORT_CLUB_REMOTE);
+    assert.equal(filtered.length, 1);
+    assert.equal(filtered[0].memberName, 'Carol');
+  });
+
+  it('collects unique sorted club names with Remote last', () => {
+    assert.deepEqual(collectActivityReportClubNames(rows), ['Club A', 'Club B', 'Remote']);
+  });
+
+  it('paginates with club filter before search', () => {
+    const { records, pagination } = paginateActivityReportRecords(rows, {
+      page: 1,
+      limit: 10,
+      search: '',
+      sort: 'memberName',
+      sortDir: 'asc',
+      clubFilter: 'Club B',
+    });
+    assert.equal(records.length, 1);
+    assert.equal(records[0].memberName, 'Bob');
+    assert.equal(pagination.totalRecords, 1);
   });
 });
 
