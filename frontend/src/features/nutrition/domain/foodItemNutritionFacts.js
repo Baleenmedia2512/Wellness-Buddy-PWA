@@ -192,6 +192,112 @@ function parseAnalysisTotal(analysisData) {
   }
 }
 
+function parseAnalysisFoods(analysisData) {
+  if (!analysisData) return [];
+  try {
+    const parsed = typeof analysisData === 'string' ? JSON.parse(analysisData) : analysisData;
+    const foods = Array.isArray(parsed?.foods) ? parsed.foods : [];
+    const detailed = Array.isArray(parsed?.detailedItems) ? parsed.detailedItems : [];
+    if (detailed.length > foods.length) return detailed;
+    return foods.length > 0 ? foods : detailed;
+  } catch {
+    return [];
+  }
+}
+
+function normalizeFoodName(name) {
+  return String(name || '').trim().toLowerCase().replace(/^\*+/, '');
+}
+
+function findAnalysisFoodMatch(foods, item) {
+  if (!Array.isArray(foods) || foods.length === 0 || !item) return null;
+  const names = [
+    item.name,
+    item.foodName,
+    item.originalAiName,
+  ]
+    .map(normalizeFoodName)
+    .filter(Boolean);
+  if (names.length === 0) return null;
+  return foods.find((food) => {
+    const foodName = normalizeFoodName(food?.name || food?.foodName);
+    return foodName && names.includes(foodName);
+  }) || null;
+}
+
+function pickExtraFieldsFromSources(sources) {
+  const out = {};
+  for (const key of EXTRA_FACT_KEYS) {
+    for (const src of sources) {
+      const n = readNumber(src, key);
+      if (n != null) {
+        out[key] = n;
+        break;
+      }
+    }
+  }
+  return out;
+}
+
+function hasNonZeroExtras(fields) {
+  return EXTRA_FACT_KEYS.some((key) => {
+    const n = fields[key];
+    return n != null && Number.isFinite(Number(n)) && Number(n) !== 0;
+  });
+}
+
+function scaleExtrasToItemPortion(extras, referenceFood, item) {
+  if (!extras || typeof extras !== 'object') return extras;
+  const refGrams = Number(
+    referenceFood?.weight_g ?? referenceFood?.grams ?? referenceFood?.serving?.grams,
+  );
+  const itemGrams = Number(item?.serving?.grams ?? item?.grams ?? item?.weight_g);
+  if (!Number.isFinite(refGrams) || refGrams <= 0 || !Number.isFinite(itemGrams) || itemGrams <= 0) {
+    return extras;
+  }
+  if (Math.abs(itemGrams - refGrams) < 0.01) return extras;
+  const ratio = itemGrams / refGrams;
+  const scaled = {};
+  for (const [key, value] of Object.entries(extras)) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) continue;
+    scaled[key] = Math.round(n * ratio * 100) / 100;
+  }
+  return scaled;
+}
+
+/**
+ * Per-item micronutrient fallback from stored meal AnalysisData / DB columns.
+ * Matches by food name for multi-item meals; uses meal totals for single-item meals.
+ * Scales stored per-portion micros when the UI portion differs (e.g. 2 × 1 tablet).
+ *
+ * @param {object|null|undefined} item
+ * @param {object|null|undefined} mealRow
+ * @returns {Record<string, number>|null}
+ */
+export function buildItemNutritionFallback(item, mealRow) {
+  if (!item || !mealRow) return null;
+
+  const foods = parseAnalysisFoods(mealRow.AnalysisData ?? mealRow.analysisData);
+  const match = findAnalysisFoodMatch(foods, item);
+
+  if (match) {
+    const fromMatch = pickExtraFieldsFromSources([match.nutrition, match]);
+    if (hasNonZeroExtras(fromMatch)) {
+      return scaleExtrasToItemPortion(fromMatch, match, item);
+    }
+  }
+
+  if (foods.length === 1) {
+    const mealLevel = buildMealMicronutrientFallback(mealRow);
+    if (hasNonZeroExtras(mealLevel)) {
+      return scaleExtrasToItemPortion(mealLevel, foods[0], item);
+    }
+  }
+
+  return null;
+}
+
 /**
  * Meal-level micronutrients from AnalysisData.total and/or DB Total* columns.
  * Used when per-item nutrition is lean (list card) or enrichment wrote columns only.
@@ -258,6 +364,21 @@ function readItemNutrition(item) {
       }
     }
   }
+
+  // Portion edits can leave macros on `nutrition` while micros live on per100g only.
+  const per100g = item.per100g;
+  const grams = Number(item?.serving?.grams ?? item?.grams ?? item?.weight_g);
+  if (per100g && Number.isFinite(grams) && grams > 0) {
+    const multiplier = grams / 100;
+    for (const key of EXTRA_FACT_KEYS) {
+      if (out[key] != null && out[key] !== 0) continue;
+      const base = readNumber(per100g, key);
+      if (base == null) continue;
+      const scaled = Math.round(base * multiplier * 100) / 100;
+      if (scaled !== 0) out[key] = scaled;
+    }
+  }
+
   return out;
 }
 
@@ -297,6 +418,12 @@ export function buildFoodItemNutritionFacts(item, options = {}) {
   const mealFallback = options.mealFallback && typeof options.mealFallback === 'object'
     ? options.mealFallback
     : {};
+  const mergedNutrition = { ...nutrition };
+  for (const key of EXTRA_FACT_KEYS) {
+    if ((mergedNutrition[key] == null || mergedNutrition[key] === 0) && mealFallback[key] != null) {
+      mergedNutrition[key] = mealFallback[key];
+    }
+  }
 
   const carbs = hasValue(nutrition, 'carbs') ? Number(nutrition.carbs) : null;
   const fiber = hasValue(nutrition, 'fiber') ? Number(nutrition.fiber) : 0;
@@ -321,7 +448,7 @@ export function buildFoodItemNutritionFacts(item, options = {}) {
   }
 
   for (const key of EXTRA_FACT_KEYS) {
-    const value = resolveExtraValue(nutrition, mealFallback, key);
+    const value = resolveExtraValue(mergedNutrition, {}, key);
     if (value == null || value === 0) continue;
     const row = toRow(key, value);
     if (row) rows.push(row);

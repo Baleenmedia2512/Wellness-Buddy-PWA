@@ -2,6 +2,16 @@
  * Client helpers for food suggestions ranking / filter.
  */
 
+/** Regular Add Food must not surface Herbalife catalog items (Target Nutrition uses catalog mode). */
+export function isHerbalifeProductSuggestionName(name) {
+  const normalized = String(name || '').trim().replace(/^\*+\s*/, '');
+  return /^herbalife\b/i.test(normalized);
+}
+
+export function filterRegularFoodSearchItems(items = []) {
+  return (items || []).filter((item) => !isHerbalifeProductSuggestionName(item?.name));
+}
+
 export function filterSuggestionsAgainstSelected(suggestions = [], selectedItems = []) {
   const selected = new Set(
     selectedItems.map((s) => String(s?.name || '').trim().toLowerCase()).filter(Boolean),
