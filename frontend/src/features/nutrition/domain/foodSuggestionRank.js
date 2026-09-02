@@ -2,10 +2,41 @@
  * Client helpers for food suggestions ranking / filter.
  */
 
-/** Regular Add Food must not surface Herbalife catalog items (Target Nutrition uses catalog mode). */
+/** Target Nutrition / Herbalife catalog tokens — excluded from regular-food suggestions. */
+const REGULAR_FOOD_EXCLUDED_NAME_PATTERNS = [
+  /herbalife/,
+  /herbal\s*life/,
+  /herballife/,
+  /herbalifeline/,
+  /\bafresh\b/,
+  /a\s+fresh\b/,
+  /formula\s*[12]\b/,
+  /formula[12]\b/,
+  /multivitamin/,
+  /fish\s*oil/,
+  /\bsupplement\b/,
+  /cell\s*activator/,
+  /nightworks/,
+  /niteworks/,
+  /xtra[- ]?cal/,
+  /shakemate/,
+  /personalized\s*protein/,
+];
+
+function normalizeSuggestionNameForCatalogCheck(name) {
+  return String(name || '').trim().replace(/^\*+\s*/, '').toLowerCase();
+}
+
+/** Regular Add Food must not surface Herbalife / Target Nutrition catalog items. */
 export function isHerbalifeProductSuggestionName(name) {
-  const normalized = String(name || '').trim().replace(/^\*+\s*/, '');
-  return /^herbalife\b/i.test(normalized);
+  const normalized = normalizeSuggestionNameForCatalogCheck(name);
+  if (!normalized) return false;
+  if (REGULAR_FOOD_EXCLUDED_NAME_PATTERNS.some((re) => re.test(normalized))) return true;
+  if (/\btablet/i.test(normalized)
+      && /herbal|vitamin|mineral|omega|calcium|probiotic|supplement|multivitamin|fish/.test(normalized)) {
+    return true;
+  }
+  return false;
 }
 
 export function filterRegularFoodSearchItems(items = []) {

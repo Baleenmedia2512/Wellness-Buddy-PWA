@@ -41,12 +41,17 @@ describe('foodPairs.rules', () => {
     assert.equal(isDrySaladAnalysis({ foods: [{ name: 'Dosa' }] }), false);
   });
 
-  it('isHerbalifeProductSuggestionName detects Herbalife-prefixed names', () => {
+  it('isHerbalifeProductSuggestionName detects Herbalife and catalog supplement names', () => {
     assert.equal(isHerbalifeProductSuggestionName('Herbalife Afresh Energy Drink'), true);
     assert.equal(isHerbalifeProductSuggestionName('*Herbalife Multivitamin Mineral'), true);
     assert.equal(isHerbalifeProductSuggestionName('  *  Herbalife Shake'), true);
+    assert.equal(isHerbalifeProductSuggestionName('*Herbalifeline (Cardiovascular Health)'), true);
+    assert.equal(isHerbalifeProductSuggestionName('Herbal Multivitamin Tablet'), true);
+    assert.equal(isHerbalifeProductSuggestionName('Afresh Energy Drink Mix'), true);
+    assert.equal(isHerbalifeProductSuggestionName('Fish Oil Softgel'), true);
     assert.equal(isHerbalifeProductSuggestionName('Dosa'), false);
     assert.equal(isHerbalifeProductSuggestionName('Plain Water'), false);
+    assert.equal(isHerbalifeProductSuggestionName('Mutton Biryani (Hyderabadi)'), false);
   });
 
   it('extractLatestFoodsFromMeals skips Herbalife product names', () => {
@@ -54,6 +59,8 @@ describe('foodPairs.rules', () => {
       {
         AnalysisData: {
           foods: [
+            { name: '*Herbalifeline (Cardiovascular Health)' },
+            { name: 'Herbal Multivitamin Tablet' },
             { name: 'Herbalife Afresh Energy Drink' },
             { name: 'Mutton Biryani (Hyderabadi)' },
             { name: '*Herbalife Multivitamin Mineral' },

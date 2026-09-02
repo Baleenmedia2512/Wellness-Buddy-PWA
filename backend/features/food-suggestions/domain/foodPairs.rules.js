@@ -60,15 +60,50 @@ export function isDrySaladAnalysis(analysisData) {
 }
 
 /**
- * Regular-food suggestions must not surface Herbalife catalog items
+ * Normalize a food display name for catalog/supplement checks.
+ * @param {unknown} name
+ * @returns {string}
+ */
+function normalizeSuggestionNameForCatalogCheck(name) {
+  return String(name || '').trim().replace(/^\*+\s*/, '').toLowerCase();
+}
+
+/** Target Nutrition / Herbalife catalog tokens — excluded from regular-food suggestions. */
+const REGULAR_FOOD_EXCLUDED_NAME_PATTERNS = [
+  /herbalife/,
+  /herbal\s*life/,
+  /herballife/,
+  /herbalifeline/,
+  /\bafresh\b/,
+  /a\s+fresh\b/,
+  /formula\s*[12]\b/,
+  /formula[12]\b/,
+  /multivitamin/,
+  /fish\s*oil/,
+  /\bsupplement\b/,
+  /cell\s*activator/,
+  /nightworks/,
+  /niteworks/,
+  /xtra[- ]?cal/,
+  /shakemate/,
+  /personalized\s*protein/,
+];
+
+/**
+ * Regular-food suggestions must not surface Herbalife / Target Nutrition catalog items
  * (Target Nutrition uses dry-salad catalog mode instead).
- * Matches names starting with optional * then "Herbalife".
  * @param {unknown} name
  * @returns {boolean}
  */
 export function isHerbalifeProductSuggestionName(name) {
-  const normalized = String(name || '').trim().replace(/^\*+\s*/, '');
-  return /^herbalife\b/i.test(normalized);
+  const normalized = normalizeSuggestionNameForCatalogCheck(name);
+  if (!normalized) return false;
+  if (REGULAR_FOOD_EXCLUDED_NAME_PATTERNS.some((re) => re.test(normalized))) return true;
+  if (/\btablet/i.test(normalized)
+      && /herbal|vitamin|mineral|omega|calcium|probiotic|supplement|multivitamin|fish/.test(normalized)) {
+    return true;
+  }
+  return false;
 }
 
 /**
