@@ -608,14 +608,24 @@ export default function ManualEntryPage({
 
       if (detectedType.type === 'food') {
         await releaseCredit('manual_ai_food_unrecognized');
-        setAiModalStage('unidentified');
+        if (detectedType.details?.error) {
+          setAiModalError(detectedType.details.error);
+          setAiModalStage('failed');
+        } else {
+          setAiModalStage('unidentified');
+        }
         setAiStarting(false);
         return;
       }
 
       // Non-food result on Manual Log food-AI path — fall back to manual.
       await releaseCredit('manual_ai_not_food');
-      setAiModalStage('unidentified');
+      if (detectedType.details?.error) {
+        setAiModalError(detectedType.details.error);
+        setAiModalStage('failed');
+      } else {
+        setAiModalStage('unidentified');
+      }
       setAiStarting(false);
     } catch (err) {
       if (creditsEnabled && reservationId) {
@@ -1326,9 +1336,11 @@ export default function ManualEntryPage({
         imageBase64={imageBase64}
         errorMessage={aiModalError}
         onCancel={handleAiModalCancel}
-        onRetry={() => {
-          void startAiAnalyze();
-        }}
+        onRetry={
+          aiModalError?.includes('Quota') 
+            ? null 
+            : () => void startAiAnalyze()
+        }
         onManualLog={handleAiModalManual}
       />
     </div>

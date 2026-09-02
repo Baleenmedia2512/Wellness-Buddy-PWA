@@ -194,7 +194,12 @@ export default function ManualFoodAiAnalysisModal({
           {stage === 'failed' && (
             <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 space-y-1">
               <p className="font-medium">Unable to analyse this food image.</p>
-              <p>{errorMessage || 'Please try again or log the food manually.'}</p>
+              <p>
+                {errorMessage
+                  ? errorMessage.replace(' Please try again later.', '') 
+                  : 'An unexpected error occurred.'}
+              </p>
+              <p>Please try again later or log the food manually.</p>
             </div>
           )}
 

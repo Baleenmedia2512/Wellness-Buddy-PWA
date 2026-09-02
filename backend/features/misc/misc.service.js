@@ -148,14 +148,16 @@ export async function detectFace({ mimeType, base64Data, userId = null, module =
         parts,
       }).catch(() => {});
     } catch (genErr) {
-      await reportAiCallTelemetry({
-        status: 'FAILED',
-        usage: {},
-        latency: genErr.latencyMs ?? 0,
-        errorMessage: genErr.message,
-        trace,
-        parts,
-      }).catch(() => {});
+      if (!genErr.isQuotaError) {
+        await reportAiCallTelemetry({
+          status: 'FAILED',
+          usage: {},
+          latency: genErr.latencyMs ?? 0,
+          errorMessage: genErr.message,
+          trace,
+          parts,
+        }).catch(() => {});
+      }
       throw genErr;
     }
 

@@ -40,29 +40,46 @@ const END_USER_CACHE_TTL_MS = 60_000;
 /** Hard cap so a slow/unreachable monitor never holds a Vercel function open. */
 const TELEMETRY_TIMEOUT_MS = 2_000;
 
-/** Production AI token-monitor API (not this Wellness Next.js app). */
-const DEFAULT_AI_MONITOR_BASE_URL =
-  'https://e2-w-ai-token-monitor.vercel.app/api';
-
 /**
- * Resolve the token-monitor base URL.
- * If AI_MONITOR_BASE_URL points at this Wellness app (:3000), ignore it and
- * use the production monitor — otherwise POST /api/sdk/log 404s here.
+ * Resolve the token-monitor base URL from the environment.
  */
 function resolveAiMonitorBaseUrl() {
   const raw = (process.env.AI_MONITOR_BASE_URL || '').trim();
-  if (!raw) return DEFAULT_AI_MONITOR_BASE_URL;
+  
+  if (!raw) {
+    logger.error('geminiClient: AI_MONITOR_BASE_URL is not set in environment variables.');
+    return '';
+  }
 
   if (/localhost:3000/i.test(raw) || /127\.0\.0\.1:3000/i.test(raw)) {
     logger.warn(
-      'geminiClient: AI_MONITOR_BASE_URL points at this Next.js app — '
-      + 'ignoring and using token-monitor service URL',
-      { configured: raw, using: DEFAULT_AI_MONITOR_BASE_URL },
+      'geminiClient: AI_MONITOR_BASE_URL points at this Next.js app — this may cause infinite loops or failures if not intended.',
+      { configured: raw }
     );
-    return DEFAULT_AI_MONITOR_BASE_URL;
   }
 
-  return raw;
+  try {
+    const parsed = new URL(raw);
+    const isLocal = parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1';
+
+    // 1. Enforce HTTPS for any external network
+    if (!isLocal && parsed.protocol !== 'https:') {
+      logger.error('geminiClient: Insecure AI_MONITOR_BASE_URL detected. Must use https:// for external domains.', { configured: raw });
+      return '';
+    }
+
+    // 2. Prevent malicious Server-Side Request Forgery (SSRF) / Data Exfiltration
+    if (!isLocal && !parsed.hostname.endsWith('.vercel.app')) {
+      logger.error('geminiClient: AI_MONITOR_BASE_URL domain is not trusted.', { configured: raw });
+      return '';
+    }
+
+    // Return sanitized URL without trailing slashes
+    return parsed.toString().replace(/\/$/, '');
+  } catch (err) {
+    logger.error('geminiClient: Invalid AI_MONITOR_BASE_URL format.', { configured: raw });
+    return '';
+  }
 }
 
 /**
@@ -574,6 +591,63 @@ export async function generateContent(
   modelOverride = null,
   _trace = null,
 ) {
+  const sdkKey = process.env.AI_MONITOR_SDK_KEY;
+  if (sdkKey) {
+    try {
+      const baseUrl = resolveAiMonitorBaseUrl();
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000); // 5s timeout
+
+      let endUserName = _trace?.userName ?? null;
+      let endUserEmail = _trace?.userEmail ?? null;
+      let endUserId = _trace?.userId ?? null;
+
+      if (!endUserName && !endUserEmail && endUserId) {
+        const endUser = await resolveEndUserForMonitor(endUserId);
+        endUserName = endUser.endUserName;
+        endUserEmail = endUser.endUserEmail;
+      }
+
+      const checkPayload = {
+        endUserId,
+        endUserEmail,
+        endUserName,
+      };
+
+      const checkRes = await fetch(`${baseUrl}/sdk/check-quota`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-sdk-key': sdkKey,
+        },
+        body: JSON.stringify(checkPayload),
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+
+      // They might return 403 Forbidden or 429 Too Many Requests for exceeded quota.
+      if (checkRes.status === 403 || checkRes.status === 429) {
+        const qErr = new Error('Quota exceeded. Please try again later.');
+        qErr.isQuotaError = true;
+        throw qErr;
+      }
+
+      // Even if not 403/429, check the JSON body just in case it returns 200 with allowed: false
+      const data = await checkRes.json().catch(() => ({}));
+      if (data && data.allowed === false) {
+        const qErr = new Error('Quota exceeded. Please try again later.');
+        qErr.isQuotaError = true;
+        throw qErr;
+      }
+    } catch (err) {
+      if (err.isQuotaError || err.message === 'Quota exceeded. Please try again later.') {
+        err.isQuotaError = true;
+        throw err;
+      }
+      logger.warn('geminiClient: Failed to verify quota', { message: err.message });
+    }
+  }
+
   const model = getModel(
     configKey,
     responseSchema,
