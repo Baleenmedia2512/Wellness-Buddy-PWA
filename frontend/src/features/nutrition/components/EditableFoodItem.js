@@ -61,6 +61,7 @@ const EditableFoodItem = forwardRef(
       hideButtons,
       user,
       onRestore,
+      mealFallback = null,
     },
     ref,
   ) => {
@@ -1236,6 +1237,7 @@ const EditableFoodItem = forwardRef(
         {showItemFacts && (
           <FoodItemNutritionModal
             item={foodItem}
+            mealFallback={mealFallback}
             onClose={() => setShowItemFacts(false)}
           />
         )}

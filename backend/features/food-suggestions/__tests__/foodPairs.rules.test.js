@@ -10,6 +10,7 @@ import {
   extractFoodNamesFromAnalysis,
   extractLatestFoodsFromMeals,
   isDrySaladAnalysis,
+  isHerbalifeProductSuggestionName,
   mergeOftenWithPersonalFirst,
   partnersFromPairRows,
   PERSONAL_SUFFICIENT_COUNT,
@@ -38,6 +39,42 @@ describe('foodPairs.rules', () => {
   it('isDrySaladAnalysis detects Target Nutrition meals', () => {
     assert.equal(isDrySaladAnalysis({ mealKind: 'dry-salad', foods: [{ name: 'Formula 1' }] }), true);
     assert.equal(isDrySaladAnalysis({ foods: [{ name: 'Dosa' }] }), false);
+  });
+
+  it('isHerbalifeProductSuggestionName detects Herbalife-prefixed names', () => {
+    assert.equal(isHerbalifeProductSuggestionName('Herbalife Afresh Energy Drink'), true);
+    assert.equal(isHerbalifeProductSuggestionName('*Herbalife Multivitamin Mineral'), true);
+    assert.equal(isHerbalifeProductSuggestionName('  *  Herbalife Shake'), true);
+    assert.equal(isHerbalifeProductSuggestionName('Dosa'), false);
+    assert.equal(isHerbalifeProductSuggestionName('Plain Water'), false);
+  });
+
+  it('extractLatestFoodsFromMeals skips Herbalife product names', () => {
+    const latest = extractLatestFoodsFromMeals([
+      {
+        AnalysisData: {
+          foods: [
+            { name: 'Herbalife Afresh Energy Drink' },
+            { name: 'Mutton Biryani (Hyderabadi)' },
+            { name: '*Herbalife Multivitamin Mineral' },
+            { name: 'Dosa' },
+          ],
+        },
+      },
+    ], 12, null);
+    assert.deepEqual(latest.map((f) => f.name), [
+      'Mutton Biryani (Hyderabadi)',
+      'Dosa',
+    ]);
+  });
+
+  it('mergeOftenWithPersonalFirst skips Herbalife partners', () => {
+    const personal = [
+      { key: 'herbalife afresh energy drink', display: 'Herbalife Afresh Energy Drink', score: 5 },
+      { key: 'sambar', display: 'Sambar', score: 3 },
+    ];
+    const merged = mergeOftenWithPersonalFirst(personal, [], { limit: 8 });
+    assert.deepEqual(merged.map((m) => m.key), ['sambar']);
   });
 
   it('extractLatestFoodsFromMeals skips dry-salad meals and catalog names', () => {

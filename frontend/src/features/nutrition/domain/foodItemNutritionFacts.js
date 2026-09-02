@@ -3,6 +3,29 @@
  */
 import { availableCarbohydrates } from './mealGlycemicIndex.js';
 
+/** AI JSON key ↔ camelCase API key ↔ PascalCase DB column (keep in sync with aggregateFoodTotals). */
+const MEAL_MICRO_DB_FIELDS = Object.freeze([
+  { aiKey: 'vitamin_a', apiKey: 'totalVitaminA', dbCol: 'TotalVitaminA' },
+  { aiKey: 'vitamin_c', apiKey: 'totalVitaminC', dbCol: 'TotalVitaminC' },
+  { aiKey: 'vitamin_d', apiKey: 'totalVitaminD', dbCol: 'TotalVitaminD' },
+  { aiKey: 'vitamin_e', apiKey: 'totalVitaminE', dbCol: 'TotalVitaminE' },
+  { aiKey: 'vitamin_k', apiKey: 'totalVitaminK', dbCol: 'TotalVitaminK' },
+  { aiKey: 'vitamin_b1', apiKey: 'totalVitaminB1', dbCol: 'TotalVitaminB1' },
+  { aiKey: 'vitamin_b2', apiKey: 'totalVitaminB2', dbCol: 'TotalVitaminB2' },
+  { aiKey: 'vitamin_b3', apiKey: 'totalVitaminB3', dbCol: 'TotalVitaminB3' },
+  { aiKey: 'vitamin_b6', apiKey: 'totalVitaminB6', dbCol: 'TotalVitaminB6' },
+  { aiKey: 'vitamin_b9', apiKey: 'totalVitaminB9', dbCol: 'TotalVitaminB9' },
+  { aiKey: 'vitamin_b12', apiKey: 'totalVitaminB12', dbCol: 'TotalVitaminB12' },
+  { aiKey: 'calcium', apiKey: 'totalCalcium', dbCol: 'TotalCalcium' },
+  { aiKey: 'iron', apiKey: 'totalIron', dbCol: 'TotalIron' },
+  { aiKey: 'magnesium', apiKey: 'totalMagnesium', dbCol: 'TotalMagnesium' },
+  { aiKey: 'potassium', apiKey: 'totalPotassium', dbCol: 'TotalPotassium' },
+  { aiKey: 'zinc', apiKey: 'totalZinc', dbCol: 'TotalZinc' },
+  { aiKey: 'phosphorus', apiKey: 'totalPhosphorus', dbCol: 'TotalPhosphorus' },
+  { aiKey: 'sodium', apiKey: 'totalSodium', dbCol: 'TotalSodium' },
+  { aiKey: 'cholesterol', apiKey: 'totalCholesterol', dbCol: 'TotalCholesterol' },
+]);
+
 /** Core facts always listed when an item is opened. */
 export const CORE_FACT_KEYS = Object.freeze([
   'calories',
@@ -159,6 +182,62 @@ function readNumber(source, key) {
   return undefined;
 }
 
+function parseAnalysisTotal(analysisData) {
+  if (!analysisData) return null;
+  try {
+    const parsed = typeof analysisData === 'string' ? JSON.parse(analysisData) : analysisData;
+    return parsed?.total && typeof parsed.total === 'object' ? parsed.total : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Meal-level micronutrients from AnalysisData.total and/or DB Total* columns.
+ * Used when per-item nutrition is lean (list card) or enrichment wrote columns only.
+ *
+ * @param {object|null|undefined} mealRow
+ * @returns {Record<string, number>}
+ */
+export function buildMealMicronutrientFallback(mealRow) {
+  if (!mealRow || typeof mealRow !== 'object') return {};
+
+  const out = {};
+  const total = parseAnalysisTotal(mealRow.AnalysisData);
+  if (total) {
+    for (const key of EXTRA_FACT_KEYS) {
+      const n = readNumber(total, key);
+      if (n != null) out[key] = n;
+    }
+  }
+
+  if (mealRow.nutrition && typeof mealRow.nutrition === 'object') {
+    for (const key of EXTRA_FACT_KEYS) {
+      if (out[key] != null) continue;
+      const n = readNumber(mealRow.nutrition, key);
+      if (n != null) out[key] = n;
+    }
+  }
+
+  for (const { aiKey, apiKey, dbCol } of MEAL_MICRO_DB_FIELDS) {
+    if (out[aiKey] != null) continue;
+    const raw = mealRow[dbCol] ?? mealRow[apiKey];
+    if (raw == null || raw === '') continue;
+    const n = Number(raw);
+    if (Number.isFinite(n)) out[aiKey] = n;
+  }
+
+  return out;
+}
+
+function resolveExtraValue(nutrition, fallback, key) {
+  const itemVal = hasValue(nutrition, key) ? Number(nutrition[key]) : null;
+  if (itemVal != null && itemVal !== 0) return itemVal;
+  const fallbackVal = hasValue(fallback, key) ? Number(fallback[key]) : null;
+  if (fallbackVal != null && fallbackVal !== 0) return fallbackVal;
+  return itemVal;
+}
+
 /** Nested `nutrition` wins; serving / flat item fields are fallbacks. */
 function readItemNutrition(item) {
   if (!item || typeof item !== 'object') return {};
@@ -203,6 +282,7 @@ function toRow(key, value) {
  * only when a stored value is greater than 0.
  *
  * @param {object|null|undefined} item
+ * @param {{ mealFallback?: Record<string, number>|null }} [options]
  * @returns {{
  *   name: string,
  *   portion: string|null,
@@ -210,10 +290,13 @@ function toRow(key, value) {
  *   giZone: { label: string, tone: 'low'|'medium'|'high' }|null,
  * }}
  */
-export function buildFoodItemNutritionFacts(item) {
+export function buildFoodItemNutritionFacts(item, options = {}) {
   const name = String(item?.name || item?.foodName || 'Item').trim() || 'Item';
   const portion = item ? readPortion(item) : null;
   const nutrition = readItemNutrition(item);
+  const mealFallback = options.mealFallback && typeof options.mealFallback === 'object'
+    ? options.mealFallback
+    : {};
 
   const carbs = hasValue(nutrition, 'carbs') ? Number(nutrition.carbs) : null;
   const fiber = hasValue(nutrition, 'fiber') ? Number(nutrition.fiber) : 0;
@@ -238,8 +321,9 @@ export function buildFoodItemNutritionFacts(item) {
   }
 
   for (const key of EXTRA_FACT_KEYS) {
-    if (!hasValue(nutrition, key) || Number(nutrition[key]) === 0) continue;
-    const row = toRow(key, nutrition[key]);
+    const value = resolveExtraValue(nutrition, mealFallback, key);
+    if (value == null || value === 0) continue;
+    const row = toRow(key, value);
     if (row) rows.push(row);
   }
 

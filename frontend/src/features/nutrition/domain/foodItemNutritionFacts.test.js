@@ -6,6 +6,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   buildFoodItemNutritionFacts,
+  buildMealMicronutrientFallback,
   formatFactValue,
   giShareLetter,
   giZone,
@@ -125,5 +126,38 @@ describe('buildFoodItemNutritionFacts', () => {
     assert.equal(byKey.vitamin_c.value, '4');
     assert.equal(byKey.calcium.value, '40');
     assert.equal(byKey.calcium.section, 'minerals');
+  });
+
+  it('falls back to meal DB columns when item nutrition lacks micronutrients', () => {
+    const facts = buildFoodItemNutritionFacts(
+      { name: 'Multivitamin', nutrition: { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0 } },
+      {
+        mealFallback: buildMealMicronutrientFallback({
+          TotalVitaminA: 1000,
+          TotalVitaminC: 13.2,
+          TotalCalcium: 200,
+          TotalIron: 3.5,
+        }),
+      },
+    );
+    const keys = facts.rows.map((r) => r.key);
+    assert.equal(keys.includes('vitamin_a'), true);
+    assert.equal(keys.includes('vitamin_c'), true);
+    assert.equal(keys.includes('calcium'), true);
+    assert.equal(keys.includes('iron'), true);
+    const vitaminRows = facts.rows.filter((r) => r.section === 'vitamins');
+    assert.equal(vitaminRows[0]?.key, 'vitamin_a');
+    assert.equal(facts.rows.find((r) => r.key === 'calories')?.section, 'macros');
+  });
+
+  it('buildMealMicronutrientFallback reads AnalysisData.total', () => {
+    const fallback = buildMealMicronutrientFallback({
+      AnalysisData: JSON.stringify({
+        foods: [{ name: 'Tea', nutrition: { calories: 0 } }],
+        total: { vitamin_c: 4, potassium: 33 },
+      }),
+    });
+    assert.equal(fallback.vitamin_c, 4);
+    assert.equal(fallback.potassium, 33);
   });
 });

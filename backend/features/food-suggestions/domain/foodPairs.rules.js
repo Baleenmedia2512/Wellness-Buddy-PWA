@@ -60,6 +60,18 @@ export function isDrySaladAnalysis(analysisData) {
 }
 
 /**
+ * Regular-food suggestions must not surface Herbalife catalog items
+ * (Target Nutrition uses dry-salad catalog mode instead).
+ * Matches names starting with optional * then "Herbalife".
+ * @param {unknown} name
+ * @returns {boolean}
+ */
+export function isHerbalifeProductSuggestionName(name) {
+  const normalized = String(name || '').trim().replace(/^\*+\s*/, '');
+  return /^herbalife\b/i.test(normalized);
+}
+
+/**
  * @param {unknown} name
  * @param {Set<string>|string[]|null|undefined} excludeKeys
  * @returns {boolean}
@@ -93,6 +105,7 @@ export function extractLatestFoodsFromMeals(rows, limit, excludeKeys) {
       const display = displayFoodName(f?.name || f?.foodName || '');
       const key = normalizeFoodNameKey(display);
       if (!key || seen.has(key)) continue;
+      if (isHerbalifeProductSuggestionName(display)) continue;
       if (isExcludedSuggestionName(display, excludeKeys)) continue;
       seen.add(key);
       latest.push({ name: display, food: f && typeof f === 'object' ? f : {} });
@@ -210,6 +223,7 @@ export function mergeOftenWithPersonalFirst(personal, global, opts = {}) {
   for (const p of personal || []) {
     if (result.length >= limit) break;
     if (!p?.key || used.has(p.key)) continue;
+    if (isHerbalifeProductSuggestionName(p.display || p.key)) continue;
     used.add(p.key);
     result.push({ ...p, source: 'personal' });
   }
@@ -222,6 +236,7 @@ export function mergeOftenWithPersonalFirst(personal, global, opts = {}) {
   for (const g of global || []) {
     if (result.length >= limit) break;
     if (!g?.key || used.has(g.key)) continue;
+    if (isHerbalifeProductSuggestionName(g.display || g.key)) continue;
     used.add(g.key);
     result.push({ ...g, source: 'global' });
   }

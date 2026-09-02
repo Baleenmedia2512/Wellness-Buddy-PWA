@@ -15,6 +15,7 @@ import {
 } from '../../../diary/domain/activityType';
 import { formatWaterVolume } from '../../../diary/domain/formatVolume';
 import { resolveMealImageSrc } from '../../services/nutritionDashboard/mealImageSrc';
+import { buildMealMicronutrientFallback } from '../../domain/foodItemNutritionFacts';
 
 function uniqueFoodNames(items) {
   if (!Array.isArray(items) || items.length === 0) return [];
@@ -133,6 +134,15 @@ const NutritionAnalysisPanel = ({
       : (localNutrition.glycemicIndex != null
         ? localNutrition.glycemicIndex
         : (selectedMeal.GlycemicIndex ?? foodData.nutrition.glycemic_index ?? null)));
+
+  const displayItemCount = Math.max(
+    localDetailedItems?.length || 0,
+    foodData.detailedItems?.length || 0,
+    selectedMeal.listSummary?.items?.length || 0,
+  );
+  const mealMicronutrientFallback = displayItemCount === 1
+    ? buildMealMicronutrientFallback({ ...selectedMeal, nutrition: foodData.nutrition })
+    : null;
 
   const activityType = resolveFoodActivityType({
     processedBy: selectedMeal.ProcessedBy,
@@ -262,7 +272,8 @@ const NutritionAnalysisPanel = ({
                           foodItem={item} index={originalIndex}
                           onUpdate={handleFoodUpdate} onDelete={handleDeleteFoodItem}
                           onRestore={handleRestoreFoodItem} onEditingChange={handleEditingChange}
-                          disabled={isEditing && !editingStates[originalIndex]} hideButtons={false} user={user} />
+                          disabled={isEditing && !editingStates[originalIndex]} hideButtons={false} user={user}
+                          mealFallback={mealMicronutrientFallback} />
                       </div>
                     ))}
                 </div>
