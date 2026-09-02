@@ -68,11 +68,11 @@ describe('getMarathonGapComparisonDates', () => {
 
 describe('marathon day comparison formatting', () => {
   it('formats increase, decrease, unchanged, and missing weights', () => {
-    assert.equal(formatMarathonDayComparisonLine(75, 74.5), '75.0 kg → 74.5 kg ↓ 0.5 kg');
-    assert.equal(formatMarathonDayComparisonLine(75, 76), '75.0 kg → 76.0 kg ↑ 1.0 kg');
-    assert.equal(formatMarathonDayComparisonLine(75, 75), '75.0 kg → 75.0 kg');
-    assert.equal(formatMarathonDayComparisonLine(75, null), '75.0 kg → —');
-    assert.equal(formatMarathonDayComparisonLine(null, 74.5), '— → 74.5 kg');
+    assert.equal(formatMarathonDayComparisonLine(75, 74.5), '75.00 kg → 74.50 kg ↓ 0.50 kg');
+    assert.equal(formatMarathonDayComparisonLine(75, 76), '75.00 kg → 76.00 kg ↑ 1.00 kg');
+    assert.equal(formatMarathonDayComparisonLine(75, 75), '75.00 kg → 75.00 kg');
+    assert.equal(formatMarathonDayComparisonLine(75, null), '75.00 kg → —');
+    assert.equal(formatMarathonDayComparisonLine(null, 74.5), '— → 74.50 kg');
   });
 
   it('builds running progress for profile and share', () => {
@@ -85,7 +85,7 @@ describe('marathon day comparison formatting', () => {
       weightsByDay: { 0: 75, 1: 74.5, 2: 74 },
     });
     assert.equal(result.mode, 'running');
-    assert.equal(result.days[2].displayLine, '75.0 kg → 74.0 kg ↓ 1.0 kg');
+    assert.equal(result.days[2].displayLine, '75.00 kg → 74.00 kg ↓ 1.00 kg');
   });
 });
 
@@ -102,11 +102,11 @@ describe('formatMarathonWeightWhatsAppNotice', () => {
       inMarathon: true,
       marathonDay: 2,
     });
-    assert.deepEqual(lines, ['75.0 kg → 74.0 kg ↓ 1.0 kg']);
+    assert.deepEqual(lines, ['75.00 kg → 74.00 kg ↓ 1.00 kg']);
     assert.equal(formatMarathonWeightWhatsAppNotice(progress, {
       inMarathon: true,
       marathonDay: 2,
-    }), '75.0 kg → 74.0 kg ↓ 1.0 kg');
+    }), '75.00 kg → 74.00 kg ↓ 1.00 kg');
   });
 
   it('formats gap-day previous end vs current weight', () => {
@@ -118,8 +118,8 @@ describe('formatMarathonWeightWhatsAppNotice', () => {
       inMarathon: false,
       showMarathonStartReminder: false,
     }), [
-      'Previous Marathon End weight : 75.0 kg',
-      'Current Weight : 74.2 kg ⬇️',
+      'Previous Marathon End weight : 75.00 kg',
+      'Current Weight : 74.20 kg ⬇️',
     ]);
   });
 
@@ -137,8 +137,8 @@ describe('formatMarathonWeightWhatsAppNotice', () => {
       inMarathon: true,
       marathonDay: 0,
     }), [
-      'Previous Marathon End weight : 75.0 kg',
-      'Current Weight : 73.0 kg ⬇️',
+      'Previous Marathon End weight : 75.00 kg',
+      'Current Weight : 73.00 kg ⬇️',
     ]);
   });
 
@@ -163,13 +163,13 @@ describe('mergeMarathonWeightComparisonForShare', () => {
       0,
     );
     assert.equal(merged.mode, 'running');
-    assert.equal(merged.currentDay.displayLine, '77.8 kg');
+    assert.equal(merged.currentDay.displayLine, '77.80 kg');
     assert.deepEqual(formatMarathonWeightWhatsAppNoticeLines(merged, {
       inMarathon: true,
       marathonDay: 0,
     }), [
-      'Previous Marathon End weight : 76.0 kg',
-      'Current Weight : 77.8 kg ⬆️',
+      'Previous Marathon End weight : 76.00 kg',
+      'Current Weight : 77.80 kg ⬆️',
     ]);
   });
 
@@ -182,7 +182,7 @@ describe('mergeMarathonWeightComparisonForShare', () => {
       weightsByDay: { 0: 75, 1: 74.5 },
     });
     const merged = mergeMarathonWeightComparisonForShare(source, 74, 1);
-    assert.equal(merged.currentDay.displayLine, '75.0 kg → 74.0 kg ↓ 1.0 kg');
+    assert.equal(merged.currentDay.displayLine, '75.00 kg → 74.00 kg ↓ 1.00 kg');
   });
 
   it('builds gap comparison from current share weight only', () => {

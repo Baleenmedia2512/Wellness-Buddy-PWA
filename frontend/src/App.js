@@ -4331,8 +4331,8 @@ function WellnessValleyApp() {
       const idealMin = 19 * heightM * heightM;
       const idealMax = 23 * heightM * heightM;
       setIdealWeight({
-        min: Math.round(idealMin * 10) / 10, // BMI 19 lower bound
-        value: Math.round(idealMax * 10) / 10, // BMI 23 upper bound
+        min: Math.round(idealMin * 100) / 100, // BMI 19 lower bound
+        value: Math.round(idealMax * 100) / 100, // BMI 23 upper bound
         unit: "kg",
         heightCm: Math.round(heightCm),
       });

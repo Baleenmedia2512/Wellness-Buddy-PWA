@@ -12,7 +12,7 @@ export function isValidMarathonWeightKg(value) {
 
 /** @param {number} value */
 export function roundMarathonWeightKg(value) {
-  return Math.round(value * 10) / 10;
+  return Math.round(value * 100) / 100;
 }
 
 /**
@@ -32,7 +32,7 @@ export function resolveMarathonWeightDirection(baselineWeight, compareWeight) {
  */
 export function formatMarathonKgValue(value) {
   if (!isValidMarathonWeightKg(value)) return '—';
-  return `${roundMarathonWeightKg(Number(value)).toFixed(1)} kg`;
+  return `${roundMarathonWeightKg(Number(value)).toFixed(2)} kg`;
 }
 
 /**
@@ -44,7 +44,7 @@ export function formatMarathonDayChangeSuffix(direction, weightDifference) {
   if (direction === 'unchanged' || weightDifference == null) return '';
   const abs = roundMarathonWeightKg(Math.abs(weightDifference));
   const arrow = direction === 'decrease' ? '↓' : '↑';
-  return ` ${arrow} ${abs.toFixed(1)} kg`;
+  return ` ${arrow} ${abs.toFixed(2)} kg`;
 }
 
 /**
@@ -78,7 +78,7 @@ export function formatMarathonDayComparisonLine(day0Weight, dayWeight) {
 export function formatMarathonWeightChangeLabel(weightDifference, direction) {
   if (direction === 'unchanged') return '0 kg — No Change';
   const abs = roundMarathonWeightKg(Math.abs(weightDifference));
-  const signed = direction === 'increase' ? `+${abs.toFixed(1)}` : `−${abs.toFixed(1)}`;
+  const signed = direction === 'increase' ? `+${abs.toFixed(2)}` : `−${abs.toFixed(2)}`;
   const suffix = direction === 'increase' ? '↑ Increase' : '↓ Decrease';
   return `${signed} kg ${suffix}`;
 }

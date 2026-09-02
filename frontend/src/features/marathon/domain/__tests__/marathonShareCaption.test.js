@@ -159,8 +159,8 @@ describe('appendMarathonWhatsAppNotice', () => {
       { includeWeightComparison: true },
     );
     assert.match(result, /Day 0 - Marathon Starts/);
-    assert.match(result, /Previous Marathon End weight : 75\.0 kg/);
-    assert.match(result, /Current Weight : 73\.0 kg ⬇️/);
+    assert.match(result, /Previous Marathon End weight : 75\.00 kg/);
+    assert.match(result, /Current Weight : 73\.00 kg ⬇️/);
   });
 
   it('appends Day 0 vs current day comparison on marathon Day 1-10', () => {
@@ -173,7 +173,7 @@ describe('appendMarathonWhatsAppNotice', () => {
     );
     assert.equal(
       result,
-      `${CURRENT_DAY_CAPTION}, Day 1, 75.0 kg → 74.5 kg ↓ 0.5 kg`,
+      `${CURRENT_DAY_CAPTION}, Day 1, 75.00 kg → 74.50 kg ↓ 0.50 kg`,
     );
   });
 
@@ -189,8 +189,8 @@ describe('appendMarathonWhatsAppNotice', () => {
       progress,
       { includeWeightComparison: true },
     );
-    assert.match(result, /Previous Marathon End weight : 74\.0 kg/);
-    assert.match(result, /Current Weight : 74\.2 kg ⬆️/);
+    assert.match(result, /Previous Marathon End weight : 74\.00 kg/);
+    assert.match(result, /Current Weight : 74\.20 kg ⬆️/);
   });
 
   it('appends gap comparison on marathon eve (day before Day 0)', () => {
@@ -205,8 +205,8 @@ describe('appendMarathonWhatsAppNotice', () => {
       { includeWeightComparison: true },
     );
     assert.match(result, /Tomorrow is Day 0 - Marathon Starts/);
-    assert.match(result, /Previous Marathon End weight : 75\.0 kg/);
-    assert.match(result, /Current Weight : 77\.3 kg ⬆️/);
+    assert.match(result, /Previous Marathon End weight : 75\.00 kg/);
+    assert.match(result, /Current Weight : 77\.30 kg ⬆️/);
   });
 
   it('does not append marathon weight lines to food captions even if comparison is present', () => {
