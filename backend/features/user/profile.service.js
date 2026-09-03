@@ -42,6 +42,7 @@ import { isConsentRecorded } from '../auth/domain/consent.rules.js';
 import { resolveSponsorAndIdealCoach } from '../../utils/sponsorCoachResolution.js';
 import * as weightRepo from '../weight/weight.repository.js';
 import { resolveMarathonWeightComparison } from '../marathon/domain/marathonWeightComparison.service.js';
+import { persistAvatarKey, avatarUrlForKey, r2AvatarsEnabled } from './avatar-storage.service.js';
 
 const notFound = () => ({ httpStatus: 404, body: { success: false, message: 'User not found' } });
 
@@ -175,6 +176,9 @@ export async function getProfile({ email, userId = null }) {
         // Still prompt to confirm weight when only BCM card has it (no weight row yet).
         needsCurrentWeight: weightFromRecord == null,
         profileImage,
+        avatarUrl: (r2AvatarsEnabled() && user.ProfileImageKey)
+          ? avatarUrlForKey(user.ProfileImageKey)
+          : null,
         coachId: user.CoachId || null,
         coachName,
         sponsorName,
@@ -353,6 +357,9 @@ export async function updateProfile(input) {
       teamIdSaved: updateData.TeamId ?? null,
       coachTeamIdSaved: updateData.CoachTeamId ?? null,
     });
+    if (updateData.ProfileImage) {
+      await persistAvatarKey(userId, updateData.ProfileImage);
+    }
     try { await repo.updateUserById(userId, { LastActiveAt: nowUtc() }); } catch { /* non-fatal */ }
     const verifyRow = await repo.verifyProfile(userId);
     if (!verifyRow) throw new Error(`Unable to verify profile update for UserId ${userId}`);

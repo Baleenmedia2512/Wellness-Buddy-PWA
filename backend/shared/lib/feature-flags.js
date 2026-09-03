@@ -298,3 +298,12 @@ registerFlag({
   description:    'Meal Builder multi-add tray + bottom sheet + voice insert in SmartFoodSearchModal (replaces cart UX). Frontend-primary; backend flag for registry parity.',
   defaultEnabled: true,
 });
+
+registerFlag({
+  name:           'ff.r2-avatars',
+  owner:          '@principal-eng',
+  createdAt:      '2026-09-03',
+  removeBy:       '2027-03-03',
+  description:    'ADR-0009 — store custom profile avatars in Cloudflare R2; /api/user/avatar 302s to R2. Kill switch; no-ops when R2 env is missing. Does not omit Base64 from GET /api/user/profile.',
+  defaultEnabled: true,
+});

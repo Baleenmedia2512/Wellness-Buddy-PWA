@@ -1,7 +1,7 @@
 # `claude.md` — Wellness Valley PWA · Business Constitution
 
 > **Status:** MANDATORY · **Scope:** ALL contributors (humans + AI) · **Owner:** CTO / Principal Engineer
-> **Version:** 3.1.2 · **Purpose:** Business rules, domain ownership, governance, permissions, and policies.
+> **Version:** 3.1.3 · **Purpose:** Business rules, domain ownership, governance, permissions, and policies.
 >
 > **Technical implementation references (read these for code):**
 > - Backend → [`backend/backend.md`](backend/backend.md)
@@ -147,6 +147,7 @@ All work-in-progress is gated behind a feature flag. No exception.
 | `ff.ai-credits` | ON | @principal-eng | 2027-01-27 | AI credit-based food analysis (Manual Entry AI Mode + Diary Retry AI); numeric limit in DB |
 | `ff.nutrition-knowledge` | ON | @nutrition-team | 2027-01-30 | Master nutrition knowledge base (ADR-0005) — free master/history lookup; AI enrich optional |
 | `ff.consent-gate` | ON | @principal-eng | 2027-01-31 | User Consent Form gate (ADR-0006) — Agree required before account creation / app use |
+| `ff.r2-avatars` | ON | @principal-eng | 2027-03-03 | ADR-0009 — custom avatars in Cloudflare R2; `/api/user/avatar` redirects to R2. Kill switch if env missing. Profile GET still returns Base64. |
 
 **Frontend-only UI flags (`frontend/src/config/featureFlags.js`, no backend mirror):** `ff.shake-calculator` (OFF), `ff.contact-picker` (OFF).
 

@@ -18,13 +18,13 @@ export const MAX_IMAGE_DIMENSION_PX = 1600;
 export const IMAGE_JPEG_QUALITY = 0.82;
 
 /** Profile avatar: max side length (px) after crop. */
-export const PROFILE_IMAGE_MAX_DIMENSION_PX = 640;
+export const PROFILE_IMAGE_MAX_DIMENSION_PX = 256;
 
 /** Profile avatar: starting JPEG quality (may step down to hit target bytes). */
-export const PROFILE_IMAGE_JPEG_QUALITY = 0.85;
+export const PROFILE_IMAGE_JPEG_QUALITY = 0.65;
 
-/** Profile avatar: max decoded JPEG size before base64 (~200 KB). */
-export const PROFILE_IMAGE_TARGET_BYTES = 200 * 1024;
+/** Profile avatar: max decoded JPEG size before base64 (~22 KB). Must match backend avatarJpeg.js. */
+export const PROFILE_IMAGE_TARGET_BYTES = 22 * 1024;
 
 /**
  * Diary / capture storage thumb after AI (or on pending capture write).

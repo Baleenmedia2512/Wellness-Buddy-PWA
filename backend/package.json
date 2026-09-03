@@ -23,7 +23,13 @@
     "dev:local": "cross-env NODE_OPTIONS=--dns-result-order=ipv4first next dev --port 3000",
     "build": "next build",
     "start": "next start",
-    "start:local": "next start --port 3000"
+    "start:local": "next start --port 3000",
+    "backfill:avatars": "node --env-file=.env scripts/backfill-avatar-r2.js",
+    "backfill:avatars:write": "node --env-file=.env scripts/backfill-avatar-r2.js --write",
+    "backfill:avatars:recompress": "node --env-file=.env scripts/backfill-avatar-r2.js --recompress",
+    "backfill:avatars:recompress:write": "node --env-file=.env scripts/backfill-avatar-r2.js --recompress --write",
+    "backfill:avatars:cleanup": "node --env-file=.env scripts/backfill-avatar-r2.js --cleanup",
+    "backfill:avatars:cleanup:write": "node --env-file=.env scripts/backfill-avatar-r2.js --cleanup --write"
   },
   "devDependencies": {
     "cross-env": "^10.1.0",

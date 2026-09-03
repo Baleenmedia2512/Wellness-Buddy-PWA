@@ -99,6 +99,7 @@ export async function getProfile(email) {
   // Body fat is stored on weight_records_table, not team_table.
   const withPhotos =
     '"UserId", "UserName", "Email", "Height", "DietType", "ProfileImage", "CoachId", "PhoneNumber", "Gender", "Bmr", profile_pic_snooze, "WeightGoalMode", "PhysicalActivityLevel", "CommunityId", timezone_iana, "ConsentAcceptedAt", "ConsentVersion", "Age", "VisceralFat", "BodyAge", "ChestCm", "WaistCm", "HipCm", recovered_health_issues, transformation_photos';
+  const withKeyAndPhotos = `"ProfileImageKey", ${withPhotos}`;
   const fullCols =
     '"UserId", "UserName", "Email", "Height", "DietType", "ProfileImage", "CoachId", "PhoneNumber", "Gender", "Bmr", profile_pic_snooze, "WeightGoalMode", "PhysicalActivityLevel", "CommunityId", timezone_iana, "ConsentAcceptedAt", "ConsentVersion", "Age", "VisceralFat", "BodyAge", "ChestCm", "WaistCm", "HipCm", recovered_health_issues';
   const withMetricsNoHealth =
@@ -110,6 +111,14 @@ export async function getProfile(email) {
 
   async function load(cols) {
     return findByEmail(email, cols);
+  }
+
+  try {
+    return await load(withKeyAndPhotos);
+  } catch (errKey) {
+    const msgKey = String(errKey?.message || errKey || '');
+    if (!/column/i.test(msgKey)) throw errKey;
+    if (!/ProfileImageKey|transformation_photos/i.test(msgKey)) throw errKey;
   }
 
   try {
@@ -156,6 +165,7 @@ export async function getProfile(email) {
 export async function getProfileByUserId(userId) {
   const withPhotos =
     '"UserId", "UserName", "Email", "Height", "DietType", "ProfileImage", "CoachId", "PhoneNumber", "Gender", "Bmr", profile_pic_snooze, "WeightGoalMode", "PhysicalActivityLevel", "CommunityId", timezone_iana, "ConsentAcceptedAt", "ConsentVersion", "Age", "VisceralFat", "BodyAge", "ChestCm", "WaistCm", "HipCm", recovered_health_issues, transformation_photos';
+  const withKeyAndPhotos = `"ProfileImageKey", ${withPhotos}`;
   const fullCols =
     '"UserId", "UserName", "Email", "Height", "DietType", "ProfileImage", "CoachId", "PhoneNumber", "Gender", "Bmr", profile_pic_snooze, "WeightGoalMode", "PhysicalActivityLevel", "CommunityId", timezone_iana, "ConsentAcceptedAt", "ConsentVersion", "Age", "VisceralFat", "BodyAge", "ChestCm", "WaistCm", "HipCm", recovered_health_issues';
   const withMetricsNoHealth =
@@ -167,6 +177,14 @@ export async function getProfileByUserId(userId) {
 
   async function load(cols) {
     return findByUserId(userId, cols);
+  }
+
+  try {
+    return await load(withKeyAndPhotos);
+  } catch (errKey) {
+    const msgKey = String(errKey?.message || errKey || '');
+    if (!/column/i.test(msgKey)) throw errKey;
+    if (!/ProfileImageKey|transformation_photos/i.test(msgKey)) throw errKey;
   }
 
   try {
@@ -212,6 +230,87 @@ export async function getProfileByUserId(userId) {
 /** Team Code / shared-team fields for profile Team Code card. */
 export async function getTeamCodeFields(userId) {
   return findByUserId(userId, '"UserId", "TeamId", "CoachTeamId", "CoachId", "Role", "CommunityId"');
+}
+
+/** Avatar route + lazy R2 migrate — key first, Base64 / Google URL fallback. */
+export async function getAvatarSource(userId) {
+  try {
+    return await findByUserId(userId, '"UserId", "ProfileImageKey", "ProfileImage"');
+  } catch (err) {
+    if (!isMissingColumn(err, 'ProfileImageKey')) throw err;
+    const row = await findByUserId(userId, '"UserId", "ProfileImage"');
+    return row ? { ...row, ProfileImageKey: null } : null;
+  }
+}
+
+/**
+ * Custom data-URI avatars that have not been copied to R2 yet.
+ * @param {{ from: number, to: number }} range inclusive Supabase .range()
+ */
+export async function listPendingAvatarBackfill({ from = 0, to = 49 } = {}) {
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from(TEAM)
+    .select('"UserId", "ProfileImage", "ProfileImageKey"')
+    .is('ProfileImageKey', null)
+    .like('ProfileImage', 'data:image%')
+    .order('UserId', { ascending: true })
+    .range(from, to);
+  if (error) {
+    if (isMissingColumn(error, 'ProfileImageKey')) {
+      throw new Error('Run migration add_profile_image_key_to_team_table.sql before backfill');
+    }
+    throw error;
+  }
+  return data || [];
+}
+
+/**
+ * Custom data-URI avatars already copied to R2 (recompress pass).
+ * @param {{ from: number, to: number }} range inclusive Supabase .range()
+ */
+export async function listAvatarsForRecompress({ from = 0, to = 49 } = {}) {
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from(TEAM)
+    .select('"UserId", "ProfileImage", "ProfileImageKey"')
+    .not('ProfileImageKey', 'is', null)
+    .like('ProfileImage', 'data:image%')
+    .order('UserId', { ascending: true })
+    .range(from, to);
+  if (error) {
+    if (isMissingColumn(error, 'ProfileImageKey')) {
+      throw new Error('Run migration add_profile_image_key_to_team_table.sql before backfill');
+    }
+    throw error;
+  }
+  return data || [];
+}
+
+/**
+ * All persisted R2 keys (any ProfileImage type). Used to avoid deleting live avatars.
+ * @param {{ from: number, to: number }} range inclusive Supabase .range()
+ */
+export async function listProfileImageKeysPage({ from = 0, to = 199 } = {}) {
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from(TEAM)
+    .select('"UserId", "ProfileImageKey"')
+    .not('ProfileImageKey', 'is', null)
+    .order('UserId', { ascending: true })
+    .range(from, to);
+  if (error) {
+    if (isMissingColumn(error, 'ProfileImageKey')) {
+      throw new Error('Run migration add_profile_image_key_to_team_table.sql before backfill');
+    }
+    throw error;
+  }
+  return data || [];
+}
+
+function isMissingColumn(error, columnName) {
+  const msg = String(error?.message || error || '');
+  return /column/i.test(msg) && new RegExp(columnName, 'i').test(msg);
 }
 
 function isMissingIsDeletedColumn(error) {
