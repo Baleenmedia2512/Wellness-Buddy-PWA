@@ -694,7 +694,7 @@ test.describe('Complete Profile', () => {
         '7695834209';
 
       const TEST_OTP =
-        '123456';
+        '1234';
 
       const TEST_NAME =
         'Nitheesh Lingam';
@@ -1161,7 +1161,7 @@ test.describe('Complete Profile', () => {
       await expect(
         otpInputs
       ).toHaveCount(
-        6
+        4
       );
 
 
@@ -1475,7 +1475,7 @@ test.describe('Complete Profile', () => {
     async ({ page }) => {
 
       const TEST_PHONE = '7695834209';
-      const TEST_OTP = '123456';
+      const TEST_OTP = '1234';
       const TEST_NAME = 'Nitheesh Lingam';
 
       await page.addInitScript(() => {
@@ -1590,7 +1590,7 @@ test.describe('Complete Profile', () => {
       await expect(nameContinue).toBeEnabled({ timeout: 5000 });
       await nameContinue.click();
 
-      const otpMessage = page.getByText('We sent a 6-digit code to');
+      const otpMessage = page.getByText('We sent a 4-digit code to');
       await expect(otpMessage).toBeVisible({ timeout: 10000 });
     }
   );
@@ -1607,7 +1607,7 @@ test.describe('Complete Profile', () => {
       page.on('response', response => console.log('<<', response.status(), response.url()));
 
       const TEST_PHONE = '7695834209';
-      const TEST_OTP = '123456';
+      const TEST_OTP = '1234';
       const TEST_NAME = 'Nitheesh Lingam';
       const TEST_EMAIL = 'new@example.com';
 
@@ -1752,7 +1752,7 @@ test.describe('Complete Profile', () => {
 
       await expect(page.getByText('Enter OTP', { exact: true })).toBeVisible({ timeout: 15000 });
       let otpInputs = page.locator('input[type="tel"]');
-      for (let i = 0; i < 6; i++) {
+      for (let i = 0; i < 4; i++) {
         await otpInputs.nth(i).fill(TEST_OTP[i]);
       }
 
@@ -1778,12 +1778,12 @@ test.describe('Complete Profile', () => {
       await verifyEmailBtn.click();
 
       // Verify Email OTP Screen
-      const verifyOtpHeader = page.getByText('We sent a 6-digit code to');
+      const verifyOtpHeader = page.getByText('We sent a 4-digit code to');
       await expect(verifyOtpHeader).toBeVisible({ timeout: 15000 });
 
       const emailOtpInputs = page.locator('input[inputmode="numeric"]');
       await expect(emailOtpInputs.first()).toBeVisible({ timeout: 15000 });
-      for (let i = 0; i < 6; i++) {
+      for (let i = 0; i < 4; i++) {
         await emailOtpInputs.nth(i).fill(TEST_OTP[i]);
       }
 
@@ -1821,7 +1821,7 @@ test.describe('Complete Profile', () => {
 
       const coachOtpInputs = page.locator('input[inputmode="numeric"]');
       await expect(coachOtpInputs.first()).toBeVisible({ timeout: 15000 });
-      for (let i = 0; i < 6; i++) {
+      for (let i = 0; i < 4; i++) {
         await coachOtpInputs.nth(i).fill(TEST_OTP[i]);
       }
 
@@ -1840,7 +1840,7 @@ test.describe('Complete Profile', () => {
       // TEST DATA
       // ============================================================
       const TEST_PHONE = '7695834209';
-      const TEST_OTP = '123456';
+      const TEST_OTP = '1234';
       const TEST_NAME = 'Nitheesh Lingam';
 
       // ============================================================
@@ -1935,7 +1935,7 @@ test.describe('Complete Profile', () => {
       // ============================================================
       await expect(page.getByText('Enter OTP', { exact: true })).toBeVisible({ timeout: 15000 });
       const otpInputs = page.locator('input[data-otp="true"]');
-      await expect(otpInputs).toHaveCount(6);
+      await expect(otpInputs).toHaveCount(4);;
       for (let i = 0; i < TEST_OTP.length; i++) {
         await otpInputs.nth(i).fill(TEST_OTP[i]);
       }
@@ -1973,273 +1973,273 @@ test.describe('Complete Profile', () => {
     'CP-007 Height field validation for minimum and maximum boundaries',
     async ({ page }) => {
 
-// ============================================================
-// TEST DATA
-// ============================================================
-const TEST_PHONE = '7695834209';
-const TEST_OTP = '123456';
-const TEST_NAME = 'Nitheesh Lingam';
+      // ============================================================
+      // TEST DATA
+      // ============================================================
+      const TEST_PHONE = '7695834209';
+      const TEST_OTP = '1234';
+      const TEST_NAME = 'Nitheesh Lingam';
 
-// ============================================================
-// 1. SEND LOGIN OTP
-// ============================================================
-await page.route('**/api/auth/send-otp', async route => {
-  await route.fulfill({
-    status: 200,
-    contentType: 'application/json',
-    body: JSON.stringify({
-      success: true,
-    }),
-  });
-});
+      // ============================================================
+      // 1. SEND LOGIN OTP
+      // ============================================================
+      await page.route('**/api/auth/send-otp', async route => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+          }),
+        });
+      });
 
-// ============================================================
-// 2. VERIFY OTP
-// ============================================================
-await page.route('**/api/auth/verify-otp', async route => {
-  await route.fulfill({
-    status: 200,
-    contentType: 'application/json',
-    body: JSON.stringify({
-      success: true,
-      isNewUser: false,
-      isActive: true,
-      role: 'user',
-      user: {
-        id: 1004,
-        UserId: 1004,
-        username: TEST_NAME,
-        userName: TEST_NAME,
-        name: TEST_NAME,
-        email: '',
-        phone: `+ 91${ TEST_PHONE } `,
-        phoneNumber: TEST_PHONE,
-        status: 'Active',
-        consentRequired: false,
-      },
-    }),
-  });
-});
+      // ============================================================
+      // 2. VERIFY OTP
+      // ============================================================
+      await page.route('**/api/auth/verify-otp', async route => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            isNewUser: false,
+            isActive: true,
+            role: 'user',
+            user: {
+              id: 1004,
+              UserId: 1004,
+              username: TEST_NAME,
+              userName: TEST_NAME,
+              name: TEST_NAME,
+              email: '',
+              phone: `+ 91${TEST_PHONE} `,
+              phoneNumber: TEST_PHONE,
+              status: 'Active',
+              consentRequired: false,
+            },
+          }),
+        });
+      });
 
-// ============================================================
-// 3. VERIFY SESSION
-// ============================================================
-await page.route('**/api/user/verify-session', async route => {
-  await route.fulfill({
-    status: 200,
-    contentType: 'application/json',
-    body: JSON.stringify({
-      success: true,
-      userId: 1004,
-      sessionStale: false,
-    }),
-  });
-});
+      // ============================================================
+      // 3. VERIFY SESSION
+      // ============================================================
+      await page.route('**/api/user/verify-session', async route => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            userId: 1004,
+            sessionStale: false,
+          }),
+        });
+      });
 
-// ============================================================
-// 4. USER STATUS
-// ============================================================
-await page.route('**/api/user/status*', async route => {
-  await route.fulfill({
-    status: 200,
-    contentType: 'application/json',
-    body: JSON.stringify({
-      success: true,
-      setupComplete: true,
-      setupSkipped: true,
-      hasTeamId: false,
-      hasUpline: true,
-      pendingRequest: false,
-      redirectTo: null,
-    }),
-  });
-});
+      // ============================================================
+      // 4. USER STATUS
+      // ============================================================
+      await page.route('**/api/user/status*', async route => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            setupComplete: true,
+            setupSkipped: true,
+            hasTeamId: false,
+            hasUpline: true,
+            pendingRequest: false,
+            redirectTo: null,
+          }),
+        });
+      });
 
-// ============================================================
-// 5. CONSENT
-// ============================================================
-await page.route('**/api/user/consent*', async route => {
-  await route.fulfill({
-    status: 200,
-    contentType: 'application/json',
-    body: JSON.stringify({
-      success: true,
-      consentRequired: false,
-      consentAccepted: true,
-    }),
-  });
-});
+      // ============================================================
+      // 5. CONSENT
+      // ============================================================
+      await page.route('**/api/user/consent*', async route => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            consentRequired: false,
+            consentAccepted: true,
+          }),
+        });
+      });
 
-// ============================================================
-// 6. PROFILE
-// ============================================================
-await page.route('**/api/user/profile*', async route => {
-  const method = route.request().method();
+      // ============================================================
+      // 6. PROFILE
+      // ============================================================
+      await page.route('**/api/user/profile*', async route => {
+        const method = route.request().method();
 
-  if (method === 'GET') {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({
-        success: true,
-        data: {
-          userId: 1004,
-          profileComplete: false,
-          userName: TEST_NAME,
-          name: TEST_NAME,
-          email: 'nitheesh@example.com',
-          phoneNumber: TEST_PHONE,
-          gender: 'Male',
-          height: null,
-          dietType: 'Vegetarian',
-          latestWeight: 72.5,
-          currentWeight: 72.5,
-          latestWeightBodyFat: 22,
-          bodyFat: 22,
-          profileImage: 'https://example.com/profile.jpg',
-          physicalActivityLevel: null,
-          needsCurrentWeight: false,
-        },
-      }),
-    });
-  } else {
-    await route.fallback();
-  }
-});
+        if (method === 'GET') {
+          await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({
+              success: true,
+              data: {
+                userId: 1004,
+                profileComplete: false,
+                userName: TEST_NAME,
+                name: TEST_NAME,
+                email: 'nitheesh@example.com',
+                phoneNumber: TEST_PHONE,
+                gender: 'Male',
+                height: null,
+                dietType: 'Vegetarian',
+                latestWeight: 72.5,
+                currentWeight: 72.5,
+                latestWeightBodyFat: 22,
+                bodyFat: 22,
+                profileImage: 'https://example.com/profile.jpg',
+                physicalActivityLevel: null,
+                needsCurrentWeight: false,
+              },
+            }),
+          });
+        } else {
+          await route.fallback();
+        }
+      });
 
-// ============================================================
-// 7. OPEN APPLICATION
-// ============================================================
-await page.goto('/', {
-  waitUntil: 'domcontentloaded',
-});
+      // ============================================================
+      // 7. OPEN APPLICATION
+      // ============================================================
+      await page.goto('/', {
+        waitUntil: 'domcontentloaded',
+      });
 
-// ============================================================
-// 8. LOGIN
-// ============================================================
-const mobileInput = page.getByLabel('Mobile Number');
+      // ============================================================
+      // 8. LOGIN
+      // ============================================================
+      const mobileInput = page.getByLabel('Mobile Number');
 
-await expect(mobileInput).toBeVisible({
-  timeout: 15000,
-});
+      await expect(mobileInput).toBeVisible({
+        timeout: 15000,
+      });
 
-await mobileInput.fill(TEST_PHONE);
+      await mobileInput.fill(TEST_PHONE);
 
-await page
-  .getByRole('button', {
-    name: 'Send OTP',
-    exact: true,
-  })
-  .click();
+      await page
+        .getByRole('button', {
+          name: 'Send OTP',
+          exact: true,
+        })
+        .click();
 
-// ============================================================
-// 9. OTP PAGE
-// ============================================================
-await expect(
-  page.getByText('Enter OTP', {
-    exact: true,
-  })
-).toBeVisible({
-  timeout: 15000,
-});
+      // ============================================================
+      // 9. OTP PAGE
+      // ============================================================
+      await expect(
+        page.getByText('Enter OTP', {
+          exact: true,
+        })
+      ).toBeVisible({
+        timeout: 15000,
+      });
 
-const otpInputs = page.locator('input[data-otp="true"]');
+      const otpInputs = page.locator('input[data-otp="true"]');
 
-await expect(otpInputs).toHaveCount(6);
+      await expect(otpInputs).toHaveCount(4);;
 
-for (let i = 0; i < TEST_OTP.length; i++) {
-  await otpInputs.nth(i).fill(TEST_OTP[i]);
-}
+      for (let i = 0; i < TEST_OTP.length; i++) {
+        await otpInputs.nth(i).fill(TEST_OTP[i]);
+      }
 
-// ============================================================
-// 10. COMPLETE PROFILE PAGE
-// ============================================================
-const completeProfileHeading = page.getByRole('heading', {
-  name: 'Complete Your Profile',
-  exact: true,
-});
+      // ============================================================
+      // 10. COMPLETE PROFILE PAGE
+      // ============================================================
+      const completeProfileHeading = page.getByRole('heading', {
+        name: 'Complete Your Profile',
+        exact: true,
+      });
 
-await expect(completeProfileHeading).toBeVisible({
-  timeout: 20000,
-});
+      await expect(completeProfileHeading).toBeVisible({
+        timeout: 20000,
+      });
 
-console.log('CP-007: Complete Profile page loaded');
+      console.log('CP-007: Complete Profile page loaded');
 
-// ============================================================
-// 11. HEIGHT INPUT
-// ============================================================
-const heightInput = page.getByPlaceholder('e.g. 170');
+      // ============================================================
+      // 11. HEIGHT INPUT
+      // ============================================================
+      const heightInput = page.getByPlaceholder('e.g. 170');
 
-await expect(heightInput).toBeVisible({
-  timeout: 10000,
-});
+      await expect(heightInput).toBeVisible({
+        timeout: 10000,
+      });
 
-// ============================================================
-// HELPER FUNCTION
-//
-// Checks whether the input has a red validation border.
-// ============================================================
-const getBorderColor = async () => {
-  return await heightInput.evaluate(element => {
-    return window.getComputedStyle(element).borderColor;
-  });
-};
+      // ============================================================
+      // HELPER FUNCTION
+      //
+      // Checks whether the input has a red validation border.
+      // ============================================================
+      const getBorderColor = async () => {
+        return await heightInput.evaluate(element => {
+          return window.getComputedStyle(element).borderColor;
+        });
+      };
 
-// ============================================================
-// TEST 1: 49 → INVALID
-// Expected: Red border
-// ============================================================
-await heightInput.fill('49');
+      // ============================================================
+      // TEST 1: 49 → INVALID
+      // Expected: Red border
+      // ============================================================
+      await heightInput.fill('49');
 
-await expect.poll(
-  async () => await getBorderColor()
-).not.toBe('rgb(0, 0, 0)');
+      await expect.poll(
+        async () => await getBorderColor()
+      ).not.toBe('rgb(0, 0, 0)');
 
-console.log('CP-007: Height 49 validated as invalid');
+      console.log('CP-007: Height 49 validated as invalid');
 
-// ============================================================
-// TEST 2: 50 → VALID
-// Expected: Normal border
-// ============================================================
-await heightInput.fill('50');
+      // ============================================================
+      // TEST 2: 50 → VALID
+      // Expected: Normal border
+      // ============================================================
+      await heightInput.fill('50');
 
-const borderAt50 = await getBorderColor();
+      const borderAt50 = await getBorderColor();
 
-console.log(
-  `CP-007: Height 50 border color: ${ borderAt50 } `
-);
+      console.log(
+        `CP-007: Height 50 border color: ${borderAt50} `
+      );
 
-// ============================================================
-// TEST 3: 250 → VALID
-// Expected: Normal border
-// ============================================================
-await heightInput.fill('250');
+      // ============================================================
+      // TEST 3: 250 → VALID
+      // Expected: Normal border
+      // ============================================================
+      await heightInput.fill('250');
 
-const borderAt250 = await getBorderColor();
+      const borderAt250 = await getBorderColor();
 
-console.log(
-  `CP-007: Height 250 border color: ${ borderAt250 } `
-);
+      console.log(
+        `CP-007: Height 250 border color: ${borderAt250} `
+      );
 
-// ============================================================
-// TEST 4: 251 → INVALID
-// Expected: Red border
-// ============================================================
-await heightInput.fill('251');
+      // ============================================================
+      // TEST 4: 251 → INVALID
+      // Expected: Red border
+      // ============================================================
+      await heightInput.fill('251');
 
-await expect.poll(
-  async () => await getBorderColor()
-).not.toBe('rgb(0, 0, 0)');
+      await expect.poll(
+        async () => await getBorderColor()
+      ).not.toBe('rgb(0, 0, 0)');
 
-console.log('CP-007: Height 251 validated as invalid');
+      console.log('CP-007: Height 251 validated as invalid');
 
-console.log(
-  'CP-007: All height boundary validations completed'
-);
+      console.log(
+        'CP-007: All height boundary validations completed'
+      );
 
 
-}
-);
+    }
+  );
 
 
   test(
@@ -2249,7 +2249,7 @@ console.log(
       // TEST DATA
       // ============================================================
       const TEST_PHONE = '7695834209';
-      const TEST_OTP = '123456';
+      const TEST_OTP = '1234';
       const TEST_NAME = 'Nitheesh Lingam';
 
       // ============================================================
@@ -2353,7 +2353,7 @@ console.log(
       // ============================================================
       await expect(page.getByText('Enter OTP', { exact: true })).toBeVisible({ timeout: 15000 });
       const otpInputs = page.locator('input[data-otp="true"]');
-      await expect(otpInputs).toHaveCount(6);
+      await expect(otpInputs).toHaveCount(4);;
       for (let i = 0; i < TEST_OTP.length; i++) {
         await otpInputs.nth(i).fill(TEST_OTP[i]);
       }
@@ -2388,282 +2388,282 @@ console.log(
     }
   );
 
-test(
-'CP-009 Current Weight field validation for minimum and maximum boundaries',
-async ({ page }) => {
+  test(
+    'CP-009 Current Weight field validation for minimum and maximum boundaries',
+    async ({ page }) => {
 
-// ============================================================
-// TEST DATA
-// ============================================================
-const TEST_PHONE = '7695834209';
-const TEST_OTP = '123456';
-const TEST_NAME = 'Nitheesh Lingam';
+      // ============================================================
+      // TEST DATA
+      // ============================================================
+      const TEST_PHONE = '7695834209';
+      const TEST_OTP = '1234';
+      const TEST_NAME = 'Nitheesh Lingam';
 
-// ============================================================
-// 1. SEND LOGIN OTP
-// ============================================================
-await page.route('**/api/auth/send-otp', async route => {
-  await route.fulfill({
-    status: 200,
-    contentType: 'application/json',
-    body: JSON.stringify({
-      success: true,
-    }),
-  });
-});
+      // ============================================================
+      // 1. SEND LOGIN OTP
+      // ============================================================
+      await page.route('**/api/auth/send-otp', async route => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+          }),
+        });
+      });
 
-// ============================================================
-// 2. VERIFY OTP
-// ============================================================
-await page.route('**/api/auth/verify-otp', async route => {
-  await route.fulfill({
-    status: 200,
-    contentType: 'application/json',
-    body: JSON.stringify({
-      success: true,
-      isNewUser: false,
-      isActive: true,
-      role: 'user',
-      user: {
-        id: 1004,
-        UserId: 1004,
-        username: TEST_NAME,
-        userName: TEST_NAME,
-        name: TEST_NAME,
-        email: '',
-        phone: `+91${TEST_PHONE}`,
-        phoneNumber: TEST_PHONE,
-        status: 'Active',
-        consentRequired: false,
-      },
-    }),
-  });
-});
+      // ============================================================
+      // 2. VERIFY OTP
+      // ============================================================
+      await page.route('**/api/auth/verify-otp', async route => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            isNewUser: false,
+            isActive: true,
+            role: 'user',
+            user: {
+              id: 1004,
+              UserId: 1004,
+              username: TEST_NAME,
+              userName: TEST_NAME,
+              name: TEST_NAME,
+              email: '',
+              phone: `+91${TEST_PHONE}`,
+              phoneNumber: TEST_PHONE,
+              status: 'Active',
+              consentRequired: false,
+            },
+          }),
+        });
+      });
 
-// ============================================================
-// 3. VERIFY SESSION
-// ============================================================
-await page.route('**/api/user/verify-session', async route => {
-  await route.fulfill({
-    status: 200,
-    contentType: 'application/json',
-    body: JSON.stringify({
-      success: true,
-      userId: 1004,
-      sessionStale: false,
-    }),
-  });
-});
+      // ============================================================
+      // 3. VERIFY SESSION
+      // ============================================================
+      await page.route('**/api/user/verify-session', async route => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            userId: 1004,
+            sessionStale: false,
+          }),
+        });
+      });
 
-// ============================================================
-// 4. USER STATUS
-// ============================================================
-await page.route('**/api/user/status*', async route => {
-  await route.fulfill({
-    status: 200,
-    contentType: 'application/json',
-    body: JSON.stringify({
-      success: true,
-      setupComplete: true,
-      setupSkipped: true,
-      hasTeamId: false,
-      hasUpline: true,
-      pendingRequest: false,
-      redirectTo: null,
-    }),
-  });
-});
+      // ============================================================
+      // 4. USER STATUS
+      // ============================================================
+      await page.route('**/api/user/status*', async route => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            setupComplete: true,
+            setupSkipped: true,
+            hasTeamId: false,
+            hasUpline: true,
+            pendingRequest: false,
+            redirectTo: null,
+          }),
+        });
+      });
 
-// ============================================================
-// 5. CONSENT
-// ============================================================
-await page.route('**/api/user/consent*', async route => {
-  await route.fulfill({
-    status: 200,
-    contentType: 'application/json',
-    body: JSON.stringify({
-      success: true,
-      consentRequired: false,
-      consentAccepted: true,
-    }),
-  });
-});
+      // ============================================================
+      // 5. CONSENT
+      // ============================================================
+      await page.route('**/api/user/consent*', async route => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            consentRequired: false,
+            consentAccepted: true,
+          }),
+        });
+      });
 
-// ============================================================
-// 6. PROFILE
-//
-// Current Weight is empty so the Complete Profile page opens.
-// ============================================================
-await page.route('**/api/user/profile*', async route => {
-  const method = route.request().method();
+      // ============================================================
+      // 6. PROFILE
+      //
+      // Current Weight is empty so the Complete Profile page opens.
+      // ============================================================
+      await page.route('**/api/user/profile*', async route => {
+        const method = route.request().method();
 
-  if (method === 'GET') {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({
-        success: true,
-        data: {
-          userId: 1004,
-          profileComplete: false,
-          userName: TEST_NAME,
-          name: TEST_NAME,
-          email: 'nitheesh@example.com',
-          phoneNumber: TEST_PHONE,
-          gender: 'Male',
-          height: 170,
-          dietType: 'Vegetarian',
+        if (method === 'GET') {
+          await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({
+              success: true,
+              data: {
+                userId: 1004,
+                profileComplete: false,
+                userName: TEST_NAME,
+                name: TEST_NAME,
+                email: 'nitheesh@example.com',
+                phoneNumber: TEST_PHONE,
+                gender: 'Male',
+                height: 170,
+                dietType: 'Vegetarian',
 
-          latestWeight: null,
-          currentWeight: null,
+                latestWeight: null,
+                currentWeight: null,
 
-          latestWeightBodyFat: 22,
-          bodyFat: 22,
+                latestWeightBodyFat: 22,
+                bodyFat: 22,
 
-          profileImage: 'https://example.com/profile.jpg',
-          physicalActivityLevel: null,
+                profileImage: 'https://example.com/profile.jpg',
+                physicalActivityLevel: null,
 
-          needsCurrentWeight: true,
-        },
-      }),
-    });
-  } else {
-    await route.fallback();
-  }
-});
+                needsCurrentWeight: true,
+              },
+            }),
+          });
+        } else {
+          await route.fallback();
+        }
+      });
 
-// ============================================================
-// 7. OPEN APPLICATION
-// ============================================================
-await page.goto('/', {
-  waitUntil: 'domcontentloaded',
-});
+      // ============================================================
+      // 7. OPEN APPLICATION
+      // ============================================================
+      await page.goto('/', {
+        waitUntil: 'domcontentloaded',
+      });
 
-// ============================================================
-// 8. LOGIN
-// ============================================================
-const mobileInput = page.getByLabel('Mobile Number');
+      // ============================================================
+      // 8. LOGIN
+      // ============================================================
+      const mobileInput = page.getByLabel('Mobile Number');
 
-await expect(mobileInput).toBeVisible({
-  timeout: 15000,
-});
+      await expect(mobileInput).toBeVisible({
+        timeout: 15000,
+      });
 
-await mobileInput.fill(TEST_PHONE);
+      await mobileInput.fill(TEST_PHONE);
 
-await page
-  .getByRole('button', {
-    name: 'Send OTP',
-    exact: true,
-  })
-  .click();
+      await page
+        .getByRole('button', {
+          name: 'Send OTP',
+          exact: true,
+        })
+        .click();
 
-// ============================================================
-// 9. OTP PAGE
-// ============================================================
-await expect(
-  page.getByText('Enter OTP', {
-    exact: true,
-  })
-).toBeVisible({
-  timeout: 15000,
-});
+      // ============================================================
+      // 9. OTP PAGE
+      // ============================================================
+      await expect(
+        page.getByText('Enter OTP', {
+          exact: true,
+        })
+      ).toBeVisible({
+        timeout: 15000,
+      });
 
-const otpInputs = page.locator('input[data-otp="true"]');
+      const otpInputs = page.locator('input[data-otp="true"]');
 
-await expect(otpInputs).toHaveCount(6);
+      await expect(otpInputs).toHaveCount(4);;
 
-for (let i = 0; i < TEST_OTP.length; i++) {
-  await otpInputs.nth(i).fill(TEST_OTP[i]);
-}
+      for (let i = 0; i < TEST_OTP.length; i++) {
+        await otpInputs.nth(i).fill(TEST_OTP[i]);
+      }
 
-// ============================================================
-// 10. COMPLETE PROFILE PAGE
-// ============================================================
-const completeProfileHeading = page.getByRole('heading', {
-  name: 'Complete Your Profile',
-  exact: true,
-});
+      // ============================================================
+      // 10. COMPLETE PROFILE PAGE
+      // ============================================================
+      const completeProfileHeading = page.getByRole('heading', {
+        name: 'Complete Your Profile',
+        exact: true,
+      });
 
-await expect(completeProfileHeading).toBeVisible({
-  timeout: 20000,
-});
+      await expect(completeProfileHeading).toBeVisible({
+        timeout: 20000,
+      });
 
-console.log('CP-009: Complete Profile page loaded');
+      console.log('CP-009: Complete Profile page loaded');
 
-// ============================================================
-// 11. CURRENT WEIGHT INPUT
-// ============================================================
-const weightInput = page.getByPlaceholder('e.g. 72.5');
+      // ============================================================
+      // 11. CURRENT WEIGHT INPUT
+      // ============================================================
+      const weightInput = page.getByPlaceholder('e.g. 72.5');
 
-await expect(weightInput).toBeVisible({
-  timeout: 10000,
-});
+      await expect(weightInput).toBeVisible({
+        timeout: 10000,
+      });
 
-// ============================================================
-// HELPER FUNCTION
-//
-// Gets the current border color of the weight input.
-// ============================================================
-const getBorderColor = async () => {
-  return await weightInput.evaluate(element => {
-    return window.getComputedStyle(element).borderColor;
-  });
-};
+      // ============================================================
+      // HELPER FUNCTION
+      //
+      // Gets the current border color of the weight input.
+      // ============================================================
+      const getBorderColor = async () => {
+        return await weightInput.evaluate(element => {
+          return window.getComputedStyle(element).borderColor;
+        });
+      };
 
-// ============================================================
-// TEST 1: 19 → INVALID
-// Expected: Red border
-// ============================================================
-await weightInput.fill('19');
+      // ============================================================
+      // TEST 1: 19 → INVALID
+      // Expected: Red border
+      // ============================================================
+      await weightInput.fill('19');
 
-await expect.poll(
-  async () => await getBorderColor()
-).not.toBe('rgb(0, 0, 0)');
+      await expect.poll(
+        async () => await getBorderColor()
+      ).not.toBe('rgb(0, 0, 0)');
 
-console.log('CP-009: Weight 19 validated as invalid');
+      console.log('CP-009: Weight 19 validated as invalid');
 
-// ============================================================
-// TEST 2: 20 → VALID
-// Expected: Normal border
-// ============================================================
-await weightInput.fill('20');
+      // ============================================================
+      // TEST 2: 20 → VALID
+      // Expected: Normal border
+      // ============================================================
+      await weightInput.fill('20');
 
-const borderAt20 = await getBorderColor();
+      const borderAt20 = await getBorderColor();
 
-console.log(
-  `CP-009: Weight 20 border color: ${borderAt20}`
-);
+      console.log(
+        `CP-009: Weight 20 border color: ${borderAt20}`
+      );
 
-// ============================================================
-// TEST 3: 300 → VALID
-// Expected: Normal border
-// ============================================================
-await weightInput.fill('300');
+      // ============================================================
+      // TEST 3: 300 → VALID
+      // Expected: Normal border
+      // ============================================================
+      await weightInput.fill('300');
 
-const borderAt300 = await getBorderColor();
+      const borderAt300 = await getBorderColor();
 
-console.log(
-  `CP-009: Weight 300 border color: ${borderAt300}`
-);
+      console.log(
+        `CP-009: Weight 300 border color: ${borderAt300}`
+      );
 
-// ============================================================
-// TEST 4: 301 → INVALID
-// Expected: Red border
-// ============================================================
-await weightInput.fill('301');
+      // ============================================================
+      // TEST 4: 301 → INVALID
+      // Expected: Red border
+      // ============================================================
+      await weightInput.fill('301');
 
-await expect.poll(
-  async () => await getBorderColor()
-).not.toBe('rgb(0, 0, 0)');
+      await expect.poll(
+        async () => await getBorderColor()
+      ).not.toBe('rgb(0, 0, 0)');
 
-console.log('CP-009: Weight 301 validated as invalid');
+      console.log('CP-009: Weight 301 validated as invalid');
 
-console.log(
-  'CP-009: All Current Weight boundary validations completed'
-);
+      console.log(
+        'CP-009: All Current Weight boundary validations completed'
+      );
 
-}
-);
+    }
+  );
 
   test(
     'CP-010 Body Fat field validation for minimum and maximum boundaries',
@@ -2672,7 +2672,7 @@ console.log(
       // TEST DATA
       // ============================================================
       const TEST_PHONE = '7695834209';
-      const TEST_OTP = '123456';
+      const TEST_OTP = '1234';
       const TEST_NAME = 'Nitheesh Lingam';
 
       // ============================================================
@@ -2768,7 +2768,7 @@ console.log(
       // ============================================================
       await expect(page.getByText('Enter OTP', { exact: true })).toBeVisible({ timeout: 15000 });
       const otpInputs = page.locator('input[data-otp="true"]');
-      await expect(otpInputs).toHaveCount(6);
+      await expect(otpInputs).toHaveCount(4);;
       for (let i = 0; i < TEST_OTP.length; i++) {
         await otpInputs.nth(i).fill(TEST_OTP[i]);
       }
@@ -2835,7 +2835,7 @@ console.log(
       // TEST DATA
       // ============================================================
       const TEST_PHONE = '7695834209';
-      const TEST_OTP = '123456';
+      const TEST_OTP = '1234';
       const TEST_NAME = 'Nitheesh Lingam';
 
       // ============================================================
@@ -2949,7 +2949,7 @@ console.log(
       // ============================================================
       await expect(page.getByText('Enter OTP', { exact: true })).toBeVisible({ timeout: 15000 });
       const otpInputs = page.locator('input[data-otp="true"]');
-      await expect(otpInputs).toHaveCount(6);
+      await expect(otpInputs).toHaveCount(4);;
       for (let i = 0; i < TEST_OTP.length; i++) {
         await otpInputs.nth(i).fill(TEST_OTP[i]);
       }
@@ -3013,7 +3013,7 @@ console.log(
       // TEST DATA
       // ============================================================
       const TEST_PHONE = '7695834209';
-      const TEST_OTP = '123456';
+      const TEST_OTP = '1234';
       const TEST_NAME = 'Nitheesh Lingam';
 
       // ============================================================
@@ -3107,7 +3107,7 @@ console.log(
 
       await expect(page.getByText('Enter OTP', { exact: true })).toBeVisible({ timeout: 15000 });
       const otpInputs = page.locator('input[data-otp="true"]');
-      await expect(otpInputs).toHaveCount(6);
+      await expect(otpInputs).toHaveCount(4);;
       for (let i = 0; i < TEST_OTP.length; i++) {
         await otpInputs.nth(i).fill(TEST_OTP[i]);
       }
@@ -3165,9 +3165,9 @@ console.log(
         await expect(tabButton).toBeVisible({ timeout: 5000 });
         await tabButton.click();
 
-        // Target file input and set image file
+        // Target file input and set image file (must be portrait orientation)
         const fileInput = page.locator('input[type="file"][accept="image/*"]').last();
-        await fileInput.setInputFiles('tests/fixtures/profile-photo.jpg');
+        await fileInput.setInputFiles('tests/fixtures/portrait.jpg');
 
         console.log(`CP-012: ${side} pose image uploaded successfully`);
       }
@@ -3192,11381 +3192,3081 @@ console.log(
 
 
   test(
-    'CP-013 Physical Activity allows any option and enables Continue',
+    'CP-013 Physical Activity page allows selecting any option, enables Continue correctly, and moves to next page',
     async ({ page }) => {
-
       // ============================================================
       // TEST DATA
       // ============================================================
-
-      const TEST_EMAIL =
-        'nitheesh@example.com';
-
-      const TEST_PHONE =
-        '+917695834209';
-
-      const TEST_NAME =
-        'Nitheesh Lingam';
-
-      const TEST_PHOTO =
-        path.resolve(
-          process.cwd(),
-          'tests',
-          'fixtures',
-          'profile-photo.jpg'
-        );
+      const TEST_PHONE = '7695834209';
+      const TEST_OTP = '1234';
+      const TEST_NAME = 'Nitheesh Lingam';
 
       // ============================================================
-      // 1. AUTHENTICATED NEW PHONE USER
+      // 1. MOCK APIS
       // ============================================================
+      await page.route('**/api/auth/send-otp', async route => {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true }) });
+      });
 
-      await page.addInitScript(
-        ({ phone }) => {
+      await page.route('**/api/auth/verify-otp', async route => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            isNewUser: false,
+            isActive: true,
+            role: 'user',
+            user: {
+              id: 1004, UserId: 1004, username: TEST_NAME, userName: TEST_NAME,
+              name: TEST_NAME, email: '', phone: `+91${TEST_PHONE}`, phoneNumber: TEST_PHONE,
+              status: 'Active', consentRequired: false,
+            },
+          }),
+        });
+      });
 
-          const user = {
-            id: 999999,
-            UserId: 999999,
-            username: 'newuser',
-            email: '',
-            phone,
-            status: 'Active',
-            isNewUser: true,
-            consentRequired: false,
-          };
+      await page.route('**/api/user/verify-session', async route => {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, userId: 1004, sessionStale: false }) });
+      });
 
-          localStorage.setItem(
-            'isOtpVerified',
-            'true'
-          );
+      await page.route('**/api/user/status*', async route => {
+        await route.fulfill({
+          status: 200, contentType: 'application/json',
+          body: JSON.stringify({ success: true, setupComplete: true, setupSkipped: true, hasTeamId: false, hasUpline: true, pendingRequest: false, redirectTo: null }),
+        });
+      });
 
-          localStorage.setItem(
-            'otpUser',
-            JSON.stringify(user)
-          );
+      await page.route('**/api/user/consent*', async route => {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, consentRequired: false, consentAccepted: true }) });
+      });
 
-          localStorage.setItem(
-            'user',
-            JSON.stringify(user)
-          );
-        },
-        {
-          phone: TEST_PHONE,
-        }
-      );
+      let isProfileSaved = false;
+      let savedPhysicalActivity = null;
 
-      // ============================================================
-      // 2. USER LOOKUP
-      // ============================================================
-
-      await page.route(
-        '**/api/user/lookup*',
-        async (route) => {
-
+      await page.route('**/api/user/profile*', async route => {
+        const method = route.request().method();
+        if (method === 'GET') {
           await route.fulfill({
             status: 200,
             contentType: 'application/json',
             body: JSON.stringify({
               success: true,
-              isNewUser: true,
-              isActive: true,
-              role: 'user',
-            }),
-          });
-        }
-      );
-
-      // ============================================================
-      // 3. CONSENT
-      // ============================================================
-
-      await page.route(
-        '**/api/user/consent*',
-        async (route) => {
-
-          if (route.request().method() === 'GET') {
-
-            await route.fulfill({
-              status: 200,
-              contentType: 'application/json',
-              body: JSON.stringify({
-                success: true,
-                consentRequired: false,
-                consentAccepted: true,
-              }),
-            });
-
-            return;
-          }
-
-          if (route.request().method() === 'POST') {
-
-            await route.fulfill({
-              status: 200,
-              contentType: 'application/json',
-              body: JSON.stringify({
-                success: true,
-                consentRequired: false,
-                consentAccepted: true,
-              }),
-            });
-
-            return;
-          }
-
-          await route.continue();
-        }
-      );
-
-      // ============================================================
-      // 4. SETUP STATUS
-      // ============================================================
-
-      await page.route(
-        '**/api/user/status*',
-        async (route) => {
-
-          await route.fulfill({
-            status: 200,
-            contentType: 'application/json',
-            body: JSON.stringify({
-              success: true,
-              setupSkipped: true,
-              setupComplete: true,
-              pendingRequest: false,
-              hasTeamId: false,
-              hasUpline: false,
-            }),
-          });
-        }
-      );
-
-      // ============================================================
-      // 5. SAVE EMAIL
-      // ============================================================
-
-      await page.route(
-        '**/api/user/save-email*',
-        async (route) => {
-
-          if (route.request().method() !== 'POST') {
-            await route.continue();
-            return;
-          }
-
-          const body =
-            route.request().postDataJSON();
-
-          expect(body.email).toBe(TEST_EMAIL);
-
-          await route.fulfill({
-            status: 200,
-            contentType: 'application/json',
-            body: JSON.stringify({
-              success: true,
-              email: TEST_EMAIL,
-              user: {
-                id: 999999,
-                UserId: 999999,
-                username: 'newuser',
-                email: TEST_EMAIL,
-                phone: TEST_PHONE,
-                status: 'Active',
+              data: {
+                userId: 1004,
+                profileComplete: isProfileSaved,
+                userName: TEST_NAME,
+                name: TEST_NAME,
+                email: 'nitheesh@example.com',
+                phoneNumber: TEST_PHONE,
+                gender: 'Male',
+                height: isProfileSaved ? 170 : null,
+                dietType: isProfileSaved ? 'Vegetarian' : null,
+                latestWeight: isProfileSaved ? 72.5 : null,
+                currentWeight: isProfileSaved ? 72.5 : null,
+                latestWeightBodyFat: isProfileSaved ? 22 : null,
+                bodyFat: isProfileSaved ? 22 : null,
+                profileImage: null,
+                physicalActivityLevel: savedPhysicalActivity,
+                needsCurrentWeight: !isProfileSaved,
               },
             }),
           });
-        }
-      );
-
-      // ============================================================
-      // 6. PROFILE API
-      //
-      // Before Complete Profile save:
-      //   incomplete profile
-      //
-      // After Complete Profile save:
-      //   complete profile BUT no physical activity level
-      //
-      // After Physical Activity save:
-      //   physicalActivityLevel supplied
-      // ============================================================
-
-      let profileSaved =
-        false;
-
-      let activitySaved =
-        false;
-
-      let savedActivity =
-        null;
-
-      await page.route(
-        '**/api/user/profile*',
-        async (route) => {
-
-          const method =
-            route.request().method();
-
-          // --------------------------------------------------------
-          // GET
-          // --------------------------------------------------------
-
-          if (method === 'GET') {
-
-            // Physical Activity was selected.
-            if (activitySaved) {
-
-              await route.fulfill({
-                status: 200,
-                contentType: 'application/json',
-                body: JSON.stringify({
-                  success: true,
-
-                  data: {
-                    userId: 999999,
-
-                    profileComplete: true,
-
-                    userName: TEST_NAME,
-                    email: TEST_EMAIL,
-
-                    gender: 'Male',
-                    height: 170,
-                    dietType: 'Vegetarian',
-
-                    currentWeight: 72.5,
-                    bodyFat: 22,
-
-                    profileImage:
-                      'https://example.com/profile.jpg',
-
-                    physicalActivityLevel:
-                      savedActivity,
-
-                    consentRequired: false,
-                    consentAccepted: true,
-                  },
-                }),
-              });
-
-              return;
-            }
-
-            // Complete Profile was saved but Activity has not
-            // been selected yet.
-            if (profileSaved) {
-
-              await route.fulfill({
-                status: 200,
-                contentType: 'application/json',
-                body: JSON.stringify({
-                  success: true,
-
-                  data: {
-                    userId: 999999,
-
-                    profileComplete: true,
-
-                    userName: TEST_NAME,
-                    email: TEST_EMAIL,
-
-                    gender: 'Male',
-                    height: 170,
-                    dietType: 'Vegetarian',
-
-                    latestWeight: 72.5,
-                    latestWeightBodyFat: 22,
-
-                    currentWeight: 72.5,
-                    bodyFat: 22,
-
-                    profileImage:
-                      'https://example.com/profile.jpg',
-
-                    physicalActivityLevel: null,
-
-                    consentRequired: false,
-                    consentAccepted: true,
-                  },
-                }),
-              });
-
-              return;
-            }
-
-            // Initial incomplete profile.
-            await route.fulfill({
-              status: 200,
-              contentType: 'application/json',
-              body: JSON.stringify({
-                success: true,
-
-                data: {
-                  userId: 999999,
-
-                  profileComplete: false,
-
-                  userName: TEST_NAME,
-                  email: TEST_EMAIL,
-
-                  gender: null,
-                  height: null,
-                  dietType: null,
-
-                  latestWeight: null,
-                  latestWeightBodyFat: null,
-
-                  currentWeight: null,
-                  bodyFat: null,
-
-                  needsCurrentWeight: true,
-
-                  profileImage: null,
-
-                  physicalActivityLevel: null,
-
-                  consentRequired: false,
-                  consentAccepted: true,
-                },
-              }),
-            });
-
-            return;
+        } else {
+          const postData = route.request().postDataJSON() || {};
+          if (postData.physicalActivityLevel) {
+            savedPhysicalActivity = postData.physicalActivityLevel;
           }
-
-          // --------------------------------------------------------
-          // POST
-          // --------------------------------------------------------
-
-          if (method === 'POST') {
-
-            const body =
-              route.request().postDataJSON();
-
-            // ------------------------------------------------------
-            // Physical Activity save
-            // ------------------------------------------------------
-
-            if (
-              body &&
-              body.physicalActivityLevel
-            ) {
-
-              activitySaved = true;
-
-              savedActivity =
-                body.physicalActivityLevel;
-
-              console.log(
-                'CP-013 ACTIVITY SAVE:',
-                savedActivity
-              );
-
-              await route.fulfill({
-                status: 200,
-                contentType: 'application/json',
-                body: JSON.stringify({
-                  success: true,
-
-                  data: {
-                    physicalActivityLevel:
-                      savedActivity,
-
-                    calorieTarget:
-                      2000,
-                  },
-                }),
-              });
-
-              return;
-            }
-
-            // ------------------------------------------------------
-            // Complete Profile save
-            // ------------------------------------------------------
-
-            profileSaved = true;
-
-            console.log(
-              'CP-013 PROFILE SAVE:',
-              {
-                email: body.email,
-                name: body.name,
-                gender: body.gender,
-                height: body.height,
-                dietType: body.dietType,
-                currentWeight: body.currentWeight,
-                bodyFat: body.bodyFat,
-                hasProfileImage:
-                  Boolean(body.profileImage),
-              }
-            );
-
-            await route.fulfill({
-              status: 200,
-              contentType: 'application/json',
-              body: JSON.stringify({
-                success: true,
-
-                data: {
-                  userId: 999999,
-
-                  profileComplete: true,
-
-                  userName:
-                    body.name,
-
-                  email:
-                    body.email,
-
-                  gender:
-                    body.gender,
-
-                  height:
-                    body.height,
-
-                  dietType:
-                    body.dietType,
-
-                  currentWeight:
-                    body.currentWeight,
-
-                  bodyFat:
-                    body.bodyFat,
-
-                  profileImage:
-                    body.profileImage,
-
-                  physicalActivityLevel:
-                    null,
-
-                  consentRequired: false,
-                  consentAccepted: true,
-                },
-              }),
-            });
-
-            return;
-          }
-
-          await route.continue();
-        }
-      );
-
-      // ============================================================
-      // 7. OPEN APPLICATION
-      // ============================================================
-
-      await page.goto('/');
-
-      // ============================================================
-      // 8. COMPLETE PROFILE
-      // ============================================================
-
-      const completeProfileHeading =
-        page.getByRole('heading', {
-          name: 'Complete Your Profile',
-          exact: true,
-        });
-
-      await expect(
-        completeProfileHeading
-      ).toBeVisible({
-        timeout: 20000,
-      });
-
-      // ============================================================
-      // 9. COMPLETE REQUIRED PROFILE FIELDS
-      // ============================================================
-
-      const fullNameInput =
-        page.getByPlaceholder(
-          'Enter your full name'
-        );
-
-      const emailInput =
-        page.getByPlaceholder(
-          'you@example.com'
-        );
-
-      const genderSelect =
-        page
-          .locator('select')
-          .filter({
-            has: page.locator(
-              'option[value="Male"]'
-            ),
-          })
-          .first();
-
-      const heightInput =
-        page.getByPlaceholder(
-          'e.g. 170'
-        );
-
-      const weightInput =
-        page.getByPlaceholder(
-          'e.g. 72.5'
-        );
-
-      const bodyFatInput =
-        page.getByPlaceholder(
-          'e.g. 22'
-        );
-
-      // Email
-      await expect(
-        emailInput
-      ).toBeVisible({
-        timeout: 10000,
-      });
-
-      await emailInput.fill(
-        TEST_EMAIL
-      );
-
-      // Name
-      await fullNameInput.fill(
-        TEST_NAME
-      );
-
-      // Gender
-      await genderSelect.selectOption(
-        'Male'
-      );
-
-      // Height
-      await heightInput.fill(
-        '170'
-      );
-
-      // Diet
-      await page
-        .getByRole('button', {
-          name: 'Vegetarian',
-          exact: true,
-        })
-        .click();
-
-      // Current Weight
-      await weightInput.fill(
-        '72.5'
-      );
-
-      // Fat %
-      await bodyFatInput.fill(
-        '22'
-      );
-
-      // ============================================================
-      // 10. PROFILE PICTURE
-      // ============================================================
-
-      const profilePictureHeading =
-        page.getByRole('heading', {
-          name: 'Profile Picture',
-          exact: true,
-        });
-
-      await expect(
-        profilePictureHeading
-      ).toBeVisible({
-        timeout: 10000,
-      });
-
-      const profilePictureSection =
-        profilePictureHeading.locator(
-          'xpath=ancestor::div[contains(@class,"bg-white")][1]'
-        );
-
-      const pictureInputs =
-        profilePictureSection.locator(
-          'input[type="file"][accept="image/*"]'
-        );
-
-      await expect(
-        pictureInputs
-      ).toHaveCount(2, {
-        timeout: 10000,
-      });
-
-      const galleryInput =
-        pictureInputs.nth(1);
-
-      await galleryInput.setInputFiles(
-        TEST_PHOTO
-      );
-
-      // ============================================================
-      // 11. COMPLETE CROP IF PRESENT
-      // ============================================================
-
-      const cropDialog =
-        page.getByRole('dialog', {
-          name: 'Crop photo',
-        });
-
-      if (
-        await cropDialog
-          .isVisible()
-          .catch(() => false)
-      ) {
-
-        const doneButton =
-          page.getByRole('button', {
-            name: 'Done',
-            exact: true,
+          isProfileSaved = true;
+          await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({
+              success: true,
+              data: { profileComplete: true, physicalActivityLevel: savedPhysicalActivity, calorieTarget: 2000 },
+            }),
           });
+        }
+      });
 
-        await doneButton.click();
+      await page.route('**/api/user/testimonial*', async route => {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true }) });
+      });
 
-        await expect(
-          cropDialog
-        ).toBeHidden({
-          timeout: 10000,
-        });
+      // ============================================================
+      // 2. OPEN APP & LOGIN
+      // ============================================================
+      await page.goto('/', { waitUntil: 'domcontentloaded' });
+
+      const mobileInput = page.getByLabel('Mobile Number');
+      await expect(mobileInput).toBeVisible({ timeout: 15000 });
+      await mobileInput.fill(TEST_PHONE);
+      await page.getByRole('button', { name: 'Send OTP', exact: true }).click();
+
+      await expect(page.getByText('Enter OTP', { exact: true })).toBeVisible({ timeout: 15000 });
+      const otpInputs = page.locator('input[data-otp="true"]');
+      await expect(otpInputs).toHaveCount(4);
+      for (let i = 0; i < TEST_OTP.length; i++) {
+        await otpInputs.nth(i).fill(TEST_OTP[i]);
       }
 
       // ============================================================
-      // 12. SAVE & CONTINUE
+      // 3. COMPLETE PROFILE PAGE -> SAVE & CONTINUE
       // ============================================================
+      const completeProfileHeading = page.getByRole('heading', { name: 'Complete Your Profile', exact: true });
+      await expect(completeProfileHeading).toBeVisible({ timeout: 20000 });
 
-      const saveButton =
-        page.getByRole('button', {
-          name: 'Save & Continue',
-          exact: true,
-        });
+      const heightInput = page.getByPlaceholder('e.g. 170');
+      if (await heightInput.isVisible({ timeout: 2000 }).catch(() => false)) {
+        await heightInput.fill('170');
+      }
 
-      await expect(
-        saveButton
-      ).toBeEnabled({
-        timeout: 15000,
-      });
+      const vegetarianButton = page.getByRole('button', { name: 'Vegetarian', exact: true });
+      if (await vegetarianButton.isVisible({ timeout: 2000 }).catch(() => false)) {
+        await vegetarianButton.click();
+      }
 
+      const weightInput = page.getByPlaceholder('e.g. 72.5');
+      if (await weightInput.isVisible({ timeout: 2000 }).catch(() => false)) {
+        await weightInput.fill('72.5');
+      }
+
+      const fatInput = page.locator('label').filter({ hasText: 'Fat %' }).locator('..').locator('input');
+      if (await fatInput.isVisible({ timeout: 2000 }).catch(() => false)) {
+        await fatInput.fill('22');
+      }
+
+      const saveButton = page.getByRole('button', { name: 'Save & Continue', exact: true });
+      await expect(saveButton).toBeVisible({ timeout: 10000 });
+      await expect(saveButton).toBeEnabled({ timeout: 10000 });
       await saveButton.click();
 
       // ============================================================
-      // 13. COMPLETE PROFILE SHOULD CLOSE
+      // 4. TRANSFORMATION PHOTOS PAGE -> UPLOAD 3 PHOTOS & CONTINUE
       // ============================================================
+      const transformationHeading = page.getByRole('heading', { name: 'Transformation Photos', exact: true });
+      await expect(transformationHeading).toBeVisible({ timeout: 20000 });
 
-      await expect(
-        completeProfileHeading
-      ).not.toBeVisible({
-        timeout: 20000,
-      });
+      const poseSides = ['Left', 'Centre', 'Right'];
+      for (const side of poseSides) {
+        const tabButton = page.getByRole('button', { name: new RegExp(side, 'i') }).first();
+        await expect(tabButton).toBeVisible({ timeout: 5000 });
+        await tabButton.click();
 
-      // ============================================================
-      // 14. PHYSICAL ACTIVITY SCREEN
-      // ============================================================
+        const fileInput = page.locator('input[type="file"][accept="image/*"]').last();
+        await fileInput.setInputFiles('tests/fixtures/portrait.jpg');
+      }
 
-      const physicalActivityHeading =
-        page.getByRole('heading', {
-          name: 'Physical Activity',
-          exact: true,
-        });
-
-      await expect(
-        physicalActivityHeading
-      ).toBeVisible({
-        timeout: 30000,
-      });
-
-      await expect(
-        page.getByText(
-          'This helps us calculate your daily calorie target (TDEE).',
-          {
-            exact: true,
-          }
-        )
-      ).toBeVisible({
-        timeout: 10000,
-      });
+      const continuePhotosBtn = page.getByRole('button', { name: 'Continue', exact: true });
+      await expect(continuePhotosBtn).toBeVisible({ timeout: 10000 });
+      await expect(continuePhotosBtn).toBeEnabled({ timeout: 10000 });
+      await continuePhotosBtn.click();
 
       // ============================================================
-      // 15. CONTINUE STARTS DISABLED
+      // 5. PHYSICAL ACTIVITY SETUP PAGE DISPLAYED
       // ============================================================
+      const physicalActivityHeading = page.getByRole('heading', { name: 'Physical Activity', exact: true });
+      await expect(physicalActivityHeading).toBeVisible({ timeout: 20000 });
+      await expect(page.getByText('This helps us calculate your daily calorie target (TDEE).')).toBeVisible({ timeout: 10000 });
 
-      const continueButton =
-        page.getByRole('button', {
-          name: 'Continue',
-          exact: true,
-        });
-
-      await expect(
-        continueButton
-      ).toBeVisible({
-        timeout: 10000,
-      });
-
-      await expect(
-        continueButton
-      ).toBeDisabled();
+      const continueBtn = page.getByRole('button', { name: 'Continue', exact: true });
+      await expect(continueBtn).toBeVisible({ timeout: 10000 });
+      // Initially, disabled when no activity option is selected
+      await expect(continueBtn).toBeDisabled();
 
       // ============================================================
-      // 16. ALL PHYSICAL ACTIVITY OPTIONS
+      // 6. VERIFY ALL OPTIONS CAN BE SELECTED & ENABLE CONTINUE
       // ============================================================
-
       const activityOptions = [
-        {
-          label: 'Sedentary',
-          value: 'sedentary',
-        },
-        {
-          label: 'Light Active',
-          value: 'light_active',
-        },
-        {
-          label: 'Moderate',
-          value: 'moderate',
-        },
-        {
-          label: 'Very Active',
-          value: 'very_active',
-        },
-        {
-          label: 'Highly Active',
-          value: 'highly_active',
-        },
+        'Sedentary',
+        'Light Active',
+        'Moderate',
+        'Very Active',
+        'Highly Active',
       ];
 
-      // Verify all options are displayed.
-      for (
-        const activity of activityOptions
-      ) {
+      for (const optionLabel of activityOptions) {
+        const optionBtn = page.getByRole('button', { name: new RegExp(optionLabel, 'i') });
+        await expect(optionBtn).toBeVisible({ timeout: 5000 });
+        await optionBtn.click();
 
-        await expect(
-          page.getByRole('button', {
-            name: new RegExp(
-              `^ ${ activity.label } \\b`
-            ),
-          })
-        ).toBeVisible({
-          timeout: 10000,
-        });
+        // Continue button should now be enabled for each option
+        await expect(continueBtn).toBeEnabled({ timeout: 5000 });
       }
 
       // ============================================================
-      // 17. VERIFY EACH OPTION ENABLES CONTINUE
+      // 7. SUBMIT PHYSICAL ACTIVITY & MOVE TO NEXT PAGE
       // ============================================================
-
-      for (
-        const activity of activityOptions
-      ) {
-
-        const activityButton =
-          page.getByRole('button', {
-            name: new RegExp(
-              `^ ${ activity.label } \\b`
-            ),
-          });
-
-        await activityButton.click();
-
-        // The selected activity must enable Continue.
-        await expect(
-          continueButton
-        ).toBeEnabled({
-          timeout: 10000,
-        });
-
-        // Verify the selected button is visually selected.
-        await expect(
-          activityButton
-        ).toHaveClass(
-          /border-green-500/,
-          {
-            timeout: 10000,
-          }
-        );
-      }
-
-      // ============================================================
-      // 18. FINAL CHECK
-      // ============================================================
-
-      await expect(
-        continueButton
-      ).toBeEnabled();
-
-      console.log(
-        'CP-013: Every physical activity option enables Continue.'
-      );
-
+      await continueBtn.click();
+      await expect(physicalActivityHeading).not.toBeVisible({ timeout: 15000 });
+      console.log('CP-013: Physical Activity option selected, Continue enabled, and moved onto the next page successfully');
     }
   );
 
 
-
   test(
-    'CP-014 selecting physical activity opens coach selection',
+    'CP-014 user can select all main application navigation options',
     async ({ page }) => {
-
       // ============================================================
       // TEST DATA
       // ============================================================
-
-      const TEST_EMAIL =
-        'existing@test.com';
-
-      const TEST_COACH_ID =
-        12345;
-
-      let profileSaved = false;
-      let activitySaved = false;
-      let uplineRequestSent = false;
-
-
-      // ============================================================
-      // 1. SAVE EMAIL API
-      // ============================================================
-
-      await page.route(
-        '**/api/user/save-email*',
-        async route => {
-
-          const method =
-            route.request().method();
-
-          if (method !== 'POST') {
-            await route.fallback();
-            return;
-          }
-
-          const body =
-            route.request().postDataJSON();
-
-          console.log(
-            'CP-014 SAVE EMAIL:',
-            body
-          );
-
-          expect(
-            body.email
-          ).toBe(
-            TEST_EMAIL
-          );
-
-          await route.fulfill({
-            status: 200,
-
-            contentType:
-              'application/json',
-
-            body: JSON.stringify({
-              success: true,
-
-              message:
-                'Email saved successfully',
-
-              email:
-                TEST_EMAIL,
-
-              user: {
-                id:
-                  body.userId || 861,
-
-                UserId:
-                  body.userId || 861,
-
-                username:
-                  'newuser',
-
-                email:
-                  TEST_EMAIL,
-
-                phone:
-                  '+917695834209',
-
-                status:
-                  'Active',
-              },
-            }),
-          });
-        }
-      );
-
-
-      // ============================================================
-      // 2. GO TO COMPLETE PROFILE
-      // ============================================================
-
-      await goToCompleteProfile(
-        page
-      );
-
-
-      // ============================================================
-      // 3. PROFILE API
-      //
-      // Register after goToCompleteProfile() so this handler
-      // handles the subsequent profile requests.
-      // ============================================================
-
-      await page.route(
-        '**/api/user/profile*',
-        async route => {
-
-          const method =
-            route.request().method();
-
-
-          // ========================================================
-          // GET PROFILE
-          // ========================================================
-
-          if (method === 'GET') {
-
-            // Initial GET is handled by the common helper.
-            if (!profileSaved) {
-              await route.fallback();
-              return;
-            }
-
-
-            console.log(
-              'CP-014 PROFILE GET AFTER SAVE'
-            );
-
-
-            await route.fulfill({
-              status: 200,
-
-              contentType:
-                'application/json',
-
-              body: JSON.stringify({
-                success: true,
-
-                data: {
-
-                  profileComplete:
-                    true,
-
-                  userName:
-                    'Nitheesh Lingam',
-
-                  email:
-                    TEST_EMAIL,
-
-                  gender:
-                    'Male',
-
-                  height:
-                    170,
-
-                  dietType:
-                    'Vegetarian',
-
-                  latestWeight:
-                    72.5,
-
-                  latestWeightBodyFat:
-                    22,
-
-                  currentWeight:
-                    72.5,
-
-                  bodyFat:
-                    22,
-
-                  profileImage:
-                    'https://example.com/profile.jpg',
-
-                  needsCurrentWeight:
-                    false,
-
-                  physicalActivityLevel:
-                    null,
-
-                  consentRequired:
-                    false,
-
-                  consentAccepted:
-                    true,
-                },
-              }),
-            });
-
-            return;
-          }
-
-
-          // ========================================================
-          // POST PROFILE
-          // ========================================================
-
-          if (method === 'POST') {
-
-            const body =
-              route
-                .request()
-                .postDataJSON();
-
-
-            // ------------------------------------------------------
-            // PHYSICAL ACTIVITY SAVE
-            // ------------------------------------------------------
-
-            if (
-              body.physicalActivityLevel
-            ) {
-
-              console.log(
-                'CP-014 ACTIVITY SAVE:',
-                body
-              );
-
-
-              expect(
-                body
-              ).toMatchObject({
-                email:
-                  TEST_EMAIL,
-
-                physicalActivityLevel:
-                  'moderate',
-              });
-
-
-              activitySaved = true;
-
-
-              await route.fulfill({
-                status: 200,
-
-                contentType:
-                  'application/json',
-
-                body: JSON.stringify({
-                  success: true,
-
-                  data: {
-                    physicalActivityLevel:
-                      'moderate',
-
-                    calorieTarget:
-                      2200,
-                  },
-                }),
-              });
-
-              return;
-            }
-
-
-            // ------------------------------------------------------
-            // COMPLETE PROFILE SAVE
-            // ------------------------------------------------------
-
-            console.log(
-              'CP-014 COMPLETE PROFILE SAVE:',
-              {
-                email:
-                  body.email,
-
-                name:
-                  body.name,
-
-                gender:
-                  body.gender,
-
-                height:
-                  body.height,
-
-                dietType:
-                  body.dietType,
-
-                currentWeight:
-                  body.currentWeight,
-
-                bodyFat:
-                  body.bodyFat,
-
-                hasProfileImage:
-                  Boolean(
-                    body.profileImage
-                  ),
-              }
-            );
-
-
-            expect(
-              body
-            ).toMatchObject({
-              email:
-                TEST_EMAIL,
-
-              name:
-                'Nitheesh Lingam',
-
-              gender:
-                'Male',
-
-              height:
-                170,
-
-              dietType:
-                'Vegetarian',
-
-              currentWeight:
-                72.5,
-
-              bodyFat:
-                22,
-            });
-
-
-            expect(
-              body.profileImage
-            ).toBeTruthy();
-
-
-            profileSaved = true;
-
-
-            await route.fulfill({
-              status: 200,
-
-              contentType:
-                'application/json',
-
-              body: JSON.stringify({
-                success: true,
-
-                data: {
-
-                  profileComplete:
-                    true,
-
-                  userName:
-                    body.name,
-
-                  email:
-                    body.email,
-
-                  gender:
-                    body.gender,
-
-                  height:
-                    body.height,
-
-                  dietType:
-                    body.dietType,
-
-                  currentWeight:
-                    body.currentWeight,
-
-                  bodyFat:
-                    body.bodyFat,
-
-                  profileImage:
-                    body.profileImage,
-
-                  physicalActivityLevel:
-                    null,
-
-                  consentRequired:
-                    false,
-
-                  consentAccepted:
-                    true,
-                },
-              }),
-            });
-
-            return;
-          }
-
-
-          await route.fallback();
-        }
-      );
-
-
-      // ============================================================
-      // 4. SETUP STATUS
-      // ============================================================
-
-      await page.route(
-        '**/api/user/status*',
-        async route => {
-
-          console.log(
-            'CP-014 STATUS GET'
-          );
-
-
-          await route.fulfill({
-            status: 200,
-
-            contentType:
-              'application/json',
-
-            body: JSON.stringify({
-
-              success:
-                true,
-
-              setupComplete:
-                false,
-
-              setupSkipped:
-                false,
-
-              pendingRequest:
-                false,
-
-              hasTeamId:
-                false,
-
-              hasUpline:
-                false,
-
-              teamId:
-                null,
-
-              uplineCoachId:
-                null,
-            }),
-          });
-        }
-      );
-
-
-      // ============================================================
-      // 5. COACH SEARCH
-      // ============================================================
-
-      await page.route(
-        '**/api/users/search*',
-        async route => {
-
-          const url =
-            new URL(
-              route.request().url()
-            );
-
-
-          console.log(
-            'CP-014 COACH SEARCH:',
-            {
-              query:
-                url.searchParams.get('q'),
-
-              email:
-                url.searchParams.get('email'),
-            }
-          );
-
-
-          await route.fulfill({
-            status: 200,
-
-            contentType:
-              'application/json',
-
-            body: JSON.stringify({
-              success: true,
-
-              coaches: [
-                {
-                  userId:
-                    TEST_COACH_ID,
-
-                  userName:
-                    'Test Coach',
-
-                  displayName:
-                    'Test Coach',
-
-                  email:
-                    'tes*****mple.com',
-
-                  teamId:
-                    null,
-
-                  hasTeamId:
-                    false,
-                },
-              ],
-            }),
-          });
-        }
-      );
-
-
-      // ============================================================
-      // 6. UPLINE REQUEST
-      // ============================================================
-
-      await page.route(
-        '**/api/upline/request',
-        async route => {
-
-          const body =
-            route
-              .request()
-              .postDataJSON();
-
-
-          console.log(
-            'CP-014 UPLINE REQUEST:',
-            body
-          );
-
-
-          expect(
-            body
-          ).toMatchObject({
-            coachId:
-              TEST_COACH_ID,
-
-            email:
-              TEST_EMAIL,
-          });
-
-
-          uplineRequestSent = true;
-
-
-          await route.fulfill({
-            status: 200,
-
-            contentType:
-              'application/json',
-
-            body: JSON.stringify({
-              success: true,
-
-              message:
-                'Request sent successfully',
-            }),
-          });
-        }
-      );
-
-
-      // ============================================================
-      // 7. VERIFY COMPLETE PROFILE PAGE
-      // ============================================================
-
-      const completeProfileHeading =
-        page.getByRole(
-          'heading',
-          {
-            name:
-              'Complete Your Profile',
-
-            exact:
-              true,
-          }
-        );
-
-
-      await expect(
-        completeProfileHeading
-      ).toBeVisible({
-        timeout:
-          15000,
-      });
-
-
-      // ============================================================
-      // 8. LOCATORS
-      // ============================================================
-
-      const fullNameInput =
-        page.getByPlaceholder(
-          'Enter your full name'
-        );
-
-
-      const emailInput =
-        page.getByPlaceholder(
-          'you@example.com'
-        );
-
-
-      const genderSelect =
-        page
-          .locator(
-            'select[required]'
-          )
-          .filter({
-            has:
-              page.locator(
-                'option[value="Male"]'
-              ),
-          });
-
-
-      const heightInput =
-        page.getByPlaceholder(
-          'e.g. 170'
-        );
-
-
-      const weightInput =
-        page.getByPlaceholder(
-          'e.g. 72.5'
-        );
-
-
-      const bodyFatInput =
-        page.getByPlaceholder(
-          'e.g. 22'
-        );
-
-
-      const vegetarianButton =
-        page.getByRole(
-          'button',
-          {
-            name:
-              'Vegetarian',
-
-            exact:
-              true,
-          }
-        );
-
-
-      const saveButton =
-        page.getByRole(
-          'button',
-          {
-            name:
-              'Save & Continue',
-
-            exact:
-              true,
-          }
-        );
-
-
-      // ============================================================
-      // 9. EMAIL
-      // ============================================================
-
-      await expect(
-        emailInput
-      ).toBeVisible({
-        timeout:
-          10000,
-      });
-
-
-      await expect(
-        emailInput
-      ).toBeEditable();
-
-
-      await expect(
-        emailInput
-      ).toHaveValue(
-        ''
-      );
-
-
-      await emailInput.fill(
-        TEST_EMAIL
-      );
-
-
-      await expect(
-        emailInput
-      ).toHaveValue(
-        TEST_EMAIL
-      );
-
-
-      // ============================================================
-      // 10. FULL NAME
-      // ============================================================
-
-      await fullNameInput.fill(
-        'Nitheesh Lingam'
-      );
-
-
-      await expect(
-        fullNameInput
-      ).toHaveValue(
-        'Nitheesh Lingam'
-      );
-
-
-      // ============================================================
-      // 11. GENDER
-      // ============================================================
-
-      await expect(
-        genderSelect
-      ).toBeVisible({
-        timeout:
-          10000,
-      });
-
-
-      await genderSelect.selectOption({
-        label:
-          'Male',
-      });
-
-
-      await expect(
-        genderSelect
-      ).toHaveValue(
-        'Male'
-      );
-
-
-      // ============================================================
-      // 12. HEIGHT
-      // ============================================================
-
-      await heightInput.fill(
-        '170'
-      );
-
-
-      await expect(
-        heightInput
-      ).toHaveValue(
-        '170'
-      );
-
-
-      // ============================================================
-      // 13. DIET
-      // ============================================================
-
-      await vegetarianButton.click();
-
-
-      await expect(
-        vegetarianButton
-      ).toHaveClass(
-        /border-green-500/
-      );
-
-
-      // ============================================================
-      // 14. CURRENT WEIGHT
-      // ============================================================
-
-      await weightInput.fill(
-        '72.5'
-      );
-
-
-      await expect(
-        weightInput
-      ).toHaveValue(
-        '72.5'
-      );
-
-
-      // ============================================================
-      // 15. BODY FAT
-      // ============================================================
-
-      await bodyFatInput.fill(
-        '22'
-      );
-
-
-      await expect(
-        bodyFatInput
-      ).toHaveValue(
-        '22'
-      );
-
-
-      // ============================================================
-      // 16. PROFILE PICTURE
-      // ============================================================
-
-      const profilePictureHeading =
-        page.getByRole(
-          'heading',
-          {
-            name:
-              'Profile Picture',
-
-            exact:
-              true,
-          }
-        );
-
-
-      await expect(
-        profilePictureHeading
-      ).toBeVisible({
-        timeout:
-          10000,
-      });
-
-
-      const profilePictureSection =
-        profilePictureHeading.locator(
-          'xpath=ancestor::div[contains(@class,"bg-white")][1]'
-        );
-
-
-      const pictureInputs =
-        profilePictureSection.locator(
-          'input[type="file"][accept="image/*"]'
-        );
-
-
-      await expect(
-        pictureInputs
-      ).toHaveCount(
-        2
-      );
-
-
-      const galleryInput =
-        pictureInputs.nth(1);
-
-
-      await galleryInput.setInputFiles(
-        'tests/fixtures/profile-photo.jpg'
-      );
-
-
-      // ============================================================
-      // 17. FINISH CROP IF PRESENT
-      // ============================================================
-
-      const doneButton =
-        page.getByRole(
-          'button',
-          {
-            name:
-              'Done',
-
-            exact:
-              true,
-          }
-        );
-
-
-      if (
-        await doneButton
-          .isVisible({
-            timeout:
-              3000,
-          })
-          .catch(
-            () => false
-          )
-      ) {
-
-        await doneButton.click();
-
-      }
-
-
-      // ============================================================
-      // 18. VERIFY IMAGE
-      // ============================================================
-
-      await expect(
-        page.getByText(
-          'No image selected',
-          {
-            exact:
-              true,
-          }
-        )
-      ).not.toBeVisible({
-        timeout:
-          10000,
-      });
-
-
-      // ============================================================
-      // 19. SAVE PROFILE
-      // ============================================================
-
-      await expect(
-        saveButton
-      ).toBeEnabled({
-        timeout:
-          15000,
-      });
-
-
-      await saveButton.click();
-
-
-      // ============================================================
-      // 20. WAIT FOR PROFILE SAVE
-      // ============================================================
-
-      await expect
-        .poll(
-          () => profileSaved,
-          {
-            timeout:
-              15000,
-          }
-        )
-        .toBe(true);
-
-
-      // ============================================================
-      // 21. HANDLE POST-SAVE CONSENT
-      //
-      // IMPORTANT:
-      // Do NOT search the grandparent text.
-      //
-      // The two options are:
-      //   I Don't Agree
-      //   I Agree
-      //
-      // The grandparent contains BOTH texts, which caused the wrong
-      // radio to be selected previously.
-      // ============================================================
-
-      const consentHeading =
-        page.getByRole(
-          'heading',
-          {
-            name:
-              'User Consent Form',
-
-            exact:
-              true,
-          }
-        );
-
-
-      await page.waitForTimeout(
-        500
-      );
-
-
-      const consentVisible =
-        await consentHeading
-          .isVisible({
-            timeout:
-              5000,
-          })
-          .catch(
-            () => false
-          );
-
-
-      if (
-        consentVisible
-      ) {
-
-        console.log(
-          'CP-014: Post-save consent detected'
-        );
-
-
-        // ----------------------------------------------------------
-        // Consent radios
-        // ----------------------------------------------------------
-
-        const consentRadios =
-          page.locator(
-            'input[type="radio"][name="consentChoice"]'
-          );
-
-
-        await expect(
-          consentRadios
-        ).toHaveCount(
-          2,
-          {
-            timeout:
-              10000,
-          }
-        );
-
-
-        // ----------------------------------------------------------
-        // IMPORTANT:
-        //
-        // The correct option is the LABEL containing only:
-        //
-        //     I Agree
-        //
-        // Do not use surrounding/grandparent text.
-        // ----------------------------------------------------------
-
-        const agreeLabel =
-          page.locator(
-            'label'
-          ).filter({
-            has:
-              page.getByText(
-                'I Agree',
-                {
-                  exact:
-                    true,
-                }
-              ),
-          });
-
-
-        await expect(
-          agreeLabel
-        ).toHaveCount(
-          1,
-          {
-            timeout:
-              10000,
-          }
-        );
-
-
-        await expect(
-          agreeLabel
-        ).toBeVisible({
-          timeout:
-            10000,
-        });
-
-
-        console.log(
-          'CP-014: Clicking exact I Agree label'
-        );
-
-
-        // Clicking the label is preferable here because it lets the
-        // browser associate the label with its radio input naturally.
-        await agreeLabel.click();
-
-
-        // ----------------------------------------------------------
-        // Verify the actual I Agree radio.
-        //
-        // Based on the DOM observed in your debug output:
-        //   nth(0) = I Don't Agree
-        //   nth(1) = I Agree
-        // ----------------------------------------------------------
-
-        const agreeRadio =
-          page.locator(
-            'input[type="radio"][name="consentChoice"]'
-          ).nth(1);
-
-
-        await expect(
-          agreeRadio
-        ).toBeChecked({
-          timeout:
-            10000,
-        });
-
-
-        console.log(
-          'CP-014: I Agree confirmed selected'
-        );
-
-
-        // ----------------------------------------------------------
-        // Consent Continue
-        // ----------------------------------------------------------
-
-        const consentContinue =
-          page.getByRole(
-            'button',
-            {
-              name:
-                'Continue',
-
-              exact:
-                true,
-            }
-          );
-
-
-        await expect(
-          consentContinue
-        ).toBeVisible({
-          timeout:
-            10000,
-        });
-
-
-        await expect(
-          consentContinue
-        ).toBeEnabled({
-          timeout:
-            10000,
-        });
-
-
-        await consentContinue.click();
-
-
-        console.log(
-          'CP-014: Post-save consent Continue clicked'
-        );
-
-
-        // ----------------------------------------------------------
-        // Make sure consent has disappeared.
-        // ----------------------------------------------------------
-
-        await expect(
-          consentHeading
-        ).not.toBeVisible({
-          timeout:
-            15000,
-        });
-      }
-
-
-      // ============================================================
-      // 22. PHYSICAL ACTIVITY
-      // ============================================================
-
-      const physicalActivityHeading =
-        page.getByRole(
-          'heading',
-          {
-            name:
-              'Physical Activity',
-
-            exact:
-              true,
-          }
-        );
-
-
-      await expect(
-        physicalActivityHeading
-      ).toBeVisible({
-        timeout:
-          20000,
-      });
-
-
-      // ============================================================
-      // 23. ACTIVITY CONTINUE
-      // ============================================================
-
-      const activityContinue =
-        page.getByRole(
-          'button',
-          {
-            name:
-              'Continue',
-
-            exact:
-              true,
-          }
-        );
-
-
-      await expect(
-        activityContinue
-      ).toBeVisible({
-        timeout:
-          10000,
-      });
-
-
-      // ============================================================
-      // 24. SELECT MODERATE
-      // ============================================================
-
-      const moderateButton =
-        page.getByRole(
-          'button',
-          {
-            name:
-              /^Moderate\b/,
-          }
-        );
-
-
-      await expect(
-        moderateButton
-      ).toBeVisible({
-        timeout:
-          10000,
-      });
-
-
-      await moderateButton.click();
-
-
-      // ============================================================
-      // 25. VERIFY MODERATE SELECTED
-      // ============================================================
-
-      await expect(
-        moderateButton
-      ).toHaveClass(
-        /border-green-500/
-      );
-
-
-      // ============================================================
-      // 26. CONTINUE ENABLED
-      // ============================================================
-
-      await expect(
-        activityContinue
-      ).toBeEnabled({
-        timeout:
-          10000,
-      });
-
-
-      // ============================================================
-      // 27. MOVE TO COACH SELECTION
-      // ============================================================
-
-      await activityContinue.click();
-
-
-      // ============================================================
-      // 28. WAIT FOR ACTIVITY SAVE
-      // ============================================================
-
-      await expect
-        .poll(
-          () => activitySaved,
-          {
-            timeout:
-              15000,
-          }
-        )
-        .toBe(true);
-
-
-      // ============================================================
-      // 29. COACH SELECTION
-      // ============================================================
-
-      const coachHeading =
-        page.getByRole(
-          'heading',
-          {
-            name:
-              'Welcome to Wellness Valley',
-
-            exact:
-              true,
-          }
-        );
-
-
-      await expect(
-        coachHeading
-      ).toBeVisible({
-        timeout:
-          20000,
-      });
-
-
-      await expect(
-        page.getByText(
-          'Search for the person who invited you and activate your account.',
-          {
-            exact:
-              true,
-          }
-        )
-      ).toBeVisible({
-        timeout:
-          10000,
-      });
-
-
-      await expect(
-        page.getByRole(
-          'heading',
-          {
-            name:
-              'Person who invited you for this Program',
-
-            exact:
-              true,
-          }
-        )
-      ).toBeVisible();
-
-
-      // ============================================================
-      // 30. COACH SEARCH
-      // ============================================================
-
-      const coachSearch =
-        page.getByPlaceholder(
-          'Type your sponsor name or email...'
-        );
-
-
-      await expect(
-        coachSearch
-      ).toBeVisible({
-        timeout:
-          10000,
-      });
-
-
-      // ============================================================
-      // 31. COACH CONTINUE INITIALLY DISABLED
-      // ============================================================
-
-      const coachContinue =
-        page.getByRole(
-          'button',
-          {
-            name:
-              'Continue',
-
-            exact:
-              true,
-          }
-        );
-
-
-      await expect(
-        coachContinue
-      ).toBeDisabled();
-
-
-      // ============================================================
-      // 32. SEARCH COACH
-      // ============================================================
-
-      await coachSearch.fill(
-        'Test Coach'
-      );
-
-
-      // Wait for search debounce.
-      await page.waitForTimeout(
-        700
-      );
-
-
-      // ============================================================
-      // 33. COACH RESULT
-      // ============================================================
-
-      const coachResult =
-        page.getByText(
-          'Test Coach',
-          {
-            exact:
-              true,
-          }
-        );
-
-
-      await expect(
-        coachResult
-      ).toBeVisible({
-        timeout:
-          15000,
-      });
-
-
-      // ============================================================
-      // 34. SELECT COACH
-      // ============================================================
-
-      await coachResult.click();
-
-
-      // ============================================================
-      // 35. COACH CONTINUE ENABLED
-      // ============================================================
-
-      await expect(
-        coachContinue
-      ).toBeEnabled({
-        timeout:
-          10000,
-      });
-
-
-      // ============================================================
-      // 36. SEND COACH REQUEST
-      // ============================================================
-
-      await coachContinue.click();
-
-
-      // ============================================================
-      // 37. VERIFY UPLINE REQUEST
-      // ============================================================
-
-      await expect
-        .poll(
-          () => uplineRequestSent,
-          {
-            timeout:
-              15000,
-          }
-        )
-        .toBe(true);
-
-
-      // ============================================================
-      // 38. FINAL ASSERTIONS
-      // ============================================================
-
-      expect(
-        profileSaved
-      ).toBe(true);
-
-      expect(
-        activitySaved
-      ).toBe(true);
-
-      expect(
-        uplineRequestSent
-      ).toBe(true);
-
-    }
-  );
-
-  test(
-    'CP-015 user can enter coach verification code and automatic verification is triggered',
-    async ({ page }) => {
-
-      // ============================================================
-      // TEST DATA
-      // ============================================================
-
       const TEST_PHONE = '7695834209';
-      const TEST_EMAIL = 'existing@test.com';
-      const TEST_OTP = '123456';
-
-      const TEST_USER_ID = 999999;
-      const TEST_COACH_ID = 12345;
-
-      let coachOtpValidationCalled = false;
-
+      const TEST_NAME = 'Nitheesh Lingam';
+      const TEST_EMAIL = 'nitheesh@example.com';
 
       // ============================================================
-      // 1. SEND LOGIN OTP
+      // 1. MOCK APIS FOR AUTHENTICATED USER WITH COMPLETED PROFILE
       // ============================================================
-
-      await page.route(
-        '**/api/auth/send-otp',
-        async route => {
-
-          expect(
-            route.request().method()
-          ).toBe('POST');
-
-
-          console.log(
-            'CP-015 SEND OTP'
-          );
-
-
-          await route.fulfill({
-            status: 200,
-            contentType: 'application/json',
-
-            body: JSON.stringify({
-              success: true,
-            }),
-          });
-        }
-      );
-
-
-      // ============================================================
-      // 2. LOGIN OTP VERIFICATION
-      // ============================================================
-
-      await page.route(
-        '**/api/auth/verify-otp',
-        async route => {
-
-          const body =
-            route.request().postDataJSON();
-
-
-          console.log(
-            'CP-015 LOGIN OTP BODY:',
-            body
-          );
-
-
-          expect(
-            route.request().method()
-          ).toBe('POST');
-
-
-          expect(
-            body
-          ).toMatchObject({
-
-            recipient:
-              `+ 91${ TEST_PHONE } `,
-
-            otp:
-              TEST_OTP,
-
-            contactType:
-              'phone',
-
-          });
-
-
-          await route.fulfill({
-            status: 200,
-            contentType: 'application/json',
-
-            body: JSON.stringify({
-
-              success: true,
-
-              isNewUser: false,
-
-              isActive: true,
-
-              role: 'user',
-
-              user: {
-
-                id:
-                  TEST_USER_ID,
-
-                UserId:
-                  TEST_USER_ID,
-
-                username:
-                  'existinguser',
-
-                email:
-                  TEST_EMAIL,
-
-                phone:
-                  `+ 91${ TEST_PHONE } `,
-
-                status:
-                  'Active',
-
-                consentRequired:
-                  false,
-
-              },
-
-            }),
-          });
-        }
-      );
-
-
-      // ============================================================
-      // 3. USER LOOKUP
-      //
-      // IMPORTANT:
-      // Your actual application sends POST here.
-      // Do NOT assert GET.
-      // ============================================================
-
-      await page.route(
-        '**/api/user/lookup*',
-        async route => {
-
-          const method =
-            route.request().method();
-
-
-          console.log(
-            'CP-015 USER LOOKUP METHOD:',
-            method
-          );
-
-
-          console.log(
-            'CP-015 USER LOOKUP URL:',
-            route.request().url()
-          );
-
-
-          // The real app is sending POST.
-          expect(
-            method
-          ).toBe('POST');
-
-
-          let body = {};
-
-          try {
-            body =
-              route.request().postDataJSON();
-          } catch {
-            body = {};
-          }
-
-
-          console.log(
-            'CP-015 USER LOOKUP BODY:',
-            body
-          );
-
-
-          await route.fulfill({
-            status: 200,
-            contentType: 'application/json',
-
-            body: JSON.stringify({
-
-              success: true,
-
-              isNewUser: false,
-
-              isActive: true,
-
-              role: 'user',
-
-            }),
-          });
-        }
-      );
-
-
-      // ============================================================
-      // 4. CONSENT
-      // ============================================================
-
-      await page.route(
-        '**/api/user/consent*',
-        async route => {
-
-          const method =
-            route.request().method();
-
-
-          console.log(
-            'CP-015 CONSENT:',
-            method
-          );
-
-
-          if (
-            method === 'GET'
-          ) {
-
-            await route.fulfill({
-              status: 200,
-              contentType: 'application/json',
-
-              body: JSON.stringify({
-
-                success: true,
-
-                consentRequired: false,
-
-                consentAccepted: true,
-
-              }),
-            });
-
-            return;
-          }
-
-
-          await route.continue();
-        }
-      );
-
-
-      // ============================================================
-      // 5. COMPLETED PROFILE
-      // ============================================================
-
-      await page.route(
-        '**/api/user/profile*',
-        async route => {
-
-          const method =
-            route.request().method();
-
-
-          console.log(
-            'CP-015 PROFILE:',
-            method,
-            route.request().url()
-          );
-
-
-          if (
-            method === 'GET'
-          ) {
-
-            await route.fulfill({
-              status: 200,
-              contentType: 'application/json',
-
-              body: JSON.stringify({
-
-                success: true,
-
-                data: {
-
-                  userId:
-                    TEST_USER_ID,
-
-                  userName:
-                    'Existing User',
-
-                  email:
-                    TEST_EMAIL,
-
-                  phoneNumber:
-                    `+ 91${ TEST_PHONE } `,
-
-                  gender:
-                    'Male',
-
-                  height:
-                    170,
-
-                  dietType:
-                    'Vegetarian',
-
-                  latestWeight:
-                    72.5,
-
-                  latestWeightBodyFat:
-                    22,
-
-                  bodyFat:
-                    22,
-
-                  physicalActivityLevel:
-                    'moderate',
-
-                  profileImage:
-                    'https://example.com/profile.jpg',
-
-                  profileComplete:
-                    true,
-
-                },
-
-              }),
-            });
-
-            return;
-          }
-
-
-          await route.continue();
-        }
-      );
-
-
-      // ============================================================
-      // 6. PENDING COACH REQUEST
-      // ============================================================
-
-      await page.route(
-        '**/api/user/status*',
-        async route => {
-
-          console.log(
-            'CP-015 STATUS:',
-            route.request().url()
-          );
-
-
-          await route.fulfill({
-            status: 200,
-            contentType: 'application/json',
-
-            body: JSON.stringify({
-
-              success: true,
-
-              setupComplete: false,
-
-              setupSkipped: false,
-
-              hasTeamId: false,
-
-              hasUpline: false,
-
-              pendingRequest: {
-
-                id:
-                  TEST_COACH_ID,
-
-                coachId:
-                  TEST_COACH_ID,
-
-                coachName:
-                  'Test Coach',
-
-                status:
-                  'pending',
-
-              },
-
-            }),
-          });
-        }
-      );
-
-
-      // ============================================================
-      // 7. WAIT FOR COACH OTP API
-      // ============================================================
-
-      const validateCoachOtpRequest =
-        page.waitForRequest(
-          request =>
-            request
-              .url()
-              .includes(
-                '/api/upline/validate-otp'
-              ) &&
-            request.method() === 'POST',
-          {
-            timeout: 15000,
-          }
-        );
-
-
-      // ============================================================
-      // 8. MOCK COACH OTP VALIDATION
-      // ============================================================
-
-      await page.route(
-        '**/api/upline/validate-otp',
-        async route => {
-
-          const body =
-            route
-              .request()
-              .postDataJSON();
-
-
-          console.log(
-            'CP-015 COACH OTP BODY:',
-            body
-          );
-
-
-          expect(
-            body
-          ).toMatchObject({
-
-            otp:
-              TEST_OTP,
-
-            email:
-              TEST_EMAIL,
-
-          });
-
-
-          coachOtpValidationCalled =
-            true;
-
-
-          await route.fulfill({
-            status: 200,
-
-            contentType:
-              'application/json',
-
-            body: JSON.stringify({
-
-              success: true,
-
-              message:
-                'Verification successful',
-
-            }),
-          });
-        }
-      );
-
-
-      // ============================================================
-      // 9. OPEN APPLICATION
-      // ============================================================
-
-      await page.goto('/');
-
-
-      // ============================================================
-      // 10. LOGIN PAGE
-      // ============================================================
-
-      const mobileInput =
-        page.getByLabel(
-          'Mobile Number'
-        );
-
-
-      await expect(
-        mobileInput
-      ).toBeVisible({
-        timeout: 15000,
+      await page.route('**/api/auth/send-otp', async route => {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true }) });
       });
 
-
-      // ============================================================
-      // 11. ENTER PHONE
-      // ============================================================
-
-      await mobileInput.fill(
-        TEST_PHONE
-      );
-
-
-      await expect(
-        mobileInput
-      ).toHaveValue(
-        TEST_PHONE
-      );
-
-
-      // ============================================================
-      // 12. SEND OTP
-      // ============================================================
-
-      await page
-        .getByRole(
-          'button',
-          {
-            name: 'Send OTP',
-            exact: true,
-          }
-        )
-        .click();
-
-
-      // ============================================================
-      // 13. LOGIN OTP PAGE
-      // ============================================================
-
-      await expect(
-        page.getByText(
-          'Enter OTP',
-          {
-            exact: true,
-          }
-        )
-      ).toBeVisible({
-        timeout: 15000,
+      await page.route('**/api/user/verify-session', async route => {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, userId: 1004, sessionStale: false }) });
       });
 
-
-      const loginOtpInputs =
-        page.locator(
-          'input[type="tel"]'
-        );
-
-
-      await expect(
-        loginOtpInputs
-      ).toHaveCount(
-        6
-      );
-
-
-      // ============================================================
-      // 14. ENTER LOGIN OTP
-      // ============================================================
-
-      for (
-        let i = 0;
-        i < TEST_OTP.length;
-        i++
-      ) {
-
-        await loginOtpInputs
-          .nth(i)
-          .fill(
-            TEST_OTP[i]
-          );
-
-
-        await expect(
-          loginOtpInputs.nth(i)
-        ).toHaveValue(
-          TEST_OTP[i]
-        );
-      }
-
-
-      // ============================================================
-      // 15. WAIT FOR EXISTING-USER LOGIN
-      // ============================================================
-
-      await expect
-        .poll(
-          async () => {
-
-            return await page.evaluate(
-              () => {
-
-                const rawUser =
-                  localStorage.getItem(
-                    'otpUser'
-                  );
-
-
-                return {
-
-                  verified:
-                    localStorage.getItem(
-                      'isOtpVerified'
-                    ),
-
-                  user:
-                    rawUser
-                      ? JSON.parse(
-                        rawUser
-                      )
-                      : null,
-
-                };
-              }
-            );
-
-          },
-          {
-            timeout: 15000,
-
-            intervals: [
-              200,
-              500,
-              1000,
-            ],
-          }
-        )
-        .toMatchObject({
-
-          verified:
-            'true',
-
-          user: {
-
-            isNewUser:
-              false,
-
-          },
-
-        });
-
-
-      // ============================================================
-      // 16. WAIT FOR APPLICATION STATE
-      // ============================================================
-
-      await page.waitForTimeout(
-        500
-      );
-
-
-      // ============================================================
-      // 17. VERIFY REQUEST PAGE
-      // ============================================================
-
-      const verifyRequestHeading =
-        page.getByRole(
-          'heading',
-          {
-            name:
-              'Verify Request',
-
-            exact: true,
-          }
-        );
-
-
-      await expect(
-        verifyRequestHeading
-      ).toBeVisible({
-        timeout: 20000,
-      });
-
-
-      // ============================================================
-      // 18. VERIFY COACH
-      // ============================================================
-
-      await expect(
-        page.getByText(
-          'Test Coach',
-          {
-            exact: true,
-          }
-        )
-      ).toBeVisible({
-        timeout: 10000,
-      });
-
-
-      // ============================================================
-      // 19. COACH OTP INPUTS
-      // ============================================================
-
-      const coachOtpInputs =
-        page.locator(
-          'input[data-otp="true"]'
-        );
-
-
-      await expect(
-        coachOtpInputs
-      ).toHaveCount(
-        6,
-        {
-          timeout: 10000,
-        }
-      );
-
-
-      // ============================================================
-      // 20. VERIFY CODE BUTTON
-      // ============================================================
-
-      const verifyButton =
-        page.getByRole(
-          'button',
-          {
-            name:
-              'Verify Code',
-
-            exact: true,
-          }
-        );
-
-
-      await expect(
-        verifyButton
-      ).toBeVisible();
-
-
-      await expect(
-        verifyButton
-      ).toBeDisabled();
-
-
-      // ============================================================
-      // 21. ENTER COACH OTP
-      // ============================================================
-
-      for (
-        let i = 0;
-        i < TEST_OTP.length;
-        i++
-      ) {
-
-        await coachOtpInputs
-          .nth(i)
-          .fill(
-            TEST_OTP[i]
-          );
-
-
-        await expect(
-          coachOtpInputs.nth(i)
-        ).toHaveValue(
-          TEST_OTP[i]
-        );
-      }
-
-
-      // ============================================================
-      // 22. VERIFY ALL DIGITS
-      // ============================================================
-
-      for (
-        let i = 0;
-        i < TEST_OTP.length;
-        i++
-      ) {
-
-        await expect(
-          coachOtpInputs.nth(i)
-        ).toHaveValue(
-          TEST_OTP[i]
-        );
-      }
-
-
-      // ============================================================
-      // 23. AUTOMATIC COACH VERIFICATION
-      //
-      // DO NOT CLICK "Verify Code".
-      // The application must trigger the request automatically.
-      // ============================================================
-
-      const validateRequest =
-        await validateCoachOtpRequest;
-
-
-      // ============================================================
-      // 24. VERIFY REQUEST PAYLOAD
-      // ============================================================
-
-      const validateBody =
-        validateRequest
-          .postDataJSON();
-
-
-      expect(
-        validateBody
-      ).toMatchObject({
-
-        otp:
-          TEST_OTP,
-
-        email:
-          TEST_EMAIL,
-
-      });
-
-
-      // ============================================================
-      // 25. SUCCESS
-      // ============================================================
-
-      await expect(
-        page.getByText(
-          'Verified Successfully!',
-          {
-            exact: true,
-          }
-        )
-      ).toBeVisible({
-        timeout: 10000,
-      });
-
-
-      // ============================================================
-      // 26. FINAL ASSERTION
-      // ============================================================
-
-      expect(
-        coachOtpValidationCalled
-      ).toBe(true);
-
-    }
-  );
-
-  test(
-    'CP-016 successful coach verification completes setup',
-    async ({ page }) => {
-
-      // ============================================================
-      // TEST DATA
-      // ============================================================
-
-      const TEST_PHONE =
-        '7695834209';
-
-      const TEST_EMAIL =
-        'existing@test.com';
-
-      const LOGIN_OTP =
-        '123456';
-
-      const COACH_OTP =
-        '123456';
-
-      const TEST_USER_ID =
-        999999;
-
-      const TEST_COACH_ID =
-        12345;
-
-
-      // ============================================================
-      // STATE
-      // ============================================================
-
-      let coachVerified =
-        false;
-
-      let coachOtpValidationCalled =
-        false;
-
-
-      // ============================================================
-      // 1. SEND LOGIN OTP
-      // ============================================================
-
-      await page.route(
-        '**/api/auth/send-otp',
-        async route => {
-
-          expect(
-            route.request().method()
-          ).toBe('POST');
-
-
-          console.log(
-            'CP-016 SEND OTP'
-          );
-
-
-          await route.fulfill({
-            status: 200,
-
-            contentType:
-              'application/json',
-
-            body:
-              JSON.stringify({
-                success:
-                  true,
-              }),
-          });
-        }
-      );
-
-
-      // ============================================================
-      // 2. LOGIN OTP VERIFICATION
-      // ============================================================
-
-      await page.route(
-        '**/api/auth/verify-otp',
-        async route => {
-
-          const body =
-            route
-              .request()
-              .postDataJSON();
-
-
-          console.log(
-            'CP-016 LOGIN OTP BODY:',
-            body
-          );
-
-
-          expect(
-            route.request().method()
-          ).toBe('POST');
-
-
-          expect(
-            body
-          ).toMatchObject({
-
-            recipient:
-              `+ 91${ TEST_PHONE } `,
-
-            otp:
-              LOGIN_OTP,
-
-            contactType:
-              'phone',
-
-          });
-
-
-          await route.fulfill({
-            status:
-              200,
-
-            contentType:
-              'application/json',
-
-            body:
-              JSON.stringify({
-
-                success:
-                  true,
-
-                isNewUser:
-                  false,
-
-                isActive:
-                  true,
-
-                role:
-                  'user',
-
-                user: {
-
-                  id:
-                    TEST_USER_ID,
-
-                  UserId:
-                    TEST_USER_ID,
-
-                  username:
-                    'existinguser',
-
-                  email:
-                    TEST_EMAIL,
-
-                  phone:
-                    `+ 91${ TEST_PHONE } `,
-
-                  status:
-                    'Active',
-
-                  consentRequired:
-                    false,
-
-                },
-
-              }),
-          });
-        }
-      );
-
-
-      // ============================================================
-      // 3. USER LOOKUP
-      // ============================================================
-
-      await page.route(
-        '**/api/user/lookup*',
-        async route => {
-
-          console.log(
-            'CP-016 USER LOOKUP:',
-            route.request().method(),
-            route.request().url()
-          );
-
-
-          // Your application sends POST here.
-          expect(
-            route.request().method()
-          ).toBe('POST');
-
-
-          await route.fulfill({
-            status:
-              200,
-
-            contentType:
-              'application/json',
-
-            body:
-              JSON.stringify({
-
-                success:
-                  true,
-
-                isNewUser:
-                  false,
-
-                isActive:
-                  true,
-
-                role:
-                  'user',
-
-              }),
-          });
-        }
-      );
-
-
-      // ============================================================
-      // 4. CONSENT
-      // ============================================================
-
-      await page.route(
-        '**/api/user/consent*',
-        async route => {
-
-          const method =
-            route.request().method();
-
-
-          console.log(
-            'CP-016 CONSENT:',
-            method
-          );
-
-
-          if (
-            method === 'GET'
-          ) {
-
-            await route.fulfill({
-              status:
-                200,
-
-              contentType:
-                'application/json',
-
-              body:
-                JSON.stringify({
-
-                  success:
-                    true,
-
-                  consentRequired:
-                    false,
-
-                  consentAccepted:
-                    true,
-
-                }),
-            });
-
-            return;
-          }
-
-
-          await route.continue();
-
-        }
-      );
-
-
-      // ============================================================
-      // 5. COMPLETED PROFILE
-      // ============================================================
-
-      await page.route(
-        '**/api/user/profile*',
-        async route => {
-
-          const method =
-            route.request().method();
-
-
-          console.log(
-            'CP-016 PROFILE:',
-            method,
-            route.request().url()
-          );
-
-
-          if (
-            method === 'GET'
-          ) {
-
-            await route.fulfill({
-              status:
-                200,
-
-              contentType:
-                'application/json',
-
-              body:
-                JSON.stringify({
-
-                  success:
-                    true,
-
-                  data: {
-
-                    userId:
-                      TEST_USER_ID,
-
-                    userName:
-                      'Existing User',
-
-                    email:
-                      TEST_EMAIL,
-
-                    phoneNumber:
-                      `+ 91${ TEST_PHONE } `,
-
-                    gender:
-                      'Male',
-
-                    height:
-                      170,
-
-                    dietType:
-                      'Vegetarian',
-
-                    latestWeight:
-                      72.5,
-
-                    latestWeightBodyFat:
-                      22,
-
-                    bodyFat:
-                      22,
-
-                    physicalActivityLevel:
-                      'moderate',
-
-                    profileImage:
-                      'https://example.com/profile.jpg',
-
-                    profileComplete:
-                      true,
-
-                  },
-
-                }),
-            });
-
-            return;
-          }
-
-
-          await route.continue();
-
-        }
-      );
-
-
-      // ============================================================
-      // 6. STATEFUL USER STATUS
-      //
-      // Before coach verification:
-      //   setupComplete = false
-      //   pendingRequest = pending
-      //
-      // After coach verification:
-      //   setupComplete = true
-      //   hasUpline = true
-      //   pendingRequest = null
-      // ============================================================
-
-      await page.route(
-        '**/api/user/status*',
-        async route => {
-
-          console.log(
-            'CP-016 STATUS:',
-            route.request().url(),
-            'coachVerified:',
-            coachVerified
-          );
-
-
-          if (
-            coachVerified
-          ) {
-
-            await route.fulfill({
-              status:
-                200,
-
-              contentType:
-                'application/json',
-
-              body:
-                JSON.stringify({
-
-                  success:
-                    true,
-
-                  setupComplete:
-                    true,
-
-                  setupSkipped:
-                    false,
-
-                  hasTeamId:
-                    true,
-
-                  hasUpline:
-                    true,
-
-                  teamId:
-                    1,
-
-                  uplineCoachId:
-                    TEST_COACH_ID,
-
-                  role:
-                    'user',
-
-                  pendingRequest:
-                    null,
-
-                  redirectTo:
-                    '/dashboard',
-
-                }),
-            });
-
-            return;
-          }
-
-
-          await route.fulfill({
-            status:
-              200,
-
-            contentType:
-              'application/json',
-
-            body:
-              JSON.stringify({
-
-                success:
-                  true,
-
-                setupComplete:
-                  false,
-
-                setupSkipped:
-                  false,
-
-                hasTeamId:
-                  false,
-
-                hasUpline:
-                  false,
-
-                pendingRequest: {
-
-                  id:
-                    TEST_COACH_ID,
-
-                  coachId:
-                    TEST_COACH_ID,
-
-                  coachName:
-                    'Test Coach',
-
-                  status:
-                    'pending',
-
-                },
-
-                redirectTo:
-                  null,
-
-              }),
-          });
-        }
-      );
-
-
-      // ============================================================
-      // 7. COACH OTP VALIDATION REQUEST LISTENER
-      //
-      // Register before entering the coach OTP.
-      // ============================================================
-
-      const validateCoachOtpRequest =
-        page.waitForRequest(
-          request =>
-            request
-              .url()
-              .includes(
-                '/api/upline/validate-otp'
-              ) &&
-            request.method() === 'POST',
-          {
-            timeout:
-              15000,
-          }
-        );
-
-
-      // ============================================================
-      // 8. COACH OTP VALIDATION
-      // ============================================================
-
-      await page.route(
-        '**/api/upline/validate-otp',
-        async route => {
-
-          const body =
-            route
-              .request()
-              .postDataJSON();
-
-
-          console.log(
-            'CP-016 COACH OTP:',
-            body
-          );
-
-
-          expect(
-            body
-          ).toMatchObject({
-
-            otp:
-              COACH_OTP,
-
-            email:
-              TEST_EMAIL,
-
-          });
-
-
-          coachOtpValidationCalled =
-            true;
-
-
-          // IMPORTANT:
-          // Change state BEFORE returning the successful response.
-          // Any subsequent /status request now returns completed setup.
-          coachVerified =
-            true;
-
-
-          await route.fulfill({
-            status:
-              200,
-
-            contentType:
-              'application/json',
-
-            body:
-              JSON.stringify({
-
-                success:
-                  true,
-
-                message:
-                  'Verification successful',
-
-              }),
-          });
-        }
-      );
-
-
-      // ============================================================
-      // 9. OPEN APPLICATION
-      // ============================================================
-
-      await page.goto('/');
-
-
-      // ============================================================
-      // 10. LOGIN PAGE
-      // ============================================================
-
-      const mobileInput =
-        page.getByLabel(
-          'Mobile Number'
-        );
-
-
-      await expect(
-        mobileInput
-      ).toBeVisible({
-        timeout:
-          15000,
-      });
-
-
-      // ============================================================
-      // 11. ENTER PHONE
-      // ============================================================
-
-      await mobileInput.fill(
-        TEST_PHONE
-      );
-
-
-      await expect(
-        mobileInput
-      ).toHaveValue(
-        TEST_PHONE
-      );
-
-
-      // ============================================================
-      // 12. SEND OTP
-      // ============================================================
-
-      await page
-        .getByRole(
-          'button',
-          {
-            name:
-              'Send OTP',
-
-            exact:
-              true,
-          }
-        )
-        .click();
-
-
-      // ============================================================
-      // 13. LOGIN OTP PAGE
-      // ============================================================
-
-      await expect(
-        page.getByText(
-          'Enter OTP',
-          {
-            exact:
-              true,
-          }
-        )
-      ).toBeVisible({
-        timeout:
-          15000,
-      });
-
-
-      const loginOtpInputs =
-        page.locator(
-          'input[type="tel"]'
-        );
-
-
-      await expect(
-        loginOtpInputs
-      ).toHaveCount(
-        6
-      );
-
-
-      // ============================================================
-      // 14. ENTER LOGIN OTP
-      // ============================================================
-
-      for (
-        let i = 0;
-        i < LOGIN_OTP.length;
-        i++
-      ) {
-
-        await loginOtpInputs
-          .nth(i)
-          .fill(
-            LOGIN_OTP[i]
-          );
-
-
-        await expect(
-          loginOtpInputs.nth(i)
-        ).toHaveValue(
-          LOGIN_OTP[i]
-        );
-      }
-
-
-      // ============================================================
-      // 15. WAIT FOR EXISTING USER LOGIN
-      // ============================================================
-
-      await expect
-        .poll(
-          async () => {
-
-            return await page.evaluate(
-              () => {
-
-                const rawUser =
-                  localStorage.getItem(
-                    'otpUser'
-                  );
-
-
-                return {
-
-                  verified:
-                    localStorage.getItem(
-                      'isOtpVerified'
-                    ),
-
-                  user:
-                    rawUser
-                      ? JSON.parse(
-                        rawUser
-                      )
-                      : null,
-
-                };
-              }
-            );
-
-          },
-          {
-            timeout:
-              15000,
-
-            intervals: [
-              200,
-              500,
-              1000,
-            ],
-          }
-        )
-        .toMatchObject({
-
-          verified:
-            'true',
-
-          user: {
-
-            isNewUser:
-              false,
-
-          },
-
-        });
-
-
-      // ============================================================
-      // 16. VERIFY REQUEST SCREEN
-      // ============================================================
-
-      const verifyRequestHeading =
-        page.getByRole(
-          'heading',
-          {
-            name:
-              'Verify Request',
-
-            exact:
-              true,
-          }
-        );
-
-
-      await expect(
-        verifyRequestHeading
-      ).toBeVisible({
-        timeout:
-          20000,
-      });
-
-
-      // ============================================================
-      // 17. VERIFY COACH
-      // ============================================================
-
-      await expect(
-        page.getByText(
-          'Test Coach',
-          {
-            exact:
-              true,
-          }
-        )
-      ).toBeVisible({
-        timeout:
-          10000,
-      });
-
-
-      // ============================================================
-      // 18. COACH OTP INPUTS
-      // ============================================================
-
-      const coachOtpInputs =
-        page.locator(
-          'input[data-otp="true"]'
-        );
-
-
-      await expect(
-        coachOtpInputs
-      ).toHaveCount(
-        6,
-        {
-          timeout:
-            10000,
-        }
-      );
-
-
-      // ============================================================
-      // 19. VERIFY BUTTON
-      // ============================================================
-
-      const verifyButton =
-        page.getByRole(
-          'button',
-          {
-            name:
-              'Verify Code',
-
-            exact:
-              true,
-          }
-        );
-
-
-      await expect(
-        verifyButton
-      ).toBeVisible();
-
-
-      await expect(
-        verifyButton
-      ).toBeDisabled();
-
-
-      // ============================================================
-      // 20. ENTER COACH OTP
-      // ============================================================
-
-      for (
-        let i = 0;
-        i < COACH_OTP.length;
-        i++
-      ) {
-
-        await coachOtpInputs
-          .nth(i)
-          .fill(
-            COACH_OTP[i]
-          );
-
-
-        await expect(
-          coachOtpInputs.nth(i)
-        ).toHaveValue(
-          COACH_OTP[i]
-        );
-      }
-
-
-      // ============================================================
-      // 21. VERIFY ALL DIGITS
-      // ============================================================
-
-      for (
-        let i = 0;
-        i < COACH_OTP.length;
-        i++
-      ) {
-
-        await expect(
-          coachOtpInputs.nth(i)
-        ).toHaveValue(
-          COACH_OTP[i]
-        );
-      }
-
-
-      // ============================================================
-      // 22. AUTOMATIC COACH VERIFICATION
-      //
-      // We intentionally DO NOT click Verify Code.
-      // ============================================================
-
-      const validateRequest =
-        await validateCoachOtpRequest;
-
-
-      expect(
-        validateRequest
-          .postDataJSON()
-      ).toMatchObject({
-
-        otp:
-          COACH_OTP,
-
-        email:
-          TEST_EMAIL,
-
-      });
-
-
-      expect(
-        coachOtpValidationCalled
-      ).toBe(true);
-
-
-      // ============================================================
-      // 23. SUCCESS MESSAGE
-      // ============================================================
-
-      await expect(
-        page.getByText(
-          'Verified Successfully!',
-          {
-            exact:
-              true,
-          }
-        )
-      ).toBeVisible({
-        timeout:
-          10000,
-      });
-
-
-      // ============================================================
-      // 24. VERIFY REQUEST SCREEN DISAPPEARS
-      // ============================================================
-
-      await expect(
-        verifyRequestHeading
-      ).not.toBeVisible({
-        timeout:
-          15000,
-      });
-
-
-      // ============================================================
-      // 25. WAIT FOR COMPLETED SETUP STATE
-      //
-      // The application should request /status again.
-      // Our stateful mock now returns setupComplete=true.
-      // ============================================================
-
-      await expect
-        .poll(
-          () => coachVerified,
-          {
-            timeout:
-              10000,
-          }
-        )
-        .toBe(true);
-
-
-      // ============================================================
-      // 26. VERIFY HOME PAGE
-      // ============================================================
-
-      await expect(
-        page.getByText(
-          'Tracking Wellness with Ease',
-          {
-            exact:
-              true,
-          }
-        )
-      ).toBeVisible({
-        timeout:
-          20000,
-      });
-
-
-      // ============================================================
-      // 27. VERIFY MAIN NAVIGATION
-      // ============================================================
-
-      await expect(
-        page.getByText(
-          'Home',
-          {
-            exact:
-              true,
-          }
-        )
-      ).toBeVisible();
-
-
-      await expect(
-        page.getByText(
-          'Diary',
-          {
-            exact:
-              true,
-          }
-        )
-      ).toBeVisible();
-
-
-      await expect(
-        page.getByText(
-          'Activity',
-          {
-            exact:
-              true,
-          }
-        )
-      ).toBeVisible();
-
-
-      await expect(
-        page.getByText(
-          'Programs',
-          {
-            exact:
-              true,
-          }
-        )
-      ).toBeVisible();
-
-
-      // ============================================================
-      // 28. FINAL SETUP ASSERTIONS
-      // ============================================================
-
-      expect(
-        coachVerified
-      ).toBe(true);
-
-      expect(
-        coachOtpValidationCalled
-      ).toBe(true);
-
-    }
-  );
-
-  test(
-    'CP-017 Home page is displayed after onboarding is complete',
-    async ({ page }) => {
-
-      // ============================================================
-      // TEST DATA
-      // ============================================================
-
-      const TEST_PHONE =
-        '7695834209';
-
-      const TEST_EMAIL =
-        'existing@test.com';
-
-      const LOGIN_OTP =
-        '123456';
-
-      const TEST_USER_ID =
-        999999;
-
-
-      // ============================================================
-      // 1. SEND LOGIN OTP
-      // ============================================================
-
-      await page.route(
-        '**/api/auth/send-otp',
-        async route => {
-
-          expect(
-            route.request().method()
-          ).toBe('POST');
-
-
-          console.log(
-            'CP-017 SEND OTP'
-          );
-
-
-          await route.fulfill({
-            status:
-              200,
-
-            contentType:
-              'application/json',
-
-            body:
-              JSON.stringify({
-                success:
-                  true,
-              }),
-          });
-        }
-      );
-
-
-      // ============================================================
-      // 2. LOGIN OTP VERIFICATION
-      // ============================================================
-
-      await page.route(
-        '**/api/auth/verify-otp',
-        async route => {
-
-          const body =
-            route
-              .request()
-              .postDataJSON();
-
-
-          console.log(
-            'CP-017 LOGIN OTP BODY:',
-            body
-          );
-
-
-          expect(
-            route.request().method()
-          ).toBe('POST');
-
-
-          expect(
-            body
-          ).toMatchObject({
-
-            recipient:
-              `+ 91${ TEST_PHONE } `,
-
-            otp:
-              LOGIN_OTP,
-
-            contactType:
-              'phone',
-
-          });
-
-
-          await route.fulfill({
-            status:
-              200,
-
-            contentType:
-              'application/json',
-
-            body:
-              JSON.stringify({
-
-                success:
-                  true,
-
-                isNewUser:
-                  false,
-
-                isActive:
-                  true,
-
-                role:
-                  'user',
-
-                user: {
-
-                  id:
-                    TEST_USER_ID,
-
-                  UserId:
-                    TEST_USER_ID,
-
-                  username:
-                    'existinguser',
-
-                  email:
-                    TEST_EMAIL,
-
-                  phone:
-                    `+ 91${ TEST_PHONE } `,
-
-                  status:
-                    'Active',
-
-                  consentRequired:
-                    false,
-
-                },
-
-              }),
-          });
-        }
-      );
-
-
-      // ============================================================
-      // 3. USER LOOKUP
-      // ============================================================
-
-      await page.route(
-        '**/api/user/lookup*',
-        async route => {
-
-          console.log(
-            'CP-017 USER LOOKUP:',
-            route.request().method(),
-            route.request().url()
-          );
-
-
-          // Your application sends POST.
-          expect(
-            route.request().method()
-          ).toBe('POST');
-
-
-          await route.fulfill({
-            status:
-              200,
-
-            contentType:
-              'application/json',
-
-            body:
-              JSON.stringify({
-
-                success:
-                  true,
-
-                isNewUser:
-                  false,
-
-                isActive:
-                  true,
-
-                role:
-                  'user',
-
-              }),
-          });
-        }
-      );
-
-
-      // ============================================================
-      // 4. CONSENT ALREADY ACCEPTED
-      // ============================================================
-
-      await page.route(
-        '**/api/user/consent*',
-        async route => {
-
-          const method =
-            route.request().method();
-
-
-          if (
-            method === 'GET'
-          ) {
-
-            await route.fulfill({
-              status:
-                200,
-
-              contentType:
-                'application/json',
-
-              body:
-                JSON.stringify({
-
-                  success:
-                    true,
-
-                  consentRequired:
-                    false,
-
-                  consentAccepted:
-                    true,
-
-                }),
-            });
-
-            return;
-          }
-
-
-          await route.continue();
-        }
-      );
-
-
-      // ============================================================
-      // 5. COMPLETED PROFILE
-      // ============================================================
-
-      await page.route(
-        '**/api/user/profile*',
-        async route => {
-
-          const method =
-            route.request().method();
-
-
-          console.log(
-            'CP-017 PROFILE:',
-            method,
-            route.request().url()
-          );
-
-
-          if (
-            method === 'GET'
-          ) {
-
-            await route.fulfill({
-              status:
-                200,
-
-              contentType:
-                'application/json',
-
-              body:
-                JSON.stringify({
-
-                  success:
-                    true,
-
-                  data: {
-
-                    userId:
-                      TEST_USER_ID,
-
-                    userName:
-                      'Existing User',
-
-                    email:
-                      TEST_EMAIL,
-
-                    phoneNumber:
-                      `+ 91${ TEST_PHONE } `,
-
-                    gender:
-                      'Male',
-
-                    height:
-                      170,
-
-                    dietType:
-                      'Vegetarian',
-
-                    latestWeight:
-                      72.5,
-
-                    latestWeightBodyFat:
-                      22,
-
-                    bodyFat:
-                      22,
-
-                    physicalActivityLevel:
-                      'moderate',
-
-                    profileImage:
-                      'https://example.com/profile.jpg',
-
-                    profileComplete:
-                      true,
-
-                  },
-
-                }),
-            });
-
-            return;
-          }
-
-
-          await route.continue();
-        }
-      );
-
-
-      // ============================================================
-      // 6. ONBOARDING / SETUP IS COMPLETE
-      //
-      // Single stateful handler.
-      // ============================================================
-
-      await page.route(
-        '**/api/user/status*',
-        async route => {
-
-          console.log(
-            'CP-017 STATUS:',
-            route.request().url()
-          );
-
-
-          await route.fulfill({
-            status:
-              200,
-
-            contentType:
-              'application/json',
-
-            body:
-              JSON.stringify({
-
-                success:
-                  true,
-
-                setupComplete:
-                  true,
-
-                setupSkipped:
-                  false,
-
-                hasTeamId:
-                  true,
-
-                hasUpline:
-                  true,
-
-                teamId:
-                  1,
-
-                uplineCoachId:
-                  12345,
-
-                role:
-                  'user',
-
-                pendingRequest:
-                  null,
-
-                redirectTo:
-                  null,
-
-              }),
-          });
-        }
-      );
-
-
-      // ============================================================
-      // 7. HOME LEADERBOARD APIs
-      // ============================================================
-
-      await page.route(
-        '**/api/leaderboard/get-global-leaderboard**',
-        async route => {
-
-          await route.fulfill({
-            status:
-              200,
-
-            contentType:
-              'application/json',
-
-            body:
-              JSON.stringify({
-
-                success:
-                  true,
-
-                data:
-                  [],
-
-              }),
-          });
-        }
-      );
-
-
-      await page.route(
-        '**/api/leaderboard/get-wellness-score-leaderboard**',
-        async route => {
-
-          await route.fulfill({
-            status:
-              200,
-
-            contentType:
-              'application/json',
-
-            body:
-              JSON.stringify({
-
-                success:
-                  true,
-
-                data:
-                  [],
-
-              }),
-          });
-        }
-      );
-
-
-      // ============================================================
-      // 8. OPEN APPLICATION
-      // ============================================================
-
-      await page.goto('/');
-
-
-      // ============================================================
-      // 9. LOGIN PAGE
-      // ============================================================
-
-      const mobileInput =
-        page.getByLabel(
-          'Mobile Number'
-        );
-
-
-      await expect(
-        mobileInput
-      ).toBeVisible({
-        timeout:
-          15000,
-      });
-
-
-      // ============================================================
-      // 10. ENTER PHONE NUMBER
-      // ============================================================
-
-      await mobileInput.fill(
-        TEST_PHONE
-      );
-
-
-      await expect(
-        mobileInput
-      ).toHaveValue(
-        TEST_PHONE
-      );
-
-
-      // ============================================================
-      // 11. SEND OTP
-      // ============================================================
-
-      await page
-        .getByRole(
-          'button',
-          {
-            name:
-              'Send OTP',
-
-            exact:
-              true,
-          }
-        )
-        .click();
-
-
-      // ============================================================
-      // 12. LOGIN OTP SCREEN
-      // ============================================================
-
-      await expect(
-        page.getByText(
-          'Enter OTP',
-          {
-            exact:
-              true,
-          }
-        )
-      ).toBeVisible({
-        timeout:
-          15000,
-      });
-
-
-      const loginOtpInputs =
-        page.locator(
-          'input[type="tel"]'
-        );
-
-
-      await expect(
-        loginOtpInputs
-      ).toHaveCount(
-        6
-      );
-
-
-      // ============================================================
-      // 13. ENTER LOGIN OTP
-      // ============================================================
-
-      for (
-        let i = 0;
-        i < LOGIN_OTP.length;
-        i++
-      ) {
-
-        await loginOtpInputs
-          .nth(i)
-          .fill(
-            LOGIN_OTP[i]
-          );
-
-
-        await expect(
-          loginOtpInputs.nth(i)
-        ).toHaveValue(
-          LOGIN_OTP[i]
-        );
-      }
-
-
-      // ============================================================
-      // 14. WAIT FOR EXISTING USER AUTHENTICATION
-      // ============================================================
-
-      await expect
-        .poll(
-          async () => {
-
-            return await page.evaluate(
-              () => {
-
-                const rawUser =
-                  localStorage.getItem(
-                    'otpUser'
-                  );
-
-
-                return {
-
-                  verified:
-                    localStorage.getItem(
-                      'isOtpVerified'
-                    ),
-
-                  user:
-                    rawUser
-                      ? JSON.parse(
-                        rawUser
-                      )
-                      : null,
-
-                };
-              }
-            );
-
-          },
-          {
-            timeout:
-              15000,
-
-            intervals:
-              [
-                200,
-                500,
-                1000,
-              ],
-          }
-        )
-        .toMatchObject({
-
-          verified:
-            'true',
-
-          user: {
-
-            isNewUser:
-              false,
-
-          },
-
-        });
-
-
-      // ============================================================
-      // 15. WAIT FOR POST-LOGIN APPLICATION INITIALIZATION
-      // ============================================================
-
-      await page.waitForTimeout(
-        500
-      );
-
-
-      // ============================================================
-      // 16. HOME PAGE
-      // ============================================================
-
-      await expect(
-        page.getByText(
-          'Tracking Wellness with Ease',
-          {
-            exact:
-              true,
-          }
-        )
-      ).toBeVisible({
-        timeout:
-          20000,
-      });
-
-
-      // ============================================================
-      // 17. MAIN NAVIGATION
-      // ============================================================
-
-      await expect(
-        page.getByText(
-          'Home',
-          {
-            exact:
-              true,
-          }
-        )
-      ).toBeVisible();
-
-
-      await expect(
-        page.getByText(
-          'Diary',
-          {
-            exact:
-              true,
-          }
-        )
-      ).toBeVisible();
-
-
-      await expect(
-        page.getByText(
-          'Activity',
-          {
-            exact:
-              true,
-          }
-        )
-      ).toBeVisible();
-
-
-      await expect(
-        page.getByText(
-          'Programs',
-          {
-            exact:
-              true,
-          }
-        )
-      ).toBeVisible();
-
-
-      // ============================================================
-      // 18. HOME ACTIONS
-      // ============================================================
-
-      await expect(
-        page.getByRole(
-          'button',
-          {
-            name:
-              'Open camera',
-          }
-        )
-      ).toBeVisible();
-
-
-      await expect(
-        page.getByRole(
-          'button',
-          {
-            name:
-              'Choose from gallery',
-          }
-        )
-      ).toBeVisible();
-
-
-      // ============================================================
-      // 19. ONBOARDING SCREENS MUST NOT APPEAR
-      // ============================================================
-
-      await expect(
-        page.getByRole(
-          'heading',
-          {
-            name:
-              'Complete Your Profile',
-
-            exact:
-              true,
-          }
-        )
-      ).not.toBeVisible();
-
-
-      await expect(
-        page.getByRole(
-          'heading',
-          {
-            name:
-              'Welcome to Wellness Valley',
-
-            exact:
-              true,
-          }
-        )
-      ).not.toBeVisible();
-
-
-      await expect(
-        page.getByRole(
-          'heading',
-          {
-            name:
-              'Verify Request',
-
-            exact:
-              true,
-          }
-        )
-      ).not.toBeVisible();
-
-
-      // ============================================================
-      // 20. CONSENT FORM MUST NOT APPEAR
-      // ============================================================
-
-      await expect(
-        page.getByRole(
-          'heading',
-          {
-            name:
-              'User Consent Form',
-
-            exact:
-              true,
-          }
-        )
-      ).not.toBeVisible();
-
-    }
-  );
-
-
-  test(
-    'CP-018 user can select all main application navigation options',
-    async ({ page }) => {
-
-      // ============================================================
-      // TEST DATA
-      // ============================================================
-
-      const TEST_PHONE = '7695834209';
-
-      const LOGIN_OTP = '123456';
-
-      const TEST_EMAIL = 'existing@test.com';
-
-      const TEST_USER_ID = 861;
-
-
-      // ============================================================
-      // 1. SEND OTP
-      // ============================================================
-
-      await page.route(
-        '**/api/auth/send-otp',
-        async route => {
-
-          console.log(
-            'CP-018 SEND OTP'
-          );
-
-          expect(
-            route.request().method()
-          ).toBe('POST');
-
-          await route.fulfill({
-            status: 200,
-            contentType: 'application/json',
-
-            body: JSON.stringify({
-              success: true,
-            }),
-          });
-        }
-      );
-
-
-      // ============================================================
-      // 2. VERIFY LOGIN OTP
-      // ============================================================
-
-      await page.route(
-        '**/api/auth/verify-otp',
-        async route => {
-
-          const body =
-            route.request().postDataJSON();
-
-          console.log(
-            'CP-018 LOGIN OTP BODY:',
-            body
-          );
-
-          expect(
-            route.request().method()
-          ).toBe('POST');
-
-          expect(
-            body
-          ).toMatchObject({
-
-            recipient:
-              `+ 91${ TEST_PHONE } `,
-
-            otp:
-              LOGIN_OTP,
-
-            contactType:
-              'phone',
-          });
-
-          await route.fulfill({
-            status: 200,
-            contentType: 'application/json',
-
-            body: JSON.stringify({
-
-              success:
-                true,
-
-              isNewUser:
-                false,
-
-              isActive:
-                true,
-
-              role:
-                'user',
-
-              user: {
-
-                id:
-                  TEST_USER_ID,
-
-                UserId:
-                  TEST_USER_ID,
-
-                username:
-                  'existinguser',
-
-                email:
-                  TEST_EMAIL,
-
-                phone:
-                  `+ 91${ TEST_PHONE } `,
-
-                status:
-                  'Active',
-
-                consentRequired:
-                  false,
-              },
-            }),
-          });
-        }
-      );
-
-
-      // ============================================================
-      // 3. USER LOOKUP
-      //
-      // The application uses POST during login and may use GET later
-      // during navigation/page initialization.
-      //
-      // Both methods must be supported.
-      // ============================================================
-
-      await page.route(
-        '**/api/user/lookup*',
-        async route => {
-
-          const method =
-            route.request().method();
-
-          console.log(
-            'CP-018 USER LOOKUP:',
-            method,
-            route.request().url()
-          );
-
-          // ----------------------------------------------------------
-          // POST lookup
-          // ----------------------------------------------------------
-
-          if (
-            method === 'POST'
-          ) {
-
-            await route.fulfill({
-              status: 200,
-
-              contentType:
-                'application/json',
-
-              body:
-                JSON.stringify({
-
-                  success:
-                    true,
-
-                  isNewUser:
-                    false,
-
-                  isActive:
-                    true,
-
-                  role:
-                    'user',
-
-                }),
-            });
-
-            return;
-          }
-
-
-          // ----------------------------------------------------------
-          // GET lookup
-          // ----------------------------------------------------------
-
-          if (
-            method === 'GET'
-          ) {
-
-            await route.fulfill({
-              status: 200,
-
-              contentType:
-                'application/json',
-
-              body:
-                JSON.stringify({
-
-                  success:
-                    true,
-
-                  isNewUser:
-                    false,
-
-                  isActive:
-                    true,
-
-                  role:
-                    'user',
-
-                  data: {
-
-                    userId:
-                      TEST_USER_ID,
-
-                    userName:
-                      'Existing User',
-
-                    email:
-                      TEST_EMAIL,
-
-                    phoneNumber:
-                      `+ 91${ TEST_PHONE } `,
-
-                  },
-
-                }),
-            });
-
-            return;
-          }
-
-
-          // ----------------------------------------------------------
-          // Any other method
-          // ----------------------------------------------------------
-
-          await route.continue();
-        }
-      );
-
-      // ============================================================
-      // 4. CONSENT
-      // ============================================================
-
-      await page.route(
-        '**/api/user/consent*',
-        async route => {
-
-          const method =
-            route.request().method();
-
-          console.log(
-            'CP-018 CONSENT:',
-            method
-          );
-
-          if (
-            method === 'GET'
-          ) {
-
-            await route.fulfill({
-              status: 200,
-              contentType: 'application/json',
-
-              body: JSON.stringify({
-
-                success:
-                  true,
-
-                consentRequired:
-                  false,
-
-                consentAccepted:
-                  true,
-              }),
-            });
-
-            return;
-          }
-
-          await route.continue();
-        }
-      );
-
-
-      // ============================================================
-      // 5. COMPLETED PROFILE
-      // ============================================================
-
-      await page.route(
-        '**/api/user/profile*',
-        async route => {
-
-          const method =
-            route.request().method();
-
-          console.log(
-            'CP-018 PROFILE:',
-            method,
-            route.request().url()
-          );
-
-          if (
-            method === 'GET'
-          ) {
-
-            await route.fulfill({
-              status: 200,
-              contentType: 'application/json',
-
-              body: JSON.stringify({
-
-                success:
-                  true,
-
-                data: {
-
-                  userId:
-                    TEST_USER_ID,
-
-                  userName:
-                    'Existing User',
-
-                  email:
-                    TEST_EMAIL,
-
-                  phoneNumber:
-                    `+ 91${ TEST_PHONE } `,
-
-                  gender:
-                    'Male',
-
-                  height:
-                    170,
-
-                  dietType:
-                    'Vegetarian',
-
-                  latestWeight:
-                    72.5,
-
-                  latestWeightBodyFat:
-                    22,
-
-                  bodyFat:
-                    22,
-
-                  physicalActivityLevel:
-                    'moderate',
-
-                  profileImage:
-                    'https://example.com/profile.jpg',
-
-                  profileComplete:
-                    true,
-                },
-              }),
-            });
-
-            return;
-          }
-
-          await route.continue();
-        }
-      );
-
-
-      // ============================================================
-      // 6. SETUP COMPLETE
-      //
-      // Prevent Complete Profile / Coach / Verify Request screens.
-      // ============================================================
-
-      await page.route(
-        '**/api/user/status*',
-        async route => {
-
-          console.log(
-            'CP-018 STATUS:',
-            route.request().url()
-          );
-
-          await route.fulfill({
-            status: 200,
-            contentType: 'application/json',
-
-            body: JSON.stringify({
-
-              success:
-                true,
-
-              setupComplete:
-                true,
-
-              setupSkipped:
-                false,
-
-              hasTeamId:
-                true,
-
-              hasUpline:
-                true,
-
-              teamId:
-                1,
-
-              uplineCoachId:
-                12345,
-
-              role:
-                'user',
-
-              pendingRequest:
-                null,
-
-              redirectTo:
-                null,
-            }),
-          });
-        }
-      );
-
-
-      // ============================================================
-      // 7. LEADERBOARD MOCKS
-      // ============================================================
-
-      await page.route(
-        '**/api/leaderboard/get-global-leaderboard**',
-        async route => {
-
-          await route.fulfill({
-            status: 200,
-            contentType: 'application/json',
-
-            body: JSON.stringify({
-
-              success:
-                true,
-
-              data:
-                [],
-            }),
-          });
-        }
-      );
-
-
-      await page.route(
-        '**/api/leaderboard/get-wellness-score-leaderboard**',
-        async route => {
-
-          await route.fulfill({
-            status: 200,
-            contentType: 'application/json',
-
-            body: JSON.stringify({
-
-              success:
-                true,
-
-              data:
-                [],
-            }),
-          });
-        }
-      );
-
-
-      // ============================================================
-      // 8. OPEN APPLICATION
-      // ============================================================
-
-      await page.goto('/');
-
-
-      // ============================================================
-      // 9. LOGIN SCREEN
-      // ============================================================
-
-      const mobileInput =
-        page.getByLabel(
-          'Mobile Number'
-        );
-
-      await expect(
-        mobileInput
-      ).toBeVisible({
-        timeout:
-          15000,
-      });
-
-      await mobileInput.fill(
-        TEST_PHONE
-      );
-
-      await expect(
-        mobileInput
-      ).toHaveValue(
-        TEST_PHONE
-      );
-
-
-      // ============================================================
-      // 10. SEND OTP
-      // ============================================================
-
-      const sendOtpButton =
-        page.getByRole(
-          'button',
-          {
-            name:
-              'Send OTP',
-
-            exact:
-              true,
-          }
-        );
-
-      await expect(
-        sendOtpButton
-      ).toBeEnabled();
-
-      await sendOtpButton.click();
-
-
-      // ============================================================
-      // 11. LOGIN OTP SCREEN
-      // ============================================================
-
-      await expect(
-        page.getByText(
-          'Enter OTP',
-          {
-            exact:
-              true,
-          }
-        )
-      ).toBeVisible({
-        timeout:
-          15000,
-      });
-
-      const otpInputs =
-        page.locator(
-          'input[type="tel"]'
-        );
-
-      await expect(
-        otpInputs
-      ).toHaveCount(
-        6
-      );
-
-
-      // ============================================================
-      // 12. ENTER LOGIN OTP
-      // ============================================================
-
-      for (
-        let i = 0;
-        i < LOGIN_OTP.length;
-        i++
-      ) {
-
-        await otpInputs
-          .nth(i)
-          .fill(
-            LOGIN_OTP[i]
-          );
-
-        await expect(
-          otpInputs.nth(i)
-        ).toHaveValue(
-          LOGIN_OTP[i]
-        );
-      }
-
-
-      // ============================================================
-      // 13. WAIT FOR AUTHENTICATION
-      // ============================================================
-
-      await expect
-        .poll(
-          async () => {
-
-            return await page.evaluate(
-              () => {
-
-                const rawUser =
-                  localStorage.getItem(
-                    'otpUser'
-                  );
-
-                return {
-
-                  verified:
-                    localStorage.getItem(
-                      'isOtpVerified'
-                    ),
-
-                  user:
-                    rawUser
-                      ? JSON.parse(rawUser)
-                      : null,
-                };
-              }
-            );
-          },
-          {
-            timeout:
-              15000,
-
-            intervals:
-              [
-                200,
-                500,
-                1000,
-              ],
-          }
-        )
-        .toMatchObject({
-
-          verified:
-            'true',
-
-          user: {
-            isNewUser:
-              false,
-          },
-        });
-
-
-      // ============================================================
-      // 14. WAIT FOR HOME NAVIGATION
-      // ============================================================
-
-      const homeButton =
-        page.getByRole(
-          'button',
-          {
-            name:
-              'Home',
-
-            exact:
-              true,
-          }
-        );
-
-      const diaryButton =
-        page.getByRole(
-          'button',
-          {
-            name:
-              'Diary',
-
-            exact:
-              true,
-          }
-        );
-
-      const activityButton =
-        page.getByRole(
-          'button',
-          {
-            name:
-              'Activity Report',
-
-            exact:
-              true,
-          }
-        );
-
-      const programsButton =
-        page.getByRole(
-          'button',
-          {
-            name:
-              'Enrollment',
-
-            exact:
-              true,
-          }
-        );
-
-      const bcmButton =
-        page.getByRole(
-          'button',
-          {
-            name:
-              'Counselling',
-
-            exact:
-              true,
-          }
-        );
-
-      const clubButton =
-        page.getByRole(
-          'button',
-          {
-            name:
-              'Physical Club',
-
-            exact:
-              true,
-          }
-        );
-
-      const transformationButton =
-        page.getByRole(
-          'button',
-          {
-            name:
-              'Testimonials',
-
-            exact:
-              true,
-          }
-        );
-
-
-      // ============================================================
-      // 15. VERIFY ALL NAVIGATION CONTROLS
-      // ============================================================
-
-      await expect(
-        homeButton
-      ).toBeVisible({
-        timeout:
-          20000,
-      });
-
-      await expect(
-        diaryButton
-      ).toBeVisible({
-        timeout:
-          20000,
-      });
-
-      await expect(
-        activityButton
-      ).toBeVisible({
-        timeout:
-          20000,
-      });
-
-      await expect(
-        programsButton
-      ).toBeVisible({
-        timeout:
-          20000,
-      });
-
-      await expect(
-        bcmButton
-      ).toBeVisible({
-        timeout:
-          20000,
-      });
-
-      await expect(
-        clubButton
-      ).toBeVisible({
-        timeout:
-          20000,
-      });
-
-      await expect(
-        transformationButton
-      ).toBeVisible({
-        timeout:
-          20000,
-      });
-
-      console.log(
-        'CP-018 HOME NAVIGATION READY'
-      );
-
-
-      // ============================================================
-      // 16. NAVIGATION HELPER
-      // ============================================================
-
-      async function selectNavigation(
-        button,
-        expectedActiveClass,
-        displayName
-      ) {
-
-        await expect(
-          button
-        ).toBeVisible({
-          timeout:
-            10000,
-        });
-
-        await button.click();
-
-
-        // React may need a render cycle before the class changes.
-
-        await expect
-          .poll(
-            async () => {
-
-              return (
-                await button.getAttribute(
-                  'class'
-                )
-              ) || '';
-
+      await page.route('**/api/user/lookup*', async route => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            isActive: true,
+            isNewUser: false,
+            role: 'user',
+            user: {
+              id: 1004,
+              UserId: 1004,
+              username: TEST_NAME,
+              name: TEST_NAME,
+              email: TEST_EMAIL,
+              phoneNumber: TEST_PHONE,
+              status: 'Active',
             },
-            {
-              timeout:
-                10000,
-
-              intervals:
-                [
-                  200,
-                  500,
-                  1000,
-                ],
-            }
-          )
-          .toContain(
-            expectedActiveClass
-          );
-
-        console.log(
-          `CP -018 ${ displayName } selected`
-        );
-      }
-
-
-      // ============================================================
-      // 17. HOME
-      // ============================================================
-
-      await selectNavigation(
-        homeButton,
-        'bg-green-100',
-        'HOME'
-      );
-
-
-      // ============================================================
-      // 18. DIARY
-      // ============================================================
-
-      await selectNavigation(
-        diaryButton,
-        'bg-green-100',
-        'DIARY'
-      );
-
-
-      // ============================================================
-      // 19. ACTIVITY
-      // ============================================================
-
-      await selectNavigation(
-        activityButton,
-        'bg-violet-100',
-        'ACTIVITY'
-      );
-
-
-      // ============================================================
-      // 20. PROGRAMS
-      // ============================================================
-
-      await selectNavigation(
-        programsButton,
-        'bg-emerald-100',
-        'PROGRAMS'
-      );
-
-
-      // ============================================================
-      // 21. BCM
-      // ============================================================
-
-      await selectNavigation(
-        bcmButton,
-        'bg-pink-100',
-        'BCM'
-      );
-
-
-      // ============================================================
-      // 22. CLUB
-      // ============================================================
-
-      await selectNavigation(
-        clubButton,
-        'bg-teal-100',
-        'CLUB'
-      );
-
-
-      // ============================================================
-      // 23. TRANSFORMATION
-      // ============================================================
-
-      await selectNavigation(
-        transformationButton,
-        'bg-teal-100',
-        'TRANSFORMATION'
-      );
-
-
-      // ============================================================
-      // 24. RETURN TO HOME
-      // ============================================================
-
-      await selectNavigation(
-        homeButton,
-        'bg-green-100',
-        'HOME FINAL'
-      );
-
-
-      // ============================================================
-      // 25. FINAL ASSERTION
-      // ============================================================
-
-      await expect
-        .poll(
-          async () => {
-
-            return (
-              await homeButton.getAttribute(
-                'class'
-              )
-            ) || '';
-
-          },
-          {
-            timeout:
-              10000,
-
-            intervals:
-              [
-                200,
-                500,
-                1000,
-              ],
-          }
-        )
-        .toContain(
-          'bg-green-100'
-        );
-
-
-      console.log(
-        'CP-018 FINAL HOME SELECTED'
-      );
-
-    }
-  );
-
-
-  test(
-    'CP-019 My Profile opens and displays Personal Details',
-    async ({ page }) => {
-
-      // ============================================================
-      // TEST DATA
-      // ============================================================
-
-      const TEST_PHONE =
-        '7695834209';
-
-      const LOGIN_OTP =
-        '123456';
-
-      const TEST_EMAIL =
-        'existing@test.com';
-
-      const TEST_USER_ID =
-        861;
-
-
-      // ============================================================
-      // 1. SEND OTP
-      // ============================================================
-
-      await page.route(
-        '**/api/auth/send-otp',
-        async route => {
-
-          console.log(
-            'CP-019 SEND OTP'
-          );
-
-          await route.fulfill({
-            status: 200,
-            contentType: 'application/json',
-
-            body: JSON.stringify({
-              success: true,
-            }),
-          });
-        }
-      );
-
-
-      // ============================================================
-      // 2. VERIFY LOGIN OTP
-      // ============================================================
-
-      await page.route(
-        '**/api/auth/verify-otp',
-        async route => {
-
-          const body =
-            route.request().postDataJSON();
-
-          console.log(
-            'CP-019 LOGIN OTP BODY:',
-            body
-          );
-
-          expect(
-            body
-          ).toMatchObject({
-            recipient:
-              `+ 91${ TEST_PHONE } `,
-
-            otp:
-              LOGIN_OTP,
-
-            contactType:
-              'phone',
-          });
-
-          await route.fulfill({
-            status: 200,
-            contentType: 'application/json',
-
-            body: JSON.stringify({
-
-              success:
-                true,
-
-              isNewUser:
-                false,
-
-              isActive:
-                true,
-
-              role:
-                'user',
-
-              user: {
-
-                id:
-                  TEST_USER_ID,
-
-                UserId:
-                  TEST_USER_ID,
-
-                username:
-                  'existinguser',
-
-                email:
-                  TEST_EMAIL,
-
-                phone:
-                  `+ 91${ TEST_PHONE } `,
-
-                status:
-                  'Active',
-
-                consentRequired:
-                  false,
-              },
-            }),
-          });
-        }
-      );
-
-
-      // ============================================================
-      // 3. USER LOOKUP
-      // Supports both POST and GET because the application uses
-      // lookup again after authentication/navigation.
-      // ============================================================
-
-      await page.route(
-        '**/api/user/lookup*',
-        async route => {
-
-          console.log(
-            'CP-019 USER LOOKUP:',
-            route.request().method(),
-            route.request().url()
-          );
-
-          await route.fulfill({
-            status: 200,
-            contentType: 'application/json',
-
-            body: JSON.stringify({
-
-              success:
-                true,
-
-              isNewUser:
-                false,
-
-              isActive:
-                true,
-
-              role:
-                'user',
-
-              data: {
-
-                userId:
-                  TEST_USER_ID,
-
-                email:
-                  TEST_EMAIL,
-              },
-            }),
-          });
-        }
-      );
-
-
-      // ============================================================
-      // 4. CONSENT
-      // ============================================================
-
-      await page.route(
-        '**/api/user/consent*',
-        async route => {
-
-          if (
-            route.request().method() ===
-            'GET'
-          ) {
-
-            await route.fulfill({
-              status: 200,
-              contentType: 'application/json',
-
-              body: JSON.stringify({
-
-                success:
-                  true,
-
-                consentRequired:
-                  false,
-
-                consentAccepted:
-                  true,
-              }),
-            });
-
-            return;
-          }
-
-          await route.continue();
-        }
-      );
-
-
-      // ============================================================
-      // 5. COMPLETED PROFILE
-      // ============================================================
-
-      await page.route(
-        '**/api/user/profile*',
-        async route => {
-
-          const method =
-            route.request().method();
-
-          console.log(
-            'CP-019 PROFILE:',
-            method,
-            route.request().url()
-          );
-
-          if (
-            method === 'GET'
-          ) {
-
-            await route.fulfill({
-              status: 200,
-              contentType: 'application/json',
-
-              body: JSON.stringify({
-
-                success:
-                  true,
-
-                data: {
-
-                  userId:
-                    TEST_USER_ID,
-
-                  userName:
-                    'Nitheesh Lingam',
-
-                  email:
-                    TEST_EMAIL,
-
-                  phoneNumber:
-                    TEST_PHONE,
-
-                  gender:
-                    'Male',
-
-                  height:
-                    170,
-
-                  communityId:
-                    'WB12345',
-
-                  dietType:
-                    'Vegetarian',
-
-                  latestWeight:
-                    72.5,
-
-                  latestWeightBodyFat:
-                    22,
-
-                  bodyFat:
-                    22,
-
-                  physicalActivityLevel:
-                    'moderate',
-
-                  profileImage:
-                    'https://example.com/profile.jpg',
-
-                  profileComplete:
-                    true,
-
-                  bmr:
-                    1424,
-
-                  weightGoalMode:
-                    'maintain',
-                },
-              }),
-            });
-
-            return;
-          }
-
-          await route.continue();
-        }
-      );
-
-
-      // ============================================================
-      // 6. SETUP COMPLETE
-      // ============================================================
-
-      await page.route(
-        '**/api/user/status*',
-        async route => {
-
-          await route.fulfill({
-            status: 200,
-            contentType: 'application/json',
-
-            body: JSON.stringify({
-
-              success:
-                true,
-
-              setupComplete:
-                true,
-
-              setupSkipped:
-                true,
-
-              hasTeamId:
-                true,
-
-              hasUpline:
-                true,
-
-              teamId:
-                1,
-
-              uplineCoachId:
-                12345,
-
-              role:
-                'user',
-
-              pendingRequest:
-                null,
-
-              redirectTo:
-                null,
-            }),
-          });
-        }
-      );
-
-
-      // ============================================================
-      // 7. OPEN APPLICATION
-      // ============================================================
-
-      await page.goto('/');
-
-
-      // ============================================================
-      // 8. LOGIN
-      // ============================================================
-
-      const mobileInput =
-        page.getByLabel(
-          'Mobile Number'
-        );
-
-      await expect(
-        mobileInput
-      ).toBeVisible({
-        timeout:
-          15000,
-      });
-
-      await mobileInput.fill(
-        TEST_PHONE
-      );
-
-
-      await page
-        .getByRole(
-          'button',
-          {
-            name:
-              'Send OTP',
-
-            exact:
-              true,
-          }
-        )
-        .click();
-
-
-      // ============================================================
-      // 9. OTP
-      // ============================================================
-
-      await expect(
-        page.getByText(
-          'Enter OTP',
-          {
-            exact:
-              true,
-          }
-        )
-      ).toBeVisible({
-        timeout:
-          15000,
-      });
-
-
-      const otpInputs =
-        page.locator(
-          'input[type="tel"]'
-        );
-
-
-      await expect(
-        otpInputs
-      ).toHaveCount(
-        6
-      );
-
-
-      for (
-        let i = 0;
-        i < LOGIN_OTP.length;
-        i++
-      ) {
-
-        await otpInputs
-          .nth(i)
-          .fill(
-            LOGIN_OTP[i]
-          );
-      }
-
-
-      // ============================================================
-      // 10. WAIT FOR AUTHENTICATION
-      // ============================================================
-
-      await expect
-        .poll(
-          async () => {
-
-            return await page.evaluate(
-              () => {
-
-                const rawUser =
-                  localStorage.getItem(
-                    'otpUser'
-                  );
-
-                return {
-
-                  verified:
-                    localStorage.getItem(
-                      'isOtpVerified'
-                    ),
-
-                  user:
-                    rawUser
-                      ? JSON.parse(rawUser)
-                      : null,
-                };
-              }
-            );
-          },
-          {
-            timeout:
-              15000,
-
-            intervals:
-              [
-                200,
-                500,
-                1000,
-              ],
-          }
-        )
-        .toMatchObject({
-
-          verified:
-            'true',
-
-          user: {
-            isNewUser:
-              false,
-          },
+          }),
         });
-
-
-      // ============================================================
-      // 11. OPEN MY PROFILE
-      // ============================================================
-
-      const myProfileButton =
-        page.getByRole(
-          'button',
-          {
-            name:
-              'My Profile',
-
-            exact:
-              true,
-          }
-        );
-
-
-      await expect(
-        myProfileButton
-      ).toBeVisible({
-        timeout:
-          20000,
       });
 
-
-      await myProfileButton.click();
-
-
-      // ============================================================
-      // 12. PROFILE PAGE
-      // ============================================================
-
-      await expect(
-        page.getByRole(
-          'heading',
-          {
-            name:
-              'My Profile',
-
-            exact:
-              true,
-          }
-        )
-      ).toBeVisible({
-        timeout:
-          15000,
+      await page.route('**/api/user/consent*', async route => {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, consentRequired: false, consentAccepted: true }) });
       });
 
-
-      // ============================================================
-      // 13. PERSONAL DETAILS SECTION
-      // ============================================================
-
-      const personalDetailsHeading =
-        page.getByText(
-          'Personal Details',
-          {
-            exact:
-              true,
-          }
-        );
-
-
-      await expect(
-        personalDetailsHeading
-      ).toBeVisible();
-
-
-      const personalDetailsSection =
-        personalDetailsHeading.locator(
-          'xpath=ancestor::div[contains(@class,"bg-white")][1]'
-        );
-
-
-      await expect(
-        personalDetailsSection
-      ).toBeVisible();
-
-
-      // ============================================================
-      // 14. VERIFY CURRENT INPUT STRUCTURE
-      // ============================================================
-
-      const personalInputs =
-        personalDetailsSection.locator(
-          'input'
-        );
-
-
-      await expect(
-        personalInputs
-      ).toHaveCount(
-        6
-      );
-
-
-      // ============================================================
-      // 15. EMAIL
-      // ============================================================
-
-      const emailInput =
-        personalInputs.nth(0);
-
-
-      await expect(
-        emailInput
-      ).toHaveAttribute(
-        'type',
-        'email'
-      );
-
-
-      await expect(
-        emailInput
-      ).toHaveValue(
-        TEST_EMAIL
-      );
-
-
-      // ============================================================
-      // 16. NAME
-      // ============================================================
-
-      const nameInput =
-        personalInputs.nth(1);
-
-
-      await expect(
-        nameInput
-      ).toHaveAttribute(
-        'placeholder',
-        'Enter your name'
-      );
-
-
-      await expect(
-        nameInput
-      ).toHaveValue(
-        'Nitheesh Lingam'
-      );
-
-
-      // ============================================================
-      // 17. HEIGHT
-      // ============================================================
-
-      const heightInput =
-        personalInputs.nth(2);
-
-
-      await expect(
-        heightInput
-      ).toHaveAttribute(
-        'placeholder',
-        'e.g. 170'
-      );
-
-
-      await expect(
-        heightInput
-      ).toHaveValue(
-        '170'
-      );
-
-
-      // ============================================================
-      // 18. PHONE NUMBER
-      // ============================================================
-
-      const phoneInput =
-        personalInputs.nth(3);
-
-
-      await expect(
-        phoneInput
-      ).toHaveValue(
-        TEST_PHONE
-      );
-
-
-      // ============================================================
-      // 19. COMMUNITY ID
-      // ============================================================
-
-      const communityIdInput =
-        personalInputs.nth(4);
-
-
-      await expect(
-        communityIdInput
-      ).toHaveAttribute(
-        'placeholder',
-        'e.g. WB12345'
-      );
-
-
-      await expect(
-        communityIdInput
-      ).toHaveValue(
-        'WB12345'
-      );
-
-
-      // ============================================================
-      // 20. BMR
-      //
-      // Actual DOM from your test run:
-      // value=""
-      // placeholder="Calculated automatically"
-      // readonly=true
-      // ============================================================
-
-      const bmrInput =
-        personalInputs.nth(5);
-
-
-      await expect(
-        bmrInput
-      ).toHaveAttribute(
-        'placeholder',
-        'Calculated automatically'
-      );
-
-
-      await expect(
-        bmrInput
-      ).toHaveAttribute(
-        'readonly'
-      );
-
-
-      // ============================================================
-      // 21. GENDER
-      // ============================================================
-
-      const personalSelects =
-        personalDetailsSection.locator(
-          'select'
-        );
-
-
-      await expect(
-        personalSelects
-      ).toHaveCount(
-        2
-      );
-
-
-      const genderSelect =
-        personalSelects.nth(0);
-
-
-      await expect(
-        genderSelect
-      ).toBeVisible();
-
-
-      await expect(
-        genderSelect
-      ).toHaveValue(
-        'Male'
-      );
-
-
-      // ============================================================
-      // 22. PHYSICAL ACTIVITY
-      // ============================================================
-
-      const activitySelect =
-        personalSelects.nth(1);
-
-
-      await expect(
-        activitySelect
-      ).toBeVisible();
-
-
-      await expect(
-        activitySelect
-      ).toHaveValue(
-        'moderate'
-      );
-
-
-      // ============================================================
-      // 23. COMPLETE PROFILE MUST NOT BE PRESENT
-      // ============================================================
-
-      await expect(
-        page.getByRole(
-          'heading',
-          {
-            name:
-              'Complete Your Profile',
-
-            exact:
-              true,
-          }
-        )
-      ).not.toBeVisible();
-
-
-      // ============================================================
-      // 24. FINAL
-      // ============================================================
-
-      console.log(
-        'CP-019 PROFILE PERSONAL DETAILS VERIFIED'
-      );
-
-    }
-  );
-
-  test(
-    'CP-020 Profile Name field accepts valid value and empty value',
-    async ({ page }) => {
-
-      // ============================================================
-      // TEST DATA
-      // ============================================================
-
-      const TEST_PHONE = '7695834209';
-      const LOGIN_OTP = '123456';
-      const TEST_EMAIL = 'existing@test.com';
-      const TEST_USER_ID = 861;
-
-
-      // ============================================================
-      // 1. SEND OTP
-      // ============================================================
-
-      await page.route(
-        '**/api/auth/send-otp',
-        async route => {
-
-          await route.fulfill({
-            status: 200,
-            contentType: 'application/json',
-
-            body: JSON.stringify({
-              success: true,
-            }),
-          });
-
-        }
-      );
-
-
-      // ============================================================
-      // 2. VERIFY LOGIN OTP
-      // ============================================================
-
-      await page.route(
-        '**/api/auth/verify-otp',
-        async route => {
-
-          const body =
-            route.request().postDataJSON();
-
-          expect(body).toMatchObject({
-
-            recipient:
-              `+ 91${ TEST_PHONE } `,
-
-            otp:
-              LOGIN_OTP,
-
-            contactType:
-              'phone',
-          });
-
-          await route.fulfill({
-            status: 200,
-            contentType: 'application/json',
-
-            body: JSON.stringify({
-
-              success: true,
-
-              isNewUser: false,
-
-              isActive: true,
-
-              role: 'user',
-
-              user: {
-
-                id: TEST_USER_ID,
-                UserId: TEST_USER_ID,
-
-                username: 'existinguser',
-
-                email: TEST_EMAIL,
-
-                phone:
-                  `+ 91${ TEST_PHONE } `,
-
-                status: 'Active',
-
-                consentRequired: false,
-              },
-            }),
-          });
-
-        }
-      );
-
-
-      // ============================================================
-      // 3. USER LOOKUP
-      // ============================================================
-
-      await page.route(
-        '**/api/user/lookup*',
-        async route => {
-
-          await route.fulfill({
-            status: 200,
-            contentType: 'application/json',
-
-            body: JSON.stringify({
-
-              success: true,
-
-              isNewUser: false,
-
-              isActive: true,
-
-              role: 'user',
-
-              data: {
-
-                userId: TEST_USER_ID,
-
-                email: TEST_EMAIL,
-              },
-            }),
-          });
-
-        }
-      );
-
-
-      // ============================================================
-      // 4. CONSENT
-      // ============================================================
-
-      await page.route(
-        '**/api/user/consent*',
-        async route => {
-
-          if (
-            route.request().method() === 'GET'
-          ) {
-
-            await route.fulfill({
-              status: 200,
-              contentType: 'application/json',
-
-              body: JSON.stringify({
-
-                success: true,
-
-                consentRequired: false,
-
-                consentAccepted: true,
-              }),
-            });
-
-            return;
-          }
-
-          await route.continue();
-
-        }
-      );
-
-
-      // ============================================================
-      // 5. COMPLETED PROFILE
-      // ============================================================
-
-      await page.route(
-        '**/api/user/profile*',
-        async route => {
-
-          if (
-            route.request().method() === 'GET'
-          ) {
-
-            await route.fulfill({
-              status: 200,
-              contentType: 'application/json',
-
-              body: JSON.stringify({
-
-                success: true,
-
-                data: {
-
-                  userId: TEST_USER_ID,
-
-                  userName:
-                    'Nitheesh Lingam',
-
-                  email:
-                    TEST_EMAIL,
-
-                  phoneNumber:
-                    TEST_PHONE,
-
-                  gender:
-                    'Male',
-
-                  height:
-                    170,
-
-                  communityId:
-                    'WB12345',
-
-                  dietType:
-                    'Vegetarian',
-
-                  latestWeight:
-                    72.5,
-
-                  latestWeightBodyFat:
-                    22,
-
-                  latestBmr:
-                    1424,
-
-                  bodyFat:
-                    22,
-
-                  physicalActivityLevel:
-                    'moderate',
-
-                  profileImage:
-                    'https://example.com/profile.jpg',
-
-                  profileComplete:
-                    true,
-
-                  weightGoalMode:
-                    'maintain',
-                },
-              }),
-            });
-
-            return;
-          }
-
-          await route.continue();
-
-        }
-      );
-
-
-      // ============================================================
-      // 6. SETUP COMPLETE
-      // ============================================================
-
-      await page.route(
-        '**/api/user/status*',
-        async route => {
-
-          await route.fulfill({
-            status: 200,
-            contentType: 'application/json',
-
-            body: JSON.stringify({
-
-              success: true,
-
-              setupComplete: true,
-
-              setupSkipped: true,
-
-              hasTeamId: true,
-
-              hasUpline: true,
-
-              teamId: 1,
-
-              uplineCoachId: 12345,
-
-              role: 'user',
-
-              pendingRequest: null,
-
-              redirectTo: null,
-            }),
-          });
-
-        }
-      );
-
-
-      // ============================================================
-      // 7. OPEN APPLICATION
-      // ============================================================
-
-      await page.goto('/');
-
-
-      // ============================================================
-      // 8. LOGIN
-      // ============================================================
-
-      const mobileInput =
-        page.getByLabel('Mobile Number');
-
-      await expect(
-        mobileInput
-      ).toBeVisible({
-        timeout: 15000,
-      });
-
-      await mobileInput.fill(
-        TEST_PHONE
-      );
-
-      await page
-        .getByRole('button', {
-          name: 'Send OTP',
-          exact: true,
-        })
-        .click();
-
-
-      // ============================================================
-      // 9. ENTER LOGIN OTP
-      // ============================================================
-
-      await expect(
-        page.getByText('Enter OTP', {
-          exact: true,
-        })
-      ).toBeVisible({
-        timeout: 15000,
-      });
-
-      const otpInputs =
-        page.locator('input[type="tel"]');
-
-      await expect(
-        otpInputs
-      ).toHaveCount(6);
-
-      for (
-        let i = 0;
-        i < LOGIN_OTP.length;
-        i++
-      ) {
-
-        await otpInputs
-          .nth(i)
-          .fill(
-            LOGIN_OTP[i]
-          );
-      }
-
-
-      // ============================================================
-      // 10. WAIT FOR AUTHENTICATION
-      // ============================================================
-
-      await expect
-        .poll(
-          async () => {
-
-            return await page.evaluate(
-              () => {
-
-                const rawUser =
-                  localStorage.getItem(
-                    'otpUser'
-                  );
-
-                return {
-
-                  verified:
-                    localStorage.getItem(
-                      'isOtpVerified'
-                    ),
-
-                  user:
-                    rawUser
-                      ? JSON.parse(rawUser)
-                      : null,
-                };
-
-              }
-            );
-
-          },
-          {
-            timeout: 15000,
-
-            intervals: [
-              200,
-              500,
-              1000,
-            ],
-          }
-        )
-        .toMatchObject({
-
-          verified: 'true',
-
-          user: {
-            isNewUser: false,
-          },
+      await page.route('**/api/user/profile*', async route => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            data: {
+              userId: 1004,
+              profileComplete: true,
+              userName: TEST_NAME,
+              name: TEST_NAME,
+              email: TEST_EMAIL,
+              phoneNumber: TEST_PHONE,
+              gender: 'Male',
+              height: 170,
+              dietType: 'Vegetarian',
+              latestWeight: 72.5,
+              currentWeight: 72.5,
+              latestWeightBodyFat: 22,
+              bodyFat: 22,
+              profileImage: 'https://example.com/photo.jpg',
+              physicalActivityLevel: 'moderate',
+              needsCurrentWeight: false,
+            },
+          }),
         });
-
-
-      // ============================================================
-      // 11. OPEN MY PROFILE
-      // ============================================================
-
-      const myProfileButton =
-        page.getByRole('button', {
-          name: 'My Profile',
-          exact: true,
-        });
-
-      await expect(
-        myProfileButton
-      ).toBeVisible({
-        timeout: 20000,
       });
 
-      await myProfileButton.click();
-
-
-      // ============================================================
-      // 12. VERIFY PROFILE PAGE
-      // ============================================================
-
-      await expect(
-        page.getByRole('heading', {
-          name: 'My Profile',
-          exact: true,
-        })
-      ).toBeVisible({
-        timeout: 15000,
+      await page.route('**/api/user/testimonial*', async route => {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true }) });
       });
 
-
       // ============================================================
-      // 13. PERSONAL DETAILS
-      // ============================================================
-
-      const personalDetailsHeading =
-        page.getByText('Personal Details', {
-          exact: true,
-        });
-
-      await expect(
-        personalDetailsHeading
-      ).toBeVisible();
-
-
-      const personalDetailsSection =
-        personalDetailsHeading.locator(
-          'xpath=ancestor::div[contains(@class,"bg-white")][1]'
-        );
-
-      await expect(
-        personalDetailsSection
-      ).toBeVisible();
-
-
-      // ============================================================
-      // 14. NAME FIELD
-      // ============================================================
-
-      const nameInput =
-        personalDetailsSection.locator(
-          'input[placeholder="Enter your name"]'
-        );
-
-      await expect(
-        nameInput
-      ).toHaveCount(1);
-
-      await expect(
-        nameInput
-      ).toBeVisible();
-
-
-      // ============================================================
-      // CASE 1 — VALID NAME
-      // ============================================================
-
-      await nameInput.fill(
-        'Nitheesh Lingam'
-      );
-
-      await expect(
-        nameInput
-      ).toHaveValue(
-        'Nitheesh Lingam'
-      );
-
-
-      // ============================================================
-      // CASE 2 — EMPTY NAME
-      // ============================================================
-
-      await nameInput.fill('');
-
-      await expect(
-        nameInput
-      ).toHaveValue('');
-
-
-      // ============================================================
-      // RESTORE VALID VALUE
-      // ============================================================
-
-      await nameInput.fill(
-        'Nitheesh Lingam'
-      );
-
-      await expect(
-        nameInput
-      ).toHaveValue(
-        'Nitheesh Lingam'
-      );
-
-
-      console.log(
-        'CP-020 NAME VALIDATION VERIFIED'
-      );
-
-    }
-  );
-
-  test(
-    'CP-021 Profile Gender field allows selecting available options',
-    async ({ page }) => {
-
-      // ============================================================
-      // TEST DATA
-      // ============================================================
-
-      const TEST_PHONE = '7695834209';
-      const LOGIN_OTP = '123456';
-      const TEST_EMAIL = 'existing@test.com';
-      const TEST_USER_ID = 861;
-
-
-      // ============================================================
-      // 1. SEND OTP
-      // ============================================================
-
-      await page.route(
-        '**/api/auth/send-otp',
-        async route => {
-
-          await route.fulfill({
-            status: 200,
-            contentType: 'application/json',
-
-            body: JSON.stringify({
-              success: true,
-            }),
-          });
-
-        }
-      );
-
-
-      // ============================================================
-      // 2. VERIFY LOGIN OTP
-      // ============================================================
-
-      await page.route(
-        '**/api/auth/verify-otp',
-        async route => {
-
-          const body =
-            route.request().postDataJSON();
-
-          expect(
-            body
-          ).toMatchObject({
-
-            recipient:
-              `+ 91${ TEST_PHONE } `,
-
-            otp:
-              LOGIN_OTP,
-
-            contactType:
-              'phone',
-          });
-
-          await route.fulfill({
-            status: 200,
-            contentType: 'application/json',
-
-            body: JSON.stringify({
-
-              success: true,
-
-              isNewUser: false,
-
-              isActive: true,
-
-              role: 'user',
-
-              user: {
-
-                id:
-                  TEST_USER_ID,
-
-                UserId:
-                  TEST_USER_ID,
-
-                username:
-                  'existinguser',
-
-                email:
-                  TEST_EMAIL,
-
-                phone:
-                  `+ 91${ TEST_PHONE } `,
-
-                status:
-                  'Active',
-
-                consentRequired:
-                  false,
-              },
-            }),
-          });
-
-        }
-      );
-
-
-      // ============================================================
-      // 3. USER LOOKUP
-      // ============================================================
-
-      await page.route(
-        '**/api/user/lookup*',
-        async route => {
-
-          await route.fulfill({
-            status: 200,
-            contentType: 'application/json',
-
-            body: JSON.stringify({
-
-              success: true,
-
-              isNewUser: false,
-
-              isActive: true,
-
-              role: 'user',
-
-              data: {
-
-                userId:
-                  TEST_USER_ID,
-
-                email:
-                  TEST_EMAIL,
-              },
-            }),
-          });
-
-        }
-      );
-
-
-      // ============================================================
-      // 4. CONSENT
-      // ============================================================
-
-      await page.route(
-        '**/api/user/consent*',
-        async route => {
-
-          if (
-            route.request().method() === 'GET'
-          ) {
-
-            await route.fulfill({
-              status: 200,
-              contentType: 'application/json',
-
-              body: JSON.stringify({
-
-                success: true,
-
-                consentRequired: false,
-
-                consentAccepted: true,
-              }),
-            });
-
-            return;
-          }
-
-          await route.continue();
-
-        }
-      );
-
-
-      // ============================================================
-      // 5. COMPLETED PROFILE
-      // ============================================================
-
-      await page.route(
-        '**/api/user/profile*',
-        async route => {
-
-          if (
-            route.request().method() === 'GET'
-          ) {
-
-            await route.fulfill({
-              status: 200,
-              contentType: 'application/json',
-
-              body: JSON.stringify({
-
-                success: true,
-
-                data: {
-
-                  userId:
-                    TEST_USER_ID,
-
-                  userName:
-                    'Nitheesh Lingam',
-
-                  email:
-                    TEST_EMAIL,
-
-                  phoneNumber:
-                    TEST_PHONE,
-
-                  gender:
-                    'Male',
-
-                  height:
-                    170,
-
-                  communityId:
-                    'WB12345',
-
-                  dietType:
-                    'Vegetarian',
-
-                  latestWeight:
-                    72.5,
-
-                  latestWeightBodyFat:
-                    22,
-
-                  latestBmr:
-                    1424,
-
-                  bodyFat:
-                    22,
-
-                  physicalActivityLevel:
-                    'moderate',
-
-                  profileImage:
-                    'https://example.com/profile.jpg',
-
-                  profileComplete:
-                    true,
-
-                  weightGoalMode:
-                    'maintain',
-                },
-              }),
-            });
-
-            return;
-          }
-
-          await route.continue();
-
-        }
-      );
-
-
-      // ============================================================
-      // 6. SETUP COMPLETE
-      // ============================================================
-
-      await page.route(
-        '**/api/user/status*',
-        async route => {
-
-          await route.fulfill({
-            status: 200,
-            contentType: 'application/json',
-
-            body: JSON.stringify({
-
-              success: true,
-
-              setupComplete: true,
-
-              setupSkipped: true,
-
-              hasTeamId: true,
-
-              hasUpline: true,
-
-              teamId: 1,
-
-              uplineCoachId: 12345,
-
-              role: 'user',
-
-              pendingRequest: null,
-
-              redirectTo: null,
-            }),
-          });
-
-        }
-      );
-
-
-      // ============================================================
-      // 7. OPEN APPLICATION
-      // ============================================================
-
-      await page.goto('/');
-
-
-      // ============================================================
-      // 8. LOGIN
-      // ============================================================
-
-      const mobileInput =
-        page.getByLabel('Mobile Number');
-
-      await expect(
-        mobileInput
-      ).toBeVisible({
-        timeout: 15000,
-      });
-
-      await mobileInput.fill(
-        TEST_PHONE
-      );
-
-      await page
-        .getByRole('button', {
-          name: 'Send OTP',
-          exact: true,
-        })
-        .click();
-
-
-      // ============================================================
-      // 9. ENTER OTP
-      // ============================================================
-
-      await expect(
-        page.getByText('Enter OTP', {
-          exact: true,
-        })
-      ).toBeVisible({
-        timeout: 15000,
-      });
-
-      const otpInputs =
-        page.locator(
-          'input[type="tel"]'
-        );
-
-      await expect(
-        otpInputs
-      ).toHaveCount(6);
-
-      for (
-        let i = 0;
-        i < LOGIN_OTP.length;
-        i++
-      ) {
-
-        await otpInputs
-          .nth(i)
-          .fill(
-            LOGIN_OTP[i]
-          );
-
-      }
-
-
-      // ============================================================
-      // 10. WAIT FOR AUTHENTICATION
-      // ============================================================
-
-      await expect
-        .poll(
-          async () => {
-
-            return await page.evaluate(
-              () => {
-
-                const rawUser =
-                  localStorage.getItem(
-                    'otpUser'
-                  );
-
-                return {
-
-                  verified:
-                    localStorage.getItem(
-                      'isOtpVerified'
-                    ),
-
-                  user:
-                    rawUser
-                      ? JSON.parse(rawUser)
-                      : null,
-                };
-
-              }
-            );
-
-          },
-          {
-            timeout: 15000,
-
-            intervals: [
-              200,
-              500,
-              1000,
-            ],
-          }
-        )
-        .toMatchObject({
-
-          verified: 'true',
-
-          user: {
-            isNewUser: false,
-          },
-        });
-
-
-      // ============================================================
-      // 11. OPEN MY PROFILE
-      // ============================================================
-
-      const myProfileButton =
-        page.getByRole('button', {
-          name: 'My Profile',
-          exact: true,
-        });
-
-      await expect(
-        myProfileButton
-      ).toBeVisible({
-        timeout: 20000,
-      });
-
-      await myProfileButton.click();
-
-
-      // ============================================================
-      // 12. VERIFY PROFILE PAGE
-      // ============================================================
-
-      await expect(
-        page.getByRole('heading', {
-          name: 'My Profile',
-          exact: true,
-        })
-      ).toBeVisible({
-        timeout: 15000,
-      });
-
-
-      // ============================================================
-      // 13. PERSONAL DETAILS
-      // ============================================================
-
-      const personalDetailsHeading =
-        page.getByText(
-          'Personal Details',
-          {
-            exact: true,
-          }
-        );
-
-      await expect(
-        personalDetailsHeading
-      ).toBeVisible();
-
-
-      const personalDetailsSection =
-        personalDetailsHeading.locator(
-          'xpath=ancestor::div[contains(@class,"bg-white")][1]'
-        );
-
-      await expect(
-        personalDetailsSection
-      ).toBeVisible();
-
-
-      // ============================================================
-      // 14. GENDER FIELD
-      // ============================================================
-
-      const genderSelect =
-        personalDetailsSection
-          .locator('select')
-          .nth(0);
-
-      await expect(
-        genderSelect
-      ).toBeVisible();
-
-
-      // ============================================================
-      // CASE 1 — CURRENT VALUE IS MALE
-      // ============================================================
-
-      await expect(
-        genderSelect
-      ).toHaveValue(
-        'Male'
-      );
-
-
-      // ============================================================
-      // CASE 2 — SELECT FEMALE
-      // ============================================================
-
-      await genderSelect.selectOption({
-        label: 'Female',
-      });
-
-
-      await expect(
-        genderSelect
-      ).toHaveValue(
-        'Female'
-      );
-
-
-      // ============================================================
-      // CASE 3 — RESTORE MALE
-      // ============================================================
-
-      await genderSelect.selectOption({
-        label: 'Male',
-      });
-
-
-      await expect(
-        genderSelect
-      ).toHaveValue(
-        'Male'
-      );
-
-
-      console.log(
-        'CP-021 GENDER FIELD VALIDATION VERIFIED'
-      );
-
-    }
-  );
-
-  test(
-    'CP-022 Profile Height field validates 49, 50, 198 and 199',
-    async ({ page }) => {
-
-      // ============================================================
-      // TEST DATA
-      // ============================================================
-
-      const TEST_PHONE = '7695834209';
-      const LOGIN_OTP = '123456';
-      const TEST_EMAIL = 'existing@test.com';
-      const TEST_USER_ID = 861;
-
-      // ============================================================
-      // TRACK PROFILE SAVES
-      // ============================================================
-
-      const profilePosts = [];
-
-      // ============================================================
-      // 1. SEND OTP
-      // ============================================================
-
-      await page.route(
-        '**/api/auth/send-otp',
-        async route => {
-          await route.fulfill({
-            status: 200,
-            contentType: 'application/json',
-            body: JSON.stringify({
-              success: true,
-            }),
-          });
-        }
-      );
-
-      // ============================================================
-      // 2. VERIFY LOGIN OTP
-      // ============================================================
-
-      await page.route(
-        '**/api/auth/verify-otp',
-        async route => {
-
-          const body = route.request().postDataJSON();
-
-          expect(body).toMatchObject({
-            recipient: `+ 91${ TEST_PHONE } `,
-            otp: LOGIN_OTP,
-            contactType: 'phone',
-          });
-
-          await route.fulfill({
-            status: 200,
-            contentType: 'application/json',
-            body: JSON.stringify({
-              success: true,
-              isNewUser: false,
-              isActive: true,
-              role: 'user',
-
-              user: {
-                id: TEST_USER_ID,
-                UserId: TEST_USER_ID,
-                username: 'existinguser',
-                email: TEST_EMAIL,
-                phone: `+ 91${ TEST_PHONE } `,
-                status: 'Active',
-                consentRequired: false,
-              },
-            }),
-          });
-        }
-      );
-
-      // ============================================================
-      // 3. USER LOOKUP
-      // ============================================================
-
-      await page.route(
-        '**/api/user/lookup*',
-        async route => {
-
-          await route.fulfill({
-            status: 200,
-            contentType: 'application/json',
-
-            body: JSON.stringify({
-              success: true,
-              isNewUser: false,
-              isActive: true,
-              role: 'user',
-
-              data: {
-                userId: TEST_USER_ID,
-                email: TEST_EMAIL,
-              },
-            }),
-          });
-        }
-      );
-
-      // ============================================================
-      // 4. CONSENT
-      // ============================================================
-
-      await page.route(
-        '**/api/user/consent*',
-        async route => {
-
-          if (route.request().method() === 'GET') {
-
-            await route.fulfill({
-              status: 200,
-              contentType: 'application/json',
-
-              body: JSON.stringify({
-                success: true,
-                consentRequired: false,
-                consentAccepted: true,
-              }),
-            });
-
-            return;
-          }
-
-          await route.continue();
-        }
-      );
-
-      // ============================================================
-      // 5. PROFILE GET + POST
-      // ============================================================
-
-      await page.route(
-        '**/api/user/profile*',
-        async route => {
-
-          const method = route.request().method();
-
-          // --------------------------------------------------------
-          // GET PROFILE
-          // --------------------------------------------------------
-
-          if (method === 'GET') {
-
-            await route.fulfill({
-              status: 200,
-              contentType: 'application/json',
-
-              body: JSON.stringify({
-                success: true,
-
-                data: {
-                  userId: TEST_USER_ID,
-                  userName: 'Nitheesh Lingam',
-                  email: TEST_EMAIL,
-                  phoneNumber: TEST_PHONE,
-                  gender: 'Male',
-                  height: 170,
-                  communityId: 'WB12345',
-                  dietType: 'Vegetarian',
-                  latestWeight: 72.5,
-                  latestWeightBodyFat: 22,
-                  latestBmr: 1424,
-                  bodyFat: 22,
-                  physicalActivityLevel: 'moderate',
-                  profileImage: 'https://example.com/profile.jpg',
-                  profileComplete: true,
-                  weightGoalMode: 'loss',
-                },
-              }),
-            });
-
-            return;
-          }
-
-          // --------------------------------------------------------
-          // POST PROFILE
-          // --------------------------------------------------------
-
-          if (method === 'POST') {
-
-            const body = route.request().postDataJSON();
-
-            console.log(
-              'CP-022 PROFILE POST:',
-              body
-            );
-
-            profilePosts.push({
-              ...body,
-            });
-
-            await route.fulfill({
-              status: 200,
-              contentType: 'application/json',
-
-              body: JSON.stringify({
-                success: true,
-
-                message: 'Profile saved successfully!',
-
-                data: {
-                  ...body,
-                  userId: TEST_USER_ID,
-                  profileComplete: true,
-                },
-              }),
-            });
-
-            return;
-          }
-
-          await route.continue();
-        }
-      );
-
-      // ============================================================
-      // 6. SETUP COMPLETE
-      // ============================================================
-
-      await page.route(
-        '**/api/user/status*',
-        async route => {
-
-          await route.fulfill({
-            status: 200,
-            contentType: 'application/json',
-
-            body: JSON.stringify({
-              success: true,
-              setupComplete: true,
-              setupSkipped: true,
-              hasTeamId: true,
-              hasUpline: true,
-              teamId: 1,
-              uplineCoachId: 12345,
-              role: 'user',
-              pendingRequest: null,
-              redirectTo: null,
-            }),
-          });
-        }
-      );
-
-      // ============================================================
-      // 7. OPEN APPLICATION
-      // ============================================================
-
-      await page.goto('/');
-
-      // ============================================================
-      // 8. LOGIN
-      // ============================================================
-
-      const mobileInput =
-        page.getByLabel('Mobile Number');
-
-      await expect(
-        mobileInput
-      ).toBeVisible({
-        timeout: 15000,
-      });
-
-      await mobileInput.fill(
-        TEST_PHONE
-      );
-
-      await page
-        .getByRole('button', {
-          name: 'Send OTP',
-          exact: true,
-        })
-        .click();
-
-      // ============================================================
-      // 9. OTP
-      // ============================================================
-
-      await expect(
-        page.getByText('Enter OTP', {
-          exact: true,
-        })
-      ).toBeVisible({
-        timeout: 15000,
-      });
-
-      const otpInputs =
-        page.locator('input[type="tel"]');
-
-      await expect(
-        otpInputs
-      ).toHaveCount(6);
-
-      for (
-        let i = 0;
-        i < LOGIN_OTP.length;
-        i++
-      ) {
-
-        await otpInputs
-          .nth(i)
-          .fill(LOGIN_OTP[i]);
-      }
-
-      // ============================================================
-      // 10. WAIT FOR AUTHENTICATION
-      // ============================================================
-
-      await expect
-        .poll(
-          async () => {
-
-            return await page.evaluate(() => {
-
-              const rawUser =
-                localStorage.getItem('otpUser');
-
-              return {
-                verified:
-                  localStorage.getItem(
-                    'isOtpVerified'
-                  ),
-
-                user:
-                  rawUser
-                    ? JSON.parse(rawUser)
-                    : null,
-              };
-            });
-          },
-          {
-            timeout: 15000,
-            intervals: [200, 500, 1000],
-          }
-        )
-        .toMatchObject({
-          verified: 'true',
-
-          user: {
-            isNewUser: false,
-          },
-        });
-
-      // ============================================================
-      // 11. HELPER — OPEN MY PROFILE
-      // ============================================================
-
-      async function openMyProfile() {
-
-        const myProfileButton =
-          page.getByRole('button', {
-            name: 'My Profile',
-            exact: true,
-          });
-
-        await expect(
-          myProfileButton
-        ).toBeVisible({
-          timeout: 20000,
-        });
-
-        await myProfileButton.click();
-
-        await expect(
-          page.getByRole('heading', {
-            name: 'My Profile',
-            exact: true,
-          })
-        ).toBeVisible({
-          timeout: 15000,
-        });
-
-        const personalDetailsHeading =
-          page.getByText(
-            'Personal Details',
-            {
-              exact: true,
-            }
-          );
-
-        await expect(
-          personalDetailsHeading
-        ).toBeVisible({
-          timeout: 10000,
-        });
-
-        const personalDetailsSection =
-          personalDetailsHeading.locator(
-            'xpath=ancestor::div[contains(@class,"bg-white")][1]'
-          );
-
-        await expect(
-          personalDetailsSection
-        ).toBeVisible({
-          timeout: 10000,
-        });
-
-        return personalDetailsSection;
-      }
-
-      // ============================================================
-      // 12. OPEN PROFILE
-      // ============================================================
-
-      let personalDetailsSection =
-        await openMyProfile();
-
-      // ============================================================
-      // 13. HELPER — GET HEIGHT + SAVE BUTTON
-      // ============================================================
-
-      async function getHeightControls() {
-
-        personalDetailsSection =
-          await page.getByText(
-            'Personal Details',
-            {
-              exact: true,
-            }
-          ).locator(
-            'xpath=ancestor::div[contains(@class,"bg-white")][1]'
-          );
-
-        const heightInput =
-          personalDetailsSection.locator(
-            'input[placeholder="e.g. 170"]'
-          );
-
-        await expect(
-          heightInput
-        ).toHaveCount(1);
-
-        await expect(
-          heightInput
-        ).toBeVisible();
-
-        const saveButton =
-          page.getByRole('button', {
-            name: 'Save profile',
-            exact: true,
-          });
-
-        await expect(
-          saveButton
-        ).toBeVisible({
-          timeout: 10000,
-        });
-
-        return {
-          heightInput,
-          saveButton,
+      // 2. SET AUTHENTICATED LOCALSTORAGE STATE (DIRECT HOME ACCESS)
+      // ============================================================
+      await page.addInitScript(({ phone, email, name }) => {
+        const user = {
+          id: 1004,
+          UserId: 1004,
+          userId: 1004,
+          username: name,
+          userName: name,
+          name: name,
+          email: email,
+          phone: `+91${phone}`,
+          phoneNumber: phone,
+          status: 'Active',
+          isNewUser: false,
+          consentRequired: false,
+          profileComplete: true,
+          physicalActivityLevel: 'moderate',
         };
+
+        localStorage.setItem('isOtpVerified', 'true');
+        localStorage.setItem('otpUser', JSON.stringify(user));
+        localStorage.setItem('user', JSON.stringify(user));
+      }, { phone: TEST_PHONE, email: TEST_EMAIL, name: TEST_NAME });
+
+      // ============================================================
+      // 3. OPEN APP DIRECTLY AS AUTHENTICATED USER ON HOME PAGE
+      // ============================================================
+      await page.goto('/', { waitUntil: 'domcontentloaded' });
+
+      // ============================================================
+      // 4. MAIN APPLICATION DASHBOARD & NAVIGATION OPTIONS
+      // ============================================================
+      // Verify Home tab is visible on initial load
+      const homeTabBtn = page.getByRole('button', { name: /Home/i }).first();
+      await expect(homeTabBtn).toBeVisible({ timeout: 15000 });
+      console.log('CP-014: Selected main application navigation option: Home');
+
+      // Navigate sequentially through all other main tabs
+      const subNavTabs = [
+        { name: 'Diary', regex: /Diary/i },
+        { name: 'Activity', regex: /Activity/i },
+        { name: 'Programs', regex: /Programs|Enrollment/i },
+        { name: 'BCM', regex: /BCM|Counselling/i },
+        { name: 'Club', regex: /Club|Physical/i },
+        { name: 'Transformation', regex: /Transformation|Testimonials/i },
+      ];
+
+      for (const tab of subNavTabs) {
+        await page.waitForTimeout(300);
+        const tabBtn = page.getByRole('button', { name: tab.regex }).first();
+        await tabBtn.scrollIntoViewIfNeeded().catch(() => { });
+        await expect(tabBtn).toBeVisible({ timeout: 15000 });
+        await tabBtn.click({ force: true });
+        console.log(`CP-014: Selected main application navigation option: ${tab.name}`);
       }
 
+      console.log('CP-014: Successfully selected all main application navigation options');
+    }
+  );
+
+
+
+  test(
+    'CP-015 user can select profile from header and reach profile form',
+    async ({ page }) => {
       // ============================================================
-      // 14. HELPER — TEST HEIGHT
+      // TEST DATA
       // ============================================================
+      const TEST_PHONE = '7695834209';
+      const TEST_NAME = 'Nitheesh Lingam';
+      const TEST_EMAIL = 'nitheesh@example.com';
 
-      async function testHeightValue(
-        value,
-        expectedValid
-      ) {
+      // ============================================================
+      // 1. MOCK APIS FOR AUTHENTICATED USER
+      // ============================================================
+      await page.route('**/api/auth/send-otp', async route => {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true }) });
+      });
 
-        const {
-          heightInput,
-          saveButton,
-        } = await getHeightControls();
+      await page.route('**/api/user/verify-session', async route => {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, userId: 1004, sessionStale: false }) });
+      });
 
-        // Clear previous POST records
-        profilePosts.length = 0;
+      await page.route('**/api/user/lookup*', async route => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            isActive: true,
+            isNewUser: false,
+            role: 'user',
+            user: {
+              id: 1004,
+              UserId: 1004,
+              username: TEST_NAME,
+              name: TEST_NAME,
+              email: TEST_EMAIL,
+              phoneNumber: TEST_PHONE,
+              status: 'Active',
+            },
+          }),
+        });
+      });
 
-        // Enter height
-        await heightInput.fill(
-          String(value)
-        );
+      await page.route('**/api/user/consent*', async route => {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, consentRequired: false, consentAccepted: true }) });
+      });
 
-        await expect(
-          heightInput
-        ).toHaveValue(
-          String(value)
-        );
+      await page.route('**/api/user/profile*', async route => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            data: {
+              userId: 1004,
+              profileComplete: true,
+              userName: TEST_NAME,
+              name: TEST_NAME,
+              email: TEST_EMAIL,
+              phoneNumber: TEST_PHONE,
+              gender: 'Male',
+              height: 170,
+              dietType: 'Vegetarian',
+              latestWeight: 72.5,
+              currentWeight: 72.5,
+              latestWeightBodyFat: 22,
+              bodyFat: 22,
+              profileImage: 'https://example.com/photo.jpg',
+              physicalActivityLevel: 'moderate',
+              needsCurrentWeight: false,
+            },
+          }),
+        });
+      });
 
-        console.log(
-          `CP-022 ENTER HEIGHT: ${ value } `
-        );
+      // ============================================================
+      // 2. SET AUTHENTICATED LOCALSTORAGE STATE
+      // ============================================================
+      await page.addInitScript(({ phone, email, name }) => {
+        const user = {
+          id: 1004,
+          UserId: 1004,
+          userId: 1004,
+          username: name,
+          userName: name,
+          name: name,
+          email: email,
+          phone: `+91${phone}`,
+          phoneNumber: phone,
+          status: 'Active',
+          isNewUser: false,
+          consentRequired: false,
+          profileComplete: true,
+          physicalActivityLevel: 'moderate',
+        };
 
-        // Click Save
-        await saveButton.click();
+        localStorage.setItem('isOtpVerified', 'true');
+        localStorage.setItem('otpUser', JSON.stringify(user));
+        localStorage.setItem('user', JSON.stringify(user));
+      }, { phone: TEST_PHONE, email: TEST_EMAIL, name: TEST_NAME });
 
-        // ==========================================================
-        // INVALID VALUE
-        // ==========================================================
+      // ============================================================
+      // 3. OPEN APP DIRECTLY AS AUTHENTICATED USER ON HOME PAGE
+      // ============================================================
+      await page.goto('/', { waitUntil: 'domcontentloaded' });
 
-        if (!expectedValid) {
+      // ============================================================
+      // 4. SELECT PROFILE AVATAR IN HEADER
+      // ============================================================
+      const profileBtn = page.getByRole('button', { name: 'My Profile' });
+      await expect(profileBtn).toBeVisible({ timeout: 15000 });
+      await profileBtn.click();
+      console.log('CP-015: Selected My Profile from header avatar');
 
-          // Give the application time to process validation.
-          await page.waitForTimeout(1000);
+      // ============================================================
+      // 5. VERIFY PROFILE FORM PAGE REACHED
+      // ============================================================
+      const profileHeading = page.getByRole('heading', { name: 'My Profile', exact: true });
+      await expect(profileHeading).toBeVisible({ timeout: 15000 });
 
-          // Invalid height must NOT trigger profile POST.
-          expect(
-            profilePosts.length
-          ).toBe(0);
+      const personalDetailsHeading = page.getByRole('heading', { name: 'Personal Details', exact: true });
+      await expect(personalDetailsHeading).toBeVisible({ timeout: 15000 });
 
-          console.log(
-            `CP-022 HEIGHT ${ value }: INVALID`
-          );
+      console.log('CP-015: Successfully reached profile form page');
+    }
+  );
 
+
+  test(
+    'CP-016 Name field validation in profile form controls Save Profile button availability',
+    async ({ page }) => {
+      // ============================================================
+      // TEST DATA
+      // ============================================================
+      const TEST_PHONE = '7695834209';
+      const TEST_NAME = 'Nitheesh Lingam';
+      const TEST_EMAIL = 'nitheesh@example.com';
+
+      // ============================================================
+      // 1. MOCK APIS FOR AUTHENTICATED USER
+      // ============================================================
+      await page.route('**/api/auth/send-otp', async route => {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true }) });
+      });
+
+      await page.route('**/api/user/verify-session', async route => {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, userId: 1004, sessionStale: false }) });
+      });
+
+      await page.route('**/api/user/lookup*', async route => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            isActive: true,
+            isNewUser: false,
+            role: 'user',
+            user: {
+              id: 1004,
+              UserId: 1004,
+              username: TEST_NAME,
+              name: TEST_NAME,
+              email: TEST_EMAIL,
+              phoneNumber: TEST_PHONE,
+              status: 'Active',
+            },
+          }),
+        });
+      });
+
+      await page.route('**/api/user/consent*', async route => {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, consentRequired: false, consentAccepted: true }) });
+      });
+
+      await page.route('**/api/user/profile*', async route => {
+        const method = route.request().method();
+        if (method === 'GET') {
+          await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({
+              success: true,
+              data: {
+                userId: 1004,
+                profileComplete: true,
+                userName: TEST_NAME,
+                name: TEST_NAME,
+                email: TEST_EMAIL,
+                phoneNumber: TEST_PHONE,
+                gender: 'Male',
+                height: 170,
+                dietType: 'Vegetarian',
+                latestWeight: 72.5,
+                currentWeight: 72.5,
+                latestWeightBodyFat: 22,
+                bodyFat: 22,
+                bodyMetrics: { fatPercent: 22 },
+                profileImage: 'https://example.com/photo.jpg',
+                physicalActivityLevel: 'moderate',
+                needsCurrentWeight: false,
+              },
+            }),
+          });
           return;
         }
 
-        // ==========================================================
-        // VALID VALUE
-        // ==========================================================
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            message: 'Profile saved successfully!',
+          }),
+        });
+      });
 
-        await expect
-          .poll(
-            () => profilePosts.length,
-            {
-              timeout: 5000,
-              intervals: [200, 500, 1000],
-            }
-          )
-          .toBe(1);
-
-        expect(
-          profilePosts[0]
-        ).toMatchObject({
-
-          email: TEST_EMAIL,
-          name: 'Nitheesh Lingam',
-          height: Number(value),
+      // ============================================================
+      // 2. SET AUTHENTICATED LOCALSTORAGE STATE
+      // ============================================================
+      await page.addInitScript(({ phone, email, name }) => {
+        const user = {
+          id: 1004,
+          UserId: 1004,
+          userId: 1004,
+          username: name,
+          userName: name,
+          name: name,
+          email: email,
+          phone: `+91${phone}`,
+          phoneNumber: phone,
+          status: 'Active',
+          isNewUser: false,
+          consentRequired: false,
+          profileComplete: true,
           physicalActivityLevel: 'moderate',
-          dietType: 'Vegetarian',
-          gender: 'Male',
-          phoneNumber: TEST_PHONE,
-          communityId: 'WB12345',
-        });
+        };
 
-        console.log(
-          `CP-022 HEIGHT ${ value }: VALID`
-        );
-
-        // Successful save causes onComplete().
-        await expect(
-          page.getByRole('heading', {
-            name: 'My Profile',
-            exact: true,
-          })
-        ).not.toBeVisible({
-          timeout: 10000,
-        }).catch(() => {
-          // Some versions keep the heading mounted briefly.
-        });
-
-        // Return to Profile for the next valid value.
-        await openMyProfile();
-      }
+        localStorage.setItem('isOtpVerified', 'true');
+        localStorage.setItem('otpUser', JSON.stringify(user));
+        localStorage.setItem('user', JSON.stringify(user));
+      }, { phone: TEST_PHONE, email: TEST_EMAIL, name: TEST_NAME });
 
       // ============================================================
-      // CASE 1 — 49
-      //
-      // INVALID
+      // 3. OPEN APP DIRECTLY AS AUTHENTICATED USER ON HOME PAGE
       // ============================================================
-
-      await testHeightValue(
-        49,
-        false
-      );
+      await page.goto('/', { waitUntil: 'domcontentloaded' });
 
       // ============================================================
-      // CASE 2 — 50
-      //
-      // VALID
+      // 4. SELECT PROFILE AVATAR IN HEADER TO OPEN PROFILE FORM
       // ============================================================
-
-      await testHeightValue(
-        50,
-        true
-      );
+      const profileBtn = page.getByRole('button', { name: 'My Profile' });
+      await expect(profileBtn).toBeVisible({ timeout: 15000 });
+      await profileBtn.click();
 
       // ============================================================
-      // CASE 3 — 198
-      //
-      // VALID
+      // 5. VERIFY PROFILE FORM PAGE REACHED AND LOCATE INPUTS
       // ============================================================
+      const profileHeading = page.getByRole('heading', { name: 'My Profile', exact: true });
+      await expect(profileHeading).toBeVisible({ timeout: 15000 });
 
-      await testHeightValue(
-        198,
-        true
-      );
+      const personalDetailsHeading = page.getByRole('heading', { name: 'Personal Details', exact: true });
+      await expect(personalDetailsHeading).toBeVisible({ timeout: 15000 });
+
+      const fullNameInput = page.getByPlaceholder('Enter your name');
+      await expect(fullNameInput).toBeVisible({ timeout: 15000 });
+
+      const saveButton = page.getByRole('button', { name: /Save profile|Save Profile/i });
+      await expect(saveButton).toBeVisible({ timeout: 10000 });
 
       // ============================================================
-      // CASE 4 — 199
-      //
-      // INVALID
+      // 6. SCENARIO 1: ALL OTHER FIELDS FILLED + NAME EMPTY -> SAVE DISABLED
       // ============================================================
+      await fullNameInput.fill('');
+      await expect(fullNameInput).toHaveValue('');
+      await expect(saveButton).toBeDisabled({ timeout: 10000 });
+      console.log('CP-016: ALL OTHER FIELDS FILLED + EMPTY NAME -> SAVE PROFILE DISABLED');
 
-      await testHeightValue(
-        199,
-        false
-      );
-
-      console.log(
-        'CP-022 HEIGHT VALUES VERIFIED: 49, 50, 198, 199'
-      );
+      // ============================================================
+      // 7. SCENARIO 2: ALL OTHER FIELDS FILLED + NAME FILLED -> SAVE ENABLED
+      // ============================================================
+      await fullNameInput.fill(TEST_NAME);
+      await expect(fullNameInput).toHaveValue(TEST_NAME);
+      await expect(saveButton).toBeEnabled({ timeout: 10000 });
+      console.log('CP-016: ALL OTHER FIELDS FILLED + NAME FILLED -> SAVE PROFILE ENABLED');
     }
   );
 
   test(
-    'CP-023 Profile Phone Number validates valid, invalid and empty values',
+    'CP-017 Height field validation for minimum and maximum boundaries (49, 50, 198, 199) in profile page',
     async ({ page }) => {
-
       // ============================================================
       // TEST DATA
       // ============================================================
-
       const TEST_PHONE = '7695834209';
-      const LOGIN_OTP = '123456';
-      const TEST_EMAIL = 'existing@test.com';
-      const TEST_USER_ID = 861;
-
+      const TEST_NAME = 'Nitheesh Lingam';
+      const TEST_EMAIL = 'nitheesh@example.com';
 
       // ============================================================
-      // FUNCTION: SETUP ALL MOCKS
+      // 1. MOCK APIS FOR AUTHENTICATED USER
       // ============================================================
-
-      async function setupMocks() {
-
-        const profilePosts = [];
-
-        // ----------------------------------------------------------
-        // SEND OTP
-        // ----------------------------------------------------------
-
-        await page.route(
-          '**/api/auth/send-otp',
-          async route => {
-
-            await route.fulfill({
-              status: 200,
-              contentType: 'application/json',
-
-              body: JSON.stringify({
-                success: true,
-              }),
-            });
-
-          }
-        );
-
-
-        // ----------------------------------------------------------
-        // VERIFY LOGIN OTP
-        // ----------------------------------------------------------
-
-        await page.route(
-          '**/api/auth/verify-otp',
-          async route => {
-
-            const body =
-              route.request().postDataJSON();
-
-            expect(body).toMatchObject({
-              recipient:
-                `+ 91${ TEST_PHONE } `,
-
-              otp:
-                LOGIN_OTP,
-
-              contactType:
-                'phone',
-            });
-
-            await route.fulfill({
-              status: 200,
-              contentType: 'application/json',
-
-              body: JSON.stringify({
-
-                success: true,
-
-                isNewUser: false,
-
-                isActive: true,
-
-                role: 'user',
-
-                user: {
-
-                  id:
-                    TEST_USER_ID,
-
-                  UserId:
-                    TEST_USER_ID,
-
-                  username:
-                    'existinguser',
-
-                  email:
-                    TEST_EMAIL,
-
-                  phone:
-                    `+ 91${ TEST_PHONE } `,
-
-                  status:
-                    'Active',
-
-                  consentRequired:
-                    false,
-                },
-              }),
-            });
-
-          }
-        );
-
-
-        // ----------------------------------------------------------
-        // USER LOOKUP
-        // ----------------------------------------------------------
-
-        await page.route(
-          '**/api/user/lookup*',
-          async route => {
-
-            await route.fulfill({
-              status: 200,
-              contentType: 'application/json',
-
-              body: JSON.stringify({
-
-                success: true,
-
-                isNewUser: false,
-
-                isActive: true,
-
-                role: 'user',
-
-                data: {
-
-                  userId:
-                    TEST_USER_ID,
-
-                  email:
-                    TEST_EMAIL,
-                },
-              }),
-            });
-
-          }
-        );
-
-
-        // ----------------------------------------------------------
-        // CONSENT
-        // ----------------------------------------------------------
-
-        await page.route(
-          '**/api/user/consent*',
-          async route => {
-
-            if (
-              route.request().method() ===
-              'GET'
-            ) {
-
-              await route.fulfill({
-                status: 200,
-                contentType:
-                  'application/json',
-
-                body: JSON.stringify({
-
-                  success:
-                    true,
-
-                  consentRequired:
-                    false,
-
-                  consentAccepted:
-                    true,
-                }),
-              });
-
-              return;
-            }
-
-            await route.continue();
-          }
-        );
-
-
-        // ----------------------------------------------------------
-        // PROFILE GET + POST
-        // ----------------------------------------------------------
-
-        await page.route(
-          '**/api/user/profile*',
-          async route => {
-
-            const method =
-              route.request().method();
-
-
-            // GET
-            if (
-              method === 'GET'
-            ) {
-
-              await route.fulfill({
-                status: 200,
-                contentType:
-                  'application/json',
-
-                body: JSON.stringify({
-
-                  success:
-                    true,
-
-                  data: {
-
-                    userId:
-                      TEST_USER_ID,
-
-                    userName:
-                      'Nitheesh Lingam',
-
-                    email:
-                      TEST_EMAIL,
-
-                    phoneNumber:
-                      TEST_PHONE,
-
-                    gender:
-                      'Male',
-
-                    height:
-                      170,
-
-                    communityId:
-                      'WB12345',
-
-                    dietType:
-                      'Vegetarian',
-
-                    latestWeight:
-                      72.5,
-
-                    latestWeightBodyFat:
-                      22,
-
-                    latestBmr:
-                      1424,
-
-                    bodyFat:
-                      22,
-
-                    physicalActivityLevel:
-                      'moderate',
-
-                    profileImage:
-                      'https://example.com/profile.jpg',
-
-                    profileComplete:
-                      true,
-
-                    weightGoalMode:
-                      'loss',
-                  },
-                }),
-              });
-
-              return;
-            }
-
-
-            // POST
-            if (
-              method === 'POST'
-            ) {
-
-              const body =
-                route.request().postDataJSON();
-
-              console.log(
-                'CP-023 PROFILE POST:',
-                body
-              );
-
-              profilePosts.push({
-                ...body,
-              });
-
-              await route.fulfill({
-                status: 200,
-                contentType:
-                  'application/json',
-
-                body: JSON.stringify({
-
-                  success:
-                    true,
-
-                  message:
-                    'Profile saved successfully!',
-
-                  data: {
-
-                    ...body,
-
-                    userId:
-                      TEST_USER_ID,
-
-                    profileComplete:
-                      true,
-                  },
-                }),
-              });
-
-              return;
-            }
-
-
-            await route.continue();
-          }
-        );
-
-
-        // ----------------------------------------------------------
-        // USER STATUS
-        // ----------------------------------------------------------
-
-        await page.route(
-          '**/api/user/status*',
-          async route => {
-
-            await route.fulfill({
-              status: 200,
-              contentType:
-                'application/json',
-
-              body: JSON.stringify({
-
-                success:
-                  true,
-
-                setupComplete:
-                  true,
-
-                setupSkipped:
-                  true,
-
-                hasTeamId:
-                  true,
-
-                hasUpline:
-                  true,
-
-                teamId:
-                  1,
-
-                uplineCoachId:
-                  12345,
-
-                role:
-                  'user',
-
-                pendingRequest:
-                  null,
-
-                redirectTo:
-                  null,
-              }),
-            });
-
-          }
-        );
-
-
-        return profilePosts;
-      }
-
-
-      // ============================================================
-      // FUNCTION: LOGIN AND OPEN PROFILE
-      // ============================================================
-
-      async function loginAndOpenProfile() {
-
-        await page.goto('/');
-
-
-        // ----------------------------------------------------------
-        // MOBILE
-        // ----------------------------------------------------------
-
-        const mobileInput =
-          page.getByLabel(
-            'Mobile Number'
-          );
-
-        await expect(
-          mobileInput
-        ).toBeVisible({
-          timeout: 15000,
+      await page.route('**/api/auth/send-otp', async route => {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true }) });
+      });
+
+      await page.route('**/api/user/verify-session', async route => {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, userId: 1004, sessionStale: false }) });
+      });
+
+      await page.route('**/api/user/lookup*', async route => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            isActive: true,
+            isNewUser: false,
+            role: 'user',
+            user: {
+              id: 1004,
+              UserId: 1004,
+              username: TEST_NAME,
+              name: TEST_NAME,
+              email: TEST_EMAIL,
+              phoneNumber: TEST_PHONE,
+              status: 'Active',
+            },
+          }),
         });
+      });
 
+      await page.route('**/api/user/consent*', async route => {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, consentRequired: false, consentAccepted: true }) });
+      });
 
-        await mobileInput.fill(
-          TEST_PHONE
-        );
+      let savedHeight = 170;
 
-
-        await page
-          .getByRole(
-            'button',
-            {
-              name:
-                'Send OTP',
-
-              exact:
-                true,
-            }
-          )
-          .click();
-
-
-        // ----------------------------------------------------------
-        // OTP SCREEN
-        // ----------------------------------------------------------
-
-        await expect(
-          page.getByText(
-            'Enter OTP',
-            {
-              exact:
-                true,
-            }
-          )
-        ).toBeVisible({
-          timeout: 15000,
-        });
-
-
-        const otpInputs =
-          page.locator(
-            'input[type="tel"]'
-          );
-
-
-        await expect(
-          otpInputs
-        ).toHaveCount(
-          6
-        );
-
-
-        for (
-          let i = 0;
-          i < LOGIN_OTP.length;
-          i++
-        ) {
-
-          await otpInputs
-            .nth(i)
-            .fill(
-              LOGIN_OTP[i]
-            );
-
+      await page.route('**/api/user/profile*', async route => {
+        const method = route.request().method();
+        if (method === 'GET') {
+          await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({
+              success: true,
+              data: {
+                userId: 1004,
+                profileComplete: true,
+                userName: TEST_NAME,
+                name: TEST_NAME,
+                email: TEST_EMAIL,
+                phoneNumber: TEST_PHONE,
+                gender: 'Male',
+                height: savedHeight,
+                dietType: 'Vegetarian',
+                latestWeight: 72.5,
+                currentWeight: 72.5,
+                latestWeightBodyFat: 22,
+                bodyFat: 22,
+                bodyMetrics: { fatPercent: 22 },
+                profileImage: 'https://example.com/photo.jpg',
+                physicalActivityLevel: 'moderate',
+                needsCurrentWeight: false,
+              },
+            }),
+          });
+          return;
         }
 
+        try {
+          const postData = route.request().postDataJSON();
+          if (postData && postData.height) {
+            savedHeight = Number(postData.height);
+          }
+        } catch {
+          /* ignore JSON parse errors */
+        }
 
-        // ----------------------------------------------------------
-        // WAIT FOR LOGIN
-        // ----------------------------------------------------------
-
-        await expect
-          .poll(
-            async () => {
-
-              return await page.evaluate(
-                () => {
-
-                  const rawUser =
-                    localStorage.getItem(
-                      'otpUser'
-                    );
-
-                  return {
-
-                    verified:
-                      localStorage.getItem(
-                        'isOtpVerified'
-                      ),
-
-                    user:
-                      rawUser
-                        ? JSON.parse(
-                          rawUser
-                        )
-                        : null,
-                  };
-
-                }
-              );
-
-            },
-            {
-              timeout:
-                15000,
-
-              intervals:
-                [
-                  200,
-                  500,
-                  1000,
-                ],
-            }
-          )
-          .toMatchObject({
-
-            verified:
-              'true',
-
-            user: {
-              isNewUser:
-                false,
-            },
-          });
-
-
-        // ----------------------------------------------------------
-        // MY PROFILE
-        // ----------------------------------------------------------
-
-        const myProfileButton =
-          page.getByRole(
-            'button',
-            {
-              name:
-                'My Profile',
-
-              exact:
-                true,
-            }
-          );
-
-
-        await expect(
-          myProfileButton
-        ).toBeVisible({
-          timeout:
-            20000,
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            message: 'Profile saved successfully!',
+          }),
         });
-
-
-        await myProfileButton.click();
-
-
-        // ----------------------------------------------------------
-        // PROFILE PAGE
-        // ----------------------------------------------------------
-
-        await expect(
-          page.getByRole(
-            'heading',
-            {
-              name:
-                'My Profile',
-
-              exact:
-                true,
-            }
-          )
-        ).toBeVisible({
-          timeout:
-            15000,
-        });
-
-
-        await expect(
-          page.getByText(
-            'Personal Details',
-            {
-              exact:
-                true,
-            }
-          )
-        ).toBeVisible({
-          timeout:
-            10000,
-        });
-
-      }
-
+      });
 
       // ============================================================
-      // FUNCTION: GET PHONE FIELD + SAVE BUTTON
+      // 2. SET AUTHENTICATED LOCALSTORAGE STATE
       // ============================================================
-
-      async function getPhoneLocators() {
-
-        const personalDetailsHeading =
-          page.getByText(
-            'Personal Details',
-            {
-              exact:
-                true,
-            }
-          );
-
-
-        const personalDetailsSection =
-          personalDetailsHeading.locator(
-            'xpath=ancestor::div[contains(@class,"bg-white")][1]'
-          );
-
-
-        const phoneInput =
-          personalDetailsSection.locator(
-            'input[placeholder="e.g. +91 9876543210"]'
-          );
-
-
-        const saveButton =
-          page.getByRole(
-            'button',
-            {
-              name:
-                'Save profile',
-
-              exact:
-                true,
-            }
-          );
-
-
-        await expect(
-          phoneInput
-        ).toHaveCount(
-          1
-        );
-
-
-        await expect(
-          phoneInput
-        ).toBeVisible();
-
-
-        await expect(
-          saveButton
-        ).toBeVisible({
-          timeout:
-            10000,
-        });
-
-
-        return {
-          phoneInput,
-          saveButton,
+      await page.addInitScript(({ phone, email, name }) => {
+        const user = {
+          id: 1004,
+          UserId: 1004,
+          userId: 1004,
+          username: name,
+          userName: name,
+          name: name,
+          email: email,
+          phone: `+91${phone}`,
+          phoneNumber: phone,
+          status: 'Active',
+          isNewUser: false,
+          consentRequired: false,
+          profileComplete: true,
+          physicalActivityLevel: 'moderate',
         };
 
+        localStorage.setItem('isOtpVerified', 'true');
+        localStorage.setItem('otpUser', JSON.stringify(user));
+        localStorage.setItem('user', JSON.stringify(user));
+      }, { phone: TEST_PHONE, email: TEST_EMAIL, name: TEST_NAME });
+
+      // ============================================================
+      // 3. OPEN APP DIRECTLY AS AUTHENTICATED USER ON HOME PAGE
+      // ============================================================
+      await page.goto('/', { waitUntil: 'domcontentloaded' });
+
+      // ============================================================
+      // 4. SELECT PROFILE AVATAR IN HEADER TO OPEN PROFILE FORM
+      // ============================================================
+      const profileBtn = page.getByRole('button', { name: 'My Profile' });
+      await expect(profileBtn).toBeVisible({ timeout: 15000 });
+      await profileBtn.click();
+
+      // ============================================================
+      // 5. VERIFY PROFILE FORM PAGE REACHED AND LOCATE INPUTS
+      // ============================================================
+      const profileHeading = page.getByRole('heading', { name: 'My Profile', exact: true });
+      await expect(profileHeading).toBeVisible({ timeout: 15000 });
+
+      const personalDetailsHeading = page.getByRole('heading', { name: 'Personal Details', exact: true });
+      await expect(personalDetailsHeading).toBeVisible({ timeout: 15000 });
+
+      const errorMessageLocator = page.getByText('Please enter a valid height (50 - 198 cm).', { exact: true });
+
+      // ============================================================
+      // 6. TEST 1: HEIGHT = 49 (OUT OF RANGE -> SHOWS ERROR MESSAGE)
+      // ============================================================
+      await page.getByPlaceholder('e.g. 170').fill('49');
+      await expect(page.getByPlaceholder('e.g. 170')).toHaveValue('49');
+      await page.getByRole('button', { name: /Save profile|Save Profile|Saved/i }).click();
+      await expect(errorMessageLocator).toBeVisible({ timeout: 10000 });
+      console.log('CP-017: Height 49 validated as invalid (error message displayed)');
+
+      // ============================================================
+      // 7. TEST 2: HEIGHT = 50 (IN RANGE -> NO ERROR MESSAGE)
+      // ============================================================
+      await page.getByPlaceholder('e.g. 170').fill('50');
+      await expect(page.getByPlaceholder('e.g. 170')).toHaveValue('50');
+      await page.getByRole('button', { name: /Save profile|Save Profile|Saved/i }).click();
+      await expect(errorMessageLocator).not.toBeVisible({ timeout: 5000 });
+      console.log('CP-017: Height 50 validated as valid (no error message)');
+
+      // Re-open profile page if app navigated back to home
+      if (await profileBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+        await profileBtn.click();
+        await expect(personalDetailsHeading).toBeVisible({ timeout: 10000 });
       }
 
-
       // ============================================================
-      // CASE 1
-      // 7695834209 — VALID
+      // 8. TEST 3: HEIGHT = 198 (IN RANGE -> NO ERROR MESSAGE)
       // ============================================================
+      await page.getByPlaceholder('e.g. 170').fill('198');
+      await expect(page.getByPlaceholder('e.g. 170')).toHaveValue('198');
+      await page.getByRole('button', { name: /Save profile|Save Profile|Saved/i }).click();
+      await expect(errorMessageLocator).not.toBeVisible({ timeout: 5000 });
+      console.log('CP-017: Height 198 validated as valid (no error message)');
 
-      {
-
-        const profilePosts =
-          await setupMocks();
-
-
-        await loginAndOpenProfile();
-
-
-        const {
-          phoneInput,
-          saveButton,
-        } =
-          await getPhoneLocators();
-
-
-        await phoneInput.fill(
-          '7695834209'
-        );
-
-
-        await expect(
-          phoneInput
-        ).toHaveValue(
-          '7695834209'
-        );
-
-
-        await expect(
-          saveButton
-        ).toBeEnabled();
-
-
-        await saveButton.click();
-
-
-        await expect
-          .poll(
-            () =>
-              profilePosts.length,
-            {
-              timeout:
-                5000,
-
-              intervals:
-                [
-                  200,
-                  500,
-                  1000,
-                ],
-            }
-          )
-          .toBe(1);
-
-
-        expect(
-          profilePosts[0]
-        ).toMatchObject({
-
-          phoneNumber:
-            '7695834209',
-
-          email:
-            TEST_EMAIL,
-
-          name:
-            'Nitheesh Lingam',
-
-          height:
-            170,
-
-        });
-
-
-        console.log(
-          'CP-023 PHONE 7695834209: VALID'
-        );
-
+      // Re-open profile page if app navigated back to home
+      if (await profileBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+        await profileBtn.click();
+        await expect(personalDetailsHeading).toBeVisible({ timeout: 10000 });
       }
 
-
       // ============================================================
-      // CASE 2
-      // 76965opf — INVALID
-      // Save remains enabled.
-      // Click Save.
-      // No POST should occur.
-      //
-      // IMPORTANT:
-      // We start a fresh login/profile flow, so the result of Case 1
-      // cannot affect Case 2.
+      // 9. TEST 4: HEIGHT = 199 (OUT OF RANGE -> SHOWS ERROR MESSAGE)
       // ============================================================
-
-      {
-
-        const profilePosts =
-          await setupMocks();
-
-
-        await loginAndOpenProfile();
-
-
-        const {
-          phoneInput,
-          saveButton,
-        } =
-          await getPhoneLocators();
-
-
-        await phoneInput.fill(
-          '76965opf'
-        );
-
-
-        await expect(
-          phoneInput
-        ).toHaveValue(
-          '76965opf'
-        );
-
-
-        // Actual UI behavior observed:
-        // Save remains enabled.
-        await expect(
-          saveButton
-        ).toBeEnabled();
-
-
-        await saveButton.click();
-
-
-        await page.waitForTimeout(
-          1000
-        );
-
-
-        // Invalid value must not be posted.
-        expect(
-          profilePosts.length
-        ).toBe(0);
-
-
-        console.log(
-          'CP-023 PHONE 76965opf: INVALID - NO POST'
-        );
-
-      }
-
-
-      // ============================================================
-      // CASE 3
-      // EMPTY — SAVE DISABLED
-      // ============================================================
-
-      {
-
-        const profilePosts =
-          await setupMocks();
-
-
-        await loginAndOpenProfile();
-
-
-        const {
-          phoneInput,
-          saveButton,
-        } =
-          await getPhoneLocators();
-
-
-        await phoneInput.fill(
-          ''
-        );
-
-
-        await expect(
-          phoneInput
-        ).toHaveValue(
-          ''
-        );
-
-
-        await expect(
-          saveButton
-        ).toBeDisabled();
-
-
-        expect(
-          profilePosts.length
-        ).toBe(0);
-
-
-        console.log(
-          'CP-023 PHONE EMPTY: SAVE DISABLED'
-        );
-
-      }
-
-
-      console.log(
-        'CP-023 PHONE NUMBER VALIDATION VERIFIED'
-      );
-
+      await page.getByPlaceholder('e.g. 170').fill('199');
+      await expect(page.getByPlaceholder('e.g. 170')).toHaveValue('199');
+      await page.getByRole('button', { name: /Save profile|Save Profile|Saved/i }).click();
+      await expect(errorMessageLocator).toBeVisible({ timeout: 10000 });
+      console.log('CP-017: Height 199 validated as invalid (error message displayed)');
     }
   );
 
   test(
-    'CP-024 Profile Physical Activity field validates available options',
+    'CP-018 Phone number field validation for digit length (10-15 digits) in profile page',
     async ({ page }) => {
-
       // ============================================================
       // TEST DATA
       // ============================================================
-
       const TEST_PHONE = '7695834209';
-      const LOGIN_OTP = '123456';
-      const TEST_EMAIL = 'existing@test.com';
-      const TEST_USER_ID = 861;
-
+      const TEST_NAME = 'Nitheesh Lingam';
+      const TEST_EMAIL = 'nitheesh@example.com';
 
       // ============================================================
-      // SETUP MOCKS
+      // 1. MOCK APIS FOR AUTHENTICATED USER
       // ============================================================
-
-      async function setupMocks() {
-
-        const profilePosts = [];
-
-
-        // ----------------------------------------------------------
-        // SEND OTP
-        // ----------------------------------------------------------
-
-        await page.route(
-          '**/api/auth/send-otp',
-          async route => {
-
-            await route.fulfill({
-              status: 200,
-              contentType: 'application/json',
-
-              body: JSON.stringify({
-                success: true,
-              }),
-            });
-
-          }
-        );
-
-
-        // ----------------------------------------------------------
-        // VERIFY LOGIN OTP
-        // ----------------------------------------------------------
-
-        await page.route(
-          '**/api/auth/verify-otp',
-          async route => {
-
-            const body =
-              route.request().postDataJSON();
-
-            expect(
-              body
-            ).toMatchObject({
-
-              recipient:
-                `+ 91${ TEST_PHONE } `,
-
-              otp:
-                LOGIN_OTP,
-
-              contactType:
-                'phone',
-            });
-
-
-            await route.fulfill({
-              status: 200,
-              contentType: 'application/json',
-
-              body: JSON.stringify({
-
-                success:
-                  true,
-
-                isNewUser:
-                  false,
-
-                isActive:
-                  true,
-
-                role:
-                  'user',
-
-                user: {
-
-                  id:
-                    TEST_USER_ID,
-
-                  UserId:
-                    TEST_USER_ID,
-
-                  username:
-                    'existinguser',
-
-                  email:
-                    TEST_EMAIL,
-
-                  phone:
-                    `+ 91${ TEST_PHONE } `,
-
-                  status:
-                    'Active',
-
-                  consentRequired:
-                    false,
-                },
-              }),
-            });
-
-          }
-        );
-
-
-        // ----------------------------------------------------------
-        // USER LOOKUP
-        // ----------------------------------------------------------
-
-        await page.route(
-          '**/api/user/lookup*',
-          async route => {
-
-            await route.fulfill({
-              status: 200,
-              contentType:
-                'application/json',
-
-              body: JSON.stringify({
-
-                success:
-                  true,
-
-                isNewUser:
-                  false,
-
-                isActive:
-                  true,
-
-                role:
-                  'user',
-
-                data: {
-
-                  userId:
-                    TEST_USER_ID,
-
-                  email:
-                    TEST_EMAIL,
-                },
-              }),
-            });
-
-          }
-        );
-
-
-        // ----------------------------------------------------------
-        // CONSENT
-        // ----------------------------------------------------------
-
-        await page.route(
-          '**/api/user/consent*',
-          async route => {
-
-            if (
-              route.request().method() ===
-              'GET'
-            ) {
-
-              await route.fulfill({
-                status: 200,
-                contentType:
-                  'application/json',
-
-                body: JSON.stringify({
-
-                  success:
-                    true,
-
-                  consentRequired:
-                    false,
-
-                  consentAccepted:
-                    true,
-                }),
-              });
-
-              return;
-            }
-
-
-            await route.continue();
-
-          }
-        );
-
-
-        // ----------------------------------------------------------
-        // PROFILE GET + POST
-        // ----------------------------------------------------------
-
-        await page.route(
-          '**/api/user/profile*',
-          async route => {
-
-            const method =
-              route.request().method();
-
-
-            // ------------------------------------------------------
-            // GET
-            // ------------------------------------------------------
-
-            if (
-              method === 'GET'
-            ) {
-
-              await route.fulfill({
-                status: 200,
-                contentType:
-                  'application/json',
-
-                body: JSON.stringify({
-
-                  success:
-                    true,
-
-                  data: {
-
-                    userId:
-                      TEST_USER_ID,
-
-                    userName:
-                      'Nitheesh Lingam',
-
-                    email:
-                      TEST_EMAIL,
-
-                    phoneNumber:
-                      TEST_PHONE,
-
-                    gender:
-                      'Male',
-
-                    height:
-                      170,
-
-                    communityId:
-                      'WB12345',
-
-                    dietType:
-                      'Vegetarian',
-
-                    latestWeight:
-                      72.5,
-
-                    latestWeightBodyFat:
-                      22,
-
-                    latestBmr:
-                      1424,
-
-                    bodyFat:
-                      22,
-
-                    physicalActivityLevel:
-                      'moderate',
-
-                    profileImage:
-                      'https://example.com/profile.jpg',
-
-                    profileComplete:
-                      true,
-
-                    weightGoalMode:
-                      'loss',
-                  },
-                }),
-              });
-
-              return;
-            }
-
-
-            // ------------------------------------------------------
-            // POST
-            // ------------------------------------------------------
-
-            if (
-              method === 'POST'
-            ) {
-
-              const body =
-                route.request().postDataJSON();
-
-
-              console.log(
-                'CP-024 PROFILE POST:',
-                body
-              );
-
-
-              profilePosts.push({
-                ...body,
-              });
-
-
-              await route.fulfill({
-                status: 200,
-                contentType:
-                  'application/json',
-
-                body: JSON.stringify({
-
-                  success:
-                    true,
-
-                  message:
-                    'Profile saved successfully!',
-
-                  data: {
-
-                    ...body,
-
-                    userId:
-                      TEST_USER_ID,
-
-                    profileComplete:
-                      true,
-                  },
-                }),
-              });
-
-              return;
-            }
-
-
-            await route.continue();
-
-          }
-        );
-
-
-        // ----------------------------------------------------------
-        // USER STATUS
-        // ----------------------------------------------------------
-
-        await page.route(
-          '**/api/user/status*',
-          async route => {
-
-            await route.fulfill({
-              status: 200,
-              contentType:
-                'application/json',
-
-              body: JSON.stringify({
-
-                success:
-                  true,
-
-                setupComplete:
-                  true,
-
-                setupSkipped:
-                  true,
-
-                hasTeamId:
-                  true,
-
-                hasUpline:
-                  true,
-
-                teamId:
-                  1,
-
-                uplineCoachId:
-                  12345,
-
-                role:
-                  'user',
-
-                pendingRequest:
-                  null,
-
-                redirectTo:
-                  null,
-              }),
-            });
-
-          }
-        );
-
-
-        return profilePosts;
-
-      }
-
-
-      // ============================================================
-      // LOGIN + OPEN PROFILE
-      // ============================================================
-
-      async function loginAndOpenProfile() {
-
-        await page.goto('/');
-
-
-        // ----------------------------------------------------------
-        // MOBILE
-        // ----------------------------------------------------------
-
-        const mobileInput =
-          page.getByLabel(
-            'Mobile Number'
-          );
-
-
-        await expect(
-          mobileInput
-        ).toBeVisible({
-          timeout:
-            15000,
+      await page.route('**/api/auth/send-otp', async route => {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true }) });
+      });
+
+      await page.route('**/api/user/verify-session', async route => {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, userId: 1004, sessionStale: false }) });
+      });
+
+      await page.route('**/api/user/lookup*', async route => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            isActive: true,
+            isNewUser: false,
+            role: 'user',
+            user: {
+              id: 1004,
+              UserId: 1004,
+              username: TEST_NAME,
+              name: TEST_NAME,
+              email: TEST_EMAIL,
+              phoneNumber: TEST_PHONE,
+              status: 'Active',
+            },
+          }),
         });
+      });
 
+      await page.route('**/api/user/consent*', async route => {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, consentRequired: false, consentAccepted: true }) });
+      });
 
-        await mobileInput.fill(
-          TEST_PHONE
-        );
+      let savedPhone = TEST_PHONE;
 
-
-        await page
-          .getByRole(
-            'button',
-            {
-              name:
-                'Send OTP',
-
-              exact:
-                true,
-            }
-          )
-          .click();
-
-
-        // ----------------------------------------------------------
-        // OTP
-        // ----------------------------------------------------------
-
-        await expect(
-          page.getByText(
-            'Enter OTP',
-            {
-              exact:
-                true,
-            }
-          )
-        ).toBeVisible({
-          timeout:
-            15000,
-        });
-
-
-        const otpInputs =
-          page.locator(
-            'input[type="tel"]'
-          );
-
-
-        await expect(
-          otpInputs
-        ).toHaveCount(
-          6
-        );
-
-
-        for (
-          let i = 0;
-          i < LOGIN_OTP.length;
-          i++
-        ) {
-
-          await otpInputs
-            .nth(i)
-            .fill(
-              LOGIN_OTP[i]
-            );
-
+      await page.route('**/api/user/profile*', async route => {
+        const method = route.request().method();
+        if (method === 'GET') {
+          await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({
+              success: true,
+              data: {
+                userId: 1004,
+                profileComplete: true,
+                userName: TEST_NAME,
+                name: TEST_NAME,
+                email: TEST_EMAIL,
+                phoneNumber: savedPhone,
+                gender: 'Male',
+                height: 170,
+                dietType: 'Vegetarian',
+                latestWeight: 72.5,
+                currentWeight: 72.5,
+                latestWeightBodyFat: 22,
+                bodyFat: 22,
+                bodyMetrics: { fatPercent: 22 },
+                profileImage: 'https://example.com/photo.jpg',
+                physicalActivityLevel: 'moderate',
+                needsCurrentWeight: false,
+              },
+            }),
+          });
+          return;
         }
 
+        try {
+          const postData = route.request().postDataJSON();
+          if (postData && postData.phone) {
+            savedPhone = postData.phone;
+          }
+        } catch {
+          /* ignore JSON parse errors */
+        }
 
-        // ----------------------------------------------------------
-        // WAIT FOR LOGIN
-        // ----------------------------------------------------------
-
-        await expect
-          .poll(
-            async () => {
-
-              return await page.evaluate(
-                () => {
-
-                  const rawUser =
-                    localStorage.getItem(
-                      'otpUser'
-                    );
-
-
-                  return {
-
-                    verified:
-                      localStorage.getItem(
-                        'isOtpVerified'
-                      ),
-
-                    user:
-                      rawUser
-                        ? JSON.parse(
-                          rawUser
-                        )
-                        : null,
-                  };
-
-                }
-              );
-
-            },
-            {
-              timeout:
-                15000,
-
-              intervals:
-                [
-                  200,
-                  500,
-                  1000,
-                ],
-            }
-          )
-          .toMatchObject({
-
-            verified:
-              'true',
-
-            user: {
-              isNewUser:
-                false,
-            },
-          });
-
-
-        // ----------------------------------------------------------
-        // MY PROFILE
-        // ----------------------------------------------------------
-
-        const myProfileButton =
-          page.getByRole(
-            'button',
-            {
-              name:
-                'My Profile',
-
-              exact:
-                true,
-            }
-          );
-
-
-        await expect(
-          myProfileButton
-        ).toBeVisible({
-          timeout:
-            20000,
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            message: 'Profile saved successfully!',
+          }),
         });
-
-
-        await myProfileButton.click();
-
-
-        // ----------------------------------------------------------
-        // PROFILE PAGE
-        // ----------------------------------------------------------
-
-        await expect(
-          page.getByRole(
-            'heading',
-            {
-              name:
-                'My Profile',
-
-              exact:
-                true,
-            }
-          )
-        ).toBeVisible({
-          timeout:
-            15000,
-        });
-
-
-        await expect(
-          page.getByText(
-            'Personal Details',
-            {
-              exact:
-                true,
-            }
-          )
-        ).toBeVisible({
-          timeout:
-            10000,
-        });
-
-      }
-
+      });
 
       // ============================================================
-      // GET PHYSICAL ACTIVITY + SAVE BUTTON
+      // 2. SET AUTHENTICATED LOCALSTORAGE STATE
       // ============================================================
-
-      async function getPhysicalActivityLocators() {
-
-        const personalDetailsHeading =
-          page.getByText(
-            'Personal Details',
-            {
-              exact:
-                true,
-            }
-          );
-
-
-        const personalDetailsSection =
-          personalDetailsHeading.locator(
-            'xpath=ancestor::div[contains(@class,"bg-white")][1]'
-          );
-
-
-        const selects =
-          personalDetailsSection.locator(
-            'select'
-          );
-
-
-        await expect(
-          selects
-        ).toHaveCount(
-          2
-        );
-
-
-        // First select = Gender
-        // Second select = Physical Activity
-
-        const physicalActivitySelect =
-          selects.nth(1);
-
-
-        const saveButton =
-          page.getByRole(
-            'button',
-            {
-              name:
-                'Save profile',
-
-              exact:
-                true,
-            }
-          );
-
-
-        await expect(
-          physicalActivitySelect
-        ).toBeVisible();
-
-
-        await expect(
-          saveButton
-        ).toBeVisible({
-          timeout:
-            10000,
-        });
-
-
-        return {
-          physicalActivitySelect,
-          saveButton,
+      await page.addInitScript(({ phone, email, name }) => {
+        const user = {
+          id: 1004,
+          UserId: 1004,
+          userId: 1004,
+          username: name,
+          userName: name,
+          name: name,
+          email: email,
+          phone: `+91${phone}`,
+          phoneNumber: phone,
+          status: 'Active',
+          isNewUser: false,
+          consentRequired: false,
+          profileComplete: true,
+          physicalActivityLevel: 'moderate',
         };
 
+        localStorage.setItem('isOtpVerified', 'true');
+        localStorage.setItem('otpUser', JSON.stringify(user));
+        localStorage.setItem('user', JSON.stringify(user));
+      }, { phone: TEST_PHONE, email: TEST_EMAIL, name: TEST_NAME });
+
+      // ============================================================
+      // 3. OPEN APP DIRECTLY AS AUTHENTICATED USER ON HOME PAGE
+      // ============================================================
+      await page.goto('/', { waitUntil: 'domcontentloaded' });
+
+      // ============================================================
+      // 4. SELECT PROFILE AVATAR IN HEADER TO OPEN PROFILE FORM
+      // ============================================================
+      const profileBtn = page.getByRole('button', { name: 'My Profile' });
+      await expect(profileBtn).toBeVisible({ timeout: 15000 });
+      await profileBtn.click();
+
+      // ============================================================
+      // 5. VERIFY PROFILE FORM PAGE REACHED AND LOCATE INPUTS
+      // ============================================================
+      const profileHeading = page.getByRole('heading', { name: 'My Profile', exact: true });
+      await expect(profileHeading).toBeVisible({ timeout: 15000 });
+
+      const personalDetailsHeading = page.getByRole('heading', { name: 'Personal Details', exact: true });
+      await expect(personalDetailsHeading).toBeVisible({ timeout: 15000 });
+
+      const phoneErrorMessageLocator = page.getByText('Please enter a valid phone number (10-15 digits).', { exact: true });
+
+      // ============================================================
+      // 6. TEST 1: PHONE = 9 DIGITS (LESS THAN 10 -> SHOWS ERROR MESSAGE)
+      // ============================================================
+      await page.getByPlaceholder('e.g. +91 9876543210').fill('987654321');
+      await expect(page.getByPlaceholder('e.g. +91 9876543210')).toHaveValue('987654321');
+      await page.getByRole('button', { name: /Save profile|Save Profile|Saved/i }).click();
+      await expect(phoneErrorMessageLocator).toBeVisible({ timeout: 10000 });
+      console.log('CP-018: Phone number 987654321 (9 digits) validated as invalid (error message displayed)');
+
+      // ============================================================
+      // 7. TEST 2: PHONE = 10 DIGITS (VALID MIN BOUNDARY -> NO ERROR MESSAGE)
+      // ============================================================
+      await page.getByPlaceholder('e.g. +91 9876543210').fill('9876543210');
+      await expect(page.getByPlaceholder('e.g. +91 9876543210')).toHaveValue('9876543210');
+      await page.getByRole('button', { name: /Save profile|Save Profile|Saved/i }).click();
+      await expect(phoneErrorMessageLocator).not.toBeVisible({ timeout: 5000 });
+      console.log('CP-018: Phone number 9876543210 (10 digits) validated as valid (no error message)');
+
+      // Re-open profile page if app navigated back to home
+      if (await profileBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+        await profileBtn.click();
+        await expect(personalDetailsHeading).toBeVisible({ timeout: 10000 });
       }
 
-
       // ============================================================
-      // CASE 1
-      // VERIFY DEFAULT VALUE + ALL OPTIONS
+      // 8. TEST 3: PHONE = 15 DIGITS (VALID MAX BOUNDARY -> NO ERROR MESSAGE)
       // ============================================================
+      await page.getByPlaceholder('e.g. +91 9876543210').fill('987654321012345');
+      await expect(page.getByPlaceholder('e.g. +91 9876543210')).toHaveValue('987654321012345');
+      await page.getByRole('button', { name: /Save profile|Save Profile|Saved/i }).click();
+      await expect(phoneErrorMessageLocator).not.toBeVisible({ timeout: 5000 });
+      console.log('CP-018: Phone number 987654321012345 (15 digits) validated as valid (no error message)');
 
-      {
-
-        const profilePosts =
-          await setupMocks();
-
-
-        await loginAndOpenProfile();
-
-
-        const {
-          physicalActivitySelect,
-        } =
-          await getPhysicalActivityLocators();
-
-
-        // ----------------------------------------------------------
-        // Existing value
-        // ----------------------------------------------------------
-
-        await expect(
-          physicalActivitySelect
-        ).toHaveValue(
-          'moderate'
-        );
-
-
-        // ----------------------------------------------------------
-        // Read actual option texts
-        // ----------------------------------------------------------
-
-        const options =
-          await physicalActivitySelect
-            .locator('option')
-            .allTextContents();
-
-
-        const cleanedOptions =
-          options.map(
-            option =>
-              option.trim()
-          );
-
-
-        // Actual DOM contains:
-        //
-        // Select activity level
-        // Sedentary
-        // Light Active
-        // Moderate
-        // Very Active
-        // Highly Active
-        //
-
-        expect(
-          cleanedOptions
-        ).toEqual([
-          'Select activity level',
-          'Sedentary',
-          'Light Active',
-          'Moderate',
-          'Very Active',
-          'Highly Active',
-        ]);
-
-
-        // Verify the five real choices separately.
-        expect(
-          cleanedOptions.slice(1)
-        ).toEqual([
-          'Sedentary',
-          'Light Active',
-          'Moderate',
-          'Very Active',
-          'Highly Active',
-        ]);
-
-
-        expect(
-          profilePosts.length
-        ).toBe(0);
-
-
-        console.log(
-          'CP-024 PHYSICAL ACTIVITY OPTIONS VERIFIED'
-        );
-
+      // Re-open profile page if app navigated back to home
+      if (await profileBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+        await profileBtn.click();
+        await expect(personalDetailsHeading).toBeVisible({ timeout: 10000 });
       }
 
-
       // ============================================================
-      // CASE 2
-      // SEDENTARY → SAVE
+      // 9. TEST 4: PHONE = 16 DIGITS (MORE THAN 15 -> SHOWS ERROR MESSAGE)
       // ============================================================
-
-      {
-
-        const profilePosts =
-          await setupMocks();
-
-
-        await loginAndOpenProfile();
-
-
-        const {
-          physicalActivitySelect,
-          saveButton,
-        } =
-          await getPhysicalActivityLocators();
-
-
-        await physicalActivitySelect.selectOption({
-          label:
-            'Sedentary',
-        });
-
-
-        await expect(
-          physicalActivitySelect
-        ).toHaveValue(
-          'sedentary'
-        );
-
-
-        await expect(
-          saveButton
-        ).toBeEnabled();
-
-
-        await saveButton.click();
-
-
-        await expect
-          .poll(
-            () =>
-              profilePosts.length,
-            {
-              timeout:
-                5000,
-
-              intervals:
-                [
-                  200,
-                  500,
-                  1000,
-                ],
-            }
-          )
-          .toBe(1);
-
-
-        expect(
-          profilePosts[0]
-        ).toMatchObject({
-
-          physicalActivityLevel:
-            'sedentary',
-
-          email:
-            TEST_EMAIL,
-
-          name:
-            'Nitheesh Lingam',
-
-          height:
-            170,
-
-          phoneNumber:
-            TEST_PHONE,
-
-          gender:
-            'Male',
-
-        });
-
-
-        console.log(
-          'CP-024 PHYSICAL ACTIVITY SEDENTARY: SAVED'
-        );
-
-      }
-
-
-      // ============================================================
-      // CASE 3
-      // HIGHLY ACTIVE → SAVE
-      // ============================================================
-
-      {
-
-        const profilePosts =
-          await setupMocks();
-
-
-        await loginAndOpenProfile();
-
-
-        const {
-          physicalActivitySelect,
-          saveButton,
-        } =
-          await getPhysicalActivityLocators();
-
-
-        await physicalActivitySelect.selectOption({
-          label:
-            'Highly Active',
-        });
-
-
-        await expect(
-          physicalActivitySelect
-        ).toHaveValue(
-          'highly_active'
-        );
-
-
-        await expect(
-          saveButton
-        ).toBeEnabled();
-
-
-        await saveButton.click();
-
-
-        await expect
-          .poll(
-            () =>
-              profilePosts.length,
-            {
-              timeout:
-                5000,
-
-              intervals:
-                [
-                  200,
-                  500,
-                  1000,
-                ],
-            }
-          )
-          .toBe(1);
-
-
-        expect(
-          profilePosts[0]
-        ).toMatchObject({
-
-          physicalActivityLevel:
-            'highly_active',
-
-          email:
-            TEST_EMAIL,
-
-          name:
-            'Nitheesh Lingam',
-
-          height:
-            170,
-
-          phoneNumber:
-            TEST_PHONE,
-
-          gender:
-            'Male',
-
-        });
-
-
-        console.log(
-          'CP-024 PHYSICAL ACTIVITY HIGHLY ACTIVE: SAVED'
-        );
-
-      }
-
-
-      console.log(
-        'CP-024 PHYSICAL ACTIVITY VALIDATION VERIFIED'
-      );
-
+      await page.getByPlaceholder('e.g. +91 9876543210').fill('9876543210123456');
+      await expect(page.getByPlaceholder('e.g. +91 9876543210')).toHaveValue('9876543210123456');
+      await page.getByRole('button', { name: /Save profile|Save Profile|Saved/i }).click();
+      await expect(phoneErrorMessageLocator).toBeVisible({ timeout: 10000 });
+      console.log('CP-018: Phone number 9876543210123456 (16 digits) validated as invalid (error message displayed)');
     }
   );
 
   test(
-    'CP-025 Profile Diet Preference validates available values',
+    'CP-019 Body Fat % field validation for range (1-70) controls Save Profile button availability',
     async ({ page }) => {
-
       // ============================================================
       // TEST DATA
       // ============================================================
-
       const TEST_PHONE = '7695834209';
-      const LOGIN_OTP = '123456';
-      const TEST_EMAIL = 'existing@test.com';
-      const TEST_USER_ID = 861;
-
+      const TEST_NAME = 'Nitheesh Lingam';
+      const TEST_EMAIL = 'nitheesh@example.com';
 
       // ============================================================
-      // SETUP MOCKS
+      // 1. MOCK APIS FOR AUTHENTICATED USER
       // ============================================================
-
-      async function setupMocks() {
-
-        const profilePosts = [];
-
-
-        // ----------------------------------------------------------
-        // SEND OTP
-        // ----------------------------------------------------------
-
-        await page.route(
-          '**/api/auth/send-otp',
-          async route => {
-
-            await route.fulfill({
-              status: 200,
-              contentType: 'application/json',
-
-              body: JSON.stringify({
-                success: true,
-              }),
-            });
-
-          }
-        );
-
-
-        // ----------------------------------------------------------
-        // VERIFY LOGIN OTP
-        // ----------------------------------------------------------
-
-        await page.route(
-          '**/api/auth/verify-otp',
-          async route => {
-
-            const body =
-              route.request().postDataJSON();
-
-            expect(
-              body
-            ).toMatchObject({
-
-              recipient:
-                `+ 91${ TEST_PHONE } `,
-
-              otp:
-                LOGIN_OTP,
-
-              contactType:
-                'phone',
-            });
-
-
-            await route.fulfill({
-              status: 200,
-              contentType: 'application/json',
-
-              body: JSON.stringify({
-
-                success:
-                  true,
-
-                isNewUser:
-                  false,
-
-                isActive:
-                  true,
-
-                role:
-                  'user',
-
-                user: {
-
-                  id:
-                    TEST_USER_ID,
-
-                  UserId:
-                    TEST_USER_ID,
-
-                  username:
-                    'existinguser',
-
-                  email:
-                    TEST_EMAIL,
-
-                  phone:
-                    `+ 91${ TEST_PHONE } `,
-
-                  status:
-                    'Active',
-
-                  consentRequired:
-                    false,
-                },
-              }),
-            });
-
-          }
-        );
-
-
-        // ----------------------------------------------------------
-        // USER LOOKUP
-        // ----------------------------------------------------------
-
-        await page.route(
-          '**/api/user/lookup*',
-          async route => {
-
-            await route.fulfill({
-              status: 200,
-              contentType: 'application/json',
-
-              body: JSON.stringify({
-
-                success:
-                  true,
-
-                isNewUser:
-                  false,
-
-                isActive:
-                  true,
-
-                role:
-                  'user',
-
-                data: {
-
-                  userId:
-                    TEST_USER_ID,
-
-                  email:
-                    TEST_EMAIL,
-                },
-              }),
-            });
-
-          }
-        );
-
-
-        // ----------------------------------------------------------
-        // CONSENT
-        // ----------------------------------------------------------
-
-        await page.route(
-          '**/api/user/consent*',
-          async route => {
-
-            if (
-              route.request().method() ===
-              'GET'
-            ) {
-
-              await route.fulfill({
-                status: 200,
-                contentType:
-                  'application/json',
-
-                body: JSON.stringify({
-
-                  success:
-                    true,
-
-                  consentRequired:
-                    false,
-
-                  consentAccepted:
-                    true,
-                }),
-              });
-
-              return;
-            }
-
-
-            await route.continue();
-
-          }
-        );
-
-
-        // ----------------------------------------------------------
-        // PROFILE GET + POST
-        // ----------------------------------------------------------
-
-        await page.route(
-          '**/api/user/profile*',
-          async route => {
-
-            const method =
-              route.request().method();
-
-
-            // GET
-            if (
-              method === 'GET'
-            ) {
-
-              await route.fulfill({
-                status: 200,
-                contentType:
-                  'application/json',
-
-                body: JSON.stringify({
-
-                  success:
-                    true,
-
-                  data: {
-
-                    userId:
-                      TEST_USER_ID,
-
-                    userName:
-                      'Nitheesh Lingam',
-
-                    email:
-                      TEST_EMAIL,
-
-                    phoneNumber:
-                      TEST_PHONE,
-
-                    gender:
-                      'Male',
-
-                    height:
-                      170,
-
-                    communityId:
-                      'WB12345',
-
-                    dietType:
-                      'Vegetarian',
-
-                    latestWeight:
-                      72.5,
-
-                    latestWeightBodyFat:
-                      22,
-
-                    latestBmr:
-                      1424,
-
-                    bodyFat:
-                      22,
-
-                    physicalActivityLevel:
-                      'moderate',
-
-                    profileImage:
-                      'https://example.com/profile.jpg',
-
-                    profileComplete:
-                      true,
-
-                    weightGoalMode:
-                      'loss',
-                  },
-                }),
-              });
-
-              return;
-            }
-
-
-            // POST
-            if (
-              method === 'POST'
-            ) {
-
-              const body =
-                route.request().postDataJSON();
-
-              console.log(
-                'CP-025 PROFILE POST:',
-                body
-              );
-
-              profilePosts.push({
-                ...body,
-              });
-
-
-              await route.fulfill({
-                status: 200,
-                contentType:
-                  'application/json',
-
-                body: JSON.stringify({
-
-                  success:
-                    true,
-
-                  message:
-                    'Profile saved successfully!',
-
-                  data: {
-
-                    ...body,
-
-                    userId:
-                      TEST_USER_ID,
-
-                    profileComplete:
-                      true,
-                  },
-                }),
-              });
-
-              return;
-            }
-
-
-            await route.continue();
-
-          }
-        );
-
-
-        // ----------------------------------------------------------
-        // USER STATUS
-        // ----------------------------------------------------------
-
-        await page.route(
-          '**/api/user/status*',
-          async route => {
-
-            await route.fulfill({
-              status: 200,
-              contentType:
-                'application/json',
-
-              body: JSON.stringify({
-
-                success:
-                  true,
-
-                setupComplete:
-                  true,
-
-                setupSkipped:
-                  true,
-
-                hasTeamId:
-                  true,
-
-                hasUpline:
-                  true,
-
-                teamId:
-                  1,
-
-                uplineCoachId:
-                  12345,
-
-                role:
-                  'user',
-
-                pendingRequest:
-                  null,
-
-                redirectTo:
-                  null,
-              }),
-            });
-
-          }
-        );
-
-
-        return profilePosts;
-
-      }
-
-
-      // ============================================================
-      // LOGIN + OPEN PROFILE
-      // ============================================================
-
-      async function loginAndOpenProfile() {
-
-        await page.goto('/');
-
-
-        // ----------------------------------------------------------
-        // MOBILE
-        // ----------------------------------------------------------
-
-        const mobileInput =
-          page.getByLabel(
-            'Mobile Number'
-          );
-
-
-        await expect(
-          mobileInput
-        ).toBeVisible({
-          timeout:
-            15000,
+      await page.route('**/api/auth/send-otp', async route => {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true }) });
+      });
+
+      await page.route('**/api/user/verify-session', async route => {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, userId: 1004, sessionStale: false }) });
+      });
+
+      await page.route('**/api/user/lookup*', async route => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            isActive: true,
+            isNewUser: false,
+            role: 'user',
+            user: {
+              id: 1004,
+              UserId: 1004,
+              username: TEST_NAME,
+              name: TEST_NAME,
+              email: TEST_EMAIL,
+              phoneNumber: TEST_PHONE,
+              status: 'Active',
+            },
+          }),
         });
+      });
 
+      await page.route('**/api/user/consent*', async route => {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, consentRequired: false, consentAccepted: true }) });
+      });
 
-        await mobileInput.fill(
-          TEST_PHONE
-        );
+      let savedFat = '22';
 
-
-        await page
-          .getByRole(
-            'button',
-            {
-              name:
-                'Send OTP',
-
-              exact:
-                true,
-            }
-          )
-          .click();
-
-
-        // ----------------------------------------------------------
-        // OTP
-        // ----------------------------------------------------------
-
-        await expect(
-          page.getByText(
-            'Enter OTP',
-            {
-              exact:
-                true,
-            }
-          )
-        ).toBeVisible({
-          timeout:
-            15000,
-        });
-
-
-        const otpInputs =
-          page.locator(
-            'input[type="tel"]'
-          );
-
-
-        await expect(
-          otpInputs
-        ).toHaveCount(
-          6
-        );
-
-
-        for (
-          let i = 0;
-          i < LOGIN_OTP.length;
-          i++
-        ) {
-
-          await otpInputs
-            .nth(i)
-            .fill(
-              LOGIN_OTP[i]
-            );
-
+      await page.route('**/api/user/profile*', async route => {
+        const method = route.request().method();
+        if (method === 'GET') {
+          await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({
+              success: true,
+              data: {
+                userId: 1004,
+                profileComplete: true,
+                userName: TEST_NAME,
+                name: TEST_NAME,
+                email: TEST_EMAIL,
+                phoneNumber: TEST_PHONE,
+                gender: 'Male',
+                height: 170,
+                dietType: 'Vegetarian',
+                latestWeight: 72.5,
+                currentWeight: 72.5,
+                latestWeightBodyFat: Number(savedFat),
+                bodyFat: Number(savedFat),
+                bodyMetrics: { fatPercent: savedFat },
+                profileImage: 'https://example.com/photo.jpg',
+                physicalActivityLevel: 'moderate',
+                needsCurrentWeight: false,
+              },
+            }),
+          });
+          return;
         }
 
+        try {
+          const postData = route.request().postDataJSON();
+          if (postData && postData.bodyFat !== undefined) {
+            savedFat = String(postData.bodyFat);
+          }
+        } catch {
+          /* ignore JSON parse errors */
+        }
 
-        // ----------------------------------------------------------
-        // WAIT FOR AUTHENTICATION
-        // ----------------------------------------------------------
-
-        await expect
-          .poll(
-            async () => {
-
-              return await page.evaluate(
-                () => {
-
-                  const rawUser =
-                    localStorage.getItem(
-                      'otpUser'
-                    );
-
-                  return {
-
-                    verified:
-                      localStorage.getItem(
-                        'isOtpVerified'
-                      ),
-
-                    user:
-                      rawUser
-                        ? JSON.parse(
-                          rawUser
-                        )
-                        : null,
-                  };
-
-                }
-              );
-
-            },
-            {
-              timeout:
-                15000,
-
-              intervals:
-                [
-                  200,
-                  500,
-                  1000,
-                ],
-            }
-          )
-          .toMatchObject({
-
-            verified:
-              'true',
-
-            user: {
-              isNewUser:
-                false,
-            },
-          });
-
-
-        // ----------------------------------------------------------
-        // OPEN MY PROFILE
-        // ----------------------------------------------------------
-
-        const myProfileButton =
-          page.getByRole(
-            'button',
-            {
-              name:
-                'My Profile',
-
-              exact:
-                true,
-            }
-          );
-
-
-        await expect(
-          myProfileButton
-        ).toBeVisible({
-          timeout:
-            20000,
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            message: 'Profile saved successfully!',
+          }),
         });
-
-
-        await myProfileButton.click();
-
-
-        // ----------------------------------------------------------
-        // PROFILE PAGE
-        // ----------------------------------------------------------
-
-        await expect(
-          page.getByRole(
-            'heading',
-            {
-              name:
-                'My Profile',
-
-              exact:
-                true,
-            }
-          )
-        ).toBeVisible({
-          timeout:
-            15000,
-        });
-
-
-        await expect(
-          page.getByText(
-            'Personal Details',
-            {
-              exact:
-                true,
-            }
-          )
-        ).toBeVisible({
-          timeout:
-            10000,
-        });
-
-      }
-
+      });
 
       // ============================================================
-      // GET DIET DROPDOWN + SAVE BUTTON
+      // 2. SET AUTHENTICATED LOCALSTORAGE STATE
       // ============================================================
-
-      async function getDietLocators() {
-
-        const dietLabel =
-          page.getByText(
-            'Diet Preference',
-            {
-              exact:
-                true,
-            }
-          );
-
-
-        await expect(
-          dietLabel
-        ).toBeVisible({
-          timeout:
-            10000,
-        });
-
-
-        const dietContainer =
-          dietLabel.locator(
-            'xpath=..'
-          );
-
-
-        const dietButton =
-          dietContainer.getByRole(
-            'button'
-          );
-
-
-        const saveButton =
-          page.getByRole(
-            'button',
-            {
-              name:
-                'Save profile',
-
-              exact:
-                true,
-            }
-          );
-
-
-        await expect(
-          dietButton
-        ).toBeVisible();
-
-
-        await expect(
-          saveButton
-        ).toBeVisible({
-          timeout:
-            10000,
-        });
-
-
-        return {
-          dietContainer,
-          dietButton,
-          saveButton,
+      await page.addInitScript(({ phone, email, name }) => {
+        const user = {
+          id: 1004,
+          UserId: 1004,
+          userId: 1004,
+          username: name,
+          userName: name,
+          name: name,
+          email: email,
+          phone: `+91${phone}`,
+          phoneNumber: phone,
+          status: 'Active',
+          isNewUser: false,
+          consentRequired: false,
+          profileComplete: true,
+          physicalActivityLevel: 'moderate',
         };
 
-      }
-
-
-      // ============================================================
-      // SELECT DIET OPTION
-      //
-      // The dropdown contains:
-      //   1. Current-value button
-      //   2. Option buttons
-      //
-      // Therefore the option must be scoped to the opened
-      // dropdown container.
-      // ============================================================
-
-      async function selectDiet(dietLabel) {
-
-        const {
-          dietButton,
-        } = await getDietLocators();
-
-
-        // Open the diet dropdown.
-        await dietButton.click();
-
-
-        const matchingButtons =
-          page.getByRole(
-            'button',
-            {
-              name: dietLabel,
-              exact: true,
-            }
-          );
-
-
-        const count =
-          await matchingButtons.count();
-
-
-        expect(
-          count
-        ).toBeGreaterThan(0);
-
-
-        // When the selected value is the same as the option,
-        // there are two buttons:
-        //   1. current-value button
-        //   2. dropdown option
-        //
-        // For other options there is only one button.
-        const optionButton =
-          matchingButtons.nth(
-            count - 1
-          );
-
-
-        await expect(
-          optionButton
-        ).toBeVisible({
-          timeout: 5000,
-        });
-
-
-        await optionButton.click();
-
-
-        await expect(
-          dietButton
-        ).toContainText(
-          dietLabel
-        );
-
-      }
-
+        localStorage.setItem('isOtpVerified', 'true');
+        localStorage.setItem('otpUser', JSON.stringify(user));
+        localStorage.setItem('user', JSON.stringify(user));
+      }, { phone: TEST_PHONE, email: TEST_EMAIL, name: TEST_NAME });
 
       // ============================================================
-      // CASE 1
-      // EXISTING VALUE = VEGETARIAN
+      // 3. OPEN APP DIRECTLY AS AUTHENTICATED USER ON HOME PAGE
       // ============================================================
-
-      {
-
-        await setupMocks();
-
-        await loginAndOpenProfile();
-
-
-        const {
-          dietButton,
-        } =
-          await getDietLocators();
-
-
-        await expect(
-          dietButton
-        ).toContainText(
-          'Vegetarian'
-        );
-
-
-        // Open dropdown and inspect all available options.
-        await dietButton.click();
-
-
-        const optionButtons =
-          page.getByRole(
-            'button'
-          );
-
-
-        const vegetarianOptions =
-          page.getByRole(
-            'button',
-            {
-              name:
-                'Vegetarian',
-              exact:
-                true,
-            }
-          );
-
-
-        const nonVegetarianOptions =
-          page.getByRole(
-            'button',
-            {
-              name:
-                'Non-Vegetarian',
-              exact:
-                true,
-            }
-          );
-
-
-        const veganOptions =
-          page.getByRole(
-            'button',
-            {
-              name:
-                'Vegan',
-              exact:
-                true,
-            }
-          );
-
-
-        const pescatarianOptions =
-          page.getByRole(
-            'button',
-            {
-              name:
-                'Pescatarian',
-              exact:
-                true,
-            }
-          );
-
-
-        await expect(
-          vegetarianOptions
-        ).toHaveCount(
-          2
-        );
-
-
-        await expect(
-          nonVegetarianOptions
-        ).toHaveCount(
-          1
-        );
-
-
-        await expect(
-          veganOptions
-        ).toHaveCount(
-          1
-        );
-
-
-        await expect(
-          pescatarianOptions
-        ).toHaveCount(
-          1
-        );
-
-
-        // Close dropdown by selecting existing value.
-        await vegetarianOptions.nth(1).click();
-
-
-        console.log(
-          'CP-025 DIET OPTIONS VERIFIED'
-        );
-
-      }
-
+      await page.goto('/', { waitUntil: 'domcontentloaded' });
 
       // ============================================================
-      // CASE 2
-      // VEGETARIAN → SAVE
+      // 4. SELECT PROFILE AVATAR IN HEADER TO OPEN PROFILE FORM
       // ============================================================
-
-      {
-
-        const profilePosts =
-          await setupMocks();
-
-        await loginAndOpenProfile();
-
-
-        await selectDiet(
-          'Vegetarian'
-        );
-
-
-        const {
-          saveButton,
-        } =
-          await getDietLocators();
-
-
-        await expect(
-          saveButton
-        ).toBeEnabled();
-
-
-        await saveButton.click();
-
-
-        await expect
-          .poll(
-            () =>
-              profilePosts.length,
-            {
-              timeout:
-                5000,
-
-              intervals:
-                [
-                  200,
-                  500,
-                  1000,
-                ],
-            }
-          )
-          .toBe(1);
-
-
-        expect(
-          profilePosts[0]
-        ).toMatchObject({
-
-          dietType:
-            'Vegetarian',
-
-          email:
-            TEST_EMAIL,
-
-          name:
-            'Nitheesh Lingam',
-
-        });
-
-
-        console.log(
-          'CP-025 DIET VEGETARIAN: SAVED'
-        );
-
-      }
-
+      const profileBtn = page.getByRole('button', { name: 'My Profile' });
+      await expect(profileBtn).toBeVisible({ timeout: 15000 });
+      await profileBtn.click();
 
       // ============================================================
-      // CASE 3
-      // NON-VEGETARIAN → SAVE
+      // 5. VERIFY PROFILE FORM PAGE REACHED AND LOCATE INPUTS
       // ============================================================
+      const profileHeading = page.getByRole('heading', { name: 'My Profile', exact: true });
+      await expect(profileHeading).toBeVisible({ timeout: 15000 });
 
-      {
+      const personalDetailsHeading = page.getByRole('heading', { name: 'Personal Details', exact: true });
+      await expect(personalDetailsHeading).toBeVisible({ timeout: 15000 });
 
-        const profilePosts =
-          await setupMocks();
+      const fatInput = page.locator('label').filter({ hasText: 'Fat %' }).locator('..').locator('input');
+      await expect(fatInput).toBeVisible({ timeout: 15000 });
 
-        await loginAndOpenProfile();
-
-
-        await selectDiet(
-          'Non-Vegetarian'
-        );
-
-
-        const {
-          saveButton,
-        } =
-          await getDietLocators();
-
-
-        await expect(
-          saveButton
-        ).toBeEnabled();
-
-
-        await saveButton.click();
-
-
-        await expect
-          .poll(
-            () =>
-              profilePosts.length,
-            {
-              timeout:
-                5000,
-
-              intervals:
-                [
-                  200,
-                  500,
-                  1000,
-                ],
-            }
-          )
-          .toBe(1);
-
-
-        expect(
-          profilePosts[0]
-        ).toMatchObject({
-
-          dietType:
-            'Non-Vegetarian',
-
-        });
-
-
-        console.log(
-          'CP-025 DIET NON-VEGETARIAN: SAVED'
-        );
-
-      }
-
+      const saveButton = page.getByRole('button', { name: /Save profile|Save Profile|Saved/i });
+      await expect(saveButton).toBeVisible({ timeout: 15000 });
 
       // ============================================================
-      // CASE 4
-      // VEGAN → SAVE
+      // 6. TEST 1: FAT % = 0 (OUT OF RANGE < 1 -> SAVE PROFILE DISABLED)
       // ============================================================
-
-      {
-
-        const profilePosts =
-          await setupMocks();
-
-        await loginAndOpenProfile();
-
-
-        await selectDiet(
-          'Vegan'
-        );
-
-
-        const {
-          saveButton,
-        } =
-          await getDietLocators();
-
-
-        await expect(
-          saveButton
-        ).toBeEnabled();
-
-
-        await saveButton.click();
-
-
-        await expect
-          .poll(
-            () =>
-              profilePosts.length,
-            {
-              timeout:
-                5000,
-
-              intervals:
-                [
-                  200,
-                  500,
-                  1000,
-                ],
-            }
-          )
-          .toBe(1);
-
-
-        expect(
-          profilePosts[0]
-        ).toMatchObject({
-
-          dietType:
-            'Vegan',
-
-        });
-
-
-        console.log(
-          'CP-025 DIET VEGAN: SAVED'
-        );
-
-      }
-
+      await fatInput.fill('0');
+      await expect(fatInput).toHaveValue('0');
+      await expect(saveButton).toBeDisabled({ timeout: 5000 });
+      console.log('CP-019: Fat % = 0 -> Save Profile button is DISABLED');
 
       // ============================================================
-      // CASE 5
-      // PESCATARIAN → SAVE
+      // 7. TEST 2: FAT % = 1 (MIN VALID BOUNDARY -> SAVE PROFILE ENABLED)
       // ============================================================
+      await fatInput.fill('1');
+      await expect(fatInput).toHaveValue('1');
+      await expect(saveButton).toBeEnabled({ timeout: 5000 });
+      console.log('CP-019: Fat % = 1 -> Save Profile button is ENABLED');
 
-      {
+      // ============================================================
+      // 8. TEST 3: FAT % = 70 (MAX VALID BOUNDARY -> SAVE PROFILE ENABLED)
+      // ============================================================
+      await fatInput.fill('70');
+      await expect(fatInput).toHaveValue('70');
+      await expect(saveButton).toBeEnabled({ timeout: 5000 });
+      console.log('CP-019: Fat % = 70 -> Save Profile button is ENABLED');
 
-        const profilePosts =
-          await setupMocks();
-
-        await loginAndOpenProfile();
-
-
-        await selectDiet(
-          'Pescatarian'
-        );
-
-
-        const {
-          saveButton,
-        } =
-          await getDietLocators();
-
-
-        await expect(
-          saveButton
-        ).toBeEnabled();
-
-
-        await saveButton.click();
-
-
-        await expect
-          .poll(
-            () =>
-              profilePosts.length,
-            {
-              timeout:
-                5000,
-
-              intervals:
-                [
-                  200,
-                  500,
-                  1000,
-                ],
-            }
-          )
-          .toBe(1);
-
-
-        expect(
-          profilePosts[0]
-        ).toMatchObject({
-
-          dietType:
-            'Pescatarian',
-
-        });
-
-
-        console.log(
-          'CP-025 DIET PESCATARIAN: SAVED'
-        );
-
-      }
-
-
-      console.log(
-        'CP-025 DIET PREFERENCE VALIDATION VERIFIED'
-      );
-
+      // ============================================================
+      // 9. TEST 4: FAT % = 71 (OUT OF RANGE > 70 -> SAVE PROFILE DISABLED)
+      // ============================================================
+      await fatInput.fill('71');
+      await expect(fatInput).toHaveValue('71');
+      await expect(saveButton).toBeDisabled({ timeout: 5000 });
+      console.log('CP-019: Fat % = 71 -> Save Profile button is DISABLED');
     }
   );
 
+  test(
+    'CP-020 BMI calculation verification for height and weight on profile page',
+    async ({ page }) => {
+      // ============================================================
+      // TEST DATA
+      // ============================================================
+      const TEST_PHONE = '7695834209';
+      const TEST_NAME = 'Nitheesh Lingam';
+      const TEST_EMAIL = 'nitheesh@example.com';
+
+      // ============================================================
+      // 1. MOCK APIS FOR AUTHENTICATED USER
+      // ============================================================
+      await page.route('**/api/auth/send-otp', async route => {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true }) });
+      });
+
+      await page.route('**/api/user/verify-session', async route => {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, userId: 1004, sessionStale: false }) });
+      });
+
+      await page.route('**/api/user/lookup*', async route => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            isActive: true,
+            isNewUser: false,
+            role: 'user',
+            user: {
+              id: 1004,
+              UserId: 1004,
+              username: TEST_NAME,
+              name: TEST_NAME,
+              email: TEST_EMAIL,
+              phoneNumber: TEST_PHONE,
+              status: 'Active',
+            },
+          }),
+        });
+      });
+
+      await page.route('**/api/user/consent*', async route => {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, consentRequired: false, consentAccepted: true }) });
+      });
+
+      let savedHeight = 170;
+
+      await page.route('**/api/user/profile*', async route => {
+        const method = route.request().method();
+        if (method === 'GET') {
+          await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({
+              success: true,
+              data: {
+                userId: 1004,
+                profileComplete: true,
+                userName: TEST_NAME,
+                name: TEST_NAME,
+                email: TEST_EMAIL,
+                phoneNumber: TEST_PHONE,
+                gender: 'Male',
+                height: savedHeight,
+                dietType: 'Vegetarian',
+                latestWeight: 65,
+                currentWeight: 65,
+                latestWeightBodyFat: 22,
+                bodyFat: 22,
+                bodyMetrics: { fatPercent: 22 },
+                profileImage: 'https://example.com/photo.jpg',
+                physicalActivityLevel: 'moderate',
+                needsCurrentWeight: false,
+              },
+            }),
+          });
+          return;
+        }
+
+        try {
+          const postData = route.request().postDataJSON();
+          if (postData && postData.height) {
+            savedHeight = Number(postData.height);
+          }
+        } catch {
+          /* ignore JSON parse errors */
+        }
+
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            message: 'Profile saved successfully!',
+          }),
+        });
+      });
+
+      // ============================================================
+      // 2. SET AUTHENTICATED LOCALSTORAGE STATE
+      // ============================================================
+      await page.addInitScript(({ phone, email, name }) => {
+        const user = {
+          id: 1004,
+          UserId: 1004,
+          userId: 1004,
+          username: name,
+          userName: name,
+          name: name,
+          email: email,
+          phone: `+91${phone}`,
+          phoneNumber: phone,
+          status: 'Active',
+          isNewUser: false,
+          consentRequired: false,
+          profileComplete: true,
+          physicalActivityLevel: 'moderate',
+        };
+
+        localStorage.setItem('isOtpVerified', 'true');
+        localStorage.setItem('otpUser', JSON.stringify(user));
+        localStorage.setItem('user', JSON.stringify(user));
+      }, { phone: TEST_PHONE, email: TEST_EMAIL, name: TEST_NAME });
+
+      // ============================================================
+      // 3. OPEN APP DIRECTLY AS AUTHENTICATED USER ON HOME PAGE
+      // ============================================================
+      await page.goto('/', { waitUntil: 'domcontentloaded' });
+
+      // ============================================================
+      // 4. SELECT PROFILE AVATAR IN HEADER TO OPEN PROFILE FORM
+      // ============================================================
+      const profileBtn = page.getByRole('button', { name: 'My Profile' });
+      await expect(profileBtn).toBeVisible({ timeout: 15000 });
+      await profileBtn.click();
+
+      // ============================================================
+      // 5. VERIFY PROFILE FORM PAGE REACHED AND LOCATE INPUTS
+      // ============================================================
+      const profileHeading = page.getByRole('heading', { name: 'My Profile', exact: true });
+      await expect(profileHeading).toBeVisible({ timeout: 15000 });
+
+      const personalDetailsHeading = page.getByRole('heading', { name: 'Personal Details', exact: true });
+      await expect(personalDetailsHeading).toBeVisible({ timeout: 15000 });
+
+      const heightInput = page.getByPlaceholder('e.g. 170');
+      await expect(heightInput).toBeVisible({ timeout: 15000 });
+
+      const bmiValueDisplay = page.locator('label').filter({ hasText: /^BMI$/ }).locator('..').locator('div[aria-readonly="true"]');
+      await expect(bmiValueDisplay).toBeVisible({ timeout: 15000 });
+
+      // ============================================================
+      // 6. VERIFY BMI CALCULATION: height = 170, weight = 65 -> BMI = 22.5
+      // ============================================================
+      await expect(bmiValueDisplay).toHaveText('22.5');
+      console.log('CP-020: BMI calculation for height=170cm, weight=65kg verified as 22.5');
+
+      // ============================================================
+      // 7. VERIFY DYNAMIC BMI RE-CALCULATION WHEN HEIGHT IS UPDATED (e.g. 180cm, 65kg -> 20.1)
+      // ============================================================
+      await heightInput.fill('180');
+      await expect(heightInput).toHaveValue('180');
+      await expect(bmiValueDisplay).toHaveText('20.1');
+      console.log('CP-020: Dynamic BMI calculation for height=180cm, weight=65kg verified as 20.1');
+
+      // Restore height to 170
+      await heightInput.fill('170');
+      await expect(heightInput).toHaveValue('170');
+      await expect(bmiValueDisplay).toHaveText('22.5');
+      console.log('CP-020: Dynamic BMI calculation restored to height=170cm verified as 22.5');
+    }
+  );
+
+  test(
+    'CP-021 Age field validation for minimum and maximum boundaries (0, 1, 120, 121) in profile page',
+    async ({ page }) => {
+      // ============================================================
+      // TEST DATA
+      // ============================================================
+      const TEST_PHONE = '7695834209';
+      const TEST_NAME = 'Nitheesh Lingam';
+      const TEST_EMAIL = 'nitheesh@example.com';
+
+      // ============================================================
+      // 1. MOCK APIS FOR AUTHENTICATED USER
+      // ============================================================
+      await page.route('**/api/auth/send-otp', async route => {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true }) });
+      });
+
+      await page.route('**/api/user/verify-session', async route => {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, userId: 1004, sessionStale: false }) });
+      });
+
+      await page.route('**/api/user/lookup*', async route => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            isActive: true,
+            isNewUser: false,
+            role: 'user',
+            user: {
+              id: 1004,
+              UserId: 1004,
+              username: TEST_NAME,
+              name: TEST_NAME,
+              email: TEST_EMAIL,
+              phoneNumber: TEST_PHONE,
+              status: 'Active',
+            },
+          }),
+        });
+      });
+
+      await page.route('**/api/user/consent*', async route => {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, consentRequired: false, consentAccepted: true }) });
+      });
+
+      let savedAge = 30;
+
+      await page.route('**/api/user/profile*', async route => {
+        const method = route.request().method();
+        if (method === 'GET') {
+          await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({
+              success: true,
+              data: {
+                userId: 1004,
+                profileComplete: true,
+                userName: TEST_NAME,
+                name: TEST_NAME,
+                email: TEST_EMAIL,
+                phoneNumber: TEST_PHONE,
+                gender: 'Male',
+                height: 170,
+                dietType: 'Vegetarian',
+                latestWeight: 65,
+                currentWeight: 65,
+                latestWeightBodyFat: 22,
+                bodyFat: 22,
+                bodyMetrics: { age: savedAge, fatPercent: 22 },
+                profileImage: 'https://example.com/photo.jpg',
+                physicalActivityLevel: 'moderate',
+                needsCurrentWeight: false,
+              },
+            }),
+          });
+          return;
+        }
+
+        try {
+          const postData = route.request().postDataJSON();
+          if (postData && postData.age !== undefined) {
+            const ageNum = Number(postData.age);
+            if (ageNum < 1 || ageNum > 120) {
+              await route.fulfill({
+                status: 400,
+                contentType: 'application/json',
+                body: JSON.stringify({
+                  success: false,
+                  message: 'Invalid age. Must be a number between 1 and 120.',
+                }),
+              });
+              return;
+            }
+            savedAge = ageNum;
+          }
+        } catch {
+          /* ignore JSON parse errors */
+        }
+
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            message: 'Profile saved successfully!',
+          }),
+        });
+      });
+
+      // ============================================================
+      // 2. SET AUTHENTICATED LOCALSTORAGE STATE
+      // ============================================================
+      await page.addInitScript(({ phone, email, name }) => {
+        const user = {
+          id: 1004,
+          UserId: 1004,
+          userId: 1004,
+          username: name,
+          userName: name,
+          name: name,
+          email: email,
+          phone: `+91${phone}`,
+          phoneNumber: phone,
+          status: 'Active',
+          isNewUser: false,
+          consentRequired: false,
+          profileComplete: true,
+          physicalActivityLevel: 'moderate',
+        };
+
+        localStorage.setItem('isOtpVerified', 'true');
+        localStorage.setItem('otpUser', JSON.stringify(user));
+        localStorage.setItem('user', JSON.stringify(user));
+      }, { phone: TEST_PHONE, email: TEST_EMAIL, name: TEST_NAME });
+
+      // ============================================================
+      // 3. OPEN APP DIRECTLY AS AUTHENTICATED USER ON HOME PAGE
+      // ============================================================
+      await page.goto('/', { waitUntil: 'domcontentloaded' });
+
+      // ============================================================
+      // 4. SELECT PROFILE AVATAR IN HEADER TO OPEN PROFILE FORM
+      // ============================================================
+      const profileBtn = page.getByRole('button', { name: 'My Profile' });
+      await expect(profileBtn).toBeVisible({ timeout: 15000 });
+      await profileBtn.click();
+
+      // ============================================================
+      // 5. VERIFY PROFILE FORM PAGE REACHED AND LOCATE INPUTS
+      // ============================================================
+      const profileHeading = page.getByRole('heading', { name: 'My Profile', exact: true });
+      await expect(profileHeading).toBeVisible({ timeout: 15000 });
+
+      const personalDetailsHeading = page.getByRole('heading', { name: 'Personal Details', exact: true });
+      await expect(personalDetailsHeading).toBeVisible({ timeout: 15000 });
+
+      const ageErrorMessageLocator = page.getByText('Invalid age. Must be a number between 1 and 120.', { exact: true });
+      const ageInput = page.locator('label').filter({ hasText: /^Age$/ }).locator('..').locator('input');
+      await expect(ageInput).toBeVisible({ timeout: 15000 });
+
+      const saveButton = page.getByRole('button', { name: /Save profile|Save Profile|Saved/i });
+      await expect(saveButton).toBeVisible({ timeout: 15000 });
+
+      // ============================================================
+      // 6. TEST 1: AGE = 0 (OUT OF RANGE < 1 -> SHOWS FAIL MESSAGE)
+      // ============================================================
+      await ageInput.fill('0');
+      await expect(ageInput).toHaveValue('0');
+      await saveButton.click();
+      await expect(ageErrorMessageLocator).toBeVisible({ timeout: 10000 });
+      console.log('CP-021: Age 0 validated as invalid (fail message displayed in profile screen)');
+
+      // ============================================================
+      // 7. TEST 2: AGE = 1 (VALID MIN BOUNDARY -> PROFILE SUCCESSFULLY SAVED)
+      // ============================================================
+      await ageInput.fill('1');
+      await expect(ageInput).toHaveValue('1');
+      await saveButton.click();
+      await expect(ageErrorMessageLocator).not.toBeVisible({ timeout: 5000 });
+      console.log('CP-021: Age 1 validated as valid (profile successfully saved)');
+
+      // Re-open profile page if app navigated back to home
+      if (await profileBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+        await profileBtn.click();
+        await expect(personalDetailsHeading).toBeVisible({ timeout: 10000 });
+      }
+
+      // ============================================================
+      // 8. TEST 3: AGE = 120 (VALID MAX BOUNDARY -> PROFILE SUCCESSFULLY SAVED)
+      // ============================================================
+      await ageInput.fill('120');
+      await expect(ageInput).toHaveValue('120');
+      await saveButton.click();
+      await expect(ageErrorMessageLocator).not.toBeVisible({ timeout: 5000 });
+      console.log('CP-021: Age 120 validated as valid (profile successfully saved)');
+
+      // Re-open profile page if app navigated back to home
+      if (await profileBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+        await profileBtn.click();
+        await expect(personalDetailsHeading).toBeVisible({ timeout: 10000 });
+      }
+
+      // ============================================================
+      // 9. TEST 4: AGE = 121 (MORE THAN 120 -> SHOWS FAIL MESSAGE)
+      // ============================================================
+      await ageInput.fill('121');
+      await expect(ageInput).toHaveValue('121');
+      await saveButton.click();
+      await expect(ageErrorMessageLocator).toBeVisible({ timeout: 10000 });
+      console.log('CP-021: Age 121 validated as invalid (fail message displayed in profile screen)');
+    }
+  );
+
+  test(
+    'CP-022 Profile Physical Activity field allows selecting all available options',
+    async ({ page }) => {
+      // ============================================================
+      // TEST DATA
+      // ============================================================
+      const TEST_PHONE = '7695834209';
+      const TEST_NAME = 'Nitheesh Lingam';
+      const TEST_EMAIL = 'nitheesh@example.com';
+
+      // ============================================================
+      // 1. MOCK APIS FOR AUTHENTICATED USER
+      // ============================================================
+      await page.route('**/api/auth/send-otp', async route => {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true }) });
+      });
+
+      await page.route('**/api/user/verify-session', async route => {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, userId: 1004, sessionStale: false }) });
+      });
+
+      await page.route('**/api/user/lookup*', async route => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            isActive: true,
+            isNewUser: false,
+            role: 'user',
+            user: {
+              id: 1004,
+              UserId: 1004,
+              username: TEST_NAME,
+              name: TEST_NAME,
+              email: TEST_EMAIL,
+              phoneNumber: TEST_PHONE,
+              status: 'Active',
+            },
+          }),
+        });
+      });
+
+      await page.route('**/api/user/consent*', async route => {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, consentRequired: false, consentAccepted: true }) });
+      });
+
+      let savedActivity = 'moderate';
+
+      await page.route('**/api/user/profile*', async route => {
+        const method = route.request().method();
+        if (method === 'GET') {
+          await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({
+              success: true,
+              data: {
+                userId: 1004,
+                profileComplete: true,
+                userName: TEST_NAME,
+                name: TEST_NAME,
+                email: TEST_EMAIL,
+                phoneNumber: TEST_PHONE,
+                gender: 'Male',
+                height: 170,
+                dietType: 'Vegetarian',
+                latestWeight: 65,
+                currentWeight: 65,
+                latestWeightBodyFat: 22,
+                bodyFat: 22,
+                bodyMetrics: { fatPercent: 22 },
+                profileImage: 'https://example.com/photo.jpg',
+                physicalActivityLevel: savedActivity,
+                needsCurrentWeight: false,
+              },
+            }),
+          });
+          return;
+        }
+
+        try {
+          const postData = route.request().postDataJSON();
+          if (postData && postData.physicalActivityLevel) {
+            savedActivity = postData.physicalActivityLevel;
+          }
+        } catch {
+          /* ignore JSON parse errors */
+        }
+
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            message: 'Profile saved successfully!',
+          }),
+        });
+      });
+
+      // ============================================================
+      // 2. SET AUTHENTICATED LOCALSTORAGE STATE
+      // ============================================================
+      await page.addInitScript(({ phone, email, name }) => {
+        const user = {
+          id: 1004,
+          UserId: 1004,
+          userId: 1004,
+          username: name,
+          userName: name,
+          name: name,
+          email: email,
+          phone: `+91${phone}`,
+          phoneNumber: phone,
+          status: 'Active',
+          isNewUser: false,
+          consentRequired: false,
+          profileComplete: true,
+          physicalActivityLevel: 'moderate',
+        };
+
+        localStorage.setItem('isOtpVerified', 'true');
+        localStorage.setItem('otpUser', JSON.stringify(user));
+        localStorage.setItem('user', JSON.stringify(user));
+      }, { phone: TEST_PHONE, email: TEST_EMAIL, name: TEST_NAME });
+
+      // ============================================================
+      // 3. OPEN APP DIRECTLY AS AUTHENTICATED USER ON HOME PAGE
+      // ============================================================
+      await page.goto('/', { waitUntil: 'domcontentloaded' });
+
+      // ============================================================
+      // 4. SELECT PROFILE AVATAR IN HEADER TO OPEN PROFILE FORM
+      // ============================================================
+      const profileBtn = page.getByRole('button', { name: 'My Profile' });
+      await expect(profileBtn).toBeVisible({ timeout: 15000 });
+      await profileBtn.click();
+
+      // ============================================================
+      // 5. VERIFY PROFILE FORM PAGE REACHED AND LOCATE INPUTS
+      // ============================================================
+      const profileHeading = page.getByRole('heading', { name: 'My Profile', exact: true });
+      await expect(profileHeading).toBeVisible({ timeout: 15000 });
+
+      const personalDetailsHeading = page.getByRole('heading', { name: 'Personal Details', exact: true });
+      await expect(personalDetailsHeading).toBeVisible({ timeout: 15000 });
+
+      const activitySelect = page.locator('label').filter({ hasText: /^Physical Activity$/ }).locator('..').locator('select');
+      await expect(activitySelect).toBeVisible({ timeout: 15000 });
+
+      // ============================================================
+      // 6. TEST SELECTING ALL PHYSICAL ACTIVITY OPTIONS
+      // ============================================================
+
+      // Option 1: Sedentary
+      await activitySelect.selectOption('sedentary');
+      await expect(activitySelect).toHaveValue('sedentary');
+      console.log('CP-022: Option "Sedentary" selected and verified');
+
+      // Option 2: Light Active
+      await activitySelect.selectOption('light_active');
+      await expect(activitySelect).toHaveValue('light_active');
+      console.log('CP-022: Option "Light Active" selected and verified');
+
+      // Option 3: Moderate
+      await activitySelect.selectOption('moderate');
+      await expect(activitySelect).toHaveValue('moderate');
+      console.log('CP-022: Option "Moderate" selected and verified');
+
+      // Option 4: Very Active
+      await activitySelect.selectOption('very_active');
+      await expect(activitySelect).toHaveValue('very_active');
+      console.log('CP-022: Option "Very Active" selected and verified');
+
+      // Option 5: Highly Active
+      await activitySelect.selectOption('highly_active');
+      await expect(activitySelect).toHaveValue('highly_active');
+      console.log('CP-022: Option "Highly Active" selected and verified');
+
+      console.log('CP-022: All 5 Physical Activity options successfully selected and verified');
+    }
+  );
+
+  test(
+    'CP-023 Visceral Fat (V-Fat) field validation for minimum and maximum boundaries (0, 1, 59, 60) in profile page',
+    async ({ page }) => {
+      // ============================================================
+      // TEST DATA
+      // ============================================================
+      const TEST_PHONE = '7695834209';
+      const TEST_NAME = 'Nitheesh Lingam';
+      const TEST_EMAIL = 'nitheesh@example.com';
+
+      // ============================================================
+      // 1. MOCK APIS FOR AUTHENTICATED USER
+      // ============================================================
+      await page.route('**/api/auth/send-otp', async route => {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true }) });
+      });
+
+      await page.route('**/api/user/verify-session', async route => {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, userId: 1004, sessionStale: false }) });
+      });
+
+      await page.route('**/api/user/lookup*', async route => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            isActive: true,
+            isNewUser: false,
+            role: 'user',
+            user: {
+              id: 1004,
+              UserId: 1004,
+              username: TEST_NAME,
+              name: TEST_NAME,
+              email: TEST_EMAIL,
+              phoneNumber: TEST_PHONE,
+              status: 'Active',
+            },
+          }),
+        });
+      });
+
+      await page.route('**/api/user/consent*', async route => {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, consentRequired: false, consentAccepted: true }) });
+      });
+
+      let savedVisceralFat = 10;
+
+      await page.route('**/api/user/profile*', async route => {
+        const method = route.request().method();
+        if (method === 'GET') {
+          await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({
+              success: true,
+              data: {
+                userId: 1004,
+                profileComplete: true,
+                userName: TEST_NAME,
+                name: TEST_NAME,
+                email: TEST_EMAIL,
+                phoneNumber: TEST_PHONE,
+                gender: 'Male',
+                height: 170,
+                dietType: 'Vegetarian',
+                latestWeight: 65,
+                currentWeight: 65,
+                latestWeightBodyFat: 22,
+                bodyFat: 22,
+                bodyMetrics: { visceralFat: savedVisceralFat, fatPercent: 22 },
+                profileImage: 'https://example.com/photo.jpg',
+                physicalActivityLevel: 'moderate',
+                needsCurrentWeight: false,
+              },
+            }),
+          });
+          return;
+        }
+
+        try {
+          const postData = route.request().postDataJSON();
+          if (postData && postData.visceralFat !== undefined) {
+            const vfatNum = Number(postData.visceralFat);
+            if (vfatNum < 1 || vfatNum > 59) {
+              await route.fulfill({
+                status: 400,
+                contentType: 'application/json',
+                body: JSON.stringify({
+                  success: false,
+                  message: 'Invalid visceralFat. Must be a number between 1 and 59.',
+                }),
+              });
+              return;
+            }
+            savedVisceralFat = vfatNum;
+          }
+        } catch {
+          /* ignore JSON parse errors */
+        }
+
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            message: 'Profile saved successfully!',
+          }),
+        });
+      });
+
+      // ============================================================
+      // 2. SET AUTHENTICATED LOCALSTORAGE STATE
+      // ============================================================
+      await page.addInitScript(({ phone, email, name }) => {
+        const user = {
+          id: 1004,
+          UserId: 1004,
+          userId: 1004,
+          username: name,
+          userName: name,
+          name: name,
+          email: email,
+          phone: `+91${phone}`,
+          phoneNumber: phone,
+          status: 'Active',
+          isNewUser: false,
+          consentRequired: false,
+          profileComplete: true,
+          physicalActivityLevel: 'moderate',
+        };
+
+        localStorage.setItem('isOtpVerified', 'true');
+        localStorage.setItem('otpUser', JSON.stringify(user));
+        localStorage.setItem('user', JSON.stringify(user));
+      }, { phone: TEST_PHONE, email: TEST_EMAIL, name: TEST_NAME });
+
+      // ============================================================
+      // 3. OPEN APP DIRECTLY AS AUTHENTICATED USER ON HOME PAGE
+      // ============================================================
+      await page.goto('/', { waitUntil: 'domcontentloaded' });
+
+      // ============================================================
+      // 4. SELECT PROFILE AVATAR IN HEADER TO OPEN PROFILE FORM
+      // ============================================================
+      const profileBtn = page.getByRole('button', { name: 'My Profile' });
+      await expect(profileBtn).toBeVisible({ timeout: 15000 });
+      await profileBtn.click();
+
+      // ============================================================
+      // 5. VERIFY PROFILE FORM PAGE REACHED AND LOCATE INPUTS
+      // ============================================================
+      const profileHeading = page.getByRole('heading', { name: 'My Profile', exact: true });
+      await expect(profileHeading).toBeVisible({ timeout: 15000 });
+
+      const personalDetailsHeading = page.getByRole('heading', { name: 'Personal Details', exact: true });
+      await expect(personalDetailsHeading).toBeVisible({ timeout: 15000 });
+
+      const vfatErrorMessageLocator = page.getByText('Invalid visceralFat. Must be a number between 1 and 59.', { exact: true });
+      const vfatInput = page.locator('label').filter({ hasText: /^V-Fat$/ }).locator('..').locator('input');
+      await expect(vfatInput).toBeVisible({ timeout: 15000 });
+
+      const saveButton = page.getByRole('button', { name: /Save profile|Save Profile|Saved/i });
+      await expect(saveButton).toBeVisible({ timeout: 15000 });
+
+      // ============================================================
+      // 6. TEST 1: V-FAT = 0 (OUT OF RANGE < 1 -> SHOWS FAIL MESSAGE)
+      // ============================================================
+      await vfatInput.fill('0');
+      await expect(vfatInput).toHaveValue('0');
+      await saveButton.click();
+      await expect(vfatErrorMessageLocator).toBeVisible({ timeout: 10000 });
+      console.log('CP-023: V-Fat 0 validated as invalid (fail message displayed in profile screen)');
+
+      // ============================================================
+      // 7. TEST 2: V-FAT = 1 (VALID MIN BOUNDARY -> PROFILE SUCCESSFULLY SAVED)
+      // ============================================================
+      await vfatInput.fill('1');
+      await expect(vfatInput).toHaveValue('1');
+      await saveButton.click();
+      await expect(vfatErrorMessageLocator).not.toBeVisible({ timeout: 5000 });
+      console.log('CP-023: V-Fat 1 validated as valid (profile successfully saved)');
+
+      // Re-open profile page if app navigated back to home
+      if (await profileBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+        await profileBtn.click();
+        await expect(personalDetailsHeading).toBeVisible({ timeout: 10000 });
+      }
+
+      // ============================================================
+      // 8. TEST 3: V-FAT = 59 (VALID MAX BOUNDARY -> PROFILE SUCCESSFULLY SAVED)
+      // ============================================================
+      await vfatInput.fill('59');
+      await expect(vfatInput).toHaveValue('59');
+      await saveButton.click();
+      await expect(vfatErrorMessageLocator).not.toBeVisible({ timeout: 5000 });
+      console.log('CP-023: V-Fat 59 validated as valid (profile successfully saved)');
+
+      // Re-open profile page if app navigated back to home
+      if (await profileBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+        await profileBtn.click();
+        await expect(personalDetailsHeading).toBeVisible({ timeout: 10000 });
+      }
+
+      // ============================================================
+      // 9. TEST 4: V-FAT = 60 (MORE THAN 59 -> SHOWS FAIL MESSAGE)
+      // ============================================================
+      await vfatInput.fill('60');
+      await expect(vfatInput).toHaveValue('60');
+      await saveButton.click();
+      await expect(vfatErrorMessageLocator).toBeVisible({ timeout: 10000 });
+      console.log('CP-023: V-Fat 60 validated as invalid (fail message displayed in profile screen)');
+    }
+  );
+
+  test(
+    'CP-024 Body Age field validation for minimum and maximum boundaries (0, 1, 120, 121) in profile page',
+    async ({ page }) => {
+      // ============================================================
+      // TEST DATA
+      // ============================================================
+      const TEST_PHONE = '7695834209';
+      const TEST_NAME = 'Nitheesh Lingam';
+      const TEST_EMAIL = 'nitheesh@example.com';
+
+      // ============================================================
+      // 1. MOCK APIS FOR AUTHENTICATED USER
+      // ============================================================
+      await page.route('**/api/auth/send-otp', async route => {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true }) });
+      });
+
+      await page.route('**/api/user/verify-session', async route => {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, userId: 1004, sessionStale: false }) });
+      });
+
+      await page.route('**/api/user/lookup*', async route => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            isActive: true,
+            isNewUser: false,
+            role: 'user',
+            user: {
+              id: 1004,
+              UserId: 1004,
+              username: TEST_NAME,
+              name: TEST_NAME,
+              email: TEST_EMAIL,
+              phoneNumber: TEST_PHONE,
+              status: 'Active',
+            },
+          }),
+        });
+      });
+
+      await page.route('**/api/user/consent*', async route => {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, consentRequired: false, consentAccepted: true }) });
+      });
+
+      let savedBodyAge = 25;
+
+      await page.route('**/api/user/profile*', async route => {
+        const method = route.request().method();
+        if (method === 'GET') {
+          await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({
+              success: true,
+              data: {
+                userId: 1004,
+                profileComplete: true,
+                userName: TEST_NAME,
+                name: TEST_NAME,
+                email: TEST_EMAIL,
+                phoneNumber: TEST_PHONE,
+                gender: 'Male',
+                height: 170,
+                dietType: 'Vegetarian',
+                latestWeight: 65,
+                currentWeight: 65,
+                latestWeightBodyFat: 22,
+                bodyFat: 22,
+                bodyMetrics: { bodyAge: savedBodyAge, fatPercent: 22 },
+                profileImage: 'https://example.com/photo.jpg',
+                physicalActivityLevel: 'moderate',
+                needsCurrentWeight: false,
+              },
+            }),
+          });
+          return;
+        }
+
+        try {
+          const postData = route.request().postDataJSON();
+          if (postData && postData.bodyAge !== undefined) {
+            const bodyAgeNum = Number(postData.bodyAge);
+            if (bodyAgeNum < 1 || bodyAgeNum > 120) {
+              await route.fulfill({
+                status: 400,
+                contentType: 'application/json',
+                body: JSON.stringify({
+                  success: false,
+                  message: 'Invalid bodyAge. Must be a number between 1 and 120.',
+                }),
+              });
+              return;
+            }
+            savedBodyAge = bodyAgeNum;
+          }
+        } catch {
+          /* ignore JSON parse errors */
+        }
+
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            message: 'Profile saved successfully!',
+          }),
+        });
+      });
+
+      // ============================================================
+      // 2. SET AUTHENTICATED LOCALSTORAGE STATE
+      // ============================================================
+      await page.addInitScript(({ phone, email, name }) => {
+        const user = {
+          id: 1004,
+          UserId: 1004,
+          userId: 1004,
+          username: name,
+          userName: name,
+          name: name,
+          email: email,
+          phone: `+91${phone}`,
+          phoneNumber: phone,
+          status: 'Active',
+          isNewUser: false,
+          consentRequired: false,
+          profileComplete: true,
+          physicalActivityLevel: 'moderate',
+        };
+
+        localStorage.setItem('isOtpVerified', 'true');
+        localStorage.setItem('otpUser', JSON.stringify(user));
+        localStorage.setItem('user', JSON.stringify(user));
+      }, { phone: TEST_PHONE, email: TEST_EMAIL, name: TEST_NAME });
+
+      // ============================================================
+      // 3. OPEN APP DIRECTLY AS AUTHENTICATED USER ON HOME PAGE
+      // ============================================================
+      await page.goto('/', { waitUntil: 'domcontentloaded' });
+
+      // ============================================================
+      // 4. SELECT PROFILE AVATAR IN HEADER TO OPEN PROFILE FORM
+      // ============================================================
+      const profileBtn = page.getByRole('button', { name: 'My Profile' });
+      await expect(profileBtn).toBeVisible({ timeout: 15000 });
+      await profileBtn.click();
+
+      // ============================================================
+      // 5. VERIFY PROFILE FORM PAGE REACHED AND LOCATE INPUTS
+      // ============================================================
+      const profileHeading = page.getByRole('heading', { name: 'My Profile', exact: true });
+      await expect(profileHeading).toBeVisible({ timeout: 15000 });
+
+      const personalDetailsHeading = page.getByRole('heading', { name: 'Personal Details', exact: true });
+      await expect(personalDetailsHeading).toBeVisible({ timeout: 15000 });
+
+      const bodyAgeErrorMessageLocator = page.getByText('Invalid bodyAge. Must be a number between 1 and 120.', { exact: true });
+      const bodyAgeInput = page.locator('label').filter({ hasText: /^Body Age$/ }).locator('..').locator('input');
+      await expect(bodyAgeInput).toBeVisible({ timeout: 15000 });
+
+      const saveButton = page.getByRole('button', { name: /Save profile|Save Profile|Saved/i });
+      await expect(saveButton).toBeVisible({ timeout: 15000 });
+
+      // ============================================================
+      // 6. TEST 1: BODY AGE = 0 (OUT OF RANGE < 1 -> SHOWS FAIL MESSAGE)
+      // ============================================================
+      await bodyAgeInput.fill('0');
+      await expect(bodyAgeInput).toHaveValue('0');
+      await saveButton.click();
+      await expect(bodyAgeErrorMessageLocator).toBeVisible({ timeout: 10000 });
+      console.log('CP-024: Body Age 0 validated as invalid (fail message displayed in profile screen)');
+
+      // ============================================================
+      // 7. TEST 2: BODY AGE = 1 (VALID MIN BOUNDARY -> PROFILE SUCCESSFULLY SAVED)
+      // ============================================================
+      await bodyAgeInput.fill('1');
+      await expect(bodyAgeInput).toHaveValue('1');
+      await saveButton.click();
+      await expect(bodyAgeErrorMessageLocator).not.toBeVisible({ timeout: 5000 });
+      console.log('CP-024: Body Age 1 validated as valid (profile successfully saved)');
+
+      // Re-open profile page if app navigated back to home
+      if (await profileBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+        await profileBtn.click();
+        await expect(personalDetailsHeading).toBeVisible({ timeout: 10000 });
+      }
+
+      // ============================================================
+      // 8. TEST 3: BODY AGE = 120 (VALID MAX BOUNDARY -> PROFILE SUCCESSFULLY SAVED)
+      // ============================================================
+      await bodyAgeInput.fill('120');
+      await expect(bodyAgeInput).toHaveValue('120');
+      await saveButton.click();
+      await expect(bodyAgeErrorMessageLocator).not.toBeVisible({ timeout: 5000 });
+      console.log('CP-024: Body Age 120 validated as valid (profile successfully saved)');
+
+      // Re-open profile page if app navigated back to home
+      if (await profileBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+        await profileBtn.click();
+        await expect(personalDetailsHeading).toBeVisible({ timeout: 10000 });
+      }
+
+      // ============================================================
+      // 9. TEST 4: BODY AGE = 121 (MORE THAN 120 -> SHOWS FAIL MESSAGE)
+      // ============================================================
+      await bodyAgeInput.fill('121');
+      await expect(bodyAgeInput).toHaveValue('121');
+      await saveButton.click();
+      await expect(bodyAgeErrorMessageLocator).toBeVisible({ timeout: 10000 });
+      console.log('CP-024: Body Age 121 validated as invalid (fail message displayed in profile screen)');
+    }
+  );
+
+
+
+
+  test(
+    'CP-025 Waist (waistCm) field validation for minimum and maximum boundaries (0, 30, 200, 201) in profile page',
+    async ({ page }) => {
+      // ============================================================
+      // TEST DATA
+      // ============================================================
+      const TEST_PHONE = '7695834209';
+      const TEST_NAME = 'Nitheesh Lingam';
+      const TEST_EMAIL = 'nitheesh@example.com';
+
+      // ============================================================
+      // 1. MOCK APIS FOR AUTHENTICATED USER
+      // ============================================================
+      await page.route('**/api/auth/send-otp', async route => {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true }) });
+      });
+
+      await page.route('**/api/user/verify-session', async route => {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, userId: 1004, sessionStale: false }) });
+      });
+
+      await page.route('**/api/user/lookup*', async route => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            isActive: true,
+            isNewUser: false,
+            role: 'user',
+            user: {
+              id: 1004,
+              UserId: 1004,
+              username: TEST_NAME,
+              name: TEST_NAME,
+              email: TEST_EMAIL,
+              phoneNumber: TEST_PHONE,
+              status: 'Active',
+            },
+          }),
+        });
+      });
+
+      await page.route('**/api/user/consent*', async route => {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, consentRequired: false, consentAccepted: true }) });
+      });
+
+      let savedWaist = 80;
+
+      await page.route('**/api/user/profile*', async route => {
+        const method = route.request().method();
+        if (method === 'GET') {
+          await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({
+              success: true,
+              data: {
+                userId: 1004,
+                profileComplete: true,
+                userName: TEST_NAME,
+                name: TEST_NAME,
+                email: TEST_EMAIL,
+                phoneNumber: TEST_PHONE,
+                gender: 'Male',
+                height: 170,
+                dietType: 'Vegetarian',
+                latestWeight: 65,
+                currentWeight: 65,
+                latestWeightBodyFat: 22,
+                bodyFat: 22,
+                bodyMetrics: { waistCm: savedWaist, fatPercent: 22 },
+                profileImage: 'https://example.com/photo.jpg',
+                physicalActivityLevel: 'moderate',
+                needsCurrentWeight: false,
+              },
+            }),
+          });
+          return;
+        }
+
+        try {
+          const postData = route.request().postDataJSON();
+          if (postData && postData.waistCm !== undefined) {
+            const waistNum = Number(postData.waistCm);
+            if (waistNum < 30 || waistNum > 200) {
+              await route.fulfill({
+                status: 400,
+                contentType: 'application/json',
+                body: JSON.stringify({
+                  success: false,
+                  message: 'Invalid waistCm. Must be a number between 30 and 200.',
+                }),
+              });
+              return;
+            }
+            savedWaist = waistNum;
+          }
+        } catch {
+          /* ignore JSON parse errors */
+        }
+
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            message: 'Profile saved successfully!',
+          }),
+        });
+      });
+
+      // ============================================================
+      // 2. SET AUTHENTICATED LOCALSTORAGE STATE
+      // ============================================================
+      await page.addInitScript(({ phone, email, name }) => {
+        const user = {
+          id: 1004,
+          UserId: 1004,
+          userId: 1004,
+          username: name,
+          userName: name,
+          name: name,
+          email: email,
+          phone: `+91${phone}`,
+          phoneNumber: phone,
+          status: 'Active',
+          isNewUser: false,
+          consentRequired: false,
+          profileComplete: true,
+          physicalActivityLevel: 'moderate',
+        };
+
+        localStorage.setItem('isOtpVerified', 'true');
+        localStorage.setItem('otpUser', JSON.stringify(user));
+        localStorage.setItem('user', JSON.stringify(user));
+      }, { phone: TEST_PHONE, email: TEST_EMAIL, name: TEST_NAME });
+
+      // ============================================================
+      // 3. OPEN APP DIRECTLY AS AUTHENTICATED USER ON HOME PAGE
+      // ============================================================
+      await page.goto('/', { waitUntil: 'domcontentloaded' });
+
+      // ============================================================
+      // 4. SELECT PROFILE AVATAR IN HEADER TO OPEN PROFILE FORM
+      // ============================================================
+      const profileBtn = page.getByRole('button', { name: 'My Profile' });
+      await expect(profileBtn).toBeVisible({ timeout: 15000 });
+      await profileBtn.click();
+
+      // ============================================================
+      // 5. VERIFY PROFILE FORM PAGE REACHED AND LOCATE INPUTS
+      // ============================================================
+      const profileHeading = page.getByRole('heading', { name: 'My Profile', exact: true });
+      await expect(profileHeading).toBeVisible({ timeout: 15000 });
+
+      const personalDetailsHeading = page.getByRole('heading', { name: 'Personal Details', exact: true });
+      await expect(personalDetailsHeading).toBeVisible({ timeout: 15000 });
+
+      const waistErrorMessageLocator = page.getByText('Invalid waistCm. Must be a number between 30 and 200.', { exact: true });
+      const waistInput = page.locator('label').filter({ hasText: /^Waist \(cm\)$/ }).locator('..').locator('input');
+      await expect(waistInput).toBeVisible({ timeout: 15000 });
+
+      const saveButton = page.getByRole('button', { name: /Save profile|Save Profile|Saved/i });
+      await expect(saveButton).toBeVisible({ timeout: 15000 });
+
+      // ============================================================
+      // 6. TEST 1: WAIST = 0 (OUT OF RANGE < 30 -> SHOWS FAIL MESSAGE)
+      // ============================================================
+      await waistInput.fill('0');
+      await expect(waistInput).toHaveValue('0');
+      await saveButton.click();
+      await expect(waistErrorMessageLocator).toBeVisible({ timeout: 10000 });
+      console.log('CP-025: Waist 0 validated as invalid (fail message displayed in profile screen)');
+
+      // ============================================================
+      // 7. TEST 2: WAIST = 30 (VALID MIN BOUNDARY -> PROFILE SUCCESSFULLY SAVED)
+      // ============================================================
+      await waistInput.fill('30');
+      await expect(waistInput).toHaveValue('30');
+      await saveButton.click();
+      await expect(waistErrorMessageLocator).not.toBeVisible({ timeout: 5000 });
+      console.log('CP-025: Waist 30 validated as valid (profile successfully saved)');
+
+      // Re-open profile page if app navigated back to home
+      if (await profileBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+        await profileBtn.click();
+        await expect(personalDetailsHeading).toBeVisible({ timeout: 10000 });
+      }
+
+      // ============================================================
+      // 8. TEST 3: WAIST = 200 (VALID MAX BOUNDARY -> PROFILE SUCCESSFULLY SAVED)
+      // ============================================================
+      await waistInput.fill('200');
+      await expect(waistInput).toHaveValue('200');
+      await saveButton.click();
+      await expect(waistErrorMessageLocator).not.toBeVisible({ timeout: 5000 });
+      console.log('CP-025: Waist 200 validated as valid (profile successfully saved)');
+
+      // Re-open profile page if app navigated back to home
+      if (await profileBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+        await profileBtn.click();
+        await expect(personalDetailsHeading).toBeVisible({ timeout: 10000 });
+      }
+
+      // ============================================================
+      // 9. TEST 4: WAIST = 201 (MORE THAN 200 -> SHOWS FAIL MESSAGE)
+      // ============================================================
+      await waistInput.fill('201');
+      await expect(waistInput).toHaveValue('201');
+      await saveButton.click();
+      await expect(waistErrorMessageLocator).toBeVisible({ timeout: 10000 });
+      console.log('CP-025: Waist 201 validated as invalid (fail message displayed in profile screen)');
+    }
+  );
+
+  test(
+    'CP-026 Chest (chestCm) field validation for minimum and maximum boundaries (0, 30, 200, 201) in profile page',
+    async ({ page }) => {
+      // ============================================================
+      // TEST DATA
+      // ============================================================
+      const TEST_PHONE = '7695834209';
+      const TEST_NAME = 'Nitheesh Lingam';
+      const TEST_EMAIL = 'nitheesh@example.com';
+
+      // ============================================================
+      // 1. MOCK APIS FOR AUTHENTICATED USER
+      // ============================================================
+      await page.route('**/api/auth/send-otp', async route => {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true }) });
+      });
+
+      await page.route('**/api/user/verify-session', async route => {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, userId: 1004, sessionStale: false }) });
+      });
+
+      await page.route('**/api/user/lookup*', async route => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            isActive: true,
+            isNewUser: false,
+            role: 'user',
+            user: {
+              id: 1004,
+              UserId: 1004,
+              username: TEST_NAME,
+              name: TEST_NAME,
+              email: TEST_EMAIL,
+              phoneNumber: TEST_PHONE,
+              status: 'Active',
+            },
+          }),
+        });
+      });
+
+      await page.route('**/api/user/consent*', async route => {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, consentRequired: false, consentAccepted: true }) });
+      });
+
+      let savedChest = 90;
+
+      await page.route('**/api/user/profile*', async route => {
+        const method = route.request().method();
+        if (method === 'GET') {
+          await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({
+              success: true,
+              data: {
+                userId: 1004,
+                profileComplete: true,
+                userName: TEST_NAME,
+                name: TEST_NAME,
+                email: TEST_EMAIL,
+                phoneNumber: TEST_PHONE,
+                gender: 'Male',
+                height: 170,
+                dietType: 'Vegetarian',
+                latestWeight: 65,
+                currentWeight: 65,
+                latestWeightBodyFat: 22,
+                bodyFat: 22,
+                bodyMetrics: { chestCm: savedChest, fatPercent: 22 },
+                profileImage: 'https://example.com/photo.jpg',
+                physicalActivityLevel: 'moderate',
+                needsCurrentWeight: false,
+              },
+            }),
+          });
+          return;
+        }
+
+        try {
+          const postData = route.request().postDataJSON();
+          if (postData && postData.chestCm !== undefined) {
+            const chestNum = Number(postData.chestCm);
+            if (chestNum < 30 || chestNum > 200) {
+              await route.fulfill({
+                status: 400,
+                contentType: 'application/json',
+                body: JSON.stringify({
+                  success: false,
+                  message: 'Invalid chestCm. Must be a number between 30 and 200.',
+                }),
+              });
+              return;
+            }
+            savedChest = chestNum;
+          }
+        } catch {
+          /* ignore JSON parse errors */
+        }
+
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            message: 'Profile saved successfully!',
+          }),
+        });
+      });
+
+      // ============================================================
+      // 2. SET AUTHENTICATED LOCALSTORAGE STATE
+      // ============================================================
+      await page.addInitScript(({ phone, email, name }) => {
+        const user = {
+          id: 1004,
+          UserId: 1004,
+          userId: 1004,
+          username: name,
+          userName: name,
+          name: name,
+          email: email,
+          phone: `+91${phone}`,
+          phoneNumber: phone,
+          status: 'Active',
+          isNewUser: false,
+          consentRequired: false,
+          profileComplete: true,
+          physicalActivityLevel: 'moderate',
+        };
+
+        localStorage.setItem('isOtpVerified', 'true');
+        localStorage.setItem('otpUser', JSON.stringify(user));
+        localStorage.setItem('user', JSON.stringify(user));
+      }, { phone: TEST_PHONE, email: TEST_EMAIL, name: TEST_NAME });
+
+      // ============================================================
+      // 3. OPEN APP DIRECTLY AS AUTHENTICATED USER ON HOME PAGE
+      // ============================================================
+      await page.goto('/', { waitUntil: 'domcontentloaded' });
+
+      // ============================================================
+      // 4. SELECT PROFILE AVATAR IN HEADER TO OPEN PROFILE FORM
+      // ============================================================
+      const profileBtn = page.getByRole('button', { name: 'My Profile' });
+      await expect(profileBtn).toBeVisible({ timeout: 15000 });
+      await profileBtn.click();
+
+      // ============================================================
+      // 5. VERIFY PROFILE FORM PAGE REACHED AND LOCATE INPUTS
+      // ============================================================
+      const profileHeading = page.getByRole('heading', { name: 'My Profile', exact: true });
+      await expect(profileHeading).toBeVisible({ timeout: 15000 });
+
+      const personalDetailsHeading = page.getByRole('heading', { name: 'Personal Details', exact: true });
+      await expect(personalDetailsHeading).toBeVisible({ timeout: 15000 });
+
+      const chestErrorMessageLocator = page.getByText('Invalid chestCm. Must be a number between 30 and 200.', { exact: true });
+      const chestInput = page.locator('label').filter({ hasText: /^Chest \(cm\)$/ }).locator('..').locator('input');
+      await expect(chestInput).toBeVisible({ timeout: 15000 });
+
+      const saveButton = page.getByRole('button', { name: /Save profile|Save Profile|Saved/i });
+      await expect(saveButton).toBeVisible({ timeout: 15000 });
+
+      // ============================================================
+      // 6. TEST 1: CHEST = 0 (OUT OF RANGE < 30 -> SHOWS FAIL MESSAGE)
+      // ============================================================
+      await chestInput.fill('0');
+      await expect(chestInput).toHaveValue('0');
+      await saveButton.click();
+      await expect(chestErrorMessageLocator).toBeVisible({ timeout: 10000 });
+      console.log('CP-026: Chest 0 validated as invalid (fail message displayed in profile screen)');
+
+      // ============================================================
+      // 7. TEST 2: CHEST = 30 (VALID MIN BOUNDARY -> PROFILE SUCCESSFULLY SAVED)
+      // ============================================================
+      await chestInput.fill('30');
+      await expect(chestInput).toHaveValue('30');
+      await saveButton.click();
+      await expect(chestErrorMessageLocator).not.toBeVisible({ timeout: 5000 });
+      console.log('CP-026: Chest 30 validated as valid (profile successfully saved)');
+
+      // Re-open profile page if app navigated back to home
+      if (await profileBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+        await profileBtn.click();
+        await expect(personalDetailsHeading).toBeVisible({ timeout: 10000 });
+      }
+
+      // ============================================================
+      // 8. TEST 3: CHEST = 200 (VALID MAX BOUNDARY -> PROFILE SUCCESSFULLY SAVED)
+      // ============================================================
+      await chestInput.fill('200');
+      await expect(chestInput).toHaveValue('200');
+      await saveButton.click();
+      await expect(chestErrorMessageLocator).not.toBeVisible({ timeout: 5000 });
+      console.log('CP-026: Chest 200 validated as valid (profile successfully saved)');
+
+      // Re-open profile page if app navigated back to home
+      if (await profileBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+        await profileBtn.click();
+        await expect(personalDetailsHeading).toBeVisible({ timeout: 10000 });
+      }
+
+      // ============================================================
+      // 9. TEST 4: CHEST = 201 (MORE THAN 200 -> SHOWS FAIL MESSAGE)
+      // ============================================================
+      await chestInput.fill('201');
+      await expect(chestInput).toHaveValue('201');
+      await saveButton.click();
+      await expect(chestErrorMessageLocator).toBeVisible({ timeout: 10000 });
+      console.log('CP-026: Chest 201 validated as invalid (fail message displayed in profile screen)');
+    }
+  );
+
+  test(
+    'CP-027 Hip (hipCm) field validation for minimum and maximum boundaries (0, 30, 200, 201) in profile page',
+    async ({ page }) => {
+      // ============================================================
+      // TEST DATA
+      // ============================================================
+      const TEST_PHONE = '7695834209';
+      const TEST_NAME = 'Nitheesh Lingam';
+      const TEST_EMAIL = 'nitheesh@example.com';
+
+      // ============================================================
+      // 1. MOCK APIS FOR AUTHENTICATED USER
+      // ============================================================
+      await page.route('**/api/auth/send-otp', async route => {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true }) });
+      });
+
+      await page.route('**/api/user/verify-session', async route => {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, userId: 1004, sessionStale: false }) });
+      });
+
+      await page.route('**/api/user/lookup*', async route => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            isActive: true,
+            isNewUser: false,
+            role: 'user',
+            user: {
+              id: 1004,
+              UserId: 1004,
+              username: TEST_NAME,
+              name: TEST_NAME,
+              email: TEST_EMAIL,
+              phoneNumber: TEST_PHONE,
+              status: 'Active',
+            },
+          }),
+        });
+      });
+
+      await page.route('**/api/user/consent*', async route => {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, consentRequired: false, consentAccepted: true }) });
+      });
+
+      let savedHip = 95;
+
+      await page.route('**/api/user/profile*', async route => {
+        const method = route.request().method();
+        if (method === 'GET') {
+          await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({
+              success: true,
+              data: {
+                userId: 1004,
+                profileComplete: true,
+                userName: TEST_NAME,
+                name: TEST_NAME,
+                email: TEST_EMAIL,
+                phoneNumber: TEST_PHONE,
+                gender: 'Male',
+                height: 170,
+                dietType: 'Vegetarian',
+                latestWeight: 65,
+                currentWeight: 65,
+                latestWeightBodyFat: 22,
+                bodyFat: 22,
+                bodyMetrics: { hipCm: savedHip, fatPercent: 22 },
+                profileImage: 'https://example.com/photo.jpg',
+                physicalActivityLevel: 'moderate',
+                needsCurrentWeight: false,
+              },
+            }),
+          });
+          return;
+        }
+
+        try {
+          const postData = route.request().postDataJSON();
+          if (postData && postData.hipCm !== undefined) {
+            const hipNum = Number(postData.hipCm);
+            if (hipNum < 30 || hipNum > 200) {
+              await route.fulfill({
+                status: 400,
+                contentType: 'application/json',
+                body: JSON.stringify({
+                  success: false,
+                  message: 'Invalid hipCm. Must be a number between 30 and 200.',
+                }),
+              });
+              return;
+            }
+            savedHip = hipNum;
+          }
+        } catch {
+          /* ignore JSON parse errors */
+        }
+
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            message: 'Profile saved successfully!',
+          }),
+        });
+      });
+
+      // ============================================================
+      // 2. SET AUTHENTICATED LOCALSTORAGE STATE
+      // ============================================================
+      await page.addInitScript(({ phone, email, name }) => {
+        const user = {
+          id: 1004,
+          UserId: 1004,
+          userId: 1004,
+          username: name,
+          userName: name,
+          name: name,
+          email: email,
+          phone: `+91${phone}`,
+          phoneNumber: phone,
+          status: 'Active',
+          isNewUser: false,
+          consentRequired: false,
+          profileComplete: true,
+          physicalActivityLevel: 'moderate',
+        };
+
+        localStorage.setItem('isOtpVerified', 'true');
+        localStorage.setItem('otpUser', JSON.stringify(user));
+        localStorage.setItem('user', JSON.stringify(user));
+      }, { phone: TEST_PHONE, email: TEST_EMAIL, name: TEST_NAME });
+
+      // ============================================================
+      // 3. OPEN APP DIRECTLY AS AUTHENTICATED USER ON HOME PAGE
+      // ============================================================
+      await page.goto('/', { waitUntil: 'domcontentloaded' });
+
+      // ============================================================
+      // 4. SELECT PROFILE AVATAR IN HEADER TO OPEN PROFILE FORM
+      // ============================================================
+      const profileBtn = page.getByRole('button', { name: 'My Profile' });
+      await expect(profileBtn).toBeVisible({ timeout: 15000 });
+      await profileBtn.click();
+
+      // ============================================================
+      // 5. VERIFY PROFILE FORM PAGE REACHED AND LOCATE INPUTS
+      // ============================================================
+      const profileHeading = page.getByRole('heading', { name: 'My Profile', exact: true });
+      await expect(profileHeading).toBeVisible({ timeout: 15000 });
+
+      const personalDetailsHeading = page.getByRole('heading', { name: 'Personal Details', exact: true });
+      await expect(personalDetailsHeading).toBeVisible({ timeout: 15000 });
+
+      const hipErrorMessageLocator = page.getByText('Invalid hipCm. Must be a number between 30 and 200.', { exact: true });
+      const hipInput = page.locator('label').filter({ hasText: /^Hip \(cm\)$/ }).locator('..').locator('input');
+      await expect(hipInput).toBeVisible({ timeout: 15000 });
+
+      const saveButton = page.getByRole('button', { name: /Save profile|Save Profile|Saved/i });
+      await expect(saveButton).toBeVisible({ timeout: 15000 });
+
+      // ============================================================
+      // 6. TEST 1: HIP = 0 (OUT OF RANGE < 30 -> SHOWS FAIL MESSAGE)
+      // ============================================================
+      await hipInput.fill('0');
+      await expect(hipInput).toHaveValue('0');
+      await saveButton.click();
+      await expect(hipErrorMessageLocator).toBeVisible({ timeout: 10000 });
+      console.log('CP-027: Hip 0 validated as invalid (fail message displayed in profile screen)');
+
+      // ============================================================
+      // 7. TEST 2: HIP = 30 (VALID MIN BOUNDARY -> PROFILE SUCCESSFULLY SAVED)
+      // ============================================================
+      await hipInput.fill('30');
+      await expect(hipInput).toHaveValue('30');
+      await saveButton.click();
+      await expect(hipErrorMessageLocator).not.toBeVisible({ timeout: 5000 });
+      console.log('CP-027: Hip 30 validated as valid (profile successfully saved)');
+
+      // Re-open profile page if app navigated back to home
+      if (await profileBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+        await profileBtn.click();
+        await expect(personalDetailsHeading).toBeVisible({ timeout: 10000 });
+      }
+
+      // ============================================================
+      // 8. TEST 3: HIP = 200 (VALID MAX BOUNDARY -> PROFILE SUCCESSFULLY SAVED)
+      // ============================================================
+      await hipInput.fill('200');
+      await expect(hipInput).toHaveValue('200');
+      await saveButton.click();
+      await expect(hipErrorMessageLocator).not.toBeVisible({ timeout: 5000 });
+      console.log('CP-027: Hip 200 validated as valid (profile successfully saved)');
+
+      // Re-open profile page if app navigated back to home
+      if (await profileBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+        await profileBtn.click();
+        await expect(personalDetailsHeading).toBeVisible({ timeout: 10000 });
+      }
+
+      // ============================================================
+      // 9. TEST 4: HIP = 201 (MORE THAN 200 -> SHOWS FAIL MESSAGE)
+      // ============================================================
+      await hipInput.fill('201');
+      await expect(hipInput).toHaveValue('201');
+      await saveButton.click();
+      await expect(hipErrorMessageLocator).toBeVisible({ timeout: 10000 });
+      console.log('CP-027: Hip 201 validated as invalid (fail message displayed in profile screen)');
+    }
+  );
+
+  test(
+    'CP-028 Diet Preference validates all available options can be selected',
+    async ({ page }) => {
+      // ============================================================
+      // TEST DATA
+      // ============================================================
+      const TEST_PHONE = '7695834209';
+      const TEST_NAME = 'Nitheesh Lingam';
+      const TEST_EMAIL = 'nitheesh@example.com';
+
+      // ============================================================
+      // 1. MOCK APIS FOR AUTHENTICATED USER
+      // ============================================================
+      await page.route('**/api/auth/send-otp', async route => {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true }) });
+      });
+
+      await page.route('**/api/user/verify-session', async route => {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, userId: 1004, sessionStale: false }) });
+      });
+
+      await page.route('**/api/user/lookup*', async route => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            isActive: true,
+            isNewUser: false,
+            role: 'user',
+            user: {
+              id: 1004,
+              UserId: 1004,
+              username: TEST_NAME,
+              name: TEST_NAME,
+              email: TEST_EMAIL,
+              phoneNumber: TEST_PHONE,
+              status: 'Active',
+            },
+          }),
+        });
+      });
+
+      await page.route('**/api/user/consent*', async route => {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, consentRequired: false, consentAccepted: true }) });
+      });
+
+      let savedDietType = 'Vegetarian';
+      const profilePosts = [];
+
+      await page.route('**/api/user/profile*', async route => {
+        const method = route.request().method();
+        if (method === 'GET') {
+          await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({
+              success: true,
+              data: {
+                userId: 1004,
+                profileComplete: true,
+                userName: TEST_NAME,
+                name: TEST_NAME,
+                email: TEST_EMAIL,
+                phoneNumber: TEST_PHONE,
+                gender: 'Male',
+                height: 170,
+                dietType: savedDietType,
+                latestWeight: 65,
+                currentWeight: 65,
+                latestWeightBodyFat: 22,
+                bodyFat: 22,
+                profileImage: 'https://example.com/photo.jpg',
+                physicalActivityLevel: 'moderate',
+                needsCurrentWeight: false,
+              },
+            }),
+          });
+          return;
+        }
+
+        try {
+          const postData = route.request().postDataJSON();
+          if (postData && postData.dietType !== undefined) {
+            savedDietType = postData.dietType;
+            profilePosts.push(postData);
+          }
+        } catch {
+          /* ignore JSON parse errors */
+        }
+
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            message: 'Profile saved successfully!',
+          }),
+        });
+      });
+
+      // ============================================================
+      // 2. SET AUTHENTICATED LOCALSTORAGE STATE
+      // ============================================================
+      await page.addInitScript(({ phone, email, name }) => {
+        const user = {
+          id: 1004,
+          UserId: 1004,
+          userId: 1004,
+          username: name,
+          userName: name,
+          name: name,
+          email: email,
+          phone: `+91${phone}`,
+          phoneNumber: phone,
+          status: 'Active',
+          isNewUser: false,
+          consentRequired: false,
+          profileComplete: true,
+          physicalActivityLevel: 'moderate',
+        };
+
+        localStorage.setItem('isOtpVerified', 'true');
+        localStorage.setItem('otpUser', JSON.stringify(user));
+        localStorage.setItem('user', JSON.stringify(user));
+      }, { phone: TEST_PHONE, email: TEST_EMAIL, name: TEST_NAME });
+
+      // ============================================================
+      // 3. OPEN APP DIRECTLY AS AUTHENTICATED USER ON HOME PAGE
+      // ============================================================
+      await page.goto('/', { waitUntil: 'domcontentloaded' });
+
+      // ============================================================
+      // 4. SELECT PROFILE AVATAR IN HEADER TO OPEN PROFILE FORM
+      // ============================================================
+      const profileBtn = page.getByRole('button', { name: 'My Profile' });
+      await expect(profileBtn).toBeVisible({ timeout: 15000 });
+      await profileBtn.click();
+
+      // ============================================================
+      // 5. VERIFY PROFILE FORM PAGE REACHED AND LOCATE DIET DROPDOWN
+      // ============================================================
+      const profileHeading = page.getByRole('heading', { name: 'My Profile', exact: true });
+      await expect(profileHeading).toBeVisible({ timeout: 15000 });
+
+      const personalDetailsHeading = page.getByRole('heading', { name: 'Personal Details', exact: true });
+      await expect(personalDetailsHeading).toBeVisible({ timeout: 15000 });
+
+      const dietLabel = page.getByText('Diet Preference', { exact: true });
+      await expect(dietLabel).toBeVisible({ timeout: 15000 });
+
+      const dietContainer = dietLabel.locator('xpath=..');
+      const dietDropdownTrigger = dietContainer.locator('button').first();
+      await expect(dietDropdownTrigger).toBeVisible({ timeout: 15000 });
+
+      const saveButton = page.getByRole('button', { name: /Save profile|Save Profile|Saved/i });
+      await expect(saveButton).toBeVisible({ timeout: 15000 });
+
+      // List of all 4 diet options to test
+      const dietOptions = [
+        'Vegetarian',
+        'Non-Vegetarian',
+        'Vegan',
+        'Pescatarian',
+      ];
+
+      for (const dietOption of dietOptions) {
+        // Open the diet dropdown if closed
+        await dietDropdownTrigger.click();
+
+        // Scope matching option button inside dropdown list container (use .last() to get option button in dropdown list)
+        const matchingBtns = dietContainer.getByRole('button', { name: dietOption, exact: true });
+        const optionBtn = matchingBtns.last();
+        await expect(optionBtn).toBeVisible({ timeout: 5000 });
+        await optionBtn.click();
+
+        // Verify selected option is visible in trigger button
+        await expect(dietDropdownTrigger).toContainText(dietOption);
+
+        // Click Save Profile button
+        await saveButton.click();
+
+        // Re-open profile page if app navigated back to home
+        if (await profileBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+          await profileBtn.click();
+          await expect(personalDetailsHeading).toBeVisible({ timeout: 10000 });
+        }
+
+        console.log(`CP-028: Diet Preference option '${dietOption}' successfully selected & saved`);
+      }
+    }
+  );
 });

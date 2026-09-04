@@ -41,10 +41,10 @@ setup('authenticate', async ({ page }) => {
   // OTP screen
   const otpInputs = page.locator('input[type="tel"]');
 
-  await expect(otpInputs).toHaveCount(6);
+  await expect(otpInputs).toHaveCount(4);
 
   // Enter OTP
-  const otp = '123456';
+  const otp = '1234';
 
   for (let i = 0; i < otp.length; i++) {
     await otpInputs.nth(i).fill(otp[i]);

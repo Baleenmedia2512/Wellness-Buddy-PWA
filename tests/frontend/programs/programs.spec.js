@@ -9,9 +9,9 @@ test(
     // ============================================================
 
     const TEST_PHONE = '7695834209';
-    const LOGIN_OTP = '123456';
+    const LOGIN_OTP = '1234';
     const TEST_EMAIL = 'existing@test.com';
-    const TEST_USER_ID = 861;
+    const TEST_USER_ID = 1004;
 
     const programNames = [
       'Family Healthy Breakfast Programme',
@@ -391,7 +391,7 @@ test(
 
     await expect(
       otpInputs
-    ).toHaveCount(6);
+    ).toHaveCount(4);
 
     for (
       let i = 0;
@@ -693,9 +693,9 @@ test(
     // ============================================================
 
     const TEST_PHONE = '7695834209';
-    const LOGIN_OTP = '123456';
+    const LOGIN_OTP = '1234';
     const TEST_EMAIL = 'existing@test.com';
-    const TEST_USER_ID = 861;
+    const TEST_USER_ID = 1004;
 
     const alreadySelectedProgram =
       'Family Healthy Breakfast Programme';
@@ -1176,7 +1176,7 @@ test(
     await expect(
       otpInputs
     ).toHaveCount(
-      6
+      4
     );
 
     for (
@@ -1516,7 +1516,7 @@ test(
     // ============================================================
 
     const LOGIN_OTP =
-      '123456';
+      '1234';
 
     const COACH_PHONE =
       '7695834209';
@@ -2620,7 +2620,7 @@ test(
       await expect(
         otpInputs
       ).toHaveCount(
-        6
+        4
       );
 
 
@@ -3192,9 +3192,9 @@ test(
   async ({ page }) => {
 
     const PHONE = '7695834209';
-    const OTP = '123456';
+    const OTP = '1234';
     const EMAIL = 'existing@test.com';
-    const USER_ID = 861;
+    const USER_ID = 1004;
 
     let enrollRequest = null;
 
@@ -3386,7 +3386,7 @@ test(
     const otpInputs =
       page.locator('input[type="tel"]');
 
-    await expect(otpInputs).toHaveCount(6);
+    await expect(otpInputs).toHaveCount(4);
 
     for (
       let i = 0;
@@ -3488,9 +3488,9 @@ test(
   async ({ page }) => {
 
     const PHONE = '7695834209';
-    const OTP = '123456';
+    const OTP = '1234';
     const EMAIL = 'existing@test.com';
-    const USER_ID = 861;
+    const USER_ID = 1004;
 
     let enrollmentCreated = false;
     let enrollRequest = null;
@@ -3771,7 +3771,7 @@ test(
 
     await expect(
       otpInputs
-    ).toHaveCount(6);
+    ).toHaveCount(4);
 
     for (
       let i = 0;
@@ -4024,7 +4024,7 @@ test(
   async ({ page }) => {
 
     const PHONE = '7695834209';
-    const OTP = '123456';
+    const OTP = '1234';
     const EMAIL = 'coach@test.com';
 
     const COACH_ID = 7001;
@@ -4317,7 +4317,7 @@ test(
 
     await expect(
       otpInputs
-    ).toHaveCount(6);
+    ).toHaveCount(4);
 
     for (let i = 0; i < OTP.length; i++) {
       await otpInputs
@@ -4579,7 +4579,7 @@ test(
   async ({ page }) => {
 
     const PHONE = '7695834209';
-    const OTP = '123456';
+    const OTP = '1234';
     const EMAIL = 'coach@test.com';
 
     const COACH_ID = 7001;
@@ -4954,7 +4954,7 @@ test(
 
     await expect(
       otpInputs
-    ).toHaveCount(6);
+    ).toHaveCount(4);
 
     for (
       let i = 0;
