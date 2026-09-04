@@ -194,6 +194,7 @@ export function filterMembers(members, query) {
     (m) =>
       (m.userName || '').toLowerCase().includes(q) ||
       (m.email || '').toLowerCase().includes(q) ||
+      String(m.phoneNumber || m.PhoneNumber || '').toLowerCase().includes(q) ||
       String(subtitleCommunityId(m) || '').toLowerCase().includes(q),
   );
 }

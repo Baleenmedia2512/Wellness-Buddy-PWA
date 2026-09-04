@@ -31,6 +31,11 @@ import {
   roundMealTotals,
 } from './domain/meal-totals.js';
 import { MAX_STATS_RANGE_DAYS } from './food-corrections.validators.js';
+import { isHerbalifeProductSuggestionName } from '../food-suggestions/domain/foodPairs.rules.js';
+
+function filterRegularFoodSearchItems(items) {
+  return (items || []).filter((item) => !isHerbalifeProductSuggestionName(item?.name));
+}
 
 function inclusiveDayCount(startDate, endDate) {
   const a = Date.parse(`${startDate}T00:00:00Z`);
@@ -193,7 +198,9 @@ export async function searchFoodHistory({ userId, searchTerm }) {
       httpStatus: 200,
       body: {
         success: true,
-        masterItems: sortByFoodNameMatch(masterItems || [], trimmed),
+        masterItems: filterRegularFoodSearchItems(
+          sortByFoodNameMatch(masterItems || [], trimmed),
+        ),
         myItems: [],
         communityItems: [],
       },
@@ -226,9 +233,15 @@ export async function searchFoodHistory({ userId, searchTerm }) {
     httpStatus: 200,
     body: {
       success: true,
-      masterItems: sortByFoodNameMatch(masterItems || [], trimmed),
-      myItems: sortByFoodNameMatch(dedupItems(myRows, lowerTerm), trimmed),
-      communityItems: sortByFoodNameMatch(dedupItems(communityRows, lowerTerm), trimmed),
+      masterItems: filterRegularFoodSearchItems(
+        sortByFoodNameMatch(masterItems || [], trimmed),
+      ),
+      myItems: filterRegularFoodSearchItems(
+        sortByFoodNameMatch(dedupItems(myRows, lowerTerm), trimmed),
+      ),
+      communityItems: filterRegularFoodSearchItems(
+        sortByFoodNameMatch(dedupItems(communityRows, lowerTerm), trimmed),
+      ),
     },
   };
 }

@@ -2,9 +2,8 @@
  * Mandatory app update orchestration.
  *
  * Server policy (/api/app/version-policy) is the single authority for
- * mandatory vs optional updates:
- *   - update_required  → blocking flow (this module)
- *   - update_recommended → soft banner only (useAppVersionPolicy)
+ * mandatory updates (update_required → blocking flow via this module).
+ * update_recommended is ignored on the client — no optional update UI.
  *
  * Platform behaviour when blocked:
  *   - Android: Google Play IMMEDIATE in-app update via InAppUpdatePlugin
