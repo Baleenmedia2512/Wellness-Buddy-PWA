@@ -1,6 +1,6 @@
 /**
- * Copy Complete Profile Left photo + current weight onto testimonials Before.
- * Front/Right stay on team_table.transformation_photos only.
+ * Copy Complete Profile current weight onto testimonials Before
+ * when that field is still empty.
  */
 import { submitTestimonial, editTestimonial, getMyTestimonial } from '../../testimonials/services/testimonialApi';
 

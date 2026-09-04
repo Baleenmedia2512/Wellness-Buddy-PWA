@@ -34,8 +34,11 @@ function FactRow({ row }) {
   );
 }
 
-function FoodItemNutritionModal({ item, onClose }) {
-  const facts = useMemo(() => buildFoodItemNutritionFacts(item), [item]);
+function FoodItemNutritionModal({ item, mealFallback = null, onClose }) {
+  const facts = useMemo(
+    () => buildFoodItemNutritionFacts(item, { mealFallback }),
+    [item, mealFallback],
+  );
   if (!item || typeof document === 'undefined') return null;
 
   const giRow = facts.rows.find((row) => row.key === 'glycemic_index');
@@ -95,8 +98,8 @@ function FoodItemNutritionModal({ item, onClose }) {
               No nutrition values stored for this item.
             </p>
           ) : (
-            sections.map((section) => (
-              <div key={section.id} className={section.id === 'macros' ? '' : 'mt-4'}>
+            sections.map((section, index) => (
+              <div key={section.id} className={index === 0 ? '' : 'mt-4'}>
                 {section.label ? (
                   <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400 pb-1 border-b border-gray-100">
                     {section.label}

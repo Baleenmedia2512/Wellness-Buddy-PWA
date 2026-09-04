@@ -79,6 +79,7 @@ export function validateActivityReport(query) {
     sort: query.sort,
     sortDir: query.sortDir || query.sortDirection,
     exportAll: query.exportAll ?? query.export,
+    clubName: query.clubName,
   });
 
   return {

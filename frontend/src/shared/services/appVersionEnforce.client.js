@@ -73,6 +73,18 @@ export function readForcedUpdatePolicy() {
 }
 
 /**
+ * Clear persisted forced-update state after the client meets minimum version.
+ */
+export function clearForcedUpdatePolicy() {
+  if (typeof window === 'undefined') return;
+  try {
+    window.sessionStorage.removeItem(STORAGE_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
+/**
  * Inspect a fetch Response; if update-required, notify and return true.
  * @param {Response} res
  * @param {object} [body]

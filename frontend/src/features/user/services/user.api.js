@@ -18,6 +18,16 @@ export function getCachedProfile(email) {
   return cacheManager.get(key, cacheManager.ttls.userProfile);
 }
 
+/** Invalidate cached profile reads (e.g. after consent acceptance). */
+export function clearProfileCache({ email, userId } = {}) {
+  if (email) {
+    cacheManager.clear(cacheManager.generateKey('userProfile', String(email).toLowerCase()));
+  }
+  if (userId != null && userId !== '') {
+    cacheManager.clear(cacheManager.generateKey('userProfile', `id:${userId}`));
+  }
+}
+
 /**
  * GET /api/user/profile — shared cache + in-flight dedup across Header,
  * NutritionDashboard, WeightDashboard, and nutrition BMR/macro hooks.

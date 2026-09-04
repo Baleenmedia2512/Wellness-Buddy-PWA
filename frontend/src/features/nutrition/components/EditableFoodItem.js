@@ -36,6 +36,7 @@ import {
   ChevronRight,
 } from "lucide-react";
 import FoodItemNutritionModal from "./FoodItemNutritionModal";
+import { buildItemNutritionFallback } from "../domain/foodItemNutritionFacts";
 import BathroomScaleIcon from "../../../shared/components/icons/BathroomScaleIcon";
 import { debugLog } from '../../../shared/utils/logger.js';
 
@@ -61,9 +62,19 @@ const EditableFoodItem = forwardRef(
       hideButtons,
       user,
       onRestore,
+      mealRow = null,
+      mealDetailStatus = 'ready',
     },
     ref,
   ) => {
+    const openItemFacts = () => {
+      // Avoid stale lean stub (name + calories only) before full AnalysisData loads.
+      if (mealDetailStatus === 'loading' && !mealRow?.AnalysisData && !mealRow?.analysisData) {
+        return;
+      }
+      setShowItemFacts(true);
+    };
+
     // Display/Edit mode toggle
     const [isEditing, setIsEditing] = useState(false);
     const [showItemFacts, setShowItemFacts] = useState(false);
@@ -1076,15 +1087,16 @@ const EditableFoodItem = forwardRef(
             <div
               role="button"
               tabIndex={0}
-              onClick={() => setShowItemFacts(true)}
+              onClick={openItemFacts}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' || e.key === ' ') {
                   e.preventDefault();
-                  setShowItemFacts(true);
+                  openItemFacts();
                 }
               }}
-              className="flex-1 min-w-0 text-left cursor-pointer"
+              className={`flex-1 min-w-0 text-left ${mealDetailStatus === 'loading' && !mealRow?.AnalysisData && !mealRow?.analysisData ? 'cursor-wait opacity-70' : 'cursor-pointer'}`}
               aria-label={`View nutrition facts for ${foodItem.name}`}
+              aria-busy={mealDetailStatus === 'loading' && !mealRow?.AnalysisData && !mealRow?.analysisData}
             >
               {/* Row 1: name + primary metric */}
               <div className="flex items-start justify-between gap-2">
@@ -1236,6 +1248,7 @@ const EditableFoodItem = forwardRef(
         {showItemFacts && (
           <FoodItemNutritionModal
             item={foodItem}
+            mealFallback={buildItemNutritionFallback(foodItem, mealRow)}
             onClose={() => setShowItemFacts(false)}
           />
         )}

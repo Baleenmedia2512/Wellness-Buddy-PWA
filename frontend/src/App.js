@@ -93,6 +93,7 @@ import {
   clearLocalConsentAcceptance,
   CURRENT_CONSENT_VERSION,
   consentPayload,
+  shouldOpenConsentGate,
 } from "./features/user/domain/consent";
 import { fetchInactiveCoachInfo } from "./features/user/services/inactiveCoachService";
 import Header from "./shared/components/Header";
@@ -113,9 +114,8 @@ import {
 } from "./shared/utils/backButtonHandler";
 import { getVersionString } from "./config/version";
 import { useAppVersionPolicy } from "./shared/hooks/useAppVersionPolicy";
-import AppVersionHardBlock, {
-  AppVersionUpdateBanner,
-} from "./shared/components/AppVersionGate";
+import { useMandatoryAppUpdate } from "./shared/hooks/useMandatoryAppUpdate";
+import AppVersionHardBlock from "./shared/components/AppVersionGate";
 import { getApiBaseUrl } from "./config/api.config";
 import { apiFetch } from "./shared/services/apiFetch";
 import { handlePossibleAppUpdateRequired } from "./shared/services/appVersionEnforce.client";
@@ -200,7 +200,7 @@ import { WeightProgressTipsModal } from "./features/weight-progress-tips/compone
 import PhysicalActivitySetup from "./features/user/components/PhysicalActivitySetup";
 import { fetchProfile } from "./features/user/services/profileService";
 import { resolvePhysicalActivityGate } from "./features/user/domain/physicalActivityGate";
-import { getProfile } from "./features/user/services/user.api";
+import { getProfile, clearProfileCache } from "./features/user/services/user.api";
 import {
   NutritionRefreshProvider,
   useNutritionRefresh,
@@ -316,6 +316,7 @@ const prefetchManualEntryPage = () => {
 function WellnessValleyApp() {
   const apiBaseUrl = getApiBaseUrl();
   const versionPolicy = useAppVersionPolicy();
+  const mandatoryUpdate = useMandatoryAppUpdate(versionPolicy);
   const [selectedImage, setSelectedImage] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
   const [nutritionData, setNutritionData] = useState(null);
@@ -2757,8 +2758,11 @@ function WellnessValleyApp() {
         const config = PermissionManager.PERMISSION_CONFIG[type];
 
         // Fast path: already granted — skip without touching the OS.
-        const { granted: alreadyGranted } = await PermissionManager.checkPermission(type);
+        const { granted: alreadyGranted, canRequest } = await PermissionManager.checkPermission(type);
         if (alreadyGranted) continue;
+
+        // Optional permissions the user already declined — do not re-prompt on every resume.
+        if (!config.required && !canRequest) continue;
 
         if (type === 'location') {
           const gpsOn = await nativeLifecycle.checkGpsEnabled();
@@ -3209,7 +3213,7 @@ function WellnessValleyApp() {
 
       if (
         isFlagEnabled("ff.consent-gate") &&
-        result.data?.consentRequired === true
+        shouldOpenConsentGate(result.data?.consentRequired === true, userObj)
       ) {
         setShowConsentGate(true);
       }
@@ -3312,7 +3316,7 @@ function WellnessValleyApp() {
           email: email || undefined,
         });
         if (cancelled || !consent.ok) return;
-        if (consent.consentRequired) {
+        if (shouldOpenConsentGate(consent.consentRequired, user)) {
           setShowConsentGate(true);
         } else {
           setShowConsentGate(false);
@@ -3710,7 +3714,7 @@ function WellnessValleyApp() {
                   email: userEmail || undefined,
                 });
                 if (consent.ok) {
-                  if (consent.consentRequired) {
+                  if (shouldOpenConsentGate(consent.consentRequired, parsedUser)) {
                     setShowConsentGate(true);
                   } else {
                     setShowConsentGate(false);
@@ -3718,11 +3722,11 @@ function WellnessValleyApp() {
                     Session.setOtpUser(refreshed);
                     setUser(refreshed);
                   }
-                } else if (parsedUser?.consentRequired === true) {
+                } else if (shouldOpenConsentGate(parsedUser?.consentRequired === true, parsedUser)) {
                   setShowConsentGate(true);
                 }
               } catch {
-                if (parsedUser?.consentRequired === true) {
+                if (shouldOpenConsentGate(parsedUser?.consentRequired === true, parsedUser)) {
                   setShowConsentGate(true);
                 }
               }
@@ -3915,7 +3919,23 @@ function WellnessValleyApp() {
 
         // Case C: no dialog � full re-validation in case a permission was revoked.
         if (!cancelled) {
-          await advancePermissionFlow();
+          if (!permissionsReady) {
+            await advancePermissionFlow();
+            return;
+          }
+          const requiredTypes = ['camera', 'location'];
+          let requiredRevoked = false;
+          for (const type of requiredTypes) {
+            const { granted } = await PermissionManager.checkPermission(type);
+            if (!granted) {
+              requiredRevoked = true;
+              break;
+            }
+          }
+          if (requiredRevoked) {
+            _permissionFlowRunningRef.current = false;
+            await advancePermissionFlow();
+          }
         }
       }),
     )
@@ -3930,7 +3950,7 @@ function WellnessValleyApp() {
       try { handle?.remove?.(); } catch { /* ignore */ }
     };
   // Re-register when any of these change so the handler has fresh closure values.
-  }, [user, showGpsRequired, activePermission, advancePermissionFlow]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [user, showGpsRequired, activePermission, permissionsReady, advancePermissionFlow]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Sponsor setup / OTP — after display name, before remaining profile + activity.
   // May run with userId only when email is collected later on CompleteProfile.
@@ -4195,7 +4215,7 @@ function WellnessValleyApp() {
         if (
           isFlagEnabled("ff.consent-gate") &&
           data?.success &&
-          data?.data?.consentRequired === true
+          shouldOpenConsentGate(data?.data?.consentRequired === true, user)
         ) {
           setShowConsentGate(true);
         }
@@ -4310,8 +4330,8 @@ function WellnessValleyApp() {
       const idealMin = 19 * heightM * heightM;
       const idealMax = 23 * heightM * heightM;
       setIdealWeight({
-        min: Math.round(idealMin * 10) / 10, // BMI 19 lower bound
-        value: Math.round(idealMax * 10) / 10, // BMI 23 upper bound
+        min: Math.round(idealMin * 100) / 100, // BMI 19 lower bound
+        value: Math.round(idealMax * 100) / 100, // BMI 23 upper bound
         unit: "kg",
         heightCm: Math.round(heightCm),
       });
@@ -6840,7 +6860,7 @@ function WellnessValleyApp() {
           "? [saveUserToBackend] User saved successfully, isNewUser:",
           data.isNewUser,
         );
-        if (data.user?.consentRequired) {
+        if (shouldOpenConsentGate(data.user?.consentRequired === true, data.user)) {
           setShowConsentGate(true);
         }
 
@@ -7065,7 +7085,7 @@ function WellnessValleyApp() {
         // so we never flash Login → consent/home.
         const needsConsent =
           isFlagEnabled("ff.consent-gate") &&
-          parsedUser?.consentRequired === true;
+          shouldOpenConsentGate(parsedUser?.consentRequired === true, parsedUser);
         setShowConsentGate(needsConsent);
         setUser(snapshotUserWithDbId(parsedUser));
         setIsOtpVerified(true);
@@ -7136,7 +7156,14 @@ function WellnessValleyApp() {
   // Must win over Home / login / coach OTP so old clients cannot bypass.
   // -------------------------------------------------------------------------
   if (versionPolicy.blocked) {
-    return <AppVersionHardBlock policy={versionPolicy.policy} />;
+    return (
+      <AppVersionHardBlock
+        policy={versionPolicy.policy}
+        onUpdateNow={mandatoryUpdate.retryUpdate}
+        playUnavailable={mandatoryUpdate.playUnavailable}
+        androidUpdating={mandatoryUpdate.phase === 'play_flow' || mandatoryUpdate.phase === 'starting'}
+      />
+    );
   }
 
   // -------------------------------------------------------------------------
@@ -7283,6 +7310,10 @@ function WellnessValleyApp() {
               return;
             }
             persistLocalConsentAcceptance(CURRENT_CONSENT_VERSION);
+            clearProfileCache({
+              email: consentEmail || undefined,
+              userId: consentUserId,
+            });
             setUser((prev) => {
               if (!prev) return prev;
               const next = { ...prev, consentRequired: false };
@@ -7433,12 +7464,6 @@ function WellnessValleyApp() {
   // dashboard API reloads unless a newer async activity log exists
   // (see homeDashboardActivity + NutritionRefreshContext.triggerRefresh).
   let homeOverlay = null;
-  const versionSoftBanner = versionPolicy.showSoftBanner ? (
-    <AppVersionUpdateBanner
-      policy={versionPolicy.policy}
-      onDismiss={versionPolicy.dismissRecommended}
-    />
-  ) : null;
 
   // Inline Profile Page — full-screen, below nav bar (no modal overlay)
   // Hard onboarding wizards only — soft resolve flags must not hide Profile on Home.
@@ -9647,7 +9672,6 @@ function WellnessValleyApp() {
     </LocationGuard>
       </div>
       {homeOverlay}
-      {versionSoftBanner}
     </>
   );
 }
