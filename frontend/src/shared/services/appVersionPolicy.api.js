@@ -1,11 +1,9 @@
 /**
- * App version policy — client API + session dismiss helpers.
+ * App version policy — client API.
  */
 import { getApiBaseUrl } from '../../config/api.config.js';
 import { Capacitor } from '@capacitor/core';
 import APP_VERSION from '../../config/version.js';
-
-const DISMISS_PREFIX = 'appVersionDismissedRecommended:';
 
 export function getClientPlatform() {
   try {
@@ -22,24 +20,6 @@ export function getClientVersionPayload() {
     versionCode: APP_VERSION.VERSION_CODE,
     platform: getClientPlatform(),
   };
-}
-
-export function isSoftUpdateDismissed(recommendedVersion) {
-  if (typeof window === 'undefined' || !recommendedVersion) return false;
-  try {
-    return window.localStorage.getItem(`${DISMISS_PREFIX}${recommendedVersion}`) === 'true';
-  } catch {
-    return false;
-  }
-}
-
-export function dismissSoftUpdate(recommendedVersion) {
-  if (typeof window === 'undefined' || !recommendedVersion) return;
-  try {
-    window.localStorage.setItem(`${DISMISS_PREFIX}${recommendedVersion}`, 'true');
-  } catch {
-    /* ignore */
-  }
 }
 
 /**

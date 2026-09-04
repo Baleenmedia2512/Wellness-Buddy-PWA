@@ -132,11 +132,16 @@ export default function GoodHabitFlow({
           <div>
             <p id="good-habit-title" className="text-sm font-bold leading-snug text-emerald-900">Good Habit</p>
             <p className="mt-0.5 text-[11px] leading-snug text-emerald-700/70">
-              Any size photo — we compress it before saving
+              Click Save if this photo shows a good habit you started today.
             </p>
           </div>
-          <button type="button" onClick={onClose} className="flex-shrink-0 rounded-xl p-1.5 hover:bg-emerald-50" aria-label="Close">
-            <X className="h-4 w-4 text-emerald-600/60" />
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-red-500 text-white transition-colors hover:bg-red-600"
+            aria-label="Close"
+          >
+            <X className="h-5 w-5" strokeWidth={2.25} />
           </button>
         </div>
 
@@ -148,7 +153,7 @@ export default function GoodHabitFlow({
           <ImageSlot image={image} compressing={compressing} onPick={pickImage} />
           <button type="button" disabled={!canSave} onClick={handleSave} className={SAVE_BTN}>
             {saving && <Loader2 className="h-4 w-4 animate-spin" aria-hidden />}
-            Save Good Habit
+            Save
           </button>
         </div>
       </div>

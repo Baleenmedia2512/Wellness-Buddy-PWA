@@ -12,7 +12,7 @@ import { User } from 'lucide-react';
 import { formatMemberSubtitle, subtitleCommunityId } from '../services/teamSearchService';
 
 export default function TeamSearchResults({
-  dropdownRef, loading, suggestions,
+  dropdownRef, loading, loadError = false, rosterReady = true, suggestions,
   selectedMemberId, onSelect,
 }) {
   return (
@@ -24,6 +24,14 @@ export default function TeamSearchResults({
         <div className="px-4 py-3 text-sm text-gray-500 flex items-center gap-2">
           <div className="animate-spin rounded-full h-4 w-4 border-2 border-green-500 border-t-transparent" />
           Loading team members...
+        </div>
+      ) : loadError ? (
+        <div className="px-4 py-3 text-sm text-gray-500">
+          Could not load your team list. Check your connection and try again.
+        </div>
+      ) : !rosterReady ? (
+        <div className="px-4 py-3 text-sm text-gray-500">
+          Team list is still loading — wait a moment, then try again.
         </div>
       ) : suggestions.length > 0 ? (
         <ul className="py-1">
@@ -60,7 +68,7 @@ export default function TeamSearchResults({
         </ul>
       ) : (
         <div className="px-4 py-3 text-sm text-gray-500">
-          No active users found.
+          No matches — try part of their name, email, or Community ID.
         </div>
       )}
     </div>

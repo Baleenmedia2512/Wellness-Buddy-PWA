@@ -19,7 +19,9 @@ async function sendUpdateNotification({ coachEmail, coachName, memberName, membe
       service: 'gmail',
       auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
     });
-    const programList = programs.map((p) => `<li>${p}</li>`).join('');
+    const programList = programs.length
+      ? programs.map((p) => `<li>${p}</li>`).join('')
+      : '<li>No programs selected</li>';
     await transporter.sendMail({
       from: '"Wellness Valley" <easy2work.india@gmail.com>',
       to: coachEmail,
@@ -86,10 +88,11 @@ export default async function handler(req, res) {
       });
     }
 
-    if (!programs || !Array.isArray(programs) || programs.length === 0) {
+    // Empty array is allowed on update so the user can uncheck every program.
+    if (!Array.isArray(programs)) {
       return res.status(400).json({
         success: false,
-        message: 'Please select at least one program',
+        message: 'Programs must be an array',
       });
     }
 

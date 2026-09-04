@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import useDeleteAccountFlow from '../hooks/useDeleteAccountFlow';
 import useOtpInput from '../hooks/useOtpInput';
+import { EMAIL_OTP_LENGTH } from '../domain/otpLength';
 import useResendCountdown from '../hooks/useResendCountdown';
 import { sendOtp, verifyOtp, deleteAccountRequest, purgeLocalAfterDelete } from '../services/authService';
 import { deleteFirebaseUser } from '../../../shared/services/firebase';
@@ -15,7 +16,7 @@ const CONFIRM_WORD = 'DELETE';
 
 const DeleteAccountModal = ({ isOpen, onClose, userEmail, onAccountDeleted, onSignOut }) => {
   const flow = useDeleteAccountFlow({ isOpen, userEmail });
-  const otpCtl = useOtpInput(6);
+  const otpCtl = useOtpInput(EMAIL_OTP_LENGTH);
   const resend = useResendCountdown(flow.restoredCountdown, flow.step === 2);
 
   const [otpSending, setOtpSending] = useState(false);
@@ -36,8 +37,14 @@ const DeleteAccountModal = ({ isOpen, onClose, userEmail, onAccountDeleted, onSi
 
   const doSendOtp = async () => {
     setOtpSending(true); setErrorMessage('');
+    const recipient = String(userEmail || '').trim();
+    if (!recipient || !recipient.includes('@')) {
+      setErrorMessage('No email found for this account. Please re-login and try again.');
+      setOtpSending(false);
+      return false;
+    }
     try {
-      const data = await sendOtp(userEmail);
+      const data = await sendOtp(recipient);
       if (data.success) { flow.setStep(2); flow.markOtpSent(); resend.start(60); return true; }
       setErrorMessage(data.message || 'Failed to send OTP. Try again.');
     } catch { setErrorMessage('Network error. Please check your connection.'); }

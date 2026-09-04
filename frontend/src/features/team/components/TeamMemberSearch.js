@@ -11,8 +11,12 @@ import TeamSearchInput from './TeamSearchInput';
 import TeamSearchResults from './TeamSearchResults';
 import { useTeamSearch } from '../hooks/useTeamSearch';
 
-const TeamMemberSearch = ({ user, userRole, selectedMember, onMemberSelect }) => {
-  const vm = useTeamSearch({ user, userRole, selectedMember, onMemberSelect });
+const TeamMemberSearch = ({
+  user, userRole, selectedMember, onMemberSelect, refreshKey = 0,
+}) => {
+  const vm = useTeamSearch({
+    user, userRole, selectedMember, onMemberSelect, refreshKey,
+  });
   const [showProfileModal, setShowProfileModal] = useState(false);
 
   if (!vm.isCoach) return null;
@@ -36,6 +40,8 @@ const TeamMemberSearch = ({ user, userRole, selectedMember, onMemberSelect }) =>
             <TeamSearchResults
               dropdownRef={vm.dropdownRef}
               loading={vm.loading}
+              loadError={vm.loadError}
+              rosterReady={vm.rosterReady}
               suggestions={vm.suggestions}
               selectedMemberId={selectedMember?.userId}
               onSelect={vm.selectMember}

@@ -7,6 +7,8 @@ export const ACTIVITY_REPORT_DEFAULT_PAGE_SIZE = 10;
 export const ACTIVITY_REPORT_MAX_PAGE_SIZE = 100;
 /** Hard ceiling for export-all responses (safety against runaway payloads). */
 export const ACTIVITY_REPORT_EXPORT_MAX = 10_000;
+/** Query value for clubName filter when showing Remote (N/A) records only. */
+export const ACTIVITY_REPORT_CLUB_REMOTE = '__remote__';
 
 export const ACTIVITY_REPORT_SORTABLE = new Set([
   'date',
@@ -35,8 +37,41 @@ export const ACTIVITY_REPORT_SORTABLE = new Set([
  *   sort: string,
  *   sortDir: 'asc'|'desc',
  *   exportAll: boolean,
+ *   clubFilter: string,
  * }}
  */
+export function normalizeActivityReportClubFilter(raw) {
+  const value = String(raw?.clubName ?? raw?.clubFilter ?? '').trim();
+  return value;
+}
+
+/** Display label for a stored clubName value (N/A → Remote). */
+export function formatActivityReportClubDisplay(clubName) {
+  if (!clubName || clubName === 'N/A') return 'Remote';
+  return String(clubName);
+}
+
+/**
+ * Unique club display names for dropdown (sorted A–Z; Remote last when present).
+ * @param {Array<{ clubName?: string }>} records
+ * @returns {string[]}
+ */
+export function collectActivityReportClubNames(records) {
+  const names = new Set();
+  let hasRemote = false;
+  for (const record of Array.isArray(records) ? records : []) {
+    const raw = record?.clubName;
+    if (!raw || raw === 'N/A') {
+      hasRemote = true;
+    } else {
+      names.add(String(raw));
+    }
+  }
+  const sorted = [...names].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+  if (hasRemote) sorted.push('Remote');
+  return sorted;
+}
+
 export function normalizeActivityReportPagination(raw = {}) {
   let page = 1;
   if (raw.page != null && raw.page !== '') {
@@ -69,7 +104,37 @@ export function normalizeActivityReportPagination(raw = {}) {
     || exportFlag === '1'
     || String(exportFlag || '').toLowerCase() === 'true';
 
-  return { page, limit, search, sort, sortDir, exportAll };
+  const clubFilter = normalizeActivityReportClubFilter(raw);
+
+  return { page, limit, search, sort, sortDir, exportAll, clubFilter };
+}
+
+/**
+ * Filter by club name. Empty clubFilter = all clubs.
+ * Use ACTIVITY_REPORT_CLUB_REMOTE for N/A / Remote rows.
+ * @template T
+ * @param {T[]} records
+ * @param {string} clubFilter
+ * @returns {T[]}
+ */
+export function filterActivityReportRecordsByClub(records, clubFilter) {
+  const list = Array.isArray(records) ? records : [];
+  const filter = String(clubFilter || '').trim();
+  if (!filter) return list;
+
+  if (filter === ACTIVITY_REPORT_CLUB_REMOTE) {
+    return list.filter((record) => {
+      const raw = record?.clubName;
+      return !raw || raw === 'N/A';
+    });
+  }
+
+  const target = filter.toLowerCase();
+  return list.filter((record) => {
+    const raw = record?.clubName;
+    if (!raw || raw === 'N/A') return false;
+    return String(raw).toLowerCase() === target;
+  });
 }
 
 /**
@@ -178,7 +243,7 @@ export function buildActivityReportPaginationMeta(totalRecords, page, pageSize) 
  *
  * @template T
  * @param {T[]} records
- * @param {{ page: number, limit: number, search: string, sort: string, sortDir: 'asc'|'desc', exportAll: boolean }} opts
+ * @param {{ page: number, limit: number, search: string, sort: string, sortDir: 'asc'|'desc', exportAll: boolean, clubFilter?: string }} opts
  * @returns {{ records: T[], pagination: ReturnType<typeof buildActivityReportPaginationMeta>, preparedRows: T[] }}
  */
 export function paginateActivityReportRecords(records, opts) {
@@ -189,9 +254,11 @@ export function paginateActivityReportRecords(records, opts) {
     sort,
     sortDir,
     exportAll,
+    clubFilter,
   } = normalizeActivityReportPagination(opts);
 
-  const filtered = filterActivityReportRecords(records, search);
+  const byClub = filterActivityReportRecordsByClub(records, clubFilter);
+  const filtered = filterActivityReportRecords(byClub, search);
   const preparedRows = sortActivityReportRecords(filtered, sort, sortDir);
   const totalRecords = preparedRows.length;
 

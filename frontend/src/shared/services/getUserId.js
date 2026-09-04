@@ -1,6 +1,8 @@
 import { debugLog } from '../utils/logger.js';
 import { getDeviceTimezoneIana } from '../utils/deviceTimezone.js';
 import { apiFetch } from './apiFetch.js';
+import { readNumericDbUserId } from './numericDbUserId.js';
+import * as Session from './sessionStorage.js';
 
 /**
  * @file getUserId — looks up the canonical database UserID for an
@@ -31,8 +33,10 @@ export function clearUserIdCache() {
  */
 export async function getUserId(user) {
   const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
-  if (!user) return null;
-  const email = user.email || null;
+  if (!user) return readNumericDbUserId(null, Session.getDbUserId());
+  const known = readNumericDbUserId(user, Session.getDbUserId());
+  if (known) return known;
+  const email = user.email || user.Email || null;
   if (!email) return null;
 
   if (userIdCache.has(email)) {
@@ -58,6 +62,7 @@ export async function getUserId(user) {
 
     if (data.success && data.userId) {
       userIdCache.set(email, data.userId);
+      Session.setDbUserId(data.userId);
       debugLog('[getUserId] Cached userId for:', email);
       return data.userId;
     }
@@ -98,6 +103,7 @@ export async function lookupUserByEmail(email) {
     // Cache the userId if successful
     if (data.success && data.userId) {
       userIdCache.set(email, data.userId);
+      Session.setDbUserId(data.userId);
       debugLog('[lookupUserByEmail] Cached userId for:', email);
     }
     

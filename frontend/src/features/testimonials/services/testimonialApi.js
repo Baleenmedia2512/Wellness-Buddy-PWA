@@ -290,6 +290,19 @@ export async function verifyUnifiedOtp(payload) {
 }
 
 /**
+ * Resend unified OTP to sponsor after expiry.
+ * @param {{ userId: number }} payload
+ */
+export async function resendUnifiedOtp(payload) {
+  const res = await CapacitorHttp.post({
+    url:     `${base()}/resend-unified-otp`,
+    headers: { 'Content-Type': 'application/json' },
+    data:    payload,
+  });
+  return parseApiResponse(res, 'Failed to resend OTP');
+}
+
+/**
  * Coach: update a reporting member's recovered health issues (no OTP).
  * @param {{ coachId: number, userId: number, recoveredHealthIssues: string[] }} payload
  */

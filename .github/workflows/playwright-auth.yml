@@ -83,7 +83,6 @@ jobs:
         working-directory: ./backend
         run: npm ci
 
-
       # ==========================================================
       # 6. CREATE FRONTEND ENVIRONMENT
       # ==========================================================
@@ -330,10 +329,10 @@ jobs:
             exit 1
           fi
 
-
       # ==========================================================
       # 17. WAIT FOR FRONTEND
       # ==========================================================
+
 
       - name: Wait for Frontend
         shell: bash
@@ -496,7 +495,6 @@ jobs:
 
           echo "Event:"
           echo "$GITHUB_EVENT_NAME"
-
 
       # ==========================================================
       # 25. SYNC RUN TO QA DASHBOARD

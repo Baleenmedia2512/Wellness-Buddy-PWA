@@ -100,7 +100,7 @@ async function retagCaptureType({ apiBaseUrl, captureId, userId, imageType }) {
  * @param {string} initialTab - Optional tab to open initially ('nutrition' | 'weight' | 'education')
  * @param {string} initialMealId - Optional meal ID to auto-open in Nutrition tab (deep link)
  */
-const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRole = 'user', bmrUpdateKey = 0, educationRefreshKey = 0, watchBurnedCalories = 0, onWatchBurnedCaloriesReset = null, initialSelectedMember = null, initialDate = null, initialMealId = null, onStartBackgroundCaptureAi = null, onToast = null, tabVisitKey = 0 }) => {
+const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRole = 'user', bmrUpdateKey = 0, educationRefreshKey = 0, teamSearchRefreshKey = 0, watchBurnedCalories = 0, onWatchBurnedCaloriesReset = null, initialSelectedMember = null, initialDate = null, initialMealId = null, onStartBackgroundCaptureAi = null, onToast = null, tabVisitKey = 0 }) => {
   // PR-C / ADR-0003 — Diary tab is mounted iff the FE feature flag is ON.
   // Resolution order is documented in `config/featureFlags.js`. Resolved
   // once per mount so toggling the flag at runtime requires a re-mount
@@ -825,6 +825,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
           userRole={userRole}
           selectedMember={selectedMember}
           onMemberSelect={setSelectedMember}
+          refreshKey={teamSearchRefreshKey}
         />
         
         <div className="w-full max-w-md mx-auto md:max-w-2xl lg:max-w-4xl">

@@ -3,8 +3,24 @@ import axios from "axios";
 import { motion, AnimatePresence } from "framer-motion";
 import wellnessValleyIcon from "../assets/wellness-valley-icon.png";
 import { debugLog } from '../shared/utils/logger.js';
+import { APP_VERSION } from "../config/version";
+import * as Session from "../shared/services/sessionStorage.js";
+import { getProfile } from "../features/user/services/user.api.js";
 
 const API_BASE = process.env.REACT_APP_API_BASE_URL || "http://localhost:3000";
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function looksLikeEmail(value) {
+  return EMAIL_RE.test(String(value || "").trim());
+}
+
+function mapSetupApiError(raw, fallback) {
+  const msg = String(raw || "").trim();
+  if (/email is required/i.test(msg)) {
+    return "Email is required. Go back and verify your email first.";
+  }
+  return msg || fallback;
+}
 
 const SetupWizard = ({
   onClose,
@@ -34,14 +50,56 @@ const SetupWizard = ({
   // General
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [resolvedEmail, setResolvedEmail] = useState("");
+
+  const resolveUserId = () =>
+    userIdProp
+    || Session.getDbUserId()
+    || localStorage.getItem("userId")
+    || localStorage.getItem("dbUserId")
+    || null;
+
+  const collectSessionEmail = () => {
+    const otpUser = Session.getOtpUser();
+    const candidates = [
+      resolvedEmail,
+      userEmailProp,
+      Session.getUserEmail(),
+      localStorage.getItem("userEmail"),
+      otpUser?.email,
+      otpUser?.Email,
+    ];
+    return candidates.map((v) => String(v || "").trim()).find(looksLikeEmail) || "";
+  };
 
   const resolveRequester = () => {
-    const email = (userEmailProp || localStorage.getItem('userEmail') || '').trim();
-    const userId = userIdProp
-      || localStorage.getItem('userId')
-      || localStorage.getItem('dbUserId')
-      || null;
+    const email = collectSessionEmail();
+    const userId = resolveUserId();
     return { email, userId };
+  };
+
+  const persistEmail = (email) => {
+    const clean = String(email || "").trim();
+    if (!looksLikeEmail(clean)) return;
+    setResolvedEmail(clean);
+    try {
+      Session.setUserEmail(clean);
+    } catch {
+      /* ignore */
+    }
+    const otpUser = Session.getOtpUser();
+    if (otpUser) {
+      Session.setOtpUser({ ...otpUser, email: clean });
+    }
+  };
+
+  const ensureEmail = async () => {
+    const existing = collectSessionEmail();
+    if (existing) {
+      persistEmail(existing);
+      return existing;
+    }
+    return "";
   };
 
   // Mask email function
@@ -60,18 +118,44 @@ const SetupWizard = ({
       .trim()
       .replace(/[^a-zA-Z0-9]/g, "")
       .toUpperCase();
-    return cleaned.slice(0, 10);
+    return cleaned.slice(0, 100);
   };
 
-  // Validate Team ID format
   const isValidTeamIdFormat = (id) => {
-    return /^[a-zA-Z0-9]{10}$/.test(id);
+    return /^[a-zA-Z0-9]{4,100}$/.test(id);
   };
+
+  useEffect(() => {
+    let cancelled = false;
+    const hydrateEmail = async () => {
+      const fromSession = collectSessionEmail();
+      if (fromSession) {
+        persistEmail(fromSession);
+        return;
+      }
+      const userId = resolveUserId();
+      if (!userId) return;
+      try {
+        const data = await getProfile({ userId: String(userId) });
+        const fromProfile = String(data?.data?.email || data?.data?.Email || "").trim();
+        if (!cancelled && looksLikeEmail(fromProfile)) {
+          persistEmail(fromProfile);
+        }
+      } catch {
+        /* profile may not have email yet */
+      }
+    };
+    hydrateEmail();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userEmailProp, userIdProp]);
 
   // ── Demo account: auto-select Yasheer J, skip Team ID, send request ───────
   const DEMO_EMAIL = 'testereasywork@gmail.com';
   useEffect(() => {
-    const userEmail = userEmailProp || localStorage.getItem('userEmail') || '';
+    const userEmail = collectSessionEmail() || userEmailProp || localStorage.getItem('userEmail') || '';
     if (userEmail.toLowerCase().trim() !== DEMO_EMAIL) return;
 
     const autoComplete = async () => {
@@ -138,7 +222,7 @@ const SetupWizard = ({
     setError("");
 
     try {
-      const userEmail = userEmailProp || localStorage.getItem("userEmail");
+      const { email: userEmail } = resolveRequester();
       const response = await axios.get(
         `${API_BASE}/api/users/search?q=${encodeURIComponent(
           query,
@@ -161,7 +245,7 @@ const SetupWizard = ({
   // Check Team ID availability
   const checkTeamIdAvailability = async () => {
     if (!isValidTeamIdFormat(teamId)) {
-      setError("Team ID must be exactly 10 alphanumeric characters");
+      setError("Community ID must be at least 4 letters or numbers");
       setTeamIdStatus(null);
       return;
     }
@@ -170,16 +254,19 @@ const SetupWizard = ({
     setError("");
 
     try {
-      const userEmail = userEmailProp || localStorage.getItem("userEmail");
+      const userEmail = await ensureEmail();
+      const { userId } = resolveRequester();
       if (!userEmail) {
-        setError("Session expired. Please login again.");
+        setError("Email is required. Go back and verify your email first.");
+        setTeamIdStatus(null);
         return;
       }
 
+      const params = new URLSearchParams({ teamId, email: userEmail });
+      if (userId) params.set("userId", String(userId));
+
       const response = await axios.get(
-        `${API_BASE}/api/team/check-availability?teamId=${teamId}&email=${encodeURIComponent(
-          userEmail,
-        )}`,
+        `${API_BASE}/api/team/check-availability?${params.toString()}`,
       );
 
       setTeamIdStatus(response.data.status);
@@ -189,7 +276,7 @@ const SetupWizard = ({
         setSuccess("You already own this ID.");
       }
     } catch (err) {
-      setError(err.response?.data?.error || "Failed to check Team ID");
+      setError(mapSetupApiError(err.response?.data?.error, "Failed to check Community ID"));
       setTeamIdStatus(null);
     } finally {
       setCheckingTeamId(false);
@@ -200,7 +287,7 @@ const SetupWizard = ({
   const skipTeamIdAndSendRequest = async () => {
     if (sendingRequestRef.current) return;
     if (!selectedCoach) {
-      setError("Please select a coach first");
+      setError("Please select a guide first");
       return;
     }
 
@@ -209,9 +296,10 @@ const SetupWizard = ({
     setError("");
 
     try {
-      const { email: userEmail, userId } = resolveRequester();
-      if (!userEmail && !userId) {
-        setError("Session expired. Please login again.");
+      const userEmail = await ensureEmail();
+      const { userId } = resolveRequester();
+      if (!userEmail) {
+        setError("Email is required. Go back and verify your email first.");
         return;
       }
 
@@ -220,14 +308,13 @@ const SetupWizard = ({
         {
           coachId: selectedCoach.userId,
           coachName: selectedCoach.userName,
-          email: userEmail || null,
+          email: userEmail,
           userId: userId || null,
         },
       );
 
-      const requestBody = { coachId: selectedCoach.userId };
-      if (userEmail) requestBody.email = userEmail;
-      else requestBody.userId = userId;
+      const requestBody = { coachId: selectedCoach.userId, email: userEmail };
+      if (userId) requestBody.userId = userId;
       const requestResponse = await axios.post(
         `${API_BASE}/api/upline/request`,
         requestBody,
@@ -244,9 +331,7 @@ const SetupWizard = ({
     } catch (err) {
       console.error("Skip setup error:", err);
       console.error("Error response:", err.response?.data);
-      const errorMessage =
-        err.response?.data?.error || err.message || "Failed to send request";
-      setError(errorMessage);
+      setError(mapSetupApiError(err.response?.data?.error || err.message, "Failed to send request"));
     } finally {
       sendingRequestRef.current = false;
       setSendingRequest(false);
@@ -255,42 +340,46 @@ const SetupWizard = ({
 
   // Claim Team ID and send approval request
   const claimTeamIdAndSendRequest = async () => {
+    if (sendingRequestRef.current) return;
     if (!selectedCoach) {
-      setError("Please select a coach first");
+      setError("Please select a guide first");
+      return;
+    }
+    if (teamIdStatus === 'taken') {
+      setError('This Community ID is full. Enter another ID or skip.');
       return;
     }
 
+    sendingRequestRef.current = true;
     setClaimingTeamId(true);
     setError("");
 
     try {
-      const { email: userEmail, userId } = resolveRequester();
-      if (!userEmail && !userId) {
-        setError("Session expired. Please login again.");
-        setClaimingTeamId(false);
+      const userEmail = await ensureEmail();
+      const { userId } = resolveRequester();
+      if (!userEmail) {
+        setError("Email is required. Go back and verify your email first.");
         return;
       }
 
-      debugLog("Claiming Team ID:", { teamId, email: userEmail || null, userId: userId || null });
+      debugLog("Claiming Team ID:", { teamId, email: userEmail, userId: userId || null });
 
       // Step 1: Claim Team ID
-      const claimBody = { teamId };
-      if (userEmail) claimBody.email = userEmail;
-      else claimBody.userId = userId;
+      const claimBody = { teamId, email: userEmail };
+      if (userId) claimBody.userId = userId;
       const claimResponse = await axios.post(`${API_BASE}/api/team/claim-id`, claimBody);
 
       debugLog("Team ID claimed successfully:", claimResponse.data);
 
       debugLog("Sending approval request:", {
         coachId: selectedCoach.userId,
-        email: userEmail || null,
+        email: userEmail,
         userId: userId || null,
       });
 
-      // Step 2: Send approval request to coach
-      const requestBody = { coachId: selectedCoach.userId };
-      if (userEmail) requestBody.email = userEmail;
-      else requestBody.userId = userId;
+      // Step 2: Send approval request to selected guide (not necessarily Sponsor)
+      const requestBody = { coachId: selectedCoach.userId, email: userEmail };
+      if (userId) requestBody.userId = userId;
       const requestResponse = await axios.post(
         `${API_BASE}/api/upline/request`,
         requestBody,
@@ -307,17 +396,16 @@ const SetupWizard = ({
     } catch (err) {
       console.error("Setup error:", err);
       console.error("Error response:", err.response?.data);
-      const errorMessage =
-        err.response?.data?.error || err.message || "Failed to complete setup";
-      setError(errorMessage);
+      setError(mapSetupApiError(err.response?.data?.error || err.message, "Failed to complete setup"));
     } finally {
+      sendingRequestRef.current = false;
       setClaimingTeamId(false);
     }
   };
 
-  // Auto-check Team ID when user types
+  // Auto-check Team ID when user types (needs email — APIs require it)
   useEffect(() => {
-    if (teamId.length === 10 && isValidTeamIdFormat(teamId)) {
+    if (teamId.length >= 4 && isValidTeamIdFormat(teamId)) {
       const timer = setTimeout(() => {
         checkTeamIdAvailability();
       }, 500);
@@ -325,6 +413,7 @@ const SetupWizard = ({
     } else {
       setTeamIdStatus(null);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [teamId]);
 
   return (
@@ -357,9 +446,8 @@ const SetupWizard = ({
         </button>
 
         <div className="shrink-0">
-          {/* Header Icon */}
-          <div className="flex justify-center pt-8 pb-4">
-            <div className="w-20 h-20 rounded-2xl flex items-center justify-center overflow-hidden">
+          <div className="flex items-center gap-3 px-5 pt-6 pb-4 pr-14">
+            <div className="w-14 h-14 shrink-0 rounded-2xl flex items-center justify-center overflow-hidden">
               <img
                 src={wellnessValleyIcon}
                 alt="Wellness Valley"
@@ -373,17 +461,13 @@ const SetupWizard = ({
                 }}
               />
             </div>
+            <div className="min-w-0 text-left">
+              <h1 className="text-lg font-bold text-gray-900 leading-tight">
+                Welcome Wellness Valley
+              </h1>
+              <p className="text-sm text-gray-500 mt-0.5">v{APP_VERSION.VERSION}</p>
+            </div>
           </div>
-
-          <div className="px-8 text-center mb-8">
-            <h1 className="text-2xl font-bold text-gray-900 mb-2">
-              Welcome to Wellness Valley
-            </h1>
-            <p className="text-gray-500 text-sm leading-relaxed">
-              Search for the person who invited you and activate your account.
-            </p>
-          </div>
-
         </div>
 
         <div className="px-8 pb-8 flex-1 overflow-y-auto custom-scrollbar">
@@ -398,10 +482,9 @@ const SetupWizard = ({
               >
                 <div className="mb-6">
                   {/* find your coach */}
-                  <h3 className="text-lg font-bold text-gray-900 mb-1">
-                    Person who invited you for this Program
+                  <h3 className="text-base font-semibold text-gray-900 mb-3 leading-snug">
+                    Search and select the person name (sponsor) who invited you to this program
                   </h3>
-                  {/* <p className="text-gray-500 text-sm mb-4">Search for the person who invited you to Wellness Valley. They will be your mentor.</p> */}
 
                   <div className="relative group">
                     <input
@@ -499,40 +582,231 @@ const SetupWizard = ({
 
                 <button
                   className={`w-full py-3.5 rounded-xl font-bold text-base transition-all flex items-center justify-center gap-2 ${
-                    selectedCoach && !sendingRequest
+                    selectedCoach
                       ? "bg-green-600 text-white hover:bg-green-700 shadow-lg shadow-green-200"
                       : "bg-gray-100 text-gray-400 cursor-not-allowed"
                   }`}
-                  onClick={() => selectedCoach && skipTeamIdAndSendRequest()}
-                  disabled={!selectedCoach || sendingRequest}
+                  onClick={() => {
+                    if (!selectedCoach) return;
+                    setError("");
+                    setSuccess("");
+                    setStep(2);
+                  }}
+                  disabled={!selectedCoach}
                 >
-                  {sendingRequest ? (
-                    <>
-                      <div className="animate-spin h-5 w-5 border-2 border-white border-t-transparent rounded-full"></div>
-                      <span>Sending...</span>
-                    </>
-                  ) : (
-                    <>
-                      <span>Continue</span>
-                      <svg
-                        className="w-5 h-5"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M13 7l5 5m0 0l-5 5m5-5H6"
-                        />
-                      </svg>
-                    </>
-                  )}
+                  <span>Continue</span>
+                  <svg
+                    className="w-5 h-5"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M13 7l5 5m0 0l-5 5m5-5H6"
+                    />
+                  </svg>
                 </button>
               </motion.div>
             )}
 
+            {step === 2 && (
+              <motion.div
+                key="step2"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                transition={{ duration: 0.2 }}
+              >
+                <div className="bg-green-50 rounded-xl p-4 flex items-center justify-between mb-6 border border-green-100">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-green-200 rounded-full flex items-center justify-center text-green-700 font-bold">
+                      {selectedCoach?.userName?.charAt(0)?.toUpperCase()}
+                    </div>
+                    <div>
+                      <p className="text-xs text-green-600 font-medium">
+                        Selected guide
+                      </p>
+                      <div className="text-sm font-bold text-gray-900">
+                        {selectedCoach?.userName}
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setStep(1)}
+                    className="text-green-600 text-sm font-bold hover:text-green-700"
+                  >
+                    Change
+                  </button>
+                </div>
+
+                <div className="mb-6">
+                  <h3 className="text-base font-semibold text-gray-900 mb-1 leading-snug">
+                    Enter your Community ID
+                  </h3>
+                  <p className="text-gray-500 text-sm mb-4">
+                    Create a new ID as Sponsor, join an open seat as Co-Sponsor,
+                    or skip to join as a member under your guide.
+                  </p>
+
+                  <div className="relative">
+                    <input
+                      type="text"
+                      className={`w-full py-6 bg-gray-50 rounded-xl text-center text-2xl font-mono tracking-widest border-2 focus:ring-0 transition-all uppercase ${
+                        teamIdStatus === "new"
+                          ? "border-blue-500 text-blue-700"
+                          : teamIdStatus === "available"
+                          ? "border-green-500 text-green-700"
+                          : teamIdStatus === "taken"
+                          ? "border-red-300 text-red-600"
+                          : teamIdStatus === "taken-by-you"
+                          ? "border-yellow-500 text-yellow-700"
+                          : "border-transparent text-gray-500"
+                      }`}
+                      value={teamId}
+                      onChange={(e) => {
+                        setTeamId(formatTeamId(e.target.value));
+                        setTeamIdStatus(null);
+                        setTeamIdInfo(null);
+                        setError("");
+                        setSuccess("");
+                      }}
+                      placeholder="W112072XXX"
+                      maxLength={100}
+                      autoCapitalize="characters"
+                      autoFocus
+                    />
+                    <div className="absolute right-4 top-1/2 -translate-y-1/2">
+                      {checkingTeamId ? (
+                        <div className="animate-spin h-6 w-6 border-2 border-green-500 border-t-transparent rounded-full" />
+                      ) : null}
+                    </div>
+                  </div>
+
+                  {teamIdStatus && !error && (
+                    <div className="mt-4">
+                      {teamIdStatus === "new" && (
+                        <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 text-left">
+                          <h4 className="text-blue-900 font-bold text-sm">
+                            New Community ID
+                          </h4>
+                          <p className="text-blue-600/80 text-xs font-medium">
+                            You will become the Sponsor. Co-Sponsor seat stays open.
+                          </p>
+                        </div>
+                      )}
+                      {teamIdStatus === "available" && (
+                        <div className="bg-green-50 border border-green-100 rounded-xl p-3 text-left">
+                          <h4 className="text-green-900 font-bold text-sm">
+                            Join as Co-Sponsor
+                          </h4>
+                          <p className="text-green-600/80 text-xs font-medium">
+                            {teamIdInfo?.existingCoach?.name
+                              ? `Sponsor: ${teamIdInfo.existingCoach.name}`
+                              : "One lead seat is open on this team."}
+                          </p>
+                        </div>
+                      )}
+                      {teamIdStatus === "taken" && (
+                        <div className="bg-red-50 border border-red-100 rounded-xl p-3 text-left">
+                          <h4 className="text-red-900 font-bold text-sm">
+                            Community ID unavailable
+                          </h4>
+                          <p className="text-red-600/80 text-xs font-medium">
+                            Sponsor and Co-Sponsor seats are full. Enter another ID or skip.
+                          </p>
+                        </div>
+                      )}
+                      {teamIdStatus === "taken-by-you" && (
+                        <div className="bg-yellow-50 border border-yellow-100 rounded-xl p-3 text-left">
+                          <h4 className="text-yellow-900 font-bold text-sm">
+                            You already claimed this Community ID
+                          </h4>
+                          <p className="text-yellow-600/80 text-xs font-medium">
+                            Continue to send the approval request to your guide.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {error && (
+                    <p className="text-red-500 text-xs mt-2 text-center">{error}</p>
+                  )}
+                  {success && (
+                    <p className="text-green-600 text-xs mt-2 text-center">{success}</p>
+                  )}
+
+                  <div className="mt-3 text-center">
+                    <p className="text-gray-400 text-xs">
+                      {teamId.length} characters · Min 4 · Letters & numbers only
+                    </p>
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  <div className="flex gap-3">
+                    <button
+                      type="button"
+                      className="w-14 py-3.5 rounded-xl font-bold text-base bg-gray-100 text-gray-600 hover:bg-gray-200 transition-all flex items-center justify-center"
+                      onClick={() => setStep(1)}
+                      aria-label="Back"
+                      disabled={claimingTeamId || sendingRequest}
+                    >
+                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                      </svg>
+                    </button>
+                    <button
+                      type="button"
+                      className={`flex-1 py-3.5 rounded-xl font-bold text-base transition-all flex items-center justify-center gap-2 ${
+                        (teamIdStatus === "new" ||
+                          teamIdStatus === "available" ||
+                          teamIdStatus === "taken-by-you") &&
+                        !claimingTeamId
+                          ? "bg-green-600 text-white hover:bg-green-700 shadow-lg shadow-green-200"
+                          : "bg-gray-100 text-gray-400 cursor-not-allowed"
+                      }`}
+                      onClick={claimTeamIdAndSendRequest}
+                      disabled={
+                        (teamIdStatus !== "new" &&
+                          teamIdStatus !== "available" &&
+                          teamIdStatus !== "taken-by-you") ||
+                        claimingTeamId
+                      }
+                    >
+                      {claimingTeamId ? (
+                        <>
+                          <div className="animate-spin h-5 w-5 border-2 border-white border-t-transparent rounded-full" />
+                          <span>Processing...</span>
+                        </>
+                      ) : (
+                        <span>Continue with Community ID</span>
+                      )}
+                    </button>
+                  </div>
+
+                  <button
+                    type="button"
+                    className="w-full py-3 rounded-xl font-semibold text-sm bg-transparent border-2 border-gray-300 text-gray-600 hover:border-green-500 hover:text-green-600 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:border-gray-300 disabled:hover:text-gray-600"
+                    onClick={skipTeamIdAndSendRequest}
+                    disabled={sendingRequest || claimingTeamId}
+                  >
+                    {sendingRequest ? (
+                      <>
+                        <div className="animate-spin h-4 w-4 border-2 border-gray-600 border-t-transparent rounded-full" />
+                        <span>Sending...</span>
+                      </>
+                    ) : (
+                      <span>Skip Community ID</span>
+                    )}
+                  </button>
+                </div>
+              </motion.div>
+            )}
           </AnimatePresence>
         </div>
       </motion.div>

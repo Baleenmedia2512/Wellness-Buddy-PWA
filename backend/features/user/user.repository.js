@@ -97,6 +97,8 @@ export async function findByUsername(username) {
 export async function getProfile(email) {
   // Consent / optional body-metric columns are optional until migrations are applied.
   // Body fat is stored on weight_records_table, not team_table.
+  const withPhotos =
+    '"UserId", "UserName", "Email", "Height", "DietType", "ProfileImage", "CoachId", "PhoneNumber", "Gender", "Bmr", profile_pic_snooze, "WeightGoalMode", "PhysicalActivityLevel", "CommunityId", timezone_iana, "ConsentAcceptedAt", "ConsentVersion", "Age", "VisceralFat", "BodyAge", "ChestCm", "WaistCm", "HipCm", recovered_health_issues, transformation_photos';
   const fullCols =
     '"UserId", "UserName", "Email", "Height", "DietType", "ProfileImage", "CoachId", "PhoneNumber", "Gender", "Bmr", profile_pic_snooze, "WeightGoalMode", "PhysicalActivityLevel", "CommunityId", timezone_iana, "ConsentAcceptedAt", "ConsentVersion", "Age", "VisceralFat", "BodyAge", "ChestCm", "WaistCm", "HipCm", recovered_health_issues';
   const withMetricsNoHealth =
@@ -108,6 +110,14 @@ export async function getProfile(email) {
 
   async function load(cols) {
     return findByEmail(email, cols);
+  }
+
+  try {
+    return await load(withPhotos);
+  } catch (errPhotos) {
+    const msgPhotos = String(errPhotos?.message || errPhotos || '');
+    if (!/column/i.test(msgPhotos)) throw errPhotos;
+    if (!/transformation_photos/i.test(msgPhotos)) throw errPhotos;
   }
 
   try {
@@ -144,6 +154,8 @@ export async function getProfile(email) {
 
 /** Same columns as getProfile, resolved by UserId (phone / pre-email onboarding). */
 export async function getProfileByUserId(userId) {
+  const withPhotos =
+    '"UserId", "UserName", "Email", "Height", "DietType", "ProfileImage", "CoachId", "PhoneNumber", "Gender", "Bmr", profile_pic_snooze, "WeightGoalMode", "PhysicalActivityLevel", "CommunityId", timezone_iana, "ConsentAcceptedAt", "ConsentVersion", "Age", "VisceralFat", "BodyAge", "ChestCm", "WaistCm", "HipCm", recovered_health_issues, transformation_photos';
   const fullCols =
     '"UserId", "UserName", "Email", "Height", "DietType", "ProfileImage", "CoachId", "PhoneNumber", "Gender", "Bmr", profile_pic_snooze, "WeightGoalMode", "PhysicalActivityLevel", "CommunityId", timezone_iana, "ConsentAcceptedAt", "ConsentVersion", "Age", "VisceralFat", "BodyAge", "ChestCm", "WaistCm", "HipCm", recovered_health_issues';
   const withMetricsNoHealth =
@@ -155,6 +167,14 @@ export async function getProfileByUserId(userId) {
 
   async function load(cols) {
     return findByUserId(userId, cols);
+  }
+
+  try {
+    return await load(withPhotos);
+  } catch (errPhotos) {
+    const msgPhotos = String(errPhotos?.message || errPhotos || '');
+    if (!/column/i.test(msgPhotos)) throw errPhotos;
+    if (!/transformation_photos/i.test(msgPhotos)) throw errPhotos;
   }
 
   try {
@@ -187,6 +207,11 @@ export async function getProfileByUserId(userId) {
     if (missingConsent) return load(noConsentCols);
     throw current;
   }
+}
+
+/** Team Code / shared-team fields for profile Team Code card. */
+export async function getTeamCodeFields(userId) {
+  return findByUserId(userId, '"UserId", "TeamId", "CoachTeamId", "CoachId", "Role", "CommunityId"');
 }
 
 function isMissingIsDeletedColumn(error) {

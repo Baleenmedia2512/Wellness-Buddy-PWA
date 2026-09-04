@@ -9,9 +9,13 @@ import {
   getDirectReportingMembers,
   getFullReportingMembers,
   getReportingMemberIds,
+  getUplineMembers,
   buildReportingChildrenIndex,
   isReportingDownlineMember,
+  isCoCoachPartnerDownlineMember,
   collectVisibleHierarchyUsers,
+  isSharedCoachTeamAccessible,
+  normalizeCoachTeamId,
 } from '../reportingHierarchyService.js';
 
 const X = 1;
@@ -120,6 +124,21 @@ describe('getFullReportingMembers', () => {
   });
 });
 
+describe('getUplineMembers', () => {
+  it('returns ancestors on the CoachId chain (nearest first)', () => {
+    const U1 = 5;
+    const U2 = 6;
+    const context = buildReportingContext([
+      { UserId: U1, UserName: 'Top', Role: 'coach', CoachId: null, Status: 'Active' },
+      { UserId: U2, UserName: 'Mid', Role: 'coach', CoachId: U1, Status: 'Active' },
+      { UserId: X, UserName: 'Viewer', Role: 'coach', CoachId: U2, Status: 'Active' },
+      { UserId: A, UserName: 'Member A', Role: 'user', CoachId: X, Status: 'Active' },
+    ]);
+
+    assert.deepEqual(getUplineMembers(X, context).map((m) => m.UserId), [U2, U1]);
+  });
+});
+
 describe('getReportingMemberIds', () => {
   it('excludes the viewing coach from member ids', () => {
     const context = buildReportingContext(makeUsers('Active'));
@@ -222,6 +241,74 @@ describe('inactive nested leader (Role=user) rollup — coach→a3→b1→c1', (
   });
 });
 
+describe('isCoCoachPartnerDownlineMember — Sponsor/Co-Sponsor shared tree', () => {
+  const sponsor = 339;
+  const coCoach = 341;
+  const usharaj = 306;
+
+  const SHARED_TEAM = [
+    { UserId: sponsor, UserName: 'Sponsor', Role: 'coach', CoachId: null, Status: 'Active' },
+    { UserId: coCoach, UserName: 'CoSponsor', Role: 'coach', CoachId: null, Status: 'Active' },
+    { UserId: 735, UserName: 'Prethip', Role: 'coach', CoachId: sponsor, Status: 'Active' },
+    { UserId: 279, UserName: 'BALAJI', Role: 'coach', CoachId: 735, Status: 'Active' },
+    { UserId: usharaj, UserName: 'Usharaj', Role: 'coach', CoachId: 279, Status: 'Active' },
+    { UserId: 609, UserName: 'thilagavathi', Role: 'user', CoachId: usharaj, Status: 'Active' },
+  ];
+
+  it('Co-Sponsor can view Sponsor downline members (e.g. Usharaj)', () => {
+    const context = buildReportingContext(SHARED_TEAM);
+    context.coCoachPartnershipRootIds = [sponsor, coCoach];
+    context.partnerRootIds = [sponsor];
+    assert.equal(isReportingDownlineMember(coCoach, usharaj, context), false);
+    assert.equal(isCoCoachPartnerDownlineMember(coCoach, usharaj, context), true);
+    assert.equal(isCoCoachPartnerDownlineMember(coCoach, 609, context), true);
+  });
+
+  it('Sponsor can view Co-Sponsor partner node via partnerRootIds', () => {
+    const context = buildReportingContext(SHARED_TEAM);
+    context.coCoachPartnershipRootIds = [sponsor, coCoach];
+    context.partnerRootIds = [coCoach];
+    assert.equal(isCoCoachPartnerDownlineMember(sponsor, coCoach, context), true);
+  });
+
+  it('rejects outsiders and unrelated branches', () => {
+    const context = buildReportingContext(SHARED_TEAM);
+    context.coCoachPartnershipRootIds = [sponsor, coCoach];
+    context.partnerRootIds = [sponsor];
+    assert.equal(isCoCoachPartnerDownlineMember(coCoach, 9999, context), false);
+    assert.equal(isCoCoachPartnerDownlineMember(9999, usharaj, context), false);
+  });
+});
+
+describe('isSharedCoachTeamAccessible — team-hierarchy search parity', () => {
+  const sponsor = 100;
+  const coCoach = 101;
+  const member = 200;
+  const outsider = 300;
+  const teamRow = { TeamId: 'TEAM42', CoachId: sponsor, CoCoachId: coCoach };
+
+  it('normalizeCoachTeamId trims and uppercases', () => {
+    assert.equal(normalizeCoachTeamId(' team42 '), 'TEAM42');
+    assert.equal(normalizeCoachTeamId(null), null);
+  });
+
+  it('allows Sponsor/Co-Sponsor leads to view active shared-team members', () => {
+    const memberRow = { Status: 'Active', CoachTeamId: 'team42' };
+    assert.equal(isSharedCoachTeamAccessible(sponsor, memberRow, teamRow), true);
+    assert.equal(isSharedCoachTeamAccessible(coCoach, memberRow, teamRow), true);
+  });
+
+  it('rejects inactive members, outsiders, and different team codes', () => {
+    const activeMember = { Status: 'Active', CoachTeamId: 'TEAM42' };
+    const inactiveMember = { Status: 'Inactive', CoachTeamId: 'TEAM42' };
+    const otherTeamMember = { Status: 'Active', CoachTeamId: 'OTHER' };
+    assert.equal(isSharedCoachTeamAccessible(outsider, activeMember, teamRow), false);
+    assert.equal(isSharedCoachTeamAccessible(sponsor, inactiveMember, teamRow), false);
+    assert.equal(isSharedCoachTeamAccessible(sponsor, otherTeamMember, teamRow), false);
+    assert.equal(isSharedCoachTeamAccessible(sponsor, activeMember, null), false);
+  });
+});
+
 describe('collectVisibleHierarchyUsers — upline people, own downline, not other branches', () => {
   const Ravi = 1;
   const Prethip = 2;
@@ -293,5 +380,33 @@ describe('collectVisibleHierarchyUsers — upline people, own downline, not othe
     assert.equal(idSet.has(X1), false);
     assert.equal(idSet.has(Y), true);
     assert.equal(idSet.has(A1), false);
+  });
+
+  it('partnerRootIds include shared Sponsor/Co-Sponsor partner downline', () => {
+    // Riya (Sponsor) and Kabir (Co-Sponsor) share a team; members under either lead.
+    const Riya = 9001;
+    const Kabir = 9002;
+    const Amit = 9003;
+    const Priya = 9004;
+    const shared = buildReportingContext([
+      { UserId: Riya, UserName: 'Riya', Role: 'user', CoachId: null, Status: 'Active' },
+      { UserId: Kabir, UserName: 'Kabir', Role: 'user', CoachId: null, Status: 'Active' },
+      { UserId: Amit, UserName: 'Amit', Role: 'user', CoachId: Riya, Status: 'Active' },
+      { UserId: Priya, UserName: 'Priya', Role: 'user', CoachId: Kabir, Status: 'Active' },
+    ]);
+    shared.partnerRootIds = [Kabir];
+
+    const riyaVisible = collectVisibleHierarchyUsers(Riya, shared);
+    const riyaIds = new Set(riyaVisible.map((m) => m.UserId));
+    assert.equal(riyaIds.has(Kabir), true);
+    assert.equal(riyaIds.has(Amit), true);
+    assert.equal(riyaIds.has(Priya), true);
+
+    shared.partnerRootIds = [Riya];
+    const kabirVisible = collectVisibleHierarchyUsers(Kabir, shared);
+    const kabirIds = new Set(kabirVisible.map((m) => m.UserId));
+    assert.equal(kabirIds.has(Riya), true);
+    assert.equal(kabirIds.has(Amit), true);
+    assert.equal(kabirIds.has(Priya), true);
   });
 });

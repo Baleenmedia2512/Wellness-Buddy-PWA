@@ -220,11 +220,18 @@ test.describe('Club Module (Nutrition Centers)', () => {
     // Test Date Filter (Custom)
     const customBtn = page.getByRole('button', { name: /Custom/i });
     await customBtn.evaluate((element) => element.dispatchEvent(new Event('click', { bubbles: true })));
-    
-    // Custom opens the DatePicker. We select the 15th of the month.
-    const dayBtn = page.getByRole('button', { name: '15', exact: true });
+
+    // Custom opens the DatePicker. We select the 1st of the month. 
+    // Use a specific locator to avoid clicking the pagination '1' button.
+    const dayBtn = page.locator('.aspect-square').filter({ hasText: /^1$/ }).first();
     await expect(dayBtn).toBeVisible();
-    await dayBtn.evaluate((element) => element.dispatchEvent(new Event('click', { bubbles: true })));
+    await dayBtn.click();
+    
+    // Because the 1st might be 'Today', the data is already cached.
+    // We click Refresh to force a new network request to verify the URL parameters.
+    const refreshBtn = page.getByRole('button', { name: 'Refresh' });
+    await refreshBtn.click();
+    
     await page.waitForTimeout(500); // Wait for fetch
     expect(lastUrl).toContain('dateRange=custom');
   });

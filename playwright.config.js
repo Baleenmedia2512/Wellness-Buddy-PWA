@@ -1,20 +1,17 @@
-const { defineConfig, devices } = require('@playwright/test');
+const { defineConfig, devices } = require("@playwright/test");
 
 module.exports = defineConfig({
-
   // ============================================================
   // TEST DIRECTORY
   // ============================================================
 
-  testDir: './tests',
-
+  testDir: "./tests",
 
   // ============================================================
   // GLOBAL TEST TIMEOUT
   // ============================================================
 
   timeout: 60 * 1000,
-
 
   // ============================================================
   // EXPECT ASSERTION TIMEOUT
@@ -24,39 +21,20 @@ module.exports = defineConfig({
     timeout: 10 * 1000,
   },
 
-
   // ============================================================
   // RUN TESTS IN PARALLEL
-  // ============================================================
-  //
-  // The tests are currently being stabilized.
-  // Keep workers = 1 for deterministic debugging.
-  //
-  // After all tests are stable, this can be changed to:
-  //
-  // workers: process.env.CI ? 2 : undefined
-  //
   // ============================================================
 
   fullyParallel: true,
 
+  // Keep workers = 1 for deterministic debugging.
   workers: 1,
-
 
   // ============================================================
   // RETRIES
   // ============================================================
-  //
-  // Temporarily disabled so we can see the REAL first failure.
-  //
-  // Once the suite is stable, change this to:
-  //
-  // retries: process.env.CI ? 2 : 0
-  //
-  // ============================================================
 
   retries: 0,
-
 
   // ============================================================
   // FAIL IF test.only IS USED IN CI
@@ -64,122 +42,93 @@ module.exports = defineConfig({
 
   forbidOnly: !!process.env.CI,
 
-
   // ============================================================
   // REPORTERS
   // ============================================================
 
-reporter: [
-  ["list"],
-  ["json", { outputFile: "test-results/results.json" }],
-  ["html", { outputFolder: "playwright-report", open: "never" }],
-],
+  reporter: [
+    ["list"],
 
+    [
+      "json",
+      {
+        outputFile: "test-results/results.json",
+      },
+    ],
+
+    [
+      "html",
+      {
+        outputFolder: "playwright-report",
+        open: "never",
+      },
+    ],
+  ],
 
   // ============================================================
   // GLOBAL USE SETTINGS
   // ============================================================
 
   use: {
+    // Frontend URL
+    baseURL: "http://127.0.0.1:3001",
 
-    // ----------------------------------------------------------
-    // FRONTEND URL
-    // ----------------------------------------------------------
-    //
-    // GitHub Actions:
-    // Frontend -> 3001
-    // Backend  -> 3000
-    //
-    // ----------------------------------------------------------
-
-    baseURL: 'http://127.0.0.1:3001',
-
-
-    // ----------------------------------------------------------
-    // HEADLESS
-    // ----------------------------------------------------------
-
+    // Headless
     headless: true,
 
+    // Screenshot
+    screenshot: "only-on-failure",
 
-    // ----------------------------------------------------------
-    // SCREENSHOT
-    // ----------------------------------------------------------
+    // Video
+    video: "retain-on-failure",
 
-    screenshot: 'only-on-failure',
+    // Trace
+    trace: "retain-on-failure",
 
-
-    // ----------------------------------------------------------
-    // VIDEO
-    // ----------------------------------------------------------
-
-    video: 'retain-on-failure',
-
-
-    // ----------------------------------------------------------
-    // TRACE
-    // ----------------------------------------------------------
-
-    trace: 'retain-on-failure',
-
-
-    // ----------------------------------------------------------
-    // ACTION TIMEOUT
-    // ----------------------------------------------------------
-    //
     // Prevent individual actions from waiting indefinitely.
-    //
-    // ----------------------------------------------------------
-
     actionTimeout: 15 * 1000,
-
   },
-
 
   // ============================================================
   // PROJECTS
   // ============================================================
 
   projects: [
-
     // ==========================================================
     // SETUP
     // ==========================================================
 
     {
-      name: 'setup',
+      name: "setup",
 
       testMatch:
         /.*\.setup\.js/,
 
       use: {
-        ...devices['Desktop Chrome'],
+        ...devices["Desktop Chrome"],
       },
     },
-
 
     // ==========================================================
     // FRONTEND
     // ==========================================================
 
     {
-      name: 'frontend',
+      name: "frontend",
 
       testMatch:
         /tests\/frontend\/.*\.spec\.js/,
 
       use: {
-        ...devices['Desktop Chrome'],
+        ...devices["Desktop Chrome"],
 
         baseURL:
-          'http://127.0.0.1:3001',
+          "http://127.0.0.1:3001",
       },
 
       dependencies: [
-        'setup',
+        "setup",
       ],
     },
-
   ],
-
 });

@@ -23,15 +23,25 @@ import {
 } from './domain/profileCompleteness.js';
 import { buildProfileCardSyncPayload } from '../body-parameters-card/domain/sync.rules.js';
 import { computeBmiFromHeightWeight } from '../body-parameters-card/domain/card.rules.js';
+import { getSupabaseClient } from '../../utils/supabaseClient.js';
+import { resolveLeadSeatForUser } from '../../utils/coachTeamSeats.js';
+import { syncProfileCommunityIdToTeamAssignment } from './communityIdTeamAssignment.service.js';
+import { buildTeamFieldsFromProfileCommunityId } from './domain/communityIdTeamAssignment.rules.js';
 import { deriveWeightGoalMode } from '../../utils/weightValidation.js';
 import { resolveProfileTimezone } from './domain/profileTimezone.js';
 import { mapTeamRowToProfileBodyMetrics, mergeProfileBodyMetrics, mapCardToProfileBodyMetrics } from './domain/profileBodyMetrics.rules.js';
 import { mapTeamRecoveredHealthIssues } from './domain/recoveredHealthIssues.rules.js';
+import {
+  hasTransformationPhotoUpdates,
+  mapTransformationPhotos,
+  mergeTransformationPhotos,
+} from './domain/transformationPhotos.rules.js';
 import { findLatestLinkedBodyMetricsCard } from '../body-parameters-card/data/card.repo.js';
 import { isEnabled } from '../../shared/lib/feature-flags.js';
 import { isConsentRecorded } from '../auth/domain/consent.rules.js';
 import { resolveSponsorAndIdealCoach } from '../../utils/sponsorCoachResolution.js';
 import * as weightRepo from '../weight/weight.repository.js';
+import { resolveMarathonWeightComparison } from '../marathon/domain/marathonWeightComparison.service.js';
 
 const notFound = () => ({ httpStatus: 404, body: { success: false, message: 'User not found' } });
 
@@ -49,13 +59,19 @@ export async function getProfile({ email, userId = null }) {
     : await repo.getProfile(email);
   if (!user) return notFound();
 
-  const [latestWeight, initialWeightRow, latestBodyMetricsCard, sponsorIdeal, latestWeightBodyFatResolved] = await Promise.all([
+  const [latestWeight, initialWeightRow, latestBodyMetricsCard, sponsorIdeal, latestWeightBodyFatResolved, teamCodeFields] = await Promise.all([
     repo.getLatestWeight(user.UserId),
     repo.getInitialWeight(user.UserId),
     findLatestLinkedBodyMetricsCard(user.UserId),
     resolveSponsorAndIdealCoach(user.UserId, { viewerUserId: user.UserId }),
     repo.getLatestWeightBodyFat(user.UserId),
+    repo.getTeamCodeFields(user.UserId),
   ]);
+  const leadSeat = await resolveLeadSeatForUser(getSupabaseClient(), user.UserId);
+  const teamId = teamCodeFields?.TeamId || leadSeat.teamId || null;
+  const coachTeamId = teamCodeFields?.CoachTeamId || null;
+  const teamSeat = leadSeat.seat || null;
+  const canClaimTeamCode = !!user.CoachId && !teamId && !teamSeat;
   const cardMetrics = mapCardToProfileBodyMetrics(latestBodyMetricsCard);
   const teamMetrics = mapTeamRowToProfileBodyMetrics(user);
   const cardHeight = latestBodyMetricsCard?.height_cm != null
@@ -115,6 +131,11 @@ export async function getProfile({ email, userId = null }) {
   const sponsorName = sponsorIdeal.sponsorName || null;
   // Backward-compatible alias: coachName remains the direct parent (sponsor).
   const coachName = sponsorName;
+  const profileTimezone = resolveProfileTimezone(user.timezone_iana);
+  const marathonWeightComparison = await resolveMarathonWeightComparison({
+    userId: user.UserId,
+    timezoneIana: profileTimezone,
+  });
 
   // Onboarding identity uses team_table.UserName only. A BCM card name must
   // not skip the name gate for users who still have a placeholder login name.
@@ -159,6 +180,10 @@ export async function getProfile({ email, userId = null }) {
         sponsorName,
         idealCoachId: sponsorIdeal.idealCoachId || null,
         idealCoachName: sponsorIdeal.idealCoachName || null,
+        teamId,
+        coachTeamId,
+        teamSeat,
+        canClaimTeamCode,
         profilePicSnooze: user.profile_pic_snooze || null,
         latestWeight: latestWeightKg,
         initialWeight: Number.isFinite(initialWeightKg) ? initialWeightKg : null,
@@ -168,15 +193,17 @@ export async function getProfile({ email, userId = null }) {
         latestBmr,
         physicalActivityLevel,
         communityId: user.CommunityId ?? null,
-        timezone: resolveProfileTimezone(user.timezone_iana),
+        timezone: profileTimezone,
         consentAccepted: isConsentRecorded(user),
         consentRequired: isEnabled('ff.consent-gate') && !isConsentRecorded(user),
         consentVersion: user.ConsentVersion || null,
         calorieTarget,
         tdeeBreakdown,
         weightRecordDate: latestWeight?.CreatedAt || null,
+        marathonWeightComparison,
         bodyMetrics,
         recoveredHealthIssues: mapTeamRecoveredHealthIssues(user.recovered_health_issues),
+        transformationPhotos: mapTransformationPhotos(user.transformation_photos),
       },
     },
   };
@@ -189,6 +216,7 @@ export async function getProfile({ email, userId = null }) {
 function buildProfileUpdate({
   name, height, dietType, phoneNumber, profileImage, gender, weightGoalMode, physicalActivityLevel, communityId, timezoneIana,
   age, visceralFat, bodyAge, chestCm, waistCm, hipCm, recoveredHealthIssues,
+  transformationPhotos, existingTransformationPhotos,
 }) {
   const updateData = {};
   let cleanedPhoneNumber;
@@ -225,6 +253,12 @@ function buildProfileUpdate({
       ? recoveredHealthIssues
       : [];
   }
+  if (hasTransformationPhotoUpdates(transformationPhotos)) {
+    updateData.transformation_photos = mergeTransformationPhotos(
+      existingTransformationPhotos,
+      transformationPhotos,
+    );
+  }
   return { updateData, cleanedPhoneNumber };
 }
 
@@ -259,7 +293,7 @@ export async function updateProfile(input) {
   const {
     email, name, height, bmr, dietType, profileImage, phoneNumber, gender,
     weightGoalMode, physicalActivityLevel, communityId, timezoneIana, bodyFat,
-    currentWeight,
+    currentWeight, transformationPhotos,
   } = input;
 
   logger.info('[profile/update] incoming request', {
@@ -276,15 +310,37 @@ export async function updateProfile(input) {
     });
   }
 
-  const user = await repo.findByEmail(email, 'UserId');
+  let user;
+  try {
+    user = await repo.findByEmail(email, 'UserId, transformation_photos');
+  } catch (err) {
+    const msg = String(err?.message || err || '');
+    if (!/transformation_photos/i.test(msg)) throw err;
+    user = await repo.findByEmail(email, 'UserId');
+  }
   if (!user) return notFound();
   const userId = user.UserId;
 
-  const { updateData, cleanedPhoneNumber } = buildProfileUpdate(input);
+  const { updateData, cleanedPhoneNumber } = buildProfileUpdate({
+    ...input,
+    existingTransformationPhotos: user.transformation_photos,
+  });
+
+  const teamFieldsFromCommunityId = buildTeamFieldsFromProfileCommunityId(communityId);
+  if (teamFieldsFromCommunityId) {
+    Object.assign(updateData, teamFieldsFromCommunityId);
+  }
 
   let savedPhysicalActivityLevel = null;
   if (physicalActivityLevel != null && isValidPhysicalActivityLevel(physicalActivityLevel)) {
     savedPhysicalActivityLevel = physicalActivityLevel;
+  }
+
+  const transformationPhotosPatch = updateData.transformation_photos !== undefined
+    ? { transformation_photos: updateData.transformation_photos }
+    : null;
+  if (transformationPhotosPatch) {
+    delete updateData.transformation_photos;
   }
 
   let savedCommunityId;
@@ -294,12 +350,24 @@ export async function updateProfile(input) {
       userId,
       updatedFields: Object.keys(updateData),
       communityIdSaved: updateData.CommunityId ?? null,
+      teamIdSaved: updateData.TeamId ?? null,
+      coachTeamIdSaved: updateData.CoachTeamId ?? null,
     });
     try { await repo.updateUserById(userId, { LastActiveAt: nowUtc() }); } catch { /* non-fatal */ }
     const verifyRow = await repo.verifyProfile(userId);
     if (!verifyRow) throw new Error(`Unable to verify profile update for UserId ${userId}`);
     verifySaved(verifyRow, { cleanedPhoneNumber, height, dietType, gender, updateData, communityId, timezoneIana });
     if (communityId !== undefined) savedCommunityId = communityId;
+  }
+
+  if (transformationPhotosPatch) {
+    try {
+      await repo.updateUserById(userId, transformationPhotosPatch);
+    } catch (photoErr) {
+      const msg = String(photoErr?.message || photoErr || '');
+      if (!/transformation_photos|column/i.test(msg)) throw photoErr;
+      logger.warn('[profile/update] transformation_photos column missing; skipped', { userId });
+    }
   }
 
   let latestWeightRow = await repo.getLatestWeight(userId);
@@ -484,6 +552,24 @@ export async function updateProfile(input) {
     });
   }
 
+  let teamCodeSync = null;
+  try {
+    const teamRow = await repo.getTeamCodeFields(userId);
+    const communityIdInRequest = communityId !== undefined;
+    const communityForSync = communityIdInRequest
+      ? communityId
+      : (teamRow?.CommunityId ?? null);
+    teamCodeSync = await syncProfileCommunityIdToTeamAssignment(userId, communityForSync, {
+      communityIdExplicitlyUpdated: communityIdInRequest,
+    });
+  } catch (syncErr) {
+    logger.error('[profile/update] Community ID team assignment failed', {
+      userId,
+      message: syncErr?.message,
+    });
+    throw syncErr;
+  }
+
   try { cache.delete(cacheKeys.userProfile(String(email || '').toLowerCase())); } catch { /* non-fatal */ }
 
   const refreshedUser = await repo.getProfile(email);
@@ -516,6 +602,10 @@ export async function updateProfile(input) {
       profileImageUpdated: !!profileImage,
       bodyFat: savedBodyFat || undefined,
       currentWeight: savedCurrentWeight || undefined,
+      teamId: teamCodeSync?.teamId || undefined,
+      teamSeat: teamCodeSync?.teamSeat || undefined,
+      coachTeamId: teamCodeSync?.coachTeamId || undefined,
+      teamCodeSynced: !!(teamCodeSync?.synced),
     },
   };
 

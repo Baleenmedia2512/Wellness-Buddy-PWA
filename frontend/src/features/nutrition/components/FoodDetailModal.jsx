@@ -17,6 +17,7 @@ import { parseAnalysisData, getMealCategory } from '../services/nutritionDashboa
 import { buildDiaryShareSuffix } from '../../diary/domain/share/suffixes';
 import { extractFoodShareItems } from '../../diary/domain/activityType';
 import FoodItemNutritionModal from './FoodItemNutritionModal';
+import { buildItemNutritionFallback } from '../domain/foodItemNutritionFacts';
 
 function macro(n) {
   const v = Number(n);
@@ -391,6 +392,10 @@ const FoodDetailModal = ({ payload, capturedAt, onClose, onDelete }) => {
       {selectedItem && (
         <FoodItemNutritionModal
           item={selectedItem}
+          mealFallback={buildItemNutritionFallback(selectedItem, {
+            AnalysisData: payload?.analysisData,
+            nutrition: foodData?.nutrition,
+          })}
           onClose={() => setSelectedItem(null)}
         />
       )}

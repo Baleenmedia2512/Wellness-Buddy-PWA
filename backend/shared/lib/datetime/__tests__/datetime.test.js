@@ -18,6 +18,7 @@ import {
   normalizeStoredTimestampToUtcIso,
   filterRowsByCalendarDay,
   filterRowsByCalendarDateRange,
+  filterRowsOnOrBeforeCalendarDay,
   utcInstantToLegacyIstWallStorage,
   timestampToCalendarYmd,
 } from '../index.js';
@@ -246,6 +247,18 @@ describe('filterRowsByCalendarDateRange', () => {
     const rows = [yesterdayDinner, todayBreakfast];
     const todayOnly = filterRowsByCalendarDateRange(rows, '2026-07-31', '2026-07-31', IANA_IST);
     assert.deepEqual(todayOnly.map((r) => r.UserID), ['2']);
+  });
+});
+
+describe('filterRowsOnOrBeforeCalendarDay', () => {
+  it('includes rows on and before the target calendar day', () => {
+    const rows = [
+      { ID: 1, CreatedAt: '2026-09-08 08:00:00' },
+      { ID: 2, CreatedAt: '2026-09-10 08:00:00' },
+      { ID: 3, CreatedAt: '2026-09-12 08:00:00' },
+    ];
+    const onOrBeforeSep10 = filterRowsOnOrBeforeCalendarDay(rows, '2026-09-10', IANA_IST);
+    assert.deepEqual(onOrBeforeSep10.map((r) => r.ID), [1, 2]);
   });
 });
 

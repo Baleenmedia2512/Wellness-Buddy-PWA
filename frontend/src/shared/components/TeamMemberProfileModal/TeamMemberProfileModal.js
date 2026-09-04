@@ -1,6 +1,7 @@
 // src/shared/components/TeamMemberProfileModal/TeamMemberProfileModal.js
 import React, { useState, useEffect } from 'react';
 import { X, User, Mail, Ruler, Flame, Salad, Phone } from 'lucide-react';
+import { EmojiOrNative } from '../icons/EmojiImage';
 import { fetchTeamMemberProfile } from './fetchTeamMemberProfile.js';
 
 const DIET_LABELS = {

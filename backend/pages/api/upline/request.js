@@ -12,8 +12,10 @@ import {
 import { nowUtc } from '../../../shared/lib/datetime/index.js';
 import { resolveActiveCoach } from "../../../utils/hierarchyHelpers.js";
 import bcrypt from "bcryptjs";
-import nodemailer from "nodemailer";
 import logger from '../../../shared/lib/logger.js';
+import { generateEmailOtp } from '../../../features/auth/domain/otp-length.rules.js';
+import { sendTransactionalMail } from '../../../shared/lib/smtp-mail.js';
+import { buildSponsorOtpEmail } from '../../../features/auth/domain/otp-email.rules.js';
 
 /** Resolve requester row by userId, email (case-insensitive), or phone. */
 async function findRequester(supabase, { userId, email, phone }) {
@@ -73,36 +75,19 @@ async function resolveCoachForReactivation(supabase, requester, explicitCoachId)
   return coachId || requester.CoachId;
 }
 
-// Production email service using nodemailer (same as send-otp.js)
-const sendEmail = async ({ to, subject, html }) => {
+const sendEmail = async ({ to, subject, text, html }) => {
   try {
-    const transporter = nodemailer.createTransport({
-      service: "gmail",
-      auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS,
-      },
-    });
-
-    await transporter.sendMail({
-      from: '"Wellness Valley" <easy2work.india@gmail.com>',
-      to: to,
-      subject: subject,
-      html: html,
-    });
-
-    logger.debug("✅ OTP email sent successfully to:", to);
+    await sendTransactionalMail({ to, subject, text, html });
     return { success: true };
   } catch (error) {
-    console.error("❌ Email sending failed:", error.message);
-    // Don't throw - allow request creation to succeed even if email fails
+    logger.warn("[upline/request] email sending failed", { message: error.message });
     return { success: false, error: error.message };
   }
 };
 
-// Generate 6-digit OTP
+// Generate 4-digit email OTP
 function generateOTP() {
-  return Math.floor(100000 + Math.random() * 900000).toString();
+  return generateEmailOtp();
 }
 
 export default async function handler(req, res) {
@@ -144,8 +129,8 @@ export default async function handler(req, res) {
 
     const supabase = getSupabaseClient();
 
-    // ── Demo account: auto-assign Yasheer J as coach with fixed OTP 000000 ──
-    // No email is sent; the tester enters 000000 to complete setup.
+    // ── Demo account: auto-assign Yasheer J as coach with fixed OTP 0000 ──
+    // No email is sent; the tester enters 0000 to complete setup.
     const DEMO_ACCOUNTS = ['testereasywork@gmail.com'];
     const emailNorm = typeof email === 'string' ? email.toLowerCase().trim() : '';
     if (emailNorm && DEMO_ACCOUNTS.includes(emailNorm)) {
@@ -189,8 +174,8 @@ export default async function handler(req, res) {
         .eq('RequesterId', demoRequester.UserId)
         .eq('Status', 'pending');
 
-      // Hash fixed OTP 000000
-      const demoOtpHash = await bcrypt.hash('000000', 10);
+      // Hash fixed OTP 0000
+      const demoOtpHash = await bcrypt.hash('0000', 10);
       const requestedAt = new Date();
       const otpExpiresAt = new Date(requestedAt.getTime() + 24 * 60 * 60 * 1000);
 
@@ -210,10 +195,10 @@ export default async function handler(req, res) {
 
       if (demoInsertErr) throw demoInsertErr;
 
-      logger.debug('✅ [upline/request] Demo request created with Yasheer J. OTP: 000000');
+      logger.debug('✅ [upline/request] Demo request created with Yasheer J. OTP: 0000');
       return res.status(200).json({
         success: true,
-        message: 'Request sent! Enter OTP 000000 to complete setup.',
+        message: 'Request sent! Enter OTP 0000 to complete setup.',
         requestId: demoInsert[0].Id,
         coachName: demoCoach.UserName,
         nextStep: 'validate-otp',
@@ -332,7 +317,7 @@ export default async function handler(req, res) {
 
     const coach = coachRows[0];
 
-    // Generate 6-digit OTP
+    // Generate 4-digit email OTP
     const otp = generateOTP();
     const otpHash = await bcrypt.hash(otp, 10);
     // ─────────────────────────────────────────────────────────────────
@@ -363,113 +348,34 @@ export default async function handler(req, res) {
 
     const requestId = insertResult[0].Id;
 
-    // Send OTP email to coach with professional template
-    const emailSubject = `🤝 Team Approval Request - Wellness Valley`;
-    const emailBody = `
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <meta charset="utf-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>Team Approval Request</title>
-          <style>
-            body { margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif; }
-            .container { max-width: 600px; margin: 0 auto; background: #ffffff; }
-            .header { background: linear-gradient(135deg, #10b981 0%, #059669 100%); padding: 40px 20px; text-align: center; }
-            .header h1 { color: #ffffff; margin: 0; font-size: 28px; font-weight: 600; }
-            .header p { color: #d1fae5; margin: 8px 0 0 0; font-size: 16px; }
-            .content { padding: 50px 40px; }
-            .greeting { color: #374151; font-size: 18px; font-weight: 600; margin: 0 0 20px 0; }
-            .message { color: #4b5563; font-size: 16px; line-height: 1.6; margin: 20px 0; }
-            .info-box { background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 20px; margin: 25px 0; }
-            .info-label { color: #6b7280; font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 5px; }
-            .info-value { color: #047857; font-size: 16px; font-weight: 500; }
-            .otp-container { background: #f0fdf4; border: 2px dashed #bbf7d0; border-radius: 12px; padding: 30px; margin: 30px 0; text-align: center; }
-            .otp-label { color: #6b7280; font-size: 14px; font-weight: 500; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px; }
-            .otp-code { font-size: 42px; font-weight: 700; color: #047857; letter-spacing: 8px; margin: 10px 0; font-family: 'Courier New', monospace; }
-            .warning { background: #fef7ed; border: 1px solid #fed7aa; border-radius: 8px; padding: 20px; margin: 30px 0; }
-            .warning-icon { color: #ea580c; font-size: 20px; margin-bottom: 8px; }
-            .warning-text { color: #9a3412; font-size: 14px; font-weight: 500; }
-            .security-note { background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 20px; margin: 30px 0; }
-            .security-icon { color: #2563eb; font-size: 20px; margin-bottom: 8px; }
-            .security-text { color: #1e40af; font-size: 14px; font-weight: 500; line-height: 1.5; }
-            .footer { background: #f9fafb; padding: 30px 40px; text-align: center; border-top: 1px solid #e5e7eb; }
-            .footer p { color: #6b7280; font-size: 14px; margin: 0; line-height: 1.5; }
-            @media (max-width: 600px) {
-              .content { padding: 30px 20px; }
-              .header { padding: 30px 20px; }
-              .otp-code { font-size: 32px; letter-spacing: 5px; }
-            }
-          </style>
-        </head>
-        <body>
-          <div class="container">
-            <div class="header">
-              <h1>🌿 Wellness Valley</h1>
-              <p>Team Collaboration Request</p>
-            </div>
-            
-            <div class="content">
-              <div class="greeting">Hello ${coach.CoachName || coach.UserName}! 👋</div>
-              
-              <p class="message">
-                You have a new team member request. <strong>${requester.UserName}</strong> would like to join your coaching team.
-              </p>
-              
-              <div class="info-box">
-                <div class="info-label">Requester Details</div>
-                <div class="info-value">👤 ${requester.UserName}</div>
-                <div class="info-value">📧 ${requester.Email || requester.PhoneNumber || 'Email not set yet'}</div>
-                ${requester.TeamId ? `<div class="info-value">🔖 Team ID: ${requester.TeamId}</div>` : ""}
-              </div>
-              
-              <div class="otp-container">
-                <div class="otp-label">Approval Code</div>
-                <div class="otp-code">${otp}</div>
-                <p style="color: #6b7280; font-size: 14px; margin: 15px 0 0 0;">
-                  Share this code with ${requester.UserName} to approve their request
-                </p>
-              </div>
-              
-              <div class="warning">
-                <div class="warning-icon">⏰</div>
-                <div class="warning-text">This approval code will expire in 24 hours.</div>
-              </div>
-              
-              <div class="security-note">
-                <div class="security-icon">🔒</div>
-                <div class="security-text">
-                  <strong>Security Note:</strong> Only share this code with ${requester.UserName} directly. 
-                  If you didn't expect this request or don't recognize this person, please ignore this email.
-                </div>
-              </div>
-              
-              <p class="message">
-                Once you share the code, ${requester.UserName} can enter it to complete the team setup.
-              </p>
-            </div>
-            
-            <div class="footer">
-              <p>
-                <strong>Wellness Valley Team</strong><br>
-                This is an automated message. Please do not reply to this email.<br>
-                Need help? Contact us at easy2work.india@gmail.com
-              </p>
-            </div>
-          </div>
-        </body>
-        </html>
-      `;
-
-    try {
-      await sendEmail({
-        to: coach.Email,
-        subject: emailSubject,
-        html: emailBody,
+    if (!coach.Email) {
+      res.status(502).json({
+        success: false,
+        error: "Your sponsor has no email on file, so we cannot send the OTP. Choose another sponsor.",
       });
-    } catch (emailError) {
-      console.error("Failed to send OTP email:", emailError);
-      // Continue even if email fails - user can resend
+      return;
+    }
+
+    const mail = buildSponsorOtpEmail({
+      otp,
+      memberName: requester.UserName,
+      expiresHours: 24,
+    });
+    const emailResult = await sendEmail({
+      to: coach.Email,
+      subject: mail.subject,
+      text: mail.text,
+      html: mail.html,
+    });
+    if (!emailResult.success) {
+      logger.warn("[upline/request] sponsor OTP email failed", {
+        message: emailResult.error,
+      });
+      res.status(502).json({
+        success: false,
+        error: "Could not email the OTP to your sponsor. Please try again.",
+      });
+      return;
     }
 
     res.status(200).json({

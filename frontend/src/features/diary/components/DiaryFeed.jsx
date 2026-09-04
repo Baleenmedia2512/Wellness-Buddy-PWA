@@ -26,6 +26,7 @@
 import React, { useMemo, useEffect, useState, useCallback } from 'react';
 import { AlertCircle } from 'lucide-react';
 import { useDiary } from '../hooks/useDiary';
+import { useDiaryWeightPreviousMap } from '../hooks/useDiaryWeightPreviousMap';
 import ROWS_BY_KIND, { OtherRow } from './rows';
 import DiaryUndoRow, { DIARY_UNDO_SECONDS } from './DiaryUndoRow';
 import { EmojiOrNative } from '../../../shared/components/icons/EmojiImage';
@@ -85,24 +86,6 @@ function withOptimisticRestores(entries, optimisticEntries) {
 }
 
 const SKELETON_ROWS = 6;
-
-/**
- * Map each weight entry id → chronologically previous weight value.
- * Used for share captions + delta chrome on WeightRow.
- */
-function buildPreviousWeightById(entries) {
-  const map = new Map();
-  if (!Array.isArray(entries) || entries.length === 0) return map;
-  const weights = entries
-    .filter((e) => e?.kind === 'weight' && !e.isUndoPlaceholder && e.payload?.id != null)
-    .slice()
-    .sort((a, b) => new Date(a.capturedAt).getTime() - new Date(b.capturedAt).getTime());
-  for (let i = 0; i < weights.length; i += 1) {
-    const id = String(weights[i].payload.id);
-    map.set(id, i > 0 ? (weights[i - 1].payload?.weight ?? null) : null);
-  }
-  return map;
-}
 
 /** Hide stale or duplicate "Analyzing…" rows in the diary feed. */
 function dedupePendingDiaryEntries(entries) {
@@ -420,10 +403,19 @@ export default function DiaryFeed({
     [pendingCaptureMeta, ownerUserId, viewerUserId],
   );
 
-  const previousWeightById = useMemo(
-    () => buildPreviousWeightById(data?.entries),
+  const hasWeightEntries = useMemo(
+    () => (data?.entries || []).some(
+      (e) => e?.kind === 'weight' && !e.isUndoPlaceholder && e.payload?.id != null,
+    ),
     [data?.entries],
   );
+
+  const previousWeightById = useDiaryWeightPreviousMap({
+    ownerUserId,
+    viewerUserId,
+    refreshKey: externalRefreshKey,
+    enabled: hasWeightEntries,
+  });
 
   // Pre-bind onClick and onDelete once per entry kind to keep child renders cheap.
   // The mapping itself is identity-stable (frozen module-level object).

@@ -4,8 +4,8 @@
 // Rendered as a first-class page route inside App.js (showProfilePage=true).
 //
 // Sections:
-//   1. Avatar / photo picker
-//   2. Profile fields (name, height, phone, community ID, email, diet, BMR, PAL)
+//   1. Avatar (Centre transformation photo — display only)
+//   2. Profile fields (name, height, phone, community ID / team code, email, diet, BMR, PAL)
 //   3. Weight goal mode
 //   4. Settings  (auto camera toggle)
 //   5. Account actions (sign out, delete account)
@@ -14,18 +14,18 @@
 // user has a phone number from auth, the app checks for a counselling lead
 // record with the same phone and pre-populates the form fields.
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, Camera, LogOut, Trash2, CheckCircle, Sparkles } from 'lucide-react';
+import { ArrowLeft, LogOut, Trash2, CheckCircle, Sparkles, Camera } from 'lucide-react';
 import { getUserContext } from '../../../shared/services/userIdentity';
+import * as Session from '../../../shared/services/sessionStorage';
 import {
   isAutoCameraOnResumeEnabled,
   setAutoCameraOnResumeEnabled,
 } from '../../../shared/utils/autoCameraPreference';
 import useProfileForm from '../hooks/useProfileForm';
-import useImageCropper from '../hooks/useImageCropper';
-import useFaceDetection from '../hooks/useFaceDetection';
 import { fetchProfile, saveProfile } from '../services/profileService';
+import { syncMarathonWeightComparisonFromProfile } from '../../marathon/marathonWeightComparisonCache';
+import { loadProfileMarathonWeightComparison } from '../../marathon';
 import { fetchMyAssessment, fetchLeadByPhone } from '../../counselling/services/counsellingApi';
-import CropOverlay from './shared/CropOverlay';
 import UserProfileFields from './profile/UserProfileFields';
 import UserProfileBodyMetrics from './profile/UserProfileBodyMetrics';
 import IdealWeightCards from './profile/IdealWeightCards';
@@ -36,22 +36,42 @@ import { EmojiOrNative } from '../../../shared/components/icons/EmojiImage';
 import { deriveWeightGoalMode } from '../../weight/services/weightFormService';
 import DeleteAccountModal from './DeleteAccountModal';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
+import { invalidateHasTeamMembersCache } from '../../team/services/teamSearchService';
 
 const COLORS = ['bg-blue-500', 'bg-green-500', 'bg-purple-500', 'bg-pink-500', 'bg-indigo-500', 'bg-yellow-500', 'bg-red-500', 'bg-teal-500'];
 const colorOf = (name, email) => COLORS[(name || email || '').length % COLORS.length];
 const initialOf = (name, email) => (name || email || 'U').charAt(0).toUpperCase();
+
+/** Prefer any known account email — session `user.email` alone is often empty after phone OTP. */
+function resolveAccountEmail(user, formEmail) {
+  const otpUser = Session.getOtpUser();
+  const candidates = [
+    formEmail,
+    user?.email,
+    user?.Email,
+    otpUser?.email,
+    otpUser?.Email,
+    Session.getUserEmail(),
+  ];
+  for (const c of candidates) {
+    const v = String(c || '').trim();
+    if (v.includes('@')) return v;
+  }
+  return '';
+}
 
 const ROLE_LABELS = { admin: 'Admin', developer: 'Developer', coach: 'Coach', upline: 'Upline', user: 'Member' };
 
 const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfileUpdate }) => {
   const form = useProfileForm();
   const [profileImagePreview, setProfileImagePreview] = useState(null);
-  const [profileImage, setProfileImage] = useState(null);
   const [latestWeight, setLatestWeight] = useState(null);
   const [initialWeight, setInitialWeight] = useState(null);
   const [initialWeightDate, setInitialWeightDate] = useState(null);
+  const [marathonWeightComparison, setMarathonWeightComparison] = useState(null);
   const [coachName, setCoachName] = useState('');
   const [idealCoachName, setIdealCoachName] = useState('');
+  const [teamSeat, setTeamSeat] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState('');
@@ -63,30 +83,26 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
   const [autoCameraEnabled, setAutoCameraEnabled] = useState(
     () => isAutoCameraOnResumeEnabled()
   );
-  const face = useFaceDetection();
-  const handleSaveRef = useRef(null);
 
-  const cropper = useImageCropper({
-    onError: setError,
-    onCropped: (img) => {
-      setError('');
-      setProfileImage(img);
-      setProfileImagePreview(img);
-      face.reset();
-      // Accept any photo (no AI face check) — mark ready for auto-save.
-      face.run(img, user?.id ?? null);
-    },
-  });
+  const accountEmail = useMemo(
+    () => resolveAccountEmail(user, form.email),
+    [user, form.email],
+  );
 
-  const loadProfile = useCallback(async () => {
-    if (!user?.email) {
+  const loadProfile = useCallback(async ({ cacheBust = false } = {}) => {
+    const emailKey = resolveAccountEmail(user, form.email);
+    if (!emailKey && !user?.id) {
       setIsLoading(false);
       return;
     }
     setIsLoading(true);
     setError('');
     try {
-      const { data } = await fetchProfile(user.email);
+      const { data } = await fetchProfile({
+        email: emailKey || undefined,
+        userId: user?.id || undefined,
+        cacheBust,
+      });
       const profileData = {
         name: data?.userName || user.name || '',
         height: data?.height ? String(data.height) : '',
@@ -100,8 +116,13 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
           ? String(data.latestWeightBodyFat)
           : (data?.bodyFat != null ? String(data.bodyFat) : ''),
         latestWeightBodyFat: data?.latestWeightBodyFat ?? null,
-        email: data?.email || user?.email || '',
-        communityId: data?.communityId != null ? String(data.communityId) : '',
+        email: data?.email || emailKey || '',
+        communityId: (() => {
+          const fromProfile = data?.communityId != null ? String(data.communityId).trim() : '';
+          if (fromProfile) return fromProfile;
+          if (data?.teamId) return String(data.teamId).trim();
+          return '';
+        })(),
         bodyMetrics: data?.bodyMetrics || null,
         recoveredHealthIssues: Array.isArray(data?.recoveredHealthIssues)
           ? data.recoveredHealthIssues
@@ -112,13 +133,31 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
       setLatestWeight(data?.latestWeight ? parseFloat(data.latestWeight) : null);
       setInitialWeight(data?.initialWeight != null ? parseFloat(data.initialWeight) : null);
       setInitialWeightDate(data?.initialWeightDate || null);
+      const comparisonFromServer = data?.marathonWeightComparison || null;
+      setMarathonWeightComparison(comparisonFromServer);
+      syncMarathonWeightComparisonFromProfile(data);
+      void loadProfileMarathonWeightComparison({
+        userId: user?.id,
+        timezoneSource: data?.timezone || user,
+        fromProfile: comparisonFromServer,
+      }).then((resolved) => {
+        if (!resolved) return;
+        setMarathonWeightComparison(resolved);
+        syncMarathonWeightComparisonFromProfile({ marathonWeightComparison: resolved });
+      });
       setCoachName(
         (data?.sponsorName || data?.coachName)
           ? String(data.sponsorName || data.coachName).trim()
           : '',
       );
       setIdealCoachName(data?.idealCoachName ? String(data.idealCoachName).trim() : '');
-      if (data?.profileImage) setProfileImagePreview(data.profileImage);
+      setTeamSeat(data?.teamSeat || null);
+      if (data?.profileImage) {
+        setProfileImagePreview(data.profileImage);
+      } else if (data?.transformationPhotos?.front) {
+        // Centre transform photo is the profile avatar.
+        setProfileImagePreview(data.transformationPhotos.front);
+      }
       // Stop spinner as soon as core profile is ready — do not wait on counselling.
       setIsLoading(false);
 
@@ -134,7 +173,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
           counselling = await fetchMyAssessment(user.id);
         }
         if (!counselling) {
-          const phoneForLookup = profileData.phone || user?.phoneNumber || '';
+          const phoneForLookup = profileData.phone || user?.phoneNumber || user?.phone || '';
           if (phoneForLookup) {
             const lead = await fetchLeadByPhone(phoneForLookup);
             if (lead) {
@@ -160,21 +199,19 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
       setIsLoading(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: avoid re-fetch loops from form identity
-  }, [user?.email, user?.id, user?.name, user?.phoneNumber]);
+  }, [user?.email, user?.Email, user?.id, user?.name, user?.phoneNumber, user?.phone]);
 
   useEffect(() => {
-    if (user?.email) {
+    if (accountEmail) {
       setSuccessMessage('');
       setHasSaved(false);
       setError('');
-      setProfileImage(null);
-      face.reset();
       loadProfile();
       return;
     }
     setIsLoading(false);
   // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: reload when identity changes
-  }, [user?.email, user?.id, loadProfile]);
+  }, [accountEmail, user?.id, loadProfile]);
 
   const handleSave = useCallback(async () => {
     setError('');
@@ -183,12 +220,15 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
     try {
       const err = form.validate({ requireDiet: false, maxHeight: 198 });
       if (err) { setError(err); return; }
-      const payload = form.payload(user.email, {
-        ...(profileImage ? { profileImage } : {}),
+      const payload = form.payload(accountEmail || user?.email || user?.Email, {
+        userId: user?.id || undefined,
       });
       // BMR is system-calculated on the profile page — never write it from this form.
       delete payload.bmr;
       const data = await saveProfile(payload);
+      if (user?.id) {
+        invalidateHasTeamMembersCache(user.id);
+      }
       onProfileUpdate?.({
         name: form.name,
         height: form.height ? parseFloat(form.height) : null,
@@ -196,24 +236,18 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
         dietType: form.dietType || null,
         communityId: form.communityId || null,
         profileImage: profileImagePreview || null,
+        teamSearchRefresh: true,
       });
       if (user?.id) getUserContext(user.id).catch(() => {});
-      await loadProfile();
+      await loadProfile({ cacheBust: true });
       setSuccessMessage(data.message || 'Profile saved successfully!');
       setHasSaved(true);
-      setProfileImage(null);
     } catch (e) {
       setError(e.message || 'Failed to save profile');
     } finally {
       setIsSaving(false);
     }
-  }, [form, profileImage, profileImagePreview, user, loadProfile, onProfileUpdate]);
-
-  handleSaveRef.current = handleSave;
-
-  useEffect(() => {
-    if (face.status === 'face_found' && profileImage) handleSaveRef.current?.();
-  }, [face.status, profileImage]);
+  }, [form, profileImagePreview, user, accountEmail, loadProfile, onProfileUpdate]);
 
   const saveDisabled = isSaving || !form.nameValid ||
     !form.height || form.height.trim() === '' ||
@@ -235,10 +269,6 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
 
   return (
     <div className="min-h-full bg-gray-50 pb-8">
-      {cropper.showCropper && cropper.rawImageSrc && (
-        <CropOverlay {...cropper} onCancel={cropper.cancelCropper} onDone={cropper.apply} zIndex={60} />
-      )}
-
       {/* Page Header */}
       <div className="bg-gradient-to-r from-green-600 to-green-700 px-4 pt-4 pb-6">
         <div className="flex items-center gap-3 mb-4">
@@ -252,11 +282,10 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
           <h1 className="text-lg font-bold text-white">My Profile</h1>
         </div>
 
-        {/* Avatar section */}
+        {/* Avatar — Centre transformation photo (display only) */}
         <div className="flex items-center gap-4">
           <div
-            className="relative w-20 h-20 rounded-full border-3 border-white overflow-hidden cursor-pointer group flex-shrink-0 shadow-lg"
-            onClick={() => cropper.fileInputRef.current?.click()}
+            className="relative w-20 h-20 rounded-full overflow-hidden flex-shrink-0 shadow-lg"
             style={{ border: '3px solid white' }}
           >
             {profileImagePreview ? (
@@ -269,24 +298,14 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
                 referrerPolicy="no-referrer"
               />
             ) : (
-              <div className={`w-full h-full flex items-center justify-center text-white font-bold text-3xl ${colorOf(form.name, user?.email)}`}>
-                {initialOf(form.name || user?.displayName || user?.name, user?.email)}
+              <div className={`w-full h-full flex items-center justify-center text-white font-bold text-3xl ${colorOf(form.name, accountEmail)}`}>
+                {initialOf(form.name || user?.displayName || user?.name, accountEmail)}
               </div>
             )}
-            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-              <Camera className="w-7 h-7 text-white" />
-            </div>
           </div>
-          <input
-            ref={cropper.fileInputRef}
-            type="file"
-            accept="image/*"
-            className="hidden"
-            onChange={(e) => cropper.selectFile(e.target.files?.[0])}
-          />
           <div className="flex-1 min-w-0">
             <p className="text-xl font-bold text-white truncate">{displayName}</p>
-            <p className="text-sm text-green-100 truncate">{user?.email}</p>
+            <p className="text-sm text-green-100 truncate">{accountEmail || user?.email}</p>
             <div className="flex items-center gap-2 mt-1 flex-wrap">
               <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-green-100 text-green-900">
                 {role}
@@ -353,6 +372,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
                   setPhysicalActivityLevel={form.setPhysicalActivityLevel}
                   communityId={form.communityId}
                   setCommunityId={form.setCommunityId}
+                  teamSeat={teamSeat}
                 />
                 <UserProfileBodyMetrics
                   bodyMetrics={form.bodyMetrics}
@@ -369,6 +389,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
                   latestWeight={latestWeight}
                   initialWeight={initialWeight}
                   initialWeightDate={initialWeightDate}
+                  marathonWeightComparison={marathonWeightComparison}
                 />
                 <DietDropdown value={form.dietType} onChange={form.setDietType} />
                 <WeightModeSelector
@@ -417,6 +438,8 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
             )}
           </TouchFeedbackButton>
         )}
+
+      
 
         {/* Settings Card */}
         <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
@@ -495,7 +518,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
       <DeleteAccountModal
         isOpen={showDeleteModal}
         onClose={() => setShowDeleteModal(false)}
-        userEmail={user?.email || ''}
+        userEmail={accountEmail}
         onSignOut={onSignOut}
         onAccountDeleted={() => {
           setShowDeleteModal(false);

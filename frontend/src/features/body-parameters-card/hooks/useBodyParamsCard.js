@@ -811,7 +811,8 @@ export function useBodyParamsCard({
       if (onSaveSuccess) onSaveSuccess(fullCard, url, prevCard);
 
       // Background: permission + upsert after share sheet has time to present.
-      // 1.2s delay avoids competing with the native share UI (esp. OPPO / Android).
+      // Delay avoids competing with the native share UI (esp. OPPO / Android).
+      // If silent insert fails, native may open the Add Contact screen.
       if (fullCard.phoneNumber) {
         const contactPayload = {
           name: fullCard.name,
@@ -840,7 +841,7 @@ export function useBodyParamsCard({
           }).catch((err) => {
             console.warn('[BodyParamsCard] Contact save unexpected error', err?.message || err);
           });
-        }, 1200);
+        }, 2000);
       } else {
         console.warn('[BodyParamsCard] Contact skipped — card has no phoneNumber');
       }

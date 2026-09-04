@@ -12,8 +12,11 @@ export default function ReportsMemberSearch({
   userRole,
   selectedMember,
   onMemberSelect,
+  refreshKey = 0,
 }) {
-  const vm = useTeamSearch({ user, userRole, selectedMember, onMemberSelect });
+  const vm = useTeamSearch({
+    user, userRole, selectedMember, onMemberSelect, refreshKey,
+  });
 
   if (!vm.isCoach) {
     return (
@@ -40,6 +43,8 @@ export default function ReportsMemberSearch({
         <TeamSearchResults
           dropdownRef={vm.dropdownRef}
           loading={vm.loading}
+          loadError={vm.loadError}
+          rosterReady={vm.rosterReady}
           suggestions={vm.suggestions}
           selectedMemberId={selectedMember?.userId || selectedMember?.id || user?.id}
           onSelect={vm.selectMember}
