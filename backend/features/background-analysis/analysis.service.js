@@ -421,7 +421,7 @@ export async function save(input) {
   if (imageBase64ToSave && data?.ID) {
     try {
       const { persistFoodImageKey } = await import('../food-corrections/food-image-storage.service.js');
-      await persistFoodImageKey(userId.toString(), data.ID, imageBase64ToSave);
+      await persistFoodImageKey(userId.toString(), data.ID, imageBase64ToSave, { captureId });
     } catch (err) {
       logger.warn('analysis.save: food R2 persist skipped', {
         userId: userId?.toString(),

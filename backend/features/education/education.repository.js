@@ -56,6 +56,38 @@ export async function countLogs(userId) {
   return typeof count === 'number' ? count : null;
 }
 
+export async function findEducationImageKeyByCaptureId(captureId) {
+  if (captureId == null || String(captureId).trim() === '') return null;
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from('education_logs_table')
+    .select('"ImageKey"')
+    .eq('CaptureID', captureId)
+    .not('ImageKey', 'is', null)
+    .limit(1)
+    .maybeSingle();
+  if (error) {
+    if (isMissingColumn(error, 'ImageKey')) return null;
+    throw error;
+  }
+  return data?.ImageKey || null;
+}
+
+export async function attachEducationImageKeyByCaptureId(captureId, userId, imageKey) {
+  if (!captureId || !imageKey) return;
+  const supabase = getSupabaseClient();
+  const { error } = await supabase
+    .from('education_logs_table')
+    .update({ ImageKey: imageKey })
+    .eq('CaptureID', captureId)
+    .eq('"UserId"', userId)
+    .is('ImageKey', null);
+  if (error) {
+    if (isMissingColumn(error, 'ImageKey')) return;
+    throw error;
+  }
+}
+
 export async function updateEducationImageKey(logId, userId, imageKey) {
   const supabase = getSupabaseClient();
   const { error } = await supabase
@@ -84,7 +116,7 @@ export async function listPendingEducationImageBackfill({
   const endExclusiveYmd = shiftDateYmd(endYmd, 1, IANA_IST);
   const { data, error } = await supabase
     .from('education_logs_table')
-    .select('"Id", "UserId", "ImageBase64", "ImageKey", "CreatedAt"')
+    .select('"Id", "UserId", "CaptureID", "ImageBase64", "ImageKey", "CreatedAt"')
     .or('IsDeleted.is.null,IsDeleted.eq.0')
     .is('ImageKey', null)
     .not('ImageBase64', 'is', null)

@@ -320,6 +320,38 @@ export async function checkOwnership(entryId, userId) {
   return Array.isArray(data) && data.length > 0;
 }
 
+export async function findWeightImageKeyByCaptureId(captureId) {
+  if (captureId == null || String(captureId).trim() === '') return null;
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from(TABLE)
+    .select('WeightImageKey')
+    .eq('CaptureID', captureId)
+    .not('WeightImageKey', 'is', null)
+    .limit(1)
+    .maybeSingle();
+  if (error) {
+    if (isMissingColumn(error, 'WeightImageKey')) return null;
+    throw error;
+  }
+  return data?.WeightImageKey || null;
+}
+
+export async function attachWeightImageKeyByCaptureId(captureId, userId, imageKey) {
+  if (!captureId || !imageKey) return;
+  const supabase = getSupabaseClient();
+  const { error } = await supabase
+    .from(TABLE)
+    .update({ WeightImageKey: imageKey })
+    .eq('CaptureID', captureId)
+    .eq('UserId', parseInt(userId, 10))
+    .is('WeightImageKey', null);
+  if (error) {
+    if (isMissingColumn(error, 'WeightImageKey')) return;
+    throw error;
+  }
+}
+
 export async function updateWeightImageKey(recordId, userId, imageKey) {
   const supabase = getSupabaseClient();
   const { error } = await supabase
@@ -349,7 +381,7 @@ export async function listPendingWeightImageBackfill({
   const run = (withDeletedFilter) => {
     let q = supabase
       .from(TABLE)
-      .select('ID, UserId, WeightImageBase64, WeightImageKey, CreatedAt')
+      .select('ID, UserId, CaptureID, WeightImageBase64, WeightImageKey, CreatedAt')
       .is('WeightImageKey', null)
       .not('WeightImageBase64', 'is', null)
       .gte('CreatedAt', `${startYmd} 00:00:00`)

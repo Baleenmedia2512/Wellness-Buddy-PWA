@@ -17,8 +17,18 @@
  */
 
 import { getSupabaseClient } from '../../../utils/supabaseClient.js';
+import {
+  IANA_IST,
+  filterRowsByCalendarDateRange,
+} from '../../../shared/lib/datetime/index.js';
+import { applyDateRangeFilter } from '../../../shared/lib/datetime/applyDayFilter.js';
 
 const TABLE = 'captures_table';
+
+function isMissingColumn(error, columnName) {
+  const msg = String(error?.message || error || '');
+  return /column/i.test(msg) && new RegExp(columnName, 'i').test(msg);
+}
 
 /**
  * Insert a new pending capture row.
@@ -154,6 +164,69 @@ export async function findByIdForOwner(captureId, userId) {
     .maybeSingle();
   if (error) throw error;
   return data || null;
+}
+
+/** ImageKey only — other domains pointer to this object. */
+export async function getImageKeyById(captureId) {
+  if (!captureId) return null;
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from(TABLE)
+    .select('"ImageKey"')
+    .eq('"ID"', captureId)
+    .eq('"IsDeleted"', 0)
+    .maybeSingle();
+  if (error) {
+    if (isMissingColumn(error, 'ImageKey')) return null;
+    throw error;
+  }
+  return data?.ImageKey || null;
+}
+
+export async function updateCaptureImageKey(captureId, userId, imageKey) {
+  const supabase = getSupabaseClient();
+  const { error } = await supabase
+    .from(TABLE)
+    .update({ ImageKey: imageKey })
+    .eq('"ID"', captureId)
+    .eq('"UserID"', String(userId));
+  if (error) {
+    if (isMissingColumn(error, 'ImageKey')) {
+      throw new Error('Run migration add_image_key_to_captures_table.sql before capture R2');
+    }
+    throw error;
+  }
+}
+
+/**
+ * Capture photos in the IST calendar window that have not been copied to R2 yet.
+ * CreatedAt is timestamptz UTC — filter with real UTC day bounds.
+ */
+export async function listPendingCaptureImageBackfill({
+  from = 0,
+  to = 49,
+  startYmd,
+  endYmd,
+} = {}) {
+  const supabase = getSupabaseClient();
+  let query = supabase
+    .from(TABLE)
+    .select('"ID", "UserID", "ImageBase64", "ImageKey", "CreatedAt"')
+    .eq('"IsDeleted"', 0)
+    .is('ImageKey', null)
+    .not('ImageBase64', 'is', null);
+  query = applyDateRangeFilter(query, 'CreatedAt', startYmd, endYmd, IANA_IST);
+  const { data, error } = await query
+    .order('CreatedAt', { ascending: true })
+    .order('"ID"', { ascending: true })
+    .range(from, to);
+  if (error) {
+    if (isMissingColumn(error, 'ImageKey')) {
+      throw new Error('Run migration add_image_key_to_captures_table.sql before backfill');
+    }
+    throw error;
+  }
+  return filterRowsByCalendarDateRange(data || [], startYmd, endYmd, IANA_IST, 'CreatedAt');
 }
 
 /**

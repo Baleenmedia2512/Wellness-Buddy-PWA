@@ -51,7 +51,7 @@ export async function saveHabit(input) {
         imageBase64: normalized.imageBase64,
         beforeImageBase64: normalized.beforeImageBase64,
         afterImageBase64: normalized.afterImageBase64,
-      });
+      }, { captureId: input.captureId });
     } catch (err) {
       logger.warn('good-habits.save: R2 persist skipped', {
         userId: String(input.userId),

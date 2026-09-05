@@ -325,3 +325,12 @@ registerFlag({
   description:    'ADR-0011 — store weight, education, and good-habit photos in Cloudflare R2 at ≤22 KB. Kill switch; no-ops when R2 env is missing. JSON image APIs still return Base64 (no 302).',
   defaultEnabled: true,
 });
+
+registerFlag({
+  name:           'ff.r2-captures',
+  owner:          '@principal-eng',
+  createdAt:      '2026-09-05',
+  removeBy:       '2027-03-05',
+  description:    'ADR-0012 — store capture photos once in Cloudflare R2; feature tables pointer to the same key. Kill switch; no-ops when R2 env is missing. Diary capture image 302s; format=json still returns Base64.',
+  defaultEnabled: true,
+});

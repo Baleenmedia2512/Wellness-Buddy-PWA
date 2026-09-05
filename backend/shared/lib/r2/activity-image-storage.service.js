@@ -23,8 +23,14 @@ export function r2ActivityImagesEnabled() {
   return isEnabled('ff.r2-activity-images') && isR2Configured();
 }
 
-export async function persistWeightImageKey(userId, recordId, imageBase64) {
+export async function persistWeightImageKey(userId, recordId, imageBase64, { captureId } = {}) {
   try {
+    const { getStoredCaptureImageKey } = await import('../../../features/captures/capture-image-storage.service.js');
+    const reused = await getStoredCaptureImageKey(captureId);
+    if (reused) {
+      await weightRepo.updateWeightImageKey(recordId, userId, reused);
+      return reused;
+    }
     if (!r2ActivityImagesEnabled()) return null;
     const key = await uploadStoredImageToR2({
       imageBase64,
@@ -44,8 +50,14 @@ export async function persistWeightImageKey(userId, recordId, imageBase64) {
   }
 }
 
-export async function persistEducationImageKey(userId, logId, imageBase64) {
+export async function persistEducationImageKey(userId, logId, imageBase64, { captureId } = {}) {
   try {
+    const { getStoredCaptureImageKey } = await import('../../../features/captures/capture-image-storage.service.js');
+    const reused = await getStoredCaptureImageKey(captureId);
+    if (reused) {
+      await educationRepo.updateEducationImageKey(logId, userId, reused);
+      return reused;
+    }
     if (!r2ActivityImagesEnabled()) return null;
     const key = await uploadStoredImageToR2({
       imageBase64,
@@ -65,10 +77,20 @@ export async function persistEducationImageKey(userId, logId, imageBase64) {
   }
 }
 
-export async function persistGoodHabitImageKeys(userId, habitId, images = {}) {
+export async function persistGoodHabitImageKeys(userId, habitId, images = {}, { captureId } = {}) {
   try {
-    if (!r2ActivityImagesEnabled()) return null;
+    if (!r2ActivityImagesEnabled() && !captureId) return null;
+    const { getStoredCaptureImageKey } = await import('../../../features/captures/capture-image-storage.service.js');
+    const reused = await getStoredCaptureImageKey(captureId);
     const patch = {};
+    if (reused && (images.imageBase64 || images.afterImageBase64 || images.beforeImageBase64)) {
+      patch.ImageKey = reused;
+    }
+    if (!r2ActivityImagesEnabled()) {
+      if (!Object.keys(patch).length) return null;
+      await habitRepo.updateGoodHabitImageKeys(habitId, userId, patch);
+      return patch;
+    }
     const slots = [
       ['main', images.imageBase64, 'ImageKey'],
       ['before', images.beforeImageBase64, 'BeforeImageKey'],
@@ -76,6 +98,7 @@ export async function persistGoodHabitImageKeys(userId, habitId, images = {}) {
     ];
     for (const [slot, blob, column] of slots) {
       if (!blob) continue;
+      if (column === 'ImageKey' && patch.ImageKey) continue;
       const key = await uploadStoredImageToR2({
         imageBase64: blob,
         folder: R2_FOLDERS.goodHabit,

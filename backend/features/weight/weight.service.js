@@ -234,7 +234,7 @@ export async function saveWeight(input) {
   if (imageBase64ToSave && weightRowId) {
     try {
       const { persistWeightImageKey } = await import('../../shared/lib/r2/activity-image-storage.service.js');
-      await persistWeightImageKey(userId, weightRowId, imageBase64ToSave);
+      await persistWeightImageKey(userId, weightRowId, imageBase64ToSave, { captureId });
     } catch (err) {
       logger.warn('weight.saveWeight: R2 persist skipped', {
         userId: String(userId),

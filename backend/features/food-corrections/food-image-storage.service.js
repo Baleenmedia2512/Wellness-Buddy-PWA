@@ -59,8 +59,14 @@ export async function uploadFoodImage(userId, mealId, imageBase64) {
  * Upload (if needed) and persist ImageKey. Never throws to the caller.
  * @returns {Promise<string|null>}
  */
-export async function persistFoodImageKey(userId, mealId, imageBase64) {
+export async function persistFoodImageKey(userId, mealId, imageBase64, { captureId } = {}) {
   try {
+    const { getStoredCaptureImageKey } = await import('../captures/capture-image-storage.service.js');
+    const reused = await getStoredCaptureImageKey(captureId);
+    if (reused) {
+      await repo.updateFoodImageKey(mealId, userId, reused);
+      return reused;
+    }
     if (!shouldStoreFoodImageInR2(imageBase64)) return null;
     const key = await uploadFoodImage(userId, mealId, imageBase64);
     if (!key) return null;

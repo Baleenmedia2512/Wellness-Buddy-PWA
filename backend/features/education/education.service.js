@@ -113,7 +113,7 @@ export async function saveLog(input) {
   if (imageBase64ToSave && educationLogId) {
     try {
       const { persistEducationImageKey } = await import('../../shared/lib/r2/activity-image-storage.service.js');
-      await persistEducationImageKey(userId, educationLogId, imageBase64ToSave);
+      await persistEducationImageKey(userId, educationLogId, imageBase64ToSave, { captureId });
     } catch (err) {
       logger.warn('education.saveLog: R2 persist skipped', {
         userId: userId?.toString(),

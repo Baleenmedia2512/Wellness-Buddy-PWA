@@ -24,6 +24,38 @@ export async function insertHabit(payload) {
   return data;
 }
 
+export async function findGoodHabitImageKeyByCaptureId(captureId) {
+  if (captureId == null || String(captureId).trim() === '') return null;
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from('good_habits_table')
+    .select('"ImageKey"')
+    .eq('"CaptureID"', captureId)
+    .not('ImageKey', 'is', null)
+    .limit(1)
+    .maybeSingle();
+  if (error) {
+    if (isMissingColumn(error, 'ImageKey')) return null;
+    throw error;
+  }
+  return data?.ImageKey || null;
+}
+
+export async function attachGoodHabitImageKeyByCaptureId(captureId, userId, imageKey) {
+  if (!captureId || !imageKey) return;
+  const supabase = getSupabaseClient();
+  const { error } = await supabase
+    .from('good_habits_table')
+    .update({ ImageKey: imageKey })
+    .eq('"CaptureID"', captureId)
+    .eq('"UserId"', String(userId))
+    .is('ImageKey', null);
+  if (error) {
+    if (isMissingColumn(error, 'ImageKey')) return;
+    throw error;
+  }
+}
+
 export async function updateGoodHabitImageKeys(habitId, userId, patch) {
   const supabase = getSupabaseClient();
   const safePatch = {};
@@ -69,7 +101,7 @@ export async function listPendingGoodHabitImageBackfill({
   const endExclusiveYmd = shiftDateYmd(endYmd, 1, IANA_IST);
   const { data, error } = await supabase
     .from('good_habits_table')
-    .select('"ID", "UserId", "ImageBase64", "BeforeImageBase64", "AfterImageBase64", "ImageKey", "BeforeImageKey", "AfterImageKey", "CreatedAt"')
+    .select('"ID", "UserId", "CaptureID", "ImageBase64", "BeforeImageBase64", "AfterImageBase64", "ImageKey", "BeforeImageKey", "AfterImageKey", "CreatedAt"')
     .eq('"IsDeleted"', 0)
     .or('ImageBase64.not.is.null,BeforeImageBase64.not.is.null,AfterImageBase64.not.is.null')
     .gte('CreatedAt', `${startYmd} 00:00:00`)

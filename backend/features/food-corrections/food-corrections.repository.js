@@ -283,6 +283,38 @@ export async function getMealImageById(userId, id) {
   }
 }
 
+export async function findImageKeyByCaptureId(captureId) {
+  if (captureId == null || String(captureId).trim() === '') return null;
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from('food_nutrition_data_table')
+    .select('ImageKey')
+    .eq('CaptureID', captureId)
+    .not('ImageKey', 'is', null)
+    .limit(1)
+    .maybeSingle();
+  if (error) {
+    if (isMissingColumn(error, 'ImageKey')) return null;
+    throw error;
+  }
+  return data?.ImageKey || null;
+}
+
+export async function attachImageKeyByCaptureId(captureId, userId, imageKey) {
+  if (!captureId || !imageKey) return;
+  const supabase = getSupabaseClient();
+  const { error } = await supabase
+    .from('food_nutrition_data_table')
+    .update({ ImageKey: imageKey })
+    .eq('CaptureID', captureId)
+    .eq('UserID', String(userId))
+    .is('ImageKey', null);
+  if (error) {
+    if (isMissingColumn(error, 'ImageKey')) return;
+    throw error;
+  }
+}
+
 export async function updateFoodImageKey(mealId, userId, imageKey) {
   const supabase = getSupabaseClient();
   const { error } = await supabase
@@ -312,7 +344,7 @@ export async function listPendingFoodImageBackfill({
   const endExclusiveYmd = shiftDateYmd(endYmd, 1, IANA_IST);
   const { data, error } = await supabase
     .from('food_nutrition_data_table')
-    .select('ID, UserID, ImageBase64, ImageKey, CreatedAt')
+    .select('ID, UserID, CaptureID, ImageBase64, ImageKey, CreatedAt')
     .eq('IsDeleted', 0)
     .is('ImageKey', null)
     .not('ImageBase64', 'is', null)

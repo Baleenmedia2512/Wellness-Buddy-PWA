@@ -7,6 +7,7 @@ import {
   R2_FOLDERS,
   buildAvatarObjectKey,
   buildTransformationObjectKey,
+  buildCaptureObjectKey,
   buildFoodObjectKey,
   buildWeightObjectKey,
   buildEducationObjectKey,
@@ -29,6 +30,13 @@ describe('R2 folder isolation', () => {
     assert.equal(key, 'transformation/42/front/abc123.jpg');
     assert.equal(isKeyInFolder(key, R2_FOLDERS.transformation), true);
     assert.equal(isKeyInFolder(key, R2_FOLDERS.avatar), false);
+  });
+
+  it('puts capture photos under captures/{userId}/{captureId}/', () => {
+    const key = buildCaptureObjectKey(42, 99, 'abc123', 'jpg');
+    assert.equal(key, 'captures/42/99/abc123.jpg');
+    assert.equal(isKeyInFolder(key, R2_FOLDERS.captures), true);
+    assert.equal(isKeyInFolder(key, R2_FOLDERS.food), false);
   });
 
   it('puts meal photos under food/{userId}/{mealId}/', () => {

@@ -158,12 +158,26 @@ export async function fetchPendingCapturesForDay(ownerUserId, date, timezoneIana
  */
 export async function fetchCaptureImageById(captureId) {
   const supabase = getSupabaseClient();
-  const { data, error } = await supabase
-    .from('captures_table')
-    .select('"ID", "UserID", "ImageBase64", "ImagePath", "IsDeleted"')
-    .eq('"ID"', captureId)
-    .maybeSingle();
-  if (error) throw error;
+  const withKey = '"ID", "UserID", "ImageBase64", "ImagePath", "ImageKey", "IsDeleted"';
+  const noKey = '"ID", "UserID", "ImageBase64", "ImagePath", "IsDeleted"';
+  const run = async (columns) => {
+    const { data, error } = await supabase
+      .from('captures_table')
+      .select(columns)
+      .eq('"ID"', captureId)
+      .maybeSingle();
+    if (error) throw error;
+    return data || null;
+  };
+  let data;
+  try {
+    data = await run(withKey);
+  } catch (err) {
+    const msg = String(err?.message || err || '');
+    if (!/ImageKey/i.test(msg)) throw err;
+    data = await run(noKey);
+    if (data) data = { ...data, ImageKey: null };
+  }
   if (!data || data.IsDeleted === 1) return null;
   return data;
 }

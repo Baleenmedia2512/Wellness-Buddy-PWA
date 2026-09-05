@@ -39,7 +39,9 @@
     "backfill:education-images": "node --env-file=.env scripts/backfill-activity-r2.js --kind=education",
     "backfill:education-images:write": "node --env-file=.env scripts/backfill-activity-r2.js --kind=education --write",
     "backfill:good-habit-images": "node --env-file=.env scripts/backfill-activity-r2.js --kind=good-habit",
-    "backfill:good-habit-images:write": "node --env-file=.env scripts/backfill-activity-r2.js --kind=good-habit --write"
+    "backfill:good-habit-images:write": "node --env-file=.env scripts/backfill-activity-r2.js --kind=good-habit --write",
+    "backfill:captures": "node --env-file=.env scripts/backfill-captures-r2.js",
+    "backfill:captures:write": "node --env-file=.env scripts/backfill-captures-r2.js --write"
   },
   "devDependencies": {
     "cross-env": "^10.1.0",

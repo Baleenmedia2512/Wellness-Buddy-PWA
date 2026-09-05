@@ -42,7 +42,17 @@ export function buildTransformationObjectKey(userId, slot, contentHash, ext = 'j
   );
 }
 
-/** Meal / food diary photo. */
+/** Canonical capture photo. Example: captures/42/99/ab12cd.jpg */
+export function buildCaptureObjectKey(userId, captureId, contentHash, ext = 'jpg') {
+  return joinKey(
+    R2_FOLDERS.captures,
+    userId,
+    captureId,
+    `${safeSegment(contentHash)}.${safeSegment(ext)}`,
+  );
+}
+
+/** Meal / food diary photo (manual logs with no capture only). */
 export function buildFoodObjectKey(userId, mealId, contentHash, ext = 'jpg') {
   return joinKey(
     R2_FOLDERS.food,
