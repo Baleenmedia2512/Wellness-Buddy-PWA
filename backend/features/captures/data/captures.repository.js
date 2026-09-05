@@ -187,7 +187,7 @@ export async function updateCaptureImageKey(captureId, userId, imageKey) {
   const supabase = getSupabaseClient();
   const { error } = await supabase
     .from(TABLE)
-    .update({ ImageKey: imageKey })
+    .update({ ImageKey: imageKey, ImageBase64: null })
     .eq('"ID"', captureId)
     .eq('"UserID"', String(userId));
   if (error) {

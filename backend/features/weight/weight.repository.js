@@ -285,7 +285,7 @@ export async function getImageById(userId, id) {
   const run = (withDeletedFilter) => {
     let q = supabase
       .from(TABLE)
-      .select('ID, WeightImageBase64')
+      .select('ID, WeightImageKey')
       .eq('UserId', userId)
       .eq('ID', id);
     if (withDeletedFilter) q = q.or(ACTIVE_WEIGHT_FILTER);
@@ -342,7 +342,7 @@ export async function attachWeightImageKeyByCaptureId(captureId, userId, imageKe
   const supabase = getSupabaseClient();
   const { error } = await supabase
     .from(TABLE)
-    .update({ WeightImageKey: imageKey })
+    .update({ WeightImageKey: imageKey, WeightImageBase64: null })
     .eq('CaptureID', captureId)
     .eq('UserId', parseInt(userId, 10))
     .is('WeightImageKey', null);
@@ -356,7 +356,7 @@ export async function updateWeightImageKey(recordId, userId, imageKey) {
   const supabase = getSupabaseClient();
   const { error } = await supabase
     .from(TABLE)
-    .update({ WeightImageKey: imageKey })
+    .update({ WeightImageKey: imageKey, WeightImageBase64: null })
     .eq('ID', recordId)
     .eq('UserId', parseInt(userId, 10));
   if (error) {

@@ -43,6 +43,7 @@ import { resolveSponsorAndIdealCoach } from '../../utils/sponsorCoachResolution.
 import * as weightRepo from '../weight/weight.repository.js';
 import { resolveMarathonWeightComparison } from '../marathon/domain/marathonWeightComparison.service.js';
 import { persistAvatarKey, avatarUrlForKey, r2AvatarsEnabled } from './avatar-storage.service.js';
+import { isHttpsImageUrl } from '../../shared/lib/images/dataUri.js';
 
 const notFound = () => ({ httpStatus: 404, body: { success: false, message: 'User not found' } });
 
@@ -107,7 +108,11 @@ export async function getProfile({ email, userId = null }) {
   const gender = user.Gender
     || (bodyGender === 'Male' || bodyGender === 'Female' ? bodyGender : null)
     || null;
-  const profileImage = user.ProfileImage || null;
+  const avatarUrl = (r2AvatarsEnabled() && user.ProfileImageKey)
+    ? avatarUrlForKey(user.ProfileImageKey)
+    : null;
+  const profileImage = avatarUrl
+    || (isHttpsImageUrl(user.ProfileImage) ? user.ProfileImage : null);
   const resolvedBodyFatForBmr = hasValidBodyFatPercent(resolvedWeightBodyFat)
     ? resolvedWeightBodyFat
     : (bodyMetrics?.fatPercent ?? null);
@@ -176,9 +181,7 @@ export async function getProfile({ email, userId = null }) {
         // Still prompt to confirm weight when only BCM card has it (no weight row yet).
         needsCurrentWeight: weightFromRecord == null,
         profileImage,
-        avatarUrl: (r2AvatarsEnabled() && user.ProfileImageKey)
-          ? avatarUrlForKey(user.ProfileImageKey)
-          : null,
+        avatarUrl,
         coachId: user.CoachId || null,
         coachName,
         sponsorName,

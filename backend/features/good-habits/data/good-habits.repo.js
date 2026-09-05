@@ -46,7 +46,7 @@ export async function attachGoodHabitImageKeyByCaptureId(captureId, userId, imag
   const supabase = getSupabaseClient();
   const { error } = await supabase
     .from('good_habits_table')
-    .update({ ImageKey: imageKey })
+    .update({ ImageKey: imageKey, ImageBase64: null })
     .eq('"CaptureID"', captureId)
     .eq('"UserId"', String(userId))
     .is('ImageKey', null);
@@ -59,9 +59,18 @@ export async function attachGoodHabitImageKeyByCaptureId(captureId, userId, imag
 export async function updateGoodHabitImageKeys(habitId, userId, patch) {
   const supabase = getSupabaseClient();
   const safePatch = {};
-  if (patch?.ImageKey) safePatch.ImageKey = patch.ImageKey;
-  if (patch?.BeforeImageKey) safePatch.BeforeImageKey = patch.BeforeImageKey;
-  if (patch?.AfterImageKey) safePatch.AfterImageKey = patch.AfterImageKey;
+  if (patch?.ImageKey) {
+    safePatch.ImageKey = patch.ImageKey;
+    safePatch.ImageBase64 = null;
+  }
+  if (patch?.BeforeImageKey) {
+    safePatch.BeforeImageKey = patch.BeforeImageKey;
+    safePatch.BeforeImageBase64 = null;
+  }
+  if (patch?.AfterImageKey) {
+    safePatch.AfterImageKey = patch.AfterImageKey;
+    safePatch.AfterImageBase64 = null;
+  }
   if (!Object.keys(safePatch).length) return;
   const { error } = await supabase
     .from('good_habits_table')
@@ -127,7 +136,7 @@ export async function getHabitImage(id, userId) {
   const supabase = getSupabaseClient();
   const { data, error } = await supabase
     .from('good_habits_table')
-    .select('"ImageBase64", "AfterImageBase64", "BeforeImageBase64"')
+    .select('"ImageKey", "AfterImageKey", "BeforeImageKey"')
     .eq('"ID"', id)
     .eq('"UserId"', String(userId))
     .eq('"IsDeleted"', 0)

@@ -46,9 +46,12 @@ export function validateGetHabitImage(query) {
   if (idRaw == null || String(idRaw).trim() === '') {
     throw new ValidationError(400, 'id is required');
   }
+  const slotRaw = String(query?.slot || '').trim();
+  const slot = ['main', 'before', 'after'].includes(slotRaw) ? slotRaw : null;
   return {
     userId: String(userIdRaw).trim(),
     id: String(idRaw).trim(),
+    slot,
   };
 }
 

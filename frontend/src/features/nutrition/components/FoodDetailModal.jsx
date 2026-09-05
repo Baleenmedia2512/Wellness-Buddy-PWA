@@ -18,6 +18,8 @@ import { buildDiaryShareSuffix } from '../../diary/domain/share/suffixes';
 import { extractFoodShareItems } from '../../diary/domain/activityType';
 import FoodItemNutritionModal from './FoodItemNutritionModal';
 import { buildItemNutritionFallback } from '../domain/foodItemNutritionFacts';
+import { resolveMealImageSrc } from '../services/nutritionDashboard/mealImageSrc';
+import { activityPhotoTemplate, handleActivityPhotoError } from '../../../shared/assets/activityPhotoTemplates';
 
 function macro(n) {
   const v = Number(n);
@@ -164,7 +166,7 @@ function buildShareText({
   });
 }
 
-const FoodDetailModal = ({ payload, capturedAt, onClose, onDelete }) => {
+const FoodDetailModal = ({ payload, capturedAt, onClose, onDelete, ownerUserId = null }) => {
   const cardRef = useRef(null);
   const [isSharing, setIsSharing] = useState(false);
   const [selectedItem, setSelectedItem] = useState(null);
@@ -217,12 +219,11 @@ const FoodDetailModal = ({ payload, capturedAt, onClose, onDelete }) => {
     },
     glycemicIndex: totals.glycemicIndex ?? foodData?.nutrition?.glycemic_index ?? null,
   });
-  const src =
-    payload.imageBase64 && payload.imageBase64.trim() !== ''
-      ? payload.imageBase64.startsWith('data:image')
-        ? payload.imageBase64
-        : `data:image/jpeg;base64,${payload.imageBase64}`
-      : payload.imagePath || null;
+  const owner = ownerUserId ?? payload.userId ?? payload.UserID ?? null;
+  const src = resolveMealImageSrc(
+    { id: payload.id ?? payload.ID, ImagePath: payload.imagePath },
+    { userId: owner },
+  ) || activityPhotoTemplate('food');
 
   const time = capturedAt
     ? new Date(capturedAt).toLocaleString('en-US', {
@@ -276,7 +277,12 @@ const FoodDetailModal = ({ payload, capturedAt, onClose, onDelete }) => {
       >
         <div className="relative">
           {src ? (
-            <img src={src} alt="Meal" className="w-full h-48 object-cover" />
+            <img
+              src={src}
+              alt="Meal"
+              className="w-full h-48 object-cover"
+              onError={(e) => handleActivityPhotoError(e, 'food')}
+            />
           ) : (
             <div className="w-full h-32 bg-emerald-50 flex items-center justify-center text-5xl">
               {isWater ? '💧' : isAfresh ? '🥤' : '🍽️'}

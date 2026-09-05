@@ -305,7 +305,7 @@ export async function attachImageKeyByCaptureId(captureId, userId, imageKey) {
   const supabase = getSupabaseClient();
   const { error } = await supabase
     .from('food_nutrition_data_table')
-    .update({ ImageKey: imageKey })
+    .update({ ImageKey: imageKey, ImageBase64: null })
     .eq('CaptureID', captureId)
     .eq('UserID', String(userId))
     .is('ImageKey', null);
@@ -319,7 +319,7 @@ export async function updateFoodImageKey(mealId, userId, imageKey) {
   const supabase = getSupabaseClient();
   const { error } = await supabase
     .from('food_nutrition_data_table')
-    .update({ ImageKey: imageKey })
+    .update({ ImageKey: imageKey, ImageBase64: null })
     .eq('ID', mealId)
     .eq('UserID', String(userId))
     .eq('IsDeleted', 0);

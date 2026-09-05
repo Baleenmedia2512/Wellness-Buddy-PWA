@@ -83,7 +83,12 @@ export function computeWeightDiff(current, previous) {
 /** Normalises a raw image string to a usable `<img src>`. */
 export function formatWeightImageSrc(raw) {
   if (!raw) return null;
-  return raw.startsWith('data:image') ? raw : `data:image/jpeg;base64,${raw}`;
+  const value = String(raw).trim();
+  if (!value) return null;
+  if (value.startsWith('http') || value.startsWith('/')) {
+    return value;
+  }
+  return null;
 }
 
 /**

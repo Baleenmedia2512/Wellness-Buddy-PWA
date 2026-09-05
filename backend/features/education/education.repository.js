@@ -78,7 +78,7 @@ export async function attachEducationImageKeyByCaptureId(captureId, userId, imag
   const supabase = getSupabaseClient();
   const { error } = await supabase
     .from('education_logs_table')
-    .update({ ImageKey: imageKey })
+    .update({ ImageKey: imageKey, ImageBase64: null })
     .eq('CaptureID', captureId)
     .eq('"UserId"', userId)
     .is('ImageKey', null);
@@ -92,7 +92,7 @@ export async function updateEducationImageKey(logId, userId, imageKey) {
   const supabase = getSupabaseClient();
   const { error } = await supabase
     .from('education_logs_table')
-    .update({ ImageKey: imageKey })
+    .update({ ImageKey: imageKey, ImageBase64: null })
     .eq('"Id"', logId)
     .eq('"UserId"', userId);
   if (error) {
@@ -138,7 +138,7 @@ export async function getLogImage(logId, userId) {
   const supabase = getSupabaseClient();
   const { data, error } = await supabase
     .from('education_logs_table')
-    .select('"ImageBase64"')
+    .select('"ImageKey"')
     .eq('"Id"', logId)
     .eq('"UserId"', userId)
     .single();

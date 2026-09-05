@@ -75,7 +75,7 @@ export async function persistAvatarKey(userId, profileImage) {
 
     const key = await uploadAvatarDataUri(userId, profileImage);
     if (!key) return null;
-    await repo.updateUserById(userId, { ProfileImageKey: key });
+    await repo.updateUserById(userId, { ProfileImageKey: key, ProfileImage: null });
     try {
       cache.delete(cacheKeys.userAvatar(userId));
     } catch { /* non-fatal */ }

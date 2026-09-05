@@ -7,14 +7,13 @@ import { X } from 'lucide-react';
 import BathroomScaleIcon from '../../../shared/components/icons/BathroomScaleIcon';
 import { formatWeightImageSrc, formatDetailDate } from '../services/weightFormService';
 import { formatBusinessTime, DEFAULT_BUSINESS_TIMEZONE } from '../../../shared/utils/datetimeUtils';
-
-const FALLBACK = 'https://images.unsplash.com/photo-1516594915697-87eb3b1c14ea?w=800&q=80';
+import { activityPhotoTemplate, handleActivityPhotoError } from '../../../shared/assets/activityPhotoTemplates';
 
 export default function WeightDetailHeader({
   data, lazyImage, imageLoading, displayWeight, onClose,
   timezoneIana = DEFAULT_BUSINESS_TIMEZONE,
 }) {
-  const src = formatWeightImageSrc(data.WeightImageBase64 || lazyImage);
+  const src = formatWeightImageSrc(lazyImage) || activityPhotoTemplate('weight');
 
   return (
     <div className="relative">
@@ -23,7 +22,7 @@ export default function WeightDetailHeader({
           src={src}
           alt="Weighing Scale"
           className="w-full h-72 object-cover"
-          onError={(e) => { e.target.src = FALLBACK; }}
+          onError={(e) => handleActivityPhotoError(e, 'weight')}
         />
       ) : (
         <div className="w-full h-72 bg-gradient-to-br from-emerald-100 to-teal-200 flex items-center justify-center">

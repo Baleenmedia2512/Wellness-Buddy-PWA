@@ -2,7 +2,6 @@ import * as repo from '../data/good-habits.repo.js';
 import {
   assertHabitImages,
   normalizeHabitPayload,
-  readHabitImageRow,
 } from '../domain/habit.rules.js';
 import logger from '../../../shared/lib/logger.js';
 import {
@@ -75,19 +74,43 @@ export async function saveHabit(input) {
   };
 }
 
-export async function getHabitImage({ id, userId }) {
+export async function getHabitImage({ id, userId, slot = null }) {
   const data = await repo.getHabitImage(id, userId);
   if (!data) {
     return { httpStatus: 404, body: { success: false, message: 'Habit not found' } };
   }
-  const images = readHabitImageRow(data);
+  let imageUrl = null;
+  let beforeImageUrl = null;
+  let afterImageUrl = null;
+  try {
+    const { r2ActivityImagesEnabled } = await import('../../../shared/lib/r2/activity-image-storage.service.js');
+    const { avatarRedirectUrl } = await import('../../../shared/lib/r2/s3.js');
+    if (r2ActivityImagesEnabled()) {
+      imageUrl = data.ImageKey ? avatarRedirectUrl(data.ImageKey) : null;
+      beforeImageUrl = data.BeforeImageKey ? avatarRedirectUrl(data.BeforeImageKey) : null;
+      afterImageUrl = data.AfterImageKey ? avatarRedirectUrl(data.AfterImageKey) : null;
+    }
+  } catch {
+    imageUrl = null;
+  }
+  const bySlot = {
+    main: imageUrl || afterImageUrl || beforeImageUrl,
+    before: beforeImageUrl,
+    after: afterImageUrl,
+  };
+  const r2Url = slot ? (bySlot[slot] || null) : (bySlot.main || null);
+  if (slot) {
+    if (!r2Url) return { httpStatus: 404, body: { success: false, message: 'No image' } };
+    return { httpStatus: 200, body: { success: true, r2Url } };
+  }
   return {
     httpStatus: 200,
     body: {
       success: true,
-      imageBase64: images.imageBase64,
-      beforeImageBase64: images.beforeImageBase64,
-      afterImageBase64: images.afterImageBase64,
+      r2Url,
+      imageUrl,
+      beforeImageUrl,
+      afterImageUrl,
     },
   };
 }

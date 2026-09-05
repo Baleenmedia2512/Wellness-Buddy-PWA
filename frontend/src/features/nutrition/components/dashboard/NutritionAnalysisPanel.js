@@ -15,6 +15,7 @@ import {
 } from '../../../diary/domain/activityType';
 import { formatWaterVolume } from '../../../diary/domain/formatVolume';
 import { resolveMealImageSrc } from '../../services/nutritionDashboard/mealImageSrc';
+import { activityPhotoTemplate, handleActivityPhotoError } from '../../../../shared/assets/activityPhotoTemplates';
 
 function uniqueFoodNames(items) {
   if (!Array.isArray(items) || items.length === 0) return [];
@@ -169,7 +170,7 @@ const NutritionAnalysisPanel = ({
   const imgSrc = resolveMealImageSrc(selectedMeal, {
     userId: user?.id || user?.userId || user?.UserId,
     apiBaseUrl,
-  });
+  }) || activityPhotoTemplate('food');
 
   return (
     <div
@@ -187,7 +188,7 @@ const NutritionAnalysisPanel = ({
             {imgSrc ? (
               <img src={imgSrc} alt="Meal"
                 className={`w-full object-cover transition-all duration-500 ease-in-out ${isEditing ? 'h-48' : 'h-72'}`}
-                onError={(e) => { e.target.src = 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=880&q=80'; }} />
+                onError={(e) => handleActivityPhotoError(e, 'food')} />
             ) : (
               <div className={`w-full bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center ${isEditing ? 'h-48' : 'h-72'}`} />
             )}
