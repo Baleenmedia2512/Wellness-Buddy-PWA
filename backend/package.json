@@ -29,7 +29,9 @@
     "backfill:avatars:recompress": "node --env-file=.env scripts/backfill-avatar-r2.js --recompress",
     "backfill:avatars:recompress:write": "node --env-file=.env scripts/backfill-avatar-r2.js --recompress --write",
     "backfill:avatars:cleanup": "node --env-file=.env scripts/backfill-avatar-r2.js --cleanup",
-    "backfill:avatars:cleanup:write": "node --env-file=.env scripts/backfill-avatar-r2.js --cleanup --write"
+    "backfill:avatars:cleanup:write": "node --env-file=.env scripts/backfill-avatar-r2.js --cleanup --write",
+    "backfill:food-images": "node --env-file=.env scripts/backfill-food-r2.js",
+    "backfill:food-images:write": "node --env-file=.env scripts/backfill-food-r2.js --write"
   },
   "devDependencies": {
     "cross-env": "^10.1.0",

@@ -35,6 +35,31 @@ export function shouldStoreProfileImageInR2(value) {
   return isDataImageUri(value);
 }
 
+/**
+ * Meal photos may be a data URI or raw base64 (no prefix) in ImageBase64.
+ * @param {unknown} value
+ * @returns {{ contentType: string, bytes: Buffer } | null}
+ */
+export function parseStoredImage(value) {
+  const fromUri = parseDataUri(value);
+  if (fromUri) return fromUri;
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (!trimmed || /^https?:\/\//i.test(trimmed) || trimmed.startsWith('data:')) return null;
+  if (!/^[A-Za-z0-9+/=\s]+$/.test(trimmed.slice(0, 96))) return null;
+  try {
+    const bytes = Buffer.from(trimmed.replace(/\s/g, ''), 'base64');
+    if (bytes.length < 8) return null;
+    return { contentType: 'image/jpeg', bytes };
+  } catch {
+    return null;
+  }
+}
+
+export function shouldStoreFoodImageInR2(value) {
+  return parseStoredImage(value) != null;
+}
+
 export function extensionForContentType(contentType) {
   const ct = String(contentType || '').toLowerCase();
   if (ct === 'image/png') return 'png';

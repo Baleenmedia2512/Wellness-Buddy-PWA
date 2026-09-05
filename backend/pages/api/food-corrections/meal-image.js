@@ -22,7 +22,14 @@ export default async function handler(req, res) {
     }
 
     if (String(req.query.format || '').toLowerCase() === 'json') {
-      return res.status(200).json(result.body);
+      const jsonBody = { ...(result.body || {}) };
+      delete jsonBody.r2Url;
+      return res.status(200).json(jsonBody);
+    }
+
+    if (result.body?.r2Url) {
+      res.setHeader('Cache-Control', 'private, max-age=300');
+      return res.redirect(302, result.body.r2Url);
     }
 
     const image = result.body?.image;

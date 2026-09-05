@@ -253,18 +253,81 @@ export async function fetchMealsByIds(userId, ids) {
   return data || [];
 }
 
+function isMissingColumn(error, columnName) {
+  const msg = String(error?.message || error || '');
+  return /column/i.test(msg) && new RegExp(columnName, 'i').test(msg);
+}
+
 /** Image bytes only — for lazy thumbnails / detail modal (keeps list payloads small). */
 export async function getMealImageById(userId, id) {
   const supabase = getSupabaseClient();
+  const withKey = 'ID, ImageBase64, ImagePath, ImageKey';
+  const noKey = 'ID, ImageBase64, ImagePath';
+  const run = async (columns) => {
+    const { data, error } = await supabase
+      .from('food_nutrition_data_table')
+      .select(columns)
+      .eq('ID', id)
+      .eq('UserID', String(userId))
+      .eq('IsDeleted', 0)
+      .maybeSingle();
+    if (error) throw error;
+    return data || null;
+  };
+  try {
+    return await run(withKey);
+  } catch (err) {
+    if (!isMissingColumn(err, 'ImageKey')) throw err;
+    const row = await run(noKey);
+    return row ? { ...row, ImageKey: null } : null;
+  }
+}
+
+export async function updateFoodImageKey(mealId, userId, imageKey) {
+  const supabase = getSupabaseClient();
+  const { error } = await supabase
+    .from('food_nutrition_data_table')
+    .update({ ImageKey: imageKey })
+    .eq('ID', mealId)
+    .eq('UserID', String(userId))
+    .eq('IsDeleted', 0);
+  if (error) {
+    if (isMissingColumn(error, 'ImageKey')) {
+      throw new Error('Run migration add_image_key_to_food_nutrition_data_table.sql before food R2');
+    }
+    throw error;
+  }
+}
+
+/**
+ * Meal photos in the IST calendar window that have not been copied to R2 yet.
+ */
+export async function listPendingFoodImageBackfill({
+  from = 0,
+  to = 49,
+  startYmd,
+  endYmd,
+} = {}) {
+  const supabase = getSupabaseClient();
+  const endExclusiveYmd = shiftDateYmd(endYmd, 1, IANA_IST);
   const { data, error } = await supabase
     .from('food_nutrition_data_table')
-    .select('ID, ImageBase64, ImagePath')
-    .eq('ID', id)
-    .eq('UserID', String(userId))
+    .select('ID, UserID, ImageBase64, ImageKey, CreatedAt')
     .eq('IsDeleted', 0)
-    .maybeSingle();
-  if (error) throw error;
-  return data || null;
+    .is('ImageKey', null)
+    .not('ImageBase64', 'is', null)
+    .gte('CreatedAt', `${startYmd} 00:00:00`)
+    .lt('CreatedAt', `${endExclusiveYmd} 00:00:00`)
+    .order('CreatedAt', { ascending: true })
+    .order('ID', { ascending: true })
+    .range(from, to);
+  if (error) {
+    if (isMissingColumn(error, 'ImageKey')) {
+      throw new Error('Run migration add_image_key_to_food_nutrition_data_table.sql before backfill');
+    }
+    throw error;
+  }
+  return filterFoodRowsByCalendarDateRange(data || [], startYmd, endYmd, IANA_IST, 'CreatedAt');
 }
 
 export async function getStatsCounts(userId, timezoneIana = IANA_IST) {

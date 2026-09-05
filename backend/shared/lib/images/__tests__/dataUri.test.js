@@ -8,6 +8,8 @@ import {
   isDataImageUri,
   parseDataUri,
   shouldStoreProfileImageInR2,
+  shouldStoreFoodImageInR2,
+  parseStoredImage,
   extensionForContentType,
 } from '../dataUri.js';
 
@@ -43,6 +45,18 @@ describe('shouldStoreProfileImageInR2', () => {
     assert.equal(shouldStoreProfileImageInR2(JPEG_URI), true);
     assert.equal(shouldStoreProfileImageInR2('https://lh3.googleusercontent.com/a'), false);
     assert.equal(shouldStoreProfileImageInR2(null), false);
+  });
+});
+
+describe('parseStoredImage', () => {
+  it('accepts a data URI or raw jpeg base64', () => {
+    assert.equal(parseStoredImage(JPEG_URI).contentType, 'image/jpeg');
+    const rawJpeg = '/9j/4AAQSkZJRgABAQAAAQABAAD';
+    const raw = parseStoredImage(rawJpeg);
+    assert.ok(raw);
+    assert.ok(raw.bytes.length > 0);
+    assert.equal(shouldStoreFoodImageInR2(rawJpeg), true);
+    assert.equal(shouldStoreFoodImageInR2('https://example.com/x.jpg'), false);
   });
 });
 

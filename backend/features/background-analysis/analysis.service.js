@@ -418,6 +418,19 @@ export async function save(input) {
   await repo.touchLastActive(userId);
   cache.delete(cacheKeys.nutritionMeals(userId));
 
+  if (imageBase64ToSave && data?.ID) {
+    try {
+      const { persistFoodImageKey } = await import('../food-corrections/food-image-storage.service.js');
+      await persistFoodImageKey(userId.toString(), data.ID, imageBase64ToSave);
+    } catch (err) {
+      logger.warn('analysis.save: food R2 persist skipped', {
+        userId: userId?.toString(),
+        mealId: data.ID,
+        message: err?.message || String(err),
+      });
+    }
+  }
+
   // ADR-0005 — grow master nutrition catalog from successful AI / saved foods.
   try {
     const parsed = typeof analysisResult === 'string'
