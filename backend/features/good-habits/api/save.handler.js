@@ -44,6 +44,23 @@ export async function saveHabit(input) {
     UpdatedAt: createdAt,
   });
 
+  if (row?.ID) {
+    try {
+      const { persistGoodHabitImageKeys } = await import('../../../shared/lib/r2/activity-image-storage.service.js');
+      await persistGoodHabitImageKeys(input.userId, row.ID, {
+        imageBase64: normalized.imageBase64,
+        beforeImageBase64: normalized.beforeImageBase64,
+        afterImageBase64: normalized.afterImageBase64,
+      });
+    } catch (err) {
+      logger.warn('good-habits.save: R2 persist skipped', {
+        userId: String(input.userId),
+        habitId: row.ID,
+        message: err?.message || String(err),
+      });
+    }
+  }
+
   return {
     httpStatus: 201,
     body: {

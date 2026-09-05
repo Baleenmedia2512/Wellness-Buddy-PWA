@@ -230,6 +230,20 @@ export async function saveWeight(input) {
     confirmPersisted(captureId, { weightRowId: data?.ID || data?.id });
   }
 
+  const weightRowId = data?.ID || data?.id;
+  if (imageBase64ToSave && weightRowId) {
+    try {
+      const { persistWeightImageKey } = await import('../../shared/lib/r2/activity-image-storage.service.js');
+      await persistWeightImageKey(userId, weightRowId, imageBase64ToSave);
+    } catch (err) {
+      logger.warn('weight.saveWeight: R2 persist skipped', {
+        userId: String(userId),
+        recordId: weightRowId,
+        message: err?.message || String(err),
+      });
+    }
+  }
+
   return {
     httpStatus: 200,
     body: {

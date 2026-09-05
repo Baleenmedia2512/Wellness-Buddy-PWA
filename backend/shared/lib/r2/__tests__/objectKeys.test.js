@@ -8,6 +8,9 @@ import {
   buildAvatarObjectKey,
   buildTransformationObjectKey,
   buildFoodObjectKey,
+  buildWeightObjectKey,
+  buildEducationObjectKey,
+  buildGoodHabitObjectKey,
   isKeyInFolder,
   orphanedAvatarKeys,
 } from '../objectKeys.js';
@@ -33,6 +36,25 @@ describe('R2 folder isolation', () => {
     assert.equal(key, 'food/42/99/abc123.jpg');
     assert.equal(isKeyInFolder(key, R2_FOLDERS.food), true);
     assert.equal(isKeyInFolder(key, R2_FOLDERS.avatar), false);
+  });
+
+  it('puts scale photos under weight/{userId}/{recordId}/', () => {
+    const key = buildWeightObjectKey(42, 99, 'abc123', 'jpg');
+    assert.equal(key, 'weight/42/99/abc123.jpg');
+    assert.equal(isKeyInFolder(key, R2_FOLDERS.weight), true);
+    assert.equal(isKeyInFolder(key, R2_FOLDERS.food), false);
+  });
+
+  it('puts education photos under education/{userId}/{logId}/', () => {
+    const key = buildEducationObjectKey(42, 99, 'abc123', 'jpg');
+    assert.equal(key, 'education/42/99/abc123.jpg');
+    assert.equal(isKeyInFolder(key, R2_FOLDERS.education), true);
+  });
+
+  it('puts good-habit slots under good-habits/{userId}/{id}/{slot}/', () => {
+    const key = buildGoodHabitObjectKey(42, 99, 'before', 'abc123', 'jpg');
+    assert.equal(key, 'good-habits/42/99/before/abc123.jpg');
+    assert.equal(isKeyInFolder(key, R2_FOLDERS.goodHabit), true);
   });
 
   it('rejects path traversal in segments', () => {

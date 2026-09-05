@@ -52,6 +52,37 @@ export function buildFoodObjectKey(userId, mealId, contentHash, ext = 'jpg') {
   );
 }
 
+/** Scale photo. Example: weight/42/99/ab12cd.jpg */
+export function buildWeightObjectKey(userId, recordId, contentHash, ext = 'jpg') {
+  return joinKey(
+    R2_FOLDERS.weight,
+    userId,
+    recordId,
+    `${safeSegment(contentHash)}.${safeSegment(ext)}`,
+  );
+}
+
+/** Education log photo. Example: education/42/99/ab12cd.jpg */
+export function buildEducationObjectKey(userId, logId, contentHash, ext = 'jpg') {
+  return joinKey(
+    R2_FOLDERS.education,
+    userId,
+    logId,
+    `${safeSegment(contentHash)}.${safeSegment(ext)}`,
+  );
+}
+
+/** Good-habit slot: main | before | after. */
+export function buildGoodHabitObjectKey(userId, habitId, slot, contentHash, ext = 'jpg') {
+  return joinKey(
+    R2_FOLDERS.goodHabit,
+    userId,
+    habitId,
+    safeSegment(slot),
+    `${safeSegment(contentHash)}.${safeSegment(ext)}`,
+  );
+}
+
 export function isKeyInFolder(key, folder) {
   const prefix = `${folder}/`;
   return typeof key === 'string' && key.startsWith(prefix) && !key.includes('..');

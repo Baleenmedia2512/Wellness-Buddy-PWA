@@ -316,3 +316,12 @@ registerFlag({
   description:    'ADR-0010 — store meal photos in Cloudflare R2 at ≤22 KB; meal-image 302s to R2. Kill switch; no-ops when R2 env is missing. Does not omit ImageBase64 from meal-image ?format=json.',
   defaultEnabled: true,
 });
+
+registerFlag({
+  name:           'ff.r2-activity-images',
+  owner:          '@principal-eng',
+  createdAt:      '2026-09-05',
+  removeBy:       '2027-03-05',
+  description:    'ADR-0011 — store weight, education, and good-habit photos in Cloudflare R2 at ≤22 KB. Kill switch; no-ops when R2 env is missing. JSON image APIs still return Base64 (no 302).',
+  defaultEnabled: true,
+});

@@ -8,6 +8,7 @@ import {
   utcInstantToLegacyIstWallStorage,
   IANA_IST,
   filterRowsByCalendarDay,
+  filterRowsByCalendarDateRange,
   filterRowsOnOrBeforeCalendarDay,
   shiftDateYmd,
 } from '../../shared/lib/datetime/index.js';
@@ -25,6 +26,11 @@ const WEIGHT_ROW_SELECT =
 function isMissingIsDeletedColumn(error) {
   const msg = String(error?.message || error || '');
   return /IsDeleted/i.test(msg) && /column|does not exist|not find|unknown/i.test(msg);
+}
+
+function isMissingColumn(error, columnName) {
+  const msg = String(error?.message || error || '');
+  return /column/i.test(msg) && new RegExp(columnName, 'i').test(msg);
 }
 
 async function withOptionalIsDeletedFilter(buildQuery) {
@@ -312,6 +318,56 @@ export async function checkOwnership(entryId, userId) {
     .limit(1);
   if (error) throw error;
   return Array.isArray(data) && data.length > 0;
+}
+
+export async function updateWeightImageKey(recordId, userId, imageKey) {
+  const supabase = getSupabaseClient();
+  const { error } = await supabase
+    .from(TABLE)
+    .update({ WeightImageKey: imageKey })
+    .eq('ID', recordId)
+    .eq('UserId', parseInt(userId, 10));
+  if (error) {
+    if (isMissingColumn(error, 'WeightImageKey')) {
+      throw new Error('Run migration add_weight_image_key_to_weight_records_table.sql before weight R2');
+    }
+    throw error;
+  }
+}
+
+/**
+ * Scale photos in the IST calendar window that have not been copied to R2 yet.
+ */
+export async function listPendingWeightImageBackfill({
+  from = 0,
+  to = 49,
+  startYmd,
+  endYmd,
+} = {}) {
+  const supabase = getSupabaseClient();
+  const endExclusiveYmd = shiftDateYmd(endYmd, 1, IANA_IST);
+  const run = (withDeletedFilter) => {
+    let q = supabase
+      .from(TABLE)
+      .select('ID, UserId, WeightImageBase64, WeightImageKey, CreatedAt')
+      .is('WeightImageKey', null)
+      .not('WeightImageBase64', 'is', null)
+      .gte('CreatedAt', `${startYmd} 00:00:00`)
+      .lt('CreatedAt', `${endExclusiveYmd} 00:00:00`);
+    if (withDeletedFilter) q = q.or(ACTIVE_WEIGHT_FILTER);
+    return q
+      .order('CreatedAt', { ascending: true })
+      .order('ID', { ascending: true })
+      .range(from, to);
+  };
+  const { data, error } = await withOptionalIsDeletedFilter(run);
+  if (error) {
+    if (isMissingColumn(error, 'WeightImageKey')) {
+      throw new Error('Run migration add_weight_image_key_to_weight_records_table.sql before backfill');
+    }
+    throw error;
+  }
+  return filterRowsByCalendarDateRange(data || [], startYmd, endYmd, IANA_IST, 'CreatedAt');
 }
 
 export async function restoreEntry(entryId) {

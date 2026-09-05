@@ -1,7 +1,7 @@
 # `claude.md` — Wellness Valley PWA · Business Constitution
 
 > **Status:** MANDATORY · **Scope:** ALL contributors (humans + AI) · **Owner:** CTO / Principal Engineer
-> **Version:** 3.1.4 · **Purpose:** Business rules, domain ownership, governance, permissions, and policies.
+> **Version:** 3.1.5 · **Purpose:** Business rules, domain ownership, governance, permissions, and policies.
 >
 > **Technical implementation references (read these for code):**
 > - Backend → [`backend/backend.md`](backend/backend.md)
@@ -149,6 +149,7 @@ All work-in-progress is gated behind a feature flag. No exception.
 | `ff.consent-gate` | ON | @principal-eng | 2027-01-31 | User Consent Form gate (ADR-0006) — Agree required before account creation / app use |
 | `ff.r2-avatars` | ON | @principal-eng | 2027-03-03 | ADR-0009 — custom avatars in Cloudflare R2; `/api/user/avatar` redirects to R2. Kill switch if env missing. Profile GET still returns Base64. |
 | `ff.r2-food-images` | ON | @principal-eng | 2027-03-05 | ADR-0010 — meal photos in Cloudflare R2 (≤22 KB); `/api/food-corrections/meal-image` 302s to R2. Kill switch if env missing. JSON format still returns Base64. |
+| `ff.r2-activity-images` | ON | @principal-eng | 2027-03-05 | ADR-0011 — weight, education, and good-habit photos in Cloudflare R2 (≤22 KB). Kill switch if env missing. JSON image APIs still return Base64 (no 302). |
 
 **Frontend-only UI flags (`frontend/src/config/featureFlags.js`, no backend mirror):** `ff.shake-calculator` (OFF), `ff.contact-picker` (OFF).
 

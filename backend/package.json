@@ -31,7 +31,15 @@
     "backfill:avatars:cleanup": "node --env-file=.env scripts/backfill-avatar-r2.js --cleanup",
     "backfill:avatars:cleanup:write": "node --env-file=.env scripts/backfill-avatar-r2.js --cleanup --write",
     "backfill:food-images": "node --env-file=.env scripts/backfill-food-r2.js",
-    "backfill:food-images:write": "node --env-file=.env scripts/backfill-food-r2.js --write"
+    "backfill:food-images:write": "node --env-file=.env scripts/backfill-food-r2.js --write",
+    "backfill:activity-images": "node --env-file=.env scripts/backfill-activity-r2.js",
+    "backfill:activity-images:write": "node --env-file=.env scripts/backfill-activity-r2.js --write",
+    "backfill:weight-images": "node --env-file=.env scripts/backfill-activity-r2.js --kind=weight",
+    "backfill:weight-images:write": "node --env-file=.env scripts/backfill-activity-r2.js --kind=weight --write",
+    "backfill:education-images": "node --env-file=.env scripts/backfill-activity-r2.js --kind=education",
+    "backfill:education-images:write": "node --env-file=.env scripts/backfill-activity-r2.js --kind=education --write",
+    "backfill:good-habit-images": "node --env-file=.env scripts/backfill-activity-r2.js --kind=good-habit",
+    "backfill:good-habit-images:write": "node --env-file=.env scripts/backfill-activity-r2.js --kind=good-habit --write"
   },
   "devDependencies": {
     "cross-env": "^10.1.0",

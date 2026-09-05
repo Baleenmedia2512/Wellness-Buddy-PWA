@@ -109,6 +109,20 @@ export async function saveLog(input) {
     confirmPersisted(captureId, { logId: data?.Id || data?.id || data?.ID });
   }
 
+  const educationLogId = data?.Id || data?.id || data?.ID;
+  if (imageBase64ToSave && educationLogId) {
+    try {
+      const { persistEducationImageKey } = await import('../../shared/lib/r2/activity-image-storage.service.js');
+      await persistEducationImageKey(userId, educationLogId, imageBase64ToSave);
+    } catch (err) {
+      logger.warn('education.saveLog: R2 persist skipped', {
+        userId: userId?.toString(),
+        logId: educationLogId,
+        message: err?.message || String(err),
+      });
+    }
+  }
+
   return {
     httpStatus: 200,
     body: {
