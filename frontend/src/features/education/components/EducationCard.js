@@ -11,6 +11,7 @@ import {
   fetchEducationLogImage,
   peekEducationLogImage,
 } from '../services/educationImageCache';
+import { activityPhotoTemplate, handleActivityPhotoError } from '../../../shared/assets/activityPhotoTemplates';
 
 const MAX_SWIPE_DISTANCE = 140;
 const DELETE_THRESHOLD = 100;
@@ -320,19 +321,14 @@ const EducationCard = React.memo(({ data, onDelete, onClick, index = 0, apiBaseU
 
         <div className="flex items-center gap-2 xs:gap-3 sm:gap-4 p-2.5 xs:p-3 sm:p-4">
           {/* Screenshot Image or Platform Icon */}
-          {thumbnailSrc ? (
+          {thumbnailSrc || data.hasFullImage ? (
             <div ref={imgWrapRef} className="flex-shrink-0 w-14 h-14 sm:w-16 sm:h-16 rounded-lg overflow-hidden shadow-md">
               <img
-                src={thumbnailSrc}
+                src={thumbnailSrc || activityPhotoTemplate('education')}
                 alt={data.Topic || 'Meeting Screenshot'}
                 className="w-full h-full object-cover"
-                onError={(e) => { e.target.style.display = 'none'; }}
+                onError={(e) => handleActivityPhotoError(e, 'education')}
               />
-            </div>
-          ) : data.hasFullImage ? (
-            // Image exists but not yet loaded — show a placeholder gradient
-            <div ref={imgWrapRef} className={`flex-shrink-0 w-14 h-14 sm:w-16 sm:h-16 rounded-lg bg-gradient-to-br ${platformColor} flex items-center justify-center text-white shadow-md animate-pulse`}>
-              {platformIcon}
             </div>
           ) : (
             <div ref={imgWrapRef} className={`flex-shrink-0 w-14 h-14 sm:w-16 sm:h-16 rounded-lg bg-gradient-to-br ${platformColor} flex items-center justify-center text-white shadow-md`}>

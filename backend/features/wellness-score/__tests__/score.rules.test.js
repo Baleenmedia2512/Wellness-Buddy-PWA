@@ -254,6 +254,33 @@ describe('progress parameters', () => {
     assert.equal(r.scoringMode, 'progress');
   });
 
+  it('weight improvement — maintain mode always full points', () => {
+    const flat = calculateWeightImprovement({
+      maxPoints: 100,
+      currentWeight: 65,
+      previousWeight: 65,
+      goalMode: 'maintain',
+    });
+    assert.equal(flat.earnedPoints, 100);
+    assert.match(flat.calculationReason, /maintenance/i);
+
+    const up = calculateWeightImprovement({
+      maxPoints: 100,
+      currentWeight: 66,
+      previousWeight: 65,
+      goalMode: 'maintain',
+    });
+    assert.equal(up.earnedPoints, 100);
+
+    const noPrev = calculateWeightImprovement({
+      maxPoints: 100,
+      currentWeight: 65,
+      previousWeight: null,
+      goalMode: 'maintain',
+    });
+    assert.equal(noPrev.earnedPoints, 100);
+  });
+
   it('weight improvement — 0 without previous weight', () => {
     const r = calculateWeightImprovement({
       maxPoints: 100,

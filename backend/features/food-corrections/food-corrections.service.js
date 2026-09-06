@@ -25,6 +25,7 @@ import {
   injectGlycemicIndexIntoAnalysisData,
   resolveGlycemicIndexForUpdate,
 } from './glycemicIndex.helpers.js';
+import { r2FoodImagesEnabled, foodImageRedirectUrl } from './food-image-storage.service.js';
 import {
   emptyMealTotalsSeed,
   addMealRowToTotals,
@@ -566,6 +567,9 @@ export async function getMealImage({ userId, id }) {
   if (!row) {
     return { httpStatus: 404, body: { success: false, message: 'Not found' } };
   }
+  const r2Url = (row.ImageKey && r2FoodImagesEnabled())
+    ? foodImageRedirectUrl(row.ImageKey)
+    : null;
   return {
     httpStatus: 200,
     body: {
@@ -573,6 +577,7 @@ export async function getMealImage({ userId, id }) {
       id: row.ID,
       image: row.ImageBase64 || null,
       imagePath: row.ImagePath || null,
+      r2Url,
     },
   };
 }
