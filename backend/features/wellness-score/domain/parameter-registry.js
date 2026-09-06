@@ -4,7 +4,8 @@
  * scoringMode:
  *   binary       — logged as required → full; missed → 0
  *                  (meal/weight/edu use a time window; good_habit_post is any time today)
- *   progress     — moved toward goal → full; no progress → 0 (weight improvement)
+ *   progress     — moved toward goal → full; no progress → 0 (weight improvement);
+ *                  maintain / maintenance goal mode → full points
  *   proportional — consumed / target × maxPoints (cap at max); used for protein, fiber, vitamins, minerals
  *   limit        — loss: full points within limit, exceeding → 0; gain: proportional up to limit
  *                   GI loss: low/medium → full, high → 0; GI gain: average ≤ limit → full
