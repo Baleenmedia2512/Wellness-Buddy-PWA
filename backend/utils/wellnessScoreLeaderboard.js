@@ -6,7 +6,7 @@
 /**
  * @param {Array<{ wellnessPercentage?: number, totalEarned?: number }>} entries
  * @param {number} [topN=10]
- * @returns {Array<object>} Rank N → Rank 1 (home marquee order), length ≤ topN
+ * @returns {Array<object>} Rank 1 → Rank N (best first), length ≤ topN
  */
 export function rankWellnessLeaderboardEntries(entries, topN = 10) {
   const limit = Math.min(Math.max(parseInt(topN, 10) || 10, 1), 10);
@@ -38,6 +38,5 @@ export function rankWellnessLeaderboardEntries(entries, topN = 10) {
     previousKey = scoreKey;
   }
 
-  ranked.reverse();
   return ranked;
 }

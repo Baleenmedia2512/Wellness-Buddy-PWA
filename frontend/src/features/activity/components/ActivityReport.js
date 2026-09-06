@@ -1,28 +1,37 @@
 import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import {
-  RefreshCw, Download, Search, Share2,
-  Scale, BookOpen, Coffee, Utensils, Moon, Droplets, Flame,
+  RefreshCw, Download, Search, Share2, Filter, X,
+  Calendar, Users, LayoutGrid, UserCheck,
 } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
-import ReportDateRangeFilter from '../../../shared/components/common/ReportDateRangeFilter';
+import PhoneContactActions from '../../../shared/components/PhoneContactActions.jsx';
+import DateRangePicker from '../../../shared/components/common/DateRangePicker';
 import { ACTIVITY_REPORT_DATE_RANGES, formatCustomRangeLabel } from '../../../shared/domain/reportDateRanges';
 import { fetchHasTeamMembers, invalidateHasTeamMembersCache } from '../../team/services/teamSearchService';
 import { TEAM_SCOPES, TEAM_SCOPE_OPTIONS } from '../../reports/utils/reportFilters';
 import {
-  ACTIVITY_REPORT_CLUB_REMOTE,
   buildActivityReportShareText,
+  formatActivityReportLevel,
+  formatActivityReportMemberType,
 } from '../utils/activityReportShareText';
+import {
+  ACTIVITY_REPORT_ATTENDANCE,
+  ACTIVITY_REPORT_ATTENDANCE_OPTIONS,
+  ACTIVITY_REPORT_TABLE_FILTER_COLUMNS,
+  activeActivityReportTableFilters,
+  activityReportFilterQuery,
+  emptyActivityReportFilterOptions,
+  emptyActivityReportTableFilterValues,
+  formatActivityReportAttendance,
+  formatActivityReportFilterOption,
+  serializeActivityReportTableFilters,
+} from '../utils/activityReportTableFilters';
 
-const DEFAULT_PAGE_SIZE = 10;
+const DEFAULT_PAGE_SIZE = 20;
 const SEARCH_DEBOUNCE_MS = 300;
-
-function clubDisplayToFilterValue(displayName) {
-  if (displayName === 'Remote') return ACTIVITY_REPORT_CLUB_REMOTE;
-  return displayName;
-}
 
 function mapRoleForApi(userRole) {
   const n = String(userRole || 'member').toLowerCase();
@@ -49,40 +58,17 @@ function emptyPagination(page = 1, pageSize = DEFAULT_PAGE_SIZE) {
 
 // Activity type metadata
 const ACTIVITY_TYPES = [
-  { id: 'weight', label: 'Weight', icon: Scale, color: 'blue', bgColor: 'bg-blue-50', borderColor: 'border-blue-200', textColor: 'text-blue-700' },
-  { id: 'education', label: 'Education', icon: BookOpen, color: 'indigo', bgColor: 'bg-indigo-50', borderColor: 'border-indigo-200', textColor: 'text-indigo-700' },
-  { id: 'breakfast', label: 'Breakfast', icon: Coffee, color: 'orange', bgColor: 'bg-orange-50', borderColor: 'border-orange-200', textColor: 'text-orange-700' },
-  { id: 'lunch', label: 'Lunch', icon: Utensils, color: 'green', bgColor: 'bg-green-50', borderColor: 'border-green-200', textColor: 'text-green-700' },
-  { id: 'dinner', label: 'Dinner', icon: Moon, color: 'purple', bgColor: 'bg-purple-50', borderColor: 'border-purple-200', textColor: 'text-purple-700' },
-  { id: 'water', label: 'Water', icon: Droplets, color: 'cyan', bgColor: 'bg-cyan-50', borderColor: 'border-cyan-200', textColor: 'text-cyan-700' },
-  { id: 'calories', label: 'Exercise', icon: Flame, color: 'red', bgColor: 'bg-red-50', borderColor: 'border-red-200', textColor: 'text-red-700' },
+  { id: 'weight', label: 'Weight' },
+  { id: 'education', label: 'Education' },
+  { id: 'breakfast', label: 'Breakfast' },
+  { id: 'lunch', label: 'Lunch' },
+  { id: 'dinner', label: 'Dinner' },
+  { id: 'water', label: 'Water' },
+  { id: 'calories', label: 'Exercise' },
 ];
 
-// Activity Badge Component
-const ActivityBadge = ({ activity, count, onClick, isSelected }) => {
-  const Icon = activity.icon;
-  
-  return (
-    <TouchFeedbackButton
-      onClick={onClick}
-      className={`relative p-4 rounded-xl border-2 transition-all ${
-        isSelected
-          ? `${activity.bgColor} ${activity.borderColor} shadow-md scale-105`
-          : 'bg-white border-gray-200 hover:border-gray-300 shadow-sm'
-      }`}
-    >
-      <div className="flex items-center gap-3">
-        <div className={`p-3 rounded-full ${activity.bgColor}`}>
-          <Icon className={`w-6 h-6 ${activity.textColor}`} />
-        </div>
-        <div className="flex-1 text-left">
-          <p className="text-sm font-medium text-gray-600">{activity.label}</p>
-          <p className={`text-2xl font-bold ${activity.textColor}`}>{count}</p>
-        </div>
-      </div>
-    </TouchFeedbackButton>
-  );
-};
+const REPORT_FILTER_SELECT_CLASS =
+  'w-full h-[2.125rem] pl-7 pr-1 border border-gray-200 rounded-lg text-[11px] sm:text-xs text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-green-500 disabled:bg-gray-50 disabled:text-gray-400 truncate';
 
 /** Returns '—' for null, undefined, empty string, or the literal string "N/A" */
 const display = (val) => (!val || val === 'N/A') ? '—' : val;
@@ -102,8 +88,8 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0, t
   const [detailRecords, setDetailRecords] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
-  const [clubFilter, setClubFilter] = useState('');
-  const [availableClubs, setAvailableClubs] = useState([]);
+  const [tableFilters, setTableFilters] = useState(() => emptyActivityReportTableFilterValues());
+  const [availableFilters, setAvailableFilters] = useState(() => emptyActivityReportFilterOptions());
   const [sortColumn, setSortColumn] = useState('date');
   const [sortDirection, setSortDirection] = useState('desc');
   const [currentPage, setCurrentPage] = useState(1);
@@ -119,6 +105,8 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0, t
   const [teamScope, setTeamScope] = useState(TEAM_SCOPES.DIRECT);
   const [teamScopeCounts, setTeamScopeCounts] = useState(null);
   const [showTeamScope, setShowTeamScope] = useState(false);
+  const [attendanceStatus, setAttendanceStatus] = useState(ACTIVITY_REPORT_ATTENDANCE.ATTENDED);
+  const [showReportDatePicker, setShowReportDatePicker] = useState(false);
   const fetchAbortRef = useRef(null);
   const fetchGenerationRef = useRef(0);
   const loadReportRef = useRef(null);
@@ -146,7 +134,9 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0, t
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  const detailCacheKey = useCallback((activityType, page, search, sort, sortDir, club) => (
+  const tableFiltersKey = serializeActivityReportTableFilters(tableFilters);
+
+  const detailCacheKey = useCallback((activityType, page, search, sort, sortDir, filters, attendance) => (
     [
       teamScope,
       dateRange,
@@ -156,11 +146,12 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0, t
       String(page || 1),
       String(itemsPerPage),
       search || '',
-      club || '',
+      serializeActivityReportTableFilters(filters),
       sort || 'date',
       sortDir || 'desc',
+      attendance || attendanceStatus,
     ].join('|')
-  ), [teamScope, dateRange, customStartDate, customEndDate, itemsPerPage]);
+  ), [teamScope, dateRange, customStartDate, customEndDate, itemsPerPage, attendanceStatus]);
 
   // Resolve coach role once before the first report fetch (avoids duplicate bootstrap calls).
   useEffect(() => {
@@ -198,6 +189,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0, t
       dateRange,
       role: effectiveRole,
       teamScope,
+      attendanceStatus,
     });
     Object.entries(extra).forEach(([key, value]) => {
       if (value != null && value !== '') params.set(key, String(value));
@@ -207,7 +199,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0, t
       params.set('endDate', formatDateForApi(customEndDate));
     }
     return params;
-  }, [user?.id, effectiveRole, dateRange, customStartDate, customEndDate, teamScope]);
+  }, [user?.id, effectiveRole, dateRange, customStartDate, customEndDate, teamScope, attendanceStatus]);
 
   const applyReportMeta = useCallback((data) => {
     if (data.teamScopeCounts) {
@@ -252,17 +244,17 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0, t
   }, [dateRange, customStartDate, customEndDate]);
 
   const paginationQuery = useCallback((page = currentPage, overrides = {}) => {
-    const club = overrides.clubName ?? overrides.clubFilter ?? clubFilter;
+    const filters = overrides.tableFilters ?? tableFilters;
     return {
       page: overrides.page ?? page,
       limit: overrides.limit ?? itemsPerPage,
       search: overrides.search ?? debouncedSearch,
       sort: overrides.sort ?? sortColumn,
       sortDir: overrides.sortDir ?? sortDirection,
-      ...(club ? { clubName: club } : {}),
+      ...activityReportFilterQuery(filters),
       ...(overrides.exportAll ? { exportAll: '1' } : {}),
     };
-  }, [currentPage, itemsPerPage, debouncedSearch, sortColumn, sortDirection, clubFilter]);
+  }, [currentPage, itemsPerPage, debouncedSearch, sortColumn, sortDirection, tableFilters]);
 
   const fetchLegacyReportBundle = useCallback(async (detailActivity = 'education') => {
     // Parallelize independent report GETs — previously sequential waterfalls (~3× RTT)
@@ -304,10 +296,12 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0, t
     setDetailRecords(records);
     applyPaginationMeta(detailData, 1);
     detailCacheRef.current.set(
-      detailCacheKey(detailActivity, 1, pageParams.search, pageParams.sort, pageParams.sortDir, clubFilter),
+      detailCacheKey(
+        detailActivity, 1, pageParams.search, pageParams.sort, pageParams.sortDir, tableFilters, attendanceStatus,
+      ),
       { records, pagination: detailData.pagination || emptyPagination(1) },
     );
-  }, [apiBaseUrl, buildReportParams, applyReportMeta, applyPaginationMeta, paginationQuery, detailCacheKey, clubFilter]);
+  }, [apiBaseUrl, buildReportParams, applyReportMeta, applyPaginationMeta, paginationQuery, detailCacheKey, tableFilters, attendanceStatus]);
 
   const fetchDetails = useCallback(async (activityType, {
     signal,
@@ -315,12 +309,13 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0, t
     search = debouncedSearch,
     sort = sortColumn,
     sortDir = sortDirection,
-    club = clubFilter,
+    filters = tableFilters,
+    attendance = attendanceStatus,
   } = {}) => {
     if (!user?.id || !apiBaseUrl || !activityType) return;
     if (dateRange === 'custom' && (!customStartDate || !customEndDate)) return;
 
-    const cacheKey = detailCacheKey(activityType, page, search, sort, sortDir, club);
+    const cacheKey = detailCacheKey(activityType, page, search, sort, sortDir, filters, attendance);
     if (detailCacheRef.current.has(cacheKey)) {
       const cached = detailCacheRef.current.get(cacheKey);
       setDetailRecords(cached.records || []);
@@ -346,7 +341,8 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0, t
           search,
           sort,
           sortDir,
-          ...(club ? { clubName: club } : {}),
+          attendanceStatus: attendance,
+          ...activityReportFilterQuery(filters),
         })}`,
         { cache: 'no-store', signal },
       );
@@ -359,8 +355,17 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0, t
 
       const records = data.records || [];
       const pageMeta = data.pagination || emptyPagination(page);
-      if (Array.isArray(data.availableClubs)) {
-        setAvailableClubs(data.availableClubs);
+      if (data.availableFilters && typeof data.availableFilters === 'object') {
+        setAvailableFilters({
+          ...emptyActivityReportFilterOptions(),
+          ...data.availableFilters,
+        });
+      } else if (Array.isArray(data.availableClubs)) {
+        setAvailableFilters((prev) => ({
+          ...emptyActivityReportFilterOptions(),
+          ...prev,
+          clubName: data.availableClubs,
+        }));
       }
       detailCacheRef.current.set(cacheKey, { records, pagination: pageMeta });
       setDetailRecords(records);
@@ -386,7 +391,8 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0, t
     debouncedSearch,
     sortColumn,
     sortDirection,
-    clubFilter,
+    tableFilters,
+    attendanceStatus,
     itemsPerPage,
   ]);
 
@@ -536,7 +542,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0, t
         search: debouncedSearch,
         sort: sortColumn,
         sortDir: sortDirection,
-        club: clubFilter,
+        filters: tableFilters,
       });
     }, 80);
 
@@ -546,7 +552,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0, t
     };
   // intentionally omit selectedActivity — tab switches use handleActivityClick
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [debouncedSearch, sortColumn, sortDirection, clubFilter, roleReady, user?.id, apiBaseUrl, summary]);
+  }, [debouncedSearch, sortColumn, sortDirection, tableFiltersKey, roleReady, user?.id, apiBaseUrl, summary]);
 
   const handleRefresh = () => {
     fetchAbortRef.current?.abort();
@@ -557,16 +563,18 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0, t
   };
 
   const handleActivityClick = (activityId) => {
+    const clearedFilters = emptyActivityReportTableFilterValues();
     if (activityId === selectedActivity && !detailLoading) {
       const cacheKey = detailCacheKey(
-        activityId, currentPage, debouncedSearch, sortColumn, sortDirection, clubFilter,
+        activityId, currentPage, debouncedSearch, sortColumn, sortDirection, tableFilters, attendanceStatus,
       );
       if (detailCacheRef.current.has(cacheKey)) return;
     }
     setSelectedActivity(activityId);
-    setClubFilter('');
-    setAvailableClubs([]);
+    setTableFilters(clearedFilters);
+    setAvailableFilters(emptyActivityReportFilterOptions());
     setCurrentPage(1);
+    skipSearchSortFetchRef.current = true;
     fetchAbortRef.current?.abort();
     const controller = new AbortController();
     fetchAbortRef.current = controller;
@@ -576,7 +584,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0, t
       search: debouncedSearch,
       sort: sortColumn,
       sortDir: sortDirection,
-      club: '',
+      filters: clearedFilters,
     });
   };
 
@@ -595,12 +603,24 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0, t
       search: debouncedSearch,
       sort: sortColumn,
       sortDir: sortDirection,
-      club: clubFilter,
+      filters: tableFilters,
     });
   };
 
-  const handleClubFilterChange = (event) => {
-    setClubFilter(event.target.value);
+  const resetTableColumnFilter = () => {
+    setTableFilters(emptyActivityReportTableFilterValues());
+    setAvailableFilters(emptyActivityReportFilterOptions());
+  };
+
+  const handleTableFilterChange = (columnId, value) => {
+    setTableFilters((prev) => ({ ...prev, [columnId]: value }));
+    setCurrentPage(1);
+  };
+
+  const handleClearTableFilters = () => {
+    setSearchQuery('');
+    setDebouncedSearch('');
+    setTableFilters(emptyActivityReportTableFilterValues());
     setCurrentPage(1);
   };
 
@@ -608,8 +628,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0, t
     setTeamScope(scope);
     setSearchQuery('');
     setDebouncedSearch('');
-    setClubFilter('');
-    setAvailableClubs([]);
+    resetTableColumnFilter();
     setCurrentPage(1);
     setDetailRecords([]);
     setPagination(emptyPagination());
@@ -620,8 +639,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0, t
 
   const handleDateRangeChange = (range) => {
     setDateRange(range);
-    setClubFilter('');
-    setAvailableClubs([]);
+    resetTableColumnFilter();
     setCurrentPage(1);
     setDetailRecords([]);
     setPagination(emptyPagination());
@@ -629,19 +647,39 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0, t
     setMemberStats(null);
     setError('');
     if (range !== 'custom') {
-      if (!customStartDate || !customEndDate) {
-        /* presets fetch immediately */
-      }
+      setShowReportDatePicker(false);
     } else if (!customStartDate || !customEndDate) {
       setSummary(null);
+      setShowReportDatePicker(true);
     }
+  };
+
+  const handleAttendanceChange = (event) => {
+    const next = event.target.value || ACTIVITY_REPORT_ATTENDANCE.ATTENDED;
+    if (next === attendanceStatus) return;
+    setAttendanceStatus(next);
+    setCurrentPage(1);
+    setDetailRecords([]);
+    setPagination(emptyPagination());
+    fetchAbortRef.current?.abort();
+    const controller = new AbortController();
+    fetchAbortRef.current = controller;
+    fetchDetails(selectedActivity, {
+      signal: controller.signal,
+      page: 1,
+      search: debouncedSearch,
+      sort: sortColumn,
+      sortDir: sortDirection,
+      filters: tableFilters,
+      attendance: next,
+    });
   };
 
   const handleCustomDateSelect = (start, end) => {
     setCustomStartDate(start);
     setCustomEndDate(end);
-    setClubFilter('');
-    setAvailableClubs([]);
+    setShowReportDatePicker(false);
+    resetTableColumnFilter();
     setCurrentPage(1);
     setDetailRecords([]);
     setPagination(emptyPagination());
@@ -676,10 +714,12 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0, t
 
     let headers = [
       'Member Name',
+      'Member Type',
+      'Sponsor Name',
+      'Level',
       'Club',
       'Reg. Date',
       'Reg. Time',
-      'Sponsor Name',
       'Coach Name',
       'Phone Number',
       'City',
@@ -687,13 +727,13 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0, t
     ];
 
     if (selectedActivity === 'weight') {
-      headers.splice(1, 0, 'Weight (kg)');
+      headers.splice(4, 0, 'Weight (kg)');
     } else if (['breakfast', 'lunch', 'dinner'].includes(selectedActivity)) {
-      headers.splice(1, 0, 'Meal Type', 'Calories');
+      headers.splice(4, 0, 'Meal Type', 'Calories');
     } else if (selectedActivity === 'water') {
-      headers.splice(1, 0, 'Water (L)');
+      headers.splice(4, 0, 'Water (L)');
     } else if (selectedActivity === 'calories') {
-      headers.splice(1, 0, 'Calories Burned');
+      headers.splice(4, 0, 'Calories Burned');
     }
 
     const csvRows = [headers.join(',')];
@@ -702,10 +742,12 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0, t
       const displayClub = record.clubName && record.clubName !== 'N/A' ? record.clubName : 'Remote';
       const baseRow = [
         `"${record.memberName || 'N/A'}"`,
+        `"${formatActivityReportMemberType(record.memberType)}"`,
+        `"${record.sponsorName || record.coachName || 'N/A'}"`,
+        formatActivityReportLevel(record.level),
         `"${displayClub}"`,
         record.date || 'N/A',
         record.time || 'N/A',
-        `"${record.sponsorName || record.coachName || 'N/A'}"`,
         `"${record.idealCoachName || ''}"`,
         `"${record.phone || 'N/A'}"`,
         `"${record.city || 'N/A'}"`,
@@ -713,13 +755,13 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0, t
       ];
 
       if (selectedActivity === 'weight') {
-        baseRow.splice(1, 0, record.weight || 'N/A');
+        baseRow.splice(4, 0, record.weight || 'N/A');
       } else if (['breakfast', 'lunch', 'dinner'].includes(selectedActivity)) {
-        baseRow.splice(1, 0, `"${record.mealType || 'N/A'}"`, record.calories || 0);
+        baseRow.splice(4, 0, `"${record.mealType || 'N/A'}"`, record.calories || 0);
       } else if (selectedActivity === 'water') {
-        baseRow.splice(1, 0, record.waterLiters || 0);
+        baseRow.splice(4, 0, record.waterLiters || 0);
       } else if (selectedActivity === 'calories') {
-        baseRow.splice(1, 0, record.caloriesBurned || 0);
+        baseRow.splice(4, 0, record.caloriesBurned || 0);
       }
 
       csvRows.push(baseRow.join(','));
@@ -828,8 +870,12 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0, t
         activityLabel: activityMeta?.label || 'Activity',
         dateLabel: activeDateLabel,
         scopeLabel: activeScopeLabel,
-        clubFilter,
+        clubFilter: tableFilters.clubName || '',
+        columnFilter: activeActivityReportTableFilters(tableFilters)
+          .map((chip) => `${chip.label}: ${chip.displayValue}`)
+          .join(' · '),
         searchQuery,
+        attendanceLabel: formatActivityReportAttendance(attendanceStatus),
         totalRecords: data.pagination?.totalRecords ?? exportRecords.length,
         records: exportRecords,
         activityId: selectedActivity,
@@ -877,6 +923,8 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0, t
   const pageSize = pagination.pageSize || itemsPerPage;
   const showingFrom = totalRecords === 0 ? 0 : ((pagination.currentPage || currentPage) - 1) * pageSize + 1;
   const showingTo = Math.min((pagination.currentPage || currentPage) * pageSize, totalRecords);
+  const activeFilterChips = activeActivityReportTableFilters(tableFilters);
+  const hasActiveTableFilters = Boolean(searchQuery.trim() || activeFilterChips.length > 0);
 
   return (
     <div className="bg-gradient-to-br from-green-50 to-green-100 pb-16">
@@ -899,104 +947,145 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0, t
       </div>
 
       <div className="max-w-7xl mx-auto px-4 py-3">
-        {/* Date Range Filter */}
-        <div className="mb-2">
-          <ReportDateRangeFilter
-            ranges={ACTIVITY_REPORT_DATE_RANGES}
-            dateRange={dateRange}
-            onDateRangeChange={handleDateRangeChange}
-            customStartDate={customStartDate}
-            customEndDate={customEndDate}
-            onCustomDateSelect={handleCustomDateSelect}
-            variant="compact"
-          />
-        </div>
-
-        {/* Team scope: Mine / Direct / Full */}
-        {showTeamScope && (
-          <div
-            className="mb-2 bg-white rounded-lg border border-gray-200 shadow-sm px-0.5 py-0.5 flex gap-0.5 w-full"
-            role="group"
-            aria-label="Team scope filter"
-          >
-            {TEAM_SCOPE_OPTIONS.map(({ value, label, short }) => {
-              const isActive = teamScope === value;
-              const count = teamScopeCounts?.[value] ?? 0;
-              const showCount = value !== TEAM_SCOPES.MINE;
-              const desktopLabel = showCount ? `${label} (${count})` : label;
-              const mobileLabel = showCount ? `${short} (${count})` : short;
-              return (
-                <TouchFeedbackButton
-                  key={value}
-                  onClick={() => handleTeamScopeChange(value)}
-                  disabled={summaryLoading || detailLoading}
-                  className={`flex-1 min-w-0 py-1 rounded-md text-[10px] sm:text-[11px] font-semibold transition-all px-1 disabled:opacity-50 ${
-                    isActive
-                      ? 'bg-green-600 text-white shadow-sm'
-                      : 'text-green-800 hover:bg-green-50'
-                  }`}
-                  title={desktopLabel}
-                >
-                  <span className="hidden sm:inline truncate">{desktopLabel}</span>
-                  <span className="sm:hidden truncate">{mobileLabel}</span>
-                </TouchFeedbackButton>
-              );
-            })}
-          </div>
-        )}
-
-        {(showTeamScope || summary) && (
-          <p className="mb-2 text-[10px] sm:text-[11px] text-gray-500">
-            Activity counts for{' '}
-            <span className="font-semibold text-gray-700">{activeScopeLabel || 'your team'}</span>
-            {' · '}
-            <span className="font-semibold text-gray-700">{activeDateLabel}</span>
+        <section className="mb-3 bg-white rounded-xl border border-gray-200 shadow-sm p-3" aria-label="Report filters">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 mb-2">
+            Report filters
           </p>
-        )}
+          <div className="rounded-lg border border-gray-100 bg-gray-50/80 p-2 space-y-2">
+            <div className="grid grid-cols-2 gap-2">
+              <label className="min-w-0">
+                <span className="sr-only">Date</span>
+                <div className="relative">
+                  <Calendar className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400" />
+                  <select
+                    value={dateRange}
+                    onChange={(event) => {
+                      const next = event.target.value;
+                      if (next === 'custom') {
+                        setShowReportDatePicker(true);
+                      }
+                      handleDateRangeChange(next);
+                    }}
+                    disabled={summaryLoading}
+                    className={REPORT_FILTER_SELECT_CLASS}
+                  >
+                    {ACTIVITY_REPORT_DATE_RANGES.map((range) => (
+                      <option key={range.value} value={range.value}>
+                        {range.value === 'custom' && dateRange === 'custom'
+                          ? formatCustomRangeLabel(customStartDate, customEndDate)
+                          : range.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </label>
 
-        {/* Error Display */}
+              {showTeamScope ? (
+                <label className="min-w-0">
+                  <span className="sr-only">Team</span>
+                  <div className="relative">
+                    <Users className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400" />
+                    <select
+                      value={teamScope}
+                      onChange={(event) => handleTeamScopeChange(event.target.value)}
+                      disabled={summaryLoading || detailLoading}
+                      className={REPORT_FILTER_SELECT_CLASS}
+                    >
+                      {TEAM_SCOPE_OPTIONS.map(({ value, label }) => {
+                        const count = teamScopeCounts?.[value] ?? 0;
+                        const showCount = value !== TEAM_SCOPES.MINE;
+                        return (
+                          <option key={value} value={value}>
+                            {showCount ? `${label} (${count})` : label}
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </div>
+                </label>
+              ) : (
+                <label className="min-w-0">
+                  <span className="sr-only">Attendance</span>
+                  <div className="relative">
+                    <UserCheck className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400" />
+                    <select
+                      value={attendanceStatus}
+                      onChange={handleAttendanceChange}
+                      disabled={detailLoading}
+                      className={REPORT_FILTER_SELECT_CLASS}
+                    >
+                      {ACTIVITY_REPORT_ATTENDANCE_OPTIONS.map((option) => (
+                        <option key={option.id} value={option.id}>{option.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                </label>
+              )}
+
+              <label className={`min-w-0 ${showTeamScope ? '' : 'col-span-2'}`}>
+                <span className="sr-only">Category</span>
+                <div className="relative">
+                  <LayoutGrid className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400" />
+                  <select
+                    value={selectedActivity}
+                    onChange={(event) => handleActivityClick(event.target.value)}
+                    disabled={detailLoading}
+                    className={REPORT_FILTER_SELECT_CLASS}
+                  >
+                    {ACTIVITY_TYPES.map((activity) => (
+                      <option key={activity.id} value={activity.id}>
+                        {activity.label} ({summary?.[activity.id] || 0})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </label>
+
+              {showTeamScope && (
+                <label className="min-w-0">
+                  <span className="sr-only">Attendance</span>
+                  <div className="relative">
+                    <UserCheck className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400" />
+                    <select
+                      value={attendanceStatus}
+                      onChange={handleAttendanceChange}
+                      disabled={detailLoading}
+                      className={REPORT_FILTER_SELECT_CLASS}
+                    >
+                      {ACTIVITY_REPORT_ATTENDANCE_OPTIONS.map((option) => (
+                        <option key={option.id} value={option.id}>{option.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                </label>
+              )}
+            </div>
+
+            {dateRange === 'custom' && showReportDatePicker && (
+              <DateRangePicker
+                startDate={customStartDate}
+                endDate={customEndDate}
+                onSelect={handleCustomDateSelect}
+                onClose={() => setShowReportDatePicker(false)}
+              />
+            )}
+          </div>
+        </section>
+
         {error && (
-          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+          <div className="mb-3 p-4 bg-red-50 border border-red-200 rounded-lg">
             <p className="text-red-700 text-sm">{error}</p>
           </div>
         )}
 
-        {/* Activity Type Tabs */}
-        {summary && (
-          <div className="flex flex-wrap gap-1.5 pb-1 mb-2">
-            {ACTIVITY_TYPES.map((activity) => {
-              const Icon = activity.icon;
-              const isActive = selectedActivity === activity.id;
-              return (
-                <TouchFeedbackButton
-                  key={activity.id}
-                  onClick={() => handleActivityClick(activity.id)}
-                  className={`flex-shrink-0 flex items-center gap-1 px-2 py-1 rounded-full border shadow-sm active:scale-95 transition-all ${
-                    isActive
-                      ? `${activity.bgColor} ${activity.borderColor}`
-                      : 'bg-white border-gray-200'
-                  }`}
-                >
-                  <Icon className={`w-3 h-3 ${isActive ? activity.textColor : 'text-gray-400'}`} />
-                  <span className={`text-xs font-bold leading-none ${isActive ? activity.textColor : 'text-gray-500'}`}>
-                    {summary[activity.id] || 0}
-                  </span>
-                  <span className={`text-[10px] sm:text-[11px] font-medium whitespace-nowrap leading-none ${isActive ? 'text-gray-600' : 'text-gray-400'}`}>
-                    {activity.label}
-                  </span>
-                </TouchFeedbackButton>
-              );
-            })}
-          </div>
-        )}
-
-        {/* Detail Grid */}
         {selectedActivity && (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200">
             <div className="px-3 py-2 sm:px-4 border-b border-gray-200">
               <div className="flex items-center justify-between mb-2">
                 <h2 className="text-base font-bold text-gray-900">
-                  {ACTIVITY_TYPES.find(a => a.id === selectedActivity)?.label} Records
+                  {ACTIVITY_TYPES.find(a => a.id === selectedActivity)?.label}
+                  {' · '}
+                  {formatActivityReportAttendance(attendanceStatus)}
                 </h2>
                 <div className="flex items-center gap-1 flex-shrink-0">
                   {(totalRecords > 0 || detailRecords.length > 0) && (
@@ -1022,54 +1111,113 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0, t
                 </div>
               </div>
 
-              <div className="flex flex-row items-stretch gap-2">
-                <div className="relative min-w-0 basis-[80%] shrink-0 grow-0">
+              <div className="rounded-lg border border-gray-100 bg-gray-50/80 p-2 space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-gray-500">
+                    <Filter className="w-3 h-3" />
+                    Table filters
+                  </p>
+                  {hasActiveTableFilters && (
+                    <TouchFeedbackButton
+                      onClick={handleClearTableFilters}
+                      className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-gray-600 hover:text-gray-900"
+                      ariaLabel="Clear table filters"
+                    >
+                      <X className="w-3 h-3" />
+                      Clear all
+                    </TouchFeedbackButton>
+                  )}
+                </div>
+                <div className="relative">
                   <Search className="absolute left-2.5 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
                   <input
                     type="text"
-                    placeholder="Search by name, phone, coach, city, village, or club..."
+                    placeholder="Search name or phone"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full pl-8 pr-2 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                    className="w-full pl-8 pr-2 py-1.5 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-green-500"
                   />
                 </div>
-                <div className="min-w-0 basis-[20%] shrink-0 grow-0">
-                  <label htmlFor="activity-report-club-filter" className="sr-only">
-                    Filter by club
-                  </label>
-                  <select
-                    id="activity-report-club-filter"
-                    value={clubFilter}
-                    onChange={handleClubFilterChange}
-                    disabled={detailLoading || availableClubs.length === 0}
-                    title={clubFilter === ACTIVITY_REPORT_CLUB_REMOTE ? 'Remote' : (clubFilter || 'All Clubs')}
-                    className="w-full h-full min-h-[2.125rem] px-1 sm:px-1.5 py-1.5 border border-gray-200 rounded-lg text-[11px] sm:text-xs text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-green-500 disabled:bg-gray-50 disabled:text-gray-400 truncate"
-                  >
-                    <option value="">All Clubs</option>
-                    {availableClubs.map((clubName) => (
-                      <option key={clubName} value={clubDisplayToFilterValue(clubName)}>
-                        {clubName}
-                      </option>
-                    ))}
-                  </select>
+                <div className="flex gap-2 overflow-x-auto no-scrollbar pb-0.5">
+                  {ACTIVITY_REPORT_TABLE_FILTER_COLUMNS.map((column) => {
+                    const selected = tableFilters[column.id] || '';
+                    const options = availableFilters[column.id] || [];
+                    return (
+                      <label key={column.id} className="min-w-[8.25rem] flex-shrink-0">
+                        <span className="sr-only">{column.label}</span>
+                        <select
+                          value={selected}
+                          onChange={(event) => handleTableFilterChange(column.id, event.target.value)}
+                          disabled={detailLoading || (!selected && options.length === 0)}
+                          className={`w-full h-[2.125rem] px-1.5 border rounded-lg text-[11px] sm:text-xs truncate focus:outline-none focus:ring-2 focus:ring-green-500 disabled:bg-gray-50 disabled:text-gray-400 ${
+                            selected
+                              ? 'border-green-500 bg-green-50 text-green-800 font-semibold'
+                              : 'border-gray-200 bg-white text-gray-700'
+                          }`}
+                        >
+                          <option value="">{column.label}</option>
+                          {options.map((option) => (
+                            <option key={option} value={option}>
+                              {formatActivityReportFilterOption(column.id, option)}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    );
+                  })}
                 </div>
+                {activeFilterChips.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {activeFilterChips.map((chip) => (
+                      <TouchFeedbackButton
+                        key={chip.id}
+                        onClick={() => handleTableFilterChange(chip.id, '')}
+                        className="inline-flex items-center gap-0.5 max-w-full pl-2 pr-1 py-0.5 rounded-full bg-green-100 text-green-800 text-[10px] font-semibold"
+                        ariaLabel={`Remove ${chip.label} filter`}
+                      >
+                        <span className="truncate">
+                          {chip.label}: {chip.displayValue}
+                        </span>
+                        <X className="w-3 h-3 flex-shrink-0" />
+                      </TouchFeedbackButton>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
 
-            <div className="overflow-x-auto overflow-y-auto max-h-[42vh] sm:max-h-[48vh] relative">
+            <div className="overflow-x-auto relative">
               {detailLoading && (
                 <div className="absolute inset-0 z-40 flex items-center justify-center bg-white/70">
                   <RefreshCw className="w-8 h-8 text-green-600 animate-spin" />
                 </div>
               )}
               <table className="w-full">
-                <thead className="border-b border-gray-200 sticky top-0 z-20">
+                <thead className="border-b border-gray-200 bg-gray-50">
                   <tr>
                     <th
                       className="sticky left-0 z-30 bg-gray-50 px-3 py-2 text-left text-[10px] sm:text-xs font-semibold text-gray-600 uppercase min-w-[130px] cursor-pointer hover:bg-gray-100 shadow-[2px_0_5px_-1px_rgba(0,0,0,0.08)]"
                       onClick={() => handleSort('memberName')}
                     >
                       Member Name {sortColumn === 'memberName' && (sortDirection === 'asc' ? '↑' : '↓')}
+                    </th>
+                    <th
+                      className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase whitespace-nowrap cursor-pointer hover:bg-gray-100"
+                      onClick={() => handleSort('memberType')}
+                    >
+                      Member Type {sortColumn === 'memberType' && (sortDirection === 'asc' ? '↑' : '↓')}
+                    </th>
+                    <th
+                      className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase cursor-pointer hover:bg-gray-100"
+                      onClick={() => handleSort('sponsorName')}
+                    >
+                      Sponsor {sortColumn === 'sponsorName' && (sortDirection === 'asc' ? '↑' : '↓')}
+                    </th>
+                    <th
+                      className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase whitespace-nowrap cursor-pointer hover:bg-gray-100"
+                      onClick={() => handleSort('level')}
+                    >
+                      Level {sortColumn === 'level' && (sortDirection === 'asc' ? '↑' : '↓')}
                     </th>
 
                     {/* --- DYNAMIC ACTIVITY COLUMNS --- */}
@@ -1099,7 +1247,6 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0, t
                       Reg. Date {sortColumn === 'date' && (sortDirection === 'asc' ? '↑' : '↓')}
                     </th>
                     <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase whitespace-nowrap">Reg. Time</th>
-                    <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Sponsor</th>
                     <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Coach</th>
                     <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Phone</th>
                     <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">City</th>
@@ -1112,6 +1259,9 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0, t
                       <td className="sticky left-0 z-10 bg-white px-4 py-3 text-sm font-medium text-gray-900 min-w-[130px] shadow-[2px_0_5px_-1px_rgba(0,0,0,0.08)]">
                         {display(record.memberName)}
                       </td>
+                      <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">{formatActivityReportMemberType(record.memberType)}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600">{display(record.sponsorName || record.coachName)}</td>
+                      <td className="px-4 py-3 text-sm text-gray-900 whitespace-nowrap">{formatActivityReportLevel(record.level)}</td>
 
                       {/* --- DYNAMIC ACTIVITY DATA --- */}
                       {selectedActivity === 'weight' && (
@@ -1140,9 +1290,10 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0, t
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-900 whitespace-nowrap">{display(record.date)}</td>
                       <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">{display(record.time)}</td>
-                      <td className="px-4 py-3 text-sm text-gray-600">{display(record.sponsorName || record.coachName)}</td>
                       <td className="px-4 py-3 text-sm text-gray-600">{record.idealCoachName ? display(record.idealCoachName) : '—'}</td>
-                      <td className="px-4 py-3 text-sm text-gray-600">{display(record.phone)}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600">
+                        <PhoneContactActions phone={record.phone} size="sm" />
+                      </td>
                       <td className="px-4 py-3 text-sm text-gray-600">{display(record.city)}</td>
                       <td className="px-4 py-3 text-sm text-gray-600">{display(record.village)}</td>
                     </tr>
@@ -1181,7 +1332,13 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0, t
 
             {detailRecords.length === 0 && !detailLoading && (
               <div className="p-12 text-center">
-                <p className="text-gray-500">No records found</p>
+                <p className="text-gray-500">
+                  {hasActiveTableFilters
+                    ? 'No records found'
+                    : attendanceStatus === ACTIVITY_REPORT_ATTENDANCE.NOT_ATTENDED
+                      ? 'Everyone in this team logged this activity'
+                      : 'No records found'}
+                </p>
               </div>
             )}
           </div>

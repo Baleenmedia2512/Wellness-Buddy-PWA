@@ -8,8 +8,10 @@ import {
   ACTIVITY_REPORT_DEFAULT_PAGE_SIZE,
   buildActivityReportPaginationMeta,
   collectActivityReportClubNames,
+  collectActivityReportFilterOptions,
   filterActivityReportRecords,
   filterActivityReportRecordsByClub,
+  filterActivityReportRecordsByColumn,
   normalizeActivityReportPagination,
   paginateActivityReportRecords,
   slicePreparedActivityReportRows,
@@ -17,7 +19,7 @@ import {
 } from '../domain/activity-report.pagination.js';
 
 describe('normalizeActivityReportPagination', () => {
-  it('defaults to page 1 and page size 10', () => {
+  it('defaults to page 1 and page size 20', () => {
     const p = normalizeActivityReportPagination({});
     assert.equal(p.page, 1);
     assert.equal(p.limit, ACTIVITY_REPORT_DEFAULT_PAGE_SIZE);
@@ -37,6 +39,39 @@ describe('normalizeActivityReportPagination', () => {
   it('accepts clubName filter', () => {
     const p = normalizeActivityReportPagination({ clubName: ' Pune Club ' });
     assert.equal(p.clubFilter, 'Pune Club');
+  });
+
+  it('accepts table column filter', () => {
+    const p = normalizeActivityReportPagination({
+      filterColumn: 'memberType',
+      filterValue: 'sponsor',
+    });
+    assert.equal(p.filterColumn, 'memberType');
+    assert.equal(p.filterValue, 'sponsor');
+    assert.deepEqual(p.columnFilters, { memberType: 'sponsor' });
+  });
+
+  it('ignores unknown filter columns', () => {
+    const p = normalizeActivityReportPagination({
+      filterColumn: 'role',
+      filterValue: 'coach',
+    });
+    assert.equal(p.filterColumn, '');
+    assert.equal(p.filterValue, '');
+    assert.deepEqual(p.columnFilters, {});
+  });
+
+  it('stacks multiple filter_<column> params with AND', () => {
+    const p = normalizeActivityReportPagination({
+      filter_memberType: 'sponsor',
+      filter_level: '1',
+      filter_city: 'Pune',
+    });
+    assert.deepEqual(p.columnFilters, {
+      memberType: 'sponsor',
+      level: '1',
+      city: 'Pune',
+    });
   });
 });
 
@@ -93,6 +128,76 @@ describe('filter / sort / paginate', () => {
   it('filters across name/city/phone', () => {
     const filtered = filterActivityReportRecords(rows, 'pune');
     assert.equal(filtered.length, 2);
+  });
+
+  it('filters by member type without using profile role', () => {
+    const typed = [
+      { memberName: 'Alice', memberType: 'sponsor', date: '2026-08-05' },
+      { memberName: 'Bob', memberType: 'member', date: '2026-08-06' },
+    ];
+    const filtered = filterActivityReportRecords(typed, 'sponsor');
+    assert.equal(filtered.length, 1);
+    assert.equal(filtered[0].memberName, 'Alice');
+  });
+
+  it('filters by table column memberType and level', () => {
+    const typed = [
+      { memberName: 'Alice', memberType: 'sponsor', level: 1, date: '2026-08-05' },
+      { memberName: 'Bob', memberType: 'member', level: 2, date: '2026-08-06' },
+    ];
+    const sponsors = filterActivityReportRecordsByColumn(typed, 'memberType', 'sponsor');
+    assert.deepEqual(sponsors.map((r) => r.memberName), ['Alice']);
+    const levelTwo = filterActivityReportRecordsByColumn(typed, 'level', '2');
+    assert.deepEqual(levelTwo.map((r) => r.memberName), ['Bob']);
+  });
+
+  it('applies stacked column filters with AND', () => {
+    const typed = [
+      { memberName: 'Alice', memberType: 'sponsor', level: 1, city: 'Pune', date: '2026-08-05' },
+      { memberName: 'Bob', memberType: 'sponsor', level: 2, city: 'Pune', date: '2026-08-06' },
+      { memberName: 'Carol', memberType: 'member', level: 1, city: 'Pune', date: '2026-08-04' },
+    ];
+    const { records, pagination } = paginateActivityReportRecords(typed, {
+      page: 1,
+      limit: 20,
+      search: '',
+      sort: 'memberName',
+      sortDir: 'asc',
+      filter_memberType: 'sponsor',
+      filter_city: 'Pune',
+    });
+    assert.deepEqual(records.map((r) => r.memberName), ['Alice', 'Bob']);
+    assert.equal(pagination.totalRecords, 2);
+    assert.equal(pagination.pageSize, 20);
+  });
+
+  it('collects column filter options from rows', () => {
+    const options = collectActivityReportFilterOptions([
+      { memberType: 'sponsor', level: 1, sponsorName: 'Adhithya', clubName: 'N/A', city: 'Pune' },
+      { memberType: 'member', level: 2, sponsorName: 'Adhithya', clubName: 'Club A', city: 'N/A' },
+    ]);
+    assert.deepEqual(options.memberType, ['member', 'sponsor']);
+    assert.deepEqual(options.level, ['1', '2']);
+    assert.deepEqual(options.sponsorName, ['Adhithya']);
+    assert.ok(options.clubName.includes('Club A'));
+    assert.ok(options.clubName.includes('Remote'));
+    assert.deepEqual(options.city, ['Pune']);
+  });
+
+  it('sorts by level numeric and memberType alpha', () => {
+    const typed = [
+      { memberName: 'Alice', level: 2, memberType: 'sponsor', date: '2026-08-05' },
+      { memberName: 'Bob', level: 1, memberType: 'member', date: '2026-08-06' },
+      { memberName: 'Carol', level: 3, memberType: 'member', date: '2026-08-04' },
+    ];
+    assert.deepEqual(
+      sortActivityReportRecords(typed, 'level', 'asc').map((r) => r.memberName),
+      ['Bob', 'Alice', 'Carol'],
+    );
+    assert.deepEqual(
+      sortActivityReportRecords(typed, 'memberType', 'asc').map((r) => r.memberName),
+      ['Bob', 'Carol', 'Alice'],
+    );
   });
 
   it('sorts by memberName ascending', () => {

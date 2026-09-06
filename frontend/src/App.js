@@ -6356,12 +6356,24 @@ function WellnessValleyApp() {
         };
       });
       // Defer large localStorage write so it does not compete with first classify paint.
+      // Must not run after Cancel/leave — a late idle write used to resurrect
+      // pendingClassifyCapture and permanently block tab navigation on Diary.
       const pendingPayload = {
         captureId: captureShare.id,
         imageBase64: processedImage,
         userId: resolvedUserIdForOrchestrate ?? user?.id ?? null,
       };
-      const persistPending = () => Session.setPendingClassifyCapture(pendingPayload);
+      const persistPending = () => {
+        if (
+          !Session.shouldPersistPendingClassifyCapture(
+            manualEntrySessionRef.current,
+            instantToken,
+          )
+        ) {
+          return;
+        }
+        Session.setPendingClassifyCapture(pendingPayload);
+      };
       if (typeof window.requestIdleCallback === "function") {
         window.requestIdleCallback(persistPending, { timeout: 2000 });
       } else {
@@ -7842,8 +7854,12 @@ function WellnessValleyApp() {
           imageBase64={manualEntryPayload.imageBase64}
           onBack={() => {
             const pending = manualEntryPayload;
-            // User left before captureId arrived — discard the in-flight POST result.
-            if (pending?.clientKey && !pending?.captureId) {
+            // Always mark abandoned for this classify session so a deferred
+            // requestIdleCallback cannot rewrite pendingClassifyCapture after
+            // Cancel (that resurrected the tab-nav lock). Also tells the
+            // in-flight POST path to discard an orphan capture when captureId
+            // had not arrived yet.
+            if (pending?.clientKey) {
               manualEntrySessionRef.current = {
                 clientKey: pending.clientKey,
                 abandoned: true,

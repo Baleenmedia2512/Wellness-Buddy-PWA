@@ -15,6 +15,7 @@ import { CapacitorHttp } from '@capacitor/core';
 import { debugLog } from '../shared/utils/logger.js';
 import { getAppVersionHeaders } from '../shared/services/apiFetch.js';
 import CustomAlertModal from '../shared/components/CustomAlertModal';
+import PhoneContactActions from '../shared/components/PhoneContactActions.jsx';
 import { format } from 'date-fns';
 
 const PAGE_SIZE = 20;
@@ -54,7 +55,14 @@ const BodyParamsCardTile = memo(function BodyParamsCardTile({
           <div className="flex-1 min-w-0">
             <h3 className="font-semibold text-gray-900 truncate">{card.name}</h3>
             {card.phoneNumber ? (
-              <p className="text-sm text-gray-500 truncate">{card.phoneNumber}</p>
+              <div onClick={(e) => e.stopPropagation()}>
+                <PhoneContactActions
+                  phone={card.phoneNumber}
+                  size="sm"
+                  numberClassName="text-gray-500 font-normal"
+                  stopPropagation
+                />
+              </div>
             ) : null}
           </div>
           <div className="flex items-center gap-0.5 flex-shrink-0">

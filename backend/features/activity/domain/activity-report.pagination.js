@@ -3,7 +3,7 @@
  * Applied after detail rows are built so meal-window + dedupe rules stay intact.
  */
 
-export const ACTIVITY_REPORT_DEFAULT_PAGE_SIZE = 10;
+export const ACTIVITY_REPORT_DEFAULT_PAGE_SIZE = 20;
 export const ACTIVITY_REPORT_MAX_PAGE_SIZE = 100;
 /** Hard ceiling for export-all responses (safety against runaway payloads). */
 export const ACTIVITY_REPORT_EXPORT_MAX = 10_000;
@@ -26,7 +26,32 @@ export const ACTIVITY_REPORT_SORTABLE = new Set([
   'sponsorName',
   'idealCoachName',
   'coachName',
+  'level',
+  'memberType',
 ]);
+
+/** Discrete table-column filters (legacy: filterColumn + filterValue; stacked: filter_<column>). */
+export const ACTIVITY_REPORT_FILTER_COLUMNS = new Set([
+  'memberType',
+  'level',
+  'sponsorName',
+  'clubName',
+  'idealCoachName',
+  'city',
+  'village',
+]);
+
+export function emptyActivityReportFilterOptions() {
+  return {
+    memberType: [],
+    level: [],
+    sponsorName: [],
+    clubName: [],
+    idealCoachName: [],
+    city: [],
+    village: [],
+  };
+}
 
 /**
  * @param {object} raw
@@ -72,6 +97,116 @@ export function collectActivityReportClubNames(records) {
   return sorted;
 }
 
+function uniqueSortedLabels(values) {
+  return [...values].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+}
+
+function isBlankFilterLabel(value) {
+  const raw = String(value ?? '').trim();
+  return !raw || raw === 'N/A' || raw === '—';
+}
+
+/**
+ * Distinct values for table-column filter dropdowns (from unpaginated rows).
+ * @param {object[]} records
+ * @returns {ReturnType<typeof emptyActivityReportFilterOptions>}
+ */
+export function collectActivityReportFilterOptions(records) {
+  const options = emptyActivityReportFilterOptions();
+  const memberTypes = new Set();
+  const levels = new Set();
+  const sponsors = new Set();
+  const coaches = new Set();
+  const cities = new Set();
+  const villages = new Set();
+
+  for (const record of Array.isArray(records) ? records : []) {
+    const memberType = record?.memberType === 'sponsor' ? 'sponsor' : 'member';
+    memberTypes.add(memberType);
+    if (record?.level != null && record.level !== '' && Number.isFinite(Number(record.level))) {
+      levels.add(String(Number(record.level)));
+    }
+    if (!isBlankFilterLabel(record?.sponsorName || record?.coachName)) {
+      sponsors.add(String(record.sponsorName || record.coachName).trim());
+    }
+    if (!isBlankFilterLabel(record?.idealCoachName)) {
+      coaches.add(String(record.idealCoachName).trim());
+    }
+    if (!isBlankFilterLabel(record?.city)) {
+      cities.add(String(record.city).trim());
+    }
+    if (!isBlankFilterLabel(record?.village)) {
+      villages.add(String(record.village).trim());
+    }
+  }
+
+  options.memberType = [...memberTypes].sort();
+  options.level = [...levels].sort((a, b) => Number(a) - Number(b));
+  options.sponsorName = uniqueSortedLabels(sponsors);
+  options.clubName = collectActivityReportClubNames(records);
+  options.idealCoachName = uniqueSortedLabels(coaches);
+  options.city = uniqueSortedLabels(cities);
+  options.village = uniqueSortedLabels(villages);
+  return options;
+}
+
+export function normalizeActivityReportColumnFilter(raw = {}) {
+  const column = String(raw.filterColumn || raw.column || '').trim();
+  const value = String(raw.filterValue ?? raw.columnValue ?? '').trim();
+  if (!ACTIVITY_REPORT_FILTER_COLUMNS.has(column) || !value) {
+    return { filterColumn: '', filterValue: '' };
+  }
+  return { filterColumn: column, filterValue: value };
+}
+
+/**
+ * Stacked facet filters (AND). Additive `filter_<column>` params plus legacy
+ * filterColumn/filterValue. Missing params stay empty so old clients are unchanged.
+ *
+ * @param {object} raw
+ * @returns {Record<string, string>}
+ */
+export function normalizeActivityReportColumnFilters(raw = {}) {
+  const applied = {};
+  for (const key of Object.keys(raw || {})) {
+    if (!key.startsWith('filter_')) continue;
+    const column = key.slice('filter_'.length);
+    const value = String(raw[key] ?? '').trim();
+    if (ACTIVITY_REPORT_FILTER_COLUMNS.has(column) && value) {
+      applied[column] = value;
+    }
+  }
+  const { filterColumn, filterValue } = normalizeActivityReportColumnFilter(raw);
+  if (filterColumn && filterValue && !applied[filterColumn]) {
+    applied[filterColumn] = filterValue;
+  }
+  return applied;
+}
+
+export function activityReportColumnFiltersCacheToken(columnFilters = {}) {
+  return Object.keys(columnFilters)
+    .sort()
+    .map((key) => `${key}=${columnFilters[key]}`)
+    .join('&');
+}
+
+/**
+ * Apply every selected facet (AND). Empty map = no-op.
+ * @template T
+ * @param {T[]} records
+ * @param {Record<string, string>} columnFilters
+ * @returns {T[]}
+ */
+export function filterActivityReportRecordsByColumns(records, columnFilters) {
+  let list = Array.isArray(records) ? records : [];
+  const entries = Object.entries(columnFilters || {});
+  if (entries.length === 0) return list;
+  for (const [column, value] of entries) {
+    list = filterActivityReportRecordsByColumn(list, column, value);
+  }
+  return list;
+}
+
 export function normalizeActivityReportPagination(raw = {}) {
   let page = 1;
   if (raw.page != null && raw.page !== '') {
@@ -105,8 +240,21 @@ export function normalizeActivityReportPagination(raw = {}) {
     || String(exportFlag || '').toLowerCase() === 'true';
 
   const clubFilter = normalizeActivityReportClubFilter(raw);
+  const { filterColumn, filterValue } = normalizeActivityReportColumnFilter(raw);
+  const columnFilters = normalizeActivityReportColumnFilters(raw);
 
-  return { page, limit, search, sort, sortDir, exportAll, clubFilter };
+  return {
+    page,
+    limit,
+    search,
+    sort,
+    sortDir,
+    exportAll,
+    clubFilter,
+    filterColumn,
+    filterValue,
+    columnFilters,
+  };
 }
 
 /**
@@ -138,6 +286,45 @@ export function filterActivityReportRecordsByClub(records, clubFilter) {
 }
 
 /**
+ * Exact-match filter for one table column. Empty column/value = no-op.
+ * @template T
+ * @param {T[]} records
+ * @param {string} filterColumn
+ * @param {string} filterValue
+ * @returns {T[]}
+ */
+export function filterActivityReportRecordsByColumn(records, filterColumn, filterValue) {
+  const list = Array.isArray(records) ? records : [];
+  const column = String(filterColumn || '').trim();
+  const value = String(filterValue || '').trim();
+  if (!ACTIVITY_REPORT_FILTER_COLUMNS.has(column) || !value) return list;
+
+  if (column === 'clubName') {
+    const clubValue = value === 'Remote' ? ACTIVITY_REPORT_CLUB_REMOTE : value;
+    return filterActivityReportRecordsByClub(list, clubValue);
+  }
+
+  if (column === 'memberType') {
+    const wanted = value.toLowerCase() === 'sponsor' ? 'sponsor' : 'member';
+    return list.filter((record) => (
+      record?.memberType === 'sponsor' ? 'sponsor' : 'member'
+    ) === wanted);
+  }
+
+  if (column === 'level') {
+    return list.filter((record) => String(record?.level) === value);
+  }
+
+  const target = value.toLowerCase();
+  return list.filter((record) => {
+    let raw = record?.[column];
+    if (column === 'sponsorName') raw = record?.sponsorName || record?.coachName;
+    if (isBlankFilterLabel(raw)) return false;
+    return String(raw).trim().toLowerCase() === target;
+  });
+}
+
+/**
  * Filter enriched detail rows by free-text search (name, phone, coach, city, village).
  * @template T
  * @param {T[]} records
@@ -158,6 +345,8 @@ export function filterActivityReportRecords(records, searchNormalized) {
       record.city,
       record.village,
       record.clubName,
+      record.memberType,
+      record.level == null ? '' : String(record.level),
     ];
     return haystacks.some((v) => String(v || '').toLowerCase().includes(q));
   });
@@ -255,10 +444,12 @@ export function paginateActivityReportRecords(records, opts) {
     sortDir,
     exportAll,
     clubFilter,
+    columnFilters,
   } = normalizeActivityReportPagination(opts);
 
   const byClub = filterActivityReportRecordsByClub(records, clubFilter);
-  const filtered = filterActivityReportRecords(byClub, search);
+  const byColumn = filterActivityReportRecordsByColumns(byClub, columnFilters);
+  const filtered = filterActivityReportRecords(byColumn, search);
   const preparedRows = sortActivityReportRecords(filtered, sort, sortDir);
   const totalRecords = preparedRows.length;
 

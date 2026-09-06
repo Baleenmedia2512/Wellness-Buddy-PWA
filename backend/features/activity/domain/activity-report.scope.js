@@ -7,7 +7,10 @@
  */
 import { getSupabaseClient } from '../../../utils/supabaseClient.js';
 import { resolveLeadSeatForUser } from '../../../utils/coachTeamSeats.js';
-import { buildActivityReportCoachScope } from './activity-report.hierarchy.js';
+import {
+  buildActivityReportCoachScope,
+  selfActivityReportMemberMeta,
+} from './activity-report.hierarchy.js';
 
 export const TEAM_SCOPES = Object.freeze({
   MINE: 'mine',
@@ -42,7 +45,7 @@ function buildTeamScopeCounts(directIds, fullIds, { isSharedLead = false } = {})
  */
 async function resolveTeamScope(userId) {
   const supabase = getSupabaseClient();
-  const [{ directIds, fullIds }, seat] = await Promise.all([
+  const [{ directIds, fullIds, memberMeta }, seat] = await Promise.all([
     buildActivityReportCoachScope(userId),
     resolveLeadSeatForUser(supabase, userId),
   ]);
@@ -50,6 +53,7 @@ async function resolveTeamScope(userId) {
   return {
     directIds,
     fullIds,
+    memberMeta,
     teamScopeCounts: buildTeamScopeCounts(directIds, fullIds, { isSharedLead }),
   };
 }
@@ -58,7 +62,12 @@ async function resolveTeamScope(userId) {
  * User IDs whose activity rows belong in the report for the selected scope.
  *
  * @param {{ userId: number, role: string, teamScope?: string }} params
- * @returns {Promise<{ userIds: number[], teamScope: string, teamScopeCounts: object }>}
+ * @returns {Promise<{
+ *   userIds: number[],
+ *   teamScope: string,
+ *   teamScopeCounts: object,
+ *   memberMeta: { levelByUserId: Map<number, number>, memberTypeByUserId: Map<number, string> },
+ * }>}
  */
 export async function resolveActivityReportUserIds({ userId, role, teamScope }) {
   let scope = normalizeTeamScope(teamScope);
@@ -68,22 +77,23 @@ export async function resolveActivityReportUserIds({ userId, role, teamScope }) 
       userIds: [userId],
       teamScope: TEAM_SCOPES.MINE,
       teamScopeCounts: { mine: 1, direct: 0, full: 0, hasTeam: false },
+      memberMeta: selfActivityReportMemberMeta(userId),
     };
   }
 
-  const { directIds, fullIds, teamScopeCounts } = await resolveTeamScope(userId);
+  const { directIds, fullIds, teamScopeCounts, memberMeta } = await resolveTeamScope(userId);
 
   if (!teamScopeCounts.hasTeam) {
     scope = TEAM_SCOPES.MINE;
   }
 
   if (scope === TEAM_SCOPES.MINE) {
-    return { userIds: [userId], teamScope: scope, teamScopeCounts };
+    return { userIds: [userId], teamScope: scope, teamScopeCounts, memberMeta };
   }
 
   if (scope === TEAM_SCOPES.DIRECT) {
-    return { userIds: directIds, teamScope: scope, teamScopeCounts };
+    return { userIds: directIds, teamScope: scope, teamScopeCounts, memberMeta };
   }
 
-  return { userIds: fullIds, teamScope: scope, teamScopeCounts };
+  return { userIds: fullIds, teamScope: scope, teamScopeCounts, memberMeta };
 }
