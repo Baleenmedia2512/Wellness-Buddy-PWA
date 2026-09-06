@@ -20,15 +20,16 @@ import {
 import {
   ACTIVITY_REPORT_ATTENDANCE,
   ACTIVITY_REPORT_ATTENDANCE_OPTIONS,
-  ACTIVITY_REPORT_TABLE_FILTER_COLUMNS,
   activeActivityReportTableFilters,
   activityReportFilterQuery,
   emptyActivityReportFilterOptions,
   emptyActivityReportTableFilterValues,
   formatActivityReportAttendance,
-  formatActivityReportFilterOption,
+  normalizeActivityReportTableFilters,
+  removeActivityReportFilterValue,
   serializeActivityReportTableFilters,
 } from '../utils/activityReportTableFilters';
+import ActivityReportTableFiltersSheet from './ActivityReportTableFiltersSheet';
 
 const DEFAULT_PAGE_SIZE = 20;
 const SEARCH_DEBOUNCE_MS = 300;
@@ -107,6 +108,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0, t
   const [showTeamScope, setShowTeamScope] = useState(false);
   const [attendanceStatus, setAttendanceStatus] = useState(ACTIVITY_REPORT_ATTENDANCE.ATTENDED);
   const [showReportDatePicker, setShowReportDatePicker] = useState(false);
+  const [showTableFiltersSheet, setShowTableFiltersSheet] = useState(false);
   const fetchAbortRef = useRef(null);
   const fetchGenerationRef = useRef(0);
   const loadReportRef = useRef(null);
@@ -612,8 +614,13 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0, t
     setAvailableFilters(emptyActivityReportFilterOptions());
   };
 
-  const handleTableFilterChange = (columnId, value) => {
-    setTableFilters((prev) => ({ ...prev, [columnId]: value }));
+  const handleRemoveTableFilterValue = (columnId, value) => {
+    setTableFilters((prev) => removeActivityReportFilterValue(prev, columnId, value));
+    setCurrentPage(1);
+  };
+
+  const handleApplyTableFilters = (nextFilters) => {
+    setTableFilters(normalizeActivityReportTableFilters(nextFilters));
     setCurrentPage(1);
   };
 
@@ -870,7 +877,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0, t
         activityLabel: activityMeta?.label || 'Activity',
         dateLabel: activeDateLabel,
         scopeLabel: activeScopeLabel,
-        clubFilter: tableFilters.clubName || '',
+        clubFilter: (tableFilters.clubName || []).join(', '),
         columnFilter: activeActivityReportTableFilters(tableFilters)
           .map((chip) => `${chip.label}: ${chip.displayValue}`)
           .join(' · '),
@@ -1112,68 +1119,49 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0, t
               </div>
 
               <div className="rounded-lg border border-gray-100 bg-gray-50/80 p-2 space-y-2">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-gray-500">
-                    <Filter className="w-3 h-3" />
-                    Table filters
-                  </p>
-                  {hasActiveTableFilters && (
-                    <TouchFeedbackButton
-                      onClick={handleClearTableFilters}
-                      className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-gray-600 hover:text-gray-900"
-                      ariaLabel="Clear table filters"
-                    >
-                      <X className="w-3 h-3" />
-                      Clear all
-                    </TouchFeedbackButton>
-                  )}
+                <div className="flex items-center gap-2">
+                  <div className="relative flex-1 min-w-0">
+                    <Search className="absolute left-2.5 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <input
+                      type="text"
+                      placeholder="Search name or phone"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="w-full pl-8 pr-2 py-1.5 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-green-500"
+                    />
+                  </div>
+                  <TouchFeedbackButton
+                    onClick={() => setShowTableFiltersSheet(true)}
+                    disabled={detailLoading}
+                    ariaLabel={
+                      activeFilterChips.length > 0
+                        ? `Open filters, ${activeFilterChips.length} active`
+                        : 'Open filters'
+                    }
+                    className={`relative inline-flex items-center gap-1.5 h-[2.125rem] px-3 rounded-lg border text-xs font-semibold flex-shrink-0 ${
+                      activeFilterChips.length > 0
+                        ? 'border-green-600 bg-green-50 text-green-800'
+                        : 'border-gray-200 bg-white text-gray-700'
+                    }`}
+                  >
+                    <Filter className="w-3.5 h-3.5" />
+                    Filters
+                    {activeFilterChips.length > 0 && (
+                      <span className="min-w-[1.125rem] h-[1.125rem] px-1 rounded-full bg-green-600 text-white text-[10px] font-bold inline-flex items-center justify-center">
+                        {activeFilterChips.length}
+                      </span>
+                    )}
+                  </TouchFeedbackButton>
                 </div>
-                <div className="relative">
-                  <Search className="absolute left-2.5 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-                  <input
-                    type="text"
-                    placeholder="Search name or phone"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full pl-8 pr-2 py-1.5 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-green-500"
-                  />
-                </div>
-                <div className="flex gap-2 overflow-x-auto no-scrollbar pb-0.5">
-                  {ACTIVITY_REPORT_TABLE_FILTER_COLUMNS.map((column) => {
-                    const selected = tableFilters[column.id] || '';
-                    const options = availableFilters[column.id] || [];
-                    return (
-                      <label key={column.id} className="min-w-[8.25rem] flex-shrink-0">
-                        <span className="sr-only">{column.label}</span>
-                        <select
-                          value={selected}
-                          onChange={(event) => handleTableFilterChange(column.id, event.target.value)}
-                          disabled={detailLoading || (!selected && options.length === 0)}
-                          className={`w-full h-[2.125rem] px-1.5 border rounded-lg text-[11px] sm:text-xs truncate focus:outline-none focus:ring-2 focus:ring-green-500 disabled:bg-gray-50 disabled:text-gray-400 ${
-                            selected
-                              ? 'border-green-500 bg-green-50 text-green-800 font-semibold'
-                              : 'border-gray-200 bg-white text-gray-700'
-                          }`}
-                        >
-                          <option value="">{column.label}</option>
-                          {options.map((option) => (
-                            <option key={option} value={option}>
-                              {formatActivityReportFilterOption(column.id, option)}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                    );
-                  })}
-                </div>
+
                 {activeFilterChips.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5">
+                  <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
                     {activeFilterChips.map((chip) => (
                       <TouchFeedbackButton
                         key={chip.id}
-                        onClick={() => handleTableFilterChange(chip.id, '')}
-                        className="inline-flex items-center gap-0.5 max-w-full pl-2 pr-1 py-0.5 rounded-full bg-green-100 text-green-800 text-[10px] font-semibold"
-                        ariaLabel={`Remove ${chip.label} filter`}
+                        onClick={() => handleRemoveTableFilterValue(chip.columnId, chip.value)}
+                        className="inline-flex items-center gap-0.5 max-w-full pl-2 pr-1 py-0.5 rounded-full bg-green-100 text-green-800 text-[10px] font-semibold flex-shrink-0"
+                        ariaLabel={`Remove ${chip.label} ${chip.displayValue} filter`}
                       >
                         <span className="truncate">
                           {chip.label}: {chip.displayValue}
@@ -1181,10 +1169,26 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0, t
                         <X className="w-3 h-3 flex-shrink-0" />
                       </TouchFeedbackButton>
                     ))}
+                    <TouchFeedbackButton
+                      onClick={handleClearTableFilters}
+                      className="inline-flex items-center text-[10px] font-semibold text-gray-500 hover:text-gray-800 flex-shrink-0 px-1"
+                      ariaLabel="Clear table filters"
+                    >
+                      Clear all
+                    </TouchFeedbackButton>
                   </div>
                 )}
               </div>
             </div>
+
+            <ActivityReportTableFiltersSheet
+              isOpen={showTableFiltersSheet}
+              onClose={() => setShowTableFiltersSheet(false)}
+              appliedFilters={tableFilters}
+              availableFilters={availableFilters}
+              onApply={handleApplyTableFilters}
+              disabled={detailLoading}
+            />
 
             <div className="overflow-x-auto relative">
               {detailLoading && (

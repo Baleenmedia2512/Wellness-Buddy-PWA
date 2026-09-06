@@ -41,6 +41,27 @@ export const ACTIVITY_REPORT_FILTER_COLUMNS = new Set([
   'village',
 ]);
 
+/** Multi-value separator within one filter_<column> (OR). Columns still AND together. */
+export const ACTIVITY_REPORT_FILTER_VALUE_SEP = '|';
+
+/**
+ * Parse one filter value string into discrete tokens.
+ * Single values (no separator) stay as one token for legacy clients.
+ * @param {unknown} raw
+ * @returns {string[]}
+ */
+export function parseActivityReportFilterValues(raw) {
+  const text = String(raw ?? '').trim();
+  if (!text) return [];
+  if (!text.includes(ACTIVITY_REPORT_FILTER_VALUE_SEP)) return [text];
+  return [...new Set(
+    text
+      .split(ACTIVITY_REPORT_FILTER_VALUE_SEP)
+      .map((part) => part.trim())
+      .filter(Boolean),
+  )];
+}
+
 export function emptyActivityReportFilterOptions() {
   return {
     memberType: [],
@@ -160,8 +181,9 @@ export function normalizeActivityReportColumnFilter(raw = {}) {
 }
 
 /**
- * Stacked facet filters (AND). Additive `filter_<column>` params plus legacy
- * filterColumn/filterValue. Missing params stay empty so old clients are unchanged.
+ * Stacked facet filters (AND across columns; OR within a column via `|`).
+ * Additive `filter_<column>` params plus legacy filterColumn/filterValue.
+ * Missing params stay empty so old clients are unchanged.
  *
  * @param {object} raw
  * @returns {Record<string, string>}
@@ -171,9 +193,9 @@ export function normalizeActivityReportColumnFilters(raw = {}) {
   for (const key of Object.keys(raw || {})) {
     if (!key.startsWith('filter_')) continue;
     const column = key.slice('filter_'.length);
-    const value = String(raw[key] ?? '').trim();
-    if (ACTIVITY_REPORT_FILTER_COLUMNS.has(column) && value) {
-      applied[column] = value;
+    const values = parseActivityReportFilterValues(raw[key]);
+    if (ACTIVITY_REPORT_FILTER_COLUMNS.has(column) && values.length) {
+      applied[column] = values.join(ACTIVITY_REPORT_FILTER_VALUE_SEP);
     }
   }
   const { filterColumn, filterValue } = normalizeActivityReportColumnFilter(raw);
@@ -287,6 +309,7 @@ export function filterActivityReportRecordsByClub(records, clubFilter) {
 
 /**
  * Exact-match filter for one table column. Empty column/value = no-op.
+ * Multiple values (joined by `|`) match with OR.
  * @template T
  * @param {T[]} records
  * @param {string} filterColumn
@@ -296,8 +319,20 @@ export function filterActivityReportRecordsByClub(records, clubFilter) {
 export function filterActivityReportRecordsByColumn(records, filterColumn, filterValue) {
   const list = Array.isArray(records) ? records : [];
   const column = String(filterColumn || '').trim();
-  const value = String(filterValue || '').trim();
-  if (!ACTIVITY_REPORT_FILTER_COLUMNS.has(column) || !value) return list;
+  const values = parseActivityReportFilterValues(filterValue);
+  if (!ACTIVITY_REPORT_FILTER_COLUMNS.has(column) || values.length === 0) return list;
+
+  if (values.length > 1) {
+    const matched = new Set();
+    for (const value of values) {
+      for (const row of filterActivityReportRecordsByColumn(list, column, value)) {
+        matched.add(row);
+      }
+    }
+    return list.filter((row) => matched.has(row));
+  }
+
+  const value = values[0];
 
   if (column === 'clubName') {
     const clubValue = value === 'Remote' ? ACTIVITY_REPORT_CLUB_REMOTE : value;

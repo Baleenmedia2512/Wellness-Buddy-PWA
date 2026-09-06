@@ -73,6 +73,13 @@ describe('normalizeActivityReportPagination', () => {
       city: 'Pune',
     });
   });
+
+  it('keeps multi-value OR tokens joined by | within a column', () => {
+    const p = normalizeActivityReportPagination({
+      filter_city: 'Pune|Mumbai',
+    });
+    assert.deepEqual(p.columnFilters, { city: 'Pune|Mumbai' });
+  });
 });
 
 describe('club filter', () => {
@@ -169,6 +176,26 @@ describe('filter / sort / paginate', () => {
     assert.deepEqual(records.map((r) => r.memberName), ['Alice', 'Bob']);
     assert.equal(pagination.totalRecords, 2);
     assert.equal(pagination.pageSize, 20);
+  });
+
+  it('applies multi-value OR within one column and AND across columns', () => {
+    const typed = [
+      { memberName: 'Alice', memberType: 'sponsor', city: 'Pune', date: '2026-08-05' },
+      { memberName: 'Bob', memberType: 'sponsor', city: 'Mumbai', date: '2026-08-06' },
+      { memberName: 'Carol', memberType: 'member', city: 'Pune', date: '2026-08-04' },
+      { memberName: 'Dan', memberType: 'sponsor', city: 'Delhi', date: '2026-08-03' },
+    ];
+    const { records, pagination } = paginateActivityReportRecords(typed, {
+      page: 1,
+      limit: 20,
+      search: '',
+      sort: 'memberName',
+      sortDir: 'asc',
+      filter_memberType: 'sponsor',
+      filter_city: 'Pune|Mumbai',
+    });
+    assert.deepEqual(records.map((r) => r.memberName), ['Alice', 'Bob']);
+    assert.equal(pagination.totalRecords, 2);
   });
 
   it('collects column filter options from rows', () => {

@@ -8,30 +8,60 @@ import {
   activityReportFilterQuery,
   formatActivityReportAttendance,
   formatActivityReportFilterOption,
+  normalizeActivityReportTableFilters,
+  toggleActivityReportFilterValue,
 } from '../activityReportTableFilters.js';
 
 describe('activityReportTableFilters', () => {
   it('omits empty facet values from the query', () => {
-    assert.deepEqual(activityReportFilterQuery({ memberType: '', city: '' }), {});
+    assert.deepEqual(activityReportFilterQuery({ memberType: [], city: [] }), {});
     assert.deepEqual(activityReportFilterQuery({}), {});
   });
 
-  it('sends stacked filter_<column> params', () => {
+  it('sends stacked multi-value filter_<column> params', () => {
     assert.deepEqual(
-      activityReportFilterQuery({ memberType: 'sponsor', city: 'Pune', level: '' }),
-      { filter_memberType: 'sponsor', filter_city: 'Pune' },
+      activityReportFilterQuery({
+        memberType: ['sponsor'],
+        city: ['Pune', 'Mumbai'],
+        level: [],
+      }),
+      { filter_memberType: 'sponsor', filter_city: 'Pune|Mumbai' },
     );
   });
 
-  it('lists active chips for marketplace-style filters', () => {
+  it('normalizes legacy single-string filters to arrays', () => {
+    assert.deepEqual(
+      normalizeActivityReportTableFilters({ memberType: 'sponsor', city: 'Pune|Delhi' }),
+      {
+        memberType: ['sponsor'],
+        level: [],
+        sponsorName: [],
+        clubName: [],
+        idealCoachName: [],
+        city: ['Pune', 'Delhi'],
+        village: [],
+      },
+    );
+  });
+
+  it('toggles multi-select values on one column', () => {
+    let next = toggleActivityReportFilterValue({}, 'city', 'Pune');
+    assert.deepEqual(next.city, ['Pune']);
+    next = toggleActivityReportFilterValue(next, 'city', 'Mumbai');
+    assert.deepEqual(next.city, ['Pune', 'Mumbai']);
+    next = toggleActivityReportFilterValue(next, 'city', 'Pune');
+    assert.deepEqual(next.city, ['Mumbai']);
+  });
+
+  it('lists one chip per selected value', () => {
     const chips = activeActivityReportTableFilters({
-      memberType: 'sponsor',
-      city: 'Pune',
-      level: '',
+      memberType: ['sponsor'],
+      city: ['Pune', 'Mumbai'],
     });
     assert.deepEqual(chips.map((chip) => `${chip.label}:${chip.displayValue}`), [
       'Member Type:Sponsor',
       'City:Pune',
+      'City:Mumbai',
     ]);
   });
 
