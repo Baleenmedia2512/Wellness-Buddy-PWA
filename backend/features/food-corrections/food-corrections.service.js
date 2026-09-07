@@ -561,14 +561,29 @@ export async function getMealsBatch({ userId, ids }) {
 
 /**
  * Lazy meal photo — returns JSON { image } like weight/image for modal/card hydration.
+ * Prefer food.ImageKey; if missing, reuse captures_table.ImageKey (Manual Log promote
+ * often left food without a key after capture Base64 was cleared for R2).
  */
 export async function getMealImage({ userId, id }) {
   const row = await repo.getMealImageById(userId, id);
   if (!row) {
     return { httpStatus: 404, body: { success: false, message: 'Not found' } };
   }
-  const r2Url = (row.ImageKey && r2FoodImagesEnabled())
-    ? foodImageRedirectUrl(row.ImageKey)
+  let imageKey = row.ImageKey || null;
+  if (!imageKey && row.CaptureID) {
+    try {
+      const { getStoredCaptureImageKey } = await import('../captures/capture-image-storage.service.js');
+      imageKey = await getStoredCaptureImageKey(row.CaptureID);
+      if (imageKey) {
+        // Best-effort heal so future reads hit food.ImageKey directly.
+        await repo.updateFoodImageKey(id, userId, imageKey).catch(() => {});
+      }
+    } catch {
+      imageKey = null;
+    }
+  }
+  const r2Url = (imageKey && r2FoodImagesEnabled())
+    ? foodImageRedirectUrl(imageKey)
     : null;
   return {
     httpStatus: 200,

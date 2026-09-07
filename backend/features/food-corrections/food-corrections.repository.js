@@ -261,6 +261,7 @@ function isMissingColumn(error, columnName) {
 /** Image bytes only — for lazy thumbnails / detail modal (keeps list payloads small). */
 export async function getMealImageById(userId, id) {
   const supabase = getSupabaseClient();
+  const withCaptureAndKey = 'ID, CaptureID, ImageBase64, ImagePath, ImageKey';
   const withKey = 'ID, ImageBase64, ImagePath, ImageKey';
   const noKey = 'ID, ImageBase64, ImagePath';
   const run = async (columns) => {
@@ -275,11 +276,21 @@ export async function getMealImageById(userId, id) {
     return data || null;
   };
   try {
-    return await run(withKey);
+    return await run(withCaptureAndKey);
   } catch (err) {
+    if (isMissingColumn(err, 'CaptureID')) {
+      try {
+        const row = await run(withKey);
+        return row ? { ...row, CaptureID: null } : null;
+      } catch (err2) {
+        if (!isMissingColumn(err2, 'ImageKey')) throw err2;
+        const row = await run(noKey);
+        return row ? { ...row, CaptureID: null, ImageKey: null } : null;
+      }
+    }
     if (!isMissingColumn(err, 'ImageKey')) throw err;
     const row = await run(noKey);
-    return row ? { ...row, ImageKey: null } : null;
+    return row ? { ...row, ImageKey: null, CaptureID: row.CaptureID ?? null } : null;
   }
 }
 

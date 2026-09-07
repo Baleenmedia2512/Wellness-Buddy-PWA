@@ -231,7 +231,7 @@ export async function saveWeight(input) {
   }
 
   const weightRowId = data?.ID || data?.id;
-  if (imageBase64ToSave && weightRowId) {
+  if (weightRowId && (imageBase64ToSave || captureId)) {
     try {
       const { persistWeightImageKey } = await import('../../shared/lib/r2/activity-image-storage.service.js');
       await persistWeightImageKey(userId, weightRowId, imageBase64ToSave, { captureId });
