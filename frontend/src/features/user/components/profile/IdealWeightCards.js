@@ -1,11 +1,17 @@
 // Read-only ideal/current weight + phase badge cards.
 import React from 'react';
 import { EmojiOrNative } from '../../../../shared/components/icons/EmojiImage';
+import BathroomScaleIcon from '../../../../shared/components/icons/BathroomScaleIcon';
 import {
   formatMarathonWeightDisplayValue,
   isValidMarathonWeightKg,
   resolveMarathonWeightDirection,
 } from '../../../marathon/domain/marathonWeightComparison';
+
+/** Same weighing-scale asset as Manual Log (`/scale.png` via BathroomScaleIcon). */
+const WeightScaleIcon = () => (
+  <BathroomScaleIcon className="w-4 h-4" alt="" />
+);
 
 const Row = ({ wrapper, label, labelIcon, value, valueClass, sub }) => (
   <div className={`flex items-center justify-between rounded-xl px-4 py-3 ${wrapper}`}>
@@ -54,14 +60,14 @@ function MarathonCrossMarathonWeightProgress({ comparison, title = 'Marathon Wei
       <Row
         wrapper="bg-indigo-50 border border-indigo-200 text-indigo-600"
         label="Previous Marathon End"
-        labelIcon={<EmojiOrNative emoji="🏁" className="w-4 h-4" nativeClassName="text-sm" />}
+        labelIcon={<WeightScaleIcon />}
         value={formatMarathonWeightDisplayValue(comparison.previousMarathonEndWeight)}
         valueClass="text-indigo-700"
       />
       <Row
         wrapper="bg-violet-50 border border-violet-200 text-violet-600"
         label="Current Weight"
-        labelIcon={<EmojiOrNative emoji="⚖️" className="w-4 h-4" nativeClassName="text-sm" />}
+        labelIcon={<WeightScaleIcon />}
         value={formatMarathonWeightDisplayValue(comparison.currentWeight, {
           withDirection: true,
           direction,
@@ -105,14 +111,14 @@ function MarathonDaysProgress({ comparison }) {
       <Row
         wrapper="bg-emerald-50 border border-emerald-200 text-emerald-600"
         label="Marathon Day 0"
-        labelIcon={<EmojiOrNative emoji="🏁" className="w-4 h-4" nativeClassName="text-sm" />}
+        labelIcon={<WeightScaleIcon />}
         value={formatMarathonWeightDisplayValue(day0Weight)}
         valueClass="text-emerald-700"
       />
       <Row
         wrapper="bg-teal-50 border border-teal-200 text-teal-600"
         label={`Today (Day ${dayIndex})`}
-        labelIcon={<EmojiOrNative emoji="⚖️" className="w-4 h-4" nativeClassName="text-sm" />}
+        labelIcon={<WeightScaleIcon />}
         sub={!isValidMarathonWeightKg(todayWeight) ? 'Not logged today' : undefined}
         value={formatMarathonWeightDisplayValue(todayWeight, {
           withDirection: true,
@@ -168,18 +174,20 @@ const IdealWeightCards = ({
   return (
     <>
       <Row wrapper="bg-blue-50 border border-blue-200 text-blue-600"
-        label="Ideal Weight" value={display} valueClass="text-blue-700" />
+        label="Ideal Weight"
+        labelIcon={<WeightScaleIcon />}
+        value={display} valueClass="text-blue-700" />
       {initial != null && (
         <Row wrapper="bg-slate-50 border border-slate-200 text-slate-600"
           label="Initial Weight"
-          labelIcon={<EmojiOrNative emoji="🏁" className="w-4 h-4" nativeClassName="text-sm" />}
+          labelIcon={<WeightScaleIcon />}
           sub={initialDateLabel || undefined}
           value={`${initial.toFixed(2)} kg`} valueClass="text-slate-700" />
       )}
       {current != null && (
         <Row wrapper="bg-gray-50 border border-gray-200 text-gray-600"
           label="Current Weight"
-          labelIcon={<EmojiOrNative emoji="⚖️" className="w-4 h-4" nativeClassName="text-sm" />}
+          labelIcon={<WeightScaleIcon />}
           value={`${current.toFixed(2)} kg`} valueClass="text-gray-700" />
       )}
       <MarathonWeightProgress comparison={marathonWeightComparison} />

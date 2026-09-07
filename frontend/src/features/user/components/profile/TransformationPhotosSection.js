@@ -2,7 +2,7 @@
  * Transformation photos — Left / Centre / Right tabs.
  * Portrait (9:16) frames match testimonial before/after upload UX.
  */
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Camera, CheckCircle2, Images } from 'lucide-react';
 import TransformationPoseGuideCard from './TransformationPoseGuideCard';
 import { PORTRAIT_IMAGE_CLASS } from '../../../testimonials/services/testimonialFormUtils.js';
@@ -25,6 +25,7 @@ const TransformationPhotosSection = ({
   disabled = false,
 }) => {
   const [busy, setBusy] = useState(false);
+  const [brokenSlots, setBrokenSlots] = useState({});
   const cameraRef = React.useRef(null);
   const galleryRef = React.useRef(null);
 
@@ -32,12 +33,18 @@ const TransformationPhotosSection = ({
   const preview = previews?.[poseType] || null;
   const guide = POSE_TAB_GUIDE[poseType] || POSE_TAB_GUIDE.front;
   const captureFacing = poseType === 'front' ? 'user' : 'environment';
+  const showPreview = Boolean(preview) && !brokenSlots[poseType];
+
+  useEffect(() => {
+    setBrokenSlots({});
+  }, [previews?.front, previews?.left, previews?.right]);
 
   const handleFile = async (file) => {
     if (!file) return;
     setBusy(true);
     try {
       await onSelectFile?.(poseType, file);
+      setBrokenSlots((prev) => ({ ...prev, [poseType]: false }));
       const next = nextEmptyTransformationSlot(
         { ...previews, [poseType]: 'filled' },
         poseType,
@@ -52,7 +59,7 @@ const TransformationPhotosSection = ({
     <div className="flex flex-col gap-3 h-full min-h-0">
       <div className="grid grid-cols-3 gap-1 rounded-xl bg-gray-100 p-1 shrink-0">
         {POSE_SLOT_KEYS.map((type) => {
-          const hasPhoto = Boolean(previews?.[type]);
+          const hasPhoto = Boolean(previews?.[type]) && !brokenSlots[type];
           const active = type === poseType;
           return (
             <button
@@ -73,11 +80,14 @@ const TransformationPhotosSection = ({
       </div>
 
       <div className="flex-1 min-h-0 flex flex-col items-center justify-center gap-2 overflow-y-auto py-1">
-        {preview ? (
+        {showPreview ? (
           <img
             src={preview}
             alt={guide.label}
             className={`${PORTRAIT_IMAGE_CLASS} ${PORTRAIT_FRAME_MAX} mx-auto border-emerald-400`}
+            onError={() => {
+              setBrokenSlots((prev) => ({ ...prev, [poseType]: true }));
+            }}
           />
         ) : (
           <div className={PORTRAIT_PLACEHOLDER_CLASS}>

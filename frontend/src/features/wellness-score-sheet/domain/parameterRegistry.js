@@ -14,7 +14,7 @@ export const WELLNESS_PARAMETERS = Object.freeze([
   { key: 'breakfast_post', label: 'Breakfast Post', section: 'logging', scoringMode: 'binary' },
   { key: 'lunch_post', label: 'Lunch Post', section: 'logging', scoringMode: 'binary' },
   { key: 'dinner_post', label: 'Dinner Post', section: 'logging', scoringMode: 'binary' },
-  { key: 'good_habit_post', label: 'Good Habit Post', section: 'logging', scoringMode: 'binary' },
+  { key: 'good_habit_post', label: 'Today Task Given by Coach', section: 'logging', scoringMode: 'binary' },
 
   { key: 'calories', label: 'Calories', section: 'nutrition', scoringMode: 'limit' },
   { key: 'carbohydrates', label: 'Carbohydrates', section: 'nutrition', scoringMode: 'limit' },

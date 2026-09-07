@@ -7,8 +7,9 @@
 //   1. Avatar (tap to change — Centre transform photo / ProfileImage)
 //   2. Profile fields (name, height, phone, community ID / team code, email, diet, BMR, PAL)
 //   3. Weight goal mode
-//   4. Settings  (auto camera toggle)
-//   5. Account actions (sign out, delete account)
+//   4. Transformation photos (Left / Centre / Right — same as onboarding)
+//   5. Settings  (auto camera toggle)
+//   6. Account actions (sign out, delete account)
 //
 // Lead pre-fill: on first load, if the profile has no name or phone and the
 // user has a phone number from auth, the app checks for a counselling lead
@@ -31,8 +32,10 @@ import UserProfileBodyMetrics from './profile/UserProfileBodyMetrics';
 import IdealWeightCards from './profile/IdealWeightCards';
 import DietDropdown from './profile/DietDropdown';
 import WeightModeSelector from './profile/WeightModeSelector';
+import TransformationPhotosSection from './profile/TransformationPhotosSection';
 import HealthIssuesFilterSelect from '../../body-parameters-card/components/HealthIssuesFilterSelect';
 import { EmojiOrNative } from '../../../shared/components/icons/EmojiImage';
+import BathroomScaleIcon from '../../../shared/components/icons/BathroomScaleIcon';
 import { deriveWeightGoalMode } from '../../weight/services/weightFormService';
 import DeleteAccountModal from './DeleteAccountModal';
 import ChangeProfilePhotoModal from './ChangeProfilePhotoModal';
@@ -40,6 +43,8 @@ import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton'
 import { invalidateHasTeamMembersCache } from '../../team/services/teamSearchService';
 import { bumpAvatarDisplayVersion } from '../services/avatarDisplayVersion';
 import { getProfile } from '../services/user.api';
+import useTransformationPhotos from '../hooks/useTransformationPhotos';
+import { persistOnboardingTestimonialPhotos } from '../services/persistOnboardingTestimonialPhotos';
 
 const COLORS = ['bg-blue-500', 'bg-green-500', 'bg-purple-500', 'bg-pink-500', 'bg-indigo-500', 'bg-yellow-500', 'bg-red-500', 'bg-teal-500'];
 const colorOf = (name, email) => COLORS[(name || email || '').length % COLORS.length];
@@ -67,6 +72,7 @@ const ROLE_LABELS = { admin: 'Admin', developer: 'Developer', coach: 'Coach', up
 
 const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfileUpdate }) => {
   const form = useProfileForm();
+  const transformationPhotos = useTransformationPhotos();
   const [profileImagePreview, setProfileImagePreview] = useState(null);
   const [latestWeight, setLatestWeight] = useState(null);
   const [initialWeight, setInitialWeight] = useState(null);
@@ -157,6 +163,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
       );
       setIdealCoachName(data?.idealCoachName ? String(data.idealCoachName).trim() : '');
       setTeamSeat(data?.teamSeat || null);
+      transformationPhotos.loadFromProfile(data?.transformationPhotos);
       if (data?.profileImage) {
         setProfileImagePreview(data.profileImage);
       } else if (data?.transformationPhotos?.front) {
@@ -230,9 +237,38 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
       });
       // BMR is system-calculated on the profile page — never write it from this form.
       delete payload.bmr;
+      const photoExtras = transformationPhotos.payloadExtras();
+      // Only newly uploaded Centre slot updates ProfileImage (same as onboarding).
+      const centrePhoto = photoExtras.transformationPhotos?.front || null;
+      Object.assign(payload, photoExtras);
+      if (centrePhoto) {
+        payload.profileImage = centrePhoto;
+      }
       const data = await saveProfile(payload);
+      const leftPending = photoExtras.transformationPhotos?.left || null;
+      if (user?.id && (latestWeight != null || leftPending)) {
+        try {
+          await persistOnboardingTestimonialPhotos({
+            userId: user.id,
+            weightKg: latestWeight,
+            leftImageBase64: leftPending,
+            goalType: deriveWeightGoalMode({
+              heightCm: form.height,
+              currentWeightKg: latestWeight,
+            }) || form.weightGoalMode || 'loss',
+            recoveredHealthIssues: form.recoveredHealthIssues || [],
+          });
+        } catch {
+          // Non-fatal — profile photos already saved.
+        }
+      }
       if (user?.id) {
         invalidateHasTeamMembersCache(user.id);
+      }
+      const nextPreview = centrePhoto || profileImagePreview || null;
+      if (centrePhoto) {
+        setProfileImagePreview(centrePhoto);
+        bumpAvatarDisplayVersion();
       }
       onProfileUpdate?.({
         name: form.name,
@@ -240,7 +276,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
         physicalActivityLevel: form.physicalActivityLevel || null,
         dietType: form.dietType || null,
         communityId: form.communityId || null,
-        profileImage: profileImagePreview || null,
+        profileImage: nextPreview,
         teamSearchRefresh: true,
       });
       if (user?.id) getUserContext(user.id).catch(() => {});
@@ -252,7 +288,16 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
     } finally {
       setIsSaving(false);
     }
-  }, [form, profileImagePreview, user, accountEmail, loadProfile, onProfileUpdate]);
+  }, [
+    form,
+    profileImagePreview,
+    user,
+    accountEmail,
+    loadProfile,
+    onProfileUpdate,
+    transformationPhotos,
+    latestWeight,
+  ]);
 
   const handlePhotoUploaded = useCallback(async (uploadedImage) => {
     // Optimistic preview — keep previous photo if refresh fails.
@@ -373,11 +418,15 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
               {displayWeightGoalMode && (
                 <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold border
                   ${displayWeightGoalMode === 'loss' ? 'bg-red-100 border-red-300 text-red-700' : displayWeightGoalMode === 'gain' ? 'bg-blue-100 border-blue-300 text-blue-700' : 'bg-green-100 border-green-300 text-green-700'}`}>
-                  <EmojiOrNative
-                    emoji={displayWeightGoalMode === 'loss' ? '🔥' : displayWeightGoalMode === 'gain' ? '💪' : '⚖️'}
-                    className="w-3.5 h-3.5"
-                    nativeClassName="text-xs leading-none"
-                  />
+                  {displayWeightGoalMode === 'maintain' ? (
+                    <BathroomScaleIcon className="w-3.5 h-3.5" alt="" />
+                  ) : (
+                    <EmojiOrNative
+                      emoji={displayWeightGoalMode === 'loss' ? '🔥' : '💪'}
+                      className="w-3.5 h-3.5"
+                      nativeClassName="text-xs leading-none"
+                    />
+                  )}
                   <span>
                     {displayWeightGoalMode === 'loss' ? 'Loss Mode' : displayWeightGoalMode === 'gain' ? 'Gain Mode' : 'Maintain'}
                   </span>
@@ -461,6 +510,35 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
             )}
           </div>
         </div>
+
+        {/* Left / Centre / Right — same transformation_photos as onboarding */}
+        {!isLoading && (
+          <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+            <div className="px-4 py-3 border-b border-gray-100">
+              <h2 className="text-sm font-semibold text-gray-700">Transformation Photos</h2>
+              <p className="text-xs text-gray-400 mt-0.5">
+                Left, Centre, and Right — optional. Same photos as login/onboarding.
+              </p>
+            </div>
+            <div className="p-4">
+              <TransformationPhotosSection
+                selectedType={transformationPhotos.selectedType}
+                onSelectType={transformationPhotos.setSelectedType}
+                previews={transformationPhotos.previews}
+                disabled={isSaving || isUploadingPhoto}
+                onSelectFile={async (slot, file) => {
+                  try {
+                    setError('');
+                    await transformationPhotos.setSlotFromFile(slot, file);
+                  } catch (e) {
+                    setError(e.message || 'Failed to prepare photo.');
+                  }
+                }}
+              />
+            </div>
+          </div>
+        )}
+
 
         {/* Alerts */}
         {error && (
