@@ -394,7 +394,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
                 </span>
               )}
             </div>
-            <p className="text-xs text-green-200 mt-1">Tap photo to change</p>
+            {/* <p className="text-xs text-green-200 mt-1">Tap photo to change</p> */}
           </div>
         </div>
       </div>
