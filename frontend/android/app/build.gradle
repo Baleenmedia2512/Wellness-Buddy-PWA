@@ -38,7 +38,7 @@ android {
         applicationId "com.wellnessvalley.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 69
+        versionCode 70
         versionName "3.4.9"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         
