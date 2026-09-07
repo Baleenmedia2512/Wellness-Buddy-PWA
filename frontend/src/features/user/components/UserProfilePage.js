@@ -6,10 +6,9 @@
 // Sections:
 //   1. Avatar (tap to change — Centre transform photo / ProfileImage)
 //   2. Profile fields (name, height, phone, community ID / team code, email, diet, BMR, PAL)
-//   3. Weight goal mode
-//   4. Transformation photos (Left / Centre / Right — same as onboarding)
-//   5. Settings  (auto camera toggle)
-//   6. Account actions (sign out, delete account)
+//   3. Transformation photos (Left / Centre / Right — same as onboarding)
+//   4. Settings  (auto camera toggle)
+//   5. Account actions (sign out, delete account)
 //
 // Lead pre-fill: on first load, if the profile has no name or phone and the
 // user has a phone number from auth, the app checks for a counselling lead
@@ -31,7 +30,6 @@ import UserProfileFields from './profile/UserProfileFields';
 import UserProfileBodyMetrics from './profile/UserProfileBodyMetrics';
 import IdealWeightCards from './profile/IdealWeightCards';
 import DietDropdown from './profile/DietDropdown';
-import WeightModeSelector from './profile/WeightModeSelector';
 import TransformationPhotosSection from './profile/TransformationPhotosSection';
 import HealthIssuesFilterSelect from '../../body-parameters-card/components/HealthIssuesFilterSelect';
 import { EmojiOrNative } from '../../../shared/components/icons/EmojiImage';
@@ -501,11 +499,6 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
                   marathonWeightComparison={marathonWeightComparison}
                 />
                 <DietDropdown value={form.dietType} onChange={form.setDietType} />
-                <WeightModeSelector
-                  height={form.height}
-                  currentWeight={latestWeight}
-                  fallbackMode={form.weightGoalMode || 'loss'}
-                />
               </div>
             )}
           </div>
