@@ -176,6 +176,14 @@ function formatTrendTooltipDate(date) {
   }).replace(',', '');
 }
 
+function dayLabelFromKey(key) {
+  return String(Number(key.split('-')[2]));
+}
+
+function monthKeyFromYmd(key) {
+  return key.slice(0, 7);
+}
+
 function defaultWeightValueOf(entry) {
   return Number.parseFloat(entry?.Weight);
 }
@@ -216,6 +224,47 @@ function customRangeKeys(customRange) {
   return startKey <= endKey
     ? { startKey, endKey }
     : { startKey: endKey, endKey: startKey };
+}
+
+function ymdToLocalDate(ymd) {
+  const [y, m, d] = ymd.split('-').map(Number);
+  const date = new Date(y, m - 1, d);
+  date.setHours(0, 0, 0, 0);
+  return date;
+}
+
+/**
+ * Inclusive calendar bounds for a Reports trend range (used for date-proportional chart x).
+ */
+export function getTrendRangeBounds(rangeDays, customRange = null) {
+  if (rangeDays === WEIGHT_TREND_RANGE_CUSTOM) {
+    const keys = customRangeKeys(customRange);
+    if (!keys) return null;
+    return {
+      start: ymdToLocalDate(keys.startKey),
+      end: ymdToLocalDate(keys.endKey),
+    };
+  }
+  if (!Number.isFinite(rangeDays) || rangeDays <= 0) return null;
+  const endYmd = todayBusinessDate(DEFAULT_BUSINESS_TIMEZONE);
+  const end = ymdToLocalDate(endYmd);
+  const start = new Date(end);
+  start.setDate(end.getDate() - (rangeDays - 1));
+  return { start, end };
+}
+
+/**
+ * X-axis bounds from first → last recorded point (no empty lead-in before first log).
+ */
+export function getRecordedSeriesAxisBounds(series) {
+  if (!Array.isArray(series) || series.length === 0) return null;
+  const firstKey = series[0]?.key;
+  const lastKey = series[series.length - 1]?.key;
+  if (!firstKey || !lastKey) return null;
+  return {
+    start: ymdToLocalDate(firstKey),
+    end: ymdToLocalDate(lastKey),
+  };
 }
 
 /**
@@ -277,12 +326,18 @@ export function buildRecordedTrendSeries(
     inRange = unique.filter((entry) => toDateKey(entry.createdAt) >= startKey);
   }
 
+  const monthKeys = new Set(inRange.map((entry) => monthKeyFromYmd(toDateKey(entry.createdAt))));
+  const sameMonth = monthKeys.size <= 1;
+
   return inRange.map((entry) => {
     const date = entry.createdAt;
+    const key = toDateKey(date);
+    const label = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
     return {
-      key: toDateKey(date),
+      key,
       date,
-      label: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+      label,
+      compactLabel: sameMonth ? dayLabelFromKey(key) : label,
       tooltipDate: formatTrendTooltipDate(date),
       hasRecorded: true,
       value: entry.value,

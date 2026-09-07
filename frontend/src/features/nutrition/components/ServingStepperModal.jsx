@@ -113,10 +113,10 @@ export default function ServingStepperModal({
             type="button"
             onClick={onClose}
             disabled={saving}
-            className="absolute right-3 top-3 p-1.5 rounded-xl hover:bg-gray-100"
             aria-label="Close"
+            className="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-full bg-red-500 text-white transition-colors hover:bg-red-600 disabled:opacity-50"
           >
-            <X className="w-4 h-4 text-gray-400" />
+            <X className="h-5 w-5" strokeWidth={2.25} />
           </button>
           <ModalHeaderIcon iconSrc={iconSrc} />
           <h2 className="text-base font-bold text-gray-900">{title}</h2>
@@ -199,20 +199,12 @@ export default function ServingStepperModal({
           )}
         </div>
 
-        <div className="px-4 py-3 border-t border-gray-100 bg-gray-50 flex gap-2">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={saving}
-            className="flex-1 py-2.5 rounded-xl border border-gray-300 text-sm font-semibold text-gray-700"
-          >
-            Cancel
-          </button>
+        <div className="px-4 py-3 border-t border-gray-100 bg-gray-50">
           <button
             type="button"
             onClick={handleConfirm}
             disabled={confirmDisabled}
-            className="flex-1 py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-semibold disabled:opacity-50"
+            className="w-full py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-semibold disabled:opacity-50"
           >
             {resolvedConfirmLabel}
           </button>

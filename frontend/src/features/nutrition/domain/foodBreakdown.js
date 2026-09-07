@@ -70,7 +70,8 @@ export function extractFoodContributions(analyses, nutrientKey) {
       else if (normalizedKey === 'zinc') amount = nutrition.zinc || 0;
       else if (normalizedKey === 'phosphorus') amount = nutrition.phosphorus || 0;
 
-      if (amount > 0) {
+      // Carousel modal shows amount.toFixed(0) — hide rows that would display as 0.
+      if (amount > 0 && Math.round(amount) !== 0) {
         mealFoods.push({ foodName: food.name || 'Unknown food', amount });
         mealFoodTotal += amount;
       }
@@ -81,7 +82,7 @@ export function extractFoodContributions(analyses, nutrientKey) {
       total += mealFoodTotal;
     } else if (dbColKey) {
       const mealTotal = Number(analysis[dbColKey]) || 0;
-      if (mealTotal > 0) {
+      if (mealTotal > 0 && Math.round(mealTotal) !== 0) {
         const mealName = (() => {
           const fl = data.foods || [];
           if (fl.length === 1) return fl[0].name || 'Meal';

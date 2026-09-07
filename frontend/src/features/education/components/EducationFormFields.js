@@ -58,8 +58,13 @@ export default function EducationFormFields({
             </svg>
           </button>
         )}
-        <button onClick={onCancel} className="absolute right-3 top-3 p-1.5 rounded-xl hover:bg-gray-100 transition-colors">
-          <X className="w-4 h-4 text-gray-400" />
+        <button
+          type="button"
+          onClick={onCancel}
+          aria-label="Close"
+          className="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-full bg-red-500 text-white transition-colors hover:bg-red-600"
+        >
+          <X className="h-5 w-5" strokeWidth={2.25} />
         </button>
         <EducationHeaderIcon />
         <h2 className="text-sm font-bold text-gray-800">{formTitle}</h2>
@@ -67,27 +72,6 @@ export default function EducationFormFields({
       </div>
 
       <div className="px-4 pt-3 pb-2 space-y-3">
-        <div>
-          <label className="block text-xs font-semibold text-gray-600 mb-1.5">
-            Platform <span className="text-red-500">*</span>
-          </label>
-          <div className="flex flex-wrap gap-1.5">
-            {PLATFORMS.map((p) => (
-              <button
-                key={p}
-                onClick={() => onSelectPlatform(p)}
-                className={`px-3 py-1.5 rounded-full border text-xs font-medium transition-colors ${
-                  platform === p
-                    ? 'bg-emerald-600 border-emerald-600 text-white'
-                    : 'bg-white border-gray-200 text-gray-600 hover:border-emerald-300 hover:bg-emerald-50'
-                }`}
-              >
-                {p}
-              </button>
-            ))}
-          </div>
-        </div>
-
         <div>
           <label className="block text-xs font-semibold text-gray-600 mb-1.5">
             Meeting session <span className="text-red-500">*</span>
@@ -100,11 +84,33 @@ export default function EducationFormFields({
                 onClick={() => onSelectTopic(session)}
                 className={`px-3 py-1.5 rounded-full border text-xs font-medium transition-colors ${
                   topic === session
-                    ? 'bg-emerald-600 border-emerald-600 text-white'
-                    : 'bg-white border-gray-200 text-gray-600 hover:border-emerald-300 hover:bg-emerald-50'
+                    ? 'bg-emerald-50 border-emerald-300 text-emerald-800'
+                    : 'bg-white border-gray-200 text-gray-600 hover:border-emerald-200 hover:bg-emerald-50/60'
                 }`}
               >
                 {session}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <label className="block text-xs font-semibold text-gray-600 mb-1.5">
+            Platform <span className="text-red-500">*</span>
+          </label>
+          <div className="flex flex-wrap gap-1.5">
+            {PLATFORMS.map((p) => (
+              <button
+                key={p}
+                type="button"
+                onClick={() => onSelectPlatform(p)}
+                className={`px-3 py-1.5 rounded-full border text-xs font-medium transition-colors ${
+                  platform === p
+                    ? 'bg-emerald-50 border-emerald-300 text-emerald-800'
+                    : 'bg-white border-gray-200 text-gray-600 hover:border-emerald-200 hover:bg-emerald-50/60'
+                }`}
+              >
+                {p}
               </button>
             ))}
           </div>

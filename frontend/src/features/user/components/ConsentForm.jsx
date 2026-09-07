@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import TermsAndConditions from '../../../shared/components/TermsAndConditions';
 import PrivacyPolicy from '../../../shared/components/PrivacyPolicy';
+import CustomAlertModal from '../../../shared/components/CustomAlertModal';
 import wellnessValleyIcon from '../../../assets/wellness-valley-icon.png';
 
 const BRAND = '#047857';
@@ -23,7 +24,26 @@ const ConsentForm = ({
   const [choice, setChoice] = useState(null);
   const [showTerms, setShowTerms] = useState(false);
   const [showPrivacy, setShowPrivacy] = useState(false);
+  const [showDisagreeAlert, setShowDisagreeAlert] = useState(false);
   const [localError, setLocalError] = useState('');
+
+  const openDisagreeAlert = () => {
+    setLocalError('');
+    setShowDisagreeAlert(true);
+  };
+
+  /** Stay on consent form and pre-select Agree so they can Continue. */
+  const handleRemain = () => {
+    setShowDisagreeAlert(false);
+    setChoice('agree');
+    setLocalError('');
+  };
+
+  /** Leave the app → sign out / login (parent onDecline). */
+  const handleLeave = () => {
+    setShowDisagreeAlert(false);
+    onDecline?.();
+  };
 
   const handleContinue = () => {
     setLocalError('');
@@ -32,7 +52,7 @@ const ConsentForm = ({
       return;
     }
     if (choice === 'disagree') {
-      onDecline?.();
+      openDisagreeAlert();
       return;
     }
     setLocalError('Please select I Agree or I Don\'t Agree to continue.');
@@ -348,7 +368,10 @@ const ConsentForm = ({
                 name="consentChoice"
                 className="mt-1 shrink-0 accent-[#047857]"
                 checked={choice === 'disagree'}
-                onChange={() => setChoice('disagree')}
+                onChange={() => {
+                  setChoice('disagree');
+                  openDisagreeAlert();
+                }}
                 disabled={submitting}
               />
               <span className="min-w-0">
@@ -402,6 +425,20 @@ const ConsentForm = ({
 
       {showTerms && <TermsAndConditions onClose={() => setShowTerms(false)} />}
       {showPrivacy && <PrivacyPolicy onClose={() => setShowPrivacy(false)} />}
+
+      <CustomAlertModal
+        isOpen={showDisagreeAlert}
+        onClose={handleRemain}
+        title="Leave or continue?"
+        type="warning"
+        cancelText="Leave"
+        confirmText="Stay and Agree"
+        onCancel={handleLeave}
+        onConfirm={handleRemain}
+        message={
+          'You need to agree to continue using Wellness Valley.\n\nIf you leave, you\'ll be signed out and returned to the login screen.'
+        }
+      />
     </div>
   );
 };

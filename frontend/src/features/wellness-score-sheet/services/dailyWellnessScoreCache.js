@@ -19,6 +19,21 @@ function scoreDateMismatches(score, date) {
   return Boolean(score?.date) && String(score.date) !== String(date);
 }
 
+function numericField(score, key) {
+  const value = score?.[key];
+  return value == null || value === '' ? null : Number(value);
+}
+
+/** Same day totals — used to avoid re-notifying listeners (seed ↔ history loop). */
+function scoresEquivalent(a, b) {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return numericField(a, 'totalEarned') === numericField(b, 'totalEarned')
+    && numericField(a, 'totalPossible') === numericField(b, 'totalPossible')
+    && String(a.date || '') === String(b.date || '')
+    && numericField(a, 'percentage') === numericField(b, 'percentage');
+}
+
 export function getDailyWellnessScoreCached(userId, date) {
   if (!date) return null;
   let score = null;
@@ -43,10 +58,24 @@ export function getDailyWellnessScoreCached(userId, date) {
   return score;
 }
 
+function notifyDailyScoreListeners({ userId, date, score }) {
+  listeners.forEach((fn) => {
+    try {
+      fn({ userId: String(userId), date: String(date), score });
+    } catch {
+      /* listener errors must not break cache writes */
+    }
+  });
+}
+
 export function setDailyWellnessScoreCached(userId, date, score) {
   if (userId == null || !date || !score) return;
   if (scoreDateMismatches(score, date)) return;
-  dailyScoreCache.set(dailyKey(userId, date), score);
+  const key = dailyKey(userId, date);
+  const previous = dailyScoreCache.get(key);
+  dailyScoreCache.set(key, score);
+  if (scoresEquivalent(previous, score)) return;
+  notifyDailyScoreListeners({ userId, date, score });
 }
 
 /**
@@ -58,6 +87,13 @@ export function seedDailyWellnessScoreCache(userId, date, score) {
   if (scoreDateMismatches(score, date)) return;
   const key = dailyKey(userId, date);
   const activityLogId = getLatestActivityLogId();
+  const previous = dailyScoreCache.get(key);
+  const pinUnchanged = Boolean(
+    pinnedSeed
+    && pinnedSeed.key === key
+    && pinnedSeed.activityLogId === activityLogId
+    && scoresEquivalent(pinnedSeed.score, score),
+  );
   dailyScoreCache.set(key, score);
   pinnedSeed = {
     key,
@@ -66,13 +102,8 @@ export function seedDailyWellnessScoreCache(userId, date, score) {
     score,
     activityLogId,
   };
-  listeners.forEach((fn) => {
-    try {
-      fn({ userId: pinnedSeed.userId, date: pinnedSeed.date, score });
-    } catch {
-      /* listener errors must not break seed */
-    }
-  });
+  if (pinUnchanged && scoresEquivalent(previous, score)) return;
+  notifyDailyScoreListeners({ userId, date, score });
 }
 
 /**

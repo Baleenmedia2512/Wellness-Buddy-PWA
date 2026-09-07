@@ -489,15 +489,23 @@ export default async function handler(req, res) {
         existingIds.add(coachIdInt);
         existingIds.add(partnerId);
 
-        // Find all members who report to either coach or co-coach
-        // This ensures both partners see ALL team members regardless of who they directly report to
+        // Find all members who report to either partner, or share the same CoachTeamId.
+        // Shared-team members may only have CoachTeamId aligned (not CoachId = sponsor user id).
+        const sharedTeamId = managedTeam.TeamId
+          ? String(managedTeam.TeamId).trim().toUpperCase()
+          : null;
         const partnerMembers = allUsers.filter(u => {
           const derivedCoCoachId = userMap.get(u.UserId)?.coCoachId;
+          const userCoachTeamId = u.CoachTeamId
+            ? String(u.CoachTeamId).trim().toUpperCase()
+            : null;
+          const onSharedTeam = Boolean(sharedTeamId && userCoachTeamId === sharedTeamId);
           const reportsToEitherPartner = (
-            u.CoachId === coachIdInt || 
+            u.CoachId === coachIdInt ||
             u.CoachId === partnerId ||
-            derivedCoCoachId === coachIdInt || 
-            derivedCoCoachId === partnerId
+            derivedCoCoachId === coachIdInt ||
+            derivedCoCoachId === partnerId ||
+            onSharedTeam
           );
           return reportsToEitherPartner && !existingIds.has(u.UserId);
         });

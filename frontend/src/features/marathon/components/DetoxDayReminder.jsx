@@ -6,13 +6,13 @@
 import React from 'react';
 import { Bell } from 'lucide-react';
 import { useBusinessToday } from '../../../shared/hooks/useBusinessToday';
-import { getDeviceTimezoneIana } from '../../../shared/utils/deviceTimezone';
 import storage from '../../../shared/lib/storage';
 import {
   getDetoxReminder,
   resolveMarathonToday,
   MARATHON_TEST_DATE_STORAGE_KEY,
 } from '../domain/marathonCalendar';
+import { resolveMarathonTimezoneSource } from '../withMarathonWhatsAppNotice';
 
 /**
  * @param {object} props
@@ -22,9 +22,7 @@ import {
  * @param {object|null} [props.user] Signed-in user (`timezone` / `timezoneIana`).
  */
 export default function DetoxDayReminder({ today: todayOverride, user = null } = {}) {
-  const timezoneSource = (user?.timezone || user?.timezoneIana)
-    ? user
-    : getDeviceTimezoneIana();
+  const timezoneSource = resolveMarathonTimezoneSource(user);
   const liveToday = useBusinessToday(timezoneSource);
   const today = resolveMarathonToday(
     liveToday,

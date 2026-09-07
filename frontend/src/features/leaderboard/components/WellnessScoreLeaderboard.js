@@ -2,6 +2,7 @@ import React, {
   useState,
   useEffect,
   useCallback,
+  useRef,
   forwardRef,
   useImperativeHandle,
 } from 'react';
@@ -11,16 +12,35 @@ import { resolveSponsorCoachNames } from '../../../shared/utils/sponsorCoachLabe
 import { setVisibilityAwareInterval } from '../../../shared/utils/visibilityAwareInterval.js';
 import { useAutoScrollStrip } from '../../../shared/hooks/useAutoScrollStrip.js';
 import LeaderboardAvatar from './LeaderboardAvatar.js';
+import {
+  hasValidProfileName,
+  isPlaceholderUserName,
+} from '../../user/domain/profileCompleteness';
+import { subscribeDailyWellnessScoreSeed } from '../../wellness-score-sheet/services/dailyWellnessScoreCache';
 
 const CACHE_TTL = 5 * 60 * 1000;
-// v5: hierarchy-scoped Top 10 (per logged-in user)
-const CACHE_KEY_PREFIX = 'wv.lb.wellness.v5.';
+// v6: overlay chosen display name when DB still has user_<phone>
+const CACHE_KEY_PREFIX = 'wv.lb.wellness.v6.';
 const LEGACY_CACHE_KEYS = [
   'wv.lb.wellness',
   'wv.lb.wellness.v2',
   'wv.lb.wellness.v3',
   'wv.lb.wellness.v4',
+  'wv.lb.wellness.v5',
 ];
+
+function displayLeaderboardName(entry, viewerUserId, viewerName) {
+  const stored = String(entry?.userName || '').trim();
+  const isViewer = Number(entry?.userId) === Number(viewerUserId);
+  if (
+    isViewer
+    && hasValidProfileName(viewerName)
+    && isPlaceholderUserName(stored)
+  ) {
+    return String(viewerName).trim();
+  }
+  return stored || 'Unknown';
+}
 
 const cacheKeyFor = (userId) => `${CACHE_KEY_PREFIX}${userId || 'anon'}`;
 
@@ -57,7 +77,7 @@ const writeCache = (userId, data) => {
  * Display order: Rank N → Rank 1 (descending).
  * Ranked among the logged-in user's allowed hierarchy (not global Top 10).
  */
-const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId }, ref) => {
+const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, viewerName, email }, ref) => {
   const [leaderboardData, setLeaderboardData] = useState(() => readCache(userId) ?? []);
   const [isVisible, setIsVisible] = useState(() => (readCache(userId)?.length ?? 0) > 0);
   const [hasEntered, setHasEntered] = useState(() => (readCache(userId)?.length ?? 0) > 0);
@@ -65,17 +85,23 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId }, 
     enabled: isVisible && leaderboardData.length > 0,
   });
 
+  const fetchInFlightRef = useRef(false);
+
   const fetchLeaderboard = useCallback(async () => {
-    if (userId == null || userId === '') {
+    const emailTrim = String(email || '').trim();
+    if ((userId == null || userId === '') && !emailTrim) {
       setLeaderboardData([]);
       setIsVisible(false);
       return;
     }
+    if (fetchInFlightRef.current) return;
+    fetchInFlightRef.current = true;
     try {
       const params = new URLSearchParams({
         topN: String(topN),
-        userId: String(userId),
       });
+      if (userId != null && userId !== '') params.set('userId', String(userId));
+      if (emailTrim) params.set('email', emailTrim);
       const response = await fetch(
         `${apiBaseUrl}/api/leaderboard/get-wellness-score-leaderboard?${params}`,
         {
@@ -102,14 +128,15 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId }, 
       console.error('[WELLNESS-LB] Error fetching data:', error);
       setLeaderboardData([]);
       setIsVisible(false);
+    } finally {
+      fetchInFlightRef.current = false;
     }
-  }, [apiBaseUrl, topN, userId]);
+  }, [apiBaseUrl, topN, userId, email]);
 
   useImperativeHandle(ref, () => ({
     refresh: fetchLeaderboard,
   }));
 
-  // Skip network if SWR cache is fresh; background refresh on CACHE_TTL
   useEffect(() => {
     const cached = readCache(userId);
     if (cached?.length) {
@@ -118,7 +145,22 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId }, 
     } else {
       fetchLeaderboard();
     }
-    return setVisibilityAwareInterval(fetchLeaderboard, CACHE_TTL);
+    const retryEmpty = setTimeout(() => {
+      if (userId == null || userId === '') return;
+      if (!readCache(userId)?.length) fetchLeaderboard();
+    }, 1600);
+    const stopInterval = setVisibilityAwareInterval(fetchLeaderboard, CACHE_TTL);
+    return () => {
+      clearTimeout(retryEmpty);
+      stopInterval();
+    };
+  }, [fetchLeaderboard, userId]);
+
+  useEffect(() => {
+    return subscribeDailyWellnessScoreSeed(({ userId: seedUserId }) => {
+      if (userId == null || String(seedUserId) !== String(userId)) return;
+      fetchLeaderboard();
+    });
   }, [fetchLeaderboard, userId]);
 
   // Smooth enter once data is ready
@@ -155,7 +197,9 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId }, 
     return null;
   }
 
-  const renderLeaderboardCard = (user, key) => (
+  const renderLeaderboardCard = (user, key) => {
+    const shownName = displayLeaderboardName(user, userId, viewerName);
+    return (
     <div
       key={key}
       className="inline-flex items-center gap-1.5 sm:gap-2 md:gap-3 mx-2 sm:mx-3 md:mx-4 flex-shrink-0"
@@ -176,14 +220,14 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId }, 
           apiBaseUrl={apiBaseUrl}
           userId={user.userId}
           email={user.email}
-          userName={user.userName}
+          userName={shownName}
           profileImage={user.profileImage}
         />
       </div>
 
       <div className="flex flex-col justify-center flex-shrink-0 min-w-0 max-w-[120px] sm:max-w-[150px] md:max-w-[180px]">
         <span className="font-bold text-gray-800 text-xs sm:text-sm md:text-base truncate leading-tight">
-          {user.userName}
+          {shownName}
         </span>
         {(() => {
           const { sponsorName, idealCoachName } = resolveSponsorCoachNames(user);
@@ -207,7 +251,8 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId }, 
         </span>
       </div>
     </div>
-  );
+    );
+  };
 
   return (
     <div
@@ -216,16 +261,19 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId }, 
       }`}
     >
       <div className="py-0 px-0">
-        <div className="relative h-[56px] sm:h-[60px] overflow-hidden">
-          <div className="absolute inset-y-0 left-0 z-10 pointer-events-none">
-            <div className="flex h-full w-[68px] sm:w-[72px] items-center justify-center border-r border-purple-100 bg-white shadow-sm px-1.5 text-center text-[9px] sm:text-[10px] font-medium leading-tight text-purple-700">
-              Top {topN}<br />Score
+        <div className="relative h-[68px] sm:h-[72px] overflow-hidden">
+          <div className="absolute inset-y-0 left-0 z-10 pointer-events-none flex items-stretch">
+            <div
+              className="flex h-full w-[60px] sm:w-[64px] items-center justify-center rounded-r-md bg-white px-1 py-2 text-center text-[9px] sm:text-[10px] font-semibold leading-[1.2] text-purple-700 shadow-sm"
+              aria-label={`Top ${topN} Wellness Score`}
+            >
+              Top {topN}<br />Wellness<br />Score
             </div>
           </div>
 
           <div
             ref={viewportRef}
-            className="h-full overflow-hidden pl-[68px] sm:pl-[72px] cursor-pointer"
+            className="h-full overflow-hidden pl-[58px] sm:pl-[62px] cursor-pointer"
             style={{ touchAction: 'pan-y' }}
             {...interactionHandlers}
           >

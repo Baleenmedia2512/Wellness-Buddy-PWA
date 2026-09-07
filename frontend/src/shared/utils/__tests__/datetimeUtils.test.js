@@ -76,4 +76,10 @@ describe('Today vs Yesterday — owner zone', () => {
     const yesterdayAfternoonEd = '2026-08-17T19:00:00.000Z'; // 3pm EDT Aug 17
     assert.equal(isBusinessYesterday(yesterdayAfternoonEd, USA_EAST, now), true);
   });
+
+  it('USA can still be on marathon eve while India is already Day 0', () => {
+    const now = new Date('2026-08-14T22:00:00.000Z');
+    assert.equal(todayBusinessDate(USA_EAST, now), '2026-08-14');
+    assert.equal(todayBusinessDate(IST, now), '2026-08-15');
+  });
 });

@@ -41,6 +41,24 @@ describe('parameterContributions', () => {
     expect(breakdown[0].percentage).toBeCloseTo((20 / 34) * 100);
   });
 
+  test('extractNutrientContributions hides amounts that round to 0g', () => {
+    const withTrace = [
+      {
+        AnalysisData: {
+          foods: [
+            { name: 'Shake', nutrition: { protein: 25 } },
+            { name: 'Afresh', nutrition: { protein: 0.2 } },
+            { name: 'Herbalifeline', nutrition: { protein: 0.4 } },
+          ],
+        },
+      },
+    ];
+    const { breakdown, total } = extractNutrientContributions(withTrace, 'protein');
+    expect(total).toBe(25);
+    expect(breakdown).toHaveLength(1);
+    expect(breakdown[0].foodName).toBe('Shake');
+  });
+
   test('extractMealWindowContributions filters dinner window', () => {
     const { breakdown, total } = extractMealWindowContributions(
       meals,

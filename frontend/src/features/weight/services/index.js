@@ -11,5 +11,7 @@ export {
   WEIGHT_TREND_RANGE_CUSTOM,
   WEIGHT_TREND_DEFAULT_DAYS,
   REPORTS_WEIGHT_TREND_RANGES,
+  getTrendRangeBounds,
+  getRecordedSeriesAxisBounds,
 } from './weightDashboardFormatter';
-export { buildChartGeometry } from './weightChartGeometry';
+export { buildChartGeometry, computeResponsiveDateLabelOptions, computeTrendChartRenderWidth } from './weightChartGeometry';

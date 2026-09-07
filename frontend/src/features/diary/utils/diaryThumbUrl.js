@@ -77,3 +77,54 @@ export function resolveDiaryThumbSource(entry, {
 export function resolveDiaryThumbUrl(entry, opts) {
   return resolveDiaryThumbSource(entry, opts).src;
 }
+
+/**
+ * Resolve a share-card image src (data URL or http URL) from Thumb props.
+ * @param {{ imageBase64?: string|null, imagePath?: string|null, imageUrl?: string|null, imageUrlFormat?: string|null }} thumb
+ * @returns {Promise<string|null>}
+ */
+export async function fetchDiaryShareImageSrc(thumb) {
+  if (!thumb) return null;
+  if (thumb.imageBase64 && String(thumb.imageBase64).trim() !== '') {
+    const raw = String(thumb.imageBase64);
+    return raw.startsWith('data:image') ? raw : `data:image/jpeg;base64,${raw}`;
+  }
+  if (thumb.imageUrlFormat === 'raw' && thumb.imageUrl) {
+    return thumb.imageUrl;
+  }
+  if (thumb.imagePath && (String(thumb.imagePath).startsWith('http') || String(thumb.imagePath).startsWith('data:'))) {
+    return thumb.imagePath;
+  }
+  if (thumb.imageUrlFormat === 'json' && thumb.imageUrl) {
+    try {
+      const response = await fetch(thumb.imageUrl);
+      if (!response.ok) return thumb.imagePath || null;
+      const json = await response.json();
+      const b64 = json?.image || json?.imageBase64 || json?.data?.imageBase64;
+      if (!b64 || String(b64).trim() === '') return thumb.imagePath || null;
+      const raw = String(b64);
+      return raw.startsWith('data:image') ? raw : `data:image/jpeg;base64,${raw}`;
+    } catch {
+      return thumb.imagePath || null;
+    }
+  }
+  return thumb.imagePath || null;
+}
+
+/** Let html2canvas paint the share-card photo before capture. */
+export function waitForShareImageDecode(src, timeoutMs = 5000) {
+  if (!src) return Promise.resolve();
+  return new Promise((resolve) => {
+    const img = new Image();
+    let settled = false;
+    const done = () => {
+      if (settled) return;
+      settled = true;
+      resolve();
+    };
+    const timer = setTimeout(done, timeoutMs);
+    img.onload = () => { clearTimeout(timer); done(); };
+    img.onerror = () => { clearTimeout(timer); done(); };
+    img.src = src;
+  });
+}

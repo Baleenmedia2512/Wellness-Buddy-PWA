@@ -35,8 +35,8 @@ export function hasValidProfileName(userName, context = {}) {
 }
 
 /**
- * First onboarding gate: chosen display name only (before sponsor / OTP).
- * Email is collected later on the remaining-profile step.
+ * First onboarding gate (new app): real name plus a verified email.
+ * Backend `needsName` stays name-only so older app binaries are not blocked.
  * @param {{ userName?: string|null, email?: string|null, phoneNumber?: string|null }} input
  * @returns {boolean}
  */
@@ -45,7 +45,8 @@ export function isOnboardingIdentityComplete({
   email,
   phoneNumber,
 } = {}) {
-  return hasValidProfileName(userName, { email, phoneNumber });
+  const hasEmail = typeof email === 'string' && email.includes('@');
+  return hasValidProfileName(userName, { email, phoneNumber }) && hasEmail;
 }
 
 export function hasValidProfileGender(gender, bodyMetrics = null) {
@@ -77,6 +78,10 @@ export function hasValidBodyFatSource({
   return false;
 }
 
+/**
+ * Field completeness for remaining-profile onboarding.
+ * Avatar is Centre transformation photo (separate step) — not required here.
+ */
 export function isProfileComplete({
   height,
   dietType,
@@ -85,7 +90,7 @@ export function isProfileComplete({
   phoneNumber,
   gender = null,
   bodyMetrics = null,
-  profileImage = undefined,
+  profileImage: _profileImage = undefined,
   bodyFat = null,
   latestWeightBodyFat = null,
   bodyFatRequired = true,
@@ -97,9 +102,5 @@ export function isProfileComplete({
   const hasGender = hasValidProfileGender(gender, bodyMetrics);
   const hasBodyFat = !bodyFatRequired
     || hasValidBodyFatSource({ bodyFat, latestWeightBodyFat, bodyMetrics });
-  const hasPhoto = profileImage === undefined
-    ? true
-    : typeof profileImage === 'string'
-      && (profileImage.startsWith('data:image/') || profileImage.startsWith('https://'));
-  return !!(hasHeight && hasDiet && hasEmail && hasName && hasGender && hasBodyFat && hasPhoto);
+  return !!(hasHeight && hasDiet && hasEmail && hasName && hasGender && hasBodyFat);
 }

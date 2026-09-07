@@ -15,6 +15,8 @@ import {
 } from '../../../utils/reportingHierarchyService.js';
 import { isActiveTeamStatus } from '../../../utils/teamHierarchyBuilder.js';
 import { rankWellnessLeaderboardEntries } from '../../../utils/wellnessScoreLeaderboard.js';
+import { computeDailyScoreForDate } from '../../../features/wellness-score/api/daily-score.handler.js';
+import { resolveLeaderboardViewerId } from '../../../utils/leaderboardViewer.js';
 
 const LEADERBOARD_CACHE_TTL_MS = 2 * 60 * 1000;
 /** PostgREST `.in()` URL limit — batch score lookups for large allowed sets. */
@@ -57,12 +59,15 @@ export default async function handler(req, res) {
   try {
     const supabase = getSupabaseClient();
     const topN = Math.min(parseInt(req.query.topN, 10) || 10, 10);
-    const viewerUserId = Number.parseInt(String(req.query.userId ?? ''), 10);
+    const viewerUserId = await resolveLeaderboardViewerId({
+      userId: req.query.userId,
+      email: req.query.email,
+    });
     const scoreDate = req.query.date
       ? resolveRequestedDateYmd(req.query.date, IANA_IST)
       : todayInTimezone(IANA_IST);
 
-    if (!Number.isFinite(viewerUserId) || viewerUserId <= 0) {
+    if (!viewerUserId) {
       return res.status(200).json({
         success: true,
         data: [],
@@ -112,7 +117,19 @@ export default async function handler(req, res) {
       });
     }
 
-    const scores = await fetchScoresForUsers(supabase, allowedIds, scoreDate);
+    let scores = await fetchScoresForUsers(supabase, allowedIds, scoreDate);
+
+    // New users have no persisted row until /daily runs. Compute the viewer
+    // so Top 10 is not empty on first Home paint.
+    const viewerHasScore = scores.some((row) => Number(row.user_id) === viewerUserId);
+    if (!viewerHasScore && allowedIds.includes(viewerUserId)) {
+      try {
+        await computeDailyScoreForDate({ userId: viewerUserId, date: scoreDate });
+        scores = await fetchScoresForUsers(supabase, allowedIds, scoreDate);
+      } catch (computeErr) {
+        logger.debug('[WELLNESS-LB] Viewer score compute skipped', { err: computeErr.message });
+      }
+    }
 
     if (!scores.length) {
       return res.status(200).json({

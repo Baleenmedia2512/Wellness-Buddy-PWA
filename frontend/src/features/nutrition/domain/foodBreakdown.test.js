@@ -41,6 +41,21 @@ describe('extractFoodContributions', () => {
     expect(breakdown[0].foodName).toBe('Banana');
     expect(breakdown[0].amount).toBe(400);
   });
+
+  test('hides foods whose amount rounds to 0', () => {
+    const analyses = [{
+      AnalysisData: {
+        foods: [
+          { name: 'Shake', nutrition: { protein: 25.4 } },
+          { name: 'Trace oil', nutrition: { protein: 0.4 } },
+        ],
+      },
+    }];
+    const { breakdown, total } = extractFoodContributions(analyses, 'protein');
+    expect(total).toBe(25.4);
+    expect(breakdown).toHaveLength(1);
+    expect(breakdown[0].foodName).toBe('Shake');
+  });
 });
 
 describe('nutrient display helpers', () => {

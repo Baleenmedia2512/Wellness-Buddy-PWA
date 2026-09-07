@@ -12,8 +12,15 @@ const FOOD_SUFFIX = '1890 kcal\nMasala Dosa - GI 65 m\nRagi Dosa - GI 45 l\nPlai
 describe('composeQuickShareCaption', () => {
   it('joins a one-line suffix with a comma', () => {
     assert.equal(
-      composeQuickShareCaption(BRAND, 'Consumed: 1 L water so far today'),
-      `${BRAND}, Consumed: 1 L water so far today`,
+      composeQuickShareCaption(BRAND, 'Calories Burnt: 120 kcal so far today'),
+      `${BRAND}, Calories Burnt: 120 kcal so far today`,
+    );
+  });
+
+  it('puts WhatsApp-bold water consumed on the next line', () => {
+    assert.equal(
+      composeQuickShareCaption(BRAND, '*Consumed: 1.7 L* water so far today'),
+      `${BRAND},\n*Consumed: 1.7 L* water so far today`,
     );
   });
 

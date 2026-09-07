@@ -36,14 +36,23 @@ function buildUplineComplete(user, hasTeamId) {
   });
 }
 
+function isOtpExpired(request) {
+  if (!request?.OtpExpiresAt) return false;
+  return Date.now() >= new Date(request.OtpExpiresAt).getTime();
+}
+
 function buildPendingRequest(request, hasTeamId) {
+  const expired = isOtpExpired(request);
   return ok({
     setupComplete: false, hasTeamId, hasUpline: false,
     pendingRequest: {
       id: request.Id, coachId: request.UplineCoachId, status: request.Status,
       expiresAt: request.OtpExpiresAt, requestedAt: request.RequestedAt,
+      expired,
     },
-    redirectTo: '/setup/validate-otp', message: 'Waiting for OTP validation',
+    pendingRequestExpired: expired,
+    redirectTo: '/setup/validate-otp',
+    message: expired ? 'Coach OTP expired' : 'Waiting for OTP validation',
   });
 }
 
@@ -58,19 +67,21 @@ function buildInactiveReactivationPending(user, request, hasTeamId) {
       status: request.Status,
       expiresAt: request.OtpExpiresAt,
       requestedAt: request.RequestedAt,
+      expired: isOtpExpired(request),
     },
+    pendingRequestExpired: isOtpExpired(request),
     redirectTo: '/setup/validate-otp',
-    message: 'Waiting for coach OTP to reactivate account',
+    message: isOtpExpired(request)
+      ? 'Coach OTP expired'
+      : 'Waiting for coach OTP to reactivate account',
   });
 }
 
 async function resolvePendingApproval(userId) {
   const request = await repo.getPendingApproval(userId);
   if (!request) return null;
-  if (new Date() > new Date(request.OtpExpiresAt)) {
-    await repo.deleteApproval(request.Id);
-    return null;
-  }
+  // Keep expired pending rows so the client can show expired/resend instead of
+  // dropping the user back onto coach selection with no explanation.
   return request;
 }
 

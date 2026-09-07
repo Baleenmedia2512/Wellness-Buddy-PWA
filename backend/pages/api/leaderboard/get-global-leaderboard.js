@@ -15,6 +15,7 @@ import {
   collectVisibleHierarchyUsers,
 } from '../../../utils/reportingHierarchyService.js';
 import { isActiveTeamStatus } from '../../../utils/teamHierarchyBuilder.js';
+import { resolveLeaderboardViewerId } from '../../../utils/leaderboardViewer.js';
 
 /** Server-side TTL — hierarchy-scoped; cache key includes viewerUserId. */
 const LEADERBOARD_CACHE_TTL_MS = 2 * 60 * 1000;
@@ -87,9 +88,12 @@ export default async function handler(req, res) {
 
   try {
     const topN = Math.min(parseInt(req.query.topN, 10) || 10, 10);
-    const viewerUserId = Number.parseInt(String(req.query.userId ?? ''), 10);
+    const viewerUserId = await resolveLeaderboardViewerId({
+      userId: req.query.userId,
+      email: req.query.email,
+    });
 
-    if (!Number.isFinite(viewerUserId) || viewerUserId <= 0) {
+    if (!viewerUserId) {
       return res.status(200).json({
         success: true,
         data: [],

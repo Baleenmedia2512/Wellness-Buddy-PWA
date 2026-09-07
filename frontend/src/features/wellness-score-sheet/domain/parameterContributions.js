@@ -84,6 +84,14 @@ function readNutritionAmount(nutrition, keys) {
   return 0;
 }
 
+/** True when the amount would display as 0 with the modal's decimal places. */
+export function roundsToZeroDisplay(amount, decimals = 0) {
+  const n = Number(amount);
+  if (!Number.isFinite(n) || n <= 0) return true;
+  if (decimals > 0) return Number(n.toFixed(decimals)) === 0;
+  return Math.round(n) === 0;
+}
+
 /**
  * @returns {{ foodName: string, amount: number, percentage: number }[]}
  */
@@ -92,35 +100,31 @@ export function extractNutrientContributions(meals, paramKey) {
   if (!cfg) return { breakdown: [], total: 0, unit: '', decimals: 0 };
 
   const foods = [];
-  let total = 0;
 
   for (const analysis of meals || []) {
     if (analysis?.isUndoPlaceholder) continue;
     const data = parseAnalysisData(analysis.AnalysisData);
     const foodList = data.foods || [];
-    let mealFoodTotal = 0;
     const mealFoods = [];
 
     for (const food of foodList) {
       const amount = readNutritionAmount(food.nutrition || {}, cfg.nutritionKeys);
-      if (amount > 0) {
+      if (!roundsToZeroDisplay(amount, cfg.decimals)) {
         mealFoods.push({ foodName: food.name || food.foodName || 'Unknown food', amount });
-        mealFoodTotal += amount;
       }
     }
 
     if (mealFoods.length > 0) {
       mealFoods.forEach((f) => foods.push(f));
-      total += mealFoodTotal;
     } else if (cfg.dbCol) {
       const mealTotal = Number(analysis[cfg.dbCol]) || 0;
-      if (mealTotal > 0) {
+      if (!roundsToZeroDisplay(mealTotal, cfg.decimals)) {
         foods.push({ foodName: mealDisplayName(analysis), amount: mealTotal });
-        total += mealTotal;
       }
     }
   }
 
+  const total = foods.reduce((sum, f) => sum + f.amount, 0);
   const breakdown = foods
     .sort((a, b) => b.amount - a.amount)
     .map((f) => ({

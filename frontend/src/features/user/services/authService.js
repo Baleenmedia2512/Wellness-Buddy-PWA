@@ -11,6 +11,7 @@ const post = async (path, body) => {
   const payload = body && typeof body === 'object' ? body : {};
   const res = await apiFetch(`${apiBase}${path}`, {
     method: 'POST',
+    cache: 'no-store',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });

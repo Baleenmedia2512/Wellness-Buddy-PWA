@@ -100,4 +100,20 @@ describe('aggregate-eligibility.rules (production)', () => {
     assert.equal(selfViewDeveloper.sponsorName, 'Dev Sponsor');
     assert.equal(selfViewDeveloper.idealCoachName, 'Dev Coach');
   });
+
+  it('keeps the developer-bot sponsor label visible for onboarding tests', () => {
+    const roleByUserId = new Map([['10', 'developer']]);
+    const kept = sanitizeSponsorCoachLabels({
+      sponsorId: '10',
+      sponsorName: 'developer bot',
+      idealCoachId: null,
+      idealCoachName: null,
+    }, {
+      memberUserId: 99,
+      viewerUserId: 99,
+      roleByUserId,
+    });
+    assert.equal(kept.sponsorName, 'developer bot');
+    assert.equal(kept.sponsorId, '10');
+  });
 });

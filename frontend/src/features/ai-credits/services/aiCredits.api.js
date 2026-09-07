@@ -112,6 +112,7 @@ export async function saveAiCreditsAdminConfig({
   requesterEmail,
   dailyAiCredits,
   aiModeEnabled,
+  availabilityWindows,
   apiBaseUrl,
 } = {}) {
   const res = await fetch(`${base(apiBaseUrl)}/api/ai-credits/admin-config`, {
@@ -122,6 +123,7 @@ export async function saveAiCreditsAdminConfig({
       requesterEmail,
       dailyAiCredits,
       aiModeEnabled,
+      availabilityWindows,
     }),
   });
   return parseJson(res);

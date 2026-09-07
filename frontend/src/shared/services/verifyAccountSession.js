@@ -8,6 +8,7 @@ import { getApiBaseUrl } from '../../config/api.config.js';
 import { getDeviceTimezoneIana } from '../utils/deviceTimezone.js';
 import * as Session from './sessionStorage.js';
 import { clearUserIdCache } from './getUserId.js';
+import { attachNumericDbUserId, readNumericDbUserId } from './numericDbUserId.js';
 import { apiFetch } from './apiFetch.js';
 import { handlePossibleAppUpdateRequired } from './appVersionEnforce.client.js';
 
@@ -98,8 +99,8 @@ export async function verifyAndAttachDbUserId(user) {
   if (!user) return { ok: false, userNotFound: true };
 
   const email = user.email || user.Email || Session.getUserEmail() || null;
-  const phone = user.phone || user.PhoneNumber || null;
-  const cachedId = user.id || user.UserId || Session.getDbUserId() || null;
+  const phone = user.phone || user.PhoneNumber || user.phoneNumber || null;
+  const cachedId = readNumericDbUserId(user);
 
   const result = await verifyAccountSession({
     userId: cachedId,
@@ -122,12 +123,12 @@ export async function verifyAndAttachDbUserId(user) {
     return { ok: false, networkError: true };
   }
 
+  attachNumericDbUserId(user, result.userId);
   const nextUser = {
     ...user,
     id: result.userId,
     UserId: result.userId,
   };
-  Session.setDbUserId(result.userId);
   if (email) Session.setUserEmail(email);
 
   return { ok: true, user: nextUser, sessionStale: result.sessionStale };

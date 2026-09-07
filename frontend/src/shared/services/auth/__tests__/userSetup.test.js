@@ -85,6 +85,26 @@ describe('fetchSetupStatus', () => {
     assert.equal(capturedHeaders[APP_VERSION_HEADER], APP_VERSION.VERSION);
   });
 
+  it('maps pendingRequest to pendingOtp even when expired', async () => {
+    mock.method(global, 'fetch', async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        setupComplete: false,
+        pendingRequest: { id: 1, expired: true },
+        pendingRequestExpired: true,
+      }),
+    }));
+
+    const result = await fetchSetupStatus({
+      apiBaseUrl: 'http://test',
+      userId: 42,
+    });
+
+    assert.equal(result.result, 'pendingOtp');
+    assert.equal(result.raw.pendingRequestExpired, true);
+  });
+
   it('returns error when status responds 426', async () => {
     mock.method(global, 'fetch', async () => ({
       ok: false,

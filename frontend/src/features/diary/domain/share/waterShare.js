@@ -16,6 +16,6 @@ export function buildWaterShareText({ volumeMl = null, volumeLabel = null } = {}
   return [
     '💧 Water Intake',
     '',
-    `Consumed: ${consumed}`,
+    `*Consumed: ${consumed}*`,
   ].join('\n');
 }

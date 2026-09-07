@@ -4,6 +4,8 @@
 //   - Returns null on failure (does not throw) so the dashboard can render empty.
 
 import { apiFetch } from '../../../../shared/services/apiFetch.js';
+import { readNumericDbUserId } from '../../../../shared/services/numericDbUserId.js';
+import * as Session from '../../../../shared/services/sessionStorage.js';
 
 const DEMO_ACCOUNTS = ['testereasywork@gmail.com'];
 
@@ -12,7 +14,8 @@ export const isDemoAccount = (email) =>
 
 export async function resolveDashboardUserId(user, apiBaseUrl) {
   if (isDemoAccount(user?.email)) return 'DEMO_USER';
-  if (user?.id) return user.id;
+  const numericId = readNumericDbUserId(user);
+  if (numericId) return numericId;
   if (!user?.email) return null;
 
   try {
@@ -22,7 +25,11 @@ export async function resolveDashboardUserId(user, apiBaseUrl) {
       body: JSON.stringify({ email: user.email }),
     });
     const data = await res.json();
-    return data.success && data.userId ? data.userId : null;
+    if (data.success && data.userId) {
+      Session.setDbUserId(data.userId);
+      return data.userId;
+    }
+    return null;
   } catch (error) {
     console.error('[NutritionDashboard] Failed to resolve userId:', error);
     return null;

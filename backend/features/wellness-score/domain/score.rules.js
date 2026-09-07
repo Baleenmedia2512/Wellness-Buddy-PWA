@@ -419,6 +419,7 @@ export function calculateCalories({ maxPoints, consumed, limit, goalMode }) {
     limit,
     unit: ' kcal',
     goalMode,
+    decimals: 0,
   });
 }
 
@@ -431,6 +432,7 @@ export function calculateCarbohydrates({ maxPoints, consumed, limit, goalMode })
     limit,
     unit: 'g',
     goalMode,
+    decimals: 0,
   });
 }
 
@@ -443,6 +445,7 @@ export function calculateFat({ maxPoints, consumed, limit, goalMode }) {
     limit,
     unit: 'g',
     goalMode,
+    decimals: 0,
   });
 }
 
@@ -454,6 +457,7 @@ export function calculateProtein({ maxPoints, consumed, target }) {
     consumed,
     target,
     unit: 'g',
+    decimals: 0,
   });
 }
 
@@ -490,6 +494,7 @@ export function calculateSugar({ maxPoints, consumed, limit, goalMode }) {
     limit,
     unit: 'g',
     goalMode,
+    decimals: 0,
   });
 }
 
@@ -501,6 +506,7 @@ export function calculateFiber({ maxPoints, consumed, target }) {
     consumed,
     target,
     unit: 'g',
+    decimals: 0,
   });
 }
 
@@ -617,12 +623,30 @@ export function calculatePhosphorus({ maxPoints, consumed, target }) {
 
 // ─── Progress parameters ───────────────────────────────────────────────────────
 
+function isMaintainGoalMode(goalMode) {
+  const mode = String(goalMode || '').toLowerCase();
+  return mode === 'maintain' || mode === 'maintenance';
+}
+
 export function calculateWeightImprovement({
   maxPoints,
   currentWeight,
   previousWeight,
   goalMode,
 }) {
+  // Maintain mode: ideal-range users are not scored on day-to-day delta — full points.
+  if (isMaintainGoalMode(goalMode)) {
+    return buildParameterScore({
+      key: 'weight_improvement',
+      label: 'Weight Improvement',
+      section: 'progress',
+      scoringMode: 'progress',
+      maxPoints,
+      earnedPoints: maxPoints,
+      calculationReason: 'Full points for weight maintenance mode',
+    });
+  }
+
   const cur = Number(currentWeight);
   const prev = Number(previousWeight);
   if (!Number.isFinite(cur) || !Number.isFinite(prev) || prev <= 0) {
@@ -760,7 +784,7 @@ export function aggregateDailyFoodStats(foodRecords = []) {
 
   const giValues = [];
   for (const row of foodRecords) {
-    if (isExemptedBeverageOnly(row.AnalysisData)) continue;
+    // Include all logged meals (including beverage-only) in nutrient / GI totals.
     for (const field of FOOD_NUM_FIELDS) {
       const key = FIELD_TO_STATS_KEY[field];
       stats[key] += Number(row[field]) || 0;

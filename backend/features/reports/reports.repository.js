@@ -46,13 +46,49 @@ export async function getUserNamesByIds(userIds) {
 const WEIGHT_USER_ID_CHUNK = 150;
 
 /**
+ * Partner lead ids (Sponsor ↔ Co-Sponsor) already resolved on the context.
+ * @param {object} context
+ * @param {number} rootCoachId
+ * @returns {number[]}
+ */
+function getPartnerRootIds(context, rootCoachId) {
+  const rootId = Number(rootCoachId);
+  const partners = Array.isArray(context?.partnerRootIds) ? context.partnerRootIds : [];
+  return partners
+    .map((id) => Number(id))
+    .filter((id) => Number.isFinite(id) && id !== rootId);
+}
+
+/**
  * Walk the reporting hierarchy and derive parent links plus direct-to-root flags.
+ * When a Sponsor/Co-Sponsor partner exists, Direct includes both leads' direct
+ * members (and the partner lead) so Ideal Weight Mine/Direct/Full match the
+ * shared-team model.
  */
 function extractReportingHierarchyMeta(context, rootCoachId) {
   const rootId = Number(rootCoachId);
+  const partnerIds = getPartnerRootIds(context, rootId);
   const parentByUserId = new Map();
   const childrenByParentId = buildReportingChildrenIndex(context, rootId);
-  const directToRoot = new Set(getDirectReportingMembers(rootId, context).map((m) => m.UserId));
+  const directToRoot = new Set(
+    getDirectReportingMembers(rootId, context)
+      .map((m) => Number(m.UserId))
+      .filter((id) => id !== rootId),
+  );
+
+  for (const partnerId of partnerIds) {
+    directToRoot.add(partnerId);
+    for (const m of getDirectReportingMembers(partnerId, context)) {
+      const id = Number(m.UserId);
+      if (id !== rootId) directToRoot.add(id);
+    }
+    const partnerIndex = buildReportingChildrenIndex(context, partnerId);
+    for (const [parentId, childIds] of partnerIndex) {
+      if (!childrenByParentId.has(parentId)) {
+        childrenByParentId.set(parentId, childIds);
+      }
+    }
+  }
 
   for (const [parentId, childIds] of childrenByParentId) {
     for (const childId of childIds) {
@@ -61,6 +97,36 @@ function extractReportingHierarchyMeta(context, rootCoachId) {
   }
 
   return { parentByUserId, childrenByParentId, directToRoot };
+}
+
+/**
+ * Full reporting roster for Ideal Weight / Wellness Score reports.
+ * Unions the viewer's tree with Sponsor/Co-Sponsor partner downline when linked.
+ * @param {number} coachId
+ * @param {object} context
+ * @returns {import('../../utils/reportingHierarchyService.js').TeamUser[]}
+ */
+function collectReportTeamMembers(coachId, context) {
+  const rootId = Number(coachId);
+  const byId = new Map();
+
+  for (const m of getFullReportingMembers(rootId, context)) {
+    byId.set(Number(m.UserId), m);
+  }
+
+  for (const partnerId of getPartnerRootIds(context, rootId)) {
+    const partner = context.userById?.get(partnerId);
+    if (partner && Number(partner.UserId) !== rootId) {
+      byId.set(Number(partner.UserId), partner);
+    }
+    for (const m of getFullReportingMembers(partnerId, context)) {
+      const id = Number(m.UserId);
+      if (id === rootId) continue;
+      if (!byId.has(id)) byId.set(id, m);
+    }
+  }
+
+  return [...byId.values()];
 }
 
 function mapReportingMembersToRaw(reportingMembers, coachId, parentByUserId, directToRoot) {
@@ -111,7 +177,7 @@ export async function getCoachMember(coachId) {
 export async function getFullTeamMembersIndexed(coachId) {
   const supabase = getSupabaseClient();
   const context = await loadReportingContextForCoach(supabase, coachId);
-  const reportingMembers = getFullReportingMembers(coachId, context);
+  const reportingMembers = collectReportTeamMembers(coachId, context);
   const { parentByUserId, childrenByParentId, directToRoot } = extractReportingHierarchyMeta(
     context,
     coachId,
@@ -154,16 +220,13 @@ export async function getFullTeamMembers(coachId) {
 
   const supabase = getSupabaseClient();
   const context = await loadReportingContext(supabase);
-  const reportingMembers = getFullReportingMembers(coachId, context);
+  const reportingMembers = collectReportTeamMembers(coachId, context);
   const { parentByUserId, childrenByParentId, directToRoot } = extractReportingHierarchyMeta(
     context,
     coachId,
   );
 
-  const memberIds = reportingMembers
-    .map((m) => m.UserId)
-    .filter((id) => id !== coachId);
-  if (memberIds.length === 0) {
+  if (reportingMembers.length === 0) {
     return { rawMembers: [], childrenByParentId };
   }
 

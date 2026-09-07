@@ -9,7 +9,7 @@ import { Share } from '@capacitor/share';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
 import ReportDateRangeFilter from '../../../shared/components/common/ReportDateRangeFilter';
 import { ACTIVITY_REPORT_DATE_RANGES, formatCustomRangeLabel } from '../../../shared/domain/reportDateRanges';
-import { fetchHasTeamMembers } from '../../team/services/teamSearchService';
+import { fetchHasTeamMembers, invalidateHasTeamMembersCache } from '../../team/services/teamSearchService';
 import { TEAM_SCOPES, TEAM_SCOPE_OPTIONS } from '../../reports/utils/reportFilters';
 
 const DEFAULT_PAGE_SIZE = 10;
@@ -79,7 +79,7 @@ const ActivityBadge = ({ activity, count, onClick, isSelected }) => {
 const display = (val) => (!val || val === 'N/A') ? '—' : val;
 
 // Main Component
-const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 }) => {
+const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0, teamSearchRefreshKey = 0 }) => {
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const [exportLoading, setExportLoading] = useState(false);
@@ -159,6 +159,9 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
       return undefined;
     }
     setRoleReady(false);
+    if (teamSearchRefreshKey > 0) {
+      invalidateHasTeamMembersCache(user.id);
+    }
     fetchHasTeamMembers(user.id)
       .then((hasTeam) => {
         if (!cancelled) {
@@ -173,7 +176,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
         }
       });
     return () => { cancelled = true; };
-  }, [user?.id, userRole]);
+  }, [user?.id, userRole, teamSearchRefreshKey]);
 
   const buildReportParams = useCallback((activityType, extra = {}) => {
     const params = new URLSearchParams({
@@ -652,7 +655,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
     } else if (selectedActivity === 'water') {
       headers.splice(1, 0, 'Water (L)');
     } else if (selectedActivity === 'calories') {
-      headers.splice(1, 0, 'Steps', 'Calories Burned');
+      headers.splice(1, 0, 'Calories Burned');
     }
 
     const csvRows = [headers.join(',')];
@@ -678,7 +681,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
       } else if (selectedActivity === 'water') {
         baseRow.splice(1, 0, record.waterLiters || 0);
       } else if (selectedActivity === 'calories') {
-        baseRow.splice(1, 0, record.steps || 0, record.caloriesBurned || 0);
+        baseRow.splice(1, 0, record.caloriesBurned || 0);
       }
 
       csvRows.push(baseRow.join(','));
@@ -940,10 +943,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
                       <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Water (L)</th>
                     )}
                     {selectedActivity === 'calories' && (
-                      <>
-                        <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Steps</th>
-                        <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Calories Burned</th>
-                      </>
+                      <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Calories Burned</th>
                     )}
 
                     {/* --- COMMON COLUMNS REORDERED --- */}
@@ -984,10 +984,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
                         <td className="px-4 py-3 text-sm font-semibold text-cyan-600">{record.waterLiters}</td>
                       )}
                       {selectedActivity === 'calories' && (
-                        <>
-                          <td className="px-4 py-3 text-sm text-gray-600">{record.steps}</td>
-                          <td className="px-4 py-3 text-sm font-semibold text-red-600">{record.caloriesBurned}</td>
-                        </>
+                        <td className="px-4 py-3 text-sm font-semibold text-red-600">{record.caloriesBurned}</td>
                       )}
 
                       {/* --- COMMON DATA REORDERED --- */}

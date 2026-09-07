@@ -1,7 +1,7 @@
 /**
  * Post-capture navigation: Phase 1 success opens Manual Entry.
- * Lunch auto-AI (if any) is decided inside ManualEntryPage via decideLunchAutoAi —
- * App does not start AI here.
+ * AI food analysis starts only when the user taps Food inside ManualEntryPage
+ * (decideLunchAutoAi) — App does not start AI on upload.
  * Run: node --test frontend/src/shell/__tests__/manualEntryNav.test.js
  */
 import { describe, it } from 'node:test';
@@ -53,7 +53,7 @@ describe('buildPostCaptureNavigation', () => {
   });
 });
 
-describe('lunch auto-AI after Manual Entry opens', () => {
+describe('Food AI eligibility after Manual Entry opens', () => {
   const lunchNow = new Date('2026-08-20T07:30:00.000Z'); // 13:00 IST
   const creditsOk = {
     enabled: true,
@@ -63,7 +63,7 @@ describe('lunch auto-AI after Manual Entry opens', () => {
     remaining: 3,
   };
 
-  it('Manual Entry may auto-AI during lunch with credits (hide button)', () => {
+  it('Food tap may start AI during lunch with credits (no auto on upload)', () => {
     const d = decideLunchAutoAi({
       now: lunchNow,
       lunchWindow: DEFAULT_LUNCH_WINDOW,

@@ -530,8 +530,10 @@ export async function loadTeamReportingContext(coachId) {
  */
 async function fetchReportingTeamMembers(coachId, scope = 'direct', context = null) {
   const resolvedContext = context ?? await loadTeamReportingContext(coachId);
-  const { getReportingMembers } = await import('../../utils/reportingHierarchyService.js');
-  const members = getReportingMembers(coachId, scope, resolvedContext);
+  const { getSharedTeamDirectMembers, getSharedTeamFullMembers } = await import('../../utils/sharedTeamReporting.js');
+  const members = scope === 'full'
+    ? getSharedTeamFullMembers(coachId, resolvedContext)
+    : getSharedTeamDirectMembers(coachId, resolvedContext);
   return members
     .filter((member) => member.UserId !== Number(coachId))
     .sort((a, b) => String(a.UserName || '').localeCompare(String(b.UserName || '')));
@@ -717,14 +719,14 @@ function collectDescendantUserIds(coachUserId, childrenIndex, activeMemberIds) {
 export async function buildTeamUploadPerformanceByUserId(rootCoachId, context = null) {
   const supabase = getSupabaseClient();
   const {
-    getFullReportingMembers,
     buildReportingChildrenIndex,
     isCoachRole,
   } = await import('../../utils/reportingHierarchyService.js');
+  const { getSharedTeamFullMembers } = await import('../../utils/sharedTeamReporting.js');
   const { isActiveTeamStatus } = await import('../../utils/teamHierarchyBuilder.js');
 
   const resolvedContext = context ?? await loadTeamReportingContext(rootCoachId);
-  const reportingMembers = getFullReportingMembers(rootCoachId, resolvedContext);
+  const reportingMembers = getSharedTeamFullMembers(rootCoachId, resolvedContext);
 
   const activeMemberIds = new Set(
     reportingMembers

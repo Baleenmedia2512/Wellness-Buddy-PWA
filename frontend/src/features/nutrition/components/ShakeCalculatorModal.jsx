@@ -142,11 +142,12 @@ const ShakeCalculatorModal = ({ isOpen, onClose, onLog }) => {
             <p className="text-xs text-gray-500">Select Number of scoops used in this shake</p>
           </div>
           <button
+            type="button"
             onClick={handleClose}
             aria-label="Close shake calculator"
-            className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-red-500 text-white transition-colors hover:bg-red-600"
           >
-            <X className="w-5 h-5" aria-hidden="true" />
+            <X className="h-5 w-5" strokeWidth={2.25} aria-hidden="true" />
           </button>
         </div>
 
@@ -220,24 +221,18 @@ const ShakeCalculatorModal = ({ isOpen, onClose, onLog }) => {
           {error && (
             <p className="text-sm text-red-600 text-center mb-3" role="alert">{error}</p>
           )}
-          <div className="flex gap-3">
-            <button
-              onClick={handleClose}
-              className="flex-1 px-4 py-3 border-2 border-gray-200 text-gray-600 rounded-xl text-sm font-semibold hover:bg-gray-50 transition-colors"
-            >
-              Cancel
-            </button>
+          <div>
             <TouchFeedbackButton
               onClick={handleLog}
               disabled={!hasServings}
-              className={`flex-1 px-4 py-3 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-colors ${
+              className={`w-full px-4 py-3 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-colors ${
                 !hasServings
                   ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
                   : 'bg-emerald-600 text-white hover:bg-emerald-700 active:bg-emerald-800'
               }`}
-              aria-label="Log shake to diary"
+              aria-label="Save shake"
             >
-              <span>Log Shake to Diary</span>
+              <span>Save</span>
             </TouchFeedbackButton>
           </div>
         </div>

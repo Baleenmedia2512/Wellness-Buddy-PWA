@@ -51,6 +51,7 @@ export default function ReportsDashboard({
   user,
   userRole,
   tabVisitKey = 0,
+  teamSearchRefreshKey = 0,
   initialTab = REPORT_DASHBOARD_TABS.IDEAL_WEIGHT,
 }) {
   const wellnessScoreEnabled = isFlagEnabled('ff.wellness-score-sheet');
@@ -224,6 +225,7 @@ export default function ReportsDashboard({
                 userRole={userRole}
                 selectedMember={nutritionMember}
                 onMemberSelect={setNutritionMember}
+                refreshKey={teamSearchRefreshKey}
               />
             </div>
           )}
@@ -234,6 +236,7 @@ export default function ReportsDashboard({
                 userRole={userRole}
                 selectedMember={trendMember}
                 onMemberSelect={setTrendMember}
+                refreshKey={teamSearchRefreshKey}
               />
             </div>
           )}

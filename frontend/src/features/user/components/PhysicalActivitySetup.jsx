@@ -43,53 +43,58 @@ export default function PhysicalActivitySetup({ user, onComplete }) {
   };
 
   return (
-    <div className="fixed inset-0 bg-gray-50 overflow-y-auto" style={{ zIndex: 9999 }}>
-      <div className="bg-gradient-to-r from-teal-500 to-green-600 px-6 pt-14 pb-8">
-        <div className="flex items-center gap-3 mb-2">
-          <div className="bg-white/20 rounded-full p-2">
-            <Activity className="w-6 h-6 text-white" />
+    <div className="fixed inset-0 bg-gray-50 flex flex-col overflow-hidden" style={{ zIndex: 9999 }}>
+      <div className="bg-gradient-to-r from-teal-500 to-green-600 px-4 pt-10 pb-3 shrink-0">
+        <div className="flex items-center gap-2 mb-0.5">
+          <div className="bg-white/20 rounded-full p-1.5">
+            <Activity className="w-5 h-5 text-white" />
           </div>
-          <h1 className="text-2xl font-bold text-white">Physical Activity</h1>
+          <h1 className="text-lg font-bold text-white leading-tight">Physical Activity</h1>
         </div>
-        <p className="text-green-100 text-sm">
+        <p className="text-green-100 text-xs leading-snug pl-9">
           This helps us calculate your daily calorie target (TDEE).
         </p>
       </div>
 
-      <div className="max-w-md mx-auto p-5 space-y-4 mt-2 pb-24">
-        {PHYSICAL_ACTIVITY_OPTIONS.map((option) => {
-          const isSelected = selected === option.id;
-          return (
-            <button
-              key={option.id}
-              type="button"
-              onClick={() => { setSelected(option.id); setError(''); }}
-              className={`w-full text-left rounded-2xl border p-4 transition-all ${
-                isSelected
-                  ? 'border-green-500 bg-green-50 shadow-md ring-2 ring-green-200'
-                  : 'border-gray-200 bg-white hover:border-green-300'
-              }`}
-            >
-              <div className="font-semibold text-gray-900">{option.label}</div>
-              <div className="text-sm text-gray-600 mt-1">{option.description}</div>
-            </button>
-          );
-        })}
+      <div className="flex-1 overflow-y-auto px-4 py-2 min-h-0">
+        <div className="max-w-md mx-auto space-y-2">
+          {PHYSICAL_ACTIVITY_OPTIONS.map((option) => {
+            const isSelected = selected === option.id;
+            return (
+              <button
+                key={option.id}
+                type="button"
+                onClick={() => { setSelected(option.id); setError(''); }}
+                className={`w-full text-left rounded-xl border py-2.5 px-3 transition-all ${
+                  isSelected
+                    ? 'border-green-500 bg-green-50 shadow-md ring-2 ring-green-200'
+                    : 'border-gray-200 bg-white hover:border-green-300'
+                }`}
+              >
+                <div className="text-sm font-semibold text-gray-900">{option.label}</div>
+              </button>
+            );
+          })}
 
-        {error && (
-          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
-            {error}
-          </div>
-        )}
+          {error && (
+            <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded-lg text-xs">
+              {error}
+            </div>
+          )}
+        </div>
+      </div>
 
-        <button
-          type="button"
-          onClick={handleSave}
-          disabled={saving || !selected}
-          className="w-full py-3 rounded-xl font-semibold text-white bg-green-600 hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {saving ? 'Saving…' : 'Continue'}
-        </button>
+      <div className="shrink-0 px-4 pt-2 pb-4 bg-gray-50 border-t border-gray-100">
+        <div className="max-w-md mx-auto">
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={saving || !selected}
+            className="w-full py-2.5 rounded-xl text-sm font-semibold text-white bg-green-600 hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {saving ? 'Saving…' : 'Continue'}
+          </button>
+        </div>
       </div>
     </div>
   );

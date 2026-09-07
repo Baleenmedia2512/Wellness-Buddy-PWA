@@ -9,11 +9,12 @@ import {
   fetchSavedSearchProfile, fetchTeamMembers, fetchHasTeamMembers,
   filterMembers, toSelectedUser, isCoachRole, canUseTeamSearch,
   resolveTeamSearchDisplayName, resolveTypedSearchQuery,
+  invalidateHasTeamMembersCache,
 } from '../services/teamSearchService';
 import { getCachedProfileUserName } from '../../../shared/utils/shareUtils';
 
 export function useTeamSearch({
-  user, userRole, selectedMember, onMemberSelect, viewKey,
+  user, userRole, selectedMember, onMemberSelect, viewKey, refreshKey = 0,
 } = {}) {
   const [searchQuery, setSearchQuery] = useState('');
   const [isOpen, setIsOpen] = useState(false);
@@ -73,6 +74,9 @@ export function useTeamSearch({
       setHasTeamMembers(false);
       return undefined;
     }
+    if (refreshKey > 0) {
+      invalidateHasTeamMembersCache(user.id);
+    }
     let cancelled = false;
     fetchHasTeamMembers(user.id)
       .then((has) => { if (!cancelled) setHasTeamMembers(has); })
@@ -81,7 +85,7 @@ export function useTeamSearch({
         if (!cancelled) setHasTeamMembers(false);
       });
     return () => { cancelled = true; };
-  }, [user?.id, userRole]);
+  }, [user?.id, userRole, refreshKey]);
 
   // Fetch the coach's flat team list once it becomes possible.
   // Intentionally omit savedUserName from deps — name is resolved at fetch time
@@ -89,6 +93,9 @@ export function useTeamSearch({
   // Re-run when coachCommunityId arrives so direct-downline rows get Your CID.
   useEffect(() => {
     if (!isCoach || !user?.id) return undefined;
+    if (refreshKey > 0) {
+      invalidateHasTeamMembersCache(user.id);
+    }
     let cancelled = false;
     setLoading(true);
     fetchTeamMembers({
@@ -103,7 +110,7 @@ export function useTeamSearch({
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps -- savedUserName intentionally excluded
-  }, [user?.id, user?.name, user?.email, isCoach, userRole, coachCommunityId]);
+  }, [user?.id, user?.name, user?.email, isCoach, userRole, coachCommunityId, refreshKey]);
 
   const suggestions = useMemo(
     () => filterMembers(allTeamMembers, searchQuery),

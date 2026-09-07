@@ -15,6 +15,7 @@ import {
 import {
   generateServingOptions,
   computeNutrition,
+  derivePer100g,
 } from "../services/nutritionMath";
 import { planFoodCorrection } from "../services/foodCorrectionPlan";
 import { useDeleteWithUndo } from "../hooks/useDeleteWithUndo";
@@ -552,48 +553,10 @@ const EditableFoodItem = forwardRef(
       
       // If no override or selected food, create fallback from current foodItem
       if (!foodToSave) {
-        // Calculate per100g if missing (needed for foods from auto-correction)
-        const nutritionData = foodItem.nutrition || foodItem;
-        const currentGrams = parseFloat(
-          foodItem.serving?.grams || foodItem.grams || foodItem.estimatedWeight
-        ) || 100;
-        const existingGi = nutritionData.glycemic_index ?? foodItem.glycemic_index ?? null;
-
-        const per100gCalculated = foodItem.per100g
-          ? {
-              ...foodItem.per100g,
-              // Enrich existing per100g when GI was only on nutrition (AI save path)
-              glycemic_index: foodItem.per100g.glycemic_index ?? (
-                existingGi != null && Number.isFinite(Number(existingGi))
-                  ? Math.round(Number(existingGi))
-                  : null
-              ),
-            }
-          : {
-              calories: (nutritionData.calories || 0) * (100 / currentGrams),
-              protein: (nutritionData.protein || 0) * (100 / currentGrams),
-              carbs: (nutritionData.carbs || 0) * (100 / currentGrams),
-              fat: (nutritionData.fat || 0) * (100 / currentGrams),
-              fiber: (nutritionData.fiber || 0) * (100 / currentGrams),
-              sugar: nutritionData.sugar != null
-                ? (nutritionData.sugar * (100 / currentGrams))
-                : null,
-              sodium: nutritionData.sodium != null
-                ? (nutritionData.sodium * (100 / currentGrams))
-                : null,
-              cholesterol: nutritionData.cholesterol != null
-                ? (nutritionData.cholesterol * (100 / currentGrams))
-                : null,
-              // GI is intrinsic — copy, do not scale with grams
-              glycemic_index: existingGi != null && Number.isFinite(Number(existingGi))
-                ? Math.round(Number(existingGi))
-                : null,
-            };
-        
         foodToSave = {
           name: foodItem.name,
           category: foodItem.category,
-          per100g: per100gCalculated,
+          per100g: derivePer100g(foodItem),
           isLiquid: foodItem.isLiquid || false,
         };
       } else if (foodToSave.per100g && foodToSave.per100g.glycemic_index == null) {
@@ -942,45 +905,8 @@ const EditableFoodItem = forwardRef(
       setCustomGrams(currentGrams.toString());
       setSearchQuery(foodItem.name || "");
 
-      // Get nutrition values - check both nested and flat structures
       const nutritionData = foodItem.nutrition || foodItem;
-      const currentCalories = nutritionData.calories || 0;
-      const currentProtein = nutritionData.protein || 0;
-      const currentCarbs = nutritionData.carbs || 0;
-      const currentFat = nutritionData.fat || 0;
-      const currentFiber = nutritionData.fiber || 0;
-      const existingGi = nutritionData.glycemic_index ?? foodItem.glycemic_index ?? null;
-
-      // Calculate per100g values or use existing
-      const per100gValues = foodItem.per100g
-        ? {
-            ...foodItem.per100g,
-            glycemic_index: foodItem.per100g.glycemic_index ?? (
-              existingGi != null && Number.isFinite(Number(existingGi))
-                ? Math.round(Number(existingGi))
-                : null
-            ),
-          }
-        : {
-            calories: (currentCalories * 100) / currentGrams, // Keep precise value, don't round
-            protein: (currentProtein * 100) / currentGrams,
-            carbs: (currentCarbs * 100) / currentGrams,
-            fat: (currentFat * 100) / currentGrams,
-            fiber: (currentFiber * 100) / currentGrams,
-            sugar: nutritionData.sugar != null
-              ? (nutritionData.sugar * 100) / currentGrams
-              : null,
-            sodium: nutritionData.sodium != null
-              ? (nutritionData.sodium * 100) / currentGrams
-              : null,
-            cholesterol: nutritionData.cholesterol != null
-              ? (nutritionData.cholesterol * 100) / currentGrams
-              : null,
-            // GI is intrinsic — copy, do not scale
-            glycemic_index: existingGi != null && Number.isFinite(Number(existingGi))
-              ? Math.round(Number(existingGi))
-              : null,
-          };
+      const per100gValues = derivePer100g(foodItem);
 
       // Get unit from foodItem
       const itemUnit =
@@ -996,13 +922,7 @@ const EditableFoodItem = forwardRef(
       const baseServing = {
         description: portionDesc,
         grams: currentGrams,
-        nutrition: {
-          calories: currentCalories,
-          protein: currentProtein,
-          carbs: currentCarbs,
-          fat: currentFat,
-          fiber: currentFiber,
-        },
+        nutrition: nutritionData,
       };
 
       // Generate dynamic serving options based on detected quantity

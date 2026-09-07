@@ -12,8 +12,11 @@ export default function ReportsMemberSearch({
   userRole,
   selectedMember,
   onMemberSelect,
+  refreshKey = 0,
 }) {
-  const vm = useTeamSearch({ user, userRole, selectedMember, onMemberSelect });
+  const vm = useTeamSearch({
+    user, userRole, selectedMember, onMemberSelect, refreshKey,
+  });
 
   if (!vm.isCoach) {
     return (

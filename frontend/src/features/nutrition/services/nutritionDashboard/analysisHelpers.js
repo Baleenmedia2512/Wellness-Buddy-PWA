@@ -2,6 +2,7 @@
 // These do NOT touch the network — see *Api.js modules for fetches.
 import { computeMealGlycemicIndex } from '../../domain/mealGlycemicIndex';
 import { parseUtcTimestamp } from '../../../../shared/utils/datetimeUtils';
+import { FOOD_MICRO_FIELDS, aggregateFoodTotals } from '../../domain/aggregateFoodTotals';
 
 /**
  * Multi-food title: every item name, comma-separated.
@@ -121,23 +122,11 @@ export const parseAnalysisData = (analysisData) => {
 /** Sum & round per-item nutrition into day/meal totals. */
 export const recalculateTotals = (items) => {
   const list = Array.isArray(items) ? items : [];
-  const t = list.reduce(
-    (acc, item) => {
-      const n = item.nutrition || {};
-      const itemCarbs = n.carbs ?? item.carbs ?? 0;
-      return {
-        calories:    acc.calories    + (n.calories    ?? item.calories    ?? 0),
-        protein:     acc.protein     + (n.protein     ?? item.protein     ?? 0),
-        carbs:       acc.carbs       + itemCarbs,
-        fat:         acc.fat         + (n.fat         ?? item.fat         ?? 0),
-        fiber:       acc.fiber       + (n.fiber       ?? item.fiber       ?? 0),
-        sugar:       acc.sugar       + (n.sugar       ?? item.sugar       ?? 0),
-        sodium:      acc.sodium      + (n.sodium      ?? item.sodium      ?? 0),
-        cholesterol: acc.cholesterol + (n.cholesterol ?? item.cholesterol ?? 0),
-      };
-    },
-    { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, sugar: 0, sodium: 0, cholesterol: 0 },
-  );
+  const t = aggregateFoodTotals(list);
+  const micros = {};
+  for (const key of FOOD_MICRO_FIELDS) {
+    micros[key] = t[key] || 0;
+  }
   return {
     calories:    Math.round(t.calories),
     protein:     Math.round(t.protein * 10) / 10,
@@ -148,6 +137,7 @@ export const recalculateTotals = (items) => {
     sodium:      Math.round(t.sodium),
     cholesterol: Math.round(t.cholesterol),
     // Available-carb weighted meal GI (never sum/simple-average item GIs)
-    glycemic_index: computeMealGlycemicIndex(list),
+    glycemic_index: t.glycemicIndex ?? computeMealGlycemicIndex(list),
+    ...micros,
   };
 };

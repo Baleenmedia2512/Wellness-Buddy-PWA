@@ -73,4 +73,14 @@ describe('dailyWellnessScoreCache sheet→Home pin', () => {
     expect(seen[0].userId).toBe('7');
     expect(seen[0].score.totalEarned).toBe(10);
   });
+
+  test('does not re-notify when the same day totals are seeded again', () => {
+    const seen = [];
+    const unsub = subscribeDailyWellnessScoreSeed((payload) => seen.push(payload));
+    const score = { totalEarned: 200, totalPossible: 1000, date: '2026-08-25' };
+    seedDailyWellnessScoreCache('7', '2026-08-25', score);
+    seedDailyWellnessScoreCache('7', '2026-08-25', { ...score });
+    unsub();
+    expect(seen).toHaveLength(1);
+  });
 });

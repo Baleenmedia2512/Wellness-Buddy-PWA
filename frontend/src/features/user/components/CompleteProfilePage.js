@@ -48,6 +48,20 @@ function isValidCurrentWeight(value) {
   return Number.isFinite(n) && n >= MIN_WEIGHT_KG && n <= MAX_WEIGHT_KG;
 }
 
+function loginEmailFromUser(user) {
+  return String(user?.email || user?.Email || '').trim();
+}
+
+function sessionNameFromUser(user) {
+  return String(
+    user?.userName || user?.UserName || user?.username || user?.name || '',
+  ).trim();
+}
+
+function sessionPhoneFromUser(user) {
+  return user?.phoneNumber || user?.PhoneNumber || user?.phone || null;
+}
+
 /**
  * @param {{
  *   user: object,
@@ -64,9 +78,18 @@ const CompleteProfilePage = ({
   showPictureSection = true,
   identityLocked = true,
 }) => {
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
-  const [emailLocked, setEmailLocked] = useState(false);
+  const initialLoginEmail = loginEmailFromUser(user);
+  const initialEmailLocked = EMAIL_RE.test(initialLoginEmail);
+  const initialName = (() => {
+    const fromSession = sessionNameFromUser(user);
+    return hasValidProfileName(fromSession, { phoneNumber: sessionPhoneFromUser(user) })
+      ? fromSession
+      : '';
+  })();
+
+  const [name, setName] = useState(initialName);
+  const [email, setEmail] = useState(initialEmailLocked ? initialLoginEmail : '');
+  const [emailLocked, setEmailLocked] = useState(initialEmailLocked);
   const [gender, setGender] = useState('');
   const [showGender, setShowGender] = useState(true);
   const [height, setHeight] = useState('');
@@ -92,12 +115,10 @@ const CompleteProfilePage = ({
   useEffect(() => {
     let mounted = true;
     (async () => {
-      const loginEmail = (user?.email || user?.Email || '').trim();
+      const loginEmail = loginEmailFromUser(user);
       const uid = user?.id || user?.UserId || user?.userId || null;
-      const phone = user?.phoneNumber || user?.PhoneNumber || user?.phone || null;
-      const sessionName = String(
-        user?.userName || user?.UserName || user?.username || user?.name || '',
-      ).trim();
+      const phone = sessionPhoneFromUser(user);
+      const sessionName = sessionNameFromUser(user);
 
       const applySessionNameFallback = () => {
         if (hasValidProfileName(sessionName, { phoneNumber: phone })) {
@@ -226,7 +247,7 @@ const CompleteProfilePage = ({
   // Name already collected on Welcome — keep valid even after email is entered.
   const nameValid = trimmedName.length >= 2
     && hasValidProfileName(trimmedName, {
-      phoneNumber: user?.phoneNumber || user?.PhoneNumber || user?.phone,
+      phoneNumber: sessionPhoneFromUser(user),
     });
   const emailValid = EMAIL_RE.test(trimmedEmail);
   const genderValid = !showGender || hasValidProfileGender(gender, null);
@@ -240,10 +261,12 @@ const CompleteProfilePage = ({
   const formValid = nameValid && emailValid && genderValid && heightValid && dietValid
     && currentWeightValid && fatPercentValid && pictureValid;
 
-  const nameLocked = identityLocked && nameValid;
+  // Name/email already collected on Welcome / identity — never flash them here.
+  const hideName = identityLocked;
+  const hideEmail = identityLocked || emailLocked;
   const checks = [
-    ...(nameLocked ? [] : [{ label: 'Name', done: nameValid }]),
-    { label: 'Email', done: emailValid },
+    ...(hideName ? [] : [{ label: 'Name', done: nameValid }]),
+    ...(hideEmail ? [] : [{ label: 'Email', done: emailValid }]),
     ...(showGender ? [{ label: 'Gender', done: genderValid }] : []),
     { label: 'Height', done: heightValid },
     { label: 'Diet Preference', done: dietValid },
@@ -275,7 +298,7 @@ const CompleteProfilePage = ({
     }
     setSaving(true);
     try {
-      const uid = user?.id || user?.UserId;
+      const uid = user?.id || user?.userId || user?.UserId;
       const hadEmail = !!(user?.email || user?.Email);
 
       if (!hadEmail) {
@@ -369,7 +392,7 @@ const CompleteProfilePage = ({
           <h1 className="text-2xl font-bold text-white">Complete Your Profile</h1>
         </div>
         <p className="text-green-100 text-sm">
-          Gender, height, diet, body metrics, and photo — then you&apos;re set.
+          Gender, height, diet, and body metrics — then transformation photos.
         </p>
       </div>
       <div className="max-w-md mx-auto p-5 space-y-5">
@@ -383,8 +406,9 @@ const CompleteProfilePage = ({
             setEmail={setEmail}
             emailValid={emailValid}
             emailLocked={emailLocked}
-            identityLocked={nameLocked}
-            hideName={nameLocked}
+            identityLocked={identityLocked}
+            hideName={hideName}
+            hideEmail={hideEmail}
             gender={gender}
             setGender={setGender}
             showGender={showGender}

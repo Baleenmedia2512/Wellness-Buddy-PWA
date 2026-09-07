@@ -59,4 +59,18 @@ describe('isReportBeverageRecord', () => {
     assert.equal(isReportBeverageRecord({ ProcessedBy: 'afresh_preset' }), true);
     assert.equal(isReportBeverageRecord({ ProcessedBy: null, AnalysisData: null }), false);
   });
+
+  it('detects legacy water rows via embedded processedBy in AnalysisData', () => {
+    assert.equal(isReportBeverageRecord({
+      ProcessedBy: 'manual_app',
+      AnalysisData: { processedBy: 'water_preset', foods: [{ name: 'water', volume_ml: 200 }] },
+    }), true);
+  });
+
+  it('detects beverage-only meals from AnalysisData when ProcessedBy is missing', () => {
+    assert.equal(isReportBeverageRecord({
+      ProcessedBy: 'manual_app',
+      AnalysisData: { foods: [{ name: 'water', volume_ml: 250, calories: 0 }] },
+    }), true);
+  });
 });

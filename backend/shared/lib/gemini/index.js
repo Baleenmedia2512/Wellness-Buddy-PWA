@@ -13,7 +13,18 @@
  * ---------------------------------------------------------------------------
  */
 
-export { getModel, imageInlinePart, SchemaType, MODEL_NAME, FALLBACK_MODEL_NAME, MODEL_CONFIGS } from './geminiClient.js';
+export {
+  getModel,
+  imageInlinePart,
+  SchemaType,
+  MODEL_NAME,
+  FALLBACK_MODEL_NAME,
+  PINNED_PRIMARY_MODEL,
+  PINNED_FALLBACK_MODEL,
+  ALLOWED_GEMINI_MODELS,
+  resolvePinnedGeminiModel,
+  MODEL_CONFIGS,
+} from './geminiClient.js';
 export { safeParseJson, validateShape, parseAndValidate } from './safeJson.js';
 export { withTempFileCleanup, cleanupFiles } from './tempFileCleanup.js';
 

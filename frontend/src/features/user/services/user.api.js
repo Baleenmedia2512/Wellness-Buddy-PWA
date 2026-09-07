@@ -7,6 +7,7 @@ import { getDeviceTimezoneIana } from '../../../shared/utils/deviceTimezone.js';
 import cacheManager from '../../../shared/services/cacheManager.js';
 import { apiFetch } from '../../../shared/services/apiFetch.js';
 import { handlePossibleAppUpdateRequired } from '../../../shared/services/appVersionEnforce.client.js';
+import { syncMarathonWeightComparisonFromProfile } from '../../marathon/marathonWeightComparisonCache.js';
 
 const base = () => getApiBaseUrl();
 
@@ -55,6 +56,9 @@ export async function getProfile(emailOrOpts, maybeOpts = {}) {
       );
       const data = await res.json();
       handlePossibleAppUpdateRequired(res, data);
+      if (data?.success && data?.data) {
+        syncMarathonWeightComparisonFromProfile(data.data);
+      }
       return data;
     },
     cacheManager.ttls.userProfile,

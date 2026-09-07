@@ -21,9 +21,9 @@ export const MANUAL_LOG_CATEGORY = Object.freeze({
  */
 export const DRY_SALAD_META = Object.freeze({
   id: MANUAL_LOG_CATEGORY.DRY_SALAD,
-  label: 'Dry Salad',
+  label: 'Target Nutrition',
   emoji: '🥗',
-  headerTitle: 'Dry Salad',
+  headerTitle: 'Target Nutrition',
   headerSubtitle: 'Your usual combo is ready — add or remove',
 });
 

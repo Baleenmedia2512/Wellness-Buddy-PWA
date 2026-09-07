@@ -43,7 +43,10 @@ import logger from '../../../shared/lib/logger.js';
 import { withTempFileCleanup } from '../../../shared/lib/gemini/tempFileCleanup.js';
 import { analyse } from '../../../shared/lib/ai-orchestration/AIAnalysisOrchestrator.js';
 import { isEnabled } from '../../../shared/lib/feature-flags.js';
-import { assertReservationValid } from '../../../features/ai-credits/ai-credits.service.js';
+import {
+  assertReservationValid,
+  assertAiFoodAnalysisAccess,
+} from '../../../features/ai-credits/ai-credits.service.js';
 
 
 // Hardcoded enum to avoid importing the browser-only ai-token-monitor SDK
@@ -125,6 +128,7 @@ export default async function handler(req, res) {
     // Food-capture analysis is the only supported journey for this endpoint.
     const module = ANALYSIS_MODULES.FOOD_IMAGE_ANALYSIS;
 
+    // Credit gate + leaf/window access (version-routed).
     if (isEnabled('ff.ai-credits') && creditGated) {
       try {
         await assertReservationValid({ userId, reservationId });
@@ -138,6 +142,20 @@ export default async function handler(req, res) {
           },
         });
       }
+    }
+
+    // Leaf downline + 12–4 window — never trust client role (§5.1 dual-path inside).
+    try {
+      await assertAiFoodAnalysisAccess({ userId, appVersion });
+    } catch (accessErr) {
+      const status = accessErr.status ?? 403;
+      return res.status(status).json({
+        ok: false,
+        error: {
+          code: accessErr.code ?? 'AI_FOOD_ACCESS_DENIED',
+          message: accessErr.message ?? 'AI food analysis not allowed',
+        },
+      });
     }
 
     // Read image into buffer; keep base64 for enrichment job queue

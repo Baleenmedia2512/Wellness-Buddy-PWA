@@ -7,6 +7,11 @@ import bcrypt from 'bcryptjs';
 import crypto from 'node:crypto';
 import nodemailer from 'nodemailer';
 import * as repo from './testimonials.repository.js';
+import {
+  hasCompletePhotoTestimonial,
+  isPhotoPairComplete,
+  resolveHealthIssueOtpChannel,
+} from './domain/photoCompleteness.rules.js';
 import logger from '../../shared/lib/logger.js';
 import { ValidationError } from '../../shared/lib/ValidationError.js';
 import {
@@ -24,6 +29,7 @@ import {
   validateTeamReport,
   validateSubmitAllEdits,
   validateVerifyUnifiedOtp,
+  validateResendUnifiedOtp,
   validateUpdateMemberHealthIssues,
   MAX_HEALTH_VIDEO_BYTES,
   MAX_BUSINESS_VIDEO_BYTES,
@@ -51,15 +57,26 @@ import {
 
 // â”€â”€â”€ OTP helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
+/** How long a coach verification OTP remains valid (product copy + expiry). */
+export const TESTIMONIAL_OTP_VALIDITY_HOURS = 24;
+
 function generateOtp() {
   return Math.floor(100000 + Math.random() * 900000).toString();
 }
 
-function otpExpiryIst(hoursFromNow = 24) {
+function otpExpiryIst(hoursFromNow = TESTIMONIAL_OTP_VALIDITY_HOURS) {
   const now = new Date();
   const istOffset = 5.5 * 60 * 60 * 1000;
   const expiresAt = new Date(now.getTime() + istOffset + hoursFromNow * 60 * 60 * 1000);
   return expiresAt.toISOString().replace('T', ' ').replace('Z', '').substring(0, 23);
+}
+
+/** Same clock convention as verifyUnifiedOtp / verifyOtp. */
+function isOtpExpired(otpExpiresAt) {
+  if (!otpExpiresAt) return true;
+  const now = new Date();
+  const istNow = new Date(now.getTime() + 5.5 * 60 * 60 * 1000);
+  return istNow > new Date(otpExpiresAt);
 }
 
 function storagePath(userId, side, timestamp) {
@@ -96,48 +113,6 @@ function normalizeHealthIssuesList(list) {
   return result;
 }
 
-/** Extract millis timestamp embedded in storage paths like `42/before_1720000000000.jpg`. */
-function parseStoragePathTimestamp(path) {
-  if (!path || typeof path !== 'string') return 0;
-  const match = path.match(/_(\d{10,13})\./);
-  return match ? Number(match[1]) : 0;
-}
-
-/** Member submitted a complete before/after photo testimonial (pending or verified). */
-function hasCompletePhotoTestimonial(row) {
-  if (repo.isVideoOnlyPlaceholder(row.before_image_path)) return false;
-  if (row.status === 'incomplete') return false;
-  const afterPath = row.after_image_path;
-  if (!afterPath || afterPath === row.before_image_path) return false;
-  return !repo.isVideoOnlyPlaceholder(afterPath);
-}
-
-function hasVideoTestimonial(row) {
-  return !!(row.health_video_path || row.business_video_path);
-}
-
-/**
- * Health issues are shared across photo + video flows.
- * When they change, OTP email should attach the member's latest submitted entry.
- */
-function resolveHealthIssueOtpChannel(row) {
-  const hasPhoto = hasCompletePhotoTestimonial(row);
-  const hasVideo = hasVideoTestimonial(row);
-  if (!hasPhoto && !hasVideo) return null;
-  if (hasPhoto && !hasVideo) return 'photo';
-  if (!hasPhoto && hasVideo) return 'video';
-
-  const photoTs = Math.max(
-    parseStoragePathTimestamp(row.before_image_path),
-    parseStoragePathTimestamp(row.after_image_path),
-  );
-  const videoTs = Math.max(
-    Date.parse(row.video_verified_at || '') || 0,
-    Date.parse(row.updated_at || '') || 0,
-  );
-  return photoTs >= videoTs ? 'photo' : 'video';
-}
-
 async function sendHealthIssueOtpEmail({
   channel,
   existing,
@@ -148,7 +123,7 @@ async function sendHealthIssueOtpEmail({
 }) {
   const otp       = generateOtp();
   const otpHash   = await bcrypt.hash(otp, 10);
-  const otpExpiry = otpExpiryIst(24);
+  const otpExpiry = otpExpiryIst(TESTIMONIAL_OTP_VALIDITY_HOURS);
 
   if (channel === 'photo') {
     saveUpdates.status       = 'pending';
@@ -239,6 +214,15 @@ async function enrichTestimonialForDisplay(testimonial, opts = {}) {
     videoStatus:            testimonial.video_status        ?? 'none',
     videoVerifiedAt:        testimonial.video_verified_at   ?? null,
     recoveredHealthIssues:  testimonial.recovered_health_issues ?? [],
+    // OTP metadata for member UI (never expose hash).
+    otpExpiresAt:           testimonial.otp_expires_at ?? null,
+    otpExpired:             testimonial.otp_hash
+      ? isOtpExpired(testimonial.otp_expires_at)
+      : false,
+    otpValidityHours:       TESTIMONIAL_OTP_VALIDITY_HOURS,
+    hasPendingOtp:          Boolean(testimonial.otp_hash),
+    // Alias kept for older clients that read otpPending.
+    otpPending:             Boolean(testimonial.otp_hash),
   };
 }
 
@@ -320,7 +304,7 @@ export async function submitTestimonial(rawBody) {
   if (payload.hasAfter) {
     otp       = generateOtp();
     otpHash   = await bcrypt.hash(otp, 10);
-    otpExpiry = otpExpiryIst(24);
+    otpExpiry = otpExpiryIst(TESTIMONIAL_OTP_VALIDITY_HOURS);
   }
 
   const newStatus = payload.hasAfter ? 'pending' : 'incomplete';
@@ -545,7 +529,7 @@ export async function editTestimonial(rawBody) {
     // Full testimonial â€” reset to pending and issue new OTP
     const otp       = generateOtp();
     const otpHash   = await bcrypt.hash(otp, 10);
-    const otpExpiry = otpExpiryIst(24);
+    const otpExpiry = otpExpiryIst(TESTIMONIAL_OTP_VALIDITY_HOURS);
     updates.status       = 'pending';
     updates.otpHash      = otpHash;
     updates.otpExpiresAt = otpExpiry;
@@ -607,6 +591,17 @@ export async function getMyTestimonial(rawQuery) {
   }
 
   const data = await enrichTestimonialForDisplay(row);
+  let sponsorName = null;
+  try {
+    const userInfo = await repo.findCoachIdForUser(userId);
+    if (userInfo?.coachId) {
+      const coachInfo = await repo.findCoachEmail(userInfo.coachId);
+      sponsorName = coachInfo?.name ? String(coachInfo.name).trim() : null;
+    }
+  } catch (err) {
+    logger.warn('[testimonials] sponsor name lookup failed', { userId, message: err?.message });
+  }
+  if (data) data.sponsorName = sponsorName;
 
   return {
     httpStatus: 200,
@@ -1035,7 +1030,7 @@ export async function submitVideo(rawBody) {
 
   const otp       = generateOtp();
   const otpHash   = await bcrypt.hash(otp, 10);
-  const otpExpiry = otpExpiryIst(24);
+  const otpExpiry = otpExpiryIst(TESTIMONIAL_OTP_VALIDITY_HOURS);
 
   await repo.updateTestimonialVideos(existing.id, {
     ...uploads,
@@ -1254,12 +1249,12 @@ async function sendUnifiedCoachEmail({
  * Member submits multiple edited slots in one request; generates a single unified OTP.
  *
  * Logic:
- * - Issues-only on an incomplete testimonial → silent save, no OTP, no email.
- * - Issues-only on a complete photo/video testimonial → unified OTP (same as other slots).
- * - Any photo/video change → one OTP stored in both otp_hash and video_otp_hash fields.
- * - Photo status is set to 'pending' only when the testimonial is or becomes complete (has both photos).
- * - Video status is set to 'pending' when video slots are dirty.
- * - Always overwrites otp_hash with the new unified OTP (so verifyUnifiedOtp can work).
+ * - Issues-only with no visible before/after card and no video → silent save, no OTP.
+ * - Issues-only on a visible photo card (including seeded after clone) or video → unified OTP.
+ * - First after-weight change on a seeded clone completes the photo pair and sends OTP.
+ * - Any photo/video change on a complete pair → one OTP stored in otp_hash / video_otp_hash.
+ * - Photo status is 'pending' when the testimonial is or becomes complete.
+ * - Video status is 'pending' when video slots are dirty.
  */
 export async function submitAllEdits(rawBody) {
   const payload = validateSubmitAllEdits(rawBody);
@@ -1316,6 +1311,7 @@ export async function submitAllEdits(rawBody) {
         testimonialId: existing.id,
         status:     existing.status,
         videoStatus: existing.video_status ?? 'none',
+        otpSent:    false,
         testimonial: display,
       },
     };
@@ -1350,15 +1346,16 @@ export async function submitAllEdits(rawBody) {
   }
   if (hasIssuesDirty)                       photoUpdates.recoveredHealthIssues = mergedIssues;
 
-  // Determine if testimonial is/becomes complete (has both real photos)
+  // Determine if testimonial is/becomes complete (distinct after photo, or
+  // seeded clone whose after weight now differs from before).
   const newBeforePath = photoUpdates.beforeImagePath ?? existing.before_image_path;
   const newAfterPath  = photoUpdates.afterImagePath  ?? existing.after_image_path;
-  const hasRealBefore = newBeforePath && !repo.isVideoOnlyPlaceholder(newBeforePath);
-  const hasRealAfter  = newAfterPath
-    && !repo.isVideoOnlyPlaceholder(newAfterPath)
-    && newAfterPath !== existing.before_image_path
-    && newAfterPath !== newBeforePath;
-  const isComplete = !!(hasRealBefore && hasRealAfter);
+  const isComplete = isPhotoPairComplete(existing, {
+    beforePath: newBeforePath,
+    afterPath: newAfterPath,
+    beforeWeightKg: photoUpdates.beforeWeightKg ?? existing.before_weight_kg,
+    afterWeightKg: photoUpdates.afterWeightKg ?? existing.after_weight_kg,
+  });
 
   // Guard: if photos still incomplete after update, no OTP needed for photo changes
   const photoNeedsOtp = hasPhotoDirty && isComplete;
@@ -1383,10 +1380,32 @@ export async function submitAllEdits(rawBody) {
     || prevAfterImagePath === existing.before_image_path
     || existing.status === 'incomplete';
 
+  const needsOtp = photoNeedsOtp || Boolean(issuesOtpChannel) || hasVideoDirty;
+
+  if (!needsOtp) {
+    if (hasPhotoDirty && !isComplete) {
+      photoUpdates.status = 'incomplete';
+    }
+    await repo.updateTestimonial(existing.id, photoUpdates);
+    const saved = await enrichTestimonialForDisplay(await repo.findByUserId(payload.userId));
+    return {
+      httpStatus: 200,
+      body: {
+        success: true,
+        message: 'Updates saved.',
+        testimonialId: existing.id,
+        status: photoUpdates.status ?? existing.status,
+        videoStatus: existing.video_status ?? 'none',
+        otpSent: false,
+        testimonial: saved,
+      },
+    };
+  }
+
   // Generate single unified OTP
   const otp       = generateOtp();
   const otpHash   = await bcrypt.hash(otp, 10);
-  const otpExpiry = otpExpiryIst(24);
+  const otpExpiry = otpExpiryIst(TESTIMONIAL_OTP_VALIDITY_HOURS);
 
   // Save photo changes
   const photoDbUpdates = { ...photoUpdates, otpHash, otpExpiresAt: otpExpiry };
@@ -1449,6 +1468,9 @@ export async function submitAllEdits(rawBody) {
     ? 'pending'
     : (existing.video_status ?? 'none');
   const display = await enrichTestimonialForDisplay(await repo.findByUserId(payload.userId));
+  if (display) {
+    display.sponsorName = coachInfo?.name ? String(coachInfo.name).trim() : null;
+  }
 
   return {
     httpStatus: 200,
@@ -1458,7 +1480,11 @@ export async function submitAllEdits(rawBody) {
       testimonialId: existing.id,
       status:        finalStatus,
       videoStatus:   finalVideoStatus,
+      otpSent:       true,
       testimonial:   display,
+      otpExpiresAt:  otpExpiry,
+      otpValidityHours: TESTIMONIAL_OTP_VALIDITY_HOURS,
+      sponsorName:   coachInfo?.name ? String(coachInfo.name).trim() : null,
     },
   };
 }
@@ -1478,7 +1504,7 @@ export async function verifyUnifiedOtp(rawBody) {
   const istNow  = new Date(now.getTime() + 5.5 * 60 * 60 * 1000);
   const expiry  = new Date(row.otp_expires_at);
   if (istNow > expiry) {
-    throw new ValidationError(422, 'OTP has expired. Please re-submit your updates to receive a new OTP.');
+    throw new ValidationError(422, 'OTP has expired. Use Resend OTP to send a new code to your sponsor.');
   }
 
   const valid = await bcrypt.compare(otp, row.otp_hash);
@@ -1486,8 +1512,9 @@ export async function verifyUnifiedOtp(rawBody) {
 
   const verifiedAt = nowUtc();
 
-  // Mark photo as verified if it was pending
-  const photoPending = row.status === 'pending';
+  // Mark photo as verified if it was pending (or incomplete with a complete pair + OTP)
+  const photoPending = row.status === 'pending'
+    || (row.status === 'incomplete' && hasCompletePhotoTestimonial(row));
   const videoPending = (row.video_status ?? 'none') === 'pending';
 
   const photoUpdates = { otpHash: null, otpExpiresAt: null };
@@ -1518,6 +1545,99 @@ export async function verifyUnifiedOtp(rawBody) {
       message: verifiedItems
         ? `Your ${verifiedItems} have been verified successfully.`
         : 'Verification complete.',
+    },
+  };
+}
+
+/**
+ * Resend a unified OTP to the sponsor after the previous code expired.
+ */
+export async function resendUnifiedOtp(rawBody) {
+  const { userId } = validateResendUnifiedOtp(rawBody);
+
+  const row = await repo.findByUserId(userId);
+  if (!row) throw new ValidationError(404, 'Testimonial not found');
+  if (!row.otp_hash) {
+    throw new ValidationError(422, 'No pending verification OTP found. Please re-submit your updates.');
+  }
+
+  if (!isOtpExpired(row.otp_expires_at)) {
+    throw new ValidationError(
+      422,
+      `OTP is still valid. Ask your sponsor for the code, or wait until it expires (${TESTIMONIAL_OTP_VALIDITY_HOURS} hours from send).`,
+    );
+  }
+
+  const photoPending = row.status === 'pending';
+  const videoPending = (row.video_status ?? 'none') === 'pending';
+  if (!photoPending && !videoPending) {
+    throw new ValidationError(422, 'Nothing is awaiting verification.');
+  }
+
+  const userInfo = await repo.findCoachIdForUser(userId);
+  if (!userInfo?.coachId) {
+    throw new ValidationError(422, 'You do not have a sponsor assigned yet.');
+  }
+  const coachInfo = await repo.findCoachEmail(userInfo.coachId);
+  if (!coachInfo?.email) {
+    throw new ValidationError(422, 'Sponsor email is not available. Please contact support.');
+  }
+
+  const otp = generateOtp();
+  const otpHash = await bcrypt.hash(otp, 10);
+  const otpExpiry = otpExpiryIst(TESTIMONIAL_OTP_VALIDITY_HOURS);
+
+  await repo.updateTestimonial(row.id, {
+    otpHash,
+    otpExpiresAt: otpExpiry,
+  });
+  if (videoPending || row.video_otp_hash) {
+    await repo.updateTestimonialVideos(row.id, {
+      videoOtpHash: otpHash,
+      videoOtpExpiresAt: otpExpiry,
+    });
+  }
+
+  const isComplete = hasCompletePhotoTestimonial({
+    ...row,
+    before_image_path: row.before_image_path,
+    after_image_path: row.after_image_path,
+    status: row.status,
+  });
+
+  await sendUnifiedCoachEmail({
+    coachEmail: coachInfo.email,
+    memberName: userInfo.userName,
+    otp,
+    changedSlots: [],
+    goalType: row.goal_type,
+    beforeWeight: row.before_weight_kg,
+    afterWeight: row.after_weight_kg,
+    durationText: row.duration_text,
+    beforeImagePath: row.before_image_path,
+    afterImagePath: row.after_image_path,
+    previousBeforeImagePath: null,
+    previousAfterImagePath: null,
+    healthVideoPath: row.health_video_path,
+    businessVideoPath: row.business_video_path,
+    recoveredHealthIssues: row.recovered_health_issues ?? [],
+    isComplete,
+  });
+
+  const display = await enrichTestimonialForDisplay(await repo.findByUserId(userId));
+  if (display) {
+    display.sponsorName = coachInfo.name ? String(coachInfo.name).trim() : null;
+  }
+
+  return {
+    httpStatus: 200,
+    body: {
+      success: true,
+      message: `A new OTP was sent to your sponsor${coachInfo.name ? ` (${coachInfo.name})` : ''}. It is valid for ${TESTIMONIAL_OTP_VALIDITY_HOURS} hours.`,
+      otpExpiresAt: otpExpiry,
+      otpValidityHours: TESTIMONIAL_OTP_VALIDITY_HOURS,
+      sponsorName: coachInfo.name ? String(coachInfo.name).trim() : null,
+      testimonial: display,
     },
   };
 }

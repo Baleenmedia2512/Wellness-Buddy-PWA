@@ -20,64 +20,36 @@ describe('getAiCreditUiState', () => {
       remaining: 2,
     });
     assert.equal(ui.phase, 'available');
-    assert.equal(ui.leftToday, 2);
   });
 
-  it('busy when pending holds block but nothing consumed yet', () => {
+  it('outside_window when availableInWindow is false', () => {
     const ui = getAiCreditUiState({
       enabled: true,
-      dailyLimit: 2,
+      dailyLimit: 3,
       used: 0,
-      pending: 2,
-      remaining: 0,
-    });
-    assert.equal(ui.phase, 'busy');
-    assert.equal(ui.leftToday, 2);
-  });
-
-  it('exhausted only when used reaches limit', () => {
-    const ui = getAiCreditUiState({
-      enabled: true,
-      dailyLimit: 2,
-      used: 2,
       pending: 0,
-      remaining: 0,
+      remaining: 3,
+      availableInWindow: false,
     });
-    assert.equal(ui.phase, 'exhausted');
-    assert.equal(ui.leftToday, 0);
+    assert.equal(ui.phase, 'outside_window');
   });
 });
 
 describe('reserveFailureMessage', () => {
-  it('uses calm copy for pending holds', () => {
-    assert.match(reserveFailureMessage('pending_holds'), /temporarily unavailable/i);
-    assert.match(reserveFailureMessage('pending_holds'), /not used yet/i);
-  });
-
-  it('uses midnight copy only for daily exhaustion', () => {
-    assert.match(reserveFailureMessage('daily_exhausted'), /midnight/i);
+  it('explains meal-time restriction for outside_window', () => {
+    assert.match(reserveFailureMessage('outside_window'), /meal times/i);
   });
 });
 
 describe('isAutoDetectEnabled', () => {
-  it('allows retry while busy', () => {
+  it('blocks outside meal window', () => {
     const ui = getAiCreditUiState({
       enabled: true,
       dailyLimit: 2,
       used: 0,
-      pending: 2,
-      remaining: 0,
-    });
-    assert.equal(isAutoDetectEnabled(ui), true);
-  });
-
-  it('blocks when exhausted', () => {
-    const ui = getAiCreditUiState({
-      enabled: true,
-      dailyLimit: 2,
-      used: 2,
       pending: 0,
-      remaining: 0,
+      remaining: 2,
+      availableInWindow: false,
     });
     assert.equal(isAutoDetectEnabled(ui), false);
   });

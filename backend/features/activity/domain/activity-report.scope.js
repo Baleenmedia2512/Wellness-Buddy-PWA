@@ -2,7 +2,11 @@
  * Resolve Activity Report audience by team scope (mine / direct / full).
  *
  * Active downline via indexed reporting hierarchy (matches Ideal Weight / Reports).
+ * Sponsor / Co-Sponsor leads keep Mine/Direct/Full UI even with 0 own members
+ * (shared-team partner roster may still populate).
  */
+import { getSupabaseClient } from '../../../utils/supabaseClient.js';
+import { resolveLeadSeatForUser } from '../../../utils/coachTeamSeats.js';
 import { buildActivityReportCoachScope } from './activity-report.hierarchy.js';
 
 export const TEAM_SCOPES = Object.freeze({
@@ -23,12 +27,13 @@ export function normalizeTeamScope(teamScope) {
   return TEAM_SCOPES.FULL;
 }
 
-function buildTeamScopeCounts(directIds, fullIds) {
+function buildTeamScopeCounts(directIds, fullIds, { isSharedLead = false } = {}) {
+  const hasRoster = directIds.length > 0 || fullIds.length > 0;
   return {
     mine: 1,
     direct: directIds.length,
     full: fullIds.length,
-    hasTeam: directIds.length > 0 || fullIds.length > 0,
+    hasTeam: hasRoster || isSharedLead,
   };
 }
 
@@ -36,11 +41,16 @@ function buildTeamScopeCounts(directIds, fullIds) {
  * Coach / upline / admin — same dual-coaching tree (Active downline only).
  */
 async function resolveTeamScope(userId) {
-  const { directIds, fullIds } = await buildActivityReportCoachScope(userId);
+  const supabase = getSupabaseClient();
+  const [{ directIds, fullIds }, seat] = await Promise.all([
+    buildActivityReportCoachScope(userId),
+    resolveLeadSeatForUser(supabase, userId),
+  ]);
+  const isSharedLead = seat.seat === 'sponsor' || seat.seat === 'co-sponsor';
   return {
     directIds,
     fullIds,
-    teamScopeCounts: buildTeamScopeCounts(directIds, fullIds),
+    teamScopeCounts: buildTeamScopeCounts(directIds, fullIds, { isSharedLead }),
   };
 }
 

@@ -143,6 +143,12 @@ function extractNutrition(analysisResult, deviceInfo) {
       confidenceScore = convertConfidenceToNumeric(firstFood.confidence || analysis.confidence);
       processedBy = 'background_service';
     }
+
+    // Client may send an explicit preset (water_preset, afresh_preset, shake_calculator).
+    // Must override device-derived manual_app / background_service for report beverage pills.
+    if (analysis?.processedBy) {
+      processedBy = String(analysis.processedBy).toLowerCase().trim();
+    }
   } catch (err) {
     logger.warn('extractNutrition: failed to parse analysisResult', { error: err?.message });
   }

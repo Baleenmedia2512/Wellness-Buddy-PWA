@@ -10,6 +10,7 @@
  */
 
 import { DIARY_FOOD_ACTIVITY } from '../activityType';
+import { formatPositiveWeightKg } from './weightShare';
 import { formatWaterVolume } from '../formatVolume';
 import { formatShakeProductScoops } from './shakeShare';
 import { giZone } from '../../../nutrition/domain/foodItemNutritionFacts';
@@ -33,7 +34,7 @@ export function buildDiaryShareSuffix(activityType, payload = {}) {
         || (payload.volumeMl != null ? formatWaterVolume(payload.volumeMl) : null);
       const day = dayTotalSuffix(payload);
       return consumed
-        ? `Consumed: ${consumed} water${day}`
+        ? `${waBold(`Consumed: ${consumed}`)} water${day}`
         : `Consumed water${day}`;
     }
     case DIARY_FOOD_ACTIVITY.AFRESH:
@@ -205,7 +206,5 @@ function dayTotalSuffix(payload) {
 
 /** Weight kg for share captions (2 decimal places max). */
 function formatShareKg(value) {
-  const n = Number(value);
-  if (!Number.isFinite(n)) return null;
-  return Math.round(n * 100) / 100;
+  return formatPositiveWeightKg(value);
 }

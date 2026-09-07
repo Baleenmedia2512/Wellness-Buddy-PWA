@@ -11,6 +11,7 @@ import {
   DETOX_MARATHON_DAYS,
   getMarathonCalendarState,
 } from './marathonCalendar.js';
+import { formatMarathonWeightWhatsAppNoticeLines } from './marathonWeightComparison.js';
 
 export const MARATHON_START_WHATSAPP_LABEL = 'Marathon Starts';
 export const DETOX_DAY_WHATSAPP_LABEL = 'Detox Day';
@@ -102,18 +103,39 @@ export function getMarathonWhatsAppAdvanceNotice(ymd) {
  * Marathon/Detox eve: tomorrow line only. Other in-marathon days: Day N.
  * Will not duplicate an existing notice.
  *
+ * Weight comparison lines (Previous Marathon End / Current Weight) are only
+ * appended when `includeWeightComparison` is true. Callers must pass that for
+ * weight shares only — food, water, education, and other captions stay on the
+ * Day N / Tomorrow sequence.
+ *
  * @param {unknown} caption
  * @param {unknown} ymd YYYY-MM-DD
+ * @param {object|null} [marathonWeightComparison]
+ * @param {{ includeWeightComparison?: boolean }} [options]
  * @returns {string}
  */
-export function appendMarathonWhatsAppNotice(caption, ymd) {
+export function appendMarathonWhatsAppNotice(
+  caption,
+  ymd,
+  marathonWeightComparison = null,
+  { includeWeightComparison = false } = {},
+) {
   const notice = getMarathonWhatsAppAdvanceNotice(ymd);
   const currentDay = notice ? null : getMarathonWhatsAppCurrentDayNotice(ymd);
   const base = String(caption || '').trim();
   const additions = [];
+  const state = getMarathonCalendarState(ymd);
 
   if (currentDay && !base.includes(currentDay)) additions.push(currentDay);
   if (notice && !base.includes(notice)) additions.push(notice);
+
+  if (includeWeightComparison && marathonWeightComparison) {
+    const weightLines = formatMarathonWeightWhatsAppNoticeLines(marathonWeightComparison, state);
+    const hasWeightLine = weightLines.some((line) => base.includes(line));
+    if (weightLines.length > 0 && !hasWeightLine) {
+      additions.push(...weightLines);
+    }
+  }
 
   if (additions.length === 0) return base;
   if (!base) return additions.join('\n');

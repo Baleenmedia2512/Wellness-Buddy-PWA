@@ -2,7 +2,13 @@
  * return-notify.service.js — Notify coach when a member returns after idle.
  *
  * Called from user lookup on login/status check. Never changes Status.
- * Dedupes by refreshing LastActiveAt only after a successful notify.
+ *
+ * Dedupe (claim-first): stamp LastActiveAt only if still idle; send email only
+ * when this request won the claim. Parallel /api/user/lookup calls cannot each
+ * send — losers get already_claimed.
+ *
+ * Trade-off: if email fails after a successful claim, we do not retry that gap
+ * (avoids duplicate storms). Failures are logged.
  *
  * @module backend/features/idle-cleanup/api/return-notify.service
  */
@@ -40,7 +46,7 @@ function buildEmailHtml({ coachName, memberName }) {
 }
 
 /**
- * If the member was idle ≥ threshold, email their coach once, then touch LastActiveAt.
+ * If the member was idle ≥ threshold, claim the notify slot then email their coach once.
  * Failures are logged and never thrown — lookup must stay non-blocking.
  *
  * @param {{
@@ -48,13 +54,21 @@ function buildEmailHtml({ coachName, memberName }) {
  *   lastActiveAt: Date|string|null|undefined,
  *   now?: Date,
  * }} params
+ * @param {Partial<typeof repo>} [deps] optional overrides for tests
  * @returns {Promise<{ notified: boolean, reason: string }>}
  */
 export async function notifyCoachIfReturningIdleUser({
   userId,
   lastActiveAt,
   now = new Date(),
-}) {
+}, deps = {}) {
+  const db = {
+    claimIdleReturnNotify: deps.claimIdleReturnNotify || repo.claimIdleReturnNotify,
+    findMemberCoachContext: deps.findMemberCoachContext || repo.findMemberCoachContext,
+    findCoachContact: deps.findCoachContact || repo.findCoachContact,
+    sendCoachEmail: deps.sendCoachEmail || repo.sendCoachEmail,
+  };
+
   if (!userId) {
     return { notified: false, reason: 'missing_user' };
   }
@@ -66,12 +80,18 @@ export async function notifyCoachIfReturningIdleUser({
   const idleDays = idleDaysSince(lastActiveAt, now) ?? 0;
 
   try {
-    const { coachId, memberName } = await repo.findMemberCoachContext(userId);
+    // Claim before send so concurrent lookups cannot each mail the coach.
+    const claimed = await db.claimIdleReturnNotify(userId, { now });
+    if (!claimed) {
+      return { notified: false, reason: 'already_claimed' };
+    }
+
+    const { coachId, memberName } = await db.findMemberCoachContext(userId);
     if (!coachId) {
       return { notified: false, reason: 'no_coach' };
     }
 
-    const coach = await repo.findCoachContact(coachId);
+    const coach = await db.findCoachContact(coachId);
     if (!coach.email) {
       return { notified: false, reason: 'no_coach_email' };
     }
@@ -82,14 +102,14 @@ export async function notifyCoachIfReturningIdleUser({
       memberName,
     });
 
-    const sent = await repo.sendCoachEmail({
+    const sent = await db.sendCoachEmail({
       to: coach.email,
       subject,
       html,
     });
 
     if (!sent.success) {
-      logger.warn('[return-notify] coach email failed', {
+      logger.warn('[return-notify] coach email failed after claim', {
         userId,
         coachId,
         error: sent.error,
@@ -97,10 +117,6 @@ export async function notifyCoachIfReturningIdleUser({
       });
       return { notified: false, reason: 'email_failed' };
     }
-
-    // Refresh activity only after a successful send so skipped/failed attempts
-    // can retry on the next login instead of being consumed silently.
-    await repo.touchLastActive(userId);
 
     logger.info('[return-notify] coach notified of idle return', {
       userId,

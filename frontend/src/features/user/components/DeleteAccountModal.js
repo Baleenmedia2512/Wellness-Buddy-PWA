@@ -36,8 +36,14 @@ const DeleteAccountModal = ({ isOpen, onClose, userEmail, onAccountDeleted, onSi
 
   const doSendOtp = async () => {
     setOtpSending(true); setErrorMessage('');
+    const recipient = String(userEmail || '').trim();
+    if (!recipient || !recipient.includes('@')) {
+      setErrorMessage('No email found for this account. Please re-login and try again.');
+      setOtpSending(false);
+      return false;
+    }
     try {
-      const data = await sendOtp(userEmail);
+      const data = await sendOtp(recipient);
       if (data.success) { flow.setStep(2); flow.markOtpSent(); resend.start(60); return true; }
       setErrorMessage(data.message || 'Failed to send OTP. Try again.');
     } catch { setErrorMessage('Network error. Please check your connection.'); }

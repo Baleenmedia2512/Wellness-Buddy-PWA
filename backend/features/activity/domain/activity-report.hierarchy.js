@@ -4,9 +4,11 @@
 import { getSupabaseClient } from '../../../utils/supabaseClient.js';
 import {
   loadReportingContextForCoach,
-  getFullReportingMembers,
-  getDirectReportingMembers,
 } from '../../../utils/reportingHierarchyService.js';
+import {
+  getSharedTeamDirectMembers,
+  getSharedTeamFullMembers,
+} from '../../../utils/sharedTeamReporting.js';
 
 /** In-process cache — warm lambda serves bootstrap + detail without re-walking tree. */
 const scopeCache = new Map();
@@ -27,10 +29,10 @@ export async function buildActivityReportCoachScope(userId) {
   const context = await loadReportingContextForCoach(supabase, userIdNum);
 
   const value = {
-    directIds: getDirectReportingMembers(userIdNum, context)
+    directIds: getSharedTeamDirectMembers(userIdNum, context)
       .map((member) => member.UserId)
       .filter(Boolean),
-    fullIds: getFullReportingMembers(userIdNum, context)
+    fullIds: getSharedTeamFullMembers(userIdNum, context)
       .map((member) => member.UserId)
       .filter(Boolean),
   };

@@ -243,6 +243,15 @@ export function useWellnessScoreHistory({
       if (String(seedDate) !== String(endDate)) return;
       const day = asHistoryDay(score, endDate);
       if (!day) return;
+      const current = historyDaysRef.current[0];
+      if (
+        current
+        && String(current.date) === String(day.date)
+        && Number(current.totalEarned) === Number(day.totalEarned)
+        && Number(current.totalPossible) === Number(day.totalPossible)
+      ) {
+        return;
+      }
       applyDays([day]);
       setError(null);
       setLoading(false);
