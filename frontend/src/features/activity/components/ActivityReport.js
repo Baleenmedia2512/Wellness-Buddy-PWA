@@ -1,14 +1,12 @@
 import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import {
   RefreshCw, Download, Search, Share2, Filter, X,
-  Calendar, Users, LayoutGrid, UserCheck,
 } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
 import PhoneContactActions from '../../../shared/components/PhoneContactActions.jsx';
-import DateRangePicker from '../../../shared/components/common/DateRangePicker';
 import { ACTIVITY_REPORT_DATE_RANGES, formatCustomRangeLabel } from '../../../shared/domain/reportDateRanges';
 import { fetchHasTeamMembers, invalidateHasTeamMembersCache } from '../../team/services/teamSearchService';
 import { TEAM_SCOPES, TEAM_SCOPE_OPTIONS } from '../../reports/utils/reportFilters';
@@ -19,7 +17,6 @@ import {
 } from '../utils/activityReportShareText';
 import {
   ACTIVITY_REPORT_ATTENDANCE,
-  ACTIVITY_REPORT_ATTENDANCE_OPTIONS,
   activeActivityReportTableFilters,
   activityReportFilterQuery,
   emptyActivityReportFilterOptions,
@@ -30,6 +27,7 @@ import {
   serializeActivityReportTableFilters,
 } from '../utils/activityReportTableFilters';
 import ActivityReportTableFiltersSheet from './ActivityReportTableFiltersSheet';
+import ActivityReportFiltersBar from './ActivityReportFiltersBar';
 
 const DEFAULT_PAGE_SIZE = 20;
 const SEARCH_DEBOUNCE_MS = 300;
@@ -67,9 +65,6 @@ const ACTIVITY_TYPES = [
   { id: 'water', label: 'Water' },
   { id: 'calories', label: 'Exercise' },
 ];
-
-const REPORT_FILTER_SELECT_CLASS =
-  'w-full h-[2.125rem] pl-7 pr-1 border border-gray-200 rounded-lg text-[11px] sm:text-xs text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-green-500 disabled:bg-gray-50 disabled:text-gray-400 truncate';
 
 /** Returns '—' for null, undefined, empty string, or the literal string "N/A" */
 const display = (val) => (!val || val === 'N/A') ? '—' : val;
@@ -655,8 +650,12 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0, t
     setError('');
     if (range !== 'custom') {
       setShowReportDatePicker(false);
-    } else if (!customStartDate || !customEndDate) {
-      setSummary(null);
+    } else {
+      // Always reopen the calendar — native <select> will not fire onChange when
+      // "Custom" is already selected, so callers also open via the edit control.
+      if (!customStartDate || !customEndDate) {
+        setSummary(null);
+      }
       setShowReportDatePicker(true);
     }
   };
@@ -954,130 +953,28 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0, t
       </div>
 
       <div className="max-w-7xl mx-auto px-4 py-3">
-        <section className="mb-3 bg-white rounded-xl border border-gray-200 shadow-sm p-3" aria-label="Report filters">
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 mb-2">
-            Report filters
-          </p>
-          <div className="rounded-lg border border-gray-100 bg-gray-50/80 p-2 space-y-2">
-            <div className="grid grid-cols-2 gap-2">
-              <label className="min-w-0">
-                <span className="sr-only">Date</span>
-                <div className="relative">
-                  <Calendar className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400" />
-                  <select
-                    value={dateRange}
-                    onChange={(event) => {
-                      const next = event.target.value;
-                      if (next === 'custom') {
-                        setShowReportDatePicker(true);
-                      }
-                      handleDateRangeChange(next);
-                    }}
-                    disabled={summaryLoading}
-                    className={REPORT_FILTER_SELECT_CLASS}
-                  >
-                    {ACTIVITY_REPORT_DATE_RANGES.map((range) => (
-                      <option key={range.value} value={range.value}>
-                        {range.value === 'custom' && dateRange === 'custom'
-                          ? formatCustomRangeLabel(customStartDate, customEndDate)
-                          : range.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </label>
-
-              {showTeamScope ? (
-                <label className="min-w-0">
-                  <span className="sr-only">Team</span>
-                  <div className="relative">
-                    <Users className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400" />
-                    <select
-                      value={teamScope}
-                      onChange={(event) => handleTeamScopeChange(event.target.value)}
-                      disabled={summaryLoading || detailLoading}
-                      className={REPORT_FILTER_SELECT_CLASS}
-                    >
-                      {TEAM_SCOPE_OPTIONS.map(({ value, label }) => {
-                        const count = teamScopeCounts?.[value] ?? 0;
-                        const showCount = value !== TEAM_SCOPES.MINE;
-                        return (
-                          <option key={value} value={value}>
-                            {showCount ? `${label} (${count})` : label}
-                          </option>
-                        );
-                      })}
-                    </select>
-                  </div>
-                </label>
-              ) : (
-                <label className="min-w-0">
-                  <span className="sr-only">Attendance</span>
-                  <div className="relative">
-                    <UserCheck className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400" />
-                    <select
-                      value={attendanceStatus}
-                      onChange={handleAttendanceChange}
-                      disabled={detailLoading}
-                      className={REPORT_FILTER_SELECT_CLASS}
-                    >
-                      {ACTIVITY_REPORT_ATTENDANCE_OPTIONS.map((option) => (
-                        <option key={option.id} value={option.id}>{option.label}</option>
-                      ))}
-                    </select>
-                  </div>
-                </label>
-              )}
-
-              <label className={`min-w-0 ${showTeamScope ? '' : 'col-span-2'}`}>
-                <span className="sr-only">Category</span>
-                <div className="relative">
-                  <LayoutGrid className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400" />
-                  <select
-                    value={selectedActivity}
-                    onChange={(event) => handleActivityClick(event.target.value)}
-                    disabled={detailLoading}
-                    className={REPORT_FILTER_SELECT_CLASS}
-                  >
-                    {ACTIVITY_TYPES.map((activity) => (
-                      <option key={activity.id} value={activity.id}>
-                        {activity.label} ({summary?.[activity.id] || 0})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </label>
-
-              {showTeamScope && (
-                <label className="min-w-0">
-                  <span className="sr-only">Attendance</span>
-                  <div className="relative">
-                    <UserCheck className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400" />
-                    <select
-                      value={attendanceStatus}
-                      onChange={handleAttendanceChange}
-                      disabled={detailLoading}
-                      className={REPORT_FILTER_SELECT_CLASS}
-                    >
-                      {ACTIVITY_REPORT_ATTENDANCE_OPTIONS.map((option) => (
-                        <option key={option.id} value={option.id}>{option.label}</option>
-                      ))}
-                    </select>
-                  </div>
-                </label>
-              )}
-            </div>
-
-            {dateRange === 'custom' && showReportDatePicker && (
-              <DateRangePicker
-                startDate={customStartDate}
-                endDate={customEndDate}
-                onSelect={handleCustomDateSelect}
-                onClose={() => setShowReportDatePicker(false)}
-              />
-            )}
-          </div>
-        </section>
+        <ActivityReportFiltersBar
+          dateRange={dateRange}
+          customStartDate={customStartDate}
+          customEndDate={customEndDate}
+          showDatePicker={showReportDatePicker}
+          onDateRangeChange={handleDateRangeChange}
+          onOpenCustomPicker={() => setShowReportDatePicker(true)}
+          onCustomDateSelect={handleCustomDateSelect}
+          onCloseDatePicker={() => setShowReportDatePicker(false)}
+          showTeamScope={showTeamScope}
+          teamScope={teamScope}
+          teamScopeCounts={teamScopeCounts}
+          onTeamScopeChange={handleTeamScopeChange}
+          selectedActivity={selectedActivity}
+          activityTypes={ACTIVITY_TYPES}
+          summary={summary}
+          onActivityChange={handleActivityClick}
+          attendanceStatus={attendanceStatus}
+          onAttendanceChange={handleAttendanceChange}
+          summaryLoading={summaryLoading}
+          detailLoading={detailLoading}
+        />
 
         {error && (
           <div className="mb-3 p-4 bg-red-50 border border-red-200 rounded-lg">
