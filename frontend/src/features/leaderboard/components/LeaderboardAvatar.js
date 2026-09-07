@@ -17,15 +17,19 @@ const COLORS = [
 ];
 
 /**
- * Leaderboard strip avatar — prefers inline profileImage, else loads
- * /api/user/avatar?userId= (keeps list JSON small). Falls back to letter.
+ * Leaderboard strip avatar — always loads /api/user/avatar?userId=
+ * (same source + My Profile fallback: ProfileImage / R2 → centre transform).
+ * Falls back to letter when the endpoint 404s.
+ *
+ * `profileImage` is accepted for API compatibility but ignored so list payloads
+ * cannot diverge from My Profile.
  */
 export default function LeaderboardAvatar({
   apiBaseUrl,
   userId,
   email,
   userName,
-  profileImage,
+  profileImage: _profileImage,
 }) {
   const [failed, setFailed] = useState(false);
   const [avatarVersion, setAvatarVersion] = useState(getAvatarDisplayVersion);
@@ -35,10 +39,10 @@ export default function LeaderboardAvatar({
   // Reset error state when the remote avatar generation changes (after an upload).
   useEffect(() => {
     setFailed(false);
-  }, [avatarVersion, profileImage, userId]);
+  }, [avatarVersion, userId]);
 
   const remoteSrc = buildUserAvatarUrl(apiBaseUrl, userId, avatarVersion);
-  const src = !failed ? profileImage || remoteSrc : null;
+  const src = !failed ? remoteSrc : null;
 
   if (src) {
     return (

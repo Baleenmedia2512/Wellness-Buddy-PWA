@@ -232,15 +232,41 @@ export async function getTeamCodeFields(userId) {
   return findByUserId(userId, '"UserId", "TeamId", "CoachTeamId", "CoachId", "Role", "CommunityId"');
 }
 
-/** Avatar route + lazy R2 migrate — key first, Base64 / Google URL fallback. */
+/**
+ * Avatar route source — same fields My Profile uses for display:
+ * ProfileImageKey / ProfileImage + centre transformation photo fallback.
+ */
 export async function getAvatarSource(userId) {
+  const withKeyAndPhotos = '"UserId", "ProfileImageKey", "ProfileImage", transformation_photos';
+  const withPhotos = '"UserId", "ProfileImage", transformation_photos';
+  const withKey = '"UserId", "ProfileImageKey", "ProfileImage"';
+  const basic = '"UserId", "ProfileImage"';
+
   try {
-    return await findByUserId(userId, '"UserId", "ProfileImageKey", "ProfileImage"');
-  } catch (err) {
-    if (!isMissingColumn(err, 'ProfileImageKey')) throw err;
-    const row = await findByUserId(userId, '"UserId", "ProfileImage"');
-    return row ? { ...row, ProfileImageKey: null } : null;
+    return await findByUserId(userId, withKeyAndPhotos);
+  } catch (errKeyPhotos) {
+    if (!isMissingColumn(errKeyPhotos, 'ProfileImageKey')
+      && !isMissingColumn(errKeyPhotos, 'transformation_photos')) {
+      throw errKeyPhotos;
+    }
   }
+
+  try {
+    const row = await findByUserId(userId, withPhotos);
+    return row ? { ...row, ProfileImageKey: null } : null;
+  } catch (errPhotos) {
+    if (!isMissingColumn(errPhotos, 'transformation_photos')) throw errPhotos;
+  }
+
+  try {
+    const row = await findByUserId(userId, withKey);
+    return row ? { ...row, transformation_photos: null } : null;
+  } catch (errKey) {
+    if (!isMissingColumn(errKey, 'ProfileImageKey')) throw errKey;
+  }
+
+  const row = await findByUserId(userId, basic);
+  return row ? { ...row, ProfileImageKey: null, transformation_photos: null } : null;
 }
 
 /**

@@ -373,6 +373,8 @@ export async function updateProfile(input) {
   if (transformationPhotosPatch) {
     try {
       await repo.updateUserById(userId, transformationPhotosPatch);
+      // Leaderboard avatar may fall back to centre transform — drop stale cache.
+      try { cache.delete(cacheKeys.userAvatar(userId)); } catch { /* non-fatal */ }
     } catch (photoErr) {
       const msg = String(photoErr?.message || photoErr || '');
       if (!/transformation_photos|column/i.test(msg)) throw photoErr;
