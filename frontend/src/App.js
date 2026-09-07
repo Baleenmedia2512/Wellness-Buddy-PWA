@@ -7515,6 +7515,16 @@ function WellnessValleyApp() {
                 setSavedUserName(profileData.name.trim());
                 cacheProfileUserName(email, profileData.name);
               }
+              // Keep share cards + any prop-drilled avatars on the same photo source.
+              if (profileData?.profileImage) {
+                setSavedProfileImage(profileData.profileImage);
+                setUser((prevUser) => ({
+                  ...prevUser,
+                  profileImage: profileData.profileImage,
+                  ProfileImage: profileData.profileImage,
+                  photoURL: profileData.profileImage,
+                }));
+              }
               if (profileData?.bmr || profileData?.physicalActivityLevel) {
                 setBmrUpdateKey((prev) => prev + 1);
               }

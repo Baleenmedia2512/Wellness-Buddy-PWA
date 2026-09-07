@@ -1,4 +1,9 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import {
+  buildUserAvatarUrl,
+  getAvatarDisplayVersion,
+  subscribeAvatarDisplayVersion,
+} from '../../user/services/avatarDisplayVersion';
 
 const COLORS = [
   'bg-blue-500',
@@ -23,16 +28,22 @@ export default function LeaderboardAvatar({
   profileImage,
 }) {
   const [failed, setFailed] = useState(false);
+  const [avatarVersion, setAvatarVersion] = useState(getAvatarDisplayVersion);
 
-  const remoteSrc =
-    apiBaseUrl && userId != null && userId !== ''
-      ? `${apiBaseUrl}/api/user/avatar?userId=${encodeURIComponent(userId)}`
-      : null;
+  useEffect(() => subscribeAvatarDisplayVersion(setAvatarVersion), []);
+
+  // Reset error state when the remote avatar generation changes (after an upload).
+  useEffect(() => {
+    setFailed(false);
+  }, [avatarVersion, profileImage, userId]);
+
+  const remoteSrc = buildUserAvatarUrl(apiBaseUrl, userId, avatarVersion);
   const src = !failed ? profileImage || remoteSrc : null;
 
   if (src) {
     return (
       <img
+        key={src}
         src={src}
         alt={userName || 'User'}
         className="w-8 h-8 sm:w-10 sm:h-10 rounded-full object-cover shadow-md border-2 border-white"
