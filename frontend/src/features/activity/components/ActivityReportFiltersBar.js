@@ -1,5 +1,5 @@
 import React from 'react';
-import { Calendar, ChevronDown } from 'lucide-react';
+import { Calendar, ChevronDown, Filter, Search, X } from 'lucide-react';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
 import DateRangePicker from '../../../shared/components/common/DateRangePicker';
 import { ACTIVITY_REPORT_DATE_RANGES, formatCustomRangeLabel } from '../../../shared/domain/reportDateRanges';
@@ -18,8 +18,8 @@ const SEGMENT_BASE =
   'inline-flex items-center justify-center h-9 px-3 rounded-lg text-sm font-semibold transition-colors disabled:opacity-50';
 
 /**
- * Enterprise-style report filter toolbar for Activity Report.
- * Date presets are explicit controls (Custom always reopens the calendar).
+ * Single combined Activity Report filter panel:
+ * report scope (date / team / category / attendance) + table search / facets.
  */
 export default function ActivityReportFiltersBar({
   dateRange,
@@ -40,6 +40,12 @@ export default function ActivityReportFiltersBar({
   onActivityChange,
   attendanceStatus,
   onAttendanceChange,
+  searchQuery = '',
+  onSearchChange,
+  activeFilterChips = [],
+  onOpenTableFilters,
+  onRemoveTableFilter,
+  onClearTableFilters,
   summaryLoading = false,
   detailLoading = false,
 }) {
@@ -47,6 +53,8 @@ export default function ActivityReportFiltersBar({
   const customLabel = dateRange === 'custom'
     ? formatCustomRangeLabel(customStartDate, customEndDate)
     : 'Custom';
+  const tableFilterCount = activeFilterChips.length;
+  const busy = summaryLoading || detailLoading;
 
   return (
     <section
@@ -57,7 +65,7 @@ export default function ActivityReportFiltersBar({
         <h2 className="text-xs font-bold uppercase tracking-wide text-gray-500">
           Filters
         </h2>
-        {(summaryLoading || detailLoading) && (
+        {busy && (
           <span className="text-[10px] font-medium text-gray-400">Updating…</span>
         )}
       </div>
@@ -133,7 +141,7 @@ export default function ActivityReportFiltersBar({
                 <select
                   value={teamScope}
                   onChange={(event) => onTeamScopeChange(event.target.value)}
-                  disabled={summaryLoading || detailLoading}
+                  disabled={busy}
                   className={SELECT_CLASS}
                 >
                   {TEAM_SCOPE_OPTIONS.map(({ value, label }) => {
@@ -187,6 +195,72 @@ export default function ActivityReportFiltersBar({
             </div>
           </label>
         </div>
+
+        <div>
+          <span className={FIELD_LABEL_CLASS}>Find in results</span>
+          <div className="flex items-center gap-2">
+            <div className="relative min-w-0 flex-1">
+              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Search name or phone"
+                value={searchQuery}
+                onChange={(event) => onSearchChange?.(event.target.value)}
+                className="h-9 w-full rounded-lg border border-gray-200 bg-white pl-8 pr-3 text-sm text-gray-800 shadow-sm focus:border-green-500 focus:outline-none focus:ring-2 focus:ring-green-500/30"
+              />
+            </div>
+            <TouchFeedbackButton
+              type="button"
+              onClick={onOpenTableFilters}
+              disabled={detailLoading}
+              ariaLabel={
+                tableFilterCount > 0
+                  ? `Open more filters, ${tableFilterCount} active`
+                  : 'Open more filters'
+              }
+              className={`relative inline-flex h-9 flex-shrink-0 items-center gap-1.5 rounded-lg border px-3 text-sm font-semibold ${
+                tableFilterCount > 0
+                  ? 'border-green-600 bg-green-50 text-green-800'
+                  : 'border-gray-200 bg-white text-gray-700 hover:border-green-400'
+              }`}
+            >
+              <Filter className="h-3.5 w-3.5" />
+              More
+              {tableFilterCount > 0 && (
+                <span className="inline-flex h-[1.125rem] min-w-[1.125rem] items-center justify-center rounded-full bg-green-600 px-1 text-[10px] font-bold text-white">
+                  {tableFilterCount}
+                </span>
+              )}
+            </TouchFeedbackButton>
+          </div>
+        </div>
+
+        {tableFilterCount > 0 && (
+          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pt-0.5">
+            {activeFilterChips.map((chip) => (
+              <TouchFeedbackButton
+                key={chip.id}
+                type="button"
+                onClick={() => onRemoveTableFilter?.(chip.columnId, chip.value)}
+                className="inline-flex max-w-full flex-shrink-0 items-center gap-0.5 rounded-full bg-green-100 py-0.5 pl-2 pr-1 text-[10px] font-semibold text-green-800"
+                ariaLabel={`Remove ${chip.label} ${chip.displayValue} filter`}
+              >
+                <span className="truncate">
+                  {chip.label}: {chip.displayValue}
+                </span>
+                <X className="h-3 w-3 flex-shrink-0" />
+              </TouchFeedbackButton>
+            ))}
+            <TouchFeedbackButton
+              type="button"
+              onClick={onClearTableFilters}
+              className="flex-shrink-0 px-1 text-[10px] font-semibold text-gray-500 hover:text-gray-800"
+              ariaLabel="Clear table filters"
+            >
+              Clear all
+            </TouchFeedbackButton>
+          </div>
+        )}
       </div>
     </section>
   );

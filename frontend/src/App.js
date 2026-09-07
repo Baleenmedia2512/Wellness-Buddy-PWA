@@ -1858,7 +1858,7 @@ function WellnessValleyApp() {
           } else {
             // Shape MUST match team/services/teamSearchService.toSelectedUser n++
             // hooks like resolveDashboardUserId read `id` (not `userId`).
-            const memberName = d.ownerUserName || "Member";
+            const memberName = d.ownerUserName || "Customer";
             setDashboardInitialSelectedMember({
               id: d.ownerUserId,
               userId: d.ownerUserId,

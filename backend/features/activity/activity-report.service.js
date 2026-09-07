@@ -345,14 +345,10 @@ async function buildPagedActivityRecords({
   attendanceStatus = ACTIVITY_REPORT_ATTENDANCE.ATTENDED,
 }) {
   const search = String(paginationOpts.search || '').trim();
-  const columnFilters = paginationOpts.columnFilters || {};
-  // Coach/sponsor search or sponsor/coach column filters need full enrichment
-  // before filter; default path enriches only the returned page.
+  // Sponsor/coach search needs full enrichment before filter; default path
+  // enriches only the returned page.
   const needsFullSponsorPass = Boolean(search)
-    || Boolean(paginationOpts.exportAll)
-    || Boolean(columnFilters.sponsorName)
-    || Boolean(columnFilters.idealCoachName)
-    || Boolean(columnFilters.coachName);
+    || Boolean(paginationOpts.exportAll);
 
   let sponsorByUser = null;
   if (needsFullSponsorPass) {

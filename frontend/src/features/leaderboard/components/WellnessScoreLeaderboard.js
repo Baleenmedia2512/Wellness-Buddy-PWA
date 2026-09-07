@@ -6,7 +6,6 @@ import React, {
   forwardRef,
   useImperativeHandle,
 } from 'react';
-import { Award, Star } from 'lucide-react';
 import { debugLog } from '../../../shared/utils/logger.js';
 import { resolveSponsorCoachNames } from '../../../shared/utils/sponsorCoachLabels.js';
 import { setVisibilityAwareInterval } from '../../../shared/utils/visibilityAwareInterval.js';
@@ -176,17 +175,11 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, vi
   }, [isVisible, leaderboardData.length]);
 
   const getRankColor = (rank) => {
-    if (rank === 1) return 'bg-gradient-to-r from-yellow-400 to-yellow-600 text-white';
-    if (rank === 2) return 'bg-gradient-to-r from-gray-300 to-gray-400 text-gray-800';
-    if (rank === 3) return 'bg-gradient-to-r from-orange-400 to-orange-600 text-white';
-    return 'bg-gradient-to-r from-green-500 to-green-600 text-white';
-  };
-
-  const getStarIcon = (rank) => {
-    if (rank === 1 || rank === 2 || rank === 3) {
-      return <Star className="w-4 h-4 sm:w-5 sm:h-5 fill-current" />;
-    }
-    return <Award className="w-4 h-4 sm:w-5 sm:h-5" />;
+    // Gold / silver / bronze by place (1 / 2 / 3), not by score %.
+    if (rank === 1) return 'bg-gradient-to-br from-yellow-400 to-yellow-600 text-white';
+    if (rank === 2) return 'bg-gradient-to-br from-gray-300 to-gray-500 text-gray-900';
+    if (rank === 3) return 'bg-gradient-to-br from-orange-400 to-orange-600 text-white';
+    return 'bg-gradient-to-br from-green-500 to-green-700 text-white';
   };
 
   if (!isVisible || leaderboardData.length === 0) {
@@ -203,7 +196,6 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, vi
       <LeaderboardRankBadge
         rank={user.rank}
         colorClass={getRankColor(user.rank)}
-        icon={getStarIcon(user.rank)}
       />
 
       <div className="flex-shrink-0">
