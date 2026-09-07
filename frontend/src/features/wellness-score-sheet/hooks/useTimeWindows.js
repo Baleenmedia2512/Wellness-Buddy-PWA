@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { getTimeWindows } from '../../misc/services/misc.api';
 
 /** Module cache — survive Wellness Score remounts without re-flashing generic hints. */
@@ -29,9 +29,25 @@ export async function prefetchTimeWindows() {
   return inFlight;
 }
 
+/** Drop the in-memory cache so the next fetch gets fresh windows. */
+export function invalidateTimeWindowsCache() {
+  cachedTimeWindows = null;
+  inFlight = null;
+}
+
+/**
+ * Force-refresh activity time windows (e.g. after admin save).
+ * @returns {Promise<object|null>}
+ */
+export async function refreshTimeWindows() {
+  invalidateTimeWindowsCache();
+  return prefetchTimeWindows();
+}
+
 /**
  * Loads activity time windows from /api/misc/time-windows for wellness score hints.
  * Cached in memory so reopen paints timed hints immediately.
+ * @returns {{ timeWindows: object|null, refresh: () => Promise<object|null> }}
  */
 export function useTimeWindows() {
   const [timeWindows, setTimeWindows] = useState(() => cachedTimeWindows);
@@ -53,7 +69,13 @@ export function useTimeWindows() {
     };
   }, []);
 
-  return timeWindows;
+  const refresh = useCallback(async () => {
+    const windows = await refreshTimeWindows();
+    if (windows) setTimeWindows(windows);
+    return windows;
+  }, []);
+
+  return { timeWindows, refresh };
 }
 
 /** @internal test helper */

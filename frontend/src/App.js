@@ -7943,6 +7943,7 @@ function WellnessValleyApp() {
           initialDateRange={wellnessScoreInitialRange.dateRange}
           initialCustomStartDate={wellnessScoreInitialRange.customStartDate}
           initialCustomEndDate={wellnessScoreInitialRange.customEndDate}
+          canManageTimeWindows={adminLikeRole}
           onBack={(rangeOpts = {}) => {
             setShowWellnessScore(false);
             // Sync sheet date filter back to Home (e.g. Yesterday → Today).

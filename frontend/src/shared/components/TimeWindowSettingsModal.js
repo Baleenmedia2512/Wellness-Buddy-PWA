@@ -199,11 +199,11 @@ const InlineTimePicker = ({ value, onChange }) => {
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: -10 }}
+      initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -10 }}
+      exit={{ opacity: 0, y: 10 }}
       onClick={(e) => e.stopPropagation()}
-      className="absolute top-full left-0 w-full z-50 bg-white border border-gray-100 rounded-xl shadow-xl overflow-hidden mt-2"
+      className="absolute bottom-full left-0 w-full z-50 bg-white border border-gray-100 rounded-xl shadow-xl overflow-hidden mb-2"
     >
       <div className="p-3">
         <div className="flex gap-2 h-40">
@@ -277,10 +277,17 @@ const InlineTimePicker = ({ value, onChange }) => {
 
 /**
  * Time Window Settings Modal
- * Allows admins to configure activity time windows
+ * Allows admins/developers to configure activity time windows
  * UI: Mobile-first, clean, modern sheet/modal
  */
-const TimeWindowSettingsModal = ({ isOpen, onClose, onUpdate, userEmail }) => {
+const TimeWindowSettingsModal = ({
+  isOpen,
+  onClose,
+  onUpdate,
+  userEmail,
+  requesterUserId = null,
+  title = "Activity Time Window Settings",
+}) => {
   const [timeWindows, setTimeWindows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -356,18 +363,30 @@ const TimeWindowSettingsModal = ({ isOpen, onClose, onUpdate, userEmail }) => {
     if (isOpen) {
       loadTimeWindows();
     }
-  }, [isOpen]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reload when auth identity for admin API changes
+  }, [isOpen, requesterUserId, userEmail]);
 
   async function loadTimeWindows(isBackground = false) {
     if (!isBackground) setLoading(true);
     setError(null);
 
     try {
-      const response = await axios.get(`${apiBaseUrl}/api/admin/time-windows`);
+      const params = {};
+      if (requesterUserId != null && requesterUserId !== "") {
+        params.requesterUserId = String(requesterUserId);
+      }
+      if (userEmail) params.requesterEmail = userEmail;
+      const response = await axios.get(`${apiBaseUrl}/api/admin/time-windows`, {
+        params,
+      });
       setTimeWindows(response.data.timeWindows);
     } catch (err) {
       console.error("Error loading time windows:", err);
-      setError("Failed to load time windows");
+      setError(
+        err.response?.data?.message ||
+          err.response?.data?.error ||
+          "Failed to load time windows",
+      );
     } finally {
       if (!isBackground) setLoading(false);
     }
@@ -406,8 +425,13 @@ const TimeWindowSettingsModal = ({ isOpen, onClose, onUpdate, userEmail }) => {
       return;
     }
 
+    if (formData.windowStartTime === formData.windowEndTime) {
+      setValidationError("Start time cannot be the same as end time");
+      return;
+    }
+
     if (formData.windowStartTime >= formData.windowEndTime) {
-      setValidationError("Start time must be before end time");
+      setValidationError("End time must be later than start time.");
       return;
     }
 
@@ -430,7 +454,8 @@ const TimeWindowSettingsModal = ({ isOpen, onClose, onUpdate, userEmail }) => {
             String(today.getDate()).padStart(2, "0")
           );
         })(),
-        changedBy: userEmail || "admin",
+        requesterUserId: requesterUserId || undefined,
+        requesterEmail: userEmail || undefined,
         changeReason: formData.changeReason,
       });
 
@@ -468,7 +493,7 @@ const TimeWindowSettingsModal = ({ isOpen, onClose, onUpdate, userEmail }) => {
         onUpdate(true);
       }
 
-      setSuccessMessage("Time window updated successfully!");
+      setSuccessMessage("Activity time windows updated successfully.");
       setLastUpdatedActivity(selectedActivity);
 
       setTimeout(() => {
@@ -537,11 +562,9 @@ const TimeWindowSettingsModal = ({ isOpen, onClose, onUpdate, userEmail }) => {
               {/* Header */}
               <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-white sticky top-0 z-10">
                 <div>
-                  <h2 className="text-lg font-bold text-gray-900">
-                    Time Windows
-                  </h2>
+                  <h2 className="text-lg font-bold text-gray-900">{title}</h2>
                   <p className="text-xs text-gray-500">
-                    Configure activity schedules
+                    Configure activity start and end times
                   </p>
                 </div>
                 <button
@@ -628,11 +651,14 @@ const TimeWindowSettingsModal = ({ isOpen, onClose, onUpdate, userEmail }) => {
                                   {config.name}
                                 </h3>
                                 <span className="text-[10px] text-gray-400 font-medium">
-                                  {isEditing ? "Last updated: " : ""}
-                                  {format(
-                                    new Date(window.LastUpdated),
-                                    "dd/MM/yyyy",
-                                  )}
+                                  {window.isDefault
+                                    ? "Using defaults"
+                                    : window.LastUpdated
+                                    ? `${isEditing ? "Last updated: " : ""}${format(
+                                        new Date(window.LastUpdated),
+                                        "dd/MM/yyyy",
+                                      )}`
+                                    : ""}
                                 </span>
                               </div>
                               {!isEditing && (

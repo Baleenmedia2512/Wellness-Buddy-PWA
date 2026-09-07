@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, Save, RotateCcw, Loader2, Settings2 } from 'lucide-react';
+import { ArrowLeft, Save, RotateCcw, Loader2, Settings2, Clock } from 'lucide-react';
 import { getUserId } from '../../../shared/services/userIdentity';
 import {
   DEFAULT_PARAMETER_CONFIG,
@@ -14,6 +14,7 @@ import {
 import WellnessScoreSetupRow from './WellnessScoreSetupRow';
 import { useTimeWindows } from '../hooks/useTimeWindows';
 import { useNutritionRefreshOptional } from '../../../shared/context/NutritionRefreshContext';
+import TimeWindowSettingsModal from '../../../shared/components/TimeWindowSettingsModal';
 
 /**
  * Admin / developer Wellness Score Setup — enterprise layout.
@@ -24,7 +25,9 @@ export default function WellnessScoreSetup({ user, apiBaseUrl, onBack }) {
   const [saving, setSaving] = useState(false);
   const [savedFlash, setSavedFlash] = useState(false);
   const [error, setError] = useState(null);
-  const timeWindows = useTimeWindows();
+  const [showTimeWindowSettings, setShowTimeWindowSettings] = useState(false);
+  const [resolvedUserId, setResolvedUserId] = useState(user?.id || null);
+  const { timeWindows, refresh: refreshTimeWindows } = useTimeWindows();
   const nutritionRefresh = useNutritionRefreshOptional();
 
   useEffect(() => {
@@ -34,6 +37,7 @@ export default function WellnessScoreSetup({ user, apiBaseUrl, onBack }) {
       setError(null);
       try {
         const userId = (await getUserId(user)) || user?.id;
+        if (!cancelled) setResolvedUserId(userId || null);
         if (!userId && !user?.email) throw new Error('Unable to resolve user');
         const data = await fetchWellnessScoreAdminConfig({
           requesterUserId: userId,
@@ -93,6 +97,14 @@ export default function WellnessScoreSetup({ user, apiBaseUrl, onBack }) {
     setSavedFlash(false);
   };
 
+  const handleTimeWindowsUpdated = async () => {
+    await refreshTimeWindows();
+    nutritionRefresh?.triggerRefresh?.({
+      immediate: true,
+      source: 'wellness-score-time-windows-saved',
+    });
+  };
+
   return (
     <div className="min-h-screen bg-[#f4f7f5]">
       <header className="sticky top-0 z-20 border-b border-gray-200/80 bg-white/95 backdrop-blur safe-top">
@@ -114,6 +126,15 @@ export default function WellnessScoreSetup({ user, apiBaseUrl, onBack }) {
             </h1>
             <p className="text-xs text-gray-500">Platform-wide scoring configuration</p>
           </div>
+          <button
+            type="button"
+            onClick={() => setShowTimeWindowSettings(true)}
+            className="rounded-lg p-2 text-gray-600 transition-colors hover:bg-emerald-50 hover:text-emerald-700"
+            aria-label="Activity time window settings"
+            data-testid="wellness-score-time-window-settings"
+          >
+            <Clock className="h-5 w-5" aria-hidden />
+          </button>
         </div>
       </header>
 
@@ -225,6 +246,14 @@ export default function WellnessScoreSetup({ user, apiBaseUrl, onBack }) {
           </div>
         </footer>
       )}
+
+      <TimeWindowSettingsModal
+        isOpen={showTimeWindowSettings}
+        onClose={() => setShowTimeWindowSettings(false)}
+        onUpdate={handleTimeWindowsUpdated}
+        userEmail={user?.email}
+        requesterUserId={resolvedUserId}
+      />
     </div>
   );
 }
