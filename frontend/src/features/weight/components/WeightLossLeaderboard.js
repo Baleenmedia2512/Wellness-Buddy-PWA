@@ -5,7 +5,6 @@
   forwardRef,
   useImperativeHandle,
 } from "react";
-import { Trophy } from "lucide-react";
 import { debugLog } from '../../../shared/utils/logger.js';
 import { resolveSponsorCoachNames } from '../../../shared/utils/sponsorCoachLabels.js';
 import { setVisibilityAwareInterval } from '../../../shared/utils/visibilityAwareInterval.js';
@@ -192,12 +191,12 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, email
   // Get rank badge color
   const getRankColor = (rank) => {
     if (rank === 1)
-      return "bg-gradient-to-r from-yellow-400 to-yellow-600 text-white";
+      return "bg-gradient-to-br from-yellow-400 to-yellow-600 text-white";
     if (rank === 2)
-      return "bg-gradient-to-r from-gray-300 to-gray-400 text-gray-800";
+      return "bg-gradient-to-br from-gray-300 to-gray-500 text-gray-900";
     if (rank === 3)
-      return "bg-gradient-to-r from-orange-400 to-orange-600 text-white";
-    return "bg-gradient-to-r from-green-500 to-green-600 text-white";
+      return "bg-gradient-to-br from-orange-400 to-orange-600 text-white";
+    return "bg-gradient-to-br from-green-500 to-green-700 text-white";
   };
 
   // Don't render if no data or loading failed
@@ -211,11 +210,9 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, email
       key={key}
       className="inline-flex items-center gap-1.5 sm:gap-2 md:gap-3 mx-2 sm:mx-3 md:mx-4 flex-shrink-0"
     >
-      {/* Rank badge */}
       <LeaderboardRankBadge
         rank={user.rank}
         colorClass={getRankColor(user.rank)}
-        icon={<Trophy className="w-4 h-4 sm:w-5 sm:h-5" />}
       />
 
       {/* Profile Avatar */}

@@ -63,7 +63,7 @@ function resolveAccountEmail(user, formEmail) {
   return '';
 }
 
-const ROLE_LABELS = { admin: 'Admin', developer: 'Developer', coach: 'Coach', upline: 'Upline', user: 'Member' };
+const ROLE_LABELS = { admin: 'Admin', developer: 'Developer', coach: 'Coach', upline: 'Upline', user: 'Customer' };
 
 const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfileUpdate }) => {
   const form = useProfileForm();
@@ -315,7 +315,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
 
   const displayWeightGoalMode = derivedWeightGoalMode || form.weightGoalMode || 'loss';
   const displayName = form.name || user?.displayName || user?.name || 'User';
-  const role = ROLE_LABELS[userRole] || 'Member';
+  const role = ROLE_LABELS[userRole] || 'Customer';
 
   return (
     <div className="min-h-full bg-gray-50 pb-8">

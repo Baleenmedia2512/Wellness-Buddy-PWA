@@ -34,11 +34,7 @@ export const ACTIVITY_REPORT_SORTABLE = new Set([
 export const ACTIVITY_REPORT_FILTER_COLUMNS = new Set([
   'memberType',
   'level',
-  'sponsorName',
   'clubName',
-  'idealCoachName',
-  'city',
-  'village',
 ]);
 
 /** Multi-value separator within one filter_<column> (OR). Columns still AND together. */
@@ -66,11 +62,7 @@ export function emptyActivityReportFilterOptions() {
   return {
     memberType: [],
     level: [],
-    sponsorName: [],
     clubName: [],
-    idealCoachName: [],
-    city: [],
-    village: [],
   };
 }
 
@@ -118,10 +110,6 @@ export function collectActivityReportClubNames(records) {
   return sorted;
 }
 
-function uniqueSortedLabels(values) {
-  return [...values].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
-}
-
 function isBlankFilterLabel(value) {
   const raw = String(value ?? '').trim();
   return !raw || raw === 'N/A' || raw === '—';
@@ -136,10 +124,6 @@ export function collectActivityReportFilterOptions(records) {
   const options = emptyActivityReportFilterOptions();
   const memberTypes = new Set();
   const levels = new Set();
-  const sponsors = new Set();
-  const coaches = new Set();
-  const cities = new Set();
-  const villages = new Set();
 
   for (const record of Array.isArray(records) ? records : []) {
     const memberType = record?.memberType === 'sponsor' ? 'sponsor' : 'member';
@@ -147,27 +131,11 @@ export function collectActivityReportFilterOptions(records) {
     if (record?.level != null && record.level !== '' && Number.isFinite(Number(record.level))) {
       levels.add(String(Number(record.level)));
     }
-    if (!isBlankFilterLabel(record?.sponsorName || record?.coachName)) {
-      sponsors.add(String(record.sponsorName || record.coachName).trim());
-    }
-    if (!isBlankFilterLabel(record?.idealCoachName)) {
-      coaches.add(String(record.idealCoachName).trim());
-    }
-    if (!isBlankFilterLabel(record?.city)) {
-      cities.add(String(record.city).trim());
-    }
-    if (!isBlankFilterLabel(record?.village)) {
-      villages.add(String(record.village).trim());
-    }
   }
 
   options.memberType = [...memberTypes].sort();
   options.level = [...levels].sort((a, b) => Number(a) - Number(b));
-  options.sponsorName = uniqueSortedLabels(sponsors);
   options.clubName = collectActivityReportClubNames(records);
-  options.idealCoachName = uniqueSortedLabels(coaches);
-  options.city = uniqueSortedLabels(cities);
-  options.village = uniqueSortedLabels(villages);
   return options;
 }
 
@@ -381,6 +349,8 @@ export function filterActivityReportRecords(records, searchNormalized) {
       record.village,
       record.clubName,
       record.memberType,
+      // Display label for no-downline people (API token stays `member`).
+      record.memberType === 'sponsor' ? 'sponsor' : 'customer',
       record.level == null ? '' : String(record.level),
     ];
     return haystacks.some((v) => String(v || '').toLowerCase().includes(q));

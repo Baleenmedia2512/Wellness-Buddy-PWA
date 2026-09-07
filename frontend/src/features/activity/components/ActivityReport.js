@@ -1,14 +1,12 @@
 import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import {
-  RefreshCw, Download, Search, Share2, Filter, X,
-  Calendar, Users, LayoutGrid, UserCheck,
+  RefreshCw, Download, Share2,
 } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
 import PhoneContactActions from '../../../shared/components/PhoneContactActions.jsx';
-import DateRangePicker from '../../../shared/components/common/DateRangePicker';
 import { ACTIVITY_REPORT_DATE_RANGES, formatCustomRangeLabel } from '../../../shared/domain/reportDateRanges';
 import { fetchHasTeamMembers, invalidateHasTeamMembersCache } from '../../team/services/teamSearchService';
 import { TEAM_SCOPES, TEAM_SCOPE_OPTIONS } from '../../reports/utils/reportFilters';
@@ -19,7 +17,6 @@ import {
 } from '../utils/activityReportShareText';
 import {
   ACTIVITY_REPORT_ATTENDANCE,
-  ACTIVITY_REPORT_ATTENDANCE_OPTIONS,
   activeActivityReportTableFilters,
   activityReportFilterQuery,
   emptyActivityReportFilterOptions,
@@ -30,6 +27,7 @@ import {
   serializeActivityReportTableFilters,
 } from '../utils/activityReportTableFilters';
 import ActivityReportTableFiltersSheet from './ActivityReportTableFiltersSheet';
+import ActivityReportFiltersBar from './ActivityReportFiltersBar';
 
 const DEFAULT_PAGE_SIZE = 20;
 const SEARCH_DEBOUNCE_MS = 300;
@@ -67,9 +65,6 @@ const ACTIVITY_TYPES = [
   { id: 'water', label: 'Water' },
   { id: 'calories', label: 'Exercise' },
 ];
-
-const REPORT_FILTER_SELECT_CLASS =
-  'w-full h-[2.125rem] pl-7 pr-1 border border-gray-200 rounded-lg text-[11px] sm:text-xs text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-green-500 disabled:bg-gray-50 disabled:text-gray-400 truncate';
 
 /** Returns '—' for null, undefined, empty string, or the literal string "N/A" */
 const display = (val) => (!val || val === 'N/A') ? '—' : val;
@@ -655,8 +650,12 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0, t
     setError('');
     if (range !== 'custom') {
       setShowReportDatePicker(false);
-    } else if (!customStartDate || !customEndDate) {
-      setSummary(null);
+    } else {
+      // Always reopen the calendar — native <select> will not fire onChange when
+      // "Custom" is already selected, so callers also open via the edit control.
+      if (!customStartDate || !customEndDate) {
+        setSummary(null);
+      }
       setShowReportDatePicker(true);
     }
   };
@@ -721,9 +720,9 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0, t
 
     let headers = [
       'Member Name',
-      'Member Type',
-      'Sponsor Name',
+      'Type',
       'Level',
+      'Sponsor Name',
       'Club',
       'Reg. Date',
       'Reg. Time',
@@ -750,8 +749,8 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0, t
       const baseRow = [
         `"${record.memberName || 'N/A'}"`,
         `"${formatActivityReportMemberType(record.memberType)}"`,
-        `"${record.sponsorName || record.coachName || 'N/A'}"`,
         formatActivityReportLevel(record.level),
+        `"${record.sponsorName || record.coachName || 'N/A'}"`,
         `"${displayClub}"`,
         record.date || 'N/A',
         record.time || 'N/A',
@@ -954,130 +953,43 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0, t
       </div>
 
       <div className="max-w-7xl mx-auto px-4 py-3">
-        <section className="mb-3 bg-white rounded-xl border border-gray-200 shadow-sm p-3" aria-label="Report filters">
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 mb-2">
-            Report filters
-          </p>
-          <div className="rounded-lg border border-gray-100 bg-gray-50/80 p-2 space-y-2">
-            <div className="grid grid-cols-2 gap-2">
-              <label className="min-w-0">
-                <span className="sr-only">Date</span>
-                <div className="relative">
-                  <Calendar className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400" />
-                  <select
-                    value={dateRange}
-                    onChange={(event) => {
-                      const next = event.target.value;
-                      if (next === 'custom') {
-                        setShowReportDatePicker(true);
-                      }
-                      handleDateRangeChange(next);
-                    }}
-                    disabled={summaryLoading}
-                    className={REPORT_FILTER_SELECT_CLASS}
-                  >
-                    {ACTIVITY_REPORT_DATE_RANGES.map((range) => (
-                      <option key={range.value} value={range.value}>
-                        {range.value === 'custom' && dateRange === 'custom'
-                          ? formatCustomRangeLabel(customStartDate, customEndDate)
-                          : range.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </label>
+        <ActivityReportFiltersBar
+          dateRange={dateRange}
+          customStartDate={customStartDate}
+          customEndDate={customEndDate}
+          showDatePicker={showReportDatePicker}
+          onDateRangeChange={handleDateRangeChange}
+          onOpenCustomPicker={() => setShowReportDatePicker(true)}
+          onCustomDateSelect={handleCustomDateSelect}
+          onCloseDatePicker={() => setShowReportDatePicker(false)}
+          showTeamScope={showTeamScope}
+          teamScope={teamScope}
+          teamScopeCounts={teamScopeCounts}
+          onTeamScopeChange={handleTeamScopeChange}
+          selectedActivity={selectedActivity}
+          activityTypes={ACTIVITY_TYPES}
+          summary={summary}
+          onActivityChange={handleActivityClick}
+          attendanceStatus={attendanceStatus}
+          onAttendanceChange={handleAttendanceChange}
+          searchQuery={searchQuery}
+          onSearchChange={setSearchQuery}
+          activeFilterChips={activeFilterChips}
+          onOpenTableFilters={() => setShowTableFiltersSheet(true)}
+          onRemoveTableFilter={handleRemoveTableFilterValue}
+          onClearTableFilters={handleClearTableFilters}
+          summaryLoading={summaryLoading}
+          detailLoading={detailLoading}
+        />
 
-              {showTeamScope ? (
-                <label className="min-w-0">
-                  <span className="sr-only">Team</span>
-                  <div className="relative">
-                    <Users className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400" />
-                    <select
-                      value={teamScope}
-                      onChange={(event) => handleTeamScopeChange(event.target.value)}
-                      disabled={summaryLoading || detailLoading}
-                      className={REPORT_FILTER_SELECT_CLASS}
-                    >
-                      {TEAM_SCOPE_OPTIONS.map(({ value, label }) => {
-                        const count = teamScopeCounts?.[value] ?? 0;
-                        const showCount = value !== TEAM_SCOPES.MINE;
-                        return (
-                          <option key={value} value={value}>
-                            {showCount ? `${label} (${count})` : label}
-                          </option>
-                        );
-                      })}
-                    </select>
-                  </div>
-                </label>
-              ) : (
-                <label className="min-w-0">
-                  <span className="sr-only">Attendance</span>
-                  <div className="relative">
-                    <UserCheck className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400" />
-                    <select
-                      value={attendanceStatus}
-                      onChange={handleAttendanceChange}
-                      disabled={detailLoading}
-                      className={REPORT_FILTER_SELECT_CLASS}
-                    >
-                      {ACTIVITY_REPORT_ATTENDANCE_OPTIONS.map((option) => (
-                        <option key={option.id} value={option.id}>{option.label}</option>
-                      ))}
-                    </select>
-                  </div>
-                </label>
-              )}
-
-              <label className={`min-w-0 ${showTeamScope ? '' : 'col-span-2'}`}>
-                <span className="sr-only">Category</span>
-                <div className="relative">
-                  <LayoutGrid className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400" />
-                  <select
-                    value={selectedActivity}
-                    onChange={(event) => handleActivityClick(event.target.value)}
-                    disabled={detailLoading}
-                    className={REPORT_FILTER_SELECT_CLASS}
-                  >
-                    {ACTIVITY_TYPES.map((activity) => (
-                      <option key={activity.id} value={activity.id}>
-                        {activity.label} ({summary?.[activity.id] || 0})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </label>
-
-              {showTeamScope && (
-                <label className="min-w-0">
-                  <span className="sr-only">Attendance</span>
-                  <div className="relative">
-                    <UserCheck className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400" />
-                    <select
-                      value={attendanceStatus}
-                      onChange={handleAttendanceChange}
-                      disabled={detailLoading}
-                      className={REPORT_FILTER_SELECT_CLASS}
-                    >
-                      {ACTIVITY_REPORT_ATTENDANCE_OPTIONS.map((option) => (
-                        <option key={option.id} value={option.id}>{option.label}</option>
-                      ))}
-                    </select>
-                  </div>
-                </label>
-              )}
-            </div>
-
-            {dateRange === 'custom' && showReportDatePicker && (
-              <DateRangePicker
-                startDate={customStartDate}
-                endDate={customEndDate}
-                onSelect={handleCustomDateSelect}
-                onClose={() => setShowReportDatePicker(false)}
-              />
-            )}
-          </div>
-        </section>
+        <ActivityReportTableFiltersSheet
+          isOpen={showTableFiltersSheet}
+          onClose={() => setShowTableFiltersSheet(false)}
+          appliedFilters={tableFilters}
+          availableFilters={availableFilters}
+          onApply={handleApplyTableFilters}
+          disabled={detailLoading}
+        />
 
         {error && (
           <div className="mb-3 p-4 bg-red-50 border border-red-200 rounded-lg">
@@ -1088,7 +1000,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0, t
         {selectedActivity && (
           <div className="bg-white rounded-xl shadow-sm border border-gray-200">
             <div className="px-3 py-2 sm:px-4 border-b border-gray-200">
-              <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center justify-between">
                 <h2 className="text-base font-bold text-gray-900">
                   {ACTIVITY_TYPES.find(a => a.id === selectedActivity)?.label}
                   {' · '}
@@ -1117,78 +1029,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0, t
                   )}
                 </div>
               </div>
-
-              <div className="rounded-lg border border-gray-100 bg-gray-50/80 p-2 space-y-2">
-                <div className="flex items-center gap-2">
-                  <div className="relative flex-1 min-w-0">
-                    <Search className="absolute left-2.5 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-                    <input
-                      type="text"
-                      placeholder="Search name or phone"
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      className="w-full pl-8 pr-2 py-1.5 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-green-500"
-                    />
-                  </div>
-                  <TouchFeedbackButton
-                    onClick={() => setShowTableFiltersSheet(true)}
-                    disabled={detailLoading}
-                    ariaLabel={
-                      activeFilterChips.length > 0
-                        ? `Open filters, ${activeFilterChips.length} active`
-                        : 'Open filters'
-                    }
-                    className={`relative inline-flex items-center gap-1.5 h-[2.125rem] px-3 rounded-lg border text-xs font-semibold flex-shrink-0 ${
-                      activeFilterChips.length > 0
-                        ? 'border-green-600 bg-green-50 text-green-800'
-                        : 'border-gray-200 bg-white text-gray-700'
-                    }`}
-                  >
-                    <Filter className="w-3.5 h-3.5" />
-                    Filters
-                    {activeFilterChips.length > 0 && (
-                      <span className="min-w-[1.125rem] h-[1.125rem] px-1 rounded-full bg-green-600 text-white text-[10px] font-bold inline-flex items-center justify-center">
-                        {activeFilterChips.length}
-                      </span>
-                    )}
-                  </TouchFeedbackButton>
-                </div>
-
-                {activeFilterChips.length > 0 && (
-                  <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
-                    {activeFilterChips.map((chip) => (
-                      <TouchFeedbackButton
-                        key={chip.id}
-                        onClick={() => handleRemoveTableFilterValue(chip.columnId, chip.value)}
-                        className="inline-flex items-center gap-0.5 max-w-full pl-2 pr-1 py-0.5 rounded-full bg-green-100 text-green-800 text-[10px] font-semibold flex-shrink-0"
-                        ariaLabel={`Remove ${chip.label} ${chip.displayValue} filter`}
-                      >
-                        <span className="truncate">
-                          {chip.label}: {chip.displayValue}
-                        </span>
-                        <X className="w-3 h-3 flex-shrink-0" />
-                      </TouchFeedbackButton>
-                    ))}
-                    <TouchFeedbackButton
-                      onClick={handleClearTableFilters}
-                      className="inline-flex items-center text-[10px] font-semibold text-gray-500 hover:text-gray-800 flex-shrink-0 px-1"
-                      ariaLabel="Clear table filters"
-                    >
-                      Clear all
-                    </TouchFeedbackButton>
-                  </div>
-                )}
-              </div>
             </div>
-
-            <ActivityReportTableFiltersSheet
-              isOpen={showTableFiltersSheet}
-              onClose={() => setShowTableFiltersSheet(false)}
-              appliedFilters={tableFilters}
-              availableFilters={availableFilters}
-              onApply={handleApplyTableFilters}
-              disabled={detailLoading}
-            />
 
             <div className="overflow-x-auto relative">
               {detailLoading && (
@@ -1209,19 +1050,19 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0, t
                       className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase whitespace-nowrap cursor-pointer hover:bg-gray-100"
                       onClick={() => handleSort('memberType')}
                     >
-                      Member Type {sortColumn === 'memberType' && (sortDirection === 'asc' ? '↑' : '↓')}
-                    </th>
-                    <th
-                      className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase cursor-pointer hover:bg-gray-100"
-                      onClick={() => handleSort('sponsorName')}
-                    >
-                      Sponsor {sortColumn === 'sponsorName' && (sortDirection === 'asc' ? '↑' : '↓')}
+                      Type {sortColumn === 'memberType' && (sortDirection === 'asc' ? '↑' : '↓')}
                     </th>
                     <th
                       className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase whitespace-nowrap cursor-pointer hover:bg-gray-100"
                       onClick={() => handleSort('level')}
                     >
                       Level {sortColumn === 'level' && (sortDirection === 'asc' ? '↑' : '↓')}
+                    </th>
+                    <th
+                      className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase cursor-pointer hover:bg-gray-100"
+                      onClick={() => handleSort('sponsorName')}
+                    >
+                      Sponsor {sortColumn === 'sponsorName' && (sortDirection === 'asc' ? '↑' : '↓')}
                     </th>
 
                     {/* --- DYNAMIC ACTIVITY COLUMNS --- */}
@@ -1264,8 +1105,8 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0, t
                         {display(record.memberName)}
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">{formatActivityReportMemberType(record.memberType)}</td>
-                      <td className="px-4 py-3 text-sm text-gray-600">{display(record.sponsorName || record.coachName)}</td>
                       <td className="px-4 py-3 text-sm text-gray-900 whitespace-nowrap">{formatActivityReportLevel(record.level)}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600">{display(record.sponsorName || record.coachName)}</td>
 
                       {/* --- DYNAMIC ACTIVITY DATA --- */}
                       {selectedActivity === 'weight' && (

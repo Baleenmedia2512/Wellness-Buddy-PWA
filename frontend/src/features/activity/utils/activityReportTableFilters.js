@@ -1,11 +1,12 @@
+import {
+  formatHierarchyPersonType,
+  HIERARCHY_PERSON_TYPE_COLUMN_LABEL,
+} from '../../../shared/domain/hierarchyPersonType.js';
+
 export const ACTIVITY_REPORT_TABLE_FILTER_COLUMNS = [
-  { id: 'memberType', label: 'Member Type' },
+  { id: 'memberType', label: HIERARCHY_PERSON_TYPE_COLUMN_LABEL },
   { id: 'level', label: 'Level' },
-  { id: 'sponsorName', label: 'Sponsor' },
   { id: 'clubName', label: 'Club' },
-  { id: 'idealCoachName', label: 'Coach' },
-  { id: 'city', label: 'City' },
-  { id: 'village', label: 'Village' },
 ];
 
 /** Multi-value separator in filter_<column> query params (values may contain commas). */
@@ -31,17 +32,13 @@ export function emptyActivityReportFilterOptions() {
   return {
     memberType: [],
     level: [],
-    sponsorName: [],
     clubName: [],
-    idealCoachName: [],
-    city: [],
-    village: [],
   };
 }
 
 export function formatActivityReportFilterOption(column, value) {
   if (column === 'memberType') {
-    return String(value).toLowerCase() === 'sponsor' ? 'Sponsor' : 'Member';
+    return formatHierarchyPersonType(value);
   }
   if (column === 'clubName' && (value === '__remote__' || value === 'Remote')) {
     return 'Remote';
@@ -54,11 +51,7 @@ export function emptyActivityReportTableFilterValues() {
   return {
     memberType: [],
     level: [],
-    sponsorName: [],
     clubName: [],
-    idealCoachName: [],
-    city: [],
-    village: [],
   };
 }
 
@@ -103,6 +96,9 @@ export function activityReportFilterQuery(filters = {}) {
 
 export function toggleActivityReportFilterValue(filters, columnId, value) {
   const normalized = normalizeActivityReportTableFilters(filters);
+  if (!Object.prototype.hasOwnProperty.call(normalized, columnId)) {
+    return normalized;
+  }
   const current = normalized[columnId] || [];
   const token = String(value ?? '').trim();
   if (!token) return normalized;
@@ -115,6 +111,9 @@ export function toggleActivityReportFilterValue(filters, columnId, value) {
 
 export function removeActivityReportFilterValue(filters, columnId, value) {
   const normalized = normalizeActivityReportTableFilters(filters);
+  if (!Object.prototype.hasOwnProperty.call(normalized, columnId)) {
+    return normalized;
+  }
   const token = String(value ?? '').trim();
   normalized[columnId] = (normalized[columnId] || []).filter((item) => item !== token);
   return normalized;

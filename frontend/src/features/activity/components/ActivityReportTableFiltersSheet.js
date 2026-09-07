@@ -44,7 +44,7 @@ export default function ActivityReportTableFiltersSheet({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[80] flex flex-col justify-end" role="dialog" aria-modal="true" aria-label="Table filters">
+    <div className="fixed inset-0 z-[80] flex flex-col justify-end" role="dialog" aria-modal="true" aria-label="More filters">
       <button
         type="button"
         className="absolute inset-0 bg-black/40"
@@ -55,7 +55,7 @@ export default function ActivityReportTableFiltersSheet({
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
           <div className="inline-flex items-center gap-1.5">
             <Filter className="w-4 h-4 text-green-700" />
-            <h3 className="text-sm font-bold text-gray-900">Filters</h3>
+            <h3 className="text-sm font-bold text-gray-900">More filters</h3>
             {draftCount > 0 && (
               <span className="min-w-[1.25rem] h-5 px-1.5 rounded-full bg-green-600 text-white text-[10px] font-bold inline-flex items-center justify-center">
                 {draftCount}

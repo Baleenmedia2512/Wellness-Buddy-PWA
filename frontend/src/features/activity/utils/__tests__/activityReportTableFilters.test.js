@@ -14,7 +14,7 @@ import {
 
 describe('activityReportTableFilters', () => {
   it('omits empty facet values from the query', () => {
-    assert.deepEqual(activityReportFilterQuery({ memberType: [], city: [] }), {});
+    assert.deepEqual(activityReportFilterQuery({ memberType: [], clubName: [] }), {});
     assert.deepEqual(activityReportFilterQuery({}), {});
   });
 
@@ -22,52 +22,61 @@ describe('activityReportTableFilters', () => {
     assert.deepEqual(
       activityReportFilterQuery({
         memberType: ['sponsor'],
-        city: ['Pune', 'Mumbai'],
+        clubName: ['Club A', 'Remote'],
         level: [],
       }),
-      { filter_memberType: 'sponsor', filter_city: 'Pune|Mumbai' },
+      { filter_memberType: 'sponsor', filter_clubName: 'Club A|Remote' },
+    );
+  });
+
+  it('ignores removed facet columns (sponsor/city/village/coach)', () => {
+    assert.deepEqual(
+      activityReportFilterQuery({
+        memberType: ['sponsor'],
+        city: ['Pune'],
+        sponsorName: ['Adhithya'],
+        idealCoachName: ['Coach'],
+        village: ['X'],
+      }),
+      { filter_memberType: 'sponsor' },
     );
   });
 
   it('normalizes legacy single-string filters to arrays', () => {
     assert.deepEqual(
-      normalizeActivityReportTableFilters({ memberType: 'sponsor', city: 'Pune|Delhi' }),
+      normalizeActivityReportTableFilters({ memberType: 'sponsor', clubName: 'Club A|Remote' }),
       {
         memberType: ['sponsor'],
         level: [],
-        sponsorName: [],
-        clubName: [],
-        idealCoachName: [],
-        city: ['Pune', 'Delhi'],
-        village: [],
+        clubName: ['Club A', 'Remote'],
       },
     );
   });
 
   it('toggles multi-select values on one column', () => {
-    let next = toggleActivityReportFilterValue({}, 'city', 'Pune');
-    assert.deepEqual(next.city, ['Pune']);
-    next = toggleActivityReportFilterValue(next, 'city', 'Mumbai');
-    assert.deepEqual(next.city, ['Pune', 'Mumbai']);
-    next = toggleActivityReportFilterValue(next, 'city', 'Pune');
-    assert.deepEqual(next.city, ['Mumbai']);
+    let next = toggleActivityReportFilterValue({}, 'clubName', 'Club A');
+    assert.deepEqual(next.clubName, ['Club A']);
+    next = toggleActivityReportFilterValue(next, 'clubName', 'Remote');
+    assert.deepEqual(next.clubName, ['Club A', 'Remote']);
+    next = toggleActivityReportFilterValue(next, 'clubName', 'Club A');
+    assert.deepEqual(next.clubName, ['Remote']);
   });
 
   it('lists one chip per selected value', () => {
     const chips = activeActivityReportTableFilters({
       memberType: ['sponsor'],
-      city: ['Pune', 'Mumbai'],
+      clubName: ['Club A', 'Remote'],
     });
     assert.deepEqual(chips.map((chip) => `${chip.label}:${chip.displayValue}`), [
-      'Member Type:Sponsor',
-      'City:Pune',
-      'City:Mumbai',
+      'Type:Sponsor',
+      'Club:Club A',
+      'Club:Remote',
     ]);
   });
 
   it('labels member type and remote club options', () => {
     assert.equal(formatActivityReportFilterOption('memberType', 'sponsor'), 'Sponsor');
-    assert.equal(formatActivityReportFilterOption('memberType', 'member'), 'Member');
+    assert.equal(formatActivityReportFilterOption('memberType', 'member'), 'Customer');
     assert.equal(formatActivityReportFilterOption('clubName', 'Remote'), 'Remote');
   });
 

@@ -18,8 +18,8 @@ describe('activity report level / member type display', () => {
 
   it('formats member type from downline flag, not profile role', () => {
     assert.equal(formatActivityReportMemberType('sponsor'), 'Sponsor');
-    assert.equal(formatActivityReportMemberType('member'), 'Member');
-    assert.equal(formatActivityReportMemberType('coach'), 'Member');
+    assert.equal(formatActivityReportMemberType('member'), 'Customer');
+    assert.equal(formatActivityReportMemberType('coach'), 'Customer');
   });
 
   it('includes member type, sponsor, then level in share lines', () => {
@@ -38,7 +38,7 @@ describe('activity report level / member type display', () => {
         weight: 62,
       }],
     });
-    assert.match(text, /Ana \| Sponsor \| Sponsor: Kiran \| Level: 1/);
+    assert.match(text, /Ana \| Sponsor \| Level: 1 \| Sponsor: Kiran/);
   });
 
   it('includes attendance in the share header', () => {
