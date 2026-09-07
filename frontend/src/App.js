@@ -457,6 +457,7 @@ function WellnessValleyApp() {
     open: false,
     captureId: null,
     imageBase64: null,
+    imageUrl: null,
     createdAt: null,
     canMutate: false,
     retrying: false,
@@ -1903,6 +1904,7 @@ function WellnessValleyApp() {
               open: true,
               captureId: share.captureId,
               imageBase64: share.imageBase64,
+              imageUrl: share.r2Url || null,
               createdAt: share.createdAt ?? null,
               canMutate: !!share.canMutate,
               retrying: false,
@@ -8815,6 +8817,7 @@ function WellnessValleyApp() {
         <UnknownShareViewer
           isOpen={unknownShareView.open}
           imageBase64={unknownShareView.imageBase64}
+          imageUrl={unknownShareView.imageUrl}
           canMutate={unknownShareView.canMutate}
           retrying={unknownShareView.retrying}
           error={unknownShareView.error}
@@ -8826,6 +8829,8 @@ function WellnessValleyApp() {
               open: false,
               captureId: null,
               imageBase64: null,
+              imageUrl: null,
+              createdAt: null,
               canMutate: false,
               retrying: false,
               error: null,

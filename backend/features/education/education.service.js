@@ -110,7 +110,7 @@ export async function saveLog(input) {
   }
 
   const educationLogId = data?.Id || data?.id || data?.ID;
-  if (imageBase64ToSave && educationLogId) {
+  if (educationLogId && (imageBase64ToSave || captureId)) {
     try {
       const { persistEducationImageKey } = await import('../../shared/lib/r2/activity-image-storage.service.js');
       await persistEducationImageKey(userId, educationLogId, imageBase64ToSave, { captureId });

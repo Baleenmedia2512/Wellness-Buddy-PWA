@@ -57,6 +57,8 @@ export async function uploadFoodImage(userId, mealId, imageBase64) {
 
 /**
  * Upload (if needed) and persist ImageKey. Never throws to the caller.
+ * Reuses captures_table.ImageKey when present (even if imageBase64 is null —
+ * common after capture R2 dual-write clears Base64 on Manual Log promote).
  * @returns {Promise<string|null>}
  */
 export async function persistFoodImageKey(userId, mealId, imageBase64, { captureId } = {}) {
