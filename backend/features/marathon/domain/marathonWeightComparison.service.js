@@ -35,9 +35,14 @@ export async function resolveMarathonWeightProgress({
 
   if (runningDates && state.inMarathon && state.marathonDay != null) {
     const dayYmds = listMarathonDayYmds(runningDates.currentDay0Ymd);
-    const rows = await Promise.all(
-      dayYmds.map((ymd) => weightRepo.findLatestWeightOnCalendarDay(userId, ymd, timezoneIana)),
-    );
+    const [previousRow, ...rows] = await Promise.all([
+      weightRepo.findLatestWeightOnOrBeforeCalendarDay(
+        userId,
+        runningDates.previousDay10Ymd,
+        timezoneIana,
+      ),
+      ...dayYmds.map((ymd) => weightRepo.findLatestWeightOnCalendarDay(userId, ymd, timezoneIana)),
+    ]);
 
     /** @type {Record<number, unknown>} */
     const weightsByDay = {};
@@ -55,6 +60,8 @@ export async function resolveMarathonWeightProgress({
       currentMarathonDay: state.marathonDay,
       dayYmds,
       weightsByDay,
+      previousMarathonEndWeight: previousRow?.Weight ?? null,
+      previousDay10Ymd: runningDates.previousDay10Ymd,
     });
   }
 

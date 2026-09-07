@@ -9,13 +9,14 @@ import wellnessValleyIcon from '../../../assets/wellness-valley-icon.png';
 import useAuthFlow from '../hooks/useAuthFlow';
 import useOtpInput from '../hooks/useOtpInput';
 import useResendCountdown from '../hooks/useResendCountdown';
+import { SMS_OTP_LENGTH } from '../domain/otpLength';
 import LoginBlobs from './login/LoginBlobs';
 import LoginEmailEntry from './login/LoginEmailEntry';
 import LoginOtpEntry from './login/LoginOtpEntry';
 
 const Login = ({ onSignIn, loading, error, onOtpVerified, forceOtpVerification }) => {
   const auth = useAuthFlow({ onOtpVerified });
-  const otpCtl = useOtpInput(6);
+  const otpCtl = useOtpInput(SMS_OTP_LENGTH);
   const resend = useResendCountdown(60, auth.otpSent);
   const [showTerms, setShowTerms] = useState(false);
   const [showPrivacy, setShowPrivacy] = useState(false);
@@ -59,7 +60,7 @@ const Login = ({ onSignIn, loading, error, onOtpVerified, forceOtpVerification }
             </h1>
             <p className="text-sm xs:text-base text-gray-500">
               {auth.otpSent
-                ? `We've sent a 6-digit code via SMS to your phone`
+                ? `We've sent a ${SMS_OTP_LENGTH}-digit code via SMS to your phone`
                 : 'Enter your mobile number to continue'}
             </p>
           </div>

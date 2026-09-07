@@ -1,16 +1,21 @@
 /**
  * Transformation photos — Left / Centre / Right tabs.
- * Empty frame shows pose teaching graphic; Camera / Gallery at bottom.
+ * Portrait (9:16) frames match testimonial before/after upload UX.
  */
 import React, { useState } from 'react';
 import { Camera, CheckCircle2, Images } from 'lucide-react';
 import TransformationPoseGuideCard from './TransformationPoseGuideCard';
+import { PORTRAIT_IMAGE_CLASS } from '../../../testimonials/services/testimonialFormUtils.js';
 import {
   DEFAULT_POSE_SLOT,
   POSE_SLOT_KEYS,
   POSE_TAB_GUIDE,
   nextEmptyTransformationSlot,
 } from '../../domain/transformationPoseGuide';
+
+const PORTRAIT_FRAME_MAX = 'max-w-[200px]';
+const PORTRAIT_PLACEHOLDER_CLASS =
+  `w-full ${PORTRAIT_FRAME_MAX} mx-auto aspect-[9/16] rounded-2xl border-2 border-dashed border-gray-300 bg-gray-50 overflow-hidden relative`;
 
 const TransformationPhotosSection = ({
   onSelectFile,
@@ -44,7 +49,7 @@ const TransformationPhotosSection = ({
   };
 
   return (
-    <div className="flex flex-col gap-2 h-full min-h-0">
+    <div className="flex flex-col gap-3 h-full min-h-0">
       <div className="grid grid-cols-3 gap-1 rounded-xl bg-gray-100 p-1 shrink-0">
         {POSE_SLOT_KEYS.map((type) => {
           const hasPhoto = Boolean(previews?.[type]);
@@ -67,69 +72,65 @@ const TransformationPhotosSection = ({
         })}
       </div>
 
-      <div
-        className={`relative flex-1 min-h-0 w-full rounded-xl overflow-hidden ${
-          preview
-            ? 'bg-gray-900 border border-emerald-200'
-            : 'bg-gradient-to-b from-slate-50 to-white border-2 border-dashed border-slate-200'
-        }`}
-      >
+      <div className="flex-1 min-h-0 flex flex-col items-center justify-center gap-2 overflow-y-auto py-1">
         {preview ? (
           <img
             src={preview}
             alt={guide.label}
-            className="absolute inset-0 w-full h-full object-contain pb-16"
+            className={`${PORTRAIT_IMAGE_CLASS} ${PORTRAIT_FRAME_MAX} mx-auto border-emerald-400`}
           />
         ) : (
-          <div className="absolute inset-0 pb-16">
+          <div className={PORTRAIT_PLACEHOLDER_CLASS}>
             <TransformationPoseGuideCard poseType={poseType} variant="frame" />
           </div>
         )}
 
-        <div className="absolute inset-x-0 bottom-0 p-2.5 bg-gradient-to-t from-black/55 via-black/25 to-transparent">
-          <div className="grid grid-cols-2 gap-2">
-            <input
-              ref={cameraRef}
-              type="file"
-              accept="image/*"
-              capture={captureFacing}
-              className="hidden"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                e.target.value = '';
-                if (file) void handleFile(file);
-              }}
-            />
-            <input
-              ref={galleryRef}
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                e.target.value = '';
-                if (file) void handleFile(file);
-              }}
-            />
-            <button
-              type="button"
-              disabled={disabled || busy}
-              onClick={() => cameraRef.current?.click()}
-              className="flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-white text-blue-700 text-xs font-bold shadow disabled:opacity-50"
-            >
-              <Camera className="w-4 h-4" />
-              Camera
-            </button>
-            <button
-              type="button"
-              disabled={disabled || busy}
-              onClick={() => galleryRef.current?.click()}
-              className="flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-white text-emerald-700 text-xs font-bold shadow disabled:opacity-50"
-            >
-              <Images className="w-4 h-4" />
-              Gallery
-            </button>
-          </div>
+        <p className="text-[11px] text-gray-400 text-center px-2">
+          Portrait orientation (vertical) only
+        </p>
+
+        <div className={`grid grid-cols-2 gap-2 w-full ${PORTRAIT_FRAME_MAX} mx-auto shrink-0`}>
+          <input
+            ref={cameraRef}
+            type="file"
+            accept="image/*"
+            capture={captureFacing}
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              e.target.value = '';
+              if (file) void handleFile(file);
+            }}
+          />
+          <input
+            ref={galleryRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              e.target.value = '';
+              if (file) void handleFile(file);
+            }}
+          />
+          <button
+            type="button"
+            disabled={disabled || busy}
+            onClick={() => cameraRef.current?.click()}
+            className="flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-green-600 hover:bg-green-700 text-white text-xs font-bold shadow disabled:opacity-50"
+          >
+            <Camera className="w-4 h-4" />
+            Camera
+          </button>
+          <button
+            type="button"
+            disabled={disabled || busy}
+            onClick={() => galleryRef.current?.click()}
+            className="flex items-center justify-center gap-1.5 py-2.5 rounded-xl border-2 border-gray-300 text-gray-700 text-xs font-bold hover:border-green-400 hover:text-green-700 disabled:opacity-50"
+          >
+            <Images className="w-4 h-4" />
+            Gallery
+          </button>
         </div>
       </div>
     </div>

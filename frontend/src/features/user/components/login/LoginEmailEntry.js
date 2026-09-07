@@ -14,6 +14,7 @@ import { isFlagEnabled } from '../../../../config/featureFlags';
 import CountryFlagIcon from '../../../../shared/components/icons/CountryFlagIcon';
 import { isIOS } from '../../../../shared/utils/platform';
 import NativeInput from '../../../../shared/components/NativeInput.jsx';
+import { SMS_OTP_LENGTH } from '../../domain/otpLength';
 const Spinner = () => (
   <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
@@ -119,7 +120,7 @@ const LoginEmailEntry = ({
           />
         </div>
         <p className="mt-1.5 text-xs text-gray-500">
-          We&apos;ll send a 6-digit code via SMS to verify your number.
+          We&apos;ll send a {SMS_OTP_LENGTH}-digit code via SMS to verify your number.
         </p>
       </div>
       {errorMessage && (

@@ -298,3 +298,39 @@ registerFlag({
   description:    'Meal Builder multi-add tray + bottom sheet + voice insert in SmartFoodSearchModal (replaces cart UX). Frontend-primary; backend flag for registry parity.',
   defaultEnabled: true,
 });
+
+registerFlag({
+  name:           'ff.r2-avatars',
+  owner:          '@principal-eng',
+  createdAt:      '2026-09-03',
+  removeBy:       '2027-03-03',
+  description:    'ADR-0009 — store custom profile avatars in Cloudflare R2; /api/user/avatar 302s to R2. Kill switch; no-ops when R2 env is missing. Does not omit Base64 from GET /api/user/profile.',
+  defaultEnabled: true,
+});
+
+registerFlag({
+  name:           'ff.r2-food-images',
+  owner:          '@principal-eng',
+  createdAt:      '2026-09-05',
+  removeBy:       '2027-03-05',
+  description:    'ADR-0010 — store meal photos in Cloudflare R2 at ≤22 KB; meal-image 302s to R2. Kill switch; no-ops when R2 env is missing. Does not omit ImageBase64 from meal-image ?format=json.',
+  defaultEnabled: true,
+});
+
+registerFlag({
+  name:           'ff.r2-activity-images',
+  owner:          '@principal-eng',
+  createdAt:      '2026-09-05',
+  removeBy:       '2027-03-05',
+  description:    'ADR-0011 — store weight, education, and good-habit photos in Cloudflare R2 at ≤22 KB. Kill switch; no-ops when R2 env is missing. JSON image APIs still return Base64 (no 302).',
+  defaultEnabled: true,
+});
+
+registerFlag({
+  name:           'ff.r2-captures',
+  owner:          '@principal-eng',
+  createdAt:      '2026-09-05',
+  removeBy:       '2027-03-05',
+  description:    'ADR-0012 — store capture photos once in Cloudflare R2; feature tables pointer to the same key. Kill switch; no-ops when R2 env is missing. Diary capture image 302s; format=json still returns Base64.',
+  defaultEnabled: true,
+});

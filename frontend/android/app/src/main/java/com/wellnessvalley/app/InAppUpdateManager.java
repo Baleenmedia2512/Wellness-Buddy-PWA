@@ -39,8 +39,9 @@ public class InAppUpdateManager {
     private final AppUpdateManager appUpdateManager;
     private InstallStateUpdatedListener installStateListener;
     private UpdateListener updateListener;
+    private boolean mandatoryMode = false;
     
-    // Priority thresholds for determining update type
+    // Priority thresholds for optional (non-mandatory) update checks
     private static final int IMMEDIATE_UPDATE_PRIORITY = 4; // Critical updates
     private static final int FLEXIBLE_UPDATE_PRIORITY = 2;  // Regular updates
     
@@ -84,43 +85,72 @@ public class InAppUpdateManager {
     }
     
     /**
-     * Check for available updates and start appropriate flow
+     * Enable mandatory mode — cancelled immediate updates are re-triggered.
+     */
+    public void setMandatoryMode(boolean mandatory) {
+        this.mandatoryMode = mandatory;
+    }
+
+    /**
+     * Check for available updates and start appropriate flow (optional updates).
      */
     public void checkForUpdate() {
-        Log.d(TAG, "Checking for available updates...");
-        
+        mandatoryMode = false;
+        checkForUpdateInternal(false);
+    }
+
+    /**
+     * Mandatory update flow — always uses Google Play IMMEDIATE update when available.
+     * Called when the server version policy returns update_required.
+     */
+    public void checkForMandatoryUpdate() {
+        mandatoryMode = true;
+        checkForUpdateInternal(true);
+    }
+
+    private void checkForUpdateInternal(boolean forceImmediate) {
+        Log.d(TAG, forceImmediate
+            ? "Checking for mandatory (IMMEDIATE) update..."
+            : "Checking for available updates...");
+
         Task<AppUpdateInfo> appUpdateInfoTask = appUpdateManager.getAppUpdateInfo();
-        
+
         appUpdateInfoTask.addOnSuccessListener(appUpdateInfo -> {
-            if (appUpdateInfo.updateAvailability() == UpdateAvailability.UPDATE_AVAILABLE) {
+            int availability = appUpdateInfo.updateAvailability();
+
+            if (availability == UpdateAvailability.UPDATE_AVAILABLE) {
                 int availableVersionCode = appUpdateInfo.availableVersionCode();
                 int updatePriority = appUpdateInfo.updatePriority();
-                
-                Log.d(TAG, "Update available! Version: " + availableVersionCode + 
-                           ", Priority: " + updatePriority);
-                
-                // Determine update type based on priority
-                int updateType = determineUpdateType(updatePriority, appUpdateInfo);
-                
+
+                int updateType = forceImmediate
+                    ? AppUpdateType.IMMEDIATE
+                    : determineUpdateType(updatePriority, appUpdateInfo);
+
+                Log.d(TAG, "Update available! Version: " + availableVersionCode
+                    + ", Priority: " + updatePriority
+                    + ", Type: " + (updateType == AppUpdateType.IMMEDIATE ? "IMMEDIATE" : "FLEXIBLE"));
+
                 if (updateListener != null) {
                     updateListener.onUpdateAvailable(updateType, availableVersionCode);
                 }
-                
-                // Start appropriate update flow
+
                 startUpdate(appUpdateInfo, updateType);
-                
-            } else if (appUpdateInfo.updateAvailability() == UpdateAvailability.UPDATE_NOT_AVAILABLE) {
-                Log.d(TAG, "No update available");
+
+            } else if (availability == UpdateAvailability.UPDATE_NOT_AVAILABLE) {
+                Log.d(TAG, "No update available from Play");
                 if (updateListener != null) {
                     updateListener.onUpdateNotAvailable();
                 }
-            } else if (appUpdateInfo.updateAvailability() == UpdateAvailability.DEVELOPER_TRIGGERED_UPDATE_IN_PROGRESS) {
-                // Resume update if already in progress
-                Log.d(TAG, "Update already in progress, resuming...");
+
+            } else if (availability == UpdateAvailability.DEVELOPER_TRIGGERED_UPDATE_IN_PROGRESS) {
+                Log.d(TAG, "Update already in progress, resuming IMMEDIATE flow...");
+                if (updateListener != null) {
+                    updateListener.onUpdateAvailable(AppUpdateType.IMMEDIATE, appUpdateInfo.availableVersionCode());
+                }
                 startUpdate(appUpdateInfo, AppUpdateType.IMMEDIATE);
             }
         });
-        
+
         appUpdateInfoTask.addOnFailureListener(exception -> {
             Log.e(TAG, "Failed to check for updates", exception);
             if (updateListener != null) {
@@ -160,6 +190,13 @@ public class InAppUpdateManager {
             
             if (!isUpdateTypeAllowed) {
                 Log.w(TAG, "Update type " + updateType + " is not allowed");
+                if (mandatoryMode && updateType == AppUpdateType.IMMEDIATE) {
+                    // IMMEDIATE not supported on this device/state — caller should fall back to store URL.
+                    if (updateListener != null) {
+                        updateListener.onUpdateFailed(-2, "Immediate update not allowed");
+                    }
+                    return;
+                }
                 if (updateListener != null) {
                     updateListener.onUpdateFailed(-2, "Update type not allowed");
                 }
@@ -293,20 +330,29 @@ public class InAppUpdateManager {
      * Handle activity result from update flow
      */
     public void handleActivityResult(int requestCode, int resultCode) {
-        if (requestCode == UPDATE_REQUEST_CODE) {
-            if (resultCode != Activity.RESULT_OK) {
-                Log.w(TAG, "Update flow failed! Result code: " + resultCode);
-                
-                if (updateListener != null) {
-                    if (resultCode == Activity.RESULT_CANCELED) {
-                        updateListener.onUpdateCanceled();
-                    } else {
-                        updateListener.onUpdateFailed(resultCode, "Update flow failed");
-                    }
-                }
+        if (requestCode != UPDATE_REQUEST_CODE) {
+            return;
+        }
+
+        if (resultCode == Activity.RESULT_OK) {
+            Log.d(TAG, "Update flow completed successfully");
+            return;
+        }
+
+        Log.w(TAG, "Update flow failed! Result code: " + resultCode);
+
+        if (updateListener != null) {
+            if (resultCode == Activity.RESULT_CANCELED) {
+                updateListener.onUpdateCanceled();
             } else {
-                Log.d(TAG, "Update flow completed successfully");
+                updateListener.onUpdateFailed(resultCode, "Update flow failed");
             }
+        }
+
+        // Mandatory updates cannot be bypassed — re-check and restart IMMEDIATE flow.
+        if (mandatoryMode) {
+            Log.d(TAG, "Mandatory update — re-checking after user dismissal...");
+            activity.runOnUiThread(() -> checkForMandatoryUpdate());
         }
     }
     
@@ -315,8 +361,10 @@ public class InAppUpdateManager {
      */
     public void onResume() {
         appUpdateManager.getAppUpdateInfo().addOnSuccessListener(appUpdateInfo -> {
-            // Check if immediate update is in progress
-            if (appUpdateInfo.updateAvailability() == UpdateAvailability.DEVELOPER_TRIGGERED_UPDATE_IN_PROGRESS) {
+            int availability = appUpdateInfo.updateAvailability();
+
+            // Resume IMMEDIATE update if in progress (mandatory or optional).
+            if (availability == UpdateAvailability.DEVELOPER_TRIGGERED_UPDATE_IN_PROGRESS) {
                 try {
                     appUpdateManager.startUpdateFlowForResult(
                         appUpdateInfo,
@@ -326,12 +374,28 @@ public class InAppUpdateManager {
                     );
                 } catch (IntentSender.SendIntentException e) {
                     Log.e(TAG, "Failed to resume update", e);
+                    if (mandatoryMode && updateListener != null) {
+                        updateListener.onUpdateFailed(-3, e.getMessage());
+                    }
                 }
+                return;
             }
-            
-            // Check if flexible update is downloaded and ready
-            if (appUpdateInfo.installStatus() == InstallStatus.DOWNLOADED) {
+
+            // Mandatory mode: re-check Play when app returns from background.
+            if (mandatoryMode && availability == UpdateAvailability.UPDATE_AVAILABLE) {
+                Log.d(TAG, "Mandatory update still required on resume — restarting IMMEDIATE flow");
+                startUpdate(appUpdateInfo, AppUpdateType.IMMEDIATE);
+                return;
+            }
+
+            // Flexible update downloaded — prompt restart (optional updates only).
+            if (!mandatoryMode && appUpdateInfo.installStatus() == InstallStatus.DOWNLOADED) {
                 showUpdateReadySnackbar();
+            }
+        }).addOnFailureListener(exception -> {
+            Log.e(TAG, "Failed to check update state on resume", exception);
+            if (mandatoryMode && updateListener != null) {
+                updateListener.onUpdateFailed(-1, exception.getMessage());
             }
         });
     }

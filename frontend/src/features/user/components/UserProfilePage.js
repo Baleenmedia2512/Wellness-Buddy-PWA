@@ -4,7 +4,7 @@
 // Rendered as a first-class page route inside App.js (showProfilePage=true).
 //
 // Sections:
-//   1. Avatar (Centre transformation photo — display only)
+//   1. Avatar (tap to change — Centre transform photo / ProfileImage)
 //   2. Profile fields (name, height, phone, community ID / team code, email, diet, BMR, PAL)
 //   3. Weight goal mode
 //   4. Settings  (auto camera toggle)
@@ -35,8 +35,11 @@ import HealthIssuesFilterSelect from '../../body-parameters-card/components/Heal
 import { EmojiOrNative } from '../../../shared/components/icons/EmojiImage';
 import { deriveWeightGoalMode } from '../../weight/services/weightFormService';
 import DeleteAccountModal from './DeleteAccountModal';
+import ChangeProfilePhotoModal from './ChangeProfilePhotoModal';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
 import { invalidateHasTeamMembersCache } from '../../team/services/teamSearchService';
+import { bumpAvatarDisplayVersion } from '../services/avatarDisplayVersion';
+import { getProfile } from '../services/user.api';
 
 const COLORS = ['bg-blue-500', 'bg-green-500', 'bg-purple-500', 'bg-pink-500', 'bg-indigo-500', 'bg-yellow-500', 'bg-red-500', 'bg-teal-500'];
 const colorOf = (name, email) => COLORS[(name || email || '').length % COLORS.length];
@@ -60,7 +63,7 @@ function resolveAccountEmail(user, formEmail) {
   return '';
 }
 
-const ROLE_LABELS = { admin: 'Admin', developer: 'Developer', coach: 'Coach', upline: 'Upline', user: 'Member' };
+const ROLE_LABELS = { admin: 'Admin', developer: 'Developer', coach: 'Coach', upline: 'Upline', user: 'Customer' };
 
 const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfileUpdate }) => {
   const form = useProfileForm();
@@ -78,6 +81,8 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
   const [successMessage, setSuccessMessage] = useState('');
   const [hasSaved, setHasSaved] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [showChangePhotoModal, setShowChangePhotoModal] = useState(false);
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
   const [leadPreFilled, setLeadPreFilled] = useState(false); // true once we've pre-filled from lead
   const leadPreFilledRef = useRef(false);
   const [autoCameraEnabled, setAutoCameraEnabled] = useState(
@@ -249,6 +254,51 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
     }
   }, [form, profileImagePreview, user, accountEmail, loadProfile, onProfileUpdate]);
 
+  const handlePhotoUploaded = useCallback(async (uploadedImage) => {
+    // Optimistic preview — keep previous photo if refresh fails.
+    const previousPreview = profileImagePreview;
+    if (uploadedImage) {
+      setProfileImagePreview(uploadedImage);
+    }
+    setIsUploadingPhoto(true);
+    setError('');
+    setSuccessMessage('');
+    try {
+      bumpAvatarDisplayVersion();
+      const emailKey = accountEmail || user?.email || user?.Email;
+      let serverImage = uploadedImage || null;
+      try {
+        const data = await getProfile({
+          email: emailKey || undefined,
+          userId: user?.id || undefined,
+          cacheBust: true,
+        });
+        if (data?.success && data?.data?.profileImage) {
+          serverImage = data.data.profileImage;
+          setProfileImagePreview(serverImage);
+        } else if (data?.data?.transformationPhotos?.front) {
+          serverImage = data.data.transformationPhotos.front;
+          setProfileImagePreview(serverImage);
+        }
+      } catch {
+        // Non-fatal — optimistic preview already applied.
+      }
+      onProfileUpdate?.({
+        profileImage: serverImage,
+        name: form.name,
+        teamSearchRefresh: true,
+      });
+      if (emailKey) Session.markProfilePictureUploaded(emailKey);
+      setSuccessMessage('Profile photo updated!');
+      setHasSaved(true);
+    } catch (e) {
+      setProfileImagePreview(previousPreview);
+      setError(e?.message || 'Failed to update profile photo.');
+    } finally {
+      setIsUploadingPhoto(false);
+    }
+  }, [profileImagePreview, accountEmail, user, form.name, onProfileUpdate]);
+
   const saveDisabled = isSaving || !form.nameValid ||
     !form.height || form.height.trim() === '' ||
     !form.phone || form.phone.trim() === '' ||
@@ -265,7 +315,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
 
   const displayWeightGoalMode = derivedWeightGoalMode || form.weightGoalMode || 'loss';
   const displayName = form.name || user?.displayName || user?.name || 'User';
-  const role = ROLE_LABELS[userRole] || 'Member';
+  const role = ROLE_LABELS[userRole] || 'Customer';
 
   return (
     <div className="min-h-full bg-gray-50 pb-8">
@@ -282,11 +332,17 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
           <h1 className="text-lg font-bold text-white">My Profile</h1>
         </div>
 
-        {/* Avatar — Centre transformation photo (display only) */}
+        {/* Avatar — tap to change profile photo */}
         <div className="flex items-center gap-4">
-          <div
-            className="relative w-20 h-20 rounded-full overflow-hidden flex-shrink-0 shadow-lg"
-            style={{ border: '3px solid white' }}
+          <TouchFeedbackButton
+            type="button"
+            onClick={() => {
+              if (!isUploadingPhoto && !isSaving) setShowChangePhotoModal(true);
+            }}
+            disabled={isUploadingPhoto || isSaving}
+            className="relative w-20 h-20 rounded-full overflow-hidden flex-shrink-0 shadow-lg border-[3px] border-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white disabled:opacity-70"
+            ariaLabel="Change profile photo"
+            title="Change profile photo"
           >
             {profileImagePreview ? (
               <img
@@ -302,7 +358,11 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
                 {initialOf(form.name || user?.displayName || user?.name, accountEmail)}
               </div>
             )}
-          </div>
+            <span className="absolute inset-x-0 bottom-0 bg-black/45 text-white text-[10px] font-semibold py-0.5 flex items-center justify-center gap-1">
+              <Camera className="w-3 h-3" />
+              {isUploadingPhoto ? '…' : 'Edit'}
+            </span>
+          </TouchFeedbackButton>
           <div className="flex-1 min-w-0">
             <p className="text-xl font-bold text-white truncate">{displayName}</p>
             <p className="text-sm text-green-100 truncate">{accountEmail || user?.email}</p>
@@ -334,7 +394,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
                 </span>
               )}
             </div>
-            <p className="text-xs text-green-200 mt-1">Tap photo to change</p>
+            {/* <p className="text-xs text-green-200 mt-1">Tap photo to change</p> */}
           </div>
         </div>
       </div>
@@ -513,6 +573,15 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
           </div>
         </div>
       </div>
+
+      <ChangeProfilePhotoModal
+        isOpen={showChangePhotoModal}
+        onClose={() => setShowChangePhotoModal(false)}
+        user={user}
+        accountEmail={accountEmail}
+        currentPreviewUrl={profileImagePreview}
+        onUploaded={handlePhotoUploaded}
+      />
 
       {/* Delete Account Modal (still a modal — this is correct Apple guideline flow) */}
       <DeleteAccountModal

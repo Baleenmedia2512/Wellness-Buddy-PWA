@@ -418,6 +418,24 @@ export async function save(input) {
   await repo.touchLastActive(userId);
   cache.delete(cacheKeys.nutritionMeals(userId));
 
+  // Prefer dual-write to R2 even when request ImageBase64 is empty: Manual Log /
+  // promoteUnknownToFood often runs after capture R2 persist has cleared
+  // captures_table.ImageBase64 and only ImageKey remains. Weight/education still
+  // send client bytes; food promote only passes capture.ImageBase64.
+  if (data?.ID && (imageBase64ToSave || captureId)) {
+    try {
+      const { persistFoodImageKey } = await import('../food-corrections/food-image-storage.service.js');
+      await persistFoodImageKey(userId.toString(), data.ID, imageBase64ToSave, { captureId });
+    } catch (err) {
+      logger.warn('analysis.save: food R2 persist skipped', {
+        userId: userId?.toString(),
+        mealId: data.ID,
+        captureId: captureId ?? null,
+        message: err?.message || String(err),
+      });
+    }
+  }
+
   // ADR-0005 — grow master nutrition catalog from successful AI / saved foods.
   try {
     const parsed = typeof analysisResult === 'string'

@@ -1,22 +1,33 @@
 /**
  * VerifyOtpModal.jsx
- * Coach enters the 6-digit OTP (received by email) to verify a member's testimonial.
+ * Coach enters the 4-digit OTP (received by email) to verify a member's testimonial.
  */
 import React, { useState } from 'react';
 import { ShieldCheck, X } from 'lucide-react';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
 import NativeInput from '../../../shared/components/NativeInput.jsx';
 import { verifyTestimonialOtp } from '../services/testimonialApi.js';
+import {
+  EMAIL_OTP_LENGTH,
+  extractOtpFromText,
+  isValidEmailOtp,
+} from '../../user/domain/otpLength';
 
 export default function VerifyOtpModal({ testimonialId, memberName, onVerified, onClose }) {
   const [otp,        setOtp]        = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error,      setError]      = useState(null);
 
+  const handleOtpInput = (raw) => {
+    const extracted = extractOtpFromText(raw, EMAIL_OTP_LENGTH);
+    setOtp(extracted ?? String(raw ?? '').replace(/\D/g, '').slice(0, EMAIL_OTP_LENGTH));
+    setError(null);
+  };
+
   const handleVerify = async () => {
     setError(null);
-    if (!/^\d{6}$/.test(otp.trim())) {
-      setError('Please enter the 6-digit OTP from the email');
+    if (!isValidEmailOtp(otp.trim())) {
+      setError('Please enter the 4-digit OTP from the email');
       return;
     }
     setSubmitting(true);
@@ -49,7 +60,7 @@ export default function VerifyOtpModal({ testimonialId, memberName, onVerified, 
         </div>
 
         <p className="text-sm text-gray-600">
-          Enter the 6-digit OTP from the email to verify{' '}
+          Enter the 4-digit OTP from the email to verify{' '}
           <strong>{memberName}</strong>'s testimonial.
         </p>
 
@@ -59,14 +70,14 @@ export default function VerifyOtpModal({ testimonialId, memberName, onVerified, 
           type="text"
           inputMode="numeric"
           pattern="[0-9]*"
-          autoComplete="off"
-          maxLength={6}
-          placeholder="_ _ _ _ _ _"
+          autoComplete="one-time-code"
+          maxLength={EMAIL_OTP_LENGTH}
+          placeholder="_ _ _ _"
           value={otp}
-          onChange={(e) => {
-            const v = e.target.value.replace(/\D/g, '').slice(0, 6);
-            setOtp(v);
-            setError(null);
+          onChange={(e) => handleOtpInput(e.target.value)}
+          onPaste={(e) => {
+            e.preventDefault();
+            handleOtpInput(e.clipboardData?.getData('text') ?? '');
           }}
           className="w-full text-center text-3xl font-bold tracking-[0.5em] border-2 border-gray-300 rounded-2xl py-4 focus:outline-none focus:ring-2 focus:ring-green-400 focus:border-green-400"
           autoFocus
@@ -80,7 +91,7 @@ export default function VerifyOtpModal({ testimonialId, memberName, onVerified, 
 
         <TouchFeedbackButton
           onClick={handleVerify}
-          disabled={submitting || otp.length !== 6}
+          disabled={submitting || otp.length !== EMAIL_OTP_LENGTH}
           className="w-full py-3.5 rounded-xl bg-green-600 hover:bg-green-700 text-white text-sm font-bold transition-colors disabled:opacity-60"
         >
           {submitting ? 'Verifying…' : 'Verify & Approve'}

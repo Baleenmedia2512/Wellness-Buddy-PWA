@@ -361,8 +361,8 @@ export function validateCheckOnboardingEmail(body) {
 export function validateVerifyOnboardingEmail(body) {
   const { userId, email } = validateCheckOnboardingEmail(body);
   const otp = body?.otp != null ? String(body.otp).trim() : '';
-  if (!otp || !/^\d{6}$/.test(otp)) {
-    throw new ValidationError(400, 'Enter the 6-digit code sent to your email');
+  if (!otp || !/^\d{4}$/.test(otp)) {
+    throw new ValidationError(400, 'Enter the 4-digit code sent to your email');
   }
   const name = body?.name != null ? String(body.name).trim() : '';
   return {

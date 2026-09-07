@@ -14,10 +14,10 @@ function looksLikeSpamBait(s) {
 
 describe('buildSignInOtpEmail', () => {
   it('is plain transactional copy with matching text and html', () => {
-    const mail = buildSignInOtpEmail('482193', { expiresMinutes: 5 });
+    const mail = buildSignInOtpEmail('4821', { expiresMinutes: 5 });
     assert.equal(mail.subject, 'Wellness Valley sign-in code');
-    assert.match(mail.text, /482193/);
-    assert.match(mail.html, /482193/);
+    assert.match(mail.text, /4821/);
+    assert.match(mail.html, /4821/);
     assert.match(mail.text, /5 minutes/);
     assert.equal(looksLikeSpamBait(mail.subject), false);
     assert.equal(looksLikeSpamBait(mail.text), false);
@@ -28,14 +28,14 @@ describe('buildSignInOtpEmail', () => {
 describe('buildSponsorOtpEmail', () => {
   it('is plain transactional copy without marketing markup', () => {
     const mail = buildSponsorOtpEmail({
-      otp: '119900',
+      otp: '1199',
       memberName: 'Adithya',
       expiresHours: 24,
     });
     assert.equal(mail.subject, 'Wellness Valley team code');
     assert.match(mail.text, /Adithya/);
-    assert.match(mail.text, /119900/);
-    assert.match(mail.html, /119900/);
+    assert.match(mail.text, /1199/);
+    assert.match(mail.html, /1199/);
     assert.equal(looksLikeSpamBait(mail.subject), false);
     assert.equal(looksLikeSpamBait(mail.text), false);
     assert.equal(looksLikeSpamBait(mail.html), false);

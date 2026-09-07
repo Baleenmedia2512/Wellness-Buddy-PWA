@@ -1,56 +1,30 @@
 /**
- * In-memory cache + in-flight dedup for GET /api/education/log-image.
- * Shared by EducationCard (list thumb) and useEducationDetailImage (modal)
- * so opening a card after the thumb loaded does not refetch.
+ * Education log photo URL. The API 302s to R2 — use as <img src>.
  */
-
-const cache = new Map();
-const pending = new Map();
 
 function cacheKey(apiBaseUrl, userId, logId) {
   return `${apiBaseUrl}|${userId}|${logId}`;
 }
 
+function imageUrl(apiBaseUrl, userId, logId) {
+  return `${apiBaseUrl}/api/education/log-image?logId=${encodeURIComponent(logId)}&userId=${encodeURIComponent(userId)}`;
+}
+
+const cache = new Map();
+
 /**
- * @param {{ apiBaseUrl: string, userId: string|number, logId: string|number, signal?: AbortSignal }} opts
- * @returns {Promise<string|null>} data-URL or null
+ * @returns {Promise<string|null>} http(s) image URL
  */
-export async function fetchEducationLogImage({ apiBaseUrl, userId, logId, signal } = {}) {
+export async function fetchEducationLogImage({ apiBaseUrl, userId, logId } = {}) {
   if (!apiBaseUrl || userId == null || logId == null) return null;
   const key = cacheKey(apiBaseUrl, userId, logId);
   if (cache.has(key)) return cache.get(key);
-
-  if (pending.has(key)) {
-    return pending.get(key);
-  }
-
-  const promise = fetch(
-    `${apiBaseUrl}/api/education/log-image?logId=${encodeURIComponent(logId)}&userId=${encodeURIComponent(userId)}`,
-    { signal, cache: 'default' },
-  )
-    .then((r) => r.json())
-    .then((res) => {
-      if (!res?.success || !res.imageBase64) return null;
-      const src = res.imageBase64.startsWith('data:')
-        ? res.imageBase64
-        : `data:image/jpeg;base64,${res.imageBase64}`;
-      cache.set(key, src);
-      return src;
-    })
-    .finally(() => {
-      pending.delete(key);
-    });
-
-  pending.set(key, promise);
-  return promise;
+  const src = imageUrl(apiBaseUrl, userId, logId);
+  cache.set(key, src);
+  return src;
 }
 
 export function peekEducationLogImage(apiBaseUrl, userId, logId) {
   if (!apiBaseUrl || userId == null || logId == null) return null;
-  return cache.get(cacheKey(apiBaseUrl, userId, logId)) || null;
-}
-
-export function clearEducationImageCache() {
-  cache.clear();
-  pending.clear();
+  return cache.get(cacheKey(apiBaseUrl, userId, logId)) || imageUrl(apiBaseUrl, userId, logId);
 }

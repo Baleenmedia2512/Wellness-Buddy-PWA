@@ -1,12 +1,14 @@
 import {
-  PROFILE_IMAGE_JPEG_QUALITY,
-  PROFILE_IMAGE_TARGET_BYTES,
+  IMAGE_JPEG_QUALITY,
   MAX_IMAGE_DIMENSION_PX,
 } from '../../../shared/constants/limits.js';
 
+/** Full-body transformation photos — not the 22 KB avatar budget. */
+const TRANSFORMATION_TARGET_BYTES = 200 * 1024;
+
 function encodeWithinBudget(canvas) {
-  const targetBytes = PROFILE_IMAGE_TARGET_BYTES || 200 * 1024;
-  const startQuality = PROFILE_IMAGE_JPEG_QUALITY || 0.85;
+  const targetBytes = TRANSFORMATION_TARGET_BYTES;
+  const startQuality = IMAGE_JPEG_QUALITY || 0.82;
   const maxDataUrlLen = Math.ceil(targetBytes / 0.75) + 32;
   let quality = startQuality;
   let dataUrl = canvas.toDataURL('image/jpeg', quality);
@@ -27,8 +29,8 @@ function loadImage(src) {
 }
 
 /**
- * Convert a picked File into a JPEG data URL using existing profile size limits.
- * Does not crop — transformation photos are full-body, not avatars.
+ * Convert a picked File into a JPEG data URL for full-body transformation photos.
+ * Does not crop and does not use the 22 KB avatar budget.
  * @param {File} file
  * @returns {Promise<string>}
  */

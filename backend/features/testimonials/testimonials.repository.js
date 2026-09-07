@@ -5,6 +5,11 @@
 import { getSupabaseClient } from '../../utils/supabaseClient.js';
 import { nowUtc } from '../../shared/lib/datetime/index.js';
 import logger from '../../shared/lib/logger.js';
+import {
+  memberHasVisibleTransformationPhoto,
+  seedTestimonialFromProfilePhotos,
+} from './domain/profileTransformationPhotos.seed.js';
+import { isRealImagePath } from './domain/testimonials-list.pagination.js';
 
 const TABLE = 'testimonials_table';
 const BUCKET = 'testimonials';
@@ -426,10 +431,79 @@ export async function listForCoach(coachId, scope = 'direct') {
     }
   }
 
-  return members.map((m) => ({
+  const rows = members.map((m) => ({
     user:        m,
     testimonial: testimonialMap[m.UserId] ?? null,
   }));
+
+  if (scope === 'full') {
+    await mergeProfileTransformationPhotosIntoRows(rows);
+  }
+
+  return rows;
+}
+
+/**
+ * Fetch transformation_photos JSONB for user ids (profile left-slot seeding).
+ * @param {number[]} userIds
+ * @returns {Promise<Map<number, unknown>>}
+ */
+export async function fetchTransformationPhotosByUserIds(userIds) {
+  const ids = [...new Set((userIds || []).map((id) => Number(id)).filter(Number.isFinite))];
+  if (!ids.length) return new Map();
+
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from('team_table')
+    .select('"UserId", transformation_photos')
+    .in('UserId', ids);
+  if (error) throw error;
+
+  const map = new Map();
+  for (const row of (data || [])) {
+    map.set(Number(row.UserId), row.transformation_photos ?? null);
+  }
+  return map;
+}
+
+/**
+ * Build a synthetic testimonial row from profile transformation_photos when no DB row exists.
+ * @param {number} userId
+ * @returns {Promise<object|null>}
+ */
+export async function buildTestimonialFromProfilePhotos(userId) {
+  const photoMap = await fetchTransformationPhotosByUserIds([userId]);
+  const raw = photoMap.get(Number(userId));
+  return seedTestimonialFromProfilePhotos(null, raw);
+}
+
+function rowNeedsProfilePhotoSeed(row) {
+  const t = row?.testimonial;
+  if (!t) return true;
+  if (isVideoOnlyPlaceholder(t.before_image_path)) {
+    return !t.health_video_path && !t.business_video_path;
+  }
+  return !isRealImagePath(t.before_image_path);
+}
+
+/**
+ * Full Team: seed missing before/after from profile transformation_photos (left slot).
+ * @param {Array<{ user: object, testimonial: object|null }>} rows
+ */
+async function mergeProfileTransformationPhotosIntoRows(rows) {
+  const needsSeed = (rows || []).filter(rowNeedsProfilePhotoSeed);
+  if (!needsSeed.length) return;
+
+  const ids = needsSeed.map((row) => row.user.UserId);
+  const photoMap = await fetchTransformationPhotosByUserIds(ids);
+
+  for (const row of needsSeed) {
+    const userId = Number(row.user.UserId);
+    const raw = photoMap.get(userId);
+    if (raw == null) continue;
+    const seeded = seedTestimonialFromProfilePhotos(row.testimonial, raw);
+    if (seeded) row.testimonial = seeded;
+  }
 }
 
 /**
@@ -530,9 +604,12 @@ export async function loadTeamReportingContext(coachId) {
  */
 async function fetchReportingTeamMembers(coachId, scope = 'direct', context = null) {
   const resolvedContext = context ?? await loadTeamReportingContext(coachId);
-  const { getSharedTeamDirectMembers, getSharedTeamFullMembers } = await import('../../utils/sharedTeamReporting.js');
+  const {
+    getSharedTeamDirectMembers,
+    getSharedTeamFullMembersWithUplines,
+  } = await import('../../utils/sharedTeamReporting.js');
   const members = scope === 'full'
-    ? getSharedTeamFullMembers(coachId, resolvedContext)
+    ? getSharedTeamFullMembersWithUplines(coachId, resolvedContext)
     : getSharedTeamDirectMembers(coachId, resolvedContext);
   return members
     .filter((member) => member.UserId !== Number(coachId))
@@ -591,10 +668,23 @@ export async function countPhotoUploadStatsForCoach(coachId, scope = 'direct', c
     if (!testimonialMap[t.user_id]) testimonialMap[t.user_id] = t;
   }
 
+  let profilePhotoMap = new Map();
+  if (scope === 'full') {
+    const needsProfileCheck = members.filter(
+      (m) => !memberHasVisibleTransformationPhoto(testimonialMap[m.UserId], null),
+    );
+    if (needsProfileCheck.length) {
+      profilePhotoMap = await fetchTransformationPhotosByUserIds(
+        needsProfileCheck.map((m) => m.UserId),
+      );
+    }
+  }
+
   let uploaded = 0;
   for (const m of members) {
     const t = testimonialMap[m.UserId];
-    if (t && !isVideoOnlyPlaceholder(t.before_image_path)) uploaded += 1;
+    const raw = profilePhotoMap.get(m.UserId);
+    if (memberHasVisibleTransformationPhoto(t, raw)) uploaded += 1;
   }
 
   return { uploaded, notUploaded: total - uploaded };

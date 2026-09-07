@@ -4,8 +4,8 @@
  * Left slot also seeds testimonial Before via persistOnboardingTestimonialPhotos.
  */
 import { useCallback, useMemo, useState } from 'react';
-import { fileToProfileJpegDataUrl } from '../services/fileToProfileJpegDataUrl';
-import { normalizeImageToPortraitJpeg } from '../services/capturePortraitJpeg';
+import { compressImage } from '../../testimonials/utils/compressTestimonialImage.js';
+import { setCaptureFlowBusy } from '../../../shared/services/captureFlowBusy';
 import { historyFromLatestSlots } from '../domain/transformationBeforeAfter';
 import { DEFAULT_POSE_SLOT, POSE_SLOT_KEYS } from '../domain/transformationPoseGuide';
 
@@ -38,10 +38,14 @@ export default function useTransformationPhotos() {
 
   const setSlotFromFile = useCallback(async (slot, file) => {
     if (!file || !POSE_SLOT_KEYS.includes(slot)) return;
-    const raw = await fileToProfileJpegDataUrl(file);
-    const dataUrl = await normalizeImageToPortraitJpeg(raw);
-    setPreviews((prev) => ({ ...prev, [slot]: dataUrl }));
-    setPendingSlots((prev) => ({ ...prev, [slot]: dataUrl }));
+    setCaptureFlowBusy(true);
+    try {
+      const { preview } = await compressImage(file);
+      setPreviews((prev) => ({ ...prev, [slot]: preview }));
+      setPendingSlots((prev) => ({ ...prev, [slot]: preview }));
+    } finally {
+      setCaptureFlowBusy(false);
+    }
   }, []);
 
   const history = useMemo(

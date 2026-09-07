@@ -7,6 +7,7 @@
  *   - Adding afterImageBase64 + afterWeightKg (on submit or edit)  â†’ status: 'pending' + email coach
  */
 import { ValidationError } from '../../shared/lib/ValidationError.js';
+import { isValidEmailOtp } from '../auth/domain/otp-length.rules.js';
 import { normalizeTestimonialsListPagination } from './domain/testimonials-list.pagination.js';
 
 const GOAL_TYPES = ['loss', 'gain'];
@@ -156,7 +157,7 @@ export function validateVerifyOtp(body) {
   if (isNaN(idN) || idN < 1) throw new ValidationError(400, 'testimonialId must be a valid integer');
 
   if (!otp || typeof otp !== 'string') throw new ValidationError(400, 'otp is required');
-  if (!/^\d{6}$/.test(otp.trim())) throw new ValidationError(422, 'otp must be a 6-digit number');
+  if (!isValidEmailOtp(otp.trim())) throw new ValidationError(422, 'otp must be a 4-digit number');
 
   return { testimonialId: idN, otp: otp.trim() };
 }
@@ -408,7 +409,7 @@ export function validateVerifyVideoOtp(body) {
   if (isNaN(idN) || idN < 1) throw new ValidationError(400, 'testimonialId must be a valid integer');
 
   if (!otp || typeof otp !== 'string') throw new ValidationError(400, 'otp is required');
-  if (!/^\d{6}$/.test(otp.trim())) throw new ValidationError(422, 'otp must be a 6-digit number');
+  if (!isValidEmailOtp(otp.trim())) throw new ValidationError(422, 'otp must be a 4-digit number');
 
   return { testimonialId: idN, otp: otp.trim() };
 }
@@ -595,7 +596,7 @@ export function validateVerifyUnifiedOtp(body) {
   if (isNaN(userIdN) || userIdN < 1) throw new ValidationError(400, 'userId must be a valid integer');
 
   if (!otp || typeof otp !== 'string') throw new ValidationError(400, 'otp is required');
-  if (!/^\d{6}$/.test(otp.trim())) throw new ValidationError(422, 'otp must be a 6-digit number');
+  if (!isValidEmailOtp(otp.trim())) throw new ValidationError(422, 'otp must be a 4-digit number');
 
   return { userId: userIdN, otp: otp.trim() };
 }

@@ -1,5 +1,7 @@
 /**
  * OnboardingTransformationPhotosPage — mandatory Left / Centre / Right.
+ * Shown after Complete Profile for new users, and on login for existing users
+ * who still have any empty slot (so we do not miss transformation photo data).
  * Compact no-scroll layout; Continue only when all three photos are set.
  * Left photo still seeds testimonial Before.
  */

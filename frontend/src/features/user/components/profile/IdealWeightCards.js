@@ -32,8 +32,8 @@ function formatInitialWeightDate(value) {
   });
 }
 
-function MarathonGapWeightProgress({ comparison }) {
-  if (!comparison || comparison.mode !== 'gap') return null;
+function MarathonCrossMarathonWeightProgress({ comparison, title = 'Marathon Weight' }) {
+  if (!comparison) return null;
 
   const hasPrevious = isValidMarathonWeightKg(comparison.previousMarathonEndWeight);
   const hasCurrent = isValidMarathonWeightKg(comparison.currentWeight);
@@ -49,8 +49,8 @@ function MarathonGapWeightProgress({ comparison }) {
   }
 
   return (
-    <div className="space-y-2" data-testid="marathon-gap-weight-progress">
-      <p className="text-xs font-semibold text-gray-500 px-1">Marathon Weight</p>
+    <div className="space-y-2" data-testid="marathon-cross-marathon-weight-progress">
+      <p className="text-xs font-semibold text-gray-500 px-1">{title}</p>
       <Row
         wrapper="bg-indigo-50 border border-indigo-200 text-indigo-600"
         label="Previous Marathon End"
@@ -72,23 +72,54 @@ function MarathonGapWeightProgress({ comparison }) {
   );
 }
 
+function MarathonGapWeightProgress({ comparison }) {
+  if (!comparison || comparison.mode !== 'gap') return null;
+  return <MarathonCrossMarathonWeightProgress comparison={comparison} />;
+}
+
 function MarathonDaysProgress({ comparison }) {
   if (!comparison || comparison.mode !== 'running' || !Array.isArray(comparison.days)) {
     return null;
   }
 
+  const dayIndex = comparison.marathonDay;
+  if (dayIndex == null || dayIndex <= 0) return null;
+
+  const entry = comparison.currentDay ?? comparison.days[dayIndex] ?? null;
+  const day0Weight = comparison.day0Weight ?? entry?.day0Weight ?? null;
+  const todayWeight = entry?.dayWeight ?? null;
+  if (!isValidMarathonWeightKg(day0Weight) && !isValidMarathonWeightKg(todayWeight)) {
+    return null;
+  }
+
+  let direction = entry?.direction ?? null;
+  if (isValidMarathonWeightKg(day0Weight) && isValidMarathonWeightKg(todayWeight)) {
+    direction = direction || resolveMarathonWeightDirection(day0Weight, todayWeight);
+  }
+
   return (
     <div className="space-y-2" data-testid="marathon-days-progress">
-      <p className="text-xs font-semibold text-gray-500 px-1">Marathon Days</p>
-      {comparison.days.map((entry) => (
-        <div
-          key={`marathon-day-${entry.day}`}
-          className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-emerald-700"
-        >
-          <p className="text-xs font-semibold">Day {entry.day}</p>
-          <p className="text-base font-bold mt-1">{entry.displayLine}</p>
-        </div>
-      ))}
+      <p className="text-xs font-semibold text-gray-500 px-1">
+        Marathon Day {dayIndex} · Day 0 vs Today
+      </p>
+      <Row
+        wrapper="bg-emerald-50 border border-emerald-200 text-emerald-600"
+        label="Marathon Day 0"
+        labelIcon={<EmojiOrNative emoji="🏁" className="w-4 h-4" nativeClassName="text-sm" />}
+        value={formatMarathonWeightDisplayValue(day0Weight)}
+        valueClass="text-emerald-700"
+      />
+      <Row
+        wrapper="bg-teal-50 border border-teal-200 text-teal-600"
+        label={`Today (Day ${dayIndex})`}
+        labelIcon={<EmojiOrNative emoji="⚖️" className="w-4 h-4" nativeClassName="text-sm" />}
+        sub={!isValidMarathonWeightKg(todayWeight) ? 'Not logged today' : undefined}
+        value={formatMarathonWeightDisplayValue(todayWeight, {
+          withDirection: true,
+          direction,
+        })}
+        valueClass="text-teal-700"
+      />
     </div>
   );
 }
@@ -96,7 +127,15 @@ function MarathonDaysProgress({ comparison }) {
 function MarathonWeightProgress({ comparison }) {
   if (!comparison) return null;
   if (comparison.mode === 'running') {
-    return <MarathonDaysProgress comparison={comparison} />;
+    const showCrossMarathon = comparison.marathonDay === 0;
+    return (
+      <>
+        {showCrossMarathon && (
+          <MarathonCrossMarathonWeightProgress comparison={comparison} />
+        )}
+        <MarathonDaysProgress comparison={comparison} />
+      </>
+    );
   }
   if (comparison.mode === 'gap') {
     return <MarathonGapWeightProgress comparison={comparison} />;
@@ -111,19 +150,20 @@ const IdealWeightCards = ({
   initialWeightDate,
   marathonWeightComparison = null,
 }) => {
+  const current = latestWeight;
+
   const h = parseFloat(height);
   if (!h || h < 50) return null;
   const m = h / 100;
-  const idealMin = parseFloat((19 * m * m).toFixed(1));
-  const idealMax = parseFloat((23 * m * m).toFixed(1));
-  const current = latestWeight;
+  const idealMin = parseFloat((19 * m * m).toFixed(2));
+  const idealMax = parseFloat((23 * m * m).toFixed(2));
   const initial = initialWeight != null && Number.isFinite(Number(initialWeight))
     ? Number(initialWeight)
     : null;
   const initialDateLabel = formatInitialWeightDate(initialWeightDate);
   const isLoss = current && current > idealMax + 0.5;
   const isGain = current && current < idealMin - 0.5;
-  const display = isGain ? `${idealMin} kg` : `${idealMax} kg`;
+  const display = isGain ? `${idealMin.toFixed(2)} kg` : `${idealMax.toFixed(2)} kg`;
 
   return (
     <>
@@ -134,13 +174,13 @@ const IdealWeightCards = ({
           label="Initial Weight"
           labelIcon={<EmojiOrNative emoji="🏁" className="w-4 h-4" nativeClassName="text-sm" />}
           sub={initialDateLabel || undefined}
-          value={`${initial.toFixed(1)} kg`} valueClass="text-slate-700" />
+          value={`${initial.toFixed(2)} kg`} valueClass="text-slate-700" />
       )}
       {current != null && (
         <Row wrapper="bg-gray-50 border border-gray-200 text-gray-600"
           label="Current Weight"
           labelIcon={<EmojiOrNative emoji="⚖️" className="w-4 h-4" nativeClassName="text-sm" />}
-          value={`${current.toFixed(1)} kg`} valueClass="text-gray-700" />
+          value={`${current.toFixed(2)} kg`} valueClass="text-gray-700" />
       )}
       <MarathonWeightProgress comparison={marathonWeightComparison} />
       {current != null && isLoss && (

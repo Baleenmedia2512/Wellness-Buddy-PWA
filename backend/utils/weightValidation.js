@@ -228,8 +228,8 @@ export function computeIdealWeightRange(heightCm) {
   if (!h || isNaN(h) || h < 50 || h > 250) return null;
   const heightM = h / 100;
   return {
-    idealMin: parseFloat((19 * heightM * heightM).toFixed(1)),
-    idealMax: parseFloat((23 * heightM * heightM).toFixed(1)),
+    idealMin: parseFloat((19 * heightM * heightM).toFixed(2)),
+    idealMax: parseFloat((23 * heightM * heightM).toFixed(2)),
   };
 }
 

@@ -40,6 +40,8 @@ const TeamMemberSearch = ({
             <TeamSearchResults
               dropdownRef={vm.dropdownRef}
               loading={vm.loading}
+              loadError={vm.loadError}
+              rosterReady={vm.rosterReady}
               suggestions={vm.suggestions}
               selectedMemberId={selectedMember?.userId}
               onSelect={vm.selectMember}

@@ -4,6 +4,7 @@ import { todayInTimezone } from '../../shared/lib/datetime/index.js';
 import { getUserTimezoneIana } from '../user/domain/userTimezone.js';
 import { cache } from '../../utils/cache.js';
 import { paginateCentersListRecords } from './domain/centers.pagination.js';
+import { canUnregisterCenter } from './domain/center-access.rules.js';
 
 /** Global geo list for GPS check-in — identical for all users. */
 const GEO_LIST_CACHE_TTL_MS = 2 * 60 * 1000;
@@ -78,9 +79,26 @@ async function assertOwnerOrAdmin(centerId, userId) {
   return { allowed: true };
 }
 
+async function assertCanUnregister(centerId, userId) {
+  const { data: center, error: centerErr } = await repo.findCenterOwner(centerId);
+  if (centerErr || !center) return { allowed: false, httpStatus: 404, message: 'Center not found' };
+  const actor = parseInt(userId, 10);
+  const { data: user } = await repo.findUserRole(userId);
+  const coachTeam = Number.isFinite(actor) ? await repo.findCoachTeamForUser(actor) : null;
+  if (canUnregisterCenter({
+    actorUserId: actor,
+    ownerUserId: center.owner_user_id,
+    role: user?.Role,
+    coachTeam,
+  })) {
+    return { allowed: true };
+  }
+  return { allowed: false, httpStatus: 403, message: 'Only the owner or a team partner can delete this center' };
+}
+
 // ─── unregister ──────────────────────────────────────────────────────────────
 export async function unregister({ centerId, userId }) {
-  const guard = await assertOwnerOrAdmin(centerId, userId);
+  const guard = await assertCanUnregister(centerId, userId);
   if (!guard.allowed) {
     return { httpStatus: guard.httpStatus, body: { success: false, message: guard.message } };
   }

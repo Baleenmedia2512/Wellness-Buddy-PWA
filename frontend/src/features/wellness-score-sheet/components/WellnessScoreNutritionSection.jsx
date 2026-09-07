@@ -37,7 +37,7 @@ export default function WellnessScoreNutritionSection({
     nutritionRefreshKey,
     persistSnapshot: false,
   });
-  const timeWindows = useTimeWindows();
+  const { timeWindows } = useTimeWindows();
   const userId = scoreData?.userId || user?.id || user?.userId || null;
   const dateStr = scoreData?.date || date;
   const showMultiDayCarousel = isMultiDay && historyDays.length > 1;

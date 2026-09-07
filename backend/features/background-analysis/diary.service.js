@@ -128,6 +128,18 @@ export async function getCaptureImageForDiary({ captureId, viewerUserId }) {
     throw err;
   }
 
+  let r2Url = null;
+  if (row.ImageKey) {
+    try {
+      const { r2CapturesEnabled, captureImageRedirectUrl } = await import(
+        '../captures/capture-image-storage.service.js'
+      );
+      if (r2CapturesEnabled()) r2Url = captureImageRedirectUrl(row.ImageKey);
+    } catch {
+      r2Url = null;
+    }
+  }
+
   return {
     httpStatus: 200,
     body: {
@@ -135,6 +147,7 @@ export async function getCaptureImageForDiary({ captureId, viewerUserId }) {
       data: {
         imageBase64: row.ImageBase64 || null,
         imagePath: row.ImagePath || null,
+        r2Url,
       },
     },
   };
@@ -769,6 +782,18 @@ export async function resolveUnknownShare({ token, viewerUserId }) {
     }).allowed;
   }
 
+  let r2Url = null;
+  if (capture.ImageKey) {
+    try {
+      const { r2CapturesEnabled, captureImageRedirectUrl } = await import(
+        '../captures/capture-image-storage.service.js'
+      );
+      if (r2CapturesEnabled()) r2Url = captureImageRedirectUrl(capture.ImageKey);
+    } catch {
+      r2Url = null;
+    }
+  }
+
   return {
     httpStatus: 200,
     body: {
@@ -777,6 +802,7 @@ export async function resolveUnknownShare({ token, viewerUserId }) {
         kind:        'unknown',
         captureId:   capture.ID ? capture.ID.toString() : null,
         imageBase64: capture.ImageBase64 || null,
+        r2Url,
         createdAt:   capture.CreatedAt ? capture.CreatedAt.toString() : null,
         canMutate,
       },
