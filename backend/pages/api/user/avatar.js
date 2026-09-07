@@ -22,14 +22,16 @@ const AVATAR_CACHE_TTL_MS = 5 * 60 * 1000;
 const NONE = Object.freeze({ kind: 'none' });
 
 function sendRedirect(res, url, cacheTag) {
-  res.setHeader('Cache-Control', 'public, max-age=300');
+  // Redirect URL is stable (userId) while Location target changes on upload —
+  // avoid long-lived browser cache of the 302 after a photo change.
+  res.setHeader('Cache-Control', 'private, max-age=0, must-revalidate');
   res.setHeader('X-Cache', cacheTag);
   return res.redirect(302, url);
 }
 
 function sendBytes(res, parsed, cacheTag) {
   res.setHeader('Content-Type', parsed.contentType);
-  res.setHeader('Cache-Control', 'public, max-age=300');
+  res.setHeader('Cache-Control', 'private, max-age=0, must-revalidate');
   res.setHeader('X-Cache', cacheTag);
   return res.status(200).send(parsed.bytes);
 }
