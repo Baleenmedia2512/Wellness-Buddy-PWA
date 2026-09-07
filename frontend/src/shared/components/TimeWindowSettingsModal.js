@@ -287,6 +287,7 @@ const TimeWindowSettingsModal = ({
   userEmail,
   requesterUserId = null,
   title = "Activity Time Window Settings",
+  variant = "modal",
 }) => {
   const [timeWindows, setTimeWindows] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -529,6 +530,267 @@ const TimeWindowSettingsModal = ({
     const ampm = hour >= 12 ? "PM" : "AM";
     const displayHour = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
     return `${displayHour}:${minutes} ${ampm}`;
+  }
+
+  if (variant === "inline") {
+    if (!isOpen) return null;
+    return (
+      <div
+        className="mx-auto max-w-lg space-y-4 px-4 py-4 pb-10"
+        onClick={() => setActivePicker(null)}
+      >
+        <p className="text-xs text-gray-500">
+          Configure activity start and end times (IST)
+        </p>
+        <AnimatePresence mode="wait">
+          {successMessage ? (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="flex items-center gap-3 p-3 bg-green-100 border border-green-200 rounded-xl shadow-sm"
+            >
+              <div className="bg-green-200 p-1 rounded-full">
+                <Check className="h-3 w-3 text-green-700" />
+              </div>
+              <p className="text-xs text-green-800 font-medium leading-relaxed">
+                {successMessage}
+              </p>
+            </motion.div>
+          ) : null}
+        </AnimatePresence>
+        {loading ? (
+          <div className="flex justify-center py-12">
+            <div className="animate-spin h-8 w-8 border-4 border-green-500 border-t-transparent rounded-full" />
+          </div>
+        ) : error ? (
+          <div className="text-center py-8">
+            <p className="text-red-500 text-sm mb-3">{error}</p>
+            <button
+              onClick={loadTimeWindows}
+              className="text-green-600 text-sm font-medium hover:underline"
+            >
+              Try Again
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {timeWindows.map((window) => {
+              const config = getActivityConfig(window.ActivityType);
+              const isEditing = selectedActivity === window.ActivityType;
+              const isJustUpdated = lastUpdatedActivity === window.ActivityType;
+              const Icon = config.icon;
+              return (
+                <motion.div
+                  key={window.ActivityType}
+                  className={`rounded-2xl border transition-all ${
+                    isEditing && activePicker
+                      ? "overflow-visible z-20"
+                      : "overflow-hidden"
+                  } ${
+                    isEditing
+                      ? "bg-white border-green-200 shadow-lg ring-1 ring-green-100"
+                      : isJustUpdated
+                      ? "bg-green-50 border-green-200 shadow-sm"
+                      : "bg-white border-gray-100 hover:border-gray-200 hover:shadow-sm"
+                  }`}
+                >
+                  <div className="p-4 flex items-center gap-4">
+                    <div
+                      className={`w-10 h-10 rounded-xl flex items-center justify-center ${config.bg} ${config.color}`}
+                    >
+                      <Icon className="h-5 w-5" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between pr-1">
+                        <h3 className="font-bold text-gray-900 text-sm">
+                          {config.name}
+                        </h3>
+                        <span className="text-[10px] text-gray-400 font-medium">
+                          {window.isDefault
+                            ? "Using defaults"
+                            : window.LastUpdated
+                            ? `${isEditing ? "Last updated: " : ""}${format(
+                                new Date(window.LastUpdated),
+                                "dd/MM/yyyy",
+                              )}`
+                            : ""}
+                        </span>
+                      </div>
+                      {!isEditing && (
+                        <div className="flex items-center gap-2 mt-1">
+                          <span className="text-xs font-medium text-gray-600 bg-gray-50 px-2 py-0.5 rounded-md border border-gray-100">
+                            {formatTime(window.WindowStartTime)} -{" "}
+                            {formatTime(window.WindowEndTime)}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                    {!isEditing && (
+                      <button
+                        onClick={() => handleEditWindow(window)}
+                        className="p-2 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+                      >
+                        <Edit2 className="h-4 w-4" />
+                      </button>
+                    )}
+                  </div>
+                  <AnimatePresence>
+                    {isEditing && (
+                      <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: "auto", opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.2, ease: "easeInOut" }}
+                        className={`border-t border-gray-50 bg-gray-50/30 px-4 pb-4 pt-2 rounded-b-2xl ${
+                          activePicker ? "overflow-visible" : "overflow-hidden"
+                        }`}
+                      >
+                        <div className="space-y-4 mt-2">
+                          <div className="grid grid-cols-2 gap-3">
+                            <div className="space-y-1.5">
+                              <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+                                Start Time
+                              </label>
+                              <div
+                                className="relative group"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setActivePicker(
+                                    activePicker === "startTime" ? null : "startTime",
+                                  );
+                                }}
+                              >
+                                <Clock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 group-hover:text-green-500 transition-colors pointer-events-none" />
+                                <div
+                                  className={`w-full pl-10 pr-3 py-3 bg-white border ${
+                                    activePicker === "startTime"
+                                      ? "border-green-500 ring-1 ring-green-200"
+                                      : "border-gray-200"
+                                  } rounded-xl text-sm font-medium text-gray-900 hover:border-green-500 hover:ring-1 hover:ring-green-200 transition-all cursor-pointer flex items-center h-[46px]`}
+                                >
+                                  {formData.windowStartTime || "Select"}
+                                </div>
+                                <AnimatePresence>
+                                  {activePicker === "startTime" && (
+                                    <InlineTimePicker
+                                      value={formData.windowStartTime}
+                                      onChange={(val) =>
+                                        setFormData((prev) => ({
+                                          ...prev,
+                                          windowStartTime: val,
+                                        }))
+                                      }
+                                    />
+                                  )}
+                                </AnimatePresence>
+                              </div>
+                            </div>
+                            <div className="space-y-1.5">
+                              <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+                                End Time
+                              </label>
+                              <div
+                                className="relative group"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setActivePicker(
+                                    activePicker === "endTime" ? null : "endTime",
+                                  );
+                                }}
+                              >
+                                <Clock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 group-hover:text-green-500 transition-colors pointer-events-none" />
+                                <div
+                                  className={`w-full pl-10 pr-3 py-3 bg-white border ${
+                                    activePicker === "endTime"
+                                      ? "border-green-500 ring-1 ring-green-200"
+                                      : "border-gray-200"
+                                  } rounded-xl text-sm font-medium text-gray-900 hover:border-green-500 hover:ring-1 hover:ring-green-200 transition-all cursor-pointer flex items-center h-[46px]`}
+                                >
+                                  {formData.windowEndTime || "Select"}
+                                </div>
+                                <AnimatePresence>
+                                  {activePicker === "endTime" && (
+                                    <InlineTimePicker
+                                      value={formData.windowEndTime}
+                                      onChange={(val) =>
+                                        setFormData((prev) => ({
+                                          ...prev,
+                                          windowEndTime: val,
+                                        }))
+                                      }
+                                    />
+                                  )}
+                                </AnimatePresence>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="space-y-1.5">
+                            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+                              Reason for Change
+                            </label>
+                            <textarea
+                              value={formData.changeReason}
+                              onChange={(e) =>
+                                setFormData({
+                                  ...formData,
+                                  changeReason: e.target.value,
+                                })
+                              }
+                              placeholder="Optional note..."
+                              rows={2}
+                              className="w-full px-3 py-2 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none transition-all resize-none"
+                            />
+                          </div>
+                          <AnimatePresence>
+                            {validationError && (
+                              <motion.div
+                                initial={{ opacity: 0, y: -10 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0, y: -10 }}
+                                className="flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-xl"
+                              >
+                                <AlertCircle className="h-4 w-4 text-red-600 mt-0.5 shrink-0" />
+                                <p className="text-xs text-red-700 font-medium leading-relaxed">
+                                  {validationError}
+                                </p>
+                              </motion.div>
+                            )}
+                          </AnimatePresence>
+                          <div className="flex gap-3 pt-2">
+                            <button
+                              onClick={handleCancelEdit}
+                              disabled={saving}
+                              className="flex-1 py-2.5 text-sm font-medium text-gray-600 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              onClick={handleSaveChanges}
+                              disabled={saving}
+                              className="flex-1 py-2.5 text-sm font-medium text-white bg-green-600 rounded-xl hover:bg-green-700 transition-colors shadow-lg shadow-green-200 flex items-center justify-center gap-2"
+                            >
+                              {saving ? (
+                                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                              ) : (
+                                <>
+                                  <Save className="h-4 w-4" />
+                                  Save Changes
+                                </>
+                              )}
+                            </button>
+                          </div>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </motion.div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
   }
 
   return (

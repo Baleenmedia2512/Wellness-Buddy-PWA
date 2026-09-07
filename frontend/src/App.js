@@ -250,7 +250,7 @@ import {
 } from "./shared/services/firebase";
 import TouchFeedbackButton from "./shared/components/TouchFeedbackButton";
 import LocationGuard from "./shared/components/LocationGuard";
-import AdminFab from "./shared/components/AdminFab";
+import { ADMIN_CONFIG_TABS } from "./shell/domain/adminConfigSetupTabs";
 import { isAdminLikeRole } from "./shared/constants/roles";
 import { canAccessReportsModule } from "./features/reports/domain/reportsAccess.rules.js";
 import { DIARY_ANALYZING_POLL_MS } from "./shared/constants/limits";
@@ -298,14 +298,11 @@ const REPORT_DASHBOARD_TABS = {
   IDEAL_WEIGHT: 'ideal-weight',
   WELLNESS_SCORE: 'wellness-score',
 };
-const WellnessScoreSetup = lazy(() =>
-  import("./features/wellness-score-sheet").then((m) => ({ default: m.WellnessScoreSetup })),
+const AdminConfigSetup = lazy(() =>
+  import("./shell/components/AdminConfigSetup").then((m) => ({ default: m.default })),
 );
 const WellnessScorePage = lazy(() =>
   import("./features/wellness-score-sheet").then((m) => ({ default: m.WellnessScorePage })),
-);
-const AiCreditsSetup = lazy(() =>
-  import("./features/ai-credits").then((m) => ({ default: m.AiCreditsSetup })),
 );
 const ManualEntryPage = lazy(() =>
   import("./shell/components/ManualEntryPage"),
@@ -1036,7 +1033,8 @@ function WellnessValleyApp() {
     }
   }, [showReports, userRole]);
   const [showWellnessScore, setShowWellnessScore] = useState(false);
-  const [showWellnessScoreSetup, setShowWellnessScoreSetup] = useState(false);
+  const [showAdminConfigSetup, setShowAdminConfigSetup] = useState(false);
+  const [adminConfigTab, setAdminConfigTab] = useState(ADMIN_CONFIG_TABS.WELLNESS_SCORE);
   /** Remount key so each open picks up the Home date-range selection cleanly. */
   const [wellnessScoreSession, setWellnessScoreSession] = useState(0);
   const [wellnessScoreInitialRange, setWellnessScoreInitialRange] = useState({
@@ -1050,7 +1048,6 @@ function WellnessValleyApp() {
     customStartDate: null,
     customEndDate: null,
   });
-  const [showAiCreditsSetup, setShowAiCreditsSetup] = useState(false);
   const [showManualEntry, setShowManualEntry] = useState(() => {
     const pending = Session.getPendingClassifyCapture();
     return !!(pending?.captureId && pending?.imageBase64);
@@ -1124,8 +1121,7 @@ function WellnessValleyApp() {
         setShowTestimonials(false);
         setShowReports(false);
         setShowProfilePage(false);
-        setShowWellnessScoreSetup(false);
-        setShowAiCreditsSetup(false);
+        setShowAdminConfigSetup(false);
         setShowManualEntry(false);
         setManualEntryPayload(null);
         setShowWellnessScore(false);
@@ -2227,14 +2223,8 @@ function WellnessValleyApp() {
         if (currentWvPage && currentWvPage !== 'main') window.history.back();
         return true;
       }
-      if (showWellnessScoreSetup) {
-        setShowWellnessScoreSetup(false);
-        const currentWvPage = window.history.state?.wvPage;
-        if (currentWvPage && currentWvPage !== 'main') window.history.back();
-        return true;
-      }
-      if (showAiCreditsSetup) {
-        setShowAiCreditsSetup(false);
+      if (showAdminConfigSetup) {
+        setShowAdminConfigSetup(false);
         const currentWvPage = window.history.state?.wvPage;
         if (currentWvPage && currentWvPage !== 'main') window.history.back();
         return true;
@@ -2261,7 +2251,7 @@ function WellnessValleyApp() {
     initializeBackButton(
       goBack,
       showToast,
-      !showDashboard && !showWellnessCounselling && !showUniversityEnrollment && !showNutritionCentersMap && !showActivityReport && !showActivityTimeReport && !showTestimonials && !showReports && !showWellnessScoreSetup && !showAiCreditsSetup && !showManualEntry && !showWellnessScore && !showProfilePage,
+      !showDashboard && !showWellnessCounselling && !showUniversityEnrollment && !showNutritionCentersMap && !showActivityReport && !showActivityTimeReport && !showTestimonials && !showReports && !showAdminConfigSetup && !showManualEntry && !showWellnessScore && !showProfilePage,
     );
     return () => cleanupBackButton();
   // eslint-disable-next-line react-hooks/exhaustive-deps -- showMainPage is useCallback([]) stable; listing it here causes a TDZ crash because it is declared after this effect
@@ -2274,8 +2264,7 @@ function WellnessValleyApp() {
     showActivityTimeReport,
     showTestimonials,
     showReports,
-    showWellnessScoreSetup,
-    showAiCreditsSetup,
+    showAdminConfigSetup,
     showManualEntry,
     showWellnessScore,
     showProfilePage,
@@ -2573,8 +2562,7 @@ function WellnessValleyApp() {
       setShowActivityTimeReport(false);
       setShowTestimonials(false);
       setShowReports(false);
-      setShowWellnessScoreSetup(false);
-      setShowAiCreditsSetup(false);
+      setShowAdminConfigSetup(false);
       setShowManualEntry(false);
       setManualEntryPayload(null);
       setShowWellnessScore(false);
@@ -2603,8 +2591,7 @@ function WellnessValleyApp() {
         setShowActivityTimeReport(false);
         setShowTestimonials(false);
         setShowReports(false);
-        setShowWellnessScoreSetup(false);
-        setShowAiCreditsSetup(false);
+        setShowAdminConfigSetup(false);
         setShowManualEntry(false);
         setManualEntryPayload(null);
         setShowWellnessScore(false);
@@ -2631,15 +2618,18 @@ function WellnessValleyApp() {
     setShowActivityTimeReport(false);
     setShowTestimonials(false);
     setShowReports(false);
-    setShowWellnessScoreSetup(false);
-    setShowAiCreditsSetup(false);
+    setShowAdminConfigSetup(false);
     setShowManualEntry(false);
     setManualEntryPayload(null);
     setShowWellnessScore(false);
     setShowProfilePage(false);
     enrollmentHistoryPushedRef.current = false;
 
-    const historyPage = targetPage === 'wellness-score-report' ? 'reports' : targetPage;
+    const historyPage = targetPage === 'wellness-score-report'
+      ? 'reports'
+      : (targetPage === 'wellness-score-setup' || targetPage === 'ai-credits-setup')
+        ? 'admin-config-setup'
+        : targetPage;
     bumpTabVisitKey(historyPage);
 
     if (isOnSubPage) {
@@ -2690,13 +2680,16 @@ function WellnessValleyApp() {
         setShowWellnessScore(true);
         break;
       case 'wellness-score-setup':
+      case 'admin-config-setup':
         if (isAdminLikeRole(userRole)) {
-          setShowWellnessScoreSetup(true);
+          setAdminConfigTab(ADMIN_CONFIG_TABS.WELLNESS_SCORE);
+          setShowAdminConfigSetup(true);
         }
         break;
       case 'ai-credits-setup':
         if (isAdminLikeRole(userRole)) {
-          setShowAiCreditsSetup(true);
+          setAdminConfigTab(ADMIN_CONFIG_TABS.AI_CONFIG);
+          setShowAdminConfigSetup(true);
         }
         break;
       case 'manual-entry':
@@ -7824,29 +7817,16 @@ function WellnessValleyApp() {
         </div>
       </div>
     );
-  } else if (showWellnessScoreSetup && isFlagEnabled('ff.wellness-score-sheet') && adminLikeRole) {
+  } else if (showAdminConfigSetup && adminLikeRole) {
     homeOverlay = (
-      <Suspense fallback={<LoadingSpinner message="Loading Wellness Score Setup..." />}>
-        <WellnessScoreSetup
+      <Suspense fallback={<LoadingSpinner message="Loading Admin Config Setup..." />}>
+        <AdminConfigSetup
           user={user}
           apiBaseUrl={apiBaseUrl}
+          initialTab={adminConfigTab}
           onBack={() => {
-            setShowWellnessScoreSetup(false);
+            setShowAdminConfigSetup(false);
             refreshOnTabFocus();
-            const currentWvPage = window.history.state?.wvPage;
-            if (currentWvPage && currentWvPage !== 'main') window.history.back();
-          }}
-        />
-      </Suspense>
-    );
-  } else if (showAiCreditsSetup && isFlagEnabled('ff.ai-credits') && adminLikeRole) {
-    homeOverlay = (
-      <Suspense fallback={<LoadingSpinner message="Loading AI Credits Setup..." />}>
-        <AiCreditsSetup
-          user={user}
-          apiBaseUrl={apiBaseUrl}
-          onBack={() => {
-            setShowAiCreditsSetup(false);
             const currentWvPage = window.history.state?.wvPage;
             if (currentWvPage && currentWvPage !== 'main') window.history.back();
           }}
@@ -8337,7 +8317,7 @@ function WellnessValleyApp() {
             showActivityReport || showActivityTimeReport ? 'activity-report' :
             showTestimonials ? 'testimonials' :
             showReports ? 'reports' :
-            showWellnessScoreSetup ? 'wellness-score-setup' :
+            showAdminConfigSetup ? 'admin-config-setup' :
             'home'
           }
           onShowRegisterCenter={null}
@@ -8766,13 +8746,6 @@ function WellnessValleyApp() {
           </div>
         )}
 
-        {!homeOverlay && (
-          <AdminFab
-            userRole={userRole}
-            showAiCreditsItem={isFlagEnabled('ff.ai-credits')}
-            onNavigate={navigateTo}
-          />
-        )}
 
         {/* User Not Found Modal */}
         {showUserNotFoundModal && (

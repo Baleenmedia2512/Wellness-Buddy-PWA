@@ -19,7 +19,7 @@ import TimeWindowSettingsModal from '../../../shared/components/TimeWindowSettin
 /**
  * Admin / developer Wellness Score Setup — enterprise layout.
  */
-export default function WellnessScoreSetup({ user, apiBaseUrl, onBack }) {
+export default function WellnessScoreSetup({ user, apiBaseUrl, onBack, embedded = false }) {
   const [config, setConfig] = useState(DEFAULT_PARAMETER_CONFIG);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -105,38 +105,42 @@ export default function WellnessScoreSetup({ user, apiBaseUrl, onBack }) {
     });
   };
 
+  const rootClass = embedded ? '' : 'min-h-screen bg-[#f4f7f5]';
+
   return (
-    <div className="min-h-screen bg-[#f4f7f5]">
-      <header className="sticky top-0 z-20 border-b border-gray-200/80 bg-white/95 backdrop-blur safe-top">
-        <div className="mx-auto flex max-w-lg items-center gap-3 px-4 py-3">
-          {onBack && (
+    <div className={rootClass}>
+      {!embedded && (
+        <header className="sticky top-0 z-20 border-b border-gray-200/80 bg-white/95 backdrop-blur safe-top">
+          <div className="mx-auto flex max-w-lg items-center gap-3 px-4 py-3">
+            {onBack && (
+              <button
+                type="button"
+                onClick={onBack}
+                className="-ml-2 rounded-lg p-2 transition-colors hover:bg-gray-100"
+                aria-label="Go back"
+              >
+                <ArrowLeft className="h-5 w-5 text-gray-700" />
+              </button>
+            )}
+            <div className="min-w-0 flex-1">
+              <h1 className="flex items-center gap-2 text-base font-bold text-gray-900">
+                <Settings2 className="h-5 w-5 shrink-0 text-emerald-600" aria-hidden />
+                Wellness Score Setup
+              </h1>
+              <p className="text-xs text-gray-500">Platform-wide scoring configuration</p>
+            </div>
             <button
               type="button"
-              onClick={onBack}
-              className="-ml-2 rounded-lg p-2 transition-colors hover:bg-gray-100"
-              aria-label="Go back"
+              onClick={() => setShowTimeWindowSettings(true)}
+              className="rounded-lg p-2 text-gray-600 transition-colors hover:bg-emerald-50 hover:text-emerald-700"
+              aria-label="Activity time window settings"
+              data-testid="wellness-score-time-window-settings"
             >
-              <ArrowLeft className="h-5 w-5 text-gray-700" />
+              <Clock className="h-5 w-5" aria-hidden />
             </button>
-          )}
-          <div className="min-w-0 flex-1">
-            <h1 className="flex items-center gap-2 text-base font-bold text-gray-900">
-              <Settings2 className="h-5 w-5 shrink-0 text-emerald-600" aria-hidden />
-              Wellness Score Setup
-            </h1>
-            <p className="text-xs text-gray-500">Platform-wide scoring configuration</p>
           </div>
-          <button
-            type="button"
-            onClick={() => setShowTimeWindowSettings(true)}
-            className="rounded-lg p-2 text-gray-600 transition-colors hover:bg-emerald-50 hover:text-emerald-700"
-            aria-label="Activity time window settings"
-            data-testid="wellness-score-time-window-settings"
-          >
-            <Clock className="h-5 w-5" aria-hidden />
-          </button>
-        </div>
-      </header>
+        </header>
+      )}
 
       <main className="mx-auto max-w-lg space-y-4 px-4 py-4 pb-32">
         {loading && (
@@ -247,13 +251,15 @@ export default function WellnessScoreSetup({ user, apiBaseUrl, onBack }) {
         </footer>
       )}
 
-      <TimeWindowSettingsModal
-        isOpen={showTimeWindowSettings}
-        onClose={() => setShowTimeWindowSettings(false)}
-        onUpdate={handleTimeWindowsUpdated}
-        userEmail={user?.email}
-        requesterUserId={resolvedUserId}
-      />
+      {!embedded && (
+        <TimeWindowSettingsModal
+          isOpen={showTimeWindowSettings}
+          onClose={() => setShowTimeWindowSettings(false)}
+          onUpdate={handleTimeWindowsUpdated}
+          userEmail={user?.email}
+          requesterUserId={resolvedUserId}
+        />
+      )}
     </div>
   );
 }
