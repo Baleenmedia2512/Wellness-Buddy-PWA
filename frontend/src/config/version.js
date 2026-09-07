@@ -79,7 +79,7 @@ export const APP_VERSION = {
   // Version code (for Android builds - must match build.gradle)
   // Also used as CFBundleVersion for iOS builds - must match Info.plist
   // NOTE: versionCode must never decrease for Play Store compatibility.
-  VERSION_CODE: 69,
+  VERSION_CODE: 70,
   
   // iOS build number (CFBundleVersion in Info.plist) - must match Info.plist / pbxproj
   IOS_BUILD_NUMBER: 70,
@@ -88,11 +88,11 @@ export const APP_VERSION = {
   RELEASE_NAME: 'Version  3.4.9',
   
   // Build date
-  BUILD_DATE: '2026-09-02',
+  BUILD_DATE: '2026-09-07',
   
   // Platform release notes..
   PLATFORMS: {
-    ANDROID: { versionCode: 69, versionName: '3.4.9' },
+    ANDROID: { versionCode: 70, versionName: '3.4.9' },
     IOS: { buildNumber: 70, versionName: '3.4.9' },
   },
 };
