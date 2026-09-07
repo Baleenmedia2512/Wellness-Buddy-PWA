@@ -595,7 +595,33 @@ const TimeWindowSettingsModal = ({
                       : "bg-white border-gray-100 hover:border-gray-200 hover:shadow-sm"
                   }`}
                 >
-                  <div className="p-4 flex items-center gap-4">
+                  <div
+                    className={`p-4 flex items-center gap-4 ${
+                      !isEditing
+                        ? "cursor-pointer hover:bg-gray-50/80 active:bg-gray-50"
+                        : ""
+                    }`}
+                    onClick={
+                      !isEditing
+                        ? () => handleEditWindow(window)
+                        : undefined
+                    }
+                    onKeyDown={
+                      !isEditing
+                        ? (e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              handleEditWindow(window);
+                            }
+                          }
+                        : undefined
+                    }
+                    role={!isEditing ? "button" : undefined}
+                    tabIndex={!isEditing ? 0 : undefined}
+                    aria-label={
+                      !isEditing ? `Edit ${config.name} time window` : undefined
+                    }
+                  >
                     <div
                       className={`w-10 h-10 rounded-xl flex items-center justify-center ${config.bg} ${config.color}`}
                     >
@@ -627,12 +653,12 @@ const TimeWindowSettingsModal = ({
                       )}
                     </div>
                     {!isEditing && (
-                      <button
-                        onClick={() => handleEditWindow(window)}
-                        className="p-2 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+                      <span
+                        className="p-2 text-gray-400 rounded-lg pointer-events-none"
+                        aria-hidden="true"
                       >
                         <Edit2 className="h-4 w-4" />
-                      </button>
+                      </span>
                     )}
                   </div>
                   <AnimatePresence>
@@ -900,7 +926,35 @@ const TimeWindowSettingsModal = ({
                           }`}
                         >
                           {/* Card Header / Summary */}
-                          <div className="p-4 flex items-center gap-4">
+                          <div
+                            className={`p-4 flex items-center gap-4 ${
+                              !isEditing
+                                ? "cursor-pointer hover:bg-gray-50/80 active:bg-gray-50"
+                                : ""
+                            }`}
+                            onClick={
+                              !isEditing
+                                ? () => handleEditWindow(window)
+                                : undefined
+                            }
+                            onKeyDown={
+                              !isEditing
+                                ? (e) => {
+                                    if (e.key === "Enter" || e.key === " ") {
+                                      e.preventDefault();
+                                      handleEditWindow(window);
+                                    }
+                                  }
+                                : undefined
+                            }
+                            role={!isEditing ? "button" : undefined}
+                            tabIndex={!isEditing ? 0 : undefined}
+                            aria-label={
+                              !isEditing
+                                ? `Edit ${config.name} time window`
+                                : undefined
+                            }
+                          >
                             <div
                               className={`w-10 h-10 rounded-xl flex items-center justify-center ${config.bg} ${config.color}`}
                             >
@@ -934,12 +988,12 @@ const TimeWindowSettingsModal = ({
                             </div>
 
                             {!isEditing && (
-                              <button
-                                onClick={() => handleEditWindow(window)}
-                                className="p-2 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+                              <span
+                                className="p-2 text-gray-400 rounded-lg pointer-events-none"
+                                aria-hidden="true"
                               >
                                 <Edit2 className="h-4 w-4" />
-                              </button>
+                              </span>
                             )}
                           </div>
 
