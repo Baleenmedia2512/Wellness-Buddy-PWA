@@ -4,6 +4,7 @@
 
 import { getApiBaseUrl } from '../../../config/api.config';
 import { resolveMealImageSrc } from '../../nutrition/services/nutritionDashboard/mealImageSrc';
+import { activityPhotoTemplate } from '../../../shared/assets/activityPhotoTemplates';
 
 /**
  * @param {{ kind: string, payload?: object, capture?: object }} entry
@@ -21,21 +22,13 @@ export function resolveDiaryThumbSource(entry, {
   const owner = ownerUserId != null ? String(ownerUserId) : null;
   const viewer = viewerUserId != null ? String(viewerUserId) : owner;
 
-  if (p.imageBase64 && String(p.imageBase64).trim() !== '') {
-    const raw = String(p.imageBase64);
-    return {
-      src: raw.startsWith('data:image') ? raw : `data:image/jpeg;base64,${raw}`,
-      format: 'data',
-    };
-  }
-
-  if (p.imagePath && (String(p.imagePath).startsWith('http') || String(p.imagePath).startsWith('data:'))) {
+  if (p.imagePath && String(p.imagePath).startsWith('http')) {
     return { src: p.imagePath, format: 'raw' };
   }
 
   const id = p.id;
   if (id == null || !owner) {
-    return { src: p.imagePath || null, format: p.imagePath ? 'raw' : null };
+    return { src: null, format: null };
   }
 
   switch (entry.kind) {
@@ -50,17 +43,17 @@ export function resolveDiaryThumbSource(entry, {
     case 'weight':
       return {
         src: `${base}/api/weight/image?userId=${encodeURIComponent(owner)}&id=${encodeURIComponent(id)}`,
-        format: 'json',
+        format: 'raw',
       };
     case 'education':
       return {
         src: `${base}/api/education/log-image?logId=${encodeURIComponent(id)}&userId=${encodeURIComponent(owner)}`,
-        format: 'json',
+        format: 'raw',
       };
     case 'good-habit':
       return {
-        src: `${base}/api/good-habits?id=${encodeURIComponent(id)}&userId=${encodeURIComponent(owner)}`,
-        format: 'json',
+        src: `${base}/api/good-habits?id=${encodeURIComponent(id)}&userId=${encodeURIComponent(owner)}&slot=main`,
+        format: 'raw',
       };
     case 'unknown':
       if (!viewer) return { src: null, format: null };
@@ -69,7 +62,7 @@ export function resolveDiaryThumbSource(entry, {
         format: 'raw',
       };
     default:
-      return { src: p.imagePath || null, format: p.imagePath ? 'raw' : null };
+      return { src: null, format: null };
   }
 }
 
@@ -79,36 +72,18 @@ export function resolveDiaryThumbUrl(entry, opts) {
 }
 
 /**
- * Resolve a share-card image src (data URL or http URL) from Thumb props.
- * @param {{ imageBase64?: string|null, imagePath?: string|null, imageUrl?: string|null, imageUrlFormat?: string|null }} thumb
- * @returns {Promise<string|null>}
+ * Share-card photo: R2/API URL only. Older rows without ImageKey use a template.
+ * @param {{ kind?: string, imageUrl?: string|null, imageUrlFormat?: string|null, imagePath?: string|null }} thumb
+ * @returns {Promise<string>}
  */
 export async function fetchDiaryShareImageSrc(thumb) {
-  if (!thumb) return null;
-  if (thumb.imageBase64 && String(thumb.imageBase64).trim() !== '') {
-    const raw = String(thumb.imageBase64);
-    return raw.startsWith('data:image') ? raw : `data:image/jpeg;base64,${raw}`;
-  }
-  if (thumb.imageUrlFormat === 'raw' && thumb.imageUrl) {
+  if (thumb?.imageUrlFormat === 'raw' && thumb.imageUrl) {
     return thumb.imageUrl;
   }
-  if (thumb.imagePath && (String(thumb.imagePath).startsWith('http') || String(thumb.imagePath).startsWith('data:'))) {
+  if (thumb?.imagePath && String(thumb.imagePath).startsWith('http')) {
     return thumb.imagePath;
   }
-  if (thumb.imageUrlFormat === 'json' && thumb.imageUrl) {
-    try {
-      const response = await fetch(thumb.imageUrl);
-      if (!response.ok) return thumb.imagePath || null;
-      const json = await response.json();
-      const b64 = json?.image || json?.imageBase64 || json?.data?.imageBase64;
-      if (!b64 || String(b64).trim() === '') return thumb.imagePath || null;
-      const raw = String(b64);
-      return raw.startsWith('data:image') ? raw : `data:image/jpeg;base64,${raw}`;
-    } catch {
-      return thumb.imagePath || null;
-    }
-  }
-  return thumb.imagePath || null;
+  return activityPhotoTemplate(thumb?.kind);
 }
 
 /** Let html2canvas paint the share-card photo before capture. */

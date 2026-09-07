@@ -3,6 +3,16 @@ export const ACTIVITY_REPORT_CLUB_REMOTE = '__remote__';
 
 const SHARE_TEXT_MAX_ROWS = 50;
 
+export function formatActivityReportLevel(level) {
+  if (level == null || level === '') return '—';
+  const n = Number(level);
+  return Number.isFinite(n) ? String(n) : '—';
+}
+
+export function formatActivityReportMemberType(memberType) {
+  return String(memberType || '').toLowerCase() === 'sponsor' ? 'Sponsor' : 'Member';
+}
+
 function formatClub(clubName) {
   if (!clubName || clubName === 'N/A') return 'Remote';
   return String(clubName);
@@ -18,9 +28,15 @@ function activityDetailLine(record, activityId) {
   const club = formatClub(record.clubName);
   const parts = [
     record.memberName || 'N/A',
+    formatActivityReportMemberType(record.memberType),
+  ];
+  const sponsor = record.sponsorName || record.coachName;
+  if (sponsor && sponsor !== 'N/A') parts.push(`Sponsor: ${sponsor}`);
+  parts.push(
+    `Level: ${formatActivityReportLevel(record.level)}`,
     `Club: ${club}`,
     `${record.date || '—'} ${record.time || ''}`.trim(),
-  ];
+  );
 
   if (activityId === 'weight' && record.weight != null) {
     parts.push(`Weight: ${record.weight} kg`);
@@ -34,8 +50,6 @@ function activityDetailLine(record, activityId) {
     if (record.caloriesBurned != null) parts.push(`Burned: ${record.caloriesBurned} kcal`);
   }
 
-  const sponsor = record.sponsorName || record.coachName;
-  if (sponsor && sponsor !== 'N/A') parts.push(`Sponsor: ${sponsor}`);
   if (record.phone && record.phone !== 'N/A') parts.push(`Phone: ${record.phone}`);
 
   return parts.join(' | ');
@@ -49,7 +63,9 @@ export function buildActivityReportShareText({
   dateLabel = '',
   scopeLabel = '',
   clubFilter = '',
+  columnFilter = '',
   searchQuery = '',
+  attendanceLabel = '',
   totalRecords = 0,
   records = [],
   activityId = 'education',
@@ -61,10 +77,12 @@ export function buildActivityReportShareText({
   const meta = [];
   if (dateLabel) meta.push(`Period: ${dateLabel}`);
   if (scopeLabel) meta.push(`Team: ${scopeLabel}`);
+  if (attendanceLabel) meta.push(attendanceLabel);
   if (meta.length) lines.push(meta.join(' · '));
 
   const clubLabel = formatClubFilterLabel(clubFilter);
   if (clubLabel) lines.push(`Club: ${clubLabel}`);
+  if (columnFilter) lines.push(`Filter: ${columnFilter}`);
   if (searchQuery?.trim()) lines.push(`Search: ${searchQuery.trim()}`);
 
   lines.push(`Total records: ${totalRecords}`);

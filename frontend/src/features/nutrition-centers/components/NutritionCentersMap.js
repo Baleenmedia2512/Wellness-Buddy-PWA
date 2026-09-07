@@ -1,15 +1,18 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { RefreshCw, MapPin, X, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Search, Pencil, Plus } from 'lucide-react';
+import { RefreshCw, MapPin, X, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Search, Pencil, Plus, Phone, MessageCircle, Trash2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
 import LoadingSpinner from '../../../shared/components/LoadingSpinner';
-import { Capacitor } from '@capacitor/core';
+import CustomAlertModal from '../../../shared/components/CustomAlertModal';
+import { openWhatsAppChat } from '../../../shared/utils/phoneContactActions.js';
+import { telHref } from '../../../shared/domain/phoneContact.js';
 import { debugLog } from '../../../shared/utils/logger.js';
 import { loadGoogleMaps } from '../services/googleMapsLoader';
 import AttendeeListModal from './AttendeeListModal';
 import { resolveDiaryTimezone } from '../../diary/utils/diaryTimezone';
 import { getApiBaseUrl } from '../../../config/api.config.js';
 import { lookup as lookupUser } from '../../user/services/user.api.js';
+import { unregister as unregisterCenter } from '../services/centers.api.js';
 
 // --- Single Day Picker ---
 const SingleDayPicker = ({ selectedDate, onSelect, onClose }) => {
@@ -96,6 +99,8 @@ const NutritionCentersMap = ({ user, onBack, onEditCenter, onRegisterCenter, emb
   const [selectedCenter, setSelectedCenter] = useState(null);
   const [mapFullscreen, setMapFullscreen] = useState(false);
   const [attendeeModal, setAttendeeModal] = useState({ isOpen: false, center: null });
+  const [deleteModal, setDeleteModal] = useState({ isOpen: false, center: null });
+  const [deletingCenterId, setDeletingCenterId] = useState(null);
   const [pagination, setPagination] = useState({
     totalRecords: 0,
     currentPage: 0,
@@ -346,6 +351,30 @@ const NutritionCentersMap = ({ user, onBack, onEditCenter, onRegisterCenter, emb
     }
   }, [user, teamFilter, debouncedSearch, apiBaseUrl, resolveUserId, buildDateParams]);
 
+  const confirmDeleteCenter = useCallback(async () => {
+    const center = deleteModal.center;
+    if (!center?.id) return;
+    setDeletingCenterId(center.id);
+    try {
+      const userId = await resolveUserId();
+      const result = await unregisterCenter({ centerId: center.id, userId });
+      if (!result?.success) {
+        throw new Error(result?.message || 'Failed to delete club');
+      }
+      pageCacheRef.current.clear();
+      setCenters((prev) => prev.filter((c) => c.id !== center.id));
+      setPagination((prev) => ({
+        ...prev,
+        totalRecords: Math.max(0, (prev.totalRecords || 1) - 1),
+      }));
+      await fetchCenters({ page: 1, bustCache: true });
+    } catch (err) {
+      setError(err.message || 'Failed to delete club');
+    } finally {
+      setDeletingCenterId(null);
+    }
+  }, [deleteModal.center, resolveUserId, fetchCenters]);
+
   // Open Street View for a center
   const openStreetView = (center) => {
     debugLog('🗺️ Opening Street View for:', center.center_name, center);
@@ -441,28 +470,7 @@ const NutritionCentersMap = ({ user, onBack, onEditCenter, onRegisterCenter, emb
   };
 
   // Open WhatsApp helper function
-  const openWhatsApp = async (phoneNumber) => {
-    const cleanPhone = phoneNumber.replace(/[^0-9]/g, '');
-    
-    try {
-      if (Capacitor.isNativePlatform()) {
-        // For native Android - use custom plugin to bypass webview
-        const { WhatsAppShare } = Capacitor.Plugins;
-        
-        if (!WhatsAppShare || typeof WhatsAppShare.openChat !== 'function') {
-          console.error('WhatsAppShare plugin not available');
-          return;
-        }
-        
-        await WhatsAppShare.openChat({ phoneNumber: cleanPhone });
-      } else {
-        // For web/PWA, open in new tab
-        window.open(`https://wa.me/${cleanPhone}`, '_blank', 'noopener,noreferrer');
-      }
-    } catch (error) {
-      console.error('Error opening WhatsApp:', error);
-    }
-  };
+  const openWhatsApp = (phoneNumber) => openWhatsAppChat(phoneNumber);
 
   // View center on map - Simple function to zoom and show details
   const viewCenterOnMap = (center) => {
@@ -554,9 +562,12 @@ const NutritionCentersMap = ({ user, onBack, onEditCenter, onRegisterCenter, emb
               👁️ View Street View
             </button>
             ${center.owner_phone ? `
+              <p style="margin: 4px 0; font-size: 13px; color: #6b7280;">
+                <strong>Phone:</strong> ${center.owner_phone}
+              </p>
               <div style="display: flex; gap: 8px; justify-content: center;">
-                <a href="tel:${center.owner_phone}" style="padding: 10px; background: #10b981; text-decoration: none; border-radius: 8px; display: flex; align-items: center; justify-content: center;" title="Call"><img src="/call-icon.png" alt="Call" style="width: 24px; height: 24px;"/></a>
-                <button onclick="window.openWhatsAppForCenter('${String(center.owner_phone).replace(/[^0-9]/g, '')}')" style="padding: 10px; background: #25D366; border: none; border-radius: 8px; display: flex; align-items: center; justify-content: center; cursor: pointer;" title="WhatsApp"><img src="/whatsapp-icon.png" alt="WhatsApp" style="width: 24px; height: 24px;"/></button>
+                <a href="${telHref(center.owner_phone)}" style="flex:1; padding: 8px 10px; background: #10b981; color: white; text-decoration: none; border-radius: 8px; text-align: center; font-size: 13px; font-weight: 600;" title="Call">Call</a>
+                <button onclick="window.openWhatsAppForCenter('${String(center.owner_phone).replace(/[^0-9+]/g, '')}')" style="flex:1; padding: 8px 10px; background: #25D366; color: white; border: none; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer;" title="WhatsApp">WhatsApp</button>
               </div>
             ` : ''}
           </div>
@@ -920,7 +931,7 @@ const NutritionCentersMap = ({ user, onBack, onEditCenter, onRegisterCenter, emb
                   <div
                     key={center.id}
                     onClick={() => viewCenterOnMap(center)}
-                    className="bg-white rounded-2xl shadow-sm border border-gray-200 hover:shadow-md transition-all cursor-pointer overflow-hidden"
+                    className="bg-white rounded-2xl shadow-sm border border-gray-200 hover:shadow-md transition-all cursor-pointer"
                   >
                     {/* Info */}
                     <div className="px-4 pt-4 pb-3">
@@ -928,23 +939,43 @@ const NutritionCentersMap = ({ user, onBack, onEditCenter, onRegisterCenter, emb
                         <div className="flex-1 min-w-0">
                           <h3 className="font-semibold text-gray-900 truncate text-[15px]">{center.center_name}</h3>
                           <p className="text-xs text-gray-500 mt-0.5">{center.ownerName}</p>
+                          {center.owner_phone ? (
+                            <p className="text-xs text-gray-500 mt-0.5">{center.owner_phone}</p>
+                          ) : null}
                         </div>
-                        {(center.todayAttendance || 0) > 0 ? (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setAttendeeModal({ isOpen: true, center });
-                            }}
-                            className="shrink-0 text-xs font-semibold px-2.5 py-1 rounded-full border bg-green-100 text-green-700 border-green-200 active:bg-green-200 transition-colors"
-                            aria-label={`View ${center.todayAttendance} attendees`}
-                          >
-                            {center.todayAttendance} attended
-                          </button>
-                        ) : (
-                          <span className="shrink-0 text-xs font-semibold px-2.5 py-1 rounded-full border bg-gray-50 text-gray-600 border-gray-300">
-                            0 attended
-                          </span>
-                        )}
+                        <div className="flex items-center gap-1 flex-shrink-0">
+                          {(center.todayAttendance || 0) > 0 ? (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setAttendeeModal({ isOpen: true, center });
+                              }}
+                              className="shrink-0 text-xs font-semibold px-2.5 py-1 rounded-full border bg-green-100 text-green-700 border-green-200 active:bg-green-200 transition-colors"
+                              aria-label={`View ${center.todayAttendance} attendees`}
+                            >
+                              {center.todayAttendance} attended
+                            </button>
+                          ) : (
+                            <span className="shrink-0 text-xs font-semibold px-2.5 py-1 rounded-full border bg-gray-50 text-gray-600 border-gray-300">
+                              0 attended
+                            </span>
+                          )}
+                          {teamFilter === 'self' && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setDeleteModal({ isOpen: true, center });
+                              }}
+                              disabled={deletingCenterId === center.id}
+                              className="p-1.5 rounded-lg border border-red-200 bg-red-50 text-red-600 active:bg-red-100 disabled:opacity-50"
+                              aria-label={`Delete ${center.center_name || 'club'}`}
+                              title="Delete club"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          )}
+                        </div>
                       </div>
                     </div>
 
@@ -965,12 +996,12 @@ const NutritionCentersMap = ({ user, onBack, onEditCenter, onRegisterCenter, emb
                       {center.owner_phone && (
                         <>
                           <a
-                            href={`tel:${center.owner_phone}`}
+                            href={telHref(center.owner_phone) || `tel:${center.owner_phone}`}
                             onClick={(e) => e.stopPropagation()}
                             className="compact-touch flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1 px-2 sm:px-3 py-2 rounded-full border border-green-300 bg-green-50 active:bg-green-100 transition-colors w-full"
                             aria-label="Call"
                           >
-                            <img src="/call-icon.png" alt="" className="h-4 w-4 sm:h-5 sm:w-5 object-contain flex-shrink-0" />
+                            <Phone className="h-4 w-4 sm:h-5 sm:w-5 text-green-700 flex-shrink-0" />
                             <span className="text-[10px] sm:text-xs font-semibold text-green-700 text-center leading-tight px-0.5">Call</span>
                           </a>
                           <TouchFeedbackButton
@@ -979,13 +1010,13 @@ const NutritionCentersMap = ({ user, onBack, onEditCenter, onRegisterCenter, emb
                             style={{ backgroundColor: '#e7faf0', borderColor: '#25D366' }}
                             ariaLabel="WhatsApp"
                           >
-                            <img src="/whatsapp-icon.png" alt="" className="h-4 w-4 sm:h-5 sm:w-5 object-contain flex-shrink-0" />
+                            <MessageCircle className="h-4 w-4 sm:h-5 sm:w-5 flex-shrink-0" style={{ color: '#128C7E' }} />
                             <span className="text-[10px] sm:text-xs font-semibold text-center leading-tight px-0.5" style={{ color: '#128C7E' }}>WhatsApp</span>
                           </TouchFeedbackButton>
                         </>
                       )}
 
-                      {onEditCenter && currentUserId && center.owner_user_id === currentUserId && (
+                      {onEditCenter && teamFilter === 'self' && currentUserId && Number(center.owner_user_id) === Number(currentUserId) && (
                         <TouchFeedbackButton
                           onClick={(e) => { e.stopPropagation(); onEditCenter(center); }}
                           className="compact-touch !overflow-visible flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1 px-2 sm:px-3 py-2 rounded-full border border-orange-300 bg-orange-50 active:bg-orange-100 transition-colors w-full"
@@ -993,6 +1024,22 @@ const NutritionCentersMap = ({ user, onBack, onEditCenter, onRegisterCenter, emb
                         >
                           <Pencil className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-orange-600 flex-shrink-0" />
                           <span className="text-[10px] sm:text-xs font-semibold text-orange-700 text-center leading-tight px-0.5">Edit</span>
+                        </TouchFeedbackButton>
+                      )}
+                      {teamFilter === 'self' && (
+                        <TouchFeedbackButton
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setDeleteModal({ isOpen: true, center });
+                          }}
+                          disabled={deletingCenterId === center.id}
+                          className="compact-touch !overflow-visible flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1 px-2 sm:px-3 py-2 rounded-full border border-red-300 bg-red-50 active:bg-red-100 transition-colors w-full disabled:opacity-50"
+                          ariaLabel="Delete club"
+                        >
+                          <Trash2 className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-red-600 flex-shrink-0" />
+                          <span className="text-[10px] sm:text-xs font-semibold text-red-700 text-center leading-tight px-0.5">
+                            {deletingCenterId === center.id ? 'Deleting…' : 'Delete'}
+                          </span>
                         </TouchFeedbackButton>
                       )}
                     </div>
@@ -1072,6 +1119,18 @@ const NutritionCentersMap = ({ user, onBack, onEditCenter, onRegisterCenter, emb
         apiBaseUrl={apiBaseUrl}
         timezoneIana={resolveDiaryTimezone(user)}
         userId={currentUserId}
+      />
+
+      <CustomAlertModal
+        isOpen={deleteModal.isOpen}
+        onClose={() => setDeleteModal({ isOpen: false, center: null })}
+        title="Delete Club"
+        message={`Delete "${deleteModal.center?.center_name || 'this club'}"? This cannot be undone.`}
+        type="warning"
+        confirmText="Yes, Delete"
+        cancelText="Cancel"
+        onConfirm={confirmDeleteCenter}
+        onCancel={() => setDeleteModal({ isOpen: false, center: null })}
       />
     </div>
   );

@@ -3,6 +3,7 @@ import { ArrowLeft, MapPin, Clock, Phone, Save, Trash2, CheckCircle, XCircle, Lo
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
 import LoadingSpinner from '../../../shared/components/LoadingSpinner';
 import CustomAlertModal from '../../../shared/components/CustomAlertModal';
+import PhoneContactActions from '../../../shared/components/PhoneContactActions.jsx';
 import { Geolocation } from '@capacitor/geolocation';
 import { debugLog } from '../../../shared/utils/logger.js';
 import { loadGoogleMaps } from '../services/googleMapsLoader';
@@ -966,8 +967,8 @@ const NutritionCenterRegistration = ({ user, onBack, onSaved, initialCenter }) =
                       )}
                       {center.owner_phone && (
                         <div className="flex items-center gap-2">
-                          <Phone className="h-4 w-4" />
-                          <span>{center.owner_phone}</span>
+                          <Phone className="h-4 w-4 flex-shrink-0" />
+                          <PhoneContactActions phone={center.owner_phone} size="sm" />
                         </div>
                       )}
                     </div>

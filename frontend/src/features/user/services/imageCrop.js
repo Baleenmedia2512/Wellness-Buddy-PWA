@@ -9,18 +9,18 @@ const MAX_SOURCE_SIDE_PX = 1600;
 
 /**
  * Encode a square canvas as JPEG, stepping quality down until the payload
- * fits PROFILE_IMAGE_TARGET_BYTES (decoded, ~200 KB). Base64 wire size is ~4/3 of that.
+ * fits PROFILE_IMAGE_TARGET_BYTES (decoded, ~22 KB). Base64 wire size is ~4/3 of that.
  */
 function encodeWithinBudget(canvas) {
-  const targetBytes = PROFILE_IMAGE_TARGET_BYTES || 200 * 1024;
-  const startQuality = PROFILE_IMAGE_JPEG_QUALITY || 0.85;
+  const targetBytes = PROFILE_IMAGE_TARGET_BYTES || 22 * 1024;
+  const startQuality = PROFILE_IMAGE_JPEG_QUALITY || 0.65;
   const maxDataUrlLen = Math.ceil(targetBytes / 0.75) + 32;
 
   let quality = startQuality;
   let dataUrl = canvas.toDataURL('image/jpeg', quality);
 
-  while (dataUrl.length > maxDataUrlLen && quality > 0.35) {
-    quality = Math.round((quality - 0.08) * 100) / 100;
+  while (dataUrl.length > maxDataUrlLen && quality > 0.15) {
+    quality = Math.round((quality - 0.05) * 100) / 100;
     dataUrl = canvas.toDataURL('image/jpeg', quality);
   }
 
@@ -72,7 +72,7 @@ function downscaleSource(img, pixelCrop) {
 
 /**
  * Crop a square region from a base64 image, supporting rotation + flip.
- * Output is capped to PROFILE_IMAGE_MAX_DIMENSION_PX and ≤ ~200 KB JPEG.
+ * Output is capped to PROFILE_IMAGE_MAX_DIMENSION_PX and ≤ ~22 KB JPEG.
  */
 export const getCroppedImg = async (
   imageSrc,
@@ -86,7 +86,7 @@ export const getCroppedImg = async (
 
   const img = await loadImage(imageSrc);
   const { source, crop, release } = downscaleSource(img, pixelCrop);
-  const maxOut = PROFILE_IMAGE_MAX_DIMENSION_PX || 320;
+  const maxOut = PROFILE_IMAGE_MAX_DIMENSION_PX || 256;
 
   try {
     const srcW = source.width;

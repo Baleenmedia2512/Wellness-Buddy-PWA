@@ -5,11 +5,11 @@
  * Uses the shared educationImageCache so list → detail does not re-fetch.
  */
 import { useEffect, useState } from 'react';
-import { resolveImageSrc } from '../services/educationFormatter';
 import {
   fetchEducationLogImage,
   peekEducationLogImage,
 } from '../services/educationImageCache';
+import { activityPhotoTemplate } from '../../../shared/assets/activityPhotoTemplates';
 
 export function useEducationDetailImage({ apiBaseUrl, userId, log } = {}) {
   const cached = log?.Id != null
@@ -48,6 +48,5 @@ export function useEducationDetailImage({ apiBaseUrl, userId, log } = {}) {
     };
   }, [apiBaseUrl, userId, log?.Id, log?.hasFullImage]);
 
-  const fallback = resolveImageSrc(log?.ImageBase64);
-  return { imageSrc: fullImage || fallback, imageLoading };
+  return { imageSrc: fullImage || activityPhotoTemplate('education'), imageLoading };
 }

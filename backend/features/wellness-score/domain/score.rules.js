@@ -623,12 +623,30 @@ export function calculatePhosphorus({ maxPoints, consumed, target }) {
 
 // ─── Progress parameters ───────────────────────────────────────────────────────
 
+function isMaintainGoalMode(goalMode) {
+  const mode = String(goalMode || '').toLowerCase();
+  return mode === 'maintain' || mode === 'maintenance';
+}
+
 export function calculateWeightImprovement({
   maxPoints,
   currentWeight,
   previousWeight,
   goalMode,
 }) {
+  // Maintain mode: ideal-range users are not scored on day-to-day delta — full points.
+  if (isMaintainGoalMode(goalMode)) {
+    return buildParameterScore({
+      key: 'weight_improvement',
+      label: 'Weight Improvement',
+      section: 'progress',
+      scoringMode: 'progress',
+      maxPoints,
+      earnedPoints: maxPoints,
+      calculationReason: 'Full points for weight maintenance mode',
+    });
+  }
+
   const cur = Number(currentWeight);
   const prev = Number(previousWeight);
   if (!Number.isFinite(cur) || !Number.isFinite(prev) || prev <= 0) {
