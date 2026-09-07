@@ -64,6 +64,11 @@ import { PORTRAIT_IMAGE_CLASS_SM } from '../services/testimonialFormUtils.js';
 import { resolveRowTeamUploadPerformance } from '../utils/testimonialTeamPerformance.js';
 import { uniqueConditions, isSameIssueList, withoutHealthIssue } from '../utils/uniqueConditions.js';
 import { getApiBaseUrl } from '../../../config/api.config.js';
+import {
+  buildUserAvatarUrl,
+  getAvatarDisplayVersion,
+  subscribeAvatarDisplayVersion,
+} from '../../user/services/avatarDisplayVersion.js';
 import { getProfile } from '../../user/services/user.api.js';
 import { seedMineTestimonialFromLeftSlot } from '../../user/domain/transformationBeforeAfter';
 
@@ -268,12 +273,16 @@ function TeamComplianceSection({ userName, teamStats }) {
 /** Avatar via dedicated endpoint — keeps list-for-coach JSON tiny. */
 function MemberAvatar({ user }) {
   const [failed, setFailed] = useState(false);
+  const [avatarVersion, setAvatarVersion] = useState(getAvatarDisplayVersion);
+  useEffect(() => subscribeAvatarDisplayVersion(setAvatarVersion), []);
+  useEffect(() => { setFailed(false); }, [avatarVersion, user?.userId, user?.profileImage]);
+
   const userId = user?.userId;
   const inline = user?.profileImage;
   let remote = null;
   try {
     if (userId != null && !failed && !inline) {
-      remote = `${getApiBaseUrl()}/api/user/avatar?userId=${encodeURIComponent(userId)}`;
+      remote = buildUserAvatarUrl(getApiBaseUrl(), userId, avatarVersion);
     }
   } catch {
     remote = null;

@@ -10,6 +10,7 @@ import { isExemptedBeverageOnly, isExemptedFood, extractFoodItemsFromAnalysis, g
 import { resolveCalorieTargetFromProfile } from './tdeeCalculations.js';
 import { applyDateRangeFilter } from '../shared/lib/datetime/applyDayFilter.js';
 import { IANA_IST, timestampToCalendarYmd, timeOfDayInTimezone } from '../shared/lib/datetime/index.js';
+import { mergeActivityTimeWindowsWithDefaults } from '../shared/lib/activity-time-windows.js';
 
 // Default required water when no weight is recorded (2.5 L)
 const DEFAULT_WATER_REQUIRED_ML = 2500;
@@ -120,7 +121,9 @@ export async function getTeamHierarchy(coachId) {
 }
 
 /**
- * Get time windows from database
+ * Get time windows from database.
+ * Missing activity types (or DB errors) fall back to
+ * `DEFAULT_ACTIVITY_TIME_WINDOWS` — used by discipline + wellness score.
  * @returns {Object} Time windows map
  */
 export async function getTimeWindows() {
@@ -133,14 +136,7 @@ export async function getTimeWindows() {
   
   if (error) {
     console.error('❌ Error fetching time windows:', error);
-    // Return defaults
-    return {
-      weight: { start: '05:00:00', end: '09:00:00' },
-      education: { start: '05:00:00', end: '23:59:00' },
-      breakfast: { start: '05:30:00', end: '08:30:00' },
-      lunch: { start: '12:00:00', end: '16:00:00' },
-      dinner: { start: '17:30:00', end: '20:30:00' }
-    };
+    return mergeActivityTimeWindowsWithDefaults({});
   }
   
   const windowMap = {};
@@ -153,7 +149,7 @@ export async function getTimeWindows() {
     });
   }
   
-  return windowMap;
+  return mergeActivityTimeWindowsWithDefaults(windowMap);
 }
 
 /**
