@@ -58,11 +58,14 @@ export default function OnboardingTransformationPhotosPage({
     (async () => {
       setLoading(true);
       try {
-        if (!email) {
+        if (!email && !userId) {
           if (mounted) setLoading(false);
           return;
         }
-        const result = await fetchProfile(email);
+        // Prefer userId for BCM phone leads so transformation photos prefill.
+        const result = userId
+          ? await fetchProfile({ userId })
+          : await fetchProfile({ email });
         if (!mounted) return;
         const profile = result?.data;
         transformationPhotos.loadFromProfile(profile?.transformationPhotos);
@@ -84,8 +87,8 @@ export default function OnboardingTransformationPhotosPage({
       }
     })();
     return () => { mounted = false; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- load once per mount/email
-  }, [email]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- load once per mount/identity
+  }, [email, userId]);
 
   const finish = useCallback(async () => {
     if (!allTransformationSlotsFilled(transformationPhotos.previews)) {

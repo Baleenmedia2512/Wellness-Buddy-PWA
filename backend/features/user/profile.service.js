@@ -216,6 +216,9 @@ export async function getProfile({ email, userId = null }) {
         bodyMetrics,
         recoveredHealthIssues: mapTeamRecoveredHealthIssues(user.recovered_health_issues),
         transformationPhotos: mapTransformationPhotos(user.transformation_photos),
+        // Phone lead created from coach BCM — Complete Profile should open once for review.
+        isBcmLead: String(user.EntryUser || '') === 'Body Parameters Card'
+          || Boolean(latestBodyMetricsCard?.id),
       },
     },
   };
