@@ -79,14 +79,19 @@ export async function getProfile({ email, userId = null }) {
   const cardHeight = latestBodyMetricsCard?.height_cm != null
     ? parseFloat(latestBodyMetricsCard.height_cm)
     : null;
-  const height = user.Height
+  const parsedTeamHeight = user.Height != null && user.Height !== ''
     ? parseFloat(user.Height)
+    : NaN;
+  const height = Number.isFinite(parsedTeamHeight) && parsedTeamHeight > 0
+    ? parsedTeamHeight
     : (Number.isFinite(cardHeight) ? cardHeight : null);
-  const weightFromRecord = latestWeight?.Weight ? parseFloat(latestWeight.Weight) : null;
+  const weightFromRecord = latestWeight?.Weight != null && latestWeight.Weight !== ''
+    ? parseFloat(latestWeight.Weight)
+    : NaN;
   const cardWeight = latestBodyMetricsCard?.weight_kg != null
     ? parseFloat(latestBodyMetricsCard.weight_kg)
     : null;
-  const latestWeightKg = Number.isFinite(weightFromRecord)
+  const latestWeightKg = Number.isFinite(weightFromRecord) && weightFromRecord > 0
     ? weightFromRecord
     : (Number.isFinite(cardWeight) ? cardWeight : null);
   const initialWeightKg = initialWeightRow?.Weight != null ? parseFloat(initialWeightRow.Weight) : null;
@@ -179,7 +184,7 @@ export async function getProfile({ email, userId = null }) {
         needsName: !nameComplete,
         needsBodyFat,
         // Still prompt to confirm weight when only BCM card has it (no weight row yet).
-        needsCurrentWeight: weightFromRecord == null,
+        needsCurrentWeight: !Number.isFinite(weightFromRecord) || weightFromRecord <= 0,
         profileImage,
         avatarUrl,
         coachId: user.CoachId || null,

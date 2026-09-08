@@ -1,7 +1,10 @@
 import { getSupabaseClient } from '../../utils/supabaseClient.js';
 import { nowUtc } from '../../shared/lib/datetime/index.js';
 import { DateTime } from 'luxon';
-import { buildPhoneLookupVariants } from './domain/phone-identity.rules.js';
+import {
+  buildPhoneLookupVariants,
+  pickBestPhoneLookupCandidate,
+} from './domain/phone-identity.rules.js';
 
 export async function deactivateActiveOtps(recipient, contactType) {
   const supabase = getSupabaseClient();
@@ -89,9 +92,11 @@ export async function findUserByEmailLite(recipient) {
 }
 
 // Phone-based lookups — team_table.PhoneNumber (legacy 10-digit or E.164).
+// Collect all variant matches, then prefer Active BCM leads with profile data.
 export async function findUserByPhone(phone) {
   const supabase = getSupabaseClient();
   const variants = buildPhoneLookupVariants(phone);
+  const matches = [];
 
   for (const variant of variants) {
     const { data, error } = await supabase
@@ -99,12 +104,12 @@ export async function findUserByPhone(phone) {
       .select('*')
       .eq('PhoneNumber', variant)
       .order('UserId', { ascending: true })
-      .limit(1);
+      .limit(5);
     if (error) throw error;
-    if (data && data.length > 0) return data[0];
+    if (data?.length) matches.push(...data);
   }
 
-  return null;
+  return pickBestPhoneLookupCandidate(matches);
 }
 
 export async function insertUser(payload) {
