@@ -200,6 +200,16 @@ describe('buildFormPrefillFromMember', () => {
     assert.equal(patch.weightKg, '65');
   });
 
+  it('includes diet and physical activity when present', () => {
+    const patch = buildFormPrefillFromMember({
+      userName: 'Ada',
+      dietType: 'Vegan',
+      physicalActivityLevel: 'light_active',
+    });
+    assert.equal(patch.dietType, 'Vegan');
+    assert.equal(patch.physicalActivityLevel, 'light_active');
+  });
+
   it('omits null optional metrics', () => {
     const patch = buildFormPrefillFromMember({
       userName: 'Ada',

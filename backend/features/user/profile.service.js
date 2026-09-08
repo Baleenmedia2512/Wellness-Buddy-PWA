@@ -520,10 +520,25 @@ export async function updateProfile(input) {
 
   // Profile → latest Body Parameters Card (direct DB patch — no BPC handler — prevents loops).
   try {
-    const dbProfile = await repo.findByUserId(
-      userId,
-      '"UserName", "Height", "Bmr", "Gender"',
-    );
+    let dbProfile;
+    try {
+      dbProfile = await repo.findByUserId(
+        userId,
+        '"UserName", "Height", "Bmr", "Gender", "Age", "VisceralFat", "BodyAge", "ChestCm", "WaistCm", "HipCm", recovered_health_issues',
+      );
+    } catch (colErr) {
+      const msg = String(colErr?.message || colErr || '');
+      if (!/column|Age|VisceralFat|recovered_health/i.test(msg)) throw colErr;
+      dbProfile = await repo.findByUserId(
+        userId,
+        '"UserName", "Height", "Bmr", "Gender"',
+      );
+    }
+    const numOrNull = (v) => {
+      if (v == null || v === '') return null;
+      const n = parseFloat(v);
+      return Number.isNaN(n) ? null : n;
+    };
     const cardSync = buildProfileCardSyncPayload(
       {
         name: dbProfile?.UserName ?? name,
@@ -532,6 +547,15 @@ export async function updateProfile(input) {
           : (height != null ? parseFloat(height) : null),
         bmr: savedBmr ?? (dbProfile?.Bmr != null ? parseFloat(dbProfile.Bmr) : bmr),
         gender: gender ?? dbProfile?.Gender ?? null,
+        age: numOrNull(dbProfile?.Age),
+        visceralFat: numOrNull(dbProfile?.VisceralFat),
+        bodyAge: numOrNull(dbProfile?.BodyAge),
+        chestCm: numOrNull(dbProfile?.ChestCm),
+        waistCm: numOrNull(dbProfile?.WaistCm),
+        hipCm: numOrNull(dbProfile?.HipCm),
+        recoveredHealthIssues: Array.isArray(dbProfile?.recovered_health_issues)
+          ? dbProfile.recovered_health_issues
+          : undefined,
       },
       { savedBmr, latestWeight: latestWeightRow },
     );

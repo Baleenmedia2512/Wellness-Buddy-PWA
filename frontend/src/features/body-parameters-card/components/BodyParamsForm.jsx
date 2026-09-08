@@ -3,7 +3,10 @@
  *
  * Modal form for creating a Body Parameters Card.
  * Pure presentational — all logic in useBodyParamsCard hook.
- * Fields: Date, Venue, Name, Age, Height, Phone, Gender, Weight, BMI, Fat%, BMR, Body Age, Chest, Waist, Hip.
+ * Fields: Date, Venue, Name, Age, Height, Phone, Gender, Weight, BMI, Fat%, BMR,
+ * Physical Activity, Body Age, Chest, Waist, Hip, Diet Preference, Health Issues.
+ * Profile-owned: Diet Preference + Physical Activity (team_table; not card columns).
+ * Excluded from Profile: Email, Community ID, Auto Camera.
  */
 import React, { useEffect, useRef, useState } from 'react';
 import { X, AlertCircle } from 'lucide-react';
@@ -12,6 +15,9 @@ import PhoneAutocomplete from './PhoneAutocomplete.jsx';
 import NativeInput from '../../../shared/components/NativeInput.jsx';
 import HealthIssuesFilterSelect from './HealthIssuesFilterSelect.jsx';
 import BcmUnsavedChangesModal from './BcmUnsavedChangesModal.jsx';
+import DietDropdown from '../../user/components/profile/DietDropdown.js';
+import PhysicalActivityField from '../../user/components/profile/PhysicalActivityField.js';
+import TransformationPhotosSection from '../../user/components/profile/TransformationPhotosSection.js';
 
 const InputField = ({
   label, value, onChange, type = 'text', placeholder = '', inputRef, onEnter,
@@ -408,6 +414,12 @@ const BodyParamsForm = ({
             onEnter={() => focusNextField(bmiRef)}
           />
 
+          {/* Physical Activity — Profile field (team_table); same options/labels as Profile */}
+          <PhysicalActivityField
+            value={vm.form.physicalActivityLevel}
+            onChange={(v) => vm.setField('physicalActivityLevel', v)}
+          />
+
           {/* BMI - Full Width */}
           <div className="flex flex-col gap-1">
             <label className="text-xs font-semibold text-indigo-800 uppercase tracking-wide">
@@ -529,11 +541,41 @@ const BodyParamsForm = ({
             inputRef={hipRef}
           />
 
+          {/* Diet Preference — Profile field (team_table); same options/labels as Profile */}
+          <DietDropdown
+            value={vm.form.dietType}
+            onChange={(v) => vm.setField('dietType', v)}
+          />
+
           {/* Health Issues — filter-style multi-select */}
           <div className="mt-1">
             <HealthIssuesFilterSelect
               value={vm.form.recoveredHealthIssues || []}
               onChange={(next) => vm.setField('recoveredHealthIssues', next)}
+            />
+          </div>
+
+          {/* Transformation Photos — Profile Left / Centre / Right (team_table) */}
+          <div className="pt-1">
+            <label className="text-xs font-semibold text-indigo-800 uppercase tracking-wide mb-2 block">
+              Transformation Photos
+            </label>
+            <p className="text-[11px] text-gray-500 mb-2">
+              Left, Centre, and Right — same photos as Profile / onboarding.
+            </p>
+            <TransformationPhotosSection
+              selectedType={vm.transformationPhotos.selectedType}
+              onSelectType={vm.transformationPhotos.setSelectedType}
+              previews={vm.transformationPhotos.previews}
+              disabled={vm.isSaving}
+              onSelectFile={async (slot, file) => {
+                try {
+                  await vm.transformationPhotos.setSlotFromFile(slot, file);
+                } catch (e) {
+                  // Surface via existing error banner if needed
+                  console.warn('[BodyParamsForm] transformation photo failed', e?.message || e);
+                }
+              }}
             />
           </div>
         </div>

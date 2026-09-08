@@ -23,6 +23,9 @@ function buildLinkPayload(payload, card) {
     bmr:          payload.bmr,
     weightKg:     payload.weightKg,
     fatPercent:   payload.fatPercent,
+    dietType:     payload.dietType,
+    physicalActivityLevel: payload.physicalActivityLevel,
+    transformationPhotos: payload.transformationPhotos,
   };
 }
 
@@ -96,6 +99,8 @@ export async function handleUpdateCard(body) {
         recoveredHealthIssues: Array.isArray(card.recovered_health_issues)
           ? card.recovered_health_issues
           : (payload.recoveredHealthIssues || []),
+        dietType:         payload.dietType || null,
+        physicalActivityLevel: payload.physicalActivityLevel || null,
         phoneNumber:      phoneNumber || payload.phoneNumber || null,
         userId:           card.user_id ?? null,
         profileSynced:    syncResult.synced,

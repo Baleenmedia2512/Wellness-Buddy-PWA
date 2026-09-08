@@ -23,42 +23,94 @@ const WEIGHT = 'weight_records_table';
 
 /**
  * @param {number} userId
- * @returns {Promise<{ userName: string|null, height: number|null, bmr: number|null, email: string|null }|null>}
+ * @returns {Promise<{
+ *   userName: string|null,
+ *   height: number|null,
+ *   bmr: number|null,
+ *   email: string|null,
+ *   gender: string|null,
+ *   age: number|null,
+ *   visceralFat: number|null,
+ *   bodyAge: number|null,
+ *   chestCm: number|null,
+ *   waistCm: number|null,
+ *   hipCm: number|null,
+ *   dietType: string|null,
+ *   physicalActivityLevel: string|null,
+ *   recoveredHealthIssues: string[],
+ * }|null>}
  */
 export async function getTeamProfileSnapshot(userId) {
   const uid = parseInt(userId, 10);
   const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const selectFull =
+    '"UserName", "Height", "Bmr", "Email", "Gender", "Age", "VisceralFat", "BodyAge", "ChestCm", "WaistCm", "HipCm", "DietType", "PhysicalActivityLevel", recovered_health_issues, transformation_photos';
+  const selectMid =
+    '"UserName", "Height", "Bmr", "Email", "Gender", "Age", "VisceralFat", "BodyAge", "ChestCm", "WaistCm", "HipCm", "DietType", "PhysicalActivityLevel", recovered_health_issues';
+  const selectBasic = '"UserName", "Height", "Bmr", "Email", "Gender", "DietType", "PhysicalActivityLevel"';
+
+  let data;
+  let error;
+  ({ data, error } = await supabase
     .from(TEAM)
-    .select('"UserName", "Height", "Bmr", "Email", "Gender", "Age", "VisceralFat", "BodyAge", "ChestCm", "WaistCm", "HipCm"')
+    .select(selectFull)
     .eq('UserId', uid)
-    .maybeSingle();
-  if (error) {
-    const msg = String(error?.message || error || '');
-    if (/Age|VisceralFat|BodyAge|ChestCm|WaistCm|HipCm/i.test(msg) && /column/i.test(msg)) {
-      const { data: fallback, error: err2 } = await supabase
-        .from(TEAM)
-        .select('"UserName", "Height", "Bmr", "Email", "Gender"')
-        .eq('UserId', uid)
-        .maybeSingle();
-      if (err2) throw err2;
-      if (!fallback) return null;
-      return {
-        userName: fallback.UserName ?? null,
-        height: fallback.Height != null ? parseFloat(fallback.Height) : null,
-        bmr: fallback.Bmr != null ? parseFloat(fallback.Bmr) : null,
-        email: fallback.Email ?? null,
-        gender: fallback.Gender ?? null,
-        age: null,
-        visceralFat: null,
-        bodyAge: null,
-        chestCm: null,
-        waistCm: null,
-        hipCm: null,
-      };
-    }
-    throw error;
+    .maybeSingle());
+
+  if (error && /transformation_photos/i.test(String(error.message || '')) && /column/i.test(String(error.message || ''))) {
+    ({ data, error } = await supabase
+      .from(TEAM)
+      .select(selectMid)
+      .eq('UserId', uid)
+      .maybeSingle());
   }
+
+  if (error && /recovered_health_issues/i.test(String(error.message || '')) && /column/i.test(String(error.message || ''))) {
+    ({ data, error } = await supabase
+      .from(TEAM)
+      .select(
+        '"UserName", "Height", "Bmr", "Email", "Gender", "Age", "VisceralFat", "BodyAge", "ChestCm", "WaistCm", "HipCm", "DietType", "PhysicalActivityLevel"',
+      )
+      .eq('UserId', uid)
+      .maybeSingle());
+  }
+
+  if (error && /Age|VisceralFat|BodyAge|ChestCm|WaistCm|HipCm/i.test(String(error.message || '')) && /column/i.test(String(error.message || ''))) {
+    ({ data, error } = await supabase
+      .from(TEAM)
+      .select(selectBasic)
+      .eq('UserId', uid)
+      .maybeSingle());
+  }
+
+  if (error && /DietType|PhysicalActivityLevel/i.test(String(error.message || '')) && /column/i.test(String(error.message || ''))) {
+    const { data: fallback, error: err2 } = await supabase
+      .from(TEAM)
+      .select('"UserName", "Height", "Bmr", "Email", "Gender"')
+      .eq('UserId', uid)
+      .maybeSingle();
+    if (err2) throw err2;
+    if (!fallback) return null;
+    return {
+      userName: fallback.UserName ?? null,
+      height: fallback.Height != null ? parseFloat(fallback.Height) : null,
+      bmr: fallback.Bmr != null ? parseFloat(fallback.Bmr) : null,
+      email: fallback.Email ?? null,
+      gender: fallback.Gender ?? null,
+      age: null,
+      visceralFat: null,
+      bodyAge: null,
+      chestCm: null,
+      waistCm: null,
+      hipCm: null,
+      dietType: null,
+      physicalActivityLevel: null,
+      recoveredHealthIssues: [],
+      transformationPhotos: null,
+    };
+  }
+
+  if (error) throw error;
   if (!data) return null;
   const num = (v) => (v != null && Number.isFinite(Number(v)) ? Number(v) : null);
   return {
@@ -73,6 +125,14 @@ export async function getTeamProfileSnapshot(userId) {
     chestCm: num(data.ChestCm),
     waistCm: num(data.WaistCm),
     hipCm: num(data.HipCm),
+    dietType: data.DietType != null ? String(data.DietType).trim() || null : null,
+    physicalActivityLevel: data.PhysicalActivityLevel != null
+      ? String(data.PhysicalActivityLevel).trim() || null
+      : null,
+    recoveredHealthIssues: Array.isArray(data.recovered_health_issues)
+      ? data.recovered_health_issues.filter((x) => typeof x === 'string' && x.trim())
+      : [],
+    transformationPhotos: data.transformation_photos ?? null,
   };
 }
 
@@ -148,9 +208,10 @@ export async function insertWeightRecord(row) {
  * Compares before write; skips DB when nothing changed.
  *
  * @param {object} card - body_parameters_cards row (snake_case) with user_id
+ * @param {{ dietType?: string|null, physicalActivityLevel?: string|null }} [profileExtras]
  * @returns {Promise<{ synced: boolean, teamFields: string[], weightInserted: boolean }>}
  */
-export async function syncCardToProfile(card) {
+export async function syncCardToProfile(card, profileExtras = {}) {
   const userId = card?.user_id;
   if (!userId) {
     return { synced: false, teamFields: [], weightInserted: false };
@@ -161,7 +222,7 @@ export async function syncCardToProfile(card) {
     getLatestWeightSnapshot(userId),
   ]);
 
-  const teamDiff = buildTeamTableDiff(card, profile || {});
+  const teamDiff = buildTeamTableDiff(card, profile || {}, profileExtras);
   const weightRow = buildWeightInsertIfChanged(card, userId, latestWeight);
 
   if (!hasSyncWrites(teamDiff, weightRow)) {
@@ -212,6 +273,12 @@ export async function syncCardToProfileAfterSave(card, linkPayload = {}) {
     return { synced: false, userId: null, teamFields: [], weightInserted: false };
   }
 
-  const result = await syncCardToProfile({ ...card, user_id: userId });
+  const profileExtras = {
+    dietType: linkPayload.dietType ?? null,
+    physicalActivityLevel: linkPayload.physicalActivityLevel ?? null,
+    transformationPhotos: linkPayload.transformationPhotos ?? null,
+  };
+
+  const result = await syncCardToProfile({ ...card, user_id: userId }, profileExtras);
   return { ...result, userId };
 }

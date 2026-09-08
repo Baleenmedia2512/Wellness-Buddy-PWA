@@ -16,6 +16,7 @@ import {
 import { getLatestWeight, getLatestWeightBodyFat, getLatestWeightMetricsByUserIds } from '../../user/user.repository.js';
 import logger from '../../../shared/lib/logger.js';
 import { ValidationError } from '../../../shared/lib/ValidationError.js';
+import { mapTransformationPhotos } from '../../user/domain/transformationPhotos.rules.js';
 
 const TABLE = 'body_parameters_cards';
 const APPROVALS = 'approval_requests_table';
@@ -975,8 +976,10 @@ export async function getMemberPrefillForCard(userId) {
 
   const supabase = getSupabaseClient();
   const selectFull =
-    'UserId, UserName, PhoneNumber, Height, Bmr, Age, VisceralFat, BodyAge, ChestCm, WaistCm, HipCm, Gender, recovered_health_issues';
-  const selectBasic = 'UserId, UserName, PhoneNumber, Height, Bmr, Gender';
+    'UserId, UserName, PhoneNumber, Height, Bmr, Age, VisceralFat, BodyAge, ChestCm, WaistCm, HipCm, Gender, DietType, PhysicalActivityLevel, recovered_health_issues, transformation_photos';
+  const selectNoPhotos =
+    'UserId, UserName, PhoneNumber, Height, Bmr, Age, VisceralFat, BodyAge, ChestCm, WaistCm, HipCm, Gender, DietType, PhysicalActivityLevel, recovered_health_issues';
+  const selectBasic = 'UserId, UserName, PhoneNumber, Height, Bmr, Gender, DietType, PhysicalActivityLevel';
 
   let data;
   let error;
@@ -986,10 +989,26 @@ export async function getMemberPrefillForCard(userId) {
     .eq('UserId', uid)
     .maybeSingle());
 
+  if (error && /transformation_photos/i.test(String(error.message || '')) && /column/i.test(String(error.message || ''))) {
+    ({ data, error } = await supabase
+      .from('team_table')
+      .select(selectNoPhotos)
+      .eq('UserId', uid)
+      .maybeSingle());
+  }
+
   if (error && /recovered_health_issues/i.test(String(error.message || '')) && /column/i.test(String(error.message || ''))) {
     ({ data, error } = await supabase
       .from('team_table')
-      .select('UserId, UserName, PhoneNumber, Height, Bmr, Age, VisceralFat, BodyAge, ChestCm, WaistCm, HipCm, Gender')
+      .select('UserId, UserName, PhoneNumber, Height, Bmr, Age, VisceralFat, BodyAge, ChestCm, WaistCm, HipCm, Gender, DietType, PhysicalActivityLevel')
+      .eq('UserId', uid)
+      .maybeSingle());
+  }
+
+  if (error && /DietType|PhysicalActivityLevel/i.test(String(error.message || '')) && /column/i.test(String(error.message || ''))) {
+    ({ data, error } = await supabase
+      .from('team_table')
+      .select('UserId, UserName, PhoneNumber, Height, Bmr, Age, VisceralFat, BodyAge, ChestCm, WaistCm, HipCm, Gender, recovered_health_issues')
       .eq('UserId', uid)
       .maybeSingle());
   }
@@ -998,6 +1017,14 @@ export async function getMemberPrefillForCard(userId) {
     ({ data, error } = await supabase
       .from('team_table')
       .select(selectBasic)
+      .eq('UserId', uid)
+      .maybeSingle());
+  }
+
+  if (error && /DietType|PhysicalActivityLevel/i.test(String(error.message || '')) && /column/i.test(String(error.message || ''))) {
+    ({ data, error } = await supabase
+      .from('team_table')
+      .select('UserId, UserName, PhoneNumber, Height, Bmr, Gender')
       .eq('UserId', uid)
       .maybeSingle());
   }
@@ -1012,6 +1039,10 @@ export async function getMemberPrefillForCard(userId) {
   const num = (v) => (v != null && Number.isFinite(Number(v)) ? Number(v) : null);
   const heightCm = data.Height != null ? Number(data.Height) : null;
   const w = await resolveMemberWeightMetrics(uid, heightCm);
+  const transformationPhotos = mapTransformationPhotos(data.transformation_photos);
+  const hasAnyPhoto = Boolean(
+    transformationPhotos.front || transformationPhotos.left || transformationPhotos.right,
+  );
 
   return {
     userId: uid,
@@ -1029,9 +1060,14 @@ export async function getMemberPrefillForCard(userId) {
     weightKg: w.weightKg ?? null,
     fatPercent: w.fatPercent ?? null,
     bmi: w.bmi ?? null,
+    dietType: data.DietType != null ? String(data.DietType).trim() || null : null,
+    physicalActivityLevel: data.PhysicalActivityLevel != null
+      ? String(data.PhysicalActivityLevel).trim() || null
+      : null,
     recoveredHealthIssues: Array.isArray(data.recovered_health_issues)
       ? data.recovered_health_issues.filter((x) => typeof x === 'string' && x.trim())
       : [],
+    transformationPhotos: hasAnyPhoto ? transformationPhotos : null,
   };
 }
 
