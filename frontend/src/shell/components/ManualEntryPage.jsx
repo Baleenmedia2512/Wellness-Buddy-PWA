@@ -57,7 +57,6 @@ import { isIOS } from '../../shared/utils/platform';
 import { buildDiaryShareSuffix, extractFoodShareItems } from '../../features/diary';
 import { useNutritionRefreshOptional } from '../../shared/context/NutritionRefreshContext';
 import { refreshDailyWellnessScoreAfterSave } from '../../features/wellness-score-sheet/services/refreshDailyWellnessScoreNow';
-import { prefetchTimeWindows } from '../../features/wellness-score-sheet/hooks/useTimeWindows';
 import GoodHabitFlow from './GoodHabitFlow';
 import ManualFoodAiAnalysisModal from './ManualFoodAiAnalysisModal';
 import { saveGoodHabit } from '../../features/good-habits';
@@ -218,6 +217,14 @@ export default function ManualEntryPage({
   // Start loading=true so first paint never flashes green "Analyze" before status returns.
   const [creditsLoading, setCreditsLoading] = useState(() => isFlagEnabled('ff.ai-credits'));
   const [aiStarting, setAiStarting] = useState(false);
+  /**
+   * Fresh capture + AI credits flag: briefly lock Manual Log tiles until status
+   * says auto-AI will / won't run. Do NOT open the black AI screen until
+   * shouldAutoAi is true (avoids flash when AI is off / no credits).
+   */
+  const [awaitingAutoAi, setAwaitingAutoAi] = useState(
+    () => Boolean(discardCaptureOnCancel && isFlagEnabled('ff.ai-credits')),
+  );
   const [activeForm, setActiveForm] = useState(null);
   /** When food search opened from Snacks & Soups subtypes. */
   const [foodEntryMeta, setFoodEntryMeta] = useState(null);
@@ -232,6 +239,8 @@ export default function ManualEntryPage({
   const [aiSaving, setAiSaving] = useState(false);
   const aiReservationIdRef = useRef(null);
   const aiCancelledRef = useRef(false);
+  /** True while reserve/orchestrate is in flight (modal may already be open). */
+  const aiInFlightRef = useRef(false);
   /** Prevents double auto-start for the same capture. */
   const mealAutoAttemptedRef = useRef(false);
   /** Set after persistAiFoodAndShowOnHome is defined — avoids TDZ with startAiAnalyze. */
@@ -286,8 +295,20 @@ export default function ManualEntryPage({
     setActiveForm(null);
     setFoodEntryMeta(null);
     setPreviewExpanded(false);
-    mealAutoAttemptedRef.current = false;
   }, [captureId]);
+
+  // Lock Manual Log tiles while we resolve auto-AI — but keep Manual Log visible.
+  // Black AI screen opens only after shouldAutoAi (never flash when AI is off).
+  useEffect(() => {
+    mealAutoAttemptedRef.current = false;
+    aiInFlightRef.current = false;
+    if (discardCaptureOnCancel && creditsEnabled && imageBase64) {
+      aiCancelledRef.current = false;
+      setAwaitingAutoAi(true);
+    } else {
+      setAwaitingAutoAi(false);
+    }
+  }, [imageBase64, discardCaptureOnCancel, creditsEnabled]);
 
   const previewSrc = useMemo(() => {
     if (imageUrl) return imageUrl;
@@ -433,10 +454,11 @@ export default function ManualEntryPage({
   const handleCloseWithoutLog = () => {
     if (closingWithoutLog) return;
     // Allow cancel while Food AI is only queued (photo still saving).
-    if (aiStarting && !pendingFoodAi) return;
+    if ((aiStarting || awaitingAutoAi) && !pendingFoodAi) return;
     setPendingLogAsId(null);
     setPendingFoodAi(false);
     setAiStarting(false);
+    setAwaitingAutoAi(false);
     setClosingWithoutLog(true);
     const id = captureId;
     const uid = userId;
@@ -496,7 +518,9 @@ export default function ManualEntryPage({
 
   const startAiAnalyze = useCallback(async () => {
     if (!userId || !imageBase64 || !captureId) return;
-    if (aiModalOpen && aiModalStage === 'analysing') return;
+    if (aiInFlightRef.current) return;
+    aiInFlightRef.current = true;
+    setAwaitingAutoAi(false);
     setAiStarting(true);
     aiCancelledRef.current = false;
     setAiAnalysisResult(null);
@@ -511,6 +535,7 @@ export default function ManualEntryPage({
         if (credits?.eligibleForAiFoodAnalysis === false) {
           setAiModalOpen(false);
           setAiStarting(false);
+          aiInFlightRef.current = false;
           return;
         }
         if (
@@ -519,6 +544,7 @@ export default function ManualEntryPage({
         ) {
           setAiModalOpen(false);
           setAiStarting(false);
+          aiInFlightRef.current = false;
           return;
         }
         const reserved = await reserveAiCredit({ userId, apiBaseUrl });
@@ -526,6 +552,7 @@ export default function ManualEntryPage({
         if (!reserved?.allowed || !reserved.reservationId) {
           setAiModalOpen(false);
           setAiStarting(false);
+          aiInFlightRef.current = false;
           return;
         }
         reservationId = reserved.reservationId;
@@ -542,6 +569,7 @@ export default function ManualEntryPage({
           });
         }
         setAiStarting(false);
+        aiInFlightRef.current = false;
         return;
       }
 
@@ -565,6 +593,7 @@ export default function ManualEntryPage({
           });
         }
         setAiStarting(false);
+        aiInFlightRef.current = false;
         return;
       }
 
@@ -602,8 +631,9 @@ export default function ManualEntryPage({
         await settleCredit();
         const analysis = buildAnalysisFromGeminiAnalysis(detectedType.details);
         setAiAnalysisResult(analysis);
-        setAiModalStage('saving');
+        setAiModalStage('scanning');
         setAiStarting(false);
+        aiInFlightRef.current = false;
         // Auto-save and open NutritionCard on Home (no Save / Edit manually).
         void persistAiFoodRef.current?.(analysis);
         return;
@@ -613,6 +643,7 @@ export default function ManualEntryPage({
         await releaseCredit('manual_ai_food_unrecognized');
         setAiModalStage('unidentified');
         setAiStarting(false);
+        aiInFlightRef.current = false;
         return;
       }
 
@@ -620,6 +651,7 @@ export default function ManualEntryPage({
       await releaseCredit('manual_ai_not_food');
       setAiModalStage('unidentified');
       setAiStarting(false);
+      aiInFlightRef.current = false;
     } catch (err) {
       if (creditsEnabled && reservationId) {
         await releaseReservedAiCredit({
@@ -635,6 +667,7 @@ export default function ManualEntryPage({
         setAiModalStage('failed');
       }
       setAiStarting(false);
+      aiInFlightRef.current = false;
     }
   }, [
     userId,
@@ -645,13 +678,14 @@ export default function ManualEntryPage({
     apiBaseUrl,
     userName,
     userEmail,
-    aiModalOpen,
-    aiModalStage,
   ]);
 
   const handleAiModalCancel = useCallback(() => {
     aiCancelledRef.current = true;
+    mealAutoAttemptedRef.current = true;
+    aiInFlightRef.current = false;
     const reservationId = aiReservationIdRef.current;
+    setAwaitingAutoAi(false);
     setAiModalOpen(false);
     setAiStarting(false);
     setAiSaving(false);
@@ -672,7 +706,7 @@ export default function ManualEntryPage({
   const persistAiFoodAndShowOnHome = useCallback(async (analysisToSave) => {
     if (!analysisToSave || !captureId || !userId) return;
     setAiSaving(true);
-    setAiModalStage('saving');
+    setAiModalStage('scanning');
     try {
       const result = await promoteUnknownToFood({
         captureId,
@@ -738,6 +772,7 @@ export default function ManualEntryPage({
   persistAiFoodRef.current = persistAiFoodAndShowOnHome;
 
   const handleAiModalManual = useCallback(() => {
+    setAwaitingAutoAi(false);
     setAiModalOpen(false);
     setAiStarting(false);
     setAiSaving(false);
@@ -763,11 +798,9 @@ export default function ManualEntryPage({
       return;
     }
 
-    const windows = await prefetchTimeWindows();
     const decision = decideMealWindowAutoAi({
       now: new Date(),
-      lunchWindow: windows?.lunch ?? null,
-      dinnerWindow: windows?.dinner ?? null,
+      availabilityWindows: credits?.availabilityWindows ?? null,
       creditStatus: credits,
       creditsFlagEnabled: creditsEnabled,
       timezoneIana: credits?.timezoneIana,
@@ -790,28 +823,44 @@ export default function ManualEntryPage({
   ]);
 
   // Admin-enabled meal window + credits + eligible member → auto-start AI on capture.
-  // Diary re-classify (discardCaptureOnCancel=false) stays manual — no surprise AI.
+  // Diary re-classify stays manual. Black AI screen opens only when shouldAutoAi.
   useEffect(() => {
-    if (!discardCaptureOnCancel) return undefined;
-    if (!captureReady || !userId || !imageBase64) return undefined;
+    if (!discardCaptureOnCancel) {
+      setAwaitingAutoAi(false);
+      return undefined;
+    }
+    if (!creditsEnabled) {
+      setAwaitingAutoAi(false);
+      return undefined;
+    }
+    if (!userId || !imageBase64) return undefined;
     if (mealAutoAttemptedRef.current) return undefined;
-    if (aiStarting || aiModalOpen || closingWithoutLog) return undefined;
+    if (aiInFlightRef.current || closingWithoutLog) return undefined;
     if (pendingFoodAi || pendingLogAsId) return undefined;
-    if (creditsEnabled && (creditsLoading || credits == null)) return undefined;
+    if (creditsLoading || credits == null) return undefined;
 
     const decision = decideMealWindowAutoAi({
       now: new Date(),
-      creditStatus: creditsEnabled ? credits : null,
+      creditStatus: credits,
       creditsFlagEnabled: creditsEnabled,
       timezoneIana: credits?.timezoneIana,
     });
 
-    mealAutoAttemptedRef.current = true;
-
+    // AI off / outside window / no credits / ineligible → Manual Log only (no black flash).
     if (!decision.shouldAutoAi) {
+      mealAutoAttemptedRef.current = true;
+      setAwaitingAutoAi(false);
       return undefined;
     }
 
+    // Confirmed auto-AI — open analysis UI now; wait for capture row if needed.
+    setAiModalOpen(true);
+    setAiModalStage('analysing');
+
+    if (!captureReady) return undefined;
+
+    mealAutoAttemptedRef.current = true;
+    setAwaitingAutoAi(false);
     void startAiAnalyze();
     return undefined;
   }, [
@@ -822,8 +871,6 @@ export default function ManualEntryPage({
     creditsEnabled,
     creditsLoading,
     credits,
-    aiStarting,
-    aiModalOpen,
     closingWithoutLog,
     pendingFoodAi,
     pendingLogAsId,
@@ -832,8 +879,8 @@ export default function ManualEntryPage({
 
   const handleCategoryClick = (id) => {
     if (closingWithoutLog) return;
-    // Block other taps while AI modal is analysing.
-    if (aiStarting && !pendingFoodAi) return;
+    // Block other taps while AI overlay is covering Manual Log.
+    if ((aiStarting || awaitingAutoAi) && !pendingFoodAi) return;
     if (!captureReady) {
       if (id === MANUAL_LOG_CATEGORY.FOOD) {
         setPendingFoodAi(true);
@@ -1090,7 +1137,7 @@ export default function ManualEntryPage({
     });
   };
 
-  const logAsDisabled = closingWithoutLog || (aiStarting && !pendingFoodAi);
+  const logAsDisabled = closingWithoutLog || ((aiStarting || awaitingAutoAi) && !pendingFoodAi);
 
   return (
     <div className="fixed inset-0 z-40 flex flex-col" style={{ background: BRAND.pageBg }}>
@@ -1101,9 +1148,11 @@ export default function ManualEntryPage({
             What is this image?
           </h1>
           <p className="text-[11px] leading-snug text-green-600 min-[360px]:text-xs">
-            {aiStarting && !pendingFoodAi
+            {(aiStarting || (awaitingAutoAi && aiModalOpen)) && !pendingFoodAi
               ? 'Starting AI food analysis…'
-              : 'Select one button below — Weight, Afresh, Food…'}
+              : awaitingAutoAi && !pendingFoodAi
+                ? 'Please wait…'
+                : 'Select one button below — Weight, Afresh, Food…'}
           </p>
         </div>
       </header>
@@ -1193,7 +1242,7 @@ export default function ManualEntryPage({
         <button
           type="button"
           onClick={handleCloseWithoutLog}
-          disabled={closingWithoutLog || (aiStarting && !pendingFoodAi)}
+          disabled={closingWithoutLog || ((aiStarting || awaitingAutoAi) && !pendingFoodAi)}
           className={`safe-bottom log-as-btn log-as-btn--idle inline-flex w-full shrink-0 items-center justify-center gap-2 rounded-xl border-2 py-3 text-sm font-bold shadow-[0_3px_0_0_rgba(0,0,0,0.08)] transition-[transform,box-shadow] duration-150 active:translate-y-[2px] disabled:opacity-50 min-[360px]:py-3.5 ${
             discardCaptureOnCancel
               ? 'border-red-200 bg-gradient-to-b from-white to-red-50/40 text-red-600 shadow-[0_3px_0_0_rgba(220,38,38,0.2)] active:shadow-[0_1px_0_0_rgba(220,38,38,0.18)]'
