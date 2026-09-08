@@ -34,6 +34,7 @@ const UserProfileBody = ({
         />
         <UserProfileBodyMetrics
           bodyMetrics={form.bodyMetrics}
+          gender={form.gender}
           onChange={form.setBodyMetricField}
           heightCm={form.height}
           weightKg={latestWeight}

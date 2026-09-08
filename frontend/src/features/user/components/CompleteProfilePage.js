@@ -425,6 +425,7 @@ const CompleteProfilePage = ({
           <div className="pt-2 border-t border-gray-100">
             <UserProfileBodyMetrics
               bodyMetrics={optionalMetrics}
+              gender={gender}
               heightCm={height}
               weightKg={currentWeight}
               onChange={(key, value) => {

@@ -934,7 +934,7 @@ export default function TestimonialsHub({ userId, focusOnly = null, onFocusClose
           {!isFocused && (
             <div className="flex items-center gap-2 px-1 pt-2">
               <HeartPulse className="h-4 w-4 text-gray-400" />
-              <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Health Issues</p>
+              <p className="text-xs font-bold text-gray-400 tracking-wider">Health Issues while joining this community</p>
               <span className="text-[10px] text-gray-400 font-normal ml-auto">Shared for photo &amp; video verification</span>
             </div>
           )}
@@ -943,7 +943,7 @@ export default function TestimonialsHub({ userId, focusOnly = null, onFocusClose
             icon={HeartPulse}
             iconBg="bg-rose-50"
             iconColor="text-rose-500"
-            title="Health Issues"
+            title="Health Issues while joining this community"
             subtitle={
               healthIssuesExpanded || isFocused
                 ? null

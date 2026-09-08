@@ -1594,8 +1594,8 @@ function MemberCard({
       {/* Health Issues — below photos, above result video */}
       {(editable || testimonial) && (
         <div className="space-y-1.5 overflow-visible relative z-20">
-          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">
-            Health Issues
+          <p className="text-[10px] font-bold text-gray-400 tracking-wide">
+            Health Issues while joining this community
           </p>
           <HealthIssueCoachEditor
             userId={userId || user?.userId}

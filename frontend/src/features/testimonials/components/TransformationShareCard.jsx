@@ -465,7 +465,7 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
                     letterSpacing: '0.2px',
                   }}
                   >
-                    Health issues while joining in the community
+                    Health Issues while joining this community
                   </span>
                   <span style={{
                     fontSize: 13,
