@@ -3217,6 +3217,31 @@ function WellnessValleyApp() {
       }
 
       if (result.status === "complete") {
+        const uid =
+          userObj?.id
+          || userObj?.UserId
+          || userObj?.userId
+          || result.data?.userId
+          || Session.getDbUserId()
+          || null;
+        // BCM lead: always show Complete Profile once so the member can review
+        // prefilled height/weight/etc. before Transformation Photos / home.
+        if (
+          result.data?.isBcmLead === true
+          && uid
+          && !Session.isBcmProfileReviewed(uid)
+          && !transformationPhotosGateRef.current
+        ) {
+          debugLog("📋 [Profile] BCM lead — showing Complete Profile for review");
+          setIdentityResolved(true);
+          setShowOnboardingIdentity(false);
+          setShowCompleteProfile(true);
+          setShowOnboardingTransformationPhotos(false);
+          profileCompletedRef.current = false;
+          if (!silent) setProfileChecking(false);
+          return;
+        }
+
         profileCompletedRef.current = true;
         setIdentityResolved(true);
         setShowOnboardingIdentity(false);
@@ -9154,6 +9179,15 @@ function WellnessValleyApp() {
                 || user?.Email
                 || Session.getUserEmail()
                 || "";
+              const reviewedUserId =
+                user?.id
+                || user?.UserId
+                || user?.userId
+                || Session.getDbUserId()
+                || null;
+              if (reviewedUserId) {
+                Session.markBcmProfileReviewed(reviewedUserId);
+              }
               if (savedEmail) {
                 Session.setUserEmail(savedEmail);
                 Session.markProfileComplete(savedEmail);

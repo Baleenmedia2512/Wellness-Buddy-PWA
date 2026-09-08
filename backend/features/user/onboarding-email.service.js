@@ -159,6 +159,22 @@ export async function verifyOnboardingEmail({
   }
 
   const recovered = await repo.findByUserId(owner.UserId, USER_COLS);
+  try {
+    const migrated = await repo.migrateBcmLeadToAdoptedUser(userId, owner.UserId);
+    logger.info('[onboarding-email] migrated BCM lead onto adopted account', {
+      fromUserId: userId,
+      toUserId: owner.UserId,
+      cardsMoved: migrated?.cardsMoved,
+      metricsCopied: migrated?.metricsCopied,
+    });
+  } catch (migrateErr) {
+    // Non-fatal — phone already moved; metrics may still need manual fix.
+    logger.warn('[onboarding-email] BCM lead migrate failed', {
+      fromUserId: userId,
+      toUserId: owner.UserId,
+      message: migrateErr?.message,
+    });
+  }
   logger.info('[onboarding-email] recovered existing email account', {
     fromUserId: userId,
     toUserId: owner.UserId,
