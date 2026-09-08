@@ -3,14 +3,21 @@
  *
  * Modal form for creating a Body Parameters Card.
  * Pure presentational — all logic in useBodyParamsCard hook.
- * Fields: Date, Venue, Name, Age, Height, Phone, Gender, Weight, BMI, Fat%, BMR, Body Age, Chest, Waist, Hip.
+ * Fields: Date, Venue, Name, Age, Height, Phone, Gender, Weight, BMI, Fat%, BMR,
+ * Physical Activity, Body Age, Chest, Waist, Hip, Diet Preference, Health Issues.
+ * Profile-owned: Diet Preference + Physical Activity (team_table; not card columns).
+ * Excluded from Profile: Email, Community ID, Auto Camera.
  */
-import React, { useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { X, AlertCircle } from 'lucide-react';
 import { useBodyParamsCard } from '../hooks/useBodyParamsCard.js';
 import PhoneAutocomplete from './PhoneAutocomplete.jsx';
 import NativeInput from '../../../shared/components/NativeInput.jsx';
 import HealthIssuesFilterSelect from './HealthIssuesFilterSelect.jsx';
+import BcmUnsavedChangesModal from './BcmUnsavedChangesModal.jsx';
+import DietDropdown from '../../user/components/profile/DietDropdown.js';
+import PhysicalActivityField from '../../user/components/profile/PhysicalActivityField.js';
+import TransformationPhotosSection from '../../user/components/profile/TransformationPhotosSection.js';
 
 const InputField = ({
   label, value, onChange, type = 'text', placeholder = '', inputRef, onEnter,
@@ -88,6 +95,8 @@ const BodyParamsForm = ({
     externalVenue,
   });
 
+  const [showUnsavedModal, setShowUnsavedModal] = useState(false);
+
   // Refs for all input fields
   const venueRef = useRef(null);
   const phoneRef = useRef(null);
@@ -104,6 +113,10 @@ const BodyParamsForm = ({
   const chestRef = useRef(null);
   const waistRef = useRef(null);
   const hipRef = useRef(null);
+
+  useEffect(() => {
+    if (!isOpen) setShowUnsavedModal(false);
+  }, [isOpen]);
 
   // Focus next field with smooth scroll
   const focusNextField = (ref) => {
@@ -124,9 +137,27 @@ const BodyParamsForm = ({
 
   if (!isOpen) return null;
 
-  const handleCancel = () => {
+  const closeFormClean = () => {
+    setShowUnsavedModal(false);
     vm.resetForm();
     onClose();
+  };
+
+  const requestClose = () => {
+    if (vm.isSaving) return;
+    if (vm.hasUnsavedChanges) {
+      setShowUnsavedModal(true);
+      return;
+    }
+    closeFormClean();
+  };
+
+  const handleDiscard = () => {
+    closeFormClean();
+  };
+
+  const handleKeepEditing = () => {
+    setShowUnsavedModal(false);
   };
 
   const handleSave = async () => {
@@ -136,7 +167,7 @@ const BodyParamsForm = ({
   const handleBackdropClick = (e) => {
     // Only close if clicking the backdrop, not the modal content
     if (e.target === e.currentTarget) {
-      handleCancel();
+      requestClose();
     }
   };
 
@@ -158,7 +189,12 @@ const BodyParamsForm = ({
               {selectedMember ? `For ${selectedMember.userName || 'Customer'}` : (vm.form.name.trim() || (vm.isEditMode ? 'Editing card' : 'New Card'))}
             </p>
           </div>
-          <button onClick={handleCancel} className="p-1.5 hover:bg-white/20 rounded-full transition-colors">
+          <button
+            type="button"
+            onClick={requestClose}
+            className="p-1.5 hover:bg-white/20 rounded-full transition-colors"
+            aria-label="Close"
+          >
             <X size={20} />
           </button>
         </div>
@@ -378,6 +414,12 @@ const BodyParamsForm = ({
             onEnter={() => focusNextField(bmiRef)}
           />
 
+          {/* Physical Activity — Profile field (team_table); same options/labels as Profile */}
+          <PhysicalActivityField
+            value={vm.form.physicalActivityLevel}
+            onChange={(v) => vm.setField('physicalActivityLevel', v)}
+          />
+
           {/* BMI - Full Width */}
           <div className="flex flex-col gap-1">
             <label className="text-xs font-semibold text-indigo-800 uppercase tracking-wide">
@@ -499,6 +541,12 @@ const BodyParamsForm = ({
             inputRef={hipRef}
           />
 
+          {/* Diet Preference — Profile field (team_table); same options/labels as Profile */}
+          <DietDropdown
+            value={vm.form.dietType}
+            onChange={(v) => vm.setField('dietType', v)}
+          />
+
           {/* Health Issues — filter-style multi-select */}
           <div className="mt-1">
             <HealthIssuesFilterSelect
@@ -506,17 +554,43 @@ const BodyParamsForm = ({
               onChange={(next) => vm.setField('recoveredHealthIssues', next)}
             />
           </div>
+
+          {/* Transformation Photos — Profile Left / Centre / Right (team_table) */}
+          <div className="pt-1">
+            <label className="text-xs font-semibold text-indigo-800 uppercase tracking-wide mb-2 block">
+              Transformation Photos
+            </label>
+            <p className="text-[11px] text-gray-500 mb-2">
+              Left, Centre, and Right — same photos as Profile / onboarding.
+            </p>
+            <TransformationPhotosSection
+              selectedType={vm.transformationPhotos.selectedType}
+              onSelectType={vm.transformationPhotos.setSelectedType}
+              previews={vm.transformationPhotos.previews}
+              disabled={vm.isSaving}
+              onSelectFile={async (slot, file) => {
+                try {
+                  await vm.transformationPhotos.setSlotFromFile(slot, file);
+                } catch (e) {
+                  // Surface via existing error banner if needed
+                  console.warn('[BodyParamsForm] transformation photo failed', e?.message || e);
+                }
+              }}
+            />
+          </div>
         </div>
 
         {/* Actions */}
         <div className="sticky bottom-0 bg-white px-5 py-4 border-t border-gray-100 flex gap-3 rounded-b-2xl">
           <button
-            onClick={handleCancel}
+            type="button"
+            onClick={requestClose}
             className="flex-1 py-2.5 rounded-xl border border-gray-300 text-gray-700 text-sm font-semibold hover:bg-gray-50 transition-colors"
           >
             Cancel
           </button>
           <button
+            type="button"
             onClick={handleSave}
             disabled={!vm.isValid || vm.isSaving}
             className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-green-600 to-green-600 text-white text-sm font-semibold disabled:opacity-50 transition-colors"
@@ -525,6 +599,13 @@ const BodyParamsForm = ({
           </button>
         </div>
       </div>
+
+      <BcmUnsavedChangesModal
+        isOpen={showUnsavedModal}
+        isSaving={vm.isSaving}
+        onDiscard={handleDiscard}
+        onKeepEditing={handleKeepEditing}
+      />
     </div>
   );
 };

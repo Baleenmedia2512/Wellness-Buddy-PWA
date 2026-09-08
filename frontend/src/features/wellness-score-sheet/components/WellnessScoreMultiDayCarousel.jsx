@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import { getSectionIcon } from '../domain/parameterIcons';
+import { getParameterMeta } from '../domain/parameterRegistry';
 
 function avgBarTone(pct) {
   if (pct >= 100) return 'bg-emerald-500';
@@ -41,7 +42,7 @@ function computeParamAverages(historyDays, activeParams = []) {
     const key = param?.key;
     if (!key) continue;
     totals[key] = {
-      label: param.label || key,
+      label: getParameterMeta(key)?.label || param.label || key,
       earnedSum: 0,
       maxPoints: Number(param.maxPoints) || 0,
     };
