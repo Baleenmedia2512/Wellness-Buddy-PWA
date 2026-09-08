@@ -131,18 +131,13 @@ function Thumb({
   hasImage = false,
 }) {
   const template = activityPhotoTemplate(kind);
-  const [lazySrc, setLazySrc] = useState(null);
-
-  useEffect(() => {
-    if (imageUrl && (imageUrlFormat === 'raw' || imageUrlFormat === 'data' || String(imageUrl).startsWith('http'))) {
-      setLazySrc(imageUrl);
-      return undefined;
-    }
-    setLazySrc(null);
-    return undefined;
-  }, [imageUrl, imageUrlFormat]);
-
-  const src = lazySrc || template;
+  // Prefer the API/R2 URL immediately — avoid a useEffect remount that can
+  // re-hit the network (and StrictMode double-fire in development).
+  const resolvedUrl = imageUrl
+    && (imageUrlFormat === 'raw' || imageUrlFormat === 'data' || String(imageUrl).startsWith('http'))
+    ? imageUrl
+    : null;
+  const src = resolvedUrl || template;
   const showPlaceholder = !src && hasImage;
 
   return (
@@ -229,8 +224,8 @@ export function FoodRow({
   const cal = p.totals?.calories ?? 0;
   const { swipe, swipeEnabled } = useDiaryRowSwipe({ canDelete, onDelete, entry });
   const [isSharing, setIsSharing] = useState(false);
-  const [shareImgSrc, setShareImgSrc] = useState(null);
   const shareCardRef = useRef(null);
+  const shareImgRef = useRef(null);
   const thumb = thumbPropsFromEntry(entry, { ownerUserId, viewerUserId });
 
   // Prefer lean listSummary from paginated API; fall back to legacy analysisData.
@@ -296,16 +291,6 @@ export function FoodRow({
     .filter(Boolean)
     .join(', ') || mealName;
 
-  useEffect(() => {
-    if (thumb.imageUrlFormat === 'raw' && thumb.imageUrl) {
-      setShareImgSrc(thumb.imageUrl);
-      return undefined;
-    }
-    setShareImgSrc(activityPhotoTemplate(thumb.kind || 'food'));
-    return undefined;
-  }, [thumb.kind, thumb.imageUrl, thumb.imageUrlFormat]);
-
-  const imgSrc = shareImgSrc;
   const t = resolveFoodShareTotals(p, foodData);
   const macros = [
     { label: 'Calories', value: Math.round(t.calories ?? 0), unit: 'kcal', color: '#f97316' },
@@ -322,6 +307,8 @@ export function FoodRow({
   // Share taps the full off-screen nutrition card, not the compact row.
   // Water / Afresh captions use THIS card's volume / scoops.
   // Day totals ("so far today") belong to Manual Entry share after save.
+  // Photo src is set only on share — avoids a second eager meal-image GET
+  // for every row (same URL as the visible Thumb).
   const handleShare = async (e) => {
     e.preventDefault();
     e.stopPropagation();
@@ -334,6 +321,27 @@ export function FoodRow({
     }
     setIsSharing(true);
     try {
+      const photoSrc = await fetchDiaryShareImageSrc(thumb);
+      if (photoSrc) {
+        if (shareImgRef.current) {
+          shareImgRef.current.src = photoSrc;
+          shareImgRef.current.style.display = 'block';
+          try {
+            if (typeof shareImgRef.current.decode === 'function') {
+              await shareImgRef.current.decode();
+            } else {
+              await waitForShareImageDecode(photoSrc);
+            }
+          } catch {
+            await waitForShareImageDecode(photoSrc);
+          }
+        } else {
+          await waitForShareImageDecode(photoSrc);
+        }
+        await new Promise((resolve) => {
+          requestAnimationFrame(() => requestAnimationFrame(resolve));
+        });
+      }
       await captureAndShare(target, {
         title: shareMealName,
         text: withMarathonWhatsAppNotice(
@@ -374,15 +382,20 @@ export function FoodRow({
             </span>
           )}
         </div>
-        {/* Food photo — include whenever available (water / afresh / food) */}
-        {imgSrc && (
-          <img
-            src={imgSrc}
-            alt=""
-            style={{ width: '100%', height: 'auto', display: 'block', maxHeight: 420, objectFit: 'contain', background: '#f9fafb' }}
-            onError={(e) => handleActivityPhotoError(e, thumb.kind || 'food')}
-          />
-        )}
+        {/* Food photo — src assigned on share tap only (avoids duplicate meal-image GET) */}
+        <img
+          ref={shareImgRef}
+          alt=""
+          style={{
+            width: '100%',
+            height: 'auto',
+            display: 'none',
+            maxHeight: 420,
+            objectFit: 'contain',
+            background: '#f9fafb',
+          }}
+          onError={(e) => handleActivityPhotoError(e, thumb.kind || 'food')}
+        />
         {/* Activity-specific body */}
         {isWater && (
           <div style={{ padding: '28px 20px', textAlign: 'center' }}>
@@ -559,19 +572,6 @@ export function WeightRow({
   });
   const shareTime = formatShareDateTime(entry.capturedAt, timezoneIana);
 
-  useEffect(() => {
-    if (!thumb.hasImage) {
-      setShareImgSrc(null);
-      return undefined;
-    }
-    let cancelled = false;
-    (async () => {
-      const src = await fetchDiaryShareImageSrc(thumb);
-      if (!cancelled) setShareImgSrc(src);
-    })();
-    return () => { cancelled = true; };
-  }, [thumb.hasImage, thumb.kind, thumb.imageUrl, thumb.imageUrlFormat]);
-
   const handleShare = async (e) => {
     e.stopPropagation();
     if (swipe.dragging || swipe.leaving || isSharing) return;
@@ -580,18 +580,28 @@ export function WeightRow({
     setIsSharing(true);
     try {
       await waitForShareImageDecode(WEIGHT_MANUAL_LOG_ICON_SRC);
+      // Load weight photo only when sharing — same URL as Thumb would fetch.
       let imgSrc = shareImgSrc;
       if (!imgSrc && thumb.hasImage) {
         imgSrc = await fetchDiaryShareImageSrc(thumb);
-        if (imgSrc) setShareImgSrc(imgSrc);
       }
       if (imgSrc) {
+        setShareImgSrc(imgSrc);
         if (shareImgRef.current) {
           shareImgRef.current.src = imgSrc;
           shareImgRef.current.style.display = 'block';
+          try {
+            if (typeof shareImgRef.current.decode === 'function') {
+              await shareImgRef.current.decode();
+            } else {
+              await waitForShareImageDecode(imgSrc);
+            }
+          } catch {
+            await waitForShareImageDecode(imgSrc);
+          }
+        } else {
+          await waitForShareImageDecode(imgSrc);
         }
-        setShareImgSrc(imgSrc);
-        await waitForShareImageDecode(imgSrc);
         await new Promise((resolve) => {
           requestAnimationFrame(() => requestAnimationFrame(resolve));
         });
@@ -662,12 +672,11 @@ export function WeightRow({
         {thumb.hasImage && (
           <img
             ref={shareImgRef}
-            src={shareImgSrc || ''}
             alt=""
             style={{
               width: '100%',
               height: 'auto',
-              display: shareImgSrc ? 'block' : 'none',
+              display: 'none',
               maxHeight: 420,
               objectFit: 'contain',
               background: '#f9fafb',

@@ -300,12 +300,20 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
       .slice(0, 8)
       .map((e) => e.payload.id);
     if (foodIds.length === 0) return;
-    void prefetchMealDetails({
-      userId: ownerId,
-      mealIds: foodIds,
-      apiBaseUrl,
-      concurrency: 3,
-    });
+    // Defer meal-detail warm so diary thumbs / first paint win the network.
+    const run = () => {
+      void prefetchMealDetails({
+        userId: ownerId,
+        mealIds: foodIds,
+        apiBaseUrl,
+        concurrency: 3,
+      });
+    };
+    if (typeof window !== 'undefined' && typeof window.requestIdleCallback === 'function') {
+      window.requestIdleCallback(run, { timeout: 2500 });
+      return;
+    }
+    setTimeout(run, 1200);
   }, [ownerId, apiBaseUrl]);
   // Safety ref: prevents setState calls after Dashboard unmounts (e.g. user
   // navigates Home while an async AI retry is still in flight).
