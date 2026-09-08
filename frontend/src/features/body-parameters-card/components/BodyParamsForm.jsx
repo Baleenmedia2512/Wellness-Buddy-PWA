@@ -5,12 +5,13 @@
  * Pure presentational — all logic in useBodyParamsCard hook.
  * Fields: Date, Venue, Name, Age, Height, Phone, Gender, Weight, BMI, Fat%, BMR, Body Age, Chest, Waist, Hip.
  */
-import React, { useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { X, AlertCircle } from 'lucide-react';
 import { useBodyParamsCard } from '../hooks/useBodyParamsCard.js';
 import PhoneAutocomplete from './PhoneAutocomplete.jsx';
 import NativeInput from '../../../shared/components/NativeInput.jsx';
 import HealthIssuesFilterSelect from './HealthIssuesFilterSelect.jsx';
+import BcmUnsavedChangesModal from './BcmUnsavedChangesModal.jsx';
 
 const InputField = ({
   label, value, onChange, type = 'text', placeholder = '', inputRef, onEnter,
@@ -88,6 +89,8 @@ const BodyParamsForm = ({
     externalVenue,
   });
 
+  const [showUnsavedModal, setShowUnsavedModal] = useState(false);
+
   // Refs for all input fields
   const venueRef = useRef(null);
   const phoneRef = useRef(null);
@@ -104,6 +107,10 @@ const BodyParamsForm = ({
   const chestRef = useRef(null);
   const waistRef = useRef(null);
   const hipRef = useRef(null);
+
+  useEffect(() => {
+    if (!isOpen) setShowUnsavedModal(false);
+  }, [isOpen]);
 
   // Focus next field with smooth scroll
   const focusNextField = (ref) => {
@@ -124,9 +131,27 @@ const BodyParamsForm = ({
 
   if (!isOpen) return null;
 
-  const handleCancel = () => {
+  const closeFormClean = () => {
+    setShowUnsavedModal(false);
     vm.resetForm();
     onClose();
+  };
+
+  const requestClose = () => {
+    if (vm.isSaving) return;
+    if (vm.hasUnsavedChanges) {
+      setShowUnsavedModal(true);
+      return;
+    }
+    closeFormClean();
+  };
+
+  const handleDiscard = () => {
+    closeFormClean();
+  };
+
+  const handleKeepEditing = () => {
+    setShowUnsavedModal(false);
   };
 
   const handleSave = async () => {
@@ -136,7 +161,7 @@ const BodyParamsForm = ({
   const handleBackdropClick = (e) => {
     // Only close if clicking the backdrop, not the modal content
     if (e.target === e.currentTarget) {
-      handleCancel();
+      requestClose();
     }
   };
 
@@ -158,7 +183,12 @@ const BodyParamsForm = ({
               {selectedMember ? `For ${selectedMember.userName || 'Customer'}` : (vm.form.name.trim() || (vm.isEditMode ? 'Editing card' : 'New Card'))}
             </p>
           </div>
-          <button onClick={handleCancel} className="p-1.5 hover:bg-white/20 rounded-full transition-colors">
+          <button
+            type="button"
+            onClick={requestClose}
+            className="p-1.5 hover:bg-white/20 rounded-full transition-colors"
+            aria-label="Close"
+          >
             <X size={20} />
           </button>
         </div>
@@ -511,12 +541,14 @@ const BodyParamsForm = ({
         {/* Actions */}
         <div className="sticky bottom-0 bg-white px-5 py-4 border-t border-gray-100 flex gap-3 rounded-b-2xl">
           <button
-            onClick={handleCancel}
+            type="button"
+            onClick={requestClose}
             className="flex-1 py-2.5 rounded-xl border border-gray-300 text-gray-700 text-sm font-semibold hover:bg-gray-50 transition-colors"
           >
             Cancel
           </button>
           <button
+            type="button"
             onClick={handleSave}
             disabled={!vm.isValid || vm.isSaving}
             className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-green-600 to-green-600 text-white text-sm font-semibold disabled:opacity-50 transition-colors"
@@ -525,6 +557,13 @@ const BodyParamsForm = ({
           </button>
         </div>
       </div>
+
+      <BcmUnsavedChangesModal
+        isOpen={showUnsavedModal}
+        isSaving={vm.isSaving}
+        onDiscard={handleDiscard}
+        onKeepEditing={handleKeepEditing}
+      />
     </div>
   );
 };

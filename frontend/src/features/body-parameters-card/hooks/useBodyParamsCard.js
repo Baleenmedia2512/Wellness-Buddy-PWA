@@ -199,12 +199,22 @@ export function useBodyParamsCard({
   const [phoneStatusNonce, setPhoneStatusNonce] = useState(0);
   const [savedCard, setSavedCard]         = useState(null);
   const [shareUrl, setShareUrl]           = useState('');
+  /** True after any user-driven field change since last open/reset/save. */
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
   // Track whether the user manually typed in the BMI field.
   // When true, BMI auto-fill is disabled.
   const [bmiUserEdited, setBmiUserEdited] = useState(false);
   const [bmrUserEdited, setBmrUserEdited] = useState(false);
   const [coachUserId, setCoachUserId] = useState(() => user?.id || null);
+
+  const markDirty = useCallback(() => {
+    setHasUnsavedChanges(true);
+  }, []);
+
+  const clearDirty = useCallback(() => {
+    setHasUnsavedChanges(false);
+  }, []);
 
   // ── Phone autocomplete state ──────────────────────────────────────────────
   const [phoneSuggestions, setPhoneSuggestions] = useState([]);
@@ -345,6 +355,7 @@ export function useBodyParamsCard({
     setBmrUserEdited(false);
     setError('');
     setPhoneFieldError('');
+    setHasUnsavedChanges(false);
     lastBcmPrefillPhoneRef.current = '';
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, existingCardSnapshot, isEditMode]);
@@ -475,10 +486,11 @@ export function useBodyParamsCard({
       venueRef.current = String(nextValue || '').trim();
     }
     setForm((prev) => ({ ...prev, [field]: nextValue }));
+    markDirty();
     if (field === 'weightKg' || field === 'fatPercent') {
       setBmrUserEdited(false);
     }
-  }, []);
+  }, [markDirty]);
 
   /**
    * Called when the phone input changes. Updates form + triggers debounced prefix search.
@@ -486,6 +498,7 @@ export function useBodyParamsCard({
    */
   const setPhoneField = useCallback((value) => {
     setForm((prev) => ({ ...prev, phoneNumber: value }));
+    markDirty();
     if (isActivatedPhoneErrorMessage(error)) setError('');
 
     const digits = value.replace(/\D/g, '');
@@ -543,7 +556,7 @@ export function useBodyParamsCard({
         }
       }, 150);
     }
-  }, [coachUserId, allTeamMembers, error]);
+  }, [coachUserId, allTeamMembers, error, markDirty]);
 
   /**
    * Called when the user selects a suggestion from the phone autocomplete.
@@ -551,6 +564,7 @@ export function useBodyParamsCard({
    */
   const fillFromMember = useCallback(async (member) => {
     if (!member) return;
+    markDirty();
 
     if (member.phoneNumber && coachUserId) {
       try {
@@ -614,7 +628,7 @@ export function useBodyParamsCard({
       setBmrUserEdited(false);
     }
     debugLog('✅ [BodyParamsCard] pre-filled from member', enriched);
-  }, [coachUserId]);
+  }, [coachUserId, markDirty]);
 
   fillFromMemberRef.current = fillFromMember;
 
@@ -622,29 +636,37 @@ export function useBodyParamsCard({
   const setWeightManually = useCallback((value) => {
     setBmrUserEdited(false);
     setForm((prev) => ({ ...prev, weightKg: value }));
-  }, []);
+    markDirty();
+  }, [markDirty]);
 
   /** Called when user manually types in the BMI field. Disables auto-fill for BMI. */
   const setBmiManually = useCallback((value) => {
     setBmiUserEdited(true);
     setForm((prev) => ({ ...prev, bmi: value }));
-  }, []);
+    markDirty();
+  }, [markDirty]);
 
   /** Called when user manually types in the BMR field. Disables auto-fill for BMR. */
   const setBmrManually = useCallback((value) => {
     setBmrUserEdited(true);
     setForm((prev) => ({ ...prev, bmr: value }));
-  }, []);
+    markDirty();
+  }, [markDirty]);
 
   const resetForm = useCallback(() => {
-    setForm(EMPTY_FORM);
+    setForm({
+      ...EMPTY_FORM,
+      recordedDate: new Date().toISOString().substring(0, 10),
+      recoveredHealthIssues: [],
+    });
     setError('');
     setPhoneFieldError('');
     setSavedCard(null);
     setShareUrl('');
     setBmiUserEdited(false);
     setBmrUserEdited(false);
-  }, []);
+    clearDirty();
+  }, [clearDirty]);
 
   const cleanPhone = (s) => s.trim().replace(/[\s\-()]/g, '');
 
@@ -806,6 +828,7 @@ export function useBodyParamsCard({
       // Keep the just-saved values in the form immediately (do not wait for remount).
       setForm(cardToFormState(fullCard));
       venueRef.current = String(fullCard.locationName || '').trim();
+      clearDirty();
       debugLog('✅ [BodyParamsCard] Created:', fullCard);
       debugLog('⏱️ [BodyParamsCard] API save done', {
         ms: Math.round(performance.now() - saveStartedAt),
@@ -863,7 +886,7 @@ export function useBodyParamsCard({
     } finally {
       setIsSaving(false);
     }
-  }, [isValid, form, coachUserId, targetUserId, onSaveSuccess, onSaveStart, isEditMode, existingCard, user, bmrUserEdited, externalVenue, phoneFieldError]);
+  }, [isValid, form, coachUserId, targetUserId, onSaveSuccess, onSaveStart, isEditMode, existingCard, user, bmrUserEdited, externalVenue, phoneFieldError, clearDirty]);
 
   return {
     form, setField,
@@ -878,6 +901,7 @@ export function useBodyParamsCard({
     isSaving, error,
     isValid,
     isEditMode,
+    hasUnsavedChanges,
     savedCard, shareUrl,
     handleSave, resetForm,
   };
