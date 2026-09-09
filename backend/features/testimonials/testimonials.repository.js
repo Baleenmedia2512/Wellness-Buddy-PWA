@@ -11,6 +11,7 @@ import {
 } from './domain/profileTransformationPhotos.seed.js';
 import { resolveCoCoachPartnerId } from './domain/otpRecipient.rules.js';
 import { isRealImagePath } from './domain/testimonials-list.pagination.js';
+import { isActiveTeamStatus } from '../../utils/teamHierarchyBuilder.js';
 
 const TABLE = 'testimonials_table';
 const BUCKET = 'testimonials';
@@ -626,11 +627,12 @@ export async function loadTeamReportingContext(coachId) {
 
 /**
  * Reporting team members for a coach (direct or full hierarchy).
- * Applies inactive-coach rollup via reportingHierarchyService.
+ * Applies inactive-coach rollup via reportingHierarchyService, then keeps
+ * only active members for Transformation lists (inactive never shown).
  * @param {number} coachId
  * @param {'direct'|'full'} [scope='direct']
  * @param {import('../../utils/reportingHierarchyService.js').ReportingContext} [context]
- * @returns {Promise<Array<{ UserId: number, UserName: string, Email?: string, ProfileImage?: string|null, PhoneNumber?: string|null }>>}
+ * @returns {Promise<Array<{ UserId: number, UserName: string, Email?: string, ProfileImage?: string|null, PhoneNumber?: string|null, Status?: string }>>}
  */
 async function fetchReportingTeamMembers(coachId, scope = 'direct', context = null) {
   const resolvedContext = context ?? await loadTeamReportingContext(coachId);
@@ -643,6 +645,7 @@ async function fetchReportingTeamMembers(coachId, scope = 'direct', context = nu
     : getSharedTeamDirectMembers(coachId, resolvedContext);
   return members
     .filter((member) => member.UserId !== Number(coachId))
+    .filter((member) => isActiveTeamStatus(member.Status))
     .sort((a, b) => String(a.UserName || '').localeCompare(String(b.UserName || '')));
 }
 
@@ -850,6 +853,7 @@ export async function buildTeamUploadPerformanceByUserId(rootCoachId, context = 
 
   const activeMemberIds = new Set(
     reportingMembers
+      .filter((m) => isActiveTeamStatus(m.Status))
       .map((m) => m.UserId)
       .filter((id) => id !== rootCoachId),
   );
