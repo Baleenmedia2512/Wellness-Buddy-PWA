@@ -375,6 +375,8 @@ export async function updateProfile(input) {
     });
     if (updateData.ProfileImage) {
       await persistAvatarKey(userId, updateData.ProfileImage);
+      // Always drop avatar cache — persistAvatarKey may no-op when R2 is off.
+      try { cache.delete(cacheKeys.userAvatar(userId)); } catch { /* non-fatal */ }
     }
     try { await repo.updateUserById(userId, { LastActiveAt: nowUtc() }); } catch { /* non-fatal */ }
     const verifyRow = await repo.verifyProfile(userId);

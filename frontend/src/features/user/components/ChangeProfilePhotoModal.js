@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { Camera, Upload, X } from 'lucide-react';
 import useImageCropper from '../hooks/useImageCropper';
 import { saveProfile } from '../services/profileService';
+import { bumpAvatarDisplayVersion } from '../services/avatarDisplayVersion';
 import CropOverlay from './shared/CropOverlay';
 import CameraGalleryButtons from './shared/CameraGalleryButtons';
 import PicturePreview from './picture/PicturePreview';
@@ -76,6 +77,7 @@ const ChangeProfilePhotoModal = ({
       if (user?.id != null) payload.userId = user.id;
       await saveProfile(payload);
       if (email) Session.markProfilePictureUploaded(email);
+      bumpAvatarDisplayVersion();
       onUploaded?.(profileImage);
       setProfileImage(null);
       setPreviewUrl(null);

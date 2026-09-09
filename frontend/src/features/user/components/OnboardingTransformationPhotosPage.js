@@ -12,6 +12,7 @@ import TransformationPhotosSection from './profile/TransformationPhotosSection';
 import useTransformationPhotos from '../hooks/useTransformationPhotos';
 import { persistOnboardingTestimonialPhotos } from '../services/persistOnboardingTestimonialPhotos';
 import { deriveWeightGoalMode } from '../../weight/services/weightFormService';
+import { bumpAvatarDisplayVersion } from '../services/avatarDisplayVersion';
 import {
   DEFAULT_POSE_SLOT,
   POSE_SLOT_KEYS,
@@ -111,6 +112,8 @@ export default function OnboardingTransformationPhotosPage({
           ...(centrePending ? { profileImage: centrePending } : {}),
         });
         transformationPhotos.clearPending();
+        // Bust Leaderboard / Top 10 avatar URLs (centre may drive /api/user/avatar).
+        bumpAvatarDisplayVersion();
       }
       const leftForTestimonial = extras.transformationPhotos?.left
         || transformationPhotos.leftImageBase64();
