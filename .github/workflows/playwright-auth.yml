@@ -19,6 +19,7 @@ on:
       - PH1_BACKUP
       - Development
       - Nitheesh_test
+      - Avinash_test
 
   workflow_dispatch:
 
@@ -378,8 +379,13 @@ jobs:
             tests/frontend/authenticated/club.spec.js \
             tests/frontend/authenticated/activity.spec.js \
             tests/frontend/programs/programs.spec.js \
-            tests/frontend/authenticated/bcm.spec.js
-
+            tests/frontend/authenticated/bcm.spec.js \
+            tests/frontend/authenticated/dashboard.spec.js \
+            tests/frontend/authenticated/diary.spec.js \
+            tests/frontend/authenticated/transformation.spec.js \
+            tests/frontend/pages/home.spec.js \
+            tests/frontend/pages/complete-profile.spec.js \
+            tests/frontend/programs/programs.spec.js          
 
       # ==========================================================
       # 20. OPTIONAL COMPLETE PROFILE TESTS
