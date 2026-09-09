@@ -263,6 +263,11 @@ async function mockAuthenticatedSession(page, options = {}) {
           currentWeight: 75,
           recoveredHealthIssues: ['Thyroid', 'Overweight'],
           profileImage: 'https://example.com/pic.jpg',
+          transformationPhotos: {
+            left: MOCK_BEFORE_IMAGE,
+            front: MOCK_AFTER_IMAGE,
+            right: MOCK_BEFORE_IMAGE,
+          },
         },
       }),
     });

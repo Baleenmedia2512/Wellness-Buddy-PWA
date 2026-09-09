@@ -2,7 +2,7 @@
   "cookies": [],
   "origins": [
     {
-      "origin": "http://127.0.0.1:3002",
+      "origin": "http://127.0.0.1:3001",
       "localStorage": [
         {
           "name": "userEmail",
@@ -17,8 +17,20 @@
           "value": "true"
         },
         {
+          "name": "profileComplete_v2_test@example.com",
+          "value": "true"
+        },
+        {
           "name": "dbUserId",
           "value": "99999"
+        },
+        {
+          "name": "wv.profileUserName.test@example.com",
+          "value": "Test Coach"
+        },
+        {
+          "name": "setupSkipped",
+          "value": "true"
         }
       ]
     }
