@@ -306,32 +306,45 @@ function verifySaved(verifyRow, { cleanedPhoneNumber, height, dietType, gender, 
 
 export async function updateProfile(input) {
   const {
-    email, name, height, bmr, dietType, profileImage, phoneNumber, gender,
+    email, userId: inputUserId, name, height, bmr, dietType, profileImage, phoneNumber, gender,
     weightGoalMode, physicalActivityLevel, communityId, timezoneIana, bodyFat,
     currentWeight, transformationPhotos,
   } = input;
 
   logger.info('[profile/update] incoming request', {
-    email,
+    email: email || null,
+    userId: inputUserId || null,
     receivedCommunityId: communityId !== undefined,
     receivedBodyFat: bodyFat !== undefined,
     receivedCurrentWeight: currentWeight !== undefined,
   });
   if (communityId !== undefined) {
     logger.info('[profile/update] CommunityId validation result', {
-      email,
+      email: email || null,
+      userId: inputUserId || null,
       valid: true,
       communityId: communityId ?? null,
     });
   }
 
   let user;
+  const photoCols = 'UserId, transformation_photos';
+  const idCols = 'UserId';
   try {
-    user = await repo.findByEmail(email, 'UserId, transformation_photos');
+    // Prefer email when present (legacy clients); userId for phone / BCM without email.
+    if (email) {
+      user = await repo.findByEmail(email, photoCols);
+    } else {
+      user = await repo.findByUserId(inputUserId, photoCols);
+    }
   } catch (err) {
     const msg = String(err?.message || err || '');
     if (!/transformation_photos/i.test(msg)) throw err;
-    user = await repo.findByEmail(email, 'UserId');
+    if (email) {
+      user = await repo.findByEmail(email, idCols);
+    } else {
+      user = await repo.findByUserId(inputUserId, idCols);
+    }
   }
   if (!user) return notFound();
   const userId = user.UserId;

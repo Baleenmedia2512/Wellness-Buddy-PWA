@@ -242,7 +242,11 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
       if (centrePhoto) {
         payload.profileImage = centrePhoto;
       }
+      if (user?.id && !payload.userId) {
+        payload.userId = user.id;
+      }
       const data = await saveProfile(payload);
+      transformationPhotos.clearPending();
       const leftPending = photoExtras.transformationPhotos?.left || null;
       if (user?.id && (latestWeight != null || leftPending)) {
         try {
