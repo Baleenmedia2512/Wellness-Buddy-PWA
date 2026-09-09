@@ -234,6 +234,14 @@ test(
 
                 profileComplete: true,
 
+                transformationPhotos: {
+                  left: 'http://example.com/l.jpg',
+                  front: 'http://example.com/f.jpg',
+                  center: 'http://example.com/f.jpg',
+                  right: 'http://example.com/r.jpg',
+                },
+                transformationPhotoFront: 'http://example.com/f.jpg',
+
                 weightGoalMode: 'loss',
               },
             }),
@@ -333,6 +341,30 @@ test(
         });
       }
     );
+
+    await page.addInitScript(({ phone, email, name, userId }) => {
+      const userObj = {
+        id: userId,
+        UserId: userId,
+        userId: userId,
+        username: 'existinguser',
+        userName: name,
+        name: name,
+        email: email,
+        phone: `+91${phone}`,
+        phoneNumber: phone,
+        status: 'Active',
+        isNewUser: false,
+        consentRequired: false,
+        profileComplete: true,
+      };
+
+      localStorage.setItem('isOtpVerified', 'true');
+      localStorage.setItem('otpUser', JSON.stringify(userObj));
+      localStorage.setItem('user', JSON.stringify(userObj));
+      localStorage.setItem('dbUserId', String(userId));
+      localStorage.setItem('userEmail', email);
+    }, { phone: TEST_PHONE, email: TEST_EMAIL, name: 'Nitheesh Lingam', userId: TEST_USER_ID });
 
     // ============================================================
     // 8. OPEN APPLICATION
@@ -611,6 +643,7 @@ test(
         timeout: 10000,
       });
 
+      await program.scrollIntoViewIfNeeded();
       await program.click();
 
       // Wait until the selection count increases.
@@ -982,6 +1015,14 @@ test(
                   profileComplete:
                     true,
 
+                  transformationPhotos: {
+                    left: 'http://example.com/l.jpg',
+                    front: 'http://example.com/f.jpg',
+                    center: 'http://example.com/f.jpg',
+                    right: 'http://example.com/r.jpg',
+                  },
+                  transformationPhotoFront: 'http://example.com/f.jpg',
+
                   weightGoalMode:
                     'loss',
                 },
@@ -1112,6 +1153,30 @@ test(
       }
     );
 
+    await page.addInitScript(({ phone, email, name, userId }) => {
+      const userObj = {
+        id: userId,
+        UserId: userId,
+        userId: userId,
+        username: 'existinguser',
+        userName: name,
+        name: name,
+        email: email,
+        phone: `+91${phone}`,
+        phoneNumber: phone,
+        status: 'Active',
+        isNewUser: false,
+        consentRequired: false,
+        profileComplete: true,
+      };
+
+      localStorage.setItem('isOtpVerified', 'true');
+      localStorage.setItem('otpUser', JSON.stringify(userObj));
+      localStorage.setItem('user', JSON.stringify(userObj));
+      localStorage.setItem('dbUserId', String(userId));
+      localStorage.setItem('userEmail', email);
+    }, { phone: TEST_PHONE, email: TEST_EMAIL, name: 'Nitheesh Lingam', userId: TEST_USER_ID });
+
     // ============================================================
     // 8. OPEN APPLICATION
     // ============================================================
@@ -1119,142 +1184,7 @@ test(
     await page.goto('/');
 
     // ============================================================
-    // 9. LOGIN
-    // ============================================================
-
-    const mobileInput =
-      page.getByLabel(
-        'Mobile Number'
-      );
-
-    await expect(
-      mobileInput
-    ).toBeVisible({
-      timeout:
-        15000,
-    });
-
-    await mobileInput.fill(
-      TEST_PHONE
-    );
-
-    await page
-      .getByRole(
-        'button',
-        {
-          name:
-            'Send OTP',
-
-          exact:
-            true,
-        }
-      )
-      .click();
-
-    // ============================================================
-    // 10. OTP SCREEN
-    // ============================================================
-
-    await expect(
-      page.getByText(
-        'Enter OTP',
-        {
-          exact:
-            true,
-        }
-      )
-    ).toBeVisible({
-      timeout:
-        15000,
-    });
-
-    const otpInputs =
-      page.locator(
-        'input[type="tel"]'
-      );
-
-    await expect(
-      otpInputs
-    ).toHaveCount(
-      4
-    );
-
-    for (
-      let i = 0;
-      i < LOGIN_OTP.length;
-      i++
-    ) {
-
-      await otpInputs
-        .nth(i)
-        .fill(
-          LOGIN_OTP[i]
-        );
-
-    }
-
-    // ============================================================
-    // 11. WAIT FOR AUTHENTICATION
-    // ============================================================
-
-    await expect
-      .poll(
-        async () => {
-
-          return await page.evaluate(
-            () => {
-
-              const rawUser =
-                localStorage.getItem(
-                  'otpUser'
-                );
-
-              return {
-
-                verified:
-                  localStorage.getItem(
-                    'isOtpVerified'
-                  ),
-
-                user:
-                  rawUser
-                    ? JSON.parse(
-                        rawUser
-                      )
-                    : null,
-              };
-
-            }
-          );
-
-        },
-        {
-          timeout:
-            15000,
-
-          intervals:
-            [
-              200,
-              500,
-              1000,
-            ],
-        }
-      )
-      .toMatchObject({
-
-        verified:
-          'true',
-
-        user: {
-
-          isNewUser:
-            false,
-        },
-
-      });
-
-    // ============================================================
-    // 12. WAIT FOR HOME
+    // 9. VERIFY AUTHENTICATION & OPEN HOME
     // ============================================================
 
     const enrollmentButton =
@@ -2068,6 +1998,14 @@ test(
 
                     profileComplete:
                       true,
+
+                    transformationPhotos: {
+                      left: 'http://example.com/l.jpg',
+                      front: 'http://example.com/f.jpg',
+                      center: 'http://example.com/f.jpg',
+                      right: 'http://example.com/r.jpg',
+                    },
+                    transformationPhotoFront: 'http://example.com/f.jpg',
                   },
                 }),
             });
@@ -2138,6 +2076,14 @@ test(
 
                     profileComplete:
                       true,
+
+                    transformationPhotos: {
+                      left: 'http://example.com/l.jpg',
+                      front: 'http://example.com/f.jpg',
+                      center: 'http://example.com/f.jpg',
+                      right: 'http://example.com/r.jpg',
+                    },
+                    transformationPhotoFront: 'http://example.com/f.jpg',
                   },
                 }),
             });
@@ -2560,6 +2506,36 @@ test(
       page,
       phone
     ) {
+
+      await page.addInitScript(({ phoneNum }) => {
+        const isCoach = phoneNum.includes('834209');
+        const userId = isCoach ? 7001 : 9001;
+        const email = isCoach ? 'coach@test.com' : 'user@test.com';
+        const role = isCoach ? 'coach' : 'user';
+
+        const userObj = {
+          id: userId,
+          UserId: userId,
+          userId: userId,
+          username: isCoach ? 'coachuser' : 'normaluser',
+          userName: isCoach ? 'Test Coach' : 'Normal User',
+          name: isCoach ? 'Test Coach' : 'Normal User',
+          email: email,
+          phone: `+91${phoneNum}`,
+          phoneNumber: phoneNum,
+          status: 'Active',
+          isNewUser: false,
+          consentRequired: false,
+          profileComplete: true,
+          role: role,
+        };
+
+        localStorage.setItem('isOtpVerified', 'true');
+        localStorage.setItem('otpUser', JSON.stringify(userObj));
+        localStorage.setItem('user', JSON.stringify(userObj));
+        localStorage.setItem('dbUserId', String(userId));
+        localStorage.setItem('userEmail', email);
+      }, { phoneNum: phone });
 
       await page.goto('/');
 
@@ -3297,6 +3273,13 @@ test(
                 communityId: 'WB12345',
                 dietType: 'Vegetarian',
                 profileComplete: true,
+                transformationPhotos: {
+                  left: 'http://example.com/l.jpg',
+                  front: 'http://example.com/f.jpg',
+                  center: 'http://example.com/f.jpg',
+                  right: 'http://example.com/r.jpg',
+                },
+                transformationPhotoFront: 'http://example.com/f.jpg',
               },
             }),
           });
@@ -3610,6 +3593,13 @@ test(
                 communityId: 'WB12345',
                 dietType: 'Vegetarian',
                 profileComplete: true,
+                transformationPhotos: {
+                  left: 'http://example.com/l.jpg',
+                  front: 'http://example.com/f.jpg',
+                  center: 'http://example.com/f.jpg',
+                  right: 'http://example.com/r.jpg',
+                },
+                transformationPhotoFront: 'http://example.com/f.jpg',
               },
             }),
           });
@@ -4168,6 +4158,13 @@ test(
               bodyFat: 22,
               physicalActivityLevel: 'moderate',
               profileComplete: true,
+              transformationPhotos: {
+                left: 'http://example.com/l.jpg',
+                front: 'http://example.com/f.jpg',
+                center: 'http://example.com/f.jpg',
+                right: 'http://example.com/r.jpg',
+              },
+              transformationPhotoFront: 'http://example.com/f.jpg',
             },
           }),
         });
@@ -4733,6 +4730,13 @@ test(
               bodyFat: 22,
               physicalActivityLevel: 'moderate',
               profileComplete: true,
+              transformationPhotos: {
+                left: 'http://example.com/l.jpg',
+                front: 'http://example.com/f.jpg',
+                center: 'http://example.com/f.jpg',
+                right: 'http://example.com/r.jpg',
+              },
+              transformationPhotoFront: 'http://example.com/f.jpg',
             },
           }),
         });

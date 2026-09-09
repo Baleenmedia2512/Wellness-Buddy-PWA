@@ -3590,6 +3590,20 @@ test.describe('Complete Profile', () => {
         });
       });
 
+      await page.route('**/api/user/status*', async route => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            isActive: true,
+            isNewUser: false,
+            setupSkipped: true,
+            setupComplete: true,
+          }),
+        });
+      });
+
       await page.route('**/api/user/consent*', async route => {
         await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, consentRequired: false, consentAccepted: true }) });
       });
@@ -3617,6 +3631,16 @@ test.describe('Complete Profile', () => {
               profileImage: 'https://example.com/photo.jpg',
               physicalActivityLevel: 'moderate',
               needsCurrentWeight: false,
+              transformationPhotos: {
+                left: 'https://example.com/left.jpg',
+                front: 'https://example.com/front.jpg',
+                center: 'https://example.com/center.jpg',
+                right: 'https://example.com/right.jpg',
+              },
+              transformationPhotoLeft: 'https://example.com/left.jpg',
+              transformationPhotoFront: 'https://example.com/front.jpg',
+              transformationPhotoCenter: 'https://example.com/center.jpg',
+              transformationPhotoRight: 'https://example.com/right.jpg',
             },
           }),
         });
@@ -3646,6 +3670,8 @@ test.describe('Complete Profile', () => {
         localStorage.setItem('isOtpVerified', 'true');
         localStorage.setItem('otpUser', JSON.stringify(user));
         localStorage.setItem('user', JSON.stringify(user));
+        localStorage.setItem('dbUserId', '1004');
+        localStorage.setItem('userEmail', email);
       }, { phone: TEST_PHONE, email: TEST_EMAIL, name: TEST_NAME });
 
       // ============================================================
@@ -3656,6 +3682,9 @@ test.describe('Complete Profile', () => {
       // ============================================================
       // 4. SELECT PROFILE AVATAR IN HEADER
       // ============================================================
+      // Wait for any onboarding/loading overlays to dismiss
+      await page.locator('div[class*="fixed inset-0"]').waitFor({ state: 'detached', timeout: 10000 }).catch(() => {});
+
       const profileBtn = page.getByRole('button', { name: 'My Profile' });
       await expect(profileBtn).toBeVisible({ timeout: 15000 });
       await profileBtn.click();
@@ -3718,6 +3747,20 @@ test.describe('Complete Profile', () => {
         });
       });
 
+      await page.route('**/api/user/status*', async route => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            isActive: true,
+            isNewUser: false,
+            setupSkipped: true,
+            setupComplete: true,
+          }),
+        });
+      });
+
       await page.route('**/api/user/consent*', async route => {
         await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, consentRequired: false, consentAccepted: true }) });
       });
@@ -3748,6 +3791,16 @@ test.describe('Complete Profile', () => {
                 profileImage: 'https://example.com/photo.jpg',
                 physicalActivityLevel: 'moderate',
                 needsCurrentWeight: false,
+                transformationPhotos: {
+                  left: 'https://example.com/left.jpg',
+                  front: 'https://example.com/front.jpg',
+                  center: 'https://example.com/center.jpg',
+                  right: 'https://example.com/right.jpg',
+                },
+                transformationPhotoLeft: 'https://example.com/left.jpg',
+                transformationPhotoFront: 'https://example.com/front.jpg',
+                transformationPhotoCenter: 'https://example.com/center.jpg',
+                transformationPhotoRight: 'https://example.com/right.jpg',
               },
             }),
           });
@@ -3788,6 +3841,8 @@ test.describe('Complete Profile', () => {
         localStorage.setItem('isOtpVerified', 'true');
         localStorage.setItem('otpUser', JSON.stringify(user));
         localStorage.setItem('user', JSON.stringify(user));
+        localStorage.setItem('dbUserId', '1004');
+        localStorage.setItem('userEmail', email);
       }, { phone: TEST_PHONE, email: TEST_EMAIL, name: TEST_NAME });
 
       // ============================================================
@@ -3878,6 +3933,20 @@ test.describe('Complete Profile', () => {
         });
       });
 
+      await page.route('**/api/user/status*', async route => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            isActive: true,
+            isNewUser: false,
+            setupSkipped: true,
+            setupComplete: true,
+          }),
+        });
+      });
+
       await page.route('**/api/user/consent*', async route => {
         await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, consentRequired: false, consentAccepted: true }) });
       });
@@ -3910,6 +3979,16 @@ test.describe('Complete Profile', () => {
                 profileImage: 'https://example.com/photo.jpg',
                 physicalActivityLevel: 'moderate',
                 needsCurrentWeight: false,
+                transformationPhotos: {
+                  left: 'https://example.com/left.jpg',
+                  front: 'https://example.com/front.jpg',
+                  center: 'https://example.com/center.jpg',
+                  right: 'https://example.com/right.jpg',
+                },
+                transformationPhotoLeft: 'https://example.com/left.jpg',
+                transformationPhotoFront: 'https://example.com/front.jpg',
+                transformationPhotoCenter: 'https://example.com/center.jpg',
+                transformationPhotoRight: 'https://example.com/right.jpg',
               },
             }),
           });
@@ -3959,6 +4038,8 @@ test.describe('Complete Profile', () => {
         localStorage.setItem('isOtpVerified', 'true');
         localStorage.setItem('otpUser', JSON.stringify(user));
         localStorage.setItem('user', JSON.stringify(user));
+        localStorage.setItem('dbUserId', '1004');
+        localStorage.setItem('userEmail', email);
       }, { phone: TEST_PHONE, email: TEST_EMAIL, name: TEST_NAME });
 
       // ============================================================
@@ -4077,6 +4158,20 @@ test.describe('Complete Profile', () => {
         });
       });
 
+      await page.route('**/api/user/status*', async route => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            isActive: true,
+            isNewUser: false,
+            setupSkipped: true,
+            setupComplete: true,
+          }),
+        });
+      });
+
       await page.route('**/api/user/consent*', async route => {
         await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, consentRequired: false, consentAccepted: true }) });
       });
@@ -4109,6 +4204,16 @@ test.describe('Complete Profile', () => {
                 profileImage: 'https://example.com/photo.jpg',
                 physicalActivityLevel: 'moderate',
                 needsCurrentWeight: false,
+                transformationPhotos: {
+                  left: 'https://example.com/left.jpg',
+                  front: 'https://example.com/front.jpg',
+                  center: 'https://example.com/center.jpg',
+                  right: 'https://example.com/right.jpg',
+                },
+                transformationPhotoLeft: 'https://example.com/left.jpg',
+                transformationPhotoFront: 'https://example.com/front.jpg',
+                transformationPhotoCenter: 'https://example.com/center.jpg',
+                transformationPhotoRight: 'https://example.com/right.jpg',
               },
             }),
           });
@@ -4158,6 +4263,8 @@ test.describe('Complete Profile', () => {
         localStorage.setItem('isOtpVerified', 'true');
         localStorage.setItem('otpUser', JSON.stringify(user));
         localStorage.setItem('user', JSON.stringify(user));
+        localStorage.setItem('dbUserId', '1004');
+        localStorage.setItem('userEmail', email);
       }, { phone: TEST_PHONE, email: TEST_EMAIL, name: TEST_NAME });
 
       // ============================================================
@@ -4276,6 +4383,20 @@ test.describe('Complete Profile', () => {
         });
       });
 
+      await page.route('**/api/user/status*', async route => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            isActive: true,
+            isNewUser: false,
+            setupSkipped: true,
+            setupComplete: true,
+          }),
+        });
+      });
+
       await page.route('**/api/user/consent*', async route => {
         await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, consentRequired: false, consentAccepted: true }) });
       });
@@ -4308,6 +4429,16 @@ test.describe('Complete Profile', () => {
                 profileImage: 'https://example.com/photo.jpg',
                 physicalActivityLevel: 'moderate',
                 needsCurrentWeight: false,
+                transformationPhotos: {
+                  left: 'https://example.com/left.jpg',
+                  front: 'https://example.com/front.jpg',
+                  center: 'https://example.com/center.jpg',
+                  right: 'https://example.com/right.jpg',
+                },
+                transformationPhotoLeft: 'https://example.com/left.jpg',
+                transformationPhotoFront: 'https://example.com/front.jpg',
+                transformationPhotoCenter: 'https://example.com/center.jpg',
+                transformationPhotoRight: 'https://example.com/right.jpg',
               },
             }),
           });
@@ -4357,6 +4488,8 @@ test.describe('Complete Profile', () => {
         localStorage.setItem('isOtpVerified', 'true');
         localStorage.setItem('otpUser', JSON.stringify(user));
         localStorage.setItem('user', JSON.stringify(user));
+        localStorage.setItem('dbUserId', '1004');
+        localStorage.setItem('userEmail', email);
       }, { phone: TEST_PHONE, email: TEST_EMAIL, name: TEST_NAME });
 
       // ============================================================
@@ -4463,6 +4596,20 @@ test.describe('Complete Profile', () => {
         });
       });
 
+      await page.route('**/api/user/status*', async route => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            isActive: true,
+            isNewUser: false,
+            setupSkipped: true,
+            setupComplete: true,
+          }),
+        });
+      });
+
       await page.route('**/api/user/consent*', async route => {
         await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, consentRequired: false, consentAccepted: true }) });
       });
@@ -4495,6 +4642,16 @@ test.describe('Complete Profile', () => {
                 profileImage: 'https://example.com/photo.jpg',
                 physicalActivityLevel: 'moderate',
                 needsCurrentWeight: false,
+                transformationPhotos: {
+                  left: 'https://example.com/left.jpg',
+                  front: 'https://example.com/front.jpg',
+                  center: 'https://example.com/center.jpg',
+                  right: 'https://example.com/right.jpg',
+                },
+                transformationPhotoLeft: 'https://example.com/left.jpg',
+                transformationPhotoFront: 'https://example.com/front.jpg',
+                transformationPhotoCenter: 'https://example.com/center.jpg',
+                transformationPhotoRight: 'https://example.com/right.jpg',
               },
             }),
           });
@@ -4544,6 +4701,8 @@ test.describe('Complete Profile', () => {
         localStorage.setItem('isOtpVerified', 'true');
         localStorage.setItem('otpUser', JSON.stringify(user));
         localStorage.setItem('user', JSON.stringify(user));
+        localStorage.setItem('dbUserId', '1004');
+        localStorage.setItem('userEmail', email);
       }, { phone: TEST_PHONE, email: TEST_EMAIL, name: TEST_NAME });
 
       // ============================================================
@@ -4638,6 +4797,20 @@ test.describe('Complete Profile', () => {
         });
       });
 
+      await page.route('**/api/user/status*', async route => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            isActive: true,
+            isNewUser: false,
+            setupSkipped: true,
+            setupComplete: true,
+          }),
+        });
+      });
+
       await page.route('**/api/user/consent*', async route => {
         await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, consentRequired: false, consentAccepted: true }) });
       });
@@ -4670,6 +4843,16 @@ test.describe('Complete Profile', () => {
                 profileImage: 'https://example.com/photo.jpg',
                 physicalActivityLevel: 'moderate',
                 needsCurrentWeight: false,
+                transformationPhotos: {
+                  left: 'https://example.com/left.jpg',
+                  front: 'https://example.com/front.jpg',
+                  center: 'https://example.com/center.jpg',
+                  right: 'https://example.com/right.jpg',
+                },
+                transformationPhotoLeft: 'https://example.com/left.jpg',
+                transformationPhotoFront: 'https://example.com/front.jpg',
+                transformationPhotoCenter: 'https://example.com/center.jpg',
+                transformationPhotoRight: 'https://example.com/right.jpg',
               },
             }),
           });
@@ -4731,6 +4914,8 @@ test.describe('Complete Profile', () => {
         localStorage.setItem('isOtpVerified', 'true');
         localStorage.setItem('otpUser', JSON.stringify(user));
         localStorage.setItem('user', JSON.stringify(user));
+        localStorage.setItem('dbUserId', '1004');
+        localStorage.setItem('userEmail', email);
       }, { phone: TEST_PHONE, email: TEST_EMAIL, name: TEST_NAME });
 
       // ============================================================
@@ -4815,17 +5000,27 @@ test.describe('Complete Profile', () => {
     'CP-022 Profile Physical Activity field allows selecting all available options',
     async ({ page }) => {
       // ============================================================
-      // TEST DATA
-      // ============================================================
       const TEST_PHONE = '7695834209';
       const TEST_NAME = 'Nitheesh Lingam';
       const TEST_EMAIL = 'nitheesh@example.com';
-
-      // ============================================================
       // 1. MOCK APIS FOR AUTHENTICATED USER
       // ============================================================
       await page.route('**/api/auth/send-otp', async route => {
         await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true }) });
+      });
+
+      await page.route('**/api/user/status*', async route => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            isActive: true,
+            isNewUser: false,
+            setupSkipped: true,
+            setupComplete: true,
+          }),
+        });
       });
 
       await page.route('**/api/user/verify-session', async route => {
@@ -4886,6 +5081,8 @@ test.describe('Complete Profile', () => {
                 profileImage: 'https://example.com/photo.jpg',
                 physicalActivityLevel: savedActivity,
                 needsCurrentWeight: false,
+                transformationPhotos: { left: 'http://example.com/l.jpg', front: 'http://example.com/f.jpg', center: 'http://example.com/f.jpg', right: 'http://example.com/r.jpg' },
+                transformationPhotoFront: 'http://example.com/f.jpg',
               },
             }),
           });
@@ -4935,6 +5132,8 @@ test.describe('Complete Profile', () => {
         localStorage.setItem('isOtpVerified', 'true');
         localStorage.setItem('otpUser', JSON.stringify(user));
         localStorage.setItem('user', JSON.stringify(user));
+        localStorage.setItem('dbUserId', '1004');
+        localStorage.setItem('userEmail', email);
       }, { phone: TEST_PHONE, email: TEST_EMAIL, name: TEST_NAME });
 
       // ============================================================
@@ -5011,6 +5210,20 @@ test.describe('Complete Profile', () => {
         await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true }) });
       });
 
+      await page.route('**/api/user/status*', async route => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            isActive: true,
+            isNewUser: false,
+            setupSkipped: true,
+            setupComplete: true,
+          }),
+        });
+      });
+
       await page.route('**/api/user/verify-session', async route => {
         await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, userId: 1004, sessionStale: false }) });
       });
@@ -5069,6 +5282,8 @@ test.describe('Complete Profile', () => {
                 profileImage: 'https://example.com/photo.jpg',
                 physicalActivityLevel: 'moderate',
                 needsCurrentWeight: false,
+                transformationPhotos: { left: 'http://example.com/l.jpg', front: 'http://example.com/f.jpg', center: 'http://example.com/f.jpg', right: 'http://example.com/r.jpg' },
+                transformationPhotoFront: 'http://example.com/f.jpg',
               },
             }),
           });
@@ -5130,6 +5345,8 @@ test.describe('Complete Profile', () => {
         localStorage.setItem('isOtpVerified', 'true');
         localStorage.setItem('otpUser', JSON.stringify(user));
         localStorage.setItem('user', JSON.stringify(user));
+        localStorage.setItem('dbUserId', '1004');
+        localStorage.setItem('userEmail', email);
       }, { phone: TEST_PHONE, email: TEST_EMAIL, name: TEST_NAME });
 
       // ============================================================
@@ -5227,6 +5444,20 @@ test.describe('Complete Profile', () => {
         await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true }) });
       });
 
+      await page.route('**/api/user/status*', async route => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            isActive: true,
+            isNewUser: false,
+            setupSkipped: true,
+            setupComplete: true,
+          }),
+        });
+      });
+
       await page.route('**/api/user/verify-session', async route => {
         await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, userId: 1004, sessionStale: false }) });
       });
@@ -5285,6 +5516,8 @@ test.describe('Complete Profile', () => {
                 profileImage: 'https://example.com/photo.jpg',
                 physicalActivityLevel: 'moderate',
                 needsCurrentWeight: false,
+                transformationPhotos: { left: 'http://example.com/l.jpg', front: 'http://example.com/f.jpg', center: 'http://example.com/f.jpg', right: 'http://example.com/r.jpg' },
+                transformationPhotoFront: 'http://example.com/f.jpg',
               },
             }),
           });
@@ -5346,6 +5579,8 @@ test.describe('Complete Profile', () => {
         localStorage.setItem('isOtpVerified', 'true');
         localStorage.setItem('otpUser', JSON.stringify(user));
         localStorage.setItem('user', JSON.stringify(user));
+        localStorage.setItem('dbUserId', '1004');
+        localStorage.setItem('userEmail', email);
       }, { phone: TEST_PHONE, email: TEST_EMAIL, name: TEST_NAME });
 
       // ============================================================
@@ -5426,9 +5661,6 @@ test.describe('Complete Profile', () => {
     }
   );
 
-
-
-
   test(
     'CP-025 Waist (waistCm) field validation for minimum and maximum boundaries (0, 30, 200, 201) in profile page',
     async ({ page }) => {
@@ -5444,6 +5676,20 @@ test.describe('Complete Profile', () => {
       // ============================================================
       await page.route('**/api/auth/send-otp', async route => {
         await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true }) });
+      });
+
+      await page.route('**/api/user/status*', async route => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            isActive: true,
+            isNewUser: false,
+            setupSkipped: true,
+            setupComplete: true,
+          }),
+        });
       });
 
       await page.route('**/api/user/verify-session', async route => {
@@ -5504,6 +5750,8 @@ test.describe('Complete Profile', () => {
                 profileImage: 'https://example.com/photo.jpg',
                 physicalActivityLevel: 'moderate',
                 needsCurrentWeight: false,
+                transformationPhotos: { left: 'http://example.com/l.jpg', front: 'http://example.com/f.jpg', center: 'http://example.com/f.jpg', right: 'http://example.com/r.jpg' },
+                transformationPhotoFront: 'http://example.com/f.jpg',
               },
             }),
           });
@@ -5565,6 +5813,8 @@ test.describe('Complete Profile', () => {
         localStorage.setItem('isOtpVerified', 'true');
         localStorage.setItem('otpUser', JSON.stringify(user));
         localStorage.setItem('user', JSON.stringify(user));
+        localStorage.setItem('dbUserId', '1004');
+        localStorage.setItem('userEmail', email);
       }, { phone: TEST_PHONE, email: TEST_EMAIL, name: TEST_NAME });
 
       // ============================================================
@@ -5662,6 +5912,20 @@ test.describe('Complete Profile', () => {
         await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true }) });
       });
 
+      await page.route('**/api/user/status*', async route => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            isActive: true,
+            isNewUser: false,
+            setupSkipped: true,
+            setupComplete: true,
+          }),
+        });
+      });
+
       await page.route('**/api/user/verify-session', async route => {
         await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, userId: 1004, sessionStale: false }) });
       });
@@ -5720,6 +5984,8 @@ test.describe('Complete Profile', () => {
                 profileImage: 'https://example.com/photo.jpg',
                 physicalActivityLevel: 'moderate',
                 needsCurrentWeight: false,
+                transformationPhotos: { left: 'http://example.com/l.jpg', front: 'http://example.com/f.jpg', center: 'http://example.com/f.jpg', right: 'http://example.com/r.jpg' },
+                transformationPhotoFront: 'http://example.com/f.jpg',
               },
             }),
           });
@@ -5781,6 +6047,8 @@ test.describe('Complete Profile', () => {
         localStorage.setItem('isOtpVerified', 'true');
         localStorage.setItem('otpUser', JSON.stringify(user));
         localStorage.setItem('user', JSON.stringify(user));
+        localStorage.setItem('dbUserId', '1004');
+        localStorage.setItem('userEmail', email);
       }, { phone: TEST_PHONE, email: TEST_EMAIL, name: TEST_NAME });
 
       // ============================================================
@@ -5878,6 +6146,20 @@ test.describe('Complete Profile', () => {
         await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true }) });
       });
 
+      await page.route('**/api/user/status*', async route => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            isActive: true,
+            isNewUser: false,
+            setupSkipped: true,
+            setupComplete: true,
+          }),
+        });
+      });
+
       await page.route('**/api/user/verify-session', async route => {
         await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, userId: 1004, sessionStale: false }) });
       });
@@ -5936,6 +6218,8 @@ test.describe('Complete Profile', () => {
                 profileImage: 'https://example.com/photo.jpg',
                 physicalActivityLevel: 'moderate',
                 needsCurrentWeight: false,
+                transformationPhotos: { left: 'http://example.com/l.jpg', front: 'http://example.com/f.jpg', center: 'http://example.com/f.jpg', right: 'http://example.com/r.jpg' },
+                transformationPhotoFront: 'http://example.com/f.jpg',
               },
             }),
           });
@@ -5997,6 +6281,8 @@ test.describe('Complete Profile', () => {
         localStorage.setItem('isOtpVerified', 'true');
         localStorage.setItem('otpUser', JSON.stringify(user));
         localStorage.setItem('user', JSON.stringify(user));
+        localStorage.setItem('dbUserId', '1004');
+        localStorage.setItem('userEmail', email);
       }, { phone: TEST_PHONE, email: TEST_EMAIL, name: TEST_NAME });
 
       // ============================================================
@@ -6094,6 +6380,20 @@ test.describe('Complete Profile', () => {
         await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true }) });
       });
 
+      await page.route('**/api/user/status*', async route => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            isActive: true,
+            isNewUser: false,
+            setupSkipped: true,
+            setupComplete: true,
+          }),
+        });
+      });
+
       await page.route('**/api/user/verify-session', async route => {
         await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, userId: 1004, sessionStale: false }) });
       });
@@ -6152,6 +6452,8 @@ test.describe('Complete Profile', () => {
                 profileImage: 'https://example.com/photo.jpg',
                 physicalActivityLevel: 'moderate',
                 needsCurrentWeight: false,
+                transformationPhotos: { left: 'http://example.com/l.jpg', front: 'http://example.com/f.jpg', center: 'http://example.com/f.jpg', right: 'http://example.com/r.jpg' },
+                transformationPhotoFront: 'http://example.com/f.jpg',
               },
             }),
           });
@@ -6202,6 +6504,8 @@ test.describe('Complete Profile', () => {
         localStorage.setItem('isOtpVerified', 'true');
         localStorage.setItem('otpUser', JSON.stringify(user));
         localStorage.setItem('user', JSON.stringify(user));
+        localStorage.setItem('dbUserId', '1004');
+        localStorage.setItem('userEmail', email);
       }, { phone: TEST_PHONE, email: TEST_EMAIL, name: TEST_NAME });
 
       // ============================================================
@@ -6244,20 +6548,26 @@ test.describe('Complete Profile', () => {
       ];
 
       for (const dietOption of dietOptions) {
+        const currentDietLabel = page.getByText('Diet Preference', { exact: true });
+        await expect(currentDietLabel).toBeVisible({ timeout: 15000 });
+        const currentDietContainer = currentDietLabel.locator('xpath=..');
+        const currentDietDropdownTrigger = currentDietContainer.locator('button').first();
+        const currentSaveButton = page.getByRole('button', { name: /Save profile|Save Profile|Saved/i });
+
         // Open the diet dropdown if closed
-        await dietDropdownTrigger.click();
+        await currentDietDropdownTrigger.click();
 
         // Scope matching option button inside dropdown list container (use .last() to get option button in dropdown list)
-        const matchingBtns = dietContainer.getByRole('button', { name: dietOption, exact: true });
+        const matchingBtns = currentDietContainer.getByRole('button', { name: dietOption, exact: true });
         const optionBtn = matchingBtns.last();
         await expect(optionBtn).toBeVisible({ timeout: 5000 });
         await optionBtn.click();
 
         // Verify selected option is visible in trigger button
-        await expect(dietDropdownTrigger).toContainText(dietOption);
+        await expect(currentDietDropdownTrigger).toContainText(dietOption);
 
         // Click Save Profile button
-        await saveButton.click();
+        await currentSaveButton.click();
 
         // Re-open profile page if app navigated back to home
         if (await profileBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
