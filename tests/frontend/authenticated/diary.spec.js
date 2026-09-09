@@ -705,12 +705,12 @@ test.describe('Diary / Food Log Module', () => {
     await diaryPage.gotoDiary();
     await diaryPage.openDatePicker();
 
-    // In the calendar panel, day 8 (tomorrow relative to Sept 7, 2026) must be disabled
-    const day8Btn = diaryPage.calendarPanel.last().locator('button:has-text("8")').first();
+    // Clock is frozen to 2026-09-07 — day 8 is tomorrow and must be disabled
+    const day8Btn = diaryPage.calendarPanel.last().locator('button').filter({ hasText: /^8$/ }).first();
     await expect(day8Btn).toBeDisabled();
 
     // Past dates (e.g. day 6) must NOT be disabled
-    const day6Btn = diaryPage.calendarPanel.last().locator('button:has-text("6")').first();
+    const day6Btn = diaryPage.calendarPanel.last().locator('button').filter({ hasText: /^6$/ }).first();
     await expect(day6Btn).not.toBeDisabled();
   });
 

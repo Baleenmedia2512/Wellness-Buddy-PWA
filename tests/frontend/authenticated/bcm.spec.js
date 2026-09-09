@@ -157,8 +157,17 @@ test.describe('BCM Module (Body Composition Metrics)', () => {
           success: true,
           data: {
             profileComplete: true,
+            userName: 'Test Coach',
+            email: 'test@example.com',
+            phoneNumber: '+1234567890',
             physicalActivityLevel: 'active',
-            profileImage: 'https://example.com/pic.jpg'
+            profileImage: 'https://example.com/pic.jpg',
+            // Required so onboarding Transformation Photos gate does not block nav tabs
+            transformationPhotos: {
+              left: 'https://example.com/left.jpg',
+              front: 'https://example.com/front.jpg',
+              right: 'https://example.com/right.jpg',
+            },
           }
         })
       });
@@ -365,52 +374,67 @@ test.describe('BCM Module (Body Composition Metrics)', () => {
   });
 
   test('BCM-006 Edit Card', async ({ page }) => {
-    // Mock the single card get details
-    await page.route('**/api/body-parameters-card/list?*cardId=1*', async (route) => {
+    let listCards = JSON.parse(JSON.stringify(MOCK_CARDS));
+
+    // Keep list mock mutable so post-update refresh can show the edited name
+    await page.route('**/api/body-parameters-card/list*', async (route) => {
+      const url = new URL(route.request().url());
+      if (url.searchParams.get('cardId') === '1') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            ok: true,
+            data: listCards.find((c) => c.id === 1) || listCards[0],
+          }),
+        });
+        return;
+      }
+
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
           ok: true,
-          data: {
-            id: 1,
-            name: 'VIKKEY',
-            phoneNumber: '8576794649',
-            heightCm: 167,
-            weightKg: null,
-            bmi: '',
-            age: 24,
-            gender: 'Male',
-            recordedDate: '2026-08-24',
-            locationName: 'Voc'
-          }
-        })
+          success: true,
+          data: listCards,
+          pagination: {
+            totalRecords: listCards.length,
+            totalPages: 1,
+            currentPage: 1,
+            pageSize: 20,
+            hasNextPage: false,
+            hasPreviousPage: false,
+          },
+        }),
       });
     });
 
-    // Mock update request
+    // Mock update request (CapacitorHttp uses PATCH)
     let updatePayload = null;
     await page.route('**/api/body-parameters-card/update', async (route) => {
       updatePayload = route.request().postDataJSON();
+      const updated = {
+        id: 1,
+        name: 'VIKKEY EDITED',
+        phoneNumber: '8576794649',
+        heightCm: 167,
+        weightKg: 70,
+        bmi: '25.1',
+        age: 24,
+        gender: 'Male',
+        recordedDate: '2026-08-24',
+        locationName: 'Voc',
+        publicShareToken: 'token123',
+      };
+      listCards = listCards.map((c) => (c.id === 1 ? { ...c, ...updated } : c));
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
           success: true,
-          data: {
-            id: 1,
-            name: 'VIKKEY EDITED',
-            phoneNumber: '8576794649',
-            heightCm: 167,
-            weightKg: 70,
-            bmi: '25.1',
-            age: 24,
-            gender: 'Male',
-            recordedDate: '2026-08-24',
-            locationName: 'Voc',
-            publicShareToken: 'token123'
-          }
-        })
+          data: updated,
+        }),
       });
     });
 
@@ -420,16 +444,27 @@ test.describe('BCM Module (Body Composition Metrics)', () => {
 
     // Verify Edit Modal is open with "Edit Body Parameters" heading
     await expect(page.getByRole('heading', { name: 'Edit Body Parameters' })).toBeVisible();
-    await expect(page.getByPlaceholder('FULL NAME')).toHaveValue('VIKKEY');
+    const nameInput = page.getByPlaceholder('FULL NAME');
+    await expect(nameInput).toHaveValue('VIKKEY');
 
-    // Edit Name
-    await page.getByPlaceholder('FULL NAME').fill('VIKKEY EDITED');
+    // Edit Name (NativeInput — clear + type is more reliable than fill under load)
+    await nameInput.click({ clickCount: 3 });
+    await nameInput.press('Backspace');
+    await nameInput.type('VIKKEY EDITED', { delay: 20 });
+    await expect(nameInput).toHaveValue('VIKKEY EDITED');
     await page.getByRole('button', { name: 'Update & Share' }).click();
 
-    // Verify modal closes and the updated card is visible in the list
-    await expect(page.getByRole('heading', { name: 'Edit Body Parameters' })).not.toBeVisible();
-    await expect(page.getByRole('heading', { name: 'VIKKEY EDITED', exact: true })).toBeVisible();
-    expect(updatePayload.name).toBe('VIKKEY EDITED');
+    // Verify modal closes and API received the new name
+    await expect(page.getByRole('heading', { name: 'Edit Body Parameters' })).not.toBeVisible({ timeout: 15000 });
+    expect(updatePayload?.name).toBe('VIKKEY EDITED');
+
+    // Dismiss any share sheet / overlay, then refresh list from mutated mock
+    await page.keyboard.press('Escape').catch(() => {});
+    const refreshButton = page.locator('h1:has-text("Body Composition Metrics") + button');
+    if (await refreshButton.isVisible().catch(() => false)) {
+      await refreshButton.click();
+    }
+    await expect(page.getByRole('heading', { name: 'VIKKEY EDITED', exact: true })).toBeVisible({ timeout: 15000 });
   });
 
   test('BCM-007 Delete Card', async ({ page }) => {

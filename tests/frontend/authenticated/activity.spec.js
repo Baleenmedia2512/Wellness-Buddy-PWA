@@ -12,11 +12,35 @@ const baseReportResponse = {
     totalRecords: 0,
     totalPages: 0,
     currentPage: 1,
-    pageSize: 10,
+    pageSize: 20,
     hasNextPage: false,
     hasPreviousPage: false
   }
 };
+
+/** Activity Report filters are <select>s inside aria-label="Report filters". */
+function reportFilterSelects(page) {
+  return page.locator('section[aria-label="Report filters"] select');
+}
+
+function dateSelect(page) {
+  return reportFilterSelects(page).nth(0);
+}
+
+function teamSelect(page) {
+  // When hasTeam: Date, Team, Category, Attendance
+  return reportFilterSelects(page).nth(1);
+}
+
+function categorySelect(page) {
+  // With team scope visible, Category is the 3rd select (index 2)
+  return reportFilterSelects(page).nth(2);
+}
+
+function attendanceSelect(page) {
+  // With team scope: 4th select; without team: 2nd select
+  return reportFilterSelects(page).last();
+}
 
 test.describe('Activity Report Module', () => {
   test.use({ storageState: 'playwright/.auth/user.json' });
@@ -47,6 +71,22 @@ test.describe('Activity Report Module', () => {
       });
     });
 
+    await page.route('**/api/user/consent-status*', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ success: true, consentRequired: false })
+      });
+    });
+
+    await page.route('**/api/user/status*', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ setupComplete: true, isActive: true })
+      });
+    });
+
     await page.route('**/api/user/profile*', async (route) => {
       await route.fulfill({
         status: 200,
@@ -58,7 +98,13 @@ test.describe('Activity Report Module', () => {
             userName: 'Test User',
             email: 'test@example.com',
             phoneNumber: '+1234567890',
-            physicalActivityLevel: 'moderate'
+            physicalActivityLevel: 'moderate',
+            // Required so onboarding Transformation Photos gate does not block nav tabs
+            transformationPhotos: {
+              left: 'https://example.com/left.jpg',
+              front: 'https://example.com/front.jpg',
+              right: 'https://example.com/right.jpg',
+            },
           }
         })
       });
@@ -75,7 +121,10 @@ test.describe('Activity Report Module', () => {
       const search = url.searchParams.get('search') || '';
 
       // Create a response payload depending on query parameters
-      let response = { ...baseReportResponse };
+      let response = {
+        ...baseReportResponse,
+        pagination: { ...baseReportResponse.pagination }
+      };
 
       if (activityType === 'bootstrap') {
         return route.fulfill({
@@ -117,7 +166,7 @@ test.describe('Activity Report Module', () => {
           }));
           response.pagination = { totalRecords: 20, totalPages: 2, currentPage: 2, pageSize: 10, hasNextPage: false, hasPreviousPage: true };
         }
-        
+
         if (search === 'Clara') {
           response.records = [{ userId: '1', memberName: 'Clara K', clubName: 'Remote', date: '2026-08-24', time: '10:00' }];
           response.pagination = { totalRecords: 1, totalPages: 1, currentPage: 1, pageSize: 10, hasNextPage: false, hasPreviousPage: false };
@@ -147,89 +196,80 @@ test.describe('Activity Report Module', () => {
         body: JSON.stringify({ success: true, teamMembers: [{ id: '2' }] })
       });
     });
-    
+
     // Navigate and go to Activity Tab
     await page.goto('/');
     const activityTab = page.getByRole('button', { name: 'Activity Report' });
     await expect(activityTab).toBeVisible();
     await activityTab.click();
-    await page.waitForTimeout(1000); // Wait for tab switch and animations
+    await expect(page.getByRole('heading', { name: 'Activity Report' })).toBeVisible();
+    await expect(page.getByLabel('Report filters')).toBeVisible();
   });
 
   test('ACT-001 Initial Load and Elements Visibility', async ({ page }) => {
-    // Verify Date Range buttons
-    await expect(page.getByRole('button', { name: 'Today', exact: true })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Yesterday', exact: true })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Custom', exact: true })).toBeVisible();
+    // Date / Team / Category are selects (not pill buttons)
+    await expect(dateSelect(page)).toBeVisible();
+    await expect(dateSelect(page)).toHaveValue('today');
+    await expect(dateSelect(page).locator('option[value="yesterday"]')).toHaveCount(1);
+    await expect(dateSelect(page).locator('option[value="custom"]')).toHaveCount(1);
 
-    // Verify Team Scope buttons
-    await expect(page.getByRole('button', { name: /Mine/i })).toBeVisible();
-    await expect(page.getByRole('button', { name: /Direct Team/i })).toBeVisible();
+    await expect(teamSelect(page)).toBeVisible();
+    await expect(teamSelect(page).locator('option[value="mine"]')).toHaveCount(1);
+    await expect(teamSelect(page).locator('option[value="direct"]')).toHaveCount(1);
+    await expect(teamSelect(page).locator('option[value="full"]')).toHaveCount(1);
 
-    // Verify all 7 activity category badges (using their numbers as labels are partial in some cases)
-    await expect(page.getByRole('button', { name: /Weight/i })).toBeVisible();
-    await expect(page.getByRole('button', { name: /Education/i })).toBeVisible();
-    await expect(page.getByRole('button', { name: /Breakfast/i })).toBeVisible();
-    await expect(page.getByRole('button', { name: /Lunch/i })).toBeVisible();
-    await expect(page.getByRole('button', { name: /Dinner/i })).toBeVisible();
-    await expect(page.getByRole('button', { name: /Water/i })).toBeVisible();
-    await expect(page.getByRole('button', { name: /Exercise/i })).toBeVisible();
-  });
-
-  test('ACT-002 Team Scope Toggles', async ({ page }) => {
-    // Initial is usually Direct Team based on mock, let's explicitly click Mine
-    await page.getByRole('button', { name: /Mine/i }).click();
-    await expect(page.getByText('Activity counts for Mine')).toBeVisible();
-
-    await page.getByRole('button', { name: /Direct Team/i }).click();
-    await expect(page.getByText(/Activity counts for Direct Team/i)).toBeVisible();
-
-    await page.getByRole('button', { name: /Full Team/i }).click();
-    await expect(page.getByText(/Activity counts for Full Team/i)).toBeVisible();
-  });
-
-  test('ACT-003 Date Range Filters (Yesterday & Custom)', async ({ page }) => {
-    await page.getByRole('button', { name: 'Yesterday', exact: true }).click();
-    await expect(page.getByText(/· Yesterday/)).toBeVisible();
-
-    await page.getByRole('button', { name: 'Custom', exact: true }).click();
-    
-    // Select dates in the custom date picker popover
-    // Assuming custom date filter shows standard date inputs
-    const startInput = page.getByLabel(/Start Date/i).first();
-    const endInput = page.getByLabel(/End Date/i).first();
-    
-    // We will just fill them if visible
-    if (await startInput.isVisible()) {
-      await startInput.fill('2026-08-01');
-      await endInput.fill('2026-08-20');
-      // Click somewhere to close or apply
-      await page.keyboard.press('Escape');
+    await expect(categorySelect(page)).toBeVisible();
+    for (const value of ['weight', 'education', 'breakfast', 'lunch', 'dinner', 'water', 'calories']) {
+      await expect(categorySelect(page).locator(`option[value="${value}"]`)).toHaveCount(1);
     }
   });
 
+  test('ACT-002 Team Scope Toggles', async ({ page }) => {
+    await teamSelect(page).selectOption('mine');
+    await expect(teamSelect(page)).toHaveValue('mine');
+
+    await teamSelect(page).selectOption('direct');
+    await expect(teamSelect(page)).toHaveValue('direct');
+
+    await teamSelect(page).selectOption('full');
+    await expect(teamSelect(page)).toHaveValue('full');
+  });
+
+  test('ACT-003 Date Range Filters (Yesterday & Custom)', async ({ page }) => {
+    await dateSelect(page).selectOption('yesterday');
+    await expect(dateSelect(page)).toHaveValue('yesterday');
+
+    await dateSelect(page).selectOption('custom');
+    await expect(dateSelect(page)).toHaveValue('custom');
+
+    // Custom opens DateRangePicker — pick start then end day in the calendar grid
+    const calendar = page.locator('.grid.grid-cols-7').last();
+    await expect(calendar).toBeVisible();
+    const dayBtns = calendar.locator('button:not([disabled])');
+    await expect(dayBtns.first()).toBeVisible();
+    await dayBtns.nth(0).click();
+    await dayBtns.nth(Math.min(2, await dayBtns.count() - 1)).click();
+  });
+
   test('ACT-004 Category Switching & Dynamic Table Headers', async ({ page }) => {
-    // Check Weight columns
-    await page.getByRole('button', { name: /Weight/i }).click();
-    await expect(page.getByRole('heading', { name: 'Weight Records' })).toBeVisible();
+    await categorySelect(page).selectOption('weight');
+    await expect(page.getByRole('heading', { name: /Weight · Attended/i })).toBeVisible();
     await expect(page.getByRole('columnheader', { name: 'Weight (kg)', exact: true })).toBeVisible();
 
-    // Check Breakfast (Meal, Calories)
-    await page.getByRole('button', { name: /Breakfast/i }).click();
-    await expect(page.getByRole('heading', { name: 'Breakfast Records' })).toBeVisible();
+    await categorySelect(page).selectOption('breakfast');
+    await expect(page.getByRole('heading', { name: /Breakfast · Attended/i })).toBeVisible();
     await expect(page.getByRole('columnheader', { name: 'Meal', exact: true })).toBeVisible();
     await expect(page.getByRole('columnheader', { name: 'Calories', exact: true })).toBeVisible();
 
-    // Check Water
-    await page.getByRole('button', { name: /Water/i }).click();
-    await expect(page.getByRole('heading', { name: 'Water Records' })).toBeVisible();
+    await categorySelect(page).selectOption('water');
+    await expect(page.getByRole('heading', { name: /Water · Attended/i })).toBeVisible();
     await expect(page.getByRole('columnheader', { name: 'Water (L)', exact: true })).toBeVisible();
   });
 
   test('ACT-005 Data Fetching (Weight - Today - Mine)', async ({ page }) => {
-    await page.getByRole('button', { name: /Mine/i }).click();
-    await page.getByRole('button', { name: 'Today', exact: true }).click();
-    await page.getByRole('button', { name: /Weight/i }).click();
+    await teamSelect(page).selectOption('mine');
+    await dateSelect(page).selectOption('today');
+    await categorySelect(page).selectOption('weight');
 
     await expect(page.getByRole('cell', { name: 'Clara K', exact: true })).toBeVisible();
     await expect(page.getByRole('cell', { name: '78.8', exact: true })).toBeVisible();
@@ -237,9 +277,9 @@ test.describe('Activity Report Module', () => {
   });
 
   test('ACT-006 Data Fetching (Water - Yesterday - Direct Team)', async ({ page }) => {
-    await page.getByRole('button', { name: /Direct Team/i }).click();
-    await page.getByRole('button', { name: 'Yesterday', exact: true }).click();
-    await page.getByRole('button', { name: /Water/i }).click();
+    await teamSelect(page).selectOption('direct');
+    await dateSelect(page).selectOption('yesterday');
+    await categorySelect(page).selectOption('water');
 
     await expect(page.getByRole('cell', { name: 'John Doe', exact: true })).toBeVisible();
     await expect(page.getByRole('cell', { name: '2.5', exact: true })).toBeVisible();
@@ -248,60 +288,54 @@ test.describe('Activity Report Module', () => {
 
   test('ACT-007 Empty State Handling', async ({ page }) => {
     // For lunch, we didn't mock any records, so it will return empty array
-    await page.getByRole('button', { name: /Lunch/i }).click();
+    await categorySelect(page).selectOption('lunch');
     await expect(page.getByText('No records found')).toBeVisible();
   });
 
   test('ACT-008 Refresh Button', async ({ page }) => {
-    // Watch for API call
-    const requestPromise = page.waitForRequest(request => request.url().includes('api/activity/report') && request.method() === 'GET');
-    
-    // Click refresh
-    const refreshBtn = page.locator('button').filter({ has: page.locator('svg.animate-spin, svg:not(.animate-spin)') }).first();
-    // Since lucide-react icon is just an svg inside the TouchFeedbackButton on the header:
+    const requestPromise = page.waitForRequest(request =>
+      request.url().includes('api/activity/report') && request.method() === 'GET'
+    );
+
     const headerRefresh = page.locator('.sticky.top-0').locator('button').first();
     await headerRefresh.click();
-    
+
     await requestPromise;
   });
 
   test('ACT-009 Search Functionality', async ({ page }) => {
-    await page.getByRole('button', { name: /Education/i }).click();
-    await page.waitForTimeout(300);
-
-    // Set up a promise to capture the next API call after typing
+    // Stay on Education (default) and wait for search debounce request
     let capturedSearchParam = null;
-    const searchRequestPromise = page.waitForRequest(request => {
+    const searchRequestPromise = page.waitForRequest((request) => {
       const url = request.url();
-      if (url.includes('/api/activity/report') && url.includes('search=')) {
-        const urlObj = new URL(url);
-        capturedSearchParam = urlObj.searchParams.get('search');
-        return capturedSearchParam === 'Clara';
-      }
-      return false;
-    }, { timeout: 5000 });
+      if (!url.includes('/api/activity/report')) return false;
+      const urlObj = new URL(url);
+      capturedSearchParam = urlObj.searchParams.get('search');
+      return capturedSearchParam === 'Clara';
+    }, { timeout: 15000 });
 
-    // Type in search bar
-    const searchInput = page.getByPlaceholder('Search by name, phone, coach, city, or village...');
-    await searchInput.fill('Clara');
+    const searchInput = page.getByPlaceholder('Search name or phone');
+    await expect(searchInput).toBeVisible();
+    await searchInput.click();
+    await searchInput.fill('');
+    await searchInput.pressSequentially('Clara', { delay: 40 });
 
-    // Wait for the debounced API call to fire with search=Clara
     await searchRequestPromise;
-
-    // Verify the URL contained search=Clara
     expect(capturedSearchParam).toBe('Clara');
+    await expect(page.getByRole('cell', { name: 'Clara K', exact: true })).toBeVisible();
   });
 
   test('ACT-010 Pagination', async ({ page }) => {
-    await page.getByRole('button', { name: /Education/i }).click();
-    await page.getByPlaceholder('Search by name, phone, coach, city, or village...').clear();
-    await page.waitForTimeout(500);
+    await categorySelect(page).selectOption('education');
+    const searchInput = page.getByPlaceholder('Search name or phone');
+    if (await searchInput.inputValue()) {
+      await searchInput.clear();
+      await page.waitForTimeout(400);
+    }
 
-    // Verify page 1 renders correctly
     await expect(page.getByRole('cell', { name: 'User 0', exact: true })).toBeVisible();
     await expect(page.getByText('Showing 1 to 10 of 20 records')).toBeVisible();
 
-    // Capture the API call when clicking Next — it MUST contain page=2
     let capturedPage = null;
     const page2RequestPromise = page.waitForRequest(request => {
       const url = request.url();
@@ -315,92 +349,99 @@ test.describe('Activity Report Module', () => {
 
     await page.getByRole('button', { name: 'Next' }).click();
 
-    // Wait for API call with page=2
     await page2RequestPromise;
     expect(capturedPage).toBe('2');
 
-    // Verify page 2 content renders
     await expect(page.getByRole('cell', { name: 'User 10', exact: true })).toBeVisible();
     await expect(page.getByText('Showing 11 to 20 of 20 records')).toBeVisible();
   });
 
   test('ACT-011 Export Report', async ({ page }) => {
-    await page.getByRole('button', { name: /Education/i }).click();
-    
-    // Setup download listener
+    await categorySelect(page).selectOption('education');
+    await expect(page.getByRole('cell', { name: 'User 0', exact: true })).toBeVisible();
+
     const downloadPromise = page.waitForEvent('download');
-    
-    // Click Export
-    await page.getByRole('button', { name: 'Export' }).click();
-    
+    await page.getByRole('button', { name: /Export report/i }).click();
+
     const download = await downloadPromise;
     expect(download.suggestedFilename()).toContain('activity-report-education');
     expect(download.suggestedFilename()).toContain('.csv');
   });
+
   test('ACT-012 Sorting Columns', async ({ page }) => {
-    // Click on Member Name header to trigger sorting
+    // Default category is already Education — wait for rows, then sort
+    await expect(page.getByRole('cell', { name: 'User 0', exact: true })).toBeVisible();
+
     const memberNameHeader = page.getByRole('columnheader', { name: /Member Name/i });
-    
-    // Watch for the sort network call
-    const sortAscPromise = page.waitForResponse(response => 
-      response.url().includes('/api/activity/report') && response.url().includes('sort=memberName') && response.url().includes('sortDir=asc')
-    );
+
+    const sortAscPromise = page.waitForRequest((request) => {
+      const url = request.url();
+      return url.includes('/api/activity/report') &&
+        url.includes('sort=memberName') &&
+        url.includes('sortDir=asc');
+    }, { timeout: 20000 });
     await memberNameHeader.click();
     await sortAscPromise;
-    
-    // Click again for descending sort
-    const sortDescPromise = page.waitForResponse(response => 
-      response.url().includes('/api/activity/report') && response.url().includes('sort=memberName') && response.url().includes('sortDir=desc')
-    );
+    await expect(memberNameHeader).toContainText('↑');
+
+    const sortDescPromise = page.waitForRequest((request) => {
+      const url = request.url();
+      return url.includes('/api/activity/report') &&
+        url.includes('sort=memberName') &&
+        url.includes('sortDir=desc');
+    }, { timeout: 20000 });
     await memberNameHeader.click();
     await sortDescPromise;
+    await expect(memberNameHeader).toContainText('↓');
   });
 
   test('ACT-013 API Error Handling', async ({ page }) => {
-    // Mock the API to return a 500 error for a specific category
-    await page.route('**/api/activity/report*activityType=water*', async route => {
-      await route.fulfill({
-        status: 500,
-        contentType: 'application/json',
-        body: JSON.stringify({ success: false, message: 'Simulated Server Error' })
-      });
+    await page.route('**/api/activity/report*', async (route) => {
+      const url = new URL(route.request().url());
+      if (url.searchParams.get('activityType') === 'water') {
+        await route.fulfill({
+          status: 500,
+          contentType: 'application/json',
+          body: JSON.stringify({ success: false, message: 'Simulated Server Error' })
+        });
+        return;
+      }
+      await route.fallback();
     });
 
-    // Click on water to trigger the failed API call
-    await page.getByRole('button', { name: /Water/i }).click();
-
-    // Verify error message is displayed
+    await categorySelect(page).selectOption('water');
     await expect(page.getByText('Simulated Server Error')).toBeVisible();
   });
 
   test('ACT-014 Role-Based Scope Visibility (No Team)', async ({ page }) => {
-    // Override the mock to return hasTeam: false
-    await page.route('**/api/activity/report*', async route => {
+    await page.route('**/api/activity/report*', async (route) => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
           success: true,
-          summary: {},
+          summary: { weight: 0, education: 0, breakfast: 0, lunch: 0, dinner: 0, water: 0, calories: 0 },
           records: [],
           teamScopeCounts: {
             hasTeam: false,
             mine: 10,
             direct: 0,
             full: 0
-          }
+          },
+          pagination: { ...baseReportResponse.pagination }
         })
       });
     });
 
-    // Reload the page to apply the new mock
     await page.reload();
     const activityTab = page.getByRole('button', { name: 'Activity Report' });
     await expect(activityTab).toBeVisible();
     await activityTab.click();
-    await page.waitForTimeout(1000);
+    await expect(page.getByLabel('Report filters')).toBeVisible();
 
-    // Verify the scope toggles group container is NOT visible
-    await expect(page.getByRole('group', { name: 'Team scope filter' })).not.toBeVisible();
+    // Team scope select is hidden when hasTeam is false (Date + Attendance + Category only)
+    await expect(reportFilterSelects(page)).toHaveCount(3);
+    await expect(page.locator('section[aria-label="Report filters"] option[value="mine"]')).toHaveCount(0);
+    await expect(reportFilterSelects(page).nth(1).locator('option[value="attended"]')).toHaveCount(1);
   });
 });

@@ -73,24 +73,52 @@ class DiaryPage {
    */
   async swipeDeleteCard(cardLocator) {
     await expect(cardLocator).toBeVisible({ timeout: 10000 });
-    await cardLocator.evaluate((el) => {
-      try {
-        const t0 = new Touch({ identifier: 0, target: el, clientX: 300, clientY: 100 });
-        const t1 = new Touch({ identifier: 0, target: el, clientX: 100, clientY: 100 });
-        el.dispatchEvent(new TouchEvent('touchstart', { touches: [t0], bubbles: true, cancelable: true }));
-        el.dispatchEvent(new TouchEvent('touchmove', { touches: [t1], bubbles: true, cancelable: true }));
-        el.dispatchEvent(new TouchEvent('touchend', { touches: [], bubbles: true, cancelable: true }));
-      } catch {
-        el.dispatchEvent(new PointerEvent('pointerdown', { isPrimary: true, pointerType: 'mouse', pointerId: 1, clientX: 300, clientY: 100, bubbles: true }));
-        el.dispatchEvent(new PointerEvent('pointermove', { isPrimary: true, pointerType: 'mouse', pointerId: 1, clientX: 100, clientY: 100, bubbles: true }));
-        el.dispatchEvent(new PointerEvent('pointerup', { isPrimary: true, pointerType: 'mouse', pointerId: 1, clientX: 100, clientY: 100, bubbles: true }));
-      }
-    });
+    const box = await cardLocator.boundingBox();
+    if (!box) {
+      throw new Error('swipeDeleteCard: card has no bounding box');
+    }
+    // useSwipeToDelete requires a sustained horizontal drag ≥ 100px
+    const y = box.y + box.height / 2;
+    const startX = box.x + Math.min(box.width - 8, 280);
+    const endX = Math.max(box.x + 8, startX - 160);
+    await this.page.mouse.move(startX, y);
+    await this.page.mouse.down();
+    await this.page.mouse.move(endX, y, { steps: 12 });
+    await this.page.mouse.up();
   }
 
   // ── Navigation & Feed Actions ──────────────────────────────────────────────
 
+  /**
+   * Freeze "today" to mock primary diary date so calendar / future-day rules
+   * match fixtures (MOCK_DIARY_DATE_PRIMARY) regardless of real wall clock.
+   */
+  async installDiaryClock(isoDate = '2026-09-07T12:00:00.000Z') {
+    if (this.page.clock?.install) {
+      await this.page.clock.install({ time: new Date(isoDate) });
+      return;
+    }
+    await this.page.addInitScript((frozenIso) => {
+      const frozen = new Date(frozenIso).getTime();
+      const RealDate = Date;
+      class MockDate extends RealDate {
+        constructor(...args) {
+          if (args.length === 0) super(frozen);
+          else super(...args);
+        }
+        static now() {
+          return frozen;
+        }
+      }
+      MockDate.parse = RealDate.parse;
+      MockDate.UTC = RealDate.UTC;
+      // eslint-disable-next-line no-global-assign
+      Date = MockDate;
+    }, isoDate);
+  }
+
   async gotoDiary() {
+    await this.installDiaryClock();
     await this.page.goto('/');
     const diaryBtn = this.page.getByRole('button', { name: 'Diary' });
     await expect(diaryBtn).toBeVisible({ timeout: 15000 });
