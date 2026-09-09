@@ -114,6 +114,12 @@ setup('authenticate', async ({ page }) => {
           email: 'test@example.com',
           phone: '+917695834209',
           role: 'coach',
+          // Required so onboarding Transformation Photos gate does not block nav tabs
+          transformationPhotos: {
+            left: 'https://example.com/left.jpg',
+            front: 'https://example.com/front.jpg',
+            right: 'https://example.com/right.jpg',
+          },
         },
       }),
     });
