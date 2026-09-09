@@ -131,4 +131,11 @@ module.exports = defineConfig({
       ],
     },
   ],
+
+  webServer: {
+    command: "npx cross-env PORT=3002 HOST=127.0.0.1 BROWSER=none npm --prefix frontend start",
+    url: "http://127.0.0.1:3002",
+    reuseExistingServer: !process.env.CI,
+    timeout: 120 * 1000,
+  },
 });
