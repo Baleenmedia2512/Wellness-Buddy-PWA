@@ -1,20 +1,21 @@
 /**
  * GET /api/share/og-image/[token]
  *
- * Public endpoint that serves the food photo stored as ImageBase64 in
- * captures_table. Used exclusively as the og:image URL for the share
- * landing page so WhatsApp / Telegram crawlers can display the actual
- * meal photo in the link-preview card.
+ * Public endpoint that serves the food photo for og:image (WhatsApp / Telegram).
+ * Prefers R2 ImageKey (Base64 is cleared after dual-write); falls back to
+ * captures_table.ImageBase64 while upload is still in flight.
  *
  * Security notes:
  *  - No auth required (the URL itself is the capability token).
  *  - The token is validated against a strict UUID pattern before any DB call.
- *  - Only image bytes are returned — no user data is exposed.
+ *  - Only image bytes / redirect are returned — no user data is exposed.
  *  - The response is cached at the CDN edge for 24 h (images are immutable
  *    once written).
  */
 
 import { findByShareIdentifier } from '../../../../features/captures/data/captures.repository.js';
+import { isR2Configured } from '../../../../shared/lib/r2/config.js';
+import { avatarRedirectUrl } from '../../../../shared/lib/r2/s3.js';
 
 const SHARE_IDENTIFIER_RE = /^(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[A-Za-z0-9]{6,10})$/i;
 
@@ -41,9 +42,17 @@ export default async function handler(req, res) {
     } catch {
       return res.status(500).end();
     }
-    if (capture?.ImageBase64) break;
+    if (capture?.ImageKey || capture?.ImageBase64) break;
     if (attempt < RETRIES - 1) {
       await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
+    }
+  }
+
+  if (capture?.ImageKey && isR2Configured()) {
+    const r2Url = avatarRedirectUrl(capture.ImageKey);
+    if (r2Url) {
+      res.setHeader('Cache-Control', 'public, max-age=86400, immutable');
+      return res.redirect(302, r2Url);
     }
   }
 

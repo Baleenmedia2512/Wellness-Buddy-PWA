@@ -644,11 +644,11 @@ function MemberCard({
     draftAfter?.imageBase64  && 'after',
     draftHealthPath          && 'health',
     draftBusinessPath        && 'business',
-    // Only mark issues dirty when the list actually has labels (empty [] caused 422 on complete photo submit).
-    Array.isArray(draftIssues) && draftIssues.filter(Boolean).length > 0 && 'issues',
+    // Mark issues dirty whenever draftIssues array exists
+    Array.isArray(draftIssues) && 'issues',
   ].filter(Boolean);
-  // hasDirtySlots: true for ANY pending change including weight-only edits
-  const hasDirtySlots = dirtySlots.length > 0 || !!draftBefore || !!draftAfter;
+  // hasDirtySlots: true for ANY pending change including weight-only edits or video drafts
+  const hasDirtySlots = dirtySlots.length > 0 || !!draftBefore || !!draftAfter || !!draftHealthPreview || !!draftBusinessPreview || !!draftHealthPath || !!draftBusinessPath || Array.isArray(draftIssues);
   const changedCount = Math.max(dirtySlots.length, hasDirtySlots ? 1 : 0);
   const anyVideoUploading = uploadingHealth || uploadingBusiness;
 
@@ -859,6 +859,15 @@ function MemberCard({
       return;
     }
     setVideoUploadError(null);
+
+    // Restrict photos / non-video files: only video files are allowed
+    const isImage = file.type?.startsWith('image/') || /\.(jpe?g|png|gif|webp|bmp|heic|heif|svg)$/i.test(file.name || '');
+    const isVideo = file.type?.startsWith('video/') || /\.(mp4|mov|webm|3gp|mkv|avi|m4v)$/i.test(file.name || '');
+    if (isImage || !isVideo) {
+      setVideoUploadError('Only video files are allowed for results. Photos and images are not allowed.');
+      return;
+    }
+
     setCaptureFlowBusy(true);
     const localUrl = URL.createObjectURL(file);
     if (slot === 'health') {
@@ -976,7 +985,7 @@ function MemberCard({
       } : {}),
       ...(draftHealthPath ? { healthVideoPath: draftHealthPath } : {}),
       ...(draftBusinessPath ? { businessVideoPath: draftBusinessPath } : {}),
-      ...(Array.isArray(draftIssues) && draftIssues.filter(Boolean).length > 0
+      ...(Array.isArray(draftIssues)
         ? { recoveredHealthIssues: draftIssues.filter(Boolean) }
         : {}),
     };
@@ -985,7 +994,7 @@ function MemberCard({
     const willComplete =
       Boolean(draftBefore?.imageBase64 || testimonial?.beforeImageUrl)
       && Boolean(draftAfter?.imageBase64 || (hasAfter && testimonial?.afterImageUrl));
-    const issuesForSubmit = Array.isArray(draftIssues) && draftIssues.filter(Boolean).length > 0
+    const issuesForSubmit = Array.isArray(draftIssues)
       ? draftIssues.filter(Boolean)
       : (testimonial?.recoveredHealthIssues || []);
     if (
@@ -1247,13 +1256,13 @@ function MemberCard({
                 </button>
               </div>
             )}
-            <input ref={beforeCamRef} type="file" accept="image/*" capture="environment" className="hidden"
+            <input ref={beforeCamRef} type="file" accept="image/*" capture="environment" className="hidden" aria-label="Before camera upload"
               onChange={(e) => {
                 const file = e.target.files?.[0];
                 e.target.value = '';
                 if (file) { handleImageFile('before', file); setPickerSlot(null); }
               }} />
-            <input ref={beforeGalRef} type="file" accept="image/*" className="hidden"
+            <input ref={beforeGalRef} type="file" accept="image/*" className="hidden" aria-label="Before gallery upload"
               onChange={(e) => {
                 const file = e.target.files?.[0];
                 e.target.value = '';
@@ -1377,13 +1386,13 @@ function MemberCard({
                 </button>
               </div>
             )}
-            <input ref={afterCamRef} type="file" accept="image/*" capture="environment" className="hidden"
+            <input ref={afterCamRef} type="file" accept="image/*" capture="environment" className="hidden" aria-label="After camera upload"
               onChange={(e) => {
                 const file = e.target.files?.[0];
                 e.target.value = '';
                 if (file) { handleImageFile('after', file); setPickerSlot(null); }
               }} />
-            <input ref={afterGalRef} type="file" accept="image/*" className="hidden"
+            <input ref={afterGalRef} type="file" accept="image/*" className="hidden" aria-label="After gallery upload"
               onChange={(e) => {
                 const file = e.target.files?.[0];
                 e.target.value = '';
@@ -1662,7 +1671,7 @@ function MemberCard({
                       </div>
                     </div>
                   )}
-                  <input ref={healthVidRef} type="file" accept="video/*" className="hidden"
+                  <input ref={healthVidRef} type="file" accept="video/mp4,video/webm,video/quicktime,video/3gpp,video/*" className="hidden"
                     onChange={(e) => {
                       const file = e.target.files?.[0];
                       e.target.value = '';
@@ -1714,7 +1723,7 @@ function MemberCard({
                       </div>
                     </div>
                   )}
-                  <input ref={businessVidRef} type="file" accept="video/*" className="hidden"
+                  <input ref={businessVidRef} type="file" accept="video/mp4,video/webm,video/quicktime,video/3gpp,video/*" className="hidden"
                     onChange={(e) => {
                       const file = e.target.files?.[0];
                       e.target.value = '';

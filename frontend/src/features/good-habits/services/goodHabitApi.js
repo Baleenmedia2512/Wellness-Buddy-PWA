@@ -57,7 +57,7 @@ export async function undoDeleteGoodHabit({ userId, id }) {
 
 export async function fetchGoodHabitImages({ userId, id }) {
   const res = await fetch(
-    `${getApiBaseUrl()}/api/good-habits?id=${encodeURIComponent(id)}&userId=${encodeURIComponent(userId)}&view=detail`,
+    `${getApiBaseUrl()}/api/good-habits?id=${encodeURIComponent(id)}&userId=${encodeURIComponent(userId)}`,
     { cache: 'no-store' },
   );
   const body = await res.json().catch(() => null);
@@ -65,8 +65,8 @@ export async function fetchGoodHabitImages({ userId, id }) {
     throw new Error(body?.message || "Couldn't load Good Habit photos");
   }
   return {
-    imageBase64: body.imageBase64 || null,
-    beforeImageBase64: body.beforeImageBase64 || null,
-    afterImageBase64: body.afterImageBase64 || body.imageBase64 || null,
+    imageUrl: body.imageUrl || body.r2Url || null,
+    beforeImageUrl: body.beforeImageUrl || null,
+    afterImageUrl: body.afterImageUrl || null,
   };
 }

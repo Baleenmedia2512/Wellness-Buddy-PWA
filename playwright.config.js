@@ -71,7 +71,7 @@ module.exports = defineConfig({
 
   use: {
     // Frontend URL
-    baseURL: "http://127.0.0.1:3001",
+    baseURL: process.env.PLAYWRIGHT_BASE_URL || "http://127.0.0.1:3002",
 
     // Headless
     headless: true,
@@ -117,13 +117,13 @@ module.exports = defineConfig({
       name: "frontend",
 
       testMatch:
-        /tests\/frontend\/.*\.spec\.js/,
+        "frontend/**/*.spec.js",
 
       use: {
         ...devices["Desktop Chrome"],
 
         baseURL:
-          "http://127.0.0.1:3001",
+          process.env.PLAYWRIGHT_BASE_URL || "http://127.0.0.1:3002",
       },
 
       dependencies: [

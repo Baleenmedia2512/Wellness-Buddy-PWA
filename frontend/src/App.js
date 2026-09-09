@@ -200,6 +200,7 @@ import { WeightProgressTipsModal } from "./features/weight-progress-tips/compone
 import PhysicalActivitySetup from "./features/user/components/PhysicalActivitySetup";
 import { fetchProfile } from "./features/user/services/profileService";
 import { resolvePhysicalActivityGate } from "./features/user/domain/physicalActivityGate";
+import { resolveTransformationPhotosGate } from "./features/user/domain/transformationPhotosGate";
 import { getProfile, clearProfileCache } from "./features/user/services/user.api";
 import {
   NutritionRefreshProvider,
@@ -456,6 +457,7 @@ function WellnessValleyApp() {
     open: false,
     captureId: null,
     imageBase64: null,
+    imageUrl: null,
     createdAt: null,
     canMutate: false,
     retrying: false,
@@ -942,6 +944,8 @@ function WellnessValleyApp() {
   // Survives async checkProfileCompletion after Complete Profile save — without this,
   // status:"complete" immediately clears the Transformation Photos step on mobile.
   const transformationPhotosGateRef = useRef(false);
+  // After Left/Centre/Right are saved this session, do not re-open on a stale profile cache.
+  const transformationPhotosConfirmedRef = useRef(false);
   // ADR-0006 — existing users without ConsentAcceptedAt must accept before using the app.
   const [showConsentGate, setShowConsentGate] = useState(false);
   const [consentSubmitting, setConsentSubmitting] = useState(false);
@@ -1900,6 +1904,7 @@ function WellnessValleyApp() {
               open: true,
               captureId: share.captureId,
               imageBase64: share.imageBase64,
+              imageUrl: share.r2Url || null,
               createdAt: share.createdAt ?? null,
               canMutate: !!share.canMutate,
               retrying: false,
@@ -3223,8 +3228,14 @@ function WellnessValleyApp() {
         setIdentityResolved(true);
         setShowOnboardingIdentity(false);
         setShowCompleteProfile(false);
-        // Do not steal the next onboarding step after Complete Profile save.
-        if (transformationPhotosGateRef.current) {
+        // New users (gate ref) and existing users missing Left/Centre/Right.
+        const photosDecision = resolveTransformationPhotosGate({
+          confirmedThisSession: transformationPhotosConfirmedRef.current,
+          profile: result.data,
+          fetchFailed: false,
+        });
+        if (transformationPhotosGateRef.current || photosDecision === "show") {
+          transformationPhotosGateRef.current = true;
           setShowOnboardingTransformationPhotos(true);
         } else {
           setShowOnboardingTransformationPhotos(false);
@@ -6356,12 +6367,24 @@ function WellnessValleyApp() {
         };
       });
       // Defer large localStorage write so it does not compete with first classify paint.
+      // Must not run after Cancel/leave — a late idle write used to resurrect
+      // pendingClassifyCapture and permanently block tab navigation on Diary.
       const pendingPayload = {
         captureId: captureShare.id,
         imageBase64: processedImage,
         userId: resolvedUserIdForOrchestrate ?? user?.id ?? null,
       };
-      const persistPending = () => Session.setPendingClassifyCapture(pendingPayload);
+      const persistPending = () => {
+        if (
+          !Session.shouldPersistPendingClassifyCapture(
+            manualEntrySessionRef.current,
+            instantToken,
+          )
+        ) {
+          return;
+        }
+        Session.setPendingClassifyCapture(pendingPayload);
+      };
       if (typeof window.requestIdleCallback === "function") {
         window.requestIdleCallback(persistPending, { timeout: 2000 });
       } else {
@@ -6518,6 +6541,7 @@ function WellnessValleyApp() {
     setIdentityResolved(false);
     setShowCompleteProfile(false);
     transformationPhotosGateRef.current = false;
+    transformationPhotosConfirmedRef.current = false;
     setShowOnboardingTransformationPhotos(false);
     setShowSetupWizard(false);
     setShowValidateOTP(false);
@@ -7842,8 +7866,12 @@ function WellnessValleyApp() {
           imageBase64={manualEntryPayload.imageBase64}
           onBack={() => {
             const pending = manualEntryPayload;
-            // User left before captureId arrived — discard the in-flight POST result.
-            if (pending?.clientKey && !pending?.captureId) {
+            // Always mark abandoned for this classify session so a deferred
+            // requestIdleCallback cannot rewrite pendingClassifyCapture after
+            // Cancel (that resurrected the tab-nav lock). Also tells the
+            // in-flight POST path to discard an orphan capture when captureId
+            // had not arrived yet.
+            if (pending?.clientKey) {
               manualEntrySessionRef.current = {
                 clientKey: pending.clientKey,
                 abandoned: true,
@@ -8789,6 +8817,7 @@ function WellnessValleyApp() {
         <UnknownShareViewer
           isOpen={unknownShareView.open}
           imageBase64={unknownShareView.imageBase64}
+          imageUrl={unknownShareView.imageUrl}
           canMutate={unknownShareView.canMutate}
           retrying={unknownShareView.retrying}
           error={unknownShareView.error}
@@ -8800,6 +8829,8 @@ function WellnessValleyApp() {
               open: false,
               captureId: null,
               imageBase64: null,
+              imageUrl: null,
+              createdAt: null,
               canMutate: false,
               retrying: false,
               error: null,
@@ -9194,6 +9225,7 @@ function WellnessValleyApp() {
             user={user}
             onComplete={async (savedData) => {
               transformationPhotosGateRef.current = false;
+              transformationPhotosConfirmedRef.current = true;
               setShowOnboardingTransformationPhotos(false);
               if (savedData?.profileImage) {
                 setSavedProfileImage(savedData.profileImage);

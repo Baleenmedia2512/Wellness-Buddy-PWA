@@ -12,6 +12,8 @@ import { resolveSponsorCoachNames } from '../../../shared/utils/sponsorCoachLabe
 import { setVisibilityAwareInterval } from '../../../shared/utils/visibilityAwareInterval.js';
 import { useAutoScrollStrip } from '../../../shared/hooks/useAutoScrollStrip.js';
 import LeaderboardAvatar from './LeaderboardAvatar.js';
+import LeaderboardRankBadge from './LeaderboardRankBadge.js';
+import { sortLeaderboardByRankAsc } from '../utils/leaderboardOrder.js';
 import {
   hasValidProfileName,
   isPlaceholderUserName,
@@ -20,13 +22,14 @@ import { subscribeDailyWellnessScoreSeed } from '../../wellness-score-sheet/serv
 
 const CACHE_TTL = 5 * 60 * 1000;
 // v6: overlay chosen display name when DB still has user_<phone>
-const CACHE_KEY_PREFIX = 'wv.lb.wellness.v6.';
+const CACHE_KEY_PREFIX = 'wv.lb.wellness.v7.';
 const LEGACY_CACHE_KEYS = [
   'wv.lb.wellness',
   'wv.lb.wellness.v2',
   'wv.lb.wellness.v3',
   'wv.lb.wellness.v4',
   'wv.lb.wellness.v5',
+  'wv.lb.wellness.v6',
 ];
 
 function displayLeaderboardName(entry, viewerUserId, viewerName) {
@@ -47,9 +50,8 @@ const cacheKeyFor = (userId) => `${CACHE_KEY_PREFIX}${userId || 'anon'}`;
 const stripAvatars = (data) =>
   (data || []).map(({ profileImage, ...rest }) => rest);
 
-/** Home marquee order: #10, #9, #8 … #1 (highest rank number first). */
-const toDescendingRankOrder = (data) =>
-  [...(data || [])].sort((a, b) => (Number(b.rank) || 0) - (Number(a.rank) || 0));
+/** Home strip order: #1, #2, … #N (best first). */
+const toAscendingRankOrder = (data) => sortLeaderboardByRankAsc(data);
 
 const readCache = (userId) => {
   try {
@@ -57,7 +59,7 @@ const readCache = (userId) => {
     const raw = localStorage.getItem(cacheKeyFor(userId));
     if (!raw) return null;
     const c = JSON.parse(raw);
-    return Date.now() - c.ts < CACHE_TTL ? toDescendingRankOrder(c.data) : null;
+    return Date.now() - c.ts < CACHE_TTL ? toAscendingRankOrder(c.data) : null;
   } catch { return null; }
 };
 const writeCache = (userId, data) => {
@@ -65,7 +67,7 @@ const writeCache = (userId, data) => {
     // Do not cache base64 avatars — quota blows and leaves stale null-avatar data.
     localStorage.setItem(
       cacheKeyFor(userId),
-      JSON.stringify({ data: stripAvatars(toDescendingRankOrder(data)), ts: Date.now() }),
+      JSON.stringify({ data: stripAvatars(toAscendingRankOrder(data)), ts: Date.now() }),
     );
   } catch {
     try { localStorage.removeItem(cacheKeyFor(userId)); } catch { /* ignore */ }
@@ -74,7 +76,7 @@ const writeCache = (userId, data) => {
 
 /**
  * Top wellness scores for today (IST) — swipeable strip on Home.
- * Display order: Rank N → Rank 1 (descending).
+ * Display order: Rank 1 → Rank N (ascending).
  * Ranked among the logged-in user's allowed hierarchy (not global Top 10).
  */
 const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, viewerName, email }, ref) => {
@@ -115,7 +117,7 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, vi
       const result = await response.json();
 
       if (result.success && result.data?.length > 0) {
-        const ordered = toDescendingRankOrder(result.data);
+        const ordered = toAscendingRankOrder(result.data);
         setLeaderboardData(ordered);
         setIsVisible(true);
         writeCache(userId, ordered);
@@ -173,24 +175,18 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, vi
     return () => cancelAnimationFrame(id);
   }, [isVisible, leaderboardData.length]);
 
-  const getRankColor = (pct) => {
-    if (pct >= 90) return 'bg-gradient-to-r from-yellow-400 to-yellow-600 text-white';
-    if (pct >= 80) return 'bg-gradient-to-r from-gray-300 to-gray-400 text-gray-800';
-    if (pct >= 70) return 'bg-gradient-to-r from-orange-400 to-orange-600 text-white';
+  const getRankColor = (rank) => {
+    if (rank === 1) return 'bg-gradient-to-r from-yellow-400 to-yellow-600 text-white';
+    if (rank === 2) return 'bg-gradient-to-r from-gray-300 to-gray-400 text-gray-800';
+    if (rank === 3) return 'bg-gradient-to-r from-orange-400 to-orange-600 text-white';
     return 'bg-gradient-to-r from-green-500 to-green-600 text-white';
   };
 
-  const getStarIcon = (pct) => {
-    if (pct >= 90) {
-      return <Star className="w-3 h-3 sm:w-4 sm:h-4 md:w-5 md:h-5 text-yellow-500 fill-yellow-500" />;
+  const getStarIcon = (rank) => {
+    if (rank === 1 || rank === 2 || rank === 3) {
+      return <Star className="w-4 h-4 sm:w-5 sm:h-5 fill-current" />;
     }
-    if (pct >= 80) {
-      return <Star className="w-3 h-3 sm:w-4 sm:h-4 md:w-5 md:h-5 text-gray-400 fill-gray-400" />;
-    }
-    if (pct >= 70) {
-      return <Star className="w-3 h-3 sm:w-4 sm:h-4 md:w-5 md:h-5 text-orange-500 fill-orange-500" />;
-    }
-    return <Award className="w-3 h-3 sm:w-4 sm:h-4 md:w-5 md:h-5 text-green-500" />;
+    return <Award className="w-4 h-4 sm:w-5 sm:h-5" />;
   };
 
   if (!isVisible || leaderboardData.length === 0) {
@@ -204,16 +200,11 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, vi
       key={key}
       className="inline-flex items-center gap-1.5 sm:gap-2 md:gap-3 mx-2 sm:mx-3 md:mx-4 flex-shrink-0"
     >
-      <div className="inline-flex flex-col items-center justify-center gap-0.5 flex-shrink-0 w-8 sm:w-10 md:w-12">
-        {getStarIcon(user.wellnessPercentage)}
-        <div
-          className={`px-1 sm:px-1.5 py-0.5 rounded-full text-[8px] sm:text-[9px] md:text-[10px] font-bold leading-none ${getRankColor(
-            user.wellnessPercentage,
-          )}`}
-        >
-          #{user.rank}
-        </div>
-      </div>
+      <LeaderboardRankBadge
+        rank={user.rank}
+        colorClass={getRankColor(user.rank)}
+        icon={getStarIcon(user.rank)}
+      />
 
       <div className="flex-shrink-0">
         <LeaderboardAvatar
@@ -261,7 +252,7 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, vi
       }`}
     >
       <div className="py-0 px-0">
-        <div className="relative h-[68px] sm:h-[72px] overflow-hidden">
+        <div className="relative h-[76px] sm:h-[84px] overflow-hidden">
           <div className="absolute inset-y-0 left-0 z-10 pointer-events-none flex items-stretch">
             <div
               className="flex h-full w-[60px] sm:w-[64px] items-center justify-center rounded-r-md bg-white px-1 py-2 text-center text-[9px] sm:text-[10px] font-semibold leading-[1.2] text-purple-700 shadow-sm"
