@@ -103,6 +103,7 @@ export const APP_VERSION = {
  * Version 3.4.9 (Code 69 / iOS build 70) - 2026-09-02 [ANDROID + iOS RELEASE]
  *   🐛 Patch release — bug fixes and stability improvements
  *
+ * 
  * Version 3.4.8 (Code 68 / iOS build 69) - 2026-08-26 [ANDROID + iOS RELEASE]
  *   🐛 Patch release — bug fixes and stability improvements
  *
