@@ -17,6 +17,7 @@ async function handleUpdateProfile(req, res) {
   logger.info('[profile] incoming update request', {
     method: req.method,
     email: req.body?.email,
+    userId: req.body?.userId ?? req.body?.UserId,
     hasCommunityId: req.body?.communityId !== undefined || req.body?.community_id !== undefined,
     hasTimezone: req.body?.timezone !== undefined
       || req.body?.timezoneIana !== undefined

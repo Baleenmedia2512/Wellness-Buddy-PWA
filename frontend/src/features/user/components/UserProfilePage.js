@@ -230,7 +230,35 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
       });
       // BMR is system-calculated on the profile page — never write it from this form.
       delete payload.bmr;
+      const photoExtras = transformationPhotos.payloadExtras();
+      // Only newly uploaded Centre slot updates ProfileImage (same as onboarding).
+      const centrePhoto = photoExtras.transformationPhotos?.front || null;
+      Object.assign(payload, photoExtras);
+      if (centrePhoto) {
+        payload.profileImage = centrePhoto;
+      }
+      if (user?.id && !payload.userId) {
+        payload.userId = user.id;
+      }
       const data = await saveProfile(payload);
+      transformationPhotos.clearPending();
+      const leftPending = photoExtras.transformationPhotos?.left || null;
+      if (user?.id && (latestWeight != null || leftPending)) {
+        try {
+          await persistOnboardingTestimonialPhotos({
+            userId: user.id,
+            weightKg: latestWeight,
+            leftImageBase64: leftPending,
+            goalType: deriveWeightGoalMode({
+              heightCm: form.height,
+              currentWeightKg: latestWeight,
+            }) || form.weightGoalMode || 'loss',
+            recoveredHealthIssues: form.recoveredHealthIssues || [],
+          });
+        } catch {
+          // Non-fatal — profile photos already saved.
+        }
+      }
       if (user?.id) {
         invalidateHasTeamMembersCache(user.id);
       }
