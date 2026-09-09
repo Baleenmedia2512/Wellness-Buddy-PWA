@@ -9,6 +9,7 @@ import {
   memberHasVisibleTransformationPhoto,
   seedTestimonialFromProfilePhotos,
 } from './domain/profileTransformationPhotos.seed.js';
+import { resolveCoCoachPartnerId } from './domain/otpRecipient.rules.js';
 import { isRealImagePath } from './domain/testimonials-list.pagination.js';
 
 const TABLE = 'testimonials_table';
@@ -527,7 +528,7 @@ export async function findCoachEmail(coachId) {
 /**
  * Look up a user's CoachId.
  * @param {number} userId
- * @returns {number|null}
+ * @returns {Promise<{ coachId: number|null, userName: string|null }|null>}
  */
 export async function findCoachIdForUser(userId) {
   const supabase = getSupabaseClient();
@@ -539,6 +540,35 @@ export async function findCoachIdForUser(userId) {
   if (error) throw error;
   if (!Array.isArray(data) || data.length === 0) return null;
   return { coachId: data[0].CoachId, userName: data[0].UserName };
+}
+
+/**
+ * Active co-coach partner for a lead (Sponsor ↔ Co-Sponsor on coach_teams_table).
+ * Used when the member has no CoachId (top-level admin / no upline).
+ * @param {number} userId
+ * @returns {Promise<number|null>}
+ */
+export async function findCoCoachPartnerId(userId) {
+  const id = Number(userId);
+  if (!Number.isFinite(id) || id <= 0) return null;
+
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from('coach_teams_table')
+    .select('CoachId, CoCoachId')
+    .or(`CoachId.eq.${id},CoCoachId.eq.${id}`)
+    .eq('Status', 'active')
+    .limit(1)
+    .maybeSingle();
+
+  if (error) throw error;
+  if (!data) return null;
+
+  return resolveCoCoachPartnerId({
+    userId: id,
+    coachId: data.CoachId,
+    coCoachId: data.CoCoachId,
+  });
 }
 
 /**
