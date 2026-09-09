@@ -101,7 +101,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0, t
   const [teamScope, setTeamScope] = useState(TEAM_SCOPES.DIRECT);
   const [teamScopeCounts, setTeamScopeCounts] = useState(null);
   const [showTeamScope, setShowTeamScope] = useState(false);
-  const [attendanceStatus, setAttendanceStatus] = useState(ACTIVITY_REPORT_ATTENDANCE.ATTENDED);
+  const [attendanceStatus, setAttendanceStatus] = useState(ACTIVITY_REPORT_ATTENDANCE.POSTED);
   const [showReportDatePicker, setShowReportDatePicker] = useState(false);
   const [showTableFiltersSheet, setShowTableFiltersSheet] = useState(false);
   const fetchAbortRef = useRef(null);
@@ -661,7 +661,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0, t
   };
 
   const handleAttendanceChange = (event) => {
-    const next = event.target.value || ACTIVITY_REPORT_ATTENDANCE.ATTENDED;
+    const next = event.target.value || ACTIVITY_REPORT_ATTENDANCE.POSTED;
     if (next === attendanceStatus) return;
     setAttendanceStatus(next);
     setCurrentPage(1);
@@ -1180,7 +1180,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0, t
                 <p className="text-gray-500">
                   {hasActiveTableFilters
                     ? 'No records found'
-                    : attendanceStatus === ACTIVITY_REPORT_ATTENDANCE.NOT_ATTENDED
+                    : attendanceStatus === ACTIVITY_REPORT_ATTENDANCE.NOT_POSTED
                       ? 'Everyone in this team logged this activity'
                       : 'No records found'}
                 </p>

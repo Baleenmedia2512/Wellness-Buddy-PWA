@@ -12,20 +12,24 @@ export const ACTIVITY_REPORT_TABLE_FILTER_COLUMNS = [
 /** Multi-value separator in filter_<column> query params (values may contain commas). */
 export const ACTIVITY_REPORT_FILTER_VALUE_SEP = '|';
 
+/** API values must match backend `activity-report.attendance` (`posted` / `not_posted`). */
 export const ACTIVITY_REPORT_ATTENDANCE = {
   ATTENDED: 'attended',
   NOT_ATTENDED: 'not_attended',
 };
 
 export const ACTIVITY_REPORT_ATTENDANCE_OPTIONS = [
-  { id: ACTIVITY_REPORT_ATTENDANCE.ATTENDED, label: 'Attended' },
-  { id: ACTIVITY_REPORT_ATTENDANCE.NOT_ATTENDED, label: 'Not attended' },
+  { id: ACTIVITY_REPORT_ATTENDANCE.POSTED, label: 'Posted' },
+  { id: ACTIVITY_REPORT_ATTENDANCE.NOT_POSTED, label: 'Not Posted' },
 ];
 
 export function formatActivityReportAttendance(status) {
-  return String(status) === ACTIVITY_REPORT_ATTENDANCE.NOT_ATTENDED
-    ? 'Not attended'
-    : 'Attended';
+  const value = String(status || '').trim().toLowerCase().replace(/-/g, '_');
+  return value === ACTIVITY_REPORT_ATTENDANCE.NOT_POSTED
+    || value === 'not_attended'
+    || value === 'notattended'
+    ? 'Not Posted'
+    : 'Posted';
 }
 
 export function emptyActivityReportFilterOptions() {
