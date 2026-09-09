@@ -329,7 +329,7 @@ test.describe('Homepage', () => {
     let savedWeightPayload = null;
 
     // 1. Mock Weight Save API
-    await page.route('**/api/weight/save', async (route) => {
+    await page.route('**/api/weight/save*', async (route) => {
       savedWeightPayload = JSON.parse(route.request().postData() || '{}');
       await route.fulfill({
         status: 200,

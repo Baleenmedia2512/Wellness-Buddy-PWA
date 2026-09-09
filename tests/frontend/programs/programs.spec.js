@@ -629,13 +629,7 @@ test(
       const programName of remainingPrograms
     ) {
 
-      const program =
-        page.getByText(
-          programName,
-          {
-            exact: true,
-          }
-        );
+      const program = page.locator('.ios-list-row').filter({ hasText: programName }).first();
 
       await expect(
         program
@@ -1153,35 +1147,26 @@ test(
       }
     );
 
-    await page.addInitScript(({ phone, email, name, userId }) => {
-      const userObj = {
-        id: userId,
-        UserId: userId,
-        userId: userId,
-        username: 'existinguser',
-        userName: name,
-        name: name,
-        email: email,
-        phone: `+91${phone}`,
-        phoneNumber: phone,
-        status: 'Active',
-        isNewUser: false,
-        consentRequired: false,
-        profileComplete: true,
-      };
-
-      localStorage.setItem('isOtpVerified', 'true');
-      localStorage.setItem('otpUser', JSON.stringify(userObj));
-      localStorage.setItem('user', JSON.stringify(userObj));
-      localStorage.setItem('dbUserId', String(userId));
-      localStorage.setItem('userEmail', email);
-    }, { phone: TEST_PHONE, email: TEST_EMAIL, name: 'Nitheesh Lingam', userId: TEST_USER_ID });
-
     // ============================================================
-    // 8. OPEN APPLICATION
+    // 8. OPEN APPLICATION & LOGIN
     // ============================================================
 
     await page.goto('/');
+
+    const phoneInput = page.locator('input[type="tel"]').first();
+    await expect(phoneInput).toBeVisible({ timeout: 15000 });
+    await phoneInput.fill(TEST_PHONE);
+
+    const submitPhoneBtn = page.getByRole('button', { name: /Send OTP|Continue|Submit/i }).first();
+    await submitPhoneBtn.click();
+
+    await expect(page.getByText('Enter OTP', { exact: true })).toBeVisible({ timeout: 15000 });
+    const otpInputs = page.locator('input[type="tel"]');
+    await expect(otpInputs).toHaveCount(4);
+
+    for (let i = 0; i < LOGIN_OTP.length; i++) {
+      await otpInputs.nth(i).fill(LOGIN_OTP[i]);
+    }
 
     // ============================================================
     // 9. VERIFY AUTHENTICATION & OPEN HOME
@@ -1192,10 +1177,7 @@ test(
         'button',
         {
           name:
-            'Enrollment',
-
-          exact:
-            true,
+            /Programs|Enrollment/,
         }
       );
 
