@@ -54,6 +54,7 @@ import {
   TEAM_SCOPES,
   computeMemberCompleteness,
   toggleStatusFilter,
+  resolveTeamScopeCount,
 } from '../utils/testimonialFilters.js';
 import {
   buildHealthIssueSuggestions,
@@ -1889,6 +1890,8 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
   const [highlightedIssue,      setHighlightedIssue]      = useState(-1);
 
   const [teamPerformanceByUserId, setTeamPerformanceByUserId] = useState({});
+  /** Unfiltered Direct/Full sizes for tab badges — never overwritten by upload filters. */
+  const [directTeamMemberCount, setDirectTeamMemberCount] = useState(null);
   const [fullTeamMemberCount, setFullTeamMemberCount] = useState(null);
   const [fullLoading, setFullLoading] = useState(false);
   const [fullLoaded, setFullLoaded] = useState(false);
@@ -1995,6 +1998,7 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
     }
     setFullRows([]);
     setFullLoaded(false);
+    setDirectTeamMemberCount(null);
     setFullTeamMemberCount(null);
     setListReloadKey((key) => key + 1);
     try {
@@ -2013,6 +2017,7 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
       });
       setMineRow(mine);
       const total = directResult?.pagination?.total ?? direct.length;
+      setDirectTeamMemberCount(total);
       setHasDownline(total > 0);
       if (total === 0) setTeamScope(TEAM_SCOPES.MINE);
     } catch (err) {
@@ -2101,11 +2106,23 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
     return directRows;
   }, [hasDownline, teamScope, mineRow, directRows, fullRows]);
 
-  const teamScopeCounts = useMemo(() => ({
-    [TEAM_SCOPES.MINE]: mineRow ? 1 : 0,
-    [TEAM_SCOPES.DIRECT]: directPagination.total || directRows.length,
-    [TEAM_SCOPES.FULL]: fullTeamMemberCount ?? fullPagination.total ?? fullRows.length,
-  }), [mineRow, directPagination.total, directRows.length, fullTeamMemberCount, fullPagination.total, fullRows.length]);
+  const teamScopeCounts = useMemo(() => {
+    const directTotal = directTeamMemberCount
+      ?? (Number.isFinite(directPagination.total) ? directPagination.total : directRows.length);
+    const fullTotal = fullTeamMemberCount
+      ?? (Number.isFinite(fullPagination.total) ? fullPagination.total : fullRows.length);
+
+    return {
+      [TEAM_SCOPES.MINE]: mineRow ? 1 : 0,
+      // Always total Direct/Full members — Partial / Not Uploaded only filter the list.
+      [TEAM_SCOPES.DIRECT]: resolveTeamScopeCount(uploadFilter, directUploadCounts, directTotal),
+      [TEAM_SCOPES.FULL]: resolveTeamScopeCount(uploadFilter, fullUploadCounts, fullTotal),
+    };
+  }, [
+    mineRow, uploadFilter, directUploadCounts, fullUploadCounts,
+    directTeamMemberCount, directPagination.total, directRows.length,
+    fullTeamMemberCount, fullPagination.total, fullRows.length,
+  ]);
 
   // Server-provided completeness counts (search-scoped); avoid recounting only the loaded page.
   const uploadCounts = teamScope === TEAM_SCOPES.FULL ? fullUploadCounts : directUploadCounts;
@@ -2227,15 +2244,26 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
         });
         if (cancelled) return;
         const pageData = Array.isArray(result?.data) ? result.data : [];
+        const pagination = result.pagination || { page: 1, hasMore: false, total: 0 };
+        const isUnfilteredList = (!uploadFilter || uploadFilter === UPLOAD_FILTERS.ALL)
+          && !normalizeSearchQuery(searchQuery)
+          && !normalizeSearchQuery(committedHealthIssue);
         if (scope === 'full') {
           setFullRows(pageData);
-          setFullPagination(result.pagination || { page: 1, hasMore: false, total: 0 });
+          setFullPagination(pagination);
           if (result.uploadCounts) setFullUploadCounts(result.uploadCounts);
+          // Only refresh Full badge total from unfiltered responses (filters shrink pagination.total).
+          if (isUnfilteredList && Number.isFinite(pagination.total)) {
+            setFullTeamMemberCount(pagination.total);
+          }
           setFullLoaded(true);
         } else {
           setDirectRows(pageData);
-          setDirectPagination(result.pagination || { page: 1, hasMore: false, total: 0 });
+          setDirectPagination(pagination);
           if (result.uploadCounts) setDirectUploadCounts(result.uploadCounts);
+          if (isUnfilteredList && Number.isFinite(pagination.total)) {
+            setDirectTeamMemberCount(pagination.total);
+          }
         }
       } catch (err) {
         if (!cancelled) setError(err?.message || 'Failed to load team');

@@ -9223,6 +9223,8 @@ function WellnessValleyApp() {
                   };
                 });
               }
+              // Force Header to re-fetch avatar (own local state; leaderboard already refreshes).
+              setHeaderProfileKey((k) => k + 1);
               const savedEmail =
                 user?.email
                 || user?.Email

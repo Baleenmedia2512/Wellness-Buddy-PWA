@@ -26,6 +26,7 @@ import {
   resolveGlycemicIndexForUpdate,
 } from './glycemicIndex.helpers.js';
 import { r2FoodImagesEnabled, foodImageRedirectUrl } from './food-image-storage.service.js';
+import { waitUntil } from '@vercel/functions';
 import {
   emptyMealTotalsSeed,
   addMealRowToTotals,
@@ -340,12 +341,15 @@ export async function updateAnalysis(input) {
   cache.delete(cacheKeys.nutritionMeals(userId));
   await repo.touchLastActive(userId);
 
-  try {
-    const { recordMealFoodPairs } = await import('../food-suggestions/index.js');
-    await recordMealFoodPairs({ userId, analysisData });
-  } catch (err) {
-    logger.warn('updateAnalysis: food pair stats skipped', { err: err?.message, mealId: id });
-  }
+  // Suggestion pair stats are best-effort and O(n²) in food count — do not block
+  // the meal-edit response (delete/edit one item felt like ~15s on large meals).
+  waitUntil(
+    import('../food-suggestions/index.js')
+      .then(({ recordMealFoodPairs }) => recordMealFoodPairs({ userId, analysisData }))
+      .catch((err) => {
+        logger.warn('updateAnalysis: food pair stats skipped', { err: err?.message, mealId: id });
+      }),
+  );
 
   return {
     httpStatus: 200,

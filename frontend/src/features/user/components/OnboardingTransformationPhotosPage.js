@@ -12,6 +12,7 @@ import TransformationPhotosSection from './profile/TransformationPhotosSection';
 import useTransformationPhotos from '../hooks/useTransformationPhotos';
 import { persistOnboardingTestimonialPhotos } from '../services/persistOnboardingTestimonialPhotos';
 import { deriveWeightGoalMode } from '../../weight/services/weightFormService';
+import { bumpAvatarDisplayVersion } from '../services/avatarDisplayVersion';
 import {
   DEFAULT_POSE_SLOT,
   POSE_SLOT_KEYS,
@@ -95,20 +96,32 @@ export default function OnboardingTransformationPhotosPage({
     setError('');
     setSaving(true);
     try {
-      const extras = transformationPhotos.payloadExtras();
-      const centrePhoto = transformationPhotos.frontImageBase64();
-      if (email) {
-        await saveProfile({
-          email,
-          ...extras,
-          ...(centrePhoto ? { profileImage: centrePhoto } : {}),
-        });
+      if (!email && !userId) {
+        throw new Error('Cannot save photos. Please sign in again.');
       }
-      if (userId && (weightKg != null || transformationPhotos.leftImageBase64())) {
+      // Pending-only: existing DB photos stay via server-side merge (avoids huge re-POSTs).
+      const extras = transformationPhotos.payloadExtras();
+      const centrePending = extras.transformationPhotos?.front || null;
+      const hasPhotoUpdates = Boolean(extras.transformationPhotos);
+      // Existing users adding only Left/Right must not re-POST an old Centre as profileImage.
+      if (hasPhotoUpdates) {
+        await saveProfile({
+          ...(email ? { email } : {}),
+          ...(userId ? { userId } : {}),
+          ...extras,
+          ...(centrePending ? { profileImage: centrePending } : {}),
+        });
+        transformationPhotos.clearPending();
+        // Bust Leaderboard / Top 10 avatar URLs (centre may drive /api/user/avatar).
+        bumpAvatarDisplayVersion();
+      }
+      const leftForTestimonial = extras.transformationPhotos?.left
+        || transformationPhotos.leftImageBase64();
+      if (userId && (weightKg != null || leftForTestimonial)) {
         await persistOnboardingTestimonialPhotos({
           userId,
           weightKg,
-          leftImageBase64: transformationPhotos.leftImageBase64(),
+          leftImageBase64: leftForTestimonial,
           goalType: deriveWeightGoalMode({
             heightCm,
             currentWeightKg: weightKg,
@@ -116,7 +129,8 @@ export default function OnboardingTransformationPhotosPage({
           recoveredHealthIssues: healthIssues,
         });
       }
-      await onComplete?.({ profileImage: centrePhoto || undefined });
+      const centreForUi = centrePending || transformationPhotos.frontImageBase64();
+      await onComplete?.({ profileImage: centreForUi || undefined });
     } catch (e) {
       setError(e.message || 'Failed to save photos. Please try again.');
     } finally {

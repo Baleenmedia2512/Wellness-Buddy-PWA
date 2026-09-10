@@ -59,6 +59,8 @@ function flattenFoodItem(name, nutritionSource, source = 'history') {
 
 /**
  * Record undirected pairs after a multi-food meal save. Never throws to caller.
+ * Pair upserts run in parallel — sequential awaits scaled as O(n²) foods and
+ * made multi-item meal edits (e.g. delete one item) take ~10–15s.
  */
 export async function recordMealFoodPairs({ userId, analysisData }) {
   try {
@@ -66,7 +68,7 @@ export async function recordMealFoodPairs({ userId, analysisData }) {
     const names = extractFoodNamesFromAnalysis(analysisData);
     if (names.length < 2) return { recorded: 0 };
     const pairs = enumerateUndirectedPairs(names);
-    for (const p of pairs) {
+    await Promise.all(pairs.map(async (p) => {
       try {
         await repo.incrementGlobalPair(p.keyA, p.keyB);
       } catch (err) {
@@ -79,7 +81,7 @@ export async function recordMealFoodPairs({ userId, analysisData }) {
           logger.warn('food-suggestions: user pair upsert failed', { err: err?.message });
         }
       }
-    }
+    }));
     return { recorded: pairs.length };
   } catch (err) {
     logger.warn('food-suggestions: recordMealFoodPairs skipped', { err: err?.message });

@@ -230,6 +230,9 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
       });
       // BMR is system-calculated on the profile page — never write it from this form.
       delete payload.bmr;
+      if (user?.id && !payload.userId) {
+        payload.userId = user.id;
+      }
       const data = await saveProfile(payload);
       if (user?.id) {
         invalidateHasTeamMembersCache(user.id);
