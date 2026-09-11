@@ -13,6 +13,10 @@ import {
   isPhotoPairComplete,
   resolveHealthIssueOtpChannel,
 } from './domain/photoCompleteness.rules.js';
+import {
+  resolveOtpRecipientIds,
+  toPositiveUserId,
+} from './domain/otpRecipient.rules.js';
 import logger from '../../shared/lib/logger.js';
 import { ValidationError } from '../../shared/lib/ValidationError.js';
 import {
@@ -64,6 +68,63 @@ export const TESTIMONIAL_OTP_VALIDITY_HOURS = 24;
 
 function generateOtp() {
   return generateEmailOtp();
+}
+
+/**
+ * Resolve who receives Transformation OTP email.
+ * Coach/sponsor first; if none (top-level admin), fall back to co-coach partner.
+ *
+ * @param {number} userId
+ * @returns {Promise<{
+ *   userName: string|null,
+ *   coachId: number|null,
+ *   coachInfo: { email: string|null, name: string|null }|null,
+ *   source: 'coach'|'co-coach'|null,
+ * }|null>}
+ */
+async function resolveVerificationRecipient(userId) {
+  const userInfo = await repo.findCoachIdForUser(userId);
+  if (!userInfo) return null;
+
+  let coCoachPartnerId = null;
+  if (!toPositiveUserId(userInfo.coachId)) {
+    coCoachPartnerId = await repo.findCoCoachPartnerId(userId);
+  }
+
+  const { recipientId, source } = resolveOtpRecipientIds({
+    memberCoachId: userInfo.coachId,
+    coCoachPartnerId,
+  });
+
+  if (!recipientId) {
+    return {
+      userName: userInfo.userName ?? null,
+      coachId: null,
+      coachInfo: null,
+      source: null,
+    };
+  }
+
+  const coachInfo = await repo.findCoachEmail(recipientId);
+  if (source === 'co-coach') {
+    logger.info('[testimonials] OTP recipient fallback to co-coach', {
+      userId,
+      recipientId,
+    });
+  }
+  return {
+    userName: userInfo.userName ?? null,
+    coachId: recipientId,
+    coachInfo: coachInfo ?? null,
+    source,
+  };
+}
+
+function requireVerificationRecipient(recipient, message) {
+  if (!recipient?.coachId) {
+    throw new ValidationError(400, message);
+  }
+  return recipient;
 }
 
 function otpExpiryIst(hoursFromNow = TESTIMONIAL_OTP_VALIDITY_HOURS) {
@@ -289,10 +350,11 @@ export async function submitTestimonial(rawBody) {
 
   logger.info('[testimonials] submit', { userId: payload.userId, hasAfter: payload.hasAfter });
 
-  const userInfo = await repo.findCoachIdForUser(payload.userId);
-  if (!userInfo || !userInfo.coachId) {
-    throw new ValidationError(400, 'User has no coach assigned. Cannot submit testimonial.');
-  }
+  const recipient = requireVerificationRecipient(
+    await resolveVerificationRecipient(payload.userId),
+    'User has no coach or co-coach assigned. Cannot submit testimonial.',
+  );
+  const userInfo = { coachId: recipient.coachId, userName: recipient.userName };
 
   const ts = Date.now();
   const beforePath = storagePath(payload.userId, 'before', ts);
@@ -345,9 +407,9 @@ export async function submitTestimonial(rawBody) {
     });
   }
 
-  // Only email coach when the testimonial is complete
+  // Only email coach (or co-coach fallback) when the testimonial is complete
   if (payload.hasAfter) {
-    const coachInfo = await repo.findCoachEmail(userInfo.coachId);
+    const coachInfo = recipient.coachInfo;
     if (coachInfo?.email) {
       await sendCoachEmail({
         coachEmail:    coachInfo.email,
@@ -415,8 +477,11 @@ export async function editTestimonial(rawBody) {
   const existing = await repo.findByUserId(payload.userId);
   if (!existing) throw new ValidationError(404, 'No testimonial found for this user');
 
-  const userInfo  = await repo.findCoachIdForUser(payload.userId);
-  const coachInfo = userInfo?.coachId ? await repo.findCoachEmail(userInfo.coachId) : null;
+  const recipient = await resolveVerificationRecipient(payload.userId);
+  const userInfo  = recipient
+    ? { coachId: recipient.coachId, userName: recipient.userName }
+    : null;
+  const coachInfo = recipient?.coachInfo ?? null;
 
   const updates = {};
   const ts = Date.now();
@@ -601,10 +666,9 @@ export async function getMyTestimonial(rawQuery) {
   const data = await enrichTestimonialForDisplay(row);
   let sponsorName = null;
   try {
-    const userInfo = await repo.findCoachIdForUser(userId);
-    if (userInfo?.coachId) {
-      const coachInfo = await repo.findCoachEmail(userInfo.coachId);
-      sponsorName = coachInfo?.name ? String(coachInfo.name).trim() : null;
+    const recipient = await resolveVerificationRecipient(userId);
+    if (recipient?.coachId) {
+      sponsorName = recipient.coachInfo?.name ? String(recipient.coachInfo.name).trim() : null;
     }
   } catch (err) {
     logger.warn('[testimonials] sponsor name lookup failed', { userId, message: err?.message });
@@ -867,10 +931,11 @@ async function sendVideoCoachEmail({ coachEmail, memberName, otp, healthVideoPat
 // ─── Video service functions ──────────────────────────────────────────────────
 
 async function assertVideoUploadEligible(userId) {
-  const userInfo = await repo.findCoachIdForUser(userId);
-  if (!userInfo || !userInfo.coachId) {
-    throw new ValidationError(400, 'User has no coach assigned. Cannot submit video testimonial.');
-  }
+  const recipient = requireVerificationRecipient(
+    await resolveVerificationRecipient(userId),
+    'User has no coach or co-coach assigned. Cannot submit video testimonial.',
+  );
+  const userInfo = { coachId: recipient.coachId, userName: recipient.userName };
 
   let existing = await repo.findByUserId(userId);
   if (!existing) {
@@ -881,7 +946,7 @@ async function assertVideoUploadEligible(userId) {
     logger.info('[testimonials] Created video-only testimonial stub', { userId });
   }
 
-  return { existing, userInfo };
+  return { existing, userInfo, recipient };
 }
 
 /**
@@ -1014,7 +1079,7 @@ export async function submitVideo(rawBody) {
 
   logger.info('[testimonials] submitVideo', { userId: payload.userId });
 
-  const { existing, userInfo } = await assertVideoUploadEligible(payload.userId);
+  const { existing, userInfo, recipient } = await assertVideoUploadEligible(payload.userId);
 
   const uploads = {};
 
@@ -1058,7 +1123,7 @@ export async function submitVideo(rawBody) {
     await repo.updateTestimonial(existing.id, { recoveredHealthIssues: resolvedHealthIssues });
   }
 
-  const coachInfo = await repo.findCoachEmail(userInfo.coachId);
+  const coachInfo = recipient.coachInfo;
   if (coachInfo?.email) {
     await sendVideoCoachEmail({
       coachEmail:        coachInfo.email,
@@ -1273,10 +1338,11 @@ async function sendUnifiedCoachEmail({
 export async function submitAllEdits(rawBody) {
   const payload = validateSubmitAllEdits(rawBody);
 
-  const userInfo = await repo.findCoachIdForUser(payload.userId);
-  if (!userInfo?.coachId) {
-    throw new ValidationError(400, 'User has no coach assigned. Cannot submit for approval.');
-  }
+  const recipient = requireVerificationRecipient(
+    await resolveVerificationRecipient(payload.userId),
+    'User has no coach or co-coach assigned. Cannot submit for approval.',
+  );
+  const userInfo = { coachId: recipient.coachId, userName: recipient.userName };
 
   let existing = await repo.findByUserId(payload.userId);
 
@@ -1447,8 +1513,8 @@ export async function submitAllEdits(rawBody) {
     await repo.updateTestimonialVideos(existing.id, { videoOtpHash: otpHash, videoOtpExpiresAt: otpExpiry });
   }
 
-  // Send unified coach email
-  const coachInfo = await repo.findCoachEmail(userInfo.coachId);
+  // Send unified coach email (coach, or co-coach when member has no CoachId)
+  const coachInfo = recipient.coachInfo;
   if (coachInfo?.email && userInfo?.userName) {
     const finalBeforePath    = photoUpdates.beforeImagePath   ?? existing.before_image_path;
     const finalAfterPath     = photoUpdates.afterImagePath    ?? existing.after_image_path;
@@ -1588,11 +1654,12 @@ export async function resendUnifiedOtp(rawBody) {
     throw new ValidationError(422, 'Nothing is awaiting verification.');
   }
 
-  const userInfo = await repo.findCoachIdForUser(userId);
-  if (!userInfo?.coachId) {
-    throw new ValidationError(422, 'You do not have a sponsor assigned yet.');
+  const recipient = await resolveVerificationRecipient(userId);
+  if (!recipient?.coachId) {
+    throw new ValidationError(422, 'You do not have a sponsor or co-coach assigned yet.');
   }
-  const coachInfo = await repo.findCoachEmail(userInfo.coachId);
+  const userInfo = { coachId: recipient.coachId, userName: recipient.userName };
+  const coachInfo = recipient.coachInfo;
   if (!coachInfo?.email) {
     throw new ValidationError(422, 'Sponsor email is not available. Please contact support.');
   }

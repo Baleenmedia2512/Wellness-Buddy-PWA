@@ -9,7 +9,9 @@ import {
   memberHasVisibleTransformationPhoto,
   seedTestimonialFromProfilePhotos,
 } from './domain/profileTransformationPhotos.seed.js';
+import { resolveCoCoachPartnerId } from './domain/otpRecipient.rules.js';
 import { isRealImagePath } from './domain/testimonials-list.pagination.js';
+import { isActiveTeamStatus } from '../../utils/teamHierarchyBuilder.js';
 
 const TABLE = 'testimonials_table';
 const BUCKET = 'testimonials';
@@ -527,7 +529,7 @@ export async function findCoachEmail(coachId) {
 /**
  * Look up a user's CoachId.
  * @param {number} userId
- * @returns {number|null}
+ * @returns {Promise<{ coachId: number|null, userName: string|null }|null>}
  */
 export async function findCoachIdForUser(userId) {
   const supabase = getSupabaseClient();
@@ -539,6 +541,35 @@ export async function findCoachIdForUser(userId) {
   if (error) throw error;
   if (!Array.isArray(data) || data.length === 0) return null;
   return { coachId: data[0].CoachId, userName: data[0].UserName };
+}
+
+/**
+ * Active co-coach partner for a lead (Sponsor ↔ Co-Sponsor on coach_teams_table).
+ * Used when the member has no CoachId (top-level admin / no upline).
+ * @param {number} userId
+ * @returns {Promise<number|null>}
+ */
+export async function findCoCoachPartnerId(userId) {
+  const id = Number(userId);
+  if (!Number.isFinite(id) || id <= 0) return null;
+
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from('coach_teams_table')
+    .select('CoachId, CoCoachId')
+    .or(`CoachId.eq.${id},CoCoachId.eq.${id}`)
+    .eq('Status', 'active')
+    .limit(1)
+    .maybeSingle();
+
+  if (error) throw error;
+  if (!data) return null;
+
+  return resolveCoCoachPartnerId({
+    userId: id,
+    coachId: data.CoachId,
+    coCoachId: data.CoCoachId,
+  });
 }
 
 /**
@@ -596,11 +627,12 @@ export async function loadTeamReportingContext(coachId) {
 
 /**
  * Reporting team members for a coach (direct or full hierarchy).
- * Applies inactive-coach rollup via reportingHierarchyService.
+ * Applies inactive-coach rollup via reportingHierarchyService, then keeps
+ * only active members for Transformation lists (inactive never shown).
  * @param {number} coachId
  * @param {'direct'|'full'} [scope='direct']
  * @param {import('../../utils/reportingHierarchyService.js').ReportingContext} [context]
- * @returns {Promise<Array<{ UserId: number, UserName: string, Email?: string, ProfileImage?: string|null, PhoneNumber?: string|null }>>}
+ * @returns {Promise<Array<{ UserId: number, UserName: string, Email?: string, ProfileImage?: string|null, PhoneNumber?: string|null, Status?: string }>>}
  */
 async function fetchReportingTeamMembers(coachId, scope = 'direct', context = null) {
   const resolvedContext = context ?? await loadTeamReportingContext(coachId);
@@ -613,6 +645,7 @@ async function fetchReportingTeamMembers(coachId, scope = 'direct', context = nu
     : getSharedTeamDirectMembers(coachId, resolvedContext);
   return members
     .filter((member) => member.UserId !== Number(coachId))
+    .filter((member) => isActiveTeamStatus(member.Status))
     .sort((a, b) => String(a.UserName || '').localeCompare(String(b.UserName || '')));
 }
 
@@ -820,6 +853,7 @@ export async function buildTeamUploadPerformanceByUserId(rootCoachId, context = 
 
   const activeMemberIds = new Set(
     reportingMembers
+      .filter((m) => isActiveTeamStatus(m.Status))
       .map((m) => m.UserId)
       .filter((id) => id !== rootCoachId),
   );
