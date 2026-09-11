@@ -656,7 +656,7 @@ const NutritionCenterRegistration = ({ user, onBack, onSaved, initialCenter }) =
     setCenterToDelete(centerId);
     setAlertModal({
       isOpen: true,
-      title: 'âš ï¸ Delete Nutrition Centre',
+      title: 'Delete Nutrition Centre',
       message: 'Are you sure you want to unregister this nutrition centre? This action cannot be undone.',
       type: 'warning',
       confirmText: 'Yes, Delete',
