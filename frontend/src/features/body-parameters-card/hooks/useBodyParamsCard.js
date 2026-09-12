@@ -23,6 +23,7 @@ import { todayBusinessDate } from '../../../shared/utils/datetimeUtils.js';
 import {
   bcmWallClockToIso,
   formatBcmFormTime,
+  resolveBcmCardDisplayTimestamp,
   resolveBcmDisplayTimezone,
 } from '../domain/bcmCardDateTime.rules.js';
 
@@ -125,7 +126,9 @@ function applyExistingBcmCardToForm(prev, card, timezoneIana) {
     next.locationName = String(card.locationName).trim();
   }
   if (card.recordedDate) next.recordedDate = String(card.recordedDate).substring(0, 10);
-  if (card.createdAt) next.recordedTime = formatBcmFormTime(card.createdAt, tz);
+  if (card.createdAt || card.updatedAt) {
+    next.recordedTime = formatBcmFormTime(resolveBcmCardDisplayTimestamp(card), tz);
+  }
   ['age', 'heightCm', 'weightKg', 'bmi', 'fatPercent', 'bmr', 'visceralFat', 'bodyAge', 'chestCm', 'waistCm', 'hipCm']
     .forEach((key) => {
       if (card[key] != null && card[key] !== '') next[key] = str(card[key]);
@@ -194,7 +197,7 @@ function cardToFormState(card, timezoneIana) {
     recordedDate: card.recordedDate
       ? String(card.recordedDate).substring(0, 10)
       : todayBusinessDate(tz),
-    recordedTime: formatBcmFormTime(card.createdAt, tz),
+    recordedTime: formatBcmFormTime(resolveBcmCardDisplayTimestamp(card), tz),
     locationName: card.locationName ?? '',
     recoveredHealthIssues: issues,
   };
@@ -344,6 +347,7 @@ export function useBodyParamsCard({
       existingCard.locationName,
       existingCard.recordedDate,
       existingCard.createdAt,
+      existingCard.updatedAt,
       JSON.stringify(existingCard.recoveredHealthIssues || []),
     ].map((v) => (v == null ? '' : String(v))).join('\u0001');
   }, [existingCard]);
@@ -740,8 +744,11 @@ export function useBodyParamsCard({
         waistCm:      toOptionalNum(form.waistCm),
         hipCm:        toOptionalNum(form.hipCm),
         recordedDate: form.recordedDate,
-        // Form Date+Time (viewer TZ) for share preview; API createdAt replaces after save.
-        createdAt: bcmWallClockToIso(form.recordedDate, form.recordedTime, displayTimezone),
+        // Create → createdAt; Update → stamp updatedAt as now (share/list prefer updatedAt).
+        createdAt: isEditMode
+          ? (existingCard?.createdAt || bcmWallClockToIso(form.recordedDate, form.recordedTime, displayTimezone))
+          : bcmWallClockToIso(form.recordedDate, form.recordedTime, displayTimezone),
+        updatedAt: isEditMode ? new Date().toISOString() : null,
         locationName: locationNameToSave || '',
         creatorName,
         // Required for WhatsApp pre-capture — share sheet prefers preCapCard over API card
@@ -807,6 +814,7 @@ export function useBodyParamsCard({
         hipCm:        pickSavedField(cardCore.hipCm, form.hipCm),
         recordedDate: pickSavedField(cardCore.recordedDate, form.recordedDate),
         createdAt: pickSavedField(cardCore.createdAt, undefined),
+        updatedAt: pickSavedField(cardCore.updatedAt, undefined),
         // Prefer the Venue the user just entered so the share card updates immediately.
         locationName: locationNameToSave || pickSavedField(cardCore.locationName, locationNameToSave),
         // Prefer API when it has values; else keep form selection (empty API

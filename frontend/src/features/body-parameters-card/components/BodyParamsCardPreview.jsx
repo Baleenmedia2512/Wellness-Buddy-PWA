@@ -7,7 +7,7 @@
  * Rendered off-screen so html2canvas can export it as a JPEG.
  */
 import React from 'react';
-import { formatBcmShareCardDateTime } from '../domain/bcmCardDateTime.rules.js';
+import { formatBcmShareCardDateTime, resolveBcmCardDisplayTimestamp } from '../domain/bcmCardDateTime.rules.js';
 
 const G          = '#16a34a';
 const DARK_GREEN = '#166534';
@@ -313,8 +313,12 @@ const BodyParamsCardPreview = React.forwardRef(({ card, previousCard = null, tim
     return v !== null && v !== undefined && v !== '' ? (v + u) : '—';
   };
 
-  const fmtDate = (recordedDate, createdAt) =>
-    formatBcmShareCardDateTime(recordedDate, createdAt, timezoneIana);
+  const fmtDate = (recordedDate, cardRow) =>
+    formatBcmShareCardDateTime(
+      recordedDate,
+      resolveBcmCardDisplayTimestamp(cardRow),
+      timezoneIana,
+    );
 
   /* ── Status helpers ── */
   const bmiVal = parseFloat(card.bmi);
@@ -432,7 +436,7 @@ const BodyParamsCardPreview = React.forwardRef(({ card, previousCard = null, tim
         {/* ═══ PERSONAL STATS SECTION ═══ */}
         <div style={{ background: '#fff', padding: '18px 22px 12px' }}>
 
-          <InfoRow icon="📅" label="Date"     value={fmtDate(card.recordedDate, card.createdAt)} />
+          <InfoRow icon="📅" label="Date"     value={fmtDate(card.recordedDate, card)} />
           {card.locationName ? (
             <InfoRow icon="📍" label="Venue" value={card.locationName} />
           ) : null}

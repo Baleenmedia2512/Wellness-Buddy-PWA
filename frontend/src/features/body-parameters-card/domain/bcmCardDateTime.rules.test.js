@@ -6,6 +6,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   resolveBcmDisplayTimezone,
+  resolveBcmCardDisplayTimestamp,
   formatBcmShareCardDateTime,
   formatBcmListCardDateTime,
   formatBcmFormTime,
@@ -21,6 +22,28 @@ describe('resolveBcmDisplayTimezone', () => {
     assert.equal(
       resolveBcmDisplayTimezone({ timezoneIana: 'America/Los_Angeles' }),
       'America/Los_Angeles',
+    );
+  });
+});
+
+describe('resolveBcmCardDisplayTimestamp', () => {
+  it('prefers updatedAt when present', () => {
+    assert.equal(
+      resolveBcmCardDisplayTimestamp({
+        createdAt: '2026-09-12T08:00:00.000Z',
+        updatedAt: '2026-09-12T10:00:00.000Z',
+      }),
+      '2026-09-12T10:00:00.000Z',
+    );
+  });
+
+  it('falls back to createdAt when never updated', () => {
+    assert.equal(
+      resolveBcmCardDisplayTimestamp({
+        createdAt: '2026-09-12T08:00:00.000Z',
+        updatedAt: null,
+      }),
+      '2026-09-12T08:00:00.000Z',
     );
   });
 });
@@ -86,5 +109,17 @@ describe('formatBcmListCardDateTime', () => {
       'America/New_York',
     );
     assert.equal(usa, '12 Sep 2026 4:14 AM');
+  });
+
+  it('uses updatedAt when card was updated', () => {
+    const text = formatBcmListCardDateTime(
+      {
+        recordedDate: '2026-09-12',
+        createdAt: '2026-09-12T08:14:00.000Z',
+        updatedAt: '2026-09-12T11:00:00.000Z', // 16:30 IST
+      },
+      'Asia/Kolkata',
+    );
+    assert.equal(text, '12 Sep 2026 4:30 PM');
   });
 });

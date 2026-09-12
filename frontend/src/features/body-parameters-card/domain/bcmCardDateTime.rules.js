@@ -31,6 +31,17 @@ export function resolveBcmDisplayTimezone(userOrTimezone) {
 }
 
 /**
+ * Timestamp shown on BCM list / share / form.
+ * Prefer update time when the card was updated; otherwise create time.
+ * @param {{ updatedAt?: string|null, createdAt?: string|null }|null|undefined} card
+ * @returns {string|null}
+ */
+export function resolveBcmCardDisplayTimestamp(card) {
+  if (!card || typeof card !== 'object') return null;
+  return card.updatedAt || card.createdAt || null;
+}
+
+/**
  * Share-card Date row: `YYYY-MM-DD h:mm AM/PM` in viewer timezone.
  * @param {string|null|undefined} recordedDate
  * @param {string|null|undefined} createdAt
@@ -87,7 +98,7 @@ function formatBcm12HourTime(instant, timezoneIana) {
  */
 export function formatBcmListCardDateTime(card, timezoneIana = DEFAULT_BUSINESS_TIMEZONE) {
   const tz = resolveBusinessTimezone(timezoneIana);
-  const instant = parseUtcTimestamp(card?.createdAt);
+  const instant = parseUtcTimestamp(resolveBcmCardDisplayTimestamp(card));
   if (instant) {
     const parts = new Intl.DateTimeFormat('en-US', {
       timeZone: tz,

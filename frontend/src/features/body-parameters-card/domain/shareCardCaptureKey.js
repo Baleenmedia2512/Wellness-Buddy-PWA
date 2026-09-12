@@ -7,6 +7,7 @@ import {
   parseUtcTimestamp,
   resolveBusinessTimezone,
 } from '../../../shared/utils/datetimeUtils.js';
+import { resolveBcmCardDisplayTimestamp } from './bcmCardDateTime.rules.js';
 
 function normScalar(value) {
   if (value == null || value === '') return '';
@@ -15,7 +16,7 @@ function normScalar(value) {
   return String(value).trim();
 }
 
-/** Minute precision in display TZ so pre-cap ≈ API createdAt still reuses JPEG. */
+/** Minute precision in display TZ so pre-cap ≈ API timestamp still reuses JPEG. */
 function normCreatedAtMinute(value, timezoneIana = DEFAULT_BUSINESS_TIMEZONE) {
   const instant = parseUtcTimestamp(value);
   if (!instant) return '';
@@ -74,7 +75,7 @@ export function getShareCardCaptureKey(
   const tz = resolveBusinessTimezone(timezoneIana);
   return [
     normScalar(card.recordedDate),
-    normCreatedAtMinute(card.createdAt, tz),
+    normCreatedAtMinute(resolveBcmCardDisplayTimestamp(card), tz),
     normScalar(tz),
     normScalar(card.locationName),
     normScalar(card.name),
