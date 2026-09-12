@@ -974,8 +974,11 @@ function MemberCard({
         ...(draftBefore.weightKg !== undefined ? { beforeWeightKg: draftBefore.weightKg } : {}),
         // Always send goal on drafts — UI may show "Weight Loss" without writing state
         goalType: draftBefore.goalType || testimonial?.goalType || 'loss',
-        ...((draftBefore.durationText || testimonial?.durationText)
-          ? { durationText: draftBefore.durationText || testimonial.durationText }
+        ...((String(draftBefore.durationText ?? '').trim() || testimonial?.durationText)
+          ? {
+              durationText:
+                String(draftBefore.durationText ?? '').trim() || testimonial.durationText,
+            }
           : {}),
       } : {}),
       ...(draftAfter ? {
@@ -1537,10 +1540,28 @@ function MemberCard({
                       type="text"
                       autoFocus
                       placeholder="e.g. 3 months"
-                      defaultValue={draftBefore?.durationText ?? testimonial?.durationText ?? ''}
-                      onBlur={(e) => {
-                        const val = e.target.value.trim();
-                        if (val) setDraftBefore(prev => ({ ...(prev || { weightKg: testimonial?.beforeWeightKg, goalType: testimonial?.goalType }), durationText: val }));
+                      value={draftBefore?.durationText ?? testimonial?.durationText ?? ''}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setDraftBefore((prev) => ({
+                          ...(prev || {
+                            weightKg: testimonial?.beforeWeightKg,
+                            goalType: testimonial?.goalType,
+                          }),
+                          durationText: val,
+                        }));
+                      }}
+                      onBlur={() => {
+                        const val = String(draftBefore?.durationText ?? '').trim();
+                        if (val) {
+                          setDraftBefore((prev) => ({
+                            ...(prev || {
+                              weightKg: testimonial?.beforeWeightKg,
+                              goalType: testimonial?.goalType,
+                            }),
+                            durationText: val,
+                          }));
+                        }
                         toggleSlot('duration');
                       }}
                       onKeyDown={(e) => {

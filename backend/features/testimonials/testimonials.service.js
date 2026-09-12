@@ -1454,16 +1454,25 @@ export async function submitAllEdits(rawBody) {
     const finalAfterPath     = photoUpdates.afterImagePath    ?? existing.after_image_path;
     const finalHealthVideo   = slots.has('health')   ? payload.healthVideoPath   : (existing.health_video_path   ?? null);
     const finalBusinessVideo = slots.has('business') ? payload.businessVideoPath : (existing.business_video_path ?? null);
+    const resolvedDuration   = photoUpdates.durationText ?? existing.duration_text;
+    const emailChangedSlots  = [...payload.dirtySlots];
+    if (
+      photoUpdates.durationText !== undefined
+      && String(photoUpdates.durationText).trim() !== String(existing.duration_text ?? '').trim()
+      && !emailChangedSlots.includes('duration')
+    ) {
+      emailChangedSlots.push('duration');
+    }
 
     await sendUnifiedCoachEmail({
       coachEmail:             coachInfo.email,
       memberName:             userInfo.userName,
       otp,
-      changedSlots:           payload.dirtySlots,
+      changedSlots:           emailChangedSlots,
       goalType:               photoUpdates.goalType    ?? existing.goal_type,
       beforeWeight:           photoUpdates.beforeWeightKg ?? existing.before_weight_kg,
       afterWeight:            photoUpdates.afterWeightKg  ?? existing.after_weight_kg,
-      durationText:           photoUpdates.durationText   ?? existing.duration_text,
+      durationText:           resolvedDuration,
       beforeImagePath:        finalBeforePath,
       afterImagePath:         finalAfterPath,
       previousBeforeImagePath: isBeforeFirstUpload ? null : prevBeforeImagePath,

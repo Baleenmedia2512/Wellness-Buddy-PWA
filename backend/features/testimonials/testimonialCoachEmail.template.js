@@ -70,13 +70,17 @@ function buildMetricCard(label, value, width) {
     </td>`;
 }
 
-function buildStatsRow(beforeWeight, afterWeight, goalLabel) {
+function buildStatsRow(beforeWeight, afterWeight, goalLabel, durationText) {
+  const durationSafe = String(durationText ?? '').trim();
+  const showDuration = Boolean(durationSafe && durationSafe !== '—');
+  const width = showDuration ? '25%' : '33%';
   return `
     <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="margin:0 0 12px 0;">
       <tr>
-        ${buildMetricCard('Before', `${formatWeight(beforeWeight)} kg`, '33%')}
-        ${buildMetricCard('After', `${formatWeight(afterWeight)} kg`, '33%')}
-        ${buildMetricCard('Goal', escapeHtml(goalLabel), '33%')}
+        ${buildMetricCard('Before', `${formatWeight(beforeWeight)} kg`, width)}
+        ${buildMetricCard('After', `${formatWeight(afterWeight)} kg`, width)}
+        ${buildMetricCard('Goal', escapeHtml(goalLabel), width)}
+        ${showDuration ? buildMetricCard('Duration', escapeHtml(durationSafe), width) : ''}
       </tr>
     </table>`;
 }
@@ -205,7 +209,7 @@ export function buildTestimonialCoachEmailHtml({
                 Review the details below and share the OTP with <strong style="color:#111827;">${safeMember}</strong> to verify.
               </p>
 
-              ${buildStatsRow(beforeWeight, afterWeight, goalLabel)}
+              ${buildStatsRow(beforeWeight, afterWeight, goalLabel, durationText)}
               ${buildPhotosRow(beforeUrl, afterUrl)}
               ${buildHealthIssuesRow(recoveredHealthIssues)}
 
@@ -474,6 +478,7 @@ const SLOT_LABELS = {
   health:   'Health Results Video',
   business: 'Business Results Video',
   issues:   'Recovered health issues',
+  duration: 'Duration (days / months)',
 };
 
 /**
@@ -685,7 +690,7 @@ export function buildUnifiedSubmitEmailHtml({
   const businessVideoBlock = slots.has('business') ? buildVideoUpdatedRow('Business Results Video — Updated', businessVideoUrl, '#2563eb') : '';
 
   const statsBlock = (isComplete && beforeWeight && afterWeight)
-    ? buildStatsRow(beforeWeight, afterWeight, goalLabel)
+    ? buildStatsRow(beforeWeight, afterWeight, goalLabel, durationText)
     : '';
 
   return `<!DOCTYPE html>
