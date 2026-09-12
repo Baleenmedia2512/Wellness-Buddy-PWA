@@ -16,7 +16,10 @@ import { debugLog } from '../shared/utils/logger.js';
 import { getAppVersionHeaders } from '../shared/services/apiFetch.js';
 import CustomAlertModal from '../shared/components/CustomAlertModal';
 import PhoneContactActions from '../shared/components/PhoneContactActions.jsx';
-import { format } from 'date-fns';
+import {
+  formatBcmListCardDateTime,
+  resolveBcmDisplayTimezone,
+} from '../features/body-parameters-card/domain/bcmCardDateTime.rules.js';
 
 const PAGE_SIZE = 20;
 
@@ -44,6 +47,7 @@ const BodyParamsCardTile = memo(function BodyParamsCardTile({
   onEdit,
   onDelete,
   isDeleting = false,
+  timezoneIana,
 }) {
   return (
     <div
@@ -116,7 +120,7 @@ const BodyParamsCardTile = memo(function BodyParamsCardTile({
             <span>{card.gender || '—'}</span>
             <span>
               Date:{' '}
-              {card.recordedDate ? format(new Date(card.recordedDate), 'd MMM yyyy') : 'N/A'}
+              {formatBcmListCardDateTime(card, timezoneIana)}
             </span>
           </div>
           {card.locationName ? (
@@ -135,6 +139,7 @@ const BodyParamsCardTile = memo(function BodyParamsCardTile({
  * Shows body parameter cards for team members in a tile/grid layout
  */
 const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = null }) => {
+  const displayTimezone = resolveBcmDisplayTimezone(user);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState(null);
@@ -607,6 +612,7 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
                   onEdit={handleEditCard}
                   onDelete={handleDeleteCard}
                   isDeleting={deletingCardId === card.id}
+                  timezoneIana={displayTimezone}
                 />
               ))}
             </div>
@@ -712,6 +718,7 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
         shareUrl={bodyParamsShareData?.shareUrl}
         preCapCard={bodyParamsPreCapCard}
         previousCard={bodyParamsShareData?.previousCard ?? null}
+        user={user}
       />
 
       <CustomAlertModal

@@ -14,6 +14,7 @@ import {
 import { buildShareCaptionForImage } from '../domain/platform-store.rules.js';
 import { getShareCardCaptureKey } from '../domain/shareCardCaptureKey.js';
 import { mergeDisplayCard } from '../domain/mergeDisplayCard.js';
+import { resolveBcmDisplayTimezone } from '../domain/bcmCardDateTime.rules.js';
 import {
   setShareCapturePromise,
   setShareCaptureResult,
@@ -30,14 +31,16 @@ const waitForPaint = () => new Promise((r) => {
 const BodyParamsShareSheet = ({
   isOpen, onClose, card, preCapCard, previousCard = null,
   preparedImageUrl = null, preparedImageKey = null,
+  user = null, timezoneIana = null,
 }) => {
   const cardRef = useRef(null);
   const firedRef = useRef(false);
   const captureGenRef = useRef(0);
 
+  const displayTimezone = timezoneIana || resolveBcmDisplayTimezone(user);
   const displayCard = mergeDisplayCard(card, preCapCard);
   const captureKey = displayCard
-    ? getShareCardCaptureKey(displayCard, card ? previousCard : null)
+    ? getShareCardCaptureKey(displayCard, card ? previousCard : null, displayTimezone)
     : '';
 
   const doShare = useCallback(async (dataUrl) => {
@@ -127,7 +130,12 @@ const BodyParamsShareSheet = ({
 
   return (
     <div style={{ position: 'fixed', left: -9999, top: -9999, opacity: 0, pointerEvents: 'none' }}>
-      <BodyParamsCardPreview ref={cardRef} card={displayCard} previousCard={card ? previousCard : null} />
+      <BodyParamsCardPreview
+        ref={cardRef}
+        card={displayCard}
+        previousCard={card ? previousCard : null}
+        timezoneIana={displayTimezone}
+      />
     </div>
   );
 };

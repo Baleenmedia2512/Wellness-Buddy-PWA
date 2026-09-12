@@ -721,6 +721,8 @@ export function useBodyParamsCard({
         waistCm:      toOptionalNum(form.waistCm),
         hipCm:        toOptionalNum(form.hipCm),
         recordedDate: form.recordedDate,
+        // Capture clock time for share preview (API createdAt replaces this after save).
+        createdAt: new Date().toISOString(),
         locationName: locationNameToSave || '',
         creatorName,
         // Required for WhatsApp pre-capture — share sheet prefers preCapCard over API card
@@ -785,6 +787,7 @@ export function useBodyParamsCard({
         waistCm:      pickSavedField(cardCore.waistCm, form.waistCm),
         hipCm:        pickSavedField(cardCore.hipCm, form.hipCm),
         recordedDate: pickSavedField(cardCore.recordedDate, form.recordedDate),
+        createdAt: pickSavedField(cardCore.createdAt, undefined),
         // Prefer the Venue the user just entered so the share card updates immediately.
         locationName: locationNameToSave || pickSavedField(cardCore.locationName, locationNameToSave),
         // Prefer API when it has values; else keep form selection (empty API

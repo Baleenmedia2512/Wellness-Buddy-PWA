@@ -206,6 +206,7 @@ export async function handleCreateCard(body) {
         hipCm:            card.hip_cm,
         recordedDate:     card.recorded_date,
         locationName:     card.location_name,
+        createdAt:        card.created_at,
         recoveredHealthIssues: Array.isArray(card.recovered_health_issues)
           ? card.recovered_health_issues
           : (payload.recoveredHealthIssues || []),

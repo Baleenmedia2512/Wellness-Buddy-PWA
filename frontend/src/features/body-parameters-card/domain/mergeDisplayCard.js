@@ -19,6 +19,7 @@ export function mergeDisplayCard(card, preCapCard) {
       ...card,
       locationName: venue,
       creatorName: card.creatorName || preCapCard?.creatorName || '',
+      createdAt: card.createdAt || preCapCard?.createdAt || null,
       recoveredHealthIssues,
     };
   }
