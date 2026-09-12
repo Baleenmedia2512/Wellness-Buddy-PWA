@@ -468,13 +468,12 @@ function UnifiedOtpInline({
       <div className="flex items-center gap-2">
         <ShieldCheck className="h-4 w-4 text-amber-600 shrink-0" />
         <p className="text-sm font-semibold text-amber-800">
-          Enter OTP from your Sponsor {sponsorLabel}
+          Enter OTP sent to your sponsor {sponsorLabel} through Gmail
         </p>
       </div>
       <p className="text-xs text-amber-700 leading-relaxed">
-        {sponsorLabel === 'your sponsor' ? 'Your sponsor' : sponsorLabel}
-        {' '}received a single 4-digit OTP covering all your changes. Ask them to share it.
-        {' '}Valid for <span className="font-semibold">{hours} hours</span>.
+        Ask them to share the 4-digit code. The OTP is valid for{' '}
+        <span className="font-semibold">{hours} hours</span>.
       </p>
       {expired && (
         <p className="text-xs font-semibold text-red-600">
