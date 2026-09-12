@@ -8,6 +8,8 @@ import {
   resolveBcmDisplayTimezone,
   formatBcmShareCardDateTime,
   formatBcmListCardDateTime,
+  formatBcmFormTime,
+  bcmWallClockToIso,
 } from './bcmCardDateTime.rules.js';
 
 describe('resolveBcmDisplayTimezone', () => {
@@ -30,14 +32,14 @@ describe('formatBcmShareCardDateTime', () => {
   it('formats in Asia/Kolkata for Indian users', () => {
     assert.equal(
       formatBcmShareCardDateTime('2026-09-12', createdAt, 'Asia/Kolkata'),
-      '2026-09-12 13:44',
+      '2026-09-12 1:44 PM',
     );
   });
 
   it('formats in America/New_York for US users', () => {
     assert.equal(
       formatBcmShareCardDateTime('2026-09-12', createdAt, 'America/New_York'),
-      '2026-09-12 04:14',
+      '2026-09-12 4:14 AM',
     );
   });
 
@@ -49,22 +51,40 @@ describe('formatBcmShareCardDateTime', () => {
   });
 });
 
+describe('formatBcmFormTime', () => {
+  const createdAt = '2026-09-12T08:14:00.000Z';
+
+  it('returns HH:mm in viewer timezone', () => {
+    assert.equal(formatBcmFormTime(createdAt, 'Asia/Kolkata'), '13:44');
+    assert.equal(formatBcmFormTime(createdAt, 'America/New_York'), '04:14');
+  });
+});
+
+describe('bcmWallClockToIso', () => {
+  it('round-trips IST wall clock', () => {
+    const iso = bcmWallClockToIso('2026-09-12', '13:44', 'Asia/Kolkata');
+    assert.equal(formatBcmFormTime(iso, 'Asia/Kolkata'), '13:44');
+    assert.equal(
+      formatBcmShareCardDateTime(null, iso, 'Asia/Kolkata'),
+      '2026-09-12 1:44 PM',
+    );
+  });
+});
+
 describe('formatBcmListCardDateTime', () => {
   const createdAt = '2026-09-12T08:14:00.000Z';
 
-  it('includes time in viewer timezone', () => {
+  it('includes time in viewer timezone (12-hour)', () => {
     const india = formatBcmListCardDateTime(
       { recordedDate: '2026-09-12', createdAt },
       'Asia/Kolkata',
     );
-    assert.match(india, /12 Sep 2026/);
-    assert.match(india, /13:44/);
+    assert.equal(india, '12 Sep 2026 1:44 PM');
 
     const usa = formatBcmListCardDateTime(
       { recordedDate: '2026-09-12', createdAt },
       'America/New_York',
     );
-    assert.match(usa, /12 Sep 2026/);
-    assert.match(usa, /04:14/);
+    assert.equal(usa, '12 Sep 2026 4:14 AM');
   });
 });
