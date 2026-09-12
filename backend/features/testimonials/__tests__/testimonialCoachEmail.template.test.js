@@ -62,6 +62,7 @@ describe('testimonial coach email photos keep aspect ratio', () => {
     assert.equal(imgs.length, 3);
     imgs.forEach(assertPhotoKeepsAspectRatio);
     assert.match(html, /New Upload/);
+    assert.match(html, /Alex has lost 10 kg in 12 weeks/);
     assert.doesNotMatch(html, /\.photo-img\s*\{[^}]*height:\s*\d+px/);
   });
 });

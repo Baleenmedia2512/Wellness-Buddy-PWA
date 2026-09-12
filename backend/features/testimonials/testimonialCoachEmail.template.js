@@ -655,6 +655,17 @@ export function buildUnifiedSubmitEmailHtml({
   const slots      = new Set(changedSlots || []);
 
   const goalLabel  = (goalType === 'loss') ? 'Weight Loss' : 'Weight Gain';
+  const durationSafe = String(durationText ?? '').trim();
+  const canShowProgress = Boolean(
+    isComplete
+    && Number.isFinite(Number(beforeWeight))
+    && Number.isFinite(Number(afterWeight))
+    && durationSafe
+    && durationSafe !== '—',
+  );
+  const progressHtml = canShowProgress
+    ? buildProgressSentence(memberName, goalType, beforeWeight, afterWeight, durationSafe)
+    : '';
 
   const changedBlock = buildChangedSlotsBlock(changedSlots);
 
@@ -713,6 +724,7 @@ export function buildUnifiedSubmitEmailHtml({
           <tr>
             <td class="body-pad" style="padding:16px 20px;">
               <p style="margin:0 0 8px;color:#111827;font-size:16px;font-weight:700;font-family:Arial,Helvetica,sans-serif;line-height:1.3;">${safeMember} has submitted updates for approval</p>
+              ${progressHtml ? `<p style="margin:0 0 12px;color:#111827;font-size:14px;line-height:1.5;font-family:Arial,Helvetica,sans-serif;"><strong>${progressHtml}</strong></p>` : ''}
               <p style="margin:0 0 14px;color:#4b5563;font-size:13px;line-height:1.5;font-family:Arial,Helvetica,sans-serif;">
                 Review the changes below and share the OTP with <strong style="color:#111827;">${safeMember}</strong> if approved.
               </p>
@@ -789,20 +801,35 @@ export function buildUnifiedSubmitEmailText({
   const goalLabel   = (goalType === 'loss') ? 'Weight Loss' : 'Weight Gain';
   const issuesPlain = formatHealthIssuesPlain(recoveredHealthIssues);
   const slots       = new Set(changedSlots || []);
+  const durationSafe = String(durationText ?? '').trim();
+  const canShowProgress = Boolean(
+    isComplete
+    && Number.isFinite(Number(beforeWeight))
+    && Number.isFinite(Number(afterWeight))
+    && durationSafe
+    && durationSafe !== '—',
+  );
 
   const lines = [
     'Wellness Valley - Member Testimonial Updates',
     '',
     `${memberName} has submitted updates for approval.`,
+  ];
+
+  if (canShowProgress) {
+    lines.push(buildProgressSentencePlain(memberName, goalType, beforeWeight, afterWeight, durationSafe));
+  }
+
+  lines.push(
     '',
     'WHAT CHANGED:',
     ...(changedSlots || []).map((s) => `  - ${SLOT_LABELS[s] || s}`),
     '',
-  ];
+  );
 
   if (isComplete && beforeWeight && afterWeight) {
     lines.push(`Before: ${formatWeight(beforeWeight)} kg | After: ${formatWeight(afterWeight)} kg | Goal: ${goalLabel}`);
-    if (durationText) lines.push(`Duration: ${durationText}`);
+    if (durationSafe && durationSafe !== '—') lines.push(`Duration: ${durationSafe}`);
     lines.push('');
   }
 
