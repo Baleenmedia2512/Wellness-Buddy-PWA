@@ -373,6 +373,8 @@ const SmartFoodSearchModal = ({
     ? filterSuggestionsAgainstSelected(oftenWith, selectedItems)
     : filterSuggestionsAgainstSelected(latestFoods, selectedItems);
   const drySaladOftenRows = filterSuggestionsAgainstSelected(oftenWith, selectedItems);
+  // Selected items move to the top list; hide them from combo/catalog to avoid duplicates
+  const usualComboRows = filterSuggestionsAgainstSelected(usualCombo, selectedItems);
   const catalogRows = catalogMode && !hasTypedQuery
     ? filterSuggestionsAgainstSelected(masterItems, selectedItems)
     : masterItems;
@@ -470,16 +472,40 @@ const SmartFoodSearchModal = ({
             </div>
           )}
 
-          {showDrySaladSuggestions && usualCombo.length > 0 && (
+          {catalogMode && hasSelected && !showManualForm && (
             <div>
               <p className="text-[11px] text-green-700 font-medium px-0.5 mb-2">
                 Usual {drySaladSlot || "time"} combo selected — remove or add items, then save
               </p>
               <p className="text-sm font-bold text-gray-900 mb-2 px-0.5">
+                {usualCombo.length > 0
+                  ? drySaladUsualComboTitle(drySaladSlot)
+                  : "Your meal"}
+              </p>
+              <div className="space-y-1.5">
+                {renderFoodRows(selectedItems, "selected", true)}
+              </div>
+            </div>
+          )}
+
+          {showDrySaladSuggestions && usualComboRows.length > 0 && !hasSelected && (
+            <div>
+              <p className="text-sm font-bold text-gray-900 mb-2 px-0.5">
                 {drySaladUsualComboTitle(drySaladSlot)}
               </p>
               <div className="space-y-1.5">
-                {renderFoodRows(usualCombo, "usual", true)}
+                {renderFoodRows(usualComboRows, "usual", true)}
+              </div>
+            </div>
+          )}
+
+          {showDrySaladSuggestions && usualComboRows.length > 0 && hasSelected && (
+            <div>
+              <p className="text-sm font-bold text-gray-900 mb-2 px-0.5">
+                Add from usual combo
+              </p>
+              <div className="space-y-1.5">
+                {renderFoodRows(usualComboRows, "usual", true)}
               </div>
             </div>
           )}

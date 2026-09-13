@@ -105,5 +105,6 @@ async function _safeCard(card) {
     phoneNumber,
     userId:       card.user_id,
     createdAt:    card.created_at,
+    updatedAt:    card.updated_at ?? null,
   };
 }

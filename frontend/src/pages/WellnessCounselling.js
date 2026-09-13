@@ -682,6 +682,7 @@ const WellnessCounselling = ({ user, onBack, tabVisitKey = 0, refreshKey = 0 }) 
         shareUrl={bodyParamsShareData?.shareUrl}
         preCapCard={bodyParamsPreCapCard}
         previousCard={bodyParamsShareData?.previousCard ?? null}
+        user={user}
       />
     </div>
   );
