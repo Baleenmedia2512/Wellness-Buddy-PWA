@@ -19,19 +19,31 @@ describe('foodSuggestionRank', () => {
     expect(out.map((x) => x.name)).toEqual(['Chutney', 'Omelette']);
   });
 
-  test('isHerbalifeProductSuggestionName hides catalog supplements from regular food', () => {
+  test('isHerbalifeProductSuggestionName hides water and non-meal products from regular food', () => {
     expect(isHerbalifeProductSuggestionName('*Herbalifeline (Cardiovascular Health)')).toBe(true);
     expect(isHerbalifeProductSuggestionName('Herbal Multivitamin Tablet')).toBe(true);
     expect(isHerbalifeProductSuggestionName('Afresh')).toBe(true);
     expect(isHerbalifeProductSuggestionName('Fish Oil')).toBe(true);
+    expect(isHerbalifeProductSuggestionName('Plain Water')).toBe(true);
+    expect(isHerbalifeProductSuggestionName('Vritilife Triphala (Digestive Health)')).toBe(true);
+    expect(isHerbalifeProductSuggestionName('*Vritilife Brain Health')).toBe(true);
+    expect(isHerbalifeProductSuggestionName('HN - Skin Booster - Orange')).toBe(true);
+    expect(isHerbalifeProductSuggestionName('Joint Support (Bone & Joint Health)')).toBe(true);
+    expect(isHerbalifeProductSuggestionName('Dinoshake - Chocolicious')).toBe(true);
     expect(isHerbalifeProductSuggestionName('Dosa')).toBe(false);
+    expect(isHerbalifeProductSuggestionName('Watermelon')).toBe(false);
     expect(isHerbalifeProductSuggestionName('Parotta')).toBe(false);
   });
 
-  test('filterRegularFoodSearchItems removes catalog items from Latest list', () => {
+  test('filterRegularFoodSearchItems removes water and supplements from Latest list', () => {
     const filtered = filterRegularFoodSearchItems([
       { name: '*Herbalifeline (Cardiovascular Health)' },
       { name: 'Herbal Multivitamin Tablet' },
+      { name: 'Plain Water' },
+      { name: 'Vritilife Triphala (Digestive Health)' },
+      { name: 'HN - Skin Booster' },
+      { name: 'Joint Support (Bone & Joint Health)' },
+      { name: 'Dinoshake - Chocolicious' },
       { name: 'Mutton Biryani (Hyderabadi)' },
       { name: 'Dosa' },
     ]);
