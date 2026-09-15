@@ -70,6 +70,11 @@ async function mockCompleteProfile(page) {
             bodyFat: 20,
             profileImage: 'https://example.com/profile.jpg',
             physicalActivityLevel: 'moderate',
+            transformationPhotos: {
+              left: 'https://example.com/left.jpg',
+              front: 'https://example.com/front.jpg',
+              right: 'https://example.com/right.jpg',
+            },
           },
         }),
       });
@@ -1550,6 +1555,12 @@ test.describe('Post-login flows', () => {
 
                   physicalActivityLevel:
                     'moderate',
+
+                  transformationPhotos: {
+                    left: 'https://example.com/left.jpg',
+                    front: 'https://example.com/front.jpg',
+                    right: 'https://example.com/right.jpg',
+                  },
                 },
               }),
             });
@@ -1794,34 +1805,9 @@ test.describe('Post-login flows', () => {
 
       await expect(
         page.getByText(
-          'Programs',
+          'Programmes',
           {
             exact: true,
-          }
-        )
-      ).toBeVisible();
-
-
-      // ----------------------------------------------------------
-      // Home actions.
-      // ----------------------------------------------------------
-
-      await expect(
-        page.getByRole(
-          'button',
-          {
-            name:
-              'Open camera',
-          }
-        )
-      ).toBeVisible();
-
-      await expect(
-        page.getByRole(
-          'button',
-          {
-            name:
-              'Choose from gallery',
           }
         )
       ).toBeVisible();
