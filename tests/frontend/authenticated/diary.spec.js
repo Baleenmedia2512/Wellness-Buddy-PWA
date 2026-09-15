@@ -490,22 +490,46 @@ test.describe('Diary / Food Log Module', () => {
   });
 
   // ── DIARY-011 ─────────────────────────────────────────────────────────────
-  test('DIARY-011: Single Food Item Delete & Undo Flow restores item on Undo', async ({ page }) => {
+  test('DIARY-011: Single Food Item Delete & Undo Flow (delete item 1, then delete & undo item 2 in same log)', async ({ page }) => {
+    // Use multi-food entry so we can test delete followed by delete & undo in the same log
+    currentEntries = JSON.parse(JSON.stringify(MOCK_DIARY_ENTRIES_MULTI));
+
     await diaryPage.gotoDiary();
-    await diaryPage.openMealByTitle('Chicken and Beef Noodles');
+    await diaryPage.openMealByTitle('Noodles, Boiled Egg, Steamed Broccoli');
 
-    // Click red trash icon on food item
+    const noodlesRow = diaryPage.getFoodItemRow('Chicken and Beef Noodles');
+    const eggRow = diaryPage.getFoodItemRow('Boiled Egg');
+    const broccoliRow = diaryPage.getFoodItemRow('Steamed Broccoli');
+
+    await expect(noodlesRow).toBeVisible();
+    await expect(eggRow).toBeVisible();
+    await expect(broccoliRow).toBeVisible();
+
+    // 1. Delete "Chicken and Beef Noodles" and let the 5s undo countdown expire to finalize deletion
     await diaryPage.clickDeleteFoodItem('Chicken and Beef Noodles');
+    await expect(diaryPage.undoDeleteBtn).toBeVisible({ timeout: 10000 });
+    expect(updateNutritionCallCount).toBeGreaterThanOrEqual(1);
 
-    // Verify 5s countdown with Undo button appears
-    await expect(diaryPage.undoDeleteBtn).toBeVisible({ timeout: 5000 });
+    // Wait for 5s undo countdown to expire to finalize permanent deletion of item 1
+    await page.waitForTimeout(5500);
+    await expect(noodlesRow).not.toBeVisible({ timeout: 5000 });
 
-    // Click Undo before expiration
+    // 2. Delete "Boiled Egg" in the same log and perform Undo operation on it
+    await diaryPage.clickDeleteFoodItem('Boiled Egg');
+    await expect(diaryPage.undoDeleteBtn).toBeVisible({ timeout: 10000 });
+    expect(updateNutritionCallCount).toBeGreaterThanOrEqual(2);
+
+    // Perform Undo operation before expiration
     await diaryPage.clickUndoDelete();
 
-    // Verify item remains visible and was not permanently deleted
-    const itemRow = diaryPage.getFoodItemRow('Chicken and Beef Noodles');
-    await expect(itemRow).toBeVisible();
+    // Verify Undo button disappears and "Boiled Egg" is restored
+    await expect(diaryPage.undoDeleteBtn).not.toBeVisible({ timeout: 5000 });
+    await expect(eggRow).toBeVisible();
+
+    // Final assertion: "Chicken and Beef Noodles" remains deleted, while "Boiled Egg" and "Steamed Broccoli" are visible
+    await expect(noodlesRow).not.toBeVisible();
+    await expect(eggRow).toBeVisible();
+    await expect(broccoliRow).toBeVisible();
   });
 
   // ── DIARY-012 ─────────────────────────────────────────────────────────────
