@@ -597,7 +597,10 @@ function MemberCard({
   }, [testimonial?.healthVideoUrl, testimonial?.businessVideoUrl]);
 
   const [expandedPhoto, setExpandedPhoto] = useState(null);
-  const hasAfter = Boolean(testimonial?.afterImageUrl)
+  // Seeded Left/Before clone still has afterImageUrl — show that image to coach/upline.
+  // hasAfter = "real" After (completeness / weight-diff / OTP), not merely a visible clone.
+  const hasAfterImage = Boolean(testimonial?.afterImageUrl);
+  const hasAfter = hasAfterImage
     && (
       testimonial?.status !== 'incomplete'
       || afterWeightDiffers(testimonial?.beforeWeightKg, testimonial?.afterWeightKg)
@@ -682,7 +685,7 @@ function MemberCard({
     || withTestimonialMediaCacheBust(testimonial?.beforeImageUrl, mediaVersion);
   const afterRaw = draftAfter?.previewUrl
     || withTestimonialMediaCacheBust(
-      hasAfter || editable
+      hasAfterImage || editable
         ? (testimonial?.afterImageUrl || (editable ? testimonial?.beforeImageUrl : null))
         : null,
       mediaVersion,
@@ -1188,7 +1191,7 @@ function MemberCard({
       <div className="px-4 pb-4 space-y-3">
 
       {/* Photos — always show before/after slots when editable (Mine) */}
-      {(editable || (testimonial && (testimonial.beforeImageUrl || (hasAfter && testimonial.afterImageUrl)))) && (
+      {(editable || (testimonial && (testimonial.beforeImageUrl || testimonial.afterImageUrl))) && (
         <div className="flex gap-2">
           <div className="flex-1 text-center">
             <div className="relative">
