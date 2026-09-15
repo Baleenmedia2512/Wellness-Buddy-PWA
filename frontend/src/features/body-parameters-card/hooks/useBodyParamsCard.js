@@ -26,6 +26,7 @@ import {
   resolveBcmCardDisplayTimestamp,
   resolveBcmDisplayTimezone,
 } from '../domain/bcmCardDateTime.rules.js';
+import useTransformationPhotos from '../../user/hooks/useTransformationPhotos.js';
 
 /**
  * Normalise any phone string to a 10-digit Indian national number for prefix
@@ -248,6 +249,7 @@ export function useBodyParamsCard({
   const [bmiUserEdited, setBmiUserEdited] = useState(false);
   const [bmrUserEdited, setBmrUserEdited] = useState(false);
   const [coachUserId, setCoachUserId] = useState(() => user?.id || null);
+  const transformationPhotos = useTransformationPhotos();
 
   const markDirty = useCallback(() => {
     setHasUnsavedChanges(true);
@@ -717,7 +719,8 @@ export function useBodyParamsCard({
     setBmiUserEdited(false);
     setBmrUserEdited(false);
     clearDirty();
-  }, [clearDirty, transformationPhotos.loadFromProfile]);
+    transformationPhotos.loadFromProfile(null);
+  }, [clearDirty, displayTimezone, transformationPhotos.loadFromProfile]);
 
   const cleanPhone = (s) => s.trim().replace(/[\s\-()]/g, '');
 
