@@ -30,6 +30,11 @@ describe('foodSuggestionRank', () => {
     expect(isHerbalifeProductSuggestionName('HN - Skin Booster - Orange')).toBe(true);
     expect(isHerbalifeProductSuggestionName('Joint Support (Bone & Joint Health)')).toBe(true);
     expect(isHerbalifeProductSuggestionName('Dinoshake - Chocolicious')).toBe(true);
+    expect(isHerbalifeProductSuggestionName('Herbal Tea Concentrate')).toBe(true);
+    expect(isHerbalifeProductSuggestionName('Liftoff Energy')).toBe(true);
+    expect(isHerbalifeProductSuggestionName('Lift Off')).toBe(true);
+    expect(isHerbalifeProductSuggestionName('*H24 Hydrate')).toBe(true);
+    expect(isHerbalifeProductSuggestionName('H24 Hydrate')).toBe(true);
     expect(isHerbalifeProductSuggestionName('Dosa')).toBe(false);
     expect(isHerbalifeProductSuggestionName('Watermelon')).toBe(false);
     expect(isHerbalifeProductSuggestionName('Parotta')).toBe(false);

@@ -55,6 +55,11 @@ describe('foodPairs.rules', () => {
     assert.equal(isHerbalifeProductSuggestionName('HN - Skin Booster - Orange'), true);
     assert.equal(isHerbalifeProductSuggestionName('Joint Support (Bone & Joint Health)'), true);
     assert.equal(isHerbalifeProductSuggestionName('Dinoshake - Chocolicious'), true);
+    assert.equal(isHerbalifeProductSuggestionName('Herbal Tea Concentrate'), true);
+    assert.equal(isHerbalifeProductSuggestionName('Liftoff Energy'), true);
+    assert.equal(isHerbalifeProductSuggestionName('Lift Off'), true);
+    assert.equal(isHerbalifeProductSuggestionName('*H24 Hydrate'), true);
+    assert.equal(isHerbalifeProductSuggestionName('H24 Hydrate'), true);
     assert.equal(isHerbalifeProductSuggestionName('Dosa'), false);
     assert.equal(isHerbalifeProductSuggestionName('Watermelon'), false);
     assert.equal(isHerbalifeProductSuggestionName('Mutton Biryani (Hyderabadi)'), false);

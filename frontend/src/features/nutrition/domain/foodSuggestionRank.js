@@ -34,6 +34,9 @@ const REGULAR_FOOD_EXCLUDED_NAME_PATTERNS = [
   /\bhn\s*-/,
   /skin\s*booster/,
   /\bjoint\s*support\b/,
+  /\bherbal\b/,
+  /\blift\s*off\b/,
+  /\bh\s*24\b/,
 ];
 
 function normalizeSuggestionNameForCatalogCheck(name) {
