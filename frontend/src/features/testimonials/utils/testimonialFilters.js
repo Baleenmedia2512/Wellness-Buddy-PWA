@@ -108,6 +108,21 @@ export function countRowsByTeamScope(mineRow, directRows, fullRows) {
   };
 }
 
+/**
+ * Direct / Full tab badges always show total members in that scope.
+ * Upload filters (Partial / Not Uploaded / Fully Uploaded) only change the list —
+ * never the Mine | Direct | Full badge numbers.
+ *
+ * @param {string} [_uploadFilter] unused — kept for call-site clarity
+ * @param {object} [_uploadCounts] unused — chip counts stay on the filter chips
+ * @param {number} unfilteredTotal total members in the scope (no upload filter)
+ * @returns {number}
+ */
+export function resolveTeamScopeCount(_uploadFilter, _uploadCounts, unfilteredTotal) {
+  const total = Number(unfilteredTotal);
+  return Number.isFinite(total) && total >= 0 ? total : 0;
+}
+
 /** Toggle a filter chip: clicking the active chip resets to All. */
 export function toggleStatusFilter(current, next) {
   return current === next ? UPLOAD_FILTERS.ALL : next;

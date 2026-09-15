@@ -19,6 +19,13 @@ import { buildOnboardingShareUrl } from '../domain/platform-store.rules.js';
 import { debugLog } from '../../../shared/utils/logger.js';
 import { CapacitorHttp } from '@capacitor/core';
 import { getAppVersionHeaders } from '../../../shared/services/apiFetch.js';
+import { todayBusinessDate } from '../../../shared/utils/datetimeUtils.js';
+import {
+  bcmWallClockToIso,
+  formatBcmFormTime,
+  resolveBcmCardDisplayTimestamp,
+  resolveBcmDisplayTimezone,
+} from '../domain/bcmCardDateTime.rules.js';
 
 /**
  * Normalise any phone string to a 10-digit Indian national number for prefix
@@ -70,6 +77,11 @@ function toPhoneSuggestion(m) {
     fatPercent:  m.fatPercent != null ? m.fatPercent : null,
     bmi:         m.bmi != null ? m.bmi : null,
     weightKg:    m.weightKg != null ? m.weightKg : null,
+    dietType:    m.dietType ?? null,
+    physicalActivityLevel: m.physicalActivityLevel ?? null,
+    recoveredHealthIssues: Array.isArray(m.recoveredHealthIssues)
+      ? m.recoveredHealthIssues
+      : undefined,
   };
 }
 
@@ -95,6 +107,12 @@ function applyMemberPrefillToForm(prev, member) {
   copy('fatPercent');
   copy('bmi');
   copy('weightKg');
+  if (member.dietType && String(member.dietType).trim()) {
+    next.dietType = String(member.dietType).trim();
+  }
+  if (member.physicalActivityLevel && String(member.physicalActivityLevel).trim()) {
+    next.physicalActivityLevel = String(member.physicalActivityLevel).trim();
+  }
   if (Array.isArray(member.recoveredHealthIssues) && member.recoveredHealthIssues.length) {
     next.recoveredHealthIssues = member.recoveredHealthIssues.filter(Boolean);
   }
@@ -105,9 +123,10 @@ function applyMemberPrefillToForm(prev, member) {
  * Restore a previous BCM card onto the form (same phone, not yet activated).
  * Keeps today's date unless the stored card has one; always keeps the typed phone.
  */
-function applyExistingBcmCardToForm(prev, card) {
+function applyExistingBcmCardToForm(prev, card, timezoneIana) {
   if (!card || typeof card !== 'object') return prev;
   const str = (v) => (v != null && v !== '' ? String(v) : '');
+  const tz = resolveBcmDisplayTimezone(timezoneIana);
   const next = { ...prev };
   if (card.phoneNumber) next.phoneNumber = String(card.phoneNumber);
   if (card.name && String(card.name).trim()) next.name = normalizeName(card.name);
@@ -118,12 +137,22 @@ function applyExistingBcmCardToForm(prev, card) {
     next.locationName = String(card.locationName).trim();
   }
   if (card.recordedDate) next.recordedDate = String(card.recordedDate).substring(0, 10);
+  if (card.createdAt || card.updatedAt) {
+    next.recordedTime = formatBcmFormTime(resolveBcmCardDisplayTimestamp(card), tz);
+  }
   ['age', 'heightCm', 'weightKg', 'bmi', 'fatPercent', 'bmr', 'visceralFat', 'bodyAge', 'chestCm', 'waistCm', 'hipCm']
     .forEach((key) => {
       if (card[key] != null && card[key] !== '') next[key] = str(card[key]);
     });
   if (Array.isArray(card.recoveredHealthIssues) && card.recoveredHealthIssues.length) {
     next.recoveredHealthIssues = card.recoveredHealthIssues.filter(Boolean);
+  }
+  // Profile-only fields (not on card table) — keep when API echoes them after save.
+  if (card.dietType && String(card.dietType).trim()) {
+    next.dietType = String(card.dietType).trim();
+  }
+  if (card.physicalActivityLevel && String(card.physicalActivityLevel).trim()) {
+    next.physicalActivityLevel = String(card.physicalActivityLevel).trim();
   }
   return next;
 }
@@ -138,27 +167,33 @@ function mergePrefillFields(member, prefill) {
   return merged;
 }
 
-const EMPTY_FORM = {
-  name:         '',  phoneNumber:  '',
-  age:          '',
-  gender:       '',
-  heightCm:     '',
-  weightKg:     '',
-  bmi:          '',
-  fatPercent:   '',
-  bmr:          '',
-  visceralFat:  '',
-  bodyAge:      '',
-  chestCm:      '',
-  waistCm:      '',
-  hipCm:        '',
-  recordedDate: new Date().toISOString().substring(0, 10),
-  locationName: '',
-  recoveredHealthIssues: [],
-};
+function buildEmptyForm(timezoneIana) {
+  const tz = resolveBcmDisplayTimezone(timezoneIana);
+  return {
+    name:         '',
+    phoneNumber:  '',
+    age:          '',
+    gender:       '',
+    heightCm:     '',
+    weightKg:     '',
+    bmi:          '',
+    fatPercent:   '',
+    bmr:          '',
+    visceralFat:  '',
+    bodyAge:      '',
+    chestCm:      '',
+    waistCm:      '',
+    hipCm:        '',
+    recordedDate: todayBusinessDate(tz),
+    recordedTime: formatBcmFormTime(null, tz),
+    locationName: '',
+    recoveredHealthIssues: [],
+  };
+}
 
-function cardToFormState(card) {
-  if (!card?.id) return { ...EMPTY_FORM };
+function cardToFormState(card, timezoneIana) {
+  const tz = resolveBcmDisplayTimezone(timezoneIana);
+  if (!card?.id) return buildEmptyForm(tz);
   const issues = Array.isArray(card.recoveredHealthIssues)
     ? card.recoveredHealthIssues.filter(Boolean)
     : [];
@@ -177,9 +212,16 @@ function cardToFormState(card) {
     chestCm:      card.chestCm      != null ? String(card.chestCm)     : '',
     waistCm:      card.waistCm      != null ? String(card.waistCm)     : '',
     hipCm:        card.hipCm        != null ? String(card.hipCm)       : '',
-    recordedDate: card.recordedDate ?? new Date().toISOString().substring(0, 10),
+    recordedDate: card.recordedDate
+      ? String(card.recordedDate).substring(0, 10)
+      : todayBusinessDate(tz),
+    recordedTime: formatBcmFormTime(resolveBcmCardDisplayTimestamp(card), tz),
     locationName: card.locationName ?? '',
     recoveredHealthIssues: issues,
+    dietType:     card.dietType ? String(card.dietType).trim() : '',
+    physicalActivityLevel: card.physicalActivityLevel
+      ? String(card.physicalActivityLevel).trim()
+      : '',
   };
 }
 
@@ -191,18 +233,29 @@ export function useBodyParamsCard({
   externalVenue = null,
 } = {}) {
   const isEditMode = Boolean(existingCard?.id);
+  const displayTimezone = resolveBcmDisplayTimezone(user);
 
-  const [form, setForm] = useState(() => cardToFormState(existingCard));
+  const [form, setForm] = useState(() => cardToFormState(existingCard, displayTimezone));
   const [isSaving, setIsSaving]           = useState(false);
   const [error, setError]                 = useState('');
   const [phoneFieldError, setPhoneFieldError] = useState('');
   const [phoneStatusNonce, setPhoneStatusNonce] = useState(0);
   const [savedCard, setSavedCard]         = useState(null);
   const [shareUrl, setShareUrl]           = useState('');
+  /** True after any user-driven field change since last open/reset/save. */
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
   const [bmiUserEdited, setBmiUserEdited] = useState(false);
   const [bmrUserEdited, setBmrUserEdited] = useState(false);
   const [coachUserId, setCoachUserId] = useState(() => user?.id || null);
+
+  const markDirty = useCallback(() => {
+    setHasUnsavedChanges(true);
+  }, []);
+
+  const clearDirty = useCallback(() => {
+    setHasUnsavedChanges(false);
+  }, []);
 
   // ── Phone autocomplete state ──────────────────────────────────────────────
   const [phoneSuggestions, setPhoneSuggestions] = useState([]);
@@ -213,6 +266,8 @@ export function useBodyParamsCard({
   const phoneStatusRequestIdRef = useRef(0);
   /** Avoid re-applying the same BCM prefill on every status poll for one phone. */
   const lastBcmPrefillPhoneRef = useRef('');
+  /** Apply Profile diet/PAL once per open+member (Profile is SoT; avoid clobbering edits). */
+  const profileFieldsPrefillKeyRef = useRef('');
   // Stores the last prefix typed while coachUserId was still null, so we can
   // fire the search as soon as the coach ID resolves.
   const pendingPhonePrefixRef = useRef(null);
@@ -272,7 +327,7 @@ export function useBodyParamsCard({
           ) {
             lastBcmPrefillPhoneRef.current = clean;
             setForm((prev) => {
-              const next = applyExistingBcmCardToForm(prev, status.existingCard);
+              const next = applyExistingBcmCardToForm(prev, status.existingCard, displayTimezone);
               venueRef.current = String(next.locationName || '').trim();
               return next;
             });
@@ -294,7 +349,7 @@ export function useBodyParamsCard({
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [form.phoneNumber, coachUserId, isOpen, phoneStatusNonce]);
+  }, [form.phoneNumber, coachUserId, isOpen, phoneStatusNonce, displayTimezone]);
 
   const recheckPhoneStatus = useCallback(() => {
     setPhoneStatusNonce((n) => n + 1);
@@ -323,14 +378,18 @@ export function useBodyParamsCard({
       existingCard.hipCm,
       existingCard.locationName,
       existingCard.recordedDate,
+      existingCard.createdAt,
+      existingCard.updatedAt,
       JSON.stringify(existingCard.recoveredHealthIssues || []),
+      existingCard.dietType || '',
+      existingCard.physicalActivityLevel || '',
     ].map((v) => (v == null ? '' : String(v))).join('\u0001');
   }, [existingCard]);
 
   // Create: prefill Venue from header. Edit: use the card's saved Venue.
   useLayoutEffect(() => {
     if (!isOpen) return;
-    const next = cardToFormState(existingCard);
+    const next = cardToFormState(existingCard, displayTimezone);
     if (!isEditMode) {
       const fromHeader = externalVenue != null ? String(externalVenue).trim() : '';
       if (fromHeader) next.locationName = fromHeader;
@@ -341,9 +400,12 @@ export function useBodyParamsCard({
     setBmrUserEdited(false);
     setError('');
     setPhoneFieldError('');
+    setHasUnsavedChanges(false);
     lastBcmPrefillPhoneRef.current = '';
+    profileFieldsPrefillKeyRef.current = '';
+    transformationPhotos.loadFromProfile(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, existingCardSnapshot, isEditMode, externalVenue]);
+  }, [isOpen, existingCardSnapshot, isEditMode, displayTimezone]);
 
   // Create flow: keep form Venue in sync with the header Venue immediately.
   useLayoutEffect(() => {
@@ -471,10 +533,11 @@ export function useBodyParamsCard({
       venueRef.current = String(nextValue || '').trim();
     }
     setForm((prev) => ({ ...prev, [field]: nextValue }));
+    markDirty();
     if (field === 'weightKg' || field === 'fatPercent') {
       setBmrUserEdited(false);
     }
-  }, []);
+  }, [markDirty]);
 
   /**
    * Called when the phone input changes. Updates form + triggers debounced prefix search.
@@ -482,6 +545,7 @@ export function useBodyParamsCard({
    */
   const setPhoneField = useCallback((value) => {
     setForm((prev) => ({ ...prev, phoneNumber: value }));
+    markDirty();
     if (isActivatedPhoneErrorMessage(error)) setError('');
 
     const digits = value.replace(/\D/g, '');
@@ -539,7 +603,7 @@ export function useBodyParamsCard({
         }
       }, 150);
     }
-  }, [coachUserId, allTeamMembers, error]);
+  }, [coachUserId, allTeamMembers, error, markDirty]);
 
   /**
    * Called when the user selects a suggestion from the phone autocomplete.
@@ -547,6 +611,7 @@ export function useBodyParamsCard({
    */
   const fillFromMember = useCallback(async (member) => {
     if (!member) return;
+    markDirty();
 
     if (member.phoneNumber && coachUserId) {
       try {
@@ -588,6 +653,9 @@ export function useBodyParamsCard({
           raw: prefill,
         });
         setForm((prev) => applyMemberPrefillToForm(prev, enriched));
+        if (prefill?.transformationPhotos) {
+          transformationPhotos.loadFromProfile(prefill.transformationPhotos);
+        }
       } catch (err) {
         const msg = err?.message || '';
         if (isActivatedPhoneErrorMessage(msg)) {
@@ -610,7 +678,7 @@ export function useBodyParamsCard({
       setBmrUserEdited(false);
     }
     debugLog('✅ [BodyParamsCard] pre-filled from member', enriched);
-  }, [coachUserId]);
+  }, [coachUserId, markDirty, transformationPhotos.loadFromProfile]);
 
   fillFromMemberRef.current = fillFromMember;
 
@@ -618,29 +686,38 @@ export function useBodyParamsCard({
   const setWeightManually = useCallback((value) => {
     setBmrUserEdited(false);
     setForm((prev) => ({ ...prev, weightKg: value }));
-  }, []);
+    markDirty();
+  }, [markDirty]);
 
   /** Called when user manually types in the BMI field. Disables auto-fill for BMI. */
   const setBmiManually = useCallback((value) => {
     setBmiUserEdited(true);
     setForm((prev) => ({ ...prev, bmi: value }));
-  }, []);
+    markDirty();
+  }, [markDirty]);
 
   /** Called when user manually types in the BMR field. Disables auto-fill for BMR. */
   const setBmrManually = useCallback((value) => {
     setBmrUserEdited(true);
     setForm((prev) => ({ ...prev, bmr: value }));
-  }, []);
+    markDirty();
+  }, [markDirty]);
+
+  const setTransformationSlotFromFile = useCallback(async (slot, file) => {
+    await transformationPhotos.setSlotFromFile(slot, file);
+    markDirty();
+  }, [transformationPhotos.setSlotFromFile, markDirty]);
 
   const resetForm = useCallback(() => {
-    setForm(EMPTY_FORM);
+    setForm(buildEmptyForm(displayTimezone));
     setError('');
     setPhoneFieldError('');
     setSavedCard(null);
     setShareUrl('');
     setBmiUserEdited(false);
     setBmrUserEdited(false);
-  }, []);
+    clearDirty();
+  }, [clearDirty, transformationPhotos.loadFromProfile]);
 
   const cleanPhone = (s) => s.trim().replace(/[\s\-()]/g, '');
 
@@ -717,16 +794,24 @@ export function useBodyParamsCard({
         waistCm:      toOptionalNum(form.waistCm),
         hipCm:        toOptionalNum(form.hipCm),
         recordedDate: form.recordedDate,
+        // Create → createdAt; Update → stamp updatedAt as now (share/list prefer updatedAt).
+        createdAt: isEditMode
+          ? (existingCard?.createdAt || bcmWallClockToIso(form.recordedDate, form.recordedTime, displayTimezone))
+          : bcmWallClockToIso(form.recordedDate, form.recordedTime, displayTimezone),
+        updatedAt: isEditMode ? new Date().toISOString() : null,
         locationName: locationNameToSave || '',
         creatorName,
         // Required for WhatsApp pre-capture — share sheet prefers preCapCard over API card
         recoveredHealthIssues: Array.isArray(form.recoveredHealthIssues)
           ? form.recoveredHealthIssues
           : [],
+        dietType: form.dietType || undefined,
+        physicalActivityLevel: form.physicalActivityLevel || undefined,
       });
     }
 
     try {
+      const photoExtras = transformationPhotos.payloadExtras();
       const payload = {
         createdBy:   coachUserId,
         userId:      targetUserId,
@@ -750,6 +835,11 @@ export function useBodyParamsCard({
         recoveredHealthIssues: Array.isArray(form.recoveredHealthIssues)
           ? form.recoveredHealthIssues
           : [],
+        dietType: form.dietType || undefined,
+        physicalActivityLevel: form.physicalActivityLevel || undefined,
+        ...(photoExtras.transformationPhotos
+          ? { transformationPhotos: photoExtras.transformationPhotos }
+          : {}),
       };
 
       debugLog('📍 [BodyParamsCard] saving Venue:', locationNameToSave);
@@ -781,6 +871,8 @@ export function useBodyParamsCard({
         waistCm:      pickSavedField(cardCore.waistCm, form.waistCm),
         hipCm:        pickSavedField(cardCore.hipCm, form.hipCm),
         recordedDate: pickSavedField(cardCore.recordedDate, form.recordedDate),
+        createdAt: pickSavedField(cardCore.createdAt, undefined),
+        updatedAt: pickSavedField(cardCore.updatedAt, undefined),
         // Prefer the Venue the user just entered so the share card updates immediately.
         locationName: locationNameToSave || pickSavedField(cardCore.locationName, locationNameToSave),
         // Prefer API when it has values; else keep form selection (empty API
@@ -794,14 +886,18 @@ export function useBodyParamsCard({
             : [];
           return fromApi.length > 0 ? fromApi : fromForm;
         })(),
+        dietType: pickSavedField(cardCore.dietType, form.dietType) || '',
+        physicalActivityLevel:
+          pickSavedField(cardCore.physicalActivityLevel, form.physicalActivityLevel) || '',
         creatorName,
       };
 
       setSavedCard(fullCard);
       setShareUrl(url);
       // Keep the just-saved values in the form immediately (do not wait for remount).
-      setForm(cardToFormState(fullCard));
+      setForm(cardToFormState(fullCard, displayTimezone));
       venueRef.current = String(fullCard.locationName || '').trim();
+      clearDirty();
       debugLog('✅ [BodyParamsCard] Created:', fullCard);
       debugLog('⏱️ [BodyParamsCard] API save done', {
         ms: Math.round(performance.now() - saveStartedAt),
@@ -859,7 +955,7 @@ export function useBodyParamsCard({
     } finally {
       setIsSaving(false);
     }
-  }, [isValid, form, coachUserId, targetUserId, onSaveSuccess, onSaveStart, isEditMode, existingCard, user, bmrUserEdited, externalVenue, phoneFieldError]);
+  }, [isValid, form, coachUserId, targetUserId, onSaveSuccess, onSaveStart, isEditMode, existingCard, user, bmrUserEdited, externalVenue, phoneFieldError, clearDirty, transformationPhotos.payloadExtras]);
 
   return {
     form, setField,
@@ -868,12 +964,19 @@ export function useBodyParamsCard({
     phoneFieldError,
     recheckPhoneStatus,
     setWeightManually, setBmiManually, setBmrManually,
+    transformationPhotos: {
+      selectedType: transformationPhotos.selectedType,
+      setSelectedType: transformationPhotos.setSelectedType,
+      previews: transformationPhotos.previews,
+      setSlotFromFile: setTransformationSlotFromFile,
+    },
     fatHint, fatPlaceholder,
     derivedIdealWeight, derivedBmi, derivedBmr,
     bmiUserEdited, bmrUserEdited,
     isSaving, error,
     isValid,
     isEditMode,
+    hasUnsavedChanges,
     savedCard, shareUrl,
     handleSave, resetForm,
   };

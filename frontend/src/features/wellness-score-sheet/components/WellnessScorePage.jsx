@@ -21,9 +21,10 @@ export default function WellnessScorePage({
   initialDateRange = 'today',
   initialCustomStartDate = null,
   initialCustomEndDate = null,
+  canManageTimeWindows = false,
 }) {
   const today = useBusinessToday(user);
-  const timeWindows = useTimeWindows();
+  const { timeWindows, refresh: refreshWindows } = useTimeWindows();
   const [dateRange, setDateRange] = useState(initialDateRange || 'today');
   const [customStartDate, setCustomStartDate] = useState(initialCustomStartDate);
   const [customEndDate, setCustomEndDate] = useState(initialCustomEndDate);
@@ -137,9 +138,12 @@ export default function WellnessScorePage({
       selectedDate={selectedDate}
       isMultiDay={range.isMultiDay}
       timeWindows={timeWindows}
+      onTimeWindowsRefresh={refreshWindows}
       userId={resolvedUserId}
       apiBaseUrl={apiBaseUrl}
       nutritionRefreshKey={nutritionRefreshKey}
+      canManageTimeWindows={canManageTimeWindows}
+      userEmail={user?.email || null}
     />
   );
 }

@@ -3,13 +3,14 @@ import React from 'react';
 import { X } from 'lucide-react';
 import TouchFeedbackButton from '../../../../shared/components/TouchFeedbackButton';
 import { EmojiOrNative } from '../../../../shared/components/icons/EmojiImage';
+import BathroomScaleIcon from '../../../../shared/components/icons/BathroomScaleIcon';
 
 const COLORS = ['bg-blue-500', 'bg-green-500', 'bg-purple-500', 'bg-pink-500', 'bg-indigo-500', 'bg-yellow-500', 'bg-red-500', 'bg-teal-500'];
 
 const initialOf = (name, email) => (name || email || 'U').charAt(0).toUpperCase();
 const colorOf = (name, email) => COLORS[(name || email || '').length % COLORS.length];
 
-const ROLE_LABELS = { admin: 'Admin', developer: 'Developer', coach: 'Coach', user: 'User' };
+const ROLE_LABELS = { admin: 'Admin', developer: 'Developer', coach: 'Coach', user: 'Customer' };
 
 const UserProfileHeader = ({
   user, name, userRole, profileImagePreview,
@@ -17,7 +18,7 @@ const UserProfileHeader = ({
   weightGoalMode,
 }) => {
   const displayName = name || user?.displayName || user?.name || 'User';
-  const role = ROLE_LABELS[userRole] || 'User';
+  const role = ROLE_LABELS[userRole] || 'Customer';
   return (
     <div className="flex items-center justify-between p-6 bg-gradient-to-r from-green-500 to-green-600 rounded-t-2xl">
       <div className="flex items-center space-x-3">
@@ -52,11 +53,15 @@ const UserProfileHeader = ({
                 : 'bg-green-100 border-green-300 text-green-700'
               }`}
           >
-            <EmojiOrNative
-              emoji={weightGoalMode === 'loss' ? '🔥' : weightGoalMode === 'gain' ? '💪' : '⚖️'}
-              className="w-3.5 h-3.5"
-              nativeClassName="text-sm leading-none"
-            />
+            {weightGoalMode === 'maintain' ? (
+              <BathroomScaleIcon className="w-3.5 h-3.5" alt="" />
+            ) : (
+              <EmojiOrNative
+                emoji={weightGoalMode === 'loss' ? '🔥' : '💪'}
+                className="w-3.5 h-3.5"
+                nativeClassName="text-sm leading-none"
+              />
+            )}
             <span>
               {weightGoalMode === 'loss' ? 'Loss Mode' : weightGoalMode === 'gain' ? 'Gain Mode' : 'Maintain'}
             </span>

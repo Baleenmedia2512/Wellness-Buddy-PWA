@@ -67,7 +67,7 @@ function hasAnyMealSlotOn(windows) {
 /**
  * Admin / developer AI Credits Setup — daily limit, AI Mode, meal availability tabs.
  */
-export default function AiCreditsSetup({ user, apiBaseUrl, onBack }) {
+export default function AiCreditsSetup({ user, apiBaseUrl, onBack, embedded = false }) {
   const [dailyAiCredits, setDailyAiCredits] = useState(0);
   const [aiModeEnabled, setAiModeEnabled] = useState(true);
   const [availabilityWindows, setAvailabilityWindows] = useState(DEFAULT_WINDOWS);
@@ -184,45 +184,62 @@ export default function AiCreditsSetup({ user, apiBaseUrl, onBack }) {
 
   const activeSlot = availabilityWindows[activeMealTab] || DEFAULT_WINDOWS[activeMealTab];
 
-  return (
-    <div className="min-h-screen bg-[#f4f7f5]">
-      <header className="sticky top-0 z-20 border-b border-gray-200/80 bg-white/95 backdrop-blur safe-top">
-        <div className="mx-auto flex max-w-lg items-center gap-3 px-4 py-3">
-          {onBack && (
-            <button
-              type="button"
-              onClick={onBack}
-              className="-ml-2 rounded-lg p-2 transition-colors hover:bg-gray-100"
-              aria-label="Back"
-            >
-              <ArrowLeft className="h-5 w-5 text-gray-700" />
-            </button>
-          )}
-          <div className="flex min-w-0 flex-1 items-center gap-2">
-            <Sparkles className="h-5 w-5 shrink-0 text-emerald-600" />
-            <h1 className="truncate text-lg font-semibold text-gray-900">AI Credits Setup</h1>
-          </div>
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={saving || loading}
-            className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-white transition-colors disabled:opacity-50 ${
-              savedFlash ? 'bg-emerald-700' : 'bg-emerald-600'
-            }`}
-          >
-            {saving ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : savedFlash ? (
-              <Check className="h-4 w-4" />
-            ) : (
-              <Save className="h-4 w-4" />
-            )}
-            {savedFlash ? 'Saved!' : 'Save'}
-          </button>
-        </div>
-      </header>
+  const saveButton = (
+    <button
+      type="button"
+      onClick={handleSave}
+      disabled={saving || loading}
+      className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-white transition-colors disabled:opacity-50 ${
+        savedFlash ? 'bg-emerald-700' : 'bg-emerald-600'
+      }`}
+    >
+      {saving ? (
+        <Loader2 className="h-4 w-4 animate-spin" />
+      ) : savedFlash ? (
+        <Check className="h-4 w-4" />
+      ) : (
+        <Save className="h-4 w-4" />
+      )}
+      {savedFlash ? 'Saved!' : 'Save'}
+    </button>
+  );
 
-      <main className="mx-auto max-w-lg px-4 py-6">
+  const rootClass = embedded ? '' : 'min-h-screen bg-[#f4f7f5]';
+
+  return (
+    <div className={rootClass}>
+      {!embedded && (
+        <header className="sticky top-0 z-20 border-b border-gray-200/80 bg-white/95 backdrop-blur safe-top">
+          <div className="mx-auto flex max-w-lg items-center gap-3 px-4 py-3">
+            {onBack && (
+              <button
+                type="button"
+                onClick={onBack}
+                className="-ml-2 rounded-lg p-2 transition-colors hover:bg-gray-100"
+                aria-label="Back"
+              >
+                <ArrowLeft className="h-5 w-5 text-gray-700" />
+              </button>
+            )}
+            <div className="flex min-w-0 flex-1 items-center gap-2">
+              <Sparkles className="h-5 w-5 shrink-0 text-emerald-600" />
+              <h1 className="truncate text-lg font-semibold text-gray-900">AI Credits Setup</h1>
+            </div>
+            {saveButton}
+          </div>
+        </header>
+      )}
+
+      <main className={`mx-auto max-w-lg px-4 ${embedded ? 'py-4 pb-28' : 'py-6'}`}>
+        {embedded && (
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-2">
+              <Sparkles className="h-5 w-5 shrink-0 text-emerald-600" />
+              <h2 className="truncate text-base font-semibold text-gray-900">AI Configuration Setup</h2>
+            </div>
+            {saveButton}
+          </div>
+        )}
         {loading ? (
           <div className="flex justify-center py-16">
             <Loader2 className="h-8 w-8 animate-spin text-emerald-600" />

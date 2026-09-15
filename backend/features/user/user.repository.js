@@ -6,6 +6,8 @@ import { getSupabaseClient } from '../../utils/supabaseClient.js';
 import { nowUtc, utcInstantToLegacyIstWallStorage, IANA_IST } from '../../shared/lib/datetime/index.js';
 import { buildCardPatchFromProfile } from '../body-parameters-card/domain/sync.rules.js';
 import { findLatestCardForProfileSync } from '../body-parameters-card/data/card.repo.js';
+import { buildAdoptProfileMetricsPatch } from './domain/onboardingEmail.rules.js';
+import logger from '../../shared/lib/logger.js';
 
 const TEAM = 'team_table';
 const APPROVALS = 'approval_requests_table';
@@ -232,15 +234,41 @@ export async function getTeamCodeFields(userId) {
   return findByUserId(userId, '"UserId", "TeamId", "CoachTeamId", "CoachId", "Role", "CommunityId"');
 }
 
-/** Avatar route + lazy R2 migrate — key first, Base64 / Google URL fallback. */
+/**
+ * Avatar route source — same fields My Profile uses for display:
+ * ProfileImageKey / ProfileImage + centre transformation photo fallback.
+ */
 export async function getAvatarSource(userId) {
+  const withKeyAndPhotos = '"UserId", "ProfileImageKey", "ProfileImage", transformation_photos';
+  const withPhotos = '"UserId", "ProfileImage", transformation_photos';
+  const withKey = '"UserId", "ProfileImageKey", "ProfileImage"';
+  const basic = '"UserId", "ProfileImage"';
+
   try {
-    return await findByUserId(userId, '"UserId", "ProfileImageKey", "ProfileImage"');
-  } catch (err) {
-    if (!isMissingColumn(err, 'ProfileImageKey')) throw err;
-    const row = await findByUserId(userId, '"UserId", "ProfileImage"');
-    return row ? { ...row, ProfileImageKey: null } : null;
+    return await findByUserId(userId, withKeyAndPhotos);
+  } catch (errKeyPhotos) {
+    if (!isMissingColumn(errKeyPhotos, 'ProfileImageKey')
+      && !isMissingColumn(errKeyPhotos, 'transformation_photos')) {
+      throw errKeyPhotos;
+    }
   }
+
+  try {
+    const row = await findByUserId(userId, withPhotos);
+    return row ? { ...row, ProfileImageKey: null } : null;
+  } catch (errPhotos) {
+    if (!isMissingColumn(errPhotos, 'transformation_photos')) throw errPhotos;
+  }
+
+  try {
+    const row = await findByUserId(userId, withKey);
+    return row ? { ...row, transformation_photos: null } : null;
+  } catch (errKey) {
+    if (!isMissingColumn(errKey, 'ProfileImageKey')) throw errKey;
+  }
+
+  const row = await findByUserId(userId, basic);
+  return row ? { ...row, ProfileImageKey: null, transformation_photos: null } : null;
 }
 
 /**
@@ -530,6 +558,99 @@ export async function updateUserById(userId, updateData) {
     .eq('UserId', userId);
   if (error) throw error;
 }
+
+/**
+ * After email-adopt: move BCM cards + copy empty profile metrics from the
+ * phone stub onto the recovered email account so Complete Profile prefills.
+ *
+ * @param {number} fromUserId - deactivated BCM / phone stub
+ * @param {number} toUserId - adopted email account
+ * @returns {Promise<{ cardsMoved: number, metricsCopied: string[] }>}
+ */
+export async function migrateBcmLeadToAdoptedUser(fromUserId, toUserId) {
+  const fromId = parseInt(fromUserId, 10);
+  const toId = parseInt(toUserId, 10);
+  if (!Number.isFinite(fromId) || fromId < 1 || !Number.isFinite(toId) || toId < 1) {
+    return { cardsMoved: 0, metricsCopied: [] };
+  }
+  if (fromId === toId) return { cardsMoved: 0, metricsCopied: [] };
+
+  const supabase = getSupabaseClient();
+  const metricCols =
+    '"UserId", "Height", "Bmr", "Gender", "Age", "VisceralFat", "BodyAge", "ChestCm", "WaistCm", "HipCm", "DietType", "PhysicalActivityLevel", recovered_health_issues, transformation_photos';
+
+  let fromRow = null;
+  let toRow = null;
+  try {
+    const [{ data: fromData }, { data: toData }] = await Promise.all([
+      supabase.from(TEAM).select(metricCols).eq('UserId', fromId).maybeSingle(),
+      supabase.from(TEAM).select(metricCols).eq('UserId', toId).maybeSingle(),
+    ]);
+    fromRow = fromData;
+    toRow = toData;
+  } catch (err) {
+    const msg = String(err?.message || err || '');
+    if (!/column|recovered_health|transformation_photos/i.test(msg)) throw err;
+    const basic = '"UserId", "Height", "Bmr", "Gender", "Age", "DietType", "PhysicalActivityLevel"';
+    const [{ data: fromData }, { data: toData }] = await Promise.all([
+      supabase.from(TEAM).select(basic).eq('UserId', fromId).maybeSingle(),
+      supabase.from(TEAM).select(basic).eq('UserId', toId).maybeSingle(),
+    ]);
+    fromRow = fromData;
+    toRow = toData;
+  }
+
+  const { buildAdoptProfileMetricsPatch } = await import('./domain/onboardingEmail.rules.js');
+  const metricsPatch = buildAdoptProfileMetricsPatch(fromRow, toRow);
+  if (Object.keys(metricsPatch).length > 0) {
+    await updateUserById(toId, metricsPatch);
+  }
+
+  let cardsMoved = 0;
+  const { data: moved, error: cardErr } = await supabase
+    .from('body_parameters_cards')
+    .update({ user_id: toId })
+    .eq('user_id', fromId)
+    .eq('is_deleted', false)
+    .select('id');
+  if (cardErr) {
+    logger.warn('[migrateBcmLead] card reassign failed', { message: cardErr.message });
+  } else {
+    cardsMoved = Array.isArray(moved) ? moved.length : 0;
+  }
+
+  // If adopted account has no weight row, copy the stub's latest weight.
+  const { data: toWeights } = await supabase
+    .from('weight_records_table')
+    .select('"ID"')
+    .eq('UserId', toId)
+    .or('"IsDeleted".is.null,"IsDeleted".eq.0,"IsDeleted".eq.false')
+    .limit(1);
+  if (!toWeights?.length) {
+    const { data: fromWeights } = await supabase
+      .from('weight_records_table')
+      .select('"Weight", "Bmi", "BodyFat", "Bmr", "CreatedAt", "UpdatedAt"')
+      .eq('UserId', fromId)
+      .or('"IsDeleted".is.null,"IsDeleted".eq.0,"IsDeleted".eq.false')
+      .order('"CreatedAt"', { ascending: false })
+      .limit(1);
+    const w = fromWeights?.[0];
+    if (w?.Weight != null) {
+      await supabase.from('weight_records_table').insert({
+        UserId: toId,
+        Weight: w.Weight,
+        Bmi: w.Bmi ?? null,
+        BodyFat: w.BodyFat ?? null,
+        Bmr: w.Bmr ?? null,
+        CreatedAt: w.CreatedAt,
+        UpdatedAt: w.UpdatedAt,
+      });
+    }
+  }
+
+  return { cardsMoved, metricsCopied: Object.keys(metricsPatch) };
+}
+
 
 export async function verifyProfile(userId) {
   const supabase = getSupabaseClient();

@@ -4,9 +4,9 @@
 // Rendered as a first-class page route inside App.js (showProfilePage=true).
 //
 // Sections:
-//   1. Avatar (Centre transformation photo — display only)
+//   1. Avatar (tap to change — Centre transform photo / ProfileImage)
 //   2. Profile fields (name, height, phone, community ID / team code, email, diet, BMR, PAL)
-//   3. Weight goal mode
+//   3. Transformation photos (Left / Centre / Right — same as onboarding)
 //   4. Settings  (auto camera toggle)
 //   5. Account actions (sign out, delete account)
 //
@@ -30,13 +30,19 @@ import UserProfileFields from './profile/UserProfileFields';
 import UserProfileBodyMetrics from './profile/UserProfileBodyMetrics';
 import IdealWeightCards from './profile/IdealWeightCards';
 import DietDropdown from './profile/DietDropdown';
-import WeightModeSelector from './profile/WeightModeSelector';
+import TransformationPhotosSection from './profile/TransformationPhotosSection';
 import HealthIssuesFilterSelect from '../../body-parameters-card/components/HealthIssuesFilterSelect';
 import { EmojiOrNative } from '../../../shared/components/icons/EmojiImage';
+import BathroomScaleIcon from '../../../shared/components/icons/BathroomScaleIcon';
 import { deriveWeightGoalMode } from '../../weight/services/weightFormService';
 import DeleteAccountModal from './DeleteAccountModal';
+import ChangeProfilePhotoModal from './ChangeProfilePhotoModal';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
 import { invalidateHasTeamMembersCache } from '../../team/services/teamSearchService';
+import { bumpAvatarDisplayVersion } from '../services/avatarDisplayVersion';
+import { getProfile } from '../services/user.api';
+import useTransformationPhotos from '../hooks/useTransformationPhotos';
+import { persistOnboardingTestimonialPhotos } from '../services/persistOnboardingTestimonialPhotos';
 
 const COLORS = ['bg-blue-500', 'bg-green-500', 'bg-purple-500', 'bg-pink-500', 'bg-indigo-500', 'bg-yellow-500', 'bg-red-500', 'bg-teal-500'];
 const colorOf = (name, email) => COLORS[(name || email || '').length % COLORS.length];
@@ -60,10 +66,11 @@ function resolveAccountEmail(user, formEmail) {
   return '';
 }
 
-const ROLE_LABELS = { admin: 'Admin', developer: 'Developer', coach: 'Coach', upline: 'Upline', user: 'Member' };
+const ROLE_LABELS = { admin: 'Admin', developer: 'Developer', coach: 'Coach', upline: 'Upline', user: 'Customer' };
 
 const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfileUpdate }) => {
   const form = useProfileForm();
+  const transformationPhotos = useTransformationPhotos();
   const [profileImagePreview, setProfileImagePreview] = useState(null);
   const [latestWeight, setLatestWeight] = useState(null);
   const [initialWeight, setInitialWeight] = useState(null);
@@ -78,6 +85,8 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
   const [successMessage, setSuccessMessage] = useState('');
   const [hasSaved, setHasSaved] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [showChangePhotoModal, setShowChangePhotoModal] = useState(false);
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
   const [leadPreFilled, setLeadPreFilled] = useState(false); // true once we've pre-filled from lead
   const leadPreFilledRef = useRef(false);
   const [autoCameraEnabled, setAutoCameraEnabled] = useState(
@@ -152,6 +161,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
       );
       setIdealCoachName(data?.idealCoachName ? String(data.idealCoachName).trim() : '');
       setTeamSeat(data?.teamSeat || null);
+      transformationPhotos.loadFromProfile(data?.transformationPhotos);
       if (data?.profileImage) {
         setProfileImagePreview(data.profileImage);
       } else if (data?.transformationPhotos?.front) {
@@ -225,9 +235,42 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
       });
       // BMR is system-calculated on the profile page — never write it from this form.
       delete payload.bmr;
+      const photoExtras = transformationPhotos.payloadExtras();
+      // Only newly uploaded Centre slot updates ProfileImage (same as onboarding).
+      const centrePhoto = photoExtras.transformationPhotos?.front || null;
+      Object.assign(payload, photoExtras);
+      if (centrePhoto) {
+        payload.profileImage = centrePhoto;
+      }
+      if (user?.id && !payload.userId) {
+        payload.userId = user.id;
+      }
       const data = await saveProfile(payload);
+      transformationPhotos.clearPending();
+      const leftPending = photoExtras.transformationPhotos?.left || null;
+      if (user?.id && (latestWeight != null || leftPending)) {
+        try {
+          await persistOnboardingTestimonialPhotos({
+            userId: user.id,
+            weightKg: latestWeight,
+            leftImageBase64: leftPending,
+            goalType: deriveWeightGoalMode({
+              heightCm: form.height,
+              currentWeightKg: latestWeight,
+            }) || form.weightGoalMode || 'loss',
+            recoveredHealthIssues: form.recoveredHealthIssues || [],
+          });
+        } catch {
+          // Non-fatal — profile photos already saved.
+        }
+      }
       if (user?.id) {
         invalidateHasTeamMembersCache(user.id);
+      }
+      const nextPreview = centrePhoto || profileImagePreview || null;
+      if (centrePhoto) {
+        setProfileImagePreview(centrePhoto);
+        bumpAvatarDisplayVersion();
       }
       onProfileUpdate?.({
         name: form.name,
@@ -235,7 +278,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
         physicalActivityLevel: form.physicalActivityLevel || null,
         dietType: form.dietType || null,
         communityId: form.communityId || null,
-        profileImage: profileImagePreview || null,
+        profileImage: nextPreview,
         teamSearchRefresh: true,
       });
       if (user?.id) getUserContext(user.id).catch(() => {});
@@ -247,7 +290,61 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
     } finally {
       setIsSaving(false);
     }
-  }, [form, profileImagePreview, user, accountEmail, loadProfile, onProfileUpdate]);
+  }, [
+    form,
+    profileImagePreview,
+    user,
+    accountEmail,
+    loadProfile,
+    onProfileUpdate,
+    transformationPhotos,
+    latestWeight,
+  ]);
+
+  const handlePhotoUploaded = useCallback(async (uploadedImage) => {
+    // Optimistic preview — keep previous photo if refresh fails.
+    const previousPreview = profileImagePreview;
+    if (uploadedImage) {
+      setProfileImagePreview(uploadedImage);
+    }
+    setIsUploadingPhoto(true);
+    setError('');
+    setSuccessMessage('');
+    try {
+      bumpAvatarDisplayVersion();
+      const emailKey = accountEmail || user?.email || user?.Email;
+      let serverImage = uploadedImage || null;
+      try {
+        const data = await getProfile({
+          email: emailKey || undefined,
+          userId: user?.id || undefined,
+          cacheBust: true,
+        });
+        if (data?.success && data?.data?.profileImage) {
+          serverImage = data.data.profileImage;
+          setProfileImagePreview(serverImage);
+        } else if (data?.data?.transformationPhotos?.front) {
+          serverImage = data.data.transformationPhotos.front;
+          setProfileImagePreview(serverImage);
+        }
+      } catch {
+        // Non-fatal — optimistic preview already applied.
+      }
+      onProfileUpdate?.({
+        profileImage: serverImage,
+        name: form.name,
+        teamSearchRefresh: true,
+      });
+      if (emailKey) Session.markProfilePictureUploaded(emailKey);
+      setSuccessMessage('Profile photo updated!');
+      setHasSaved(true);
+    } catch (e) {
+      setProfileImagePreview(previousPreview);
+      setError(e?.message || 'Failed to update profile photo.');
+    } finally {
+      setIsUploadingPhoto(false);
+    }
+  }, [profileImagePreview, accountEmail, user, form.name, onProfileUpdate]);
 
   const saveDisabled = isSaving || !form.nameValid ||
     !form.height || form.height.trim() === '' ||
@@ -265,7 +362,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
 
   const displayWeightGoalMode = derivedWeightGoalMode || form.weightGoalMode || 'loss';
   const displayName = form.name || user?.displayName || user?.name || 'User';
-  const role = ROLE_LABELS[userRole] || 'Member';
+  const role = ROLE_LABELS[userRole] || 'Customer';
 
   return (
     <div className="min-h-full bg-gray-50 pb-8">
@@ -282,11 +379,17 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
           <h1 className="text-lg font-bold text-white">My Profile</h1>
         </div>
 
-        {/* Avatar — Centre transformation photo (display only) */}
+        {/* Avatar — tap to change profile photo */}
         <div className="flex items-center gap-4">
-          <div
-            className="relative w-20 h-20 rounded-full overflow-hidden flex-shrink-0 shadow-lg"
-            style={{ border: '3px solid white' }}
+          <TouchFeedbackButton
+            type="button"
+            onClick={() => {
+              if (!isUploadingPhoto && !isSaving) setShowChangePhotoModal(true);
+            }}
+            disabled={isUploadingPhoto || isSaving}
+            className="relative w-20 h-20 rounded-full overflow-hidden flex-shrink-0 shadow-lg border-[3px] border-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white disabled:opacity-70"
+            ariaLabel="Change profile photo"
+            title="Change profile photo"
           >
             {profileImagePreview ? (
               <img
@@ -302,7 +405,11 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
                 {initialOf(form.name || user?.displayName || user?.name, accountEmail)}
               </div>
             )}
-          </div>
+            <span className="absolute inset-x-0 bottom-0 bg-black/45 text-white text-[10px] font-semibold py-0.5 flex items-center justify-center gap-1">
+              <Camera className="w-3 h-3" />
+              {isUploadingPhoto ? '…' : 'Edit'}
+            </span>
+          </TouchFeedbackButton>
           <div className="flex-1 min-w-0">
             <p className="text-xl font-bold text-white truncate">{displayName}</p>
             <p className="text-sm text-green-100 truncate">{accountEmail || user?.email}</p>
@@ -313,11 +420,15 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
               {displayWeightGoalMode && (
                 <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold border
                   ${displayWeightGoalMode === 'loss' ? 'bg-red-100 border-red-300 text-red-700' : displayWeightGoalMode === 'gain' ? 'bg-blue-100 border-blue-300 text-blue-700' : 'bg-green-100 border-green-300 text-green-700'}`}>
-                  <EmojiOrNative
-                    emoji={displayWeightGoalMode === 'loss' ? '🔥' : displayWeightGoalMode === 'gain' ? '💪' : '⚖️'}
-                    className="w-3.5 h-3.5"
-                    nativeClassName="text-xs leading-none"
-                  />
+                  {displayWeightGoalMode === 'maintain' ? (
+                    <BathroomScaleIcon className="w-3.5 h-3.5" alt="" />
+                  ) : (
+                    <EmojiOrNative
+                      emoji={displayWeightGoalMode === 'loss' ? '🔥' : '💪'}
+                      className="w-3.5 h-3.5"
+                      nativeClassName="text-xs leading-none"
+                    />
+                  )}
                   <span>
                     {displayWeightGoalMode === 'loss' ? 'Loss Mode' : displayWeightGoalMode === 'gain' ? 'Gain Mode' : 'Maintain'}
                   </span>
@@ -334,7 +445,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
                 </span>
               )}
             </div>
-            <p className="text-xs text-green-200 mt-1">Tap photo to change</p>
+            {/* <p className="text-xs text-green-200 mt-1">Tap photo to change</p> */}
           </div>
         </div>
       </div>
@@ -392,15 +503,39 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
                   marathonWeightComparison={marathonWeightComparison}
                 />
                 <DietDropdown value={form.dietType} onChange={form.setDietType} />
-                <WeightModeSelector
-                  height={form.height}
-                  currentWeight={latestWeight}
-                  fallbackMode={form.weightGoalMode || 'loss'}
-                />
               </div>
             )}
           </div>
         </div>
+
+        {/* Left / Centre / Right — same transformation_photos as onboarding */}
+        {!isLoading && (
+          <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+            <div className="px-4 py-3 border-b border-gray-100">
+              <h2 className="text-sm font-semibold text-gray-700">Transformation Photos</h2>
+              <p className="text-xs text-gray-400 mt-0.5">
+                Left, Centre, and Right — optional. Same photos as login/onboarding.
+              </p>
+            </div>
+            <div className="p-4">
+              <TransformationPhotosSection
+                selectedType={transformationPhotos.selectedType}
+                onSelectType={transformationPhotos.setSelectedType}
+                previews={transformationPhotos.previews}
+                disabled={isSaving || isUploadingPhoto}
+                onSelectFile={async (slot, file) => {
+                  try {
+                    setError('');
+                    await transformationPhotos.setSlotFromFile(slot, file);
+                  } catch (e) {
+                    setError(e.message || 'Failed to prepare photo.');
+                  }
+                }}
+              />
+            </div>
+          </div>
+        )}
+
 
         {/* Alerts */}
         {error && (
@@ -513,6 +648,15 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
           </div>
         </div>
       </div>
+
+      <ChangeProfilePhotoModal
+        isOpen={showChangePhotoModal}
+        onClose={() => setShowChangePhotoModal(false)}
+        user={user}
+        accountEmail={accountEmail}
+        currentPreviewUrl={profileImagePreview}
+        onUploaded={handlePhotoUploaded}
+      />
 
       {/* Delete Account Modal (still a modal — this is correct Apple guideline flow) */}
       <DeleteAccountModal

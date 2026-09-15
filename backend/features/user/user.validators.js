@@ -92,8 +92,15 @@ const VALID_GENDERS = ['Male', 'Female'];
 
 export function validateUpdateProfile(body) {
   if (!body) throw new ValidationError(400, 'Request body is missing');
-  const email = body.email;
-  if (!email) throw new ValidationError(400, 'Missing required field: email');
+  const email = normalizeEmail(body.email) || null;
+  const userIdRaw = body.userId ?? body.UserId;
+  const userId = userIdRaw != null && String(userIdRaw).trim() !== ''
+    ? Number(userIdRaw)
+    : null;
+  const resolvedUserId = userId && Number.isFinite(userId) && userId > 0 ? userId : null;
+  if (!email && !resolvedUserId) {
+    throw new ValidationError(400, 'Missing required field: email or userId');
+  }
   const weightGoalMode = body.weightGoalMode;
   if (weightGoalMode != null && !VALID_GOAL_MODES.includes(weightGoalMode)) {
     throw new ValidationError(400, `Invalid weightGoalMode. Must be one of: ${VALID_GOAL_MODES.join(', ')}`);
@@ -209,6 +216,7 @@ export function validateUpdateProfile(body) {
 
   return {
     email,
+    userId: resolvedUserId,
     name: body.name,
     height: body.height,
     bmr: body.bmr,

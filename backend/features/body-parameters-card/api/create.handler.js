@@ -139,6 +139,9 @@ export async function handleCreateCard(body) {
     bmr:           payload.bmr,
     weightKg:      payload.weightKg,
     fatPercent:    payload.fatPercent,
+    dietType:      payload.dietType,
+    physicalActivityLevel: payload.physicalActivityLevel,
+    transformationPhotos: payload.transformationPhotos,
   };
 
   let syncResult = { synced: false, userId: card.user_id ?? userId ?? null };
@@ -206,9 +209,13 @@ export async function handleCreateCard(body) {
         hipCm:            card.hip_cm,
         recordedDate:     card.recorded_date,
         locationName:     card.location_name,
+        createdAt:        card.created_at,
+        updatedAt:        card.updated_at ?? null,
         recoveredHealthIssues: Array.isArray(card.recovered_health_issues)
           ? card.recovered_health_issues
           : (payload.recoveredHealthIssues || []),
+        dietType:         payload.dietType || null,
+        physicalActivityLevel: payload.physicalActivityLevel || null,
         phoneNumber:      phoneNumber || payload.phoneNumber || null,
         userId:           card.user_id ?? userId ?? null,
         profileSynced:    syncResult.synced,

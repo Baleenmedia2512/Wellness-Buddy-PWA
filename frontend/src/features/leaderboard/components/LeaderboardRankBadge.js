@@ -1,16 +1,22 @@
 import React from 'react';
 
 /**
- * Rank mark for Home leaderboard strips — large enough to read at a glance.
+ * Rank mark for Home leaderboard strips — circle with a large rank number only.
  */
-export default function LeaderboardRankBadge({ rank, colorClass, icon }) {
+export default function LeaderboardRankBadge({ rank, colorClass }) {
   return (
     <div
-      className={`inline-flex flex-col items-center justify-center gap-0.5 flex-shrink-0 min-w-[2.75rem] sm:min-w-[3.25rem] h-12 sm:h-14 rounded-xl px-1.5 shadow-sm ${colorClass}`}
+      className={`inline-flex items-center justify-center flex-shrink-0 w-9 h-9 sm:w-10 sm:h-10 rounded-full shadow-sm ${colorClass}`}
+      aria-label={`Rank ${rank}`}
     >
-      {icon}
-      <span className="text-xs sm:text-sm font-extrabold leading-none tracking-tight">
-        #{rank}
+      <span
+        className={`font-black leading-none tabular-nums tracking-tighter ${
+          String(rank).length > 1
+  ? 'text-xl sm:text-2xl'
+  : 'text-2xl sm:text-3xl'
+        }`}
+      >
+        {rank}
       </span>
     </div>
   );

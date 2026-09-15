@@ -1,47 +1,48 @@
+import {
+  formatHierarchyPersonType,
+  HIERARCHY_PERSON_TYPE_COLUMN_LABEL,
+} from '../../../shared/domain/hierarchyPersonType.js';
+
 export const ACTIVITY_REPORT_TABLE_FILTER_COLUMNS = [
-  { id: 'memberType', label: 'Member Type' },
+  { id: 'memberType', label: HIERARCHY_PERSON_TYPE_COLUMN_LABEL },
   { id: 'level', label: 'Level' },
-  { id: 'sponsorName', label: 'Sponsor' },
   { id: 'clubName', label: 'Club' },
-  { id: 'idealCoachName', label: 'Coach' },
-  { id: 'city', label: 'City' },
-  { id: 'village', label: 'Village' },
 ];
 
 /** Multi-value separator in filter_<column> query params (values may contain commas). */
 export const ACTIVITY_REPORT_FILTER_VALUE_SEP = '|';
 
+/** API values must match backend `activity-report.attendance` (`posted` / `not_posted`). */
 export const ACTIVITY_REPORT_ATTENDANCE = {
-  ATTENDED: 'attended',
-  NOT_ATTENDED: 'not_attended',
+  POSTED: 'posted',
+  NOT_POSTED: 'not_posted',
 };
 
 export const ACTIVITY_REPORT_ATTENDANCE_OPTIONS = [
-  { id: ACTIVITY_REPORT_ATTENDANCE.ATTENDED, label: 'Attended' },
-  { id: ACTIVITY_REPORT_ATTENDANCE.NOT_ATTENDED, label: 'Not attended' },
+  { id: ACTIVITY_REPORT_ATTENDANCE.POSTED, label: 'Posted' },
+  { id: ACTIVITY_REPORT_ATTENDANCE.NOT_POSTED, label: 'Not Posted' },
 ];
 
 export function formatActivityReportAttendance(status) {
-  return String(status) === ACTIVITY_REPORT_ATTENDANCE.NOT_ATTENDED
-    ? 'Not attended'
-    : 'Attended';
+  const value = String(status || '').trim().toLowerCase().replace(/-/g, '_');
+  return value === ACTIVITY_REPORT_ATTENDANCE.NOT_POSTED
+    || value === 'not_attended'
+    || value === 'notattended'
+    ? 'Not Posted'
+    : 'Posted';
 }
 
 export function emptyActivityReportFilterOptions() {
   return {
     memberType: [],
     level: [],
-    sponsorName: [],
     clubName: [],
-    idealCoachName: [],
-    city: [],
-    village: [],
   };
 }
 
 export function formatActivityReportFilterOption(column, value) {
   if (column === 'memberType') {
-    return String(value).toLowerCase() === 'sponsor' ? 'Sponsor' : 'Member';
+    return formatHierarchyPersonType(value);
   }
   if (column === 'clubName' && (value === '__remote__' || value === 'Remote')) {
     return 'Remote';
@@ -54,11 +55,7 @@ export function emptyActivityReportTableFilterValues() {
   return {
     memberType: [],
     level: [],
-    sponsorName: [],
     clubName: [],
-    idealCoachName: [],
-    city: [],
-    village: [],
   };
 }
 
@@ -103,6 +100,9 @@ export function activityReportFilterQuery(filters = {}) {
 
 export function toggleActivityReportFilterValue(filters, columnId, value) {
   const normalized = normalizeActivityReportTableFilters(filters);
+  if (!Object.prototype.hasOwnProperty.call(normalized, columnId)) {
+    return normalized;
+  }
   const current = normalized[columnId] || [];
   const token = String(value ?? '').trim();
   if (!token) return normalized;
@@ -115,6 +115,9 @@ export function toggleActivityReportFilterValue(filters, columnId, value) {
 
 export function removeActivityReportFilterValue(filters, columnId, value) {
   const normalized = normalizeActivityReportTableFilters(filters);
+  if (!Object.prototype.hasOwnProperty.call(normalized, columnId)) {
+    return normalized;
+  }
   const token = String(value ?? '').trim();
   normalized[columnId] = (normalized[columnId] || []).filter((item) => item !== token);
   return normalized;

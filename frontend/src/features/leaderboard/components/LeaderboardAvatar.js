@@ -1,4 +1,9 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import {
+  buildUserAvatarUrl,
+  getAvatarDisplayVersion,
+  subscribeAvatarDisplayVersion,
+} from '../../user/services/avatarDisplayVersion';
 
 const COLORS = [
   'bg-blue-500',
@@ -12,27 +17,37 @@ const COLORS = [
 ];
 
 /**
- * Leaderboard strip avatar — prefers inline profileImage, else loads
- * /api/user/avatar?userId= (keeps list JSON small). Falls back to letter.
+ * Leaderboard strip avatar — always loads /api/user/avatar?userId=
+ * (same source + My Profile fallback: ProfileImage / R2 → centre transform).
+ * Falls back to letter when the endpoint 404s.
+ *
+ * `profileImage` is accepted for API compatibility but ignored so list payloads
+ * cannot diverge from My Profile.
  */
 export default function LeaderboardAvatar({
   apiBaseUrl,
   userId,
   email,
   userName,
-  profileImage,
+  profileImage: _profileImage,
 }) {
   const [failed, setFailed] = useState(false);
+  const [avatarVersion, setAvatarVersion] = useState(getAvatarDisplayVersion);
 
-  const remoteSrc =
-    apiBaseUrl && userId != null && userId !== ''
-      ? `${apiBaseUrl}/api/user/avatar?userId=${encodeURIComponent(userId)}`
-      : null;
-  const src = !failed ? profileImage || remoteSrc : null;
+  useEffect(() => subscribeAvatarDisplayVersion(setAvatarVersion), []);
+
+  // Reset error state when the remote avatar generation changes (after an upload).
+  useEffect(() => {
+    setFailed(false);
+  }, [avatarVersion, userId]);
+
+  const remoteSrc = buildUserAvatarUrl(apiBaseUrl, userId, avatarVersion);
+  const src = !failed ? remoteSrc : null;
 
   if (src) {
     return (
       <img
+        key={src}
         src={src}
         alt={userName || 'User'}
         className="w-8 h-8 sm:w-10 sm:h-10 rounded-full object-cover shadow-md border-2 border-white"

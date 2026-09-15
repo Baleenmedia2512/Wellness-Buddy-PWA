@@ -156,18 +156,21 @@ const CompleteProfilePage = ({
           }
         }
 
-        const hasH = typeof profile?.height === 'number' && profile.height >= 50 && profile.height <= 250;
-        if (hasH) setHeight(String(profile.height));
+        const heightRaw = profile?.height;
+        const heightNum = heightRaw != null && heightRaw !== '' ? Number(heightRaw) : NaN;
+        const hasH = Number.isFinite(heightNum) && heightNum >= 50 && heightNum <= 250;
+        if (hasH) setHeight(String(heightNum));
 
         if (typeof profile?.dietType === 'string' && profile.dietType.trim()) {
           setDietType(profile.dietType);
         }
 
-        const hasWeight = profile?.latestWeight != null
-          && Number.isFinite(Number(profile.latestWeight));
+        const weightRaw = profile?.latestWeight;
+        const weightNum = weightRaw != null && weightRaw !== '' ? Number(weightRaw) : NaN;
+        const hasWeight = Number.isFinite(weightNum) && weightNum > 0;
         const needsWeight = profile?.needsCurrentWeight === true || !hasWeight;
         setShowCurrentWeight(needsWeight);
-        if (hasWeight) setCurrentWeight(String(profile.latestWeight));
+        if (hasWeight) setCurrentWeight(String(weightNum));
 
         const bm = profile?.bodyMetrics || {};
         const fatFallback = hasValidBodyFatPercent(profile?.latestWeightBodyFat)
@@ -209,9 +212,10 @@ const CompleteProfilePage = ({
           return;
         }
 
-        const result = loginEmail
-          ? await fetchProfile({ email: loginEmail })
-          : await fetchProfile({ userId: uid });
+        // Prefer userId for BCM phone leads — email alone can resolve a different account.
+        const result = uid
+          ? await fetchProfile({ userId: uid })
+          : await fetchProfile({ email: loginEmail });
         if (!mounted) return;
         const profile = result?.data;
         if (!profile) {

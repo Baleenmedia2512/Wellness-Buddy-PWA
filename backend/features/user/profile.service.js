@@ -79,14 +79,19 @@ export async function getProfile({ email, userId = null }) {
   const cardHeight = latestBodyMetricsCard?.height_cm != null
     ? parseFloat(latestBodyMetricsCard.height_cm)
     : null;
-  const height = user.Height
+  const parsedTeamHeight = user.Height != null && user.Height !== ''
     ? parseFloat(user.Height)
+    : NaN;
+  const height = Number.isFinite(parsedTeamHeight) && parsedTeamHeight > 0
+    ? parsedTeamHeight
     : (Number.isFinite(cardHeight) ? cardHeight : null);
-  const weightFromRecord = latestWeight?.Weight ? parseFloat(latestWeight.Weight) : null;
+  const weightFromRecord = latestWeight?.Weight != null && latestWeight.Weight !== ''
+    ? parseFloat(latestWeight.Weight)
+    : NaN;
   const cardWeight = latestBodyMetricsCard?.weight_kg != null
     ? parseFloat(latestBodyMetricsCard.weight_kg)
     : null;
-  const latestWeightKg = Number.isFinite(weightFromRecord)
+  const latestWeightKg = Number.isFinite(weightFromRecord) && weightFromRecord > 0
     ? weightFromRecord
     : (Number.isFinite(cardWeight) ? cardWeight : null);
   const initialWeightKg = initialWeightRow?.Weight != null ? parseFloat(initialWeightRow.Weight) : null;
@@ -179,7 +184,7 @@ export async function getProfile({ email, userId = null }) {
         needsName: !nameComplete,
         needsBodyFat,
         // Still prompt to confirm weight when only BCM card has it (no weight row yet).
-        needsCurrentWeight: weightFromRecord == null,
+        needsCurrentWeight: !Number.isFinite(weightFromRecord) || weightFromRecord <= 0,
         profileImage,
         avatarUrl,
         coachId: user.CoachId || null,
@@ -211,6 +216,9 @@ export async function getProfile({ email, userId = null }) {
         bodyMetrics,
         recoveredHealthIssues: mapTeamRecoveredHealthIssues(user.recovered_health_issues),
         transformationPhotos: mapTransformationPhotos(user.transformation_photos),
+        // Phone lead created from coach BCM — Complete Profile should open once for review.
+        isBcmLead: String(user.EntryUser || '') === 'Body Parameters Card'
+          || Boolean(latestBodyMetricsCard?.id),
       },
     },
   };
@@ -298,32 +306,45 @@ function verifySaved(verifyRow, { cleanedPhoneNumber, height, dietType, gender, 
 
 export async function updateProfile(input) {
   const {
-    email, name, height, bmr, dietType, profileImage, phoneNumber, gender,
+    email, userId: inputUserId, name, height, bmr, dietType, profileImage, phoneNumber, gender,
     weightGoalMode, physicalActivityLevel, communityId, timezoneIana, bodyFat,
     currentWeight, transformationPhotos,
   } = input;
 
   logger.info('[profile/update] incoming request', {
-    email,
+    email: email || null,
+    userId: inputUserId || null,
     receivedCommunityId: communityId !== undefined,
     receivedBodyFat: bodyFat !== undefined,
     receivedCurrentWeight: currentWeight !== undefined,
   });
   if (communityId !== undefined) {
     logger.info('[profile/update] CommunityId validation result', {
-      email,
+      email: email || null,
+      userId: inputUserId || null,
       valid: true,
       communityId: communityId ?? null,
     });
   }
 
   let user;
+  const photoCols = 'UserId, transformation_photos';
+  const idCols = 'UserId';
   try {
-    user = await repo.findByEmail(email, 'UserId, transformation_photos');
+    // Prefer email when present (legacy clients); userId for phone / BCM without email.
+    if (email) {
+      user = await repo.findByEmail(email, photoCols);
+    } else {
+      user = await repo.findByUserId(inputUserId, photoCols);
+    }
   } catch (err) {
     const msg = String(err?.message || err || '');
     if (!/transformation_photos/i.test(msg)) throw err;
-    user = await repo.findByEmail(email, 'UserId');
+    if (email) {
+      user = await repo.findByEmail(email, idCols);
+    } else {
+      user = await repo.findByUserId(inputUserId, idCols);
+    }
   }
   if (!user) return notFound();
   const userId = user.UserId;
@@ -362,6 +383,8 @@ export async function updateProfile(input) {
     });
     if (updateData.ProfileImage) {
       await persistAvatarKey(userId, updateData.ProfileImage);
+      // Always drop avatar cache — persistAvatarKey may no-op when R2 is off.
+      try { cache.delete(cacheKeys.userAvatar(userId)); } catch { /* non-fatal */ }
     }
     try { await repo.updateUserById(userId, { LastActiveAt: nowUtc() }); } catch { /* non-fatal */ }
     const verifyRow = await repo.verifyProfile(userId);
@@ -373,6 +396,8 @@ export async function updateProfile(input) {
   if (transformationPhotosPatch) {
     try {
       await repo.updateUserById(userId, transformationPhotosPatch);
+      // Leaderboard avatar may fall back to centre transform — drop stale cache.
+      try { cache.delete(cacheKeys.userAvatar(userId)); } catch { /* non-fatal */ }
     } catch (photoErr) {
       const msg = String(photoErr?.message || photoErr || '');
       if (!/transformation_photos|column/i.test(msg)) throw photoErr;
@@ -518,10 +543,25 @@ export async function updateProfile(input) {
 
   // Profile → latest Body Parameters Card (direct DB patch — no BPC handler — prevents loops).
   try {
-    const dbProfile = await repo.findByUserId(
-      userId,
-      '"UserName", "Height", "Bmr", "Gender"',
-    );
+    let dbProfile;
+    try {
+      dbProfile = await repo.findByUserId(
+        userId,
+        '"UserName", "Height", "Bmr", "Gender", "Age", "VisceralFat", "BodyAge", "ChestCm", "WaistCm", "HipCm", recovered_health_issues',
+      );
+    } catch (colErr) {
+      const msg = String(colErr?.message || colErr || '');
+      if (!/column|Age|VisceralFat|recovered_health/i.test(msg)) throw colErr;
+      dbProfile = await repo.findByUserId(
+        userId,
+        '"UserName", "Height", "Bmr", "Gender"',
+      );
+    }
+    const numOrNull = (v) => {
+      if (v == null || v === '') return null;
+      const n = parseFloat(v);
+      return Number.isNaN(n) ? null : n;
+    };
     const cardSync = buildProfileCardSyncPayload(
       {
         name: dbProfile?.UserName ?? name,
@@ -530,6 +570,15 @@ export async function updateProfile(input) {
           : (height != null ? parseFloat(height) : null),
         bmr: savedBmr ?? (dbProfile?.Bmr != null ? parseFloat(dbProfile.Bmr) : bmr),
         gender: gender ?? dbProfile?.Gender ?? null,
+        age: numOrNull(dbProfile?.Age),
+        visceralFat: numOrNull(dbProfile?.VisceralFat),
+        bodyAge: numOrNull(dbProfile?.BodyAge),
+        chestCm: numOrNull(dbProfile?.ChestCm),
+        waistCm: numOrNull(dbProfile?.WaistCm),
+        hipCm: numOrNull(dbProfile?.HipCm),
+        recoveredHealthIssues: Array.isArray(dbProfile?.recovered_health_issues)
+          ? dbProfile.recovered_health_issues
+          : undefined,
       },
       { savedBmr, latestWeight: latestWeightRow },
     );

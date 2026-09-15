@@ -5,6 +5,7 @@ export { default as InactiveUserModal } from './components/InactiveUserModal';
 export { default as UserNotFoundModal } from './components/UserNotFoundModal';
 export { default as UserProfileModal } from './components/UserProfileModal';
 export { default as UserProfilePage } from './components/UserProfilePage';
+export { default as ChangeProfilePhotoModal } from './components/ChangeProfilePhotoModal';
 export { default as CompleteProfilePage } from './components/CompleteProfilePage';
 export { default as OnboardingIdentityPage } from './components/OnboardingIdentityPage';
 export { default as OnboardingTransformationPhotosPage } from './components/OnboardingTransformationPhotosPage';

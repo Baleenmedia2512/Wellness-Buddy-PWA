@@ -27,7 +27,7 @@ export default function ScoreCategoryRow({
 }) {
   const meta = getParameterMeta(category.key);
   const Icon = getParameterIcon(category.key);
-  const label = category.label || meta?.label || category.key;
+  const label = meta?.label || category.label || category.key;
   const scoringMode = category.scoringMode || meta?.scoringMode;
   const modeLabel = SCORING_MODE_LABELS[scoringMode] || scoringMode;
   const modeHint = getScoringModeHint(scoringMode, category.key, goalMode, { timeWindows });

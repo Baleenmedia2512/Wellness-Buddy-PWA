@@ -2,7 +2,8 @@
  * Activity Report team scope — same rules as Ideal Weight (reportingHierarchyService).
  *
  * Level: Direct Team = 1, their members = 2, and so on (reporting tree, not profile role).
- * Member type: 0 CoachId downlines → member; any downline → sponsor (not profile Role).
+ * Person type: 0 CoachId downlines → customer (API token `member`); any downline → sponsor
+ * (not profile Role). UI label for no-team people is Customer.
  */
 import { getSupabaseClient } from '../../../utils/supabaseClient.js';
 import {

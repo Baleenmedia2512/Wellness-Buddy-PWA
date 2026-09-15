@@ -55,6 +55,23 @@ function buildProgressSentencePlain(memberName, goalType, beforeWeight, afterWei
   return `${memberName} has ${verb} ${weightStr} kg in ${durationText}.`;
 }
 
+/** Progress sentence as a rounded pill (matches recovered-issue chips). */
+function buildProgressPill(memberName, goalType, beforeWeight, afterWeight, durationText) {
+  const text = buildProgressSentence(memberName, goalType, beforeWeight, afterWeight, durationText);
+  const isLoss = goalType === 'loss';
+  const bg = isLoss ? '#ecfdf5' : '#eff6ff';
+  const border = isLoss ? '#a7f3d0' : '#bfdbfe';
+  const color = isLoss ? '#047857' : '#1d4ed8';
+  return `
+    <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="margin:0 0 12px 0;">
+      <tr>
+        <td>
+          <span style="display:inline-block;padding:6px 14px;background-color:${bg};border:1px solid ${border};border-radius:9999px;color:${color};font-size:13px;font-weight:700;font-family:Arial,Helvetica,sans-serif;line-height:1.35;">${text}</span>
+        </td>
+      </tr>
+    </table>`;
+}
+
 /** Equal-size metric card. ASCII labels only. */
 function buildMetricCard(label, value, width) {
   return `
@@ -70,13 +87,17 @@ function buildMetricCard(label, value, width) {
     </td>`;
 }
 
-function buildStatsRow(beforeWeight, afterWeight, goalLabel) {
+function buildStatsRow(beforeWeight, afterWeight, goalLabel, durationText) {
+  const durationSafe = String(durationText ?? '').trim();
+  const showDuration = Boolean(durationSafe && durationSafe !== '—');
+  const width = showDuration ? '25%' : '33%';
   return `
     <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="margin:0 0 12px 0;">
       <tr>
-        ${buildMetricCard('Before', `${formatWeight(beforeWeight)} kg`, '33%')}
-        ${buildMetricCard('After', `${formatWeight(afterWeight)} kg`, '33%')}
-        ${buildMetricCard('Goal', escapeHtml(goalLabel), '33%')}
+        ${buildMetricCard('Before', `${formatWeight(beforeWeight)} kg`, width)}
+        ${buildMetricCard('After', `${formatWeight(afterWeight)} kg`, width)}
+        ${buildMetricCard('Goal', escapeHtml(goalLabel), width)}
+        ${showDuration ? buildMetricCard('Duration', escapeHtml(durationSafe), width) : ''}
       </tr>
     </table>`;
 }
@@ -152,7 +173,7 @@ export function buildTestimonialCoachEmailHtml({
   const safeMember = escapeHtml(memberName);
   const safeOtp = formatOtpDisplay(otp);
   const goalLabel = goalType === 'loss' ? 'Weight Loss' : 'Weight Gain';
-  const progressHtml = buildProgressSentence(memberName, goalType, beforeWeight, afterWeight, durationText);
+  const progressHtml = buildProgressPill(memberName, goalType, beforeWeight, afterWeight, durationText);
 
   return `<!DOCTYPE html>
 <html lang="en" xmlns="http://www.w3.org/1999/xhtml">
@@ -198,16 +219,14 @@ export function buildTestimonialCoachEmailHtml({
           <tr>
             <td class="body-pad" style="padding:16px 20px;">
               <p style="margin:0 0 8px;color:#111827;font-size:16px;font-weight:700;font-family:Arial,Helvetica,sans-serif;line-height:1.3;">Your member has submitted a testimonial</p>
-              <p style="margin:0 0 12px;color:#111827;font-size:14px;line-height:1.5;font-family:Arial,Helvetica,sans-serif;">
-                <strong>${progressHtml}</strong>
-              </p>
               <p style="margin:0 0 12px;color:#4b5563;font-size:13px;line-height:1.4;font-family:Arial,Helvetica,sans-serif;">
                 Review the details below and share the OTP with <strong style="color:#111827;">${safeMember}</strong> to verify.
               </p>
 
-              ${buildStatsRow(beforeWeight, afterWeight, goalLabel)}
+              ${buildStatsRow(beforeWeight, afterWeight, goalLabel, durationText)}
               ${buildPhotosRow(beforeUrl, afterUrl)}
               ${buildHealthIssuesRow(recoveredHealthIssues)}
+              ${progressHtml}
 
               <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="margin:0 0 10px 0;">
                 <tr>
@@ -474,6 +493,7 @@ const SLOT_LABELS = {
   health:   'Health Results Video',
   business: 'Business Results Video',
   issues:   'Recovered health issues',
+  duration: 'Duration (days / months)',
 };
 
 /**
@@ -655,6 +675,17 @@ export function buildUnifiedSubmitEmailHtml({
   const slots      = new Set(changedSlots || []);
 
   const goalLabel  = (goalType === 'loss') ? 'Weight Loss' : 'Weight Gain';
+  const durationSafe = String(durationText ?? '').trim();
+  const canShowProgress = Boolean(
+    isComplete
+    && Number.isFinite(Number(beforeWeight))
+    && Number.isFinite(Number(afterWeight))
+    && durationSafe
+    && durationSafe !== '—',
+  );
+  const progressHtml = canShowProgress
+    ? buildProgressPill(memberName, goalType, beforeWeight, afterWeight, durationSafe)
+    : '';
 
   const changedBlock = buildChangedSlotsBlock(changedSlots);
 
@@ -674,7 +705,7 @@ export function buildUnifiedSubmitEmailHtml({
   const businessVideoBlock = slots.has('business') ? buildVideoUpdatedRow('Business Results Video — Updated', businessVideoUrl, '#2563eb') : '';
 
   const statsBlock = (isComplete && beforeWeight && afterWeight)
-    ? buildStatsRow(beforeWeight, afterWeight, goalLabel)
+    ? buildStatsRow(beforeWeight, afterWeight, goalLabel, durationText)
     : '';
 
   return `<!DOCTYPE html>
@@ -725,6 +756,7 @@ export function buildUnifiedSubmitEmailHtml({
               ${healthVideoBlock}
               ${businessVideoBlock}
               ${buildHealthIssuesRow(recoveredHealthIssues)}
+              ${progressHtml}
 
               <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="margin:10px 0;">
                 <tr>
@@ -789,20 +821,35 @@ export function buildUnifiedSubmitEmailText({
   const goalLabel   = (goalType === 'loss') ? 'Weight Loss' : 'Weight Gain';
   const issuesPlain = formatHealthIssuesPlain(recoveredHealthIssues);
   const slots       = new Set(changedSlots || []);
+  const durationSafe = String(durationText ?? '').trim();
+  const canShowProgress = Boolean(
+    isComplete
+    && Number.isFinite(Number(beforeWeight))
+    && Number.isFinite(Number(afterWeight))
+    && durationSafe
+    && durationSafe !== '—',
+  );
 
   const lines = [
     'Wellness Valley - Member Testimonial Updates',
     '',
     `${memberName} has submitted updates for approval.`,
+  ];
+
+  if (canShowProgress) {
+    lines.push(buildProgressSentencePlain(memberName, goalType, beforeWeight, afterWeight, durationSafe));
+  }
+
+  lines.push(
     '',
     'WHAT CHANGED:',
     ...(changedSlots || []).map((s) => `  - ${SLOT_LABELS[s] || s}`),
     '',
-  ];
+  );
 
   if (isComplete && beforeWeight && afterWeight) {
     lines.push(`Before: ${formatWeight(beforeWeight)} kg | After: ${formatWeight(afterWeight)} kg | Goal: ${goalLabel}`);
-    if (durationText) lines.push(`Duration: ${durationText}`);
+    if (durationSafe && durationSafe !== '—') lines.push(`Duration: ${durationSafe}`);
     lines.push('');
   }
 

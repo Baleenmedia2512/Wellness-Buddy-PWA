@@ -65,20 +65,29 @@ describe('normalizeActivityReportPagination', () => {
     const p = normalizeActivityReportPagination({
       filter_memberType: 'sponsor',
       filter_level: '1',
-      filter_city: 'Pune',
+      filter_clubName: 'Club A',
     });
     assert.deepEqual(p.columnFilters, {
       memberType: 'sponsor',
       level: '1',
-      city: 'Pune',
+      clubName: 'Club A',
     });
   });
 
   it('keeps multi-value OR tokens joined by | within a column', () => {
     const p = normalizeActivityReportPagination({
-      filter_city: 'Pune|Mumbai',
+      filter_clubName: 'Club A|Remote',
     });
-    assert.deepEqual(p.columnFilters, { city: 'Pune|Mumbai' });
+    assert.deepEqual(p.columnFilters, { clubName: 'Club A|Remote' });
+  });
+
+  it('ignores removed facet columns (sponsor/city/village/coach)', () => {
+    const p = normalizeActivityReportPagination({
+      filter_city: 'Pune',
+      filter_sponsorName: 'Adhithya',
+      filter_memberType: 'sponsor',
+    });
+    assert.deepEqual(p.columnFilters, { memberType: 'sponsor' });
   });
 });
 
@@ -160,9 +169,9 @@ describe('filter / sort / paginate', () => {
 
   it('applies stacked column filters with AND', () => {
     const typed = [
-      { memberName: 'Alice', memberType: 'sponsor', level: 1, city: 'Pune', date: '2026-08-05' },
-      { memberName: 'Bob', memberType: 'sponsor', level: 2, city: 'Pune', date: '2026-08-06' },
-      { memberName: 'Carol', memberType: 'member', level: 1, city: 'Pune', date: '2026-08-04' },
+      { memberName: 'Alice', memberType: 'sponsor', level: 1, clubName: 'Club A', date: '2026-08-05' },
+      { memberName: 'Bob', memberType: 'sponsor', level: 2, clubName: 'Club A', date: '2026-08-06' },
+      { memberName: 'Carol', memberType: 'member', level: 1, clubName: 'Club A', date: '2026-08-04' },
     ];
     const { records, pagination } = paginateActivityReportRecords(typed, {
       page: 1,
@@ -171,7 +180,7 @@ describe('filter / sort / paginate', () => {
       sort: 'memberName',
       sortDir: 'asc',
       filter_memberType: 'sponsor',
-      filter_city: 'Pune',
+      filter_clubName: 'Club A',
     });
     assert.deepEqual(records.map((r) => r.memberName), ['Alice', 'Bob']);
     assert.equal(pagination.totalRecords, 2);
@@ -180,10 +189,10 @@ describe('filter / sort / paginate', () => {
 
   it('applies multi-value OR within one column and AND across columns', () => {
     const typed = [
-      { memberName: 'Alice', memberType: 'sponsor', city: 'Pune', date: '2026-08-05' },
-      { memberName: 'Bob', memberType: 'sponsor', city: 'Mumbai', date: '2026-08-06' },
-      { memberName: 'Carol', memberType: 'member', city: 'Pune', date: '2026-08-04' },
-      { memberName: 'Dan', memberType: 'sponsor', city: 'Delhi', date: '2026-08-03' },
+      { memberName: 'Alice', memberType: 'sponsor', clubName: 'Club A', date: '2026-08-05' },
+      { memberName: 'Bob', memberType: 'sponsor', clubName: 'Club B', date: '2026-08-06' },
+      { memberName: 'Carol', memberType: 'member', clubName: 'Club A', date: '2026-08-04' },
+      { memberName: 'Dan', memberType: 'sponsor', clubName: 'Club C', date: '2026-08-03' },
     ];
     const { records, pagination } = paginateActivityReportRecords(typed, {
       page: 1,
@@ -192,7 +201,7 @@ describe('filter / sort / paginate', () => {
       sort: 'memberName',
       sortDir: 'asc',
       filter_memberType: 'sponsor',
-      filter_city: 'Pune|Mumbai',
+      filter_clubName: 'Club A|Club B',
     });
     assert.deepEqual(records.map((r) => r.memberName), ['Alice', 'Bob']);
     assert.equal(pagination.totalRecords, 2);
@@ -205,10 +214,10 @@ describe('filter / sort / paginate', () => {
     ]);
     assert.deepEqual(options.memberType, ['member', 'sponsor']);
     assert.deepEqual(options.level, ['1', '2']);
-    assert.deepEqual(options.sponsorName, ['Adhithya']);
     assert.ok(options.clubName.includes('Club A'));
     assert.ok(options.clubName.includes('Remote'));
-    assert.deepEqual(options.city, ['Pune']);
+    assert.equal(options.sponsorName, undefined);
+    assert.equal(options.city, undefined);
   });
 
   it('sorts by level numeric and memberType alpha', () => {

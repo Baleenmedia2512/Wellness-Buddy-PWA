@@ -1,3 +1,5 @@
+import { formatHierarchyPersonType } from '../../../shared/domain/hierarchyPersonType.js';
+
 /** API value for Remote club filter — must match backend ACTIVITY_REPORT_CLUB_REMOTE. */
 export const ACTIVITY_REPORT_CLUB_REMOTE = '__remote__';
 
@@ -9,8 +11,9 @@ export function formatActivityReportLevel(level) {
   return Number.isFinite(n) ? String(n) : '—';
 }
 
+/** @deprecated Prefer formatHierarchyPersonType — kept for Activity Report imports. */
 export function formatActivityReportMemberType(memberType) {
-  return String(memberType || '').toLowerCase() === 'sponsor' ? 'Sponsor' : 'Member';
+  return formatHierarchyPersonType(memberType);
 }
 
 function formatClub(clubName) {
@@ -31,9 +34,9 @@ function activityDetailLine(record, activityId) {
     formatActivityReportMemberType(record.memberType),
   ];
   const sponsor = record.sponsorName || record.coachName;
+  parts.push(`Level: ${formatActivityReportLevel(record.level)}`);
   if (sponsor && sponsor !== 'N/A') parts.push(`Sponsor: ${sponsor}`);
   parts.push(
-    `Level: ${formatActivityReportLevel(record.level)}`,
     `Club: ${club}`,
     `${record.date || '—'} ${record.time || ''}`.trim(),
   );
