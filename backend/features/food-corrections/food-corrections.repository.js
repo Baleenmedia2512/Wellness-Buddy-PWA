@@ -109,12 +109,13 @@ export async function searchCommunityMeals(userId, term) {
 
 export async function updateMealAnalysis(id, userId, payload) {
   const supabase = getSupabaseClient();
+  // Select ID only — bare .select() returns ImageBase64 and can add multi-second latency.
   const { data, error } = await supabase
     .from('food_nutrition_data_table')
     .update(payload)
     .eq('"ID"', id)
     .eq('"UserID"', userId)
-    .select();
+    .select('"ID"');
   if (error) throw error;
   return data || [];
 }

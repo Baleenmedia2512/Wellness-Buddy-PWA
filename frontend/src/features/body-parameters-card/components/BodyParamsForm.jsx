@@ -3,10 +3,7 @@
  *
  * Modal form for creating a Body Parameters Card.
  * Pure presentational — all logic in useBodyParamsCard hook.
- * Fields: Date, Venue, Name, Age, Height, Phone, Gender, Weight, BMI, Fat%, BMR,
- * Physical Activity, Body Age, Chest, Waist, Hip, Diet Preference, Health Issues.
- * Profile-owned: Diet Preference + Physical Activity (team_table; not card columns).
- * Excluded from Profile: Email, Community ID, Auto Camera.
+ * Fields: Date, Time, Venue, Name, Age, Height, Phone, Gender, Weight, BMI, Fat%, BMR, Body Age, Chest, Waist, Hip.
  */
 import React, { useEffect, useRef, useState } from 'react';
 import { X, AlertCircle } from 'lucide-react';
@@ -207,15 +204,23 @@ const BodyParamsForm = ({
             </div>
           )}
 
-          {/* Date */}
-          <InputField 
-            label="Date" 
-            value={vm.form.recordedDate} 
-            onChange={(v) => vm.setField('recordedDate', v)} 
-            type="date"
-            onEnter={() => focusNextField(hideVenueField ? nameRef : venueRef)}
-          />
-
+          {/* Date + Time (viewer timezone) */}
+          <div className="grid grid-cols-2 gap-3">
+            <InputField
+              label="Date"
+              value={vm.form.recordedDate}
+              onChange={(v) => vm.setField('recordedDate', v)}
+              type="date"
+              onEnter={() => focusNextField(hideVenueField ? nameRef : venueRef)}
+            />
+            <InputField
+              label="Time"
+              value={vm.form.recordedTime}
+              onChange={(v) => vm.setField('recordedTime', v)}
+              type="time"
+              onEnter={() => focusNextField(hideVenueField ? nameRef : venueRef)}
+            />
+          </div>
           {/* Venue — editable; prefilled from header when provided */}
           {!hideVenueField && (
             <InputField

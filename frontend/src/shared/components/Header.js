@@ -40,6 +40,15 @@ const Header = ({
   const reportsEnabled = isFlagEnabled('ff.reports-module')
     && canAccessReportsModule(userRole);
 
+  // After Centre / profile photo save, App updates user.profileImage immediately —
+  // apply it here so header does not keep a stale getProfile avatar until refetch.
+  useEffect(() => {
+    const fromUser = user?.profileImage || user?.ProfileImage || user?.photoURL;
+    if (typeof fromUser === 'string' && fromUser.startsWith('data:image/')) {
+      setSavedProfileImage(fromUser);
+    }
+  }, [user?.profileImage, user?.ProfileImage, user?.photoURL]);
+
   // Fetch saved user name + avatar for header display.
   // Re-runs when email changes OR when profileKey is incremented (after a save).
   // Uses shared getProfile cache so Home / Diary / nutrition hooks do not re-hit the network.
@@ -55,7 +64,11 @@ const Header = ({
             setSavedUserName(data.data.userName);
             cacheProfileUserName(user.email, data.data.userName);
           }
-          if (data.data.profileImage) setSavedProfileImage(data.data.profileImage);
+          // Same display preference as leaderboard avatar: profileImage, else Centre transform.
+          const nextImage = data.data.profileImage
+            || data.data.transformationPhotos?.front
+            || null;
+          if (nextImage) setSavedProfileImage(nextImage);
           else if (shouldBust) setSavedProfileImage(null);
         }
       } catch (err) {
@@ -68,6 +81,12 @@ const Header = ({
 
   const userName = savedUserName || user?.displayName || user?.username || user?.email || "User";
   const userEmail = user?.email || "";
+  // Prefer fetched profile; fall back to session user after Centre photo save (before refetch lands).
+  const headerAvatarSrc = savedProfileImage
+    || user?.profileImage
+    || user?.ProfileImage
+    || user?.photoURL
+    || null;
 
   const getInitial = () => {
     if (userName) return userName.charAt(0).toUpperCase();
@@ -151,9 +170,9 @@ const Header = ({
             title="My Profile"
             ariaLabel="My Profile"
           >
-            {savedProfileImage ? (
+            {headerAvatarSrc ? (
               <img
-                src={savedProfileImage}
+                src={headerAvatarSrc}
                 alt="User Avatar"
                 className="h-9 w-9 sm:h-10 sm:w-10 rounded-full border border-gray-300 shadow-sm"
                 loading="lazy"

@@ -54,6 +54,7 @@ import {
   TEAM_SCOPES,
   computeMemberCompleteness,
   toggleStatusFilter,
+  resolveTeamScopeCount,
 } from '../utils/testimonialFilters.js';
 import {
   buildHealthIssueSuggestions,
@@ -468,13 +469,12 @@ function UnifiedOtpInline({
       <div className="flex items-center gap-2">
         <ShieldCheck className="h-4 w-4 text-amber-600 shrink-0" />
         <p className="text-sm font-semibold text-amber-800">
-          Enter OTP from your Sponsor {sponsorLabel}
+          Enter OTP sent to your sponsor {sponsorLabel} through Gmail
         </p>
       </div>
       <p className="text-xs text-amber-700 leading-relaxed">
-        {sponsorLabel === 'your sponsor' ? 'Your sponsor' : sponsorLabel}
-        {' '}received a single 4-digit OTP covering all your changes. Ask them to share it.
-        {' '}Valid for <span className="font-semibold">{hours} hours</span>.
+        Ask them to share the 4-digit code. The OTP is valid for{' '}
+        <span className="font-semibold">{hours} hours</span>.
       </p>
       {expired && (
         <p className="text-xs font-semibold text-red-600">
@@ -975,8 +975,11 @@ function MemberCard({
         ...(draftBefore.weightKg !== undefined ? { beforeWeightKg: draftBefore.weightKg } : {}),
         // Always send goal on drafts — UI may show "Weight Loss" without writing state
         goalType: draftBefore.goalType || testimonial?.goalType || 'loss',
-        ...((draftBefore.durationText || testimonial?.durationText)
-          ? { durationText: draftBefore.durationText || testimonial.durationText }
+        ...((String(draftBefore.durationText ?? '').trim() || testimonial?.durationText)
+          ? {
+              durationText:
+                String(draftBefore.durationText ?? '').trim() || testimonial.durationText,
+            }
           : {}),
       } : {}),
       ...(draftAfter ? {
@@ -1538,10 +1541,28 @@ function MemberCard({
                       type="text"
                       autoFocus
                       placeholder="e.g. 3 months"
-                      defaultValue={draftBefore?.durationText ?? testimonial?.durationText ?? ''}
-                      onBlur={(e) => {
-                        const val = e.target.value.trim();
-                        if (val) setDraftBefore(prev => ({ ...(prev || { weightKg: testimonial?.beforeWeightKg, goalType: testimonial?.goalType }), durationText: val }));
+                      value={draftBefore?.durationText ?? testimonial?.durationText ?? ''}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setDraftBefore((prev) => ({
+                          ...(prev || {
+                            weightKg: testimonial?.beforeWeightKg,
+                            goalType: testimonial?.goalType,
+                          }),
+                          durationText: val,
+                        }));
+                      }}
+                      onBlur={() => {
+                        const val = String(draftBefore?.durationText ?? '').trim();
+                        if (val) {
+                          setDraftBefore((prev) => ({
+                            ...(prev || {
+                              weightKg: testimonial?.beforeWeightKg,
+                              goalType: testimonial?.goalType,
+                            }),
+                            durationText: val,
+                          }));
+                        }
                         toggleSlot('duration');
                       }}
                       onKeyDown={(e) => {
@@ -1889,6 +1910,8 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
   const [highlightedIssue,      setHighlightedIssue]      = useState(-1);
 
   const [teamPerformanceByUserId, setTeamPerformanceByUserId] = useState({});
+  /** Unfiltered Direct/Full sizes for tab badges — never overwritten by upload filters. */
+  const [directTeamMemberCount, setDirectTeamMemberCount] = useState(null);
   const [fullTeamMemberCount, setFullTeamMemberCount] = useState(null);
   const [fullLoading, setFullLoading] = useState(false);
   const [fullLoaded, setFullLoaded] = useState(false);
@@ -1995,6 +2018,7 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
     }
     setFullRows([]);
     setFullLoaded(false);
+    setDirectTeamMemberCount(null);
     setFullTeamMemberCount(null);
     setListReloadKey((key) => key + 1);
     try {
@@ -2013,6 +2037,7 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
       });
       setMineRow(mine);
       const total = directResult?.pagination?.total ?? direct.length;
+      setDirectTeamMemberCount(total);
       setHasDownline(total > 0);
       if (total === 0) setTeamScope(TEAM_SCOPES.MINE);
     } catch (err) {
@@ -2101,11 +2126,23 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
     return directRows;
   }, [hasDownline, teamScope, mineRow, directRows, fullRows]);
 
-  const teamScopeCounts = useMemo(() => ({
-    [TEAM_SCOPES.MINE]: mineRow ? 1 : 0,
-    [TEAM_SCOPES.DIRECT]: directPagination.total || directRows.length,
-    [TEAM_SCOPES.FULL]: fullTeamMemberCount ?? fullPagination.total ?? fullRows.length,
-  }), [mineRow, directPagination.total, directRows.length, fullTeamMemberCount, fullPagination.total, fullRows.length]);
+  const teamScopeCounts = useMemo(() => {
+    const directTotal = directTeamMemberCount
+      ?? (Number.isFinite(directPagination.total) ? directPagination.total : directRows.length);
+    const fullTotal = fullTeamMemberCount
+      ?? (Number.isFinite(fullPagination.total) ? fullPagination.total : fullRows.length);
+
+    return {
+      [TEAM_SCOPES.MINE]: mineRow ? 1 : 0,
+      // Always total Direct/Full members — Partial / Not Uploaded only filter the list.
+      [TEAM_SCOPES.DIRECT]: resolveTeamScopeCount(uploadFilter, directUploadCounts, directTotal),
+      [TEAM_SCOPES.FULL]: resolveTeamScopeCount(uploadFilter, fullUploadCounts, fullTotal),
+    };
+  }, [
+    mineRow, uploadFilter, directUploadCounts, fullUploadCounts,
+    directTeamMemberCount, directPagination.total, directRows.length,
+    fullTeamMemberCount, fullPagination.total, fullRows.length,
+  ]);
 
   // Server-provided completeness counts (search-scoped); avoid recounting only the loaded page.
   const uploadCounts = teamScope === TEAM_SCOPES.FULL ? fullUploadCounts : directUploadCounts;
@@ -2227,15 +2264,26 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
         });
         if (cancelled) return;
         const pageData = Array.isArray(result?.data) ? result.data : [];
+        const pagination = result.pagination || { page: 1, hasMore: false, total: 0 };
+        const isUnfilteredList = (!uploadFilter || uploadFilter === UPLOAD_FILTERS.ALL)
+          && !normalizeSearchQuery(searchQuery)
+          && !normalizeSearchQuery(committedHealthIssue);
         if (scope === 'full') {
           setFullRows(pageData);
-          setFullPagination(result.pagination || { page: 1, hasMore: false, total: 0 });
+          setFullPagination(pagination);
           if (result.uploadCounts) setFullUploadCounts(result.uploadCounts);
+          // Only refresh Full badge total from unfiltered responses (filters shrink pagination.total).
+          if (isUnfilteredList && Number.isFinite(pagination.total)) {
+            setFullTeamMemberCount(pagination.total);
+          }
           setFullLoaded(true);
         } else {
           setDirectRows(pageData);
-          setDirectPagination(result.pagination || { page: 1, hasMore: false, total: 0 });
+          setDirectPagination(pagination);
           if (result.uploadCounts) setDirectUploadCounts(result.uploadCounts);
+          if (isUnfilteredList && Number.isFinite(pagination.total)) {
+            setDirectTeamMemberCount(pagination.total);
+          }
         }
       } catch (err) {
         if (!cancelled) setError(err?.message || 'Failed to load team');

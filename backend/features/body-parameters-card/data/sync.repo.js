@@ -244,6 +244,13 @@ export async function syncCardToProfile(card, profileExtras = {}) {
       /* non-fatal */
     }
   }
+  if (teamDiff.ProfileImage !== undefined || teamDiff.transformation_photos !== undefined) {
+    try {
+      cache.delete(cacheKeys.userAvatar(userId));
+    } catch {
+      /* non-fatal */
+    }
+  }
 
   logger.info('[bpc-sync] card → profile', {
     userId,

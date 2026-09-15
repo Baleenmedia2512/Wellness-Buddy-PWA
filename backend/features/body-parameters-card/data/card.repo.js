@@ -130,6 +130,8 @@ export async function updateCard(id, payload) {
     recovered_health_issues: Array.isArray(payload.recoveredHealthIssues)
       ? payload.recoveredHealthIssues
       : [],
+    // Stamp update time so list/share show update time; create keeps created_at only.
+    updated_at: new Date().toISOString(),
   };
 
   const { data, error } = await supabase
@@ -139,6 +141,41 @@ export async function updateCard(id, payload) {
     .eq('is_deleted', false)
     .select()
     .single();
+
+  if (error && /updated_at/i.test(String(error.message || ''))) {
+    logger.error('[body-params-card] updated_at update failed — retrying without stamp', {
+      message: error.message,
+    });
+    // Retry without updated_at so Update still works if stamp is rejected.
+    delete patch.updated_at;
+    const retry = await supabase
+      .from(TABLE)
+      .update(patch)
+      .eq('id', id)
+      .eq('is_deleted', false)
+      .select()
+      .single();
+    if (retry.error && /recovered_health_issues/i.test(String(retry.error.message || ''))) {
+      logger.error('[body-params-card] recovered_health_issues column missing — run migration add_health_issues_to_body_parameters_cards.sql', {
+        message: retry.error.message,
+      });
+      throw new Error(
+        'Health issues cannot be saved: database column recovered_health_issues is missing. '
+        + 'Run backend/migrations/add_health_issues_to_body_parameters_cards.sql in Supabase.',
+      );
+    }
+    if (retry.error && /location_name/i.test(String(retry.error.message || ''))) {
+      logger.error('[body-params-card] location_name column missing — Venue cannot be saved. Run migration add_location_name_to_body_parameters_cards.sql', {
+        message: retry.error.message,
+      });
+      throw new Error(
+        'Venue cannot be saved: database column location_name is missing. '
+        + 'Run backend/migrations/add_location_name_to_body_parameters_cards.sql in Supabase.',
+      );
+    }
+    if (retry.error) throw retry.error;
+    return retry.data;
+  }
 
   if (error && /recovered_health_issues/i.test(String(error.message || ''))) {
     logger.error('[body-params-card] recovered_health_issues column missing — run migration add_health_issues_to_body_parameters_cards.sql', {
@@ -179,7 +216,7 @@ export async function findCardByToken(token) {
       'id, created_by, user_id, public_share_token, share_expires_at, ' +
       'name, age, gender, height_cm, weight_kg, bmi, fat_percent, bmr, ' +
       'body_age, visceral_fat, chest_cm, waist_cm, hip_cm, recorded_date, location_name, ' +
-      'recovered_health_issues, created_at'
+      'recovered_health_issues, created_at, updated_at'
     )
     .eq('public_share_token', token)
     .eq('is_deleted', false)
@@ -499,7 +536,7 @@ const FULL_CARD_PREFILL_COLS = [
   'id', 'created_by', 'user_id', 'name', 'age', 'gender',
   'height_cm', 'weight_kg', 'bmi', 'fat_percent', 'bmr',
   'body_age', 'visceral_fat', 'chest_cm', 'waist_cm', 'hip_cm',
-  'location_name', 'recorded_date', 'recovered_health_issues', 'created_at',
+  'location_name', 'recorded_date', 'recovered_health_issues', 'created_at', 'updated_at',
 ].join(', ');
 
 /**
@@ -1142,6 +1179,7 @@ const LIST_SUMMARY_COLS = [
   'recorded_date',
   'location_name',
   'created_at',
+  'updated_at',
   'created_by',
 ].join(', ');
 
@@ -1166,6 +1204,7 @@ const LIST_DETAIL_COLS = [
   'location_name',
   'recovered_health_issues',
   'created_at',
+  'updated_at',
   'created_by',
 ].join(', ');
 
@@ -1174,7 +1213,7 @@ const bpcListCache = new Map();
 const bpcListInflight = new Map();
 
 function bpcListCacheKey(coachId) {
-  return `bpc:list:v2:${coachId}`;
+  return `bpc:list:v3:${coachId}`;
 }
 
 function mapRecoveredHealthIssues(raw) {
@@ -1209,6 +1248,7 @@ function mapCardSummary(card, memberMeta = null) {
     recordedDate: card.recorded_date,
     locationName: card.location_name || null,
     createdAt: card.created_at,
+    updatedAt: card.updated_at ?? null,
     createdBy: card.created_by,
   };
 }
