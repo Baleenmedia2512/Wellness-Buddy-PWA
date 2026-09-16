@@ -98,7 +98,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
     [user, form.email],
   );
 
-  const loadProfile = useCallback(async ({ cacheBust = false } = {}) => {
+  const loadProfile = useCallback(async ({ cacheBust = true } = {}) => {
     const emailKey = resolveAccountEmail(user, form.email);
     if (!emailKey && !user?.id) {
       setIsLoading(false);

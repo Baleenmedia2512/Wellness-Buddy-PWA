@@ -166,6 +166,57 @@ export async function syncProfilePhotosToTestimonial(rawBody) {
   };
 }
 
+function bufferToProfileDataUrl(buffer) {
+  return `data:image/jpeg;base64,${buffer.toString('base64')}`;
+}
+
+/**
+ * Transformation storage paths → Profile Left/Right (after testimonial upload).
+ * @param {{ userId: number, beforeImagePath?: string|null, afterImagePath?: string|null }} input
+ */
+export async function syncTestimonialPathsToProfile({
+  userId,
+  beforeImagePath,
+  afterImagePath,
+}) {
+  const uid = Number.parseInt(String(userId), 10);
+  if (!Number.isFinite(uid) || uid < 1) return { skipped: true, reason: 'bad_user' };
+
+  const slots = {};
+  if (beforeImagePath && !repo.isVideoOnlyPlaceholder(beforeImagePath)) {
+    const buf = await repo.downloadBuffer(beforeImagePath);
+    slots.left = bufferToProfileDataUrl(buf);
+  }
+  if (afterImagePath && !repo.isVideoOnlyPlaceholder(afterImagePath)) {
+    const buf = await repo.downloadBuffer(afterImagePath);
+    slots.right = bufferToProfileDataUrl(buf);
+  }
+  if (!hasTransformationPhotoUpdates(slots)) {
+    return { skipped: true, reason: 'no_paths' };
+  }
+
+  const supabase = getSupabaseClient();
+  const { data: row, error: readErr } = await supabase
+    .from('team_table')
+    .select('transformation_photos')
+    .eq('UserId', uid)
+    .maybeSingle();
+  if (readErr) throw readErr;
+
+  const merged = mergeTransformationPhotos(row?.transformation_photos ?? null, slots);
+  const { error: writeErr } = await supabase
+    .from('team_table')
+    .update({ transformation_photos: merged })
+    .eq('UserId', uid);
+  if (writeErr) throw writeErr;
+
+  logger.info('[profilePhotoSync] synced testimonial storage paths to profile', {
+    userId: uid,
+    slots: Object.keys(slots),
+  });
+  return { success: true, slots: Object.keys(slots) };
+}
+
 /**
  * Transformation Before/After → Profile Left/Right (bidirectional sync).
  * Non-throwing wrapper available via syncTestimonialPhotosToProfileSafe.
@@ -218,6 +269,19 @@ export async function syncTestimonialPhotosToProfileSafe(input) {
     return await syncTestimonialPhotosToProfile(input);
   } catch (err) {
     logger.warn('[profilePhotoSync] testimonial→profile sync failed (non-fatal)', {
+      userId: input?.userId,
+      message: err?.message,
+    });
+    return { skipped: true, reason: 'error', message: err?.message };
+  }
+}
+
+/** Same as syncTestimonialPathsToProfile but never throws. */
+export async function syncTestimonialPathsToProfileSafe(input) {
+  try {
+    return await syncTestimonialPathsToProfile(input);
+  } catch (err) {
+    logger.warn('[profilePhotoSync] testimonial path→profile sync failed (non-fatal)', {
       userId: input?.userId,
       message: err?.message,
     });

@@ -17,7 +17,7 @@ import {
   resolveOtpRecipientIds,
   toPositiveUserId,
 } from './domain/otpRecipient.rules.js';
-import { syncTestimonialPhotosToProfileSafe } from './profilePhotoSync.service.js';
+import { syncTestimonialPathsToProfileSafe } from './profilePhotoSync.service.js';
 import logger from '../../shared/lib/logger.js';
 import { ValidationError } from '../../shared/lib/ValidationError.js';
 import {
@@ -368,10 +368,10 @@ export async function submitTestimonial(rawBody) {
     await repo.uploadImage(payload.afterImageBase64, afterPath);
   }
 
-  await syncTestimonialPhotosToProfileSafe({
+  await syncTestimonialPathsToProfileSafe({
     userId: payload.userId,
-    beforeImageBase64: payload.beforeImageBase64,
-    afterImageBase64: payload.hasAfter ? payload.afterImageBase64 : null,
+    beforeImagePath: beforePath,
+    afterImagePath: afterPath,
   });
 
   // Generate OTP only when after photo is present (complete submission)
@@ -504,11 +504,11 @@ export async function editTestimonial(rawBody) {
     updates.afterImagePath = afterPath;
   }
 
-  if (payload.beforeImageBase64 || payload.afterImageBase64) {
-    await syncTestimonialPhotosToProfileSafe({
+  if (updates.beforeImagePath || updates.afterImagePath) {
+    await syncTestimonialPathsToProfileSafe({
       userId: payload.userId,
-      beforeImageBase64: payload.beforeImageBase64 || null,
-      afterImageBase64: payload.afterImageBase64 || null,
+      beforeImagePath: updates.beforeImagePath || null,
+      afterImagePath: updates.afterImagePath || null,
     });
   }
 
@@ -1428,14 +1428,11 @@ export async function submitAllEdits(rawBody) {
     photoUpdates.afterImagePath = afterPath;
   }
 
-  if (
-    (slots.has('before') && payload.beforeImageBase64)
-    || (slots.has('after') && payload.afterImageBase64)
-  ) {
-    await syncTestimonialPhotosToProfileSafe({
+  if (photoUpdates.beforeImagePath || photoUpdates.afterImagePath) {
+    await syncTestimonialPathsToProfileSafe({
       userId: payload.userId,
-      beforeImageBase64: slots.has('before') ? payload.beforeImageBase64 : null,
-      afterImageBase64: slots.has('after') ? payload.afterImageBase64 : null,
+      beforeImagePath: photoUpdates.beforeImagePath || null,
+      afterImagePath: photoUpdates.afterImagePath || null,
     });
   }
 

@@ -24,6 +24,7 @@ import {
   listForCoach, getMyTestimonial, getMyVideoTestimonial, getTeamTestimonialReport,
   getTestimonialDetail, submitAllEdits, verifyUnifiedOtp, resendUnifiedOtp, prepareTestimonialVideoUpload,
 } from '../services/testimonialApi.js';
+import { getProfile } from '../../user/services/user.api.js';
 import { uploadTestimonialVideoInChunks } from '../services/testimonialVideoUpload.js';
 import TestimonialSearchBar from './TestimonialSearchBar.jsx';
 import OtpInline from './OtpInline.jsx';
@@ -1067,6 +1068,13 @@ function MemberCard({
           }
         : null;
       await reloadMine(patched);
+      if (userId) {
+        try {
+          await getProfile({ userId, cacheBust: true });
+        } catch {
+          // Non-fatal — Profile reloads on next open with cache bust.
+        }
+      }
       clearDrafts();
       if (otpSent || patched?.hasPendingOtp) {
         setUnifiedOtpVerified(false);
