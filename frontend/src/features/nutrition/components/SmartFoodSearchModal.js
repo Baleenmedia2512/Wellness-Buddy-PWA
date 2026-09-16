@@ -427,6 +427,44 @@ const SmartFoodSearchModal = ({
       />
     ));
 
+  // When typing a name, pin search hits under the search bar (above selected/combo).
+  const renderCatalogResults = (mealBuilder) =>
+    !showManualForm && showCatalogResults ? (
+      <div className="space-y-4">
+        {catalogRows.length > 0 && (
+          <div>
+            <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5 px-1">
+              {catalogMode ? "Target Nutrition catalog" : "Nutrition library"}
+            </p>
+            <div className="space-y-1.5">
+              {renderFoodRows(catalogRows, "master", mealBuilder)}
+            </div>
+          </div>
+        )}
+        {!catalogMode && hasMyItems && (
+          <div>
+            <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5 px-1">My History</p>
+            <div className="space-y-1.5">{renderFoodRows(myItems, "my", mealBuilder)}</div>
+          </div>
+        )}
+        {!catalogMode && hasCommunityItems && (
+          <div>
+            <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5 px-1">Community</p>
+            <div className="space-y-1.5">{renderFoodRows(communityItems, "community", mealBuilder)}</div>
+          </div>
+        )}
+        {!isSearching
+          && catalogRows.length === 0
+          && !hasMyItems
+          && !hasCommunityItems
+          && (hasTypedQuery || !usualCombo.length) && (
+          <p className="text-sm text-gray-400 text-center py-4">
+            No food found — try a different name
+          </p>
+        )}
+      </div>
+    ) : null;
+
   // ── Full-screen Meal Builder ──────────────────────────────────────────────
   if (useFullScreen) {
     return (
@@ -458,6 +496,8 @@ const SmartFoodSearchModal = ({
               {addToast}
             </p>
           )}
+
+          {hasTypedQuery && renderCatalogResults(true)}
 
           {showRegularSuggestions && (
             <div>
@@ -521,37 +561,7 @@ const SmartFoodSearchModal = ({
             </div>
           )}
 
-          {!showManualForm && showCatalogResults && (
-            <div className="space-y-4">
-              {(catalogRows.length > 0) && (
-                <div>
-                  <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5 px-1">
-                    {catalogMode ? "Target Nutrition catalog" : "Nutrition library"}
-                  </p>
-                  <div className="space-y-1.5">
-                    {renderFoodRows(catalogRows, "master", true)}
-                  </div>
-                </div>
-              )}
-              {!catalogMode && hasMyItems && (
-                <div>
-                  <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5 px-1">My History</p>
-                  <div className="space-y-1.5">{renderFoodRows(myItems, "my", true)}</div>
-                </div>
-              )}
-              {!catalogMode && hasCommunityItems && (
-                <div>
-                  <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5 px-1">Community</p>
-                  <div className="space-y-1.5">{renderFoodRows(communityItems, "community", true)}</div>
-                </div>
-              )}
-              {!isSearching && catalogRows.length === 0 && !hasMyItems && !hasCommunityItems && !usualCombo.length && (
-                <p className="text-sm text-gray-400 text-center py-4">
-                  No food found — try a different name
-                </p>
-              )}
-            </div>
-          )}
+          {!hasTypedQuery && renderCatalogResults(true)}
 
           {!showManualForm && !searching && !catalogMode && suggestionRows.length === 0 && !hasSelected && (
             <div className="flex flex-col items-center justify-center py-14 text-center">
@@ -715,6 +725,8 @@ const SmartFoodSearchModal = ({
         <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2.5">
               {searchBar}
 
+          {hasTypedQuery && renderCatalogResults(false)}
+
           {!showManualForm && hasSelected && (
             <div className="bg-orange-50 border border-orange-200 rounded-xl px-3 py-2.5">
               <div className="flex items-center justify-between mb-2">
@@ -771,30 +783,7 @@ const SmartFoodSearchModal = ({
                 </div>
               )}
 
-              {!showManualForm && showCatalogResults && (
-                <div className="space-y-4">
-                  {catalogRows.length > 0 && (
-                    <div>
-                      <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5 px-1">
-                        {catalogMode ? "Target Nutrition catalog" : "Nutrition library"}
-                      </p>
-                      <div className="space-y-1.5">{renderFoodRows(catalogRows, "master", false)}</div>
-                    </div>
-                  )}
-              {!catalogMode && hasMyItems && (
-                <div>
-                  <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5 px-1">My History</p>
-                      <div className="space-y-1.5">{renderFoodRows(myItems, "my", false)}</div>
-                    </div>
-                  )}
-                  {!catalogMode && hasCommunityItems && (
-                    <div>
-                      <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5 px-1">Community</p>
-                      <div className="space-y-1.5">{renderFoodRows(communityItems, "community", false)}</div>
-                  </div>
-                  )}
-                </div>
-              )}
+              {!hasTypedQuery && renderCatalogResults(false)}
 
               {showManualForm && (
                 <div className="space-y-4">
