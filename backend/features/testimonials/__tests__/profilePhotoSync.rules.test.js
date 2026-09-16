@@ -31,11 +31,14 @@ describe('profilePhotoSync.rules', () => {
       before_image_path: '1/before.jpg',
       after_image_path: '1/after.jpg',
     }), true);
+  });
+
+  it('always allows Profile Right to sync to testimonial After', () => {
     assert.equal(canSyncProfileAfterToTestimonial({
       status: 'pending',
       before_image_path: '1/before.jpg',
       after_image_path: '1/after.jpg',
-    }), false);
+    }), true);
   });
 
   it('allows after sync when no row exists', () => {

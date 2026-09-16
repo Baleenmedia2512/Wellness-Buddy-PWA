@@ -6,7 +6,6 @@ import * as repo from './testimonials.repository.js';
 import { validateSyncProfilePhotos } from './testimonials.validators.js';
 import {
   buildProfileSlotsFromTestimonialImages,
-  canSyncProfileAfterToTestimonial,
   hasPositiveWeight,
   testimonialHasRealAfter,
 } from './domain/profilePhotoSync.rules.js';
@@ -113,13 +112,15 @@ export async function syncProfilePhotosToTestimonial(rawBody) {
     }
   }
 
-  if (afterImageBase64 && canSyncProfileAfterToTestimonial(existing, repo.isVideoOnlyPlaceholder)) {
+  if (afterImageBase64) {
     const afterPath = storagePath(userId, 'after', ts);
     await repo.uploadImage(afterImageBase64, afterPath);
     updates.afterImagePath = afterPath;
-    if (!existing.status || existing.status === 'incomplete') {
-      updates.status = 'incomplete';
-    }
+    // Profile Right always wins — reset approval so sponsor re-verifies the new After.
+    updates.status = 'incomplete';
+    updates.otpHash = null;
+    updates.otpExpiresAt = null;
+    updates.verifiedAt = null;
     if (!hasPositiveWeight(existing.after_weight_kg) && hasPositiveWeight(beforeWeightKg)) {
       updates.afterWeightKg = beforeWeightKg;
     }

@@ -62,10 +62,10 @@ export function seedTestimonialFromProfilePhotos(testimonial, transformationPhot
     next.before_image_path = String(leftUrl).trim();
   }
 
-  if (!realAfter) {
-    if (hasRight) {
-      next.after_image_path = String(rightUrl).trim();
-    } else if (hasLeft) {
+  if (hasRight) {
+    next.after_image_path = String(rightUrl).trim();
+  } else if (!realAfter) {
+    if (hasLeft) {
       next.after_image_path = String(leftUrl).trim();
     } else if (!isStoredPath(next.after_image_path) && isStoredPath(next.before_image_path)) {
       next.after_image_path = next.before_image_path;

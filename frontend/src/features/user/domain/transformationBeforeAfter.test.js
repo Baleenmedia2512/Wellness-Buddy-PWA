@@ -165,6 +165,17 @@ describe('transformation Before vs After pairing', () => {
     assert.equal(seeded.afterImageUrl, 'data:image/jpeg;base64,right');
   });
 
+  it('overwrites pending After with Profile Right', () => {
+    const seeded = seedMineTestimonialFromProfileSlots({
+      status: 'pending',
+      beforeImageUrl: 'https://cdn.example/before.jpg',
+      afterImageUrl: 'https://cdn.example/after.jpg',
+    }, {
+      rightUrl: 'data:image/jpeg;base64,right',
+    });
+    assert.equal(seeded.afterImageUrl, 'data:image/jpeg;base64,right');
+  });
+
   it('uses Profile Right alone for After display seed', () => {
     const seeded = seedMineTestimonialFromProfileSlots(null, {
       rightUrl: 'data:image/jpeg;base64,right',

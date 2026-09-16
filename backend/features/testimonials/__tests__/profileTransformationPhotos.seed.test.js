@@ -41,7 +41,7 @@ describe('seedTestimonialFromProfilePhotos', () => {
     assert.equal(seeded.after_image_path, 'https://cdn.example/left.jpg');
   });
 
-  it('does not overwrite a real After when status is beyond incomplete', () => {
+  it('keeps testimonial After when only profile left changes on pending row', () => {
     const seeded = seedTestimonialFromProfilePhotos(
       {
         before_image_path: '99/before.jpg',
@@ -52,6 +52,18 @@ describe('seedTestimonialFromProfilePhotos', () => {
     );
     assert.equal(seeded.before_image_path, 'https://cdn.example/left.jpg');
     assert.equal(seeded.after_image_path, '99/after.jpg');
+  });
+
+  it('overwrites pending After when profile right is provided', () => {
+    const seeded = seedTestimonialFromProfilePhotos(
+      {
+        before_image_path: '99/before.jpg',
+        after_image_path: '99/after.jpg',
+        status: 'pending',
+      },
+      { right: 'https://cdn.example/right.jpg' },
+    );
+    assert.equal(seeded.after_image_path, 'https://cdn.example/right.jpg');
   });
 
   it('maps profile right slot to after when incomplete', () => {

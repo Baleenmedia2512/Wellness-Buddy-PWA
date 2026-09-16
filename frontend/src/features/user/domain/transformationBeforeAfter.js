@@ -159,8 +159,8 @@ function testimonialHasRealAfterDisplay(testimonial) {
 
 /**
  * Transformation Before/After from Profile slots:
- * Left → Before; Right → After when no real After; else Left mirrors After.
- * A real (non-incomplete, distinct) After is never replaced.
+ * Left → Before always; Right → After always when provided.
+ * When Profile Right is missing, Left mirrors After unless a real After exists.
  */
 export function seedMineTestimonialFromProfileSlots(testimonial, { leftUrl, rightUrl, weightKg } = {}) {
   const hasLeft = isStoredPhoto(leftUrl);
@@ -182,20 +182,18 @@ export function seedMineTestimonialFromProfileSlots(testimonial, { leftUrl, righ
   const beforeW = firstPositiveKg(next.beforeWeightKg, weight);
   if (beforeW != null) next.beforeWeightKg = beforeW;
 
-  if (!realAfter) {
-    if (hasRight) {
-      next.afterImageUrl = String(rightUrl).trim();
-    } else if (hasLeft) {
+  if (hasRight) {
+    next.afterImageUrl = String(rightUrl).trim();
+  } else if (!realAfter) {
+    if (hasLeft) {
       next.afterImageUrl = String(leftUrl).trim();
     } else if (!isStoredPhoto(next.afterImageUrl) && isStoredPhoto(next.beforeImageUrl)) {
       next.afterImageUrl = next.beforeImageUrl;
     }
-    const afterW = firstPositiveKg(next.afterWeightKg, beforeW, weight);
-    if (afterW != null) next.afterWeightKg = afterW;
-  } else {
-    const afterW = firstPositiveKg(next.afterWeightKg, weight);
-    if (afterW != null && !firstPositiveKg(next.afterWeightKg)) next.afterWeightKg = afterW;
   }
+
+  const afterW = firstPositiveKg(next.afterWeightKg, beforeW, weight);
+  if (afterW != null && (!realAfter || hasRight)) next.afterWeightKg = afterW;
   return next;
 }
 

@@ -1,7 +1,7 @@
 /**
  * Bidirectional Profile ↔ Transformation photo sync rules.
  * Left ↔ Before, Right ↔ After. Centre never maps either way.
- * Profile After sync never overwrites a real approved/pending After.
+ * Profile Right always drives Transformation After when provided.
  */
 
 const DATA_IMAGE_RE = /^data:image\/[a-zA-Z0-9+.-]+;base64,/i;
@@ -27,9 +27,8 @@ export function testimonialHasRealAfter(row, isPlaceholder = () => false) {
  * @param {(path: string) => boolean} [isPlaceholder]
  * @returns {boolean}
  */
-export function canSyncProfileAfterToTestimonial(row, isPlaceholder = () => false) {
-  if (!row) return true;
-  return !testimonialHasRealAfter(row, isPlaceholder);
+export function canSyncProfileAfterToTestimonial(_row, _isPlaceholder = () => false) {
+  return true;
 }
 
 /**
