@@ -418,7 +418,7 @@ test(
 
     const otpInputs =
       page.locator(
-        'input[type="tel"]'
+        'input[data-otp="true"]'
       );
 
     await expect(
@@ -1161,7 +1161,7 @@ test(
     await submitPhoneBtn.click();
 
     await expect(page.getByText('Enter OTP', { exact: true })).toBeVisible({ timeout: 15000 });
-    const otpInputs = page.locator('input[type="tel"]');
+    const otpInputs = page.locator('input[data-otp="true"]');
     await expect(otpInputs).toHaveCount(4);
 
     for (let i = 0; i < LOGIN_OTP.length; i++) {
@@ -2571,7 +2571,7 @@ test(
 
       const otpInputs =
         page.locator(
-          'input[type="tel"]'
+          'input[data-otp="true"]'
         );
 
 
@@ -3349,7 +3349,7 @@ test(
     ).toBeVisible();
 
     const otpInputs =
-      page.locator('input[type="tel"]');
+      page.locator('input[data-otp="true"]');
 
     await expect(otpInputs).toHaveCount(4);
 
@@ -3738,7 +3738,7 @@ test(
 
     const otpInputs =
       page.locator(
-        'input[type="tel"]'
+        'input[data-otp="true"]'
       );
 
     await expect(
@@ -4292,7 +4292,7 @@ test(
     ).toBeVisible();
 
     const otpInputs =
-      page.locator('input[type="tel"]');
+      page.locator('input[data-otp="true"]');
 
     await expect(
       otpInputs
@@ -4936,7 +4936,7 @@ test(
     });
 
     const otpInputs =
-      page.locator('input[type="tel"]');
+      page.locator('input[data-otp="true"]');
 
     await expect(
       otpInputs

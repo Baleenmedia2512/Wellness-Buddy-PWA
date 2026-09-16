@@ -23,23 +23,24 @@ function reportFilterSelects(page) {
   return page.locator('section[aria-label="Report filters"] select');
 }
 
-function dateSelect(page) {
-  return reportFilterSelects(page).nth(0);
+function datePresetBtn(page, name) {
+  return page.locator('section[aria-label="Report filters"]').getByRole('button', { name, exact: true });
+}
+
+function customDateBtn(page) {
+  return page.locator('section[aria-label="Report filters"]').getByRole('button', { name: /Custom|Choose custom/i });
 }
 
 function teamSelect(page) {
-  // When hasTeam: Date, Team, Category, Attendance
-  return reportFilterSelects(page).nth(1);
+  return page.locator('section[aria-label="Report filters"] label').filter({ hasText: 'Team' }).locator('select');
 }
 
 function categorySelect(page) {
-  // With team scope visible, Category is the 3rd select (index 2)
-  return reportFilterSelects(page).nth(2);
+  return page.locator('section[aria-label="Report filters"] label').filter({ hasText: 'Category' }).locator('select');
 }
 
 function attendanceSelect(page) {
-  // With team scope: 4th select; without team: 2nd select
-  return reportFilterSelects(page).last();
+  return page.locator('section[aria-label="Report filters"] label').filter({ hasText: 'Attendance' }).locator('select');
 }
 
 test.describe('Activity Report Module', () => {
@@ -207,11 +208,9 @@ test.describe('Activity Report Module', () => {
   });
 
   test('ACT-001 Initial Load and Elements Visibility', async ({ page }) => {
-    // Date / Team / Category are selects (not pill buttons)
-    await expect(dateSelect(page)).toBeVisible();
-    await expect(dateSelect(page)).toHaveValue('today');
-    await expect(dateSelect(page).locator('option[value="yesterday"]')).toHaveCount(1);
-    await expect(dateSelect(page).locator('option[value="custom"]')).toHaveCount(1);
+    await expect(datePresetBtn(page, 'Today')).toBeVisible();
+    await expect(datePresetBtn(page, 'Yesterday')).toBeVisible();
+    await expect(customDateBtn(page)).toBeVisible();
 
     await expect(teamSelect(page)).toBeVisible();
     await expect(teamSelect(page).locator('option[value="mine"]')).toHaveCount(1);
@@ -236,11 +235,11 @@ test.describe('Activity Report Module', () => {
   });
 
   test('ACT-003 Date Range Filters (Yesterday & Custom)', async ({ page }) => {
-    await dateSelect(page).selectOption('yesterday');
-    await expect(dateSelect(page)).toHaveValue('yesterday');
+    await datePresetBtn(page, 'Yesterday').click();
+    await expect(datePresetBtn(page, 'Yesterday')).toHaveClass(/bg-green-600/);
 
-    await dateSelect(page).selectOption('custom');
-    await expect(dateSelect(page)).toHaveValue('custom');
+    await customDateBtn(page).click();
+    await expect(customDateBtn(page)).toHaveClass(/bg-green-600/);
 
     // Custom opens DateRangePicker — pick start then end day in the calendar grid
     const calendar = page.locator('.grid.grid-cols-7').last();
@@ -253,22 +252,22 @@ test.describe('Activity Report Module', () => {
 
   test('ACT-004 Category Switching & Dynamic Table Headers', async ({ page }) => {
     await categorySelect(page).selectOption('weight');
-    await expect(page.getByRole('heading', { name: /Weight · Attended/i })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /Weight · Posted/i })).toBeVisible();
     await expect(page.getByRole('columnheader', { name: 'Weight (kg)', exact: true })).toBeVisible();
 
     await categorySelect(page).selectOption('breakfast');
-    await expect(page.getByRole('heading', { name: /Breakfast · Attended/i })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /Breakfast · Posted/i })).toBeVisible();
     await expect(page.getByRole('columnheader', { name: 'Meal', exact: true })).toBeVisible();
     await expect(page.getByRole('columnheader', { name: 'Calories', exact: true })).toBeVisible();
 
     await categorySelect(page).selectOption('water');
-    await expect(page.getByRole('heading', { name: /Water · Attended/i })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /Water · Posted/i })).toBeVisible();
     await expect(page.getByRole('columnheader', { name: 'Water (L)', exact: true })).toBeVisible();
   });
 
   test('ACT-005 Data Fetching (Weight - Today - Mine)', async ({ page }) => {
     await teamSelect(page).selectOption('mine');
-    await dateSelect(page).selectOption('today');
+    await datePresetBtn(page, 'Today').click();
     await categorySelect(page).selectOption('weight');
 
     await expect(page.getByRole('cell', { name: 'Clara K', exact: true })).toBeVisible();
@@ -278,7 +277,7 @@ test.describe('Activity Report Module', () => {
 
   test('ACT-006 Data Fetching (Water - Yesterday - Direct Team)', async ({ page }) => {
     await teamSelect(page).selectOption('direct');
-    await dateSelect(page).selectOption('yesterday');
+    await datePresetBtn(page, 'Yesterday').click();
     await categorySelect(page).selectOption('water');
 
     await expect(page.getByRole('cell', { name: 'John Doe', exact: true })).toBeVisible();
@@ -439,9 +438,9 @@ test.describe('Activity Report Module', () => {
     await activityTab.click();
     await expect(page.getByLabel('Report filters')).toBeVisible();
 
-    // Team scope select is hidden when hasTeam is false (Date + Attendance + Category only)
-    await expect(reportFilterSelects(page)).toHaveCount(3);
+    // Team scope select is hidden when hasTeam is false (Category + Attendance only)
+    await expect(reportFilterSelects(page)).toHaveCount(2);
     await expect(page.locator('section[aria-label="Report filters"] option[value="mine"]')).toHaveCount(0);
-    await expect(reportFilterSelects(page).nth(1).locator('option[value="attended"]')).toHaveCount(1);
+    await expect(attendanceSelect(page).locator('option[value="posted"]')).toHaveCount(1);
   });
 });

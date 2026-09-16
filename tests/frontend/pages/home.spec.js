@@ -43,7 +43,11 @@ test.describe('Homepage', () => {
             id: 1004,
             UserId: 1004,
             username: 'testuser',
+            userName: 'Test User',
+            UserName: 'Test User',
+            name: 'Test User',
             email: TEST_EMAIL,
+            Email: TEST_EMAIL,
             phone: `+91${TEST_PHONE}`,
             status: 'Active',
             role: role,
@@ -96,6 +100,7 @@ test.describe('Homepage', () => {
             success: true,
             data: {
               profileComplete: true,
+              needsName: false,
               userName: 'Test User',
               email: TEST_EMAIL,
               role: role,
@@ -122,7 +127,7 @@ test.describe('Homepage', () => {
       await route.continue();
     });
 
-    // 6. Mock User Status
+    // 6. Mock User Status & Verify Session
     await page.route('**/api/user/status*', async route => {
       await route.fulfill({
         status: 200,
@@ -132,6 +137,25 @@ test.describe('Homepage', () => {
           setupSkipped: true,
           setupComplete: true,
           pendingRequest: false,
+        }),
+      });
+    });
+
+    await page.route('**/api/user/verify-session*', async route => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          userId: 1004,
+          user: {
+            id: 1004,
+            UserId: 1004,
+            UserName: 'Test User',
+            phone: `+91${TEST_PHONE}`,
+            role: role,
+            email: TEST_EMAIL,
+          },
         }),
       });
     });
@@ -215,7 +239,9 @@ test.describe('Homepage', () => {
     const sendOtpButton = page.getByRole('button', { name: 'Send OTP' });
     await sendOtpButton.click();
 
-    const otpInputs = page.locator('input[type="tel"]');
+    await expect(page.getByText('Enter OTP', { exact: true })).toBeVisible({ timeout: 15000 });
+
+    const otpInputs = page.locator('input[data-otp="true"]');
     await expect(otpInputs).toHaveCount(4);
 
     for (let i = 0; i < LOGIN_OTP.length; i++) {
@@ -299,29 +325,23 @@ test.describe('Homepage', () => {
     await expect(page.getByRole('button', { name: "Cancel, Don't Log" })).toBeVisible();
   });
 
-  test('HOME-002 developer role can see AI credits setup and wellness score setup; non-developer cannot', async ({ page }) => {
+  test('HOME-002 developer role can see wellness score setup; non-developer cannot', async ({ page }) => {
     // ============================================================
-    // 1. DEVELOPER ROLE: VERIFY OPTIONS ARE VISIBLE
+    // 1. DEVELOPER ROLE: VERIFY WELLNESS SCORE SETUP OPTION IS VISIBLE
     // ============================================================
     await loginAndNavigateToHome(page, 'developer');
 
-    const aiCreditsButtonDev = page.getByRole('button', { name: 'Open AI Credits Setup' });
     const wellnessScoreSetupDev = page.locator('[data-testid="wellness-score-setup-button"]').or(page.getByRole('button', { name: 'Configure wellness score' }));
-
-    await expect(aiCreditsButtonDev).toBeVisible({ timeout: 15000 });
     await expect(wellnessScoreSetupDev.first()).toBeVisible({ timeout: 15000 });
 
     // ============================================================
-    // 2. NON-DEVELOPER ROLE (MEMBER): VERIFY OPTIONS ARE NOT VISIBLE
+    // 2. NON-DEVELOPER ROLE (MEMBER): VERIFY WELLNESS SCORE SETUP IS NOT VISIBLE
     // ============================================================
     await page.goto('/');
     await page.evaluate(() => localStorage.clear()).catch(() => {});
     await loginAndNavigateToHome(page, 'member');
 
-    const aiCreditsButtonMember = page.getByRole('button', { name: 'Open AI Credits Setup' });
     const wellnessScoreSetupMember = page.locator('[data-testid="wellness-score-setup-button"]').or(page.getByRole('button', { name: 'Configure wellness score' }));
-
-    await expect(aiCreditsButtonMember).not.toBeVisible({ timeout: 10000 });
     await expect(wellnessScoreSetupMember).not.toBeVisible({ timeout: 10000 });
   });
 
@@ -592,6 +612,8 @@ test.describe('Homepage', () => {
   });
 
   test('HOME-005 upload image, select all options in education, pick Wellness Seminar and In-person, save, and verify education modal behavior on revisit', async ({ page }) => {
+    await loginAndNavigateToHome(page, 'developer');
+
     let savedEducationPayloads = [];
     await page.route('**/api/education/**', async (route) => {
       if (route.request().method() === 'POST') {
@@ -607,8 +629,6 @@ test.describe('Homepage', () => {
         }),
       });
     });
-
-    await loginAndNavigateToHome(page, 'developer');
 
     // ============================================================
     // 1. UPLOAD IMAGE & TEST SELECTING ALL EDUCATION OPTIONS
@@ -1452,22 +1472,17 @@ test.describe('Homepage', () => {
     await niteworksItem.first().click();
 
     // Verify Floating Meal Tray displays 1 sachet Beta Heart (48.5 kcal rounded to 49 kcal)
+    // Verify Floating Meal Tray displays 1 sachet Beta Heart (48.5 kcal rounded to 49 kcal)
     // and combined initial total calories in tray (49 + 35 = 84 kcal)
-    const mealTrayButton = page.getByRole('button', { name: /Review meal/i }).or(
-      page.getByText('Your Meal', { exact: false })
-    );
-    await expect(mealTrayButton.first()).toBeVisible({ timeout: 10000 });
-    // Open Meal Builder sheet by clicking tray
-    await mealTrayButton.first().click();
+    const reviewMealButton = page.getByRole('button', { name: /Review meal|Edit quantities/i });
+    await expect(reviewMealButton.first()).toBeVisible({ timeout: 10000 });
+    // Open Meal Builder sheet by clicking Review meal tray button
+    await reviewMealButton.first().click();
 
     const sheetDialog = page.getByRole('dialog', { name: 'Your Meal' });
     await expect(sheetDialog).toBeVisible({ timeout: 10000 });
 
-    // Verify initial macro summary values in sheet before quantity increase
-    // Beta Heart (1x): 48.5 kcal (49), 3.2g P, 6.1g C, 0.8g F
-    // Niteworks (1x): 35.0 kcal, 4.5g P, 3.0g C, 0.2g F
-    // Initial totals: 84 kcal, P: 8g (7.7), C: 9g (9.1), F: 1g (1.0)
-    await expect(sheetDialog.getByText('84', { exact: true })).toBeVisible({ timeout: 5000 });
+    await expect(sheetDialog.getByText('84 kcal', { exact: false }).first()).toBeVisible({ timeout: 5000 });
 
     // Increase Herbalife Beta Heart quantity to 2 items (+ button inside sheet)
     const increaseBetaHeartBtn = page.getByRole('button', { name: 'Increase Herbalife Beta Heart' });

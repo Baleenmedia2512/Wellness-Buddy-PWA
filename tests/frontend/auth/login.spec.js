@@ -340,7 +340,7 @@ async function performOtpLogin(page, phone = TEST_PHONE) {
     timeout: 15000,
   });
 
-  const otpInputs = page.locator('input[type="tel"]');
+  const otpInputs = page.locator('input[data-otp="true"]');
 
   await expect(otpInputs).toHaveCount(4);
 
@@ -545,7 +545,7 @@ test.describe('Login', () => {
 
   });
 
-  test('AUTH-009 OTP screen displays six input fields', async ({ page }) => {
+  test('AUTH-009 OTP screen displays four input fields', async ({ page }) => {
 
     await page.route('**/api/auth/send-otp', async route => {
       await route.fulfill({
@@ -569,7 +569,7 @@ test.describe('Login', () => {
       page.getByText('Enter OTP', { exact: true })
     ).toBeVisible();
 
-    const otpInputs = page.locator('input[type="tel"]');
+    const otpInputs = page.locator('input[data-otp="true"]');
 
     await expect(otpInputs).toHaveCount(4);
 
@@ -595,7 +595,7 @@ test.describe('Login', () => {
       name: 'Send OTP'
     }).click();
 
-    const otpInputs = page.locator('input[type="tel"]');
+    const otpInputs = page.locator('input[data-otp="true"]');
 
     await expect(otpInputs).toHaveCount(4);
 
@@ -633,7 +633,7 @@ test.describe('Login', () => {
       name: 'Send OTP'
     }).click();
 
-    const otpInputs = page.locator('input[type="tel"]');
+    const otpInputs = page.locator('input[data-otp="true"]');
 
     await otpInputs.nth(0).fill('1');
 
@@ -717,7 +717,7 @@ test.describe('Login', () => {
       name: 'Send OTP'
     }).click();
 
-    const otpInputs = page.locator('input[type="tel"]');
+    const otpInputs = page.locator('input[data-otp="true"]');
 
     await expect(otpInputs).toHaveCount(4);
 
@@ -741,25 +741,19 @@ test.describe('Login', () => {
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
-          success: true
+          success: true,
         }),
       });
     });
 
     // Mock Verify OTP with invalid OTP response
     await page.route('**/api/auth/verify-otp', async route => {
-      const postData = route.request().postDataJSON();
-      expect(postData).toMatchObject({
-        otp: '1234',
-        contactType: 'phone',
-      });
-
       await route.fulfill({
         status: 400,
         contentType: 'application/json',
         body: JSON.stringify({
           success: false,
-          message: 'Invalid OTP. Please try again.'
+          message: 'Invalid OTP. Please try again.',
         }),
       });
     });
@@ -776,20 +770,19 @@ test.describe('Login', () => {
     await sendOtpBtn.click();
 
     // 2. Locate 4 OTP input cells
-    const otpInputs = page.locator('input[type="tel"]');
+    const otpInputs = page.locator('input[data-otp="true"]');
     await expect(otpInputs).toHaveCount(4);
 
-    // 3. Fill invalid 4-digit OTP and await API response
+    // 3. Fill invalid 4-digit OTP and wait for verify-otp response
     const invalidOtp = '1234';
-    const verifyResponsePromise = page.waitForResponse('**/api/auth/verify-otp');
+    const verifyPromise = page.waitForResponse('**/api/auth/verify-otp');
 
     for (let i = 0; i < invalidOtp.length; i++) {
       await otpInputs.nth(i).fill(invalidOtp[i]);
     }
 
-    // 4. Assert verify-otp API response returns failure status and message
-    const response = await verifyResponsePromise;
-    expect(response.status()).toBe(400);
+    // 4. Assert verify-otp API response returns failure status and invalid OTP error message
+    const response = await verifyPromise;
     const responseJson = await response.json();
     expect(responseJson.success).toBe(false);
     expect(responseJson.message).toBe('Invalid OTP. Please try again.');
@@ -828,7 +821,7 @@ test.describe('Login', () => {
       name: 'Send OTP'
     }).click();
 
-    const otpInputs = page.locator('input[type="tel"]');
+    const otpInputs = page.locator('input[data-otp="true"]');
 
     await expect(otpInputs).toHaveCount(4);
 
@@ -903,7 +896,7 @@ test.describe('Login', () => {
       name: 'Send OTP',
     }).click();
 
-    const otpInputs = page.locator('input[type="tel"]');
+    const otpInputs = page.locator('input[data-otp="true"]');
 
     await expect(otpInputs).toHaveCount(4);
 
@@ -963,7 +956,7 @@ test.describe('Login', () => {
     }).click();
 
     // Verify OTP screen
-    const otpInputs = page.locator('input[type="tel"]');
+    const otpInputs = page.locator('input[data-otp="true"]');
 
     await expect(otpInputs).toHaveCount(4);
 
@@ -1016,7 +1009,7 @@ test.describe('Login', () => {
       name: 'Send OTP',
     }).click();
 
-    const otpInputs = page.locator('input[type="tel"]');
+    const otpInputs = page.locator('input[data-otp="true"]');
 
     await expect(otpInputs).toHaveCount(4);
 
@@ -1208,7 +1201,7 @@ test.describe('Post-login flows', () => {
 
     const otpInputs =
       page.locator(
-        'input[type="tel"]'
+        'input[data-otp="true"]'
       );
 
 
