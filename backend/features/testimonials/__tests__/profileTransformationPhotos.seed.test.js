@@ -53,6 +53,23 @@ describe('seedTestimonialFromProfilePhotos', () => {
     assert.equal(seeded.before_image_path, 'https://cdn.example/left.jpg');
     assert.equal(seeded.after_image_path, '99/after.jpg');
   });
+
+  it('maps profile right slot to after when incomplete', () => {
+    const seeded = seedTestimonialFromProfilePhotos(null, {
+      left: 'https://cdn.example/left.jpg',
+      right: 'https://cdn.example/right.jpg',
+    });
+    assert.equal(seeded.before_image_path, 'https://cdn.example/left.jpg');
+    assert.equal(seeded.after_image_path, 'https://cdn.example/right.jpg');
+  });
+
+  it('seeds after from right only', () => {
+    const seeded = seedTestimonialFromProfilePhotos(null, {
+      right: 'https://cdn.example/right.jpg',
+    });
+    assert.equal(seeded.before_image_path, null);
+    assert.equal(seeded.after_image_path, 'https://cdn.example/right.jpg');
+  });
 });
 
 describe('memberHasVisibleTransformationPhoto', () => {

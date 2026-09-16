@@ -10,6 +10,7 @@ import {
   historyFromLatestSlots,
   mapTestimonialToCompareHistory,
   seedMineTestimonialFromLeftSlot,
+  seedMineTestimonialFromProfileSlots,
   selectTransformationBeforeAfter,
 } from './transformationBeforeAfter.js';
 
@@ -149,5 +150,26 @@ describe('transformation Before vs After pairing', () => {
     assert.equal(seeded.beforeImageUrl, 'data:image/jpeg;base64,left');
     assert.equal(seeded.afterImageUrl, 'data:image/jpeg;base64,left');
     assert.equal(seeded.beforeWeightKg, 48);
+  });
+
+  it('maps Profile Right to After when no real After exists', () => {
+    const seeded = seedMineTestimonialFromProfileSlots({
+      status: 'incomplete',
+      beforeImageUrl: 'https://cdn.example/before.jpg',
+      afterImageUrl: 'https://cdn.example/before.jpg',
+    }, {
+      leftUrl: 'data:image/jpeg;base64,left',
+      rightUrl: 'data:image/jpeg;base64,right',
+    });
+    assert.equal(seeded.beforeImageUrl, 'data:image/jpeg;base64,left');
+    assert.equal(seeded.afterImageUrl, 'data:image/jpeg;base64,right');
+  });
+
+  it('uses Profile Right alone for After display seed', () => {
+    const seeded = seedMineTestimonialFromProfileSlots(null, {
+      rightUrl: 'data:image/jpeg;base64,right',
+    });
+    assert.equal(seeded.beforeImageUrl, null);
+    assert.equal(seeded.afterImageUrl, 'data:image/jpeg;base64,right');
   });
 });

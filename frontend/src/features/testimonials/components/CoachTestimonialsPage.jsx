@@ -71,7 +71,7 @@ import {
   subscribeAvatarDisplayVersion,
 } from '../../user/services/avatarDisplayVersion.js';
 import { getProfile } from '../../user/services/user.api.js';
-import { seedMineTestimonialFromLeftSlot } from '../../user/domain/transformationBeforeAfter';
+import { seedMineTestimonialFromProfileSlots } from '../../user/domain/transformationBeforeAfter';
 
 // â”€â”€ Constants â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -1962,8 +1962,12 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
       const leftUrl = profileResult?.success
         ? profileResult?.data?.transformationPhotos?.left
         : null;
-      const seeded = seedMineTestimonialFromLeftSlot(testimonial, {
+      const rightUrl = profileResult?.success
+        ? profileResult?.data?.transformationPhotos?.right
+        : null;
+      const seeded = seedMineTestimonialFromProfileSlots(testimonial, {
         leftUrl,
+        rightUrl,
         weightKg: Number.isFinite(latestWeightKg) ? latestWeightKg : null,
       });
       if (!seeded && !video) {

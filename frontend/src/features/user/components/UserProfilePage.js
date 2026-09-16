@@ -248,12 +248,14 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
       const data = await saveProfile(payload);
       transformationPhotos.clearPending();
       const leftPending = photoExtras.transformationPhotos?.left || null;
-      if (user?.id && (latestWeight != null || leftPending)) {
+      const rightPending = photoExtras.transformationPhotos?.right || null;
+      if (user?.id && (latestWeight != null || leftPending || rightPending)) {
         try {
           await persistOnboardingTestimonialPhotos({
             userId: user.id,
             weightKg: latestWeight,
             leftImageBase64: leftPending,
+            rightImageBase64: rightPending,
             goalType: deriveWeightGoalMode({
               heightCm: form.height,
               currentWeightKg: latestWeight,
