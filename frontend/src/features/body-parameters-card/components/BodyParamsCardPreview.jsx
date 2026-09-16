@@ -17,6 +17,7 @@ import {
   getVisceralFatReference,
   getWaistCmReference,
 } from '../domain/bodyMetricReferences.js';
+import { formatBcmShareCardDateTime, resolveBcmCardDisplayTimestamp } from '../domain/bcmCardDateTime.rules.js';
 
 const G          = '#16a34a';
 const DARK_GREEN = '#166534';
@@ -311,21 +312,19 @@ const MetricRow = ({
 };
 
 /* ─────────────────────────────── main component ── */
-const BodyParamsCardPreview = React.forwardRef(({ card, previousCard = null }, ref) => {
+const BodyParamsCardPreview = React.forwardRef(({ card, previousCard = null, timezoneIana }, ref) => {
   const isExistingUser = Boolean(previousCard);
   const fmt = (v, unit) => {
     const u = unit || '';
     return v !== null && v !== undefined && v !== '' ? (v + u) : '—';
   };
 
-  const fmtDate = (v) => {
-    if (!v) return '—';
-    const str = String(v);
-    if (/^\d{4}-\d{2}-\d{2}/.test(str)) return str.slice(0, 10);
-    if (/^\d{8}$/.test(str))
-      return str.slice(0, 4) + '-' + str.slice(4, 6) + '-' + str.slice(6, 8);
-    return str;
-  };
+  const fmtDate = (recordedDate, cardRow) =>
+    formatBcmShareCardDateTime(
+      recordedDate,
+      resolveBcmCardDisplayTimestamp(cardRow),
+      timezoneIana,
+    );
 
   /* ── Status helpers ── */
   const bmiVal = parseFloat(card.bmi);
@@ -455,7 +454,7 @@ const BodyParamsCardPreview = React.forwardRef(({ card, previousCard = null }, r
         {/* ═══ PERSONAL STATS SECTION ═══ */}
         <div style={{ background: '#fff', padding: '18px 22px 12px' }}>
 
-          <InfoRow icon="📅" label="Date"     value={fmtDate(card.recordedDate)} />
+          <InfoRow icon="📅" label="Date"     value={fmtDate(card.recordedDate, card)} />
           {card.locationName ? (
             <InfoRow icon="📍" label="Venue" value={card.locationName} />
           ) : null}

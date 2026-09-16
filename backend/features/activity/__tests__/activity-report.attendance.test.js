@@ -11,21 +11,33 @@ import {
 } from '../domain/activity-report.attendance.js';
 
 describe('normalizeActivityReportAttendance', () => {
-  it('defaults missing and unknown values to attended (legacy)', () => {
-    assert.equal(normalizeActivityReportAttendance(undefined), ACTIVITY_REPORT_ATTENDANCE.ATTENDED);
-    assert.equal(normalizeActivityReportAttendance(''), ACTIVITY_REPORT_ATTENDANCE.ATTENDED);
-    assert.equal(normalizeActivityReportAttendance('maybe'), ACTIVITY_REPORT_ATTENDANCE.ATTENDED);
-    assert.equal(normalizeActivityReportAttendance('attended'), ACTIVITY_REPORT_ATTENDANCE.ATTENDED);
+  it('defaults missing and unknown values to posted (legacy)', () => {
+    assert.equal(normalizeActivityReportAttendance(undefined), ACTIVITY_REPORT_ATTENDANCE.POSTED);
+    assert.equal(normalizeActivityReportAttendance(''), ACTIVITY_REPORT_ATTENDANCE.POSTED);
+    assert.equal(normalizeActivityReportAttendance('maybe'), ACTIVITY_REPORT_ATTENDANCE.POSTED);
+    assert.equal(normalizeActivityReportAttendance('posted'), ACTIVITY_REPORT_ATTENDANCE.POSTED);
   });
 
-  it('accepts not_attended spellings', () => {
+  it('accepts legacy attended as posted', () => {
+    assert.equal(normalizeActivityReportAttendance('attended'), ACTIVITY_REPORT_ATTENDANCE.POSTED);
+  });
+
+  it('accepts not_posted and legacy not_attended spellings', () => {
+    assert.equal(
+      normalizeActivityReportAttendance('not_posted'),
+      ACTIVITY_REPORT_ATTENDANCE.NOT_POSTED,
+    );
+    assert.equal(
+      normalizeActivityReportAttendance('not-posted'),
+      ACTIVITY_REPORT_ATTENDANCE.NOT_POSTED,
+    );
     assert.equal(
       normalizeActivityReportAttendance('not_attended'),
-      ACTIVITY_REPORT_ATTENDANCE.NOT_ATTENDED,
+      ACTIVITY_REPORT_ATTENDANCE.NOT_POSTED,
     );
     assert.equal(
       normalizeActivityReportAttendance('not-attended'),
-      ACTIVITY_REPORT_ATTENDANCE.NOT_ATTENDED,
+      ACTIVITY_REPORT_ATTENDANCE.NOT_POSTED,
     );
   });
 });
@@ -49,25 +61,33 @@ describe('missingActivityUserIds', () => {
 });
 
 describe('resolveActivityReportTableUserIds', () => {
-  it('uses attended ids for the legacy default', () => {
+  it('uses posted ids for the legacy default', () => {
     assert.deepEqual(
-      resolveActivityReportTableUserIds('attended', [1, 2, 3], [2]),
+      resolveActivityReportTableUserIds('posted', [1, 2, 3], [2]),
       [2],
     );
     assert.deepEqual(
       resolveActivityReportTableUserIds(undefined, [1, 2, 3], [2]),
       [2],
     );
+    assert.deepEqual(
+      resolveActivityReportTableUserIds('attended', [1, 2, 3], [2]),
+      [2],
+    );
   });
 
-  it('uses missing ids for not_attended, including when nobody logged', () => {
+  it('uses missing ids for not_posted, including when nobody logged', () => {
     assert.deepEqual(
-      resolveActivityReportTableUserIds('not_attended', [1, 2, 3], [2]),
+      resolveActivityReportTableUserIds('not_posted', [1, 2, 3], [2]),
       [1, 3],
     );
     assert.deepEqual(
-      resolveActivityReportTableUserIds('not_attended', [1, 2], []),
+      resolveActivityReportTableUserIds('not_posted', [1, 2], []),
       [1, 2],
+    );
+    assert.deepEqual(
+      resolveActivityReportTableUserIds('not_attended', [1, 2, 3], [2]),
+      [1, 3],
     );
   });
 });

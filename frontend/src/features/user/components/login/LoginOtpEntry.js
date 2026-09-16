@@ -1,9 +1,9 @@
 // OTP entry step — 4 input cells (SMS OTP length).
 // Auto-verifies when all digits are filled: no explicit Verify button required.
 //
-// Android: WebOTP API (navigator.credentials.get) auto-reads OTP from SMS.
-// iOS:     autoComplete="one-time-code" on first input — OS suggests OTP from SMS;
-//          tapping the suggestion fills all cells at once via fillAll().
+// Android + iOS: first cell uses autoComplete="one-time-code" so the OS can
+//          show an SMS OTP suggestion; tap fills all cells via fillAll().
+// Android: WebOTP API also listens when the SMS includes @domain #code.
 // Web:     paste / manual typing — same auto-verify on completion.
 //
 // Important: ALL platform branches use real focusable inputs with

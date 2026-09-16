@@ -19,6 +19,13 @@ import { buildOnboardingShareUrl } from '../domain/platform-store.rules.js';
 import { debugLog } from '../../../shared/utils/logger.js';
 import { CapacitorHttp } from '@capacitor/core';
 import { getAppVersionHeaders } from '../../../shared/services/apiFetch.js';
+import { todayBusinessDate } from '../../../shared/utils/datetimeUtils.js';
+import {
+  bcmWallClockToIso,
+  formatBcmFormTime,
+  resolveBcmCardDisplayTimestamp,
+  resolveBcmDisplayTimezone,
+} from '../domain/bcmCardDateTime.rules.js';
 import useTransformationPhotos from '../../user/hooks/useTransformationPhotos.js';
 import { getBcmRequiredFieldError } from '../domain/formValidation.rules.js';
 
@@ -118,9 +125,10 @@ function applyMemberPrefillToForm(prev, member) {
  * Restore a previous BCM card onto the form (same phone, not yet activated).
  * Keeps today's date unless the stored card has one; always keeps the typed phone.
  */
-function applyExistingBcmCardToForm(prev, card) {
+function applyExistingBcmCardToForm(prev, card, timezoneIana) {
   if (!card || typeof card !== 'object') return prev;
   const str = (v) => (v != null && v !== '' ? String(v) : '');
+  const tz = resolveBcmDisplayTimezone(timezoneIana);
   const next = { ...prev };
   if (card.phoneNumber) next.phoneNumber = String(card.phoneNumber);
   if (card.name && String(card.name).trim()) next.name = normalizeName(card.name);
@@ -131,6 +139,9 @@ function applyExistingBcmCardToForm(prev, card) {
     next.locationName = String(card.locationName).trim();
   }
   if (card.recordedDate) next.recordedDate = String(card.recordedDate).substring(0, 10);
+  if (card.createdAt || card.updatedAt) {
+    next.recordedTime = formatBcmFormTime(resolveBcmCardDisplayTimestamp(card), tz);
+  }
   ['age', 'heightCm', 'weightKg', 'bmi', 'fatPercent', 'bmr', 'visceralFat', 'bodyAge', 'chestCm', 'waistCm', 'hipCm']
     .forEach((key) => {
       if (card[key] != null && card[key] !== '') next[key] = str(card[key]);
@@ -158,29 +169,33 @@ function mergePrefillFields(member, prefill) {
   return merged;
 }
 
-const EMPTY_FORM = {
-  name:         '',  phoneNumber:  '',
-  age:          '',
-  gender:       '',
-  heightCm:     '',
-  weightKg:     '',
-  bmi:          '',
-  fatPercent:   '',
-  bmr:          '',
-  visceralFat:  '',
-  bodyAge:      '',
-  chestCm:      '',
-  waistCm:      '',
-  hipCm:        '',
-  recordedDate: new Date().toISOString().substring(0, 10),
-  locationName: '',
-  recoveredHealthIssues: [],
-  dietType:     '',
-  physicalActivityLevel: '',
-};
+function buildEmptyForm(timezoneIana) {
+  const tz = resolveBcmDisplayTimezone(timezoneIana);
+  return {
+    name:         '',
+    phoneNumber:  '',
+    age:          '',
+    gender:       '',
+    heightCm:     '',
+    weightKg:     '',
+    bmi:          '',
+    fatPercent:   '',
+    bmr:          '',
+    visceralFat:  '',
+    bodyAge:      '',
+    chestCm:      '',
+    waistCm:      '',
+    hipCm:        '',
+    recordedDate: todayBusinessDate(tz),
+    recordedTime: formatBcmFormTime(null, tz),
+    locationName: '',
+    recoveredHealthIssues: [],
+  };
+}
 
-function cardToFormState(card) {
-  if (!card?.id) return EMPTY_FORM;
+function cardToFormState(card, timezoneIana) {
+  const tz = resolveBcmDisplayTimezone(timezoneIana);
+  if (!card?.id) return buildEmptyForm(tz);
   const issues = Array.isArray(card.recoveredHealthIssues)
     ? card.recoveredHealthIssues.filter(Boolean)
     : [];
@@ -199,7 +214,10 @@ function cardToFormState(card) {
     chestCm:      card.chestCm      != null ? String(card.chestCm)     : '',
     waistCm:      card.waistCm      != null ? String(card.waistCm)     : '',
     hipCm:        card.hipCm        != null ? String(card.hipCm)       : '',
-    recordedDate: card.recordedDate ?? new Date().toISOString().substring(0, 10),
+    recordedDate: card.recordedDate
+      ? String(card.recordedDate).substring(0, 10)
+      : todayBusinessDate(tz),
+    recordedTime: formatBcmFormTime(resolveBcmCardDisplayTimestamp(card), tz),
     locationName: card.locationName ?? '',
     recoveredHealthIssues: issues,
     dietType:     card.dietType ? String(card.dietType).trim() : '',
@@ -217,9 +235,9 @@ export function useBodyParamsCard({
   externalVenue = null,
 } = {}) {
   const isEditMode = Boolean(existingCard?.id);
-  const transformationPhotos = useTransformationPhotos();
+  const displayTimezone = resolveBcmDisplayTimezone(user);
 
-  const [form, setForm] = useState(() => cardToFormState(existingCard));
+  const [form, setForm] = useState(() => cardToFormState(existingCard, displayTimezone));
   const [isSaving, setIsSaving]           = useState(false);
   const [error, setError]                 = useState('');
   const [phoneFieldError, setPhoneFieldError] = useState('');
@@ -236,6 +254,7 @@ export function useBodyParamsCard({
   const [bmiUserEdited, setBmiUserEdited] = useState(false);
   const [bmrUserEdited, setBmrUserEdited] = useState(false);
   const [coachUserId, setCoachUserId] = useState(() => user?.id || null);
+  const transformationPhotos = useTransformationPhotos();
 
   const markDirty = useCallback(() => {
     setHasUnsavedChanges(true);
@@ -313,7 +332,7 @@ export function useBodyParamsCard({
           ) {
             lastBcmPrefillPhoneRef.current = clean;
             setForm((prev) => {
-              const next = applyExistingBcmCardToForm(prev, status.existingCard);
+              const next = applyExistingBcmCardToForm(prev, status.existingCard, displayTimezone);
               venueRef.current = String(next.locationName || '').trim();
               return next;
             });
@@ -334,7 +353,7 @@ export function useBodyParamsCard({
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [form.phoneNumber, coachUserId, isOpen, phoneStatusNonce]);
+  }, [form.phoneNumber, coachUserId, isOpen, phoneStatusNonce, displayTimezone]);
 
   const recheckPhoneStatus = useCallback(() => {
     setPhoneStatusNonce((n) => n + 1);
@@ -363,6 +382,8 @@ export function useBodyParamsCard({
       existingCard.hipCm,
       existingCard.locationName,
       existingCard.recordedDate,
+      existingCard.createdAt,
+      existingCard.updatedAt,
       JSON.stringify(existingCard.recoveredHealthIssues || []),
       existingCard.dietType || '',
       existingCard.physicalActivityLevel || '',
@@ -374,7 +395,7 @@ export function useBodyParamsCard({
   // Create: prefill Venue from header. Edit: use the card's saved Venue.
   useLayoutEffect(() => {
     if (!isOpen) return;
-    const next = cardToFormState(existingCard);
+    const next = cardToFormState(existingCard, displayTimezone);
     if (!isEditMode) {
       const fromHeader = externalVenue != null ? String(externalVenue).trim() : '';
       if (fromHeader) next.locationName = fromHeader;
@@ -392,56 +413,7 @@ export function useBodyParamsCard({
     profileFieldsPrefillKeyRef.current = '';
     transformationPhotos.loadFromProfile(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, existingCardSnapshot, isEditMode]);
-
-  // Profile-owned fields (diet / PAL / photos) live on team_table — refresh from
-  // member-prefill whenever a linked member card is open so BCM stays in sync.
-  useEffect(() => {
-    if (!isOpen || !coachUserId) return undefined;
-    const memberUserId = existingCard?.userId
-      || selectedMember?.userId
-      || selectedMember?.id
-      || null;
-    if (!memberUserId) return undefined;
-
-    const prefillKey = `${memberUserId}:${coachUserId}`;
-    if (profileFieldsPrefillKeyRef.current === prefillKey) return undefined;
-
-    let cancelled = false;
-    fetchMemberPrefill({ userId: memberUserId, coachId: coachUserId })
-      .then((prefill) => {
-        if (cancelled || !prefill) return;
-        profileFieldsPrefillKeyRef.current = prefillKey;
-        setForm((prev) => {
-          const next = { ...prev };
-          let changed = false;
-          if (prefill.dietType && String(prefill.dietType).trim()) {
-            const v = String(prefill.dietType).trim();
-            if (next.dietType !== v) {
-              next.dietType = v;
-              changed = true;
-            }
-          }
-          if (prefill.physicalActivityLevel && String(prefill.physicalActivityLevel).trim()) {
-            const v = String(prefill.physicalActivityLevel).trim();
-            if (next.physicalActivityLevel !== v) {
-              next.physicalActivityLevel = v;
-              changed = true;
-            }
-          }
-          return changed ? next : prev;
-        });
-        if (prefill.transformationPhotos) {
-          transformationPhotos.loadFromProfile(prefill.transformationPhotos);
-        }
-      })
-      .catch((err) => {
-        console.warn('[BodyParamsCard] profile field prefill failed', err?.message || err);
-      });
-
-    return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- loadFromProfile is stable enough; avoid photo re-fetch loops
-  }, [isOpen, coachUserId, existingCard?.userId, selectedMember?.userId, selectedMember?.id]);
+  }, [isOpen, existingCardSnapshot, isEditMode, displayTimezone]);
 
   // Create flow: keep form Venue in sync with the header Venue immediately.
   useLayoutEffect(() => {
@@ -748,14 +720,7 @@ export function useBodyParamsCard({
   }, [transformationPhotos.setSlotFromFile, markDirty]);
 
   const resetForm = useCallback(() => {
-    setForm({
-      ...EMPTY_FORM,
-      recordedDate: new Date().toISOString().substring(0, 10),
-      recoveredHealthIssues: [],
-      dietType: '',
-      physicalActivityLevel: '',
-    });
-    transformationPhotos.loadFromProfile(null);
+    setForm(buildEmptyForm(displayTimezone));
     setError('');
     setPhoneFieldError('');
     setAttemptedSubmit(false);
@@ -765,7 +730,8 @@ export function useBodyParamsCard({
     setBmiUserEdited(false);
     setBmrUserEdited(false);
     clearDirty();
-  }, [clearDirty, transformationPhotos.loadFromProfile]);
+    transformationPhotos.loadFromProfile(null);
+  }, [clearDirty, displayTimezone, transformationPhotos.loadFromProfile]);
 
   const onNameBlur = useCallback(() => {
     setNameTouched(true);
@@ -870,6 +836,11 @@ export function useBodyParamsCard({
         waistCm:      toOptionalNum(form.waistCm),
         hipCm:        toOptionalNum(form.hipCm),
         recordedDate: form.recordedDate,
+        // Create → createdAt; Update → stamp updatedAt as now (share/list prefer updatedAt).
+        createdAt: isEditMode
+          ? (existingCard?.createdAt || bcmWallClockToIso(form.recordedDate, form.recordedTime, displayTimezone))
+          : bcmWallClockToIso(form.recordedDate, form.recordedTime, displayTimezone),
+        updatedAt: isEditMode ? new Date().toISOString() : null,
         locationName: locationNameToSave || '',
         creatorName,
         // Required for WhatsApp pre-capture — share sheet prefers preCapCard over API card
@@ -942,6 +913,8 @@ export function useBodyParamsCard({
         waistCm:      pickSavedField(cardCore.waistCm, form.waistCm),
         hipCm:        pickSavedField(cardCore.hipCm, form.hipCm),
         recordedDate: pickSavedField(cardCore.recordedDate, form.recordedDate),
+        createdAt: pickSavedField(cardCore.createdAt, undefined),
+        updatedAt: pickSavedField(cardCore.updatedAt, undefined),
         // Prefer the Venue the user just entered so the share card updates immediately.
         locationName: locationNameToSave || pickSavedField(cardCore.locationName, locationNameToSave),
         // Prefer API when it has values; else keep form selection (empty API
@@ -964,7 +937,7 @@ export function useBodyParamsCard({
       setSavedCard(fullCard);
       setShareUrl(url);
       // Keep the just-saved values in the form immediately (do not wait for remount).
-      setForm(cardToFormState(fullCard));
+      setForm(cardToFormState(fullCard, displayTimezone));
       venueRef.current = String(fullCard.locationName || '').trim();
       clearDirty();
       debugLog('✅ [BodyParamsCard] Created:', fullCard);
