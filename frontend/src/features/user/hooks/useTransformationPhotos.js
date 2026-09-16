@@ -1,7 +1,8 @@
 /**
  * Left / Centre / Right transformation photos for onboarding / profile.
  * Images: team_table.transformation_photos JSONB.
- * Left slot also seeds testimonial Before via persistOnboardingTestimonialPhotos.
+ * Left/Right slots sync testimonial Before/After via persistOnboardingTestimonialPhotos.
+ * Profile Right always refreshes Transformation After when re-uploaded and saved.
  */
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { compressImage } from '../../testimonials/utils/compressTestimonialImage.js';
@@ -86,6 +87,11 @@ export default function useTransformationPhotos() {
     return isDataImageUrl(value) ? value.trim() : null;
   }, [pendingSlots.front, previews.front]);
 
+  const rightImageBase64 = useCallback(() => {
+    const value = pendingSlots.right || previews.right;
+    return isDataImageUrl(value) ? value.trim() : null;
+  }, [pendingSlots.right, previews.right]);
+
   return {
     selectedType,
     setSelectedType,
@@ -100,5 +106,6 @@ export default function useTransformationPhotos() {
     hasPendingUploads,
     leftImageBase64,
     frontImageBase64,
+    rightImageBase64,
   };
 }

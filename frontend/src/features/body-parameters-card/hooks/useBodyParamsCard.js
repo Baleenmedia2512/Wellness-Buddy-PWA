@@ -28,6 +28,10 @@ import {
 } from '../domain/bcmCardDateTime.rules.js';
 import useTransformationPhotos from '../../user/hooks/useTransformationPhotos.js';
 import { getBcmRequiredFieldError } from '../domain/formValidation.rules.js';
+import {
+  resolveEditCardPhotoPrefillUserId,
+  resolvePhoneStatusPhotoPrefillUserId,
+} from '../domain/bcmTransformationPhotosPrefill.js';
 
 /**
  * Normalise any phone string to a 10-digit Indian national number for prefix
@@ -271,6 +275,8 @@ export function useBodyParamsCard({
   const phoneDebounceRef    = useRef(null);
   const phoneStatusDebounceRef = useRef(null);
   const phoneStatusRequestIdRef = useRef(0);
+  /** Cancels in-flight transformation-photo prefill (phone-status or edit). */
+  const photoPrefillRequestIdRef = useRef(0);
   /** Avoid re-applying the same BCM prefill on every status poll for one phone. */
   const lastBcmPrefillPhoneRef = useRef('');
   /** Apply Profile diet/PAL once per open+member (Profile is SoT; avoid clobbering edits). */
@@ -325,22 +331,38 @@ export function useBodyParamsCard({
 
           setPhoneFieldError('');
 
-          // Restore prior BCM card (not activated) so name/venue/height/etc. are not lost.
-          if (
-            status.existingCard
-            && lastBcmPrefillPhoneRef.current !== clean
-          ) {
+          // Restore prior BCM card + profile photos (photos are on team_table, not the card).
+          if (lastBcmPrefillPhoneRef.current !== clean) {
             lastBcmPrefillPhoneRef.current = clean;
-            setForm((prev) => {
-              const next = applyExistingBcmCardToForm(prev, status.existingCard, displayTimezone);
-              venueRef.current = String(next.locationName || '').trim();
-              return next;
-            });
-            if (status.existingCard.bmi != null && status.existingCard.bmi !== '') {
-              setBmiUserEdited(true);
+            if (status.existingCard) {
+              setForm((prev) => {
+                const next = applyExistingBcmCardToForm(prev, status.existingCard, displayTimezone);
+                venueRef.current = String(next.locationName || '').trim();
+                return next;
+              });
+              if (status.existingCard.bmi != null && status.existingCard.bmi !== '') {
+                setBmiUserEdited(true);
+              }
+              if (status.existingCard.bmr != null && status.existingCard.bmr !== '') {
+                setBmrUserEdited(true);
+              }
             }
-            // Keep BMR auto-fill unlocked so Katch-McArdle recalculates from weight + fat%.
-            setBmrUserEdited(false);
+
+            const photoUserId = resolvePhoneStatusPhotoPrefillUserId(status);
+            if (photoUserId && coachIdNum) {
+              const photoRequestId = ++photoPrefillRequestIdRef.current;
+              fetchMemberPrefill({ userId: photoUserId, coachId: coachIdNum })
+                .then((prefill) => {
+                  if (cancelled || photoRequestId !== photoPrefillRequestIdRef.current) return;
+                  if (prefill?.transformationPhotos) {
+                    transformationPhotos.loadFromProfile(prefill.transformationPhotos);
+                  }
+                })
+                .catch((err) => {
+                  if (cancelled || photoRequestId !== photoPrefillRequestIdRef.current) return;
+                  console.warn('[BodyParamsCard] photo prefill after phone status failed', err?.message || err);
+                });
+            }
           }
         })
         .catch((err) => {
@@ -353,7 +375,7 @@ export function useBodyParamsCard({
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [form.phoneNumber, coachUserId, isOpen, phoneStatusNonce, displayTimezone]);
+  }, [form.phoneNumber, coachUserId, isOpen, phoneStatusNonce, displayTimezone, transformationPhotos.loadFromProfile]);
 
   const recheckPhoneStatus = useCallback(() => {
     setPhoneStatusNonce((n) => n + 1);
@@ -366,6 +388,7 @@ export function useBodyParamsCard({
     if (!existingCard?.id) return '';
     return [
       existingCard.id,
+      existingCard.userId,
       existingCard.name,
       existingCard.phoneNumber,
       existingCard.age,
@@ -411,9 +434,40 @@ export function useBodyParamsCard({
     setHasUnsavedChanges(false);
     lastBcmPrefillPhoneRef.current = '';
     profileFieldsPrefillKeyRef.current = '';
+    photoPrefillRequestIdRef.current += 1;
+    transformationPhotos.clearPending();
     transformationPhotos.loadFromProfile(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, existingCardSnapshot, isEditMode, displayTimezone]);
+
+  // Edit (and reopen with a linked card): reload profile transformation photos.
+  useEffect(() => {
+    if (!isOpen || !coachUserId) return undefined;
+    const memberId = resolveEditCardPhotoPrefillUserId(existingCard);
+    if (!memberId) return undefined;
+
+    let cancelled = false;
+    const photoRequestId = ++photoPrefillRequestIdRef.current;
+    fetchMemberPrefill({ userId: memberId, coachId: coachUserId })
+      .then((prefill) => {
+        if (cancelled || photoRequestId !== photoPrefillRequestIdRef.current) return;
+        if (prefill?.transformationPhotos) {
+          transformationPhotos.loadFromProfile(prefill.transformationPhotos);
+        }
+      })
+      .catch((err) => {
+        if (cancelled || photoRequestId !== photoPrefillRequestIdRef.current) return;
+        console.warn('[BodyParamsCard] edit photo prefill failed', err?.message || err);
+      });
+
+    return () => { cancelled = true; };
+  }, [
+    isOpen,
+    coachUserId,
+    existingCardSnapshot,
+    existingCard?.userId,
+    transformationPhotos.loadFromProfile,
+  ]);
 
   // Create flow: keep form Venue in sync with the header Venue immediately.
   useLayoutEffect(() => {
@@ -730,8 +784,9 @@ export function useBodyParamsCard({
     setBmiUserEdited(false);
     setBmrUserEdited(false);
     clearDirty();
+    transformationPhotos.clearPending();
     transformationPhotos.loadFromProfile(null);
-  }, [clearDirty, displayTimezone, transformationPhotos.loadFromProfile]);
+  }, [clearDirty, displayTimezone, transformationPhotos.clearPending, transformationPhotos.loadFromProfile]);
 
   const onNameBlur = useCallback(() => {
     setNameTouched(true);

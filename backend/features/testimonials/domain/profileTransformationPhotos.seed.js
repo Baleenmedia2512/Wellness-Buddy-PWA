@@ -1,12 +1,13 @@
 /**
- * Seed testimonial list/detail rows from profile transformation_photos (Left slot).
- * Mirrors frontend seedMineTestimonialFromLeftSlot for read-only upline cards.
+ * Seed testimonial list/detail rows from profile transformation_photos (Left/Right slots).
+ * Mirrors frontend seedMineTestimonialFromProfileSlots for read-only upline cards.
  */
 import {
   isStoredTransformationPhoto,
   mapTransformationPhotos,
 } from '../../user/domain/transformationPhotos.rules.js';
 import { isRealImagePath } from './testimonials-list.pagination.js';
+import { testimonialHasRealAfter } from './profilePhotoSync.rules.js';
 
 const DATA_IMAGE_RE = /^data:image\/[a-zA-Z0-9+.-]+;base64,/;
 const HTTPS_RE = /^https:\/\//i;
@@ -22,6 +23,10 @@ export function isInlineImageReference(value) {
   return DATA_IMAGE_RE.test(trimmed) || HTTPS_RE.test(trimmed);
 }
 
+function isStoredPath(value) {
+  return isRealImagePath(value) || isInlineImageReference(value);
+}
+
 /**
  * @param {object|null|undefined} testimonial
  * @param {unknown} transformationPhotosRaw
@@ -30,13 +35,12 @@ export function isInlineImageReference(value) {
 export function seedTestimonialFromProfilePhotos(testimonial, transformationPhotosRaw) {
   const slots = mapTransformationPhotos(transformationPhotosRaw);
   const leftUrl = slots.left;
-  if (!isStoredTransformationPhoto(leftUrl)) {
+  const rightUrl = slots.right;
+  const hasLeft = isStoredTransformationPhoto(leftUrl);
+  const hasRight = isStoredTransformationPhoto(rightUrl);
+  if (!hasLeft && !hasRight) {
     return testimonial ?? null;
   }
-
-  const left = String(leftUrl).trim();
-  const hasExistingBefore = isRealImagePath(testimonial?.before_image_path)
-    || isInlineImageReference(testimonial?.before_image_path);
 
   const next = testimonial ? { ...testimonial } : {
     id: null,
@@ -50,20 +54,21 @@ export function seedTestimonialFromProfilePhotos(testimonial, transformationPhot
     video_status: 'none',
   };
 
-  if (!hasExistingBefore) {
-    next.before_image_path = left;
+  const realAfter = testimonialHasRealAfter(next, (path) => (
+    typeof path === 'string' && path.endsWith('_video_only_placeholder.jpg')
+  ));
+
+  if (hasLeft) {
+    next.before_image_path = String(leftUrl).trim();
   }
 
-  const incomplete = !next.status || next.status === 'incomplete';
-  const realAfter = !incomplete
-    && (isRealImagePath(next.after_image_path) || isInlineImageReference(next.after_image_path))
-    && next.after_image_path !== next.before_image_path;
-
-  if (!realAfter) {
-    if (!isRealImagePath(next.after_image_path) && !isInlineImageReference(next.after_image_path)) {
-      next.after_image_path = left;
-    } else if (next.after_image_path === next.before_image_path) {
-      next.after_image_path = left;
+  if (hasRight) {
+    next.after_image_path = String(rightUrl).trim();
+  } else if (!realAfter) {
+    if (hasLeft) {
+      next.after_image_path = String(leftUrl).trim();
+    } else if (!isStoredPath(next.after_image_path) && isStoredPath(next.before_image_path)) {
+      next.after_image_path = next.before_image_path;
     }
   }
 
@@ -71,7 +76,7 @@ export function seedTestimonialFromProfilePhotos(testimonial, transformationPhot
 }
 
 /**
- * True when a member has a visible photo from testimonial row or profile left slot.
+ * True when a member has a visible photo from testimonial row or profile left/right slot.
  * @param {object|null|undefined} testimonial
  * @param {unknown} transformationPhotosRaw
  */
@@ -80,9 +85,11 @@ export function memberHasVisibleTransformationPhoto(testimonial, transformationP
     if (isVideoOnlyPlaceholder(testimonial.before_image_path)) return false;
     if (isRealImagePath(testimonial.before_image_path)) return true;
     if (isInlineImageReference(testimonial.before_image_path)) return true;
+    if (isRealImagePath(testimonial.after_image_path)) return true;
+    if (isInlineImageReference(testimonial.after_image_path)) return true;
   }
   const slots = mapTransformationPhotos(transformationPhotosRaw);
-  return isStoredTransformationPhoto(slots.left);
+  return isStoredTransformationPhoto(slots.left) || isStoredTransformationPhoto(slots.right);
 }
 
 function isVideoOnlyPlaceholder(path) {

@@ -54,10 +54,15 @@ const FieldLabel = ({ children }) => (
 const InputField = ({
   label, value, onChange, type = 'text', placeholder = '', inputRef, onEnter,
   maxLength, inputMode: customInputMode, pattern: customPattern, autoComplete,
+  readOnly = false,
   error, hint, needed,
   ...rest
 }) => {
   const handleKeyDown = (e) => {
+    if (readOnly) {
+      e.preventDefault();
+      return;
+    }
     if (e.key === 'Enter' && onEnter) {
       e.preventDefault();
       onEnter();
@@ -68,7 +73,10 @@ const InputField = ({
   // For Capacitor APK: use type="text" with inputMode for numeric fields to force numeric keypad
   const inputMode = customInputMode || (type === 'number' ? 'numeric' : 'text');
   const pattern = customPattern || (type === 'number' || customInputMode ? '[0-9]*' : undefined);
-  const inputType = type === 'number' ? 'text' : type;
+  // Avoid native date/time pickers when the field is display-only.
+  const inputType = readOnly && (type === 'time' || type === 'date')
+    ? 'text'
+    : (type === 'number' ? 'text' : type);
   const isInvalid = Boolean(error);
 
   return (
@@ -77,17 +85,31 @@ const InputField = ({
       <NativeInput
         ref={inputRef}
         type={inputType}
-        inputMode={inputMode}
+        inputMode={readOnly ? 'none' : inputMode}
         pattern={pattern}
         autoComplete={autoComplete ?? 'off'}
         value={value}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={(e) => {
+          if (readOnly) return;
+          onChange(e.target.value);
+        }}
         onKeyDown={handleKeyDown}
+        onFocus={(e) => {
+          if (readOnly) e.target.blur();
+        }}
         placeholder={placeholder}
         maxLength={maxLength}
+        readOnly={readOnly}
+        tabIndex={readOnly ? -1 : undefined}
+        aria-readonly={readOnly || undefined}
         aria-invalid={isInvalid}
         {...rest}
-        className={`border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 bg-white ${fieldBorderClass(isInvalid, needed)}`}
+        className={[
+          'border border-indigo-200 rounded-lg px-3 py-2 text-sm focus:outline-none',
+          readOnly
+            ? 'bg-slate-50 text-slate-700 cursor-default focus:ring-0'
+            : 'bg-white focus:ring-2 focus:ring-indigo-400',
+        ].join(' ')}
       />
       {error ? (
         <p className="text-[10px] text-red-500 mt-0.5" role="alert">{error}</p>
@@ -302,9 +324,9 @@ const BodyParamsForm = ({
             <InputField
               label="Time"
               value={vm.form.recordedTime}
-              onChange={(v) => vm.setField('recordedTime', v)}
+              onChange={() => {}}
               type="time"
-              onEnter={() => focusNextField(hideVenueField ? nameRef : venueRef)}
+              readOnly
             />
           </div>
           {/* Venue — editable; prefilled from header when provided */}

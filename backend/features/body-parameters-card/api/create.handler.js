@@ -19,6 +19,7 @@ import {
   hardDeleteCardsForUserId,
 } from '../data/card.repo.js';
 import { syncCardToProfileAfterSave } from '../data/sync.repo.js';
+import { syncBcmPhotosToTestimonial } from '../domain/bcmTestimonialPhotoSync.js';
 import { ValidationError } from '../../../shared/lib/ValidationError.js';
 import logger from '../../../shared/lib/logger.js';
 import { BCM_ACTIVATED_MEMBER_MESSAGE } from '../domain/card.rules.js';
@@ -158,6 +159,16 @@ export async function handleCreateCard(body) {
   }
 
   const linkedUserId = card.user_id ?? userId ?? null;
+  if (linkedUserId && payload.transformationPhotos) {
+    await syncBcmPhotosToTestimonial({
+      userId: linkedUserId,
+      transformationPhotos: payload.transformationPhotos,
+      weightKg: payload.weightKg,
+      heightCm: payload.heightCm,
+      recoveredHealthIssues: payload.recoveredHealthIssues,
+    });
+  }
+
   if (linkedUserId) {
     try {
       await enforceBpcLeadNoCoachUntilOnboarding(linkedUserId);
