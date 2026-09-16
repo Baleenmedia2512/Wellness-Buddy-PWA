@@ -420,7 +420,6 @@ test(
       page.locator(
         'input[data-otp="true"]'
       );
-
     await expect(
       otpInputs
     ).toHaveCount(4);
