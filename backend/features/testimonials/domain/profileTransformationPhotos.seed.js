@@ -35,8 +35,6 @@ export function seedTestimonialFromProfilePhotos(testimonial, transformationPhot
   }
 
   const left = String(leftUrl).trim();
-  const hasExistingBefore = isRealImagePath(testimonial?.before_image_path)
-    || isInlineImageReference(testimonial?.before_image_path);
 
   const next = testimonial ? { ...testimonial } : {
     id: null,
@@ -50,21 +48,18 @@ export function seedTestimonialFromProfilePhotos(testimonial, transformationPhot
     video_status: 'none',
   };
 
-  if (!hasExistingBefore) {
-    next.before_image_path = left;
-  }
-
   const incomplete = !next.status || next.status === 'incomplete';
+  const originalBefore = next.before_image_path;
+  const originalAfter = next.after_image_path;
   const realAfter = !incomplete
-    && (isRealImagePath(next.after_image_path) || isInlineImageReference(next.after_image_path))
-    && next.after_image_path !== next.before_image_path;
+    && (isRealImagePath(originalAfter) || isInlineImageReference(originalAfter))
+    && originalAfter !== originalBefore;
+
+  // Profile Left always drives Before for read models (matches Option A persist).
+  next.before_image_path = left;
 
   if (!realAfter) {
-    if (!isRealImagePath(next.after_image_path) && !isInlineImageReference(next.after_image_path)) {
-      next.after_image_path = left;
-    } else if (next.after_image_path === next.before_image_path) {
-      next.after_image_path = left;
-    }
+    next.after_image_path = left;
   }
 
   return next;

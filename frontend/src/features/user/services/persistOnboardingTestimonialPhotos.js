@@ -1,6 +1,7 @@
 /**
- * Copy Complete Profile current weight onto testimonials Before
- * when that field is still empty.
+ * Sync Profile Left slot (+ optional weight) onto testimonials Before.
+ * A newly uploaded Left always updates Before. After is never patched here
+ * (avoids coach OTP); mirrored After is handled at display/seed time.
  */
 import { submitTestimonial, editTestimonial, getMyTestimonial } from '../../testimonials/services/testimonialApi';
 
@@ -13,11 +14,6 @@ function hasWeight(value) {
 
 function isDataImage(value) {
   return typeof value === 'string' && /^data:image\/[a-zA-Z0-9+.-]+;base64,/.test(value.trim());
-}
-
-function hasBeforePhoto(existing) {
-  const url = existing?.beforeImageUrl;
-  return typeof url === 'string' && url.trim().length > 0;
 }
 
 export async function persistOnboardingTestimonialPhotos({
@@ -60,7 +56,8 @@ export async function persistOnboardingTestimonialPhotos({
     }
 
     const patch = { userId: uid };
-    if (left && !hasBeforePhoto(existing)) {
+    // New Left upload always refreshes Transformation Before (Option A).
+    if (left) {
       patch.beforeImageBase64 = left;
     }
     if (weight != null && !hasWeight(existing.beforeWeightKg)) {

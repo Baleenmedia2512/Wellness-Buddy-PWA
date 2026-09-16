@@ -1,7 +1,8 @@
 /**
  * Left / Centre / Right transformation photos for onboarding / profile.
  * Images: team_table.transformation_photos JSONB.
- * Left slot also seeds testimonial Before via persistOnboardingTestimonialPhotos.
+ * Left slot syncs testimonial Before via persistOnboardingTestimonialPhotos
+ * (new Left upload always refreshes Before; real After is left untouched).
  */
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { compressImage } from '../../testimonials/utils/compressTestimonialImage.js';

@@ -150,13 +150,13 @@ function firstPositiveKg(...values) {
 }
 
 /**
- * Transformation Before/After: Left photo fills both slots until a real After exists.
- * Same current weight on both when After is not a later photo yet.
+ * Transformation Before/After: Profile Left drives Before.
+ * Until a real After exists, Left also mirrors onto After.
+ * A real (non-incomplete, distinct) After is never replaced.
  */
 export function seedMineTestimonialFromLeftSlot(testimonial, { leftUrl, weightKg } = {}) {
   const hasLeft = isStoredPhoto(leftUrl);
   const weight = firstPositiveKg(weightKg);
-  const hasExistingPhoto = isStoredPhoto(testimonial?.beforeImageUrl);
   if (!testimonial && !hasLeft && weight == null) return null;
 
   const next = testimonial ? { ...testimonial } : {
@@ -165,20 +165,21 @@ export function seedMineTestimonialFromLeftSlot(testimonial, { leftUrl, weightKg
     beforeImageUrl: null,
     afterImageUrl: null,
   };
-  if (!hasExistingPhoto && hasLeft) {
+  const incomplete = !next.status || next.status === 'incomplete';
+  const originalBefore = next.beforeImageUrl;
+  const originalAfter = next.afterImageUrl;
+  const realAfter = !incomplete
+    && isStoredPhoto(originalAfter)
+    && originalAfter !== originalBefore;
+
+  if (hasLeft) {
     next.beforeImageUrl = String(leftUrl).trim();
   }
   const beforeW = firstPositiveKg(next.beforeWeightKg, weight);
   if (beforeW != null) next.beforeWeightKg = beforeW;
 
-  const incomplete = !next.status || next.status === 'incomplete';
-  const realAfter = !incomplete
-    && isStoredPhoto(next.afterImageUrl)
-    && next.afterImageUrl !== next.beforeImageUrl;
   if (!realAfter) {
-    if (hasLeft && !isStoredPhoto(next.afterImageUrl)) {
-      next.afterImageUrl = String(leftUrl).trim();
-    } else if (hasLeft && next.afterImageUrl === next.beforeImageUrl) {
+    if (hasLeft) {
       next.afterImageUrl = String(leftUrl).trim();
     } else if (!isStoredPhoto(next.afterImageUrl) && isStoredPhoto(next.beforeImageUrl)) {
       next.afterImageUrl = next.beforeImageUrl;

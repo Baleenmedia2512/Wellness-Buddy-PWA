@@ -133,11 +133,12 @@ describe('transformation Before vs After pairing', () => {
       leftUrl: 'data:image/jpeg;base64,left',
       weightKg: 70,
     });
+    assert.equal(seeded.beforeImageUrl, 'data:image/jpeg;base64,left');
     assert.equal(seeded.afterImageUrl, 'https://cdn.example/after.jpg');
     assert.equal(seeded.afterWeightKg, 72);
   });
 
-  it('does not replace an existing Before photo', () => {
+  it('replaces an existing Before photo with Profile Left', () => {
     const seeded = seedMineTestimonialFromLeftSlot({
       beforeImageUrl: 'https://cdn.example/before.jpg',
       beforeWeightKg: 48,
@@ -145,7 +146,8 @@ describe('transformation Before vs After pairing', () => {
       leftUrl: 'data:image/jpeg;base64,left',
       weightKg: 55,
     });
-    assert.equal(seeded.beforeImageUrl, 'https://cdn.example/before.jpg');
+    assert.equal(seeded.beforeImageUrl, 'data:image/jpeg;base64,left');
+    assert.equal(seeded.afterImageUrl, 'data:image/jpeg;base64,left');
     assert.equal(seeded.beforeWeightKg, 48);
   });
 });

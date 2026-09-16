@@ -32,12 +32,26 @@ describe('seedTestimonialFromProfilePhotos', () => {
     assert.equal(seeded.status, 'incomplete');
   });
 
-  it('does not overwrite existing testimonial before path', () => {
+  it('overwrites existing testimonial before path with profile left', () => {
     const seeded = seedTestimonialFromProfilePhotos(
-      { before_image_path: '99/real.jpg', after_image_path: null, status: 'pending' },
+      { before_image_path: '99/real.jpg', after_image_path: null, status: 'incomplete' },
       { left: 'https://cdn.example/left.jpg' },
     );
-    assert.equal(seeded.before_image_path, '99/real.jpg');
+    assert.equal(seeded.before_image_path, 'https://cdn.example/left.jpg');
+    assert.equal(seeded.after_image_path, 'https://cdn.example/left.jpg');
+  });
+
+  it('does not overwrite a real After when status is beyond incomplete', () => {
+    const seeded = seedTestimonialFromProfilePhotos(
+      {
+        before_image_path: '99/before.jpg',
+        after_image_path: '99/after.jpg',
+        status: 'pending',
+      },
+      { left: 'https://cdn.example/left.jpg' },
+    );
+    assert.equal(seeded.before_image_path, 'https://cdn.example/left.jpg');
+    assert.equal(seeded.after_image_path, '99/after.jpg');
   });
 });
 
