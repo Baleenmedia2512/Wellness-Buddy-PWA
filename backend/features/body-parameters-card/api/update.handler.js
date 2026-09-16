@@ -12,6 +12,7 @@ import {
   invalidateBpcListCache,
 } from '../data/card.repo.js';
 import { syncCardToProfileAfterSave } from '../data/sync.repo.js';
+import { syncBcmPhotosToTestimonial } from '../domain/bcmTestimonialPhotoSync.js';
 import logger from '../../../shared/lib/logger.js';
 
 function buildLinkPayload(payload, card) {
@@ -51,6 +52,16 @@ export async function handleUpdateCard(body) {
       message: syncErr?.message,
     });
     throw syncErr;
+  }
+
+  if (card.user_id && payload.transformationPhotos) {
+    await syncBcmPhotosToTestimonial({
+      userId: card.user_id,
+      transformationPhotos: payload.transformationPhotos,
+      weightKg: payload.weightKg,
+      heightCm: payload.heightCm,
+      recoveredHealthIssues: payload.recoveredHealthIssues,
+    });
   }
 
   if (card.user_id) {

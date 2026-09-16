@@ -149,15 +149,24 @@ function firstPositiveKg(...values) {
   return null;
 }
 
+function testimonialHasRealAfterDisplay(testimonial) {
+  const incomplete = !testimonial?.status || testimonial.status === 'incomplete';
+  if (incomplete) return false;
+  return isStoredPhoto(testimonial?.afterImageUrl)
+    && isStoredPhoto(testimonial?.beforeImageUrl)
+    && testimonial.afterImageUrl !== testimonial.beforeImageUrl;
+}
+
 /**
- * Transformation Before/After: Left photo fills both slots until a real After exists.
- * Same current weight on both when After is not a later photo yet.
+ * Transformation Before/After from Profile slots:
+ * Left → Before always; Right → After always when provided.
+ * When Profile Right is missing, Left mirrors After unless a real After exists.
  */
-export function seedMineTestimonialFromLeftSlot(testimonial, { leftUrl, weightKg } = {}) {
+export function seedMineTestimonialFromProfileSlots(testimonial, { leftUrl, rightUrl, weightKg } = {}) {
   const hasLeft = isStoredPhoto(leftUrl);
+  const hasRight = isStoredPhoto(rightUrl);
   const weight = firstPositiveKg(weightKg);
-  const hasExistingPhoto = isStoredPhoto(testimonial?.beforeImageUrl);
-  if (!testimonial && !hasLeft && weight == null) return null;
+  if (!testimonial && !hasLeft && !hasRight && weight == null) return null;
 
   const next = testimonial ? { ...testimonial } : {
     status: 'incomplete',
@@ -165,32 +174,31 @@ export function seedMineTestimonialFromLeftSlot(testimonial, { leftUrl, weightKg
     beforeImageUrl: null,
     afterImageUrl: null,
   };
-  if (!hasExistingPhoto && hasLeft) {
+  const realAfter = testimonialHasRealAfterDisplay(testimonial || next);
+
+  if (hasLeft) {
     next.beforeImageUrl = String(leftUrl).trim();
   }
   const beforeW = firstPositiveKg(next.beforeWeightKg, weight);
   if (beforeW != null) next.beforeWeightKg = beforeW;
 
-  const incomplete = !next.status || next.status === 'incomplete';
-  const realAfter = !incomplete
-    && isStoredPhoto(next.afterImageUrl)
-    && next.afterImageUrl !== next.beforeImageUrl;
-  if (!realAfter) {
-    if (hasLeft && !isStoredPhoto(next.afterImageUrl)) {
-      next.afterImageUrl = String(leftUrl).trim();
-    } else if (hasLeft && next.afterImageUrl === next.beforeImageUrl) {
+  if (hasRight) {
+    next.afterImageUrl = String(rightUrl).trim();
+  } else if (!realAfter) {
+    if (hasLeft) {
       next.afterImageUrl = String(leftUrl).trim();
     } else if (!isStoredPhoto(next.afterImageUrl) && isStoredPhoto(next.beforeImageUrl)) {
       next.afterImageUrl = next.beforeImageUrl;
     }
-    const afterW = firstPositiveKg(next.afterWeightKg, beforeW, weight);
-    if (afterW != null) next.afterWeightKg = afterW;
-  } else {
-    const afterW = firstPositiveKg(next.afterWeightKg, weight);
-    if (afterW != null && !firstPositiveKg(next.afterWeightKg)) next.afterWeightKg = afterW;
   }
+
+  const afterW = firstPositiveKg(next.afterWeightKg, beforeW, weight);
+  if (afterW != null && (!realAfter || hasRight)) next.afterWeightKg = afterW;
   return next;
 }
+
+/** @deprecated use seedMineTestimonialFromProfileSlots */
+export const seedMineTestimonialFromLeftSlot = seedMineTestimonialFromProfileSlots;
 
 /** Testimonials before/after (with weights) replace Left JSON-only rows. */
 export function mergeCompareHistory(slotHistory, testimonialHistory) {

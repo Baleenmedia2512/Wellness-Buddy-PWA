@@ -10,6 +10,7 @@ import {
   historyFromLatestSlots,
   mapTestimonialToCompareHistory,
   seedMineTestimonialFromLeftSlot,
+  seedMineTestimonialFromProfileSlots,
   selectTransformationBeforeAfter,
 } from './transformationBeforeAfter.js';
 
@@ -133,11 +134,12 @@ describe('transformation Before vs After pairing', () => {
       leftUrl: 'data:image/jpeg;base64,left',
       weightKg: 70,
     });
+    assert.equal(seeded.beforeImageUrl, 'data:image/jpeg;base64,left');
     assert.equal(seeded.afterImageUrl, 'https://cdn.example/after.jpg');
     assert.equal(seeded.afterWeightKg, 72);
   });
 
-  it('does not replace an existing Before photo', () => {
+  it('replaces an existing Before photo with Profile Left', () => {
     const seeded = seedMineTestimonialFromLeftSlot({
       beforeImageUrl: 'https://cdn.example/before.jpg',
       beforeWeightKg: 48,
@@ -145,7 +147,40 @@ describe('transformation Before vs After pairing', () => {
       leftUrl: 'data:image/jpeg;base64,left',
       weightKg: 55,
     });
-    assert.equal(seeded.beforeImageUrl, 'https://cdn.example/before.jpg');
+    assert.equal(seeded.beforeImageUrl, 'data:image/jpeg;base64,left');
+    assert.equal(seeded.afterImageUrl, 'data:image/jpeg;base64,left');
     assert.equal(seeded.beforeWeightKg, 48);
+  });
+
+  it('maps Profile Right to After when no real After exists', () => {
+    const seeded = seedMineTestimonialFromProfileSlots({
+      status: 'incomplete',
+      beforeImageUrl: 'https://cdn.example/before.jpg',
+      afterImageUrl: 'https://cdn.example/before.jpg',
+    }, {
+      leftUrl: 'data:image/jpeg;base64,left',
+      rightUrl: 'data:image/jpeg;base64,right',
+    });
+    assert.equal(seeded.beforeImageUrl, 'data:image/jpeg;base64,left');
+    assert.equal(seeded.afterImageUrl, 'data:image/jpeg;base64,right');
+  });
+
+  it('overwrites pending After with Profile Right', () => {
+    const seeded = seedMineTestimonialFromProfileSlots({
+      status: 'pending',
+      beforeImageUrl: 'https://cdn.example/before.jpg',
+      afterImageUrl: 'https://cdn.example/after.jpg',
+    }, {
+      rightUrl: 'data:image/jpeg;base64,right',
+    });
+    assert.equal(seeded.afterImageUrl, 'data:image/jpeg;base64,right');
+  });
+
+  it('uses Profile Right alone for After display seed', () => {
+    const seeded = seedMineTestimonialFromProfileSlots(null, {
+      rightUrl: 'data:image/jpeg;base64,right',
+    });
+    assert.equal(seeded.beforeImageUrl, null);
+    assert.equal(seeded.afterImageUrl, 'data:image/jpeg;base64,right');
   });
 });
