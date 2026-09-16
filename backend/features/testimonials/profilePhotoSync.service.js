@@ -5,11 +5,17 @@
 import * as repo from './testimonials.repository.js';
 import { validateSyncProfilePhotos } from './testimonials.validators.js';
 import {
+  buildProfileSlotsFromTestimonialImages,
   canSyncProfileAfterToTestimonial,
   hasPositiveWeight,
   testimonialHasRealAfter,
 } from './domain/profilePhotoSync.rules.js';
 import { resolveOtpRecipientIds, toPositiveUserId } from './domain/otpRecipient.rules.js';
+import {
+  mergeTransformationPhotos,
+  hasTransformationPhotoUpdates,
+} from '../user/domain/transformationPhotos.rules.js';
+import { getSupabaseClient } from '../../utils/supabaseClient.js';
 import logger from '../../shared/lib/logger.js';
 
 const FALLBACK_DURATION = '1 days';
@@ -157,4 +163,63 @@ export async function syncProfilePhotosToTestimonial(rawBody) {
       updated: true,
     },
   };
+}
+
+/**
+ * Transformation Before/After → Profile Left/Right (bidirectional sync).
+ * Non-throwing wrapper available via syncTestimonialPhotosToProfileSafe.
+ *
+ * @param {{ userId: number, beforeImageBase64?: string|null, afterImageBase64?: string|null }} input
+ */
+export async function syncTestimonialPhotosToProfile({
+  userId,
+  beforeImageBase64,
+  afterImageBase64,
+}) {
+  const uid = Number.parseInt(String(userId), 10);
+  if (!Number.isFinite(uid) || uid < 1) return { skipped: true, reason: 'bad_user' };
+
+  const slots = buildProfileSlotsFromTestimonialImages({
+    beforeImageBase64,
+    afterImageBase64,
+  });
+  if (!hasTransformationPhotoUpdates(slots)) {
+    return { skipped: true, reason: 'no_images' };
+  }
+
+  const supabase = getSupabaseClient();
+  const { data: row, error: readErr } = await supabase
+    .from('team_table')
+    .select('transformation_photos')
+    .eq('UserId', uid)
+    .maybeSingle();
+  if (readErr) throw readErr;
+
+  const merged = mergeTransformationPhotos(row?.transformation_photos ?? null, slots);
+  const { error: writeErr } = await supabase
+    .from('team_table')
+    .update({ transformation_photos: merged })
+    .eq('UserId', uid);
+  if (writeErr) throw writeErr;
+
+  logger.info('[profilePhotoSync] synced testimonial photos to profile', {
+    userId: uid,
+    slots: Object.keys(slots),
+  });
+  return { success: true, slots: Object.keys(slots) };
+}
+
+/**
+ * Same as syncTestimonialPhotosToProfile but never throws (testimonial save already succeeded).
+ */
+export async function syncTestimonialPhotosToProfileSafe(input) {
+  try {
+    return await syncTestimonialPhotosToProfile(input);
+  } catch (err) {
+    logger.warn('[profilePhotoSync] testimonial→profile sync failed (non-fatal)', {
+      userId: input?.userId,
+      message: err?.message,
+    });
+    return { skipped: true, reason: 'error', message: err?.message };
+  }
 }

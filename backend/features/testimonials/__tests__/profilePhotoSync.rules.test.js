@@ -4,6 +4,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  buildProfileSlotsFromTestimonialImages,
   canSyncProfileAfterToTestimonial,
   hasPositiveWeight,
   testimonialHasRealAfter,
@@ -39,5 +40,23 @@ describe('profilePhotoSync.rules', () => {
 
   it('allows after sync when no row exists', () => {
     assert.equal(canSyncProfileAfterToTestimonial(null), true);
+  });
+
+  it('maps Transformation Before/After onto Profile Left/Right', () => {
+    const slots = buildProfileSlotsFromTestimonialImages({
+      beforeImageBase64: 'data:image/jpeg;base64,beforebytes',
+      afterImageBase64: 'data:image/jpeg;base64,afterbytes',
+    });
+    assert.equal(slots.left, 'data:image/jpeg;base64,beforebytes');
+    assert.equal(slots.right, 'data:image/jpeg;base64,afterbytes');
+    assert.equal(slots.front, undefined);
+  });
+
+  it('wraps raw base64 as a data URL for Profile', () => {
+    const raw = 'AAAA'.repeat(20);
+    const slots = buildProfileSlotsFromTestimonialImages({
+      beforeImageBase64: raw,
+    });
+    assert.equal(slots.left, `data:image/jpeg;base64,${raw}`);
   });
 });

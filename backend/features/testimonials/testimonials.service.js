@@ -17,6 +17,7 @@ import {
   resolveOtpRecipientIds,
   toPositiveUserId,
 } from './domain/otpRecipient.rules.js';
+import { syncTestimonialPhotosToProfileSafe } from './profilePhotoSync.service.js';
 import logger from '../../shared/lib/logger.js';
 import { ValidationError } from '../../shared/lib/ValidationError.js';
 import {
@@ -367,6 +368,12 @@ export async function submitTestimonial(rawBody) {
     await repo.uploadImage(payload.afterImageBase64, afterPath);
   }
 
+  await syncTestimonialPhotosToProfileSafe({
+    userId: payload.userId,
+    beforeImageBase64: payload.beforeImageBase64,
+    afterImageBase64: payload.hasAfter ? payload.afterImageBase64 : null,
+  });
+
   // Generate OTP only when after photo is present (complete submission)
   let otpHash = null;
   let otpExpiry = null;
@@ -496,6 +503,15 @@ export async function editTestimonial(rawBody) {
     await repo.uploadImage(payload.afterImageBase64, afterPath);
     updates.afterImagePath = afterPath;
   }
+
+  if (payload.beforeImageBase64 || payload.afterImageBase64) {
+    await syncTestimonialPhotosToProfileSafe({
+      userId: payload.userId,
+      beforeImageBase64: payload.beforeImageBase64 || null,
+      afterImageBase64: payload.afterImageBase64 || null,
+    });
+  }
+
   if (payload.beforeWeightKg       !== undefined) updates.beforeWeightKg      = payload.beforeWeightKg;
   if (payload.afterWeightKg        !== undefined) updates.afterWeightKg       = payload.afterWeightKg;
   if (payload.goalType             !== undefined) updates.goalType            = payload.goalType;
@@ -1411,6 +1427,18 @@ export async function submitAllEdits(rawBody) {
     await repo.uploadImage(payload.afterImageBase64, afterPath);
     photoUpdates.afterImagePath = afterPath;
   }
+
+  if (
+    (slots.has('before') && payload.beforeImageBase64)
+    || (slots.has('after') && payload.afterImageBase64)
+  ) {
+    await syncTestimonialPhotosToProfileSafe({
+      userId: payload.userId,
+      beforeImageBase64: slots.has('before') ? payload.beforeImageBase64 : null,
+      afterImageBase64: slots.has('after') ? payload.afterImageBase64 : null,
+    });
+  }
+
   if (payload.beforeWeightKg !== undefined) photoUpdates.beforeWeightKg = payload.beforeWeightKg;
   if (payload.afterWeightKg  !== undefined) photoUpdates.afterWeightKg  = payload.afterWeightKg;
   // First submit may omit goalType if the UI default was never touched — default loss.
