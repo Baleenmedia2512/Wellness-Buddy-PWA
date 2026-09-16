@@ -71,7 +71,6 @@ import {
   getAvatarDisplayVersion,
   subscribeAvatarDisplayVersion,
 } from '../../user/services/avatarDisplayVersion.js';
-import { getProfile } from '../../user/services/user.api.js';
 import { seedMineTestimonialFromProfileSlots } from '../../user/domain/transformationBeforeAfter';
 
 // â”€â”€ Constants â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
