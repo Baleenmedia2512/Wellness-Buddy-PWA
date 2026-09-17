@@ -3,7 +3,16 @@
 import { useCallback, useRef, useState } from 'react';
 import { getCroppedImg, imageSrcToDataUrl } from '../services/imageCrop';
 
-export default function useImageCropper({ onCropped, onError } = {}) {
+export default function useImageCropper({
+  onCropped,
+  onError,
+  cropImage = getCroppedImg,
+  aspect = 1,
+  cropShape = 'round',
+  title = 'Crop Photo',
+  hint = '',
+  objectFit = 'contain',
+} = {}) {
   const [rawImageSrc, setRawImageSrc] = useState(null);
   const [showCropper, setShowCropper] = useState(false);
   const [isPreparingCrop, setIsPreparingCrop] = useState(false);
@@ -47,7 +56,7 @@ export default function useImageCropper({ onCropped, onError } = {}) {
   const apply = useCallback(async () => {
     if (!rawImageSrc || !croppedAreaPixels) return;
     try {
-      const cropped = await getCroppedImg(rawImageSrc, croppedAreaPixels, rotation);
+      const cropped = await cropImage(rawImageSrc, croppedAreaPixels, rotation);
       setShowCropper(false);
       try {
         onCropped?.(cropped);
@@ -61,7 +70,7 @@ export default function useImageCropper({ onCropped, onError } = {}) {
       console.error('[profile-crop] getCroppedImg failed:', err);
       onError?.('Failed to crop image. Please try again.');
     }
-  }, [rawImageSrc, croppedAreaPixels, rotation, onCropped, onError]);
+  }, [rawImageSrc, croppedAreaPixels, rotation, onCropped, onError, cropImage]);
 
   const reopenCropper = () => {
     if (!rawImageSrcRef.current) return;
@@ -81,8 +90,8 @@ export default function useImageCropper({ onCropped, onError } = {}) {
     setRawImageSrc(null);
   };
 
-  const openExistingImage = useCallback(async (src, { fallbackSrc } = {}) => {
-    if (rawImageSrcRef.current) {
+  const openExistingImage = useCallback(async (src, { fallbackSrc, replace = false } = {}) => {
+    if (rawImageSrcRef.current && !replace) {
       reset();
       setShowCropper(true);
       return;
@@ -117,5 +126,6 @@ export default function useImageCropper({ onCropped, onError } = {}) {
     setCrop, setZoom, setRotation, onCropComplete,
     fileInputRef, cameraInputRef,
     selectFile, apply, reopenCropper, openExistingImage, closeCropper, cancelCropper,
+    aspect, cropShape, title, hint, objectFit,
   };
 }

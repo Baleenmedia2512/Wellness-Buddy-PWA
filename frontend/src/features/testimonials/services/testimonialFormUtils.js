@@ -64,9 +64,9 @@ export function formatDurationText(durationUnit, durationValue) {
   return `${n} ${unit}`;
 }
 
-/** CSS class for portrait testimonial thumbnails — contain shows full photo without cropping. */
+/** CSS class for portrait testimonial thumbnails — cover fills the frame without stretching. */
 export const PORTRAIT_IMAGE_CLASS =
-  'w-full aspect-[9/16] object-contain bg-gray-50 rounded-2xl border-2';
+  'w-full aspect-[9/16] object-cover object-center overflow-hidden rounded-2xl border-2';
 
 export const PORTRAIT_IMAGE_CLASS_SM =
-  'w-full aspect-[9/16] object-contain bg-gray-50 rounded-xl border border-gray-200';
+  'w-full aspect-[9/16] object-cover object-center overflow-hidden rounded-xl border border-gray-200';

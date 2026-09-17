@@ -7,16 +7,9 @@ import {
 /** Downscale source before the rotate/crop canvas so phones do not OOM. */
 const MAX_SOURCE_SIDE_PX = 1600;
 
-/**
- * Encode a square canvas as JPEG, stepping quality down until the payload
- * fits PROFILE_IMAGE_TARGET_BYTES (decoded, ~22 KB). Base64 wire size is ~4/3 of that.
- */
-function encodeWithinBudget(canvas) {
-  const targetBytes = PROFILE_IMAGE_TARGET_BYTES || 22 * 1024;
-  const startQuality = PROFILE_IMAGE_JPEG_QUALITY || 0.65;
-  const maxDataUrlLen = Math.ceil(targetBytes / 0.75) + 32;
-
-  let quality = startQuality;
+function encodeJpegWithinBytes(canvas, targetBytes, startQuality) {
+  const maxDataUrlLen = Math.ceil((targetBytes || 22 * 1024) / 0.75) + 32;
+  let quality = startQuality || 0.65;
   let dataUrl = canvas.toDataURL('image/jpeg', quality);
 
   while (dataUrl.length > maxDataUrlLen && quality > 0.15) {
@@ -25,6 +18,36 @@ function encodeWithinBudget(canvas) {
   }
 
   return dataUrl;
+}
+
+/**
+ * Encode a square canvas as JPEG, stepping quality down until the payload
+ * fits PROFILE_IMAGE_TARGET_BYTES (decoded, ~22 KB). Base64 wire size is ~4/3 of that.
+ */
+function encodeWithinBudget(canvas) {
+  return encodeJpegWithinBytes(
+    canvas,
+    PROFILE_IMAGE_TARGET_BYTES || 22 * 1024,
+    PROFILE_IMAGE_JPEG_QUALITY || 0.65,
+  );
+}
+
+/**
+ * Scale a crop rectangle so its longest side is at most maxDimension,
+ * without stretching (aspect ratio is preserved).
+ */
+export function coverCropOutputSize(cropW, cropH, maxDimension) {
+  const w = Number(cropW) || 0;
+  const h = Number(cropH) || 0;
+  const max = Number(maxDimension) || 0;
+  if (!(w > 0) || !(h > 0) || !(max > 0)) {
+    return { width: Math.max(1, Math.round(w) || 1), height: Math.max(1, Math.round(h) || 1) };
+  }
+  const scale = Math.min(1, max / Math.max(w, h));
+  return {
+    width: Math.max(1, Math.round(w * scale)),
+    height: Math.max(1, Math.round(h * scale)),
+  };
 }
 
 function loadImage(src) {
@@ -133,22 +156,32 @@ function downscaleSource(img, pixelCrop) {
 }
 
 /**
- * Crop a square region from a base64 image, supporting rotation + flip.
- * Output is capped to PROFILE_IMAGE_MAX_DIMENSION_PX and ≤ ~22 KB JPEG.
+ * Crop a region from a base64 image, supporting rotation + flip.
+ * Square output (default) is capped to PROFILE_IMAGE_MAX_DIMENSION_PX and ≤ ~22 KB JPEG.
+ * Pass `{ square: false }` for portrait cover frames (keeps crop aspect).
  */
 export const getCroppedImg = async (
   imageSrc,
   pixelCrop,
   rotation = 0,
-  flip = { h: false, v: false },
+  flipOrOpts = { h: false, v: false },
+  maybeOpts = {},
 ) => {
+  const optsLooks = Boolean(
+    flipOrOpts
+    && (flipOrOpts.square === false || flipOrOpts.maxDimension || flipOrOpts.targetBytes),
+  );
+  const flip = optsLooks ? { h: false, v: false } : (flipOrOpts || { h: false, v: false });
+  const opts = optsLooks ? flipOrOpts : (maybeOpts || {});
   if (!pixelCrop || !(pixelCrop.width > 0) || !(pixelCrop.height > 0)) {
     throw new Error('Invalid crop area — please adjust the crop and try again');
   }
 
   const img = await loadImage(imageSrc);
   const { source, crop, release } = downscaleSource(img, pixelCrop);
-  const maxOut = PROFILE_IMAGE_MAX_DIMENSION_PX || 256;
+  const square = opts.square !== false;
+  const maxOut = opts.maxDimension
+    || (square ? (PROFILE_IMAGE_MAX_DIMENSION_PX || 256) : 1200);
 
   try {
     const srcW = source.width;
@@ -168,15 +201,18 @@ export const getCroppedImg = async (
     ctx.scale(flip.h ? -1 : 1, flip.v ? -1 : 1);
     ctx.drawImage(source, -srcW / 2, -srcH / 2);
 
-    const cropSide = Math.min(crop.width, crop.height);
-    if (!(cropSide > 0)) {
+    if (!(crop.width > 0) || !(crop.height > 0)) {
       throw new Error('Invalid crop area — please adjust the crop and try again');
     }
 
-    const outSize = Math.max(1, Math.min(cropSide, maxOut));
+    const outSize = square
+      ? { width: Math.max(1, Math.min(Math.min(crop.width, crop.height), maxOut)), height: 0 }
+      : coverCropOutputSize(crop.width, crop.height, maxOut);
+    if (square) outSize.height = outSize.width;
+
     const out = document.createElement('canvas');
-    out.width = outSize;
-    out.height = outSize;
+    out.width = outSize.width;
+    out.height = outSize.height;
     const outCtx = out.getContext('2d');
     if (!outCtx) throw new Error('Canvas not supported');
     outCtx.imageSmoothingEnabled = true;
@@ -194,11 +230,13 @@ export const getCroppedImg = async (
       crop.height,
       0,
       0,
-      outSize,
-      outSize,
+      outSize.width,
+      outSize.height,
     );
 
-    const dataUrl = encodeWithinBudget(out);
+    const dataUrl = opts.targetBytes
+      ? encodeJpegWithinBytes(out, opts.targetBytes, opts.startQuality || 0.85)
+      : encodeWithinBudget(out);
 
     canvas.width = 0;
     canvas.height = 0;

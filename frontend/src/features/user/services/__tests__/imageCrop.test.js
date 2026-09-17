@@ -3,7 +3,7 @@
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { imageSrcToDataUrl } from '../imageCrop.js';
+import { imageSrcToDataUrl, coverCropOutputSize } from '../imageCrop.js';
 
 const DATA_URI = 'data:image/jpeg;base64,SUIT';
 
@@ -57,5 +57,18 @@ describe('imageSrcToDataUrl', () => {
       }),
       /Failed to load image for crop/,
     );
+  });
+});
+
+describe('coverCropOutputSize', () => {
+  it('keeps 9:16 aspect and caps the long side', () => {
+    const size = coverCropOutputSize(900, 1600, 1200);
+    assert.equal(size.width, 675);
+    assert.equal(size.height, 1200);
+    assert.equal(size.width / size.height, 9 / 16);
+  });
+
+  it('does not upscale a smaller crop', () => {
+    assert.deepEqual(coverCropOutputSize(90, 160, 1200), { width: 90, height: 160 });
   });
 });

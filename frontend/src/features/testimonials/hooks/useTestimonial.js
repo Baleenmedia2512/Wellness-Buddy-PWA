@@ -2,7 +2,7 @@
  * useTestimonial.js â€” State and lifecycle for the member testimonial form.
  * Handles image picking (file input â†’ base64), form state, submit, and edit mode.
  */
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { submitTestimonial, editTestimonial, getMyTestimonial } from '../services/testimonialApi.js';
 import {
   formatDurationText,
@@ -10,9 +10,9 @@ import {
   validateDurationFields,
   validateWeightKg,
 } from '../services/testimonialFormUtils.js';
-import { setCaptureFlowBusy } from '../../../shared/services/captureFlowBusy';
 import { compressImage } from '../utils/compressTestimonialImage.js';
 import { jpegDataUrlToObjectUrl, revokeBlobUrl } from '../utils/testimonialMediaUrl.js';
+import usePortraitCoverCrop from '../../user/hooks/usePortraitCoverCrop';
 
 export { compressImage };
 
@@ -74,42 +74,48 @@ export function useTestimonial({ userId, healthIssues = [] }) {
     setError(null);
   }, []);
 
-  /** Instant preview, then compress in background (same feel as Manual Log / Mine card). */
-  const makeImageHandler = useCallback((setter) => (e) => {
+  const pendingImageSetterRef = useRef(null);
+  const coverCrop = usePortraitCoverCrop({
+    onApply: (dataUrl) => {
+      const setter = pendingImageSetterRef.current;
+      if (!setter) return;
+      const base64 = dataUrl.includes(',') ? dataUrl.split(',')[1] : dataUrl;
+      const preview = jpegDataUrlToObjectUrl(dataUrl) || dataUrl;
+      setter((prev) => {
+        revokeBlobUrl(prev?.preview);
+        return { base64, preview, compressing: false };
+      });
+    },
+    onError: (msg) => setError(msg),
+  });
+
+  const makeImageHandler = useCallback((setter, key) => (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
     e.target.value = '';
-    const objectUrl = URL.createObjectURL(file);
-    setter((prev) => {
-      revokeBlobUrl(prev?.preview);
-      return { base64: null, preview: objectUrl, compressing: true };
-    });
+    pendingImageSetterRef.current = setter;
     setError(null);
-    setCaptureFlowBusy(true);
-    void compressImage(file)
-      .then((result) => {
-        const compressedPreview = jpegDataUrlToObjectUrl(result.preview) || objectUrl;
-        setter((prev) => {
-          if (!prev) {
-            if (compressedPreview !== objectUrl) revokeBlobUrl(compressedPreview);
-            return prev;
-          }
-          if (compressedPreview !== objectUrl) revokeBlobUrl(objectUrl);
-          return { ...result, preview: compressedPreview, compressing: false };
-        });
-      })
-      .catch((err) => {
-        revokeBlobUrl(objectUrl);
-        setter(null);
-        setError(err.message);
-      })
-      .finally(() => {
-        setCaptureFlowBusy(false);
-      });
-  }, []);
+    void coverCrop.pickFile(file, key);
+  }, [coverCrop]);
 
-  const handleBeforeImageChange = useCallback(makeImageHandler(setBeforeImage), [makeImageHandler]);
-  const handleAfterImageChange  = useCallback(makeImageHandler(setAfterImage),  [makeImageHandler]);
+  const handleBeforeImageChange = useCallback(
+    makeImageHandler(setBeforeImage, 'before'),
+    [makeImageHandler],
+  );
+  const handleAfterImageChange = useCallback(
+    makeImageHandler(setAfterImage, 'after'),
+    [makeImageHandler],
+  );
+
+  const recropBefore = useCallback(() => {
+    pendingImageSetterRef.current = setBeforeImage;
+    void coverCrop.recrop(beforeImage?.preview, 'before');
+  }, [coverCrop, beforeImage?.preview]);
+
+  const recropAfter = useCallback(() => {
+    pendingImageSetterRef.current = setAfterImage;
+    void coverCrop.recrop(afterImage?.preview, 'after');
+  }, [coverCrop, afterImage?.preview]);
 
   // ── Submit ─────────────────────────────────────────────────────────────────
   const handleSubmit = useCallback(async () => {
@@ -258,6 +264,9 @@ export function useTestimonial({ userId, healthIssues = [] }) {
     afterImage,
     handleBeforeImageChange,
     handleAfterImageChange,
+    recropBefore,
+    recropAfter,
+    portraitCoverOverlay: coverCrop.overlay,
     existing,
     reload,
     isEditMode,

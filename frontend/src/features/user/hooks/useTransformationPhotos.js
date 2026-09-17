@@ -50,16 +50,23 @@ export default function useTransformationPhotos() {
     setSnapshotWeightKg(Number.isFinite(n) ? n : null);
   }, []);
 
-  const setSlotFromFile = useCallback(async (slot, file) => {
-    if (!file || !POSE_SLOT_KEYS.includes(slot)) return;
-    setCaptureFlowBusy(true);
-    try {
-      const { preview } = await compressImage(file);
-      setPreviews((prev) => ({ ...prev, [slot]: preview }));
-      setPending((prev) => ({ ...prev, [slot]: preview }));
-    } finally {
-      setCaptureFlowBusy(false);
+  const setSlotFromFile = useCallback(async (slot, fileOrDataUrl) => {
+    if (!fileOrDataUrl || !POSE_SLOT_KEYS.includes(slot)) return;
+    let preview;
+    if (typeof fileOrDataUrl === 'string' && fileOrDataUrl.startsWith('data:image/')) {
+      preview = fileOrDataUrl;
+    } else {
+      setCaptureFlowBusy(true);
+      try {
+        const result = await compressImage(fileOrDataUrl);
+        preview = result.preview;
+      } finally {
+        setCaptureFlowBusy(false);
+      }
     }
+    if (!preview) return;
+    setPreviews((prev) => ({ ...prev, [slot]: preview }));
+    setPending((prev) => ({ ...prev, [slot]: preview }));
   }, [setPending]);
 
   const history = useMemo(
