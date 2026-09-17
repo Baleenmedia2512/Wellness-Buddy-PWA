@@ -253,6 +253,11 @@ import LocationGuard from "./shared/components/LocationGuard";
 import { ADMIN_CONFIG_TABS } from "./shell/domain/adminConfigSetupTabs";
 import { isAdminLikeRole } from "./shared/constants/roles";
 import { canAccessReportsModule } from "./features/reports/domain/reportsAccess.rules.js";
+import {
+  fetchNavAccessForMe,
+  resolveNavTargetOrFallback,
+  NAV_PAGE_KEYS,
+} from "./features/nav-page-access";
 import { DIARY_ANALYZING_POLL_MS } from "./shared/constants/limits";
 
 // ? PERFORMANCE: Lazy-load leaderboards ? they fire API calls on mount and are below the fold
@@ -955,6 +960,9 @@ function WellnessValleyApp() {
 
   // User role state - for role-based access control
   const [userRole, setUserRole] = useState("user");
+  // DB nav page matrix for current user (null = fail-open / not loaded)
+  const [navAccessPages, setNavAccessPages] = useState(null);
+  const navAccessPagesRef = useRef(null);
 
   // Nutrition centers map state (for all users)
   const [showNutritionCentersMap, setShowNutritionCentersMap] = useState(false);
@@ -1032,6 +1040,42 @@ function WellnessValleyApp() {
       setShowReports(false);
     }
   }, [showReports, userRole]);
+
+  // Load DB-driven nav page access for the signed-in user.
+  useEffect(() => {
+    let cancelled = false;
+    navAccessPagesRef.current = null;
+    setNavAccessPages(null);
+
+    if (!user?.email || !isFlagEnabled('ff.nav-page-access')) {
+      return undefined;
+    }
+
+    (async () => {
+      try {
+        const userId = (await getUserId(user)) || user?.id || null;
+        const data = await fetchNavAccessForMe({
+          requesterUserId: userId,
+          requesterEmail: user.email,
+          apiBaseUrl,
+        });
+        if (cancelled) return;
+        const pages = data?.pages && typeof data.pages === 'object' ? data.pages : null;
+        navAccessPagesRef.current = pages;
+        setNavAccessPages(pages);
+      } catch (err) {
+        // Fail-open: keep null so all main tabs stay visible.
+        if (!cancelled) {
+          console.warn('[nav-access] for-me failed; fail-open', err?.message || err);
+          navAccessPagesRef.current = null;
+          setNavAccessPages(null);
+        }
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [user?.email, user?.id, apiBaseUrl, userRole]);
+
   const [showWellnessScore, setShowWellnessScore] = useState(false);
   const [showAdminConfigSetup, setShowAdminConfigSetup] = useState(false);
   const [adminConfigTab, setAdminConfigTab] = useState(ADMIN_CONFIG_TABS.WELLNESS_SCORE);
@@ -2549,6 +2593,18 @@ function WellnessValleyApp() {
       return;
     }
 
+    // DB nav ACL — only for main nav page keys (not profile / admin / wellness-score).
+    if (
+      isFlagEnabled('ff.nav-page-access')
+      && NAV_PAGE_KEYS.includes(targetPage)
+    ) {
+      const fallback = resolveNavTargetOrFallback(targetPage, navAccessPagesRef.current);
+      if (fallback != null) {
+        if (fallback === targetPage) return;
+        targetPage = fallback;
+      }
+    }
+
     const currentWvPage = window.history.state?.wvPage;
     const isOnSubPage = currentWvPage && currentWvPage !== 'main';
 
@@ -2627,7 +2683,7 @@ function WellnessValleyApp() {
 
     const historyPage = targetPage === 'wellness-score-report'
       ? 'reports'
-      : (targetPage === 'wellness-score-setup' || targetPage === 'ai-credits-setup')
+      : (targetPage === 'wellness-score-setup' || targetPage === 'ai-credits-setup' || targetPage === 'page-access-setup')
         ? 'admin-config-setup'
         : targetPage;
     bumpTabVisitKey(historyPage);
@@ -2689,6 +2745,12 @@ function WellnessValleyApp() {
       case 'ai-credits-setup':
         if (isAdminLikeRole(userRole)) {
           setAdminConfigTab(ADMIN_CONFIG_TABS.AI_CONFIG);
+          setShowAdminConfigSetup(true);
+        }
+        break;
+      case 'page-access-setup':
+        if (isAdminLikeRole(userRole)) {
+          setAdminConfigTab(ADMIN_CONFIG_TABS.PAGE_ACCESS);
           setShowAdminConfigSetup(true);
         }
         break;
@@ -7516,6 +7578,7 @@ function WellnessValleyApp() {
           navOnly
           user={user}
           userRole={userRole}
+          allowedPages={navAccessPages}
           activePage={null}
           onShowHome={() => navigateTo('home')}
           onShowBackgroundHistory={() => navigateTo('dashboard')}
@@ -7577,6 +7640,7 @@ function WellnessValleyApp() {
           navOnly
           user={user}
           userRole={userRole}
+          allowedPages={navAccessPages}
           activePage="dashboard"
           onShowHome={() => navigateTo('home')}
           onShowBackgroundHistory={() => navigateTo('dashboard')}
@@ -7618,6 +7682,7 @@ function WellnessValleyApp() {
           navOnly
           user={user}
           userRole={userRole}
+          allowedPages={navAccessPages}
           activePage="counselling"
           onShowHome={() => navigateTo('home')}
           onShowBackgroundHistory={() => navigateTo('dashboard')}
@@ -7655,6 +7720,7 @@ function WellnessValleyApp() {
           navOnly
           user={user}
           userRole={userRole}
+          allowedPages={navAccessPages}
           activePage="enrollment"
           onShowHome={() => navigateTo('home')}
           onShowBackgroundHistory={() => navigateTo('dashboard')}
@@ -7691,6 +7757,7 @@ function WellnessValleyApp() {
           navOnly
           user={user}
           userRole={userRole}
+          allowedPages={navAccessPages}
           activePage="activity-report"
           onShowHome={() => navigateTo('home')}
           onShowBackgroundHistory={() => navigateTo('dashboard')}
@@ -7726,6 +7793,7 @@ function WellnessValleyApp() {
           navOnly
           user={user}
           userRole={userRole}
+          allowedPages={navAccessPages}
           activePage="activity-report"
           onShowHome={() => navigateTo('home')}
           onShowBackgroundHistory={() => navigateTo('dashboard')}
@@ -7760,6 +7828,7 @@ function WellnessValleyApp() {
             navOnly
             user={user}
             userRole={userRole}
+            allowedPages={navAccessPages}
             activePage="physical-club"
             onShowHome={() => navigateTo('home')}
             onShowBackgroundHistory={() => navigateTo('dashboard')}
@@ -7815,6 +7884,7 @@ function WellnessValleyApp() {
           navOnly
           user={user}
           userRole={userRole}
+          allowedPages={navAccessPages}
           activePage="testimonials"
           onShowHome={() => navigateTo('home')}
           onShowBackgroundHistory={() => navigateTo('dashboard')}
@@ -8004,6 +8074,7 @@ function WellnessValleyApp() {
           navOnly
           user={user}
           userRole={userRole}
+          allowedPages={navAccessPages}
           activePage="reports"
           onShowHome={() => navigateTo('home')}
           onShowBackgroundHistory={() => navigateTo('dashboard')}
@@ -8320,6 +8391,7 @@ function WellnessValleyApp() {
         <Header
           user={user}
           userRole={userRole}
+          allowedPages={navAccessPages}
           onShowBackgroundHistory={showDashboardPage}
           onShowHome={showMainPage}
           onShowWellnessEnrollment={() => {
