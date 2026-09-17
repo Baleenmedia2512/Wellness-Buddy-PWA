@@ -22,7 +22,11 @@ export default async function handler(req, res) {
     }
 
     if (result.body?.r2Url) {
-      res.setHeader('Cache-Control', 'private, max-age=300');
+      const signed = /[?&]X-Amz-Signature=/i.test(result.body.r2Url);
+      res.setHeader(
+        'Cache-Control',
+        signed ? 'private, max-age=300' : 'private, max-age=3600',
+      );
       return res.redirect(302, result.body.r2Url);
     }
     return res.status(404).json({ success: false, message: 'No image' });

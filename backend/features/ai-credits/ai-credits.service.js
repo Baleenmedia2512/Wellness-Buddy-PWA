@@ -31,10 +31,16 @@ const ACCESS_COLUMNS = '"UserId", "Role", "CoachId"';
 
 /**
  * Server-side leaf-downline + AI window facts for a user (never trust client role).
+ * Window open uses admin AI Credits availability only (dynamic), not hardcoded meals.
  * @param {number} userId
  * @param {string} [timezoneIana]
+ * @param {object|null} [availabilityWindows] raw or normalized admin windows
  */
-async function loadAiFoodAccessContext(userId, timezoneIana = IANA_IST) {
+async function loadAiFoodAccessContext(
+  userId,
+  timezoneIana = IANA_IST,
+  availabilityWindows = null,
+) {
   const row = await userRepo.findByUserId(userId, ACCESS_COLUMNS);
   const supabase = getSupabaseClient();
   const { count, error } = await supabase
@@ -50,6 +56,7 @@ async function loadAiFoodAccessContext(userId, timezoneIana = IANA_IST) {
     coachId: row?.CoachId ?? null,
     now: new Date(),
     timezoneIana: timezoneIana || IANA_IST,
+    availabilityWindows,
   });
   return {
     eligibleForAiFoodAnalysis: decision.eligible,
@@ -134,7 +141,11 @@ export async function getStatus({ userId, appVersion = null }) {
   }
   const ctx = await loadDayContext(uid);
   const status = statusFromContext(ctx);
-  const access = await loadAiFoodAccessContext(uid, ctx.timezoneIana);
+  const access = await loadAiFoodAccessContext(
+    uid,
+    ctx.timezoneIana,
+    ctx.config.availabilityWindows,
+  );
   // Always surface access facts for UI; enforcement uses appVersion on reserve.
   void appVersion;
   return {
@@ -151,7 +162,11 @@ export async function reserveCredit({ userId, appVersion = null }) {
   const ctx = await loadDayContext(uid);
   const effectiveEnabled = Boolean(ctx.config.aiModeEnabled)
     && ctx.availability?.anySlotEnabled !== false;
-  const access = await loadAiFoodAccessContext(uid, ctx.timezoneIana);
+  const access = await loadAiFoodAccessContext(
+    uid,
+    ctx.timezoneIana,
+    ctx.config.availabilityWindows,
+  );
   const status = withAccessFields(statusFromContext(ctx), access);
 
   const gate = canReserve({
@@ -228,12 +243,18 @@ export async function assertAiFoodAnalysisAccess({ userId, appVersion = null }) 
     throw err;
   }
   const timezoneIana = await getUserTimezoneIana(uid);
-  const access = await loadAiFoodAccessContext(uid, timezoneIana);
+  const configRow = await repo.getLatestConfig();
+  const config = repo.configOrDefault(configRow);
+  const access = await loadAiFoodAccessContext(
+    uid,
+    timezoneIana,
+    config.availabilityWindows,
+  );
   if (access.aiFoodAnalysisAllowed) return;
   const err = new ValidationError(
     403,
     access.aiFoodAnalysisDenyReason === 'outside_ai_window'
-      ? 'AI food analysis is only available during lunch (12:00–4:00 PM) and dinner (5:30–8:30 PM)'
+      ? 'AI food analysis is only available during the admin-configured AI time windows'
       : 'AI food analysis is only available for eligible downline members',
   );
   err.code = access.aiFoodAnalysisDenyReason === 'outside_ai_window'

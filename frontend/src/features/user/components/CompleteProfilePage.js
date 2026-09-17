@@ -5,6 +5,11 @@ import { User } from 'lucide-react';
 import { fetchProfile, saveProfile } from '../services/profileService';
 import useImageCropper from '../hooks/useImageCropper';
 import useFaceDetection from '../hooks/useFaceDetection';
+import {
+  buildUserAvatarUrl,
+  getAvatarDisplayVersion,
+} from '../services/avatarDisplayVersion';
+import { getApiBaseUrl } from '../../../config/api.config';
 import CropOverlay from './shared/CropOverlay';
 import CompleteProfileChecklist from './complete/CompleteProfileChecklist';
 import CompleteRequiredFields, {
@@ -281,6 +286,23 @@ const CompleteProfilePage = ({
     checks.push({ label: 'Profile Picture', done: pictureValid });
   }
 
+  const handleRecrop = useCallback(() => {
+    if (saving || cropper.isPreparingCrop) return;
+    setPicError('');
+    if (cropper.rawImageSrc) {
+      cropper.reopenCropper();
+      return;
+    }
+    const uid = user?.id || user?.UserId || user?.userId || null;
+    const fallbackSrc = buildUserAvatarUrl(
+      apiBaseUrl || getApiBaseUrl(),
+      uid,
+      getAvatarDisplayVersion(),
+      { inline: true },
+    );
+    cropper.openExistingImage(previewUrl, { fallbackSrc });
+  }, [saving, cropper, previewUrl, user, apiBaseUrl]);
+
   const handleSave = useCallback(async () => {
     setError('');
     if (!formValid) {
@@ -388,7 +410,12 @@ const CompleteProfilePage = ({
   return (
     <div className="fixed inset-0 bg-gray-50 overflow-y-auto" style={{ zIndex: 9999 }}>
       {cropper.showCropper && cropper.rawImageSrc && (
-        <CropOverlay {...cropper} onCancel={cropper.cancelCropper} onDone={cropper.apply} zIndex={10050} />
+        <CropOverlay
+          {...cropper}
+          onCancel={profileImage ? cropper.closeCropper : cropper.cancelCropper}
+          onDone={cropper.apply}
+          zIndex={10050}
+        />
       )}
       <div className="bg-gradient-to-r from-green-500 to-green-600 px-6 pt-14 pb-8">
         <div className="flex items-center gap-3 mb-2">
@@ -429,6 +456,7 @@ const CompleteProfilePage = ({
           <div className="pt-2 border-t border-gray-100">
             <UserProfileBodyMetrics
               bodyMetrics={optionalMetrics}
+              gender={gender}
               heightCm={height}
               weightKg={currentWeight}
               onChange={(key, value) => {
@@ -452,10 +480,14 @@ const CompleteProfilePage = ({
         <CompletePictureSection
           show={showPictureSection}
           previewUrl={previewUrl}
-          faceStatus={hasExistingPhoto && !profileImage ? 'face_found' : face.status}
-          onRecrop={cropper.reopenCropper}
+          faceStatus={
+            cropper.isPreparingCrop
+              ? 'detecting'
+              : (hasExistingPhoto && !profileImage ? 'face_found' : face.status)
+          }
+          onRecrop={handleRecrop}
           onSelectFile={cropper.selectFile}
-          isSaving={saving}
+          isSaving={saving || cropper.isPreparingCrop}
           error={picError}
         />
         <button

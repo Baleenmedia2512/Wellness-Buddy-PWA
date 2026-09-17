@@ -1,7 +1,8 @@
 /**
  * Activity Report team scope — same rules as Ideal Weight (reportingHierarchyService).
  *
- * Level: Direct Team = 1, their members = 2, and so on (reporting tree, not profile role).
+ * Level: Viewer = 0, Direct Team = 1, their members = 2, and so on (reporting tree, not profile role).
+ * Full Team table includes the viewer (level 0) plus Active downline.
  * Person type: 0 CoachId downlines → customer (API token `member`); any downline → sponsor
  * (not profile Role). UI label for no-team people is Customer.
  */
