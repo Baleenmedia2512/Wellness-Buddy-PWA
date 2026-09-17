@@ -1,17 +1,22 @@
 // Image cropper state — handles file selection, crop/zoom/rotation, apply.
 // On apply, calls onCropped(base64) with the resulting JPEG data URL.
 import { useCallback, useRef, useState } from 'react';
-import { getCroppedImg } from '../services/imageCrop';
+import { getCroppedImg, imageSrcToDataUrl } from '../services/imageCrop';
 
 export default function useImageCropper({ onCropped, onError } = {}) {
   const [rawImageSrc, setRawImageSrc] = useState(null);
   const [showCropper, setShowCropper] = useState(false);
+  const [isPreparingCrop, setIsPreparingCrop] = useState(false);
   const [crop, setCrop] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
   const [rotation, setRotation] = useState(0);
   const [croppedAreaPixels, setCroppedAreaPixels] = useState(null);
   const fileInputRef = useRef(null);
   const cameraInputRef = useRef(null);
+  const rawImageSrcRef = useRef(null);
+  const isPreparingCropRef = useRef(false);
+  const openRequestRef = useRef(0);
+  rawImageSrcRef.current = rawImageSrc;
 
   const reset = () => {
     setCrop({ x: 0, y: 0 });
@@ -59,20 +64,58 @@ export default function useImageCropper({ onCropped, onError } = {}) {
   }, [rawImageSrc, croppedAreaPixels, rotation, onCropped, onError]);
 
   const reopenCropper = () => {
-    if (!rawImageSrc) return;
+    if (!rawImageSrcRef.current) return;
     reset();
     setShowCropper(true);
   };
 
+  const closeCropper = () => {
+    setShowCropper(false);
+  };
+
   const cancelCropper = () => {
+    openRequestRef.current += 1;
+    isPreparingCropRef.current = false;
+    setIsPreparingCrop(false);
     setShowCropper(false);
     setRawImageSrc(null);
   };
 
+  const openExistingImage = useCallback(async (src, { fallbackSrc } = {}) => {
+    if (rawImageSrcRef.current) {
+      reset();
+      setShowCropper(true);
+      return;
+    }
+    if (!src && !fallbackSrc) return;
+    if (isPreparingCropRef.current) return;
+    const requestId = openRequestRef.current + 1;
+    openRequestRef.current = requestId;
+    isPreparingCropRef.current = true;
+    setIsPreparingCrop(true);
+    try {
+      const resolved = await imageSrcToDataUrl(src, { fallbackSrc });
+      if (openRequestRef.current !== requestId) return;
+      setRawImageSrc(resolved);
+      reset();
+      setShowCropper(true);
+    } catch (err) {
+      if (openRequestRef.current !== requestId) return;
+      // eslint-disable-next-line no-console -- recrop load failures need device logs
+      console.error('[profile-crop] openExistingImage failed:', err);
+      onError?.('Could not open this photo for crop. Please upload a new image.');
+    } finally {
+      if (openRequestRef.current === requestId) {
+        isPreparingCropRef.current = false;
+        setIsPreparingCrop(false);
+      }
+    }
+  }, [onError]);
+
   return {
-    rawImageSrc, showCropper, crop, zoom, rotation,
+    rawImageSrc, showCropper, isPreparingCrop, crop, zoom, rotation,
     setCrop, setZoom, setRotation, onCropComplete,
     fileInputRef, cameraInputRef,
-    selectFile, apply, reopenCropper, cancelCropper,
+    selectFile, apply, reopenCropper, openExistingImage, closeCropper, cancelCropper,
   };
 }

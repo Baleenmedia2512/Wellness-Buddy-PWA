@@ -1,9 +1,14 @@
 // Modal to change the signed-in user's profile photo (camera / gallery → crop → save).
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Camera, Upload, X } from 'lucide-react';
 import useImageCropper from '../hooks/useImageCropper';
 import { saveProfile } from '../services/profileService';
-import { bumpAvatarDisplayVersion } from '../services/avatarDisplayVersion';
+import {
+  bumpAvatarDisplayVersion,
+  buildUserAvatarUrl,
+  getAvatarDisplayVersion,
+} from '../services/avatarDisplayVersion';
+import { getApiBaseUrl } from '../../../config/api.config';
 import CropOverlay from './shared/CropOverlay';
 import CameraGalleryButtons from './shared/CameraGalleryButtons';
 import PicturePreview from './picture/PicturePreview';
@@ -15,6 +20,8 @@ import * as Session from '../../../shared/services/sessionStorage';
  *   onClose: () => void,
  *   user: { email?: string, Email?: string, id?: string|number } | null,
  *   currentPreviewUrl?: string | null,
+ *   startWithRecrop?: boolean,
+ *   onStartWithRecropConsumed?: () => void,
  *   onUploaded: (profileImage: string) => void,
  * }} props
  */
@@ -24,6 +31,8 @@ const ChangeProfilePhotoModal = ({
   user,
   accountEmail = '',
   currentPreviewUrl = null,
+  startWithRecrop = false,
+  onStartWithRecropConsumed,
   onUploaded,
 }) => {
   const [profileImage, setProfileImage] = useState(null);
@@ -40,9 +49,41 @@ const ChangeProfilePhotoModal = ({
     },
   });
 
+  const displayPreview = previewUrl || currentPreviewUrl || null;
+  const busy = isSaving || cropper.isPreparingCrop;
+  const userId = user?.id ?? user?.UserId ?? user?.userId ?? null;
+
+  const handleRecrop = useCallback(() => {
+    if (busy) return;
+    setError('');
+    if (cropper.rawImageSrc) {
+      cropper.reopenCropper();
+      return;
+    }
+    const fallbackSrc = buildUserAvatarUrl(
+      getApiBaseUrl(),
+      userId,
+      getAvatarDisplayVersion(),
+      { inline: true },
+    );
+    cropper.openExistingImage(displayPreview, { fallbackSrc });
+  }, [busy, cropper, displayPreview, userId]);
+
+  const recropStartedRef = useRef(false);
+  useEffect(() => {
+    if (!isOpen) {
+      recropStartedRef.current = false;
+      return;
+    }
+    if (!startWithRecrop || recropStartedRef.current) return;
+    if (!displayPreview || busy) return;
+    recropStartedRef.current = true;
+    onStartWithRecropConsumed?.();
+    handleRecrop();
+  }, [isOpen, startWithRecrop, displayPreview, busy, handleRecrop, onStartWithRecropConsumed]);
+
   if (!isOpen) return null;
 
-  const displayPreview = previewUrl || currentPreviewUrl || null;
   const email = (
     accountEmail
     || user?.email
@@ -62,7 +103,7 @@ const ChangeProfilePhotoModal = ({
 
   const handleUpload = async () => {
     if (!profileImage) {
-      setError('Please select a new photo first');
+      setError('Please crop or choose a photo first');
       return;
     }
     if (!email && user?.id == null) {
@@ -101,7 +142,7 @@ const ChangeProfilePhotoModal = ({
       {cropper.showCropper && cropper.rawImageSrc && (
         <CropOverlay
           {...cropper}
-          onCancel={cropper.cancelCropper}
+          onCancel={previewUrl ? cropper.closeCropper : cropper.cancelCropper}
           onDone={cropper.apply}
           zIndex={360}
         />
@@ -114,7 +155,7 @@ const ChangeProfilePhotoModal = ({
             </div>
             <div className="min-w-0">
               <h2 className="text-lg font-bold text-white truncate">Change Profile Photo</h2>
-              <p className="text-sm text-green-50">Take a photo or choose from gallery</p>
+              <p className="text-sm text-green-50">Crop this photo or choose a new one</p>
             </div>
           </div>
           <button
@@ -131,9 +172,9 @@ const ChangeProfilePhotoModal = ({
         <div className="p-5 space-y-5">
           <PicturePreview
             previewUrl={displayPreview}
-            faceStatus="idle"
-            onRecrop={previewUrl ? cropper.reopenCropper : undefined}
-            isSaving={isSaving}
+            faceStatus={cropper.isPreparingCrop ? 'detecting' : 'idle'}
+            onRecrop={displayPreview ? handleRecrop : undefined}
+            isSaving={busy}
           />
 
           {error && (
@@ -143,7 +184,7 @@ const ChangeProfilePhotoModal = ({
           )}
 
           <CameraGalleryButtons
-            disabled={isSaving}
+            disabled={busy}
             onCameraSelect={cropper.selectFile}
             onGallerySelect={cropper.selectFile}
           />
@@ -160,7 +201,7 @@ const ChangeProfilePhotoModal = ({
             <button
               type="button"
               onClick={handleUpload}
-              disabled={!profileImage || isSaving}
+              disabled={!profileImage || busy}
               className="flex-1 py-3 px-4 bg-gradient-to-r from-green-500 to-green-600 text-white font-semibold rounded-xl hover:from-green-600 hover:to-green-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
             >
               {isSaving ? (

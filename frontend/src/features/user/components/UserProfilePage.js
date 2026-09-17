@@ -37,6 +37,7 @@ import BathroomScaleIcon from '../../../shared/components/icons/BathroomScaleIco
 import { deriveWeightGoalMode } from '../../weight/services/weightFormService';
 import DeleteAccountModal from './DeleteAccountModal';
 import ChangeProfilePhotoModal from './ChangeProfilePhotoModal';
+import ProfilePhotoViewer from './picture/ProfilePhotoViewer';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
 import { invalidateHasTeamMembersCache } from '../../team/services/teamSearchService';
 import { bumpAvatarDisplayVersion } from '../services/avatarDisplayVersion';
@@ -86,6 +87,8 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
   const [hasSaved, setHasSaved] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showChangePhotoModal, setShowChangePhotoModal] = useState(false);
+  const [showPhotoViewer, setShowPhotoViewer] = useState(false);
+  const [startPhotoRecrop, setStartPhotoRecrop] = useState(false);
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
   const [leadPreFilled, setLeadPreFilled] = useState(false); // true once we've pre-filled from lead
   const leadPreFilledRef = useRef(false);
@@ -381,37 +384,50 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
           <h1 className="text-lg font-bold text-white">My Profile</h1>
         </div>
 
-        {/* Avatar — tap to change profile photo */}
+        {/* Avatar — tap photo to view; Edit badge to change */}
         <div className="flex items-center gap-4">
-          <TouchFeedbackButton
-            type="button"
-            onClick={() => {
-              if (!isUploadingPhoto && !isSaving) setShowChangePhotoModal(true);
-            }}
-            disabled={isUploadingPhoto || isSaving}
-            className="relative w-20 h-20 rounded-full overflow-hidden flex-shrink-0 shadow-lg border-[3px] border-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white disabled:opacity-70"
-            ariaLabel="Change profile photo"
-            title="Change profile photo"
-          >
-            {profileImagePreview ? (
-              <img
-                src={profileImagePreview}
-                alt={displayName}
-                className="w-full h-full object-cover"
-                loading="lazy"
-                decoding="async"
-                referrerPolicy="no-referrer"
-              />
-            ) : (
-              <div className={`w-full h-full flex items-center justify-center text-white font-bold text-3xl ${colorOf(form.name, accountEmail)}`}>
-                {initialOf(form.name || user?.displayName || user?.name, accountEmail)}
-              </div>
-            )}
-            <span className="absolute inset-x-0 bottom-0 bg-black/45 text-white text-[10px] font-semibold py-0.5 flex items-center justify-center gap-1">
+          <div className="relative w-20 h-20 flex-shrink-0 rounded-full overflow-hidden shadow-lg border-[3px] border-white">
+            <TouchFeedbackButton
+              type="button"
+              onClick={() => {
+                if (isUploadingPhoto || isSaving) return;
+                if (profileImagePreview) setShowPhotoViewer(true);
+                else setShowChangePhotoModal(true);
+              }}
+              disabled={isUploadingPhoto || isSaving}
+              className="w-full h-full focus:outline-none focus-visible:ring-2 focus-visible:ring-white disabled:opacity-70"
+              ariaLabel={profileImagePreview ? 'View profile photo' : 'Add profile photo'}
+              title={profileImagePreview ? 'View profile photo' : 'Add profile photo'}
+            >
+              {profileImagePreview ? (
+                <img
+                  src={profileImagePreview}
+                  alt={displayName}
+                  className="w-full h-full object-cover pointer-events-none"
+                  loading="lazy"
+                  decoding="async"
+                  referrerPolicy="no-referrer"
+                />
+              ) : (
+                <div className={`w-full h-full flex items-center justify-center text-white font-bold text-3xl ${colorOf(form.name, accountEmail)}`}>
+                  {initialOf(form.name || user?.displayName || user?.name, accountEmail)}
+                </div>
+              )}
+            </TouchFeedbackButton>
+            <TouchFeedbackButton
+              type="button"
+              onClick={() => {
+                if (!isUploadingPhoto && !isSaving) setShowChangePhotoModal(true);
+              }}
+              disabled={isUploadingPhoto || isSaving}
+              className="absolute inset-x-0 bottom-0 rounded-b-full bg-black/45 text-white text-[10px] font-semibold py-0.5 flex items-center justify-center gap-1"
+              ariaLabel="Change profile photo"
+              title="Change profile photo"
+            >
               <Camera className="w-3 h-3" />
               {isUploadingPhoto ? '…' : 'Edit'}
-            </span>
-          </TouchFeedbackButton>
+            </TouchFeedbackButton>
+          </div>
           <div className="flex-1 min-w-0">
             <p className="text-xl font-bold text-white truncate">{displayName}</p>
             <p className="text-sm text-green-100 truncate">{accountEmail || user?.email}</p>
@@ -652,12 +668,33 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
         </div>
       </div>
 
+      <ProfilePhotoViewer
+        isOpen={showPhotoViewer}
+        src={profileImagePreview}
+        alt={displayName}
+        onClose={() => setShowPhotoViewer(false)}
+        onRecrop={() => {
+          setShowPhotoViewer(false);
+          setStartPhotoRecrop(true);
+          setShowChangePhotoModal(true);
+        }}
+        onChange={() => {
+          setShowPhotoViewer(false);
+          setShowChangePhotoModal(true);
+        }}
+      />
+
       <ChangeProfilePhotoModal
         isOpen={showChangePhotoModal}
-        onClose={() => setShowChangePhotoModal(false)}
+        onClose={() => {
+          setShowChangePhotoModal(false);
+          setStartPhotoRecrop(false);
+        }}
         user={user}
         accountEmail={accountEmail}
         currentPreviewUrl={profileImagePreview}
+        startWithRecrop={startPhotoRecrop}
+        onStartWithRecropConsumed={() => setStartPhotoRecrop(false)}
         onUploaded={handlePhotoUploaded}
       />
 

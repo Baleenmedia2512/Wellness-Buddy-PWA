@@ -30,10 +30,72 @@ function encodeWithinBudget(canvas) {
 function loadImage(src) {
   return new Promise((resolve, reject) => {
     const img = new Image();
+    if (/^https?:\/\//i.test(String(src || ''))) {
+      img.crossOrigin = 'anonymous';
+    }
     img.onload = () => resolve(img);
     img.onerror = () => reject(new Error('Failed to load image for crop'));
     img.src = src;
   });
+}
+
+function blobToDataUrl(blob) {
+  if (typeof FileReader === 'function') {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ''));
+      reader.onerror = () => reject(new Error('Failed to read image for crop'));
+      reader.readAsDataURL(blob);
+    });
+  }
+  return blob.arrayBuffer().then((buffer) => {
+    const bytes = new Uint8Array(buffer);
+    let binary = '';
+    for (let i = 0; i < bytes.length; i += 1) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    const b64 = typeof Buffer !== 'undefined'
+      ? Buffer.from(bytes).toString('base64')
+      : btoa(binary);
+    const type = blob.type || 'image/jpeg';
+    return `data:${type};base64,${b64}`;
+  });
+}
+
+/**
+ * Turn a preview src (data URI, blob URL, or https) into a data URI the
+ * cropper/canvas can read. `fallbackSrc` is typically same-origin
+ * `/api/user/avatar?inline=1` when R2/Google CORS blocks the display URL.
+ */
+export async function imageSrcToDataUrl(src, { fallbackSrc, fetchImpl } = {}) {
+  const fetchFn = fetchImpl || (typeof fetch === 'function' ? fetch.bind(globalThis) : null);
+
+  const tryOne = async (url) => {
+    if (!url || typeof url !== 'string') {
+      throw new Error('No image to crop');
+    }
+    const trimmed = url.trim();
+    if (trimmed.startsWith('data:image/')) return trimmed;
+    if (!fetchFn) throw new Error('Failed to load image for crop');
+    const res = await fetchFn(trimmed);
+    if (!res?.ok) throw new Error('Failed to load image for crop');
+    const blob = await res.blob();
+    if (!blob || !blob.size) throw new Error('Failed to load image for crop');
+    const dataUrl = await blobToDataUrl(blob);
+    if (!dataUrl || !dataUrl.startsWith('data:image/')) {
+      throw new Error('Failed to load image for crop');
+    }
+    return dataUrl;
+  };
+
+  try {
+    return await tryOne(src);
+  } catch (err) {
+    if (fallbackSrc && fallbackSrc !== src) {
+      return tryOne(fallbackSrc);
+    }
+    throw err instanceof Error ? err : new Error('Failed to load image for crop');
+  }
 }
 
 /**
