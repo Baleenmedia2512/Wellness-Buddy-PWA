@@ -7,6 +7,7 @@ import wellnessValleyIcon from "../../assets/wellness-valley-icon.png";
 import { getProfile } from "../../features/user/services/user.api";
 import { isFlagEnabled } from "../../config/featureFlags";
 import { canAccessReportsModule } from "../../features/reports/domain/reportsAccess.rules.js";
+import { hasValidProfileName } from "../../features/user/domain/profileCompleteness";
 
 const Header = ({
   user,
@@ -66,9 +67,13 @@ const Header = ({
           email ? { email, cacheBust: shouldBust } : { userId, cacheBust: shouldBust },
         );
         if (data.success && data.data) {
-          if (data.data.userName) {
+          const phoneNumber = data.data.phoneNumber || user?.phoneNumber || user?.phone;
+          const profileEmail = data.data.email || email;
+          if (hasValidProfileName(data.data.userName, { email: profileEmail, phoneNumber })) {
             setSavedUserName(data.data.userName);
-            if (email) cacheProfileUserName(email, data.data.userName);
+            if (profileEmail) cacheProfileUserName(profileEmail, data.data.userName);
+          } else {
+            setSavedUserName(null);
           }
           // Same display preference as leaderboard avatar: profileImage, else Centre transform.
           const nextImage = data.data.profileImage
@@ -85,8 +90,19 @@ const Header = ({
   // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: profileKey drives force-refresh
   }, [user?.email, user?.Email, user?.id, user?.UserId, user?.userId, profileKey]);
 
-  const userName = savedUserName || user?.displayName || user?.username || user?.email || "User";
-  const userEmail = user?.email || "";
+  const phoneNumber = user?.phoneNumber || user?.PhoneNumber || user?.phone;
+  const userEmail = user?.email || user?.Email || "";
+  const userName = (() => {
+    const candidates = [
+      savedUserName,
+      user?.userName,
+      user?.username,
+      user?.displayName,
+    ];
+    return candidates.find((n) => hasValidProfileName(n, { email: userEmail, phoneNumber }))
+      || userEmail
+      || "User";
+  })();
   // Prefer fetched profile; fall back to session user after Centre photo save (before refetch lands).
   const headerAvatarSrc = savedProfileImage
     || user?.profileImage

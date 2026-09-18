@@ -45,6 +45,7 @@ import { bumpAvatarDisplayVersion } from '../services/avatarDisplayVersion';
 import { getProfile } from '../services/user.api';
 import useTransformationPhotos from '../hooks/useTransformationPhotos';
 import { persistOnboardingTestimonialPhotos } from '../services/persistOnboardingTestimonialPhotos';
+import { hasValidProfileName } from '../domain/profileCompleteness';
 
 const COLORS = ['bg-blue-500', 'bg-green-500', 'bg-purple-500', 'bg-pink-500', 'bg-indigo-500', 'bg-yellow-500', 'bg-red-500', 'bg-teal-500'];
 const colorOf = (name, email) => COLORS[(name || email || '').length % COLORS.length];
@@ -104,22 +105,37 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
     [user, form.email],
   );
 
+  // Stable identity for loads — never depend on form.email (reload updates it and
+  // would re-trigger loadProfile forever → Personal Details spinner stuck).
+  const sessionEmail = useMemo(
+    () => resolveAccountEmail(user, null),
+    [user],
+  );
+  const sessionUserId = user?.id || user?.UserId || user?.userId || null;
+
   const loadProfile = useCallback(async ({ cacheBust = true } = {}) => {
-    const emailKey = resolveAccountEmail(user, form.email);
-    if (!emailKey && !user?.id) {
+    const emailKey = sessionEmail;
+    const uid = sessionUserId;
+    if (!emailKey && !uid) {
       setIsLoading(false);
       return;
     }
     setIsLoading(true);
     setError('');
     try {
-      const { data } = await fetchProfile({
-        email: emailKey || undefined,
-        userId: user?.id || undefined,
-        cacheBust,
-      });
+      // Prefer userId when both exist so we always load the signed-in row.
+      const { data } = await fetchProfile(
+        uid
+          ? { userId: uid, cacheBust }
+          : { email: emailKey, cacheBust },
+      );
+      if (!data) {
+        setError('Failed to load profile.');
+        setIsLoading(false);
+        return;
+      }
       const profileData = {
-        name: data?.userName || user.name || '',
+        name: data?.userName || '',
         height: data?.height ? String(data.height) : '',
         phone: data?.phoneNumber || '',
         dietType: data?.dietType || '',
@@ -152,7 +168,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
       setMarathonWeightComparison(comparisonFromServer);
       syncMarathonWeightComparisonFromProfile(data);
       void loadProfileMarathonWeightComparison({
-        userId: user?.id,
+        userId: uid,
         timezoneSource: data?.timezone || user,
         fromProfile: comparisonFromServer,
       }).then((resolved) => {
@@ -185,8 +201,8 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
 
       let counselling = null;
       try {
-        if (user?.id) {
-          counselling = await fetchMyAssessment(user.id);
+        if (uid) {
+          counselling = await fetchMyAssessment(uid);
         }
         if (!counselling) {
           const phoneForLookup = profileData.phone || user?.phoneNumber || user?.phone || '';
@@ -215,10 +231,10 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
       setIsLoading(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: avoid re-fetch loops from form identity
-  }, [user?.email, user?.Email, user?.id, user?.name, user?.phoneNumber, user?.phone]);
+  }, [sessionEmail, sessionUserId]);
 
   useEffect(() => {
-    if (accountEmail || user?.id) {
+    if (sessionEmail || sessionUserId) {
       setSuccessMessage('');
       setHasSaved(false);
       setError('');
@@ -226,8 +242,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
       return;
     }
     setIsLoading(false);
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: reload when identity changes
-  }, [accountEmail, user?.id, loadProfile]);
+  }, [sessionEmail, sessionUserId, loadProfile]);
 
   const handleSave = useCallback(async () => {
     setError('');
@@ -400,7 +415,13 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
   }, [derivedWeightGoalMode, form.setWeightGoalMode]);
 
   const displayWeightGoalMode = derivedWeightGoalMode || form.weightGoalMode || 'loss';
-  const displayName = form.name || user?.displayName || user?.name || 'User';
+  const displayName = (() => {
+    const phoneNumber = form.phone || user?.phoneNumber || user?.phone;
+    const email = accountEmail || user?.email;
+    const candidates = [form.name, user?.userName, user?.displayName, user?.name];
+    const valid = candidates.find((n) => hasValidProfileName(n, { email, phoneNumber }));
+    return valid || 'User';
+  })();
   const role = ROLE_LABELS[userRole] || 'Customer';
 
   return (

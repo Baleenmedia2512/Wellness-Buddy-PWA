@@ -948,6 +948,10 @@ function WellnessValleyApp() {
   const transformationPhotosGateRef = useRef(false);
   // After Left/Centre/Right are saved this session, do not re-open on a stale profile cache.
   const transformationPhotosConfirmedRef = useRef(false);
+  // After Welcome name is saved this session, ignore stale profile fetches that still
+  // report needsName — otherwise Name → Home → Name loops 4–5 times.
+  const identityConfirmedRef = useRef(false);
+  const identityFetchGenRef = useRef(0);
   // ADR-0006 — existing users without ConsentAcceptedAt must accept before using the app.
   const [showConsentGate, setShowConsentGate] = useState(false);
   const [consentSubmitting, setConsentSubmitting] = useState(false);
@@ -1042,12 +1046,12 @@ function WellnessValleyApp() {
   }, [showReports, userRole]);
 
   // Load DB-driven nav page access for the signed-in user.
+  // Prefer userId (phone users may have no email yet). Keep prior pages while
+  // refetching so tabs do not flash "all open" (looks like admin) then snap back.
   useEffect(() => {
     let cancelled = false;
-    navAccessPagesRef.current = null;
-    setNavAccessPages(null);
 
-    if (!user?.email || !isFlagEnabled('ff.nav-page-access')) {
+    if ((!user?.email && !user?.id) || !isFlagEnabled('ff.nav-page-access')) {
       return undefined;
     }
 
@@ -1056,19 +1060,19 @@ function WellnessValleyApp() {
         const userId = (await getUserId(user)) || user?.id || null;
         const data = await fetchNavAccessForMe({
           requesterUserId: userId,
-          requesterEmail: user.email,
+          requesterEmail: user.email || user.Email || undefined,
           apiBaseUrl,
         });
         if (cancelled) return;
         const pages = data?.pages && typeof data.pages === 'object' ? data.pages : null;
-        navAccessPagesRef.current = pages;
-        setNavAccessPages(pages);
+        if (pages) {
+          navAccessPagesRef.current = pages;
+          setNavAccessPages(pages);
+        }
       } catch (err) {
-        // Fail-open: keep null so all main tabs stay visible.
+        // Keep previous ACL on failure — do not fail-open mid-session.
         if (!cancelled) {
-          console.warn('[nav-access] for-me failed; fail-open', err?.message || err);
-          navAccessPagesRef.current = null;
-          setNavAccessPages(null);
+          console.warn('[nav-access] for-me failed; keeping prior ACL', err?.message || err);
         }
       }
     })();
@@ -1352,9 +1356,17 @@ function WellnessValleyApp() {
     const email = (user.email && user.email.trim()) || (user.Email && String(user.Email).trim());
     if (email) return;
 
+    // Name already saved this session — never bounce back to Welcome from a stale fetch.
+    // Do not force-hide Name here: onComplete keeps it up until sponsor/OTP is ready.
+    if (identityConfirmedRef.current) {
+      setIdentityResolved(true);
+      return;
+    }
+
     const uid = user.id || user.UserId || user.userId || Session.getDbUserId();
     const phone = user.phoneNumber || user.PhoneNumber || user.phone || null;
     let cancelled = false;
+    const fetchGen = ++identityFetchGenRef.current;
 
     (async () => {
       if (!uid) {
@@ -1362,6 +1374,7 @@ function WellnessValleyApp() {
           user.userName || user.UserName || user.username || user.name || '',
         ).trim();
         if (hasValidProfileName(sessionName, { phoneNumber: phone })) {
+          identityConfirmedRef.current = true;
           setShowOnboardingIdentity(false);
           setIdentityResolved(true);
         } else {
@@ -1374,10 +1387,15 @@ function WellnessValleyApp() {
         apiBaseUrl,
         userId: uid,
       });
-      if (cancelled) return;
+      if (cancelled || fetchGen !== identityFetchGenRef.current) return;
+      if (identityConfirmedRef.current) {
+        setIdentityResolved(true);
+        return;
+      }
 
       const identityOk = result.identityComplete === true;
       if (identityOk) {
+        identityConfirmedRef.current = true;
         setShowOnboardingIdentity(false);
         setIdentityResolved(true);
         if (result.status === 'complete') {
@@ -1396,13 +1414,25 @@ function WellnessValleyApp() {
         return;
       }
 
+      // Do not steal sponsor / OTP / remaining-profile screens with a stale needsName.
+      if (
+        showSetupWizard
+        || showValidateOTP
+        || showCompleteProfile
+        || showOnboardingTransformationPhotos
+        || transformationPhotosGateRef.current
+      ) {
+        setIdentityResolved(true);
+        return;
+      }
+
       setShowOnboardingIdentity(true);
       setShowCompleteProfile(false);
     })();
 
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: fire on user/auth change
-  }, [user?.id, user?.email, isOtpVerified, apiBaseUrl, apiBaseUrl]);
+  }, [user?.id, user?.email, isOtpVerified, apiBaseUrl]);
 
   // Force-close Profile only for visible onboarding wizards — not soft resolve flaps
   // (those used to set showProfilePage then immediately clear it → "stuck on Home").
@@ -3317,6 +3347,7 @@ function WellnessValleyApp() {
           || result.data?.userId
           || Session.getDbUserId()
           || null;
+        identityConfirmedRef.current = true;
         // BCM lead: always show Complete Profile once so the member can review
         // prefilled height/weight/etc. before Transformation Photos / home.
         if (
@@ -3358,7 +3389,14 @@ function WellnessValleyApp() {
       }
 
       if (result.status === "incomplete") {
-        const identityOk = result.identityComplete === true;
+        let identityOk = result.identityComplete === true;
+        // Name saved this session — never reopen Welcome on a stale needsName response.
+        if (!identityOk && identityConfirmedRef.current) {
+          identityOk = true;
+        }
+        if (identityOk) {
+          identityConfirmedRef.current = true;
+        }
         setIdentityResolved(true);
         setProfilePicSnoozeData(result.snooze || null);
 
@@ -4319,31 +4357,44 @@ function WellnessValleyApp() {
 
   useEffect(() => {
     const email = user?.email || user?.Email;
-    if (!email) return;
-    const phoneNumber = user?.phoneNumber || user?.PhoneNumber;
-    const cached = getCachedProfileUserName(email);
+    const phoneNumber = user?.phoneNumber || user?.PhoneNumber || user?.phone;
+    const uid = user?.id || user?.UserId || user?.userId || Session.getDbUserId();
+    if (!email && !uid) return;
+
+    const cached = email ? getCachedProfileUserName(email) : null;
     if (hasValidProfileName(cached, { email, phoneNumber })) {
-      setSavedUserName((prev) => (prev?.trim() ? prev : cached));
+      setSavedUserName((prev) => (
+        hasValidProfileName(prev, { email, phoneNumber }) ? prev : cached
+      ));
       return;
     }
-    const authName = (user?.username || user?.userName || '').trim();
+    const authName = (user?.userName || user?.username || user?.displayName || '').trim();
     if (hasValidProfileName(authName, { email, phoneNumber })) {
-      setSavedUserName((prev) => (prev?.trim() ? prev : authName));
+      setSavedUserName((prev) => (
+        hasValidProfileName(prev, { email, phoneNumber }) ? prev : authName
+      ));
+    } else {
+      // Never keep phone placeholder names like user_91… in the greeting.
+      setSavedUserName((prev) => (
+        hasValidProfileName(prev, { email, phoneNumber }) ? prev : null
+      ));
     }
-  }, [user?.email, user?.Email, user?.username, user?.userName, user?.phoneNumber, user?.PhoneNumber]);
+  }, [
+    user?.email, user?.Email, user?.username, user?.userName, user?.displayName,
+    user?.phoneNumber, user?.PhoneNumber, user?.phone, user?.id,
+  ]);
 
   useEffect(() => {
     const email = user?.email || user?.Email;
-    if (!email || !apiBaseUrl) {
+    const uid = user?.id || user?.UserId || user?.userId || Session.getDbUserId();
+    if ((!email && !uid) || !apiBaseUrl) {
       setSavedProfileImage(null);
       return undefined;
     }
-    const phoneNumber = user?.phoneNumber || user?.PhoneNumber;
+    const phoneNumber = user?.phoneNumber || user?.PhoneNumber || user?.phone;
     const { signal, cancel } = createAbortGroup();
     // Shared getProfile cache/dedup — avoids duplicate Home + Header profile storms.
-    // Do not pass AbortSignal into getProfile: an abort would reject the shared
-    // in-flight promise and break concurrent consumers (Header, nutrition hooks).
-    getProfile(email)
+    getProfile(email ? { email } : { userId: uid })
       .then((data) => {
         if (signal.aborted) return;
         if (
@@ -4355,25 +4406,32 @@ function WellnessValleyApp() {
         }
         if (data?.success && data?.data?.profileImage)
           setSavedProfileImage(data.data.profileImage);
+        else if (data?.success && data?.data?.transformationPhotos?.front)
+          setSavedProfileImage(data.data.transformationPhotos.front);
         else setSavedProfileImage(null);
         const profileName = data?.success ? data?.data?.userName : null;
         const profilePhone = data?.data?.phoneNumber || phoneNumber;
-        if (hasValidProfileName(profileName, { email, phoneNumber: profilePhone })) {
+        const profileEmail = data?.data?.email || email;
+        if (hasValidProfileName(profileName, { email: profileEmail, phoneNumber: profilePhone })) {
           setSavedUserName(profileName);
-          cacheProfileUserName(email, profileName);
+          if (profileEmail) cacheProfileUserName(profileEmail, profileName);
         } else {
-          const cached = getCachedProfileUserName(email);
-          setSavedUserName(hasValidProfileName(cached, { email, phoneNumber: profilePhone }) ? cached : null);
+          const cached = profileEmail ? getCachedProfileUserName(profileEmail) : null;
+          setSavedUserName(
+            hasValidProfileName(cached, { email: profileEmail, phoneNumber: profilePhone })
+              ? cached
+              : null,
+          );
         }
       })
       .catch((err) => {
         if (isAbortError(err)) return;
         setSavedProfileImage(null);
-        const cached = getCachedProfileUserName(email);
+        const cached = email ? getCachedProfileUserName(email) : null;
         setSavedUserName(hasValidProfileName(cached, { email, phoneNumber }) ? cached : null);
       });
     return cancel;
-  }, [user?.email, user?.Email, user?.phoneNumber, user?.PhoneNumber, apiBaseUrl]);
+  }, [user?.email, user?.Email, user?.phoneNumber, user?.PhoneNumber, user?.phone, user?.id, apiBaseUrl]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -6662,6 +6720,8 @@ function WellnessValleyApp() {
     setCoachSetupResolved(false);
     setShowOnboardingIdentity(false);
     setIdentityResolved(false);
+    identityConfirmedRef.current = false;
+    identityFetchGenRef.current += 1;
     setShowCompleteProfile(false);
     transformationPhotosGateRef.current = false;
     transformationPhotosConfirmedRef.current = false;
@@ -8561,7 +8621,16 @@ function WellnessValleyApp() {
                    <h2 className="text-xs font-bold text-white text-right inline-flex items-center justify-end gap-1 max-w-[65%] ml-auto">
   {(() => {
     const h = new Date().getHours();
-    const firstName = (savedUserName || user?.displayName || '').split(' ')[0];
+    const phoneNumber = user?.phoneNumber || user?.PhoneNumber || user?.phone;
+    const email = user?.email || user?.Email;
+    const candidates = [
+      savedUserName,
+      user?.userName,
+      user?.username,
+      user?.displayName,
+    ];
+    const raw = candidates.find((n) => hasValidProfileName(n, { email, phoneNumber })) || '';
+    const firstName = String(raw).trim().split(/\s+/)[0] || '';
 
     const name = firstName
       ? firstName.charAt(0).toUpperCase() + firstName.slice(1).toLowerCase()
@@ -9224,6 +9293,11 @@ function WellnessValleyApp() {
           <OnboardingIdentityPage
             user={user}
             onComplete={async (savedData) => {
+              // Lock name gate before setUser / coach resolve — stale profile
+              // fetches must not reopen Welcome mid-handoff.
+              identityConfirmedRef.current = true;
+              identityFetchGenRef.current += 1;
+
               const savedEmail =
                 savedData?.email
                 || user?.email
@@ -9294,13 +9368,14 @@ function WellnessValleyApp() {
                 if (savedEmail) cacheProfileUserName(savedEmail, savedData.userName);
               }
 
-              setShowOnboardingIdentity(false);
+              // Keep Name visible until sponsor/OTP/remaining gate is set — avoids Home flash.
               setIdentityResolved(true);
               setCoachSetupResolved(false);
               await resolveCoachSetupStatus(savedEmail, {
                 openRemainingProfile: false,
                 userId: uid,
               });
+              setShowOnboardingIdentity(false);
               setCoachSetupResolved(true);
             }}
           />
@@ -9579,9 +9654,12 @@ function WellnessValleyApp() {
                 Session.markCoachOtpVerified();
                 const email =
                   user?.email || user?.Email || Session.getUserEmail() || "";
+                // Bust profile cache after sponsor OTP so needsName cannot
+                // reopen Welcome when name was already saved this session.
                 await checkProfileCompletion(email || null, user, {
                   silent: true,
                   allowRemainingProfile: true,
+                  afterSave: true,
                 });
               }}
               onLogout={handleSignOut}
