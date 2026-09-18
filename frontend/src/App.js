@@ -1345,7 +1345,7 @@ function WellnessValleyApp() {
     _userIdRef.current = user?.id || user?.UserId || Session.getDbUserId() || null;
   }, [user]);
 
-  // Phone users without a verified account email: name + email OTP gate.
+  // Phone users without an account email: name gate only (email is Profile KYC).
   useEffect(() => {
     if (!user) return;
     if (!isOtpVerified) return;
@@ -1380,7 +1380,19 @@ function WellnessValleyApp() {
       if (identityOk) {
         setShowOnboardingIdentity(false);
         setIdentityResolved(true);
-        setShowCompleteProfile(false);
+        if (result.status === 'complete') {
+          setShowCompleteProfile(false);
+          profileCompletedRef.current = true;
+          const photosDecision = resolveTransformationPhotosGate({
+            confirmedThisSession: transformationPhotosConfirmedRef.current,
+            profile: result.data,
+            fetchFailed: false,
+          });
+          if (photosDecision === 'show') {
+            transformationPhotosGateRef.current = true;
+            setShowOnboardingTransformationPhotos(true);
+          }
+        }
         return;
       }
 
@@ -1400,6 +1412,17 @@ function WellnessValleyApp() {
     setShowDashboard(false);
     setShowNewUserProfileModal(false);
   }, [onboardingHardBlocking]);
+
+  // Recover stuck onboarding when Complete Profile + Transformation Photos are both
+  // flagged (neither overlay mounts; hard-block swallows Profile taps).
+  useEffect(() => {
+    if (!(showCompleteProfile && showOnboardingTransformationPhotos)) return;
+    if (transformationPhotosGateRef.current) {
+      setShowCompleteProfile(false);
+    } else {
+      setShowOnboardingTransformationPhotos(false);
+    }
+  }, [showCompleteProfile, showOnboardingTransformationPhotos]);
 
   // Physical activity gate: after remaining profile fields (post sponsor OTP).
   useEffect(() => {
@@ -1427,9 +1450,8 @@ function WellnessValleyApp() {
       return undefined;
     }
     const email = (user.email && user.email.trim()) || Session.getUserEmail();
-    if (!email) {
-      // Activity check needs email; hard profile/identity gates cover incompleteness.
-      // Fail-open soft flag so tab nav is not stuck forever without email.
+    const uid = user.id || user.UserId || user.userId || Session.getDbUserId() || null;
+    if (!email && !uid) {
       setPhysicalActivityResolved(true);
       setShowPhysicalActivitySetup(false);
       return undefined;
@@ -1445,7 +1467,9 @@ function WellnessValleyApp() {
     // Do not flip resolved→false during re-fetch — that made navigateTo ignore taps.
     (async () => {
       try {
-        const { data } = await fetchProfile(email);
+        const { data } = await fetchProfile(
+          email ? { email } : { userId: uid },
+        );
         if (cancelled) return;
         const decision = resolvePhysicalActivityGate({
           confirmedThisSession: physicalActivityConfirmedRef.current,
@@ -3254,12 +3278,19 @@ function WellnessValleyApp() {
     // never shows the loading spinner when the check runs in the background
     // (e.g. OTP cache-restore validation on startup).
     async (userEmail, userObj, { afterSave = false, silent = false, allowRemainingProfile = false } = {}) => {
-      if (!userEmail) return;
+      const uid =
+        userObj?.id
+        || userObj?.UserId
+        || userObj?.userId
+        || Session.getDbUserId()
+        || null;
+      if (!userEmail && !uid) return;
       if (!silent) setProfileChecking(true);
 
       const result = await fetchProfileCompletion({
         apiBaseUrl,
         email: userEmail || undefined,
+        userId: userEmail ? undefined : uid,
         afterSave,
       });
 
@@ -3332,7 +3363,7 @@ function WellnessValleyApp() {
         setProfilePicSnoozeData(result.snooze || null);
 
         if (!identityOk) {
-          debugLog("?? [Profile] Identity incomplete — showing name/email gate");
+          debugLog("?? [Profile] Identity incomplete — showing name gate");
           setShowOnboardingIdentity(true);
           setShowCompleteProfile(false);
           transformationPhotosGateRef.current = false;
@@ -3609,7 +3640,9 @@ function WellnessValleyApp() {
             const isActive = await checkUserStatus(user);
             if (!isActive) return; // inactive/not-found modal already triggered
 
-            if (!userEmail) return;
+            if (!userEmail && !(user.id || user.UserId || user.userId || Session.getDbUserId())) {
+              return;
+            }
             debugLog("?? [Auth State] Checking profile completeness (coach setup deferred to sequenced gate)...");
 
             // Check if user manually skipped setup (localStorage first for quick bypass)
@@ -3621,7 +3654,7 @@ function WellnessValleyApp() {
 
             // Always profile first. Coach selection / OTP are owned by the
             // setup-check effect which waits for physical activity to finish.
-            await checkProfileCompletion(userEmail, user, { silent: true });
+            await checkProfileCompletion(userEmail || null, user, { silent: true });
           })();
           return; // Skip fall-through setUser/setAuthLoading � already called above
         } else {
@@ -3823,12 +3856,11 @@ function WellnessValleyApp() {
               }
             }
 
-            // ? Check profile completion after OTP user is restored on refresh
-            if (userEmail) {
-              await checkProfileCompletion(userEmail, parsedUser, {
-                silent: true,
-              });
-            }
+            // Check profile completion after OTP user is restored on refresh
+            // (email optional — phone users use userId until Profile KYC).
+            await checkProfileCompletion(userEmail || null, parsedUser, {
+              silent: true,
+            });
             setPostAuthBridge(false);
           } catch (error) {
             console.error("Failed to restore OTP user:", error);
@@ -3883,7 +3915,7 @@ function WellnessValleyApp() {
         // Profile completion ? silent:true so Gate 3 (profileChecking spinner)
         // never fires on app open. CompleteProfilePage still shows if needed.
         const email = user.email || user.Email;
-        if (email) await checkProfileCompletion(email, user, { silent: true });
+        await checkProfileCompletion(email || null, user, { silent: true });
       } catch (err) {
         console.warn(
           "?? [OTP Cache Restore] Background validation error:",
@@ -3921,11 +3953,11 @@ function WellnessValleyApp() {
           if (_profileGateActiveRef.current) return;
           const userEmail = user.email || user.Email;
           const uid = user.id || user.UserId || user.userId || Session.getDbUserId();
-          if (userEmail) {
+          if (userEmail || uid) {
             debugLog(
               "?? [Foreground] App resumed ? running immediate profile check",
             );
-            checkProfileCompletion(userEmail, user, { silent: true });
+            checkProfileCompletion(userEmail || null, user, { silent: true });
           }
         }
       }),
@@ -4053,16 +4085,14 @@ function WellnessValleyApp() {
 
     const openRemaining = async () => {
       if (!openRemainingProfile) return;
-      if (email) {
-        await checkProfileCompletion(email, user, {
-          silent: true,
-          allowRemainingProfile: true,
-        });
-      } else {
-        setShowOnboardingIdentity(false);
-        setShowCompleteProfile(true);
-        profileCompletedRef.current = false;
-      }
+      // Photos gate owns the next screen after Complete Profile — do not force CompleteProfile
+      // again (both flags true ⇒ neither overlay mounts; Profile tab stays blocked).
+      if (transformationPhotosGateRef.current) return;
+      // Shared gate supports email or userId (phone users without Profile KYC email).
+      await checkProfileCompletion(email || null, user, {
+        silent: true,
+        allowRemainingProfile: true,
+      });
     };
 
     if (Session.isSetupSkipped()) {
@@ -4159,6 +4189,16 @@ function WellnessValleyApp() {
       setCoachSetupResolved(false);
       return undefined;
     }
+    // Do not re-enter sponsor/remaining while photos or activity overlays own the flow.
+    if (
+      showOnboardingTransformationPhotos
+      || transformationPhotosGateRef.current
+      || showPhysicalActivitySetup
+      || showCompleteProfile
+    ) {
+      setCoachSetupResolved(true);
+      return undefined;
+    }
 
     const userEmail = user.email || user.Email;
     const userId = user.id || user.UserId || user.userId || Session.getDbUserId();
@@ -4191,6 +4231,9 @@ function WellnessValleyApp() {
     profileChecking,
     showSetupWizard,
     showValidateOTP,
+    showCompleteProfile,
+    showOnboardingTransformationPhotos,
+    showPhysicalActivitySetup,
     resolveCoachSetupStatus,
   ]);
 
@@ -7596,12 +7639,40 @@ function WellnessValleyApp() {
             onBack={() => navigateTo('home')}
             onSignOut={handleSignOut}
             onProfileUpdate={(profileData) => {
-              const email = user?.email || Session.getUserEmail() || "";
+              const email = profileData?.email
+                || user?.email
+                || Session.getUserEmail()
+                || "";
+              if (profileData?.email) {
+                Session.setUserEmail(profileData.email);
+              }
+              if (profileData?.adopted && profileData?.userId) {
+                Session.setDbUserId(profileData.userId);
+              }
+              if (profileData?.email || profileData?.adopted) {
+                setUser((prevUser) => {
+                  if (!prevUser) return prevUser;
+                  return {
+                    ...prevUser,
+                    email: profileData.email || prevUser.email,
+                    Email: profileData.email || prevUser.Email,
+                    ...(profileData.adopted && profileData.userId
+                      ? {
+                        id: profileData.userId,
+                        UserId: profileData.userId,
+                        userId: profileData.userId,
+                        phone: profileData.phone || prevUser.phone,
+                        phoneNumber: profileData.phone || prevUser.phoneNumber,
+                      }
+                      : {}),
+                  };
+                });
+              }
               profileCompletedRef.current = false;
               checkProfileCompletion(email, null, { afterSave: true });
               if (profileData?.name?.trim()) {
                 setSavedUserName(profileData.name.trim());
-                cacheProfileUserName(email, profileData.name);
+                if (email) cacheProfileUserName(email, profileData.name);
               }
               // Keep share cards + any prop-drilled avatars on the same photo source.
               if (profileData?.profileImage) {
@@ -9105,7 +9176,7 @@ function WellnessValleyApp() {
           onConfirm={alertModal.onConfirm}
         />
 
-        {/* Email Gate removed — name on OnboardingIdentityPage; email on CompleteProfilePage */}
+        {/* Email Gate removed — name on Welcome; email + Community ID on Profile KYC */}
 
         {showPhysicalActivitySetup && user && !showCompleteProfile && !showOnboardingTransformationPhotos && !transformationPhotosGateRef.current && !showOnboardingIdentity && !showSetupWizard && !showValidateOTP && (
           <PhysicalActivitySetup
@@ -9148,7 +9219,7 @@ function WellnessValleyApp() {
           }}
         />
 
-        {/* -- Identity gate (name) then sponsor → OTP → remaining profile (+ email) ----- */}
+        {/* -- Identity gate (name only) then sponsor → OTP → remaining profile ----- */}
         {showOnboardingIdentity && !profileChecking && user && (
           <OnboardingIdentityPage
             user={user}
@@ -9303,9 +9374,9 @@ function WellnessValleyApp() {
                     : {}),
                 };
               });
-              if (savedData?.userName && savedEmail) {
-                cacheProfileUserName(savedEmail, savedData.userName);
+              if (savedData?.userName) {
                 setSavedUserName(savedData.userName);
+                if (savedEmail) cacheProfileUserName(savedEmail, savedData.userName);
               }
             }}
           />
@@ -9338,10 +9409,18 @@ function WellnessValleyApp() {
                 || user?.Email
                 || Session.getUserEmail()
                 || "";
+              const uid =
+                user?.id
+                || user?.UserId
+                || user?.userId
+                || Session.getDbUserId()
+                || null;
               let needActivity = true;
-              if (savedEmail) {
+              if (savedEmail || uid) {
                 try {
-                  const { data } = await fetchProfile(savedEmail);
+                  const { data } = await fetchProfile(
+                    savedEmail ? { email: savedEmail } : { userId: uid },
+                  );
                   needActivity = !(data && data.physicalActivityLevel);
                 } catch {
                   needActivity = true;
@@ -9500,16 +9579,10 @@ function WellnessValleyApp() {
                 Session.markCoachOtpVerified();
                 const email =
                   user?.email || user?.Email || Session.getUserEmail() || "";
-                if (email) {
-                  await checkProfileCompletion(email, user, {
-                    silent: true,
-                    allowRemainingProfile: true,
-                  });
-                } else {
-                  setShowOnboardingIdentity(false);
-                  setShowCompleteProfile(true);
-                  profileCompletedRef.current = false;
-                }
+                await checkProfileCompletion(email || null, user, {
+                  silent: true,
+                  allowRemainingProfile: true,
+                });
               }}
               onLogout={handleSignOut}
             />

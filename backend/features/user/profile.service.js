@@ -696,19 +696,30 @@ export async function snoozeProfilePic({ userId }) {
   return { httpStatus: 200, body: { success: true, snooze: newSnooze } };
 }
 
-export async function deleteAccount({ email }) {
-  const user = await repo.findByEmail(email, '"UserId"');
+export async function deleteAccount({ email = null, userId: inputUserId = null } = {}) {
+  let user = null;
+  if (inputUserId != null && String(inputUserId).trim() !== '') {
+    user = await repo.findByUserId(inputUserId, '"UserId", "Email"');
+  } else if (email) {
+    user = await repo.findByEmail(email, '"UserId", "Email"');
+  }
   if (!user) return notFound();
 
-  await repo.purgeUserData(user.UserId, email);
-  await repo.deleteTeamRow(user.UserId);
+  const userId = user.UserId;
+  const accountEmail = String(user.Email || email || '').trim().toLowerCase() || null;
+
+  await repo.purgeUserData(userId, accountEmail);
+  await repo.deleteTeamRow(userId);
 
   try {
-    cache.delete(cacheKeys.nutritionMeals(user.UserId));
-    cache.delete(cacheKeys.nutritionMeals(user.UserId.toString()));
-    cache.delete(cacheKeys.userProfile(String(email || '').toLowerCase()));
-    cache.delete(cacheKeys.userContext(user.UserId));
-    cache.delete(cacheKeys.userContext(user.UserId.toString()));
+    cache.delete(cacheKeys.nutritionMeals(userId));
+    cache.delete(cacheKeys.nutritionMeals(userId.toString()));
+    cache.delete(cacheKeys.userProfile(`id:${userId}`));
+    if (accountEmail) {
+      cache.delete(cacheKeys.userProfile(String(accountEmail).toLowerCase()));
+    }
+    cache.delete(cacheKeys.userContext(userId));
+    cache.delete(cacheKeys.userContext(userId.toString()));
   } catch { /* non-fatal */ }
 
   return { httpStatus: 200, body: { success: true, message: 'Account and all associated data have been permanently deleted.' } };
