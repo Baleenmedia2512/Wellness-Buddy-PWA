@@ -251,7 +251,7 @@ import {
 import TouchFeedbackButton from "./shared/components/TouchFeedbackButton";
 import LocationGuard from "./shared/components/LocationGuard";
 import { ADMIN_CONFIG_TABS } from "./shell/domain/adminConfigSetupTabs";
-import { isAdminLikeRole } from "./shared/constants/roles";
+import { isAdminLikeRole, normalizeAppRole, ROLE_USER } from "./shared/constants/roles";
 import { canAccessReportsModule } from "./features/reports/domain/reportsAccess.rules.js";
 import {
   fetchNavAccessForMe,
@@ -1048,6 +1048,7 @@ function WellnessValleyApp() {
   // Load DB-driven nav page access for the signed-in user.
   // Prefer userId (phone users may have no email yet). Keep prior pages while
   // refetching so tabs do not flash "all open" (looks like admin) then snap back.
+  // Also sync accountRole → userRole (server is source of truth for UI privilege).
   useEffect(() => {
     let cancelled = false;
 
@@ -1069,8 +1070,13 @@ function WellnessValleyApp() {
           navAccessPagesRef.current = pages;
           setNavAccessPages(pages);
         }
+        const serverRole = data?.accountRole ?? data?.role;
+        if (serverRole != null) {
+          setUserRole(normalizeAppRole(serverRole));
+        }
       } catch (err) {
         // Keep previous ACL on failure — do not fail-open mid-session.
+        // Do NOT keep prior role across a new login: resetApp clears both.
         if (!cancelled) {
           console.warn('[nav-access] for-me failed; keeping prior ACL', err?.message || err);
         }
@@ -1078,11 +1084,18 @@ function WellnessValleyApp() {
     })();
 
     return () => { cancelled = true; };
-  }, [user?.email, user?.id, apiBaseUrl, userRole]);
+  }, [user?.email, user?.id, apiBaseUrl]);
 
   const [showWellnessScore, setShowWellnessScore] = useState(false);
   const [showAdminConfigSetup, setShowAdminConfigSetup] = useState(false);
   const [adminConfigTab, setAdminConfigTab] = useState(ADMIN_CONFIG_TABS.WELLNESS_SCORE);
+
+  // Close admin chrome if role is demoted / sticky privilege cleared.
+  useEffect(() => {
+    if (showAdminConfigSetup && !isAdminLikeRole(userRole)) {
+      setShowAdminConfigSetup(false);
+    }
+  }, [showAdminConfigSetup, userRole]);
   /** Remount key so each open picks up the Home date-range selection cleanly. */
   const [wellnessScoreSession, setWellnessScoreSession] = useState(0);
   const [wellnessScoreInitialRange, setWellnessScoreInitialRange] = useState({
@@ -2431,6 +2444,8 @@ function WellnessValleyApp() {
               user.id = verified.userId;
               user.UserId = verified.userId;
               Session.setDbUserId(verified.userId);
+              // Always apply server role (empty → user). Prevents sticky admin after account switch.
+              setUserRole(normalizeAppRole(verified.role));
             }
           }
           return true;
@@ -2457,7 +2472,8 @@ function WellnessValleyApp() {
           // ? New user ? SetupWizard will handle profile collection, no popup needed
           setShowUserNotFoundModal(false);
           setIsUserActive(true);
-          if (role) setUserRole(role);
+          // Always apply when lookup returns a role (incl. empty → user). Skip on fail-open.
+          if (role !== undefined) setUserRole(normalizeAppRole(role));
           return true;
         }
 
@@ -2474,7 +2490,9 @@ function WellnessValleyApp() {
         setShowInactiveModal(false);
         setShowUserNotFoundModal(false);
         setIsUserActive(true);
-        if (role) setUserRole(role);
+        // Apply server role when present. Network fail-open omits role — keep current
+        // mid-session; logout/resetApp already cleared sticky privilege.
+        if (role !== undefined) setUserRole(normalizeAppRole(role));
         return true;
       } finally {
         statusCheckInProgress.current = false;
@@ -3812,6 +3830,9 @@ function WellnessValleyApp() {
         if (otpUserRaw) {
           try {
             const parsedUser = JSON.parse(otpUserRaw);
+
+            // Fail-closed privilege until checkUserStatus / verify-session confirms.
+            setUserRole(normalizeAppRole(parsedUser.role || parsedUser.Role));
 
             // Verify account still exists before trusting cached otpUser / dbUserId.
             const attachResult = await verifyAndAttachDbUserId(parsedUser);
@@ -6714,6 +6735,11 @@ function WellnessValleyApp() {
     setError(null);
     setUser(null);
     setIsOtpVerified(false);
+    // Privilege hygiene: never carry role / nav ACL / admin screens across logout.
+    setUserRole(ROLE_USER);
+    navAccessPagesRef.current = null;
+    setNavAccessPages(null);
+    setShowAdminConfigSetup(false);
     physicalActivityConfirmedRef.current = false;
     setShowPhysicalActivitySetup(false);
     setPhysicalActivityResolved(false);
@@ -7232,6 +7258,9 @@ function WellnessValleyApp() {
           parsedUser,
           parsedUser.id || parsedUser.UserId || parsedUser.userId,
         );
+
+        // Apply role from verify-otp immediately (fail-closed to Customer if absent).
+        setUserRole(normalizeAppRole(parsedUser.role || parsedUser.Role));
 
         // DEBUG: Log the parsed user object to see what status value we're getting
         console.log("?? [handleOtpVerified] Parsed user object:", parsedUser);
