@@ -8457,27 +8457,6 @@ function WellnessValleyApp() {
           }}
         />
 
-        {/* Weight Loss Leaderboard Strip - hierarchy-scoped (same peer rule as Wellness Top 10) */}
-        <WeightLossLeaderboard
-          ref={leaderboardRef}
-          apiBaseUrl={apiBaseUrl}
-          topN={LEADERBOARD_CONFIG.TOP_N}
-          userId={readNumericDbUserId(user)}
-          email={user?.email || user?.Email || Session.getUserEmail() || ''}
-        />
-
-        {/* Wellness Score Leaderboard — top 10 today's IST wellness % */}
-        {isFlagEnabled('ff.wellness-score-sheet') && (
-          <WellnessScoreLeaderboard
-            ref={wellnessLeaderboardRef}
-            apiBaseUrl={apiBaseUrl}
-            topN={10}
-            userId={readNumericDbUserId(user)}
-            email={user?.email || user?.Email || Session.getUserEmail() || ''}
-            viewerName={savedUserName}
-          />
-        )}
-
         <div
           className="flex-1 overflow-y-auto px-2 xs:px-3 pt-0.5 flex flex-col"
           style={{
@@ -8815,6 +8794,29 @@ function WellnessValleyApp() {
                 </div>
               </div>
             )}
+
+            {/* Bottom leaderboard tiles — static (no marquee scroll) */}
+            <div className="space-y-2 xs:space-y-3 pt-1">
+              {isFlagEnabled('ff.wellness-score-sheet') && (
+                <WellnessScoreLeaderboard
+                  ref={wellnessLeaderboardRef}
+                  variant="tile"
+                  apiBaseUrl={apiBaseUrl}
+                  topN={10}
+                  userId={readNumericDbUserId(user)}
+                  email={user?.email || user?.Email || Session.getUserEmail() || ''}
+                  viewerName={savedUserName}
+                />
+              )}
+              <WeightLossLeaderboard
+                ref={leaderboardRef}
+                variant="tile"
+                apiBaseUrl={apiBaseUrl}
+                topN={LEADERBOARD_CONFIG.TOP_N}
+                userId={readNumericDbUserId(user)}
+                email={user?.email || user?.Email || Session.getUserEmail() || ''}
+              />
+            </div>
 
             {/* Safe-area bottom padding */}
             <div style={{ minHeight: 'env(safe-area-inset-bottom, 12px)', height: 'env(safe-area-inset-bottom, 12px)' }} />
