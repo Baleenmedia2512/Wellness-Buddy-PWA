@@ -114,6 +114,15 @@ const REGISTRY = Object.freeze({
     description:    'AI credit-based food analysis (Manual Entry AI Mode + Diary Retry AI).',
   },
 
+  // DB-driven main-nav page access by role. Matrix edited in Admin Config.
+  // When OFF, all main tabs stay visible (legacy). Kill switch: localStorage or env.
+  'ff.nav-page-access': {
+    envKey:         'REACT_APP_FF_NAV_PAGE_ACCESS',
+    storageKey:     'ff.nav-page-access',
+    defaultEnabled: true,
+    description:    'Role → nav page access from DB (Customer/Sponsor/Admin/Developer).',
+  },
+
   // ADR-0005 — master nutrition knowledge base (search/resolve micros).
   // Default ON. Set REACT_APP_FF_NUTRITION_KNOWLEDGE=false or
   // localStorage 'ff.nutrition-knowledge'='false' to disable.

@@ -31,6 +31,8 @@ const Header = ({
   manualModeActive = false,
   onToggleManualMode,
   navOnly = false,
+  /** null = fail-open (all tabs); object = DB role page map */
+  allowedPages = null,
 }) => {
   const [savedUserName, setSavedUserName] = useState(null);
   const [savedProfileImage, setSavedProfileImage] = useState(null);
@@ -119,6 +121,7 @@ const Header = ({
           onShowTestimonials={onShowTestimonials}
           onShowReports={onShowReports}
           reportsEnabled={reportsEnabled}
+          allowedPages={allowedPages}
         />
       </nav>
     );
@@ -203,6 +206,7 @@ const Header = ({
           onShowTestimonials={onShowTestimonials}
           onShowReports={onShowReports}
           reportsEnabled={reportsEnabled}
+          allowedPages={allowedPages}
         />
       </nav>
     </header>
