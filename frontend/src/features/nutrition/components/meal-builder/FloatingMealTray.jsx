@@ -19,6 +19,7 @@ export default function FloatingMealTray({
   totalKcal = 0,
   onOpenSheet,
   onSave,
+  onClear,
   className = '',
 }) {
   const count = items.length;
@@ -33,7 +34,7 @@ export default function FloatingMealTray({
       role="region"
       aria-label={`Meal selection, ${count} item${count === 1 ? '' : 's'}`}
     >
-      <div className="px-3 pt-2.5 pb-3 flex items-center gap-2">
+      <div className="px-3 pt-2 pb-2 flex items-center gap-2">
         <button
           type="button"
           onClick={onOpenSheet}
@@ -61,13 +62,24 @@ export default function FloatingMealTray({
           <ChevronUp className="w-4 h-4 text-green-700 flex-shrink-0" aria-hidden />
         </button>
 
-        <button
-          type="button"
-          onClick={onSave}
-          className="flex-shrink-0 px-4 py-3 bg-green-600 hover:bg-green-700 active:bg-green-800 text-white text-xs font-bold rounded-xl shadow-sm"
-        >
-          {saveMealLabel(count)}
-        </button>
+        <div className="flex flex-col items-center flex-shrink-0">
+          <button
+            type="button"
+            onClick={onSave}
+            className="px-3.5 py-2 bg-green-600 hover:bg-green-700 active:bg-green-800 text-white text-xs font-bold rounded-xl shadow-sm text-center"
+          >
+            {saveMealLabel(count)}
+          </button>
+          {onClear && (
+            <button
+              type="button"
+              onClick={onClear}
+              className="mt-1 px-2.5 py-0.5 text-xs font-bold text-red-600 hover:text-red-700 active:text-red-800 bg-red-50 hover:bg-red-100 rounded-lg transition-colors border border-red-200/60"
+            >
+              Clear all
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );

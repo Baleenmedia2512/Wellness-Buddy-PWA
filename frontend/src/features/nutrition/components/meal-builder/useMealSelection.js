@@ -13,7 +13,7 @@ export function toSelectableItem(item) {
   const qtyUnit = resolveQuantityUnit(item);
   return {
     ...item,
-    servings: 1,
+    servings: item.servings ?? 0.5,
     refWeightG: referenceWeightG(item),
     quantityUnit: qtyUnit.unit,
     quantityLabel: qtyUnit.shortLabel,

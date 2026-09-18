@@ -286,9 +286,9 @@ const SmartFoodSearchModal = ({
 
   const handleQuantityChange = (name, rawValue) => {
     const qty = parseFloat(rawValue);
-    const whole = Number.isNaN(qty) || qty < 1 ? 1 : Math.round(qty);
+    const val = Number.isNaN(qty) || qty < 0.5 ? 0.5 : Math.round(qty * 2) / 2;
     setSelectedItems((prev) =>
-      prev.map((s) => (s.name === name ? { ...s, servings: whole } : s)),
+      prev.map((s) => (s.name === name ? { ...s, servings: val } : s)),
     );
   };
 
@@ -630,6 +630,10 @@ const SmartFoodSearchModal = ({
             totalKcal={selectedTotal}
             onOpenSheet={() => setMealSheetOpen(true)}
             onSave={handleAddSelected}
+            onClear={() => {
+              setSelectedItems([]);
+              setMealSheetOpen(false);
+            }}
           />
         ) : null}
 
@@ -746,25 +750,21 @@ const SmartFoodSearchModal = ({
                   return (
                     <div key={item.name} className="flex items-center gap-2 bg-white border border-orange-100 rounded-xl px-2.5 py-1.5">
                       <div className="flex-1 min-w-0">
-                        <p className="text-xs font-medium text-gray-800 truncate">{item.name}</p>
+                        <p className="text-xs font-medium text-gray-800 break-words">{item.name}</p>
                         <p className="text-[11px] text-orange-600 font-semibold">
                           {kcal} kcal
-                          {(item.portion || item.portion_label) ? (
-                            <span className="font-normal text-gray-400"> · {formatServingPortion(item, servings)}</span>
-                          ) : null}
                         </p>
                       </div>
                         <input
                           type="text"
                           inputMode="decimal"
-                          value={item.servings ?? 1}
+                          value={item.servings ?? 0.5}
                           onChange={(e) => handleQuantityChange(item.name, e.target.value)}
-                            className="w-12 text-center border border-orange-200 rounded-lg px-1.5 py-1 text-xs"
+                          className="w-12 text-center border border-orange-200 rounded-lg px-1.5 py-1 text-xs"
                           style={{ fontSize: "14px" }}
-                          aria-label={`Number of ${unitLabel}`}
+                          aria-label={`Number of ${item.name}`}
                         />
-                        <span className="text-[11px] text-gray-500 min-w-[2.5rem]">{unitLabel}</span>
-                          <button type="button" onClick={() => handleToggleItem(item)} className="text-gray-300 hover:text-red-400">
+                        <button type="button" onClick={() => handleToggleItem(item)} className="text-gray-300 hover:text-red-400">
                         <X className="w-3.5 h-3.5" />
                       </button>
                     </div>
