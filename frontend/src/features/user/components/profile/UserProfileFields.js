@@ -36,31 +36,34 @@ const UserProfileFields = ({
   physicalActivityLevel, setPhysicalActivityLevel,
   communityId, setCommunityId,
   teamSeat = null,
+  hideEmailField = false,
 }) => (
   <div className="space-y-4">
-    <Field label="Email" required>
-      <div className="relative">
-        <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-        <input
-          type="email"
-          inputMode="email"
-          autoComplete="email"
-          value={email || ''}
-          onChange={(e) => setEmail && setEmail(e.target.value)}
-          readOnly={!setEmail}
-          placeholder="e.g. yourname@gmail.com"
-          className={`w-full pl-9 pr-3 py-2 border rounded-lg text-base outline-none ${
-            !setEmail
-              ? 'border-gray-200 bg-gray-50 text-gray-500 cursor-not-allowed'
-              : 'border-gray-300 focus:ring-2 focus:ring-green-500 focus:border-green-500'
-          }`}
-          style={{ fontSize: '16px' }}
-        />
-      </div>
-      {!setEmail && (
-        <p className="text-xs text-gray-400 mt-1">Linked to your sign-in account</p>
-      )}
-    </Field>
+    {!hideEmailField && (
+      <Field label="Email" required>
+        <div className="relative">
+          <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+          <input
+            type="email"
+            inputMode="email"
+            autoComplete="email"
+            value={email || ''}
+            onChange={(e) => setEmail && setEmail(e.target.value)}
+            readOnly={!setEmail}
+            placeholder="e.g. yourname@gmail.com"
+            className={`w-full pl-9 pr-3 py-2 border rounded-lg text-base outline-none ${
+              !setEmail
+                ? 'border-gray-200 bg-gray-50 text-gray-500 cursor-not-allowed'
+                : 'border-gray-300 focus:ring-2 focus:ring-green-500 focus:border-green-500'
+            }`}
+            style={{ fontSize: '16px' }}
+          />
+        </div>
+        {!setEmail && (
+          <p className="text-xs text-gray-400 mt-1">Linked to your sign-in account</p>
+        )}
+      </Field>
+    )}
 
     <Field label="Name" required>
       <input type="text" value={name} onChange={(e) => setName(e.target.value)}
@@ -118,7 +121,7 @@ const UserProfileFields = ({
         </p>
       )}
       <p className="text-xs text-gray-500 mt-1">
-        Your shared team code for Sponsor / Co-Sponsor. Tap Save Profile after editing.
+        Optional team code for Sponsor / Co-Sponsor. Tap Save Profile after editing.
       </p>
       <p className="text-xs text-gray-400 mt-0.5">
         {(communityId || '').length}/{COMMUNITY_ID_MAX_LENGTH} · Min {COMMUNITY_ID_MIN_LENGTH} · Letters and numbers only

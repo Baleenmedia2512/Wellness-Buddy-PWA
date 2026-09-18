@@ -304,9 +304,27 @@ export function validateSnooze(body) {
 }
 
 export function validateDeleteAccount(body) {
+  const confirmRaw = body?.confirmPhrase ?? body?.confirmWord ?? body?.confirmation;
+  const confirmPhrase = String(confirmRaw || '').trim().toUpperCase();
+  const userIdRaw = body?.userId ?? body?.UserId;
+  const userId = userIdRaw != null && String(userIdRaw).trim() !== ''
+    ? Number(userIdRaw)
+    : null;
   const email = normalizeEmail(body?.email);
-  if (!email) throw new ValidationError(400, 'Missing required field: email');
-  return { email };
+
+  // New clients: userId + typed DELETE — no email OTP.
+  if (userId && Number.isFinite(userId) && userId > 0) {
+    if (confirmPhrase !== 'DELETE') {
+      throw new ValidationError(400, 'Type DELETE to confirm account deletion.');
+    }
+    return { mode: 'userId', userId, confirmPhrase, email: email || null };
+  }
+
+  // Legacy clients: email + recent email OTP gate (no confirmPhrase required here).
+  if (!email) {
+    throw new ValidationError(400, 'userId or email is required');
+  }
+  return { mode: 'legacyEmail', email, userId: null, confirmPhrase: null };
 }
 
 export function validateSkipSetup(body) {

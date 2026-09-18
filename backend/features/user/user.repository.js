@@ -752,18 +752,23 @@ export async function setSnooze(userId, newSnooze) {
  */
 export async function purgeUserData(userId, normalizedEmail) {
   const supabase = getSupabaseClient();
-  const results = await Promise.allSettled([
+  const tasks = [
     supabase.from('food_nutrition_data_table').delete().eq('"UserID"', userId.toString()),
     supabase.from('weight_records_table').delete().eq('UserId', userId),
     supabase.from('education_logs_table').delete().eq('UserId', userId),
     supabase.from('daily_step_activity').delete().eq('UserId', userId),
     supabase.from('wellness_university_enrollments_table').delete().eq('UserId', userId),
     supabase.from('wellness_counselling_assessments').delete().eq('UserId', userId),
-    supabase.from('otp_tokens_table').delete().ilike('recipient', normalizedEmail),
     // Null-out ownership before team_table row is removed — prevents the FK
     // constraint violation on nutrition_centers_table.owner_user_id.
     supabase.from('nutrition_centers_table').update({ owner_user_id: null }).eq('owner_user_id', userId),
-  ]);
+  ];
+  if (normalizedEmail) {
+    tasks.push(
+      supabase.from('otp_tokens_table').delete().ilike('recipient', normalizedEmail),
+    );
+  }
+  const results = await Promise.allSettled(tasks);
   return results;
 }
 
