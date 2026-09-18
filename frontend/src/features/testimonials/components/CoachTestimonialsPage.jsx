@@ -24,6 +24,7 @@ import {
   listForCoach, getMyTestimonial, getMyVideoTestimonial, getTeamTestimonialReport,
   getTestimonialDetail, submitAllEdits, verifyUnifiedOtp, resendUnifiedOtp, prepareTestimonialVideoUpload,
 } from '../services/testimonialApi.js';
+import { getProfile } from '../../user/services/user.api.js';
 import { uploadTestimonialVideoInChunks } from '../services/testimonialVideoUpload.js';
 import TestimonialSearchBar from './TestimonialSearchBar.jsx';
 import OtpInline from './OtpInline.jsx';
@@ -46,8 +47,8 @@ import { resolveResultVideoUrl, prefetchNativeResultVideos } from '../utils/down
 import { MAX_HEALTH_VIDEO_MB, isVideoOverSizeLimit, videoTooLargeMessage, maxVideoMbForSlot } from '../utils/videoLimits.js';
 import { compressVideoToMaxBytes } from '../utils/compressTestimonialVideo.js';
 import { normalizeVideoUploadFile } from '../utils/normalizeVideoUploadFile.js';
-import { compressImage } from '../utils/compressTestimonialImage.js';
 import { isCaptureFlowBusy, setCaptureFlowBusy } from '../../../shared/services/captureFlowBusy';
+import usePortraitCoverCrop from '../../user/hooks/usePortraitCoverCrop';
 import { shouldShowTestimonialsPageSkeleton } from '../utils/testimonialsPageLoad.js';
 import {
   UPLOAD_FILTERS,
@@ -70,8 +71,7 @@ import {
   getAvatarDisplayVersion,
   subscribeAvatarDisplayVersion,
 } from '../../user/services/avatarDisplayVersion.js';
-import { getProfile } from '../../user/services/user.api.js';
-import { seedMineTestimonialFromLeftSlot } from '../../user/domain/transformationBeforeAfter';
+import { seedMineTestimonialFromProfileSlots } from '../../user/domain/transformationBeforeAfter';
 
 // â”€â”€ Constants â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -641,6 +641,42 @@ function MemberCard({
   const [mediaEpoch, setMediaEpoch] = useState(0);
   const shareCardRef = useRef(null);
   const compressBusyRef = useRef(false);
+  const cropSlotRef = useRef('before');
+  const coverCrop = usePortraitCoverCrop({
+    onApply: (dataUrl, key) => {
+      const slot = key === 'after' || key === 'before' ? key : cropSlotRef.current;
+      const base64 = dataUrl.includes(',') ? dataUrl.split(',')[1] : dataUrl;
+      const previewUrl = jpegDataUrlToObjectUrl(dataUrl) || dataUrl;
+      const beforeBase = {
+        weightKg: testimonial?.beforeWeightKg,
+        goalType: testimonial?.goalType,
+        durationText: testimonial?.durationText,
+      };
+      const afterBase = { weightKg: testimonial?.afterWeightKg };
+      if (slot === 'before') {
+        setDraftBefore((prev) => {
+          revokeBlobUrl(prev?.previewUrl);
+          return {
+            ...(prev || beforeBase),
+            previewUrl,
+            imageBase64: base64,
+            compressing: false,
+          };
+        });
+      } else {
+        setDraftAfter((prev) => {
+          revokeBlobUrl(prev?.previewUrl);
+          return {
+            ...(prev || afterBase),
+            previewUrl,
+            imageBase64: base64,
+            compressing: false,
+          };
+        });
+      }
+    },
+    onError: (msg) => setSubmitError(msg || 'Could not read that photo. Please try another.'),
+  });
 
   const beforeCamRef   = useRef(null);
   const beforeGalRef   = useRef(null);
@@ -794,75 +830,11 @@ function MemberCard({
 
   const handleImageFile = useCallback((slot, file) => {
     if (!file) return;
-    // Instant local blob preview — Android WebView often cannot paint large data: URLs.
-    const objectUrl = URL.createObjectURL(file);
-    const beforeBase = {
-      weightKg: testimonial?.beforeWeightKg,
-      goalType: testimonial?.goalType,
-      durationText: testimonial?.durationText,
-    };
-    const afterBase = { weightKg: testimonial?.afterWeightKg };
-
-    if (slot === 'before') {
-      setDraftBefore((prev) => {
-        revokeBlobUrl(prev?.previewUrl);
-        return {
-          ...(prev || beforeBase),
-          previewUrl: objectUrl,
-          imageBase64: null,
-          compressing: true,
-        };
-      });
-    } else {
-      setDraftAfter((prev) => {
-        revokeBlobUrl(prev?.previewUrl);
-        return {
-          ...(prev || afterBase),
-          previewUrl: objectUrl,
-          imageBase64: null,
-          compressing: true,
-        };
-      });
-    }
+    cropSlotRef.current = slot;
     setPickerSlot(null);
     setSubmitError(null);
-    compressBusyRef.current = true;
-    setCaptureFlowBusy(true);
-
-    void compressImage(file)
-      .then(({ base64, preview }) => {
-        const compressedPreview = jpegDataUrlToObjectUrl(preview) || objectUrl;
-        if (slot === 'before') {
-          setDraftBefore((prev) => {
-            if (!prev) {
-              if (compressedPreview !== objectUrl) revokeBlobUrl(compressedPreview);
-              return prev;
-            }
-            if (compressedPreview !== objectUrl) revokeBlobUrl(objectUrl);
-            return { ...prev, imageBase64: base64, previewUrl: compressedPreview, compressing: false };
-          });
-        } else {
-          setDraftAfter((prev) => {
-            if (!prev) {
-              if (compressedPreview !== objectUrl) revokeBlobUrl(compressedPreview);
-              return prev;
-            }
-            if (compressedPreview !== objectUrl) revokeBlobUrl(objectUrl);
-            return { ...prev, imageBase64: base64, previewUrl: compressedPreview, compressing: false };
-          });
-        }
-      })
-      .catch((err) => {
-        revokeBlobUrl(objectUrl);
-        if (slot === 'before') setDraftBefore(null);
-        else setDraftAfter(null);
-        setSubmitError(err?.message || 'Could not read that photo. Please try another.');
-      })
-      .finally(() => {
-        compressBusyRef.current = false;
-        setCaptureFlowBusy(false);
-      });
-  }, [testimonial]);
+    void coverCrop.pickFile(file, slot);
+  }, [coverCrop]);
 
   const handleVideoFile = useCallback(async (slot, file) => {
     const numericUserId = Number(userId);
@@ -966,7 +938,7 @@ function MemberCard({
       && afterWeightDiffers(testimonial?.beforeWeightKg, draftAfter.weightKg);
     const isSilentSave = !photoOrVideoChanged && !issuesNeedOtp && !afterWeightDirty;
     // Photos still compressing — wait so we do not submit without image bytes.
-    if (draftBefore?.compressing || draftAfter?.compressing) {
+    if (draftBefore?.compressing || draftAfter?.compressing || coverCrop.isPreparing) {
       setSubmitError('Photo is still preparing — try Submit again in a moment.');
       return;
     }
@@ -1076,6 +1048,13 @@ function MemberCard({
           }
         : null;
       await reloadMine(patched);
+      if (userId) {
+        try {
+          await getProfile({ userId, cacheBust: true });
+        } catch {
+          // Non-fatal — Profile reloads on next open with cache bust.
+        }
+      }
       clearDrafts();
       if (otpSent || patched?.hasPendingOtp) {
         setUnifiedOtpVerified(false);
@@ -1105,9 +1084,11 @@ function MemberCard({
         setIsSubmitting(false);
         setCaptureFlowBusy(false);
       });
-  }, [userId, dirtySlots, draftBefore, draftAfter, draftHealthPath, draftBusinessPath, draftIssues, onMineRefresh, hasAfter, testimonial?.id, testimonial?.beforeImageUrl, testimonial?.afterImageUrl, testimonial?.beforeWeightKg, testimonial?.afterWeightKg, testimonial?.goalType, testimonial?.durationText, testimonial?.recoveredHealthIssues, testimonial?.healthVideoPath, testimonial?.businessVideoPath, testimonial?.healthVideoUrl, testimonial?.businessVideoUrl]);
+  }, [userId, dirtySlots, draftBefore, draftAfter, draftHealthPath, draftBusinessPath, draftIssues, onMineRefresh, hasAfter, coverCrop.isPreparing, testimonial?.id, testimonial?.beforeImageUrl, testimonial?.afterImageUrl, testimonial?.beforeWeightKg, testimonial?.afterWeightKg, testimonial?.goalType, testimonial?.durationText, testimonial?.recoveredHealthIssues, testimonial?.healthVideoPath, testimonial?.businessVideoPath, testimonial?.healthVideoUrl, testimonial?.businessVideoUrl]);
 
-  const anyPhotoCompressing = Boolean(draftBefore?.compressing || draftAfter?.compressing);
+  const anyPhotoCompressing = Boolean(
+    draftBefore?.compressing || draftAfter?.compressing || coverCrop.isPreparing,
+  );
 
   const showUnifiedOtp = editable
     && !unifiedOtpVerified
@@ -1187,6 +1168,7 @@ function MemberCard({
 
   return (
     <div className={`rounded-3xl border ${borderCls} ${bgCls} shadow-md overflow-visible`}>
+      {coverCrop.overlay}
       {/* Header strip */}
       <div className="flex items-center gap-3 px-4 pt-4 pb-3">
         <MemberAvatar user={user} />
@@ -1208,7 +1190,7 @@ function MemberCard({
                 <button
                   type="button"
                   onClick={() => setExpandedPhoto({ url: beforeImageSrc, label: `${user.userName} — Before` })}
-                  className="w-full"
+                  className="w-full overflow-hidden rounded-xl"
                 >
                   <img
                     key={`before-${beforeImageSrc}`}
@@ -1338,7 +1320,7 @@ function MemberCard({
                 <button
                   type="button"
                   onClick={() => setExpandedPhoto({ url: afterImageSrc, label: `${user.userName} — After` })}
-                  className="w-full"
+                  className="w-full overflow-hidden rounded-xl"
                 >
                   <img
                     key={`after-${afterImageSrc}`}
@@ -1627,8 +1609,8 @@ function MemberCard({
       {/* Health Issues — below photos, above result video */}
       {(editable || testimonial) && (
         <div className="space-y-1.5 overflow-visible relative z-20">
-          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">
-            Health Issues
+          <p className="text-[10px] font-bold text-gray-400 tracking-wide">
+            Health Issues while joining this community
           </p>
           <HealthIssueCoachEditor
             userId={userId || user?.userId}
@@ -1971,8 +1953,12 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
       const leftUrl = profileResult?.success
         ? profileResult?.data?.transformationPhotos?.left
         : null;
-      const seeded = seedMineTestimonialFromLeftSlot(testimonial, {
+      const rightUrl = profileResult?.success
+        ? profileResult?.data?.transformationPhotos?.right
+        : null;
+      const seeded = seedMineTestimonialFromProfileSlots(testimonial, {
         leftUrl,
+        rightUrl,
         weightKg: Number.isFinite(latestWeightKg) ? latestWeightKg : null,
       });
       if (!seeded && !video) {

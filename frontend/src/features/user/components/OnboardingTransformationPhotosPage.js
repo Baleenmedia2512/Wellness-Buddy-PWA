@@ -120,11 +120,14 @@ export default function OnboardingTransformationPhotosPage({
       }
       const leftForTestimonial = extras.transformationPhotos?.left
         || transformationPhotos.leftImageBase64();
-      if (userId && (weightKg != null || leftForTestimonial)) {
+      const rightForTestimonial = extras.transformationPhotos?.right
+        || transformationPhotos.rightImageBase64();
+      if (userId && (weightKg != null || leftForTestimonial || rightForTestimonial)) {
         await persistOnboardingTestimonialPhotos({
           userId,
           weightKg,
           leftImageBase64: leftForTestimonial,
+          rightImageBase64: rightForTestimonial,
           goalType: deriveWeightGoalMode({
             heightCm,
             currentWeightKg: weightKg,
