@@ -11,6 +11,7 @@ import {
   hasVisibleAfterCard,
   isPhotoPairComplete,
   resolveHealthIssueOtpChannel,
+  shouldSendPhotoApprovalOtp,
 } from '../domain/photoCompleteness.rules.js';
 
 const seeded = {
@@ -44,6 +45,19 @@ describe('seeded incomplete before/after clone', () => {
 
   it('sends health-issue OTP on a visible before/after card (not silent)', () => {
     assert.equal(resolveHealthIssueOtpChannel(seeded), 'photo');
+  });
+
+  it('sends approval OTP on a visible seeded card even when after weight matches', () => {
+    assert.equal(shouldSendPhotoApprovalOtp(seeded), true);
+  });
+});
+
+describe('shouldSendPhotoApprovalOtp', () => {
+  it('is false until a real before photo exists', () => {
+    assert.equal(shouldSendPhotoApprovalOtp({
+      status: 'incomplete',
+      before_image_path: '42/42_video_only_placeholder.jpg',
+    }), false);
   });
 });
 

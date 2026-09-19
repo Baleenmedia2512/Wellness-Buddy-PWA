@@ -12,6 +12,7 @@ import {
   hasCompletePhotoTestimonial,
   isPhotoPairComplete,
   resolveHealthIssueOtpChannel,
+  shouldSendPhotoApprovalOtp,
 } from './domain/photoCompleteness.rules.js';
 import {
   resolveOtpRecipientIds,
@@ -1462,8 +1463,16 @@ export async function submitAllEdits(rawBody) {
     afterWeightKg: photoUpdates.afterWeightKg ?? existing.after_weight_kg,
   });
 
-  // Guard: if photos still incomplete after update, no OTP needed for photo changes
-  const photoNeedsOtp = hasPhotoDirty && isComplete;
+  // Visible Before+After (including a seeded clone) + Submit for Approval → OTP.
+  // Do not wait for a distinct after path or a weight change — that left
+  // seeded cards on silent save with no coach email.
+  const photoNeedsOtp = hasPhotoDirty && shouldSendPhotoApprovalOtp(existing, {
+    beforePath: newBeforePath,
+    afterPath: newAfterPath,
+    beforeWeightKg: photoUpdates.beforeWeightKg ?? existing.before_weight_kg,
+    afterWeightKg: photoUpdates.afterWeightKg ?? existing.after_weight_kg,
+    status: existing.status,
+  });
 
   // Validate health issues are present when completing a testimonial
   const resolvedHealthIssues = mergedIssues;

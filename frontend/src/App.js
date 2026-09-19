@@ -7625,11 +7625,6 @@ function WellnessValleyApp() {
 
   // Authentication flow
   if (!user && !isOtpVerified) {
-    console.log("?? [Render] Condition 1: !user && !isOtpVerified", {
-      user,
-      isOtpVerified,
-      showInactiveModal,
-    });
     return (
       <>
         <Login
@@ -7664,17 +7659,8 @@ function WellnessValleyApp() {
     );
   }
   const isGoogleUserCheck = user && isGoogleUser(user);
-  console.log("?? [Render] Checking Google user", {
-    user: !!user,
-    isOtpVerified,
-    isGoogleUserCheck,
-    showInactiveModal,
-  });
 
   if (!isOtpVerified && !isGoogleUserCheck) {
-    console.log(
-      "?? [Render] Condition 2: !isOtpVerified && !isGoogleUserCheck",
-    );
     return (
       <>
         {alertModalPortal}

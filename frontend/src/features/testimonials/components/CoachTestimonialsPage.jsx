@@ -43,6 +43,7 @@ import {
 } from './TransformationShareCard.jsx';
 import { getCachedVideoThumbnail } from '../utils/videoThumbnailCache.js';
 import { jpegDataUrlToObjectUrl, revokeBlobUrl, withTestimonialMediaCacheBust } from '../utils/testimonialMediaUrl.js';
+import { useRevocableImageSrc } from '../hooks/useRevocableImageSrc.js';
 import { resolveResultVideoUrl, prefetchNativeResultVideos } from '../utils/downloadVideo.js';
 import { MAX_HEALTH_VIDEO_MB, isVideoOverSizeLimit, videoTooLargeMessage, maxVideoMbForSlot } from '../utils/videoLimits.js';
 import { compressVideoToMaxBytes } from '../utils/compressTestimonialVideo.js';
@@ -726,22 +727,8 @@ function MemberCard({
         : null,
       mediaVersion,
     );
-  const beforeFromData = typeof beforeRaw === 'string' && beforeRaw.startsWith('data:image');
-  const afterFromData = typeof afterRaw === 'string' && afterRaw.startsWith('data:image');
-  const beforeImageSrc = useMemo(() => (
-    beforeFromData ? jpegDataUrlToObjectUrl(beforeRaw) : beforeRaw
-  ), [beforeRaw, beforeFromData]);
-  const afterImageSrc = useMemo(() => (
-    afterFromData ? jpegDataUrlToObjectUrl(afterRaw) : afterRaw
-  ), [afterRaw, afterFromData]);
-  useEffect(() => {
-    if (!beforeFromData) return undefined;
-    return () => revokeBlobUrl(beforeImageSrc);
-  }, [beforeFromData, beforeImageSrc]);
-  useEffect(() => {
-    if (!afterFromData) return undefined;
-    return () => revokeBlobUrl(afterImageSrc);
-  }, [afterFromData, afterImageSrc]);
+  const beforeImageSrc = useRevocableImageSrc(beforeRaw);
+  const afterImageSrc = useRevocableImageSrc(afterRaw);
 
   // Photo-only drafts — weight/duration edits must NOT open this strip (Android focus loss)
   const hasPhotoDraft = Boolean(
@@ -927,7 +914,8 @@ function MemberCard({
     const issuesNeedOtp = dirtySlots.includes('issues') && (hasAfter || hasResultVideo || hasVisiblePhotoCard);
     const afterWeightDirty = draftAfter?.weightKg !== undefined
       && afterWeightDiffers(testimonial?.beforeWeightKg, draftAfter.weightKg);
-    const isSilentSave = !photoOrVideoChanged && !issuesNeedOtp && !afterWeightDirty;
+    const isSilentSave = !photoOrVideoChanged && !issuesNeedOtp && !afterWeightDirty
+      && !hasVisiblePhotoCard;
     // Photos still compressing — wait so we do not submit without image bytes.
     if (draftBefore?.compressing || draftAfter?.compressing || coverCrop.isPreparing) {
       setSubmitError('Photo is still preparing — try Submit again in a moment.');
@@ -1860,8 +1848,8 @@ function MemberCard({
             ref={shareCardRef}
             testimonial={{
               ...testimonial,
-              beforeImageUrl: draftBefore?.previewUrl || withTestimonialMediaCacheBust(testimonial.beforeImageUrl, mediaVersion),
-              afterImageUrl: draftAfter?.previewUrl || withTestimonialMediaCacheBust(testimonial.afterImageUrl, mediaVersion),
+              beforeImageUrl: beforeImageSrc,
+              afterImageUrl: afterImageSrc,
               beforeWeightKg: displayBeforeKg || testimonial.beforeWeightKg,
               afterWeightKg: displayAfterKg || testimonial.afterWeightKg,
               recoveredHealthIssues: draftIssues ?? testimonial.recoveredHealthIssues,

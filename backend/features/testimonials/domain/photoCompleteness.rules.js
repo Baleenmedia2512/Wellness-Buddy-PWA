@@ -62,6 +62,25 @@ export function hasCompletePhotoTestimonial(row = {}) {
 }
 
 /**
+ * Member tapped Submit for Approval with a visible Before + After card
+ * (including a Profile-seeded clone). That must email the coach and start OTP.
+ * Distinct-after / weight-diff / pending still qualify via isPhotoPairComplete.
+ *
+ * Profile sync stays on its own path and must not call this.
+ *
+ * @param {object} row
+ * @param {object} [overlay]
+ * @returns {boolean}
+ */
+export function shouldSendPhotoApprovalOtp(row = {}, overlay = {}) {
+  if (isPhotoPairComplete(row, overlay)) return true;
+  const beforePath = overlay.beforePath ?? row.before_image_path ?? row.beforeImagePath;
+  const afterPath = overlay.afterPath ?? row.after_image_path ?? row.afterImagePath;
+  return hasRealBeforePhoto({ before_image_path: beforePath })
+    && hasVisibleAfterCard({ after_image_path: afterPath });
+}
+
+/**
  * Health-issue edits attach OTP to the member's latest photo or video entry.
  * A visible before+after card (including a seeded clone) uses the photo channel.
  */
