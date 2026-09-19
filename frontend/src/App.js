@@ -1056,7 +1056,7 @@ function WellnessValleyApp() {
       return undefined;
     }
 
-    (async () => {
+    const loadNavAccess = async () => {
       try {
         const userId = (await getUserId(user)) || user?.id || null;
         const data = await fetchNavAccessForMe({
@@ -1070,6 +1070,8 @@ function WellnessValleyApp() {
           navAccessPagesRef.current = pages;
           setNavAccessPages(pages);
         }
+        // Privilege chrome (admin FAB) stays on account Role. Nav tabs use `pages`,
+        // which already elevates a customer-with-team to the Sponsor matrix.
         const serverRole = data?.accountRole ?? data?.role;
         if (serverRole != null) {
           setUserRole(normalizeAppRole(serverRole));
@@ -1081,9 +1083,25 @@ function WellnessValleyApp() {
           console.warn('[nav-access] for-me failed; keeping prior ACL', err?.message || err);
         }
       }
-    })();
+    };
 
-    return () => { cancelled = true; };
+    loadNavAccess();
+
+    const onVisible = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        loadNavAccess();
+      }
+    };
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', onVisible);
+    }
+
+    return () => {
+      cancelled = true;
+      if (typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', onVisible);
+      }
+    };
   }, [user?.email, user?.id, apiBaseUrl]);
 
   const [showWellnessScore, setShowWellnessScore] = useState(false);

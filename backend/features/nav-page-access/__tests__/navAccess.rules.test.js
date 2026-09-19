@@ -32,6 +32,14 @@ describe('resolveMatrixRole', () => {
     assert.equal(resolveMatrixRole('admin'), 'admin');
     assert.equal(resolveMatrixRole('developer'), 'developer');
   });
+
+  it('elevates a customer with a team to Sponsor (coach) without changing admin', () => {
+    assert.equal(resolveMatrixRole('user', { hasSponsorTeam: true }), 'coach');
+    assert.equal(resolveMatrixRole('user', { hasSponsorTeam: false }), 'user');
+    assert.equal(resolveMatrixRole('', { hasSponsorTeam: true }), 'coach');
+    assert.equal(resolveMatrixRole('admin', { hasSponsorTeam: true }), 'admin');
+    assert.equal(resolveMatrixRole('developer', { hasSponsorTeam: true }), 'developer');
+  });
 });
 
 describe('DEFAULT_NAV_ACCESS_MATRIX', () => {
@@ -70,6 +78,20 @@ describe('pagesForRole / canAccessPage', () => {
 
   it('denies unknown page keys', () => {
     assert.equal(canAccessPage(allPagesAllowed(), 'not-a-page'), false);
+  });
+
+  it('gives a customer-with-team the Sponsor page map', () => {
+    const matrix = normalizeMatrix({
+      user: { home: true, counselling: false, reports: false },
+      coach: { home: true, counselling: true, reports: true },
+      admin: { home: true },
+      developer: { home: true },
+    });
+    const asCustomer = pagesForRole(matrix, 'user');
+    const asSponsor = pagesForRole(matrix, 'user', { hasSponsorTeam: true });
+    assert.equal(canAccessPage(asCustomer, 'counselling'), false);
+    assert.equal(canAccessPage(asSponsor, 'counselling'), true);
+    assert.equal(canAccessPage(asSponsor, 'reports'), true);
   });
 });
 

@@ -11,7 +11,7 @@
  */
 
 import { getSupabaseClient } from '../../../utils/supabaseClient.js';
-import { resolveLeadSeatForUser } from '../../../utils/coachTeamSeats.js';
+import { userHasSponsorTeam } from '../../../utils/coachTeamSeats.js';
 
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
@@ -46,30 +46,11 @@ export default async function handler(req, res) {
     }
 
     const supabase = getSupabaseClient();
-    const { count, error } = await supabase
-      .from('team_table')
-      .select('UserId', { count: 'exact', head: true })
-      .eq('CoachId', userId);
-
-    if (error) {
-      console.error('[has-members] Query error:', error);
-      res.status(500).json({
-        success: false,
-        message: 'Failed to check team membership',
-      });
-      return;
-    }
-
-    const hasOwnDownline = (count ?? 0) > 0;
-    let isSharedLead = false;
-    if (!hasOwnDownline) {
-      const seat = await resolveLeadSeatForUser(supabase, userId);
-      isSharedLead = seat.seat === 'sponsor' || seat.seat === 'co-sponsor';
-    }
+    const hasTeamMembers = await userHasSponsorTeam(supabase, userId);
 
     res.status(200).json({
       success: true,
-      hasTeamMembers: hasOwnDownline || isSharedLead,
+      hasTeamMembers,
     });
   } catch (err) {
     console.error('[has-members] Server error:', err);

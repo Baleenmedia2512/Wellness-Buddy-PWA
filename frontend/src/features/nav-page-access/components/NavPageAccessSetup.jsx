@@ -177,6 +177,8 @@ export default function NavPageAccessSetup({ user, apiBaseUrl, onBack, embedded 
 
             <p className="mt-3 text-[11px] leading-relaxed text-gray-500">
               Sponsor uses the coach role. Upline accounts share Sponsor access.
+              A customer who has team members (or a Sponsor / Co-Sponsor seat)
+              also uses Sponsor pages — their account role may still be Customer.
               Reports also needs the Reports feature flag.
             </p>
 
