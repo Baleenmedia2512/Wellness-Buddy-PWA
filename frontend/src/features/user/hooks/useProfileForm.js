@@ -7,7 +7,8 @@ import {
   MIN_BODY_FAT_PCT,
   MAX_BODY_FAT_PCT,
 } from '../domain/profileCompleteness';
-import { normalizeCommunityId, validateCommunityId } from '../domain/communityId';
+import { normalizeCommunityId, validateCommunityId, COMMUNITY_ID_OTP_FLAG } from '../domain/communityId';
+import { isFlagEnabled } from '../../../config/featureFlags';
 
 const cleanPhone = (s) => s.trim().replace(/[\s\-()]/g, '');
 
@@ -114,8 +115,11 @@ export default function useProfileForm(initial = {}) {
     if (!fatPercentValid) {
       return `Please enter Fat % (${MIN_BODY_FAT_PCT}–${MAX_BODY_FAT_PCT}%).`;
     }
-    const communityIdCheck = validateCommunityId(communityId);
-    if (!communityIdCheck.valid) return communityIdCheck.message;
+    const skipCommunityIdOnSave = isFlagEnabled(COMMUNITY_ID_OTP_FLAG);
+    if (!skipCommunityIdOnSave) {
+      const communityIdCheck = validateCommunityId(communityId);
+      if (!communityIdCheck.valid) return communityIdCheck.message;
+    }
     return '';
   };
 
@@ -130,7 +134,6 @@ export default function useProfileForm(initial = {}) {
       gender: genderValid ? gender : undefined,
       phoneNumber: phone.trim() || undefined,
       weightGoalMode: weightGoalMode || 'loss',
-      communityId: normalizeCommunityId(communityId),
       age: parseOptionalNumber(bodyMetrics.age, { integer: true }),
       visceralFat: parseOptionalNumber(bodyMetrics.visceralFat),
       bodyAge: parseOptionalNumber(bodyMetrics.bodyAge),
@@ -140,6 +143,10 @@ export default function useProfileForm(initial = {}) {
       recoveredHealthIssues: Array.isArray(recoveredHealthIssues) ? recoveredHealthIssues : [],
       ...extras,
     };
+
+    if (!isFlagEnabled(COMMUNITY_ID_OTP_FLAG)) {
+      body.communityId = normalizeCommunityId(communityId);
+    }
 
     if (fatPercentValid) {
       body.bodyFat = parseFloat(bodyMetrics.fatPercent);

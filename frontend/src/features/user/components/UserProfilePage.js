@@ -22,7 +22,7 @@ import {
   setAutoCameraOnResumeEnabled,
 } from '../../../shared/utils/autoCameraPreference';
 import useProfileForm from '../hooks/useProfileForm';
-import { fetchProfile, saveProfile } from '../services/profileService';
+import { fetchProfile, saveProfile, requestCommunityId, verifyCommunityIdOtp } from '../services/profileService';
 import { syncMarathonWeightComparisonFromProfile } from '../../marathon/marathonWeightComparisonCache';
 import { loadProfileMarathonWeightComparison } from '../../marathon';
 import { fetchMyAssessment, fetchLeadByPhone } from '../../counselling/services/counsellingApi';
@@ -46,6 +46,8 @@ import { getProfile } from '../services/user.api';
 import useTransformationPhotos from '../hooks/useTransformationPhotos';
 import { persistOnboardingTestimonialPhotos } from '../services/persistOnboardingTestimonialPhotos';
 import { hasValidProfileName } from '../domain/profileCompleteness';
+import { isFlagEnabled } from '../../../config/featureFlags';
+import { COMMUNITY_ID_OTP_FLAG } from '../domain/communityId';
 
 const COLORS = ['bg-blue-500', 'bg-green-500', 'bg-purple-500', 'bg-pink-500', 'bg-indigo-500', 'bg-yellow-500', 'bg-red-500', 'bg-teal-500'];
 const colorOf = (name, email) => COLORS[(name || email || '').length % COLORS.length];
@@ -82,6 +84,9 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
   const [coachName, setCoachName] = useState('');
   const [idealCoachName, setIdealCoachName] = useState('');
   const [teamSeat, setTeamSeat] = useState(null);
+  const [communityIdRequest, setCommunityIdRequest] = useState(null);
+  const [communityIdBusy, setCommunityIdBusy] = useState(false);
+  const [communityIdError, setCommunityIdError] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState('');
@@ -151,6 +156,8 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
         communityId: (() => {
           const fromProfile = data?.communityId != null ? String(data.communityId).trim() : '';
           if (fromProfile) return fromProfile;
+          const pendingCode = data?.communityIdRequest?.communityId;
+          if (pendingCode) return String(pendingCode).trim();
           if (data?.teamId) return String(data.teamId).trim();
           return '';
         })(),
@@ -183,6 +190,8 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
       );
       setIdealCoachName(data?.idealCoachName ? String(data.idealCoachName).trim() : '');
       setTeamSeat(data?.teamSeat || null);
+      setCommunityIdRequest(data?.communityIdRequest || null);
+      setCommunityIdError('');
       transformationPhotos.loadFromProfile(data?.transformationPhotos);
       if (data?.profileImage) {
         setProfileImagePreview(data.profileImage);
@@ -274,14 +283,12 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
       const data = await saveProfile(payload);
       transformationPhotos.clearPending();
       const leftPending = photoExtras.transformationPhotos?.left || null;
-      const rightPending = photoExtras.transformationPhotos?.right || null;
-      if (user?.id && (latestWeight != null || leftPending || rightPending)) {
+      if (user?.id && (latestWeight != null || leftPending)) {
         try {
           await persistOnboardingTestimonialPhotos({
             userId: user.id,
             weightKg: latestWeight,
             leftImageBase64: leftPending,
-            rightImageBase64: rightPending,
             goalType: deriveWeightGoalMode({
               heightCm: form.height,
               currentWeightKg: latestWeight,
@@ -328,6 +335,54 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
     transformationPhotos,
     latestWeight,
   ]);
+
+  const handleCommunityIdCreate = useCallback(async (code) => {
+    setCommunityIdError('');
+    setSuccessMessage('');
+    setCommunityIdBusy(true);
+    try {
+      const data = await requestCommunityId({
+        userId: sessionUserId || undefined,
+        email: accountEmail || undefined,
+        communityId: code,
+      });
+      setCommunityIdRequest(data.communityIdRequest || null);
+      if (data.communityIdRequest?.communityId) {
+        form.setCommunityId(String(data.communityIdRequest.communityId));
+      }
+    } catch (e) {
+      setCommunityIdError(e.message || 'Could not send the approval request.');
+    } finally {
+      setCommunityIdBusy(false);
+    }
+  }, [sessionUserId, accountEmail, form]);
+
+  const handleCommunityIdVerify = useCallback(async (otp) => {
+    setCommunityIdError('');
+    setSuccessMessage('');
+    setCommunityIdBusy(true);
+    try {
+      const data = await verifyCommunityIdOtp({
+        userId: sessionUserId || undefined,
+        email: accountEmail || undefined,
+        otp,
+      });
+      setCommunityIdRequest(null);
+      if (data.communityId) form.setCommunityId(String(data.communityId));
+      if (data.teamSeat) setTeamSeat(data.teamSeat);
+      onProfileUpdate?.({
+        communityId: data.communityId || null,
+        teamSearchRefresh: true,
+      });
+      setSuccessMessage(data.message || 'Community ID confirmed.');
+      setHasSaved(true);
+      await loadProfile({ cacheBust: true });
+    } catch (e) {
+      setCommunityIdError(e.message || 'That approval code did not match.');
+    } finally {
+      setCommunityIdBusy(false);
+    }
+  }, [sessionUserId, accountEmail, form, onProfileUpdate, loadProfile]);
 
   const handleEmailVerified = useCallback(async (result) => {
     const nextEmail = String(result?.email || '').trim();
@@ -568,6 +623,13 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
                   communityId={form.communityId}
                   setCommunityId={form.setCommunityId}
                   teamSeat={teamSeat}
+                  communityIdOtpEnabled={isFlagEnabled(COMMUNITY_ID_OTP_FLAG)}
+                  communityIdRequest={communityIdRequest}
+                  onCommunityIdCreate={handleCommunityIdCreate}
+                  onCommunityIdVerify={handleCommunityIdVerify}
+                  communityIdBusy={communityIdBusy}
+                  communityIdError={communityIdError}
+                  sponsorName={coachName}
                 />
                 <UserProfileBodyMetrics
                   bodyMetrics={form.bodyMetrics}

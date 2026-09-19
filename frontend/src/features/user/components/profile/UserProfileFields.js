@@ -1,23 +1,13 @@
 // Editable name / height / phone / community ID / gender fields + email.
 // BMR is display-only when bmrReadOnly (profile page) — calculated from weight/formula.
 import React from 'react';
-import { Flame, Hash, Mail } from 'lucide-react';
-import {
-  COMMUNITY_ID_MAX_LENGTH,
-  COMMUNITY_ID_MIN_LENGTH,
-  COMMUNITY_ID_PLACEHOLDER,
-  sanitizeCommunityIdInput,
-} from '../../domain/communityId';
+import { Flame, Mail } from 'lucide-react';
 import PhysicalActivityField from './PhysicalActivityField';
+import CommunityIdField from './CommunityIdField';
 import { VALID_GENDERS } from '../../domain/profileCompleteness';
 
 const inputCls =
   'w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none';
-
-const SEAT_LABEL = {
-  sponsor: 'Sponsor',
-  'co-sponsor': 'Co-Sponsor',
-};
 
 const Field = ({ label, required, children }) => (
   <div>
@@ -37,6 +27,13 @@ const UserProfileFields = ({
   communityId, setCommunityId,
   teamSeat = null,
   hideEmailField = false,
+  communityIdOtpEnabled = false,
+  communityIdRequest = null,
+  onCommunityIdCreate,
+  onCommunityIdVerify,
+  communityIdBusy = false,
+  communityIdError = '',
+  sponsorName = '',
 }) => (
   <div className="space-y-4">
     {!hideEmailField && (
@@ -97,36 +94,18 @@ const UserProfileFields = ({
       <input type="text" inputMode="numeric" pattern="[0-9]*" value={phone} onChange={(e) => setPhone(e.target.value)}
         placeholder="e.g. +91 9876543210" className={inputCls} style={{ fontSize: '16px' }} />
     </Field>
-    <Field label="Community ID">
-      <div className="relative">
-        <Hash className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-        <input
-          type="text"
-          autoComplete="off"
-          autoCapitalize="characters"
-          spellCheck={false}
-          value={communityId || ''}
-          onChange={(e) => setCommunityId && setCommunityId(
-            sanitizeCommunityIdInput(e.target.value),
-          )}
-          maxLength={COMMUNITY_ID_MAX_LENGTH}
-          placeholder={COMMUNITY_ID_PLACEHOLDER}
-          className={`${inputCls} pl-9 font-mono tracking-wide uppercase`}
-          style={{ fontSize: '16px' }}
-        />
-      </div>
-      {teamSeat && (
-        <p className="text-xs text-green-700 font-medium mt-1.5">
-          Role: {SEAT_LABEL[teamSeat] || teamSeat}
-        </p>
-      )}
-      <p className="text-xs text-gray-500 mt-1">
-        Optional team code for Sponsor / Co-Sponsor. Tap Save Profile after editing.
-      </p>
-      <p className="text-xs text-gray-400 mt-0.5">
-        {(communityId || '').length}/{COMMUNITY_ID_MAX_LENGTH} · Min {COMMUNITY_ID_MIN_LENGTH} · Letters and numbers only
-      </p>
-    </Field>
+    <CommunityIdField
+      communityId={communityId}
+      setCommunityId={setCommunityId}
+      teamSeat={teamSeat}
+      otpEnabled={communityIdOtpEnabled}
+      pendingRequest={communityIdRequest}
+      onCreate={onCommunityIdCreate}
+      onVerify={onCommunityIdVerify}
+      busy={communityIdBusy}
+      error={communityIdError}
+      sponsorName={sponsorName}
+    />
     <div>
       <label className="flex items-center gap-1 text-sm font-medium text-gray-700 mb-1">
         <Flame className="w-4 h-4 text-orange-500" /> BMR (kcal)

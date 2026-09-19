@@ -469,7 +469,7 @@ function UnifiedOtpInline({
       <div className="flex items-center gap-2">
         <ShieldCheck className="h-4 w-4 text-amber-600 shrink-0" />
         <p className="text-sm font-semibold text-amber-800">
-          Enter OTP sent to your sponsor {sponsorLabel} through Gmail
+          Enter OTP sent to your sponsor {sponsorLabel} through Email
         </p>
       </div>
       <p className="text-xs text-amber-700 leading-relaxed">
@@ -1944,12 +1944,8 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
       const leftUrl = profileResult?.success
         ? profileResult?.data?.transformationPhotos?.left
         : null;
-      const rightUrl = profileResult?.success
-        ? profileResult?.data?.transformationPhotos?.right
-        : null;
       const seeded = seedMineTestimonialFromProfileSlots(testimonial, {
         leftUrl,
-        rightUrl,
         weightKg: Number.isFinite(latestWeightKg) ? latestWeightKg : null,
       });
       if (!seeded && !video) {

@@ -1,12 +1,15 @@
 /**
- * Sync Profile / BCM Left·Right slots onto testimonials Before·After.
+ * Sync Profile / BCM Left slot onto testimonial Before.
+ * After stays a Left copy on create; later Left changes update Before only.
  * Keeps status incomplete and skips OTP — direct Transformation submit still owns approval.
  */
 import * as repo from './testimonials.repository.js';
 import { validateSyncProfilePhotos } from './testimonials.validators.js';
 import {
   buildProfileSlotsFromTestimonialImages,
+  canSyncProfileAfterToTestimonial,
   hasPositiveWeight,
+  isIncompleteProfileMappedAfter,
   testimonialHasRealAfter,
 } from './domain/profilePhotoSync.rules.js';
 import { resolveOtpRecipientIds, toPositiveUserId } from './domain/otpRecipient.rules.js';
@@ -51,7 +54,7 @@ export async function syncProfilePhotosToTestimonial(rawBody) {
     recoveredHealthIssues,
   } = payload;
 
-  if (!beforeImageBase64 && !afterImageBase64 && beforeWeightKg == null) {
+  if (!beforeImageBase64 && beforeWeightKg == null) {
     return { httpStatus: 200, body: { success: true, skipped: true, reason: 'nothing_to_sync' } };
   }
 
@@ -72,11 +75,9 @@ export async function syncProfilePhotosToTestimonial(rawBody) {
 
     const beforePath = storagePath(userId, 'before', ts);
     await repo.uploadImage(beforeImageBase64, beforePath);
-    let afterPath = beforePath;
-    if (afterImageBase64) {
-      afterPath = storagePath(userId, 'after', ts);
-      await repo.uploadImage(afterImageBase64, afterPath);
-    }
+    // New users: After starts as the same Left/Before image. Distinct After is
+    // set later from the Transformation tab, not from Profile Right.
+    const afterPath = beforePath;
 
     const row = await repo.insertTestimonial({
       userId,
@@ -102,6 +103,15 @@ export async function syncProfilePhotosToTestimonial(rawBody) {
 
   const updates = {};
   const hasCompleteAfter = testimonialHasRealAfter(existing, repo.isVideoOnlyPlaceholder);
+  if (
+    !hasCompleteAfter
+    && isIncompleteProfileMappedAfter(existing, existing.after_image_path)
+    && existing.before_image_path
+  ) {
+    // Snap After back to the current Left/Before clone, then leave After alone
+    // on later Left updates (new before_* paths do not match after_*).
+    updates.afterImagePath = existing.before_image_path;
+  }
 
   if (beforeImageBase64) {
     const beforePath = storagePath(userId, 'before', ts);
@@ -112,11 +122,10 @@ export async function syncProfilePhotosToTestimonial(rawBody) {
     }
   }
 
-  if (afterImageBase64) {
+  if (afterImageBase64 && canSyncProfileAfterToTestimonial(existing, repo.isVideoOnlyPlaceholder)) {
     const afterPath = storagePath(userId, 'after', ts);
     await repo.uploadImage(afterImageBase64, afterPath);
     updates.afterImagePath = afterPath;
-    // Profile Right always wins — reset approval so sponsor re-verifies the new After.
     updates.status = 'incomplete';
     updates.otpHash = null;
     updates.otpExpiresAt = null;

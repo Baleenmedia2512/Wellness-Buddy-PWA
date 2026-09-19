@@ -343,3 +343,12 @@ registerFlag({
   description:    'DB-driven main-nav page access by role (Customer/Sponsor/Admin/Developer). Matrix in nav_page_access_config_table; Admin Config editor. When OFF, all main tabs visible (legacy).',
   defaultEnabled: true,
 });
+
+registerFlag({
+  name:           'ff.community-id-otp',
+  owner:          '@principal-eng',
+  createdAt:      '2026-09-18',
+  removeBy:       '2027-03-18',
+  description:    'ADR-0013 — Profile Community ID create/co-sponsor requires 24h sponsor OTP. Kill switch; version routing (3.5.0+) skips immediate Community ID apply on profile save. Live 3.4.9 stays on legacy profile save.',
+  defaultEnabled: true,
+});

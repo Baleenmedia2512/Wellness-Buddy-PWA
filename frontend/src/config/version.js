@@ -100,8 +100,9 @@ export const APP_VERSION = {
 /**
  * 📋 CHANGE LOG
  * 
- * Version 3.5.0 (Code 71 / iOS build 71) - 2026-09-10 [ANDROID + iOS RELEASE]
+ * Version 3.5.0 (Code 71 / iOS build 71) - 2026-09-10 [ANDROID + iOS — not yet released]
  *   🚀 Minor version bump — version sync across all platforms
+ *   ✨ Community ID create / co-sponsor via 24h sponsor OTP (ADR-0013)
  *
  * Version 3.4.9 (Code 69 / iOS build 70) - 2026-09-02 [ANDROID + iOS RELEASE]
  *   🐛 Patch release — bug fixes and stability improvements

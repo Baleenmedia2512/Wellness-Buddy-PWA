@@ -19,3 +19,8 @@ export {
   discardUnconsentedUser,
 } from './consent.service.js';
 export { checkOnboardingEmail, verifyOnboardingEmail } from './onboarding-email.service.js';
+export {
+  requestCommunityIdApproval,
+  verifyCommunityIdOtp,
+  getPublicPendingCommunityIdRequest,
+} from './communityIdApproval.service.js';

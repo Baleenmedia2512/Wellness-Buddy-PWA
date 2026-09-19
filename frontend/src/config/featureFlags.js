@@ -162,6 +162,16 @@ const REGISTRY = Object.freeze({
     defaultEnabled: true,
     description:    'Meal Builder multi-add tray + sheet + voice insert in SmartFoodSearchModal.',
   },
+
+  // ADR-0013 — Community ID create / co-sponsor via 24h sponsor OTP on Profile.
+  // Default ON. Set REACT_APP_FF_COMMUNITY_ID_OTP=false or
+  // localStorage 'ff.community-id-otp'='false' to restore immediate Save Profile.
+  'ff.community-id-otp': {
+    envKey:         'REACT_APP_FF_COMMUNITY_ID_OTP',
+    storageKey:     'ff.community-id-otp',
+    defaultEnabled: true,
+    description:    'Profile Community ID Create + sponsor OTP (create / co-sponsor).',
+  },
 });
 
 function readStorage(key) {

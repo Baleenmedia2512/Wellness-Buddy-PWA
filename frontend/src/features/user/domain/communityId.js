@@ -51,3 +51,20 @@ export function resolveDisplayCommunityId({ communityId, teamId } = {}) {
   if (fromProfile) return fromProfile;
   return String(teamId ?? '').trim();
 }
+
+export const COMMUNITY_ID_OTP_FLAG = 'ff.community-id-otp';
+
+export function isCommunityIdConfirmed({ teamSeat } = {}) {
+  return !!teamSeat;
+}
+
+/**
+ * Pending Community ID banner — shown in the yellow box under the field.
+ * @param {{ sponsorName?: string|null }} [args]
+ * @returns {string}
+ */
+export function communityIdPendingApprovalMessage({ sponsorName = '' } = {}) {
+  const who = String(sponsorName || '').replace(/\s+/g, ' ').trim();
+  const named = who ? `your sponsor (${who})` : 'your sponsor';
+  return `Approval code sent to ${named}. Get approval from your sponsor by entering the verification code sent to your sponsor.`;
+}

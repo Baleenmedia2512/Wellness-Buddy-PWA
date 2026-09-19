@@ -1,7 +1,8 @@
 /**
  * Bidirectional Profile ↔ Transformation photo sync rules.
- * Left ↔ Before, Right ↔ After. Centre never maps either way.
- * Profile Right always drives Transformation After when provided.
+ * Profile Left → Transformation Before. Centre never maps either way.
+ * Profile Right never drives Transformation After (new users get Left in both frames).
+ * Transformation After → Profile Right still applies on explicit After upload.
  */
 
 const DATA_IMAGE_RE = /^data:image\/[a-zA-Z0-9+.-]+;base64,/i;
@@ -23,12 +24,31 @@ export function testimonialHasRealAfter(row, isPlaceholder = () => false) {
 }
 
 /**
+ * Profile Right never writes Transformation After. Distinct After comes from
+ * the Transformation tab (and reverse-syncs to Profile Right).
  * @param {object|null|undefined} row
  * @param {(path: string) => boolean} [isPlaceholder]
  * @returns {boolean}
  */
 export function canSyncProfileAfterToTestimonial(_row, _isPlaceholder = () => false) {
-  return true;
+  return false;
+}
+
+const PROFILE_MAPPED_AFTER_RE = /(?:^|\/)after_\d+\.jpg(?:\?|$)/i;
+
+/**
+ * Incomplete rows used to persist Profile Right as a distinct after_*.jpg file.
+ * That is not a user-chosen Transformation After — treat it as auto-fill.
+ * @param {object|null|undefined} row
+ * @param {unknown} [afterValue]
+ * @returns {boolean}
+ */
+export function isIncompleteProfileMappedAfter(row, afterValue) {
+  const incomplete = !row?.status || row.status === 'incomplete';
+  if (!incomplete) return false;
+  const after = afterValue ?? row?.after_image_path ?? row?.afterImageUrl;
+  if (typeof after !== 'string' || !after.trim()) return false;
+  return PROFILE_MAPPED_AFTER_RE.test(after.trim());
 }
 
 /**

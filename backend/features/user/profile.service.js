@@ -44,6 +44,11 @@ import * as weightRepo from '../weight/weight.repository.js';
 import { resolveMarathonWeightComparison } from '../marathon/domain/marathonWeightComparison.service.js';
 import { persistAvatarKey, avatarUrlForKey, r2AvatarsEnabled } from './avatar-storage.service.js';
 import { isHttpsImageUrl } from '../../shared/lib/images/dataUri.js';
+import { getPublicPendingCommunityIdRequest } from './communityIdApproval.service.js';
+import {
+  COMMUNITY_ID_OTP_FLAG,
+  shouldDeferCommunityIdToOtpFlow,
+} from './domain/communityIdApproval.rules.js';
 
 const notFound = () => ({ httpStatus: 404, body: { success: false, message: 'User not found' } });
 
@@ -138,6 +143,16 @@ export async function getProfile({ email, userId = null }) {
     bmr: latestBmr,
     physicalActivityLevel,
   });
+
+  let communityIdRequest = null;
+  try {
+    communityIdRequest = await getPublicPendingCommunityIdRequest(user.UserId);
+  } catch (err) {
+    logger.warn('[profile] pending Community ID lookup failed', {
+      userId: user.UserId,
+      message: err?.message,
+    });
+  }
   const tdeeBreakdown = buildTdeeBreakdown({ bmr: latestBmr, physicalActivityLevel });
   const sponsorName = sponsorIdeal.sponsorName || null;
   // Backward-compatible alias: coachName remains the direct parent (sponsor).
@@ -205,6 +220,7 @@ export async function getProfile({ email, userId = null }) {
         latestBmr,
         physicalActivityLevel,
         communityId: user.CommunityId ?? null,
+        communityIdRequest: communityIdRequest || null,
         timezone: profileTimezone,
         consentAccepted: isConsentRecorded(user),
         consentRequired: isEnabled('ff.consent-gate') && !isConsentRecorded(user),
@@ -308,13 +324,19 @@ export async function updateProfile(input) {
   const {
     email, userId: inputUserId, name, height, bmr, dietType, profileImage, phoneNumber, gender,
     weightGoalMode, physicalActivityLevel, communityId, timezoneIana, bodyFat,
-    currentWeight, transformationPhotos,
+    currentWeight, transformationPhotos, appVersion = null,
   } = input;
+  const deferCommunityId = shouldDeferCommunityIdToOtpFlow({
+    flagEnabled: isEnabled(COMMUNITY_ID_OTP_FLAG),
+    appVersion,
+  });
+  const appliedCommunityId = deferCommunityId ? undefined : communityId;
 
   logger.info('[profile/update] incoming request', {
     email: email || null,
     userId: inputUserId || null,
     receivedCommunityId: communityId !== undefined,
+    deferredCommunityIdOtp: deferCommunityId,
     receivedBodyFat: bodyFat !== undefined,
     receivedCurrentWeight: currentWeight !== undefined,
   });
@@ -351,10 +373,11 @@ export async function updateProfile(input) {
 
   const { updateData, cleanedPhoneNumber } = buildProfileUpdate({
     ...input,
+    communityId: appliedCommunityId,
     existingTransformationPhotos: user.transformation_photos,
   });
 
-  const teamFieldsFromCommunityId = buildTeamFieldsFromProfileCommunityId(communityId);
+  const teamFieldsFromCommunityId = buildTeamFieldsFromProfileCommunityId(appliedCommunityId);
   if (teamFieldsFromCommunityId) {
     Object.assign(updateData, teamFieldsFromCommunityId);
   }
@@ -389,8 +412,11 @@ export async function updateProfile(input) {
     try { await repo.updateUserById(userId, { LastActiveAt: nowUtc() }); } catch { /* non-fatal */ }
     const verifyRow = await repo.verifyProfile(userId);
     if (!verifyRow) throw new Error(`Unable to verify profile update for UserId ${userId}`);
-    verifySaved(verifyRow, { cleanedPhoneNumber, height, dietType, gender, updateData, communityId, timezoneIana });
-    if (communityId !== undefined) savedCommunityId = communityId;
+    verifySaved(verifyRow, {
+      cleanedPhoneNumber, height, dietType, gender, updateData,
+      communityId: appliedCommunityId, timezoneIana,
+    });
+    if (appliedCommunityId !== undefined) savedCommunityId = appliedCommunityId;
   }
 
   if (transformationPhotosPatch) {
@@ -614,9 +640,9 @@ export async function updateProfile(input) {
   let teamCodeSync = null;
   try {
     const teamRow = await repo.getTeamCodeFields(userId);
-    const communityIdInRequest = communityId !== undefined;
+    const communityIdInRequest = appliedCommunityId !== undefined;
     const communityForSync = communityIdInRequest
-      ? communityId
+      ? appliedCommunityId
       : (teamRow?.CommunityId ?? null);
     teamCodeSync = await syncProfileCommunityIdToTeamAssignment(userId, communityForSync, {
       communityIdExplicitlyUpdated: communityIdInRequest,

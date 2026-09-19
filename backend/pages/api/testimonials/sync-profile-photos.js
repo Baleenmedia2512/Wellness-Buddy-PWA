@@ -1,6 +1,7 @@
 /**
  * POST /api/testimonials/sync-profile-photos
- * Profile / BCM Left·Right → testimonial Before·After without OTP.
+ * Profile / BCM Left → testimonial Before without OTP.
+ * After is created as a Left copy; Profile Right is ignored.
  */
 import { applyCors, methodNotAllowed, runService } from '../../../shared/lib/handler.js';
 import { syncProfilePhotosToTestimonial } from '../../../features/testimonials/profilePhotoSync.service.js';
