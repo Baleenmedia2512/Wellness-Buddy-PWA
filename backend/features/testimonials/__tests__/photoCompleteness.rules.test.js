@@ -12,6 +12,7 @@ import {
   isPhotoPairComplete,
   resolveHealthIssueOtpChannel,
   shouldSendPhotoApprovalOtp,
+  shouldHydratePhotosFromProfile,
 } from '../domain/photoCompleteness.rules.js';
 
 const seeded = {
@@ -58,6 +59,29 @@ describe('shouldSendPhotoApprovalOtp', () => {
       status: 'incomplete',
       before_image_path: '42/42_video_only_placeholder.jpg',
     }), false);
+  });
+
+  it('sends OTP when After is only a UI clone (empty after path)', () => {
+    const beforeOnly = {
+      status: 'incomplete',
+      before_image_path: '42/before_1700000000000.jpg',
+      after_image_path: null,
+    };
+    assert.equal(shouldSendPhotoApprovalOtp(beforeOnly), true);
+    assert.equal(resolveHealthIssueOtpChannel(beforeOnly), 'photo');
+  });
+});
+
+describe('shouldHydratePhotosFromProfile', () => {
+  it('is true when there is no row or only a video-only stub', () => {
+    assert.equal(shouldHydratePhotosFromProfile(null), true);
+    assert.equal(shouldHydratePhotosFromProfile({
+      before_image_path: '42/42_video_only_placeholder.jpg',
+    }), true);
+  });
+
+  it('is false when a real before photo is already stored', () => {
+    assert.equal(shouldHydratePhotosFromProfile(seeded), false);
   });
 });
 

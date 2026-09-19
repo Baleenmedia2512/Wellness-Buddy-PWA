@@ -502,6 +502,7 @@ if (Array.isArray(dirtySlots)) {
 const result = {
   userId: userIdN,
   dirtySlots: [...slots],
+  submitForApproval: body.submitForApproval === true,
 };
 
   if (slots.has('before')) {

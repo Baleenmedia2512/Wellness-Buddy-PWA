@@ -76,8 +76,23 @@ export function shouldSendPhotoApprovalOtp(row = {}, overlay = {}) {
   if (isPhotoPairComplete(row, overlay)) return true;
   const beforePath = overlay.beforePath ?? row.before_image_path ?? row.beforeImagePath;
   const afterPath = overlay.afterPath ?? row.after_image_path ?? row.afterImagePath;
-  return hasRealBeforePhoto({ before_image_path: beforePath })
-    && hasVisibleAfterCard({ after_image_path: afterPath });
+  if (hasRealBeforePhoto({ before_image_path: beforePath })
+    && hasVisibleAfterCard({ after_image_path: afterPath })) {
+    return true;
+  }
+  // Mine always clones After from Before when after_image_path is empty.
+  // That visible card must still start coach OTP — do not silent-save.
+  return hasRealBeforePhoto({ before_image_path: beforePath });
+}
+
+/**
+ * Video-only stubs (and missing rows) have no real Before/After in the DB even
+ * when the Mine card is showing Profile-seeded photos. Submit must hydrate
+ * those photos before deciding OTP — otherwise approval is silently skipped.
+ */
+export function shouldHydratePhotosFromProfile(row = null) {
+  if (!row) return true;
+  return !hasRealBeforePhoto(row);
 }
 
 /**
@@ -86,7 +101,7 @@ export function shouldSendPhotoApprovalOtp(row = {}, overlay = {}) {
  */
 export function resolveHealthIssueOtpChannel(row = {}) {
   const hasPhoto = isPhotoPairComplete(row)
-    || (hasRealBeforePhoto(row) && hasVisibleAfterCard(row));
+    || hasRealBeforePhoto(row);
   const hasVideo = !!(row.health_video_path || row.business_video_path
     || row.healthVideoPath || row.businessVideoPath);
   if (!hasPhoto && !hasVideo) return null;
