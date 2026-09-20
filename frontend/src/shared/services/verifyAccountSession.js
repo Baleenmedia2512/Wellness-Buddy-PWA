@@ -30,6 +30,7 @@ export function invalidateLocalAccountSession() {
  * @returns {Promise<{
  *   ok: boolean,
  *   userId?: string|number,
+ *   role?: string,
  *   sessionStale?: boolean,
  *   userNotFound?: boolean,
  *   networkError?: boolean,
@@ -82,6 +83,8 @@ export async function verifyAccountSession({ userId = null, email = null, phone 
     return {
       ok: true,
       userId: resolvedId,
+      // Server always sends role (empty DB Role → 'user'). Client must apply it.
+      role: data.role || 'user',
       sessionStale: Boolean(data.sessionStale),
     };
   } catch {

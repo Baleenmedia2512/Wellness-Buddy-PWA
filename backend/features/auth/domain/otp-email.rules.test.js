@@ -32,12 +32,17 @@ describe('buildSponsorOtpEmail', () => {
       memberName: 'Adithya',
       expiresHours: 24,
     });
-    assert.equal(mail.subject, 'Wellness Valley team code');
+    assert.equal(mail.subject, 'Adithya -Wellness Valley login request');
     assert.match(mail.text, /Adithya/);
     assert.match(mail.text, /1199/);
     assert.match(mail.html, /1199/);
     assert.equal(looksLikeSpamBait(mail.subject), false);
     assert.equal(looksLikeSpamBait(mail.text), false);
     assert.equal(looksLikeSpamBait(mail.html), false);
+  });
+
+  it('falls back when member name is missing', () => {
+    const mail = buildSponsorOtpEmail({ otp: '2200' });
+    assert.equal(mail.subject, 'A member -Wellness Valley login request');
   });
 });

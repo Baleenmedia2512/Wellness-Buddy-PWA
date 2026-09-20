@@ -138,11 +138,20 @@ export async function snoozeProfilePic(userId) {
   return res.json();
 }
 
-export async function deleteAccount(email) {
+export async function deleteAccount({ userId, confirmPhrase = 'DELETE', email } = {}) {
+  const body = {};
+  if (userId != null && String(userId).trim() !== '') {
+    body.userId = userId;
+    body.confirmPhrase = confirmPhrase;
+  } else if (email) {
+    body.email = email;
+  } else {
+    throw new Error('userId is required to delete account.');
+  }
   const res = await apiFetch(`${base()}/api/user/account`, {
     method: 'DELETE',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email }),
+    body: JSON.stringify(body),
   });
   return res.json();
 }

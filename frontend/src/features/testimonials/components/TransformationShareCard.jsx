@@ -27,15 +27,17 @@ import {
 } from '../utils/downloadVideo.js';
 import { drawImageCoverTop } from '../utils/fitContainSize.js';
 import { healthIssueShareIcon } from '../utils/healthIssueShareIcon.js';
+import {
+  CARD_H,
+  CARD_W,
+  MAX_VISIBLE_ISSUES,
+  issueColumnsForCount,
+  shareCardPhotoHeight,
+} from '../utils/shareCardLayout.js';
 
-/** 9:16 mobile portrait — 540×960 CSS px → 1080×1920 PNG @ CAPTURE_SCALE 2 */
-export const CARD_W = 540;
-export const CARD_H = 960;
-const PHOTO_H_WITH_ISSUES = 590;
-const PHOTO_H_MANY_ISSUES = 490;
-const PHOTO_H_PLAIN = 690;
+export { CARD_H, CARD_W };
+
 const TICK_SIZE = 28;
-const MAX_VISIBLE_ISSUES = 6;
 const FRAME_BG = '#f3f4f6';
 const CAPTURE_SCALE = 2;
 const CARD_FONT = "'Poppins', Arial, Helvetica, sans-serif";
@@ -409,57 +411,52 @@ function PhotoCell({ src, label, scriptLabel, weightKg, isVerified, side, photoH
   );
 }
 
-function HealthIssueChip({ label, padded = false }) {
+function HealthIssueChip({ label, widthPct }) {
+  const compact = widthPct <= 25;
+  const circle = 40;
   return (
-    <td
+    <div
       style={{
+        display: 'inline-block',
+        width: `${widthPct}%`,
         verticalAlign: 'top',
+        padding: '6px 8px 2px',
+        boxSizing: 'border-box',
         textAlign: 'center',
-        padding: padded ? '10px 4px 0' : '0 4px',
-        borderLeft: '1px solid #fbcfe8',
       }}
     >
       <div
         style={{
-          width: 52,
-          height: 52,
+          width: circle,
+          height: circle,
           margin: '0 auto',
-          borderRadius: 26,
+          borderRadius: circle / 2,
           background: '#fce7f3',
-          textAlign: 'center',
-          lineHeight: '52px',
-          fontSize: 26,
+          lineHeight: `${circle}px`,
+          fontSize: 18,
         }}
       >
-        <span
-          aria-hidden="true"
-          style={{
-            display: 'inline-block',
-            width: 36,
-            height: 36,
-            lineHeight: '36px',
-            fontSize: 27,
-            textAlign: 'center',
-            verticalAlign: 'middle',
-          }}
-        >
-          {healthIssueShareIcon(label)}
-        </span>
+        {healthIssueShareIcon(label)}
       </div>
       <p
         style={{
-          margin: '6px auto 0',
-          width: 92,
-          fontSize: 11,
+          margin: '5px 0 0',
+          padding: '0 3px',
+          fontSize: compact ? 10 : 11,
           fontWeight: 700,
           color: '#4b5563',
           lineHeight: '14px',
+          height: 28,
+          overflow: 'hidden',
+          wordWrap: 'break-word',
+          overflowWrap: 'anywhere',
           textAlign: 'center',
+          fontFamily: CARD_FONT,
         }}
       >
         {label}
       </p>
-    </td>
+    </div>
   );
 }
 
@@ -483,13 +480,12 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
   const issues = (testimonial?.recoveredHealthIssues ?? []).filter(Boolean).slice(0, MAX_VISIBLE_ISSUES);
   const durationText = testimonial?.durationText || '';
   const displayName = String(userName || 'Customer').trim() || 'Customer';
-  const photoH = issues.length > 3
-    ? PHOTO_H_MANY_ISSUES
-    : issues.length > 0
-      ? PHOTO_H_WITH_ISSUES
-      : PHOTO_H_PLAIN;
-  const issueRowA = issues.slice(0, 3);
-  const issueRowB = issues.slice(3, 6);
+  const issuesPerRow = issueColumnsForCount(issues.length);
+  const chipWidthPct = issuesPerRow > 0 ? 100 / issuesPerRow : 100;
+  const photoH = shareCardPhotoHeight({
+    issueCount: issues.length,
+    hasResultPill: Boolean(diff),
+  });
 
   return (
     <div
@@ -667,76 +663,51 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
           ) : null}
           {issues.length > 0 ? (
             <tr>
-              <td style={{ padding: '10px 8px 18px', verticalAlign: 'top' }}>
+              <td style={{ padding: '10px 10px 14px', verticalAlign: 'top' }}>
                 <div
                   style={{
                     background: '#fff1f2',
                     border: '1px solid #f9a8d4',
                     borderRadius: 16,
                     boxShadow: '0 2px 5px rgba(190, 24, 93, 0.15)',
-                    padding: issueRowB.length > 0 ? '12px 8px' : '10px 8px',
+                    padding: '10px 8px 8px',
+                    boxSizing: 'border-box',
                   }}
                 >
-                <table
-                  style={{ width: '100%', borderCollapse: 'collapse' }}
-                  cellPadding={0}
-                  cellSpacing={0}
-                >
-                  <tbody>
-                    <tr>
-                      <td style={{ width: 176, verticalAlign: 'middle', padding: '0 8px' }}>
-                        <p
-                          style={{
-                            margin: 0,
-                            fontFamily: SCRIPT_FONT,
-                            fontSize: 27,
-                            lineHeight: '36px',
-                            color: '#be185d',
-                            whiteSpace: 'nowrap',
-                          }}
-                        >
-                          Health Issues
-                        </p>
-                        <p
-                          style={{
-                            margin: '2px 0 0',
-                            fontSize: 11,
-                            fontWeight: 500,
-                            fontStyle: 'italic',
-                            color: '#9ca3af',
-                            lineHeight: '16px',
-                          }}
-                        >
-                          while joining in
-                          <br />
-                          the community :
-                        </p>
-                      </td>
-                      <td style={{ verticalAlign: 'middle' }}>
-                        <table
-                          style={{ width: '100%', borderCollapse: 'collapse' }}
-                          cellPadding={0}
-                          cellSpacing={0}
-                        >
-                          <tbody>
-                            <tr>
-                              {issueRowA.map((issue) => (
-                                <HealthIssueChip key={issue} label={issue} />
-                              ))}
-                            </tr>
-                            {issueRowB.length > 0 ? (
-                              <tr>
-                                {issueRowB.map((issue) => (
-                                  <HealthIssueChip key={issue} label={issue} padded />
-                                ))}
-                              </tr>
-                            ) : null}
-                          </tbody>
-                        </table>
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
+                  <p
+                    style={{
+                      margin: 0,
+                      fontFamily: SCRIPT_FONT,
+                      fontSize: 24,
+                      lineHeight: '30px',
+                      color: '#be185d',
+                      textAlign: 'center',
+                    }}
+                  >
+                    Health Issues
+                  </p>
+                  <p
+                    style={{
+                      margin: '1px 0 6px',
+                      fontSize: 11,
+                      fontWeight: 500,
+                      fontStyle: 'italic',
+                      color: '#9ca3af',
+                      lineHeight: '15px',
+                      textAlign: 'center',
+                    }}
+                  >
+                    while joining in the community
+                  </p>
+                  <div style={{ textAlign: 'center', fontSize: 0 }}>
+                    {issues.map((issue) => (
+                      <HealthIssueChip
+                        key={issue}
+                        label={issue}
+                        widthPct={chipWidthPct}
+                      />
+                    ))}
+                  </div>
                 </div>
               </td>
             </tr>

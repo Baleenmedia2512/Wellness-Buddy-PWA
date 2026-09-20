@@ -45,7 +45,7 @@ export async function editTestimonial(payload) {
 }
 
 /**
- * Sync Profile / BCM Left·Right onto testimonial Before·After (no OTP).
+ * Sync Profile / BCM Left onto testimonial Before (no OTP). After is not updated from Profile Right.
  * @param {{ userId, beforeImageBase64?, afterImageBase64?, beforeWeightKg?, goalType?, recoveredHealthIssues? }} payload
  */
 export async function syncProfilePhotosToTestimonial(payload) {

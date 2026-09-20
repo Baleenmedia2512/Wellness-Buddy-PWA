@@ -502,6 +502,7 @@ if (Array.isArray(dirtySlots)) {
 const result = {
   userId: userIdN,
   dirtySlots: [...slots],
+  submitForApproval: body.submitForApproval === true,
 };
 
   if (slots.has('before')) {
@@ -617,7 +618,7 @@ export function validateResendUnifiedOtp(body) {
 
 /**
  * Validate payload for POST /api/testimonials/sync-profile-photos
- * Profile / BCM Left·Right → testimonial Before·After (no OTP).
+ * Profile / BCM Left → testimonial Before (no OTP). afterImageBase64 is accepted but ignored.
  */
 export function validateSyncProfilePhotos(body) {
   if (!body) throw new ValidationError(400, 'Request body is missing');

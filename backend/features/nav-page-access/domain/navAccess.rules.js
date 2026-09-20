@@ -43,16 +43,20 @@ export const DEFAULT_NAV_ACCESS_MATRIX = Object.freeze({
 /**
  * Map account Role → matrix key.
  * `upline` shares the Sponsor (`coach`) row.
+ * A Customer (`user`) who has a team (own downline or Sponsor / Co-Sponsor
+ * seat) uses the Sponsor row — product "sponsor" is not profile Role.
  * Unknown / empty → `user` (Customer).
  *
  * @param {string|null|undefined} role
+ * @param {{ hasSponsorTeam?: boolean }} [extras]
  * @returns {'user'|'coach'|'admin'|'developer'}
  */
-export function resolveMatrixRole(role) {
+export function resolveMatrixRole(role, extras = {}) {
   const r = String(role || '').trim().toLowerCase();
   if (r === 'admin') return 'admin';
   if (r === 'developer') return 'developer';
   if (r === 'coach' || r === 'upline') return 'coach';
+  if (extras.hasSponsorTeam) return 'coach';
   return 'user';
 }
 
@@ -111,10 +115,11 @@ export function validateMatrixInput(matrix) {
 /**
  * @param {Record<string, Record<string, boolean>>} matrix
  * @param {string|null|undefined} role
+ * @param {{ hasSponsorTeam?: boolean }} [extras]
  * @returns {Record<string, boolean>}
  */
-export function pagesForRole(matrix, role) {
-  const key = resolveMatrixRole(role);
+export function pagesForRole(matrix, role, extras = {}) {
+  const key = resolveMatrixRole(role, extras);
   const normalized = normalizeMatrix(matrix);
   return normalized[key];
 }

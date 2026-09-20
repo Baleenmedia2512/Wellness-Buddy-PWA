@@ -1,5 +1,5 @@
-// CompleteProfilePage — post-OTP onboarding: remaining profile fields
-// (gender, height, diet, weight, Fat %, photo). Name/email collected earlier.
+// CompleteProfilePage — post-sponsor onboarding: remaining profile fields
+// (gender, height, diet, weight, Fat %). Email + Community ID are Profile KYC.
 import React, { useEffect, useState, useCallback } from 'react';
 import { User } from 'lucide-react';
 import { fetchProfile, saveProfile } from '../services/profileService';
@@ -267,12 +267,12 @@ const CompleteProfilePage = ({
   const pictureValid = !showPictureSection
     || hasExistingPhoto
     || !!profileImage;
-  const formValid = nameValid && emailValid && genderValid && heightValid && dietValid
+  // Name already collected on Welcome; email is Profile KYC (not this step).
+  const hideName = identityLocked;
+  const hideEmail = true;
+  const formValid = nameValid && (hideEmail || emailValid) && genderValid && heightValid && dietValid
     && currentWeightValid && fatPercentValid && pictureValid;
 
-  // Name/email already collected on Welcome / identity — never flash them here.
-  const hideName = identityLocked;
-  const hideEmail = identityLocked || emailLocked;
   const checks = [
     ...(hideName ? [] : [{ label: 'Name', done: nameValid }]),
     ...(hideEmail ? [] : [{ label: 'Email', done: emailValid }]),
@@ -307,7 +307,7 @@ const CompleteProfilePage = ({
     setError('');
     if (!formValid) {
       if (!nameValid) setError('Please enter your full name.');
-      else if (!emailValid) setError('Please enter a valid email address.');
+      else if (!hideEmail && !emailValid) setError('Please enter a valid email address.');
       else if (!genderValid) setError('Please select Male or Female.');
       else if (!heightValid) setError('Please enter a valid height (50 - 250 cm).');
       else if (!dietValid) setError('Please select a diet preference.');
@@ -326,12 +326,12 @@ const CompleteProfilePage = ({
     try {
       const uid = user?.id || user?.userId || user?.UserId;
       const hadEmail = !!(user?.email || user?.Email);
+      const accountEmail = hadEmail
+        ? String(user?.email || user?.Email).trim().toLowerCase()
+        : '';
 
-      if (!hadEmail) {
-        if (!uid) {
-          setError('Unable to identify your account. Please re-login.');
-          return;
-        }
+      // Email is verified later on Profile — do not collect it here.
+      if (!hadEmail && uid && trimmedName) {
         const base = apiBaseUrl || API;
         const res = await fetch(`${base}/api/user/save-email`, {
           method: 'POST',
@@ -339,22 +339,22 @@ const CompleteProfilePage = ({
           body: JSON.stringify({
             userId: uid,
             name: trimmedName,
-            email: trimmedEmail,
           }),
         });
         const data = await res.json();
         if (!res.ok || !data.success) {
-          setError(data.message || 'Failed to save email. Please try again.');
+          setError(data.message || 'Failed to save name. Please try again.');
           return;
         }
       }
 
       const payload = {
-        email: trimmedEmail,
         name: trimmedName,
         height: heightNum,
         dietType,
       };
+      if (uid) payload.userId = uid;
+      if (accountEmail) payload.email = accountEmail;
       if (showGender && gender) payload.gender = gender;
       if (showPictureSection && profileImage) payload.profileImage = profileImage;
       if (showCurrentWeight && isValidCurrentWeight(currentWeight)) {
@@ -383,7 +383,7 @@ const CompleteProfilePage = ({
       await saveProfile(payload);
 
       onComplete({
-        email: trimmedEmail,
+        email: accountEmail || undefined,
         userName: trimmedName,
         height: heightNum,
         dietType,
@@ -400,10 +400,10 @@ const CompleteProfilePage = ({
       setSaving(false);
     }
   }, [
-    formValid, nameValid, emailValid, genderValid, heightValid, dietValid,
+    formValid, nameValid, emailValid, hideEmail, genderValid, heightValid, dietValid,
     currentWeightValid, fatPercentValid, pictureValid,
     showPictureSection, profileImage, user, apiBaseUrl,
-    trimmedName, trimmedEmail, heightNum, dietType, showGender, gender, previewUrl, onComplete,
+    trimmedName, heightNum, dietType, showGender, gender, previewUrl, onComplete,
     showCurrentWeight, currentWeight, optionalMetrics, recoveredHealthIssues,
   ]);
 

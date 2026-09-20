@@ -10,14 +10,21 @@ import nodemailer from 'nodemailer';
 import * as repo from './testimonials.repository.js';
 import {
   hasCompletePhotoTestimonial,
+  hasRealBeforePhoto,
+  hasVisibleAfterCard,
   isPhotoPairComplete,
   resolveHealthIssueOtpChannel,
+  shouldHydratePhotosFromProfile,
+  shouldSendPhotoApprovalOtp,
 } from './domain/photoCompleteness.rules.js';
 import {
   resolveOtpRecipientIds,
   toPositiveUserId,
 } from './domain/otpRecipient.rules.js';
-import { syncTestimonialPathsToProfileSafe } from './profilePhotoSync.service.js';
+import {
+  hydrateTestimonialPhotosFromProfile,
+  syncTestimonialPathsToProfileSafe,
+} from './profilePhotoSync.service.js';
 import logger from '../../shared/lib/logger.js';
 import { ValidationError } from '../../shared/lib/ValidationError.js';
 import {
@@ -1360,11 +1367,37 @@ export async function submitAllEdits(rawBody) {
   );
   const userInfo = { coachId: recipient.coachId, userName: recipient.userName };
 
+  const slots       = new Set(payload.dirtySlots);
+  const hasPhotoDirty = slots.has('before') || slots.has('after')
+    || payload.beforeWeightKg !== undefined || payload.afterWeightKg !== undefined
+    || payload.goalType !== undefined || payload.durationText !== undefined;
+  const hasVideoDirty  = slots.has('health') || slots.has('business');
+  const hasIssuesDirty = slots.has('issues');
+  const hasPhotoBytes = Boolean(payload.beforeImageBase64 || payload.afterImageBase64)
+    || slots.has('before') || slots.has('after');
+
   let existing = await repo.findByUserId(payload.userId);
+
+  // Profile-seeded Mine cards often have no DB row (or a video-only stub).
+  // Hydrate Left → Before/After clone before OTP so submit is not a silent save.
+  if ((hasPhotoDirty || hasIssuesDirty) && shouldHydratePhotosFromProfile(existing)) {
+    const hydrated = await hydrateTestimonialPhotosFromProfile({
+      userId: payload.userId,
+      existing,
+      coachId: userInfo.coachId,
+    });
+    if (hydrated) existing = hydrated;
+  }
 
   // Unified Transformation UI keeps photos as local drafts until Submit.
   // First submit must create the row — never 404 when validation already passed.
   if (!existing) {
+    if ((hasPhotoDirty || payload.submitForApproval) && !hasPhotoBytes) {
+      throw new ValidationError(
+        422,
+        'Add before and after photos before submitting for coach approval.',
+      );
+    }
     existing = await repo.insertVideoOnlyTestimonial({
       userId:  payload.userId,
       coachId: userInfo.coachId,
@@ -1376,14 +1409,16 @@ export async function submitAllEdits(rawBody) {
       hasBeforeImage: Boolean(payload.beforeImageBase64),
       hasAfterImage: Boolean(payload.afterImageBase64),
     });
+  } else if (
+    (hasPhotoDirty || payload.submitForApproval)
+    && shouldHydratePhotosFromProfile(existing)
+    && !hasPhotoBytes
+  ) {
+    throw new ValidationError(
+      422,
+      'Add before and after photos before submitting for coach approval.',
+    );
   }
-
-  const slots       = new Set(payload.dirtySlots);
-  const hasPhotoDirty = slots.has('before') || slots.has('after')
-    || payload.beforeWeightKg !== undefined || payload.afterWeightKg !== undefined
-    || payload.goalType !== undefined || payload.durationText !== undefined;
-  const hasVideoDirty  = slots.has('health') || slots.has('business');
-  const hasIssuesDirty = slots.has('issues');
   // When the issues slot is dirty we replace with the exact incoming list so removals are honoured.
   const mergedIssues = hasIssuesDirty
     ? normalizeHealthIssuesList(payload.recoveredHealthIssues)
@@ -1462,8 +1497,26 @@ export async function submitAllEdits(rawBody) {
     afterWeightKg: photoUpdates.afterWeightKg ?? existing.after_weight_kg,
   });
 
-  // Guard: if photos still incomplete after update, no OTP needed for photo changes
-  const photoNeedsOtp = hasPhotoDirty && isComplete;
+  // Visible Before+After (including a seeded clone) + Submit for Approval → OTP.
+  // Do not wait for a distinct after path or a weight change — that left
+  // seeded cards on silent save with no coach email.
+  const photoNeedsOtp = (hasPhotoDirty || payload.submitForApproval)
+    && shouldSendPhotoApprovalOtp(existing, {
+    beforePath: newBeforePath,
+    afterPath: newAfterPath,
+    beforeWeightKg: photoUpdates.beforeWeightKg ?? existing.before_weight_kg,
+    afterWeightKg: photoUpdates.afterWeightKg ?? existing.after_weight_kg,
+    status: existing.status,
+  });
+
+  // Persist the UI After clone so the pair exists when coach reviews the email.
+  if (
+    photoNeedsOtp
+    && !hasVisibleAfterCard({ after_image_path: newAfterPath })
+    && hasRealBeforePhoto({ before_image_path: newBeforePath })
+  ) {
+    photoUpdates.afterImagePath = newBeforePath;
+  }
 
   // Validate health issues are present when completing a testimonial
   const resolvedHealthIssues = mergedIssues;

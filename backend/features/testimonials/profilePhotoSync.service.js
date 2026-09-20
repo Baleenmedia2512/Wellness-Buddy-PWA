@@ -1,26 +1,110 @@
 /**
- * Sync Profile / BCM Left·Right slots onto testimonials Before·After.
+ * Sync Profile / BCM Left slot onto testimonial Before.
+ * After stays a Left copy on create; later Left changes update Before only.
  * Keeps status incomplete and skips OTP — direct Transformation submit still owns approval.
  */
 import * as repo from './testimonials.repository.js';
 import { validateSyncProfilePhotos } from './testimonials.validators.js';
 import {
   buildProfileSlotsFromTestimonialImages,
+  canSyncProfileAfterToTestimonial,
   hasPositiveWeight,
+  isIncompleteProfileMappedAfter,
   testimonialHasRealAfter,
 } from './domain/profilePhotoSync.rules.js';
 import { resolveOtpRecipientIds, toPositiveUserId } from './domain/otpRecipient.rules.js';
 import {
   mergeTransformationPhotos,
   hasTransformationPhotoUpdates,
+  mapTransformationPhotos,
+  isStoredTransformationPhoto,
 } from '../user/domain/transformationPhotos.rules.js';
 import { getSupabaseClient } from '../../utils/supabaseClient.js';
 import logger from '../../shared/lib/logger.js';
+import { shouldHydratePhotosFromProfile } from './domain/photoCompleteness.rules.js';
 
 const FALLBACK_DURATION = '1 days';
 
 function storagePath(userId, side, timestamp) {
   return `${userId}/${side}_${timestamp}.jpg`;
+}
+
+const DATA_IMAGE_RE = /^data:image\/[a-zA-Z0-9+.-]+;base64,/;
+
+async function loadProfileLeftPhoto(userId) {
+  const supabase = getSupabaseClient();
+  const { data: row, error } = await supabase
+    .from('team_table')
+    .select('transformation_photos')
+    .eq('UserId', userId)
+    .maybeSingle();
+  if (error) throw error;
+  const slots = mapTransformationPhotos(row?.transformation_photos);
+  return isStoredTransformationPhoto(slots.left) ? slots.left : null;
+}
+
+async function persistLeftAsBeforePath(userId, leftUrl) {
+  if (DATA_IMAGE_RE.test(leftUrl)) {
+    const beforePath = storagePath(userId, 'before', Date.now());
+    await repo.uploadImage(leftUrl, beforePath);
+    return beforePath;
+  }
+  return leftUrl;
+}
+
+/**
+ * Copy Profile Left onto a missing / video-only testimonial so Submit for
+ * Approval sees a visible Before+After pair (clone) and can send coach OTP.
+ * Does not mark verified and does not send OTP.
+ *
+ * @param {{ userId: number, existing?: object|null, coachId?: number|null }} input
+ * @returns {Promise<object|null>}
+ */
+export async function hydrateTestimonialPhotosFromProfile({ userId, existing = null, coachId = null }) {
+  if (existing && !shouldHydratePhotosFromProfile(existing)) {
+    return existing;
+  }
+
+  const leftUrl = await loadProfileLeftPhoto(userId);
+  if (!leftUrl) return existing ?? null;
+
+  const beforePath = await persistLeftAsBeforePath(userId, leftUrl);
+  const weight = hasPositiveWeight(existing?.before_weight_kg)
+    ? existing.before_weight_kg
+    : 0;
+
+  if (!existing) {
+    if (!coachId) return null;
+    const row = await repo.insertTestimonial({
+      userId,
+      coachId,
+      beforeImagePath: beforePath,
+      afterImagePath: beforePath,
+      beforeWeightKg: weight,
+      afterWeightKg: weight,
+      goalType: 'loss',
+      durationText: FALLBACK_DURATION,
+      status: 'incomplete',
+      otpHash: null,
+      otpExpiresAt: null,
+    });
+    logger.info('[profilePhotoSync] hydrated new incomplete testimonial from profile Left', {
+      userId,
+      testimonialId: row.id,
+    });
+    return row;
+  }
+
+  await repo.updateTestimonial(existing.id, {
+    beforeImagePath: beforePath,
+    afterImagePath: beforePath,
+    status: 'incomplete',
+  });
+  logger.info('[profilePhotoSync] hydrated placeholder testimonial from profile Left', {
+    userId,
+    testimonialId: existing.id,
+  });
+  return repo.findByUserId(userId);
 }
 
 async function resolveCoachIdForSync(userId) {
@@ -51,7 +135,7 @@ export async function syncProfilePhotosToTestimonial(rawBody) {
     recoveredHealthIssues,
   } = payload;
 
-  if (!beforeImageBase64 && !afterImageBase64 && beforeWeightKg == null) {
+  if (!beforeImageBase64 && beforeWeightKg == null) {
     return { httpStatus: 200, body: { success: true, skipped: true, reason: 'nothing_to_sync' } };
   }
 
@@ -72,11 +156,9 @@ export async function syncProfilePhotosToTestimonial(rawBody) {
 
     const beforePath = storagePath(userId, 'before', ts);
     await repo.uploadImage(beforeImageBase64, beforePath);
-    let afterPath = beforePath;
-    if (afterImageBase64) {
-      afterPath = storagePath(userId, 'after', ts);
-      await repo.uploadImage(afterImageBase64, afterPath);
-    }
+    // New users: After starts as the same Left/Before image. Distinct After is
+    // set later from the Transformation tab, not from Profile Right.
+    const afterPath = beforePath;
 
     const row = await repo.insertTestimonial({
       userId,
@@ -102,6 +184,15 @@ export async function syncProfilePhotosToTestimonial(rawBody) {
 
   const updates = {};
   const hasCompleteAfter = testimonialHasRealAfter(existing, repo.isVideoOnlyPlaceholder);
+  if (
+    !hasCompleteAfter
+    && isIncompleteProfileMappedAfter(existing, existing.after_image_path)
+    && existing.before_image_path
+  ) {
+    // Snap After back to the current Left/Before clone, then leave After alone
+    // on later Left updates (new before_* paths do not match after_*).
+    updates.afterImagePath = existing.before_image_path;
+  }
 
   if (beforeImageBase64) {
     const beforePath = storagePath(userId, 'before', ts);
@@ -112,11 +203,10 @@ export async function syncProfilePhotosToTestimonial(rawBody) {
     }
   }
 
-  if (afterImageBase64) {
+  if (afterImageBase64 && canSyncProfileAfterToTestimonial(existing, repo.isVideoOnlyPlaceholder)) {
     const afterPath = storagePath(userId, 'after', ts);
     await repo.uploadImage(afterImageBase64, afterPath);
     updates.afterImagePath = afterPath;
-    // Profile Right always wins — reset approval so sponsor re-verifies the new After.
     updates.status = 'incomplete';
     updates.otpHash = null;
     updates.otpExpiresAt = null;

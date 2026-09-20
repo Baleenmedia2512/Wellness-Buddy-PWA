@@ -22,13 +22,17 @@ function cropPortraitCover(src, pixels, rotation) {
   return getCroppedImg(src, pixels, rotation, PORTRAIT_CROP_OPTS);
 }
 
+/** Above onboarding full-screens (zIndex 9999) so Adjust/Done is reachable. */
+const DEFAULT_CROP_Z_INDEX = 10050;
+
 /**
  * @param {{
  *   onApply: (dataUrl: string, key?: string) => void | Promise<void>,
  *   onError?: (message: string) => void,
+ *   zIndex?: number,
  * }} opts
  */
-export default function usePortraitCoverCrop({ onApply, onError } = {}) {
+export default function usePortraitCoverCrop({ onApply, onError, zIndex = DEFAULT_CROP_Z_INDEX } = {}) {
   const lastSourceRef = useRef({});
   const pendingKeyRef = useRef('default');
   const onApplyRef = useRef(onApply);
@@ -74,7 +78,7 @@ export default function usePortraitCoverCrop({ onApply, onError } = {}) {
       {...cropper}
       onCancel={cropper.cancelCropper}
       onDone={cropper.apply}
-      zIndex={380}
+      zIndex={zIndex}
     />
   ) : null;
 

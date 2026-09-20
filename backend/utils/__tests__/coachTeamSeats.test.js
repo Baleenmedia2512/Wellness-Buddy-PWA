@@ -6,6 +6,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   buildTeamTableClearOnCancelRequest,
+  isSponsorTeamAccess,
   resolveInactiveTeamSeatAssignment,
   resolveMemberCoachTeamId,
 } from '../coachTeamSeats.js';
@@ -75,6 +76,19 @@ describe('buildTeamTableClearOnCancelRequest', () => {
     assert.deepEqual(buildTeamTableClearOnCancelRequest({ coachId: 42 }), {
       TeamId: null,
     });
+  });
+});
+
+describe('isSponsorTeamAccess', () => {
+  it('is true for own downline or a lead seat', () => {
+    assert.equal(isSponsorTeamAccess({ hasOwnDownline: true }), true);
+    assert.equal(isSponsorTeamAccess({ seat: 'sponsor' }), true);
+    assert.equal(isSponsorTeamAccess({ seat: 'co-sponsor' }), true);
+  });
+
+  it('is false for a customer with no team', () => {
+    assert.equal(isSponsorTeamAccess({}), false);
+    assert.equal(isSponsorTeamAccess({ hasOwnDownline: false, seat: null }), false);
   });
 });
 
