@@ -1,6 +1,6 @@
 /**
  * Compact sticky meal tray — keep search usable while building a meal.
- * Thumbs + +N | Edit (opens sheet) | Save Meal
+ * Thumbs + +N | Edit (opens sheet) | Clear all | Save Meal
  */
 import React from 'react';
 import { ChevronUp } from 'lucide-react';
@@ -19,6 +19,7 @@ export default function FloatingMealTray({
   totalKcal = 0,
   onOpenSheet,
   onSave,
+  onClear,
   className = '',
 }) {
   const count = items.length;
@@ -59,6 +60,14 @@ export default function FloatingMealTray({
             </p>
           </div>
           <ChevronUp className="w-4 h-4 text-green-700 flex-shrink-0" aria-hidden />
+        </button>
+
+        <button
+          type="button"
+          onClick={onClear}
+          className="flex-shrink-0 px-2.5 py-3 text-xs font-semibold text-green-700 hover:text-green-800 active:text-green-900"
+        >
+          Clear all
         </button>
 
         <button
