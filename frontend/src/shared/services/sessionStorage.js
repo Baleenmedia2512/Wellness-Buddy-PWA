@@ -273,6 +273,19 @@ export const markPendingClassifyAwaitingShare = () => {
 export const clearPendingClassifyCapture = () => safeRemove("pendingClassifyCapture");
 
 /**
+ * Tab nav must stay locked while Classify / Manual Entry is open OR while a
+ * pendingClassifyCapture snapshot exists (including the race before the
+ * deferred idle write lands). Used by navigateTo / showDashboardPage.
+ *
+ * @param {boolean} [showManualEntry=false]
+ * @returns {boolean}
+ */
+export const isClassifyCaptureNavLocked = (showManualEntry = false) => {
+  if (showManualEntry) return true;
+  return !!getPendingClassifyCapture()?.captureId;
+};
+
+/**
  * Guard for deferred pendingClassifyCapture writes (requestIdleCallback).
  * After Cancel/leave, App marks the classify session abandoned; a late idle
  * callback must not resurrect the tab-nav lock.
