@@ -97,14 +97,23 @@ function formatKg(value) {
 }
 
 /**
+ * Absolute weight delta for captions/UI: < 1 kg → grams, else kg.
+ * @param {number} absKg
+ * @returns {string} e.g. "300 g" or "1.5 kg"
+ */
+export function formatWeightDeltaAmount(absKg) {
+  const n = Number(absKg);
+  if (!Number.isFinite(n) || n <= 0) return '';
+  if (n < 1) return `${Math.round(n * 1000)} g`;
+  return `${Math.round(n * 100) / 100} kg`;
+}
+
+/**
  * Day-to-day deltas (< 1 kg) in grams; larger swings stay in kg.
  * @param {'Increased'|'Decreased'} verb
  * @param {number} absKg
  */
 function formatDeltaChangeLabel(verb, absKg) {
-  if (absKg < 1) {
-    const grams = Math.round(absKg * 1000);
-    return `${verb} by ${grams} g`;
-  }
-  return `${verb} by ${absKg} kg`;
+  const amount = formatWeightDeltaAmount(absKg);
+  return amount ? `${verb} by ${amount}` : `${verb} by 0 kg`;
 }

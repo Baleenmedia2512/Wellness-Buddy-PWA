@@ -43,7 +43,7 @@ export function formatMarathonKgValue(value) {
 export function formatMarathonDayChangeSuffix(direction, weightDifference) {
   if (direction === 'unchanged' || weightDifference == null) return '';
   const abs = roundMarathonWeightKg(Math.abs(weightDifference));
-  const arrow = direction === 'decrease' ? '↓' : '↑';
+  const arrow = direction === 'decrease' ? '⬇️' : '⬆️';
   return ` ${arrow} ${abs.toFixed(2)} kg`;
 }
 
