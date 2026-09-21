@@ -118,6 +118,50 @@ export function comboKeyFromFoods(foods) {
 }
 
 /**
+ * Snap to half-serving steps (0.5, 1, 1.5, …); minimum 0.5.
+ * @param {number} n
+ * @returns {number}
+ */
+export function snapHalfServing(n) {
+  const x = Number(n);
+  if (!Number.isFinite(x) || x <= 0) return 1;
+  return Math.max(0.5, Math.round(x * 2) / 2);
+}
+
+/**
+ * Resolve logged quantity from a saved food (explicit servings, portion text, or weight ratio).
+ * @param {object|null|undefined} food
+ * @param {{ reference_weight_g?: number }|null|undefined} [catalogRow]
+ * @returns {number}
+ */
+export function resolveServingsFromFood(food, catalogRow = null) {
+  const explicit = Number(food?.servings ?? food?.servingCount);
+  if (Number.isFinite(explicit) && explicit > 0) return snapHalfServing(explicit);
+
+  const portion = String(food?.portion || food?.portion_label || '').trim();
+  if (portion) {
+    const mult = portion.match(/^(\d+(?:\.\d+)?)\s*[×x]/i);
+    if (mult) {
+      const n = Number(mult[1]);
+      if (Number.isFinite(n) && n > 0) return snapHalfServing(n);
+    }
+    const srv = portion.match(/^(\d+(?:\.\d+)?)\s*servings?\b/i);
+    if (srv) {
+      const n = Number(srv[1]);
+      if (Number.isFinite(n) && n > 0) return snapHalfServing(n);
+    }
+  }
+
+  const weight = Number(food?.weight_g);
+  const refW = Number(catalogRow?.reference_weight_g);
+  if (Number.isFinite(weight) && weight > 0 && Number.isFinite(refW) && refW > 0) {
+    return snapHalfServing(weight / refW);
+  }
+
+  return 1;
+}
+
+/**
  * Most frequent combo; ties keep the first (newest-first) occurrence.
  * @param {{ foods: { name: string, key: string, food: object }[] }[]} intakes
  * @returns {{ items: { name: string, key: string, food: object }[], count: number, comboKey: string }}

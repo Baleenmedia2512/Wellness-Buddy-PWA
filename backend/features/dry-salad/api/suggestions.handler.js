@@ -20,51 +20,64 @@ import {
   intakeSlotFromAnalysis,
   parseAnalysisData,
   pickUsualCombo,
+  resolveServingsFromFood,
 } from '../domain/comboSuggestions.rules.js';
 import { slotFromTimeOfDay } from '../domain/timeSlots.rules.js';
 
 const PROVIDER_ID = 'slot-combo-v1';
 
-function flattenHistoryFood(item) {
+function flattenHistoryFood(item, servings = 1) {
   const src = item?.food || {};
   const nutrition = (src.nutrition && typeof src.nutrition === 'object')
     ? src.nutrition
     : src;
-  const calories = Number(nutrition.calories);
-  const protein = Number(nutrition.protein);
-  const carbs = Number(nutrition.carbs);
-  const fat = Number(nutrition.fat);
-  const fiber = Number(nutrition.fiber);
-  const weight = Number(src.weight_g);
+  const scale = servings > 0 ? servings : 1;
+  const per = (raw) => {
+    const n = Number(raw);
+    if (!Number.isFinite(n)) return null;
+    return Math.round((n / scale) * 10) / 10;
+  };
+  const calories = per(nutrition.calories);
+  const protein = per(nutrition.protein);
+  const carbs = per(nutrition.carbs);
+  const fat = per(nutrition.fat);
+  const fiber = per(nutrition.fiber);
+  const weightTotal = Number(src.weight_g);
+  const weightPer = Number.isFinite(weightTotal) && weightTotal > 0
+    ? Math.round(weightTotal / scale)
+    : 100;
   return {
     name: item.name,
     source: 'history',
-    calories: Number.isFinite(calories) ? Math.round(calories) : null,
-    protein: Number.isFinite(protein) ? Math.round(protein) : null,
-    carbs: Number.isFinite(carbs) ? Math.round(carbs) : null,
-    fat: Number.isFinite(fat) ? Math.round(fat) : null,
-    fiber: Number.isFinite(fiber) ? Math.round(fiber) : null,
-    weight_g: Number.isFinite(weight) && weight > 0 ? Math.round(weight) : 100,
+    calories: calories != null ? Math.round(calories) : null,
+    protein: protein != null ? Math.round(protein) : null,
+    carbs: carbs != null ? Math.round(carbs) : null,
+    fat: fat != null ? Math.round(fat) : null,
+    fiber: fiber != null ? Math.round(fiber) : null,
+    weight_g: weightPer > 0 ? weightPer : 100,
     portion: src.portion || src.portion_label || null,
+    servings,
     nutrition: {
-      calories: Number.isFinite(calories) ? Math.round(calories) : null,
-      protein: Number.isFinite(protein) ? Math.round(protein) : null,
-      carbs: Number.isFinite(carbs) ? Math.round(carbs) : null,
-      fat: Number.isFinite(fat) ? Math.round(fat) : null,
-      fiber: Number.isFinite(fiber) ? Math.round(fiber) : null,
+      calories: calories != null ? Math.round(calories) : null,
+      protein: protein != null ? Math.round(protein) : null,
+      carbs: carbs != null ? Math.round(carbs) : null,
+      fat: fat != null ? Math.round(fat) : null,
+      fiber: fiber != null ? Math.round(fiber) : null,
     },
   };
 }
 
 function toSearchItem(item, catalogByKey) {
   const row = catalogByKey.get(item.key);
+  const servings = resolveServingsFromFood(item.food, row);
   if (row) {
     return {
       ...profileToSearchItem(row),
       source: 'dry-salad',
+      servings,
     };
   }
-  return flattenHistoryFood(item);
+  return flattenHistoryFood(item, servings);
 }
 
 /**

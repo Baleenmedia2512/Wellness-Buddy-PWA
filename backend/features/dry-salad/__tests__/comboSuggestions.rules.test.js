@@ -12,6 +12,7 @@ import {
   intakeSlotFromAnalysis,
   normalizeItemKey,
   pickUsualCombo,
+  resolveServingsFromFood,
 } from '../domain/comboSuggestions.rules.js';
 
 const CATALOG = buildCatalogIndex([
@@ -86,6 +87,18 @@ describe('comboSuggestions.rules', () => {
     ]);
     assert.equal(picked.count, 1);
     assert.deepEqual(picked.items.map((f) => f.name), ['Formula 1']);
+  });
+
+  it('resolveServingsFromFood prefers explicit servings and portion multipliers', () => {
+    assert.equal(resolveServingsFromFood({ servings: 0.5 }), 0.5);
+    assert.equal(resolveServingsFromFood({ servings: 1.5 }), 1.5);
+    assert.equal(resolveServingsFromFood({ portion: '0.5 × 1 serving' }), 0.5);
+    assert.equal(resolveServingsFromFood({ portion: '2 servings' }), 2);
+    assert.equal(
+      resolveServingsFromFood({ weight_g: 50 }, { reference_weight_g: 100 }),
+      0.5,
+    );
+    assert.equal(resolveServingsFromFood({}), 1);
   });
 
   it('evening does not pick an afternoon combo', () => {
