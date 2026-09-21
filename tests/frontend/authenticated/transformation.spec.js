@@ -581,7 +581,12 @@ test.describe('Transformation Module (Testimonials Hub)', () => {
 
     // Upload a new Before photo to make photos dirty
     await transformationPage.beforePhotoInput.setInputFiles(photoPath);
-    await page.waitForTimeout(1000);
+    const doneBtn = page.getByRole('button', { name: 'Done', exact: true });
+    if (await doneBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
+      await doneBtn.click();
+      await doneBtn.waitFor({ state: 'detached', timeout: 5000 }).catch(() => {});
+    }
+    await page.waitForTimeout(500);
 
     // Click Submit for Approval
     await transformationPage.clickSubmitForApproval();
