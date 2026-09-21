@@ -16,7 +16,14 @@ import {
 /**
  * Admin / developer — role × page access matrix (DB-backed, no redeploy).
  */
-export default function NavPageAccessSetup({ user, apiBaseUrl, onBack, embedded = false }) {
+export default function NavPageAccessSetup({
+  user,
+  apiBaseUrl,
+  onBack,
+  embedded = false,
+  /** Called after a successful Save so the live app nav can refresh immediately. */
+  onSaved,
+}) {
   const [matrix, setMatrix] = useState(() => normalizeNavAccessMatrix(null));
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -78,6 +85,8 @@ export default function NavPageAccessSetup({ user, apiBaseUrl, onBack, embedded 
       setSavedFlash(true);
       if (savedFlashTimerRef.current) clearTimeout(savedFlashTimerRef.current);
       savedFlashTimerRef.current = setTimeout(() => setSavedFlash(false), 2000);
+      // Refresh this device's nav tabs now (no app restart / redeploy).
+      await Promise.resolve(onSaved?.());
     } catch (err) {
       setError(err?.message || 'Failed to save');
     } finally {
