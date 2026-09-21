@@ -19,8 +19,8 @@ const inputCls =
   'w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none';
 
 const SEAT_LABEL = {
-  sponsor: 'Sponsor',
-  'co-sponsor': 'Co-Sponsor',
+  sponsor: 'Joint seat (1st)',
+  'co-sponsor': 'Joint seat (2nd)',
 };
 
 const CommunityIdField = ({
@@ -74,11 +74,11 @@ const CommunityIdField = ({
         </div>
         {teamSeat && (
           <p className="text-xs text-green-700 font-medium mt-1.5">
-            Role: {SEAT_LABEL[teamSeat] || teamSeat}
+            Coaching team: {SEAT_LABEL[teamSeat] || teamSeat} — not Sponsor access until you have members
           </p>
         )}
         <p className="text-xs text-gray-500 mt-1">
-          Optional team code for Sponsor / Co-Sponsor. Tap Save Profile after editing.
+          Optional team code for joint coaching account (up to 2 people). Tap Save Profile after editing.
         </p>
         <p className="text-xs text-gray-400 mt-0.5">
           {(communityId || '').length}/{COMMUNITY_ID_MAX_LENGTH} · Min {COMMUNITY_ID_MIN_LENGTH} · Letters and numbers only
@@ -115,7 +115,7 @@ const CommunityIdField = ({
         <>
           {teamSeat && (
             <p className="text-xs text-green-700 font-medium mt-1.5">
-              Role: {SEAT_LABEL[teamSeat] || teamSeat}
+              Coaching team: {SEAT_LABEL[teamSeat] || teamSeat} — not Sponsor access until you have members
             </p>
           )}
          
@@ -125,8 +125,9 @@ const CommunityIdField = ({
       {!confirmed && !pending && (
         <>
           <p className="text-xs text-gray-500 mt-1">
-            Enter a new code to become Sponsor, or an existing code to request Co-Sponsor.
-            Your sponsor must approve with a 24-hour code.
+            Enter a new code to open a joint coaching account (1st seat), or an existing
+            code to join as 2nd seat. Approval uses a 24-hour code. This does not grant
+            Sponsor nav — that starts when you have downline members.
           </p>
           <button
             type="button"

@@ -33,7 +33,7 @@ describe('resolveMatrixRole', () => {
     assert.equal(resolveMatrixRole('developer'), 'developer');
   });
 
-  it('elevates a customer with a team to Sponsor (coach) without changing admin', () => {
+  it('elevates a customer with downline (hasSponsorTeam) to Sponsor pages', () => {
     assert.equal(resolveMatrixRole('user', { hasSponsorTeam: true }), 'coach');
     assert.equal(resolveMatrixRole('user', { hasSponsorTeam: false }), 'user');
     assert.equal(resolveMatrixRole('', { hasSponsorTeam: true }), 'coach');

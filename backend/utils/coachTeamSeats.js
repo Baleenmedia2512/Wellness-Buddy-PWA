@@ -102,19 +102,23 @@ export async function resolveLeadSeatForUser(supabase, userId) {
 }
 
 /**
- * Same product rule as GET /api/team/has-members:
- * own CoachId downline, or Sponsor / Co-Sponsor on an active coach team.
+ * Product "Sponsor access" (nav, team search, report scope):
+ * only when this user has at least one member with CoachId = them.
+ *
+ * Community ID / coach_teams Sponsor|Co-Sponsor seats are a joint coaching
+ * account (max 2 leads) — they do NOT grant Sponsor access by themselves.
  *
  * @param {{ hasOwnDownline?: boolean, seat?: string|null }} args
  * @returns {boolean}
  */
-export function isSponsorTeamAccess({ hasOwnDownline = false, seat = null } = {}) {
-  return Boolean(hasOwnDownline) || seat === 'sponsor' || seat === 'co-sponsor';
+export function isSponsorTeamAccess({ hasOwnDownline = false } = {}) {
+  return Boolean(hasOwnDownline);
 }
 
 /**
  * True when this user should get Sponsor UI (nav, team search, report scope)
  * even if team_table.Role is still `user`.
+ * Requires own downline — not merely a Community ID lead seat.
  *
  * @param {object} supabase
  * @param {number|string} userId
@@ -131,13 +135,8 @@ export async function userHasSponsorTeam(supabase, userId) {
 
   if (error) throw error;
 
-  const seat = (count ?? 0) > 0
-    ? { seat: null }
-    : await resolveLeadSeatForUser(supabase, id);
-
   return isSponsorTeamAccess({
     hasOwnDownline: (count ?? 0) > 0,
-    seat: seat.seat,
   });
 }
 

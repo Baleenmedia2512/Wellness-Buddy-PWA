@@ -16,7 +16,14 @@ import {
 /**
  * Admin / developer — role × page access matrix (DB-backed, no redeploy).
  */
-export default function NavPageAccessSetup({ user, apiBaseUrl, onBack, embedded = false }) {
+export default function NavPageAccessSetup({
+  user,
+  apiBaseUrl,
+  onBack,
+  embedded = false,
+  /** Called after a successful Save so the live app nav can refresh immediately. */
+  onSaved,
+}) {
   const [matrix, setMatrix] = useState(() => normalizeNavAccessMatrix(null));
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -78,6 +85,8 @@ export default function NavPageAccessSetup({ user, apiBaseUrl, onBack, embedded 
       setSavedFlash(true);
       if (savedFlashTimerRef.current) clearTimeout(savedFlashTimerRef.current);
       savedFlashTimerRef.current = setTimeout(() => setSavedFlash(false), 2000);
+      // Refresh this device's nav tabs now (no app restart / redeploy).
+      await Promise.resolve(onSaved?.());
     } catch (err) {
       setError(err?.message || 'Failed to save');
     } finally {
@@ -177,9 +186,10 @@ export default function NavPageAccessSetup({ user, apiBaseUrl, onBack, embedded 
 
             <p className="mt-3 text-[11px] leading-relaxed text-gray-500">
               Sponsor uses the coach role. Upline accounts share Sponsor access.
-              A customer who has team members (or a Sponsor / Co-Sponsor seat)
-              also uses Sponsor pages — their account role may still be Customer.
-              Reports also needs the Reports feature flag.
+              A customer gets Sponsor pages only after they have downline members
+              (CoachId = them) — Community ID / joint coaching seat alone does not.
+              Their account role may still be Customer. Reports also needs the
+              Reports feature flag.
             </p>
 
             <div className="mt-4 flex items-center gap-3">

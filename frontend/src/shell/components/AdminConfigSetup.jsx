@@ -45,6 +45,8 @@ export default function AdminConfigSetup({
   apiBaseUrl,
   onBack,
   initialTab = ADMIN_CONFIG_TABS.WELLNESS_SCORE,
+  /** Refetch live nav ACL after Page Access save (mobile + web). */
+  onNavAccessSaved,
 }) {
   const wellnessScoreEnabled = isFlagEnabled('ff.wellness-score-sheet');
   const aiCreditsEnabled = isFlagEnabled('ff.ai-credits');
@@ -266,6 +268,7 @@ export default function AdminConfigSetup({
             user={user}
             apiBaseUrl={apiBaseUrl}
             embedded
+            onSaved={onNavAccessSaved}
           />
         </div>
       )}
