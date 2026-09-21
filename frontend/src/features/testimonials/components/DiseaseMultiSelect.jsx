@@ -2,7 +2,7 @@
  * DiseaseMultiSelect.jsx
  * Filter-style multi-select for Health Issues (chips inside the search field).
  * Shared by Transformation testimonials and Body Parameters Card.
- * No heart icon — label is "Health Issues".
+ * Label: "Health Issues while joining this community".
  */
 import React, { useEffect, useRef, useState } from 'react';
 import { Search, X, Plus, ChevronDown } from 'lucide-react';
@@ -191,8 +191,8 @@ export default function DiseaseMultiSelect({
 
   return (
     <div className="flex flex-col gap-1" ref={rootRef}>
-      <label className="text-xs font-semibold text-indigo-800 uppercase tracking-wide">
-        Health Issues
+      <label className="text-xs font-semibold text-indigo-800 tracking-wide">
+        Health Issues while joining this community
         <span className="ml-1 font-normal normal-case tracking-normal text-indigo-400">
           ({required ? 'required' : 'optional'} · up to {maxItems})
         </span>

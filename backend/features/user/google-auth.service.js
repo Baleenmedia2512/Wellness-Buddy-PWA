@@ -72,6 +72,7 @@ export async function saveGoogleUser({
     TargetWeightInKg: 0,
     Status: 'Active',
     CoachApproved: 0,
+    Role: 'user',
     Email: email,
   };
   if (photoURL) insertPayload.ProfileImage = photoURL;

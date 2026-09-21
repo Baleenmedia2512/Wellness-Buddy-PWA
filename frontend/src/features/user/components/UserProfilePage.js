@@ -14,7 +14,7 @@
 // user has a phone number from auth, the app checks for a counselling lead
 // record with the same phone and pre-populates the form fields.
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, LogOut, Trash2, CheckCircle, Sparkles, Camera } from 'lucide-react';
+import { ArrowLeft, LogOut, Trash2, CheckCircle, Sparkles, Camera, KeyRound } from 'lucide-react';
 import { getUserContext } from '../../../shared/services/userIdentity';
 import * as Session from '../../../shared/services/sessionStorage';
 import {
@@ -22,11 +22,12 @@ import {
   setAutoCameraOnResumeEnabled,
 } from '../../../shared/utils/autoCameraPreference';
 import useProfileForm from '../hooks/useProfileForm';
-import { fetchProfile, saveProfile } from '../services/profileService';
+import { fetchProfile, saveProfile, requestCommunityId, verifyCommunityIdOtp } from '../services/profileService';
 import { syncMarathonWeightComparisonFromProfile } from '../../marathon/marathonWeightComparisonCache';
 import { loadProfileMarathonWeightComparison } from '../../marathon';
 import { fetchMyAssessment, fetchLeadByPhone } from '../../counselling/services/counsellingApi';
 import UserProfileFields from './profile/UserProfileFields';
+import ProfileEmailKycSection from './profile/ProfileEmailKycSection';
 import UserProfileBodyMetrics from './profile/UserProfileBodyMetrics';
 import IdealWeightCards from './profile/IdealWeightCards';
 import DietDropdown from './profile/DietDropdown';
@@ -37,12 +38,16 @@ import BathroomScaleIcon from '../../../shared/components/icons/BathroomScaleIco
 import { deriveWeightGoalMode } from '../../weight/services/weightFormService';
 import DeleteAccountModal from './DeleteAccountModal';
 import ChangeProfilePhotoModal from './ChangeProfilePhotoModal';
+import ProfilePhotoViewer from './picture/ProfilePhotoViewer';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
 import { invalidateHasTeamMembersCache } from '../../team/services/teamSearchService';
 import { bumpAvatarDisplayVersion } from '../services/avatarDisplayVersion';
 import { getProfile } from '../services/user.api';
 import useTransformationPhotos from '../hooks/useTransformationPhotos';
 import { persistOnboardingTestimonialPhotos } from '../services/persistOnboardingTestimonialPhotos';
+import { hasValidProfileName } from '../domain/profileCompleteness';
+import { isFlagEnabled } from '../../../config/featureFlags';
+import { COMMUNITY_ID_OTP_FLAG } from '../domain/communityId';
 
 const COLORS = ['bg-blue-500', 'bg-green-500', 'bg-purple-500', 'bg-pink-500', 'bg-indigo-500', 'bg-yellow-500', 'bg-red-500', 'bg-teal-500'];
 const colorOf = (name, email) => COLORS[(name || email || '').length % COLORS.length];
@@ -79,13 +84,20 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
   const [coachName, setCoachName] = useState('');
   const [idealCoachName, setIdealCoachName] = useState('');
   const [teamSeat, setTeamSeat] = useState(null);
+  const [communityIdRequest, setCommunityIdRequest] = useState(null);
+  const [communityIdBusy, setCommunityIdBusy] = useState(false);
+  const [communityIdError, setCommunityIdError] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
   const [hasSaved, setHasSaved] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [emailKycMode, setEmailKycMode] = useState('verify'); // verify | recover
+  const emailKycRef = useRef(null);
   const [showChangePhotoModal, setShowChangePhotoModal] = useState(false);
+  const [showPhotoViewer, setShowPhotoViewer] = useState(false);
+  const [startPhotoRecrop, setStartPhotoRecrop] = useState(false);
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
   const [leadPreFilled, setLeadPreFilled] = useState(false); // true once we've pre-filled from lead
   const leadPreFilledRef = useRef(false);
@@ -98,22 +110,37 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
     [user, form.email],
   );
 
+  // Stable identity for loads — never depend on form.email (reload updates it and
+  // would re-trigger loadProfile forever → Personal Details spinner stuck).
+  const sessionEmail = useMemo(
+    () => resolveAccountEmail(user, null),
+    [user],
+  );
+  const sessionUserId = user?.id || user?.UserId || user?.userId || null;
+
   const loadProfile = useCallback(async ({ cacheBust = true } = {}) => {
-    const emailKey = resolveAccountEmail(user, form.email);
-    if (!emailKey && !user?.id) {
+    const emailKey = sessionEmail;
+    const uid = sessionUserId;
+    if (!emailKey && !uid) {
       setIsLoading(false);
       return;
     }
     setIsLoading(true);
     setError('');
     try {
-      const { data } = await fetchProfile({
-        email: emailKey || undefined,
-        userId: user?.id || undefined,
-        cacheBust,
-      });
+      // Prefer userId when both exist so we always load the signed-in row.
+      const { data } = await fetchProfile(
+        uid
+          ? { userId: uid, cacheBust }
+          : { email: emailKey, cacheBust },
+      );
+      if (!data) {
+        setError('Failed to load profile.');
+        setIsLoading(false);
+        return;
+      }
       const profileData = {
-        name: data?.userName || user.name || '',
+        name: data?.userName || '',
         height: data?.height ? String(data.height) : '',
         phone: data?.phoneNumber || '',
         dietType: data?.dietType || '',
@@ -129,6 +156,8 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
         communityId: (() => {
           const fromProfile = data?.communityId != null ? String(data.communityId).trim() : '';
           if (fromProfile) return fromProfile;
+          const pendingCode = data?.communityIdRequest?.communityId;
+          if (pendingCode) return String(pendingCode).trim();
           if (data?.teamId) return String(data.teamId).trim();
           return '';
         })(),
@@ -146,7 +175,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
       setMarathonWeightComparison(comparisonFromServer);
       syncMarathonWeightComparisonFromProfile(data);
       void loadProfileMarathonWeightComparison({
-        userId: user?.id,
+        userId: uid,
         timezoneSource: data?.timezone || user,
         fromProfile: comparisonFromServer,
       }).then((resolved) => {
@@ -161,6 +190,8 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
       );
       setIdealCoachName(data?.idealCoachName ? String(data.idealCoachName).trim() : '');
       setTeamSeat(data?.teamSeat || null);
+      setCommunityIdRequest(data?.communityIdRequest || null);
+      setCommunityIdError('');
       transformationPhotos.loadFromProfile(data?.transformationPhotos);
       if (data?.profileImage) {
         setProfileImagePreview(data.profileImage);
@@ -179,8 +210,8 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
 
       let counselling = null;
       try {
-        if (user?.id) {
-          counselling = await fetchMyAssessment(user.id);
+        if (uid) {
+          counselling = await fetchMyAssessment(uid);
         }
         if (!counselling) {
           const phoneForLookup = profileData.phone || user?.phoneNumber || user?.phone || '';
@@ -209,10 +240,10 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
       setIsLoading(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: avoid re-fetch loops from form identity
-  }, [user?.email, user?.Email, user?.id, user?.name, user?.phoneNumber, user?.phone]);
+  }, [sessionEmail, sessionUserId]);
 
   useEffect(() => {
-    if (accountEmail) {
+    if (sessionEmail || sessionUserId) {
       setSuccessMessage('');
       setHasSaved(false);
       setError('');
@@ -220,8 +251,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
       return;
     }
     setIsLoading(false);
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: reload when identity changes
-  }, [accountEmail, user?.id, loadProfile]);
+  }, [sessionEmail, sessionUserId, loadProfile]);
 
   const handleSave = useCallback(async () => {
     setError('');
@@ -230,9 +260,14 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
     try {
       const err = form.validate({ requireDiet: false, maxHeight: 198 });
       if (err) { setError(err); return; }
-      const payload = form.payload(accountEmail || user?.email || user?.Email, {
+      // Only send a verified account email — unverified addresses use Profile KYC OTP.
+      const emailForSave = accountEmail || undefined;
+      const payload = form.payload(emailForSave, {
         userId: user?.id || undefined,
       });
+      if (!emailForSave) {
+        delete payload.email;
+      }
       // BMR is system-calculated on the profile page — never write it from this form.
       delete payload.bmr;
       const photoExtras = transformationPhotos.payloadExtras();
@@ -248,14 +283,12 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
       const data = await saveProfile(payload);
       transformationPhotos.clearPending();
       const leftPending = photoExtras.transformationPhotos?.left || null;
-      const rightPending = photoExtras.transformationPhotos?.right || null;
-      if (user?.id && (latestWeight != null || leftPending || rightPending)) {
+      if (user?.id && (latestWeight != null || leftPending)) {
         try {
           await persistOnboardingTestimonialPhotos({
             userId: user.id,
             weightKg: latestWeight,
             leftImageBase64: leftPending,
-            rightImageBase64: rightPending,
             goalType: deriveWeightGoalMode({
               heightCm: form.height,
               currentWeightKg: latestWeight,
@@ -302,6 +335,80 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
     transformationPhotos,
     latestWeight,
   ]);
+
+  const handleCommunityIdCreate = useCallback(async (code) => {
+    setCommunityIdError('');
+    setSuccessMessage('');
+    setCommunityIdBusy(true);
+    try {
+      const data = await requestCommunityId({
+        userId: sessionUserId || undefined,
+        email: accountEmail || undefined,
+        communityId: code,
+      });
+      setCommunityIdRequest(data.communityIdRequest || null);
+      if (data.communityIdRequest?.communityId) {
+        form.setCommunityId(String(data.communityIdRequest.communityId));
+      }
+    } catch (e) {
+      setCommunityIdError(e.message || 'Could not send the approval request.');
+    } finally {
+      setCommunityIdBusy(false);
+    }
+  }, [sessionUserId, accountEmail, form]);
+
+  const handleCommunityIdVerify = useCallback(async (otp) => {
+    setCommunityIdError('');
+    setSuccessMessage('');
+    setCommunityIdBusy(true);
+    try {
+      const data = await verifyCommunityIdOtp({
+        userId: sessionUserId || undefined,
+        email: accountEmail || undefined,
+        otp,
+      });
+      setCommunityIdRequest(null);
+      if (data.communityId) form.setCommunityId(String(data.communityId));
+      if (data.teamSeat) setTeamSeat(data.teamSeat);
+      onProfileUpdate?.({
+        communityId: data.communityId || null,
+        teamSearchRefresh: true,
+      });
+      setSuccessMessage(data.message || 'Community ID confirmed.');
+      setHasSaved(true);
+      await loadProfile({ cacheBust: true });
+    } catch (e) {
+      setCommunityIdError(e.message || 'That approval code did not match.');
+    } finally {
+      setCommunityIdBusy(false);
+    }
+  }, [sessionUserId, accountEmail, form, onProfileUpdate, loadProfile]);
+
+  const handleEmailVerified = useCallback(async (result) => {
+    const nextEmail = String(result?.email || '').trim();
+    if (nextEmail) {
+      form.setEmail(nextEmail);
+      Session.setUserEmail(nextEmail);
+    }
+    if (result?.adopted && result?.userId) {
+      Session.setDbUserId(result.userId);
+    }
+    onProfileUpdate?.({
+      email: nextEmail || undefined,
+      name: result?.userName || form.name,
+      adopted: result?.adopted === true,
+      userId: result?.userId,
+      phone: result?.phone,
+      teamSearchRefresh: true,
+    });
+    setSuccessMessage(
+      result?.adopted
+        ? 'Account recovered and email verified.'
+        : 'Email verified. You can appear as a sponsor to new members.',
+    );
+    setHasSaved(true);
+    await loadProfile({ cacheBust: true });
+  }, [form, onProfileUpdate, loadProfile]);
 
   const handlePhotoUploaded = useCallback(async (uploadedImage) => {
     // Optimistic preview — keep previous photo if refresh fails.
@@ -363,7 +470,13 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
   }, [derivedWeightGoalMode, form.setWeightGoalMode]);
 
   const displayWeightGoalMode = derivedWeightGoalMode || form.weightGoalMode || 'loss';
-  const displayName = form.name || user?.displayName || user?.name || 'User';
+  const displayName = (() => {
+    const phoneNumber = form.phone || user?.phoneNumber || user?.phone;
+    const email = accountEmail || user?.email;
+    const candidates = [form.name, user?.userName, user?.displayName, user?.name];
+    const valid = candidates.find((n) => hasValidProfileName(n, { email, phoneNumber }));
+    return valid || 'User';
+  })();
   const role = ROLE_LABELS[userRole] || 'Customer';
 
   return (
@@ -381,37 +494,50 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
           <h1 className="text-lg font-bold text-white">My Profile</h1>
         </div>
 
-        {/* Avatar — tap to change profile photo */}
+        {/* Avatar — tap photo to view; Edit badge to change */}
         <div className="flex items-center gap-4">
-          <TouchFeedbackButton
-            type="button"
-            onClick={() => {
-              if (!isUploadingPhoto && !isSaving) setShowChangePhotoModal(true);
-            }}
-            disabled={isUploadingPhoto || isSaving}
-            className="relative w-20 h-20 rounded-full overflow-hidden flex-shrink-0 shadow-lg border-[3px] border-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white disabled:opacity-70"
-            ariaLabel="Change profile photo"
-            title="Change profile photo"
-          >
-            {profileImagePreview ? (
-              <img
-                src={profileImagePreview}
-                alt={displayName}
-                className="w-full h-full object-cover"
-                loading="lazy"
-                decoding="async"
-                referrerPolicy="no-referrer"
-              />
-            ) : (
-              <div className={`w-full h-full flex items-center justify-center text-white font-bold text-3xl ${colorOf(form.name, accountEmail)}`}>
-                {initialOf(form.name || user?.displayName || user?.name, accountEmail)}
-              </div>
-            )}
-            <span className="absolute inset-x-0 bottom-0 bg-black/45 text-white text-[10px] font-semibold py-0.5 flex items-center justify-center gap-1">
+          <div className="relative w-20 h-20 flex-shrink-0 rounded-full overflow-hidden shadow-lg border-[3px] border-white">
+            <TouchFeedbackButton
+              type="button"
+              onClick={() => {
+                if (isUploadingPhoto || isSaving) return;
+                if (profileImagePreview) setShowPhotoViewer(true);
+                else setShowChangePhotoModal(true);
+              }}
+              disabled={isUploadingPhoto || isSaving}
+              className="w-full h-full focus:outline-none focus-visible:ring-2 focus-visible:ring-white disabled:opacity-70"
+              ariaLabel={profileImagePreview ? 'View profile photo' : 'Add profile photo'}
+              title={profileImagePreview ? 'View profile photo' : 'Add profile photo'}
+            >
+              {profileImagePreview ? (
+                <img
+                  src={profileImagePreview}
+                  alt={displayName}
+                  className="w-full h-full object-cover pointer-events-none"
+                  loading="lazy"
+                  decoding="async"
+                  referrerPolicy="no-referrer"
+                />
+              ) : (
+                <div className={`w-full h-full flex items-center justify-center text-white font-bold text-3xl ${colorOf(form.name, accountEmail)}`}>
+                  {initialOf(form.name || user?.displayName || user?.name, accountEmail)}
+                </div>
+              )}
+            </TouchFeedbackButton>
+            <TouchFeedbackButton
+              type="button"
+              onClick={() => {
+                if (!isUploadingPhoto && !isSaving) setShowChangePhotoModal(true);
+              }}
+              disabled={isUploadingPhoto || isSaving}
+              className="absolute inset-x-0 bottom-0 rounded-b-full bg-black/45 text-white text-[10px] font-semibold py-0.5 flex items-center justify-center gap-1"
+              ariaLabel="Change profile photo"
+              title="Change profile photo"
+            >
               <Camera className="w-3 h-3" />
               {isUploadingPhoto ? '…' : 'Edit'}
-            </span>
-          </TouchFeedbackButton>
+            </TouchFeedbackButton>
+          </div>
           <div className="flex-1 min-w-0">
             <p className="text-xl font-bold text-white truncate">{displayName}</p>
             <p className="text-sm text-green-100 truncate">{accountEmail || user?.email}</p>
@@ -472,9 +598,20 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
                     <span>Some details were pre-filled from your wellness counselling session. Please review and save.</span>
                   </div>
                 )}
+                <div ref={emailKycRef}>
+                  <ProfileEmailKycSection
+                    userId={user?.id || user?.UserId || user?.userId || Session.getDbUserId() || null}
+                    userName={form.name}
+                    verifiedEmail={accountEmail}
+                    disabled={isSaving || isUploadingPhoto}
+                    mode={emailKycMode}
+                    onModeChange={setEmailKycMode}
+                    onVerified={handleEmailVerified}
+                  />
+                </div>
                 <UserProfileFields
                   email={form.email}
-                  setEmail={form.setEmail}
+                  hideEmailField
                   name={form.name} setName={form.setName}
                   height={form.height} setHeight={form.setHeight}
                   phone={form.phone} setPhone={form.setPhone}
@@ -486,9 +623,17 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
                   communityId={form.communityId}
                   setCommunityId={form.setCommunityId}
                   teamSeat={teamSeat}
+                  communityIdOtpEnabled={isFlagEnabled(COMMUNITY_ID_OTP_FLAG)}
+                  communityIdRequest={communityIdRequest}
+                  onCommunityIdCreate={handleCommunityIdCreate}
+                  onCommunityIdVerify={handleCommunityIdVerify}
+                  communityIdBusy={communityIdBusy}
+                  communityIdError={communityIdError}
+                  sponsorName={coachName}
                 />
                 <UserProfileBodyMetrics
                   bodyMetrics={form.bodyMetrics}
+                  gender={form.gender}
                   onChange={form.setBodyMetricField}
                   heightCm={form.height}
                   weightKg={latestWeight}
@@ -621,6 +766,24 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
           <div className="divide-y divide-gray-100">
             {/* Sign Out */}
             <TouchFeedbackButton
+              onClick={() => {
+                setEmailKycMode('recover');
+                requestAnimationFrame(() => {
+                  emailKycRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
+                });
+              }}
+              className="w-full px-4 py-3.5 flex items-center gap-3 hover:bg-blue-50 transition-colors"
+              ariaLabel="Recover account"
+            >
+              <div className="p-2 rounded-full bg-blue-50">
+                <KeyRound className="w-4 h-4 text-blue-600" />
+              </div>
+              <div className="flex-1 text-left">
+                <p className="text-sm font-medium text-blue-700">Recover Account</p>
+                <p className="text-xs text-gray-400">Restore an existing email account to this phone</p>
+              </div>
+            </TouchFeedbackButton>
+            <TouchFeedbackButton
               onClick={onSignOut}
               className="w-full px-4 py-3.5 flex items-center gap-3 hover:bg-red-50 transition-colors"
               ariaLabel="Sign out"
@@ -633,7 +796,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
                 <p className="text-xs text-gray-400">Log out of your account</p>
               </div>
             </TouchFeedbackButton>
-            {/* Delete Account */}
+            {/* Delete Account — userId + typed DELETE (no email OTP) */}
             <TouchFeedbackButton
               onClick={() => setShowDeleteModal(true)}
               className="w-full px-4 py-3.5 flex items-center gap-3 hover:bg-red-50 transition-colors"
@@ -651,20 +814,42 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
         </div>
       </div>
 
+      <ProfilePhotoViewer
+        isOpen={showPhotoViewer}
+        src={profileImagePreview}
+        alt={displayName}
+        onClose={() => setShowPhotoViewer(false)}
+        onRecrop={() => {
+          setShowPhotoViewer(false);
+          setStartPhotoRecrop(true);
+          setShowChangePhotoModal(true);
+        }}
+        onChange={() => {
+          setShowPhotoViewer(false);
+          setShowChangePhotoModal(true);
+        }}
+      />
+
       <ChangeProfilePhotoModal
         isOpen={showChangePhotoModal}
-        onClose={() => setShowChangePhotoModal(false)}
+        onClose={() => {
+          setShowChangePhotoModal(false);
+          setStartPhotoRecrop(false);
+        }}
         user={user}
         accountEmail={accountEmail}
         currentPreviewUrl={profileImagePreview}
+        startWithRecrop={startPhotoRecrop}
+        onStartWithRecropConsumed={() => setStartPhotoRecrop(false)}
         onUploaded={handlePhotoUploaded}
       />
 
-      {/* Delete Account Modal (still a modal — this is correct Apple guideline flow) */}
+      {/* Delete Account Modal — userId + typed DELETE (Apple Guideline 5.1.1(v)) */}
       <DeleteAccountModal
         isOpen={showDeleteModal}
         onClose={() => setShowDeleteModal(false)}
-        userEmail={accountEmail}
+        userId={user?.id || user?.UserId || user?.userId || Session.getDbUserId() || null}
+        accountLabel={accountEmail || form.name || form.phone || ''}
         onSignOut={onSignOut}
         onAccountDeleted={() => {
           setShowDeleteModal(false);

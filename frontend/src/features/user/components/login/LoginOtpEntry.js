@@ -10,9 +10,10 @@
 // inputMode="numeric". The custom InlineNumericKeypad is NOT used here because
 // it sets readOnly + onFocus→blur() which prevents the OS from recognising OTP
 // fields for autofill.
-import React, { useCallback, useEffect } from 'react';
+import React, { useCallback, useEffect, useRef } from 'react';
 import useWebOtp from '../../hooks/useWebOtp';
 import OtpInputCells from '../../../../shared/components/OtpInputCells.jsx';
+import { nextOtpLastTried, shouldSubmitOtp } from '../../domain/otpAutoVerify';
 
 const LoginOtpEntry = ({
   otpCtl, onVerify, loading, verified, errorMessage, successMessage,
@@ -38,9 +39,17 @@ const LoginOtpEntry = ({
   useWebOtp(handleWebOtp, !verified && !loading);
 
   // Auto-verify when the last digit is entered (typing, paste, or autofill).
+  // Do not depend on `loading` going false after a failed attempt — that used
+  // to resubmit the same wrong OTP in a loop and hide "Invalid OTP".
+  const lastTriedRef = useRef('');
   useEffect(() => {
-    if (!isComplete || verified || loading) return;
-    onVerify(value);
+    const didSubmit = shouldSubmitOtp({
+      isComplete, verified, loading, value, lastTried: lastTriedRef.current,
+    });
+    lastTriedRef.current = nextOtpLastTried({
+      isComplete, value, lastTried: lastTriedRef.current, didSubmit,
+    });
+    if (didSubmit) onVerify(value);
   }, [isComplete, value, verified, loading, onVerify]);
 
   return (
@@ -72,6 +81,8 @@ const LoginOtpEntry = ({
             </svg>
             <span>Verifying...</span>
           </span>
+        ) : errorMessage ? (
+          null
         ) : isComplete ? (
           <span className="text-sm text-gray-400">Verifying automatically…</span>
         ) : (

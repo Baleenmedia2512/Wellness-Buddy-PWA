@@ -1,5 +1,6 @@
 /**
- * Sync Profile Left/Right slots (+ optional weight) onto testimonials Before/After.
+ * Sync Profile Left (+ optional weight) onto testimonial Before.
+ * After is created as a Left copy and is not updated from Profile Left/Right.
  * Uses sync-profile-photos API — no OTP; direct Transformation submit owns approval.
  */
 import { syncProfilePhotosToTestimonial } from '../../testimonials/services/testimonialApi';
@@ -12,7 +13,6 @@ export async function persistOnboardingTestimonialPhotos({
   userId,
   weightKg,
   leftImageBase64,
-  rightImageBase64,
   goalType,
   recoveredHealthIssues,
 }) {
@@ -21,8 +21,7 @@ export async function persistOnboardingTestimonialPhotos({
 
   const weight = Number.isFinite(weightKg) ? weightKg : null;
   const left = isDataImage(leftImageBase64) ? leftImageBase64.trim() : null;
-  const right = isDataImage(rightImageBase64) ? rightImageBase64.trim() : null;
-  if (weight == null && !left && !right) return;
+  if (weight == null && !left) return;
 
   const goal = goalType === 'gain' || goalType === 'loss' ? goalType : 'loss';
 
@@ -30,7 +29,6 @@ export async function persistOnboardingTestimonialPhotos({
     await syncProfilePhotosToTestimonial({
       userId: uid,
       ...(left ? { beforeImageBase64: left } : {}),
-      ...(right ? { afterImageBase64: right } : {}),
       ...(weight != null ? { beforeWeightKg: weight } : {}),
       goalType: goal,
       recoveredHealthIssues: recoveredHealthIssues || [],

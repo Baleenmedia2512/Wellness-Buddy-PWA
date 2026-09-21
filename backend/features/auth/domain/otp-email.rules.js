@@ -53,8 +53,8 @@ export function buildSignInOtpEmail(otp, { expiresMinutes = 5 } = {}) {
  */
 export function buildSponsorOtpEmail({ otp, memberName = '', expiresHours = 24 } = {}) {
   const code = String(otp || '').trim();
-  const who = String(memberName || 'A member').trim() || 'A member';
-  const subject = 'Wellness Valley team code';
+  const who = String(memberName || 'A member').replace(/[\r\n]/g, ' ').trim() || 'A member';
+  const subject = `${who} -Wellness Valley login request`;
   const text = [
     'Wellness Valley',
     '',

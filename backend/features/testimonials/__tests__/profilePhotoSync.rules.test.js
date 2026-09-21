@@ -7,6 +7,7 @@ import {
   buildProfileSlotsFromTestimonialImages,
   canSyncProfileAfterToTestimonial,
   hasPositiveWeight,
+  isIncompleteProfileMappedAfter,
   testimonialHasRealAfter,
 } from '../domain/profilePhotoSync.rules.js';
 
@@ -33,16 +34,31 @@ describe('profilePhotoSync.rules', () => {
     }), true);
   });
 
-  it('always allows Profile Right to sync to testimonial After', () => {
+  it('never syncs Profile Right to testimonial After', () => {
     assert.equal(canSyncProfileAfterToTestimonial({
       status: 'pending',
       before_image_path: '1/before.jpg',
       after_image_path: '1/after.jpg',
-    }), true);
+    }), false);
   });
 
-  it('allows after sync when no row exists', () => {
-    assert.equal(canSyncProfileAfterToTestimonial(null), true);
+  it('does not sync after when no row exists', () => {
+    assert.equal(canSyncProfileAfterToTestimonial(null), false);
+  });
+
+  it('detects incomplete after_ storage files as old Profile Right auto-fill', () => {
+    assert.equal(isIncompleteProfileMappedAfter({
+      status: 'incomplete',
+      after_image_path: '1/after_1700000001000.jpg',
+    }), true);
+    assert.equal(isIncompleteProfileMappedAfter({
+      status: 'pending',
+      after_image_path: '1/after_1700000001000.jpg',
+    }), false);
+    assert.equal(isIncompleteProfileMappedAfter({
+      status: 'incomplete',
+      after_image_path: '1/before_1700000000000.jpg',
+    }), false);
   });
 
   it('maps Transformation Before/After onto Profile Left/Right', () => {

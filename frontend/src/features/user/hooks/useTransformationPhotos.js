@@ -1,8 +1,8 @@
 /**
  * Left / Centre / Right transformation photos for onboarding / profile.
  * Images: team_table.transformation_photos JSONB.
- * Left/Right slots sync testimonial Before/After via persistOnboardingTestimonialPhotos.
- * Profile Right always refreshes Transformation After when re-uploaded and saved.
+ * Left slot syncs testimonial Before via persistOnboardingTestimonialPhotos.
+ * After starts as a Left copy for new users; Profile Right does not overwrite After.
  */
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { compressImage } from '../../testimonials/utils/compressTestimonialImage.js';
@@ -50,16 +50,23 @@ export default function useTransformationPhotos() {
     setSnapshotWeightKg(Number.isFinite(n) ? n : null);
   }, []);
 
-  const setSlotFromFile = useCallback(async (slot, file) => {
-    if (!file || !POSE_SLOT_KEYS.includes(slot)) return;
-    setCaptureFlowBusy(true);
-    try {
-      const { preview } = await compressImage(file);
-      setPreviews((prev) => ({ ...prev, [slot]: preview }));
-      setPending((prev) => ({ ...prev, [slot]: preview }));
-    } finally {
-      setCaptureFlowBusy(false);
+  const setSlotFromFile = useCallback(async (slot, fileOrDataUrl) => {
+    if (!fileOrDataUrl || !POSE_SLOT_KEYS.includes(slot)) return;
+    let preview;
+    if (typeof fileOrDataUrl === 'string' && fileOrDataUrl.startsWith('data:image/')) {
+      preview = fileOrDataUrl;
+    } else {
+      setCaptureFlowBusy(true);
+      try {
+        const result = await compressImage(fileOrDataUrl);
+        preview = result.preview;
+      } finally {
+        setCaptureFlowBusy(false);
+      }
     }
+    if (!preview) return;
+    setPreviews((prev) => ({ ...prev, [slot]: preview }));
+    setPending((prev) => ({ ...prev, [slot]: preview }));
   }, [setPending]);
 
   const history = useMemo(

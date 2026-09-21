@@ -149,6 +149,8 @@ function firstPositiveKg(...values) {
   return null;
 }
 
+const PROFILE_MAPPED_AFTER_RE = /(?:^|\/)after_\d+\.jpg(?:\?|$)/i;
+
 function testimonialHasRealAfterDisplay(testimonial) {
   const incomplete = !testimonial?.status || testimonial.status === 'incomplete';
   if (incomplete) return false;
@@ -157,16 +159,24 @@ function testimonialHasRealAfterDisplay(testimonial) {
     && testimonial.afterImageUrl !== testimonial.beforeImageUrl;
 }
 
+function isIncompleteProfileMappedAfter(testimonial, afterValue) {
+  const incomplete = !testimonial?.status || testimonial.status === 'incomplete';
+  if (!incomplete) return false;
+  const after = afterValue ?? testimonial?.afterImageUrl;
+  if (typeof after !== 'string' || !after.trim()) return false;
+  return PROFILE_MAPPED_AFTER_RE.test(after.trim());
+}
+
 /**
  * Transformation Before/After from Profile slots:
- * Left → Before always; Right → After always when provided.
- * When Profile Right is missing, Left mirrors After unless a real After exists.
+ * Left → Before always when present.
+ * After defaults to Left only when no After is stored yet (new users).
+ * Profile Right never maps to After. A later Left change updates Before only.
  */
-export function seedMineTestimonialFromProfileSlots(testimonial, { leftUrl, rightUrl, weightKg } = {}) {
+export function seedMineTestimonialFromProfileSlots(testimonial, { leftUrl, weightKg } = {}) {
   const hasLeft = isStoredPhoto(leftUrl);
-  const hasRight = isStoredPhoto(rightUrl);
   const weight = firstPositiveKg(weightKg);
-  if (!testimonial && !hasLeft && !hasRight && weight == null) return null;
+  if (!testimonial && !hasLeft && weight == null) return null;
 
   const next = testimonial ? { ...testimonial } : {
     status: 'incomplete',
@@ -175,6 +185,8 @@ export function seedMineTestimonialFromProfileSlots(testimonial, { leftUrl, righ
     afterImageUrl: null,
   };
   const realAfter = testimonialHasRealAfterDisplay(testimonial || next);
+  const storedAfter = isStoredPhoto(testimonial?.afterImageUrl)
+    && !isIncompleteProfileMappedAfter(testimonial, testimonial?.afterImageUrl);
 
   if (hasLeft) {
     next.beforeImageUrl = String(leftUrl).trim();
@@ -182,18 +194,18 @@ export function seedMineTestimonialFromProfileSlots(testimonial, { leftUrl, righ
   const beforeW = firstPositiveKg(next.beforeWeightKg, weight);
   if (beforeW != null) next.beforeWeightKg = beforeW;
 
-  if (hasRight) {
-    next.afterImageUrl = String(rightUrl).trim();
-  } else if (!realAfter) {
+  if (!realAfter && !storedAfter) {
     if (hasLeft) {
       next.afterImageUrl = String(leftUrl).trim();
-    } else if (!isStoredPhoto(next.afterImageUrl) && isStoredPhoto(next.beforeImageUrl)) {
+    } else if (isStoredPhoto(next.beforeImageUrl)) {
       next.afterImageUrl = next.beforeImageUrl;
     }
   }
 
-  const afterW = firstPositiveKg(next.afterWeightKg, beforeW, weight);
-  if (afterW != null && (!realAfter || hasRight)) next.afterWeightKg = afterW;
+  if (!realAfter) {
+    const afterW = firstPositiveKg(next.afterWeightKg, beforeW, weight);
+    if (afterW != null) next.afterWeightKg = afterW;
+  }
   return next;
 }
 

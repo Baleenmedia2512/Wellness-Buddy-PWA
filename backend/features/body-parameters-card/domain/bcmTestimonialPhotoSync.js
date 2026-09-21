@@ -1,5 +1,6 @@
 /**
- * After BCM profile sync, mirror optional Left/Right photos to testimonials.
+ * After BCM profile sync, mirror optional Left photo to testimonial Before.
+ * After is not updated from Profile Right — Transformation After is set later.
  * Non-fatal — BCM card + profile save already succeeded.
  */
 import { syncProfilePhotosToTestimonial } from '../../testimonials/profilePhotoSync.service.js';
@@ -27,8 +28,7 @@ export async function syncBcmPhotosToTestimonial({
   if (!transformationPhotos || typeof transformationPhotos !== 'object') return;
 
   const left = transformationPhotos.left || null;
-  const right = transformationPhotos.right || null;
-  if (!left && !right) return;
+  if (!left) return;
 
   const weight = weightKg != null && Number.isFinite(Number(weightKg)) && Number(weightKg) > 0
     ? Number(weightKg)
@@ -38,7 +38,6 @@ export async function syncBcmPhotosToTestimonial({
     await syncProfilePhotosToTestimonial({
       userId: uid,
       beforeImageBase64: left || undefined,
-      afterImageBase64: right || undefined,
       beforeWeightKg: weight,
       goalType: deriveWeightGoalMode({ heightCm, currentWeightKg: weight }) || 'loss',
       recoveredHealthIssues: Array.isArray(recoveredHealthIssues) ? recoveredHealthIssues : undefined,

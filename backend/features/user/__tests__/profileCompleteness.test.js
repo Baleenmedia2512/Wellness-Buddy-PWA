@@ -112,7 +112,7 @@ describe('isOnboardingIdentityComplete', () => {
 });
 
 describe('isProfileComplete', () => {
-  it('requires name, email, height, diet, gender, body fat — not phone', () => {
+  it('requires name, height, diet, gender, body fat — email is Profile KYC', () => {
     assert.equal(
       isProfileComplete({
         height: 170,
@@ -212,7 +212,7 @@ describe('isProfileComplete', () => {
     );
   });
 
-  it('is incomplete when email missing', () => {
+  it('is complete when email missing (Profile KYC is separate)', () => {
     assert.equal(
       isProfileComplete({
         height: 170,
@@ -222,7 +222,7 @@ describe('isProfileComplete', () => {
         gender: 'Male',
         bodyFat: 22,
       }),
-      false,
+      true,
     );
   });
 

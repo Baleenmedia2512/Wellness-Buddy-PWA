@@ -7,7 +7,7 @@
 export const POSE_TAB_GUIDE = Object.freeze({
   left: {
     label: 'Left',
-    tip: 'Turn LEFT — full body, head to feet',
+    tip: 'Turn RIGHT — full body, head to feet Facing Camera',
   },
   front: {
     label: 'Centre',
@@ -15,7 +15,7 @@ export const POSE_TAB_GUIDE = Object.freeze({
   },
   right: {
     label: 'Right',
-    tip: 'Turn RIGHT — full body, head to feet',
+    tip: 'Turn LEFT — full body, head to feet Facing Camera',
   },
 });
 
