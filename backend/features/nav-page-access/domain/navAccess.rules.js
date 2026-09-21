@@ -147,6 +147,7 @@ export function allPagesAllowed() {
  * @param {Record<string, boolean>} pageMap
  * @returns {string[]}
  */
+
 export function allowedPageKeys(pageMap) {
   return NAV_PAGE_KEYS.filter((k) => Boolean(pageMap?.[k]));
 }
