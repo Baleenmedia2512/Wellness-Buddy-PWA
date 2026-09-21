@@ -80,15 +80,16 @@ describe('buildTeamTableClearOnCancelRequest', () => {
 });
 
 describe('isSponsorTeamAccess', () => {
-  it('is true for own downline or a lead seat', () => {
+  it('is true only when the user has own downline members', () => {
     assert.equal(isSponsorTeamAccess({ hasOwnDownline: true }), true);
-    assert.equal(isSponsorTeamAccess({ seat: 'sponsor' }), true);
-    assert.equal(isSponsorTeamAccess({ seat: 'co-sponsor' }), true);
+    assert.equal(isSponsorTeamAccess({ hasOwnDownline: true, seat: 'sponsor' }), true);
   });
 
-  it('is false for a customer with no team', () => {
+  it('is false for Community ID lead seats alone (joint account, no downline)', () => {
+    assert.equal(isSponsorTeamAccess({ seat: 'sponsor' }), false);
+    assert.equal(isSponsorTeamAccess({ seat: 'co-sponsor' }), false);
     assert.equal(isSponsorTeamAccess({}), false);
-    assert.equal(isSponsorTeamAccess({ hasOwnDownline: false, seat: null }), false);
+    assert.equal(isSponsorTeamAccess({ hasOwnDownline: false, seat: 'sponsor' }), false);
   });
 });
 

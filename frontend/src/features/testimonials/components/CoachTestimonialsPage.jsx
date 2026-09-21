@@ -36,11 +36,10 @@ import {
 import VideoThumbnailCard from './VideoThumbnailCard.jsx';
 import HealthIssueCoachEditor from './HealthIssueCoachEditor.jsx';
 import {
-  CARD_W,
-  CARD_H,
   TransformationCardContent,
   TransformationShareActions,
 } from './TransformationShareCard.jsx';
+import { CARD_W, CARD_H } from '../utils/shareCardLayout.js';
 import { getCachedVideoThumbnail } from '../utils/videoThumbnailCache.js';
 import { jpegDataUrlToObjectUrl, revokeBlobUrl, withTestimonialMediaCacheBust } from '../utils/testimonialMediaUrl.js';
 import { useRevocableImageSrc } from '../hooks/useRevocableImageSrc.js';

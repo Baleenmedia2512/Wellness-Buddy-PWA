@@ -2,12 +2,12 @@
  * Check if a user should get team UI (search / Mine-Direct-Full).
  * GET /api/team/has-members?userId=123
  *
- * True when:
- * - any team_table row has CoachId = userId (own downline), OR
- * - user is Sponsor / Co-Sponsor on an active coach_teams row
- *   (shared-team lead — may have 0 own members but still sees partner roster UI)
+ * True when any team_table row has CoachId = userId (own downline).
+ * Community ID / coach_teams Sponsor|Co-Sponsor seats alone do NOT count —
+ * that is a joint coaching account, not product Sponsor access.
  *
- * Used by Diary search, Programs enrollment search, Activity Report scope.
+ * Used by Diary search, Programs enrollment search, Activity Report scope,
+ * and nav page-access elevation to the Sponsor matrix.
  */
 
 import { getSupabaseClient } from '../../../utils/supabaseClient.js';

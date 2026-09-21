@@ -186,9 +186,10 @@ export default function NavPageAccessSetup({
 
             <p className="mt-3 text-[11px] leading-relaxed text-gray-500">
               Sponsor uses the coach role. Upline accounts share Sponsor access.
-              A customer who has team members (or a Sponsor / Co-Sponsor seat)
-              also uses Sponsor pages — their account role may still be Customer.
-              Reports also needs the Reports feature flag.
+              A customer gets Sponsor pages only after they have downline members
+              (CoachId = them) — Community ID / joint coaching seat alone does not.
+              Their account role may still be Customer. Reports also needs the
+              Reports feature flag.
             </p>
 
             <div className="mt-4 flex items-center gap-3">
