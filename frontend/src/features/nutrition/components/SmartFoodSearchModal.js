@@ -557,7 +557,7 @@ const SmartFoodSearchModal = ({
           </h1>
         </div>
 
-        <div className={`flex-1 overflow-y-auto px-4 py-3 space-y-3 ${hasSelected ? "pb-28" : ""}`}>
+        <div className={`flex-1 overflow-y-auto px-4 py-3 space-y-3 ${hasSelected ? "pb-40" : ""}`}>
           {searchBar}
 
           {addToast && (
@@ -900,9 +900,9 @@ const FoodItemRow = ({ item, selected, onToggle, mealBuilder = false }) => {
           selected ? "bg-green-50 border-green-500" : "bg-white border-gray-200 hover:border-green-300"
         }`}
       >
-        <div className="flex-1 min-w-0">
-          <p className={`text-sm font-medium truncate ${selected ? "text-green-900" : "text-gray-800"}`}>{item.name}</p>
-          <p className="text-xs text-gray-400 mt-0.5">
+        <div className="flex-1 min-w-0 pr-1">
+          <p className={`text-sm font-medium leading-snug line-clamp-2 break-words ${selected ? "text-green-900" : "text-gray-800"}`}>{item.name}</p>
+          <p className="text-xs text-gray-400 mt-0.5 leading-snug">
             {portion ? <span>{portion} · </span> : null}
             {item.calories ?? "?"} kcal
             {item.protein ? ` · ${item.protein}g protein` : ""}
