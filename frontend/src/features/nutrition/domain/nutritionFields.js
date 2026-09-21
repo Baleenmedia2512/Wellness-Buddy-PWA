@@ -210,6 +210,8 @@ export function buildAnalysisFromManualFood(m) {
     const item = { name: f.name || f.foodName, nutrition };
     if (f.portion) item.portion = f.portion;
     if (f.weight_g != null) item.weight_g = f.weight_g;
+    const servings = Number(f.servings ?? f.servingCount);
+    if (Number.isFinite(servings) && servings > 0) item.servings = servings;
     if (f.isLiquid != null) item.isLiquid = f.isLiquid;
     if (f.volume_ml != null) item.volume_ml = f.volume_ml;
     return item;

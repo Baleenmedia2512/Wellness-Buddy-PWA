@@ -1,6 +1,6 @@
 /**
  * Compact sticky meal tray — keep search usable while building a meal.
- * Thumbs + +N | Edit (opens sheet) | Save Meal
+ * Thumbs + +N | Edit (opens sheet) | Clear all | Save Meal
  */
 import React from 'react';
 import { ChevronUp } from 'lucide-react';
@@ -62,24 +62,21 @@ export default function FloatingMealTray({
           <ChevronUp className="w-4 h-4 text-green-700 flex-shrink-0" aria-hidden />
         </button>
 
-        <div className="flex flex-col items-center flex-shrink-0">
-          <button
-            type="button"
-            onClick={onSave}
-            className="px-3.5 py-2 bg-green-600 hover:bg-green-700 active:bg-green-800 text-white text-xs font-bold rounded-xl shadow-sm text-center"
-          >
-            {saveMealLabel(count)}
-          </button>
-          {onClear && (
-            <button
-              type="button"
-              onClick={onClear}
-              className="mt-1 px-2.5 py-0.5 text-xs font-bold text-red-600 hover:text-red-700 active:text-red-800 bg-red-50 hover:bg-red-100 rounded-lg transition-colors border border-red-200/60"
-            >
-              Clear all
-            </button>
-          )}
-        </div>
+        <button
+          type="button"
+          onClick={onClear}
+          className="flex-shrink-0 px-2.5 py-3 text-xs font-semibold text-green-700 hover:text-green-800 active:text-green-900"
+        >
+          Clear all
+        </button>
+
+        <button
+          type="button"
+          onClick={onSave}
+          className="flex-shrink-0 px-4 py-3 bg-green-600 hover:bg-green-700 active:bg-green-800 text-white text-xs font-bold rounded-xl shadow-sm"
+        >
+          {saveMealLabel(count)}
+        </button>
       </div>
     </div>
   );

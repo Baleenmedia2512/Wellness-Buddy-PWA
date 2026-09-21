@@ -6,7 +6,19 @@ import { X, Minus, Plus } from 'lucide-react';
 import { FoodThumb } from './FoodThumb';
 import MealBowlIcon from './MealBowlIcon';
 import { saveMealLabel } from './FloatingMealTray';
-import { resolveQuantityUnit, formatServingPortion } from '../../domain/nutritionFields';
+
+/** Half-serving steps: 0.5, 1, 1.5, … */
+const QTY_STEP = 0.5;
+const QTY_MIN = 0.5;
+
+function snapHalfServing(n) {
+  return Math.round(n * 2) / 2;
+}
+
+function formatQtyDisplay(n) {
+  const snapped = snapHalfServing(n);
+  return Number.isInteger(snapped) ? String(snapped) : snapped.toFixed(1);
+}
 
 export default function MealBuilderSheet({
   open,
@@ -86,56 +98,56 @@ export default function MealBuilderSheet({
             return (
               <div
                 key={item.name}
-                className="bg-green-50/60 border border-green-100 rounded-lg px-2 py-1"
+                className="flex items-center gap-2 bg-green-50/60 border border-green-100 rounded-xl px-2 py-1.5"
               >
-                <div className="flex items-center gap-1.5">
-                  <FoodThumb name={item.name} size="sm" className="flex-shrink-0 !w-6 !h-6 !text-[10px]" />
-                  <p className="flex-1 min-w-0 text-xs font-semibold text-gray-800 leading-snug break-words">
+                <FoodThumb name={item.name} size="sm" className="flex-shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-semibold text-gray-800 break-words leading-snug">
                     {item.name}
                   </p>
+                  <p className="text-[11px] text-green-700 font-medium mt-0.5">{kcal} kcal</p>
+                </div>
+                <div
+                  className="flex items-center flex-shrink-0 h-7 rounded-lg border border-green-200 bg-white overflow-hidden"
+                  role="group"
+                  aria-label={`Quantity for ${item.name}`}
+                >
                   <button
                     type="button"
-                    onClick={() => onRemove?.(item)}
-                    className="flex-shrink-0 p-0.5 text-gray-300 hover:text-red-400"
-                    aria-label={`Remove ${item.name}`}
+                    aria-label={`Decrease ${item.name}`}
+                    className="w-6 h-7 flex items-center justify-center text-green-700 active:bg-green-50"
+                    onClick={() => {
+                      const next = Math.max(QTY_MIN, snapHalfServing(servings - QTY_STEP));
+                      onQuantityChange?.(item.name, String(next));
+                    }}
                   >
-                    <X className="w-3.5 h-3.5" />
+                    <Minus className="w-3 h-3" />
+                  </button>
+                  <span className="min-w-[1.5rem] px-0.5 text-center text-[11px] font-bold text-gray-800 tabular-nums leading-none">
+                    {formatQtyDisplay(servings)}
+                  </span>
+                  <button
+                    type="button"
+                    aria-label={`Increase ${item.name}`}
+                    className="w-6 h-7 flex items-center justify-center text-green-700 active:bg-green-50"
+                    onClick={() => {
+                      onQuantityChange?.(
+                        item.name,
+                        String(snapHalfServing(servings + QTY_STEP)),
+                      );
+                    }}
+                  >
+                    <Plus className="w-3 h-3" />
                   </button>
                 </div>
-                <div className="flex items-center justify-between mt-0.5">
-                  <span className="text-[11px] text-green-700 font-semibold">
-                    {kcal} kcal
-                  </span>
-                  <div className="flex items-center gap-0.5 flex-shrink-0">
-                    <button
-                      type="button"
-                      aria-label={`Decrease ${item.name}`}
-                      className="w-6 h-6 rounded-md bg-white border border-green-300 inline-flex items-center justify-center text-green-700 active:bg-green-100 p-0 flex-shrink-0 shadow-sm"
-                      style={{ width: '25px', height: '25px', minHeight: '25px', maxHeight: '25px' }}
-                      onClick={() => {
-                        const next = Math.max(0.5, Math.round((servings - 0.5) * 2) / 2);
-                        onQuantityChange?.(item.name, String(next));
-                      }}
-                    >
-                      <Minus className="w-3.5 h-3.5" />
-                    </button>
-                    <span className="w-6 text-center text-xs font-bold text-gray-800 tabular-nums">
-                      {servings}
-                    </span>
-                    <button
-                      type="button"
-                      aria-label={`Increase ${item.name}`}
-                      className="w-6 h-6 rounded-md bg-white border border-green-300 inline-flex items-center justify-center text-green-700 active:bg-green-100 p-0 flex-shrink-0 shadow-sm"
-                      style={{ width: '25px', height: '25px', minHeight: '25px', maxHeight: '25px' }}
-                      onClick={() => {
-                        const next = Math.round((servings + 0.5) * 2) / 2;
-                        onQuantityChange?.(item.name, String(next));
-                      }}
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => onRemove?.(item)}
+                  className="flex-shrink-0 p-0.5 text-gray-300 hover:text-red-400"
+                  aria-label={`Remove ${item.name}`}
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
               </div>
             );
           })}
@@ -155,15 +167,15 @@ export default function MealBuilderSheet({
           )}
         </div>
 
-        <div className="flex gap-2 px-4 pb-4 pt-2 border-t border-gray-100">
+        <div className="flex-shrink-0 px-4 pb-3 pt-2 border-t border-gray-100">
           <button
             type="button"
             onClick={onSave}
             disabled={count === 0}
-            className="flex-1 px-4 py-3.5 bg-green-600 text-white rounded-2xl text-sm font-bold hover:bg-green-700 active:bg-green-800 disabled:opacity-50 flex flex-col items-center gap-0.5"
+            className="w-full px-3 py-2.5 bg-green-600 text-white rounded-xl text-sm font-bold hover:bg-green-700 active:bg-green-800 disabled:opacity-50 flex items-center justify-center gap-2"
           >
             <span>{saveMealLabel(count)}</span>
-            <span className="text-[11px] font-medium text-green-100">Total ~ {totalKcal} kcal</span>
+            <span className="text-[11px] font-medium text-green-100">· {totalKcal} kcal</span>
           </button>
         </div>
       </div>
