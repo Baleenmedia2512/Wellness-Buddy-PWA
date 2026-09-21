@@ -400,4 +400,42 @@ export function validateVerifyOnboardingEmail(body) {
   };
 }
 
+function parseProfileIdentity(body) {
+  const email = normalizeEmail(body?.email) || null;
+  const userIdRaw = body?.userId ?? body?.UserId;
+  const userId = userIdRaw != null && String(userIdRaw).trim() !== ''
+    ? Number(userIdRaw)
+    : null;
+  const resolvedUserId = userId && Number.isFinite(userId) && userId > 0 ? userId : null;
+  if (!email && !resolvedUserId) {
+    throw new ValidationError(400, 'Missing required field: email or userId');
+  }
+  return { email, userId: resolvedUserId };
+}
+
+export function validateCommunityIdRequest(body) {
+  if (!body) throw new ValidationError(400, 'Request body is missing');
+  const identity = parseProfileIdentity(body);
+  const raw = body.communityId !== undefined ? body.communityId : body.community_id;
+  const validation = validateCommunityId(raw);
+  if (!validation.valid) throw new ValidationError(400, validation.message);
+  if (!validation.value) {
+    throw new ValidationError(400, 'Community ID is required');
+  }
+  return {
+    ...identity,
+    communityId: validation.value,
+  };
+}
+
+export function validateCommunityIdVerify(body) {
+  if (!body) throw new ValidationError(400, 'Request body is missing');
+  const identity = parseProfileIdentity(body);
+  const otp = body?.otp != null ? String(body.otp).trim() : '';
+  if (!otp || !/^\d{4}$/.test(otp)) {
+    throw new ValidationError(400, 'Enter the 4-digit approval code from your sponsor');
+  }
+  return { ...identity, otp };
+}
+
 export { VALID_DIETS, VALID_GENDERS };

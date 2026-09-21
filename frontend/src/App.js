@@ -215,6 +215,7 @@ import * as PermissionManager from "./shared/services/permissionManager";
 import { clearHomeDashboardSnapshot } from "./shared/services/homeDashboardActivity";
 import {
   setCaptureFlowBusy,
+  isCaptureFlowBusy,
 } from "./shared/services/captureFlowBusy";
 import PermissionDeniedModal from "./shared/components/PermissionDeniedModal";
 import PermissionBlockedPage from "./shared/components/PermissionBlockedPage";
@@ -251,7 +252,7 @@ import {
 import TouchFeedbackButton from "./shared/components/TouchFeedbackButton";
 import LocationGuard from "./shared/components/LocationGuard";
 import { ADMIN_CONFIG_TABS } from "./shell/domain/adminConfigSetupTabs";
-import { isAdminLikeRole } from "./shared/constants/roles";
+import { isAdminLikeRole, normalizeAppRole, ROLE_USER } from "./shared/constants/roles";
 import { canAccessReportsModule } from "./features/reports/domain/reportsAccess.rules.js";
 import {
   fetchNavAccessForMe,
@@ -1048,6 +1049,7 @@ function WellnessValleyApp() {
   // Load DB-driven nav page access for the signed-in user.
   // Prefer userId (phone users may have no email yet). Keep prior pages while
   // refetching so tabs do not flash "all open" (looks like admin) then snap back.
+  // Also sync accountRole → userRole (server is source of truth for UI privilege).
   useEffect(() => {
     let cancelled = false;
 
@@ -1055,7 +1057,7 @@ function WellnessValleyApp() {
       return undefined;
     }
 
-    (async () => {
+    const loadNavAccess = async () => {
       try {
         const userId = (await getUserId(user)) || user?.id || null;
         const data = await fetchNavAccessForMe({
@@ -1069,20 +1071,50 @@ function WellnessValleyApp() {
           navAccessPagesRef.current = pages;
           setNavAccessPages(pages);
         }
+        // Privilege chrome (admin FAB) stays on account Role. Nav tabs use `pages`,
+        // which already elevates a customer-with-team to the Sponsor matrix.
+        const serverRole = data?.accountRole ?? data?.role;
+        if (serverRole != null) {
+          setUserRole(normalizeAppRole(serverRole));
+        }
       } catch (err) {
         // Keep previous ACL on failure — do not fail-open mid-session.
+        // Do NOT keep prior role across a new login: resetApp clears both.
         if (!cancelled) {
           console.warn('[nav-access] for-me failed; keeping prior ACL', err?.message || err);
         }
       }
-    })();
+    };
 
-    return () => { cancelled = true; };
-  }, [user?.email, user?.id, apiBaseUrl, userRole]);
+    loadNavAccess();
+
+    const onVisible = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        loadNavAccess();
+      }
+    };
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', onVisible);
+    }
+
+    return () => {
+      cancelled = true;
+      if (typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', onVisible);
+      }
+    };
+  }, [user?.email, user?.id, apiBaseUrl]);
 
   const [showWellnessScore, setShowWellnessScore] = useState(false);
   const [showAdminConfigSetup, setShowAdminConfigSetup] = useState(false);
   const [adminConfigTab, setAdminConfigTab] = useState(ADMIN_CONFIG_TABS.WELLNESS_SCORE);
+
+  // Close admin chrome if role is demoted / sticky privilege cleared.
+  useEffect(() => {
+    if (showAdminConfigSetup && !isAdminLikeRole(userRole)) {
+      setShowAdminConfigSetup(false);
+    }
+  }, [showAdminConfigSetup, userRole]);
   /** Remount key so each open picks up the Home date-range selection cleanly. */
   const [wellnessScoreSession, setWellnessScoreSession] = useState(0);
   const [wellnessScoreInitialRange, setWellnessScoreInitialRange] = useState({
@@ -1110,6 +1142,12 @@ function WellnessValleyApp() {
       originalCapturedAt: pending.originalCapturedAt ?? null,
     };
   });
+  // Kept in sync for stable navigateTo / showDashboardPage guards — must cover
+  // the race before deferred pendingClassifyCapture is written to sessionStorage.
+  const showManualEntryRef = useRef(showManualEntry);
+  useEffect(() => {
+    showManualEntryRef.current = showManualEntry;
+  }, [showManualEntry]);
   const pendingClassifyRestoredRef = useRef(false);
   /** Bumped on each overlay-tab open so pages refetch even when kept mounted. */
   const [tabVisitKeys, setTabVisitKeys] = useState({});
@@ -2431,6 +2469,8 @@ function WellnessValleyApp() {
               user.id = verified.userId;
               user.UserId = verified.userId;
               Session.setDbUserId(verified.userId);
+              // Always apply server role (empty → user). Prevents sticky admin after account switch.
+              setUserRole(normalizeAppRole(verified.role));
             }
           }
           return true;
@@ -2457,7 +2497,8 @@ function WellnessValleyApp() {
           // ? New user ? SetupWizard will handle profile collection, no popup needed
           setShowUserNotFoundModal(false);
           setIsUserActive(true);
-          if (role) setUserRole(role);
+          // Always apply when lookup returns a role (incl. empty → user). Skip on fail-open.
+          if (role !== undefined) setUserRole(normalizeAppRole(role));
           return true;
         }
 
@@ -2474,7 +2515,9 @@ function WellnessValleyApp() {
         setShowInactiveModal(false);
         setShowUserNotFoundModal(false);
         setIsUserActive(true);
-        if (role) setUserRole(role);
+        // Apply server role when present. Network fail-open omits role — keep current
+        // mid-session; logout/resetApp already cleared sticky privilege.
+        if (role !== undefined) setUserRole(normalizeAppRole(role));
         return true;
       } finally {
         statusCheckInProgress.current = false;
@@ -2504,6 +2547,16 @@ function WellnessValleyApp() {
 
   const showDashboardPage = useCallback(
     (preferredTab = null) => {
+      // Same classify lock as navigateTo — Home Diary used to bypass this and
+      // leave the user stuck on Diary once the deferred pending write landed.
+      // Also block while captureFlowBusy (Use photo → Manual Entry open gap).
+      if (
+        Session.isClassifyCaptureNavLocked(showManualEntryRef.current) ||
+        isCaptureFlowBusy()
+      ) {
+        showToast('Log and share your photo to continue');
+        return;
+      }
       // Guard: prevent duplicate concurrent navigation calls.
       if (navLockRef.current) return;
       navLockRef.current = true;
@@ -2642,7 +2695,12 @@ function WellnessValleyApp() {
     if (onboardingHardBlockingRef.current && targetPage !== 'home') {
       return;
     }
-    if (Session.getPendingClassifyCapture()?.captureId) {
+    // Lock while Classify UI is open, pending snapshot exists, or capture
+    // upload/open is in flight (covers Use-photo → Manual Entry race).
+    if (
+      Session.isClassifyCaptureNavLocked(showManualEntryRef.current) ||
+      isCaptureFlowBusy()
+    ) {
       showToast('Log and share your photo to continue');
       return;
     }
@@ -3812,6 +3870,9 @@ function WellnessValleyApp() {
         if (otpUserRaw) {
           try {
             const parsedUser = JSON.parse(otpUserRaw);
+
+            // Fail-closed privilege until checkUserStatus / verify-session confirms.
+            setUserRole(normalizeAppRole(parsedUser.role || parsedUser.Role));
 
             // Verify account still exists before trusting cached otpUser / dbUserId.
             const attachResult = await verifyAndAttachDbUserId(parsedUser);
@@ -6244,12 +6305,14 @@ function WellnessValleyApp() {
         imageBase64,
         userId: user?.id ?? null,
       });
+      showManualEntryRef.current = true;
       setShowManualEntry(true);
       window.history.pushState({ wvPage: 'manual-entry' }, '');
 
       // Soft account gate — if inactive, close classify and stop upload.
       const isActive = await statusPromise;
       if (!isActive) {
+        showManualEntryRef.current = false;
         setShowManualEntry(false);
         setManualEntryPayload(null);
         Session.clearPendingClassifyCapture();
@@ -6714,6 +6777,11 @@ function WellnessValleyApp() {
     setError(null);
     setUser(null);
     setIsOtpVerified(false);
+    // Privilege hygiene: never carry role / nav ACL / admin screens across logout.
+    setUserRole(ROLE_USER);
+    navAccessPagesRef.current = null;
+    setNavAccessPages(null);
+    setShowAdminConfigSetup(false);
     physicalActivityConfirmedRef.current = false;
     setShowPhysicalActivitySetup(false);
     setPhysicalActivityResolved(false);
@@ -7233,6 +7301,9 @@ function WellnessValleyApp() {
           parsedUser.id || parsedUser.UserId || parsedUser.userId,
         );
 
+        // Apply role from verify-otp immediately (fail-closed to Customer if absent).
+        setUserRole(normalizeAppRole(parsedUser.role || parsedUser.Role));
+
         // DEBUG: Log the parsed user object to see what status value we're getting
         console.log("?? [handleOtpVerified] Parsed user object:", parsedUser);
         console.log("?? [handleOtpVerified] Status field:", parsedUser?.status);
@@ -7578,11 +7649,6 @@ function WellnessValleyApp() {
 
   // Authentication flow
   if (!user && !isOtpVerified) {
-    console.log("?? [Render] Condition 1: !user && !isOtpVerified", {
-      user,
-      isOtpVerified,
-      showInactiveModal,
-    });
     return (
       <>
         <Login
@@ -7617,17 +7683,8 @@ function WellnessValleyApp() {
     );
   }
   const isGoogleUserCheck = user && isGoogleUser(user);
-  console.log("?? [Render] Checking Google user", {
-    user: !!user,
-    isOtpVerified,
-    isGoogleUserCheck,
-    showInactiveModal,
-  });
 
   if (!isOtpVerified && !isGoogleUserCheck) {
-    console.log(
-      "?? [Render] Condition 2: !isOtpVerified && !isGoogleUserCheck",
-    );
     return (
       <>
         {alertModalPortal}
@@ -8095,6 +8152,7 @@ function WellnessValleyApp() {
             }
             Session.clearPendingClassifyCapture();
             setCaptureFlowBusy(false);
+            showManualEntryRef.current = false;
             setShowManualEntry(false);
             setManualEntryPayload(null);
             // Keep preview when AI food result is shown on Home NutritionCard.
@@ -8523,25 +8581,11 @@ function WellnessValleyApp() {
           user={user}
           userRole={userRole}
           allowedPages={navAccessPages}
-          onShowBackgroundHistory={showDashboardPage}
-          onShowHome={showMainPage}
-          onShowWellnessEnrollment={() => {
-            if (enrollmentHistoryPushedRef.current || showUniversityEnrollment) return;
-            enrollmentHistoryPushedRef.current = true;
-            setShowUniversityEnrollment(true);
-            window.history.pushState({ wvPage: 'enrollment' }, '');
-          }}
-          onShowWellnessCounselling={() => {
-            if (showWellnessCounselling) return;
-            setShowWellnessCounselling(true);
-            window.history.pushState({ wvPage: 'counselling' }, '');
-          }}
-          onShowNutritionCentersMap={() => {
-            if (!showNutritionCentersMap) {
-              window.history.pushState({ wvPage: 'physical-club' }, '');
-            }
-            setShowNutritionCentersMap(true);
-          }}
+          onShowBackgroundHistory={() => navigateTo('dashboard')}
+          onShowHome={() => navigateTo('home')}
+          onShowWellnessEnrollment={() => navigateTo('enrollment')}
+          onShowWellnessCounselling={() => navigateTo('counselling')}
+          onShowNutritionCentersMap={() => navigateTo('physical-club')}
           onShowActivityReport={() => navigateTo('activity-report')}
           onShowTestimonials={() => navigateTo('testimonials')}
           onShowReports={() => navigateTo('reports')}

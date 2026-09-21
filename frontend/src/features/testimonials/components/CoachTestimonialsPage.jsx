@@ -43,6 +43,7 @@ import {
 } from './TransformationShareCard.jsx';
 import { getCachedVideoThumbnail } from '../utils/videoThumbnailCache.js';
 import { jpegDataUrlToObjectUrl, revokeBlobUrl, withTestimonialMediaCacheBust } from '../utils/testimonialMediaUrl.js';
+import { useRevocableImageSrc } from '../hooks/useRevocableImageSrc.js';
 import { resolveResultVideoUrl, prefetchNativeResultVideos } from '../utils/downloadVideo.js';
 import { MAX_HEALTH_VIDEO_MB, isVideoOverSizeLimit, videoTooLargeMessage, maxVideoMbForSlot } from '../utils/videoLimits.js';
 import { compressVideoToMaxBytes } from '../utils/compressTestimonialVideo.js';
@@ -62,7 +63,16 @@ import {
   buildSearchSuggestions,
   normalizeSearchQuery,
 } from '../utils/testimonialSearch.js';
-import { PORTRAIT_IMAGE_CLASS_SM } from '../services/testimonialFormUtils.js';
+import {
+  PORTRAIT_IMAGE_CLASS_SM,
+  parseDurationText,
+  formatDurationText,
+  sanitizeDurationDigits,
+  validateDurationFields,
+  isUsableDurationText,
+  liveWeightDiffKg,
+  canShareTransformationPhoto,
+} from '../services/testimonialFormUtils.js';
 import { resolveRowTeamUploadPerformance } from '../utils/testimonialTeamPerformance.js';
 import { uniqueConditions, isSameIssueList, withoutHealthIssue } from '../utils/uniqueConditions.js';
 import { getApiBaseUrl } from '../../../config/api.config.js';
@@ -469,7 +479,7 @@ function UnifiedOtpInline({
       <div className="flex items-center gap-2">
         <ShieldCheck className="h-4 w-4 text-amber-600 shrink-0" />
         <p className="text-sm font-semibold text-amber-800">
-          Enter OTP sent to your sponsor {sponsorLabel} through Gmail
+          Enter OTP sent to your sponsor {sponsorLabel} through Email
         </p>
       </div>
       <p className="text-xs text-amber-700 leading-relaxed">
@@ -535,6 +545,56 @@ function afterWeightDiffers(beforeKg, afterKg) {
   const after = Number(afterKg);
   if (!Number.isFinite(before) || !Number.isFinite(after)) return false;
   return before !== after;
+}
+
+function DurationEditor({
+  valueText,
+  unit,
+  onValueChange,
+  onUnitChange,
+  onCommit,
+  onCancel,
+}) {
+  return (
+    <div className="flex items-center gap-1.5 flex-wrap">
+      <NativeInput
+        inputMode="numeric"
+        pattern="[0-9]*"
+        autoComplete="off"
+        autoFocus
+        placeholder="e.g. 3"
+        value={valueText ?? ''}
+        onChange={(e) => onValueChange(sanitizeDurationDigits(e.target.value))}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            onCommit();
+          }
+          if (e.key === 'Escape') onCancel();
+        }}
+        className="w-16 border border-gray-300 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-green-400"
+      />
+      <select
+        value={unit}
+        onChange={(e) => onUnitChange(e.target.value)}
+        className="border border-gray-300 rounded-lg px-1.5 py-1 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-green-400"
+      >
+        <option value="days">days</option>
+        <option value="months">months</option>
+      </select>
+      <button
+        type="button"
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={onCommit}
+        className="text-green-600 hover:text-green-800 text-[11px] font-bold"
+      >
+        Save
+      </button>
+      <button type="button" onClick={onCancel} className="text-gray-400 hover:text-gray-600">
+        <X className="h-3.5 w-3.5" />
+      </button>
+    </div>
+  );
 }
 
 function MemberCard({
@@ -626,9 +686,11 @@ function MemberCard({
     if (testimonial?.status === 'pending') return;
     setApprovedIssues((prev) => (sameIssueList(prev, issues) ? prev : issues));
   }, [issues, draftIssues, testimonial?.status]);
-  // Local text while weight field is open — needed for Android WebView typing
+  // Local text while weight/duration fields are open — needed for Android WebView typing
   const [beforeWeightText, setBeforeWeightText] = useState(null);
   const [afterWeightText,  setAfterWeightText]  = useState(null);
+  const [durationValueText, setDurationValueText] = useState(null);
+  const [durationUnitDraft, setDurationUnitDraft] = useState('months');
   const [uploadingHealth,   setUploadingHealth]   = useState(false);
   const [uploadingBusiness, setUploadingBusiness] = useState(false);
   const [pickerSlot,        setPickerSlot]         = useState(null); // 'before' | 'after' | null
@@ -712,9 +774,9 @@ function MemberCard({
   const displayAfterKg  = Number(shownAfterKg ?? 0);
   const displayGoalType = draftBefore?.goalType ?? testimonial?.goalType;
   const displayDuration = draftBefore?.durationText ?? testimonial?.durationText;
-  const diff = testimonial && hasAfter && displayBeforeKg > 0 && displayAfterKg > 0
-    ? Math.abs(displayAfterKg - displayBeforeKg).toFixed(1)
-    : null;
+  const usableDuration = isUsableDurationText(displayDuration);
+  const liveDiff = liveWeightDiffKg(displayBeforeKg, displayAfterKg);
+  const diff = liveDiff;
 
   const mediaVersion = `${testimonial?.updatedAt ?? testimonial?.id ?? ''}-${mediaEpoch}`;
   const beforeRaw = draftBefore?.previewUrl
@@ -726,22 +788,8 @@ function MemberCard({
         : null,
       mediaVersion,
     );
-  const beforeFromData = typeof beforeRaw === 'string' && beforeRaw.startsWith('data:image');
-  const afterFromData = typeof afterRaw === 'string' && afterRaw.startsWith('data:image');
-  const beforeImageSrc = useMemo(() => (
-    beforeFromData ? jpegDataUrlToObjectUrl(beforeRaw) : beforeRaw
-  ), [beforeRaw, beforeFromData]);
-  const afterImageSrc = useMemo(() => (
-    afterFromData ? jpegDataUrlToObjectUrl(afterRaw) : afterRaw
-  ), [afterRaw, afterFromData]);
-  useEffect(() => {
-    if (!beforeFromData) return undefined;
-    return () => revokeBlobUrl(beforeImageSrc);
-  }, [beforeFromData, beforeImageSrc]);
-  useEffect(() => {
-    if (!afterFromData) return undefined;
-    return () => revokeBlobUrl(afterImageSrc);
-  }, [afterFromData, afterImageSrc]);
+  const beforeImageSrc = useRevocableImageSrc(beforeRaw);
+  const afterImageSrc = useRevocableImageSrc(afterRaw);
 
   // Photo-only drafts — weight/duration edits must NOT open this strip (Android focus loss)
   const hasPhotoDraft = Boolean(
@@ -814,6 +862,44 @@ function MemberCard({
       return next;
     });
   }, []);
+
+  const openDurationEdit = useCallback(() => {
+    const parsed = parseDurationText(draftBefore?.durationText ?? testimonial?.durationText);
+    setDurationValueText(parsed.durationValue);
+    setDurationUnitDraft(parsed.durationUnit);
+    setExpandedSlots((prev) => {
+      const next = new Set(prev);
+      next.add('duration');
+      return next;
+    });
+  }, [draftBefore?.durationText, testimonial?.durationText]);
+
+  const closeDurationEdit = useCallback(() => {
+    setDurationValueText(null);
+    setExpandedSlots((prev) => {
+      const next = new Set(prev);
+      next.delete('duration');
+      return next;
+    });
+  }, []);
+
+  const commitDurationEdit = useCallback(() => {
+    const err = validateDurationFields(durationUnitDraft, durationValueText);
+    if (err) {
+      setSubmitError(err);
+      return;
+    }
+    const text = formatDurationText(durationUnitDraft, durationValueText);
+    setDraftBefore((prev) => ({
+      ...(prev || {
+        weightKg: testimonial?.beforeWeightKg,
+        goalType: testimonial?.goalType || 'loss',
+      }),
+      durationText: text,
+    }));
+    setSubmitError(null);
+    closeDurationEdit();
+  }, [closeDurationEdit, durationUnitDraft, durationValueText, testimonial?.beforeWeightKg, testimonial?.goalType]);
 
   const openPhotoPicker = useCallback((inputRef) => {
     setCaptureFlowBusy(true);
@@ -936,7 +1022,8 @@ function MemberCard({
     const issuesNeedOtp = dirtySlots.includes('issues') && (hasAfter || hasResultVideo || hasVisiblePhotoCard);
     const afterWeightDirty = draftAfter?.weightKg !== undefined
       && afterWeightDiffers(testimonial?.beforeWeightKg, draftAfter.weightKg);
-    const isSilentSave = !photoOrVideoChanged && !issuesNeedOtp && !afterWeightDirty;
+    const isSilentSave = !photoOrVideoChanged && !issuesNeedOtp && !afterWeightDirty
+      && !hasVisiblePhotoCard;
     // Photos still compressing — wait so we do not submit without image bytes.
     if (draftBefore?.compressing || draftAfter?.compressing || coverCrop.isPreparing) {
       setSubmitError('Photo is still preparing — try Submit again in a moment.');
@@ -951,20 +1038,21 @@ function MemberCard({
       return;
     }
 
+    const durationForSubmit = String(draftBefore?.durationText ?? testimonial?.durationText ?? '').trim();
+    const usableDurationForSubmit = isUsableDurationText(durationForSubmit)
+      ? durationForSubmit
+      : '';
+
     const payload = {
       userId,
       dirtySlots,
+      submitForApproval: !isSilentSave,
       ...(draftBefore ? {
         ...(draftBefore.imageBase64 ? { beforeImageBase64: draftBefore.imageBase64 } : {}),
         ...(draftBefore.weightKg !== undefined ? { beforeWeightKg: draftBefore.weightKg } : {}),
         // Always send goal on drafts — UI may show "Weight Loss" without writing state
         goalType: draftBefore.goalType || testimonial?.goalType || 'loss',
-        ...((String(draftBefore.durationText ?? '').trim() || testimonial?.durationText)
-          ? {
-              durationText:
-                String(draftBefore.durationText ?? '').trim() || testimonial.durationText,
-            }
-          : {}),
+        ...(usableDurationForSubmit ? { durationText: usableDurationForSubmit } : {}),
       } : {}),
       ...(draftAfter ? {
         ...(draftAfter.imageBase64 ? { afterImageBase64: draftAfter.imageBase64 } : {}),
@@ -975,22 +1063,39 @@ function MemberCard({
       ...(Array.isArray(draftIssues)
         ? { recoveredHealthIssues: draftIssues.filter(Boolean) }
         : {}),
+      ...(!draftBefore && usableDurationForSubmit ? { durationText: usableDurationForSubmit } : {}),
     };
+    if (
+      payload.beforeWeightKg === undefined
+      && (payload.afterWeightKg !== undefined || payload.durationText)
+    ) {
+      const beforeKg = Number(testimonial?.beforeWeightKg ?? displayBeforeKg);
+      if (Number.isFinite(beforeKg) && beforeKg > 0) {
+        payload.beforeWeightKg = beforeKg;
+      }
+    }
 
-    // Completing both photos requires at least one health issue (same rule as backend).
+    // Visible Before+After (including a Profile-seeded clone) needs issues + duration + OTP.
     const willComplete =
       Boolean(draftBefore?.imageBase64 || testimonial?.beforeImageUrl)
-      && Boolean(draftAfter?.imageBase64 || (hasAfter && testimonial?.afterImageUrl));
-    const issuesForSubmit = Array.isArray(draftIssues)
+      && Boolean(draftAfter?.imageBase64 || testimonial?.afterImageUrl || hasAfter);
+    const issuesForSubmit = Array.isArray(draftIssues) && draftIssues.filter(Boolean).length > 0
       ? draftIssues.filter(Boolean)
       : (testimonial?.recoveredHealthIssues || []);
+    const submittingPhotoCard = Boolean(hasVisiblePhotoCard || willComplete || afterWeightDirty);
     if (
-      willComplete
-      && dirtySlots.some((s) => s === 'before' || s === 'after')
+      submittingPhotoCard
       && (!Array.isArray(issuesForSubmit) || issuesForSubmit.filter(Boolean).length === 0)
     ) {
-      setSubmitError('Add at least one Health Issue before submitting before + after photos.');
+      setSubmitError('Add at least one Health Issue before submitting for coach approval.');
       return;
+    }
+    if (submittingPhotoCard && !usableDurationForSubmit) {
+      setSubmitError('Add a duration in days or months (e.g. 3 months) before submitting.');
+      return;
+    }
+    if (submittingPhotoCard && issuesForSubmit.length > 0 && payload.recoveredHealthIssues == null) {
+      payload.recoveredHealthIssues = issuesForSubmit;
     }
 
     // First-time submit needs the before image bytes in the payload.
@@ -1055,6 +1160,16 @@ function MemberCard({
           // Non-fatal — Profile reloads on next open with cache bust.
         }
       }
+      if (!isSilentSave && !otpSent) {
+        const hasDuration = Boolean(usableDurationForSubmit);
+        const hasIssues = Array.isArray(issuesForSubmit) && issuesForSubmit.filter(Boolean).length > 0;
+        setSubmitError(
+          hasDuration && hasIssues
+            ? 'Coach approval did not start. Please tap Submit again — if it still fails, add the Before/After photos once more.'
+            : 'Coach approval did not start. Add a duration and at least one health issue, then submit again.',
+        );
+        return;
+      }
       clearDrafts();
       if (otpSent || patched?.hasPendingOtp) {
         setUnifiedOtpVerified(false);
@@ -1084,7 +1199,7 @@ function MemberCard({
         setIsSubmitting(false);
         setCaptureFlowBusy(false);
       });
-  }, [userId, dirtySlots, draftBefore, draftAfter, draftHealthPath, draftBusinessPath, draftIssues, onMineRefresh, hasAfter, coverCrop.isPreparing, testimonial?.id, testimonial?.beforeImageUrl, testimonial?.afterImageUrl, testimonial?.beforeWeightKg, testimonial?.afterWeightKg, testimonial?.goalType, testimonial?.durationText, testimonial?.recoveredHealthIssues, testimonial?.healthVideoPath, testimonial?.businessVideoPath, testimonial?.healthVideoUrl, testimonial?.businessVideoUrl]);
+  }, [userId, dirtySlots, draftBefore, draftAfter, draftHealthPath, draftBusinessPath, draftIssues, onMineRefresh, hasAfter, displayBeforeKg, coverCrop.isPreparing, testimonial?.id, testimonial?.beforeImageUrl, testimonial?.afterImageUrl, testimonial?.beforeWeightKg, testimonial?.afterWeightKg, testimonial?.goalType, testimonial?.durationText, testimonial?.recoveredHealthIssues, testimonial?.healthVideoPath, testimonial?.businessVideoPath, testimonial?.healthVideoUrl, testimonial?.businessVideoUrl]);
 
   const anyPhotoCompressing = Boolean(
     draftBefore?.compressing || draftAfter?.compressing || coverCrop.isPreparing,
@@ -1469,13 +1584,6 @@ function MemberCard({
                   <option value="gain">Weight Gain</option>
                 </select>
               </div>
-              <div className="col-span-2">
-                <label className="block text-[10px] font-medium text-gray-400 mb-1">Duration (e.g. "3 months")</label>
-                <input type="text" placeholder={testimonial?.durationText || 'e.g. 3 months'}
-                  value={draftBefore?.durationText ?? ''}
-                  onChange={(e) => setDraftBefore(prev => ({ ...prev, durationText: e.target.value }))}
-                  className="w-full border border-gray-200 rounded-xl px-2.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400" />
-              </div>
             </>
           )}
           {draftAfter && (
@@ -1516,8 +1624,8 @@ function MemberCard({
       {/* Stats — single summary line + status badge */}
       {testimonial && (
         <div className="space-y-1.5">
-          {/* "Lost X kgs in Y duration" sentence */}
-          {diff && hasAfter && (
+          {/* "Lost X kgs in Y duration" — uses live draft weights, not persisted hasAfter */}
+          {diff && (
             <div className="flex items-center gap-2 flex-wrap">
               <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold border ${displayGoalType === 'loss' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-blue-50 text-blue-700 border-blue-200'}`}>
                 {displayGoalType === 'loss'
@@ -1525,54 +1633,22 @@ function MemberCard({
                   : <TrendingUp   className="h-3 w-3 shrink-0" />
                 }
                 {displayGoalType === 'loss' ? 'Lost' : 'Gained'} {diff} kgs
-                {displayDuration ? ` in ${displayDuration}` : ''}
+                {usableDuration ? ` in ${displayDuration}` : ''}
               </span>
-              {/* Pencil/Plus for duration edit (Mine only) */}
               {editable && (
                 expandedSlots.has('duration') ? (
-                  <div className="flex items-center gap-1.5">
-                    <input
-                      type="text"
-                      autoFocus
-                      placeholder="e.g. 3 months"
-                      value={draftBefore?.durationText ?? testimonial?.durationText ?? ''}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setDraftBefore((prev) => ({
-                          ...(prev || {
-                            weightKg: testimonial?.beforeWeightKg,
-                            goalType: testimonial?.goalType,
-                          }),
-                          durationText: val,
-                        }));
-                      }}
-                      onBlur={() => {
-                        const val = String(draftBefore?.durationText ?? '').trim();
-                        if (val) {
-                          setDraftBefore((prev) => ({
-                            ...(prev || {
-                              weightKg: testimonial?.beforeWeightKg,
-                              goalType: testimonial?.goalType,
-                            }),
-                            durationText: val,
-                          }));
-                        }
-                        toggleSlot('duration');
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') { e.target.blur(); }
-                        if (e.key === 'Escape') { toggleSlot('duration'); }
-                      }}
-                      className="w-28 border border-gray-300 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-green-400"
-                    />
-                    <button type="button" onClick={() => toggleSlot('duration')} className="text-gray-400 hover:text-gray-600">
-                      <X className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
+                  <DurationEditor
+                    valueText={durationValueText}
+                    unit={durationUnitDraft}
+                    onValueChange={setDurationValueText}
+                    onUnitChange={setDurationUnitDraft}
+                    onCommit={commitDurationEdit}
+                    onCancel={closeDurationEdit}
+                  />
                 ) : (
                   <button
                     type="button"
-                    onClick={() => toggleSlot('duration')}
+                    onClick={openDurationEdit}
                     className="p-1 rounded-full border border-gray-200 text-gray-400 hover:text-green-700 hover:border-green-300 transition-colors"
                     aria-label="Edit duration"
                   >
@@ -1582,11 +1658,35 @@ function MemberCard({
               )}
             </div>
           )}
-          {/* No diff yet — show before weight or add prompt */}
-          {(!diff || !hasAfter) && displayBeforeKg > 0 && (
-            <span className="inline-flex items-center gap-1 bg-gray-50 border border-gray-200 rounded-full px-3 py-1 text-[11px] text-gray-600 font-medium">
-              {displayBeforeKg} kg → ?
-            </span>
+          {/* No diff yet — show before weight or add prompt + duration */}
+          {!diff && displayBeforeKg > 0 && (
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="inline-flex items-center gap-1 bg-gray-50 border border-gray-200 rounded-full px-3 py-1 text-[11px] text-gray-600 font-medium">
+                {displayBeforeKg} kg → ?
+                {usableDuration ? ` · ${displayDuration}` : ''}
+              </span>
+              {editable && (
+                expandedSlots.has('duration') ? (
+                  <DurationEditor
+                    valueText={durationValueText}
+                    unit={durationUnitDraft}
+                    onValueChange={setDurationValueText}
+                    onUnitChange={setDurationUnitDraft}
+                    onCommit={commitDurationEdit}
+                    onCancel={closeDurationEdit}
+                  />
+                ) : (
+                  <button
+                    type="button"
+                    onClick={openDurationEdit}
+                    className="p-1 rounded-full border border-gray-200 text-gray-400 hover:text-green-700 hover:border-green-300 transition-colors"
+                    aria-label={usableDuration ? 'Edit duration' : 'Add duration'}
+                  >
+                    <Pencil className="h-3 w-3" />
+                  </button>
+                )
+              )}
+            </div>
           )}
           {/* Status badge */}
           <div className="flex gap-1.5 flex-wrap items-center">
@@ -1609,7 +1709,7 @@ function MemberCard({
       {/* Health Issues — below photos, above result video */}
       {(editable || testimonial) && (
         <div className="space-y-1.5 overflow-visible relative z-20">
-          <p className="text-[10px] font-bold text-gray-400 tracking-wide">
+          <p className="text-[10px] font-bold text-gray-400 tracking-normal whitespace-normal">
             Health Issues while joining this community
           </p>
           <HealthIssueCoachEditor
@@ -1624,7 +1724,7 @@ function MemberCard({
             onSaved={handleHealthIssuesSaved}
             onRemove={handleHealthIssueRemoved}
           />
-          {testimonial && (testimonial.beforeImageUrl || hasAfter) &&
+          {testimonial && canShareTransformationPhoto(testimonial) && (testimonial.beforeImageUrl || hasAfter) &&
             (editable ? (!hasDirtySlots && !submitDone) : true) && (
             <TransformationShareActions
               kind="photo"
@@ -1869,8 +1969,8 @@ function MemberCard({
             ref={shareCardRef}
             testimonial={{
               ...testimonial,
-              beforeImageUrl: draftBefore?.previewUrl || withTestimonialMediaCacheBust(testimonial.beforeImageUrl, mediaVersion),
-              afterImageUrl: draftAfter?.previewUrl || withTestimonialMediaCacheBust(testimonial.afterImageUrl, mediaVersion),
+              beforeImageUrl: beforeImageSrc,
+              afterImageUrl: afterImageSrc,
               beforeWeightKg: displayBeforeKg || testimonial.beforeWeightKg,
               afterWeightKg: displayAfterKg || testimonial.afterWeightKg,
               recoveredHealthIssues: draftIssues ?? testimonial.recoveredHealthIssues,
@@ -1953,12 +2053,8 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
       const leftUrl = profileResult?.success
         ? profileResult?.data?.transformationPhotos?.left
         : null;
-      const rightUrl = profileResult?.success
-        ? profileResult?.data?.transformationPhotos?.right
-        : null;
       const seeded = seedMineTestimonialFromProfileSlots(testimonial, {
         leftUrl,
-        rightUrl,
         weightKg: Number.isFinite(latestWeightKg) ? latestWeightKg : null,
       });
       if (!seeded && !video) {

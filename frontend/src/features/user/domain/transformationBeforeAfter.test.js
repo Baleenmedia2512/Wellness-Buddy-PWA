@@ -152,20 +152,46 @@ describe('transformation Before vs After pairing', () => {
     assert.equal(seeded.beforeWeightKg, 48);
   });
 
-  it('maps Profile Right to After when no real After exists', () => {
+  it('seeds both Before and After from Left for a new user even when Profile Right exists', () => {
     const seeded = seedMineTestimonialFromProfileSlots({
       status: 'incomplete',
-      beforeImageUrl: 'https://cdn.example/before.jpg',
-      afterImageUrl: 'https://cdn.example/before.jpg',
+      beforeImageUrl: null,
+      afterImageUrl: null,
     }, {
       leftUrl: 'data:image/jpeg;base64,left',
       rightUrl: 'data:image/jpeg;base64,right',
     });
     assert.equal(seeded.beforeImageUrl, 'data:image/jpeg;base64,left');
-    assert.equal(seeded.afterImageUrl, 'data:image/jpeg;base64,right');
+    assert.equal(seeded.afterImageUrl, 'data:image/jpeg;base64,left');
   });
 
-  it('overwrites pending After with Profile Right', () => {
+  it('does not replace stored After when Profile Left changes', () => {
+    const seeded = seedMineTestimonialFromProfileSlots({
+      status: 'incomplete',
+      beforeImageUrl: 'https://cdn.example/old-left.jpg',
+      afterImageUrl: 'https://cdn.example/old-left.jpg',
+    }, {
+      leftUrl: 'data:image/jpeg;base64,new-left',
+      rightUrl: 'data:image/jpeg;base64,right',
+    });
+    assert.equal(seeded.beforeImageUrl, 'data:image/jpeg;base64,new-left');
+    assert.equal(seeded.afterImageUrl, 'https://cdn.example/old-left.jpg');
+  });
+
+  it('replaces incomplete Profile-Right auto After with Left', () => {
+    const seeded = seedMineTestimonialFromProfileSlots({
+      status: 'incomplete',
+      beforeImageUrl: 'https://cdn.example/1/before_1700000000000.jpg',
+      afterImageUrl: 'https://cdn.example/1/after_1700000001000.jpg',
+    }, {
+      leftUrl: 'data:image/jpeg;base64,left',
+      rightUrl: 'data:image/jpeg;base64,right',
+    });
+    assert.equal(seeded.beforeImageUrl, 'data:image/jpeg;base64,left');
+    assert.equal(seeded.afterImageUrl, 'data:image/jpeg;base64,left');
+  });
+
+  it('does not overwrite a pending After with Profile Right', () => {
     const seeded = seedMineTestimonialFromProfileSlots({
       status: 'pending',
       beforeImageUrl: 'https://cdn.example/before.jpg',
@@ -173,14 +199,13 @@ describe('transformation Before vs After pairing', () => {
     }, {
       rightUrl: 'data:image/jpeg;base64,right',
     });
-    assert.equal(seeded.afterImageUrl, 'data:image/jpeg;base64,right');
+    assert.equal(seeded.afterImageUrl, 'https://cdn.example/after.jpg');
   });
 
-  it('uses Profile Right alone for After display seed', () => {
+  it('ignores Profile Right when it is the only slot', () => {
     const seeded = seedMineTestimonialFromProfileSlots(null, {
       rightUrl: 'data:image/jpeg;base64,right',
     });
-    assert.equal(seeded.beforeImageUrl, null);
-    assert.equal(seeded.afterImageUrl, 'data:image/jpeg;base64,right');
+    assert.equal(seeded, null);
   });
 });

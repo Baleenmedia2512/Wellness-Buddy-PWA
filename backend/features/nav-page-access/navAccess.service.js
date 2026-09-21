@@ -2,6 +2,9 @@
  * Nav page access — role → main-nav matrix (DB-backed).
  */
 import { ValidationError } from '../../shared/lib/ValidationError.js';
+import logger from '../../shared/lib/logger.js';
+import { getSupabaseClient } from '../../utils/supabaseClient.js';
+import { userHasSponsorTeam } from '../../utils/coachTeamSeats.js';
 import * as userRepo from '../user/user.repository.js';
 import * as repo from './data/navAccess.repo.js';
 import { assertNavAccessAdmin } from './domain/permissions/navAccess.policy.js';
@@ -32,15 +35,30 @@ async function loadMatrix() {
 }
 
 /**
- * Authenticated member: pages allowed for their Role.
+ * Authenticated member: pages allowed for their effective nav role.
+ * Account Role stays on the payload; members who sponsor a team use Sponsor pages.
  */
 export async function getForMe({ requesterUserId, requesterEmail }) {
   const requester = await resolveRequester({ requesterUserId, requesterEmail });
   if (!requester) throw new ValidationError(404, 'Requester not found');
 
   const { matrix } = await loadMatrix();
-  const role = resolveMatrixRole(requester.Role);
-  const pages = pagesForRole(matrix, requester.Role);
+  const accountRole = requester.Role ? String(requester.Role).toLowerCase() : 'user';
+  const accountKey = resolveMatrixRole(accountRole);
+
+  let hasSponsorTeam = false;
+  if (accountKey === 'user') {
+    try {
+      hasSponsorTeam = await userHasSponsorTeam(getSupabaseClient(), requester.UserId);
+    } catch (err) {
+      logger.warn('[nav-page-access] sponsor-team check failed; using account role', {
+        err: err?.message || String(err),
+      });
+    }
+  }
+
+  const role = resolveMatrixRole(accountRole, { hasSponsorTeam });
+  const pages = pagesForRole(matrix, accountRole, { hasSponsorTeam });
 
   return {
     httpStatus: 200,
@@ -48,7 +66,8 @@ export async function getForMe({ requesterUserId, requesterEmail }) {
       ok: true,
       data: {
         role,
-        accountRole: requester.Role ? String(requester.Role).toLowerCase() : 'user',
+        accountRole,
+        hasSponsorTeam,
         pages,
         allowedPages: allowedPageKeys(pages),
       },

@@ -249,12 +249,12 @@ const ProfileEmailKycSection = ({
     >
       <div>
         <p className="text-sm font-semibold text-gray-800">
-          {isRecover ? 'Recover account' : 'Verify email (optional)'}
+          {isRecover ? 'Recover account' : 'Verify email'}
         </p>
         <p className="text-xs text-gray-500 mt-0.5">
           {isRecover
             ? 'Enter the email of your existing account. After OTP, this phone moves onto that account.'
-            : 'Not required to use the app. Verify so new members can find you as a sponsor.'}
+            : 'Verify so new members can find you as a sponsor.'}
         </p>
       </div>
 

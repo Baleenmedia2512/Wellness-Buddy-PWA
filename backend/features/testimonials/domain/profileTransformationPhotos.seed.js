@@ -1,13 +1,14 @@
 /**
- * Seed testimonial list/detail rows from profile transformation_photos (Left/Right slots).
+ * Seed testimonial list/detail rows from profile transformation_photos (Left slot).
  * Mirrors frontend seedMineTestimonialFromProfileSlots for read-only upline cards.
+ * Left → Before; After defaults to Left only when none is stored. Profile Right is ignored.
  */
 import {
   isStoredTransformationPhoto,
   mapTransformationPhotos,
 } from '../../user/domain/transformationPhotos.rules.js';
 import { isRealImagePath } from './testimonials-list.pagination.js';
-import { testimonialHasRealAfter } from './profilePhotoSync.rules.js';
+import { isIncompleteProfileMappedAfter, testimonialHasRealAfter } from './profilePhotoSync.rules.js';
 
 const DATA_IMAGE_RE = /^data:image\/[a-zA-Z0-9+.-]+;base64,/;
 const HTTPS_RE = /^https:\/\//i;
@@ -35,10 +36,8 @@ function isStoredPath(value) {
 export function seedTestimonialFromProfilePhotos(testimonial, transformationPhotosRaw) {
   const slots = mapTransformationPhotos(transformationPhotosRaw);
   const leftUrl = slots.left;
-  const rightUrl = slots.right;
   const hasLeft = isStoredTransformationPhoto(leftUrl);
-  const hasRight = isStoredTransformationPhoto(rightUrl);
-  if (!hasLeft && !hasRight) {
+  if (!hasLeft) {
     return testimonial ?? null;
   }
 
@@ -57,19 +56,13 @@ export function seedTestimonialFromProfilePhotos(testimonial, transformationPhot
   const realAfter = testimonialHasRealAfter(next, (path) => (
     typeof path === 'string' && path.endsWith('_video_only_placeholder.jpg')
   ));
+  const storedAfter = isStoredPath(testimonial?.after_image_path)
+    && !isIncompleteProfileMappedAfter(next, testimonial?.after_image_path);
 
-  if (hasLeft) {
-    next.before_image_path = String(leftUrl).trim();
-  }
+  next.before_image_path = String(leftUrl).trim();
 
-  if (hasRight) {
-    next.after_image_path = String(rightUrl).trim();
-  } else if (!realAfter) {
-    if (hasLeft) {
-      next.after_image_path = String(leftUrl).trim();
-    } else if (!isStoredPath(next.after_image_path) && isStoredPath(next.before_image_path)) {
-      next.after_image_path = next.before_image_path;
-    }
+  if (!realAfter && !storedAfter) {
+    next.after_image_path = String(leftUrl).trim();
   }
 
   return next;
