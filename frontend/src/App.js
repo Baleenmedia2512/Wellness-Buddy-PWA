@@ -215,6 +215,7 @@ import * as PermissionManager from "./shared/services/permissionManager";
 import { clearHomeDashboardSnapshot } from "./shared/services/homeDashboardActivity";
 import {
   setCaptureFlowBusy,
+  isCaptureFlowBusy,
 } from "./shared/services/captureFlowBusy";
 import PermissionDeniedModal from "./shared/components/PermissionDeniedModal";
 import PermissionBlockedPage from "./shared/components/PermissionBlockedPage";
@@ -1141,6 +1142,12 @@ function WellnessValleyApp() {
       originalCapturedAt: pending.originalCapturedAt ?? null,
     };
   });
+  // Kept in sync for stable navigateTo / showDashboardPage guards — must cover
+  // the race before deferred pendingClassifyCapture is written to sessionStorage.
+  const showManualEntryRef = useRef(showManualEntry);
+  useEffect(() => {
+    showManualEntryRef.current = showManualEntry;
+  }, [showManualEntry]);
   const pendingClassifyRestoredRef = useRef(false);
   /** Bumped on each overlay-tab open so pages refetch even when kept mounted. */
   const [tabVisitKeys, setTabVisitKeys] = useState({});
@@ -2540,6 +2547,16 @@ function WellnessValleyApp() {
 
   const showDashboardPage = useCallback(
     (preferredTab = null) => {
+      // Same classify lock as navigateTo — Home Diary used to bypass this and
+      // leave the user stuck on Diary once the deferred pending write landed.
+      // Also block while captureFlowBusy (Use photo → Manual Entry open gap).
+      if (
+        Session.isClassifyCaptureNavLocked(showManualEntryRef.current) ||
+        isCaptureFlowBusy()
+      ) {
+        showToast('Log and share your photo to continue');
+        return;
+      }
       // Guard: prevent duplicate concurrent navigation calls.
       if (navLockRef.current) return;
       navLockRef.current = true;
@@ -2678,7 +2695,12 @@ function WellnessValleyApp() {
     if (onboardingHardBlockingRef.current && targetPage !== 'home') {
       return;
     }
-    if (Session.getPendingClassifyCapture()?.captureId) {
+    // Lock while Classify UI is open, pending snapshot exists, or capture
+    // upload/open is in flight (covers Use-photo → Manual Entry race).
+    if (
+      Session.isClassifyCaptureNavLocked(showManualEntryRef.current) ||
+      isCaptureFlowBusy()
+    ) {
       showToast('Log and share your photo to continue');
       return;
     }
@@ -6283,12 +6305,14 @@ function WellnessValleyApp() {
         imageBase64,
         userId: user?.id ?? null,
       });
+      showManualEntryRef.current = true;
       setShowManualEntry(true);
       window.history.pushState({ wvPage: 'manual-entry' }, '');
 
       // Soft account gate — if inactive, close classify and stop upload.
       const isActive = await statusPromise;
       if (!isActive) {
+        showManualEntryRef.current = false;
         setShowManualEntry(false);
         setManualEntryPayload(null);
         Session.clearPendingClassifyCapture();
@@ -8128,6 +8152,7 @@ function WellnessValleyApp() {
             }
             Session.clearPendingClassifyCapture();
             setCaptureFlowBusy(false);
+            showManualEntryRef.current = false;
             setShowManualEntry(false);
             setManualEntryPayload(null);
             // Keep preview when AI food result is shown on Home NutritionCard.
@@ -8556,25 +8581,11 @@ function WellnessValleyApp() {
           user={user}
           userRole={userRole}
           allowedPages={navAccessPages}
-          onShowBackgroundHistory={showDashboardPage}
-          onShowHome={showMainPage}
-          onShowWellnessEnrollment={() => {
-            if (enrollmentHistoryPushedRef.current || showUniversityEnrollment) return;
-            enrollmentHistoryPushedRef.current = true;
-            setShowUniversityEnrollment(true);
-            window.history.pushState({ wvPage: 'enrollment' }, '');
-          }}
-          onShowWellnessCounselling={() => {
-            if (showWellnessCounselling) return;
-            setShowWellnessCounselling(true);
-            window.history.pushState({ wvPage: 'counselling' }, '');
-          }}
-          onShowNutritionCentersMap={() => {
-            if (!showNutritionCentersMap) {
-              window.history.pushState({ wvPage: 'physical-club' }, '');
-            }
-            setShowNutritionCentersMap(true);
-          }}
+          onShowBackgroundHistory={() => navigateTo('dashboard')}
+          onShowHome={() => navigateTo('home')}
+          onShowWellnessEnrollment={() => navigateTo('enrollment')}
+          onShowWellnessCounselling={() => navigateTo('counselling')}
+          onShowNutritionCentersMap={() => navigateTo('physical-club')}
           onShowActivityReport={() => navigateTo('activity-report')}
           onShowTestimonials={() => navigateTo('testimonials')}
           onShowReports={() => navigateTo('reports')}
