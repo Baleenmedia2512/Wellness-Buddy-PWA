@@ -4,7 +4,9 @@ import { ChevronDown, CheckCircle } from 'lucide-react';
 import { DIET_OPTIONS } from '../../services/dietOptions';
 import DietIcon from '../../../../shared/components/icons/DietIcon';
 
-const DietDropdown = ({ value, onChange }) => {
+const DEFAULT_LABEL_CLS = 'block text-sm font-medium text-gray-700 mb-1';
+
+const DietDropdown = ({ value, onChange, labelClassName }) => {
   const [open, setOpen] = useState(false);
   const optionsRef = useRef(null);
 
@@ -19,7 +21,7 @@ const DietDropdown = ({ value, onChange }) => {
 
   return (
     <div className="relative">
-      <label className="block text-sm font-medium text-gray-700 mb-1">Diet Preference</label>
+      <label className={labelClassName || DEFAULT_LABEL_CLS}>Diet Preference</label>
       <button type="button" onClick={() => setOpen((o) => !o)}
         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none text-left flex items-center justify-between">
         <span className={`flex items-center gap-2 ${value ? 'text-gray-900' : 'text-gray-400'}`}>
