@@ -60,6 +60,7 @@ describe('meal selection helpers', () => {
     const scaled = scaleSelectedItem(rice);
     expect(scaled.name).toBe('Rice');
     expect(scaled.calories).toBe(260);
+    expect(scaled.servings).toBe(2);
   });
 
   test('buildPlateSavePayload keeps isPlate contract', () => {
