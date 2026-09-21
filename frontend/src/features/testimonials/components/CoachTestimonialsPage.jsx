@@ -479,11 +479,11 @@ function UnifiedOtpInline({
       <div className="flex items-center gap-2">
         <ShieldCheck className="h-4 w-4 text-amber-600 shrink-0" />
         <p className="text-sm font-semibold text-amber-800">
-          Enter OTP sent to your sponsor {sponsorLabel} through Email
+          Enter the 4-digit approval code sent to your sponsor {sponsorLabel} through email
         </p>
       </div>
       <p className="text-xs text-amber-700 leading-relaxed">
-        Ask them to share the 4-digit code. The OTP is valid for{' '}
+        Ask them to share the code. The OTP is valid for{' '}
         <span className="font-semibold">{hours} hours</span>.
       </p>
       {expired && (
