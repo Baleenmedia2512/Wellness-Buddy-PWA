@@ -1829,7 +1829,7 @@ export async function updateMemberHealthIssues(rawBody) {
   const mergedIssues = normalizeHealthIssuesList(payload.recoveredHealthIssues);
 
   await repo.updateTestimonial(existing.id, {
-    recoveredHealthIssues: resolvedIssues,
+    recoveredHealthIssues: mergedIssues,
   });
 
   return {
@@ -1837,7 +1837,7 @@ export async function updateMemberHealthIssues(rawBody) {
     body: {
       success: true,
       message: 'Health issue updated.',
-      recoveredHealthIssues: resolvedIssues,
+      recoveredHealthIssues: mergedIssues,
     },
   };
 }
