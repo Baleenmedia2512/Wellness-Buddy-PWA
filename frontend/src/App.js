@@ -7821,9 +7821,8 @@ function WellnessValleyApp() {
   } else if (showDashboard) {
     homeOverlay = (
       <div className="ios-full-page bg-[#e8f5e9]">
-        {/* 5-tab nav bar � always visible on every sub-page */}
+        {/* Full Wellness Valley header + nav on every main tab. */}
         <Header
-          navOnly
           user={user}
           userRole={userRole}
           allowedPages={navAccessPages}
@@ -7836,6 +7835,8 @@ function WellnessValleyApp() {
           onShowActivityReport={() => navigateTo('activity-report')}
           onShowTestimonials={() => navigateTo('testimonials')}
           onShowReports={() => navigateTo('reports')}
+          onOpenProfile={() => navigateTo('profile')}
+          profileKey={headerProfileKey}
         />
         <div className="ios-scroll-body">
           <Suspense fallback={null}>
@@ -7865,7 +7866,6 @@ function WellnessValleyApp() {
     homeOverlay = (
       <div className="ios-full-page">
         <Header
-          navOnly
           user={user}
           userRole={userRole}
           allowedPages={navAccessPages}
@@ -7878,6 +7878,8 @@ function WellnessValleyApp() {
           onShowActivityReport={() => navigateTo('activity-report')}
           onShowTestimonials={() => navigateTo('testimonials')}
           onShowReports={() => navigateTo('reports')}
+          onOpenProfile={() => navigateTo('profile')}
+          profileKey={headerProfileKey}
         />
         <div className="ios-scroll-body">
           <Suspense fallback={null}>
@@ -7903,7 +7905,6 @@ function WellnessValleyApp() {
     homeOverlay = (
       <div className="ios-full-page">
         <Header
-          navOnly
           user={user}
           userRole={userRole}
           allowedPages={navAccessPages}
@@ -7916,6 +7917,8 @@ function WellnessValleyApp() {
           onShowActivityReport={() => navigateTo('activity-report')}
           onShowTestimonials={() => navigateTo('testimonials')}
           onShowReports={() => navigateTo('reports')}
+          onOpenProfile={() => navigateTo('profile')}
+          profileKey={headerProfileKey}
         />
         <div className="ios-scroll-body">
           <Suspense fallback={null}>
@@ -7940,7 +7943,6 @@ function WellnessValleyApp() {
     homeOverlay = (
       <div className="ios-full-page">
         <Header
-          navOnly
           user={user}
           userRole={userRole}
           allowedPages={navAccessPages}
@@ -7953,6 +7955,8 @@ function WellnessValleyApp() {
           onShowActivityReport={() => navigateTo('activity-report')}
           onShowTestimonials={() => navigateTo('testimonials')}
           onShowReports={() => navigateTo('reports')}
+          onOpenProfile={() => navigateTo('profile')}
+          profileKey={headerProfileKey}
         />
         <div className="ios-scroll-body">
           <Suspense fallback={null}>
@@ -7976,7 +7980,6 @@ function WellnessValleyApp() {
     homeOverlay = (
       <div className="ios-full-page">
         <Header
-          navOnly
           user={user}
           userRole={userRole}
           allowedPages={navAccessPages}
@@ -7989,6 +7992,8 @@ function WellnessValleyApp() {
           onShowActivityReport={() => navigateTo('activity-report')}
           onShowTestimonials={() => navigateTo('testimonials')}
           onShowReports={() => navigateTo('reports')}
+          onOpenProfile={() => navigateTo('profile')}
+          profileKey={headerProfileKey}
         />
         <div className="ios-scroll-body">
           <Suspense fallback={null}>
@@ -8011,7 +8016,6 @@ function WellnessValleyApp() {
       <>
         <div className="ios-full-page bg-[#e8f5e9]">
           <Header
-            navOnly
             user={user}
             userRole={userRole}
             allowedPages={navAccessPages}
@@ -8024,6 +8028,8 @@ function WellnessValleyApp() {
             onShowActivityReport={() => navigateTo('activity-report')}
             onShowTestimonials={() => navigateTo('testimonials')}
             onShowReports={() => navigateTo('reports')}
+            onOpenProfile={() => navigateTo('profile')}
+            profileKey={headerProfileKey}
           />
           <div className="ios-scroll-body">
             <Suspense fallback={<LoadingSpinner message="Loading nutrition centers map..." />}>
@@ -8067,7 +8073,6 @@ function WellnessValleyApp() {
     homeOverlay = (
       <div className="ios-full-page bg-gray-50">
         <Header
-          navOnly
           user={user}
           userRole={userRole}
           allowedPages={navAccessPages}
@@ -8080,6 +8085,8 @@ function WellnessValleyApp() {
           onShowActivityReport={() => navigateTo('activity-report')}
           onShowTestimonials={() => navigateTo('testimonials')}
           onShowReports={() => navigateTo('reports')}
+          onOpenProfile={() => navigateTo('profile')}
+          profileKey={headerProfileKey}
         />
         <div className="ios-scroll-body">
           <Suspense fallback={<LoadingSpinner message="Loading testimonials�" />}>
@@ -8260,7 +8267,6 @@ function WellnessValleyApp() {
     homeOverlay = (
       <div className="ios-full-page bg-gray-50">
         <Header
-          navOnly
           user={user}
           userRole={userRole}
           allowedPages={navAccessPages}
@@ -8273,6 +8279,8 @@ function WellnessValleyApp() {
           onShowActivityReport={() => navigateTo('activity-report')}
           onShowTestimonials={() => navigateTo('testimonials')}
           onShowReports={() => navigateTo('reports')}
+          onOpenProfile={() => navigateTo('profile')}
+          profileKey={headerProfileKey}
         />
         <div className="ios-scroll-body">
           <Suspense fallback={<LoadingSpinner message="Loading reports…" />}>
