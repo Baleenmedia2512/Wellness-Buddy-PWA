@@ -17,7 +17,6 @@ on:
       # - PH1_BACKUP
       # - Development
       # - Nitheesh_test
-      # - Avinash_test
 
   workflow_dispatch:
 
