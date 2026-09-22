@@ -303,7 +303,7 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, email
             <Scale className="h-4 w-4 text-emerald-700" />
           </span>
           <div className="min-w-0">
-            <h3 className="text-sm font-bold text-emerald-900">Weight Loss</h3>
+            <h3 className="text-sm font-bold text-emerald-900">Top 10 Weight Loss</h3>
             <p className="text-[11px] text-emerald-700/80">Today vs Yesterday</p>
           </div>
         </header>

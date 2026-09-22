@@ -11,6 +11,7 @@
  * Video playback: Instagram-style tap-to-play inline modal.
  */
 import React, { useEffect, useCallback, useState, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import {
   AlertCircle, ArrowLeft, Camera, CheckCircle, CircleDot, Clock,
   Images, Mail, Pencil, Plus, RefreshCw, Save, ShieldCheck, Upload, Users, Video,
@@ -36,11 +37,10 @@ import {
 import VideoThumbnailCard from './VideoThumbnailCard.jsx';
 import HealthIssueCoachEditor from './HealthIssueCoachEditor.jsx';
 import {
-  CARD_W,
-  CARD_H,
   TransformationCardContent,
   TransformationShareActions,
 } from './TransformationShareCard.jsx';
+import { CARD_W, CARD_H } from '../utils/shareCardLayout.js';
 import { getCachedVideoThumbnail } from '../utils/videoThumbnailCache.js';
 import { jpegDataUrlToObjectUrl, revokeBlobUrl, withTestimonialMediaCacheBust } from '../utils/testimonialMediaUrl.js';
 import { useRevocableImageSrc } from '../hooks/useRevocableImageSrc.js';
@@ -226,8 +226,17 @@ function TeamComplianceModal({ userName, teamStats, onClose }) {
   const total       = teamStats.totalMembers ?? 0;
   const notUploaded = total - uploaded;
 
-  return (
-    <div className="fixed inset-0 z-[70] ios-full-page bg-gray-50" role="dialog" aria-labelledby="tc-title">
+  // Portal to body so iOS WKWebView does not trap `fixed` inside `.ios-scroll-body`
+  // (header was clipped; only cards showed under Transformation tabs).
+  if (typeof document === 'undefined') return null;
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[80] ios-full-page bg-white"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="tc-title"
+    >
       <header className="flex-shrink-0 bg-white border-b border-gray-200 px-4 pt-[max(0.75rem,env(safe-area-inset-top))] pb-3">
         <div className="flex items-center gap-3">
           <TouchFeedbackButton onClick={onClose} className="p-2 -ml-2 rounded-full text-gray-600 hover:text-gray-900" ariaLabel="Back">
@@ -235,14 +244,16 @@ function TeamComplianceModal({ userName, teamStats, onClose }) {
           </TouchFeedbackButton>
           <div className="min-w-0 flex-1">
             <h2 id="tc-title" className="text-base font-bold text-gray-800 truncate">Team Compliance</h2>
-            <p className="text-xs text-gray-500 truncate">{userName}</p>
+            <p className="text-xs text-gray-500 truncate uppercase tracking-wide">{userName}</p>
           </div>
         </div>
       </header>
       <div className="ios-scroll-body px-4 py-4 space-y-3">
         <div className="bg-white rounded-2xl border border-gray-200 p-4 space-y-1">
           <p className={`text-2xl font-bold ${scoreColor}`}>{formatPercentage(teamStats.uploadPercentage)}%</p>
-          <p className="text-sm text-gray-500">Team upload rate Â· {uploaded}/{total} members</p>
+          <p className="text-sm text-gray-500">
+            Team upload rate {'\u00b7'} {uploaded}/{total} members
+          </p>
         </div>
         {(teamStats.uploadedMembers?.length > 0) && (
           <div className="bg-white rounded-2xl border border-green-200 p-3">
@@ -265,7 +276,8 @@ function TeamComplianceModal({ userName, teamStats, onClose }) {
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -479,11 +491,11 @@ function UnifiedOtpInline({
       <div className="flex items-center gap-2">
         <ShieldCheck className="h-4 w-4 text-amber-600 shrink-0" />
         <p className="text-sm font-semibold text-amber-800">
-          Enter OTP sent to your sponsor {sponsorLabel} through Email
+          Enter the 4-digit approval code sent to your sponsor {sponsorLabel} through email
         </p>
       </div>
       <p className="text-xs text-amber-700 leading-relaxed">
-        Ask them to share the 4-digit code. The OTP is valid for{' '}
+        Ask them to share the code. The OTP is valid for{' '}
         <span className="font-semibold">{hours} hours</span>.
       </p>
       {expired && (

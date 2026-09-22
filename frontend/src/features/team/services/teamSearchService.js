@@ -28,7 +28,8 @@ export function canUseTeamSearch(role, hasTeamMembers) {
 }
 
 /**
- * Backend /api/team/has-members — true for own CoachId downline OR shared-team lead.
+ * Backend /api/team/has-members — true only for own CoachId downline.
+ * Community ID / joint coach-team seats alone do not grant Sponsor UI.
  * Gates Diary / Programs search and Activity Mine-Direct-Full elevation.
  */
 /** Drop cached team-search payloads after Co-Sponsor / team-code profile saves. */

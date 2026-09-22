@@ -569,6 +569,7 @@ const BodyParamsForm = ({
           <PhysicalActivityField
             value={vm.form.physicalActivityLevel}
             onChange={(v) => vm.setField('physicalActivityLevel', v)}
+            labelClassName="text-xs font-semibold text-indigo-800 uppercase tracking-wide mb-1 block"
           />
 
           {/* BMI - Full Width */}
@@ -734,6 +735,7 @@ const BodyParamsForm = ({
           <DietDropdown
             value={vm.form.dietType}
             onChange={(v) => vm.setField('dietType', v)}
+            labelClassName="text-xs font-semibold text-indigo-800 uppercase tracking-wide mb-1 block"
           />
 
           {/* Health Issues — filter-style multi-select */}
