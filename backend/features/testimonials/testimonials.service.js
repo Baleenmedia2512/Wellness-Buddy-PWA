@@ -820,6 +820,7 @@ export async function listForCoach(rawQuery) {
         lastUpdated: lean.lastUpdated,
         uploadStatus: lean.uploadStatus,
         progress: lean.progress,
+        canEditHealthIssues: lean.canEditHealthIssues !== false,
       };
     }),
   );
@@ -1812,13 +1813,14 @@ export async function resendUnifiedOtp(rawBody) {
 
 /**
  * Coach updates a reporting member's recovered health issues (no OTP).
+ * Downline / shared-team only — never an upline ancestor.
  */
 export async function updateMemberHealthIssues(rawBody) {
   const payload = validateUpdateMemberHealthIssues(rawBody);
 
-  const allowed = await repo.isReportingMember(payload.coachId, payload.userId, 'full');
+  const allowed = await repo.isEditableReportingMember(payload.coachId, payload.userId);
   if (!allowed) {
-    throw new ValidationError(403, 'Member is not in your team hierarchy');
+    throw new ValidationError(403, 'You can only update health issues for your team members, not your upline');
   }
 
   const existing = await repo.findByUserId(payload.userId);
@@ -1829,7 +1831,7 @@ export async function updateMemberHealthIssues(rawBody) {
   const mergedIssues = normalizeHealthIssuesList(payload.recoveredHealthIssues);
 
   await repo.updateTestimonial(existing.id, {
-    recoveredHealthIssues: resolvedIssues,
+    recoveredHealthIssues: mergedIssues,
   });
 
   return {
@@ -1837,7 +1839,7 @@ export async function updateMemberHealthIssues(rawBody) {
     body: {
       success: true,
       message: 'Health issue updated.',
-      recoveredHealthIssues: resolvedIssues,
+      recoveredHealthIssues: mergedIssues,
     },
   };
 }
