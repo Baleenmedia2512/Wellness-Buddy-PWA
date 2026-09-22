@@ -4,21 +4,20 @@ on:
   push:
     branches:
       # - main
-      - TM/Nitheesh
       # - phase1_Release
       # - PH1_BACKUP
       # - Development
-      - Nitheesh_test
+      # - Nitheesh_test
 
   pull_request:
     branches:
-      - main
-      - TM/Nitheesh
-      - phase1_Release
-      - PH1_BACKUP
-      - Development
-      - Nitheesh_test
-      - Avinash_test
+      # - main
+      # - TM/Nitheesh
+      # - phase1_Release
+      # - PH1_BACKUP
+      # - Development
+      # - Nitheesh_test
+      # - Avinash_test
 
   workflow_dispatch:
 
