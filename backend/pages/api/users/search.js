@@ -3,6 +3,8 @@
  * GET /api/users/search?q={query}
  *
  * Search for sponsors by name, email, or phone.
+ * Only users with a verified account email are returned (email ownership
+ * is proven via OTP / Google; unverified phone-only users stay hidden).
  * Used in upline / sponsor selection during onboarding.
  */
 
@@ -12,6 +14,7 @@ import {
   rankSponsorSearchUsers,
   restoreDeveloperBotInSponsorSearch,
 } from '../../../features/user/domain/developerBot.rules.js';
+import { hasVerifiedSponsorEmail } from '../../../features/user/domain/sponsorVisibility.rules.js';
 
 export default async function handler(req, res) {
   // Prevent browser/service worker caching of dynamic data
@@ -87,7 +90,8 @@ export default async function handler(req, res) {
     // Connect to Supabase
     const supabase = getSupabaseClient();
 
-    // Search for sponsors by name, email, or 10-digit phone, excluding current user
+    // Search for sponsors by name, email, or phone, excluding current user.
+    // Require a non-empty Email — phone-only / unverified users are not sponsors.
     const orParts = [
       `UserName.ilike.%${searchQuery}%`,
       `Email.ilike.%${searchQuery}%`,
@@ -100,6 +104,8 @@ export default async function handler(req, res) {
       .from('team_table')
       .select('UserId, UserName, Email, TeamId, Role, PhoneNumber')
       .eq('Status', 'Active')
+      .not('Email', 'is', null)
+      .neq('Email', '')
       .neq('Email', currentUserEmail || '')
       .or(orParts.join(','))
       .order('UserName', { ascending: true })
@@ -107,10 +113,12 @@ export default async function handler(req, res) {
 
     if (error) throw error;
 
+    const withVerifiedEmail = (coaches || []).filter(hasVerifiedSponsorEmail);
+
     const eligibleCoaches = rankSponsorSearchUsers(
       restoreDeveloperBotInSponsorSearch(
-        coaches || [],
-        filterPublicAggregateUsers(coaches || []),
+        withVerifiedEmail,
+        filterPublicAggregateUsers(withVerifiedEmail),
       ),
     );
 
@@ -118,17 +126,16 @@ export default async function handler(req, res) {
     const seenEmails = new Set();
     const results = (eligibleCoaches || []).reduce((acc, coach) => {
       const emailKey = (coach.Email || '').toLowerCase();
-      if (!seenEmails.has(emailKey)) {
-        seenEmails.add(emailKey);
-        acc.push({
-          userId: coach.UserId,
-          userName: coach.UserName,
-          email: maskEmail(coach.Email),
-          displayName: coach.UserName,
-          teamId: coach.TeamId,
-          hasTeamId: !!coach.TeamId
-        });
-      }
+      if (!emailKey || seenEmails.has(emailKey)) return acc;
+      seenEmails.add(emailKey);
+      acc.push({
+        userId: coach.UserId,
+        userName: coach.UserName,
+        email: maskEmail(coach.Email),
+        displayName: coach.UserName,
+        teamId: coach.TeamId,
+        hasTeamId: !!coach.TeamId
+      });
       return acc;
     }, []);
 

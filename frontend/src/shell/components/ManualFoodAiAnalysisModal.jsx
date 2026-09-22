@@ -1,7 +1,7 @@
 /**
  * ManualFoodAiAnalysisModal — loading / error only.
- * Analysing/saving: full-screen dark background + food image + AI message
- * (same feel as the pre-share overlay). Success auto-saves to Home NutritionCard.
+ * Analysing/scanning: full-screen dark background + food image + AI message
+ * (same feel as the pre-share overlay). Success auto-opens NutritionCard on Home.
  */
 import React, { useMemo } from 'react';
 import { Loader2, Sparkles, X } from 'lucide-react';
@@ -16,7 +16,7 @@ function previewUrl(imageBase64) {
 /**
  * @param {{
  *   open: boolean,
- *   stage: 'analysing'|'failed'|'unidentified'|'saving',
+ *   stage: 'analysing'|'failed'|'unidentified'|'scanning',
  *   imageBase64: string|null,
  *   errorMessage?: string|null,
  *   onCancel: () => void,
@@ -37,9 +37,11 @@ export default function ManualFoodAiAnalysisModal({
 
   if (!open) return null;
 
-  const busy = stage === 'analysing' || stage === 'saving';
+  // Accept legacy 'saving' from older callers as the post-analyse busy phase.
+  const isScanning = stage === 'scanning' || stage === 'saving';
+  const busy = stage === 'analysing' || isScanning;
 
-  // Full-screen dark overlay while AI runs / saves (image + message).
+  // Full-screen dark overlay while AI runs / scans results (image + message).
   if (busy) {
     return (
       <div
@@ -69,12 +71,12 @@ export default function ManualFoodAiAnalysisModal({
             id="manual-ai-food-busy-title"
             className="text-sm font-semibold text-white/90"
           >
-            {stage === 'saving' ? 'Saving your meal…' : 'AI food analysis'}
+            {isScanning ? 'Scanning your meal…' : 'AI food analysis'}
           </p>
           <button
             type="button"
             onClick={onCancel}
-            disabled={stage === 'saving'}
+            disabled={isScanning}
             aria-label="Cancel"
             className="rounded-full p-2 text-white/70 hover:bg-white/10 disabled:opacity-40"
           >
@@ -116,8 +118,8 @@ export default function ManualFoodAiAnalysisModal({
           <div className="flex items-center gap-2 rounded-full bg-white/10 px-4 py-2.5 backdrop-blur-sm ring-1 ring-white/15">
             <Sparkles className="h-4 w-4 text-amber-300" aria-hidden />
             <span className="text-sm font-semibold text-white">
-              {stage === 'saving'
-                ? 'Saving… results open on Home'
+              {isScanning
+                ? 'AI is scanning your food…'
                 : 'AI is analysing your food…'}
             </span>
             <span className="ml-1 flex gap-1" aria-hidden>
@@ -134,7 +136,7 @@ export default function ManualFoodAiAnalysisModal({
             </span>
           </div>
           <p className="text-center text-xs text-white/55">
-            {stage === 'saving'
+            {isScanning
               ? 'Almost done — nutrition will show on Home.'
               : 'Please wait. Do not close until analysis finishes.'}
           </p>

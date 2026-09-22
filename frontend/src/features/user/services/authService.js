@@ -76,11 +76,21 @@ export const verifyOtp = (recipient, otp, purpose, contactType = 'email') => {
   return post('/api/auth/verify-otp', body);
 };
 
-export const deleteAccountRequest = async (email) => {
+export const deleteAccountRequest = async ({ userId, confirmPhrase = 'DELETE', email } = {}) => {
+  const body = {};
+  if (userId != null && String(userId).trim() !== '') {
+    body.userId = userId;
+    body.confirmPhrase = confirmPhrase;
+  } else if (email) {
+    // Legacy path for older callers — email + prior OTP verify.
+    body.email = email;
+  } else {
+    throw new Error('userId is required to delete account.');
+  }
   const res = await fetch(`${getApiBaseUrl()}/api/user/account`, {
     method: 'DELETE',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email }),
+    body: JSON.stringify(body),
   });
   return res.json();
 };

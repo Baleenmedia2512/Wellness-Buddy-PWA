@@ -11,6 +11,7 @@
  * Video playback: Instagram-style tap-to-play inline modal.
  */
 import React, { useEffect, useCallback, useState, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import {
   AlertCircle, ArrowLeft, Camera, CheckCircle, CircleDot, Clock,
   Images, Mail, Pencil, Plus, RefreshCw, Save, ShieldCheck, Upload, Users, Video,
@@ -24,6 +25,7 @@ import {
   listForCoach, getMyTestimonial, getMyVideoTestimonial, getTeamTestimonialReport,
   getTestimonialDetail, submitAllEdits, verifyUnifiedOtp, resendUnifiedOtp, prepareTestimonialVideoUpload,
 } from '../services/testimonialApi.js';
+import { getProfile } from '../../user/services/user.api.js';
 import { uploadTestimonialVideoInChunks } from '../services/testimonialVideoUpload.js';
 import TestimonialSearchBar from './TestimonialSearchBar.jsx';
 import OtpInline from './OtpInline.jsx';
@@ -35,32 +37,42 @@ import {
 import VideoThumbnailCard from './VideoThumbnailCard.jsx';
 import HealthIssueCoachEditor from './HealthIssueCoachEditor.jsx';
 import {
-  CARD_W,
-  CARD_H,
   TransformationCardContent,
   TransformationShareActions,
 } from './TransformationShareCard.jsx';
+import { CARD_W, CARD_H } from '../utils/shareCardLayout.js';
 import { getCachedVideoThumbnail } from '../utils/videoThumbnailCache.js';
 import { jpegDataUrlToObjectUrl, revokeBlobUrl, withTestimonialMediaCacheBust } from '../utils/testimonialMediaUrl.js';
+import { useRevocableImageSrc } from '../hooks/useRevocableImageSrc.js';
 import { resolveResultVideoUrl, prefetchNativeResultVideos } from '../utils/downloadVideo.js';
 import { MAX_HEALTH_VIDEO_MB, isVideoOverSizeLimit, videoTooLargeMessage, maxVideoMbForSlot } from '../utils/videoLimits.js';
 import { compressVideoToMaxBytes } from '../utils/compressTestimonialVideo.js';
 import { normalizeVideoUploadFile } from '../utils/normalizeVideoUploadFile.js';
-import { compressImage } from '../utils/compressTestimonialImage.js';
 import { isCaptureFlowBusy, setCaptureFlowBusy } from '../../../shared/services/captureFlowBusy';
+import usePortraitCoverCrop from '../../user/hooks/usePortraitCoverCrop';
 import { shouldShowTestimonialsPageSkeleton } from '../utils/testimonialsPageLoad.js';
 import {
   UPLOAD_FILTERS,
   TEAM_SCOPES,
   computeMemberCompleteness,
   toggleStatusFilter,
+  resolveTeamScopeCount,
 } from '../utils/testimonialFilters.js';
 import {
   buildHealthIssueSuggestions,
   buildSearchSuggestions,
   normalizeSearchQuery,
 } from '../utils/testimonialSearch.js';
-import { PORTRAIT_IMAGE_CLASS_SM } from '../services/testimonialFormUtils.js';
+import {
+  PORTRAIT_IMAGE_CLASS_SM,
+  parseDurationText,
+  formatDurationText,
+  sanitizeDurationDigits,
+  validateDurationFields,
+  isUsableDurationText,
+  liveWeightDiffKg,
+  canShareTransformationPhoto,
+} from '../services/testimonialFormUtils.js';
 import { resolveRowTeamUploadPerformance } from '../utils/testimonialTeamPerformance.js';
 import { uniqueConditions, isSameIssueList, withoutHealthIssue } from '../utils/uniqueConditions.js';
 import { getApiBaseUrl } from '../../../config/api.config.js';
@@ -69,8 +81,7 @@ import {
   getAvatarDisplayVersion,
   subscribeAvatarDisplayVersion,
 } from '../../user/services/avatarDisplayVersion.js';
-import { getProfile } from '../../user/services/user.api.js';
-import { seedMineTestimonialFromLeftSlot } from '../../user/domain/transformationBeforeAfter';
+import { seedMineTestimonialFromProfileSlots } from '../../user/domain/transformationBeforeAfter';
 
 // â”€â”€ Constants â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -215,8 +226,17 @@ function TeamComplianceModal({ userName, teamStats, onClose }) {
   const total       = teamStats.totalMembers ?? 0;
   const notUploaded = total - uploaded;
 
-  return (
-    <div className="fixed inset-0 z-[70] ios-full-page bg-gray-50" role="dialog" aria-labelledby="tc-title">
+  // Portal to body so iOS WKWebView does not trap `fixed` inside `.ios-scroll-body`
+  // (header was clipped; only cards showed under Transformation tabs).
+  if (typeof document === 'undefined') return null;
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[80] ios-full-page bg-white"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="tc-title"
+    >
       <header className="flex-shrink-0 bg-white border-b border-gray-200 px-4 pt-[max(0.75rem,env(safe-area-inset-top))] pb-3">
         <div className="flex items-center gap-3">
           <TouchFeedbackButton onClick={onClose} className="p-2 -ml-2 rounded-full text-gray-600 hover:text-gray-900" ariaLabel="Back">
@@ -224,14 +244,16 @@ function TeamComplianceModal({ userName, teamStats, onClose }) {
           </TouchFeedbackButton>
           <div className="min-w-0 flex-1">
             <h2 id="tc-title" className="text-base font-bold text-gray-800 truncate">Team Compliance</h2>
-            <p className="text-xs text-gray-500 truncate">{userName}</p>
+            <p className="text-xs text-gray-500 truncate uppercase tracking-wide">{userName}</p>
           </div>
         </div>
       </header>
       <div className="ios-scroll-body px-4 py-4 space-y-3">
         <div className="bg-white rounded-2xl border border-gray-200 p-4 space-y-1">
           <p className={`text-2xl font-bold ${scoreColor}`}>{formatPercentage(teamStats.uploadPercentage)}%</p>
-          <p className="text-sm text-gray-500">Team upload rate Â· {uploaded}/{total} members</p>
+          <p className="text-sm text-gray-500">
+            Team upload rate {'\u00b7'} {uploaded}/{total} members
+          </p>
         </div>
         {(teamStats.uploadedMembers?.length > 0) && (
           <div className="bg-white rounded-2xl border border-green-200 p-3">
@@ -254,7 +276,8 @@ function TeamComplianceModal({ userName, teamStats, onClose }) {
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -468,13 +491,12 @@ function UnifiedOtpInline({
       <div className="flex items-center gap-2">
         <ShieldCheck className="h-4 w-4 text-amber-600 shrink-0" />
         <p className="text-sm font-semibold text-amber-800">
-          Enter OTP from your Sponsor {sponsorLabel}
+          Enter the 4-digit approval code sent to your sponsor {sponsorLabel} through email
         </p>
       </div>
       <p className="text-xs text-amber-700 leading-relaxed">
-        {sponsorLabel === 'your sponsor' ? 'Your sponsor' : sponsorLabel}
-        {' '}received a single 4-digit OTP covering all your changes. Ask them to share it.
-        {' '}Valid for <span className="font-semibold">{hours} hours</span>.
+        Ask them to share the code. The OTP is valid for{' '}
+        <span className="font-semibold">{hours} hours</span>.
       </p>
       {expired && (
         <p className="text-xs font-semibold text-red-600">
@@ -537,6 +559,56 @@ function afterWeightDiffers(beforeKg, afterKg) {
   return before !== after;
 }
 
+function DurationEditor({
+  valueText,
+  unit,
+  onValueChange,
+  onUnitChange,
+  onCommit,
+  onCancel,
+}) {
+  return (
+    <div className="flex items-center gap-1.5 flex-wrap">
+      <NativeInput
+        inputMode="numeric"
+        pattern="[0-9]*"
+        autoComplete="off"
+        autoFocus
+        placeholder="e.g. 3"
+        value={valueText ?? ''}
+        onChange={(e) => onValueChange(sanitizeDurationDigits(e.target.value))}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            onCommit();
+          }
+          if (e.key === 'Escape') onCancel();
+        }}
+        className="w-16 border border-gray-300 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-green-400"
+      />
+      <select
+        value={unit}
+        onChange={(e) => onUnitChange(e.target.value)}
+        className="border border-gray-300 rounded-lg px-1.5 py-1 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-green-400"
+      >
+        <option value="days">days</option>
+        <option value="months">months</option>
+      </select>
+      <button
+        type="button"
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={onCommit}
+        className="text-green-600 hover:text-green-800 text-[11px] font-bold"
+      >
+        Save
+      </button>
+      <button type="button" onClick={onCancel} className="text-gray-400 hover:text-gray-600">
+        <X className="h-3.5 w-3.5" />
+      </button>
+    </div>
+  );
+}
+
 function MemberCard({
   row,
   teamStats,
@@ -597,7 +669,10 @@ function MemberCard({
   }, [testimonial?.healthVideoUrl, testimonial?.businessVideoUrl]);
 
   const [expandedPhoto, setExpandedPhoto] = useState(null);
-  const hasAfter = Boolean(testimonial?.afterImageUrl)
+  // Seeded Left/Before clone still has afterImageUrl — show that image to coach/upline.
+  // hasAfter = "real" After (completeness / weight-diff / OTP), not merely a visible clone.
+  const hasAfterImage = Boolean(testimonial?.afterImageUrl);
+  const hasAfter = hasAfterImage
     && (
       testimonial?.status !== 'incomplete'
       || afterWeightDiffers(testimonial?.beforeWeightKg, testimonial?.afterWeightKg)
@@ -623,9 +698,11 @@ function MemberCard({
     if (testimonial?.status === 'pending') return;
     setApprovedIssues((prev) => (sameIssueList(prev, issues) ? prev : issues));
   }, [issues, draftIssues, testimonial?.status]);
-  // Local text while weight field is open — needed for Android WebView typing
+  // Local text while weight/duration fields are open — needed for Android WebView typing
   const [beforeWeightText, setBeforeWeightText] = useState(null);
   const [afterWeightText,  setAfterWeightText]  = useState(null);
+  const [durationValueText, setDurationValueText] = useState(null);
+  const [durationUnitDraft, setDurationUnitDraft] = useState('months');
   const [uploadingHealth,   setUploadingHealth]   = useState(false);
   const [uploadingBusiness, setUploadingBusiness] = useState(false);
   const [pickerSlot,        setPickerSlot]         = useState(null); // 'before' | 'after' | null
@@ -638,6 +715,42 @@ function MemberCard({
   const [mediaEpoch, setMediaEpoch] = useState(0);
   const shareCardRef = useRef(null);
   const compressBusyRef = useRef(false);
+  const cropSlotRef = useRef('before');
+  const coverCrop = usePortraitCoverCrop({
+    onApply: (dataUrl, key) => {
+      const slot = key === 'after' || key === 'before' ? key : cropSlotRef.current;
+      const base64 = dataUrl.includes(',') ? dataUrl.split(',')[1] : dataUrl;
+      const previewUrl = jpegDataUrlToObjectUrl(dataUrl) || dataUrl;
+      const beforeBase = {
+        weightKg: testimonial?.beforeWeightKg,
+        goalType: testimonial?.goalType,
+        durationText: testimonial?.durationText,
+      };
+      const afterBase = { weightKg: testimonial?.afterWeightKg };
+      if (slot === 'before') {
+        setDraftBefore((prev) => {
+          revokeBlobUrl(prev?.previewUrl);
+          return {
+            ...(prev || beforeBase),
+            previewUrl,
+            imageBase64: base64,
+            compressing: false,
+          };
+        });
+      } else {
+        setDraftAfter((prev) => {
+          revokeBlobUrl(prev?.previewUrl);
+          return {
+            ...(prev || afterBase),
+            previewUrl,
+            imageBase64: base64,
+            compressing: false,
+          };
+        });
+      }
+    },
+    onError: (msg) => setSubmitError(msg || 'Could not read that photo. Please try another.'),
+  });
 
   const beforeCamRef   = useRef(null);
   const beforeGalRef   = useRef(null);
@@ -673,36 +786,22 @@ function MemberCard({
   const displayAfterKg  = Number(shownAfterKg ?? 0);
   const displayGoalType = draftBefore?.goalType ?? testimonial?.goalType;
   const displayDuration = draftBefore?.durationText ?? testimonial?.durationText;
-  const diff = testimonial && hasAfter && displayBeforeKg > 0 && displayAfterKg > 0
-    ? Math.abs(displayAfterKg - displayBeforeKg).toFixed(1)
-    : null;
+  const usableDuration = isUsableDurationText(displayDuration);
+  const liveDiff = liveWeightDiffKg(displayBeforeKg, displayAfterKg);
+  const diff = liveDiff;
 
   const mediaVersion = `${testimonial?.updatedAt ?? testimonial?.id ?? ''}-${mediaEpoch}`;
   const beforeRaw = draftBefore?.previewUrl
     || withTestimonialMediaCacheBust(testimonial?.beforeImageUrl, mediaVersion);
   const afterRaw = draftAfter?.previewUrl
     || withTestimonialMediaCacheBust(
-      hasAfter || editable
+      hasAfterImage || editable
         ? (testimonial?.afterImageUrl || (editable ? testimonial?.beforeImageUrl : null))
         : null,
       mediaVersion,
     );
-  const beforeFromData = typeof beforeRaw === 'string' && beforeRaw.startsWith('data:image');
-  const afterFromData = typeof afterRaw === 'string' && afterRaw.startsWith('data:image');
-  const beforeImageSrc = useMemo(() => (
-    beforeFromData ? jpegDataUrlToObjectUrl(beforeRaw) : beforeRaw
-  ), [beforeRaw, beforeFromData]);
-  const afterImageSrc = useMemo(() => (
-    afterFromData ? jpegDataUrlToObjectUrl(afterRaw) : afterRaw
-  ), [afterRaw, afterFromData]);
-  useEffect(() => {
-    if (!beforeFromData) return undefined;
-    return () => revokeBlobUrl(beforeImageSrc);
-  }, [beforeFromData, beforeImageSrc]);
-  useEffect(() => {
-    if (!afterFromData) return undefined;
-    return () => revokeBlobUrl(afterImageSrc);
-  }, [afterFromData, afterImageSrc]);
+  const beforeImageSrc = useRevocableImageSrc(beforeRaw);
+  const afterImageSrc = useRevocableImageSrc(afterRaw);
 
   // Photo-only drafts — weight/duration edits must NOT open this strip (Android focus loss)
   const hasPhotoDraft = Boolean(
@@ -776,6 +875,44 @@ function MemberCard({
     });
   }, []);
 
+  const openDurationEdit = useCallback(() => {
+    const parsed = parseDurationText(draftBefore?.durationText ?? testimonial?.durationText);
+    setDurationValueText(parsed.durationValue);
+    setDurationUnitDraft(parsed.durationUnit);
+    setExpandedSlots((prev) => {
+      const next = new Set(prev);
+      next.add('duration');
+      return next;
+    });
+  }, [draftBefore?.durationText, testimonial?.durationText]);
+
+  const closeDurationEdit = useCallback(() => {
+    setDurationValueText(null);
+    setExpandedSlots((prev) => {
+      const next = new Set(prev);
+      next.delete('duration');
+      return next;
+    });
+  }, []);
+
+  const commitDurationEdit = useCallback(() => {
+    const err = validateDurationFields(durationUnitDraft, durationValueText);
+    if (err) {
+      setSubmitError(err);
+      return;
+    }
+    const text = formatDurationText(durationUnitDraft, durationValueText);
+    setDraftBefore((prev) => ({
+      ...(prev || {
+        weightKg: testimonial?.beforeWeightKg,
+        goalType: testimonial?.goalType || 'loss',
+      }),
+      durationText: text,
+    }));
+    setSubmitError(null);
+    closeDurationEdit();
+  }, [closeDurationEdit, durationUnitDraft, durationValueText, testimonial?.beforeWeightKg, testimonial?.goalType]);
+
   const openPhotoPicker = useCallback((inputRef) => {
     setCaptureFlowBusy(true);
     setPickerSlot(null);
@@ -791,75 +928,11 @@ function MemberCard({
 
   const handleImageFile = useCallback((slot, file) => {
     if (!file) return;
-    // Instant local blob preview — Android WebView often cannot paint large data: URLs.
-    const objectUrl = URL.createObjectURL(file);
-    const beforeBase = {
-      weightKg: testimonial?.beforeWeightKg,
-      goalType: testimonial?.goalType,
-      durationText: testimonial?.durationText,
-    };
-    const afterBase = { weightKg: testimonial?.afterWeightKg };
-
-    if (slot === 'before') {
-      setDraftBefore((prev) => {
-        revokeBlobUrl(prev?.previewUrl);
-        return {
-          ...(prev || beforeBase),
-          previewUrl: objectUrl,
-          imageBase64: null,
-          compressing: true,
-        };
-      });
-    } else {
-      setDraftAfter((prev) => {
-        revokeBlobUrl(prev?.previewUrl);
-        return {
-          ...(prev || afterBase),
-          previewUrl: objectUrl,
-          imageBase64: null,
-          compressing: true,
-        };
-      });
-    }
+    cropSlotRef.current = slot;
     setPickerSlot(null);
     setSubmitError(null);
-    compressBusyRef.current = true;
-    setCaptureFlowBusy(true);
-
-    void compressImage(file)
-      .then(({ base64, preview }) => {
-        const compressedPreview = jpegDataUrlToObjectUrl(preview) || objectUrl;
-        if (slot === 'before') {
-          setDraftBefore((prev) => {
-            if (!prev) {
-              if (compressedPreview !== objectUrl) revokeBlobUrl(compressedPreview);
-              return prev;
-            }
-            if (compressedPreview !== objectUrl) revokeBlobUrl(objectUrl);
-            return { ...prev, imageBase64: base64, previewUrl: compressedPreview, compressing: false };
-          });
-        } else {
-          setDraftAfter((prev) => {
-            if (!prev) {
-              if (compressedPreview !== objectUrl) revokeBlobUrl(compressedPreview);
-              return prev;
-            }
-            if (compressedPreview !== objectUrl) revokeBlobUrl(objectUrl);
-            return { ...prev, imageBase64: base64, previewUrl: compressedPreview, compressing: false };
-          });
-        }
-      })
-      .catch((err) => {
-        revokeBlobUrl(objectUrl);
-        if (slot === 'before') setDraftBefore(null);
-        else setDraftAfter(null);
-        setSubmitError(err?.message || 'Could not read that photo. Please try another.');
-      })
-      .finally(() => {
-        compressBusyRef.current = false;
-        setCaptureFlowBusy(false);
-      });
-  }, [testimonial]);
+    void coverCrop.pickFile(file, slot);
+  }, [coverCrop]);
 
   const handleVideoFile = useCallback(async (slot, file) => {
     const numericUserId = Number(userId);
@@ -952,9 +1025,10 @@ function MemberCard({
     const issuesNeedOtp = dirtySlots.includes('issues') && (hasAfter || hasResultVideo || hasVisiblePhotoCard);
     const afterWeightDirty = draftAfter?.weightKg !== undefined
       && afterWeightDiffers(testimonial?.beforeWeightKg, draftAfter.weightKg);
-    const isSilentSave = !photoOrVideoChanged && !issuesNeedOtp && !afterWeightDirty;
+    const isSilentSave = !photoOrVideoChanged && !issuesNeedOtp && !afterWeightDirty
+      && !hasVisiblePhotoCard;
     // Photos still compressing — wait so we do not submit without image bytes.
-    if (draftBefore?.compressing || draftAfter?.compressing) {
+    if (draftBefore?.compressing || draftAfter?.compressing || coverCrop.isPreparing) {
       setSubmitError('Photo is still preparing — try Submit again in a moment.');
       return;
     }
@@ -967,17 +1041,21 @@ function MemberCard({
       return;
     }
 
+    const durationForSubmit = String(draftBefore?.durationText ?? testimonial?.durationText ?? '').trim();
+    const usableDurationForSubmit = isUsableDurationText(durationForSubmit)
+      ? durationForSubmit
+      : '';
+
     const payload = {
       userId,
       dirtySlots,
+      submitForApproval: !isSilentSave,
       ...(draftBefore ? {
         ...(draftBefore.imageBase64 ? { beforeImageBase64: draftBefore.imageBase64 } : {}),
         ...(draftBefore.weightKg !== undefined ? { beforeWeightKg: draftBefore.weightKg } : {}),
         // Always send goal on drafts — UI may show "Weight Loss" without writing state
         goalType: draftBefore.goalType || testimonial?.goalType || 'loss',
-        ...((draftBefore.durationText || testimonial?.durationText)
-          ? { durationText: draftBefore.durationText || testimonial.durationText }
-          : {}),
+        ...(usableDurationForSubmit ? { durationText: usableDurationForSubmit } : {}),
       } : {}),
       ...(draftAfter ? {
         ...(draftAfter.imageBase64 ? { afterImageBase64: draftAfter.imageBase64 } : {}),
@@ -988,22 +1066,39 @@ function MemberCard({
       ...(Array.isArray(draftIssues) && draftIssues.filter(Boolean).length > 0
         ? { recoveredHealthIssues: draftIssues.filter(Boolean) }
         : {}),
+      ...(!draftBefore && usableDurationForSubmit ? { durationText: usableDurationForSubmit } : {}),
     };
+    if (
+      payload.beforeWeightKg === undefined
+      && (payload.afterWeightKg !== undefined || payload.durationText)
+    ) {
+      const beforeKg = Number(testimonial?.beforeWeightKg ?? displayBeforeKg);
+      if (Number.isFinite(beforeKg) && beforeKg > 0) {
+        payload.beforeWeightKg = beforeKg;
+      }
+    }
 
-    // Completing both photos requires at least one health issue (same rule as backend).
+    // Visible Before+After (including a Profile-seeded clone) needs issues + duration + OTP.
     const willComplete =
       Boolean(draftBefore?.imageBase64 || testimonial?.beforeImageUrl)
-      && Boolean(draftAfter?.imageBase64 || (hasAfter && testimonial?.afterImageUrl));
+      && Boolean(draftAfter?.imageBase64 || testimonial?.afterImageUrl || hasAfter);
     const issuesForSubmit = Array.isArray(draftIssues) && draftIssues.filter(Boolean).length > 0
       ? draftIssues.filter(Boolean)
       : (testimonial?.recoveredHealthIssues || []);
+    const submittingPhotoCard = Boolean(hasVisiblePhotoCard || willComplete || afterWeightDirty);
     if (
-      willComplete
-      && dirtySlots.some((s) => s === 'before' || s === 'after')
+      submittingPhotoCard
       && (!Array.isArray(issuesForSubmit) || issuesForSubmit.filter(Boolean).length === 0)
     ) {
-      setSubmitError('Add at least one Health Issue before submitting before + after photos.');
+      setSubmitError('Add at least one Health Issue before submitting for coach approval.');
       return;
+    }
+    if (submittingPhotoCard && !usableDurationForSubmit) {
+      setSubmitError('Add a duration in days or months (e.g. 3 months) before submitting.');
+      return;
+    }
+    if (submittingPhotoCard && issuesForSubmit.length > 0 && payload.recoveredHealthIssues == null) {
+      payload.recoveredHealthIssues = issuesForSubmit;
     }
 
     // First-time submit needs the before image bytes in the payload.
@@ -1061,6 +1156,23 @@ function MemberCard({
           }
         : null;
       await reloadMine(patched);
+      if (userId) {
+        try {
+          await getProfile({ userId, cacheBust: true });
+        } catch {
+          // Non-fatal — Profile reloads on next open with cache bust.
+        }
+      }
+      if (!isSilentSave && !otpSent) {
+        const hasDuration = Boolean(usableDurationForSubmit);
+        const hasIssues = Array.isArray(issuesForSubmit) && issuesForSubmit.filter(Boolean).length > 0;
+        setSubmitError(
+          hasDuration && hasIssues
+            ? 'Coach approval did not start. Please tap Submit again — if it still fails, add the Before/After photos once more.'
+            : 'Coach approval did not start. Add a duration and at least one health issue, then submit again.',
+        );
+        return;
+      }
       clearDrafts();
       if (otpSent || patched?.hasPendingOtp) {
         setUnifiedOtpVerified(false);
@@ -1090,9 +1202,11 @@ function MemberCard({
         setIsSubmitting(false);
         setCaptureFlowBusy(false);
       });
-  }, [userId, dirtySlots, draftBefore, draftAfter, draftHealthPath, draftBusinessPath, draftIssues, onMineRefresh, hasAfter, testimonial?.id, testimonial?.beforeImageUrl, testimonial?.afterImageUrl, testimonial?.beforeWeightKg, testimonial?.afterWeightKg, testimonial?.goalType, testimonial?.durationText, testimonial?.recoveredHealthIssues, testimonial?.healthVideoPath, testimonial?.businessVideoPath, testimonial?.healthVideoUrl, testimonial?.businessVideoUrl]);
+  }, [userId, dirtySlots, draftBefore, draftAfter, draftHealthPath, draftBusinessPath, draftIssues, onMineRefresh, hasAfter, displayBeforeKg, coverCrop.isPreparing, testimonial?.id, testimonial?.beforeImageUrl, testimonial?.afterImageUrl, testimonial?.beforeWeightKg, testimonial?.afterWeightKg, testimonial?.goalType, testimonial?.durationText, testimonial?.recoveredHealthIssues, testimonial?.healthVideoPath, testimonial?.businessVideoPath, testimonial?.healthVideoUrl, testimonial?.businessVideoUrl]);
 
-  const anyPhotoCompressing = Boolean(draftBefore?.compressing || draftAfter?.compressing);
+  const anyPhotoCompressing = Boolean(
+    draftBefore?.compressing || draftAfter?.compressing || coverCrop.isPreparing,
+  );
 
   const showUnifiedOtp = editable
     && !unifiedOtpVerified
@@ -1172,6 +1286,7 @@ function MemberCard({
 
   return (
     <div className={`rounded-3xl border ${borderCls} ${bgCls} shadow-md overflow-visible`}>
+      {coverCrop.overlay}
       {/* Header strip */}
       <div className="flex items-center gap-3 px-4 pt-4 pb-3">
         <MemberAvatar user={user} />
@@ -1185,7 +1300,7 @@ function MemberCard({
       <div className="px-4 pb-4 space-y-3">
 
       {/* Photos — always show before/after slots when editable (Mine) */}
-      {(editable || (testimonial && (testimonial.beforeImageUrl || (hasAfter && testimonial.afterImageUrl)))) && (
+      {(editable || (testimonial && (testimonial.beforeImageUrl || testimonial.afterImageUrl))) && (
         <div className="flex gap-2">
           <div className="flex-1 text-center">
             <div className="relative">
@@ -1193,7 +1308,7 @@ function MemberCard({
                 <button
                   type="button"
                   onClick={() => setExpandedPhoto({ url: beforeImageSrc, label: `${user.userName} — Before` })}
-                  className="w-full"
+                  className="w-full overflow-hidden rounded-xl"
                 >
                   <img
                     key={`before-${beforeImageSrc}`}
@@ -1323,7 +1438,7 @@ function MemberCard({
                 <button
                   type="button"
                   onClick={() => setExpandedPhoto({ url: afterImageSrc, label: `${user.userName} — After` })}
-                  className="w-full"
+                  className="w-full overflow-hidden rounded-xl"
                 >
                   <img
                     key={`after-${afterImageSrc}`}
@@ -1472,13 +1587,6 @@ function MemberCard({
                   <option value="gain">Weight Gain</option>
                 </select>
               </div>
-              <div className="col-span-2">
-                <label className="block text-[10px] font-medium text-gray-400 mb-1">Duration (e.g. "3 months")</label>
-                <input type="text" placeholder={testimonial?.durationText || 'e.g. 3 months'}
-                  value={draftBefore?.durationText ?? ''}
-                  onChange={(e) => setDraftBefore(prev => ({ ...prev, durationText: e.target.value }))}
-                  className="w-full border border-gray-200 rounded-xl px-2.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400" />
-              </div>
             </>
           )}
           {draftAfter && (
@@ -1519,8 +1627,8 @@ function MemberCard({
       {/* Stats — single summary line + status badge */}
       {testimonial && (
         <div className="space-y-1.5">
-          {/* "Lost X kgs in Y duration" sentence */}
-          {diff && hasAfter && (
+          {/* "Lost X kgs in Y duration" — uses live draft weights, not persisted hasAfter */}
+          {diff && (
             <div className="flex items-center gap-2 flex-wrap">
               <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold border ${displayGoalType === 'loss' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-blue-50 text-blue-700 border-blue-200'}`}>
                 {displayGoalType === 'loss'
@@ -1528,36 +1636,22 @@ function MemberCard({
                   : <TrendingUp   className="h-3 w-3 shrink-0" />
                 }
                 {displayGoalType === 'loss' ? 'Lost' : 'Gained'} {diff} kgs
-                {displayDuration ? ` in ${displayDuration}` : ''}
+                {usableDuration ? ` in ${displayDuration}` : ''}
               </span>
-              {/* Pencil/Plus for duration edit (Mine only) */}
               {editable && (
                 expandedSlots.has('duration') ? (
-                  <div className="flex items-center gap-1.5">
-                    <input
-                      type="text"
-                      autoFocus
-                      placeholder="e.g. 3 months"
-                      defaultValue={draftBefore?.durationText ?? testimonial?.durationText ?? ''}
-                      onBlur={(e) => {
-                        const val = e.target.value.trim();
-                        if (val) setDraftBefore(prev => ({ ...(prev || { weightKg: testimonial?.beforeWeightKg, goalType: testimonial?.goalType }), durationText: val }));
-                        toggleSlot('duration');
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') { e.target.blur(); }
-                        if (e.key === 'Escape') { toggleSlot('duration'); }
-                      }}
-                      className="w-28 border border-gray-300 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-green-400"
-                    />
-                    <button type="button" onClick={() => toggleSlot('duration')} className="text-gray-400 hover:text-gray-600">
-                      <X className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
+                  <DurationEditor
+                    valueText={durationValueText}
+                    unit={durationUnitDraft}
+                    onValueChange={setDurationValueText}
+                    onUnitChange={setDurationUnitDraft}
+                    onCommit={commitDurationEdit}
+                    onCancel={closeDurationEdit}
+                  />
                 ) : (
                   <button
                     type="button"
-                    onClick={() => toggleSlot('duration')}
+                    onClick={openDurationEdit}
                     className="p-1 rounded-full border border-gray-200 text-gray-400 hover:text-green-700 hover:border-green-300 transition-colors"
                     aria-label="Edit duration"
                   >
@@ -1567,11 +1661,35 @@ function MemberCard({
               )}
             </div>
           )}
-          {/* No diff yet — show before weight or add prompt */}
-          {(!diff || !hasAfter) && displayBeforeKg > 0 && (
-            <span className="inline-flex items-center gap-1 bg-gray-50 border border-gray-200 rounded-full px-3 py-1 text-[11px] text-gray-600 font-medium">
-              {displayBeforeKg} kg → ?
-            </span>
+          {/* No diff yet — show before weight or add prompt + duration */}
+          {!diff && displayBeforeKg > 0 && (
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="inline-flex items-center gap-1 bg-gray-50 border border-gray-200 rounded-full px-3 py-1 text-[11px] text-gray-600 font-medium">
+                {displayBeforeKg} kg → ?
+                {usableDuration ? ` · ${displayDuration}` : ''}
+              </span>
+              {editable && (
+                expandedSlots.has('duration') ? (
+                  <DurationEditor
+                    valueText={durationValueText}
+                    unit={durationUnitDraft}
+                    onValueChange={setDurationValueText}
+                    onUnitChange={setDurationUnitDraft}
+                    onCommit={commitDurationEdit}
+                    onCancel={closeDurationEdit}
+                  />
+                ) : (
+                  <button
+                    type="button"
+                    onClick={openDurationEdit}
+                    className="p-1 rounded-full border border-gray-200 text-gray-400 hover:text-green-700 hover:border-green-300 transition-colors"
+                    aria-label={usableDuration ? 'Edit duration' : 'Add duration'}
+                  >
+                    <Pencil className="h-3 w-3" />
+                  </button>
+                )
+              )}
+            </div>
           )}
           {/* Status badge */}
           <div className="flex gap-1.5 flex-wrap items-center">
@@ -1594,8 +1712,8 @@ function MemberCard({
       {/* Health Issues — below photos, above result video */}
       {(editable || testimonial) && (
         <div className="space-y-1.5 overflow-visible relative z-20">
-          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">
-            Health Issues
+          <p className="text-[10px] font-bold text-gray-400 tracking-normal whitespace-normal">
+            Health Issues while joining this community
           </p>
           <HealthIssueCoachEditor
             userId={userId || user?.userId}
@@ -1609,7 +1727,7 @@ function MemberCard({
             onSaved={handleHealthIssuesSaved}
             onRemove={handleHealthIssueRemoved}
           />
-          {testimonial && (testimonial.beforeImageUrl || hasAfter) &&
+          {testimonial && canShareTransformationPhoto(testimonial) && (testimonial.beforeImageUrl || hasAfter) &&
             (editable ? (!hasDirtySlots && !submitDone) : true) && (
             <TransformationShareActions
               kind="photo"
@@ -1854,8 +1972,8 @@ function MemberCard({
             ref={shareCardRef}
             testimonial={{
               ...testimonial,
-              beforeImageUrl: draftBefore?.previewUrl || withTestimonialMediaCacheBust(testimonial.beforeImageUrl, mediaVersion),
-              afterImageUrl: draftAfter?.previewUrl || withTestimonialMediaCacheBust(testimonial.afterImageUrl, mediaVersion),
+              beforeImageUrl: beforeImageSrc,
+              afterImageUrl: afterImageSrc,
               beforeWeightKg: displayBeforeKg || testimonial.beforeWeightKg,
               afterWeightKg: displayAfterKg || testimonial.afterWeightKg,
               recoveredHealthIssues: draftIssues ?? testimonial.recoveredHealthIssues,
@@ -1889,6 +2007,8 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
   const [highlightedIssue,      setHighlightedIssue]      = useState(-1);
 
   const [teamPerformanceByUserId, setTeamPerformanceByUserId] = useState({});
+  /** Unfiltered Direct/Full sizes for tab badges — never overwritten by upload filters. */
+  const [directTeamMemberCount, setDirectTeamMemberCount] = useState(null);
   const [fullTeamMemberCount, setFullTeamMemberCount] = useState(null);
   const [fullLoading, setFullLoading] = useState(false);
   const [fullLoaded, setFullLoaded] = useState(false);
@@ -1936,7 +2056,7 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
       const leftUrl = profileResult?.success
         ? profileResult?.data?.transformationPhotos?.left
         : null;
-      const seeded = seedMineTestimonialFromLeftSlot(testimonial, {
+      const seeded = seedMineTestimonialFromProfileSlots(testimonial, {
         leftUrl,
         weightKg: Number.isFinite(latestWeightKg) ? latestWeightKg : null,
       });
@@ -1995,6 +2115,7 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
     }
     setFullRows([]);
     setFullLoaded(false);
+    setDirectTeamMemberCount(null);
     setFullTeamMemberCount(null);
     setListReloadKey((key) => key + 1);
     try {
@@ -2013,6 +2134,7 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
       });
       setMineRow(mine);
       const total = directResult?.pagination?.total ?? direct.length;
+      setDirectTeamMemberCount(total);
       setHasDownline(total > 0);
       if (total === 0) setTeamScope(TEAM_SCOPES.MINE);
     } catch (err) {
@@ -2101,11 +2223,23 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
     return directRows;
   }, [hasDownline, teamScope, mineRow, directRows, fullRows]);
 
-  const teamScopeCounts = useMemo(() => ({
-    [TEAM_SCOPES.MINE]: mineRow ? 1 : 0,
-    [TEAM_SCOPES.DIRECT]: directPagination.total || directRows.length,
-    [TEAM_SCOPES.FULL]: fullTeamMemberCount ?? fullPagination.total ?? fullRows.length,
-  }), [mineRow, directPagination.total, directRows.length, fullTeamMemberCount, fullPagination.total, fullRows.length]);
+  const teamScopeCounts = useMemo(() => {
+    const directTotal = directTeamMemberCount
+      ?? (Number.isFinite(directPagination.total) ? directPagination.total : directRows.length);
+    const fullTotal = fullTeamMemberCount
+      ?? (Number.isFinite(fullPagination.total) ? fullPagination.total : fullRows.length);
+
+    return {
+      [TEAM_SCOPES.MINE]: mineRow ? 1 : 0,
+      // Always total Direct/Full members — Partial / Not Uploaded only filter the list.
+      [TEAM_SCOPES.DIRECT]: resolveTeamScopeCount(uploadFilter, directUploadCounts, directTotal),
+      [TEAM_SCOPES.FULL]: resolveTeamScopeCount(uploadFilter, fullUploadCounts, fullTotal),
+    };
+  }, [
+    mineRow, uploadFilter, directUploadCounts, fullUploadCounts,
+    directTeamMemberCount, directPagination.total, directRows.length,
+    fullTeamMemberCount, fullPagination.total, fullRows.length,
+  ]);
 
   // Server-provided completeness counts (search-scoped); avoid recounting only the loaded page.
   const uploadCounts = teamScope === TEAM_SCOPES.FULL ? fullUploadCounts : directUploadCounts;
@@ -2227,15 +2361,26 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
         });
         if (cancelled) return;
         const pageData = Array.isArray(result?.data) ? result.data : [];
+        const pagination = result.pagination || { page: 1, hasMore: false, total: 0 };
+        const isUnfilteredList = (!uploadFilter || uploadFilter === UPLOAD_FILTERS.ALL)
+          && !normalizeSearchQuery(searchQuery)
+          && !normalizeSearchQuery(committedHealthIssue);
         if (scope === 'full') {
           setFullRows(pageData);
-          setFullPagination(result.pagination || { page: 1, hasMore: false, total: 0 });
+          setFullPagination(pagination);
           if (result.uploadCounts) setFullUploadCounts(result.uploadCounts);
+          // Only refresh Full badge total from unfiltered responses (filters shrink pagination.total).
+          if (isUnfilteredList && Number.isFinite(pagination.total)) {
+            setFullTeamMemberCount(pagination.total);
+          }
           setFullLoaded(true);
         } else {
           setDirectRows(pageData);
-          setDirectPagination(result.pagination || { page: 1, hasMore: false, total: 0 });
+          setDirectPagination(pagination);
           if (result.uploadCounts) setDirectUploadCounts(result.uploadCounts);
+          if (isUnfilteredList && Number.isFinite(pagination.total)) {
+            setDirectTeamMemberCount(pagination.total);
+          }
         }
       } catch (err) {
         if (!cancelled) setError(err?.message || 'Failed to load team');

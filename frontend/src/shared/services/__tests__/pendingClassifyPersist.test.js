@@ -4,7 +4,20 @@
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { shouldPersistPendingClassifyCapture } from '../sessionStorage.js';
+import {
+  isClassifyCaptureNavLocked,
+  shouldPersistPendingClassifyCapture,
+} from '../sessionStorage.js';
+
+describe('isClassifyCaptureNavLocked', () => {
+  it('locks while Manual Entry / Classify UI is open (race before pending write)', () => {
+    assert.equal(isClassifyCaptureNavLocked(true), true);
+  });
+
+  it('does not lock when UI is closed and no pending capture', () => {
+    assert.equal(isClassifyCaptureNavLocked(false), false);
+  });
+});
 
 describe('shouldPersistPendingClassifyCapture', () => {
   it('allows write while classify session is still active', () => {

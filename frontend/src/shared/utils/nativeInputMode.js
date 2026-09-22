@@ -4,17 +4,14 @@
  * Mobile keyboard rules:
  * - type="tel" + inputmode="numeric" → dial pad on Android WebView (reliable).
  * - type="text" + inputmode="numeric" → often full QWERTY on Android.
- * - autocomplete="one-time-code" on Android → Gboard QWERTY + SMS chip.
+ * - OTP with autocomplete="one-time-code" → SMS suggestion chip (iOS QuickType +
+ *   Android Gboard/Autofill). Prefer the chip over dial-pad for OTP fields.
  *
- * Use type="tel" for ALL numeric fields except iOS OTP cells that need
- * one-time-code autofill (those stay type="text").
+ * Use type="tel" for non-OTP numeric fields. OTP cells that request
+ * one-time-code stay type="text" so the OS can surface the SMS suggestion.
  */
 
 import { Capacitor } from '@capacitor/core';
-
-function isIOS() {
-  return Capacitor.getPlatform() === 'ios';
-}
 
 function isAndroidUA() {
   return typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent);
@@ -38,19 +35,20 @@ export function resolveNativeKeyboardAttrs({
   );
 
   const wantsNumeric = inputMode === 'numeric' || isOtp;
-  const iosOtpAutofill = isIOS() && isOtp && autoComplete !== 'off';
+  const wantsOtpAutofill = isOtp && autoComplete !== 'off';
 
-  if (iosOtpAutofill) {
-    // iOS only: SMS QuickType needs text + one-time-code.
+  if (wantsOtpAutofill) {
+    // iOS + Android: SMS suggestion needs text + one-time-code on the focused field.
     resolvedType = 'text';
     resolvedInputMode = 'numeric';
-    resolvedAutoComplete = autoComplete ?? 'one-time-code';
+    resolvedAutoComplete = autoComplete === 'one-time-code' || autoComplete == null
+      ? 'one-time-code'
+      : autoComplete;
   } else if (wantsNumeric) {
-    // Android, iOS phone, web — tel is the cross-platform numeric dial pad.
+    // Phone / other numeric — tel dial pad; do not claim OTP autofill.
     resolvedType = 'tel';
     resolvedInputMode = 'numeric';
-    // Android Gboard: one-time-code forces QWERTY; use WebOTP instead.
-    if (isOtp || autoComplete === 'one-time-code') {
+    if (autoComplete === 'one-time-code') {
       resolvedAutoComplete = 'off';
     }
   } else if (inputMode === 'decimal') {

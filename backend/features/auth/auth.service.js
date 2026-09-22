@@ -29,6 +29,7 @@ function toAuthUserPayload(userInfo, { phone, consentGate } = {}) {
     email: userInfo.Email || '',
     phone: userInfo.PhoneNumber || phone || '',
     status: userInfo.Status,
+    role: userInfo.Role || 'user',
     consentRequired,
   };
 }
@@ -132,6 +133,7 @@ async function resolveUserAfterOtp({ recipient, contactType }) {
           TargetWeightInKg: 0,
           Status: 'Active',
           CoachApproved: 0,
+          Role: 'user',
           PhoneNumber: storedPhone,
         },
         recipient,
@@ -173,6 +175,7 @@ async function resolveUserAfterOtp({ recipient, contactType }) {
       TargetWeightInKg: 0,
       Status: 'Active',
       CoachApproved: 0,
+      Role: 'user',
       Email: recipient,
     });
     isNewUser = true;
@@ -330,6 +333,7 @@ async function handleDemoVerify({ recipient, otp, purpose }) {
       TargetWeightInKg: 0,
       Status: 'Active',
       CoachApproved: 0,
+      Role: 'user',
       Email: recipient,
     });
     isNewUser = true;

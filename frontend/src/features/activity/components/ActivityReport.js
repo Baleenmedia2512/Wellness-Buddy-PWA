@@ -101,7 +101,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0, t
   const [teamScope, setTeamScope] = useState(TEAM_SCOPES.DIRECT);
   const [teamScopeCounts, setTeamScopeCounts] = useState(null);
   const [showTeamScope, setShowTeamScope] = useState(false);
-  const [attendanceStatus, setAttendanceStatus] = useState(ACTIVITY_REPORT_ATTENDANCE.ATTENDED);
+  const [attendanceStatus, setAttendanceStatus] = useState(ACTIVITY_REPORT_ATTENDANCE.POSTED);
   const [showReportDatePicker, setShowReportDatePicker] = useState(false);
   const [showTableFiltersSheet, setShowTableFiltersSheet] = useState(false);
   const fetchAbortRef = useRef(null);
@@ -661,7 +661,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0, t
   };
 
   const handleAttendanceChange = (event) => {
-    const next = event.target.value || ACTIVITY_REPORT_ATTENDANCE.ATTENDED;
+    const next = event.target.value || ACTIVITY_REPORT_ATTENDANCE.POSTED;
     if (next === attendanceStatus) return;
     setAttendanceStatus(next);
     setCurrentPage(1);
@@ -722,8 +722,8 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0, t
       'Member Name',
       'Type',
       'Level',
-      'Sponsor Name',
       'Club',
+      'Sponsor Name',
       'Reg. Date',
       'Reg. Time',
       'Coach Name',
@@ -732,14 +732,15 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0, t
       'Village'
     ];
 
+    // Activity metrics sit after Club + Sponsor (index 5).
     if (selectedActivity === 'weight') {
-      headers.splice(4, 0, 'Weight (kg)');
+      headers.splice(5, 0, 'Weight (kg)');
     } else if (['breakfast', 'lunch', 'dinner'].includes(selectedActivity)) {
-      headers.splice(4, 0, 'Meal Type', 'Calories');
+      headers.splice(5, 0, 'Meal Type', 'Calories');
     } else if (selectedActivity === 'water') {
-      headers.splice(4, 0, 'Water (L)');
+      headers.splice(5, 0, 'Water (L)');
     } else if (selectedActivity === 'calories') {
-      headers.splice(4, 0, 'Calories Burned');
+      headers.splice(5, 0, 'Calories Burned');
     }
 
     const csvRows = [headers.join(',')];
@@ -750,8 +751,8 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0, t
         `"${record.memberName || 'N/A'}"`,
         `"${formatActivityReportMemberType(record.memberType)}"`,
         formatActivityReportLevel(record.level),
-        `"${record.sponsorName || record.coachName || 'N/A'}"`,
         `"${displayClub}"`,
+        `"${record.sponsorName || record.coachName || 'N/A'}"`,
         record.date || 'N/A',
         record.time || 'N/A',
         `"${record.idealCoachName || ''}"`,
@@ -761,13 +762,13 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0, t
       ];
 
       if (selectedActivity === 'weight') {
-        baseRow.splice(4, 0, record.weight || 'N/A');
+        baseRow.splice(5, 0, record.weight || 'N/A');
       } else if (['breakfast', 'lunch', 'dinner'].includes(selectedActivity)) {
-        baseRow.splice(4, 0, `"${record.mealType || 'N/A'}"`, record.calories || 0);
+        baseRow.splice(5, 0, `"${record.mealType || 'N/A'}"`, record.calories || 0);
       } else if (selectedActivity === 'water') {
-        baseRow.splice(4, 0, record.waterLiters || 0);
+        baseRow.splice(5, 0, record.waterLiters || 0);
       } else if (selectedActivity === 'calories') {
-        baseRow.splice(4, 0, record.caloriesBurned || 0);
+        baseRow.splice(5, 0, record.caloriesBurned || 0);
       }
 
       csvRows.push(baseRow.join(','));
@@ -1058,6 +1059,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0, t
                     >
                       Level {sortColumn === 'level' && (sortDirection === 'asc' ? '↑' : '↓')}
                     </th>
+                    <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Club</th>
                     <th
                       className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase cursor-pointer hover:bg-gray-100"
                       onClick={() => handleSort('sponsorName')}
@@ -1083,8 +1085,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0, t
                       <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Calories Burned</th>
                     )}
 
-                    {/* --- COMMON COLUMNS REORDERED --- */}
-                    <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Club</th>
+                    {/* --- COMMON COLUMNS --- */}
                     <th
                       className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase whitespace-nowrap cursor-pointer hover:bg-gray-100"
                       onClick={() => handleSort('date')}
@@ -1106,6 +1107,12 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0, t
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">{formatActivityReportMemberType(record.memberType)}</td>
                       <td className="px-4 py-3 text-sm text-gray-900 whitespace-nowrap">{formatActivityReportLevel(record.level)}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600">
+                        {record.clubName && record.clubName !== 'N/A'
+                          ? <span className="text-green-700 font-medium">{record.clubName}</span>
+                          : <span className="text-gray-400 italic">Remote</span>
+                        }
+                      </td>
                       <td className="px-4 py-3 text-sm text-gray-600">{display(record.sponsorName || record.coachName)}</td>
 
                       {/* --- DYNAMIC ACTIVITY DATA --- */}
@@ -1126,13 +1133,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0, t
                         <td className="px-4 py-3 text-sm font-semibold text-red-600">{record.caloriesBurned}</td>
                       )}
 
-                      {/* --- COMMON DATA REORDERED --- */}
-                      <td className="px-4 py-3 text-sm text-gray-600">
-                        {record.clubName && record.clubName !== 'N/A'
-                          ? <span className="text-green-700 font-medium">{record.clubName}</span>
-                          : <span className="text-gray-400 italic">Remote</span>
-                        }
-                      </td>
+                      {/* --- COMMON DATA --- */}
                       <td className="px-4 py-3 text-sm text-gray-900 whitespace-nowrap">{display(record.date)}</td>
                       <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">{display(record.time)}</td>
                       <td className="px-4 py-3 text-sm text-gray-600">{record.idealCoachName ? display(record.idealCoachName) : '—'}</td>
@@ -1180,7 +1181,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0, t
                 <p className="text-gray-500">
                   {hasActiveTableFilters
                     ? 'No records found'
-                    : attendanceStatus === ACTIVITY_REPORT_ATTENDANCE.NOT_ATTENDED
+                    : attendanceStatus === ACTIVITY_REPORT_ATTENDANCE.NOT_POSTED
                       ? 'Everyone in this team logged this activity'
                       : 'No records found'}
                 </p>

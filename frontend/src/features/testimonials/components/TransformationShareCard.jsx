@@ -26,27 +26,37 @@ import {
   shareResultVideos,
 } from '../utils/downloadVideo.js';
 import { drawImageCoverTop } from '../utils/fitContainSize.js';
+import { healthIssueShareIcon } from '../utils/healthIssueShareIcon.js';
+import {
+  CARD_H,
+  CARD_W,
+  MAX_VISIBLE_ISSUES,
+  issueColumnsForCount,
+  shareCardPhotoHeight,
+} from '../utils/shareCardLayout.js';
 
-/** 9:16 mobile portrait — 540×960 CSS px → 1080×1920 PNG @ CAPTURE_SCALE 2 */
-export const CARD_W = 540;
-export const CARD_H = 960;
-const PHOTO_H = 655;
+export { CARD_H, CARD_W };
+
 const TICK_SIZE = 28;
-const MAX_VISIBLE_ISSUES = 10;
 const FRAME_BG = '#f3f4f6';
 const CAPTURE_SCALE = 2;
 const CARD_FONT = "'Poppins', Arial, Helvetica, sans-serif";
+const SCRIPT_FONT = "'Pacifico', 'Segoe Script', 'Comic Sans MS', cursive";
+const BEFORE_BRUSH = '#e11d72';
+const AFTER_BRUSH = '#16a34a';
+const PILL_BLUE = '#2563eb';
+const PILL_BG = '#dbeafe';
 
-function ensurePoppinsFont() {
+function ensureShareCardFonts() {
   if (typeof document === 'undefined') return;
   if (document.getElementById('wv-poppins-font')) return;
   const link = document.createElement('link');
   link.id = 'wv-poppins-font';
   link.rel = 'stylesheet';
-  link.href = 'https://fonts.googleapis.com/css2?family=Poppins:wght@500;600;700;800&display=swap';
+  link.href = 'https://fonts.googleapis.com/css2?family=Pacifico&family=Poppins:wght@500;600;700;800&display=swap';
   document.head.appendChild(link);
 }
-ensurePoppinsFont();
+ensureShareCardFonts();
 
 const CHECK_MARK_SRC =
   'data:image/svg+xml,' +
@@ -55,6 +65,22 @@ const CHECK_MARK_SRC =
     + '<path d="M20 6L9 17l-5-5" stroke="#ffffff" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>'
     + '</svg>',
   );
+
+function svgDataUri(markup) {
+  return `data:image/svg+xml,${encodeURIComponent(markup)}`;
+}
+
+const RESULT_BURST_LEFT_SRC = svgDataUri(
+  '<svg xmlns="http://www.w3.org/2000/svg" width="44" height="32" viewBox="0 0 44 32">'
+  + '<path d="M39 16H18M31 7L12 2M31 25L12 30" fill="none" stroke="#059669" stroke-width="4" stroke-linecap="round"/>'
+  + '</svg>',
+);
+
+const RESULT_BURST_RIGHT_SRC = svgDataUri(
+  '<svg xmlns="http://www.w3.org/2000/svg" width="44" height="32" viewBox="0 0 44 32">'
+  + '<path d="M5 16h21M13 7l19-5M13 25l19 5" fill="none" stroke="#059669" stroke-width="4" stroke-linecap="round"/>'
+  + '</svg>',
+);
 
 function blobToDataUrl(blob) {
   return new Promise((resolve, reject) => {
@@ -131,17 +157,24 @@ function bakeKeepRatioPhotos(el, scale = CAPTURE_SCALE) {
 }
 
 export async function captureTransformationCardAsBlob(el) {
-  ensurePoppinsFont();
+  ensureShareCardFonts();
   if (document.fonts?.ready) {
     try {
       await document.fonts.ready;
+      if (document.fonts.load) {
+        await Promise.all([
+          document.fonts.load('800 20px Poppins'),
+          document.fonts.load('40px Pacifico'),
+        ]);
+      }
     } catch {
-      // capture anyway — Arial fallback still paints
+      // capture anyway — Arial / Segoe Script fallback still paints
     }
   }
   await inlineImagesForCapture(el);
+  const cardImages = Array.from(el.querySelectorAll('img'));
+  await Promise.all(cardImages.map(waitForImage));
   const photos = Array.from(el.querySelectorAll('img[data-keep-ratio]'));
-  await Promise.all(photos.map(waitForImage));
   bakeKeepRatioPhotos(el, CAPTURE_SCALE);
   await Promise.all(photos.map(waitForImage));
   const html2canvas = (await import('html2canvas')).default;
@@ -218,7 +251,99 @@ function VerifiedTick() {
   );
 }
 
-function PhotoCell({ src, label, weightKg, isVerified, side }) {
+function BrushLabel({ label, side }) {
+  const color = side === 'left' ? BEFORE_BRUSH : AFTER_BRUSH;
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        left: '7%',
+        right: '7%',
+        bottom: 0,
+        height: 92,
+        textAlign: 'center',
+      }}
+    >
+      <span
+        aria-hidden="true"
+        style={{
+          position: 'absolute',
+          left: 3,
+          right: 1,
+          top: 19,
+          height: 53,
+          display: 'block',
+          background: color,
+          borderRadius: '38% 13% 35% 18% / 30% 48% 35% 52%',
+          transform: 'rotate(-2deg) skewX(-7deg)',
+          opacity: 0.96,
+        }}
+      />
+      <span
+        aria-hidden="true"
+        style={{
+          position: 'absolute',
+          left: 13,
+          right: 16,
+          top: 13,
+          height: 14,
+          display: 'block',
+          background: color,
+          borderRadius: '70% 16% 65% 12%',
+          transform: 'rotate(2deg)',
+          opacity: 0.76,
+        }}
+      />
+      <span
+        aria-hidden="true"
+        style={{
+          position: 'absolute',
+          left: 0,
+          right: 22,
+          top: 62,
+          height: 10,
+          display: 'block',
+          background: color,
+          borderRadius: '20% 75% 18% 70%',
+          transform: 'rotate(1deg)',
+          opacity: 0.72,
+        }}
+      />
+      <span
+        aria-hidden="true"
+        style={{
+          position: 'absolute',
+          left: side === 'left' ? -7 : 25,
+          right: side === 'left' ? 30 : -5,
+          top: 35,
+          height: 12,
+          display: 'block',
+          background: color,
+          borderRadius: '65% 20% 70% 16%',
+          transform: 'rotate(-5deg)',
+          opacity: 0.65,
+        }}
+      />
+      <p
+        style={{
+          position: 'relative',
+          margin: 0,
+          paddingTop: 16,
+          fontFamily: SCRIPT_FONT,
+          fontSize: 43,
+          lineHeight: '58px',
+          color: '#ffffff',
+          textShadow: '0 2px 5px rgba(0,0,0,0.36)',
+          transform: 'rotate(-3deg)',
+        }}
+      >
+        {label}
+      </p>
+    </div>
+  );
+}
+
+function PhotoCell({ src, label, scriptLabel, weightKg, isVerified, side, photoH }) {
   return (
     <td
       style={{
@@ -228,7 +353,7 @@ function PhotoCell({ src, label, weightKg, isVerified, side }) {
       }}
     >
       <div style={side === 'left' ? { paddingRight: 4 } : { paddingLeft: 4 }}>
-        <div style={{ position: 'relative' }}>
+        <div style={{ position: 'relative', overflow: 'hidden', borderRadius: 14 }}>
           {src ? (
             <img
               src={src}
@@ -238,9 +363,8 @@ function PhotoCell({ src, label, weightKg, isVerified, side }) {
               style={{
                 display: 'block',
                 width: '100%',
-                height: PHOTO_H,
+                height: photoH,
                 objectFit: 'cover',
-                borderRadius: 12,
                 objectPosition: 'top',
               }}
             />
@@ -248,21 +372,21 @@ function PhotoCell({ src, label, weightKg, isVerified, side }) {
             <div
               style={{
                 width: '100%',
-                height: PHOTO_H,
-                borderRadius: 12,
+                height: photoH,
                 background: FRAME_BG,
               }}
             />
           )}
+          <BrushLabel label={scriptLabel} side={side} />
           {isVerified && src ? <VerifiedTick /> : null}
         </div>
         <p style={{
-          margin: '6px 0 0',
+          margin: '8px 0 0',
           textAlign: 'center',
           fontSize: 11,
           fontWeight: 700,
           color: '#9ca3af',
-          letterSpacing: '1.2px',
+          letterSpacing: '1.4px',
           textTransform: 'uppercase',
           lineHeight: '14px',
         }}
@@ -287,6 +411,55 @@ function PhotoCell({ src, label, weightKg, isVerified, side }) {
   );
 }
 
+function HealthIssueChip({ label, widthPct }) {
+  const compact = widthPct <= 25;
+  const circle = 40;
+  return (
+    <div
+      style={{
+        display: 'inline-block',
+        width: `${widthPct}%`,
+        verticalAlign: 'top',
+        padding: '6px 8px 2px',
+        boxSizing: 'border-box',
+        textAlign: 'center',
+      }}
+    >
+      <div
+        style={{
+          width: circle,
+          height: circle,
+          margin: '0 auto',
+          borderRadius: circle / 2,
+          background: '#fce7f3',
+          lineHeight: `${circle}px`,
+          fontSize: 18,
+        }}
+      >
+        {healthIssueShareIcon(label)}
+      </div>
+      <p
+        style={{
+          margin: '5px 0 0',
+          padding: '0 3px',
+          fontSize: compact ? 10 : 11,
+          fontWeight: 700,
+          color: '#4b5563',
+          lineHeight: '14px',
+          height: 28,
+          overflow: 'hidden',
+          wordWrap: 'break-word',
+          overflowWrap: 'anywhere',
+          textAlign: 'center',
+          fontFamily: CARD_FONT,
+        }}
+      >
+        {label}
+      </p>
+    </div>
+  );
+}
+
 /**
  * Standalone transformation card — capture this element, never the page.
  * Before vs After photos + health issues. Videos are shared as real files.
@@ -307,6 +480,12 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
   const issues = (testimonial?.recoveredHealthIssues ?? []).filter(Boolean).slice(0, MAX_VISIBLE_ISSUES);
   const durationText = testimonial?.durationText || '';
   const displayName = String(userName || 'Customer').trim() || 'Customer';
+  const issuesPerRow = issueColumnsForCount(issues.length);
+  const chipWidthPct = issuesPerRow > 0 ? 100 / issuesPerRow : 100;
+  const photoH = shareCardPhotoHeight({
+    issueCount: issues.length,
+    hasResultPill: Boolean(diff),
+  });
 
   return (
     <div
@@ -358,7 +537,7 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
                 <p style={{ margin: 0, color: '#ffffff', fontSize: 20, fontWeight: 800, lineHeight: '26px' }}>
                   Wellness Valley
                   <span style={{ fontWeight: 500, fontSize: 13, color: '#d1fae5' }}>
-                    {' '}( {getVersionString()} )
+                    {` (${getVersionString().replace(/\s+/g, '')})`}
                   </span>
                 </p>
                 <p style={{
@@ -377,7 +556,7 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
         </table>
       </div>
 
-      <div style={{ padding: '14px 16px 10px', textAlign: 'center' }}>
+      <div style={{ padding: '13px 16px 11px', textAlign: 'center' }}>
         <p style={{
           margin: 0,
           fontSize: 22,
@@ -405,16 +584,20 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
                 <PhotoCell
                   src={beforeSrc}
                   label="BEFORE"
+                  scriptLabel="Before"
                   weightKg={bw}
                   isVerified={isVerified}
                   side="left"
+                  photoH={photoH}
                 />
                 <PhotoCell
                   src={afterSrc}
                   label="AFTER"
+                  scriptLabel="After"
                   weightKg={aw}
                   isVerified={isVerified}
                   side="right"
+                  photoH={photoH}
                 />
               </tr>
             </tbody>
@@ -431,74 +614,101 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
           {diff ? (
             <tr>
               <td style={{ textAlign: 'center', padding: '10px 16px 0', verticalAlign: 'top' }}>
-                <p style={{
-                  margin: 0,
-                  lineHeight: '26px',
-                  fontFamily: CARD_FONT,
-                  fontSize: 18,
-                  fontWeight: 800,
-                  color: '#2563eb',
-                }}
+                <img
+                  src={RESULT_BURST_LEFT_SRC}
+                  alt=""
+                  aria-hidden="true"
+                  style={{
+                    display: 'inline-block',
+                    width: 38,
+                    height: 28,
+                    marginRight: 4,
+                    verticalAlign: 'middle',
+                  }}
+                />
+                <span
+                  style={{
+                    display: 'inline-block',
+                    background: PILL_BG,
+                    borderRadius: 22,
+                    padding: '8px 22px',
+                    lineHeight: '22px',
+                    fontFamily: CARD_FONT,
+                    fontSize: 17,
+                    fontWeight: 800,
+                    color: PILL_BLUE,
+                    verticalAlign: 'middle',
+                  }}
                 >
                   {verb}
                   {' '}
                   {diff}
                   {' kgs'}
                   {durationText ? ` in ${durationText}` : ''}
-                </p>
+                </span>
+                <img
+                  src={RESULT_BURST_RIGHT_SRC}
+                  alt=""
+                  aria-hidden="true"
+                  style={{
+                    display: 'inline-block',
+                    width: 38,
+                    height: 28,
+                    marginLeft: 4,
+                    verticalAlign: 'middle',
+                  }}
+                />
               </td>
             </tr>
           ) : null}
           {issues.length > 0 ? (
             <tr>
-              <td style={{ textAlign: 'left', padding: '14px 16px 20px', verticalAlign: 'top' }}>
-                <p style={{
-                  margin: 0,
-                  lineHeight: '20px',
-                  fontFamily: CARD_FONT,
-                }}
+              <td style={{ padding: '10px 10px 14px', verticalAlign: 'top' }}>
+                <div
+                  style={{
+                    background: '#fff1f2',
+                    border: '1px solid #f9a8d4',
+                    borderRadius: 16,
+                    boxShadow: '0 2px 5px rgba(190, 24, 93, 0.15)',
+                    padding: '10px 8px 8px',
+                    boxSizing: 'border-box',
+                  }}
                 >
-                  <span style={{
-                    fontSize: 13,
-                    fontWeight: 700,
-                    color: '#9ca3af',
-                    letterSpacing: '0.2px',
-                  }}
+                  <p
+                    style={{
+                      margin: 0,
+                      fontFamily: SCRIPT_FONT,
+                      fontSize: 24,
+                      lineHeight: '30px',
+                      color: '#be185d',
+                      textAlign: 'center',
+                    }}
                   >
-                    Health issues while joining in the community
-                  </span>
-                  <span style={{
-                    fontSize: 13,
-                    fontWeight: 700,
-                    color: '#9ca3af',
-                    letterSpacing: '0.2px',
-                  }}
+                    Health Issues
+                  </p>
+                  <p
+                    style={{
+                      margin: '1px 0 6px',
+                      fontSize: 11,
+                      fontWeight: 500,
+                      fontStyle: 'italic',
+                      color: '#9ca3af',
+                      lineHeight: '15px',
+                      textAlign: 'center',
+                    }}
                   >
-                    {' : '}
-                  </span>
-                  {issues.map((issue, index) => (
-                    <React.Fragment key={issue}>
-                      {index > 0 ? (
-                        <span style={{
-                          fontSize: 10,
-                          fontWeight: 700,
-                          color: '#9f1239',
-                        }}
-                        >
-                          {', '}
-                        </span>
-                      ) : null}
-                      <span style={{
-                        fontSize: 10,
-                        fontWeight: 700,
-                        color: '#9f1239',
-                      }}
-                      >
-                        {issue}
-                      </span>
-                    </React.Fragment>
-                  ))}
-                </p>
+                    while joining in the community
+                  </p>
+                  <div style={{ textAlign: 'center', fontSize: 0 }}>
+                    {issues.map((issue) => (
+                      <HealthIssueChip
+                        key={issue}
+                        label={issue}
+                        widthPct={chipWidthPct}
+                      />
+                    ))}
+                  </div>
+                </div>
               </td>
             </tr>
           ) : (

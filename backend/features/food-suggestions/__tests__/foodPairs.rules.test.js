@@ -41,7 +41,7 @@ describe('foodPairs.rules', () => {
     assert.equal(isDrySaladAnalysis({ foods: [{ name: 'Dosa' }] }), false);
   });
 
-  it('isHerbalifeProductSuggestionName detects Herbalife and catalog supplement names', () => {
+  it('isHerbalifeProductSuggestionName detects water, Herbalife, and supplement brands', () => {
     assert.equal(isHerbalifeProductSuggestionName('Herbalife Afresh Energy Drink'), true);
     assert.equal(isHerbalifeProductSuggestionName('*Herbalife Multivitamin Mineral'), true);
     assert.equal(isHerbalifeProductSuggestionName('  *  Herbalife Shake'), true);
@@ -49,12 +49,23 @@ describe('foodPairs.rules', () => {
     assert.equal(isHerbalifeProductSuggestionName('Herbal Multivitamin Tablet'), true);
     assert.equal(isHerbalifeProductSuggestionName('Afresh Energy Drink Mix'), true);
     assert.equal(isHerbalifeProductSuggestionName('Fish Oil Softgel'), true);
+    assert.equal(isHerbalifeProductSuggestionName('Plain Water'), true);
+    assert.equal(isHerbalifeProductSuggestionName('Vritilife Triphala (Digestive Health)'), true);
+    assert.equal(isHerbalifeProductSuggestionName('*Vritilife Brain Health'), true);
+    assert.equal(isHerbalifeProductSuggestionName('HN - Skin Booster - Orange'), true);
+    assert.equal(isHerbalifeProductSuggestionName('Joint Support (Bone & Joint Health)'), true);
+    assert.equal(isHerbalifeProductSuggestionName('Dinoshake - Chocolicious'), true);
+    assert.equal(isHerbalifeProductSuggestionName('Herbal Tea Concentrate'), true);
+    assert.equal(isHerbalifeProductSuggestionName('Liftoff Energy'), true);
+    assert.equal(isHerbalifeProductSuggestionName('Lift Off'), true);
+    assert.equal(isHerbalifeProductSuggestionName('*H24 Hydrate'), true);
+    assert.equal(isHerbalifeProductSuggestionName('H24 Hydrate'), true);
     assert.equal(isHerbalifeProductSuggestionName('Dosa'), false);
-    assert.equal(isHerbalifeProductSuggestionName('Plain Water'), false);
+    assert.equal(isHerbalifeProductSuggestionName('Watermelon'), false);
     assert.equal(isHerbalifeProductSuggestionName('Mutton Biryani (Hyderabadi)'), false);
   });
 
-  it('extractLatestFoodsFromMeals skips Herbalife product names', () => {
+  it('extractLatestFoodsFromMeals skips water and non-meal product names', () => {
     const latest = extractLatestFoodsFromMeals([
       {
         AnalysisData: {
@@ -62,6 +73,11 @@ describe('foodPairs.rules', () => {
             { name: '*Herbalifeline (Cardiovascular Health)' },
             { name: 'Herbal Multivitamin Tablet' },
             { name: 'Herbalife Afresh Energy Drink' },
+            { name: 'Plain Water' },
+            { name: 'Vritilife Triphala (Digestive Health)' },
+            { name: 'HN - Skin Booster' },
+            { name: 'Joint Support (Bone & Joint Health)' },
+            { name: 'Dinoshake - Chocolicious' },
             { name: 'Mutton Biryani (Hyderabadi)' },
             { name: '*Herbalife Multivitamin Mineral' },
             { name: 'Dosa' },

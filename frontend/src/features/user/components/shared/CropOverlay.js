@@ -9,6 +9,11 @@ const CropOverlay = ({
   rawImageSrc, crop, zoom, rotation,
   setCrop, setZoom, setRotation, onCropComplete,
   onCancel, onDone, zIndex = 60,
+  aspect = 1,
+  cropShape = 'round',
+  title = 'Crop Photo',
+  hint = '',
+  objectFit = 'contain',
 }) => {
   useEffect(() => {
     const prevOverflow = document.body.style.overflow;
@@ -41,7 +46,7 @@ const CropOverlay = ({
         >
           Cancel
         </button>
-        <span className="text-white font-semibold text-base tracking-wide">Crop Photo</span>
+        <span className="text-white font-semibold text-base tracking-wide">{title}</span>
         <button
           type="button"
           onClick={onDone}
@@ -59,9 +64,11 @@ const CropOverlay = ({
             crop={crop}
             zoom={zoom}
             rotation={rotation}
-            aspect={1}
-            cropShape="round"
+            aspect={aspect}
+            cropShape={cropShape}
+            objectFit={objectFit}
             showGrid
+            restrictPosition
             onCropChange={setCrop}
             onZoomChange={setZoom}
             onRotationChange={setRotation}
@@ -76,6 +83,9 @@ const CropOverlay = ({
         className="flex-shrink-0 bg-black/95 px-4 pt-3 border-t border-white/10 space-y-3"
         style={{ paddingBottom: 'max(16px, env(safe-area-inset-bottom))' }}
       >
+        {hint ? (
+          <p className="text-center text-white/55 text-xs">{hint}</p>
+        ) : null}
         <div className="flex items-center gap-2">
           <ZoomOut className="w-4 h-4 text-white/60 flex-shrink-0" aria-hidden="true" />
           <input

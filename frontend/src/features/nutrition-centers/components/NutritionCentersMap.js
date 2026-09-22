@@ -1022,22 +1022,6 @@ const NutritionCentersMap = ({ user, onBack, onEditCenter, onRegisterCenter, emb
                           <span className="text-[10px] sm:text-xs font-semibold text-orange-700 text-center leading-tight px-0.5">Edit</span>
                         </TouchFeedbackButton>
                       )}
-                      {teamFilter === 'self' && (
-                        <TouchFeedbackButton
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setDeleteModal({ isOpen: true, center });
-                          }}
-                          disabled={deletingCenterId === center.id}
-                          className="compact-touch !overflow-visible flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1 px-2 sm:px-3 py-2 rounded-full border border-red-300 bg-red-50 active:bg-red-100 transition-colors w-full disabled:opacity-50"
-                          ariaLabel="Delete club"
-                        >
-                          <Trash2 className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-red-600 flex-shrink-0" />
-                          <span className="text-[10px] sm:text-xs font-semibold text-red-700 text-center leading-tight px-0.5">
-                            {deletingCenterId === center.id ? 'Deleting…' : 'Delete'}
-                          </span>
-                        </TouchFeedbackButton>
-                      )}
                     </div>
                   </div>
                       ))

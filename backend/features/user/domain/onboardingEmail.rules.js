@@ -73,3 +73,55 @@ export function planAdoptPhoneTransfer({ newPhone, existingPhone } = {}) {
     samePhone: previous !== '' && previous === next,
   };
 }
+
+/**
+ * Build a team_table patch that copies BCM/profile metrics from a phone stub
+ * onto an adopted email account only when the target field is empty.
+ *
+ * @param {object|null|undefined} fromRow - BCM lead / phone stub
+ * @param {object|null|undefined} toRow - email account being recovered
+ * @returns {object}
+ */
+export function buildAdoptProfileMetricsPatch(fromRow, toRow) {
+  if (!fromRow || !toRow) return {};
+  const patch = {};
+  const copyIfEmpty = (col, isEmpty) => {
+    if (fromRow[col] == null || fromRow[col] === '') return;
+    if (!isEmpty(toRow[col])) return;
+    patch[col] = fromRow[col];
+  };
+
+  copyIfEmpty('Height', (v) => {
+    const n = v != null && v !== '' ? Number(v) : NaN;
+    return !Number.isFinite(n) || n < 50;
+  });
+  copyIfEmpty('Bmr', (v) => v == null || v === '');
+  copyIfEmpty('Gender', (v) => !v);
+  copyIfEmpty('Age', (v) => v == null || v === '');
+  copyIfEmpty('VisceralFat', (v) => v == null || v === '');
+  copyIfEmpty('BodyAge', (v) => v == null || v === '');
+  copyIfEmpty('ChestCm', (v) => v == null || v === '');
+  copyIfEmpty('WaistCm', (v) => v == null || v === '');
+  copyIfEmpty('HipCm', (v) => v == null || v === '');
+  copyIfEmpty('DietType', (v) => !v);
+  copyIfEmpty('PhysicalActivityLevel', (v) => !v);
+
+  if (
+    Array.isArray(fromRow.recovered_health_issues)
+    && fromRow.recovered_health_issues.length
+    && !(Array.isArray(toRow.recovered_health_issues) && toRow.recovered_health_issues.length)
+  ) {
+    patch.recovered_health_issues = fromRow.recovered_health_issues;
+  }
+
+  const fromPhotos = fromRow.transformation_photos;
+  const toPhotos = toRow.transformation_photos;
+  const toHasPhotos = toPhotos
+    && typeof toPhotos === 'object'
+    && (toPhotos.front || toPhotos.left || toPhotos.right);
+  if (fromPhotos && typeof fromPhotos === 'object' && !toHasPhotos) {
+    patch.transformation_photos = fromPhotos;
+  }
+
+  return patch;
+}

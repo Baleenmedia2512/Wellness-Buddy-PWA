@@ -92,8 +92,15 @@ const VALID_GENDERS = ['Male', 'Female'];
 
 export function validateUpdateProfile(body) {
   if (!body) throw new ValidationError(400, 'Request body is missing');
-  const email = body.email;
-  if (!email) throw new ValidationError(400, 'Missing required field: email');
+  const email = normalizeEmail(body.email) || null;
+  const userIdRaw = body.userId ?? body.UserId;
+  const userId = userIdRaw != null && String(userIdRaw).trim() !== ''
+    ? Number(userIdRaw)
+    : null;
+  const resolvedUserId = userId && Number.isFinite(userId) && userId > 0 ? userId : null;
+  if (!email && !resolvedUserId) {
+    throw new ValidationError(400, 'Missing required field: email or userId');
+  }
   const weightGoalMode = body.weightGoalMode;
   if (weightGoalMode != null && !VALID_GOAL_MODES.includes(weightGoalMode)) {
     throw new ValidationError(400, `Invalid weightGoalMode. Must be one of: ${VALID_GOAL_MODES.join(', ')}`);
@@ -209,6 +216,7 @@ export function validateUpdateProfile(body) {
 
   return {
     email,
+    userId: resolvedUserId,
     name: body.name,
     height: body.height,
     bmr: body.bmr,
@@ -296,9 +304,27 @@ export function validateSnooze(body) {
 }
 
 export function validateDeleteAccount(body) {
+  const confirmRaw = body?.confirmPhrase ?? body?.confirmWord ?? body?.confirmation;
+  const confirmPhrase = String(confirmRaw || '').trim().toUpperCase();
+  const userIdRaw = body?.userId ?? body?.UserId;
+  const userId = userIdRaw != null && String(userIdRaw).trim() !== ''
+    ? Number(userIdRaw)
+    : null;
   const email = normalizeEmail(body?.email);
-  if (!email) throw new ValidationError(400, 'Missing required field: email');
-  return { email };
+
+  // New clients: userId + typed DELETE — no email OTP.
+  if (userId && Number.isFinite(userId) && userId > 0) {
+    if (confirmPhrase !== 'DELETE') {
+      throw new ValidationError(400, 'Type DELETE to confirm account deletion.');
+    }
+    return { mode: 'userId', userId, confirmPhrase, email: email || null };
+  }
+
+  // Legacy clients: email + recent email OTP gate (no confirmPhrase required here).
+  if (!email) {
+    throw new ValidationError(400, 'userId or email is required');
+  }
+  return { mode: 'legacyEmail', email, userId: null, confirmPhrase: null };
 }
 
 export function validateSkipSetup(body) {
@@ -372,6 +398,44 @@ export function validateVerifyOnboardingEmail(body) {
     name,
     adoptExisting: body?.adoptExisting === true,
   };
+}
+
+function parseProfileIdentity(body) {
+  const email = normalizeEmail(body?.email) || null;
+  const userIdRaw = body?.userId ?? body?.UserId;
+  const userId = userIdRaw != null && String(userIdRaw).trim() !== ''
+    ? Number(userIdRaw)
+    : null;
+  const resolvedUserId = userId && Number.isFinite(userId) && userId > 0 ? userId : null;
+  if (!email && !resolvedUserId) {
+    throw new ValidationError(400, 'Missing required field: email or userId');
+  }
+  return { email, userId: resolvedUserId };
+}
+
+export function validateCommunityIdRequest(body) {
+  if (!body) throw new ValidationError(400, 'Request body is missing');
+  const identity = parseProfileIdentity(body);
+  const raw = body.communityId !== undefined ? body.communityId : body.community_id;
+  const validation = validateCommunityId(raw);
+  if (!validation.valid) throw new ValidationError(400, validation.message);
+  if (!validation.value) {
+    throw new ValidationError(400, 'Community ID is required');
+  }
+  return {
+    ...identity,
+    communityId: validation.value,
+  };
+}
+
+export function validateCommunityIdVerify(body) {
+  if (!body) throw new ValidationError(400, 'Request body is missing');
+  const identity = parseProfileIdentity(body);
+  const otp = body?.otp != null ? String(body.otp).trim() : '';
+  if (!otp || !/^\d{4}$/.test(otp)) {
+    throw new ValidationError(400, 'Enter the 4-digit approval code from your sponsor');
+  }
+  return { ...identity, otp };
 }
 
 export { VALID_DIETS, VALID_GENDERS };

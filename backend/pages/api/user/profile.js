@@ -1,5 +1,6 @@
 import { applyCors, methodNotAllowed, runService } from '../../../shared/lib/handler.js';
 import logger from '../../../shared/lib/logger.js';
+import { getClientAppVersion } from '../../../shared/lib/client-app-version.js';
 import { validateGetProfile, validateUpdateProfile } from '../../../features/user/user.validators.js';
 import { getProfile, updateProfile } from '../../../features/user/user.service.js';
 import { rejectIfAppVersionTooOld } from '../../../features/app-version/api/enforce-api.handler.js';
@@ -17,6 +18,7 @@ async function handleUpdateProfile(req, res) {
   logger.info('[profile] incoming update request', {
     method: req.method,
     email: req.body?.email,
+    userId: req.body?.userId ?? req.body?.UserId,
     hasCommunityId: req.body?.communityId !== undefined || req.body?.community_id !== undefined,
     hasTimezone: req.body?.timezone !== undefined
       || req.body?.timezoneIana !== undefined
@@ -36,7 +38,7 @@ async function handleUpdateProfile(req, res) {
       }
       throw err;
     }
-    return updateProfile(input);
+    return updateProfile({ ...input, appVersion: getClientAppVersion(req) });
   });
 }
 

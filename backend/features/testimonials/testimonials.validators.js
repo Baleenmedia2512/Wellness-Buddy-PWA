@@ -502,6 +502,7 @@ if (Array.isArray(dirtySlots)) {
 const result = {
   userId: userIdN,
   dirtySlots: [...slots],
+  submitForApproval: body.submitForApproval === true,
 };
 
   if (slots.has('before')) {
@@ -613,5 +614,47 @@ export function validateResendUnifiedOtp(body) {
   if (isNaN(userIdN) || userIdN < 1) throw new ValidationError(400, 'userId must be a valid integer');
 
   return { userId: userIdN };
+}
+
+/**
+ * Validate payload for POST /api/testimonials/sync-profile-photos
+ * Profile / BCM Left → testimonial Before (no OTP). afterImageBase64 is accepted but ignored.
+ */
+export function validateSyncProfilePhotos(body) {
+  if (!body) throw new ValidationError(400, 'Request body is missing');
+
+  const { userId, beforeImageBase64, afterImageBase64, beforeWeightKg, goalType } = body;
+  const recoveredHealthIssues = normalizeRecoveredHealthIssues(body);
+
+  if (!userId) throw new ValidationError(400, 'userId is required');
+  const userIdN = parseInt(userId, 10);
+  if (isNaN(userIdN) || userIdN < 1) throw new ValidationError(400, 'userId must be a valid integer');
+
+  const result = { userId: userIdN };
+
+  const beforeImage = validateOptionalBase64Image(beforeImageBase64, 'beforeImageBase64');
+  if (beforeImage !== undefined) result.beforeImageBase64 = beforeImage;
+
+  const afterImage = validateOptionalBase64Image(afterImageBase64, 'afterImageBase64');
+  if (afterImage !== undefined) result.afterImageBase64 = afterImage;
+
+  if (beforeWeightKg !== undefined && beforeWeightKg !== null && beforeWeightKg !== '') {
+    result.beforeWeightKg = validateWeight(beforeWeightKg, 'beforeWeightKg');
+  }
+
+  if (goalType !== undefined) {
+    if (!GOAL_TYPES.includes(goalType)) {
+      throw new ValidationError(422, `goalType must be one of: ${GOAL_TYPES.join(', ')}`);
+    }
+    result.goalType = goalType;
+  } else {
+    result.goalType = 'loss';
+  }
+
+  if (recoveredHealthIssues !== undefined) {
+    result.recoveredHealthIssues = validateRecoveredHealthIssues(recoveredHealthIssues);
+  }
+
+  return result;
 }
 

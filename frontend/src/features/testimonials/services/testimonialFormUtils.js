@@ -64,9 +64,41 @@ export function formatDurationText(durationUnit, durationValue) {
   return `${n} ${unit}`;
 }
 
-/** CSS class for portrait testimonial thumbnails — contain shows full photo without cropping. */
+/** True when durationText matches the API "N days|months" contract. */
+export function isUsableDurationText(durationText) {
+  const parsed = parseDurationText(durationText);
+  return !validateDurationFields(parsed.durationUnit, parsed.durationValue);
+}
+
+/** Stub / unset durations that must not be POSTed (backend rejects "—"). */
+export function isPlaceholderDurationText(durationText) {
+  const trimmed = String(durationText ?? '').trim();
+  if (!trimmed || trimmed === '—' || trimmed === '-') return true;
+  return !isUsableDurationText(trimmed);
+}
+
+/**
+ * Live kg change from the weights on screen (including drafts).
+ * Incomplete seeded cards hide persisted "hasAfter" — drafts must still count.
+ */
+export function liveWeightDiffKg(beforeKg, afterKg) {
+  const before = Number(beforeKg);
+  const after = Number(afterKg);
+  if (!Number.isFinite(before) || !Number.isFinite(after) || before <= 0 || after <= 0) {
+    return null;
+  }
+  if (before === after) return null;
+  return Math.abs(after - before).toFixed(1);
+}
+
+/** Photo share is allowed only after coach OTP verification. */
+export function canShareTransformationPhoto(testimonial) {
+  return testimonial?.status === 'verified';
+}
+
+/** CSS class for portrait testimonial thumbnails — cover fills the frame without stretching. */
 export const PORTRAIT_IMAGE_CLASS =
-  'w-full aspect-[9/16] object-contain bg-gray-50 rounded-2xl border-2';
+  'w-full aspect-[9/16] object-cover object-center overflow-hidden rounded-2xl border-2';
 
 export const PORTRAIT_IMAGE_CLASS_SM =
-  'w-full aspect-[9/16] object-contain bg-gray-50 rounded-xl border border-gray-200';
+  'w-full aspect-[9/16] object-cover object-center overflow-hidden rounded-xl border border-gray-200';

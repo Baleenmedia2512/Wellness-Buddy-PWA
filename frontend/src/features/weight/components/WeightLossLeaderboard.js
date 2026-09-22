@@ -5,6 +5,7 @@
   forwardRef,
   useImperativeHandle,
 } from "react";
+import { Scale } from "lucide-react";
 import { debugLog } from '../../../shared/utils/logger.js';
 import { resolveSponsorCoachNames } from '../../../shared/utils/sponsorCoachLabels.js';
 import { setVisibilityAwareInterval } from '../../../shared/utils/visibilityAwareInterval.js';
@@ -50,26 +51,17 @@ const writeWeightLBCache = (userId, data) => {
 
 /**
  * WeightLossLeaderboard Component
- * Displays hierarchy-scoped weight loss leaderboard strip (Weight Loss Today vs Yesterday)
+ * Hierarchy-scoped weight loss leaderboard (Weight Loss Today vs Yesterday).
  *
- * Features:
- * - Ranked among logged-in user's allowed hierarchy (upline + sibling peers + own downline)
- * - Shows rank, profile avatar, user name, coach name, weight loss
- * - Auto-scroll with native swipe / drag
- * - Smooth fade-in when data arrives
- * - Hides completely if no eligible users
- * - Exposes refresh method via ref for manual updates
- *
- * @param {string} apiBaseUrl - API base URL
- * @param {number} topN - Number of top users to show (default: 10)
- * @param {number|string} userId - Logged-in user id (required for hierarchy scope)
+ * @param {'strip'|'tile'} variant - strip = auto-scroll headline (legacy); tile = static card list
  */
-const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, email }, ref) => {
+const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, email, variant = 'strip' }, ref) => {
   const [leaderboardData, setLeaderboardData] = useState(() => readWeightLBCache(userId) ?? []);
   const [isVisible, setIsVisible] = useState(() => (readWeightLBCache(userId)?.length ?? 0) > 0);
   const [hasEntered, setHasEntered] = useState(() => (readWeightLBCache(userId)?.length ?? 0) > 0);
+  const isTile = variant === 'tile';
   const { viewportRef, trackRef, interactionHandlers } = useAutoScrollStrip({
-    enabled: isVisible && leaderboardData.length > 0,
+    enabled: !isTile && isVisible && leaderboardData.length > 0,
   });
 
   // Fetch leaderboard data
@@ -204,7 +196,7 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, email
     return null;
   }
 
-  // Render leaderboard card
+  // Render leaderboard card (strip row)
   const renderLeaderboardCard = (user, key) => (
     <div
       key={key}
@@ -258,6 +250,69 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, email
       </div>
     </div>
   );
+
+  const renderTileRow = (user) => {
+    const formatted = formatWeightLoss(user.weightLoss);
+    return (
+      <li
+        key={user.userId}
+        className="flex items-center gap-2.5 py-2.5"
+      >
+        <LeaderboardRankBadge
+          rank={user.rank}
+          colorClass={getRankColor(user.rank)}
+        />
+        <LeaderboardAvatar
+          apiBaseUrl={apiBaseUrl}
+          userId={user.userId}
+          email={user.email}
+          userName={user.userName}
+          profileImage={user.profileImage}
+        />
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-semibold text-gray-800">{user.userName}</p>
+          {(() => {
+            const { sponsorName, idealCoachName } = resolveSponsorCoachNames(user);
+            if (!sponsorName && !idealCoachName) return null;
+            return (
+              <p className="truncate text-[10px] text-gray-500">
+                {[sponsorName && `Sponsor: ${sponsorName}`, idealCoachName && `Coach: ${idealCoachName}`]
+                  .filter(Boolean)
+                  .join(' · ')}
+              </p>
+            );
+          })()}
+        </div>
+        <span className="shrink-0 rounded-lg bg-emerald-50 px-2 py-1 text-xs font-bold text-emerald-700">
+          -{formatted.value} {formatted.unit}
+        </span>
+      </li>
+    );
+  };
+
+  if (isTile) {
+    return (
+      <section
+        className={`mx-1 rounded-2xl border border-emerald-100 bg-white p-3 shadow-sm transition-opacity duration-500 ease-out ${
+          hasEntered ? 'opacity-100' : 'opacity-0'
+        }`}
+        aria-label="Weight Loss Today vs Yesterday"
+      >
+        <header className="mb-1 flex items-center gap-2 border-b border-emerald-50 pb-2">
+          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-100" aria-hidden>
+            <Scale className="h-4 w-4 text-emerald-700" />
+          </span>
+          <div className="min-w-0">
+            <h3 className="text-sm font-bold text-emerald-900">Top 10 Weight Loss</h3>
+            <p className="text-[11px] text-emerald-700/80">Today vs Yesterday</p>
+          </div>
+        </header>
+        <ul className="divide-y divide-emerald-50">
+          {leaderboardData.map(renderTileRow)}
+        </ul>
+      </section>
+    );
+  }
 
   return (
     <div

@@ -1,10 +1,10 @@
-// Step 3 — Type DELETE confirmation.
+// Step 2 — Type DELETE confirmation (userId-based delete; no email OTP).
 import React from 'react';
 import { Loader, Trash2, X } from 'lucide-react';
 import TouchFeedbackButton from '../../../../shared/components/TouchFeedbackButton';
 
 const DeleteStepConfirm = ({
-  userEmail, confirmText, setConfirmText,
+  accountLabel, confirmText, setConfirmText,
   isConfirmValid, isDeleting, onDelete, onBack, onClose, errorMessage,
 }) => (
   <>
@@ -16,7 +16,9 @@ const DeleteStepConfirm = ({
           <X className="h-4 w-4 text-red-400" />
         </TouchFeedbackButton>
       </div>
-      <p className="text-xs text-red-500 mt-1 truncate">{userEmail}</p>
+      {accountLabel ? (
+        <p className="text-xs text-red-500 mt-1 truncate">{accountLabel}</p>
+      ) : null}
     </div>
     <div className="overflow-y-auto flex-1 px-5 py-5">
       <p className="text-sm text-gray-700 mb-4">

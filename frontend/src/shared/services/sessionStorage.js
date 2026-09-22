@@ -171,6 +171,22 @@ export const clearProfileComplete = (email) => {
   safeRemove("profileComplete_v2_" + email);
 };
 
+// ─── bcmProfileReviewed_<userId> ───────────────────────────────────────────
+// BCM lead: show Complete Profile once so the member can review prefilled
+// height/weight/etc., even when profileComplete is already true.
+export const isBcmProfileReviewed = (userId) => {
+  if (userId == null || String(userId).trim() === "") return false;
+  return safeGet("bcmProfileReviewed_" + String(userId)) === "true";
+};
+export const markBcmProfileReviewed = (userId) => {
+  if (userId == null || String(userId).trim() === "") return;
+  safeSet("bcmProfileReviewed_" + String(userId), "true");
+};
+export const clearBcmProfileReviewed = (userId) => {
+  if (userId == null || String(userId).trim() === "") return;
+  safeRemove("bcmProfileReviewed_" + String(userId));
+};
+
 // ─── profilePictureUploaded_<email> ────────────────────────────────────────
 // Per-email "true" flag set when a valid profile picture (custom upload OR
 // Google photo URL) is detected by `checkProfilePicture`, AND when the
@@ -255,6 +271,19 @@ export const markPendingClassifyAwaitingShare = () => {
   setPendingClassifyCapture({ ...existing, awaitingShare: true });
 };
 export const clearPendingClassifyCapture = () => safeRemove("pendingClassifyCapture");
+
+/**
+ * Tab nav must stay locked while Classify / Manual Entry is open OR while a
+ * pendingClassifyCapture snapshot exists (including the race before the
+ * deferred idle write lands). Used by navigateTo / showDashboardPage.
+ *
+ * @param {boolean} [showManualEntry=false]
+ * @returns {boolean}
+ */
+export const isClassifyCaptureNavLocked = (showManualEntry = false) => {
+  if (showManualEntry) return true;
+  return !!getPendingClassifyCapture()?.captureId;
+};
 
 /**
  * Guard for deferred pendingClassifyCapture writes (requestIdleCallback).

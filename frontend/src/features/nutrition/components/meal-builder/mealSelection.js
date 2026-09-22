@@ -45,6 +45,7 @@ export function scaleSelectedItem(item) {
     name: item.name,
     weight_g: Math.round(refW * servings),
     portion: formatServingPortion(item, servings),
+    servings,
     nutrition,
     ...nutrition,
   };

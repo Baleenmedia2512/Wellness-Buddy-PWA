@@ -142,6 +142,24 @@ export function getDownlineWeightStatusBucket(status) {
  * @param {object[]} members
  * @param {string} teamFilter
  */
+/**
+ * Full Team = viewer (level 0) + active downline — same as Activity Report.
+ * Direct stays downline-only; Mine stays viewer-only.
+ *
+ * @param {object|null} self
+ * @param {object[]} members
+ * @returns {object[]}
+ */
+function mergeSelfIntoFullTeam(self, members) {
+  const list = Array.isArray(members) ? members : [];
+  if (!self) return list;
+  const selfId = Number(self.userId ?? self.UserId);
+  const withoutSelf = Number.isFinite(selfId)
+    ? list.filter((row) => Number(row?.userId ?? row?.UserId) !== selfId)
+    : list;
+  return [self, ...withoutSelf];
+}
+
 export function applyTeamFilter(self, members, teamFilter) {
   if (teamFilter === TEAM_FILTERS.MINE) {
     return self ? [self] : [];
@@ -150,7 +168,7 @@ export function applyTeamFilter(self, members, teamFilter) {
   if (teamFilter === TEAM_FILTERS.DIRECT) {
     return list.filter((row) => row?.isDirect === true);
   }
-  return list;
+  return mergeSelfIntoFullTeam(self, list);
 }
 
 /**
@@ -162,7 +180,7 @@ export function countRowsByTeamFilter(self, members) {
   return {
     [TEAM_FILTERS.MINE]: self ? 1 : 0,
     [TEAM_FILTERS.DIRECT]: list.filter((row) => row?.isDirect === true).length,
-    [TEAM_FILTERS.FULL]: list.length,
+    [TEAM_FILTERS.FULL]: mergeSelfIntoFullTeam(self, list).length,
   };
 }
 

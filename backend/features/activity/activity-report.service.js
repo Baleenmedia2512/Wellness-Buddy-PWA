@@ -323,7 +323,7 @@ function buildNotAttendedDetailRecords(members, memberMap) {
       date: null,
       time: null,
       clubName: 'N/A',
-      attendanceStatus: ACTIVITY_REPORT_ATTENDANCE.NOT_ATTENDED,
+      attendanceStatus: ACTIVITY_REPORT_ATTENDANCE.NOT_POSTED,
     };
   });
 }
@@ -342,7 +342,7 @@ async function buildPagedActivityRecords({
   watchRecords,
   timeWindows,
   paginationOpts,
-  attendanceStatus = ACTIVITY_REPORT_ATTENDANCE.ATTENDED,
+  attendanceStatus = ACTIVITY_REPORT_ATTENDANCE.POSTED,
 }) {
   const search = String(paginationOpts.search || '').trim();
   // Sponsor/coach search needs full enrichment before filter; default path
@@ -375,7 +375,7 @@ async function buildPagedActivityRecords({
       timeWindows,
     })).map((row) => ({
       ...row,
-      attendanceStatus: ACTIVITY_REPORT_ATTENDANCE.ATTENDED,
+      attendanceStatus: ACTIVITY_REPORT_ATTENDANCE.POSTED,
     }));
 
   const paged = paginateActivityReportRecords(allRecords, paginationOpts);
@@ -670,7 +670,7 @@ function detailRowsCacheKey(input) {
     activityReportColumnFiltersCacheToken(input.columnFilters),
     input.sort || 'date',
     input.sortDir || 'desc',
-    input.attendanceStatus || ACTIVITY_REPORT_ATTENDANCE.ATTENDED,
+    input.attendanceStatus || ACTIVITY_REPORT_ATTENDANCE.POSTED,
   ].join('|');
 }
 
@@ -684,7 +684,7 @@ function detailClubsCacheKey(input) {
     input.startDate || '',
     input.endDate || '',
     input.activityType,
-    input.attendanceStatus || ACTIVITY_REPORT_ATTENDANCE.ATTENDED,
+    input.attendanceStatus || ACTIVITY_REPORT_ATTENDANCE.POSTED,
   ].join('|');
 }
 
@@ -755,7 +755,7 @@ function bootstrapCacheKey(input) {
     input.sort || 'date',
     input.sortDir || 'desc',
     input.exportAll ? 'export' : 'page',
-    input.attendanceStatus || ACTIVITY_REPORT_ATTENDANCE.ATTENDED,
+    input.attendanceStatus || ACTIVITY_REPORT_ATTENDANCE.POSTED,
   ].join('|');
 }
 
@@ -807,7 +807,7 @@ async function getActivityReportBootstrapUncached({
   filterColumn = '',
   filterValue = '',
   columnFilters = {},
-  attendanceStatus = ACTIVITY_REPORT_ATTENDANCE.ATTENDED,
+  attendanceStatus = ACTIVITY_REPORT_ATTENDANCE.POSTED,
 }) {
   const paginationOpts = {
     page, limit, search, sort, sortDir, exportAll, clubFilter, filterColumn, filterValue, columnFilters,
@@ -1180,7 +1180,7 @@ export async function getActivityDetails({
   filterColumn = '',
   filterValue = '',
   columnFilters = {},
-  attendanceStatus = ACTIVITY_REPORT_ATTENDANCE.ATTENDED,
+  attendanceStatus = ACTIVITY_REPORT_ATTENDANCE.POSTED,
 }) {
   const paginationOpts = {
     page, limit, search, sort, sortDir, exportAll, clubFilter, filterColumn, filterValue, columnFilters,
