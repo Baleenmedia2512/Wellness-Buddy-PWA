@@ -231,6 +231,7 @@ export function mapTestimonialsListLeanFields(row) {
       businessVideoPath: null,
       recoveredHealthIssues: [],
       uploadLevel: 'not_uploaded',
+      canEditHealthIssues: row.canEditHealthIssues !== false,
     };
   }
 
@@ -257,5 +258,6 @@ export function mapTestimonialsListLeanFields(row) {
     businessVideoPath: t.business_video_path ?? null,
     recoveredHealthIssues: t.recovered_health_issues ?? [],
     uploadLevel: completeness.level,
+    canEditHealthIssues: row.canEditHealthIssues !== false,
   };
 }
