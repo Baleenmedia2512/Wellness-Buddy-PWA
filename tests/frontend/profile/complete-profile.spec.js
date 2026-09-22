@@ -3358,6 +3358,13 @@ test.describe('Complete Profile', () => {
 
         const fileInput = page.locator('input[type="file"][accept="image/*"]').last();
         await fileInput.setInputFiles('tests/fixtures/portrait.jpg');
+
+        const doneBtn = page.getByRole('button', { name: 'Done', exact: true });
+        if (await doneBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
+          await doneBtn.click();
+          await doneBtn.waitFor({ state: 'detached', timeout: 5000 }).catch(() => {});
+        }
+        await page.waitForTimeout(300);
       }
 
       const continuePhotosBtn = page.getByRole('button', { name: 'Continue', exact: true });
@@ -4104,8 +4111,9 @@ test.describe('Complete Profile', () => {
       await page.waitForTimeout(600);
       console.log('CP-017: Height 50 validated as valid (no error message)');
 
-      // Re-open profile page if app navigated back to home
-      if (await profileBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+      // Re-open profile modal if it closed after successful save
+      if (!await personalDetailsHeading.isVisible({ timeout: 1000 }).catch(() => false)) {
+        await expect(profileBtn).toBeVisible({ timeout: 10000 });
         await profileBtn.click();
         await expect(personalDetailsHeading).toBeVisible({ timeout: 10000 });
       }
@@ -4121,8 +4129,9 @@ test.describe('Complete Profile', () => {
       await page.waitForTimeout(600);
       console.log('CP-017: Height 198 validated as valid (no error message)');
 
-      // Re-open profile page if app navigated back to home
-      if (await profileBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+      // Re-open profile modal if it closed after successful save
+      if (!await personalDetailsHeading.isVisible({ timeout: 1000 }).catch(() => false)) {
+        await expect(profileBtn).toBeVisible({ timeout: 10000 });
         await profileBtn.click();
         await expect(personalDetailsHeading).toBeVisible({ timeout: 10000 });
       }

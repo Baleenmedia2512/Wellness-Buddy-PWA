@@ -339,23 +339,22 @@ test.describe('BCM Module (Body Composition Metrics)', () => {
       });
     });
 
-    // Verify form requirements: Save & Share is disabled when name/phone are invalid or empty
+    // Verify form requirements: Save & Share does not submit when name/phone are invalid or empty
     const saveButton = page.getByRole('button', { name: 'Save & Share' });
 
-    // Try to save with everything empty - button should be disabled
-    await expect(saveButton).toBeDisabled();
+    // Try to save with everything empty - creation should not be called
+    await saveButton.click();
     expect(createCalled).toBe(false);
 
-    // Fill Name but keep Phone empty - button should still be disabled
+    // Fill Name but keep Phone empty - creation should still not be called
     await page.getByPlaceholder('FULL NAME').fill('NEW CLIENT');
-    await expect(saveButton).toBeDisabled();
+    await saveButton.click();
     expect(createCalled).toBe(false);
 
     // Fill Phone
     await page.getByPlaceholder('Client phone — creates team member').fill('9876543210');
 
-    // Now it should be enabled and save successfully
-    await expect(saveButton).toBeEnabled();
+    // Now it should save successfully
     await saveButton.click();
     await page.waitForTimeout(500);
 
@@ -502,6 +501,10 @@ test.describe('BCM Module (Body Composition Metrics)', () => {
   test('BCM-008 Auto-Calculations (BMI & BMR)', async ({ page }) => {
     await page.getByRole('button', { name: 'Create Body Parameters Card' }).click();
     await expect(page.getByRole('heading', { name: 'Your Body Parameters' })).toBeVisible();
+
+    // Select Gender (required parent field for Fat%)
+    const genderSelect = page.locator('div:has(> label:has-text("Gender")) select');
+    await genderSelect.selectOption('Male');
 
     // Fill Height & Weight to trigger BMI auto-calculation
     const heightInput = page.locator('div').filter({ has: page.locator('> label').filter({ hasText: /^Height/i }) }).locator('input');

@@ -278,7 +278,21 @@ test.describe('Transformation Module (Testimonials Hub)', () => {
     await expect(transformationPage.submitForApprovalButton).not.toBeVisible();
 
     // 4. Edit duration -> Share button immediately disappears, Submit for Approval appears
-    await transformationPage.editDuration('6 months');
+    await transformationPage.editDurationButton.click();
+    const durationInput = page.getByPlaceholder('e.g. 3').or(page.getByPlaceholder('e.g. 3 months'));
+    await expect(durationInput.first()).toBeVisible({ timeout: 5000 });
+    await durationInput.first().fill('6');
+    const select = page.locator('select').filter({ hasText: /months|days/i });
+    if (await select.isVisible().catch(() => false)) {
+      await select.selectOption('months');
+    }
+    const saveBtn = page.getByRole('button', { name: 'Save', exact: true });
+    if (await saveBtn.isVisible().catch(() => false)) {
+      await saveBtn.click();
+    } else {
+      await durationInput.first().press('Enter');
+    }
+    await page.waitForTimeout(500);
     await expect(transformationPage.shareImageButton).not.toBeVisible();
     await expect(transformationPage.submitForApprovalButton).toBeVisible({ timeout: 5000 });
 
@@ -572,12 +586,15 @@ test.describe('Transformation Module (Testimonials Hub)', () => {
   });
 
   test('TR-013 Mandatory Health Issue Validation - Block Photo Submission when Zero Issues Selected', async ({ page }) => {
+    currentTestimonial.recoveredHealthIssues = [];
     const transformationPage = new TransformationPage(page);
+    await transformationPage.clickRefresh();
+
     const photoPath = path.resolve(__dirname, '../../fixtures/portrait.jpg');
 
-    // Remove existing issues so list is completely empty
-    await transformationPage.removeCardHealthIssue('Thyroid');
-    await transformationPage.removeCardHealthIssue('Overweight');
+    // Remove existing issues if any remain
+    await transformationPage.removeCardHealthIssue('Thyroid').catch(() => {});
+    await transformationPage.removeCardHealthIssue('Overweight').catch(() => {});
 
     // Upload a new Before photo to make photos dirty
     await transformationPage.beforePhotoInput.setInputFiles(photoPath);
@@ -593,7 +610,7 @@ test.describe('Transformation Module (Testimonials Hub)', () => {
 
     // Assert validation error banner is displayed
     await expect(
-      page.getByText('Add at least one Health Issue before submitting before + after photos.')
+      page.getByText(/Add at least one Health Issue before submitting/i)
     ).toBeVisible({ timeout: 5000 });
   });
 

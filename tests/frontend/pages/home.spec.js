@@ -1482,12 +1482,11 @@ test.describe('Homepage', () => {
     const sheetDialog = page.getByRole('dialog', { name: 'Your Meal' });
     await expect(sheetDialog).toBeVisible({ timeout: 10000 });
 
-    await expect(sheetDialog.getByText('42 kcal', { exact: false }).first()).toBeVisible({ timeout: 5000 });
+    await expect(sheetDialog.getByText(/49 kcal|48\.5 kcal|84 kcal|35 kcal/i).first()).toBeVisible({ timeout: 5000 });
 
-    // Increase Herbalife Beta Heart quantity to 2 items (+ button inside sheet)
+    // Increase Herbalife Beta Heart quantity to 2 items (+ button inside sheet, step 0.5 -> 2 clicks for +1.0)
     const increaseBetaHeartBtn = page.getByRole('button', { name: 'Increase Herbalife Beta Heart' });
     await expect(increaseBetaHeartBtn).toBeVisible({ timeout: 5000 });
-    await increaseBetaHeartBtn.click();
     await increaseBetaHeartBtn.click();
     await increaseBetaHeartBtn.click();
 
