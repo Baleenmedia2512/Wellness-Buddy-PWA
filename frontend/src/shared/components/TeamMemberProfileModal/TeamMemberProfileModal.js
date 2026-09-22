@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, User, Mail, Ruler, Flame, Salad, Phone } from 'lucide-react';
 import { EmojiOrNative } from '../icons/EmojiImage';
+import PhoneContactActions from '../PhoneContactActions.jsx';
 import { fetchTeamMemberProfile } from './fetchTeamMemberProfile.js';
 
 const DIET_LABELS = {
@@ -239,6 +240,7 @@ const TeamMemberProfileModal = ({ isOpen, onClose, memberEmail, apiBaseUrl }) =>
                   icon={<Phone className="h-4 w-4 text-green-600" />}
                   label="Phone"
                   value={profile.phoneNumber}
+                  actions={<PhoneContactActions phone={profile.phoneNumber} showNumber={false} />}
                 />
               )}
             </div>
@@ -249,7 +251,7 @@ const TeamMemberProfileModal = ({ isOpen, onClose, memberEmail, apiBaseUrl }) =>
   );
 };
 
-const ProfileRow = ({ icon, label, value, highlight, sub }) => (
+const ProfileRow = ({ icon, label, value, highlight, sub, actions }) => (
   <div className={`flex items-center gap-3 p-3 rounded-xl ${highlight ? 'bg-blue-50 border border-blue-200' : 'bg-gray-50'}`}>
     <div className={`flex-shrink-0 w-10 h-10 rounded-xl shadow-sm flex items-center justify-center ${highlight ? 'bg-blue-100' : 'bg-white'}`}>
       {icon}
@@ -261,6 +263,7 @@ const ProfileRow = ({ icon, label, value, highlight, sub }) => (
       ) : null}
       <p className={`text-sm font-semibold truncate ${highlight ? 'text-blue-700' : 'text-gray-800'}`}>{value}</p>
     </div>
+    {actions ? <div className="flex-shrink-0">{actions}</div> : null}
   </div>
 );
 

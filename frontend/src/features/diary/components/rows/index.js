@@ -37,6 +37,7 @@ import {
   formatPositiveWeightKg,
 } from '../../domain/share';
 import { resolveDiaryThumbSource, fetchDiaryShareImageSrc, waitForShareImageDecode } from '../../utils/diaryThumbUrl';
+import { activityPhotoTemplate, handleActivityPhotoError } from '../../../../shared/assets/activityPhotoTemplates';
 
 /** Red up / green down arrow for weight delta (SVG — avoids blue emoji squares). */
 function WeightDeltaArrow({ direction, className = '' }) {
@@ -123,59 +124,25 @@ function getMealLabel(iso, timezoneIana = DEFAULT_BUSINESS_TIMEZONE) {
 }
 
 function Thumb({
-  imageBase64,
-  imagePath,
+  kind = 'unknown',
   imageUrl = null,
   imageUrlFormat = null,
   fallback,
   hasImage = false,
 }) {
+  const template = activityPhotoTemplate(kind);
   const [lazySrc, setLazySrc] = useState(null);
 
   useEffect(() => {
-    if (imageBase64 && String(imageBase64).trim() !== '') {
-      setLazySrc(null);
-      return undefined;
-    }
-    if (imagePath && (String(imagePath).startsWith('http') || String(imagePath).startsWith('data:'))) {
-      setLazySrc(null);
-      return undefined;
-    }
-    if (!imageUrl) {
-      setLazySrc(null);
-      return undefined;
-    }
-
-    if (imageUrlFormat === 'raw' || imageUrlFormat === 'data') {
+    if (imageUrl && (imageUrlFormat === 'raw' || imageUrlFormat === 'data' || String(imageUrl).startsWith('http'))) {
       setLazySrc(imageUrl);
       return undefined;
     }
-
-    // weight / education return JSON { image | imageBase64 }
-    let cancelled = false;
     setLazySrc(null);
-    fetch(imageUrl)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((json) => {
-        if (cancelled || !json) return;
-        const b64 = json.image || json.imageBase64 || json?.data?.imageBase64;
-        if (!b64 || String(b64).trim() === '') return;
-        const raw = String(b64);
-        setLazySrc(raw.startsWith('data:image') ? raw : `data:image/jpeg;base64,${raw}`);
-      })
-      .catch(() => { /* non-critical thumb */ });
-    return () => { cancelled = true; };
-  }, [imageBase64, imagePath, imageUrl, imageUrlFormat]);
+    return undefined;
+  }, [imageUrl, imageUrlFormat]);
 
-  const src =
-    imageBase64 && String(imageBase64).trim() !== ''
-      ? (String(imageBase64).startsWith('data:image')
-        ? imageBase64
-        : `data:image/jpeg;base64,${imageBase64}`)
-      : (lazySrc
-        || (imagePath && (String(imagePath).startsWith('http') || String(imagePath).startsWith('data:'))
-          ? imagePath
-          : null));
+  const src = lazySrc || template;
   const showPlaceholder = !src && hasImage;
 
   return (
@@ -187,7 +154,7 @@ function Thumb({
           className="w-full h-full object-cover"
           loading="lazy"
           decoding="async"
-          onError={(e) => { e.currentTarget.style.display = 'none'; }}
+          onError={(e) => handleActivityPhotoError(e, kind)}
         />
       ) : showPlaceholder ? (
         <span className="w-full h-full bg-gray-200 animate-pulse" aria-hidden="true" />
@@ -203,11 +170,10 @@ function thumbPropsFromEntry(entry, { ownerUserId, viewerUserId } = {}) {
   const p = entry?.payload || {};
   const { src, format } = resolveDiaryThumbSource(entry, { ownerUserId, viewerUserId });
   return {
-    imageBase64: p.imageBase64 || null,
-    imagePath: p.imagePath || null,
+    kind: entry?.kind || 'unknown',
     imageUrl: src,
     imageUrlFormat: format,
-    hasImage: Boolean(p.hasImage || p.imageBase64 || p.imagePath || src),
+    hasImage: Boolean(p.hasImage || src),
   };
 }
 
@@ -330,34 +296,14 @@ export function FoodRow({
     .filter(Boolean)
     .join(', ') || mealName;
 
-  // Lazy-hydrate share card image once (on share or when thumb URL is raw).
   useEffect(() => {
-    if (thumb.imageBase64) {
-      const raw = String(thumb.imageBase64);
-      setShareImgSrc(raw.startsWith('data:image') ? raw : `data:image/jpeg;base64,${raw}`);
-      return undefined;
-    }
     if (thumb.imageUrlFormat === 'raw' && thumb.imageUrl) {
       setShareImgSrc(thumb.imageUrl);
       return undefined;
     }
-    if (thumb.imageUrlFormat === 'json' && thumb.imageUrl) {
-      let cancelled = false;
-      fetch(thumb.imageUrl)
-        .then((r) => (r.ok ? r.json() : null))
-        .then((json) => {
-          if (cancelled || !json) return;
-          const b64 = json.image || json.imageBase64;
-          if (!b64) return;
-          const raw = String(b64);
-          setShareImgSrc(raw.startsWith('data:image') ? raw : `data:image/jpeg;base64,${raw}`);
-        })
-        .catch(() => {});
-      return () => { cancelled = true; };
-    }
-    setShareImgSrc(thumb.imagePath || null);
+    setShareImgSrc(activityPhotoTemplate(thumb.kind || 'food'));
     return undefined;
-  }, [thumb.imageBase64, thumb.imageUrl, thumb.imageUrlFormat, thumb.imagePath]);
+  }, [thumb.kind, thumb.imageUrl, thumb.imageUrlFormat]);
 
   const imgSrc = shareImgSrc;
   const t = resolveFoodShareTotals(p, foodData);
@@ -430,7 +376,12 @@ export function FoodRow({
         </div>
         {/* Food photo — include whenever available (water / afresh / food) */}
         {imgSrc && (
-          <img src={imgSrc} alt="" style={{ width: '100%', height: 'auto', display: 'block', maxHeight: 420, objectFit: 'contain', background: '#f9fafb' }} />
+          <img
+            src={imgSrc}
+            alt=""
+            style={{ width: '100%', height: 'auto', display: 'block', maxHeight: 420, objectFit: 'contain', background: '#f9fafb' }}
+            onError={(e) => handleActivityPhotoError(e, thumb.kind || 'food')}
+          />
         )}
         {/* Activity-specific body */}
         {isWater && (
@@ -619,7 +570,7 @@ export function WeightRow({
       if (!cancelled) setShareImgSrc(src);
     })();
     return () => { cancelled = true; };
-  }, [thumb.hasImage, thumb.imageBase64, thumb.imageUrl, thumb.imageUrlFormat, thumb.imagePath]);
+  }, [thumb.hasImage, thumb.kind, thumb.imageUrl, thumb.imageUrlFormat]);
 
   const handleShare = async (e) => {
     e.stopPropagation();
@@ -721,6 +672,7 @@ export function WeightRow({
               objectFit: 'contain',
               background: '#f9fafb',
             }}
+            onError={(e) => handleActivityPhotoError(e, 'weight')}
           />
         )}
         <div style={{ padding: '18px 20px' }}>
@@ -1091,7 +1043,7 @@ export function WatchRow({ entry, onOpen, onDelete, canDelete = true, hideTime =
             style={{ width: `${swipe.progress * 100}%`, transition: swipe.dragging ? 'none' : 'width 180ms ease', opacity: swipe.progress > 0 ? 1 : 0 }} />
         )}
 
-        <Thumb imageBase64={p.imageBase64} imagePath={p.imagePath} hasImage={p.hasImage} fallback={<Smartphone className="w-6 h-6 text-amber-600" aria-hidden="true" />} />
+        <Thumb kind="unknown" imageUrl={null} hasImage fallback={<Smartphone className="w-6 h-6 text-amber-600" aria-hidden="true" />} />
         <div className="flex-1 min-w-0">
           <h4 className="font-semibold text-gray-900 truncate">Smartwatch</h4>
           {!hideTime && (

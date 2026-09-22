@@ -155,7 +155,7 @@ const BodyParamsForm = ({
           <div>
             <h2 className="text-base font-bold">{vm.isEditMode ? 'Edit Body Parameters' : 'Your Body Parameters'}</h2>
             <p className="text-xs text-indigo-200 mt-0.5">
-              {selectedMember ? `For ${selectedMember.userName || 'Member'}` : (vm.form.name.trim() || (vm.isEditMode ? 'Editing card' : 'New Card'))}
+              {selectedMember ? `For ${selectedMember.userName || 'Customer'}` : (vm.form.name.trim() || (vm.isEditMode ? 'Editing card' : 'New Card'))}
             </p>
           </div>
           <button onClick={handleCancel} className="p-1.5 hover:bg-white/20 rounded-full transition-colors">

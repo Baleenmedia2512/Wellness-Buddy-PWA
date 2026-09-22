@@ -6,6 +6,11 @@ import { ShieldCheck } from 'lucide-react';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
 import NativeInput from '../../../shared/components/NativeInput.jsx';
 import { verifyTestimonialOtp, verifyTestimonialVideoOtp } from '../services/testimonialApi.js';
+import {
+  EMAIL_OTP_LENGTH,
+  extractOtpFromText,
+  isValidEmailOtp,
+} from '../../user/domain/otpLength';
 
 /**
  * @param {{ testimonialId: number, type: 'photo'|'video', onVerified: () => void, className?: string }} props
@@ -15,10 +20,16 @@ export default function OtpInline({ testimonialId, type, onVerified, className =
   const [loading, setLoading] = useState(false);
   const [err,     setErr]     = useState(null);
 
+  const handleOtpInput = (raw) => {
+    const extracted = extractOtpFromText(raw, EMAIL_OTP_LENGTH);
+    setOtp(extracted ?? String(raw ?? '').replace(/\D/g, '').slice(0, EMAIL_OTP_LENGTH));
+    setErr(null);
+  };
+
   const submit = async () => {
     setErr(null);
-    if (!/^\d{6}$/.test(otp.trim())) {
-      setErr('Enter the 6-digit OTP from your sponsor');
+    if (!isValidEmailOtp(otp.trim())) {
+      setErr('Enter the 4-digit OTP from your sponsor');
       return;
     }
     setLoading(true);
@@ -43,24 +54,28 @@ export default function OtpInline({ testimonialId, type, onVerified, className =
         <p className="text-sm font-semibold text-amber-800">Enter OTP from your sponsor</p>
       </div>
       <p className="text-xs text-amber-700 leading-relaxed">
-        Your sponsor received a 6-digit verification code by email. Ask them to share it with you.
+        Your sponsor received a 4-digit verification code by email. Ask them to share it with you.
       </p>
       <NativeInput
         otp
         type="text"
         inputMode="numeric"
         pattern="[0-9]*"
-        autoComplete="off"
-        maxLength={6}
-        placeholder="_ _ _ _ _ _"
+        autoComplete="one-time-code"
+        maxLength={EMAIL_OTP_LENGTH}
+        placeholder="_ _ _ _"
         value={otp}
-        onChange={(e) => { setOtp(e.target.value.replace(/\D/g, '').slice(0, 6)); setErr(null); }}
+        onChange={(e) => handleOtpInput(e.target.value)}
+        onPaste={(e) => {
+          e.preventDefault();
+          handleOtpInput(e.clipboardData?.getData('text') ?? '');
+        }}
         className="w-full text-center text-2xl font-bold tracking-[0.4em] border-2 border-amber-300 rounded-xl py-3 focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white"
       />
       {err && <p className="text-xs text-red-600 text-center">{err}</p>}
       <TouchFeedbackButton
         onClick={submit}
-        disabled={loading || otp.length !== 6}
+        disabled={loading || otp.length !== EMAIL_OTP_LENGTH}
         className="w-full py-3 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-sm font-bold disabled:opacity-60 transition-colors"
       >
         {loading ? 'Verifying…' : 'Verify with OTP'}

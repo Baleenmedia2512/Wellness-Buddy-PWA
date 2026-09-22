@@ -505,6 +505,9 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
     setClassifyFlow({
       captureId,
       imageBase64: p.imageBase64 || null,
+      imageUrl: (captureId && ownerId && apiBaseUrl)
+        ? `${apiBaseUrl}/api/background-analysis/captures/image?captureId=${encodeURIComponent(captureId)}&viewerUserId=${encodeURIComponent(ownerId)}`
+        : null,
       originalCapturedAt: entry.capturedAt ?? null,
     });
   };
@@ -1398,6 +1401,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
           apiBaseUrl={apiBaseUrl}
           captureId={classifyFlow.captureId}
           imageBase64={classifyFlow.imageBase64}
+          imageUrl={classifyFlow.imageUrl}
           originalCapturedAt={classifyFlow.originalCapturedAt}
           discardCaptureOnCancel={false}
           onBack={() => {

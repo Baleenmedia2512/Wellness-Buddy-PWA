@@ -23,6 +23,7 @@ import React from 'react';
 function UnknownShareViewer({
   isOpen,
   imageBase64,
+  imageUrl = null,
   canMutate = false,
   retrying = false,
   error = null,
@@ -33,9 +34,10 @@ function UnknownShareViewer({
 }) {
   if (!isOpen) return null;
 
-  const imgSrc = imageBase64
-    ? (imageBase64.startsWith('data:') ? imageBase64 : `data:image/jpeg;base64,${imageBase64}`)
-    : null;
+  const imgSrc = imageUrl
+    || (imageBase64
+      ? (imageBase64.startsWith('data:') ? imageBase64 : `data:image/jpeg;base64,${imageBase64}`)
+      : null);
 
   return (
     <div

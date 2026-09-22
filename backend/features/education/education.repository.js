@@ -1,5 +1,15 @@
 import { getSupabaseClient } from '../../utils/supabaseClient.js';
-import { nowUtc } from '../../shared/lib/datetime/index.js';
+import {
+  nowUtc,
+  IANA_IST,
+  shiftDateYmd,
+  filterRowsByCalendarDateRange,
+} from '../../shared/lib/datetime/index.js';
+
+function isMissingColumn(error, columnName) {
+  const msg = String(error?.message || error || '');
+  return /column/i.test(msg) && new RegExp(columnName, 'i').test(msg);
+}
 
 export async function insertLog(payload) {
   const supabase = getSupabaseClient();
@@ -46,11 +56,89 @@ export async function countLogs(userId) {
   return typeof count === 'number' ? count : null;
 }
 
+export async function findEducationImageKeyByCaptureId(captureId) {
+  if (captureId == null || String(captureId).trim() === '') return null;
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from('education_logs_table')
+    .select('"ImageKey"')
+    .eq('CaptureID', captureId)
+    .not('ImageKey', 'is', null)
+    .limit(1)
+    .maybeSingle();
+  if (error) {
+    if (isMissingColumn(error, 'ImageKey')) return null;
+    throw error;
+  }
+  return data?.ImageKey || null;
+}
+
+export async function attachEducationImageKeyByCaptureId(captureId, userId, imageKey) {
+  if (!captureId || !imageKey) return;
+  const supabase = getSupabaseClient();
+  const { error } = await supabase
+    .from('education_logs_table')
+    .update({ ImageKey: imageKey, ImageBase64: null })
+    .eq('CaptureID', captureId)
+    .eq('"UserId"', userId)
+    .is('ImageKey', null);
+  if (error) {
+    if (isMissingColumn(error, 'ImageKey')) return;
+    throw error;
+  }
+}
+
+export async function updateEducationImageKey(logId, userId, imageKey) {
+  const supabase = getSupabaseClient();
+  const { error } = await supabase
+    .from('education_logs_table')
+    .update({ ImageKey: imageKey, ImageBase64: null })
+    .eq('"Id"', logId)
+    .eq('"UserId"', userId);
+  if (error) {
+    if (isMissingColumn(error, 'ImageKey')) {
+      throw new Error('Run migration add_image_key_to_education_logs_table.sql before education R2');
+    }
+    throw error;
+  }
+}
+
+/**
+ * Education photos in the IST calendar window that have not been copied to R2 yet.
+ */
+export async function listPendingEducationImageBackfill({
+  from = 0,
+  to = 49,
+  startYmd,
+  endYmd,
+} = {}) {
+  const supabase = getSupabaseClient();
+  const endExclusiveYmd = shiftDateYmd(endYmd, 1, IANA_IST);
+  const { data, error } = await supabase
+    .from('education_logs_table')
+    .select('"Id", "UserId", "CaptureID", "ImageBase64", "ImageKey", "CreatedAt"')
+    .or('IsDeleted.is.null,IsDeleted.eq.0')
+    .is('ImageKey', null)
+    .not('ImageBase64', 'is', null)
+    .gte('CreatedAt', `${startYmd} 00:00:00`)
+    .lt('CreatedAt', `${endExclusiveYmd} 00:00:00`)
+    .order('CreatedAt', { ascending: true })
+    .order('"Id"', { ascending: true })
+    .range(from, to);
+  if (error) {
+    if (isMissingColumn(error, 'ImageKey')) {
+      throw new Error('Run migration add_image_key_to_education_logs_table.sql before backfill');
+    }
+    throw error;
+  }
+  return filterRowsByCalendarDateRange(data || [], startYmd, endYmd, IANA_IST, 'CreatedAt');
+}
+
 export async function getLogImage(logId, userId) {
   const supabase = getSupabaseClient();
   const { data, error } = await supabase
     .from('education_logs_table')
-    .select('"ImageBase64"')
+    .select('"ImageKey"')
     .eq('"Id"', logId)
     .eq('"UserId"', userId)
     .single();

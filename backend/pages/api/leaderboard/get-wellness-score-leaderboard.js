@@ -32,7 +32,7 @@ const SCORE_LOOKUP_CHUNK = 150;
  *
  * Ranking: wellness % desc, then total_earned desc; equal scores share the same rank
  * (competition / “1224” ranking on the % + earned score pair).
- * Display order: Rank N → Rank 1 (reversed for home marquee, same as weight LB).
+ * Display order: Rank 1 → Rank N (best first).
  */
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');

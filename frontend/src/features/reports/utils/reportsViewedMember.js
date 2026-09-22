@@ -10,7 +10,7 @@ export function resolveReportsViewedUser(selectedMember, sessionUser) {
 
 export function reportsSelectedUserLabel(selectedMember) {
   if (!selectedMember || selectedMember.isSelf) return 'My Profile';
-  return selectedMember.userName || selectedMember.name || 'Member';
+  return selectedMember.userName || selectedMember.name || 'Customer';
 }
 
 /**
@@ -26,6 +26,6 @@ export function reportsMemberPossessiveTitle(selectedMember, noun, sessionUser =
     || viewed?.name
     || selectedMember.userName
     || selectedMember.name
-    || 'Member';
+    || 'Customer';
   return `${name}'s ${noun}`;
 }

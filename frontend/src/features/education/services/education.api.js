@@ -24,9 +24,8 @@ export async function getLogs(userId, opts = {}) {
   return res.json();
 }
 
-export async function getLogImage(logId, userId) {
-  const res = await fetch(`${base()}/api/education/log-image?logId=${encodeURIComponent(logId)}&userId=${encodeURIComponent(userId)}`);
-  return res.json();
+export function getLogImageUrl(logId, userId) {
+  return `${base()}/api/education/log-image?logId=${encodeURIComponent(logId)}&userId=${encodeURIComponent(userId)}`;
 }
 
 export async function getSummary(userId, opts = {}) {

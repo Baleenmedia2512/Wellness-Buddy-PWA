@@ -56,6 +56,7 @@ const Header = ({
             cacheProfileUserName(user.email, data.data.userName);
           }
           if (data.data.profileImage) setSavedProfileImage(data.data.profileImage);
+          else if (shouldBust) setSavedProfileImage(null);
         }
       } catch (err) {
         console.error("Error fetching user profile for header:", err);

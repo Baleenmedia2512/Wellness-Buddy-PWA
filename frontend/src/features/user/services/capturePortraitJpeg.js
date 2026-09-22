@@ -1,4 +1,7 @@
 /**
+ * @deprecated Use compressImage from testimonials/utils/compressTestimonialImage.js
+ * (portrait validation + EXIF-aware compression). Kept for any legacy callers.
+ *
  * Normalize transformation photos to a portrait (3:4) JPEG.
  * Uses contain-fit (letterbox) so head/feet are not cropped to the frame.
  */

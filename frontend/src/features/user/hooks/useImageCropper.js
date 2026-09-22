@@ -26,7 +26,7 @@ export default function useImageCropper({ onCropped, onError } = {}) {
       return;
     }
     // No pick-time size cap — crop + encodeWithinBudget compresses to
-    // PROFILE_IMAGE_TARGET_BYTES (~200 KB) before save/upload.
+    // PROFILE_IMAGE_TARGET_BYTES (~22 KB) before save/upload.
     const reader = new FileReader();
     reader.onload = (e) => {
       setRawImageSrc(e.target.result);

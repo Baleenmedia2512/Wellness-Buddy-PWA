@@ -255,3 +255,18 @@ export const markPendingClassifyAwaitingShare = () => {
   setPendingClassifyCapture({ ...existing, awaitingShare: true });
 };
 export const clearPendingClassifyCapture = () => safeRemove("pendingClassifyCapture");
+
+/**
+ * Guard for deferred pendingClassifyCapture writes (requestIdleCallback).
+ * After Cancel/leave, App marks the classify session abandoned; a late idle
+ * callback must not resurrect the tab-nav lock.
+ *
+ * @param {{ clientKey?: string|null, abandoned?: boolean }|null|undefined} session
+ * @param {string|null|undefined} clientKey  classify session token for this upload
+ * @returns {boolean}
+ */
+export const shouldPersistPendingClassifyCapture = (session, clientKey) => {
+  if (clientKey == null || clientKey === '') return false;
+  if (session?.clientKey === clientKey && session?.abandoned === true) return false;
+  return true;
+};

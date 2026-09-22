@@ -192,6 +192,8 @@ export default function ManualEntryPage({
   apiBaseUrl,
   captureId,
   imageBase64,
+  /** Lazy R2/API thumb when Base64 was cleared after capture dual-write. */
+  imageUrl = null,
   originalCapturedAt = null,
   /**
    * Post-camera/gallery: Cancel removes the orphan capture (Don't Log).
@@ -288,11 +290,12 @@ export default function ManualEntryPage({
   }, [captureId]);
 
   const previewSrc = useMemo(() => {
+    if (imageUrl) return imageUrl;
     if (!imageBase64) return null;
     return imageBase64.startsWith('data:')
       ? imageBase64
       : `data:image/jpeg;base64,${imageBase64}`;
-  }, [imageBase64]);
+  }, [imageUrl, imageBase64]);
 
   const refreshCredits = useCallback(async () => {
     if (!creditsEnabled || !userId) {

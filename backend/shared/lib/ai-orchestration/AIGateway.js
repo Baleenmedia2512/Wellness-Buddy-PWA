@@ -37,6 +37,10 @@ import {
 } from '../gemini/geminiClient.js';
 import { safeParseJson, validateShape } from '../gemini/safeJson.js';
 import { withEnterpriseRetry, DEFAULT_TIMEOUT_MS } from './RetryPolicy.js';
+import {
+  sumNutritionFields as totalNutritionFields,
+  sumEnrichmentFields as totalEnrichmentFields,
+} from './nutrition-totals.js';
 
 const SERVICE = 'gemini';
 
@@ -348,26 +352,11 @@ function buildHerbalifeShakeFoodItem(existing = {}) {
 }
 
 function sumNutritionFields(foods) {
-  const shakeFoods = foods.filter((food) => isPreparedHerbalifeShakeName(food?.name));
-  const otherFoods = foods.filter((food) => !isPreparedHerbalifeShakeName(food?.name));
-
-  if (shakeFoods.length > 0 && otherFoods.length === 0) {
-    return cloneHerbalifeShakeNutrition();
-  }
-
-  let total = shakeFoods.length > 0
-    ? cloneHerbalifeShakeNutrition()
-    : Object.fromEntries(ALL_NUTRITION_KEYS.map((key) => [key, 0]));
-
-  for (const food of otherFoods) {
-    const nutrition = food?.nutrition ?? {};
-    for (const key of ALL_NUTRITION_KEYS) {
-      const val = nutrition[key];
-      if (val != null && val !== '') total[key] += +val;
-    }
-  }
-
-  return total;
+  return totalNutritionFields(foods, {
+    isShakeName: isPreparedHerbalifeShakeName,
+    cloneShakeNutrition: cloneHerbalifeShakeNutrition,
+    allKeys: ALL_NUTRITION_KEYS,
+  });
 }
 
 function extractFastNutrition(total, foods = []) {
@@ -391,11 +380,7 @@ function extractEnrichmentNutrition(nutrition) {
 }
 
 function sumEnrichmentFields(left, right) {
-  const result = {};
-  for (const key of Object.keys(ENRICHMENT_PROPS)) {
-    result[key] = (left?.[key] ?? 0) + (right?.[key] ?? 0);
-  }
-  return result;
+  return totalEnrichmentFields(left, right, Object.keys(ENRICHMENT_PROPS));
 }
 
 /**
@@ -650,25 +635,35 @@ details.foods — one object per visible edible item or beverage:
 }
 
 Nutrition rules:
-- All 26 fields required per item. Absent/unknown → 0, never null. All values numeric.
+- All 26 fields required per item. All values numeric. Never null.
+- 0 means the nutrient is genuinely zero or negligible for this food and portion. NEVER use 0 merely because a nutrient is unknown, unavailable, or hard to estimate.
+- For identified foods, estimate micronutrients from USDA FoodData Central / IFCT (or equivalent). If the nutrient is present in that food, return a non-zero estimate. Keep real zeros (e.g. vitamin C and B12 in plain white rice; cholesterol in plant-only foods).
 - vitamin_a: µg RAE | vitamin_d/k: µg | vitamin_c, b-vitamins, minerals: mg.
 - Plain water: all nutrients 0.
 - Water bottle: always 1000 ml (1 L) per full bottle; portion e.g. "1 bottle (1000 ml)".
 - Use USDA / IFCT values for Tamil Nadu foods and Herbalife Afresh / Herbal Tea (exact values above).
 - "${HERBALIFE_SHAKE_NAME}": identify only — set all nutrition fields to 0; the server applies the fixed standard recipe profile.
-- If extra fruits or add-ins are visible, list them as separate food items with independent nutrition; sum into details.total.
+- If extra fruits or add-ins are visible, list them as separate food items with independent nutrition; additive nutrients sum into details.total (not glycemic_index).
 - For any other Indian food, estimate using USDA FoodData Central or equivalent.
+- Listed ~portion sizes are references only. Estimate the actual visible portion/weight first; do not automatically assign the listed cup/piece weight.
 
-details.total — same 26 flat fields, sum of all foods:
-{ calories, protein, carbs, fat, fiber, sugar, sodium, cholesterol, glycemic_index,
-  vitamin_a, vitamin_c, vitamin_d, vitamin_e, vitamin_k,
-  vitamin_b1, vitamin_b2, vitamin_b3, vitamin_b6, vitamin_b9, vitamin_b12,
-  calcium, iron, magnesium, potassium, zinc, phosphorus }
+details.total — same 26 flat fields:
+Additive nutrients (calories, protein, carbs, fat, fiber, sugar, sodium, cholesterol, and all vitamins/minerals) = sum of all foods.
+glycemic_index is NOT additive. Never sum individual food GI values. Set one meal-level GI (0–100) from the carbohydrate contribution of the foods.
 
 Consistency rules:
-- Detect EVERY visible edible item: main dish, sides, chutneys, sauces, condiments, beverages, water. Each = separate object in details.foods. Do NOT stop at the dominant dish.
-- fastNutrition MUST equal details.total for all 9 shared fields.
-- details.total MUST equal the sum of all details.foods items.
+- Detect EVERY visible edible item separately: main dish, rice, meat, chicken, fish, eggs, vegetables, curry, sides, chutneys, sauces, condiments, beverages, fruits, visible add-ins, water. Each = one object in details.foods. Do NOT stop at the dominant dish. Never merge distinct foods into one generic item.
+- fastNutrition MUST equal details.total for all 9 shared fields (including the meal-level glycemic_index, not a summed GI).
+- details.total additive fields MUST equal the sum of all details.foods items. Do not sum glycemic_index.
+
+Before returning JSON, silently verify:
+1. No visible edible item was missed (including meat, chicken, fish, eggs, curries, chutneys, sides, add-ons).
+2. All 26 nutrition fields exist on every food item and on details.total.
+3. 0 is used only for genuinely zero/negligible nutrients (except Herbalife Shake and plain water, which stay all 0).
+4. Micronutrients were estimated for identified foods (not zero-filled as unknown).
+5. Meal glycemic_index is a single 0–100 value, not a sum of item GIs.
+6. fastNutrition matches details.total for calories, protein, carbs, fat, fiber, sugar, sodium, cholesterol, glycemic_index.
+Do not output this validation.
 
 === WEIGHT output ===
 weightReading: { value: <kg; convert lbs>, unit: "kg" }
@@ -702,7 +697,10 @@ function buildEnrichmentPrompt(fastCtx, foodItems) {
 
 Provide ONLY the 21 micronutrient enrichment values — do NOT re-estimate macros.
 Return JSON matching the schema exactly (all enrichment fields required).
-All values numeric; absent/unknown → 0, never null.
+All values numeric. Never null.
+0 means the nutrient is genuinely zero or negligible. NEVER use 0 merely because a nutrient is unknown, unavailable, or hard to estimate.
+For identified foods, estimate micronutrients from USDA FoodData Central / IFCT (or equivalent). Keep real zeros.
+glycemic_index is a meal-level 0–100 estimate — never a sum of item GIs.
 Units: vitamin_a µg RAE | vitamin_d/k µg | all others mg.
 
 Use the reference values below when the identified food matches. Interpolate for mixed dishes.

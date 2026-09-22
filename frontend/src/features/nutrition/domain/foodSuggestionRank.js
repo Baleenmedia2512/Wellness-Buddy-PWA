@@ -2,6 +2,47 @@
  * Client helpers for food suggestions ranking / filter.
  */
 
+/** Target Nutrition / Herbalife catalog tokens — excluded from regular-food suggestions. */
+const REGULAR_FOOD_EXCLUDED_NAME_PATTERNS = [
+  /herbalife/,
+  /herbal\s*life/,
+  /herballife/,
+  /herbalifeline/,
+  /\bafresh\b/,
+  /a\s+fresh\b/,
+  /formula\s*[12]\b/,
+  /formula[12]\b/,
+  /multivitamin/,
+  /fish\s*oil/,
+  /\bsupplement\b/,
+  /cell\s*activator/,
+  /nightworks/,
+  /niteworks/,
+  /xtra[- ]?cal/,
+  /shakemate/,
+  /personalized\s*protein/,
+];
+
+function normalizeSuggestionNameForCatalogCheck(name) {
+  return String(name || '').trim().replace(/^\*+\s*/, '').toLowerCase();
+}
+
+/** Regular Add Food must not surface Herbalife / Target Nutrition catalog items. */
+export function isHerbalifeProductSuggestionName(name) {
+  const normalized = normalizeSuggestionNameForCatalogCheck(name);
+  if (!normalized) return false;
+  if (REGULAR_FOOD_EXCLUDED_NAME_PATTERNS.some((re) => re.test(normalized))) return true;
+  if (/\btablet/i.test(normalized)
+      && /herbal|vitamin|mineral|omega|calcium|probiotic|supplement|multivitamin|fish/.test(normalized)) {
+    return true;
+  }
+  return false;
+}
+
+export function filterRegularFoodSearchItems(items = []) {
+  return (items || []).filter((item) => !isHerbalifeProductSuggestionName(item?.name));
+}
+
 export function filterSuggestionsAgainstSelected(suggestions = [], selectedItems = []) {
   const selected = new Set(
     selectedItems.map((s) => String(s?.name || '').trim().toLowerCase()).filter(Boolean),

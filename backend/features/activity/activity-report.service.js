@@ -6,12 +6,22 @@ import { ValidationError } from '../../shared/lib/ValidationError.js';
 import * as repo from './activity-report.repository.js';
 import { resolveActivityReportUserIds } from './domain/activity-report.scope.js';
 import {
+  ACTIVITY_REPORT_ATTENDANCE,
+  isNotAttendedActivityReport,
+  resolveActivityReportTableUserIds,
+} from './domain/activity-report.attendance.js';
+import { lookupActivityReportMemberMeta } from './domain/activity-report.hierarchy.js';
+import {
   approxJsonBytes,
   createActivityReportPerf,
 } from './domain/activity-report.perf.js';
 import {
   ACTIVITY_REPORT_DEFAULT_PAGE_SIZE,
+  activityReportColumnFiltersCacheToken,
   buildActivityReportPaginationMeta,
+  collectActivityReportClubNames,
+  collectActivityReportFilterOptions,
+  emptyActivityReportFilterOptions,
   paginateActivityReportRecords,
   slicePreparedActivityReportRows,
 } from './domain/activity-report.pagination.js';
@@ -54,7 +64,16 @@ function sponsorCoachRowFields(member) {
     sponsorName: member.sponsorName || member.coachName || 'N/A',
     idealCoachId: member.idealCoachId || null,
     idealCoachName: member.idealCoachName || null,
+    level: Number.isFinite(Number(member.level)) ? Number(member.level) : null,
+    memberType: member.memberType === 'sponsor' ? 'sponsor' : 'member',
   };
+}
+
+function applyHierarchyFields(info, userId, memberMeta) {
+  const { level, memberType } = lookupActivityReportMemberMeta(userId, memberMeta);
+  info.level = level;
+  info.memberType = memberType;
+  return info;
 }
 
 /**
@@ -211,18 +230,18 @@ function buildSimpleMemberMap(members, sponsorByUser) {
   return memberMap;
 }
 
-function buildDetailMemberMap(members, sponsorByUser) {
+function buildDetailMemberMap(members, sponsorByUser, memberMeta) {
   const memberMap = {};
   members.forEach((member) => {
     const resolved = sponsorByUser?.get(String(member.UserId));
-    const info = applySponsorFields({
+    const info = applyHierarchyFields(applySponsorFields({
       name: member.UserName || 'N/A',
       phone: member.PhoneNumber || 'N/A',
       email: member.Email || '',
       city: 'N/A',
       village: 'N/A',
       role: member.Role || 'member',
-    }, resolved);
+    }, resolved), member.UserId, memberMeta);
     memberMap[member.UserId] = info;
     memberMap[String(member.UserId)] = info;
   });
@@ -291,10 +310,29 @@ async function attachSponsorsToRecords(records, { viewerUserId, membersById }) {
  * Build → (optional full sponsor enrich for coach search) → paginate →
  * page-only sponsor enrich when search is empty.
  */
+function buildNotAttendedDetailRecords(members, memberMap) {
+  return (members || []).map((member) => {
+    const info = memberMap?.[member.UserId] || memberMap?.[String(member.UserId)] || {};
+    return {
+      userId: member.UserId,
+      memberName: info.name || member.UserName || 'N/A',
+      city: info.city || 'N/A',
+      village: info.village || 'N/A',
+      phone: info.phone || member.PhoneNumber || 'N/A',
+      ...sponsorCoachRowFields(info),
+      date: null,
+      time: null,
+      clubName: 'N/A',
+      attendanceStatus: ACTIVITY_REPORT_ATTENDANCE.NOT_ATTENDED,
+    };
+  });
+}
+
 async function buildPagedActivityRecords({
   activityType,
   members,
   viewerUserId,
+  memberMeta,
   timezoneIana,
   timezoneByUserId,
   weightRecords,
@@ -304,11 +342,13 @@ async function buildPagedActivityRecords({
   watchRecords,
   timeWindows,
   paginationOpts,
+  attendanceStatus = ACTIVITY_REPORT_ATTENDANCE.ATTENDED,
 }) {
   const search = String(paginationOpts.search || '').trim();
-  // Coach/sponsor search needs full enrichment before filter; default path
-  // enriches only the returned page (major win for teamScope=full).
-  const needsFullSponsorPass = Boolean(search) || Boolean(paginationOpts.exportAll);
+  // Sponsor/coach search needs full enrichment before filter; default path
+  // enriches only the returned page.
+  const needsFullSponsorPass = Boolean(search)
+    || Boolean(paginationOpts.exportAll);
 
   let sponsorByUser = null;
   if (needsFullSponsorPass) {
@@ -318,24 +358,32 @@ async function buildPagedActivityRecords({
     );
   }
 
-  const memberMap = buildDetailMemberMap(members, sponsorByUser);
-  const allRecords = await buildDetailRecordsFromBundle({
-    activityType,
-    memberMap,
-    timezoneIana,
-    timezoneByUserId,
-    weightRecords,
-    educationRecords,
-    foodRecords,
-    stepRecords,
-    watchRecords,
-    timeWindows,
-  });
+  const memberMap = buildDetailMemberMap(members, sponsorByUser, memberMeta);
+  const notAttended = isNotAttendedActivityReport(attendanceStatus);
+  const allRecords = notAttended
+    ? buildNotAttendedDetailRecords(members, memberMap)
+    : (await buildDetailRecordsFromBundle({
+      activityType,
+      memberMap,
+      timezoneIana,
+      timezoneByUserId,
+      weightRecords,
+      educationRecords,
+      foodRecords,
+      stepRecords,
+      watchRecords,
+      timeWindows,
+    })).map((row) => ({
+      ...row,
+      attendanceStatus: ACTIVITY_REPORT_ATTENDANCE.ATTENDED,
+    }));
 
   const paged = paginateActivityReportRecords(allRecords, paginationOpts);
+  const availableClubs = collectActivityReportClubNames(allRecords);
+  const availableFilters = collectActivityReportFilterOptions(allRecords);
 
   if (needsFullSponsorPass) {
-    return paged;
+    return { ...paged, availableClubs, availableFilters };
   }
 
   const membersById = new Map(members.map((m) => [String(m.UserId), m]));
@@ -346,6 +394,8 @@ async function buildPagedActivityRecords({
   return {
     ...paged,
     records: enrichedPage,
+    availableClubs,
+    availableFilters,
   };
 }
 
@@ -616,9 +666,53 @@ function detailRowsCacheKey(input) {
     input.endDate || '',
     input.activityType,
     input.search || '',
+    input.clubFilter || '',
+    activityReportColumnFiltersCacheToken(input.columnFilters),
     input.sort || 'date',
     input.sortDir || 'desc',
+    input.attendanceStatus || ACTIVITY_REPORT_ATTENDANCE.ATTENDED,
   ].join('|');
+}
+
+function detailClubsCacheKey(input) {
+  return [
+    'clubs',
+    input.userId,
+    input.role,
+    input.teamScope,
+    input.dateRange,
+    input.startDate || '',
+    input.endDate || '',
+    input.activityType,
+    input.attendanceStatus || ACTIVITY_REPORT_ATTENDANCE.ATTENDED,
+  ].join('|');
+}
+
+const detailClubsCache = new Map();
+
+function getCachedDetailClubs(key) {
+  const hit = detailClubsCache.get(key);
+  if (!hit) return null;
+  if (hit.expiresAt <= Date.now()) {
+    detailClubsCache.delete(key);
+    return null;
+  }
+  return {
+    clubs: hit.clubs || [],
+    filters: hit.filters || emptyActivityReportFilterOptions(),
+  };
+}
+
+function setCachedDetailClubs(key, clubs, filters) {
+  detailClubsCache.set(key, {
+    clubs: clubs || [],
+    filters: filters || emptyActivityReportFilterOptions(),
+    expiresAt: Date.now() + DETAIL_ROWS_CACHE_TTL_MS,
+  });
+  if (detailClubsCache.size > 40) {
+    const oldest = detailClubsCache.keys().next().value;
+    detailClubsCache.delete(oldest);
+  }
 }
 
 function getCachedDetailRows(key) {
@@ -656,9 +750,12 @@ function bootstrapCacheKey(input) {
     input.page || 1,
     input.limit || ACTIVITY_REPORT_DEFAULT_PAGE_SIZE,
     input.search || '',
+    input.clubFilter || '',
+    activityReportColumnFiltersCacheToken(input.columnFilters),
     input.sort || 'date',
     input.sortDir || 'desc',
     input.exportAll ? 'export' : 'page',
+    input.attendanceStatus || ACTIVITY_REPORT_ATTENDANCE.ATTENDED,
   ].join('|');
 }
 
@@ -706,8 +803,15 @@ async function getActivityReportBootstrapUncached({
   sort = 'date',
   sortDir = 'desc',
   exportAll = false,
+  clubFilter = '',
+  filterColumn = '',
+  filterValue = '',
+  columnFilters = {},
+  attendanceStatus = ACTIVITY_REPORT_ATTENDANCE.ATTENDED,
 }) {
-  const paginationOpts = { page, limit, search, sort, sortDir, exportAll };
+  const paginationOpts = {
+    page, limit, search, sort, sortDir, exportAll, clubFilter, filterColumn, filterValue, columnFilters,
+  };
   const perf = createActivityReportPerf('bootstrap');
   const [{ timezoneIana, startDate: startStr, endDate: endStr }, scope] = await Promise.all([
     resolveReportDateRange(userId, dateRange, customStart, customEnd),
@@ -715,7 +819,7 @@ async function getActivityReportBootstrapUncached({
   ]);
   perf.mark('scope_and_dates');
 
-  const { userIds, teamScope: resolvedScope, teamScopeCounts } = scope;
+  const { userIds, teamScope: resolvedScope, teamScopeCounts, memberMeta } = scope;
   const baseBody = {
     success: true,
     dateRange,
@@ -783,7 +887,7 @@ async function getActivityReportBootstrapUncached({
   let records = [];
   let pagination = emptyPagination(page, limit);
   if (includeRecords) {
-    const detailUserIds = collectDetailRecordUserIds({
+    const attendedUserIds = collectDetailRecordUserIds({
       activityType: detailActivity,
       weightRecords,
       educationRecords,
@@ -794,17 +898,23 @@ async function getActivityReportBootstrapUncached({
       timezoneIana,
       timezoneByUserId,
     });
+    const tableUserIds = resolveActivityReportTableUserIds(
+      attendanceStatus,
+      userIds,
+      attendedUserIds,
+    );
 
     // Empty detail tab → skip member fetch + sponsor/ideal-coach chain walks.
-    if (detailUserIds.length > 0) {
+    if (tableUserIds.length > 0) {
       const members = filterPublicAggregateUsers(
-        await repo.fetchMemberDetails(detailUserIds),
+        await repo.fetchMemberDetails(tableUserIds),
         { viewerUserId: userId },
       );
       const paged = await buildPagedActivityRecords({
         activityType: detailActivity,
         members,
         viewerUserId: userId,
+        memberMeta,
         timezoneIana,
         timezoneByUserId,
         weightRecords,
@@ -814,9 +924,25 @@ async function getActivityReportBootstrapUncached({
         watchRecords,
         timeWindows,
         paginationOpts,
+        attendanceStatus,
       });
       records = paged.records;
       pagination = paged.pagination;
+      const clubsCacheInput = {
+        userId,
+        role,
+        teamScope: resolvedScope,
+        dateRange,
+        startDate: startStr,
+        endDate: endStr,
+        activityType: detailActivity,
+        attendanceStatus,
+      };
+      setCachedDetailClubs(
+        detailClubsCacheKey(clubsCacheInput),
+        paged.availableClubs || [],
+        paged.availableFilters,
+      );
       setCachedDetailRows(detailRowsCacheKey({
         userId,
         role,
@@ -826,8 +952,11 @@ async function getActivityReportBootstrapUncached({
         endDate: endStr,
         activityType: detailActivity,
         search,
+        clubFilter,
+        columnFilters,
         sort,
         sortDir,
+        attendanceStatus,
       }), paged.preparedRows);
     }
     perf.mark('detail_enrichment');
@@ -932,7 +1061,7 @@ export async function getActivityMemberSummary({ userId, role, teamScope, dateRa
     userId, dateRange, customStart, customEnd,
   );
 
-  const { userIds, teamScope: resolvedScope, teamScopeCounts } = await resolveActivityReportUserIds({
+  const { userIds, teamScope: resolvedScope, teamScopeCounts, memberMeta } = await resolveActivityReportUserIds({
     userId, role, teamScope,
   });
 
@@ -965,10 +1094,10 @@ export async function getActivityMemberSummary({ userId, role, teamScope, dateRa
   // Build member info map (keyed by both numeric and string UserId)
   const memberMap = {};
   members.forEach(member => {
-    const info = applySponsorFields({
+    const info = applyHierarchyFields(applySponsorFields({
       name: member.UserName || 'N/A',
       phone: member.PhoneNumber || 'N/A',
-    }, sponsorByUser.get(String(member.UserId)));
+    }, sponsorByUser.get(String(member.UserId))), member.UserId, memberMeta);
     memberMap[member.UserId] = info;
     memberMap[String(member.UserId)] = info;
   });
@@ -1047,8 +1176,15 @@ export async function getActivityDetails({
   sort = 'date',
   sortDir = 'desc',
   exportAll = false,
+  clubFilter = '',
+  filterColumn = '',
+  filterValue = '',
+  columnFilters = {},
+  attendanceStatus = ACTIVITY_REPORT_ATTENDANCE.ATTENDED,
 }) {
-  const paginationOpts = { page, limit, search, sort, sortDir, exportAll };
+  const paginationOpts = {
+    page, limit, search, sort, sortDir, exportAll, clubFilter, filterColumn, filterValue, columnFilters,
+  };
   const perf = createActivityReportPerf('details');
   const [{ timezoneIana, startDate: startStr, endDate: endStr }, scope] = await Promise.all([
     resolveReportDateRange(userId, dateRange, customStart, customEnd),
@@ -1056,7 +1192,7 @@ export async function getActivityDetails({
   ]);
   perf.mark('scope_and_dates');
 
-  const { userIds, teamScope: resolvedScope, teamScopeCounts } = scope;
+  const { userIds, teamScope: resolvedScope, teamScopeCounts, memberMeta } = scope;
   const rowsCacheKey = detailRowsCacheKey({
     userId,
     role,
@@ -1066,8 +1202,21 @@ export async function getActivityDetails({
     endDate: endStr,
     activityType,
     search,
+    clubFilter,
+    columnFilters,
     sort,
     sortDir,
+    attendanceStatus,
+  });
+  const clubsCacheKey = detailClubsCacheKey({
+    userId,
+    role,
+    teamScope: resolvedScope,
+    dateRange,
+    startDate: startStr,
+    endDate: endStr,
+    activityType,
+    attendanceStatus,
   });
 
   if (userIds.length === 0) {
@@ -1081,7 +1230,10 @@ export async function getActivityDetails({
         endDate: endStr,
         teamScope: resolvedScope,
         teamScopeCounts,
+        attendanceStatus,
         records: [],
+        availableClubs: [],
+        availableFilters: emptyActivityReportFilterOptions(),
         pagination: emptyPagination(page, limit),
       },
     };
@@ -1097,6 +1249,10 @@ export async function getActivityDetails({
       viewerUserId: userId,
       membersById: new Map(),
     });
+    const facets = getCachedDetailClubs(clubsCacheKey) || {
+      clubs: [],
+      filters: emptyActivityReportFilterOptions(),
+    };
     const body = {
       success: true,
       activityType,
@@ -1105,7 +1261,10 @@ export async function getActivityDetails({
       endDate: endStr,
       teamScope: resolvedScope,
       teamScopeCounts,
+      attendanceStatus,
       records,
+      availableClubs: facets.clubs,
+      availableFilters: facets.filters,
       pagination: paged.pagination,
     };
     perf.done({
@@ -1143,7 +1302,7 @@ export async function getActivityDetails({
     : {};
   perf.mark('timezones');
 
-  const detailUserIds = collectDetailRecordUserIds({
+  const attendedUserIds = collectDetailRecordUserIds({
     activityType,
     weightRecords,
     educationRecords,
@@ -1154,8 +1313,13 @@ export async function getActivityDetails({
     timezoneIana,
     timezoneByUserId,
   });
+  const tableUserIds = resolveActivityReportTableUserIds(
+    attendanceStatus,
+    userIds,
+    attendedUserIds,
+  );
 
-  if (detailUserIds.length === 0) {
+  if (tableUserIds.length === 0) {
     const empty = {
       httpStatus: 200,
       body: {
@@ -1166,11 +1330,15 @@ export async function getActivityDetails({
         endDate: endStr,
         teamScope: resolvedScope,
         teamScopeCounts,
+        attendanceStatus,
         records: [],
+        availableClubs: [],
+        availableFilters: emptyActivityReportFilterOptions(),
         pagination: emptyPagination(page, limit),
       },
     };
     setCachedDetailRows(rowsCacheKey, []);
+    setCachedDetailClubs(clubsCacheKey, [], emptyActivityReportFilterOptions());
     perf.done({
       userCount: userIds.length,
       recordCount: 0,
@@ -1182,15 +1350,22 @@ export async function getActivityDetails({
 
   // Enrich only members who appear in this tab — not the full team.
   const members = filterPublicAggregateUsers(
-    await repo.fetchMemberDetails(detailUserIds),
+    await repo.fetchMemberDetails(tableUserIds),
     { viewerUserId: userId },
   );
   perf.mark('member_fetch');
 
-  const { records, pagination, preparedRows } = await buildPagedActivityRecords({
+  const {
+    records,
+    pagination,
+    preparedRows,
+    availableClubs,
+    availableFilters,
+  } = await buildPagedActivityRecords({
     activityType,
     members,
     viewerUserId: userId,
+    memberMeta,
     timezoneIana,
     timezoneByUserId,
     weightRecords,
@@ -1200,8 +1375,10 @@ export async function getActivityDetails({
     watchRecords,
     timeWindows,
     paginationOpts,
+    attendanceStatus,
   });
   setCachedDetailRows(rowsCacheKey, preparedRows);
+  setCachedDetailClubs(clubsCacheKey, availableClubs || [], availableFilters);
   perf.mark('build_and_paginate');
 
   const body = {
@@ -1212,12 +1389,15 @@ export async function getActivityDetails({
     endDate: endStr,
     teamScope: resolvedScope,
     teamScopeCounts,
+    attendanceStatus,
     records,
+    availableClubs: availableClubs || [],
+    availableFilters: availableFilters || emptyActivityReportFilterOptions(),
     pagination,
   };
   perf.done({
     userCount: userIds.length,
-    detailUserCount: detailUserIds.length,
+    detailUserCount: tableUserIds.length,
     recordCount: records.length,
     totalRecords: pagination.totalRecords,
     payloadBytes: approxJsonBytes(body),

@@ -230,6 +230,20 @@ export async function saveWeight(input) {
     confirmPersisted(captureId, { weightRowId: data?.ID || data?.id });
   }
 
+  const weightRowId = data?.ID || data?.id;
+  if (weightRowId && (imageBase64ToSave || captureId)) {
+    try {
+      const { persistWeightImageKey } = await import('../../shared/lib/r2/activity-image-storage.service.js');
+      await persistWeightImageKey(userId, weightRowId, imageBase64ToSave, { captureId });
+    } catch (err) {
+      logger.warn('weight.saveWeight: R2 persist skipped', {
+        userId: String(userId),
+        recordId: weightRowId,
+        message: err?.message || String(err),
+      });
+    }
+  }
+
   return {
     httpStatus: 200,
     body: {
@@ -249,7 +263,7 @@ export async function saveWeight(input) {
         bmr: bmrValue,
         bmrCalculated: calculatedBmr !== null,
         bmrPreserved: !bmr && bmrValue ? true : false,
-        imageBase64: imageBase64ToSave,
+        imageBase64: null,
         timestamp: nowUtc(),
       },
     },
@@ -264,19 +278,9 @@ export async function getHistory({ userId, includeImage, limit = null, offset = 
   // Step 1: lightweight rows (no image when not requested)
   const rows = await repo.listHistory(userId, false, { limit, offset });
 
-  // Step 2: latest 10 image map (only when client wants images)
-  let imageMap = {};
-  if (includeImage) {
-    const imageRows = await repo.listLatestImages(userId, 10);
-    imageRows.forEach((r) => {
-      if (r.WeightImageBase64) imageMap[r.ID] = r.WeightImageBase64;
-    });
-  }
-
-  // Step 3: merge image into rows
   const merged = rows.map((row) => ({
     ...row,
-    WeightImageBase64: imageMap[row.ID] || null,
+    WeightImageBase64: null,
   }));
 
   // Step 4: format CreatedAt
@@ -352,9 +356,22 @@ export async function getImage({ userId, id }) {
   if (!row) {
     return { httpStatus: 404, body: { success: false, message: 'Not found' } };
   }
+  let r2Url = null;
+  if (row.WeightImageKey) {
+    try {
+      const { r2ActivityImagesEnabled } = await import('../../shared/lib/r2/activity-image-storage.service.js');
+      const { avatarRedirectUrl } = await import('../../shared/lib/r2/s3.js');
+      if (r2ActivityImagesEnabled()) r2Url = avatarRedirectUrl(row.WeightImageKey);
+    } catch {
+      r2Url = null;
+    }
+  }
+  if (!r2Url) {
+    return { httpStatus: 404, body: { success: false, message: 'No image' } };
+  }
   return {
     httpStatus: 200,
-    body: { success: true, id: row.ID, image: row.WeightImageBase64 || null },
+    body: { success: true, id: row.ID, r2Url },
   };
 }
 

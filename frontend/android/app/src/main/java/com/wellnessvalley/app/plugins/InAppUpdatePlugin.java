@@ -107,8 +107,7 @@ public class InAppUpdatePlugin extends Plugin {
     }
     
     /**
-     * Check for available updates
-     * Called from JavaScript: InAppUpdate.checkForUpdate()
+     * Check for available updates (optional / priority-based flow).
      */
     @PluginMethod
     public void checkForUpdate(PluginCall call) {
@@ -120,6 +119,24 @@ public class InAppUpdatePlugin extends Plugin {
         } catch (Exception e) {
             Log.e(TAG, "Error checking for update", e);
             call.reject("Failed to check for update: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Start mandatory IMMEDIATE update flow (server policy update_required).
+     * Called from JavaScript: InAppUpdate.startMandatoryUpdate()
+     */
+    @PluginMethod
+    public void startMandatoryUpdate(PluginCall call) {
+        try {
+            Log.d(TAG, "startMandatoryUpdate() called from JavaScript");
+            initializeUpdateManager();
+            updateManager.setMandatoryMode(true);
+            updateManager.checkForMandatoryUpdate();
+            call.resolve();
+        } catch (Exception e) {
+            Log.e(TAG, "Error starting mandatory update", e);
+            call.reject("Failed to start mandatory update: " + e.getMessage());
         }
     }
     

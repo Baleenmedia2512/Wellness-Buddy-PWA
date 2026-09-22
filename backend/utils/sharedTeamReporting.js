@@ -1,6 +1,7 @@
 import {
   getDirectReportingMembers,
   getFullReportingMembers,
+  getUplineMembers,
 } from './reportingHierarchyService.js';
 
 function getPartnerRootIds(context, rootCoachId) {
@@ -52,6 +53,28 @@ export function getSharedTeamFullMembers(coachId, context) {
       if (id === rootId) continue;
       byId.set(id, member);
     }
+  }
+
+  return [...byId.values()];
+}
+
+/**
+ * Full shared-team downline plus every upline on the CoachId chain.
+ * Used by testimonials Full Team scope (view uplines' transformation photos).
+ * @param {number} coachId
+ * @param {import('./reportingHierarchyService.js').ReportingContext} context
+ */
+export function getSharedTeamFullMembersWithUplines(coachId, context) {
+  const rootId = Number(coachId);
+  const byId = new Map();
+
+  for (const member of getSharedTeamFullMembers(rootId, context)) {
+    byId.set(Number(member.UserId), member);
+  }
+
+  for (const upline of getUplineMembers(rootId, context)) {
+    const id = Number(upline.UserId);
+    if (id !== rootId) byId.set(id, upline);
   }
 
   return [...byId.values()];

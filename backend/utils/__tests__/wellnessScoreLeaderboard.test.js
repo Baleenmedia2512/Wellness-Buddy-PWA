@@ -19,10 +19,10 @@ describe('rankWellnessLeaderboardEntries', () => {
     assert.equal(names.includes('A1'), false);
     assert.deepEqual(
       ranked.map((e) => e.userName),
-      ['Usha', 'Prem', 'Balaji'],
+      ['Balaji', 'Prem', 'Usha'],
     );
-    assert.equal(ranked[ranked.length - 1].rank, 1);
-    assert.equal(ranked[ranked.length - 1].userName, 'Balaji');
+    assert.equal(ranked[0].rank, 1);
+    assert.equal(ranked[0].userName, 'Balaji');
   });
 
   it('caps at topN after sorting filtered candidates', () => {
@@ -34,7 +34,8 @@ describe('rankWellnessLeaderboardEntries', () => {
     }));
     const ranked = rankWellnessLeaderboardEntries(allowed, 10);
     assert.equal(ranked.length, 10);
-    assert.equal(ranked[ranked.length - 1].userName, 'U1');
-    assert.equal(ranked[0].userName, 'U10');
+    assert.equal(ranked[0].userName, 'U1');
+    assert.equal(ranked[0].rank, 1);
+    assert.equal(ranked[ranked.length - 1].userName, 'U10');
   });
 });

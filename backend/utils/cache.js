@@ -150,6 +150,7 @@ export function withCache(handler, keyGenerator, ttl = 300000) {
  */
 export const cacheKeys = {
   userProfile: (email) => `user:profile:${email}`,
+  userAvatar: (userId) => `user:avatar:${userId}`,
   userContext: (userId) => `user:context:${userId}`,
   teamMembers: (coachId) => `team:members:${coachId}`,
   nutritionStats: (userId, date) => `nutrition:stats:${userId}:${date}`,

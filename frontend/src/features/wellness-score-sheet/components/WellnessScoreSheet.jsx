@@ -1,5 +1,5 @@
-import React, { useMemo } from 'react';
-import { ArrowLeft, ClipboardList, Loader2, Trophy } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { ArrowLeft, ClipboardList, Loader2, Trophy, Settings } from 'lucide-react';
 import {
   todayBusinessDate,
   DEFAULT_BUSINESS_TIMEZONE,
@@ -13,6 +13,8 @@ import { formatWellnessDayLabel, formatWellnessRangeLabel } from '../domain/date
 import { useParameterContribution } from '../hooks/useParameterContribution';
 import ReportDateRangeFilter from '../../../shared/components/common/ReportDateRangeFilter';
 import { WELLNESS_SCORE_DATE_RANGES } from '../../../shared/domain/reportDateRanges';
+import TimeWindowSettingsModal from '../../../shared/components/TimeWindowSettingsModal';
+import { useNutritionRefreshOptional } from '../../../shared/context/NutritionRefreshContext';
 
 function scoreTone(pct) {
   if (pct >= 75) return 'from-emerald-500 to-emerald-600';
@@ -61,10 +63,15 @@ export default function WellnessScoreSheet({
   selectedDate,
   isMultiDay = false,
   timeWindows = null,
+  onTimeWindowsRefresh = null,
   userId = null,
   apiBaseUrl,
   nutritionRefreshKey = 0,
+  canManageTimeWindows = false,
+  userEmail = null,
 }) {
+  const [showTimeWindowSettings, setShowTimeWindowSettings] = useState(false);
+  const nutritionRefresh = useNutritionRefreshOptional();
   const showMultiDayCarousel = isMultiDay && historyDays.length > 1;
   // Multi-day ranges show period average only — no per-day picker or day detail cards.
   const showDayDetailCards = !showMultiDayCarousel;
@@ -131,6 +138,17 @@ export default function WellnessScoreSheet({
             </h1>
             <p className="text-xs text-gray-500">{summaryLabel}</p>
           </div>
+          {canManageTimeWindows && (
+            <button
+              type="button"
+              onClick={() => setShowTimeWindowSettings(true)}
+              className="rounded-lg p-2 text-gray-600 transition-colors hover:bg-emerald-50 hover:text-emerald-700"
+              aria-label="Activity time window settings"
+              data-testid="wellness-score-sheet-time-window-settings"
+            >
+              <Settings className="h-5 w-5" aria-hidden />
+            </button>
+          )}
         </div>
         {onDateRangeChange && (
           <div className="border-t border-gray-100 px-4 py-3">
@@ -274,6 +292,25 @@ export default function WellnessScoreSheet({
         loading={!!selectedParam && needsMeals && mealsLoading}
         error={selectedParam && needsMeals ? mealsError : null}
       />
+
+      {canManageTimeWindows && (
+        <TimeWindowSettingsModal
+          isOpen={showTimeWindowSettings}
+          onClose={() => setShowTimeWindowSettings(false)}
+          onUpdate={async () => {
+            if (onTimeWindowsRefresh) {
+              await onTimeWindowsRefresh();
+            }
+            nutritionRefresh?.triggerRefresh?.({
+              immediate: true,
+              source: 'wellness-score-time-windows-saved',
+            });
+            onRetry?.();
+          }}
+          userEmail={userEmail}
+          requesterUserId={userId}
+        />
+      )}
     </div>
   );
 }

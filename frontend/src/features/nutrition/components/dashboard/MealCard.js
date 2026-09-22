@@ -1,11 +1,12 @@
 import React from 'react';
 import { useSwipeToDelete } from '../../hooks/useSwipeToDelete';
 import { resolveMealImageSrc } from '../../services/nutritionDashboard/mealImageSrc';
+import { activityPhotoTemplate, handleActivityPhotoError } from '../../../../shared/assets/activityPhotoTemplates';
 
 const MealCard = ({ meal, foodData, mealTime, calories, onDelete, onClick, userId, apiBaseUrl }) => {
   const { dx, dragging, animating, armed, leaving, progress, scale, elRef, handlers } =
     useSwipeToDelete({ onDelete: () => onDelete(meal) });
-  const imgSrc = resolveMealImageSrc(meal, { userId, apiBaseUrl });
+  const imgSrc = resolveMealImageSrc(meal, { userId, apiBaseUrl }) || activityPhotoTemplate('food');
 
   return (
     <div
@@ -85,7 +86,7 @@ const MealCard = ({ meal, foodData, mealTime, calories, onDelete, onClick, userI
                 className="w-full h-full object-cover"
                 loading="lazy"
                 decoding="async"
-                onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                onError={(e) => handleActivityPhotoError(e, 'food')}
               />
             ) : (
               <span className="text-2xl">🍽️</span>

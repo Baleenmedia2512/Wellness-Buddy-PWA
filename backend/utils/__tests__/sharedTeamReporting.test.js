@@ -7,6 +7,7 @@ import { buildReportingContext } from '../reportingHierarchyService.js';
 import {
   getSharedTeamDirectMembers,
   getSharedTeamFullMembers,
+  getSharedTeamFullMembersWithUplines,
 } from '../sharedTeamReporting.js';
 
 const ROOT = 100;
@@ -49,6 +50,20 @@ describe('sharedTeamReporting', () => {
     assert.deepEqual(
       ids(getSharedTeamFullMembers(ROOT, context)),
       [ROOT_MEMBER, PARTNER, PARTNER_MEMBER, PARTNER_NESTED],
+    );
+  });
+
+  it('includes upline chain in full scope with uplines helper', () => {
+    const UPLINE = 50;
+    const context = buildReportingContext([
+      { UserId: UPLINE, UserName: 'Upline', Role: 'coach', Status: 'Active', CoachId: null },
+      { UserId: ROOT, UserName: 'Root', Role: 'coach', Status: 'Active', CoachId: UPLINE },
+      { UserId: ROOT_MEMBER, UserName: 'Root Member', Role: null, Status: 'Active', CoachId: ROOT },
+    ]);
+
+    assert.deepEqual(
+      ids(getSharedTeamFullMembersWithUplines(ROOT, context)),
+      [UPLINE, ROOT_MEMBER],
     );
   });
 });

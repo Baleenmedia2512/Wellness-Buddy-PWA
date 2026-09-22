@@ -23,6 +23,7 @@ import HierarchicalReportLayout, {
 import HierarchicalNode from "../../../shared/components/common/HierarchicalNode";
 import { teamHierarchyService } from "../../../shared/services/teamHierarchyService";
 import TimeWindowSettingsModal from "../../../shared/components/TimeWindowSettingsModal";
+import { isAdminLikeRole } from "../../../shared/constants/roles";
 import { TeamMemberProfileModal } from "../../../shared/components/TeamMemberProfileModal";
 
 // ΓöÇΓöÇΓöÇConstants ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
@@ -975,6 +976,8 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
     handleCsvDownload();
   };
 
+  const canManageTimeWindows = isAdminLikeRole(userRole);
+
   const handleSettings = () => {
     setShowSettings((prev) => !prev);
   };
@@ -988,7 +991,7 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
       onBack={onBack}
       onRefresh={() => fetchData(true)}
       onDownload={handleDownload}
-      onSettings={handleSettings}
+      onSettings={canManageTimeWindows ? handleSettings : undefined}
       loading={loading}
       refreshing={refreshing}
       error={error}
@@ -1121,12 +1124,15 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
       ) : null}
 
       {/* Time Window Settings Modal */}
-      <TimeWindowSettingsModal
-        isOpen={showSettings}
-        onClose={() => setShowSettings(false)}
-        onUpdate={() => fetchData(true)}
-        userEmail={user?.email}
-      />
+      {canManageTimeWindows && (
+        <TimeWindowSettingsModal
+          isOpen={showSettings}
+          onClose={() => setShowSettings(false)}
+          onUpdate={() => fetchData(true)}
+          userEmail={user?.email}
+          requesterUserId={user?.id}
+        />
+      )}
 
       {/* Member Profile Viewer */}
       <TeamMemberProfileModal

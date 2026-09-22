@@ -3,10 +3,12 @@
  * Applied after detail rows are built so meal-window + dedupe rules stay intact.
  */
 
-export const ACTIVITY_REPORT_DEFAULT_PAGE_SIZE = 10;
+export const ACTIVITY_REPORT_DEFAULT_PAGE_SIZE = 20;
 export const ACTIVITY_REPORT_MAX_PAGE_SIZE = 100;
 /** Hard ceiling for export-all responses (safety against runaway payloads). */
 export const ACTIVITY_REPORT_EXPORT_MAX = 10_000;
+/** Query value for clubName filter when showing Remote (N/A) records only. */
+export const ACTIVITY_REPORT_CLUB_REMOTE = '__remote__';
 
 export const ACTIVITY_REPORT_SORTABLE = new Set([
   'date',
@@ -24,7 +26,45 @@ export const ACTIVITY_REPORT_SORTABLE = new Set([
   'sponsorName',
   'idealCoachName',
   'coachName',
+  'level',
+  'memberType',
 ]);
+
+/** Discrete table-column filters (legacy: filterColumn + filterValue; stacked: filter_<column>). */
+export const ACTIVITY_REPORT_FILTER_COLUMNS = new Set([
+  'memberType',
+  'level',
+  'clubName',
+]);
+
+/** Multi-value separator within one filter_<column> (OR). Columns still AND together. */
+export const ACTIVITY_REPORT_FILTER_VALUE_SEP = '|';
+
+/**
+ * Parse one filter value string into discrete tokens.
+ * Single values (no separator) stay as one token for legacy clients.
+ * @param {unknown} raw
+ * @returns {string[]}
+ */
+export function parseActivityReportFilterValues(raw) {
+  const text = String(raw ?? '').trim();
+  if (!text) return [];
+  if (!text.includes(ACTIVITY_REPORT_FILTER_VALUE_SEP)) return [text];
+  return [...new Set(
+    text
+      .split(ACTIVITY_REPORT_FILTER_VALUE_SEP)
+      .map((part) => part.trim())
+      .filter(Boolean),
+  )];
+}
+
+export function emptyActivityReportFilterOptions() {
+  return {
+    memberType: [],
+    level: [],
+    clubName: [],
+  };
+}
 
 /**
  * @param {object} raw
@@ -35,8 +75,128 @@ export const ACTIVITY_REPORT_SORTABLE = new Set([
  *   sort: string,
  *   sortDir: 'asc'|'desc',
  *   exportAll: boolean,
+ *   clubFilter: string,
  * }}
  */
+export function normalizeActivityReportClubFilter(raw) {
+  const value = String(raw?.clubName ?? raw?.clubFilter ?? '').trim();
+  return value;
+}
+
+/** Display label for a stored clubName value (N/A → Remote). */
+export function formatActivityReportClubDisplay(clubName) {
+  if (!clubName || clubName === 'N/A') return 'Remote';
+  return String(clubName);
+}
+
+/**
+ * Unique club display names for dropdown (sorted A–Z; Remote last when present).
+ * @param {Array<{ clubName?: string }>} records
+ * @returns {string[]}
+ */
+export function collectActivityReportClubNames(records) {
+  const names = new Set();
+  let hasRemote = false;
+  for (const record of Array.isArray(records) ? records : []) {
+    const raw = record?.clubName;
+    if (!raw || raw === 'N/A') {
+      hasRemote = true;
+    } else {
+      names.add(String(raw));
+    }
+  }
+  const sorted = [...names].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+  if (hasRemote) sorted.push('Remote');
+  return sorted;
+}
+
+function isBlankFilterLabel(value) {
+  const raw = String(value ?? '').trim();
+  return !raw || raw === 'N/A' || raw === '—';
+}
+
+/**
+ * Distinct values for table-column filter dropdowns (from unpaginated rows).
+ * @param {object[]} records
+ * @returns {ReturnType<typeof emptyActivityReportFilterOptions>}
+ */
+export function collectActivityReportFilterOptions(records) {
+  const options = emptyActivityReportFilterOptions();
+  const memberTypes = new Set();
+  const levels = new Set();
+
+  for (const record of Array.isArray(records) ? records : []) {
+    const memberType = record?.memberType === 'sponsor' ? 'sponsor' : 'member';
+    memberTypes.add(memberType);
+    if (record?.level != null && record.level !== '' && Number.isFinite(Number(record.level))) {
+      levels.add(String(Number(record.level)));
+    }
+  }
+
+  options.memberType = [...memberTypes].sort();
+  options.level = [...levels].sort((a, b) => Number(a) - Number(b));
+  options.clubName = collectActivityReportClubNames(records);
+  return options;
+}
+
+export function normalizeActivityReportColumnFilter(raw = {}) {
+  const column = String(raw.filterColumn || raw.column || '').trim();
+  const value = String(raw.filterValue ?? raw.columnValue ?? '').trim();
+  if (!ACTIVITY_REPORT_FILTER_COLUMNS.has(column) || !value) {
+    return { filterColumn: '', filterValue: '' };
+  }
+  return { filterColumn: column, filterValue: value };
+}
+
+/**
+ * Stacked facet filters (AND across columns; OR within a column via `|`).
+ * Additive `filter_<column>` params plus legacy filterColumn/filterValue.
+ * Missing params stay empty so old clients are unchanged.
+ *
+ * @param {object} raw
+ * @returns {Record<string, string>}
+ */
+export function normalizeActivityReportColumnFilters(raw = {}) {
+  const applied = {};
+  for (const key of Object.keys(raw || {})) {
+    if (!key.startsWith('filter_')) continue;
+    const column = key.slice('filter_'.length);
+    const values = parseActivityReportFilterValues(raw[key]);
+    if (ACTIVITY_REPORT_FILTER_COLUMNS.has(column) && values.length) {
+      applied[column] = values.join(ACTIVITY_REPORT_FILTER_VALUE_SEP);
+    }
+  }
+  const { filterColumn, filterValue } = normalizeActivityReportColumnFilter(raw);
+  if (filterColumn && filterValue && !applied[filterColumn]) {
+    applied[filterColumn] = filterValue;
+  }
+  return applied;
+}
+
+export function activityReportColumnFiltersCacheToken(columnFilters = {}) {
+  return Object.keys(columnFilters)
+    .sort()
+    .map((key) => `${key}=${columnFilters[key]}`)
+    .join('&');
+}
+
+/**
+ * Apply every selected facet (AND). Empty map = no-op.
+ * @template T
+ * @param {T[]} records
+ * @param {Record<string, string>} columnFilters
+ * @returns {T[]}
+ */
+export function filterActivityReportRecordsByColumns(records, columnFilters) {
+  let list = Array.isArray(records) ? records : [];
+  const entries = Object.entries(columnFilters || {});
+  if (entries.length === 0) return list;
+  for (const [column, value] of entries) {
+    list = filterActivityReportRecordsByColumn(list, column, value);
+  }
+  return list;
+}
+
 export function normalizeActivityReportPagination(raw = {}) {
   let page = 1;
   if (raw.page != null && raw.page !== '') {
@@ -69,7 +229,102 @@ export function normalizeActivityReportPagination(raw = {}) {
     || exportFlag === '1'
     || String(exportFlag || '').toLowerCase() === 'true';
 
-  return { page, limit, search, sort, sortDir, exportAll };
+  const clubFilter = normalizeActivityReportClubFilter(raw);
+  const { filterColumn, filterValue } = normalizeActivityReportColumnFilter(raw);
+  const columnFilters = normalizeActivityReportColumnFilters(raw);
+
+  return {
+    page,
+    limit,
+    search,
+    sort,
+    sortDir,
+    exportAll,
+    clubFilter,
+    filterColumn,
+    filterValue,
+    columnFilters,
+  };
+}
+
+/**
+ * Filter by club name. Empty clubFilter = all clubs.
+ * Use ACTIVITY_REPORT_CLUB_REMOTE for N/A / Remote rows.
+ * @template T
+ * @param {T[]} records
+ * @param {string} clubFilter
+ * @returns {T[]}
+ */
+export function filterActivityReportRecordsByClub(records, clubFilter) {
+  const list = Array.isArray(records) ? records : [];
+  const filter = String(clubFilter || '').trim();
+  if (!filter) return list;
+
+  if (filter === ACTIVITY_REPORT_CLUB_REMOTE) {
+    return list.filter((record) => {
+      const raw = record?.clubName;
+      return !raw || raw === 'N/A';
+    });
+  }
+
+  const target = filter.toLowerCase();
+  return list.filter((record) => {
+    const raw = record?.clubName;
+    if (!raw || raw === 'N/A') return false;
+    return String(raw).toLowerCase() === target;
+  });
+}
+
+/**
+ * Exact-match filter for one table column. Empty column/value = no-op.
+ * Multiple values (joined by `|`) match with OR.
+ * @template T
+ * @param {T[]} records
+ * @param {string} filterColumn
+ * @param {string} filterValue
+ * @returns {T[]}
+ */
+export function filterActivityReportRecordsByColumn(records, filterColumn, filterValue) {
+  const list = Array.isArray(records) ? records : [];
+  const column = String(filterColumn || '').trim();
+  const values = parseActivityReportFilterValues(filterValue);
+  if (!ACTIVITY_REPORT_FILTER_COLUMNS.has(column) || values.length === 0) return list;
+
+  if (values.length > 1) {
+    const matched = new Set();
+    for (const value of values) {
+      for (const row of filterActivityReportRecordsByColumn(list, column, value)) {
+        matched.add(row);
+      }
+    }
+    return list.filter((row) => matched.has(row));
+  }
+
+  const value = values[0];
+
+  if (column === 'clubName') {
+    const clubValue = value === 'Remote' ? ACTIVITY_REPORT_CLUB_REMOTE : value;
+    return filterActivityReportRecordsByClub(list, clubValue);
+  }
+
+  if (column === 'memberType') {
+    const wanted = value.toLowerCase() === 'sponsor' ? 'sponsor' : 'member';
+    return list.filter((record) => (
+      record?.memberType === 'sponsor' ? 'sponsor' : 'member'
+    ) === wanted);
+  }
+
+  if (column === 'level') {
+    return list.filter((record) => String(record?.level) === value);
+  }
+
+  const target = value.toLowerCase();
+  return list.filter((record) => {
+    let raw = record?.[column];
+    if (column === 'sponsorName') raw = record?.sponsorName || record?.coachName;
+    if (isBlankFilterLabel(raw)) return false;
+    return String(raw).trim().toLowerCase() === target;
+  });
 }
 
 /**
@@ -93,6 +348,10 @@ export function filterActivityReportRecords(records, searchNormalized) {
       record.city,
       record.village,
       record.clubName,
+      record.memberType,
+      // Display label for no-downline people (API token stays `member`).
+      record.memberType === 'sponsor' ? 'sponsor' : 'customer',
+      record.level == null ? '' : String(record.level),
     ];
     return haystacks.some((v) => String(v || '').toLowerCase().includes(q));
   });
@@ -178,7 +437,7 @@ export function buildActivityReportPaginationMeta(totalRecords, page, pageSize) 
  *
  * @template T
  * @param {T[]} records
- * @param {{ page: number, limit: number, search: string, sort: string, sortDir: 'asc'|'desc', exportAll: boolean }} opts
+ * @param {{ page: number, limit: number, search: string, sort: string, sortDir: 'asc'|'desc', exportAll: boolean, clubFilter?: string }} opts
  * @returns {{ records: T[], pagination: ReturnType<typeof buildActivityReportPaginationMeta>, preparedRows: T[] }}
  */
 export function paginateActivityReportRecords(records, opts) {
@@ -189,9 +448,13 @@ export function paginateActivityReportRecords(records, opts) {
     sort,
     sortDir,
     exportAll,
+    clubFilter,
+    columnFilters,
   } = normalizeActivityReportPagination(opts);
 
-  const filtered = filterActivityReportRecords(records, search);
+  const byClub = filterActivityReportRecordsByClub(records, clubFilter);
+  const byColumn = filterActivityReportRecordsByColumns(byClub, columnFilters);
+  const filtered = filterActivityReportRecords(byColumn, search);
   const preparedRows = sortActivityReportRecords(filtered, sort, sortDir);
   const totalRecords = preparedRows.length;
 

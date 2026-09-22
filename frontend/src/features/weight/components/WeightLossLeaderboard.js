@@ -5,12 +5,13 @@
   forwardRef,
   useImperativeHandle,
 } from "react";
-import { Trophy } from "lucide-react";
 import { debugLog } from '../../../shared/utils/logger.js';
 import { resolveSponsorCoachNames } from '../../../shared/utils/sponsorCoachLabels.js';
 import { setVisibilityAwareInterval } from '../../../shared/utils/visibilityAwareInterval.js';
 import { useAutoScrollStrip } from '../../../shared/hooks/useAutoScrollStrip.js';
 import LeaderboardAvatar from '../../leaderboard/components/LeaderboardAvatar.js';
+import LeaderboardRankBadge from '../../leaderboard/components/LeaderboardRankBadge.js';
+import { sortLeaderboardByRankAsc } from '../../leaderboard/utils/leaderboardOrder.js';
 
 // ---------------------------------------------------------------------------
 // SWR cache — hierarchy-scoped (per logged-in user).
@@ -18,8 +19,8 @@ import LeaderboardAvatar from '../../leaderboard/components/LeaderboardAvatar.js
 // ---------------------------------------------------------------------------
 const WEIGHT_LB_CACHE_TTL = 5 * 60 * 1000;
 // v4: hierarchy-scoped Top N (per logged-in user)
-const WEIGHT_LB_CACHE_KEY_PREFIX = 'wv.lb.weight.v4.';
-const WEIGHT_LB_LEGACY_KEYS = ['wv.lb.weight', 'wv.lb.weight.v2', 'wv.lb.weight.v3'];
+const WEIGHT_LB_CACHE_KEY_PREFIX = 'wv.lb.weight.v5.';
+const WEIGHT_LB_LEGACY_KEYS = ['wv.lb.weight', 'wv.lb.weight.v2', 'wv.lb.weight.v3', 'wv.lb.weight.v4'];
 
 const cacheKeyFor = (userId) => `${WEIGHT_LB_CACHE_KEY_PREFIX}${userId || 'anon'}`;
 
@@ -32,7 +33,7 @@ const readWeightLBCache = (userId) => {
     const raw = localStorage.getItem(cacheKeyFor(userId));
     if (!raw) return null;
     const c = JSON.parse(raw);
-    return Date.now() - c.ts < WEIGHT_LB_CACHE_TTL ? c.data : null;
+    return Date.now() - c.ts < WEIGHT_LB_CACHE_TTL ? sortLeaderboardByRankAsc(c.data) : null;
   } catch { return null; }
 };
 const writeWeightLBCache = (userId, data) => {
@@ -40,7 +41,7 @@ const writeWeightLBCache = (userId, data) => {
     // Do not cache base64 avatars — quota blows and leaves stale null-avatar data.
     localStorage.setItem(
       cacheKeyFor(userId),
-      JSON.stringify({ data: stripWeightAvatars(data), ts: Date.now() }),
+      JSON.stringify({ data: stripWeightAvatars(sortLeaderboardByRankAsc(data)), ts: Date.now() }),
     );
   } catch {
     try { localStorage.removeItem(cacheKeyFor(userId)); } catch { /* ignore */ }
@@ -103,9 +104,10 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, email
       const result = await response.json();
 
       if (result.success && result.data && result.data.length > 0) {
-        setLeaderboardData(result.data);
+        const ordered = sortLeaderboardByRankAsc(result.data);
+        setLeaderboardData(ordered);
         setIsVisible(true);
-        writeWeightLBCache(userId, result.data);
+        writeWeightLBCache(userId, ordered);
       } else {
         debugLog(
           "⚠ [LEADERBOARD] No data available:",
@@ -189,12 +191,12 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, email
   // Get rank badge color
   const getRankColor = (rank) => {
     if (rank === 1)
-      return "bg-gradient-to-r from-yellow-400 to-yellow-600 text-white";
+      return "bg-gradient-to-br from-yellow-400 to-yellow-600 text-white";
     if (rank === 2)
-      return "bg-gradient-to-r from-gray-300 to-gray-400 text-gray-800";
+      return "bg-gradient-to-br from-gray-300 to-gray-500 text-gray-900";
     if (rank === 3)
-      return "bg-gradient-to-r from-orange-400 to-orange-600 text-white";
-    return "bg-gradient-to-r from-green-500 to-green-600 text-white";
+      return "bg-gradient-to-br from-orange-400 to-orange-600 text-white";
+    return "bg-gradient-to-br from-green-500 to-green-700 text-white";
   };
 
   // Don't render if no data or loading failed
@@ -208,17 +210,10 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, email
       key={key}
       className="inline-flex items-center gap-1.5 sm:gap-2 md:gap-3 mx-2 sm:mx-3 md:mx-4 flex-shrink-0"
     >
-      {/* Trophy + Rank */}
-      <div className="inline-flex flex-col items-center justify-center gap-0.5 flex-shrink-0 w-8 sm:w-10 md:w-12">
-        <Trophy className="w-3 h-3 sm:w-4 sm:h-4 md:w-5 md:h-5 text-yellow-500" />
-        <div
-          className={`px-1 sm:px-1.5 py-0.5 rounded-full text-[8px] sm:text-[9px] md:text-[10px] font-bold leading-none ${getRankColor(
-            user.rank,
-          )}`}
-        >
-          #{user.rank}
-        </div>
-      </div>
+      <LeaderboardRankBadge
+        rank={user.rank}
+        colorClass={getRankColor(user.rank)}
+      />
 
       {/* Profile Avatar */}
       <div className="flex-shrink-0">
@@ -271,7 +266,7 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, email
       }`}
     >
       <div className="py-0 px-0">
-        <div className="relative h-[68px] sm:h-[72px] overflow-hidden">
+        <div className="relative h-[76px] sm:h-[84px] overflow-hidden">
           <div className="absolute inset-y-0 left-0 z-10 pointer-events-none flex items-stretch">
             <div
               className="flex h-full w-[60px] sm:w-[64px] items-center justify-center rounded-r-md bg-white px-1 py-2 text-center text-[9px] sm:text-[10px] font-semibold leading-[1.2] text-green-700 shadow-sm"

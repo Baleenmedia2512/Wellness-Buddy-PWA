@@ -61,8 +61,18 @@ export default async function handler(req, res) {
     });
   }
   if (req.method === 'GET') {
-    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
-    return runService(res, () => getHabitImage(validateGetHabitImage(req.query)));
+    res.setHeader('Cache-Control', 'private, max-age=300');
+    const input = validateGetHabitImage(req.query);
+    if (input.slot) {
+      const { sendImageRedirect } = await import('../../../shared/lib/r2/sendImageRedirect.js');
+      const result = await getHabitImage(input);
+      if (result.httpStatus !== 200) {
+        return res.status(result.httpStatus).json(result.body);
+      }
+      if (sendImageRedirect(res, result.body?.r2Url)) return;
+      return res.status(404).json({ success: false, message: 'No image' });
+    }
+    return runService(res, () => getHabitImage(input));
   }
   if (req.method === 'DELETE') {
     return runService(res, () => deleteHabit(validateDeleteHabit(req.body)));

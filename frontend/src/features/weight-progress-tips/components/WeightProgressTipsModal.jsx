@@ -6,6 +6,7 @@
  */
 import React, { useMemo } from 'react';
 import { X, AlertCircle, CheckCircle, TrendingUp, TrendingDown } from 'lucide-react';
+import PhoneContactActions from '../../../shared/components/PhoneContactActions.jsx';
 import {
   generateWeightInsightsFromComparison,
   determineWeightDirection,
@@ -149,12 +150,6 @@ export function WeightProgressTipsModal({
     ? `Your weight is lower than your previous weight.`
     : `Your weight is unchanged from your previous reading.`;
 
-  const handleContactCoach = () => {
-    if (coachPhone) {
-      window.open(`tel:${coachPhone}`, '_system');
-    }
-  };
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60 px-4 py-4">
       <div
@@ -263,12 +258,10 @@ export function WeightProgressTipsModal({
           </button>
           {followedPlanCorrectly ? (
             coachPhone ? (
-              <button
-                onClick={handleContactCoach}
-                className="flex-1 py-3 rounded-xl font-semibold text-sm bg-gradient-to-r from-blue-500 to-blue-600 text-white hover:from-blue-600 hover:to-blue-700 transition flex items-center justify-center gap-2"
-              >
-                📞 Contact Your Sponsor
-              </button>
+              <div className="flex-1 py-2 px-3 rounded-xl bg-blue-50 border border-blue-200 flex flex-col items-center justify-center gap-1">
+                <p className="text-xs font-medium text-blue-600">Contact Your Sponsor</p>
+                <PhoneContactActions phone={coachPhone} size="md" />
+              </div>
             ) : (
               <div className="flex-1 py-2 px-3 rounded-xl bg-gray-100 border border-gray-200 flex items-center gap-2 text-sm text-gray-500">
                 <span>ℹ️</span>

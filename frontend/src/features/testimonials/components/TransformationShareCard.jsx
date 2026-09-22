@@ -306,7 +306,7 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
   const verb = isLoss ? 'Lost' : 'Gained';
   const issues = (testimonial?.recoveredHealthIssues ?? []).filter(Boolean).slice(0, MAX_VISIBLE_ISSUES);
   const durationText = testimonial?.durationText || '';
-  const displayName = String(userName || 'Member').trim() || 'Member';
+  const displayName = String(userName || 'Customer').trim() || 'Customer';
 
   return (
     <div

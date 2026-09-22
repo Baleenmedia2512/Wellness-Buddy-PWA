@@ -16,7 +16,7 @@ export function isValidMarathonWeightKg(value) {
 
 /** @param {number} value */
 export function roundMarathonWeightKg(value) {
-  return Math.round(value * 10) / 10;
+  return Math.round(value * 100) / 100;
 }
 
 /**
@@ -36,7 +36,7 @@ export function resolveMarathonWeightDirection(baselineWeight, compareWeight) {
  */
 export function formatMarathonKgValue(value) {
   if (!isValidMarathonWeightKg(value)) return MARATHON_WEIGHT_MISSING_LABEL;
-  return `${roundMarathonWeightKg(Number(value)).toFixed(1)} kg`;
+  return `${roundMarathonWeightKg(Number(value)).toFixed(2)} kg`;
 }
 
 /**
@@ -48,7 +48,7 @@ export function formatMarathonDayChangeSuffix(direction, weightDifference) {
   if (direction === 'unchanged' || weightDifference == null) return '';
   const abs = roundMarathonWeightKg(Math.abs(weightDifference));
   const arrow = direction === 'decrease' ? '↓' : '↑';
-  return ` ${arrow} ${abs.toFixed(1)} kg`;
+  return ` ${arrow} ${abs.toFixed(2)} kg`;
 }
 
 /**
@@ -82,7 +82,7 @@ export function formatMarathonDayComparisonLine(day0Weight, dayWeight) {
 export function formatMarathonWeightChangeLabel(weightDifference, direction) {
   if (direction === 'unchanged') return '0 kg — No Change';
   const abs = roundMarathonWeightKg(Math.abs(weightDifference));
-  const signed = direction === 'increase' ? `+${abs.toFixed(1)}` : `−${abs.toFixed(1)}`;
+  const signed = direction === 'increase' ? `+${abs.toFixed(2)}` : `−${abs.toFixed(2)}`;
   const suffix = direction === 'increase' ? '↑ Increase' : '↓ Decrease';
   return `${signed} kg ${suffix}`;
 }
@@ -140,6 +140,8 @@ export function buildMarathonRunningProgress({
   currentMarathonDay,
   dayYmds,
   weightsByDay,
+  previousMarathonEndWeight = null,
+  previousDay10Ymd = null,
 }) {
   const day0Raw = weightsByDay[0];
   const day0Weight = isValidMarathonWeightKg(day0Raw)
@@ -154,6 +156,21 @@ export function buildMarathonRunningProgress({
   }));
 
   const currentDay = days[currentMarathonDay] ?? null;
+  const previous = isValidMarathonWeightKg(previousMarathonEndWeight)
+    ? roundMarathonWeightKg(Number(previousMarathonEndWeight))
+    : null;
+  const crossMarathonCurrentWeight = currentMarathonDay === 0
+    ? day0Weight
+    : (currentDay?.dayWeight ?? null);
+
+  let weightDifference = null;
+  let direction = null;
+  let changeLabel = null;
+  if (previous != null && crossMarathonCurrentWeight != null) {
+    weightDifference = roundMarathonWeightKg(crossMarathonCurrentWeight - previous);
+    direction = resolveMarathonWeightDirection(previous, crossMarathonCurrentWeight);
+    changeLabel = formatMarathonWeightChangeLabel(weightDifference, direction);
+  }
 
   return {
     mode: 'running',
@@ -161,11 +178,14 @@ export function buildMarathonRunningProgress({
     marathonNumber,
     marathonDay: currentMarathonDay,
     currentDay0Ymd,
-    previousDay10Ymd: null,
+    previousDay10Ymd,
     day0Weight,
     currentMarathonDay0Weight: day0Weight,
-    previousMarathonEndWeight: null,
-    currentWeight: currentDay?.dayWeight ?? null,
+    previousMarathonEndWeight: previous,
+    currentWeight: crossMarathonCurrentWeight,
+    weightDifference,
+    direction,
+    changeLabel,
     days,
     currentDay,
   };
@@ -269,7 +289,32 @@ export function formatMarathonWeightDisplayValue(value, { withDirection = false,
   if (!isValidMarathonWeightKg(value)) return MARATHON_WEIGHT_MISSING_LABEL;
   const kg = roundMarathonWeightKg(Number(value));
   const arrow = withDirection && direction ? formatMarathonWeightDirectionArrow(direction) : '';
-  return `${kg.toFixed(1)} kg${arrow}`;
+  return `${kg.toFixed(2)} kg${arrow}`;
+}
+
+/**
+ * @param {object|null|undefined} progress
+ * @returns {string[]}
+ */
+export function formatMarathonCrossMarathonWhatsAppLines(progress) {
+  if (!progress || typeof progress !== 'object') return [];
+
+  const hasPrevious = isValidMarathonWeightKg(progress.previousMarathonEndWeight);
+  const hasCurrent = isValidMarathonWeightKg(progress.currentWeight);
+  if (!hasPrevious && !hasCurrent) return [];
+
+  let direction = progress.direction ?? null;
+  if (hasPrevious && hasCurrent) {
+    direction = direction || resolveMarathonWeightDirection(
+      progress.previousMarathonEndWeight,
+      progress.currentWeight,
+    );
+  }
+
+  return [
+    `Previous Marathon End weight : ${formatMarathonWeightDisplayValue(progress.previousMarathonEndWeight)}`,
+    `Current Weight : ${formatMarathonWeightDisplayValue(progress.currentWeight)}${formatMarathonWeightWhatsAppDirectionEmoji(direction)}`,
+  ];
 }
 
 /**
@@ -281,6 +326,10 @@ export function formatMarathonWeightWhatsAppNoticeLines(progress, state = {}) {
   if (!progress || typeof progress !== 'object') return [];
 
   if (progress.mode === 'running' && state.inMarathon && Number.isInteger(state.marathonDay)) {
+    if (state.marathonDay === 0) {
+      return formatMarathonCrossMarathonWhatsAppLines(progress);
+    }
+
     const dayEntry = progress.currentDay
       ?? progress.days?.[state.marathonDay]
       ?? null;
@@ -289,22 +338,7 @@ export function formatMarathonWeightWhatsAppNoticeLines(progress, state = {}) {
   }
 
   if (progress.mode === 'gap' && !state.inMarathon) {
-    const hasPrevious = isValidMarathonWeightKg(progress.previousMarathonEndWeight);
-    const hasCurrent = isValidMarathonWeightKg(progress.currentWeight);
-    if (!hasPrevious && !hasCurrent) return [];
-
-    let direction = progress.direction ?? null;
-    if (hasPrevious && hasCurrent) {
-      direction = direction || resolveMarathonWeightDirection(
-        progress.previousMarathonEndWeight,
-        progress.currentWeight,
-      );
-    }
-
-    return [
-      `Previous Marathon End weight : ${formatMarathonWeightDisplayValue(progress.previousMarathonEndWeight)}`,
-      `Current Weight : ${formatMarathonWeightDisplayValue(progress.currentWeight)}${formatMarathonWeightWhatsAppDirectionEmoji(direction)}`,
-    ];
+    return formatMarathonCrossMarathonWhatsAppLines(progress);
   }
 
   return [];
@@ -343,6 +377,23 @@ function buildMinimalRunningShareProgress({
     if (dayIndex === 0) weightsByDay[0] = currentWeightKg;
   }
 
+  const previousMarathonEndWeight = source?.previousMarathonEndWeight ?? null;
+  const previousDay10Ymd = source?.previousDay10Ymd ?? null;
+  const currentDay0Ymd = source?.currentDay0Ymd ?? null;
+
+  if (currentDay0Ymd) {
+    const dayYmds = listMarathonDayYmds(currentDay0Ymd);
+    return buildMarathonRunningProgress({
+      currentDay0Ymd,
+      marathonNumber: source?.marathonNumber ?? 1,
+      currentMarathonDay: dayIndex,
+      dayYmds,
+      weightsByDay,
+      previousMarathonEndWeight,
+      previousDay10Ymd,
+    });
+  }
+
   const day0Weight = weightsByDay[0] ?? null;
   const todayWeight = weightsByDay[dayIndex] ?? null;
   const currentDay = buildMarathonDayEntry({
@@ -355,19 +406,36 @@ function buildMinimalRunningShareProgress({
   const roundedDay0 = isValidMarathonWeightKg(day0Weight)
     ? roundMarathonWeightKg(Number(day0Weight))
     : null;
+  const previous = isValidMarathonWeightKg(previousMarathonEndWeight)
+    ? roundMarathonWeightKg(Number(previousMarathonEndWeight))
+    : null;
+  const crossMarathonCurrentWeight = dayIndex === 0
+    ? roundedDay0
+    : (isValidMarathonWeightKg(todayWeight) ? roundMarathonWeightKg(Number(todayWeight)) : null);
+
+  let weightDifference = null;
+  let direction = null;
+  let changeLabel = null;
+  if (previous != null && crossMarathonCurrentWeight != null) {
+    weightDifference = roundMarathonWeightKg(crossMarathonCurrentWeight - previous);
+    direction = resolveMarathonWeightDirection(previous, crossMarathonCurrentWeight);
+    changeLabel = formatMarathonWeightChangeLabel(weightDifference, direction);
+  }
 
   return {
     mode: 'running',
     partial: true,
     marathonNumber: source?.marathonNumber ?? 1,
     marathonDay: dayIndex,
-    currentDay0Ymd: source?.currentDay0Ymd ?? null,
+    currentDay0Ymd,
+    previousDay10Ymd,
     day0Weight: roundedDay0,
     currentMarathonDay0Weight: roundedDay0,
-    previousMarathonEndWeight: null,
-    currentWeight: isValidMarathonWeightKg(todayWeight)
-      ? roundMarathonWeightKg(Number(todayWeight))
-      : null,
+    previousMarathonEndWeight: previous,
+    currentWeight: crossMarathonCurrentWeight,
+    weightDifference,
+    direction,
+    changeLabel,
     days: [currentDay],
     currentDay,
   };
@@ -410,6 +478,8 @@ export function mergeMarathonWeightComparisonForShare(source, currentWeightKg, m
         currentMarathonDay: dayIndex,
         dayYmds,
         weightsByDay,
+        previousMarathonEndWeight: source?.previousMarathonEndWeight ?? null,
+        previousDay10Ymd: source?.previousDay10Ymd ?? null,
       });
     }
 

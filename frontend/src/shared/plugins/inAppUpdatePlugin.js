@@ -30,8 +30,11 @@ export const UpdateType = {
 
 const InAppUpdate = registerPlugin('InAppUpdate', {
   web: () => ({
-    // Web implementation (no-op for web)
     checkForUpdate: async () => {
+      debugLog('InAppUpdate: Not available on web platform');
+      return Promise.resolve();
+    },
+    startMandatoryUpdate: async () => {
       debugLog('InAppUpdate: Not available on web platform');
       return Promise.resolve();
     },
@@ -47,8 +50,7 @@ const InAppUpdate = registerPlugin('InAppUpdate', {
 });
 
 /**
- * Check for available app updates
- * Triggers the update flow automatically based on priority
+ * Check for available app updates (optional / priority-based).
  * @returns {Promise<void>}
  */
 export const checkForUpdate = async () => {
@@ -56,6 +58,19 @@ export const checkForUpdate = async () => {
     await InAppUpdate.checkForUpdate();
   } catch (error) {
     console.error('Failed to check for update:', error);
+    throw error;
+  }
+};
+
+/**
+ * Start mandatory IMMEDIATE update (server policy update_required).
+ * @returns {Promise<void>}
+ */
+export const startMandatoryUpdate = async () => {
+  try {
+    await InAppUpdate.startMandatoryUpdate();
+  } catch (error) {
+    console.error('Failed to start mandatory update:', error);
     throw error;
   }
 };

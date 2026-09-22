@@ -23,7 +23,7 @@ const LEADERBOARD_CACHE_TTL_MS = 2 * 60 * 1000;
 /**
  * Hierarchy-scoped Weight Loss Leaderboard API
  * Calculates weight loss (today vs yesterday) for the viewer's allowed hierarchy
- * Returns top performers sorted by weight loss (descending)
+ * Returns top performers sorted by weight loss (highest first = rank 1).
  *
  * Order of work (must NOT global-top then filter):
  *   logged-in user → allowed hierarchy (upline people + sibling peers only +
@@ -263,9 +263,6 @@ export default async function handler(req, res) {
         idealCoachName: resolved?.idealCoachName || null,
       };
     });
-
-    // Reverse order for display (show worst to best: Rank 10 → Rank 1)
-    withSponsors.reverse();
 
     // Intentionally omit ProfileImage (base64) — 10 avatars were ~2–4 MB and
     // dominated TTFB. UI falls back to initial-letter avatars.

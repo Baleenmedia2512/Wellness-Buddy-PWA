@@ -6,6 +6,7 @@
 import React from 'react';
 import { Monitor, Calendar, Clock, BookOpen, X } from 'lucide-react';
 import { formatLogDate, formatLogTime } from '../services/educationFormatter';
+import { handleActivityPhotoError } from '../../../shared/assets/activityPhotoTemplates';
 
 export default function EducationImagePreview({
   log, imageSrc, imageLoading, onClose, timezoneIana,
@@ -17,7 +18,7 @@ export default function EducationImagePreview({
           src={imageSrc}
           alt={log.Topic || 'Meeting Screenshot'}
           className={`w-full h-72 object-cover transition-opacity duration-300 ${imageLoading ? 'opacity-60' : 'opacity-100'}`}
-          onError={(e) => { e.target.style.display = 'none'; }}
+          onError={(e) => handleActivityPhotoError(e, 'education')}
         />
       ) : (
         <div className="w-full h-72 bg-gradient-to-br from-purple-100 to-indigo-100 flex items-center justify-center">

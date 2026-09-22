@@ -281,6 +281,35 @@ export function getFullReportingMembers(coachId, context) {
 }
 
 /**
+ * Ancestors on the CoachId chain above a coach (sponsor, sponsor's sponsor, …).
+ * Pure — ancestors must already be present in context.userById.
+ * @param {number} coachId
+ * @param {ReportingContext} context
+ * @returns {TeamUser[]}
+ */
+export function getUplineMembers(coachId, context) {
+  const rootId = Number(coachId);
+  if (!Number.isFinite(rootId) || !context?.userById) return [];
+
+  const viewer = context.userById.get(rootId);
+  if (!viewer) return [];
+
+  const result = [];
+  let walkId = Number(viewer.CoachId);
+  const visited = new Set([rootId]);
+
+  while (Number.isFinite(walkId) && !visited.has(walkId)) {
+    visited.add(walkId);
+    const ancestor = context.userById.get(walkId);
+    if (!ancestor) break;
+    result.push(ancestor);
+    walkId = Number(ancestor.CoachId);
+  }
+
+  return result;
+}
+
+/**
  * Return reporting members for a coach.
  * @param {number} coachId
  * @param {'direct'|'full'} scope

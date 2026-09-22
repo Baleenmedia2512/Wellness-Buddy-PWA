@@ -17,7 +17,7 @@
  *   weightResult    \xe2\x80\x94 { weightValue, unit }
  *   weightDiff      \xe2\x80\x94 { previous, previousDate, change } | null
  *   idealWeight     \xe2\x80\x94 { value, min, unit, heightCm } | null
- * ---------------------------------------------------------------------------
+ * ---------------------------------------------------------------------------------
  */
 import React, { forwardRef } from 'react';
 import { getVersionString } from '../../config/version';

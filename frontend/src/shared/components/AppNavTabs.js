@@ -65,7 +65,7 @@ export default function AppNavTabs({
         iconClass="text-emerald-700"
         labelActiveClass="text-emerald-900"
         labelClass="text-emerald-800"
-        label="Programs"
+        label="Programmes"
         ariaLabel="Enrollment"
       />
       <NavTabButton

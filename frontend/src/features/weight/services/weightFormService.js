@@ -83,7 +83,12 @@ export function computeWeightDiff(current, previous) {
 /** Normalises a raw image string to a usable `<img src>`. */
 export function formatWeightImageSrc(raw) {
   if (!raw) return null;
-  return raw.startsWith('data:image') ? raw : `data:image/jpeg;base64,${raw}`;
+  const value = String(raw).trim();
+  if (!value) return null;
+  if (value.startsWith('http') || value.startsWith('/')) {
+    return value;
+  }
+  return null;
 }
 
 /**
@@ -97,8 +102,8 @@ export function computeIdealWeightRange(heightCm) {
   const idealMin = 19 * heightM * heightM;
   const idealMax = 23 * heightM * heightM;
   return {
-    min: Math.round(idealMin * 10) / 10,
-    value: Math.round(idealMax * 10) / 10,
+    min: Math.round(idealMin * 100) / 100,
+    value: Math.round(idealMax * 100) / 100,
     unit: 'kg',
     heightCm: Math.round(h),
   };
@@ -134,7 +139,7 @@ export function pickIdealWeightKg(currentKg, idealWeight) {
 export function pickIdealWeightDisplay(currentKg, idealWeight) {
   const kg = pickIdealWeightKg(currentKg, idealWeight);
   if (kg == null) return null;
-  return `${kg} ${idealWeight.unit}`;
+  return `${Number(kg).toFixed(2)} ${idealWeight.unit}`;
 }
 
 /** Human-readable delta since the prior weight log. */

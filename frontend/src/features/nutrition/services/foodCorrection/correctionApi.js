@@ -2,6 +2,7 @@
 import { cacheManager } from '../../../../shared/services/cacheManager';
 import { debugLog } from '../../../../shared/utils/logger.js';
 import { pickNutrition, scaleNutritionFields, NUTRITION_KEYS, dedupeSearchBuckets } from '../../domain/nutritionFields.js';
+import { filterRegularFoodSearchItems } from '../../domain/foodSuggestionRank.js';
 
 const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:3000';
 
@@ -86,11 +87,11 @@ export async function searchFoods(query, userId) {
     myItems: data.myItems || [],
     communityItems: data.communityItems || [],
   }, trimmed);
-  const all = [
+  const all = filterRegularFoodSearchItems([
     ...buckets.masterItems,
     ...buckets.myItems,
     ...buckets.communityItems,
-  ];
+  ]);
   const results = all.map(toFoodSearchItem);
   _foodSearchCache.set(cacheKey, results);
   return results;

@@ -8,19 +8,26 @@ import {
   DEFAULT_BUSINESS_TIMEZONE,
 } from '../../../shared/utils/datetimeUtils';
 import { useGoodHabitDetailImages } from '../hooks/useGoodHabitDetailImages';
+import { activityPhotoTemplate, handleActivityPhotoError } from '../../../shared/assets/activityPhotoTemplates';
 
 function PhotoSlot({ src, loading, onOpen }) {
-  const canOpen = Boolean(src) && typeof onOpen === 'function';
+  const displaySrc = src || activityPhotoTemplate('good-habit');
+  const canOpen = Boolean(displaySrc) && typeof onOpen === 'function';
   return (
     <button
       type="button"
       disabled={!canOpen}
-      onClick={() => onOpen({ src, label: 'Good Habit' })}
+      onClick={() => onOpen({ src: displaySrc, label: 'Good Habit' })}
       className="flex h-56 w-full items-center justify-center overflow-hidden rounded-xl border border-emerald-200 bg-emerald-50/60 disabled:cursor-default"
       aria-label={canOpen ? 'View Good Habit photo full size' : 'Good Habit photo'}
     >
-      {src ? (
-        <img src={src} alt="Good Habit photo" className="h-full w-full object-cover" />
+      {displaySrc ? (
+        <img
+          src={displaySrc}
+          alt="Good Habit photo"
+          className="h-full w-full object-cover"
+          onError={(e) => handleActivityPhotoError(e, 'good-habit')}
+        />
       ) : loading ? (
         <Loader2 className="h-6 w-6 animate-spin text-emerald-600" aria-label="Loading photo" />
       ) : (
@@ -66,6 +73,7 @@ function FullScreenPhoto({ src, label, onClose }) {
         alt={`${label} photo full size`}
         className="max-h-full max-w-full object-contain"
         onClick={(e) => e.stopPropagation()}
+        onError={(e) => handleActivityPhotoError(e, 'good-habit')}
       />
     </div>
   );
