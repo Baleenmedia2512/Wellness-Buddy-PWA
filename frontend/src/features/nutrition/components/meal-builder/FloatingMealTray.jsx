@@ -1,6 +1,6 @@
 /**
  * Compact sticky meal tray — keep search usable while building a meal.
- * Thumbs + +N | Edit (opens sheet) | Clear all | Save Meal
+ * Narrow phones: review row on top, Clear + Save full-width below (avoids "Y.." truncation).
  */
 import React from 'react';
 import { ChevronUp } from 'lucide-react';
@@ -30,15 +30,15 @@ export default function FloatingMealTray({
 
   return (
     <div
-      className={`safe-area-pb border-t border-green-100 bg-white/95 backdrop-blur-sm shadow-[0_-6px_24px_rgba(0,0,0,0.08)] ${className}`}
+      className={`border-t border-green-100 bg-white/95 backdrop-blur-sm shadow-[0_-6px_24px_rgba(0,0,0,0.08)] ${className}`}
       role="region"
       aria-label={`Meal selection, ${count} item${count === 1 ? '' : 's'}`}
     >
-      <div className="px-3 pt-2.5 pb-3 flex items-center gap-2">
+      <div className="px-3 pt-2.5 pb-3 flex flex-col gap-2">
         <button
           type="button"
           onClick={onOpenSheet}
-          className="flex items-center gap-2.5 flex-1 min-w-0 rounded-xl bg-green-50 border border-green-100 px-2.5 py-2 text-left active:bg-green-100"
+          className="flex items-center gap-2.5 w-full min-w-0 rounded-xl bg-green-50 border border-green-100 px-2.5 py-2 text-left active:bg-green-100"
           aria-label={`Review meal, ${count} items. Edit quantities`}
         >
           <div className="flex items-center -space-x-2 flex-shrink-0">
@@ -62,21 +62,23 @@ export default function FloatingMealTray({
           <ChevronUp className="w-4 h-4 text-green-700 flex-shrink-0" aria-hidden />
         </button>
 
-        <button
-          type="button"
-          onClick={onClear}
-          className="flex-shrink-0 px-2.5 py-3 text-xs font-semibold text-green-700 hover:text-green-800 active:text-green-900"
-        >
-          Clear all
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={onClear}
+            className="flex-shrink-0 px-3 py-3 text-xs font-semibold text-green-700 hover:text-green-800 active:text-green-900"
+          >
+            Clear all
+          </button>
 
-        <button
-          type="button"
-          onClick={onSave}
-          className="flex-shrink-0 px-4 py-3 bg-green-600 hover:bg-green-700 active:bg-green-800 text-white text-xs font-bold rounded-xl shadow-sm"
-        >
-          {saveMealLabel(count)}
-        </button>
+          <button
+            type="button"
+            onClick={onSave}
+            className="flex-1 min-w-0 px-4 py-3 bg-green-600 hover:bg-green-700 active:bg-green-800 text-white text-xs font-bold rounded-xl shadow-sm"
+          >
+            {saveMealLabel(count)}
+          </button>
+        </div>
       </div>
     </div>
   );

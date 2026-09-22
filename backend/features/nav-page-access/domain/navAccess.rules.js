@@ -43,8 +43,8 @@ export const DEFAULT_NAV_ACCESS_MATRIX = Object.freeze({
 /**
  * Map account Role → matrix key.
  * `upline` shares the Sponsor (`coach`) row.
- * A Customer (`user`) who has a team (own downline or Sponsor / Co-Sponsor
- * seat) uses the Sponsor row — product "sponsor" is not profile Role.
+ * A Customer (`user`) who has own downline members (CoachId = them) uses the
+ * Sponsor row — Community ID / joint coach-team seat alone does not.
  * Unknown / empty → `user` (Customer).
  *
  * @param {string|null|undefined} role
@@ -147,6 +147,7 @@ export function allPagesAllowed() {
  * @param {Record<string, boolean>} pageMap
  * @returns {string[]}
  */
+
 export function allowedPageKeys(pageMap) {
   return NAV_PAGE_KEYS.filter((k) => Boolean(pageMap?.[k]));
 }

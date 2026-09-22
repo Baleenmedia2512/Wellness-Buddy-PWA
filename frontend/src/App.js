@@ -1050,47 +1050,45 @@ function WellnessValleyApp() {
   // Prefer userId (phone users may have no email yet). Keep prior pages while
   // refetching so tabs do not flash "all open" (looks like admin) then snap back.
   // Also sync accountRole → userRole (server is source of truth for UI privilege).
-  useEffect(() => {
-    let cancelled = false;
-
+  // Call reloadNavAccess() after Page Access save so mobile nav updates instantly.
+  const navAccessLoadGenRef = useRef(0);
+  const reloadNavAccess = useCallback(async () => {
     if ((!user?.email && !user?.id) || !isFlagEnabled('ff.nav-page-access')) {
-      return undefined;
+      return;
     }
-
-    const loadNavAccess = async () => {
-      try {
-        const userId = (await getUserId(user)) || user?.id || null;
-        const data = await fetchNavAccessForMe({
-          requesterUserId: userId,
-          requesterEmail: user.email || user.Email || undefined,
-          apiBaseUrl,
-        });
-        if (cancelled) return;
-        const pages = data?.pages && typeof data.pages === 'object' ? data.pages : null;
-        if (pages) {
-          navAccessPagesRef.current = pages;
-          setNavAccessPages(pages);
-        }
-        // Privilege chrome (admin FAB) stays on account Role. Nav tabs use `pages`,
-        // which already elevates a customer-with-team to the Sponsor matrix.
-        const serverRole = data?.accountRole ?? data?.role;
-        if (serverRole != null) {
-          setUserRole(normalizeAppRole(serverRole));
-        }
-      } catch (err) {
-        // Keep previous ACL on failure — do not fail-open mid-session.
-        // Do NOT keep prior role across a new login: resetApp clears both.
-        if (!cancelled) {
-          console.warn('[nav-access] for-me failed; keeping prior ACL', err?.message || err);
-        }
+    const gen = ++navAccessLoadGenRef.current;
+    try {
+      const userId = (await getUserId(user)) || user?.id || null;
+      const data = await fetchNavAccessForMe({
+        requesterUserId: userId,
+        requesterEmail: user.email || user.Email || undefined,
+        apiBaseUrl,
+      });
+      if (gen !== navAccessLoadGenRef.current) return;
+      const pages = data?.pages && typeof data.pages === 'object' ? data.pages : null;
+      if (pages) {
+        navAccessPagesRef.current = pages;
+        setNavAccessPages(pages);
       }
-    };
+      // Privilege chrome (admin FAB) stays on account Role. Nav tabs use `pages`,
+      // which already elevates a customer-with-team to the Sponsor matrix.
+      const serverRole = data?.accountRole ?? data?.role;
+      if (serverRole != null) {
+        setUserRole(normalizeAppRole(serverRole));
+      }
+    } catch (err) {
+      if (gen !== navAccessLoadGenRef.current) return;
+      // Keep previous ACL on failure — do not fail-open mid-session.
+      console.warn('[nav-access] for-me failed; keeping prior ACL', err?.message || err);
+    }
+  }, [user, apiBaseUrl]);
 
-    loadNavAccess();
+  useEffect(() => {
+    void reloadNavAccess();
 
     const onVisible = () => {
       if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
-        loadNavAccess();
+        void reloadNavAccess();
       }
     };
     if (typeof document !== 'undefined') {
@@ -1098,12 +1096,12 @@ function WellnessValleyApp() {
     }
 
     return () => {
-      cancelled = true;
+      navAccessLoadGenRef.current += 1; // invalidate in-flight
       if (typeof document !== 'undefined') {
         document.removeEventListener('visibilitychange', onVisible);
       }
     };
-  }, [user?.email, user?.id, apiBaseUrl]);
+  }, [reloadNavAccess]);
 
   const [showWellnessScore, setShowWellnessScore] = useState(false);
   const [showAdminConfigSetup, setShowAdminConfigSetup] = useState(false);
@@ -8117,8 +8115,10 @@ function WellnessValleyApp() {
           user={user}
           apiBaseUrl={apiBaseUrl}
           initialTab={adminConfigTab}
+          onNavAccessSaved={reloadNavAccess}
           onBack={() => {
             setShowAdminConfigSetup(false);
+            void reloadNavAccess();
             refreshOnTabFocus();
             const currentWvPage = window.history.state?.wvPage;
             if (currentWvPage && currentWvPage !== 'main') window.history.back();

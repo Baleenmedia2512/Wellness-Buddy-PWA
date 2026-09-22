@@ -36,7 +36,8 @@ async function loadMatrix() {
 
 /**
  * Authenticated member: pages allowed for their effective nav role.
- * Account Role stays on the payload; members who sponsor a team use Sponsor pages.
+ * Account Role stays on the payload; customers with own downline use Sponsor pages.
+ * Community ID / joint coach-team seat alone does not elevate.
  */
 export async function getForMe({ requesterUserId, requesterEmail }) {
   const requester = await resolveRequester({ requesterUserId, requesterEmail });
