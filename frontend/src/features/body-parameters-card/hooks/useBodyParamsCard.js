@@ -40,7 +40,7 @@ import {
 function toNationalDigits(phone) {
   const d = String(phone || '').replace(/\D/g, '');
   if (d.length === 12 && d.startsWith('91')) return d.slice(2);
-  if (d.length === 11 && d.startsWith('0'))  return d.slice(1);
+  if (d.length === 11 && d.startsWith('0')) return d.slice(1);
   return d;
 }
 
@@ -68,22 +68,22 @@ function isActivatedPhoneErrorMessage(msg) {
 function toPhoneSuggestion(m) {
   if (!m) return null;
   return {
-    userId:      m.userId,
-    userName:    m.userName,
+    userId: m.userId,
+    userName: m.userName,
     phoneNumber: m.phoneNumber,
-    heightCm:    m.heightCm != null ? m.heightCm : null,
-    bmr:         m.bmr != null ? m.bmr : null,
-    gender:      m.gender ?? null,
-    age:         m.age != null ? m.age : null,
+    heightCm: m.heightCm != null ? m.heightCm : null,
+    bmr: m.bmr != null ? m.bmr : null,
+    gender: m.gender ?? null,
+    age: m.age != null ? m.age : null,
     visceralFat: m.visceralFat != null ? m.visceralFat : null,
-    bodyAge:     m.bodyAge != null ? m.bodyAge : null,
-    chestCm:     m.chestCm != null ? m.chestCm : null,
-    waistCm:     m.waistCm != null ? m.waistCm : null,
-    hipCm:       m.hipCm != null ? m.hipCm : null,
-    fatPercent:  m.fatPercent != null ? m.fatPercent : null,
-    bmi:         m.bmi != null ? m.bmi : null,
-    weightKg:    m.weightKg != null ? m.weightKg : null,
-    dietType:    m.dietType ?? null,
+    bodyAge: m.bodyAge != null ? m.bodyAge : null,
+    chestCm: m.chestCm != null ? m.chestCm : null,
+    waistCm: m.waistCm != null ? m.waistCm : null,
+    hipCm: m.hipCm != null ? m.hipCm : null,
+    fatPercent: m.fatPercent != null ? m.fatPercent : null,
+    bmi: m.bmi != null ? m.bmi : null,
+    weightKg: m.weightKg != null ? m.weightKg : null,
+    dietType: m.dietType ?? null,
     physicalActivityLevel: m.physicalActivityLevel ?? null,
     recoveredHealthIssues: Array.isArray(m.recoveredHealthIssues)
       ? m.recoveredHealthIssues
@@ -176,20 +176,20 @@ function mergePrefillFields(member, prefill) {
 function buildEmptyForm(timezoneIana) {
   const tz = resolveBcmDisplayTimezone(timezoneIana);
   return {
-    name:         '',
-    phoneNumber:  '',
-    age:          '',
-    gender:       '',
-    heightCm:     '',
-    weightKg:     '',
-    bmi:          '',
-    fatPercent:   '',
-    bmr:          '',
-    visceralFat:  '',
-    bodyAge:      '',
-    chestCm:      '',
-    waistCm:      '',
-    hipCm:        '',
+    name: '',
+    phoneNumber: '',
+    age: '',
+    gender: '',
+    heightCm: '',
+    weightKg: '',
+    bmi: '',
+    fatPercent: '',
+    bmr: '',
+    visceralFat: '',
+    bodyAge: '',
+    chestCm: '',
+    waistCm: '',
+    hipCm: '',
     recordedDate: todayBusinessDate(tz),
     recordedTime: formatBcmFormTime(null, tz),
     locationName: '',
@@ -204,27 +204,27 @@ function cardToFormState(card, timezoneIana) {
     ? card.recoveredHealthIssues.filter(Boolean)
     : [];
   return {
-    name:         card.name ? normalizeName(card.name) : '',
-    phoneNumber:  card.phoneNumber  ?? '',
-    age:          card.age          != null ? String(card.age)         : '',
-    gender:       card.gender        ?? '',
-    heightCm:     card.heightCm     != null ? String(card.heightCm)    : '',
-    weightKg:     card.weightKg     != null ? String(card.weightKg)    : '',
-    bmi:          card.bmi          != null ? String(card.bmi)         : '',
-    fatPercent:   card.fatPercent   != null ? String(card.fatPercent)  : '',
-    bmr:          card.bmr          != null ? String(card.bmr)         : '',
-    visceralFat:  card.visceralFat  != null ? String(card.visceralFat) : '',
-    bodyAge:      card.bodyAge      != null ? String(card.bodyAge)     : '',
-    chestCm:      card.chestCm      != null ? String(card.chestCm)     : '',
-    waistCm:      card.waistCm      != null ? String(card.waistCm)     : '',
-    hipCm:        card.hipCm        != null ? String(card.hipCm)       : '',
+    name: card.name ? normalizeName(card.name) : '',
+    phoneNumber: card.phoneNumber ?? '',
+    age: card.age != null ? String(card.age) : '',
+    gender: card.gender ?? '',
+    heightCm: card.heightCm != null ? String(card.heightCm) : '',
+    weightKg: card.weightKg != null ? String(card.weightKg) : '',
+    bmi: card.bmi != null ? String(card.bmi) : '',
+    fatPercent: card.fatPercent != null ? String(card.fatPercent) : '',
+    bmr: card.bmr != null ? String(card.bmr) : '',
+    visceralFat: card.visceralFat != null ? String(card.visceralFat) : '',
+    bodyAge: card.bodyAge != null ? String(card.bodyAge) : '',
+    chestCm: card.chestCm != null ? String(card.chestCm) : '',
+    waistCm: card.waistCm != null ? String(card.waistCm) : '',
+    hipCm: card.hipCm != null ? String(card.hipCm) : '',
     recordedDate: card.recordedDate
       ? String(card.recordedDate).substring(0, 10)
       : todayBusinessDate(tz),
     recordedTime: formatBcmFormTime(resolveBcmCardDisplayTimestamp(card), tz),
     locationName: card.locationName ?? '',
     recoveredHealthIssues: issues,
-    dietType:     card.dietType ? String(card.dietType).trim() : '',
+    dietType: card.dietType ? String(card.dietType).trim() : '',
     physicalActivityLevel: card.physicalActivityLevel
       ? String(card.physicalActivityLevel).trim()
       : '',
@@ -242,19 +242,17 @@ export function useBodyParamsCard({
   const displayTimezone = resolveBcmDisplayTimezone(user);
 
   const [form, setForm] = useState(() => cardToFormState(existingCard, displayTimezone));
-  const [isSaving, setIsSaving]           = useState(false);
-  const [error, setError]                 = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState('');
   const [phoneFieldError, setPhoneFieldError] = useState('');
   const [attemptedSubmit, setAttemptedSubmit] = useState(false);
-  const [nameTouched, setNameTouched]     = useState(false);
+  const [nameTouched, setNameTouched] = useState(false);
   const [phoneStatusNonce, setPhoneStatusNonce] = useState(0);
-  const [savedCard, setSavedCard]         = useState(null);
-  const [shareUrl, setShareUrl]           = useState('');
+  const [savedCard, setSavedCard] = useState(null);
+  const [shareUrl, setShareUrl] = useState('');
   /** True after any user-driven field change since last open/reset/save. */
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
-  // Track whether the user manually typed in the BMI field.
-  // When true, BMI auto-fill is disabled.
   const [bmiUserEdited, setBmiUserEdited] = useState(false);
   const [bmrUserEdited, setBmrUserEdited] = useState(false);
   const [coachUserId, setCoachUserId] = useState(() => user?.id || null);
@@ -272,7 +270,7 @@ export function useBodyParamsCard({
   const [phoneSuggestions, setPhoneSuggestions] = useState([]);
   // Filtering is now synchronous (client-side); always false. Kept for API compatibility.
   const phoneSearchLoading = false;
-  const phoneDebounceRef    = useRef(null);
+  const phoneDebounceRef = useRef(null);
   const phoneStatusDebounceRef = useRef(null);
   const phoneStatusRequestIdRef = useRef(0);
   /** Cancels in-flight transformation-photo prefill (phone-status or edit). */
@@ -413,8 +411,6 @@ export function useBodyParamsCard({
     ].map((v) => (v == null ? '' : String(v))).join('\u0001');
   }, [existingCard]);
 
-  // Reload form when the modal opens or the card values actually change.
-  // useLayoutEffect so saved / fetched values paint on the first open frame.
   // Create: prefill Venue from header. Edit: use the card's saved Venue.
   useLayoutEffect(() => {
     if (!isOpen) return;
@@ -495,7 +491,7 @@ export function useBodyParamsCard({
           setCoachUserId(data.userId);
         }
       })
-      .catch(() => {});
+      .catch(() => { });
 
     return () => { cancelled = true; };
   }, [user?.email]);
@@ -528,7 +524,7 @@ export function useBodyParamsCard({
           .filter(Boolean);
         setPhoneSuggestions(results);
       })
-      .catch(() => {});
+      .catch(() => { });
     return () => { cancelled = true; };
   }, [coachUserId]);
 
@@ -564,14 +560,14 @@ export function useBodyParamsCard({
 
   /** Fat% healthy-range hint based on selected gender. */
   const fatHint = useMemo(() => {
-    if (form.gender === 'Male')   return '10–20%';
+    if (form.gender === 'Male') return '10–20%';
     if (form.gender === 'Female') return '20–30%';
     return 'Male: 10–20 / Female: 20–30';
   }, [form.gender]);
 
   /** Short range string used as placeholder inside the Fat% input field. */
   const fatPlaceholder = useMemo(() => {
-    if (form.gender === 'Male')   return '10–20%';
+    if (form.gender === 'Male') return '10–20%';
     if (form.gender === 'Female') return '20–30%';
     return '%';
   }, [form.gender]);
@@ -876,20 +872,20 @@ export function useBodyParamsCard({
     ).trim();
     if (onSaveStart) {
       onSaveStart({
-        name:         form.name.trim(),
-        phoneNumber:  form.phoneNumber.trim(),
-        age:          form.age,
-        gender:       form.gender,
-        heightCm:     form.heightCm,
-        weightKg:     form.weightKg,
-        bmi:          form.bmi,
-        fatPercent:   form.fatPercent,
-        bmr:          form.bmr,
-        visceralFat:  form.visceralFat,
-        bodyAge:      form.bodyAge,
-        chestCm:      toOptionalNum(form.chestCm),
-        waistCm:      toOptionalNum(form.waistCm),
-        hipCm:        toOptionalNum(form.hipCm),
+        name: form.name.trim(),
+        phoneNumber: form.phoneNumber.trim(),
+        age: form.age,
+        gender: form.gender,
+        heightCm: form.heightCm,
+        weightKg: form.weightKg,
+        bmi: form.bmi,
+        fatPercent: form.fatPercent,
+        bmr: form.bmr,
+        visceralFat: form.visceralFat,
+        bodyAge: form.bodyAge,
+        chestCm: toOptionalNum(form.chestCm),
+        waistCm: toOptionalNum(form.waistCm),
+        hipCm: toOptionalNum(form.hipCm),
         recordedDate: form.recordedDate,
         // Create → createdAt; Update → stamp updatedAt as now (share/list prefer updatedAt).
         createdAt: isEditMode
@@ -910,23 +906,23 @@ export function useBodyParamsCard({
     try {
       const photoExtras = transformationPhotos.payloadExtras();
       const payload = {
-        createdBy:   coachUserId,
-        userId:      targetUserId,
-        name:        form.name.trim(),
+        createdBy: coachUserId,
+        userId: targetUserId,
+        name: form.name.trim(),
         phoneNumber: cleanPhone(form.phoneNumber),
-        age:         form.age          || undefined,
-        gender:      form.gender       || undefined,
-        heightCm:    form.heightCm     || undefined,
-        weightKg:    form.weightKg     || undefined,
-        bmi:         form.bmi          || undefined,
-        fatPercent:  form.fatPercent   || undefined,
-        bmr:         form.bmr          || undefined,
+        age: form.age || undefined,
+        gender: form.gender || undefined,
+        heightCm: form.heightCm || undefined,
+        weightKg: form.weightKg || undefined,
+        bmi: form.bmi || undefined,
+        fatPercent: form.fatPercent || undefined,
+        bmr: form.bmr || undefined,
         bmrManualOverride: bmrUserEdited,
-        visceralFat: form.visceralFat  || undefined,
-        bodyAge:     form.bodyAge      || undefined,
-        chestCm:     toOptionalNum(form.chestCm),
-        waistCm:     toOptionalNum(form.waistCm),
-        hipCm:       toOptionalNum(form.hipCm),
+        visceralFat: form.visceralFat || undefined,
+        bodyAge: form.bodyAge || undefined,
+        chestCm: toOptionalNum(form.chestCm),
+        waistCm: toOptionalNum(form.waistCm),
+        hipCm: toOptionalNum(form.hipCm),
         recordedDate: form.recordedDate || undefined,
         locationName: locationNameToSave,
         recoveredHealthIssues: Array.isArray(form.recoveredHealthIssues)
@@ -954,19 +950,19 @@ export function useBodyParamsCard({
       // the saved measurements (API is source of truth after persist).
       const fullCard = {
         ...cardCore,
-        age:          pickSavedField(cardCore.age, form.age),
-        phoneNumber:  pickSavedField(cardCore.phoneNumber, form.phoneNumber),
-        gender:       pickSavedField(cardCore.gender, form.gender),
-        heightCm:     pickSavedField(cardCore.heightCm, form.heightCm),
-        weightKg:     pickSavedField(cardCore.weightKg, form.weightKg),
-        bmi:          pickSavedField(cardCore.bmi, form.bmi),
-        fatPercent:   pickSavedField(cardCore.fatPercent, form.fatPercent),
-        bmr:          pickSavedField(cardCore.bmr, form.bmr),
-        visceralFat:  pickSavedField(cardCore.visceralFat, form.visceralFat),
-        bodyAge:      pickSavedField(cardCore.bodyAge, form.bodyAge),
-        chestCm:      pickSavedField(cardCore.chestCm, form.chestCm),
-        waistCm:      pickSavedField(cardCore.waistCm, form.waistCm),
-        hipCm:        pickSavedField(cardCore.hipCm, form.hipCm),
+        age: pickSavedField(cardCore.age, form.age),
+        phoneNumber: pickSavedField(cardCore.phoneNumber, form.phoneNumber),
+        gender: pickSavedField(cardCore.gender, form.gender),
+        heightCm: pickSavedField(cardCore.heightCm, form.heightCm),
+        weightKg: pickSavedField(cardCore.weightKg, form.weightKg),
+        bmi: pickSavedField(cardCore.bmi, form.bmi),
+        fatPercent: pickSavedField(cardCore.fatPercent, form.fatPercent),
+        bmr: pickSavedField(cardCore.bmr, form.bmr),
+        visceralFat: pickSavedField(cardCore.visceralFat, form.visceralFat),
+        bodyAge: pickSavedField(cardCore.bodyAge, form.bodyAge),
+        chestCm: pickSavedField(cardCore.chestCm, form.chestCm),
+        waistCm: pickSavedField(cardCore.waistCm, form.waistCm),
+        hipCm: pickSavedField(cardCore.hipCm, form.hipCm),
         recordedDate: pickSavedField(cardCore.recordedDate, form.recordedDate),
         createdAt: pickSavedField(cardCore.createdAt, undefined),
         updatedAt: pickSavedField(cardCore.updatedAt, undefined),
