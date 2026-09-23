@@ -424,17 +424,11 @@ test(
       otpInputs
     ).toHaveCount(4);
 
-    for (
-      let i = 0;
-      i < LOGIN_OTP.length;
-      i++
-    ) {
-
-      await otpInputs
-        .nth(i)
-        .fill(
-          LOGIN_OTP[i]
-        );
+    for (let i = 0; i < LOGIN_OTP.length; i++) {
+      const input = otpInputs.nth(i);
+      await expect(input).toBeVisible({ timeout: 10000 });
+      await input.focus();
+      await input.fill(LOGIN_OTP[i]);
     }
 
     // ============================================================
@@ -2654,18 +2648,18 @@ test(
       // OPEN PROGRAMS
       // ----------------------------------------------------------
 
-      await coachPage
-        .getByRole(
-          'button',
-          {
-            name:
-              'Enrollment',
+      const coachEnrollmentBtn = coachPage.getByRole(
+        'button',
+        {
+          name:
+            'Enrollment',
 
-            exact:
-              true,
-          }
-        )
-        .click();
+          exact:
+            true,
+        }
+      );
+      await expect(coachEnrollmentBtn).toBeVisible({ timeout: 20000 });
+      await coachEnrollmentBtn.click();
 
 
       await expect(
@@ -2959,18 +2953,18 @@ test(
       // OPEN PROGRAMS
       // ----------------------------------------------------------
 
-      await normalUserPage
-        .getByRole(
-          'button',
-          {
-            name:
-              'Enrollment',
+      const normalUserEnrollmentBtn = normalUserPage.getByRole(
+        'button',
+        {
+          name:
+            'Enrollment',
 
-            exact:
-              true,
-          }
-        )
-        .click();
+          exact:
+            true,
+        }
+      );
+      await expect(normalUserEnrollmentBtn).toBeVisible({ timeout: 20000 });
+      await normalUserEnrollmentBtn.click();
 
 
       await expect(

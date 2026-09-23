@@ -1176,6 +1176,7 @@ test.describe('Homepage', () => {
     // 2. SECOND IMAGE UPLOAD & PREVIOUS WORKOUT KCAL MAINTENANCE CHECK
     // ============================================================
     const galleryButton2 = page.getByRole('button', { name: 'Choose from gallery' });
+    await expect(galleryButton2).toBeVisible({ timeout: 15000 });
     const [fileChooser2] = await Promise.all([
       page.waitForEvent('filechooser'),
       galleryButton2.click(),
