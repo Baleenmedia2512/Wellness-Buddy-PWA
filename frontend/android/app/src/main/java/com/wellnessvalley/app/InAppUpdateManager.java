@@ -349,10 +349,10 @@ public class InAppUpdateManager {
             }
         }
 
-        // Mandatory updates cannot be bypassed — re-check and restart IMMEDIATE flow.
+        // Do NOT auto-restart IMMEDIATE after cancel/fail — that loops Play UI.
+        // App stays hard-blocked; JS shows "Update Now" for an explicit retry.
         if (mandatoryMode) {
-            Log.d(TAG, "Mandatory update — re-checking after user dismissal...");
-            activity.runOnUiThread(() -> checkForMandatoryUpdate());
+            Log.d(TAG, "Mandatory update dismissed — waiting for explicit retry from UI");
         }
     }
     
@@ -363,7 +363,8 @@ public class InAppUpdateManager {
         appUpdateManager.getAppUpdateInfo().addOnSuccessListener(appUpdateInfo -> {
             int availability = appUpdateInfo.updateAvailability();
 
-            // Resume IMMEDIATE update if in progress (mandatory or optional).
+            // Only resume an update that is already in progress (download/install).
+            // Do not re-open Play when UPDATE_AVAILABLE after cancel — that loops.
             if (availability == UpdateAvailability.DEVELOPER_TRIGGERED_UPDATE_IN_PROGRESS) {
                 try {
                     appUpdateManager.startUpdateFlowForResult(
@@ -378,13 +379,6 @@ public class InAppUpdateManager {
                         updateListener.onUpdateFailed(-3, e.getMessage());
                     }
                 }
-                return;
-            }
-
-            // Mandatory mode: re-check Play when app returns from background.
-            if (mandatoryMode && availability == UpdateAvailability.UPDATE_AVAILABLE) {
-                Log.d(TAG, "Mandatory update still required on resume — restarting IMMEDIATE flow");
-                startUpdate(appUpdateInfo, AppUpdateType.IMMEDIATE);
                 return;
             }
 

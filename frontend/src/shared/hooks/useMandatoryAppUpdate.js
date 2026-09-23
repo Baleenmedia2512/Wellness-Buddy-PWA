@@ -3,13 +3,15 @@ import {
   shouldRunMandatoryUpdate,
   startMandatoryUpdateFlow,
   nextPhaseFromNativeEvent,
+  shouldAutoStartPlayOnForeground,
   getMandatoryUpdatePlatform,
 } from '../services/mandatoryAppUpdate.js';
 
 /**
  * Drives platform-specific mandatory update flows when the server policy blocks the app.
  *
- * Android: triggers Google Play IMMEDIATE update via InAppUpdatePlugin.
+ * Android: triggers Google Play IMMEDIATE update once when blocked; after cancel/fail
+ * waits for an explicit "Update Now" tap (avoids Play update loops).
  * iOS: blocking screen only — user opens App Store via AppVersionHardBlock.
  *
  * @param {{ blocked: boolean, status: string, refresh: () => Promise<void> }} versionPolicy
@@ -19,8 +21,14 @@ export function useMandatoryAppUpdate(versionPolicy) {
   const [playUnavailable, setPlayUnavailable] = useState(false);
   const listenersAttached = useRef(false);
   const activeRef = useRef(false);
+  const autoStartedForBlockRef = useRef(false);
+  const phaseRef = useRef(phase);
 
   const platform = getMandatoryUpdatePlatform();
+
+  useEffect(() => {
+    phaseRef.current = phase;
+  }, [phase]);
 
   const triggerAndroidMandatoryUpdate = useCallback(async () => {
     if (platform !== 'android') return;
@@ -54,18 +62,19 @@ export function useMandatoryAppUpdate(versionPolicy) {
       }
 
       await startMandatoryUpdateFlow({ startMandatoryUpdate, platform: 'android' });
-      setPhase('play_flow');
+      setPhase((prev) => (prev === 'awaiting_retry' || prev === 'play_unavailable' ? prev : 'play_flow'));
     } catch {
       setPlayUnavailable(true);
       setPhase('play_unavailable');
     }
   }, [platform, versionPolicy]);
 
-  // Start mandatory flow when server blocks the app.
+  // Start mandatory flow once when server first blocks the app.
   useEffect(() => {
     const shouldRun = shouldRunMandatoryUpdate(versionPolicy);
     if (!shouldRun) {
       activeRef.current = false;
+      autoStartedForBlockRef.current = false;
       setPhase('idle');
       setPlayUnavailable(false);
       return undefined;
@@ -74,7 +83,10 @@ export function useMandatoryAppUpdate(versionPolicy) {
     activeRef.current = true;
 
     if (platform === 'android') {
-      triggerAndroidMandatoryUpdate();
+      if (!autoStartedForBlockRef.current) {
+        autoStartedForBlockRef.current = true;
+        triggerAndroidMandatoryUpdate();
+      }
     } else {
       setPhase('ios_store_only');
     }
@@ -84,7 +96,8 @@ export function useMandatoryAppUpdate(versionPolicy) {
     };
   }, [versionPolicy.blocked, versionPolicy.status, platform, triggerAndroidMandatoryUpdate]);
 
-  // Re-verify version when app returns from background / App Store.
+  // Re-verify version when app returns from background / Play Store.
+  // Do not auto-reopen Play after cancel — only refresh policy (success clears block).
   useEffect(() => {
     if (!shouldRunMandatoryUpdate(versionPolicy)) return undefined;
 
@@ -98,7 +111,10 @@ export function useMandatoryAppUpdate(versionPolicy) {
 
           versionPolicy.refresh?.().then((status) => {
             if (cancelled || !activeRef.current) return;
-            if (status === 'update_required' && platform === 'android') {
+            if (
+              platform === 'android'
+              && shouldAutoStartPlayOnForeground({ status, phase: phaseRef.current })
+            ) {
               triggerAndroidMandatoryUpdate();
             }
           });

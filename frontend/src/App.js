@@ -7438,6 +7438,7 @@ function WellnessValleyApp() {
         onUpdateNow={mandatoryUpdate.retryUpdate}
         playUnavailable={mandatoryUpdate.playUnavailable}
         androidUpdating={mandatoryUpdate.phase === 'play_flow' || mandatoryUpdate.phase === 'starting'}
+        awaitingRetry={mandatoryUpdate.phase === 'awaiting_retry'}
       />
     );
   }
