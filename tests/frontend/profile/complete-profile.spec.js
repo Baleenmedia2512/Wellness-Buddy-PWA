@@ -715,7 +715,7 @@ test.describe('Complete Profile', () => {
   // ==========================================================
 
   test(
-    'CP-003 Name and Email validation controls Continue button availability',
+    'CP-003 Name validation controls Continue button availability and moves to next page',
     async ({ page }) => {
 
       // ============================================================
@@ -878,6 +878,22 @@ test.describe('Complete Profile', () => {
 
           });
 
+        }
+      );
+
+
+      // ============================================================
+      // 3.5. SAVE EMAIL / IDENTITY
+      // ============================================================
+
+      await page.route(
+        '**/api/user/save-email*',
+        async route => {
+          await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({ success: true }),
+          });
         }
       );
 
@@ -1365,133 +1381,36 @@ test.describe('Complete Profile', () => {
 
 
       // ============================================================
-      // 17. FIND NAME CONTINUE BUTTON
+      // 17. FIND CONTINUE BUTTON
       // ============================================================
 
-      const nameContinue =
-        page.getByRole(
-          'button',
-          {
-            name:
-              'Send verification code',
+      const nameContinue = page.getByRole('button', { name: 'Continue', exact: true });
 
-            exact:
-              true,
-          }
-        );
-
-
-      await expect(
-        nameContinue
-      ).toBeVisible({
-        timeout:
-          10000,
-      });
-
+      await expect(nameContinue).toBeVisible({ timeout: 10000 });
 
       // ============================================================
-      // 18. TEST 1: BLANK NAME + VALID EMAIL
+      // 18. TEST 1: BLANK NAME -> CONTINUE DISABLED
       // ============================================================
-
-      const emailInput =
-        page.getByPlaceholder(
-          'you@example.com'
-        );
-
-      await expect(
-        emailInput
-      ).toBeVisible({
-        timeout: 15000,
-      });
 
       await fullNameInput.fill('');
-      await emailInput.fill('nitheesh@example.com');
-
-      await expect(
-        nameContinue
-      ).toBeDisabled({
-        timeout:
-          10000,
-      });
-
-      console.log(
-        'CP-003 BLANK NAME + VALID EMAIL -> CONTINUE DISABLED'
-      );
-
+      await expect(nameContinue).toBeDisabled({ timeout: 10000 });
+      console.log('CP-003: BLANK NAME -> CONTINUE DISABLED');
 
       // ============================================================
-      // 19. TEST 2: VALID NAME + BLANK EMAIL
+      // 19. TEST 2: VALID FULL NAME -> CONTINUE ENABLED
       // ============================================================
 
       await fullNameInput.fill(TEST_NAME);
-      await emailInput.fill('');
-
-      await expect(
-        nameContinue
-      ).toBeDisabled({
-        timeout:
-          10000,
-      });
-
-      console.log(
-        'CP-003 VALID NAME + BLANK EMAIL -> CONTINUE DISABLED'
-      );
-
+      await expect(nameContinue).toBeEnabled({ timeout: 10000 });
+      console.log('CP-003: VALID FULL NAME -> CONTINUE ENABLED');
 
       // ============================================================
-      // 20. TEST 3: VALID NAME + INVALID EMAIL FORMAT
+      // 20. CLICK CONTINUE -> PROGRESS TO NEXT PAGE
       // ============================================================
 
-      await fullNameInput.fill(TEST_NAME);
-      await emailInput.fill('invalid-email-format');
-
-      await expect(
-        nameContinue
-      ).toBeDisabled({
-        timeout:
-          10000,
-      });
-
-      console.log(
-        'CP-003 VALID NAME + INVALID EMAIL FORMAT -> CONTINUE DISABLED'
-      );
-
-
-      // ============================================================
-      // 21. TEST 4: VALID NAME + VALID EMAIL
-      // ============================================================
-
-      await fullNameInput.fill(TEST_NAME);
-      await emailInput.fill('nitheesh@example.com');
-
-      await expect(
-        nameContinue
-      ).toBeEnabled({
-        timeout:
-          10000,
-      });
-
-      console.log(
-        'CP-003 VALID NAME + VALID EMAIL -> CONTINUE ENABLED'
-      );
-
-
-      // ============================================================
-      // 22. CP-003 ENDS HERE
-      //
-      // DO NOT CLICK CONTINUE.
-      //
-      // CP-004 will test:
-      //
-      // Name Entry
-      //      ↓
-      // Coach Authentication
-      // ============================================================
-
-      console.log(
-        'CP-003 NAME & EMAIL VALIDATION VERIFIED'
-      );
-
+      await nameContinue.click();
+      await expect(fullNameInput).not.toBeVisible({ timeout: 15000 });
+      console.log('CP-003: Successfully entered name and progressed to next page');
     }
   );
 
@@ -1503,16 +1422,11 @@ test.describe('Complete Profile', () => {
   // ==========================================================
 
   test(
-    'CP-004 Handle existing email collision and verify OTP flow transition',
+    'CP-004 Profile Email KYC section handles email collision and OTP code dispatch',
     async ({ page }) => {
-
       const TEST_PHONE = '7695834209';
       const TEST_OTP = '1234';
       const TEST_NAME = 'Nitheesh Lingam';
-
-      await page.addInitScript(() => {
-        localStorage.setItem('ff.consent-gate', 'true');
-      });
 
       await page.route('**/api/auth/send-otp', async route => {
         await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true }) });
@@ -1524,39 +1438,87 @@ test.describe('Complete Profile', () => {
           contentType: 'application/json',
           body: JSON.stringify({
             success: true,
-            isNewUser: true,
+            isNewUser: false,
             isActive: true,
             role: 'user',
-            user: { id: 1004, username: 'newuser', userName: 'newuser', name: '', email: '', phone: `+91${TEST_PHONE}`, phoneNumber: `+91${TEST_PHONE}`, status: 'Active', consentRequired: true },
+            user: { id: 999999, username: TEST_NAME, userName: TEST_NAME, name: TEST_NAME, email: '', phone: `+91${TEST_PHONE}`, phoneNumber: TEST_PHONE, status: 'Active', consentRequired: false },
           }),
         });
       });
 
-      let consentAccepted = false;
-      await page.route('**/api/user/consent*', async route => {
-        const method = route.request().method();
-        if (method === 'GET') {
-          await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, consentRequired: !consentAccepted, consentAccepted }) });
-          return;
-        }
-        if (method === 'POST') {
-          consentAccepted = true;
-          await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, consentRequired: false, consentAccepted: true }) });
-          return;
-        }
-        await route.fallback();
+      await page.route('**/api/user/save-email*', async route => {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true }) });
       });
 
-      await page.route('**/api/user/profile**', async route => {
-        if (route.request().method() === 'GET') {
-          await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, data: { userName: '', email: '', phoneNumber: `+91${TEST_PHONE}`, profileComplete: false, consentRequired: false, height: null, dietType: null, gender: null, profileImage: null } }) });
-          return;
+      let currentEmail = '';
+
+      await page.route('**/api/user/verify-onboarding-email*', async route => {
+        currentEmail = 'new@example.com';
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            email: 'new@example.com',
+            userName: TEST_NAME,
+            adopted: false,
+            user: { id: 999999, phone: `+91${TEST_PHONE}` },
+          }),
+        });
+      });
+
+      await page.route('**/api/user/verify-session*', async route => {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, userId: 999999, sessionStale: false }) });
+      });
+
+      await page.route('**/api/user/status*', async route => {
+        await route.fulfill({
+          status: 200, contentType: 'application/json',
+          body: JSON.stringify({ success: true, setupComplete: true, setupSkipped: true, hasTeamId: false, hasUpline: true, pendingRequest: false, redirectTo: null }),
+        });
+      });
+
+      await page.route('**/api/user/consent*', async route => {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, consentRequired: false, consentAccepted: true }) });
+      });
+
+      await page.route('**/api/user/profile*', async route => {
+        const method = route.request().method();
+        if (method === 'GET') {
+          await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({
+              success: true,
+              data: {
+                userId: 999999,
+                profileComplete: true,
+                userName: TEST_NAME,
+                name: TEST_NAME,
+                email: currentEmail,
+                phoneNumber: TEST_PHONE,
+                gender: 'Male',
+                height: 170,
+                dietType: 'Vegetarian',
+                latestWeight: 72.5,
+                currentWeight: 72.5,
+                profileImage: null,
+                physicalActivityLevel: 'Moderate',
+                transformationPhotos: {
+                  left: 'https://example.com/left.jpg',
+                  front: 'https://example.com/front.jpg',
+                  right: 'https://example.com/right.jpg',
+                },
+              },
+            }),
+          });
+        } else {
+          await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, data: { profileComplete: true } }) });
         }
-        await route.fallback();
       });
 
       let simulateCollision = true;
-      await page.route('**/api/user/check-onboarding-email', async route => {
+      await page.route('**/api/user/check-onboarding-email*', async route => {
         if (simulateCollision) {
           await route.fulfill({
             status: 200,
@@ -1572,58 +1534,63 @@ test.describe('Complete Profile', () => {
         }
       });
 
+      // 2. OPEN APP
+      await createAuthenticatedState(page);
       await page.goto('/', { waitUntil: 'domcontentloaded' });
 
-      const mobileInput = page.getByLabel('Mobile Number');
-      await expect(mobileInput).toBeVisible({ timeout: 15000 });
-      await mobileInput.fill(TEST_PHONE);
+      // 3. NAVIGATE TO PROFILE PAGE
+      const profileBtn = page.getByTitle('My Profile');
+      await expect(profileBtn).toBeVisible({ timeout: 15000 });
+      await profileBtn.click();
 
-      const sendOtpButton = page.getByRole('button', { name: 'Send OTP', exact: true });
-      await expect(sendOtpButton).toBeEnabled();
-      await sendOtpButton.click();
-
-      await expect(page.getByText('Enter OTP', { exact: true })).toBeVisible({ timeout: 15000 });
-      const otpInputs = page.locator('input[data-otp="true"]');
-      for (let i = 0; i < TEST_OTP.length; i++) {
-        await otpInputs.nth(i).fill(TEST_OTP[i]);
-      }
-
-      const agreeOption = page.locator('label').filter({ hasText: 'I Agree' }).last();
-      await expect(agreeOption).toBeVisible({ timeout: 15000 });
-      await agreeOption.click({ force: true });
-
-      const consentContinue = page.getByRole('button', { name: 'Continue', exact: true });
-      await consentContinue.click();
-
-      await expect(page.getByRole('heading', { name: 'User Consent Form', exact: true })).not.toBeVisible({ timeout: 15000 });
-
-      const fullNameInput = page.getByPlaceholder('Enter your full name');
-      await expect(fullNameInput).toBeVisible({ timeout: 15000 });
-
+      // 4. LOCATE EMAIL KYC SECTION
       const emailInput = page.getByPlaceholder('you@example.com');
-      await fullNameInput.fill(TEST_NAME);
+      await expect(emailInput).toBeVisible({ timeout: 15000 });
+
+      // 5. TEST EMAIL COLLISION (taken@example.com)
       await emailInput.fill('taken@example.com');
 
-      const nameContinue = page.getByRole('button', { name: 'Send verification code', exact: true });
-      await expect(nameContinue).toBeEnabled({ timeout: 10000 });
-      await nameContinue.click();
+      const sendCodeBtn = page.getByRole('button', { name: 'Send verification code', exact: true });
+      await expect(sendCodeBtn).toBeEnabled({ timeout: 10000 });
+      await sendCodeBtn.click();
 
       const adoptMessage = page.getByText('This email already has an account. Do you want to use it?');
       await expect(adoptMessage).toBeVisible({ timeout: 10000 });
 
-      const differentEmailBtn = page.getByRole('button', { name: 'Use a different email' });
+      const differentEmailBtn = page.getByRole('button', { name: 'Use a different email', exact: true });
       await differentEmailBtn.click();
 
-      await expect(fullNameInput).toBeVisible({ timeout: 5000 });
+      await expect(emailInput).toBeVisible({ timeout: 5000 });
 
+      // 6. TEST AVAILABLE EMAIL OTP TRANSITION (new@example.com)
       simulateCollision = false;
 
       await emailInput.fill('new@example.com');
-      await expect(nameContinue).toBeEnabled({ timeout: 5000 });
-      await nameContinue.click();
+      await expect(sendCodeBtn).toBeEnabled({ timeout: 5000 });
+      await sendCodeBtn.click();
 
       const otpMessage = page.getByText('We sent a 4-digit code to');
       await expect(otpMessage).toBeVisible({ timeout: 10000 });
+
+      // 7. FILL OTP CODE AND VERIFY EMAIL
+      const otpInputs = page.locator('#profile-email-kyc input:not([type="email"])');
+      await expect(otpInputs.first()).toBeVisible({ timeout: 10000 });
+      for (let i = 0; i < TEST_OTP.length; i++) {
+        await otpInputs.nth(i).fill(TEST_OTP[i]);
+      }
+
+      const verifyEmailBtn = page.getByRole('button', { name: 'Verify email', exact: true });
+      await expect(verifyEmailBtn).toBeEnabled({ timeout: 10000 });
+      await verifyEmailBtn.click();
+
+      // If app redirected to home on profile update, re-open profile page to verify badge
+      const myProfileBtn = page.getByTitle('My Profile');
+      if (await myProfileBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
+        await myProfileBtn.click();
+      }
+
+      const verifiedBadge = page.getByText('Email verified');
+      await expect(verifiedBadge).toBeVisible({ timeout: 10000 });
     }
   );
 
@@ -1778,6 +1745,10 @@ test.describe('Complete Profile', () => {
         });
       });
 
+      await page.route('**/api/user/save-email*', async route => {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true }) });
+      });
+
       await page.goto('/', { waitUntil: 'domcontentloaded' });
 
       const mobileInput = page.getByLabel('Mobile Number');
@@ -1804,30 +1775,14 @@ test.describe('Complete Profile', () => {
 
       await expect(page.getByRole('heading', { name: 'User Consent Form', exact: true })).not.toBeVisible({ timeout: 15000 });
 
-      // Verify Identity Screen
+      // Verify Identity Screen (Full Name only)
       const fullNameInput = page.getByPlaceholder('Enter your full name');
       await expect(fullNameInput).toBeVisible({ timeout: 15000 });
-      const emailInput = page.getByPlaceholder('you@example.com');
       await fullNameInput.fill(TEST_NAME);
-      await emailInput.fill(TEST_EMAIL);
 
-      const verifyEmailBtn = page.getByRole('button', { name: 'Send verification code', exact: true });
-      await expect(verifyEmailBtn).toBeEnabled();
-      await verifyEmailBtn.click();
-
-      // Verify Email OTP Screen
-      const verifyOtpHeader = page.getByText('We sent a 4-digit code to');
-      await expect(verifyOtpHeader).toBeVisible({ timeout: 15000 });
-
-      const emailOtpInputs = page.locator('input[inputmode="numeric"]');
-      await expect(emailOtpInputs.first()).toBeVisible({ timeout: 15000 });
-      for (let i = 0; i < 4; i++) {
-        await emailOtpInputs.nth(i).fill(TEST_OTP[i]);
-      }
-
-      const emailVerifyBtn = page.getByRole('button', { name: 'Verify email', exact: true });
-      await expect(emailVerifyBtn).toBeEnabled();
-      await emailVerifyBtn.click();
+      const identityContinue = page.getByRole('button', { name: 'Continue', exact: true });
+      await expect(identityContinue).toBeEnabled({ timeout: 10000 });
+      await identityContinue.click();
 
       // Verify Coach Setup Appears
       const coachHeading = page.getByText('Search and select the person name');
@@ -1848,12 +1803,7 @@ test.describe('Complete Profile', () => {
       await expect(continueBtn).toBeEnabled();
       await continueBtn.click();
 
-      // Step 2: Skip Community ID
-      const skipBtn = page.getByRole('button', { name: 'Skip Community ID', exact: true });
-      await expect(skipBtn).toBeVisible({ timeout: 15000 });
-      await skipBtn.click();
-
-      // Verify Coach OTP Screen
+      // Verify Coach OTP Screen ("Verify Request")
       const coachOtpHeader = page.getByText('Verify Request');
       await expect(coachOtpHeader).toBeVisible({ timeout: 15000 });
 
@@ -3022,6 +2972,7 @@ test.describe('Complete Profile', () => {
       const TEST_PHONE = '7695834209';
       const TEST_OTP = '1234';
       const TEST_NAME = 'Nitheesh Lingam';
+      const photoPath = path.resolve(__dirname, '../../fixtures/portrait.jpg');
 
       // ============================================================
       // 1. MOCK APIS
@@ -3106,6 +3057,10 @@ test.describe('Complete Profile', () => {
         await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true }) });
       });
 
+      await page.route('**/api/testimonials*', async route => {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true }) });
+      });
+
       // ============================================================
       // 2. AUTHENTICATE & OPEN APP
       // ============================================================
@@ -3119,27 +3074,27 @@ test.describe('Complete Profile', () => {
       await expect(completeProfileHeading).toBeVisible({ timeout: 20000 });
 
       const heightInput = page.getByPlaceholder('e.g. 170');
-      if (await heightInput.isVisible({ timeout: 2000 }).catch(() => false)) {
+      if (await heightInput.isVisible({ timeout: 5000 }).catch(() => false)) {
         await heightInput.fill('170');
       }
 
       const genderSelect12 = page.locator('select').filter({ has: page.locator('option[value="Male"]') });
-      if (await genderSelect12.isVisible({ timeout: 2000 }).catch(() => false)) {
+      if (await genderSelect12.isVisible({ timeout: 5000 }).catch(() => false)) {
         await genderSelect12.selectOption('Male');
       }
 
       const vegetarianButton = page.getByRole('button', { name: 'Vegetarian', exact: true });
-      if (await vegetarianButton.isVisible({ timeout: 2000 }).catch(() => false)) {
+      if (await vegetarianButton.isVisible({ timeout: 5000 }).catch(() => false)) {
         await vegetarianButton.click();
       }
 
       const weightInput = page.getByPlaceholder('e.g. 72.5');
-      if (await weightInput.isVisible({ timeout: 2000 }).catch(() => false)) {
+      if (await weightInput.isVisible({ timeout: 5000 }).catch(() => false)) {
         await weightInput.fill('72.5');
       }
 
       const fatInput = page.locator('label').filter({ hasText: 'Fat %' }).locator('..').locator('input');
-      if (await fatInput.isVisible({ timeout: 2000 }).catch(() => false)) {
+      if (await fatInput.isVisible({ timeout: 5000 }).catch(() => false)) {
         await fatInput.fill('22');
       }
 
@@ -3172,7 +3127,15 @@ test.describe('Complete Profile', () => {
 
         // Target file input and set image file (must be portrait orientation)
         const fileInput = page.locator('input[type="file"][accept="image/*"]').last();
-        await fileInput.setInputFiles('tests/fixtures/portrait.jpg');
+        await fileInput.setInputFiles(photoPath);
+
+        const doneBtn = page.getByRole('button', { name: 'Done', exact: true });
+        if (await doneBtn.isVisible({ timeout: 10000 }).catch(() => false)) {
+          await page.waitForTimeout(500);
+          await doneBtn.click();
+          await doneBtn.waitFor({ state: 'detached', timeout: 10000 }).catch(() => {});
+        }
+        await page.waitForTimeout(500);
 
         console.log(`CP-012: ${side} pose image uploaded successfully`);
       }

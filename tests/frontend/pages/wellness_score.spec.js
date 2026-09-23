@@ -195,7 +195,7 @@ test.describe('Wellness Score - Time-Based Parameters (SCORE_01)', () => {
     await submitPhoneBtn.click();
 
     await expect(page.getByText('Enter OTP', { exact: true })).toBeVisible({ timeout: 15000 });
-    const otpInputs = page.locator('input[type="tel"]');
+    const otpInputs = page.locator('input[data-otp="true"]');
     await expect(otpInputs).toHaveCount(4);
 
     for (let i = 0; i < LOGIN_OTP.length; i++) {

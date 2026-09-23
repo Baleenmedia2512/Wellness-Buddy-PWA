@@ -786,6 +786,10 @@ test.describe('Login', () => {
     const responseJson = await response.json();
     expect(responseJson.success).toBe(false);
     expect(responseJson.message).toBe('Invalid OTP. Please try again.');
+
+    // 5. Assert invalid OTP error message is displayed on screen
+    const errorMessage = page.getByText('Invalid OTP. Please try again.');
+    await expect(errorMessage).toBeVisible({ timeout: 10000 });
   });
 
   test('AUTH-015 discover successful OTP response', async ({ page }) => {
