@@ -26,6 +26,7 @@ export default function ActivityReportMemberNameCell({
   return (
     <td
       className={`sticky left-0 z-10 bg-white px-4 py-3 text-sm font-medium text-gray-900 min-w-[130px] shadow-[2px_0_5px_-1px_rgba(0,0,0,0.08)] ${canHide ? 'select-none touch-manipulation' : ''}`}
+      title={canHide ? 'Press and hold name to hide' : undefined}
       {...pressHandlers}
     >
       {display(record.memberName)}
