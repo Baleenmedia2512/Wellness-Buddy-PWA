@@ -37,6 +37,11 @@ import { resolveFoodTimestamp } from '../../shared/lib/datetime/foodTimestamp.js
 import { resolveSponsorAndIdealCoachForMembers } from '../../utils/sponsorCoachResolution.js';
 import { filterPublicAggregateUsers } from '../user/domain/aggregate-eligibility.rules.js';
 import { parseWatchKcalFromTopic } from './domain/watch-calories.helpers.js';
+import * as hiddenRepo from './activity-report-hidden.repository.js';
+import {
+  activityReportHiddenCacheToken,
+  excludeHiddenActivityReportUserIds,
+} from './domain/activity-report.hidden-users.js';
 
 function emptyPagination(page = 1, limit = ACTIVITY_REPORT_DEFAULT_PAGE_SIZE) {
   return buildActivityReportPaginationMeta(0, page, limit);
@@ -671,6 +676,7 @@ function detailRowsCacheKey(input) {
     input.sort || 'date',
     input.sortDir || 'desc',
     input.attendanceStatus || ACTIVITY_REPORT_ATTENDANCE.POSTED,
+    input.hiddenCacheToken || 'none',
   ].join('|');
 }
 
@@ -685,6 +691,7 @@ function detailClubsCacheKey(input) {
     input.endDate || '',
     input.activityType,
     input.attendanceStatus || ACTIVITY_REPORT_ATTENDANCE.POSTED,
+    input.hiddenCacheToken || 'none',
   ].join('|');
 }
 
@@ -756,7 +763,35 @@ function bootstrapCacheKey(input) {
     input.sortDir || 'desc',
     input.exportAll ? 'export' : 'page',
     input.attendanceStatus || ACTIVITY_REPORT_ATTENDANCE.POSTED,
+    input.hiddenCacheToken || 'none',
   ].join('|');
+}
+
+/**
+ * Drop warm-lambda report caches after a global hide/unhide.
+ * Clears all viewers because visibility is shared.
+ */
+export function invalidateActivityReportCachesForViewer(_viewerUserId) {
+  bootstrapResultCache.clear();
+  detailRowsCache.clear();
+  detailClubsCache.clear();
+}
+
+/**
+ * Team scope for the report with globally hidden members removed.
+ * Hidden users stay out regardless of date / attendance / column filters.
+ */
+async function resolveVisibleActivityReportUserIds({ userId, role, teamScope }) {
+  const [scope, hiddenIds] = await Promise.all([
+    resolveActivityReportUserIds({ userId, role, teamScope }),
+    hiddenRepo.fetchHiddenUserIds(),
+  ]);
+  return {
+    ...scope,
+    userIds: excludeHiddenActivityReportUserIds(scope.userIds, hiddenIds),
+    hiddenIds,
+    hiddenCacheToken: activityReportHiddenCacheToken(hiddenIds),
+  };
 }
 
 /**
@@ -764,7 +799,9 @@ function bootstrapCacheKey(input) {
  * Resolves hierarchy once and fetches all activity tables in parallel.
  */
 export async function getActivityReportBootstrap(params) {
-  const cacheKey = bootstrapCacheKey(params);
+  const hiddenIds = await hiddenRepo.fetchHiddenUserIds();
+  const hiddenCacheToken = activityReportHiddenCacheToken(hiddenIds);
+  const cacheKey = bootstrapCacheKey({ ...params, hiddenCacheToken });
   const cached = bootstrapResultCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) {
     const perf = createActivityReportPerf('bootstrap');
@@ -778,7 +815,11 @@ export async function getActivityReportBootstrap(params) {
     return cached.value;
   }
 
-  const result = await getActivityReportBootstrapUncached(params);
+  const result = await getActivityReportBootstrapUncached({
+    ...params,
+    hiddenIds,
+    hiddenCacheToken,
+  });
   if (result?.httpStatus === 200) {
     bootstrapResultCache.set(cacheKey, {
       value: result,
@@ -808,6 +849,8 @@ async function getActivityReportBootstrapUncached({
   filterValue = '',
   columnFilters = {},
   attendanceStatus = ACTIVITY_REPORT_ATTENDANCE.POSTED,
+  hiddenIds = null,
+  hiddenCacheToken = 'none',
 }) {
   const paginationOpts = {
     page, limit, search, sort, sortDir, exportAll, clubFilter, filterColumn, filterValue, columnFilters,
@@ -819,7 +862,14 @@ async function getActivityReportBootstrapUncached({
   ]);
   perf.mark('scope_and_dates');
 
-  const { userIds, teamScope: resolvedScope, teamScopeCounts, memberMeta } = scope;
+  const resolvedHiddenIds = Array.isArray(hiddenIds)
+    ? hiddenIds
+    : await hiddenRepo.fetchHiddenUserIds();
+  const resolvedHiddenToken = hiddenCacheToken && hiddenCacheToken !== 'none'
+    ? hiddenCacheToken
+    : activityReportHiddenCacheToken(resolvedHiddenIds);
+  const { teamScope: resolvedScope, teamScopeCounts, memberMeta } = scope;
+  const userIds = excludeHiddenActivityReportUserIds(scope.userIds, resolvedHiddenIds);
   const baseBody = {
     success: true,
     dateRange,
@@ -937,6 +987,7 @@ async function getActivityReportBootstrapUncached({
         endDate: endStr,
         activityType: detailActivity,
         attendanceStatus,
+        hiddenCacheToken: resolvedHiddenToken,
       };
       setCachedDetailClubs(
         detailClubsCacheKey(clubsCacheInput),
@@ -957,6 +1008,7 @@ async function getActivityReportBootstrapUncached({
         sort,
         sortDir,
         attendanceStatus,
+        hiddenCacheToken: resolvedHiddenToken,
       }), paged.preparedRows);
     }
     perf.mark('detail_enrichment');
@@ -990,7 +1042,7 @@ export async function getActivitySummary({ userId, role, teamScope, dateRange, s
     userId, dateRange, customStart, customEnd,
   );
 
-  const { userIds, teamScope: resolvedScope, teamScopeCounts } = await resolveActivityReportUserIds({
+  const { userIds, teamScope: resolvedScope, teamScopeCounts } = await resolveVisibleActivityReportUserIds({
     userId, role, teamScope,
   });
   
@@ -1061,7 +1113,7 @@ export async function getActivityMemberSummary({ userId, role, teamScope, dateRa
     userId, dateRange, customStart, customEnd,
   );
 
-  const { userIds, teamScope: resolvedScope, teamScopeCounts, memberMeta } = await resolveActivityReportUserIds({
+  const { userIds, teamScope: resolvedScope, teamScopeCounts, memberMeta } = await resolveVisibleActivityReportUserIds({
     userId, role, teamScope,
   });
 
@@ -1188,11 +1240,11 @@ export async function getActivityDetails({
   const perf = createActivityReportPerf('details');
   const [{ timezoneIana, startDate: startStr, endDate: endStr }, scope] = await Promise.all([
     resolveReportDateRange(userId, dateRange, customStart, customEnd),
-    resolveActivityReportUserIds({ userId, role, teamScope }),
+    resolveVisibleActivityReportUserIds({ userId, role, teamScope }),
   ]);
   perf.mark('scope_and_dates');
 
-  const { userIds, teamScope: resolvedScope, teamScopeCounts, memberMeta } = scope;
+  const { userIds, teamScope: resolvedScope, teamScopeCounts, memberMeta, hiddenCacheToken } = scope;
   const rowsCacheKey = detailRowsCacheKey({
     userId,
     role,
@@ -1207,6 +1259,7 @@ export async function getActivityDetails({
     sort,
     sortDir,
     attendanceStatus,
+    hiddenCacheToken,
   });
   const clubsCacheKey = detailClubsCacheKey({
     userId,
@@ -1217,6 +1270,7 @@ export async function getActivityDetails({
     endDate: endStr,
     activityType,
     attendanceStatus,
+    hiddenCacheToken,
   });
 
   if (userIds.length === 0) {

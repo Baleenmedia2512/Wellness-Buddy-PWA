@@ -18,11 +18,6 @@ import OtpInputCells from '../../../../shared/components/OtpInputCells.jsx';
 const inputCls =
   'w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none';
 
-const SEAT_LABEL = {
-  sponsor: 'Joint seat (1st)',
-  'co-sponsor': 'Joint seat (2nd)',
-};
-
 const CommunityIdField = ({
   communityId,
   setCommunityId,
@@ -72,11 +67,6 @@ const CommunityIdField = ({
             style={{ fontSize: '16px' }}
           />
         </div>
-        {teamSeat && (
-          <p className="text-xs text-green-700 font-medium mt-1.5">
-            Coaching team: {SEAT_LABEL[teamSeat] || teamSeat} — not Sponsor access until you have members
-          </p>
-        )}
         <p className="text-xs text-gray-500 mt-1">
           Optional team code for joint coaching account (up to 2 people). Tap Save Profile after editing.
         </p>
@@ -110,17 +100,6 @@ const CommunityIdField = ({
           style={{ fontSize: '16px' }}
         />
       </div>
-
-      {confirmed && (
-        <>
-          {teamSeat && (
-            <p className="text-xs text-green-700 font-medium mt-1.5">
-              Coaching team: {SEAT_LABEL[teamSeat] || teamSeat} — not Sponsor access until you have members
-            </p>
-          )}
-         
-        </>
-      )}
 
       {!confirmed && !pending && (
         <>

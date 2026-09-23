@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import {
-  RefreshCw, Download, Share2,
+  RefreshCw, Download, Share2, Eye,
 } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
@@ -26,8 +26,16 @@ import {
   removeActivityReportFilterValue,
   serializeActivityReportTableFilters,
 } from '../utils/activityReportTableFilters';
+import { canManageActivityReportHiddenUsers } from '../utils/activityReportHiddenUsers';
+import {
+  hideActivityReportUser,
+  listActivityReportHiddenUsers,
+} from '../services/activityReportHiddenUsers.api';
 import ActivityReportTableFiltersSheet from './ActivityReportTableFiltersSheet';
 import ActivityReportFiltersBar from './ActivityReportFiltersBar';
+import ActivityReportHiddenUsersModal from './ActivityReportHiddenUsersModal';
+import ActivityReportHideUserMenu from './ActivityReportHideUserMenu';
+import ActivityReportMemberNameCell from './ActivityReportMemberNameCell';
 
 const DEFAULT_PAGE_SIZE = 20;
 const SEARCH_DEBOUNCE_MS = 300;
@@ -104,6 +112,11 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0, t
   const [attendanceStatus, setAttendanceStatus] = useState(ACTIVITY_REPORT_ATTENDANCE.POSTED);
   const [showReportDatePicker, setShowReportDatePicker] = useState(false);
   const [showTableFiltersSheet, setShowTableFiltersSheet] = useState(false);
+  const [showHiddenUsersModal, setShowHiddenUsersModal] = useState(false);
+  const [hideMenu, setHideMenu] = useState(null);
+  const [hideBusy, setHideBusy] = useState(false);
+  /** Unhide button only when at least one team member is currently hidden. */
+  const [hiddenCount, setHiddenCount] = useState(0);
   const fetchAbortRef = useRef(null);
   const fetchGenerationRef = useRef(0);
   const loadReportRef = useRef(null);
@@ -714,6 +727,104 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0, t
     setCurrentPage(1);
   };
 
+  const canManageHidden = canManageActivityReportHiddenUsers({
+    userRole,
+    effectiveRole,
+    showTeamScope,
+  });
+
+  /** Long-press Hide User is for inactive (Not Posted) members only. */
+  const canHideInactiveUsers = canManageHidden
+    && attendanceStatus === ACTIVITY_REPORT_ATTENDANCE.NOT_POSTED;
+
+  const showUnhideButton = canManageHidden && hiddenCount > 0;
+
+  // Load how many team members are hidden — Unhide only appears when count > 0.
+  useEffect(() => {
+    if (!canManageHidden || !user?.id) {
+      setHiddenCount(0);
+      return undefined;
+    }
+    let cancelled = false;
+    listActivityReportHiddenUsers(user.id)
+      .then((data) => {
+        if (cancelled) return;
+        setHiddenCount(Array.isArray(data.members) ? data.members.length : 0);
+      })
+      .catch(() => {
+        if (!cancelled) setHiddenCount(0);
+      });
+    return () => { cancelled = true; };
+  }, [canManageHidden, user?.id, tabVisitKey]);
+
+  const refreshAfterVisibilityChange = useCallback(async () => {
+    // Soft refresh detail only — avoid full bootstrap (that made hide feel slow).
+    detailCacheRef.current.clear();
+    setCurrentPage(1);
+    fetchAbortRef.current?.abort();
+    const controller = new AbortController();
+    fetchAbortRef.current = controller;
+    if (typeof fetchDetailsRef.current === 'function') {
+      await fetchDetailsRef.current(selectedActivityRef.current, {
+        signal: controller.signal,
+        page: 1,
+      });
+    }
+  }, []);
+
+  const handleHideUser = useCallback(async ({ userId: targetUserId }) => {
+    if (!user?.id || !targetUserId) return;
+    setHideBusy(true);
+    setError('');
+    try {
+      await hideActivityReportUser(user.id, targetUserId);
+      setHideMenu(null);
+      setHiddenCount((count) => count + 1);
+      // Instant UI update — remove row now; sync counts without waiting on network.
+      setDetailRecords((prev) => prev.filter((row) => Number(row.userId) !== Number(targetUserId)));
+      setPagination((prev) => {
+        const totalRecords = Math.max(0, (prev.totalRecords || 0) - 1);
+        const pageSize = prev.pageSize || itemsPerPage;
+        const totalPages = totalRecords === 0 ? 0 : Math.ceil(totalRecords / pageSize);
+        return {
+          ...prev,
+          totalRecords,
+          totalPages,
+          hasNextPage: (prev.currentPage || 1) < totalPages,
+          hasPreviousPage: (prev.currentPage || 1) > 1 && totalPages > 0,
+        };
+      });
+      detailCacheRef.current.clear();
+      // Background sync (do not block the Hide action).
+      void refreshAfterVisibilityChange();
+    } catch (err) {
+      setError(err?.message || 'Failed to hide user');
+      throw err;
+    } finally {
+      setHideBusy(false);
+    }
+  }, [user?.id, itemsPerPage, refreshAfterVisibilityChange]);
+
+  const handleUnhiddenUser = useCallback(async () => {
+    // Keep Hidden Users modal open — restore this member only (soft detail refresh).
+    setHiddenCount((count) => Math.max(0, count - 1));
+    detailCacheRef.current.clear();
+    void refreshAfterVisibilityChange();
+  }, [refreshAfterVisibilityChange]);
+
+  const handleHiddenUsersModalClose = useCallback(() => {
+    setShowHiddenUsersModal(false);
+    // Sync list once when the user closes the sheet.
+    void refreshAfterVisibilityChange();
+    if (user?.id) {
+      listActivityReportHiddenUsers(user.id)
+        .then((data) => {
+          setHiddenCount(Array.isArray(data.members) ? data.members.length : 0);
+        })
+        .catch(() => { /* keep count */ });
+    }
+  }, [refreshAfterVisibilityChange, user?.id]);
+
   const buildCsvFromRecords = (records) => {
     const selectedActivityMeta = ACTIVITY_TYPES.find(a => a.id === selectedActivity);
     const activityLabel = selectedActivityMeta?.label || 'Activity';
@@ -992,6 +1103,22 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0, t
           disabled={detailLoading}
         />
 
+        <ActivityReportHiddenUsersModal
+          isOpen={showHiddenUsersModal}
+          onClose={handleHiddenUsersModalClose}
+          viewerUserId={user?.id}
+          onUnhidden={handleUnhiddenUser}
+        />
+
+        <ActivityReportHideUserMenu
+          open={Boolean(hideMenu)}
+          anchor={hideMenu}
+          memberName={hideMenu?.memberName}
+          onHide={() => handleHideUser(hideMenu)}
+          onClose={() => setHideMenu(null)}
+          busy={hideBusy}
+        />
+
         {error && (
           <div className="mb-3 p-4 bg-red-50 border border-red-200 rounded-lg">
             <p className="text-red-700 text-sm">{error}</p>
@@ -1027,6 +1154,17 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0, t
                         <Download className={`w-3.5 h-3.5 ${exportLoading ? 'animate-pulse' : ''}`} />
                       </TouchFeedbackButton>
                     </>
+                  )}
+                  {showUnhideButton && (
+                    <TouchFeedbackButton
+                      onClick={() => setShowHiddenUsersModal(true)}
+                      disabled={detailLoading || hideBusy}
+                      ariaLabel="Unhide users"
+                      className="flex items-center gap-1 px-2 py-1.5 bg-white border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 disabled:opacity-50 text-xs font-medium"
+                    >
+                      <Eye className="w-3.5 h-3.5" />
+                      <span>Unhide</span>
+                    </TouchFeedbackButton>
                   )}
                 </div>
               </div>
@@ -1102,9 +1240,11 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0, t
                 <tbody className="divide-y divide-gray-200">
                   {detailRecords.map((record, index) => (
                     <tr key={`${record.userId}-${record.date}-${record.time}-${index}`} className="hover:bg-gray-50">
-                      <td className="sticky left-0 z-10 bg-white px-4 py-3 text-sm font-medium text-gray-900 min-w-[130px] shadow-[2px_0_5px_-1px_rgba(0,0,0,0.08)]">
-                        {display(record.memberName)}
-                      </td>
+                      <ActivityReportMemberNameCell
+                        record={record}
+                        canHide={canHideInactiveUsers}
+                        onOpenHideMenu={setHideMenu}
+                      />
                       <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">{formatActivityReportMemberType(record.memberType)}</td>
                       <td className="px-4 py-3 text-sm text-gray-900 whitespace-nowrap">{formatActivityReportLevel(record.level)}</td>
                       <td className="px-4 py-3 text-sm text-gray-600">

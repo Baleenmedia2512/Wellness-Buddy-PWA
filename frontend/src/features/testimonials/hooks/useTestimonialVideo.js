@@ -64,6 +64,7 @@ export function useTestimonialVideo({ userId, healthIssues = [] }) {
     setWarning(null);
     setSuccess(null);
     setPendingTestimonialId(null);
+    
   }, []);
 
   const startEdit = useCallback(() => {
@@ -119,6 +120,14 @@ export function useTestimonialVideo({ userId, healthIssues = [] }) {
       e.target.value = '';
       setError(null);
       setWarning(null);
+
+      // Restrict photos / non-video files: only video files are allowed
+      const isImage = file.type?.startsWith('image/') || /\.(jpe?g|png|gif|webp|bmp|heic|heif|svg)$/i.test(file.name || '');
+      const isVideo = file.type?.startsWith('video/') || /\.(mp4|mov|webm|3gp|mkv|avi|m4v)$/i.test(file.name || '');
+      if (isImage || !isVideo) {
+        setError('Only video files are allowed for results. Photos and images are not allowed.');
+        return;
+      }
 
       const maxDuration = slot === 'health' ? MAX_HEALTH_DURATION_S : MAX_BUSINESS_DURATION_S;
       const maxLabel    = slot === 'health' ? '1 min' : '2 min';

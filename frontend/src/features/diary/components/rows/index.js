@@ -36,7 +36,12 @@ import {
   resolveWeightDeltaDisplay,
   formatPositiveWeightKg,
 } from '../../domain/share';
-import { resolveDiaryThumbSource, fetchDiaryShareImageSrc, waitForShareImageDecode } from '../../utils/diaryThumbUrl';
+import {
+  resolveDiaryThumbSource,
+  fetchDiaryShareImageSrc,
+  waitForShareImageDecode,
+  inlineDiaryShareImages,
+} from '../../utils/diaryThumbUrl';
 import { activityPhotoTemplate, handleActivityPhotoError } from '../../../../shared/assets/activityPhotoTemplates';
 
 /** Red up / green down arrow for weight delta (SVG — avoids blue emoji squares). */
@@ -818,6 +823,8 @@ export function EducationRow({
     if (swipe.dragging || swipe.leaving || isSharing || !swipe.elRef.current) return;
     setIsSharing(true);
     try {
+      // Inline API→R2 photos as data URLs so html2canvas keeps the thumb.
+      await inlineDiaryShareImages(swipe.elRef.current);
       await captureAndShare(swipe.elRef.current, {
         title: `Education - ${p.topic || 'Session'}`,
         text: withMarathonWhatsAppNotice(shareText, { timezoneIana }),
@@ -926,6 +933,8 @@ export function GoodHabitRow({
     if (swipe.dragging || swipe.leaving || isSharing || !swipe.elRef.current) return;
     setIsSharing(true);
     try {
+      // Inline API→R2 photos as data URLs so html2canvas keeps the thumb.
+      await inlineDiaryShareImages(swipe.elRef.current);
       await captureAndShare(swipe.elRef.current, {
         title,
         text: withMarathonWhatsAppNotice(shareText, { timezoneIana }),
