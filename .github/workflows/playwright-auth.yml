@@ -387,7 +387,6 @@ jobs:
             tests/frontend/programs/programs.spec.js \
             tests/frontend/pages/home.spec.js 
 
-
       # ==========================================================
       # 20. OPTIONAL COMPLETE PROFILE TESTS
       #
