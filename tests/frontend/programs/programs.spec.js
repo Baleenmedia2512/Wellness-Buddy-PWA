@@ -391,15 +391,16 @@ test(
       TEST_PHONE
     );
 
-    await page
-      .getByRole(
-        'button',
-        {
-          name: 'Send OTP',
-          exact: true,
-        }
-      )
-      .click();
+    const sendOtpBtn = page.getByRole(
+      'button',
+      {
+        name: 'Send OTP',
+        exact: true,
+      }
+    );
+    await expect(sendOtpBtn).toBeVisible({ timeout: 15000 });
+    await expect(sendOtpBtn).toBeEnabled({ timeout: 15000 });
+    await sendOtpBtn.click();
 
     // ============================================================
     // 10. OTP SCREEN
@@ -2534,18 +2535,19 @@ test(
       );
 
 
-      await page
-        .getByRole(
-          'button',
-          {
-            name:
-              'Send OTP',
+      const sendOtpButton = page.getByRole(
+        'button',
+        {
+          name:
+            'Send OTP',
 
-            exact:
-              true,
-          }
-        )
-        .click();
+          exact:
+            true,
+        }
+      );
+      await expect(sendOtpButton).toBeVisible({ timeout: 15000 });
+      await expect(sendOtpButton).toBeEnabled({ timeout: 15000 });
+      await sendOtpButton.click();
 
 
       await expect(
@@ -2624,7 +2626,9 @@ test(
     // ============================================================
 
     const coachContext =
-      await browser.newContext();
+      await browser.newContext({
+        baseURL: process.env.PLAYWRIGHT_BASE_URL || 'http://127.0.0.1:3002',
+      });
 
 
     try {
@@ -2929,7 +2933,9 @@ test(
     // ============================================================
 
     const normalUserContext =
-      await browser.newContext();
+      await browser.newContext({
+        baseURL: process.env.PLAYWRIGHT_BASE_URL || 'http://127.0.0.1:3002',
+      });
 
 
     try {
