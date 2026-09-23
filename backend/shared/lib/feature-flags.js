@@ -336,6 +336,15 @@ registerFlag({
 });
 
 registerFlag({
+  name:           'ff.r2-transformation-photos',
+  owner:          '@principal-eng',
+  createdAt:      '2026-09-22',
+  removeBy:       '2027-03-22',
+  description:    'Dual-write Left/Centre/Right transformation_photos to R2 keys; keep base64 in JSONB for live apps. GET profile returns R2 URLs for app ≥3.5.1; older/missing get base64. Kill switch when R2 env missing.',
+  defaultEnabled: true,
+});
+
+registerFlag({
   name:           'ff.nav-page-access',
   owner:          '@principal-eng',
   createdAt:      '2026-09-17',

@@ -316,6 +316,27 @@ export async function listAvatarsForRecompress({ from = 0, to = 49 } = {}) {
 }
 
 /**
+ * Rows with transformation_photos JSONB (filter in script for pending R2 keys).
+ * @param {{ from: number, to: number }} range inclusive Supabase .range()
+ */
+export async function listTransformationPhotosForBackfill({ from = 0, to = 49 } = {}) {
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from(TEAM)
+    .select('"UserId", transformation_photos')
+    .not('transformation_photos', 'is', null)
+    .order('UserId', { ascending: true })
+    .range(from, to);
+  if (error) {
+    if (isMissingColumn(error, 'transformation_photos')) {
+      throw new Error('transformation_photos column missing — run its migration before backfill');
+    }
+    throw error;
+  }
+  return data || [];
+}
+
+/**
  * All persisted R2 keys (any ProfileImage type). Used to avoid deleting live avatars.
  * @param {{ from: number, to: number }} range inclusive Supabase .range()
  */

@@ -13,6 +13,7 @@ import {
 import { validateAndCorrectWeight, deriveWeightGoalMode } from '../../utils/weightValidation.js';
 import { computeKatchMcArdleBmr } from '../../utils/bmrCalculations.js';
 import { touchUserActivity, invalidateUserProfileCache } from '../../shared/lib/userActivity.js';
+import { bustRaceLeaderboardCaches } from '../../utils/cache.js';
 import * as repo from './weight.repository.js';
 import * as userRepo from '../user/user.repository.js';
 // PR 6 — captures_table is canonical for the at-capture-time write. The
@@ -192,6 +193,7 @@ export async function saveWeight(input) {
 
   await touchUserActivity(userId);
   await invalidateUserProfileCache(userId);
+  bustRaceLeaderboardCaches();
 
   try {
     const profileRow = await userRepo.findByUserId(parseInt(userId, 10), '"Height"');
