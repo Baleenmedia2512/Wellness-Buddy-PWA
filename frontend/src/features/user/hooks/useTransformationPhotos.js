@@ -5,7 +5,7 @@
  * After starts as a Left copy for new users; Profile Right does not overwrite After.
  */
 import { useCallback, useMemo, useRef, useState } from 'react';
-import { compressImage } from '../../testimonials/utils/compressTestimonialImage.js';
+import { compressImage, PROFILE_TRANSFORM_MAX_DIM, PROFILE_TRANSFORM_TARGET_BYTES } from '../../testimonials/utils/compressTestimonialImage.js';
 import { setCaptureFlowBusy } from '../../../shared/services/captureFlowBusy';
 import { historyFromLatestSlots } from '../domain/transformationBeforeAfter';
 import { DEFAULT_POSE_SLOT, POSE_SLOT_KEYS } from '../domain/transformationPoseGuide';
@@ -58,7 +58,10 @@ export default function useTransformationPhotos() {
     } else {
       setCaptureFlowBusy(true);
       try {
-        const result = await compressImage(fileOrDataUrl);
+        const result = await compressImage(fileOrDataUrl, {
+          targetBytes: PROFILE_TRANSFORM_TARGET_BYTES,
+          maxDim: PROFILE_TRANSFORM_MAX_DIM,
+        });
         preview = result.preview;
       } finally {
         setCaptureFlowBusy(false);

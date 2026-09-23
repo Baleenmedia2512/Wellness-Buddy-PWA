@@ -18,7 +18,8 @@ import { isActiveTeamStatus } from '../../../utils/teamHierarchyBuilder.js';
 import { resolveLeaderboardViewerId } from '../../../utils/leaderboardViewer.js';
 
 /** Server-side TTL — hierarchy-scoped; cache key includes viewerUserId. */
-const LEADERBOARD_CACHE_TTL_MS = 2 * 60 * 1000;
+const LEADERBOARD_CACHE_TTL_MS = 15 * 1000;
+
 
 /**
  * Hierarchy-scoped Weight Loss Leaderboard API

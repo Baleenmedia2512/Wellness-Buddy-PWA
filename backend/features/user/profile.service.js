@@ -33,8 +33,8 @@ import { mapTeamRowToProfileBodyMetrics, mergeProfileBodyMetrics, mapCardToProfi
 import { mapTeamRecoveredHealthIssues } from './domain/recoveredHealthIssues.rules.js';
 import {
   hasTransformationPhotoUpdates,
-  mapTransformationPhotos,
-  mergeTransformationPhotos,
+  mapTransformationPhotosForClient,
+  shouldPreferTransformationR2Urls,
 } from './domain/transformationPhotos.rules.js';
 import { findLatestLinkedBodyMetricsCard } from '../body-parameters-card/data/card.repo.js';
 import { isEnabled } from '../../shared/lib/feature-flags.js';
@@ -43,6 +43,10 @@ import { resolveSponsorAndIdealCoach } from '../../utils/sponsorCoachResolution.
 import * as weightRepo from '../weight/weight.repository.js';
 import { resolveMarathonWeightComparison } from '../marathon/domain/marathonWeightComparison.service.js';
 import { persistAvatarKey, avatarUrlForKey, r2AvatarsEnabled } from './avatar-storage.service.js';
+import {
+  persistTransformationPhotosR2Orphan,
+  transformationPhotoUrlForKey,
+} from './transformation-photo-storage.service.js';
 import { isHttpsImageUrl } from '../../shared/lib/images/dataUri.js';
 import { getPublicPendingCommunityIdRequest } from './communityIdApproval.service.js';
 import {
@@ -50,12 +54,25 @@ import {
   shouldDeferCommunityIdToOtpFlow,
 } from './domain/communityIdApproval.rules.js';
 
+function bustUserProfileCache(emailOrIdKey) {
+  if (emailOrIdKey == null || emailOrIdKey === '') return;
+  const base = cacheKeys.userProfile(emailOrIdKey);
+  try {
+    cache.delete(base);
+    cache.delete(`${base}:tp-r2`);
+    cache.delete(`${base}:tp-legacy`);
+  } catch { /* non-fatal */ }
+}
+
 const notFound = () => ({ httpStatus: 404, body: { success: false, message: 'User not found' } });
 
-export async function getProfile({ email, userId = null }) {
-  const cacheKey = email
+export async function getProfile({ email, userId = null, appVersion = null } = {}) {
+  // Version-shape transformationPhotos (base64 vs R2 URL) — separate cache entries.
+  const preferTransformR2 = shouldPreferTransformationR2Urls({ appVersion });
+  const cacheKeyBase = email
     ? cacheKeys.userProfile(String(email || '').toLowerCase())
     : cacheKeys.userProfile(`id:${userId}`);
+  const cacheKey = `${cacheKeyBase}:tp-${preferTransformR2 ? 'r2' : 'legacy'}`;
   try {
     const cached = cache.get(cacheKey);
     if (cached) return cached;
@@ -231,7 +248,10 @@ export async function getProfile({ email, userId = null }) {
         marathonWeightComparison,
         bodyMetrics,
         recoveredHealthIssues: mapTeamRecoveredHealthIssues(user.recovered_health_issues),
-        transformationPhotos: mapTransformationPhotos(user.transformation_photos),
+        transformationPhotos: mapTransformationPhotosForClient(user.transformation_photos, {
+          preferR2: preferTransformR2,
+          resolveR2Url: transformationPhotoUrlForKey,
+        }),
         // Phone lead created from coach BCM — Complete Profile should open once for review.
         isBcmLead: String(user.EntryUser || '') === 'Body Parameters Card'
           || Boolean(latestBodyMetricsCard?.id),
@@ -248,9 +268,11 @@ function buildProfileUpdate({
   name, height, dietType, phoneNumber, profileImage, gender, weightGoalMode, physicalActivityLevel, communityId, timezoneIana,
   age, visceralFat, bodyAge, chestCm, waistCm, hipCm, recoveredHealthIssues,
   transformationPhotos, existingTransformationPhotos,
+  skipProfileImageBase64 = false,
 }) {
   const updateData = {};
   let cleanedPhoneNumber;
+  let avatarDataUri = null;
   if (name != null) updateData.UserName = name;
   if (height != null) updateData.Height = parseFloat(height);
   if (dietType != null && VALID_DIETS.includes(dietType)) updateData.DietType = dietType;
@@ -270,8 +292,14 @@ function buildProfileUpdate({
     if (/^\+?[0-9]{10,15}$/.test(cleaned)) { updateData.PhoneNumber = cleaned; cleanedPhoneNumber = cleaned; }
   }
   if (profileImage != null && profileImage.startsWith('data:image/')) {
-    updateData.ProfileImage = profileImage;
-    updateData.profile_pic_snooze = null;
+    if (skipProfileImageBase64) {
+      // 3.5.1+: R2 avatar only — do not write multi-MB ProfileImage base64.
+      avatarDataUri = profileImage;
+      updateData.profile_pic_snooze = null;
+    } else {
+      updateData.ProfileImage = profileImage;
+      updateData.profile_pic_snooze = null;
+    }
   }
   if (age !== undefined) updateData.Age = age;
   if (visceralFat !== undefined) updateData.VisceralFat = visceralFat;
@@ -284,13 +312,10 @@ function buildProfileUpdate({
       ? recoveredHealthIssues
       : [];
   }
-  if (hasTransformationPhotoUpdates(transformationPhotos)) {
-    updateData.transformation_photos = mergeTransformationPhotos(
-      existingTransformationPhotos,
-      transformationPhotos,
-    );
-  }
-  return { updateData, cleanedPhoneNumber };
+  // transformation_photos handled separately (R2 keys + orphan slots) — not in updateData.
+  void transformationPhotos;
+  void existingTransformationPhotos;
+  return { updateData, cleanedPhoneNumber, avatarDataUri };
 }
 
 function verifySaved(verifyRow, { cleanedPhoneNumber, height, dietType, gender, updateData, communityId, timezoneIana }) {
@@ -318,6 +343,18 @@ function verifySaved(verifyRow, { cleanedPhoneNumber, height, dietType, gender, 
     const saved = verifyRow.timezone_iana ?? null;
     if (saved !== expected) throw new Error('Timezone was not saved. Please try again.');
   }
+}
+
+/** True when the client only sent identity + photos (onboarding transform save). */
+function isPhotoOnlyProfileUpdate(input) {
+  if (!input || typeof input !== 'object') return false;
+  const keys = [
+    'name', 'height', 'bmr', 'dietType', 'phoneNumber', 'gender',
+    'weightGoalMode', 'physicalActivityLevel', 'communityId', 'timezoneIana',
+    'bodyFat', 'currentWeight', 'age', 'visceralFat', 'bodyAge',
+    'chestCm', 'waistCm', 'hipCm', 'recoveredHealthIssues',
+  ];
+  return keys.every((key) => input[key] === undefined || input[key] === null);
 }
 
 export async function updateProfile(input) {
@@ -371,10 +408,18 @@ export async function updateProfile(input) {
   if (!user) return notFound();
   const userId = user.UserId;
 
-  const { updateData, cleanedPhoneNumber } = buildProfileUpdate({
+  const r2Client = shouldPreferTransformationR2Urls({ appVersion });
+  const centreFromTransform = transformationPhotos?.front
+    && String(transformationPhotos.front).startsWith('data:image/')
+    ? transformationPhotos.front
+    : null;
+  const { updateData, cleanedPhoneNumber, avatarDataUri } = buildProfileUpdate({
     ...input,
+    // Prefer explicit profileImage; else centre transform for R2 avatar (avoid duplicate POST field).
+    profileImage: profileImage || (r2Client ? centreFromTransform : profileImage),
     communityId: appliedCommunityId,
     existingTransformationPhotos: user.transformation_photos,
+    skipProfileImageBase64: r2Client,
   });
 
   const teamFieldsFromCommunityId = buildTeamFieldsFromProfileCommunityId(appliedCommunityId);
@@ -387,12 +432,7 @@ export async function updateProfile(input) {
     savedPhysicalActivityLevel = physicalActivityLevel;
   }
 
-  const transformationPhotosPatch = updateData.transformation_photos !== undefined
-    ? { transformation_photos: updateData.transformation_photos }
-    : null;
-  if (transformationPhotosPatch) {
-    delete updateData.transformation_photos;
-  }
+  const hasTransformPhotoIncoming = hasTransformationPhotoUpdates(transformationPhotos);
 
   let savedCommunityId;
   if (Object.keys(updateData).length > 0) {
@@ -404,9 +444,9 @@ export async function updateProfile(input) {
       teamIdSaved: updateData.TeamId ?? null,
       coachTeamIdSaved: updateData.CoachTeamId ?? null,
     });
-    if (updateData.ProfileImage) {
-      await persistAvatarKey(userId, updateData.ProfileImage);
-      // Always drop avatar cache — persistAvatarKey may no-op when R2 is off.
+    const avatarSource = updateData.ProfileImage || avatarDataUri;
+    if (avatarSource) {
+      await persistAvatarKey(userId, avatarSource);
       try { cache.delete(cacheKeys.userAvatar(userId)); } catch { /* non-fatal */ }
     }
     try { await repo.updateUserById(userId, { LastActiveAt: nowUtc() }); } catch { /* non-fatal */ }
@@ -417,18 +457,55 @@ export async function updateProfile(input) {
       communityId: appliedCommunityId, timezoneIana,
     });
     if (appliedCommunityId !== undefined) savedCommunityId = appliedCommunityId;
+  } else if (avatarDataUri) {
+    await persistAvatarKey(userId, avatarDataUri);
+    try { cache.delete(cacheKeys.userAvatar(userId)); } catch { /* non-fatal */ }
   }
 
-  if (transformationPhotosPatch) {
+  if (hasTransformPhotoIncoming) {
     try {
-      await repo.updateUserById(userId, transformationPhotosPatch);
-      // Leaderboard avatar may fall back to centre transform — drop stale cache.
-      try { cache.delete(cacheKeys.userAvatar(userId)); } catch { /* non-fatal */ }
+      // R2 keys only — front/left/right base64 left as orphan history.
+      const orphanRecord = await persistTransformationPhotosR2Orphan(
+        userId,
+        user.transformation_photos,
+        transformationPhotos,
+      );
+      if (orphanRecord) {
+        await repo.updateUserById(userId, { transformation_photos: orphanRecord });
+        try { cache.delete(cacheKeys.userAvatar(userId)); } catch { /* non-fatal */ }
+      }
     } catch (photoErr) {
       const msg = String(photoErr?.message || photoErr || '');
-      if (!/transformation_photos|column/i.test(msg)) throw photoErr;
+      if (!/transformation_photos|column/i.test(msg) && !/Failed to upload transformation/i.test(msg)) {
+        throw photoErr;
+      }
+      if (/Failed to upload transformation/i.test(msg)) throw photoErr;
       logger.warn('[profile/update] transformation_photos column missing; skipped', { userId });
     }
+  }
+
+  // Photo-only saves (onboarding Left/Centre/Right): skip weight/BMR/card/team work.
+  if (isPhotoOnlyProfileUpdate(input)) {
+    try {
+      bustUserProfileCache(String(email || '').toLowerCase());
+      bustUserProfileCache(`id:${userId}`);
+    } catch { /* non-fatal */ }
+    logger.info('[profile/update] response sent (photo-only fast path)', {
+      email: email || null,
+      userId,
+      httpStatus: 200,
+    });
+    return {
+      httpStatus: 200,
+      body: {
+        success: true,
+        message: 'User profile updated successfully',
+        data: {
+          email: email || undefined,
+          profileImageUpdated: !!(avatarDataUri || centreFromTransform || profileImage),
+        },
+      },
+    };
   }
 
   let latestWeightRow = await repo.getLatestWeight(userId);
@@ -655,7 +732,10 @@ export async function updateProfile(input) {
     throw syncErr;
   }
 
-  try { cache.delete(cacheKeys.userProfile(String(email || '').toLowerCase())); } catch { /* non-fatal */ }
+  try {
+    bustUserProfileCache(String(email || '').toLowerCase());
+    if (userId != null) bustUserProfileCache(`id:${userId}`);
+  } catch { /* non-fatal */ }
 
   const refreshedUser = await repo.getProfile(email);
   const effectiveBmr = savedBmr ?? (refreshedUser?.Bmr ? parseFloat(refreshedUser.Bmr) : null);
@@ -740,9 +820,9 @@ export async function deleteAccount({ email = null, userId: inputUserId = null }
   try {
     cache.delete(cacheKeys.nutritionMeals(userId));
     cache.delete(cacheKeys.nutritionMeals(userId.toString()));
-    cache.delete(cacheKeys.userProfile(`id:${userId}`));
+    bustUserProfileCache(`id:${userId}`);
     if (accountEmail) {
-      cache.delete(cacheKeys.userProfile(String(accountEmail).toLowerCase()));
+      bustUserProfileCache(String(accountEmail).toLowerCase());
     }
     cache.delete(cacheKeys.userContext(userId));
     cache.delete(cacheKeys.userContext(userId.toString()));

@@ -1,6 +1,6 @@
 {
   "name": "wellness-valley-pwa-frontend",
-  "version": "3.5.0",
+  "version": "3.5.1",
   "private": true,
   "homepage": ".",
   "dependencies": {
@@ -21,6 +21,7 @@
     "@capgo/capacitor-navigation-bar": "^8.2.6",
     "@ionic/react": "^8.6.4",
     "@southdevs/capacitor-google-auth": "^7.0.0",
+    "@supabase/supabase-js": "^2.117.1",
     "axios": "^1.13.2",
     "date-fns": "^2.30.0",
     "exceljs": "^4.4.0",

@@ -21,8 +21,8 @@ export const LEADERBOARD_CONFIG = {
     return getTopN();
   },
 
-  // Static configuration (not changed via UI)
-  REFRESH_INTERVAL: 1 * 60 * 1000, // 1 minute (weight loss updates)
+  // Race scoreboard: poll while Home is visible so ranks update for everyone.
+  REFRESH_INTERVAL: 15 * 1000,
   SLIDE_INTERVAL: 5 * 1000, // 5 seconds (deprecated - now using marquee)
   MARQUEE_DURATION: 20, // 20 seconds for smooth scroll
 };

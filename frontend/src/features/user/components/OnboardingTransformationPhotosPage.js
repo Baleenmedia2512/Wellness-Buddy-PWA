@@ -106,22 +106,21 @@ export default function OnboardingTransformationPhotosPage({
       const extras = transformationPhotos.payloadExtras();
       const centrePending = extras.transformationPhotos?.front || null;
       const hasPhotoUpdates = Boolean(extras.transformationPhotos);
-      // Existing users adding only Left/Right must not re-POST an old Centre as profileImage.
+      // Do not also POST centre as profileImage (duplicates ~100KB+). Server uses front for R2 avatar.
       if (hasPhotoUpdates) {
         await saveProfile({
           ...(email ? { email } : {}),
           ...(userId ? { userId } : {}),
           ...extras,
-          ...(centrePending ? { profileImage: centrePending } : {}),
         });
         transformationPhotos.clearPending();
-        // Bust Leaderboard / Top 10 avatar URLs (centre may drive /api/user/avatar).
         bumpAvatarDisplayVersion();
       }
       const leftForTestimonial = extras.transformationPhotos?.left
         || transformationPhotos.leftImageBase64();
+      // Do not block next page on testimonial sync.
       if (userId && (weightKg != null || leftForTestimonial)) {
-        await persistOnboardingTestimonialPhotos({
+        persistOnboardingTestimonialPhotos({
           userId,
           weightKg,
           leftImageBase64: leftForTestimonial,
@@ -130,7 +129,7 @@ export default function OnboardingTransformationPhotosPage({
             currentWeightKg: weightKg,
           }) || 'loss',
           recoveredHealthIssues: healthIssues,
-        });
+        }).catch(() => {});
       }
       const centreForUi = centrePending || transformationPhotos.frontImageBase64();
       await onComplete?.({ profileImage: centreForUi || undefined });
