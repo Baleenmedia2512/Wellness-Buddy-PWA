@@ -2,8 +2,8 @@
  * Fire-and-forget Realtime Broadcast so Home Top 10 clients refresh.
  * Topic: race-leaderboard / event: invalidate (no PII in payload).
  */
-import { getSupabaseClient } from './supabaseClient.js';
-import logger from '../shared/lib/logger.js';
+import { getSupabaseClient } from '../../utils/supabaseClient.js';
+import logger from './logger.js';
 
 export const RACE_LEADERBOARD_CHANNEL = 'race-leaderboard';
 export const RACE_LEADERBOARD_EVENT = 'invalidate';
