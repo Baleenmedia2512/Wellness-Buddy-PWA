@@ -516,74 +516,74 @@ jobs:
       # playwright-results artifact.
       # ==========================================================
 
-      - name: Sync Playwright results to QA Dashboard
-        if: always()
-        shell: bash
+      # - name: Sync Playwright results to QA Dashboard
+      #   if: always()
+      #   shell: bash
 
-        env:
-          DASHBOARD_API_URL: ${{ secrets.DASHBOARD_API_URL }}
+      #   env:
+      #     DASHBOARD_API_URL: ${{ secrets.DASHBOARD_API_URL }}
 
-        run: |
-          echo "=========================================="
-          echo "Syncing Playwright results to QA Dashboard"
-          echo "=========================================="
+      #   run: |
+      #     echo "=========================================="
+      #     echo "Syncing Playwright results to QA Dashboard"
+      #     echo "=========================================="
 
-          if [ -z "$DASHBOARD_API_URL" ]; then
-            echo "ERROR: DASHBOARD_API_URL is not configured."
-            exit 1
-          fi
+      #     if [ -z "$DASHBOARD_API_URL" ]; then
+      #       echo "ERROR: DASHBOARD_API_URL is not configured."
+      #       exit 1
+      #     fi
 
-          if [ -z "$GITHUB_RUN_ID" ]; then
-            echo "ERROR: GITHUB_RUN_ID is not available."
-            exit 1
-          fi
+      #     if [ -z "$GITHUB_RUN_ID" ]; then
+      #       echo "ERROR: GITHUB_RUN_ID is not available."
+      #       exit 1
+      #     fi
 
-          echo "Dashboard API URL is configured."
+      #     echo "Dashboard API URL is configured."
 
-          echo ""
-          echo "GitHub repository:"
-          echo "$GITHUB_REPOSITORY"
+      #     echo ""
+      #     echo "GitHub repository:"
+      #     echo "$GITHUB_REPOSITORY"
 
-          echo ""
-          echo "GitHub run ID:"
-          echo "$GITHUB_RUN_ID"
+      #     echo ""
+      #     echo "GitHub run ID:"
+      #     echo "$GITHUB_RUN_ID"
 
-          PAYLOAD=$(printf '{"runId":%s}' "$GITHUB_RUN_ID")
+      #     PAYLOAD=$(printf '{"runId":%s}' "$GITHUB_RUN_ID")
 
-          echo ""
-          echo "Request payload:"
-          echo "$PAYLOAD"
+      #     echo ""
+      #     echo "Request payload:"
+      #     echo "$PAYLOAD"
 
-          RESPONSE_FILE="/tmp/dashboard-response.txt"
+      #     RESPONSE_FILE="/tmp/dashboard-response.txt"
 
-          HTTP_STATUS=$(
-            curl \
-              --silent \
-              --show-error \
-              --output "$RESPONSE_FILE" \
-              --write-out "%{http_code}" \
-              --request POST \
-              "$DASHBOARD_API_URL" \
-              --header "Content-Type: application/json" \
-              --data "$PAYLOAD"
-          )
+      #     HTTP_STATUS=$(
+      #       curl \
+      #         --silent \
+      #         --show-error \
+      #         --output "$RESPONSE_FILE" \
+      #         --write-out "%{http_code}" \
+      #         --request POST \
+      #         "$DASHBOARD_API_URL" \
+      #         --header "Content-Type: application/json" \
+      #         --data "$PAYLOAD"
+      #     )
 
-          echo ""
-          echo "Dashboard HTTP status:"
-          echo "$HTTP_STATUS"
+      #     echo ""
+      #     echo "Dashboard HTTP status:"
+      #     echo "$HTTP_STATUS"
 
-          echo ""
-          echo "Dashboard response:"
-          cat "$RESPONSE_FILE" || true
+      #     echo ""
+      #     echo "Dashboard response:"
+      #     cat "$RESPONSE_FILE" || true
 
-          if [[ "$HTTP_STATUS" -lt 200 || "$HTTP_STATUS" -ge 300 ]]; then
-            echo ""
-            echo "ERROR: Dashboard import failed."
-            exit 1
-          fi
+      #     if [[ "$HTTP_STATUS" -lt 200 || "$HTTP_STATUS" -ge 300 ]]; then
+      #       echo ""
+      #       echo "ERROR: Dashboard import failed."
+      #       exit 1
+      #     fi
 
-          echo ""
-          echo "Dashboard sync completed successfully."
+      #     echo ""
+      #     echo "Dashboard sync completed successfully."
 
 
       # ==========================================================

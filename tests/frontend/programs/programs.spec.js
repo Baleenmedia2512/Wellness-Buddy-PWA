@@ -2581,18 +2581,11 @@ test(
       );
 
 
-      for (
-        let i = 0;
-        i < LOGIN_OTP.length;
-        i++
-      ) {
-
-        await otpInputs
-          .nth(i)
-          .fill(
-            LOGIN_OTP[i]
-          );
-
+      for (let i = 0; i < LOGIN_OTP.length; i++) {
+        const input = otpInputs.nth(i);
+        await expect(input).toBeVisible({ timeout: 10000 });
+        await input.focus();
+        await input.fill(LOGIN_OTP[i]);
       }
 
 

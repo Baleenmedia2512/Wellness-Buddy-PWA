@@ -17,16 +17,8 @@
           "value": "true"
         },
         {
-          "name": "profileComplete_v2_test@example.com",
-          "value": "true"
-        },
-        {
           "name": "dbUserId",
           "value": "99999"
-        },
-        {
-          "name": "wv.profileUserName.test@example.com",
-          "value": "Test Coach"
         }
       ]
     }
