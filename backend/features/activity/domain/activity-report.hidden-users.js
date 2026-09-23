@@ -1,7 +1,7 @@
 /**
  * Activity Report hide / unhide — domain rules.
  *
- * Visibility is per viewer (junction row + IsHidden). Hiding never deletes
+ * Hide is global (IsHidden on the member). Hiding never deletes
  * team_table users or activity records.
  */
 
@@ -68,7 +68,7 @@ export function excludeHiddenActivityReportUserIds(userIds = [], hiddenIds = [])
 }
 
 /**
- * Stable cache token so report caches bust when the viewer's hidden set changes.
+ * Stable cache token so report caches bust when the global hidden set changes.
  * @param {Array<number|string>} hiddenIds
  * @returns {string}
  */

@@ -27,7 +27,10 @@ import {
   serializeActivityReportTableFilters,
 } from '../utils/activityReportTableFilters';
 import { canManageActivityReportHiddenUsers } from '../utils/activityReportHiddenUsers';
-import { hideActivityReportUser } from '../services/activityReportHiddenUsers.api';
+import {
+  hideActivityReportUser,
+  listActivityReportHiddenUsers,
+} from '../services/activityReportHiddenUsers.api';
 import ActivityReportTableFiltersSheet from './ActivityReportTableFiltersSheet';
 import ActivityReportFiltersBar from './ActivityReportFiltersBar';
 import ActivityReportHiddenUsersModal from './ActivityReportHiddenUsersModal';
@@ -112,6 +115,8 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0, t
   const [showHiddenUsersModal, setShowHiddenUsersModal] = useState(false);
   const [hideMenu, setHideMenu] = useState(null);
   const [hideBusy, setHideBusy] = useState(false);
+  /** Unhide button only when at least one team member is currently hidden. */
+  const [hiddenCount, setHiddenCount] = useState(0);
   const fetchAbortRef = useRef(null);
   const fetchGenerationRef = useRef(0);
   const loadReportRef = useRef(null);
@@ -732,14 +737,38 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0, t
   const canHideInactiveUsers = canManageHidden
     && attendanceStatus === ACTIVITY_REPORT_ATTENDANCE.NOT_POSTED;
 
+  const showUnhideButton = canManageHidden && hiddenCount > 0;
+
+  // Load how many team members are hidden — Unhide only appears when count > 0.
+  useEffect(() => {
+    if (!canManageHidden || !user?.id) {
+      setHiddenCount(0);
+      return undefined;
+    }
+    let cancelled = false;
+    listActivityReportHiddenUsers(user.id)
+      .then((data) => {
+        if (cancelled) return;
+        setHiddenCount(Array.isArray(data.members) ? data.members.length : 0);
+      })
+      .catch(() => {
+        if (!cancelled) setHiddenCount(0);
+      });
+    return () => { cancelled = true; };
+  }, [canManageHidden, user?.id, tabVisitKey]);
+
   const refreshAfterVisibilityChange = useCallback(async () => {
+    // Soft refresh detail only — avoid full bootstrap (that made hide feel slow).
     detailCacheRef.current.clear();
     setCurrentPage(1);
     fetchAbortRef.current?.abort();
     const controller = new AbortController();
     fetchAbortRef.current = controller;
-    if (typeof loadReportRef.current === 'function') {
-      await loadReportRef.current(selectedActivityRef.current, { signal: controller.signal });
+    if (typeof fetchDetailsRef.current === 'function') {
+      await fetchDetailsRef.current(selectedActivityRef.current, {
+        signal: controller.signal,
+        page: 1,
+      });
     }
   }, []);
 
@@ -750,20 +779,51 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0, t
     try {
       await hideActivityReportUser(user.id, targetUserId);
       setHideMenu(null);
+      setHiddenCount((count) => count + 1);
+      // Instant UI update — remove row now; sync counts without waiting on network.
       setDetailRecords((prev) => prev.filter((row) => Number(row.userId) !== Number(targetUserId)));
-      await refreshAfterVisibilityChange();
+      setPagination((prev) => {
+        const totalRecords = Math.max(0, (prev.totalRecords || 0) - 1);
+        const pageSize = prev.pageSize || itemsPerPage;
+        const totalPages = totalRecords === 0 ? 0 : Math.ceil(totalRecords / pageSize);
+        return {
+          ...prev,
+          totalRecords,
+          totalPages,
+          hasNextPage: (prev.currentPage || 1) < totalPages,
+          hasPreviousPage: (prev.currentPage || 1) > 1 && totalPages > 0,
+        };
+      });
+      detailCacheRef.current.clear();
+      // Background sync (do not block the Hide action).
+      void refreshAfterVisibilityChange();
     } catch (err) {
       setError(err?.message || 'Failed to hide user');
       throw err;
     } finally {
       setHideBusy(false);
     }
-  }, [user?.id, refreshAfterVisibilityChange]);
+  }, [user?.id, itemsPerPage, refreshAfterVisibilityChange]);
 
   const handleUnhiddenUser = useCallback(async () => {
-    setShowHiddenUsersModal(false);
-    await refreshAfterVisibilityChange();
+    // Keep Hidden Users modal open — restore this member only (soft detail refresh).
+    setHiddenCount((count) => Math.max(0, count - 1));
+    detailCacheRef.current.clear();
+    void refreshAfterVisibilityChange();
   }, [refreshAfterVisibilityChange]);
+
+  const handleHiddenUsersModalClose = useCallback(() => {
+    setShowHiddenUsersModal(false);
+    // Sync list once when the user closes the sheet.
+    void refreshAfterVisibilityChange();
+    if (user?.id) {
+      listActivityReportHiddenUsers(user.id)
+        .then((data) => {
+          setHiddenCount(Array.isArray(data.members) ? data.members.length : 0);
+        })
+        .catch(() => { /* keep count */ });
+    }
+  }, [refreshAfterVisibilityChange, user?.id]);
 
   const buildCsvFromRecords = (records) => {
     const selectedActivityMeta = ACTIVITY_TYPES.find(a => a.id === selectedActivity);
@@ -1045,7 +1105,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0, t
 
         <ActivityReportHiddenUsersModal
           isOpen={showHiddenUsersModal}
-          onClose={() => setShowHiddenUsersModal(false)}
+          onClose={handleHiddenUsersModalClose}
           viewerUserId={user?.id}
           onUnhidden={handleUnhiddenUser}
         />
@@ -1095,7 +1155,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0, t
                       </TouchFeedbackButton>
                     </>
                   )}
-                  {canManageHidden && (
+                  {showUnhideButton && (
                     <TouchFeedbackButton
                       onClick={() => setShowHiddenUsersModal(true)}
                       disabled={detailLoading || hideBusy}

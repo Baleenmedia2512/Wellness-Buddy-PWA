@@ -768,30 +768,23 @@ function bootstrapCacheKey(input) {
 }
 
 /**
- * Drop warm-lambda report caches for a viewer after hide/unhide.
- * @param {number|string} viewerUserId
+ * Drop warm-lambda report caches after a global hide/unhide.
+ * Clears all viewers because visibility is shared.
  */
-export function invalidateActivityReportCachesForViewer(viewerUserId) {
-  const id = String(viewerUserId);
-  const belongsToViewer = (key) => {
-    const k = String(key);
-    return k.startsWith(`${id}|`) || k.startsWith(`clubs|${id}|`);
-  };
-  for (const cache of [bootstrapResultCache, detailRowsCache, detailClubsCache]) {
-    for (const key of [...cache.keys()]) {
-      if (belongsToViewer(key)) cache.delete(key);
-    }
-  }
+export function invalidateActivityReportCachesForViewer(_viewerUserId) {
+  bootstrapResultCache.clear();
+  detailRowsCache.clear();
+  detailClubsCache.clear();
 }
 
 /**
- * Team scope for the report with the viewer's hidden members removed.
+ * Team scope for the report with globally hidden members removed.
  * Hidden users stay out regardless of date / attendance / column filters.
  */
 async function resolveVisibleActivityReportUserIds({ userId, role, teamScope }) {
   const [scope, hiddenIds] = await Promise.all([
     resolveActivityReportUserIds({ userId, role, teamScope }),
-    hiddenRepo.fetchHiddenUserIds(userId),
+    hiddenRepo.fetchHiddenUserIds(),
   ]);
   return {
     ...scope,
@@ -806,7 +799,7 @@ async function resolveVisibleActivityReportUserIds({ userId, role, teamScope }) 
  * Resolves hierarchy once and fetches all activity tables in parallel.
  */
 export async function getActivityReportBootstrap(params) {
-  const hiddenIds = await hiddenRepo.fetchHiddenUserIds(params.userId);
+  const hiddenIds = await hiddenRepo.fetchHiddenUserIds();
   const hiddenCacheToken = activityReportHiddenCacheToken(hiddenIds);
   const cacheKey = bootstrapCacheKey({ ...params, hiddenCacheToken });
   const cached = bootstrapResultCache.get(cacheKey);
@@ -871,7 +864,7 @@ async function getActivityReportBootstrapUncached({
 
   const resolvedHiddenIds = Array.isArray(hiddenIds)
     ? hiddenIds
-    : await hiddenRepo.fetchHiddenUserIds(userId);
+    : await hiddenRepo.fetchHiddenUserIds();
   const resolvedHiddenToken = hiddenCacheToken && hiddenCacheToken !== 'none'
     ? hiddenCacheToken
     : activityReportHiddenCacheToken(resolvedHiddenIds);

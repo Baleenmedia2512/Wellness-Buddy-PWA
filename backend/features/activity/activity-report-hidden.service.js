@@ -1,5 +1,6 @@
 /**
  * Activity Report hide / unhide service.
+ * Hide is global across all Activity Report viewers.
  */
 import { ValidationError } from '../../shared/lib/ValidationError.js';
 import { getSupabaseClient } from '../../utils/supabaseClient.js';
@@ -37,7 +38,6 @@ async function assertCanManageHiddenUsers(viewerUserId) {
 }
 
 /**
- * Resolve report audience role for scope checks (admin/developer → admin, else coach).
  * @param {string|null|undefined} role
  * @returns {'admin'|'coach'}
  */
@@ -47,32 +47,34 @@ function mapRoleForScope(role) {
   return 'coach';
 }
 
+async function resolveViewerFullScopeIds(viewerId, role) {
+  const { userIds } = await resolveActivityReportUserIds({
+    userId: viewerId,
+    role: mapRoleForScope(role),
+    teamScope: 'full',
+  });
+  return userIds.map(Number).filter((id) => Number.isFinite(id));
+}
+
 /**
  * Target must be in the viewer's Activity Report team scope (full tree).
- * @param {number} viewerId
- * @param {string} role
- * @param {number} targetId
  */
 async function assertTargetInViewerScope(viewerId, role, targetId) {
   if (viewerId === targetId) {
     throw new ValidationError(400, 'You cannot hide yourself from the Activity Report');
   }
 
-  const { userIds } = await resolveActivityReportUserIds({
-    userId: viewerId,
-    role: mapRoleForScope(role),
-    teamScope: 'full',
-  });
-
-  const allowed = new Set(userIds.map(Number));
+  const allowed = new Set(await resolveViewerFullScopeIds(viewerId, role));
   if (!allowed.has(targetId)) {
     throw new ValidationError(403, 'That user is outside your Activity Report team scope');
   }
 }
 
 export async function listActivityReportHiddenUsers({ userId }) {
-  const { viewerId } = await assertCanManageHiddenUsers(userId);
-  const members = await hiddenRepo.listHiddenMembers(viewerId);
+  const { viewerId, role } = await assertCanManageHiddenUsers(userId);
+  const scopeIds = await resolveViewerFullScopeIds(viewerId, role);
+  // Unhide list: globally hidden members that appear in this viewer's team.
+  const members = await hiddenRepo.listHiddenMembers(scopeIds);
   return {
     httpStatus: 200,
     body: {
@@ -97,7 +99,7 @@ export async function hideActivityReportUser({ userId, hiddenUserId }) {
     httpStatus: 200,
     body: {
       success: true,
-      message: 'User hidden from Activity Report',
+      message: 'User hidden from Activity Report for all viewers',
       hiddenUserId: targetId,
       isHidden: true,
       viewerUserId: viewerId,
@@ -106,13 +108,15 @@ export async function hideActivityReportUser({ userId, hiddenUserId }) {
 }
 
 export async function unhideActivityReportUser({ userId, hiddenUserId }) {
-  const { viewerId } = await assertCanManageHiddenUsers(userId);
+  const { viewerId, role } = await assertCanManageHiddenUsers(userId);
   const targetId = Number(hiddenUserId);
   if (!Number.isFinite(targetId) || targetId <= 0) {
     throw new ValidationError(400, 'hiddenUserId is required');
   }
 
-  const updated = await hiddenRepo.setMemberVisible(viewerId, targetId);
+  await assertTargetInViewerScope(viewerId, role, targetId);
+
+  const updated = await hiddenRepo.setMemberVisible(targetId);
   if (!updated) {
     throw new ValidationError(404, 'Hidden user not found');
   }
@@ -121,7 +125,7 @@ export async function unhideActivityReportUser({ userId, hiddenUserId }) {
     httpStatus: 200,
     body: {
       success: true,
-      message: 'User restored to Activity Report',
+      message: 'User restored to Activity Report for all viewers',
       hiddenUserId: targetId,
       isHidden: false,
       viewerUserId: viewerId,
