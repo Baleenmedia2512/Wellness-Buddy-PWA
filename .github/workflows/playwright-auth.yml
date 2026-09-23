@@ -384,7 +384,8 @@ jobs:
             tests/frontend/authenticated/transformation.spec.js \
             tests/frontend/pages/home.spec.js \
             tests/frontend/pages/complete-profile.spec.js \
-            tests/frontend/programs/programs.spec.js
+            tests/frontend/programs/programs.spec.js \
+            tests\frontend\pages\reports.spec.js
 
 
       # ==========================================================
