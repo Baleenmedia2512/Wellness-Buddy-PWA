@@ -618,6 +618,7 @@ function MemberCard({
   onMineRefresh,
   onOtpVerified,
   knownHealthIssues = [],
+  canEditHealthIssues = true,
 }) {
   const { user } = row;
   const [detailTestimonial, setDetailTestimonial] = useState(null);
@@ -1730,12 +1731,19 @@ function MemberCard({
             currentIssues={draftIssues ?? issues}
             approvedIssues={approvedIssues}
             knownHealthIssues={knownHealthIssues}
-            persist={editable ? false : Boolean(testimonial?.id)}
-            allowRemove={editable}
+            // Mine: draft into submit. Team downline: coach can save. Upline: view only.
+            persist={editable ? false : (Boolean(testimonial?.id) && canEditHealthIssues)}
+            allowRemove={editable || canEditHealthIssues}
             editable={editable}
+            disabled={!editable && !canEditHealthIssues}
             onSaved={handleHealthIssuesSaved}
             onRemove={handleHealthIssueRemoved}
           />
+          {!editable && !canEditHealthIssues && (
+            <p className="text-[10px] text-gray-400 italic">
+              Upline health issues are view-only.
+            </p>
+          )}
           {testimonial && canShareTransformationPhoto(testimonial) && (testimonial.beforeImageUrl || hasAfter) &&
             (editable ? (!hasDirtySlots && !submitDone) : true) && (
             <TransformationShareActions
@@ -2705,6 +2713,7 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
           userId={row.user.userId}
           coachId={coachId}
           knownHealthIssues={knownHealthIssues}
+          canEditHealthIssues={isMineScope || row.canEditHealthIssues !== false}
           onMineRefresh={isMineScope ? refreshMineRow : undefined}
           onOtpVerified={isMineScope ? () => loadDirectAndMine() : undefined}
         />
