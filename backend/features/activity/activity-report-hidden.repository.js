@@ -1,22 +1,20 @@
 /**
- * Persistence for Activity Report per-viewer hidden members.
+ * Persistence for Activity Report hidden members.
+ * Hide is global: IsHidden=true for a member removes them from everyone's
+ * Activity Report. ViewerUserId is who performed the hide (audit).
  */
 import { getSupabaseClient } from '../../utils/supabaseClient.js';
 import { nowUtc } from '../../shared/lib/datetime/index.js';
 
 /**
- * @param {number} viewerUserId
+ * All member IDs currently hidden from Activity Report (any viewer).
  * @returns {Promise<number[]>}
  */
-export async function fetchHiddenUserIds(viewerUserId) {
-  const viewerId = Number(viewerUserId);
-  if (!Number.isFinite(viewerId) || viewerId <= 0) return [];
-
+export async function fetchHiddenUserIds() {
   const supabase = getSupabaseClient();
   const { data, error } = await supabase
     .from('activity_report_hidden_users_table')
     .select('"HiddenUserId"')
-    .eq('ViewerUserId', viewerId)
     .eq('IsHidden', true);
 
   if (error) {
@@ -28,17 +26,30 @@ export async function fetchHiddenUserIds(viewerUserId) {
     throw error;
   }
 
-  return (data || [])
-    .map((row) => Number(row.HiddenUserId))
-    .filter((id) => Number.isFinite(id) && id > 0);
+  const unique = new Set(
+    (data || [])
+      .map((row) => Number(row.HiddenUserId))
+      .filter((id) => Number.isFinite(id) && id > 0),
+  );
+  return [...unique];
 }
 
 /**
- * @param {number} viewerUserId
+ * Globally hidden members, optionally limited to a set of user IDs (viewer scope).
+ *
+ * @param {Array<number|string>} [scopeUserIds]
  * @returns {Promise<Array<{ userId: number, memberName: string, communityId: string|null }>>}
  */
-export async function listHiddenMembers(viewerUserId) {
-  const hiddenIds = await fetchHiddenUserIds(viewerUserId);
+export async function listHiddenMembers(scopeUserIds = null) {
+  let hiddenIds = await fetchHiddenUserIds();
+  if (hiddenIds.length === 0) return [];
+
+  if (Array.isArray(scopeUserIds)) {
+    const allowed = new Set(
+      scopeUserIds.map(Number).filter((id) => Number.isFinite(id)),
+    );
+    hiddenIds = hiddenIds.filter((id) => allowed.has(id));
+  }
   if (hiddenIds.length === 0) return [];
 
   const supabase = getSupabaseClient();
@@ -69,7 +80,8 @@ export async function listHiddenMembers(viewerUserId) {
 }
 
 /**
- * Upsert IsHidden = true for (viewer, target). Does not delete any user/activity data.
+ * Mark a member globally hidden. Does not delete any user/activity data.
+ * ViewerUserId records who hid them.
  *
  * @param {number} viewerUserId
  * @param {number} hiddenUserId
@@ -85,23 +97,22 @@ export async function setMemberHidden(viewerUserId, hiddenUserId) {
   const supabase = getSupabaseClient();
   const stamp = nowUtc();
 
-  const { data: existing, error: lookupError } = await supabase
+  // Any existing rows for this member → flip all to hidden (global).
+  const { data: existingRows, error: lookupError } = await supabase
     .from('activity_report_hidden_users_table')
     .select('"Id"')
-    .eq('ViewerUserId', viewerId)
-    .eq('HiddenUserId', targetId)
-    .maybeSingle();
+    .eq('HiddenUserId', targetId);
 
   if (lookupError) {
     console.error('[activity-report-hidden] setMemberHidden lookup failed:', lookupError.message);
     throw lookupError;
   }
 
-  if (existing?.Id != null) {
+  if (Array.isArray(existingRows) && existingRows.length > 0) {
     const { error } = await supabase
       .from('activity_report_hidden_users_table')
       .update({ IsHidden: true, UpdatedAt: stamp })
-      .eq('Id', existing.Id);
+      .eq('HiddenUserId', targetId);
     if (error) {
       console.error('[activity-report-hidden] setMemberHidden update failed:', error.message);
       throw error;
@@ -126,24 +137,21 @@ export async function setMemberHidden(viewerUserId, hiddenUserId) {
 }
 
 /**
- * Set IsHidden = false for (viewer, target). Does not delete any user/activity data.
+ * Unhide a member globally for every viewer. Does not delete any user/activity data.
  *
- * @param {number} viewerUserId
  * @param {number} hiddenUserId
- * @returns {Promise<boolean>} true when a row was updated
+ * @returns {Promise<boolean>} true when at least one row was updated
  */
-export async function setMemberVisible(viewerUserId, hiddenUserId) {
-  const viewerId = Number(viewerUserId);
+export async function setMemberVisible(hiddenUserId) {
   const targetId = Number(hiddenUserId);
-  if (!Number.isFinite(viewerId) || !Number.isFinite(targetId)) {
-    throw new Error('Invalid viewer or hidden user id');
+  if (!Number.isFinite(targetId)) {
+    throw new Error('Invalid hidden user id');
   }
 
   const supabase = getSupabaseClient();
   const { data, error } = await supabase
     .from('activity_report_hidden_users_table')
     .update({ IsHidden: false, UpdatedAt: nowUtc() })
-    .eq('ViewerUserId', viewerId)
     .eq('HiddenUserId', targetId)
     .eq('IsHidden', true)
     .select('"Id"');

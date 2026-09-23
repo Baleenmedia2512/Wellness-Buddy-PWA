@@ -57,9 +57,11 @@ export default function ActivityReportHiddenUsersModal({
     setError('');
     try {
       await unhideActivityReportUser(viewerUserId, member.userId);
-      setMembers((prev) => prev.filter((row) => row.userId !== member.userId));
+      const remaining = members.filter((row) => row.userId !== member.userId);
+      setMembers(remaining);
+      // Parent restores only this member in the report; modal stays open.
       if (typeof onUnhidden === 'function') {
-        await onUnhidden(member);
+        void onUnhidden(member);
       }
     } catch (err) {
       setError(err?.message || 'Failed to unhide user');
