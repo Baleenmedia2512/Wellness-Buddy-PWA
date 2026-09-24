@@ -2070,11 +2070,8 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
       if (Number.isFinite(latestWeightKg) && latestWeightKg > 0) {
         userPayload.latestWeightKg = latestWeightKg;
       }
-      const leftUrl = profileResult?.success
-        ? profileResult?.data?.transformationPhotos?.left
-        : null;
+      // Profile Left no longer seeds Transformation Before — keep testimonial as stored.
       const seeded = seedMineTestimonialFromProfileSlots(testimonial, {
-        leftUrl,
         weightKg: Number.isFinite(latestWeightKg) ? latestWeightKg : null,
       });
       if (!seeded && !video) {

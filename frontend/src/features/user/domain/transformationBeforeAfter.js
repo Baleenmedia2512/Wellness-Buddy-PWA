@@ -149,62 +149,28 @@ function firstPositiveKg(...values) {
   return null;
 }
 
-const PROFILE_MAPPED_AFTER_RE = /(?:^|\/)after_\d+\.jpg(?:\?|$)/i;
-
-function testimonialHasRealAfterDisplay(testimonial) {
-  const incomplete = !testimonial?.status || testimonial.status === 'incomplete';
-  if (incomplete) return false;
-  return isStoredPhoto(testimonial?.afterImageUrl)
-    && isStoredPhoto(testimonial?.beforeImageUrl)
-    && testimonial.afterImageUrl !== testimonial.beforeImageUrl;
-}
-
-function isIncompleteProfileMappedAfter(testimonial, afterValue) {
-  const incomplete = !testimonial?.status || testimonial.status === 'incomplete';
-  if (!incomplete) return false;
-  const after = afterValue ?? testimonial?.afterImageUrl;
-  if (typeof after !== 'string' || !after.trim()) return false;
-  return PROFILE_MAPPED_AFTER_RE.test(after.trim());
-}
-
 /**
- * Transformation Before/After from Profile slots:
- * Left → Before always when present.
- * After defaults to Left only when no After is stored yet (new users).
- * Profile Right never maps to After. A later Left change updates Before only.
+ * Profile Left no longer seeds Transformation Before/After.
+ * Returns the testimonial as-is; may still fill missing weights from latestWeight.
  */
-export function seedMineTestimonialFromProfileSlots(testimonial, { leftUrl, weightKg } = {}) {
-  const hasLeft = isStoredPhoto(leftUrl);
+export function seedMineTestimonialFromProfileSlots(testimonial, { weightKg } = {}) {
   const weight = firstPositiveKg(weightKg);
-  if (!testimonial && !hasLeft && weight == null) return null;
-
-  const next = testimonial ? { ...testimonial } : {
-    status: 'incomplete',
-    recoveredHealthIssues: [],
-    beforeImageUrl: null,
-    afterImageUrl: null,
-  };
-  const realAfter = testimonialHasRealAfterDisplay(testimonial || next);
-  const storedAfter = isStoredPhoto(testimonial?.afterImageUrl)
-    && !isIncompleteProfileMappedAfter(testimonial, testimonial?.afterImageUrl);
-
-  if (hasLeft) {
-    next.beforeImageUrl = String(leftUrl).trim();
-  }
-  const beforeW = firstPositiveKg(next.beforeWeightKg, weight);
-  if (beforeW != null) next.beforeWeightKg = beforeW;
-
-  if (!realAfter && !storedAfter) {
-    if (hasLeft) {
-      next.afterImageUrl = String(leftUrl).trim();
-    } else if (isStoredPhoto(next.beforeImageUrl)) {
-      next.afterImageUrl = next.beforeImageUrl;
-    }
+  if (!testimonial) {
+    if (weight == null) return null;
+    return {
+      status: 'incomplete',
+      recoveredHealthIssues: [],
+      beforeImageUrl: null,
+      afterImageUrl: null,
+      beforeWeightKg: weight,
+      afterWeightKg: weight,
+    };
   }
 
-  if (!realAfter) {
-    const afterW = firstPositiveKg(next.afterWeightKg, beforeW, weight);
-    if (afterW != null) next.afterWeightKg = afterW;
+  const next = { ...testimonial };
+  if (weight != null) {
+    if (firstPositiveKg(next.beforeWeightKg) == null) next.beforeWeightKg = weight;
+    if (firstPositiveKg(next.afterWeightKg) == null) next.afterWeightKg = weight;
   }
   return next;
 }

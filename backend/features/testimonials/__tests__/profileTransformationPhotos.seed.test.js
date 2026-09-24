@@ -19,107 +19,32 @@ describe('isInlineImageReference', () => {
 });
 
 describe('seedTestimonialFromProfilePhotos', () => {
-  it('returns null when no testimonial and no left photo', () => {
-    assert.equal(seedTestimonialFromProfilePhotos(null, {}), null);
+  it('does not invent a testimonial from profile left', () => {
+    assert.equal(
+      seedTestimonialFromProfilePhotos(null, { left: 'https://cdn.example/left.jpg' }),
+      null,
+    );
   });
 
-  it('seeds before and after from profile left slot', () => {
-    const seeded = seedTestimonialFromProfilePhotos(null, {
+  it('returns the existing testimonial unchanged', () => {
+    const row = {
+      before_image_path: '99/real.jpg',
+      after_image_path: '99/after.jpg',
+      status: 'pending',
+    };
+    const seeded = seedTestimonialFromProfilePhotos(row, {
       left: 'https://cdn.example/left.jpg',
     });
-    assert.equal(seeded.before_image_path, 'https://cdn.example/left.jpg');
-    assert.equal(seeded.after_image_path, 'https://cdn.example/left.jpg');
-    assert.equal(seeded.status, 'incomplete');
-  });
-
-  it('overwrites existing testimonial before path with profile left', () => {
-    const seeded = seedTestimonialFromProfilePhotos(
-      { before_image_path: '99/real.jpg', after_image_path: null, status: 'incomplete' },
-      { left: 'https://cdn.example/left.jpg' },
-    );
-    assert.equal(seeded.before_image_path, 'https://cdn.example/left.jpg');
-    assert.equal(seeded.after_image_path, 'https://cdn.example/left.jpg');
-  });
-
-  it('keeps testimonial After when only profile left changes on pending row', () => {
-    const seeded = seedTestimonialFromProfilePhotos(
-      {
-        before_image_path: '99/before.jpg',
-        after_image_path: '99/after.jpg',
-        status: 'pending',
-      },
-      { left: 'https://cdn.example/left.jpg' },
-    );
-    assert.equal(seeded.before_image_path, 'https://cdn.example/left.jpg');
-    assert.equal(seeded.after_image_path, '99/after.jpg');
-  });
-
-  it('does not overwrite pending After when profile right is provided', () => {
-    const seeded = seedTestimonialFromProfilePhotos(
-      {
-        before_image_path: '99/before.jpg',
-        after_image_path: '99/after.jpg',
-        status: 'pending',
-      },
-      { right: 'https://cdn.example/right.jpg' },
-    );
-    assert.equal(seeded.after_image_path, '99/after.jpg');
-  });
-
-  it('seeds both before and after from left even when profile right exists', () => {
-    const seeded = seedTestimonialFromProfilePhotos(null, {
-      left: 'https://cdn.example/left.jpg',
-      right: 'https://cdn.example/right.jpg',
-    });
-    assert.equal(seeded.before_image_path, 'https://cdn.example/left.jpg');
-    assert.equal(seeded.after_image_path, 'https://cdn.example/left.jpg');
-  });
-
-  it('does not replace stored after when profile left changes', () => {
-    const seeded = seedTestimonialFromProfilePhotos(
-      {
-        before_image_path: '99/old-left.jpg',
-        after_image_path: '99/old-left.jpg',
-        status: 'incomplete',
-      },
-      {
-        left: 'https://cdn.example/new-left.jpg',
-        right: 'https://cdn.example/right.jpg',
-      },
-    );
-    assert.equal(seeded.before_image_path, 'https://cdn.example/new-left.jpg');
-    assert.equal(seeded.after_image_path, '99/old-left.jpg');
-  });
-
-  it('replaces incomplete profile-right auto after with left', () => {
-    const seeded = seedTestimonialFromProfilePhotos(
-      {
-        before_image_path: '99/before_1700000000000.jpg',
-        after_image_path: '99/after_1700000001000.jpg',
-        status: 'incomplete',
-      },
-      {
-        left: 'https://cdn.example/left.jpg',
-        right: 'https://cdn.example/right.jpg',
-      },
-    );
-    assert.equal(seeded.before_image_path, 'https://cdn.example/left.jpg');
-    assert.equal(seeded.after_image_path, 'https://cdn.example/left.jpg');
-  });
-
-  it('ignores profile right when it is the only slot', () => {
-    const seeded = seedTestimonialFromProfilePhotos(null, {
-      right: 'https://cdn.example/right.jpg',
-    });
-    assert.equal(seeded, null);
+    assert.equal(seeded, row);
+    assert.equal(seeded.before_image_path, '99/real.jpg');
   });
 });
 
 describe('memberHasVisibleTransformationPhoto', () => {
-  it('counts profile left slot when testimonial is missing', () => {
+  it('does not count profile left alone', () => {
     assert.equal(
       memberHasVisibleTransformationPhoto(null, { left: 'https://cdn.example/left.jpg' }),
-      true,
+      false,
     );
   });
 

@@ -1,8 +1,7 @@
 /**
  * Left / Centre / Right transformation photos for onboarding / profile.
  * Images: team_table.transformation_photos JSONB.
- * Left slot syncs testimonial Before via persistOnboardingTestimonialPhotos.
- * After starts as a Left copy for new users; Profile Right does not overwrite After.
+ * Profile slots do not sync to Transformation Before/After.
  */
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { compressImage } from '../../testimonials/utils/compressTestimonialImage.js';
