@@ -52,6 +52,17 @@ import {
 
 const notFound = () => ({ httpStatus: 404, body: { success: false, message: 'User not found' } });
 
+/** Drop both email- and userId-keyed profile caches (clients often GET by userId). */
+function clearProfileCaches({ email, userId } = {}) {
+  if (userId != null && String(userId).trim() !== '') {
+    try { cache.delete(cacheKeys.userProfile(`id:${userId}`)); } catch { /* non-fatal */ }
+  }
+  const emailKey = String(email || '').trim().toLowerCase();
+  if (emailKey) {
+    try { cache.delete(cacheKeys.userProfile(emailKey)); } catch { /* non-fatal */ }
+  }
+}
+
 export async function getProfile({ email, userId = null }) {
   const cacheKey = email
     ? cacheKeys.userProfile(String(email || '').toLowerCase())
@@ -350,8 +361,8 @@ export async function updateProfile(input) {
   }
 
   let user;
-  const photoCols = 'UserId, transformation_photos';
-  const idCols = 'UserId';
+  const photoCols = '"UserId", "Email", transformation_photos';
+  const idCols = '"UserId", "Email"';
   try {
     // Prefer email when present (legacy clients); userId for phone / BCM without email.
     if (email) {
@@ -370,6 +381,7 @@ export async function updateProfile(input) {
   }
   if (!user) return notFound();
   const userId = user.UserId;
+  const accountEmail = email || user.Email || null;
 
   const { updateData, cleanedPhoneNumber } = buildProfileUpdate({
     ...input,
@@ -430,6 +442,9 @@ export async function updateProfile(input) {
       logger.warn('[profile/update] transformation_photos column missing; skipped', { userId });
     }
   }
+
+  // Profile page loads by userId; must clear id: cache or Left/Centre/Right look stale for ~60s.
+  clearProfileCaches({ email: accountEmail, userId });
 
   let latestWeightRow = await repo.getLatestWeight(userId);
   const latestBodyMetricsCard = await findLatestLinkedBodyMetricsCard(userId);
@@ -655,9 +670,11 @@ export async function updateProfile(input) {
     throw syncErr;
   }
 
-  try { cache.delete(cacheKeys.userProfile(String(email || '').toLowerCase())); } catch { /* non-fatal */ }
+  clearProfileCaches({ email: accountEmail, userId });
 
-  const refreshedUser = await repo.getProfile(email);
+  const refreshedUser = accountEmail
+    ? await repo.getProfile(accountEmail)
+    : await repo.getProfileByUserId(userId);
   const effectiveBmr = savedBmr ?? (refreshedUser?.Bmr ? parseFloat(refreshedUser.Bmr) : null);
   const effectiveActivity = savedPhysicalActivityLevel
     ?? refreshedUser?.PhysicalActivityLevel
