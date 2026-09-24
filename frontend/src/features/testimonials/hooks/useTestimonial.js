@@ -78,9 +78,7 @@ export function useTestimonial({ userId, healthIssues = [] }) {
   const coverCrop = usePortraitCoverCrop({
     onApply: (dataUrl) => {
       const setter = pendingImageSetterRef.current;
-      if (!setter) {
-        throw new Error('Photo slot was lost — close and pick the photo again.');
-      }
+      if (!setter) return;
       const base64 = dataUrl.includes(',') ? dataUrl.split(',')[1] : dataUrl;
       const preview = jpegDataUrlToObjectUrl(dataUrl) || dataUrl;
       setter((prev) => {
