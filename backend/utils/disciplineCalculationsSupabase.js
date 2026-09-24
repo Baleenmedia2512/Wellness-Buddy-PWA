@@ -588,29 +588,47 @@ export async function getDualCoachingTeamHierarchy(userId, enableLogging = false
     return [];
   }
 
-  // Step 2: Check if user has a co-coach (team partner with same TeamId)
-  // If yes, both coaches should be treated as level 0 for their shared downline
-  let coachPartnerIds = [userIdNum]; // Start with just this user
+  // Step 2: Co-coach partners only when the viewer is a Sponsor/Co-Sponsor lead.
+  // Sharing TeamId / Community ID alone must not promote unrelated coaches into
+  // each other's hierarchy (Community ID ≠ Co-Coach).
+  let coachPartnerIds = [userIdNum];
   
-  if (user.TeamId) {
+  const { data: teamByRole, error: teamByRoleError } = await supabase
+    .from('coach_teams_table')
+    .select('CoachId, CoCoachId')
+    .or(`CoachId.eq.${userIdNum},CoCoachId.eq.${userIdNum}`)
+    .eq('Status', 'active')
+    .maybeSingle();
+
+  if (!teamByRoleError && teamByRole?.CoachId && teamByRole?.CoCoachId) {
+    coachPartnerIds = [...new Set([teamByRole.CoachId, teamByRole.CoCoachId].filter(Boolean))];
+    if (enableLogging) {
+      console.log(`👥 [getDualCoachingTeamHierarchy] Co-coaching team detected:`, {
+        CoachIds: coachPartnerIds,
+      });
+    }
+  } else if (user.TeamId || user.CoachTeamId) {
+    const teamCode = user.TeamId || user.CoachTeamId;
     const { data: coachTeam, error: coachTeamError } = await supabase
       .from('coach_teams_table')
       .select('CoachId, CoCoachId')
-      .eq('TeamId', user.TeamId)
+      .eq('TeamId', teamCode)
       .eq('Status', 'active')
       .maybeSingle();
     
-    if (!coachTeamError && coachTeam) {
-      // Add both coaches to the starting level
-      if (coachTeam.CoachId && coachTeam.CoCoachId) {
-        coachPartnerIds = [coachTeam.CoachId, coachTeam.CoCoachId];
-        
-        if (enableLogging) {
-          console.log(`👥 [getDualCoachingTeamHierarchy] Co-coaching team detected:`, {
-            TeamId: user.TeamId,
-            CoachIds: coachPartnerIds
-          });
-        }
+    if (
+      !coachTeamError
+      && coachTeam?.CoachId
+      && coachTeam?.CoCoachId
+      && (Number(coachTeam.CoachId) === userIdNum || Number(coachTeam.CoCoachId) === userIdNum)
+    ) {
+      coachPartnerIds = [...new Set([coachTeam.CoachId, coachTeam.CoCoachId].filter(Boolean))];
+      
+      if (enableLogging) {
+        console.log(`👥 [getDualCoachingTeamHierarchy] Co-coaching team detected:`, {
+          TeamId: teamCode,
+          CoachIds: coachPartnerIds
+        });
       }
     }
   }

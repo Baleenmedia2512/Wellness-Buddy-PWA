@@ -20,6 +20,7 @@ import {
   buildLeadPartnerByUserId,
   listPrimaryDirectReports,
 } from './teamHierarchyTree.js';
+import { resolveCommunityPeerCoachIds } from './communityTeamVisibility.js';
 
 /** Case-insensitive active check for team_table.Status. */
 export function isActiveTeamStatus(status) {
@@ -290,6 +291,64 @@ export async function buildTeamHierarchy(supabase, coachIdInt, opts = {}) {
           hierarchy.teamMembers.push(memberNode);
         }
       });
+
+      hierarchy.directMemberCount = hierarchy.teamMembers.length;
+      hierarchy.totalMemberCount =
+        hierarchy.directMemberCount +
+        hierarchy.teamMembers.reduce((sum, m) => sum + (m.totalMemberCount || 0), 0);
+    }
+  }
+
+  // Same Community ID: merge independent peer coaches' Direct/Full downlines.
+  // Visibility only — never coCoachInfo / CoachId / CoCoachId edges.
+  if (hierarchy) {
+    const partnerIdsForCommunity = managedTeam?.CoachId && managedTeam?.CoCoachId
+      ? [managedTeam.CoachId, managedTeam.CoCoachId].filter((id) => Number(id) !== coachIdInt)
+      : [];
+    const communityPeerIds = resolveCommunityPeerCoachIds(coachIdInt, allUsers, {
+      partnerIds: partnerIdsForCommunity,
+    });
+
+    if (communityPeerIds.length > 0) {
+      const existingIds = new Set(hierarchy.teamMembers.map((m) => m.userId));
+      existingIds.add(coachIdInt);
+      for (const pid of partnerIdsForCommunity) existingIds.add(Number(pid));
+      for (const peerId of communityPeerIds) existingIds.add(Number(peerId));
+
+      for (const peerId of communityPeerIds) {
+        const peerMembers = listPrimaryDirectReports(
+          allUsers,
+          peerId,
+          leadPartnerByUserId,
+          existingIds,
+        );
+
+        peerMembers.forEach((member) => {
+          if (!isActiveTeamStatus(member.Status)) {
+            const promoted = collectPromotedChildren(
+              member.UserId,
+              peerId,
+              new Set([coachIdInt, peerId]),
+            );
+            promoted.forEach((child) => {
+              if (!existingIds.has(child.userId)) {
+                existingIds.add(child.userId);
+                hierarchy.teamMembers.push(child);
+              }
+            });
+            return;
+          }
+          const memberNode = buildHierarchy(
+            member.UserId,
+            peerId,
+            new Set([coachIdInt, peerId]),
+          );
+          if (memberNode && !existingIds.has(memberNode.userId)) {
+            existingIds.add(memberNode.userId);
+            hierarchy.teamMembers.push(memberNode);
+          }
+        });
+      }
 
       hierarchy.directMemberCount = hierarchy.teamMembers.length;
       hierarchy.totalMemberCount =

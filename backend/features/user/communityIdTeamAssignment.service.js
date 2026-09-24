@@ -77,6 +77,8 @@ export async function resolveSharedTeamCodeFromInput(supabase, rawCode, excludeU
 
 /**
  * Coach/upline lead claim from profile Community ID (existing behaviour).
+ * New community codes claim Sponsor. Existing communities only link team codes
+ * (Community ID ≠ Co-Coach); Co-Sponsor uses the OTP flow.
  * @returns {Promise<{ teamId: string, teamSeat: string|null, coachTeamId: string, synced: boolean }|null>}
  */
 async function syncCoachLeadTeamCodeFromCommunityId(userId, communityIdSource, teamRow, leadSeat) {
@@ -89,31 +91,40 @@ async function syncCoachLeadTeamCodeFromCommunityId(userId, communityIdSource, t
   if (!teamCode) return null;
 
   const supabase = getSupabaseClient();
-  const seatResult = await assignLeadSeat(supabase, teamCode, Number(userId));
-  if (!seatResult.ok) {
-    throw new Error(seatResult.error || 'This Community ID is unavailable as a Team Code');
+  const resolved = await resolveSharedTeamCodeFromInput(supabase, teamCode, userId);
+  let resolvedSeat = leadSeat.seat || null;
+
+  if (!resolved.found) {
+    const seatResult = await assignLeadSeat(supabase, teamCode, Number(userId));
+    if (!seatResult.ok) {
+      throw new Error(seatResult.error || 'This Community ID is unavailable as a Team Code');
+    }
+    resolvedSeat = seatResult.seat === 'already'
+      ? (leadSeat.seat || 'sponsor')
+      : seatResult.seat;
   }
 
-  const resolvedSeat = seatResult.seat === 'already'
-    ? (leadSeat.seat || 'sponsor')
-    : seatResult.seat;
+  const linkedCode = resolved.found
+    ? (normalizeStoredTeamCode(resolved.teamCode) || teamCode)
+    : teamCode;
 
   await repo.updateUserById(userId, {
-    TeamId: teamCode,
-    CoachTeamId: teamCode,
-    CommunityId: teamCode,
+    TeamId: linkedCode,
+    CoachTeamId: linkedCode,
+    CommunityId: linkedCode,
   });
 
   logger.info('[profile/update] coach Community ID synced to Team Code', {
     userId,
-    teamId: teamCode,
+    teamId: linkedCode,
     teamSeat: resolvedSeat,
+    resolvedFromExistingTeam: resolved.found,
   });
 
   return {
-    teamId: teamCode,
+    teamId: linkedCode,
     teamSeat: resolvedSeat || null,
-    coachTeamId: teamCode,
+    coachTeamId: linkedCode,
     synced: true,
   };
 }

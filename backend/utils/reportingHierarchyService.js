@@ -14,6 +14,10 @@
  */
 import { isActiveTeamStatus } from './teamHierarchyBuilder.js';
 import { filterPublicAggregateUsers } from '../features/user/domain/aggregate-eligibility.rules.js';
+import {
+  getUserCommunityTeamCode,
+  resolveCommunityPeerCoachIds,
+} from './communityTeamVisibility.js';
 
 const COACH_ROLES = new Set(['coach', 'admin']);
 
@@ -501,7 +505,7 @@ const TEAM_USER_SELECT =
 const MAX_SUBTREE_DEPTH = 12;
 const SUBTREE_CONTEXT_CACHE = new Map();
 const SUBTREE_CONTEXT_TTL_MS = 60_000;
-const SUBTREE_CACHE_KEY_PREFIX = 'v6:'; // bump when select columns or rollup rules change
+const SUBTREE_CACHE_KEY_PREFIX = 'v7:'; // bump when select columns or rollup rules change
 
 /**
  * @param {object} supabase
@@ -531,6 +535,25 @@ async function fetchTeamUsersByCoachIds(supabase, coachIds) {
     .select(TEAM_USER_SELECT)
     .in('CoachId', ids);
   if (error) throw new Error('Failed to fetch team children: ' + error.message);
+  return data || [];
+}
+
+/**
+ * Users sharing a community / team code (CommunityId, CoachTeamId, or TeamId).
+ * Used only for community-level Team visibility — not for CoachId edges.
+ *
+ * @param {object} supabase
+ * @param {string} communityCode
+ * @returns {Promise<TeamUser[]>}
+ */
+async function fetchTeamUsersByCommunityCode(supabase, communityCode) {
+  const code = String(communityCode || '').trim();
+  if (!code) return [];
+  const { data, error } = await supabase
+    .from('team_table')
+    .select(TEAM_USER_SELECT)
+    .or(`CommunityId.eq.${code},CoachTeamId.eq.${code},TeamId.eq.${code}`);
+  if (error) throw new Error('Failed to fetch community team users: ' + error.message);
   return data || [];
 }
 
@@ -651,14 +674,63 @@ export async function loadReportingContextForCoach(supabase, rootCoachId) {
     }
   }
 
-  const context = buildReportingContext([...usersById.values()]);
-  // Partner leads (Sponsor ↔ Co-Sponsor) — used by collectVisibleHierarchyUsers
-  // to include the partner's full downline for shared-team surfaces.
+  // Same-community independent coaches (visibility only — not Co-Coach / CoachId edges).
   const partnershipLeadIds = rootCoachIds
     .map((id) => Number(id))
     .filter((id) => Number.isFinite(id));
+  const partnerRootIds = partnershipLeadIds.filter((id) => id !== rootId);
+  const communityCode = getUserCommunityTeamCode(rootUser);
+  if (communityCode) {
+    const communityRows = await fetchTeamUsersByCommunityCode(supabase, communityCode);
+    const communityUserIds = [];
+    for (const row of communityRows) {
+      const id = Number(row?.UserId);
+      if (!Number.isFinite(id)) continue;
+      if (!usersById.has(id)) usersById.set(id, row);
+      communityUserIds.push(id);
+    }
+    // Load one CoachId generation so peer discovery can detect own-downline coaches
+    // even when nested members do not carry the community code themselves.
+    if (communityUserIds.length > 0) {
+      const communityChildren = await fetchTeamUsersByCoachIds(supabase, communityUserIds);
+      for (const child of communityChildren) {
+        if (!usersById.has(child.UserId)) usersById.set(child.UserId, child);
+      }
+    }
+  }
+
+  const communityPeerRootIds = resolveCommunityPeerCoachIds(
+    rootId,
+    [...usersById.values()],
+    { partnerIds: partnerRootIds },
+  );
+
+  let peerFrontier = communityPeerRootIds.filter((id) => Number.isFinite(id) && id !== rootId);
+  let peerDepth = 0;
+  while (peerFrontier.length > 0 && peerDepth < MAX_SUBTREE_DEPTH) {
+    const children = await fetchTeamUsersByCoachIds(supabase, peerFrontier);
+    const nextIds = [];
+    for (const child of children) {
+      if (!usersById.has(child.UserId)) {
+        usersById.set(child.UserId, child);
+      }
+      nextIds.push(child.UserId);
+    }
+    peerFrontier = [...new Set(nextIds)];
+    peerDepth += 1;
+  }
+
+  const context = buildReportingContext([...usersById.values()]);
+  // Partner leads (Sponsor ↔ Co-Sponsor) — used by collectVisibleHierarchyUsers
+  // to include the partner's full downline for shared-team surfaces.
   context.coCoachPartnershipRootIds = partnershipLeadIds.length >= 2 ? partnershipLeadIds : [];
-  context.partnerRootIds = partnershipLeadIds.filter((id) => id !== rootId);
+  context.partnerRootIds = partnerRootIds;
+  // Re-resolve after peer subtrees are loaded so nested community coaches are excluded.
+  context.communityPeerRootIds = resolveCommunityPeerCoachIds(
+    rootId,
+    context.allUsers,
+    { partnerIds: partnerRootIds },
+  );
   SUBTREE_CONTEXT_CACHE.set(cacheKey, { value: context, expiresAt: now + SUBTREE_CONTEXT_TTL_MS });
   return context;
 }
@@ -672,6 +744,7 @@ export async function loadReportingContextForCoach(supabase, rootCoachId) {
  * - the viewer's full downline at every level
  * - sibling peers only (same direct parent as the viewer; peer nodes only)
  * - Sponsor/Co-Sponsor partner lead + partner full downline (shared CoachTeamId team)
+ * - Same-community independent coach downlines (Community ID visibility; peer nodes excluded)
  * - optional partnerIds as peer nodes only (no partner downline) — legacy callers
  *
  * Does NOT include another branch under an upline. Seeing Prem does not mean
@@ -752,6 +825,20 @@ export function collectVisibleHierarchyUsers(viewerUserId, context, { partnerIds
     if (partner) result.set(pid, partner);
     for (const member of collectFullSubtreeUnderActiveCoach(pid, context)) {
       result.set(Number(member.UserId), member);
+    }
+  }
+
+  // ── Same-community coaches: peer downlines only (not the peer coaches) ─
+  const communityPeers = Array.isArray(context.communityPeerRootIds)
+    ? context.communityPeerRootIds
+    : [];
+  for (const pidRaw of communityPeers) {
+    const pid = Number(pidRaw);
+    if (!Number.isFinite(pid) || pid === viewerId) continue;
+    for (const member of collectFullSubtreeUnderActiveCoach(pid, context)) {
+      const memberId = Number(member.UserId);
+      if (memberId === viewerId || memberId === pid) continue;
+      result.set(memberId, member);
     }
   }
 
