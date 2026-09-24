@@ -3,15 +3,13 @@
  * Shown after Complete Profile for new users, and on login for existing users
  * who still have any empty slot (so we do not miss transformation photo data).
  * Compact no-scroll layout; Continue only when all three photos are set.
- * Left photo still seeds testimonial Before.
+ * Profile photos stay on Profile only — they do not seed Transformation Before/After.
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Camera } from 'lucide-react';
 import { fetchProfile, saveProfile } from '../services/profileService';
 import TransformationPhotosSection from './profile/TransformationPhotosSection';
 import useTransformationPhotos from '../hooks/useTransformationPhotos';
-import { persistOnboardingTestimonialPhotos } from '../services/persistOnboardingTestimonialPhotos';
-import { deriveWeightGoalMode } from '../../weight/services/weightFormService';
 import { bumpAvatarDisplayVersion } from '../services/avatarDisplayVersion';
 import {
   DEFAULT_POSE_SLOT,
@@ -34,9 +32,6 @@ export default function OnboardingTransformationPhotosPage({
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const [weightKg, setWeightKg] = useState(null);
-  const [heightCm, setHeightCm] = useState(null);
-  const [healthIssues, setHealthIssues] = useState([]);
 
   const email = user?.email || user?.Email || '';
   const userId = user?.id || user?.userId || user?.UserId;
@@ -72,13 +67,7 @@ export default function OnboardingTransformationPhotosPage({
         transformationPhotos.loadFromProfile(profile?.transformationPhotos);
         transformationPhotos.setSelectedType(DEFAULT_POSE_SLOT);
         const w = profile?.latestWeight != null ? parseFloat(profile.latestWeight) : NaN;
-        const h = profile?.height != null ? parseFloat(profile.height) : NaN;
         const weight = Number.isFinite(w) ? w : null;
-        setWeightKg(weight);
-        setHeightCm(Number.isFinite(h) ? h : null);
-        setHealthIssues(
-          Array.isArray(profile?.recoveredHealthIssues) ? profile.recoveredHealthIssues : [],
-        );
         transformationPhotos.loadFromTestimonial(null, weight);
         transformationPhotos.setSnapshotWeight(weight);
       } catch (e) {
@@ -106,32 +95,17 @@ export default function OnboardingTransformationPhotosPage({
       const extras = transformationPhotos.payloadExtras();
       const centrePending = extras.transformationPhotos?.front || null;
       const hasPhotoUpdates = Boolean(extras.transformationPhotos);
-      // Existing users adding only Left/Right must not re-POST an old Centre as profileImage.
+      // Do not also POST centre as profileImage (duplicates ~100KB+). Server uses front for R2 avatar.
       if (hasPhotoUpdates) {
         await saveProfile({
           ...(email ? { email } : {}),
           ...(userId ? { userId } : {}),
           ...extras,
-          ...(centrePending ? { profileImage: centrePending } : {}),
         });
         transformationPhotos.clearPending();
-        // Bust Leaderboard / Top 10 avatar URLs (centre may drive /api/user/avatar).
         bumpAvatarDisplayVersion();
       }
-      const leftForTestimonial = extras.transformationPhotos?.left
-        || transformationPhotos.leftImageBase64();
-      if (userId && (weightKg != null || leftForTestimonial)) {
-        await persistOnboardingTestimonialPhotos({
-          userId,
-          weightKg,
-          leftImageBase64: leftForTestimonial,
-          goalType: deriveWeightGoalMode({
-            heightCm,
-            currentWeightKg: weightKg,
-          }) || 'loss',
-          recoveredHealthIssues: healthIssues,
-        });
-      }
+      // Profile Left/Right must not update Transformation Before/After.
       const centreForUi = centrePending || transformationPhotos.frontImageBase64();
       await onComplete?.({ profileImage: centreForUi || undefined });
     } catch (e) {
@@ -142,9 +116,6 @@ export default function OnboardingTransformationPhotosPage({
   }, [
     email,
     userId,
-    weightKg,
-    heightCm,
-    healthIssues,
     transformationPhotos,
     onComplete,
   ]);

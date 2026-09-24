@@ -19,8 +19,13 @@ import {
   isPlaceholderUserName,
 } from '../../user/domain/profileCompleteness';
 import { subscribeDailyWellnessScoreSeed } from '../../wellness-score-sheet/services/dailyWellnessScoreCache';
+import { LEADERBOARD_CONFIG } from '../../../config/leaderboardConfig.js';
+import { useRaceLeaderboardRealtime } from '../hooks/useRaceLeaderboardRealtime.js';
 
-const CACHE_TTL = 5 * 60 * 1000;
+const CACHE_TTL = 15 * 1000;
+// Keep a short poll even when Realtime is configured — subscribe can fail
+// silently (missing env / blocked WS), and a 60s backup felt "not live".
+const POLL_MS = LEADERBOARD_CONFIG.REFRESH_INTERVAL;
 // v6: overlay chosen display name when DB still has user_<phone>
 const CACHE_KEY_PREFIX = 'wv.lb.wellness.v7.';
 const LEGACY_CACHE_KEYS = [
@@ -139,19 +144,20 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, vi
     refresh: fetchLeaderboard,
   }));
 
+  useRaceLeaderboardRealtime(fetchLeaderboard);
+
   useEffect(() => {
     const cached = readCache(userId);
     if (cached?.length) {
       setLeaderboardData(cached);
       setIsVisible(true);
-    } else {
-      fetchLeaderboard();
     }
+    fetchLeaderboard();
     const retryEmpty = setTimeout(() => {
       if (userId == null || userId === '') return;
       if (!readCache(userId)?.length) fetchLeaderboard();
     }, 1600);
-    const stopInterval = setVisibilityAwareInterval(fetchLeaderboard, CACHE_TTL);
+    const stopInterval = setVisibilityAwareInterval(fetchLeaderboard, POLL_MS);
     return () => {
       clearTimeout(retryEmpty);
       stopInterval();
@@ -159,11 +165,11 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, vi
   }, [fetchLeaderboard, userId]);
 
   useEffect(() => {
-    return subscribeDailyWellnessScoreSeed(({ userId: seedUserId }) => {
-      if (userId == null || String(seedUserId) !== String(userId)) return;
+    return subscribeDailyWellnessScoreSeed(() => {
+      // Any local score seed — refresh Top 10 immediately (race scoreboard).
       fetchLeaderboard();
     });
-  }, [fetchLeaderboard, userId]);
+  }, [fetchLeaderboard]);
 
   // Smooth enter once data is ready
   useEffect(() => {

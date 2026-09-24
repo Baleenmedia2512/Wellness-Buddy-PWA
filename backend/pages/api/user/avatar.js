@@ -20,6 +20,7 @@ import { cache, cacheKeys } from '../../../utils/cache.js';
 import { parseDataUri } from '../../../shared/lib/images/dataUri.js';
 import { avatarRedirectUrl } from '../../../shared/lib/r2/s3.js';
 import { persistAvatarKey, r2AvatarsEnabled } from '../../../features/user/avatar-storage.service.js';
+import { r2TransformationPhotosEnabled } from '../../../features/user/transformation-photo-storage.service.js';
 import { resolveProfileDisplayAvatar } from '../../../features/user/domain/profileDisplayAvatar.rules.js';
 import { wantsInlineAvatar } from '../../../features/user/domain/avatarInline.rules.js';
 import { getAvatarSource } from '../../../features/user/user.repository.js';
@@ -99,7 +100,7 @@ export default async function handler(req, res) {
       profileImageKey: data.ProfileImageKey,
       profileImage: data.ProfileImage,
       transformationPhotos: data.transformation_photos,
-      r2Enabled: r2AvatarsEnabled(),
+      r2Enabled: r2AvatarsEnabled() || r2TransformationPhotosEnabled(),
       resolveR2Url: avatarRedirectUrl,
     });
 

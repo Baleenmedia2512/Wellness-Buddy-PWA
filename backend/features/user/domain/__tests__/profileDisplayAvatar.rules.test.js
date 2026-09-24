@@ -31,6 +31,21 @@ describe('resolveProfileDisplayAvatar', () => {
     });
   });
 
+  it('prefers centre transform R2 key over base64 front', () => {
+    const resolved = resolveProfileDisplayAvatar({
+      transformationPhotos: {
+        front: 'data:image/jpeg;base64,FRONT',
+        frontKey: 'transformation/1/front/abc.jpg',
+      },
+      r2Enabled: true,
+      resolveR2Url: (key) => `https://cdn.example/${key}`,
+    });
+    assert.deepEqual(resolved, {
+      kind: 'redirect',
+      url: 'https://cdn.example/transformation/1/front/abc.jpg',
+    });
+  });
+
   it('falls back to centre transform before legacy base64 ProfileImage (My Profile parity)', () => {
     const resolved = resolveProfileDisplayAvatar({
       profileImage: 'data:image/jpeg;base64,SUIT',
