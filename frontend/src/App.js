@@ -117,6 +117,10 @@ import { useAppVersionPolicy } from "./shared/hooks/useAppVersionPolicy";
 import { useMandatoryAppUpdate } from "./shared/hooks/useMandatoryAppUpdate";
 import AppVersionHardBlock from "./shared/components/AppVersionGate";
 import { getApiBaseUrl } from "./config/api.config";
+import {
+  buildUserAvatarUrl,
+  getAvatarDisplayVersion,
+} from "./features/user/services/avatarDisplayVersion";
 import { apiFetch } from "./shared/services/apiFetch";
 import { handlePossibleAppUpdateRequired } from "./shared/services/appVersionEnforce.client";
 import {
@@ -4358,19 +4362,34 @@ function WellnessValleyApp() {
     return () => clearTimeout(timeoutId);
   }, [user]); // Re-run when user changes
 
-  // Convert user profile photo to base64 for CORS-safe use in html2canvas share cards.
-  // Uses an AbortController so an in-flight fetch is cancelled if the user logs
-  // out / changes photoURL while it's loading (prevents "setState on unmounted"
-  // warnings and stale writes overwriting newer data).
+  // Convert profile photo to base64 for CORS-safe use in html2canvas share cards.
+  // Never fetch R2/Google URLs directly from the browser — bucket CORS blocks
+  // localhost (and often production). Prefer same-origin /api/user/avatar?inline=1.
+  // AbortController cancels in-flight work on logout / photo change.
   useEffect(() => {
     const photoUrl = user?.photoURL;
-    if (!photoUrl) {
+    const userId = user?.id || user?.UserId || user?.userId;
+    if (photoUrl && String(photoUrl).startsWith("data:image/")) {
+      setSharePhotoBase64(photoUrl);
+      return undefined;
+    }
+    const inlineUrl = buildUserAvatarUrl(
+      apiBaseUrl,
+      userId,
+      getAvatarDisplayVersion(),
+      { inline: true },
+    );
+    const fetchUrl = inlineUrl || photoUrl;
+    if (!fetchUrl) {
       setSharePhotoBase64(null);
       return undefined;
     }
     const { signal, cancel } = createAbortGroup();
-    fetch(photoUrl, { signal })
-      .then((res) => res.blob())
+    fetch(fetchUrl, { signal })
+      .then((res) => {
+        if (!res.ok) throw new Error(`avatar fetch ${res.status}`);
+        return res.blob();
+      })
       .then(
         (blob) =>
           new Promise((resolve, reject) => {
@@ -4388,7 +4407,7 @@ function WellnessValleyApp() {
         if (!signal.aborted) setSharePhotoBase64(null);
       });
     return cancel;
-  }, [user?.photoURL]);
+  }, [user?.photoURL, user?.id, user?.UserId, user?.userId, apiBaseUrl]);
 
   // Keep Manual Entry JS chunk warm while user is on Home (photo → classify stays instant).
   useEffect(() => {

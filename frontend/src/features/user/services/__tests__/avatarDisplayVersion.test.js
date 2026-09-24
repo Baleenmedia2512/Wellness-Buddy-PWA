@@ -8,6 +8,7 @@ import {
   buildUserAvatarUrl,
   bumpAvatarDisplayVersion,
   getAvatarDisplayVersion,
+  pickShareAvatarSrc,
   subscribeAvatarDisplayVersion,
 } from '../avatarDisplayVersion.js';
 
@@ -50,5 +51,30 @@ describe('avatarDisplayVersion', () => {
     assert.equal(buildUserAvatarUrl('', 1, 1), null);
     assert.equal(buildUserAvatarUrl('https://api.example', null, 1), null);
     assert.equal(buildUserAvatarUrl('https://api.example', '', 1), null);
+  });
+
+  it('pickShareAvatarSrc prefers data URIs over R2 https for canvas', () => {
+    assert.equal(
+      pickShareAvatarSrc({
+        savedProfileImage: 'https://r2.example/a.jpg',
+        sharePhotoBase64: 'data:image/jpeg;base64,abc',
+        photoURL: 'https://lh3.googleusercontent.com/x',
+      }),
+      'data:image/jpeg;base64,abc',
+    );
+    assert.equal(
+      pickShareAvatarSrc({
+        savedProfileImage: 'data:image/jpeg;base64,legacy',
+        sharePhotoBase64: 'data:image/jpeg;base64,google',
+      }),
+      'data:image/jpeg;base64,legacy',
+    );
+    assert.equal(
+      pickShareAvatarSrc({
+        savedProfileImage: 'https://r2.example/a.jpg',
+        photoURL: 'https://fallback',
+      }),
+      'https://r2.example/a.jpg',
+    );
   });
 });
