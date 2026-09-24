@@ -58,10 +58,11 @@ test.describe('Admin Page - Wellness Score & Activity Time Settings (ADMIN_001)'
     await page.context().grantPermissions(['geolocation', 'camera', 'microphone']).catch(() => {});
     await page.context().setGeolocation({ latitude: 12.9716, longitude: 77.5946 }).catch(() => {});
 
-    // Ensure feature flags for wellness score sheet & AI credits are active
+    // Ensure feature flags for wellness score sheet, AI credits & page access are active
     await page.addInitScript(() => {
       localStorage.setItem('ff.wellness-score-sheet', 'true');
       localStorage.setItem('ff.ai-credits', 'true');
+      localStorage.setItem('ff.nav-page-access', 'true');
     });
 
     // 1. Auth & Verification mocks
@@ -299,6 +300,63 @@ test.describe('Admin Page - Wellness Score & Activity Time Settings (ADMIN_001)'
           body: JSON.stringify({
             success: true,
             data: currentAiCreditsConfig,
+          }),
+        });
+      } else {
+        await route.continue();
+      }
+    });
+
+    // 7. Nav Page Access Mocks
+    await page.route('**/api/nav-access/for-me*', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          pages: {
+            home: true,
+            dashboard: true,
+            'activity-report': true,
+            enrollment: true,
+            counselling: true,
+            'physical-club': true,
+            testimonials: true,
+            reports: true,
+          },
+          accountRole: role,
+        }),
+      });
+    });
+
+    let currentNavAccessMatrix = {
+      user: { home: true, dashboard: true, 'activity-report': true, enrollment: true, counselling: true, 'physical-club': true, testimonials: true, reports: true },
+      coach: { home: true, dashboard: true, 'activity-report': true, enrollment: true, counselling: true, 'physical-club': true, testimonials: true, reports: true },
+      admin: { home: true, dashboard: true, 'activity-report': true, enrollment: true, counselling: true, 'physical-club': true, testimonials: true, reports: true },
+      developer: { home: true, dashboard: true, 'activity-report': true, enrollment: true, counselling: true, 'physical-club': true, testimonials: true, reports: true },
+    };
+
+    await page.route('**/api/nav-access/admin-config*', async (route) => {
+      if (route.request().method() === 'GET') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            matrix: currentNavAccessMatrix,
+          }),
+        });
+      } else if (route.request().method() === 'PUT') {
+        const postData = route.request().postDataJSON();
+        if (postData?.matrix) {
+          currentNavAccessMatrix = postData.matrix;
+        }
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            matrix: currentNavAccessMatrix,
           }),
         });
       } else {
@@ -630,4 +688,103 @@ test.describe('Admin Page - Wellness Score & Activity Time Settings (ADMIN_001)'
     expect(savedAiConfigPayload.availabilityWindows.dinner.start).toBe('18:00:00');
     expect(savedAiConfigPayload.availabilityWindows.dinner.end).toBe('21:00:00');
   });
+
+  test('admin-004: in page access, all checkboxes can be selected and unselected successfully', async ({ page }) => {
+    // 1. Setup route mocks for admin user
+    await setupMocks(page, 'admin');
+
+    let savedNavAccessMatrix = null;
+
+    await page.route('**/api/nav-access/admin-config*', async (route) => {
+      if (route.request().method() === 'GET') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            matrix: {
+              user: { home: true, dashboard: true, 'activity-report': true, enrollment: true, counselling: true, 'physical-club': true, testimonials: true, reports: true },
+              coach: { home: true, dashboard: true, 'activity-report': true, enrollment: true, counselling: true, 'physical-club': true, testimonials: true, reports: true },
+              admin: { home: true, dashboard: true, 'activity-report': true, enrollment: true, counselling: true, 'physical-club': true, testimonials: true, reports: true },
+              developer: { home: true, dashboard: true, 'activity-report': true, enrollment: true, counselling: true, 'physical-club': true, testimonials: true, reports: true },
+            },
+          }),
+        });
+      } else if (route.request().method() === 'PUT') {
+        const postData = route.request().postDataJSON();
+        savedNavAccessMatrix = postData?.matrix || null;
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            matrix: savedNavAccessMatrix,
+          }),
+        });
+      } else {
+        await route.continue();
+      }
+    });
+
+    // 2. Perform Admin Login
+    await performAdminLogin(page);
+
+    // 3. Navigate to Admin Config Setup
+    const settingsButton = page.getByTestId('wellness-score-setup-button');
+    await expect(settingsButton).toBeVisible({ timeout: 10000 });
+    await settingsButton.click({ force: true });
+
+    await expect(page.getByText('Admin Config Setup', { exact: false }).first()).toBeVisible({ timeout: 10000 });
+
+    // 4. Switch to "Page Access" tab
+    const pageAccessTab = page.locator('#admin-config-tab-page-access');
+    await expect(pageAccessTab).toBeVisible({ timeout: 10000 });
+    await pageAccessTab.click();
+
+    await expect(page.getByText('Toggle main nav tabs per role', { exact: false })).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('table')).toBeVisible({ timeout: 10000 });
+
+    // 5. Verify all checkboxes can be unselected and selected successfully
+    const checkboxes = page.locator('table input[type="checkbox"]');
+    await expect(checkboxes.first()).toBeVisible({ timeout: 10000 });
+
+    const checkboxCount = await checkboxes.count();
+    expect(checkboxCount).toBe(32); // 4 roles * 8 pages
+
+    for (let i = 0; i < checkboxCount; i++) {
+      const checkbox = checkboxes.nth(i);
+
+      if (await checkbox.isChecked()) {
+        // Unselect checkbox
+        await checkbox.uncheck({ force: true });
+        await expect(checkbox).not.toBeChecked();
+
+        // Select checkbox back
+        await checkbox.check({ force: true });
+        await expect(checkbox).toBeChecked();
+      } else {
+        // Select checkbox
+        await checkbox.check({ force: true });
+        await expect(checkbox).toBeChecked();
+
+        // Unselect checkbox back
+        await checkbox.uncheck({ force: true });
+        await expect(checkbox).not.toBeChecked();
+      }
+    }
+
+    // 6. Modify a checkbox state and save configuration
+    const firstCheckbox = checkboxes.first();
+    await firstCheckbox.uncheck({ force: true });
+    await expect(firstCheckbox).not.toBeChecked();
+
+    const saveAccessBtn = page.getByRole('button', { name: /Save access|Saved/i });
+    await expect(saveAccessBtn).toBeVisible();
+    await saveAccessBtn.click();
+
+    // Verify save feedback appears
+    await expect(page.getByRole('button', { name: 'Saved' })).toBeVisible({ timeout: 5000 });
+    expect(savedNavAccessMatrix).not.toBeNull();
+  });
 });
+

@@ -198,6 +198,14 @@ test.describe('Activity Report Module', () => {
       });
     });
 
+    await page.route('**/api/team/has-members*', route => {
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ success: true, hasTeamMembers: true })
+      });
+    });
+
     // Navigate and go to Activity Tab
     await page.goto('/');
     const activityTab = page.getByRole('button', { name: 'Activity Report' });
@@ -238,6 +246,7 @@ test.describe('Activity Report Module', () => {
     await datePresetBtn(page, 'Yesterday').click();
     await expect(datePresetBtn(page, 'Yesterday')).toHaveClass(/bg-green-600/);
 
+    await expect(customDateBtn(page)).toBeEnabled();
     await customDateBtn(page).click();
     await expect(customDateBtn(page)).toHaveClass(/bg-green-600/);
 
@@ -408,6 +417,7 @@ test.describe('Activity Report Module', () => {
       await route.fallback();
     });
 
+    await expect(categorySelect(page)).toBeEnabled();
     await categorySelect(page).selectOption('water');
     await expect(page.getByText('Simulated Server Error')).toBeVisible();
   });
@@ -442,5 +452,217 @@ test.describe('Activity Report Module', () => {
     await expect(reportFilterSelects(page)).toHaveCount(2);
     await expect(page.locator('section[aria-label="Report filters"] option[value="mine"]')).toHaveCount(0);
     await expect(attendanceSelect(page).locator('option[value="posted"]')).toHaveCount(1);
+  });
+
+  test('ACT-015 Hide and Unhide Inactive Users Permission Check', async ({ page }) => {
+    let isHidden = false;
+    let currentRole = 'coach';
+
+    // 1. Intercept user session & lookup dynamically based on currentRole
+    await page.route('**/api/user/verify-session*', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          userId: 99999,
+          user: { id: 99999, UserId: 99999, UserName: 'Test User', phone: '+1234567890', role: currentRole, email: 'test@example.com' }
+        })
+      });
+    });
+
+    await page.route('**/api/user/lookup*', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          isActive: true,
+          details: { id: 99999, role: currentRole }
+        })
+      });
+    });
+
+    await page.route('**/api/team/has-members*', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ success: true, hasTeamMembers: currentRole !== 'user' })
+      });
+    });
+
+    // 2. Intercept hidden-users API endpoints
+    await page.route('**/api/activity/report/hidden-users*', async (route) => {
+      const method = route.request().method();
+      if (method === 'GET') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            members: isHidden ? [{ userId: 101, memberName: 'Inactive Member', communityId: 'WB101' }] : []
+          })
+        });
+        return;
+      }
+      if (method === 'POST') {
+        isHidden = true;
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ success: true, message: 'User hidden successfully' })
+        });
+        return;
+      }
+      if (method === 'DELETE') {
+        isHidden = false;
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ success: true, message: 'User unhidden successfully' })
+        });
+        return;
+      }
+      await route.fallback();
+    });
+
+    // 3. Intercept report details to provide records under Not Posted attendance
+    await page.route('**/api/activity/report*', async (route) => {
+      const url = new URL(route.request().url());
+      const activityType = url.searchParams.get('activityType');
+      const attendance = url.searchParams.get('attendance') || url.searchParams.get('attendanceStatus');
+
+      if (activityType === 'bootstrap') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            ...baseReportResponse,
+            hiddenCount: isHidden ? 1 : 0,
+            teamScopeCounts: { hasTeam: true, mine: 1, direct: 1, full: 1 }
+          })
+        });
+        return;
+      }
+
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          ...baseReportResponse,
+          hiddenCount: isHidden ? 1 : 0,
+          teamScopeCounts: { hasTeam: true, mine: 1, direct: 1, full: 1 },
+          records: (!isHidden && attendance === 'not_posted')
+            ? [{ userId: 101, memberName: 'Inactive Member', memberType: 'member', level: 1, date: '2026-08-24', time: '10:00', phone: '9000000000' }]
+            : [],
+          pagination: { totalRecords: isHidden ? 0 : 1, totalPages: isHidden ? 0 : 1, currentPage: 1, pageSize: 20 }
+        })
+      });
+    });
+
+    // --- PART 1: AUTHORIZED ROLE (Coach / Admin / Developer / Upline / Sponsor) ---
+    currentRole = 'coach';
+    isHidden = false;
+
+    await page.reload();
+    const activityTab = page.getByRole('button', { name: 'Activity Report' });
+    await expect(activityTab).toBeVisible({ timeout: 15000 });
+    await activityTab.click();
+
+    await categorySelect(page).selectOption('education');
+    await attendanceSelect(page).selectOption('not_posted');
+
+    const memberCell = page.getByRole('cell', { name: 'Inactive Member', exact: true });
+    await expect(memberCell).toBeVisible({ timeout: 15000 });
+    await expect(memberCell).toHaveAttribute('title', 'Press and hold name to hide');
+
+    // Touch long-press gesture (700ms timer)
+    await memberCell.evaluate((el) => {
+      const touch = new Touch({
+        identifier: Date.now(),
+        target: el,
+        clientX: 100,
+        clientY: 100,
+        screenX: 100,
+        screenY: 100,
+        pageX: 100,
+        pageY: 100,
+      });
+      el.dispatchEvent(new TouchEvent('touchstart', {
+        cancelable: true,
+        bubbles: true,
+        touches: [touch],
+        targetTouches: [touch],
+        changedTouches: [touch],
+      }));
+    });
+    await page.waitForTimeout(850);
+
+    const hideUserMenuBtn = page.getByRole('button', { name: 'Hide User' });
+    await expect(hideUserMenuBtn).toBeVisible({ timeout: 10000 });
+    await memberCell.evaluate((el) => {
+      el.dispatchEvent(new TouchEvent('touchend', { cancelable: true, bubbles: true }));
+    });
+
+    // Click Hide User
+    await hideUserMenuBtn.click();
+    await expect(memberCell).not.toBeVisible({ timeout: 10000 });
+
+    // Open Unhide modal and restore member
+    const unhideBtn = page.getByRole('button', { name: 'Unhide' });
+    await expect(unhideBtn).toBeVisible({ timeout: 10000 });
+    await unhideBtn.click();
+
+    const modalHeading = page.getByRole('heading', { name: 'Hidden Users' });
+    await expect(modalHeading).toBeVisible({ timeout: 10000 });
+
+    const restoreBtn = page.getByRole('button', { name: 'Unhide Inactive Member' });
+    await expect(restoreBtn).toBeVisible({ timeout: 10000 });
+    await restoreBtn.click();
+
+    await page.getByRole('button', { name: 'Close', exact: true }).click();
+    await expect(modalHeading).not.toBeVisible({ timeout: 10000 });
+
+    // --- PART 2: PROHIBITED ROLE (Standard User) ---
+    currentRole = 'user';
+    isHidden = false;
+
+    await page.reload();
+    await expect(activityTab).toBeVisible({ timeout: 15000 });
+    await activityTab.click();
+
+    await categorySelect(page).selectOption('education');
+    await attendanceSelect(page).selectOption('not_posted');
+
+    const restrictedCell = page.getByRole('cell', { name: 'Inactive Member', exact: true });
+    await expect(restrictedCell).toBeVisible({ timeout: 15000 });
+
+    // Long press touch gesture should NOT open Hide menu for regular user
+    await restrictedCell.evaluate((el) => {
+      const touch = new Touch({
+        identifier: Date.now(),
+        target: el,
+        clientX: 100,
+        clientY: 100,
+        screenX: 100,
+        screenY: 100,
+        pageX: 100,
+        pageY: 100,
+      });
+      el.dispatchEvent(new TouchEvent('touchstart', {
+        cancelable: true,
+        bubbles: true,
+        touches: [touch],
+        targetTouches: [touch],
+        changedTouches: [touch],
+      }));
+    });
+    await page.waitForTimeout(850);
+    await restrictedCell.evaluate((el) => {
+      el.dispatchEvent(new TouchEvent('touchend', { cancelable: true, bubbles: true }));
+    });
+
+    await expect(page.getByRole('button', { name: 'Hide User' })).not.toBeVisible();
+    await expect(page.getByRole('button', { name: 'Unhide' })).not.toBeVisible();
   });
 });
