@@ -96,9 +96,9 @@ export function canShareTransformationPhoto(testimonial) {
   return testimonial?.status === 'verified';
 }
 
-/** CSS class for portrait testimonial thumbnails — cover fills the frame without stretching. */
+/** CSS class for portrait testimonial thumbnails — cover fills the frame; top-anchored so faces stay visible. */
 export const PORTRAIT_IMAGE_CLASS =
-  'w-full aspect-[9/16] object-cover object-center overflow-hidden rounded-2xl border-2';
+  'w-full aspect-[9/16] object-cover object-top overflow-hidden rounded-2xl border-2';
 
 export const PORTRAIT_IMAGE_CLASS_SM =
-  'w-full aspect-[9/16] object-cover object-center overflow-hidden rounded-xl border border-gray-200';
+  'w-full aspect-[9/16] object-cover object-top overflow-hidden rounded-xl border border-gray-200';

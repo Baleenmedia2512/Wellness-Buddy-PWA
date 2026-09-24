@@ -48,11 +48,15 @@ describe('formatDurationText', () => {
 });
 
 describe('portrait frame classes', () => {
-  it('fills the 9:16 frame with cover, not stretch or letterbox', () => {
+  it('fills the 9:16 frame with cover, top-anchored so faces are not cropped', () => {
     expect(PORTRAIT_IMAGE_CLASS).toMatch(/aspect-\[9\/16\]/);
     expect(PORTRAIT_IMAGE_CLASS).toMatch(/object-cover/);
+    expect(PORTRAIT_IMAGE_CLASS).toMatch(/object-top/);
     expect(PORTRAIT_IMAGE_CLASS).not.toMatch(/object-contain/);
+    expect(PORTRAIT_IMAGE_CLASS).not.toMatch(/object-center/);
     expect(PORTRAIT_IMAGE_CLASS_SM).toMatch(/object-cover/);
+    expect(PORTRAIT_IMAGE_CLASS_SM).toMatch(/object-top/);
     expect(PORTRAIT_IMAGE_CLASS_SM).not.toMatch(/object-contain/);
+    expect(PORTRAIT_IMAGE_CLASS_SM).not.toMatch(/object-center/);
   });
 });
