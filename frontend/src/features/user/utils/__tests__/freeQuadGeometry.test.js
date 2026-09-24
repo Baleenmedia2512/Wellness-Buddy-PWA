@@ -98,7 +98,7 @@ describe('quadOutputSize', () => {
 
 describe('axisAlignedBounds', () => {
   it('returns the bounding box of a free quad', async () => {
-    const { axisAlignedBounds } = await import('../../services/warpQuadImage.js');
+    const { axisAlignedBounds, clampPixelCrop } = await import('../../services/warpQuadImage.js');
     const box = axisAlignedBounds({
       tl: { x: 10, y: 20 },
       tr: { x: 110, y: 25 },
@@ -109,6 +109,12 @@ describe('axisAlignedBounds', () => {
     assert.equal(box.y, 20);
     assert.equal(box.width, 105);
     assert.equal(box.height, 180);
+
+    const clamped = clampPixelCrop({ x: -5, y: 10, width: 500, height: 500 }, 200, 100);
+    assert.equal(clamped.x, 0);
+    assert.equal(clamped.y, 10);
+    assert.equal(clamped.width, 200);
+    assert.equal(clamped.height, 90);
   });
 });
 

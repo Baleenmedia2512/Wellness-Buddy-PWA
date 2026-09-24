@@ -1,9 +1,8 @@
 /**
  * Save a free-quad selection as a JPEG.
- * Uses the selection's bounding rectangle + the proven getCroppedImg path
- * (phone-safe downscale). Corner UI stays free-form; Done always saves.
+ * Uses the selection's bounding rectangle + a phone-safe canvas crop.
  */
-import { getCroppedImg } from './imageCrop.js';
+import { coverCropOutputSize } from './imageCrop.js';
 
 /** @typedef {{ x: number, y: number }} Pt */
 /** @typedef {{ tl: Pt, tr: Pt, br: Pt, bl: Pt }} Quad */
@@ -24,18 +23,96 @@ export function axisAlignedBounds(quad) {
   };
 }
 
+/** Clamp a pixel crop so it stays inside the bitmap. */
+export function clampPixelCrop(box, imgW, imgH) {
+  const maxW = Math.max(1, Math.floor(Number(imgW) || 0));
+  const maxH = Math.max(1, Math.floor(Number(imgH) || 0));
+  let x = Math.max(0, Math.floor(Number(box?.x) || 0));
+  let y = Math.max(0, Math.floor(Number(box?.y) || 0));
+  let width = Math.max(1, Math.floor(Number(box?.width) || 0));
+  let height = Math.max(1, Math.floor(Number(box?.height) || 0));
+  if (x >= maxW) x = Math.max(0, maxW - 1);
+  if (y >= maxH) y = Math.max(0, maxH - 1);
+  if (x + width > maxW) width = Math.max(1, maxW - x);
+  if (y + height > maxH) height = Math.max(1, maxH - y);
+  return { x, y, width, height };
+}
+
+function loadImage(src) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    if (/^https?:\/\//i.test(String(src || ''))) {
+      img.crossOrigin = 'anonymous';
+    }
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error('Failed to load image for free crop'));
+    img.src = src;
+  });
+}
+
+function encodeJpegWithinBytes(canvas, targetBytes, startQuality) {
+  const maxDataUrlLen = Math.ceil((targetBytes || 900 * 1024) / 0.75) + 32;
+  let quality = startQuality || 0.85;
+  let dataUrl = canvas.toDataURL('image/jpeg', quality);
+  while (dataUrl.length > maxDataUrlLen && quality > 0.15) {
+    quality = Math.round((quality - 0.05) * 100) / 100;
+    dataUrl = canvas.toDataURL('image/jpeg', quality);
+  }
+  return dataUrl;
+}
+
 /**
- * @param {string} imageSrc
- * @param {Quad} naturalQuad — corners in natural image pixels
- * @param {number} [_dstW] unused (size comes from the crop + maxDimension)
- * @param {number} [_dstH] unused
- * @param {{ targetBytes?: number, startQuality?: number, maxDimension?: number }} [opts]
+ * Direct drawImage crop — no giant rotate canvas (avoids WebView OOM / hang on Done).
  */
-export async function warpQuadToDataUrl(imageSrc, naturalQuad, _dstW, _dstH, {
+async function cropRectToDataUrl(imageSrc, pixelCrop, {
   targetBytes = 900 * 1024,
   startQuality = 0.85,
   maxDimension = 1200,
 } = {}) {
+  const img = await loadImage(imageSrc);
+  const imgW = img.naturalWidth || img.width;
+  const imgH = img.naturalHeight || img.height;
+  const crop = clampPixelCrop(pixelCrop, imgW, imgH);
+  if (!(crop.width > 1) || !(crop.height > 1)) {
+    throw new Error('Crop area is too small — pull the corners out a bit');
+  }
+
+  const outSize = coverCropOutputSize(crop.width, crop.height, maxDimension || 1200);
+  const out = document.createElement('canvas');
+  out.width = outSize.width;
+  out.height = outSize.height;
+  const ctx = out.getContext('2d');
+  if (!ctx) throw new Error('Canvas not supported');
+  ctx.imageSmoothingEnabled = true;
+  try { ctx.imageSmoothingQuality = 'high'; } catch { /* older WebViews */ }
+
+  ctx.drawImage(
+    img,
+    crop.x,
+    crop.y,
+    crop.width,
+    crop.height,
+    0,
+    0,
+    outSize.width,
+    outSize.height,
+  );
+
+  const dataUrl = encodeJpegWithinBytes(out, targetBytes, startQuality);
+  out.width = 0;
+  out.height = 0;
+
+  if (!dataUrl || typeof dataUrl !== 'string' || !dataUrl.includes(';base64,')) {
+    throw new Error('Free crop produced an empty image — please try again');
+  }
+  return dataUrl;
+}
+
+/**
+ * @param {string} imageSrc
+ * @param {Quad} naturalQuad — corners in natural image pixels
+ */
+export async function warpQuadToDataUrl(imageSrc, naturalQuad, _dstW, _dstH, opts = {}) {
   if (!naturalQuad) throw new Error('Invalid free-crop area');
   if (!imageSrc) throw new Error('No image to crop');
 
@@ -44,25 +121,11 @@ export async function warpQuadToDataUrl(imageSrc, naturalQuad, _dstW, _dstH, {
     throw new Error('Crop area is too small — pull the corners out a bit');
   }
 
-  // Pad 1px inward so float rounding never samples outside the bitmap.
-  const pixelCrop = {
-    x: Math.max(0, Math.floor(box.x)),
-    y: Math.max(0, Math.floor(box.y)),
-    width: Math.max(1, Math.floor(box.width)),
-    height: Math.max(1, Math.floor(box.height)),
-  };
-
-  const dataUrl = await getCroppedImg(imageSrc, pixelCrop, 0, {
-    square: false,
-    maxDimension: maxDimension || 1200,
-    targetBytes: targetBytes || 900 * 1024,
-    startQuality: startQuality || 0.85,
+  return cropRectToDataUrl(imageSrc, box, {
+    targetBytes: opts.targetBytes || 900 * 1024,
+    startQuality: opts.startQuality || 0.85,
+    maxDimension: opts.maxDimension || 1200,
   });
-
-  if (!dataUrl || typeof dataUrl !== 'string' || !dataUrl.includes(';base64,')) {
-    throw new Error('Free crop produced an empty image — please try again');
-  }
-  return dataUrl;
 }
 
 /** Test helper — 9 values; no longer used for save. */

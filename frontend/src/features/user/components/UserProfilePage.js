@@ -281,7 +281,6 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
         payload.userId = user.id;
       }
       const data = await saveProfile(payload);
-      transformationPhotos.clearPending();
       const leftPending = photoExtras.transformationPhotos?.left || null;
       if (user?.id && (latestWeight != null || leftPending)) {
         try {
@@ -317,7 +316,10 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
         teamSearchRefresh: true,
       });
       if (user?.id) getUserContext(user.id).catch(() => {});
+      // Reload while pending uploads still exist so mergePreviewsPreservingPending
+      // keeps Left/Centre/Right if the server briefly returns a stale profile.
       await loadProfile({ cacheBust: true });
+      transformationPhotos.clearPending();
       setSuccessMessage(data.message || 'Profile saved successfully!');
       setHasSaved(true);
     } catch (e) {

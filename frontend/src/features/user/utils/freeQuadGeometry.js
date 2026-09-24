@@ -112,7 +112,7 @@ export function quadPointsAttr(quad) {
   return `${quad.tl.x},${quad.tl.y} ${quad.tr.x},${quad.tr.y} ${quad.br.x},${quad.br.y} ${quad.bl.x},${quad.bl.y}`;
 }
 
-/** Map a display-space quad onto natural image pixels. */
+/** Map a display-space quad onto natural image pixels (clamped inside the bitmap). */
 export function quadToNaturalPixels(quad, displayRect, naturalW, naturalH) {
   const nw = Number(naturalW) || 0;
   const nh = Number(naturalH) || 0;
@@ -122,8 +122,8 @@ export function quadToNaturalPixels(quad, displayRect, naturalW, naturalH) {
   const sx = nw / displayRect.width;
   const sy = nh / displayRect.height;
   const map = (p) => ({
-    x: (Number(p.x) - displayRect.x) * sx,
-    y: (Number(p.y) - displayRect.y) * sy,
+    x: Math.min(nw, Math.max(0, (Number(p.x) - displayRect.x) * sx)),
+    y: Math.min(nh, Math.max(0, (Number(p.y) - displayRect.y) * sy)),
   });
   return {
     tl: map(quad.tl),
