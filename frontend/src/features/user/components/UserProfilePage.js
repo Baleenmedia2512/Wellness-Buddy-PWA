@@ -44,7 +44,6 @@ import { invalidateHasTeamMembersCache } from '../../team/services/teamSearchSer
 import { bumpAvatarDisplayVersion } from '../services/avatarDisplayVersion';
 import { getProfile } from '../services/user.api';
 import useTransformationPhotos from '../hooks/useTransformationPhotos';
-import { persistOnboardingTestimonialPhotos } from '../services/persistOnboardingTestimonialPhotos';
 import { hasValidProfileName } from '../domain/profileCompleteness';
 import { isFlagEnabled } from '../../../config/featureFlags';
 import { COMMUNITY_ID_OTP_FLAG } from '../domain/communityId';
@@ -279,19 +278,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
       }
       const data = await saveProfile(payload);
       transformationPhotos.clearPending();
-      const leftPending = photoExtras.transformationPhotos?.left || null;
-      if (user?.id && (latestWeight != null || leftPending)) {
-        persistOnboardingTestimonialPhotos({
-          userId: user.id,
-          weightKg: latestWeight,
-          leftImageBase64: leftPending,
-          goalType: deriveWeightGoalMode({
-            heightCm: form.height,
-            currentWeightKg: latestWeight,
-          }) || form.weightGoalMode || 'loss',
-          recoveredHealthIssues: form.recoveredHealthIssues || [],
-        }).catch(() => {});
-      }
+      // Profile Left/Right must not update Transformation Before/After.
       if (user?.id) {
         invalidateHasTeamMembersCache(user.id);
       }

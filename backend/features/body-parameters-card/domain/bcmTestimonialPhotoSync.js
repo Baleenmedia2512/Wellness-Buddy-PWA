@@ -1,5 +1,6 @@
 /**
- * After BCM profile sync, mirror optional Left photo to testimonial Before.
+ * After BCM profile sync, mirror optional Left photo to testimonial Before
+ * **for new users only** (no existing Transformation Before).
  * After is not updated from Profile Right — Transformation After is set later.
  * Non-fatal — BCM card + profile save already succeeded.
  */
