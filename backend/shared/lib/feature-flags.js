@@ -352,3 +352,12 @@ registerFlag({
   description:    'ADR-0013 — Profile Community ID create/co-sponsor requires 24h sponsor OTP. Kill switch; version routing (3.5.0+) skips immediate Community ID apply on profile save. Live 3.4.9 stays on legacy profile save.',
   defaultEnabled: true,
 });
+
+registerFlag({
+  name:           'ff.height-change-otp',
+  owner:          '@principal-eng',
+  createdAt:      '2026-09-25',
+  removeBy:       '2027-03-25',
+  description:    'Profile height: first save free; later changes need email/phone OTP. Kill switch; version routing (3.5.0+) strips differing height on profile save.',
+  defaultEnabled: true,
+});

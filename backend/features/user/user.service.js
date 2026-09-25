@@ -24,3 +24,7 @@ export {
   verifyCommunityIdOtp,
   getPublicPendingCommunityIdRequest,
 } from './communityIdApproval.service.js';
+export {
+  requestHeightChangeOtp,
+  verifyHeightChangeOtp,
+} from './heightChange.service.js';

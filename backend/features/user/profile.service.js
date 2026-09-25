@@ -50,6 +50,10 @@ import {
   COMMUNITY_ID_OTP_FLAG,
   shouldDeferCommunityIdToOtpFlow,
 } from './domain/communityIdApproval.rules.js';
+import {
+  HEIGHT_CHANGE_OTP_FLAG,
+  shouldDeferHeightChangeToOtp,
+} from './domain/heightChange.rules.js';
 
 const notFound = () => ({ httpStatus: 404, body: { success: false, message: 'User not found' } });
 
@@ -399,8 +403,8 @@ export async function updateProfile(input) {
   }
 
   let user;
-  const photoCols = '"UserId", "Email", transformation_photos';
-  const idCols = '"UserId", "Email"';
+  const photoCols = '"UserId", "Email", "Height", transformation_photos';
+  const idCols = '"UserId", "Email", "Height"';
   try {
     // Prefer email when present (legacy clients); userId for phone / BCM without email.
     if (email) {
@@ -421,8 +425,24 @@ export async function updateProfile(input) {
   const userId = user.UserId;
   const accountEmail = email || user.Email || null;
 
+  const deferHeight = shouldDeferHeightChangeToOtp({
+    flagEnabled: isEnabled(HEIGHT_CHANGE_OTP_FLAG),
+    appVersion,
+    existingHeight: user.Height,
+    newHeight: height,
+  });
+  const appliedHeight = deferHeight ? undefined : height;
+  if (deferHeight) {
+    logger.info('[profile/update] deferred height change to OTP flow', {
+      userId,
+      existingHeight: user.Height ?? null,
+      requestedHeight: height ?? null,
+    });
+  }
+
   const { updateData, cleanedPhoneNumber } = buildProfileUpdate({
     ...input,
+    height: appliedHeight,
     communityId: appliedCommunityId,
     existingTransformationPhotos: user.transformation_photos,
   });
@@ -463,7 +483,7 @@ export async function updateProfile(input) {
     const verifyRow = await repo.verifyProfile(userId);
     if (!verifyRow) throw new Error(`Unable to verify profile update for UserId ${userId}`);
     verifySaved(verifyRow, {
-      cleanedPhoneNumber, height, dietType, gender, updateData,
+      cleanedPhoneNumber, height: appliedHeight, dietType, gender, updateData,
       communityId: appliedCommunityId, timezoneIana,
     });
     if (appliedCommunityId !== undefined) savedCommunityId = appliedCommunityId;
@@ -499,11 +519,11 @@ export async function updateProfile(input) {
   let savedCurrentWeight = null;
 
   if (incomingWeight != null && !latestWeightRow?.ID) {
-    const profileHeightRow = height == null
+    const profileHeightRow = appliedHeight == null
       ? await repo.findByUserId(userId, '"Height"')
       : null;
-    const effectiveHeightForBmi = height != null
-      ? parseFloat(height)
+    const effectiveHeightForBmi = appliedHeight != null
+      ? parseFloat(appliedHeight)
       : (profileHeightRow?.Height ? parseFloat(profileHeightRow.Height) : null);
     const bmi = computeBmiFromHeightWeight(effectiveHeightForBmi, incomingWeight);
     const weightBmr = computeKatchMcArdleBmr(incomingWeight, incomingBodyFat);
@@ -609,8 +629,8 @@ export async function updateProfile(input) {
   }
 
   const profileHeightRow = await repo.findByUserId(userId, '"Height"');
-  const effectiveHeight = height != null
-    ? parseFloat(height)
+  const effectiveHeight = appliedHeight != null
+    ? parseFloat(appliedHeight)
     : (profileHeightRow?.Height ? parseFloat(profileHeightRow.Height) : null);
   const derivedGoalMode = deriveWeightGoalMode({
     heightCm: effectiveHeight,
@@ -646,7 +666,7 @@ export async function updateProfile(input) {
         name: dbProfile?.UserName ?? name,
         height: dbProfile?.Height != null
           ? parseFloat(dbProfile.Height)
-          : (height != null ? parseFloat(height) : null),
+          : (appliedHeight != null ? parseFloat(appliedHeight) : null),
         bmr: savedBmr ?? (dbProfile?.Bmr != null ? parseFloat(dbProfile.Bmr) : bmr),
         gender: gender ?? dbProfile?.Gender ?? null,
         age: numOrNull(dbProfile?.Age),
@@ -727,7 +747,9 @@ export async function updateProfile(input) {
     data: {
       email,
       name: name || undefined,
-      height: height ? parseFloat(height) : undefined,
+      height: appliedHeight != null ? parseFloat(appliedHeight) : (
+        refreshedUser?.Height != null ? parseFloat(refreshedUser.Height) : undefined
+      ),
       bmr: savedBmr || undefined,
       dietType: dietType || undefined,
       phoneNumber: cleanedPhoneNumber || undefined,

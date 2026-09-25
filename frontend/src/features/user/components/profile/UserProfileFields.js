@@ -4,6 +4,7 @@ import React from 'react';
 import { Flame, Mail } from 'lucide-react';
 import PhysicalActivityField from './PhysicalActivityField';
 import CommunityIdField from './CommunityIdField';
+import HeightField from './HeightField';
 import { VALID_GENDERS } from '../../domain/profileCompleteness';
 
 const inputCls =
@@ -36,6 +37,14 @@ const UserProfileFields = ({
   communityIdError = '',
   sponsorName = '',
   sponsorEmail = '',
+  heightOtpEnabled = false,
+  lockedHeight = null,
+  onHeightRequestOtp,
+  onHeightVerifyOtp,
+  heightOtpBusy = false,
+  heightOtpError = '',
+  heightOtpPending = false,
+  heightOtpDestination = '',
 }) => (
   <div className="space-y-4">
     {!hideEmailField && (
@@ -88,10 +97,18 @@ const UserProfileFields = ({
       </select>
     </Field>
 
-    <Field label="Height (cm)" required>
-      <input type="text" inputMode="decimal" pattern="[0-9]*" value={height} onChange={(e) => setHeight(e.target.value)}
-        placeholder="e.g. 170" min="50" max="198" className={inputCls} style={{ fontSize: '16px' }} />
-    </Field>
+    <HeightField
+      height={height}
+      setHeight={setHeight}
+      otpEnabled={heightOtpEnabled}
+      lockedHeight={lockedHeight}
+      onRequestOtp={onHeightRequestOtp}
+      onVerifyOtp={onHeightVerifyOtp}
+      busy={heightOtpBusy}
+      error={heightOtpError}
+      otpPending={heightOtpPending}
+      destinationMasked={heightOtpDestination}
+    />
     <Field label="Phone Number" required>
       <input type="text" inputMode="numeric" pattern="[0-9]*" value={phone} onChange={(e) => setPhone(e.target.value)}
         placeholder="e.g. +91 9876543210" className={inputCls} style={{ fontSize: '16px' }} />

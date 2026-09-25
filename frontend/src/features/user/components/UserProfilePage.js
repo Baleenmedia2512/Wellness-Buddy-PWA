@@ -22,7 +22,7 @@ import {
   setAutoCameraOnResumeEnabled,
 } from '../../../shared/utils/autoCameraPreference';
 import useProfileForm from '../hooks/useProfileForm';
-import { fetchProfile, saveProfile, requestCommunityId, verifyCommunityIdOtp } from '../services/profileService';
+import { fetchProfile, saveProfile, requestCommunityId, verifyCommunityIdOtp, requestHeightChangeOtp, verifyHeightChangeOtp } from '../services/profileService';
 import { syncMarathonWeightComparisonFromProfile } from '../../marathon/marathonWeightComparisonCache';
 import { loadProfileMarathonWeightComparison } from '../../marathon';
 import { fetchMyAssessment, fetchLeadByPhone } from '../../counselling/services/counsellingApi';
@@ -47,6 +47,7 @@ import useTransformationPhotos from '../hooks/useTransformationPhotos';
 import { hasValidProfileName } from '../domain/profileCompleteness';
 import { isFlagEnabled } from '../../../config/featureFlags';
 import { COMMUNITY_ID_OTP_FLAG } from '../domain/communityId';
+import { HEIGHT_CHANGE_OTP_FLAG, isHeightLocked, validateHeightCm } from '../domain/heightChange';
 import { looksLikeEmail } from '../domain/onboardingEmail';
 
 const COLORS = ['bg-blue-500', 'bg-green-500', 'bg-purple-500', 'bg-pink-500', 'bg-indigo-500', 'bg-yellow-500', 'bg-red-500', 'bg-teal-500'];
@@ -89,6 +90,12 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
   const [communityIdPair, setCommunityIdPair] = useState(null);
   const [communityIdBusy, setCommunityIdBusy] = useState(false);
   const [communityIdError, setCommunityIdError] = useState('');
+  const [lockedHeight, setLockedHeight] = useState(null);
+  const [heightOtpBusy, setHeightOtpBusy] = useState(false);
+  const [heightOtpError, setHeightOtpError] = useState('');
+  const [heightOtpPending, setHeightOtpPending] = useState(false);
+  const [heightOtpDestination, setHeightOtpDestination] = useState('');
+  const [pendingHeightCm, setPendingHeightCm] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState('');
@@ -174,6 +181,13 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
       };
 
       form.reload(profileData);
+      setLockedHeight(
+        isHeightLocked(profileData.height) ? profileData.height : null,
+      );
+      setHeightOtpPending(false);
+      setHeightOtpError('');
+      setPendingHeightCm(null);
+      setHeightOtpDestination('');
       setLatestWeight(data?.latestWeight ? parseFloat(data.latestWeight) : null);
       setInitialWeight(data?.initialWeight != null ? parseFloat(data.initialWeight) : null);
       setInitialWeightDate(data?.initialWeightDate || null);
@@ -282,6 +296,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
       const emailForSave = accountEmail || undefined;
       const payload = form.payload(emailForSave, {
         userId: user?.id || undefined,
+        lockedHeight,
       });
       if (!emailForSave) {
         delete payload.email;
@@ -336,6 +351,77 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
     onProfileUpdate,
     transformationPhotos,
     latestWeight,
+    lockedHeight,
+  ]);
+
+  const handleHeightRequestOtp = useCallback(async (nextHeight) => {
+    setHeightOtpError('');
+    setSuccessMessage('');
+    setHeightOtpBusy(true);
+    try {
+      const check = validateHeightCm(nextHeight);
+      if (!check.valid) {
+        setHeightOtpError(check.message);
+        return;
+      }
+      const data = await requestHeightChangeOtp({
+        userId: sessionUserId || undefined,
+        email: accountEmail || undefined,
+        height: check.value,
+      });
+      setPendingHeightCm(check.value);
+      setHeightOtpPending(true);
+      setHeightOtpDestination(data.destinationMasked || '');
+      setSuccessMessage(data.message || 'Verification code sent.');
+    } catch (e) {
+      setHeightOtpError(e.message || 'Could not send the height verification code.');
+    } finally {
+      setHeightOtpBusy(false);
+    }
+  }, [sessionUserId, accountEmail]);
+
+  const handleHeightVerifyOtp = useCallback(async (otp) => {
+    setHeightOtpError('');
+    setSuccessMessage('');
+    setHeightOtpBusy(true);
+    try {
+      const heightValue = pendingHeightCm != null
+        ? pendingHeightCm
+        : validateHeightCm(form.height).value;
+      if (heightValue == null) {
+        setHeightOtpError('Enter a valid height before verifying.');
+        return;
+      }
+      const data = await verifyHeightChangeOtp({
+        userId: sessionUserId || undefined,
+        email: accountEmail || undefined,
+        height: heightValue,
+        otp,
+      });
+      const saved = data.height != null ? String(data.height) : String(heightValue);
+      form.setHeight(saved);
+      setLockedHeight(saved);
+      setHeightOtpPending(false);
+      setPendingHeightCm(null);
+      setHeightOtpDestination('');
+      setSuccessMessage(data.message || 'Height updated.');
+      setHasSaved(true);
+      onProfileUpdate?.({
+        height: parseFloat(saved),
+      });
+      await loadProfile({ cacheBust: true });
+    } catch (e) {
+      setHeightOtpError(e.message || 'That verification code did not match.');
+    } finally {
+      setHeightOtpBusy(false);
+    }
+  }, [
+    pendingHeightCm,
+    form,
+    sessionUserId,
+    accountEmail,
+    onProfileUpdate,
+    loadProfile,
   ]);
 
   const handleCommunityIdCreate = useCallback(async (code) => {
@@ -677,6 +763,14 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
                   communityIdError={communityIdError}
                   sponsorName={coachName}
                   sponsorEmail={sponsorEmail}
+                  heightOtpEnabled={isFlagEnabled(HEIGHT_CHANGE_OTP_FLAG)}
+                  lockedHeight={lockedHeight}
+                  onHeightRequestOtp={handleHeightRequestOtp}
+                  onHeightVerifyOtp={handleHeightVerifyOtp}
+                  heightOtpBusy={heightOtpBusy}
+                  heightOtpError={heightOtpError}
+                  heightOtpPending={heightOtpPending}
+                  heightOtpDestination={heightOtpDestination}
                 />
                 <UserProfileBodyMetrics
                   bodyMetrics={form.bodyMetrics}

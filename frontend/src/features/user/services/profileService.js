@@ -141,6 +141,35 @@ export const verifyCommunityIdOtp = async ({ userId, email, otp }) => {
   return data;
 };
 
+export const requestHeightChangeOtp = async ({ userId, email, height }) => {
+  const apiBase = getApiBaseUrl();
+  const res = await apiFetch(`${apiBase}/api/user/height/request-otp`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ userId, email, height }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.success) {
+    throw new Error(data.message || 'Could not send the height verification code.');
+  }
+  return data;
+};
+
+export const verifyHeightChangeOtp = async ({ userId, email, height, otp }) => {
+  const apiBase = getApiBaseUrl();
+  const res = await apiFetch(`${apiBase}/api/user/height/verify-otp`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ userId, email, height, otp }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.success) {
+    throw new Error(data.message || 'That verification code did not match.');
+  }
+  clearProfileCaches({ email, userId });
+  return data;
+};
+
 export const snoozeProfilePicture = async (userId) => {
   const res = await fetch(`${getApiBaseUrl()}/api/user/snooze-pic`, {
     method: 'POST',
