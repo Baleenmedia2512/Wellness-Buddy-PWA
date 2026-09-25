@@ -1,5 +1,5 @@
-// Editable name / height / phone / community ID / gender fields + email.
-// BMR is display-only when bmrReadOnly (profile page) — calculated from weight/formula.
+// Editable name / height / phone / community ID / gender / BMR fields + email.
+// Pass bmrReadOnly to keep BMR display-only (e.g. calculated preview contexts).
 import React from 'react';
 import { Flame, Mail } from 'lucide-react';
 import PhysicalActivityField from './PhysicalActivityField';
@@ -126,7 +126,7 @@ const UserProfileFields = ({
         className={
           bmrReadOnly
             ? 'w-full px-3 py-2 border border-gray-200 bg-gray-50 text-gray-600 rounded-lg cursor-not-allowed outline-none'
-            : 'w-full px-3 py-2 border border-orange-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none'
+            : inputCls
         }
       />
       {bmrReadOnly && (

@@ -277,8 +277,6 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
       if (!emailForSave) {
         delete payload.email;
       }
-      // BMR is system-calculated on the profile page — never write it from this form.
-      delete payload.bmr;
       const photoExtras = transformationPhotos.payloadExtras();
       // Only newly uploaded Centre slot updates ProfileImage (same as onboarding).
       const centrePhoto = photoExtras.transformationPhotos?.front || null;
@@ -640,7 +638,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
                   phone={form.phone} setPhone={form.setPhone}
                   gender={form.gender} setGender={form.setGender}
                   bmr={form.bmr}
-                  bmrReadOnly
+                  setBmr={form.setBmr}
                   physicalActivityLevel={form.physicalActivityLevel}
                   setPhysicalActivityLevel={form.setPhysicalActivityLevel}
                   communityId={form.communityId}
