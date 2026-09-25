@@ -293,15 +293,6 @@ const CommunityIdField = ({
         </p>
       )}
 
-      {((!confirmed && !pending) || (editingConfirmed && differsFromBaseline) || editingPending) && (
-        <p className={`text-xs text-gray-500 ${pairLabel ? 'mt-1.5' : 'mt-3'}`}>
-          Enter a new code to open a joint coaching account (1st seat), or an existing
-          code to join as 2nd seat. Approval uses a 24-hour code. Tap the tick to send
-          the request. This does not grant Sponsor nav — that starts when you have
-          downline members.
-        </p>
-      )}
-
       {confirmed && editingConfirmed && !differsFromBaseline && !pending && (
         <p className={`text-xs text-gray-500 ${pairLabel ? 'mt-1.5' : 'mt-3'}`}>
           Tap the tick when done, or change the code to request a new sponsor approval.

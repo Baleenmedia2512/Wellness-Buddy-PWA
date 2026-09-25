@@ -103,14 +103,14 @@ describe('buildLeadSeatReleaseUpdate', () => {
     );
   });
 
-  it('clears both seats when solo Sponsor leaves', () => {
+  it('deactivates the team when solo Sponsor leaves (CoachId stays NOT NULL)', () => {
     assert.deepEqual(
       buildLeadSeatReleaseUpdate({
         seat: 'sponsor',
         team: { CoachId: 10, CoCoachId: null },
         userId: 10,
       }),
-      { CoachId: null, CoCoachId: null },
+      { Status: 'inactive', CoCoachId: null },
     );
   });
 });

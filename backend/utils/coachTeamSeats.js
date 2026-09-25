@@ -77,13 +77,14 @@ export function resolveMemberCoachTeamId({ claimedTeamId = null, guide = null } 
 /**
  * Pure seat-clear payload when a lead leaves (or changes) Community ID.
  * Sponsor leave with a co-sponsor → promote co-sponsor to CoachId.
+ * Solo sponsor leave → mark team inactive (CoachId is NOT NULL — never null it).
  *
  * @param {{
  *   seat?: 'sponsor'|'co-sponsor'|null,
  *   team?: { CoachId?: unknown, CoCoachId?: unknown }|null,
  *   userId?: unknown,
  * }} args
- * @returns {{ CoachId?: number|null, CoCoachId?: number|null }|null}
+ * @returns {{ CoachId?: number|null, CoCoachId?: number|null, Status?: string }|null}
  */
 export function buildLeadSeatReleaseUpdate({
   seat = null,
@@ -106,7 +107,8 @@ export function buildLeadSeatReleaseUpdate({
   if (Number.isFinite(coId) && coId > 0 && coId !== uid) {
     return { CoachId: coId, CoCoachId: null };
   }
-  return { CoachId: null, CoCoachId: null };
+  // Solo sponsor: deactivate — do not set CoachId null (DB NOT NULL).
+  return { Status: 'inactive', CoCoachId: null };
 }
 
 /**
