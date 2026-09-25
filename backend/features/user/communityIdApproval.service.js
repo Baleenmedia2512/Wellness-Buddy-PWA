@@ -8,7 +8,7 @@ import { ValidationError } from '../../shared/lib/ValidationError.js';
 import { isEnabled } from '../../shared/lib/feature-flags.js';
 import { cache, cacheKeys } from '../../utils/cache.js';
 import { getSupabaseClient } from '../../utils/supabaseClient.js';
-import { assignLeadSeat, resolveLeadSeatForUser } from '../../utils/coachTeamSeats.js';
+import { assignLeadSeat, releaseLeadSeat, resolveLeadSeatForUser } from '../../utils/coachTeamSeats.js';
 import { generateEmailOtp } from '../auth/domain/otp-length.rules.js';
 import { sendTransactionalMail } from '../../shared/lib/smtp-mail.js';
 import * as userRepo from './user.repository.js';
@@ -304,9 +304,17 @@ export async function verifyCommunityIdOtp({ email = null, userId = null, otp })
   }
 
   const supabase = getSupabaseClient();
+  const previousSeat = await resolveLeadSeatForUser(supabase, requester.UserId);
+  const nextCode = normalizeTeamCodeFromCommunityId(pending.CommunityId);
+  const previousCode = normalizeTeamCodeFromCommunityId(previousSeat.teamId);
+
   const seatResult = await assignLeadSeat(supabase, pending.CommunityId, Number(requester.UserId));
   if (!seatResult.ok) {
     throw new ValidationError(409, seatResult.error || 'This Community ID is unavailable.');
+  }
+
+  if (previousSeat.seat && previousCode && nextCode && previousCode !== nextCode) {
+    await releaseLeadSeat(supabase, Number(requester.UserId), previousCode);
   }
 
   const resolvedSeat = seatResult.seat === 'already'

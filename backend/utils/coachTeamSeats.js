@@ -75,6 +75,112 @@ export function resolveMemberCoachTeamId({ claimedTeamId = null, guide = null } 
 }
 
 /**
+ * Pure seat-clear payload when a lead leaves (or changes) Community ID.
+ * Sponsor leave with a co-sponsor → promote co-sponsor to CoachId.
+ *
+ * @param {{
+ *   seat?: 'sponsor'|'co-sponsor'|null,
+ *   team?: { CoachId?: unknown, CoCoachId?: unknown }|null,
+ *   userId?: unknown,
+ * }} args
+ * @returns {{ CoachId?: number|null, CoCoachId?: number|null }|null}
+ */
+export function buildLeadSeatReleaseUpdate({
+  seat = null,
+  team = null,
+  userId = null,
+} = {}) {
+  if (!team || (seat !== 'sponsor' && seat !== 'co-sponsor')) return null;
+  const uid = Number(userId);
+  if (!Number.isFinite(uid) || uid <= 0) return null;
+
+  const sponsorId = team.CoachId != null ? Number(team.CoachId) : null;
+  const coId = team.CoCoachId != null ? Number(team.CoCoachId) : null;
+
+  if (seat === 'co-sponsor') {
+    if (coId !== uid) return null;
+    return { CoCoachId: null };
+  }
+
+  if (sponsorId !== uid) return null;
+  if (Number.isFinite(coId) && coId > 0 && coId !== uid) {
+    return { CoachId: coId, CoCoachId: null };
+  }
+  return { CoachId: null, CoCoachId: null };
+}
+
+/**
+ * Clear this user's Sponsor / Co-Sponsor seat on a specific active team.
+ * Pass teamId when releasing a known previous seat after claiming a new one
+ * (resolveLeadSeatForUser uses maybeSingle and breaks if the user is on two teams).
+ *
+ * @param {object} supabase
+ * @param {number} userId
+ * @param {string|null} [teamId] When omitted, resolves the user's current lead seat.
+ * @returns {Promise<{ released: boolean, seat: 'sponsor'|'co-sponsor'|null, teamId: string|null }>}
+ */
+export async function releaseLeadSeat(supabase, userId, teamId = null) {
+  const id = Number(userId);
+  if (!Number.isFinite(id) || id <= 0) {
+    return { released: false, seat: null, teamId: null };
+  }
+
+  let seat = null;
+  let targetTeamId = teamId && String(teamId).trim() ? String(teamId).trim() : null;
+
+  if (!targetTeamId) {
+    const current = await resolveLeadSeatForUser(supabase, id);
+    if (!current.seat || !current.teamId) {
+      return { released: false, seat: null, teamId: null };
+    }
+    seat = current.seat;
+    targetTeamId = current.teamId;
+  }
+
+  const { data: rows, error } = await supabase
+    .from('coach_teams_table')
+    .select('TeamId, CoachId, CoCoachId, Status')
+    .eq('TeamId', targetTeamId)
+    .eq('Status', 'active')
+    .limit(1);
+
+  if (error) throw error;
+  const team = rows?.[0];
+  if (!team) {
+    return { released: false, seat, teamId: targetTeamId };
+  }
+
+  if (!seat) {
+    if (Number(team.CoachId) === id) seat = 'sponsor';
+    else if (Number(team.CoCoachId) === id) seat = 'co-sponsor';
+    else return { released: false, seat: null, teamId: targetTeamId };
+  }
+
+  const patch = buildLeadSeatReleaseUpdate({
+    seat,
+    team,
+    userId: id,
+  });
+  if (!patch) {
+    return { released: false, seat, teamId: targetTeamId };
+  }
+
+  const { error: updateError } = await supabase
+    .from('coach_teams_table')
+    .update({ ...patch, UpdatedAt: nowUtc() })
+    .eq('TeamId', targetTeamId)
+    .eq('Status', 'active');
+
+  if (updateError) throw updateError;
+
+  return {
+    released: true,
+    seat,
+    teamId: targetTeamId,
+  };
+}
+
+/**
  * Resolve whether userId is Sponsor or Co-Sponsor on an active team.
  * @param {object} supabase
  * @param {number} userId

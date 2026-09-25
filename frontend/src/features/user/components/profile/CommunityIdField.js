@@ -1,7 +1,8 @@
 /**
  * Home Profile Community ID — create / co-sponsor with 24h sponsor OTP.
+ * Confirmed IDs stay editable: Change → new code → sponsor OTP again.
  */
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Hash } from 'lucide-react';
 import {
   COMMUNITY_ID_MAX_LENGTH,
@@ -33,17 +34,57 @@ const CommunityIdField = ({
   const otpCtl = useOtpInput(EMAIL_OTP_LENGTH);
   const confirmed = otpEnabled && !!teamSeat;
   const pending = otpEnabled && pendingRequest && pendingRequest.status === 'pending';
+  const [isChanging, setIsChanging] = useState(false);
+  const baselineRef = useRef('');
   const check = validateCommunityId(communityId);
-  const canCreate = otpEnabled && !confirmed && !busy && check.valid && check.value;
+  const normalizedValue = check.value
+    ? sanitizeCommunityIdInput(check.value)
+    : '';
+  const differsFromBaseline = Boolean(
+    normalizedValue
+    && baselineRef.current
+    && normalizedValue !== baselineRef.current,
+  );
+  const editingConfirmed = confirmed && (isChanging || differsFromBaseline);
+  const canCreate = otpEnabled
+    && !busy
+    && check.valid
+    && check.value
+    && (!confirmed || differsFromBaseline);
 
   useEffect(() => {
     otpCtl.reset();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- reset when a new request arrives
   }, [pendingRequest?.id]);
 
+  // Snapshot the confirmed code so Create stays disabled until the user edits it.
+  useEffect(() => {
+    if (!confirmed) {
+      baselineRef.current = '';
+      setIsChanging(false);
+      return;
+    }
+    if (!pending) {
+      baselineRef.current = sanitizeCommunityIdInput(communityId || '');
+      setIsChanging(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only refresh baseline when seat/pending settle
+  }, [confirmed, pending, teamSeat, pendingRequest?.id]);
+
   const handleVerify = (code) => {
     if (!onVerify || busy) return;
     onVerify(code);
+  };
+
+  const handleStartChange = () => {
+    setIsChanging(true);
+  };
+
+  const handleCancelChange = () => {
+    setIsChanging(false);
+    if (baselineRef.current) {
+      setCommunityId && setCommunityId(baselineRef.current);
+    }
   };
 
   if (!otpEnabled) {
@@ -91,17 +132,36 @@ const CommunityIdField = ({
           onChange={(e) => setCommunityId && setCommunityId(
             sanitizeCommunityIdInput(e.target.value),
           )}
-          readOnly={confirmed}
+          readOnly={confirmed && !editingConfirmed && !pending}
           maxLength={COMMUNITY_ID_MAX_LENGTH}
           placeholder={COMMUNITY_ID_PLACEHOLDER}
           className={`${inputCls} pl-9 font-mono tracking-wide uppercase ${
-            confirmed ? 'bg-gray-50 text-gray-700 cursor-not-allowed' : ''
+            confirmed && !editingConfirmed && !pending
+              ? 'bg-gray-50 text-gray-700'
+              : ''
           }`}
           style={{ fontSize: '16px' }}
         />
       </div>
 
-      {!confirmed && !pending && (
+      {confirmed && !pending && !editingConfirmed && (
+        <>
+          <p className="text-xs text-gray-500 mt-1">
+            Confirmed as {teamSeat === 'co-sponsor' ? 'Co-Sponsor' : 'Sponsor'}.
+            You can change it with a new sponsor approval code.
+          </p>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={handleStartChange}
+            className="mt-2 w-full py-2 rounded-lg text-sm font-semibold text-green-700 border border-green-200 bg-white"
+          >
+            Change
+          </button>
+        </>
+      )}
+
+      {(!confirmed || editingConfirmed) && !pending && (
         <>
           <p className="text-xs text-gray-500 mt-1">
             Enter a new code to open a joint coaching account (1st seat), or an existing
@@ -114,8 +174,18 @@ const CommunityIdField = ({
             onClick={() => onCreate && onCreate(check.value)}
             className="mt-2 w-full py-2 rounded-lg text-sm font-semibold text-white bg-green-600 disabled:bg-gray-300 disabled:text-gray-500"
           >
-            {busy ? 'Sending…' : 'Create'}
+            {busy ? 'Sending…' : (confirmed ? 'Request change' : 'Create')}
           </button>
+          {editingConfirmed && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={handleCancelChange}
+              className="mt-2 w-full py-2 rounded-lg text-xs font-medium text-gray-600 border border-gray-200"
+            >
+              Cancel
+            </button>
+          )}
         </>
       )}
 
@@ -156,7 +226,7 @@ const CommunityIdField = ({
       {error && (
         <p className="text-xs text-red-600 mt-2">{error}</p>
       )}
-      {!confirmed && (
+      {(!confirmed || editingConfirmed || pending) && (
         <p className="text-xs text-gray-400 mt-1">
           {(communityId || '').length}/{COMMUNITY_ID_MAX_LENGTH} · Min {COMMUNITY_ID_MIN_LENGTH} · Letters and numbers only
         </p>

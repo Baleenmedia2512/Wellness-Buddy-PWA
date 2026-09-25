@@ -20,7 +20,7 @@ Product now needs:
 2. Approver is always the **requester's sponsor** (`CoachId`). Co-sponsor mail names the community's main sponsor (`coach_teams_table.CoachId` or first TeamId owner).
 3. **Legacy (not breaking):** `appVersion < 3.5.0` or missing version still applies Community ID immediately on profile save (live 3.4.9). `3.5.0+` with the flag ON skips that apply and uses `POST /api/user/community-id/request` + `verify-otp`.
 4. GET `/api/user/profile` may include additive `communityIdRequest` (pending). Old clients ignore it.
-5. Confirmed Community ID is read-only on Profile. Flag is a kill switch; version routing is the Play activation path.
+5. Confirmed Community ID can be changed from Profile via Change → new code → sponsor OTP again (previous lead seat is released on verify). Flag is a kill switch; version routing is the Play activation path.
 
 ### Legacy removal
 

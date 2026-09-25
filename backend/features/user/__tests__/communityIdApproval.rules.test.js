@@ -4,7 +4,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  CLAIM_ALREADY_CONFIRMED,
   CLAIM_ALREADY_OWNED,
   CLAIM_CO_SPONSOR,
   CLAIM_CREATE,
@@ -161,13 +160,14 @@ describe('classifyCommunityIdRequest', () => {
     assert.equal(out.status, CLAIM_FULL);
   });
 
-  it('rejects changing a confirmed Community ID', () => {
+  it('allows changing a confirmed Community ID to a different code', () => {
     const out = classifyCommunityIdRequest({
       ...base,
       requesterConfirmedCode: 'OTHER99',
     });
-    assert.equal(out.ok, false);
-    assert.equal(out.status, CLAIM_ALREADY_CONFIRMED);
+    assert.equal(out.ok, true);
+    assert.equal(out.status, CLAIM_CREATE);
+    assert.equal(out.kind, REQUEST_KIND_CREATE);
   });
 
   it('rejects requesting a code the user already owns', () => {

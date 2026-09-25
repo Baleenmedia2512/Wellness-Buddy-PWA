@@ -25,6 +25,7 @@ export const REQUEST_STATUS_EXPIRED = 'expired';
 
 export const CLAIM_NO_SPONSOR = 'no-sponsor';
 export const CLAIM_ALREADY_OWNED = 'already-owned';
+/** @deprecated Kept for older clients/tests; change requests are now allowed. */
 export const CLAIM_ALREADY_CONFIRMED = 'already-confirmed';
 export const CLAIM_FULL = 'full';
 export const CLAIM_INVALID = 'invalid';
@@ -33,8 +34,6 @@ export const CLAIM_CO_SPONSOR = 'co-sponsor';
 
 const NO_SPONSOR_MESSAGE =
   'Link a sponsor before creating a Community ID. Ask your wellness centre to connect you.';
-const ALREADY_CONFIRMED_MESSAGE =
-  'You already have a confirmed Community ID. It cannot be changed from Profile.';
 const ALREADY_OWNED_MESSAGE = 'This Community ID is already yours.';
 const FULL_MESSAGE =
   'This Community ID already has a Sponsor and Co-Sponsor.';
@@ -176,14 +175,8 @@ export function classifyCommunityIdRequest({
       code,
     };
   }
-  if (confirmed && confirmed !== code) {
-    return {
-      ok: false,
-      status: CLAIM_ALREADY_CONFIRMED,
-      message: ALREADY_CONFIRMED_MESSAGE,
-      code,
-    };
-  }
+  // Confirmed users may request a different Community ID (Profile Change).
+  // On OTP verify the previous lead seat is released before the new one is assigned.
 
   const sponsorId = toPositiveUserId(occupancy?.sponsorUserId);
   const coId = toPositiveUserId(occupancy?.coSponsorUserId);

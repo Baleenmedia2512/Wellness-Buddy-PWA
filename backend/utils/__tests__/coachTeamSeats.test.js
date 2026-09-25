@@ -5,6 +5,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  buildLeadSeatReleaseUpdate,
   buildTeamTableClearOnCancelRequest,
   isSponsorTeamAccess,
   resolveInactiveTeamSeatAssignment,
@@ -76,6 +77,41 @@ describe('buildTeamTableClearOnCancelRequest', () => {
     assert.deepEqual(buildTeamTableClearOnCancelRequest({ coachId: 42 }), {
       TeamId: null,
     });
+  });
+});
+
+describe('buildLeadSeatReleaseUpdate', () => {
+  it('clears Co-Sponsor seat only', () => {
+    assert.deepEqual(
+      buildLeadSeatReleaseUpdate({
+        seat: 'co-sponsor',
+        team: { CoachId: 10, CoCoachId: 20 },
+        userId: 20,
+      }),
+      { CoCoachId: null },
+    );
+  });
+
+  it('promotes Co-Sponsor when Sponsor leaves', () => {
+    assert.deepEqual(
+      buildLeadSeatReleaseUpdate({
+        seat: 'sponsor',
+        team: { CoachId: 10, CoCoachId: 20 },
+        userId: 10,
+      }),
+      { CoachId: 20, CoCoachId: null },
+    );
+  });
+
+  it('clears both seats when solo Sponsor leaves', () => {
+    assert.deepEqual(
+      buildLeadSeatReleaseUpdate({
+        seat: 'sponsor',
+        team: { CoachId: 10, CoCoachId: null },
+        userId: 10,
+      }),
+      { CoachId: null, CoCoachId: null },
+    );
   });
 });
 
