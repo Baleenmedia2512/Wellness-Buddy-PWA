@@ -69,6 +69,7 @@ const CommunityIdField = ({
   const fieldEditable = (!confirmed && !pending)
     || editingConfirmed
     || editingPending;
+  const canFinishUnchangedEdit = confirmed && isChanging && !differsFromBaseline;
   const canSubmit = otpEnabled
     && !busy
     && check.valid
@@ -78,6 +79,7 @@ const CommunityIdField = ({
       || (confirmed && differsFromBaseline)
       || editingPending
     );
+  const tickEnabled = canSubmit || canFinishUnchangedEdit;
   const showPencil = (
     (confirmed && !editingConfirmed && !pending)
     || (pending && !isChanging)
@@ -145,6 +147,11 @@ const CommunityIdField = ({
   };
 
   const handleSubmit = () => {
+    // Same code while editing a confirmed ID → just close edit mode (no OTP).
+    if (canFinishUnchangedEdit) {
+      setIsChanging(false);
+      return;
+    }
     if (!canSubmit || !onCreate) return;
     onCreate(check.value);
   };
@@ -198,7 +205,7 @@ const CommunityIdField = ({
             sanitizeCommunityIdInput(e.target.value),
           )}
           onKeyDown={(e) => {
-            if (e.key === 'Enter' && canSubmit) {
+            if (e.key === 'Enter' && (canSubmit || canFinishUnchangedEdit)) {
               e.preventDefault();
               handleSubmit();
             }
@@ -246,15 +253,27 @@ const CommunityIdField = ({
         {showTick && (
           <button
             type="button"
-            disabled={!canSubmit}
+            disabled={!tickEnabled}
             onClick={handleSubmit}
             className={`${iconBtnCls} right-2 ${
-              canSubmit
+              tickEnabled
                 ? 'text-green-700 hover:bg-green-50'
                 : 'text-gray-300'
             }`}
-            aria-label={busy ? 'Sending approval request' : (confirmed || pending ? 'Request Community ID change' : 'Create Community ID')}
-            title={busy ? 'Sending…' : (confirmed || pending ? 'Request change' : 'Create')}
+            aria-label={
+              busy
+                ? 'Sending approval request'
+                : canFinishUnchangedEdit
+                  ? 'Done editing Community ID'
+                  : (confirmed || pending ? 'Request Community ID change' : 'Create Community ID')
+            }
+            title={
+              busy
+                ? 'Sending…'
+                : canFinishUnchangedEdit
+                  ? 'Done'
+                  : (confirmed || pending ? 'Request change' : 'Create')
+            }
           >
             <Check className="w-4 h-4" strokeWidth={2.5} />
           </button>
@@ -274,12 +293,18 @@ const CommunityIdField = ({
         </p>
       )}
 
-      {((!confirmed && !pending) || editingConfirmed || editingPending) && (
+      {((!confirmed && !pending) || (editingConfirmed && differsFromBaseline) || editingPending) && (
         <p className={`text-xs text-gray-500 ${pairLabel ? 'mt-1.5' : 'mt-3'}`}>
           Enter a new code to open a joint coaching account (1st seat), or an existing
           code to join as 2nd seat. Approval uses a 24-hour code. Tap the tick to send
           the request. This does not grant Sponsor nav — that starts when you have
           downline members.
+        </p>
+      )}
+
+      {confirmed && editingConfirmed && !differsFromBaseline && !pending && (
+        <p className={`text-xs text-gray-500 ${pairLabel ? 'mt-1.5' : 'mt-3'}`}>
+          Tap the tick when done, or change the code to request a new sponsor approval.
         </p>
       )}
 

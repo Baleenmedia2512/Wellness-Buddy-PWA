@@ -147,6 +147,60 @@ export async function getCommunityIdLeadPair(teamId) {
   }
 }
 
+async function buildAlreadyOwnedResponse({
+  supabase,
+  requester,
+  code,
+  leadSeat,
+  occupancy,
+}) {
+  let seat = leadSeat?.seat || null;
+  if (!seat) {
+    const heal = await assignLeadSeat(supabase, code, Number(requester.UserId));
+    if (heal.ok) {
+      seat = heal.seat === 'already'
+        ? (Number(occupancy?.sponsorUserId) === Number(requester.UserId)
+          ? 'sponsor'
+          : 'co-sponsor')
+        : heal.seat;
+    }
+  }
+  if (!seat && Number(occupancy?.sponsorUserId) === Number(requester.UserId)) {
+    seat = 'sponsor';
+  } else if (!seat && Number(occupancy?.coSponsorUserId) === Number(requester.UserId)) {
+    seat = 'co-sponsor';
+  }
+  if (!seat) seat = 'sponsor';
+
+  try {
+    await requestRepo.cancelPendingByRequesterId(requester.UserId);
+  } catch {
+    /* non-fatal — still return already-owned */
+  }
+
+  let communityIdPair = null;
+  try {
+    communityIdPair = await getCommunityIdLeadPair(code);
+  } catch {
+    communityIdPair = null;
+  }
+
+  clearProfileCache({ email: requester.Email, userId: requester.UserId });
+
+  return {
+    httpStatus: 200,
+    body: {
+      success: true,
+      alreadyOwned: true,
+      communityId: code,
+      teamId: code,
+      teamSeat: seat,
+      communityIdPair,
+      message: 'This Community ID is already yours.',
+    },
+  };
+}
+
 export async function requestCommunityIdApproval({ email = null, userId = null, communityId }) {
   if (!isEnabled(COMMUNITY_ID_OTP_FLAG)) featureDisabled();
 
@@ -178,6 +232,18 @@ export async function requestCommunityIdApproval({ email = null, userId = null, 
     throw err;
   }
 
+  // Already on team_table for this code — never start a new OTP flow.
+  const storedCommunityId = normalizeTeamCodeFromCommunityId(requester.CommunityId);
+  if (storedCommunityId && storedCommunityId === code) {
+    return buildAlreadyOwnedResponse({
+      supabase,
+      requester,
+      code,
+      leadSeat,
+      occupancy,
+    });
+  }
+
   const classified = classifyCommunityIdRequest({
     requestedCode: code,
     requesterId: requester.UserId,
@@ -188,49 +254,13 @@ export async function requestCommunityIdApproval({ email = null, userId = null, 
 
   if (!classified.ok) {
     if (classified.status === CLAIM_ALREADY_OWNED) {
-      let seat = leadSeat.seat || null;
-      // Heal missing coach_teams seat when team_table already has this Community ID.
-      if (!seat) {
-        const heal = await assignLeadSeat(
-          supabase,
-          classified.code,
-          Number(requester.UserId),
-        );
-        if (heal.ok) {
-          seat = heal.seat === 'already'
-            ? (Number(occupancy?.sponsorUserId) === Number(requester.UserId)
-              ? 'sponsor'
-              : 'co-sponsor')
-            : heal.seat;
-        }
-      }
-      if (!seat && Number(occupancy?.sponsorUserId) === Number(requester.UserId)) {
-        seat = 'sponsor';
-      } else if (!seat && Number(occupancy?.coSponsorUserId) === Number(requester.UserId)) {
-        seat = 'co-sponsor';
-      }
-
-      let communityIdPair = null;
-      try {
-        communityIdPair = await getCommunityIdLeadPair(classified.code);
-      } catch {
-        communityIdPair = null;
-      }
-
-      clearProfileCache({ email: requester.Email, userId: requester.UserId });
-
-      return {
-        httpStatus: 200,
-        body: {
-          success: true,
-          alreadyOwned: true,
-          communityId: classified.code,
-          teamId: classified.code,
-          teamSeat: seat,
-          communityIdPair,
-          message: classified.message,
-        },
-      };
+      return buildAlreadyOwnedResponse({
+        supabase,
+        requester,
+        code: classified.code,
+        leadSeat,
+        occupancy,
+      });
     }
     throw new ValidationError(
       classified.status === CLAIM_FULL ? 409 : 400,
