@@ -8712,10 +8712,11 @@ function WellnessValleyApp() {
               </div>
             )}
 
-            {/* -- Hero banner: greeting + Camera / Gallery CTAs (always visible) -- */}
-            <div className="mx-1 mt-1 rounded-2xl overflow-hidden shadow-lg"
+            {/* -- Hero banner: greeting + Camera / Gallery CTAs (sticky while home scrolls) -- */}
+            <div className="sticky top-0 z-20 -mx-2 xs:-mx-3 px-2 xs:px-3 pt-0.5 pb-1 bg-gray-50">
+            <div className="mx-1 mt-0 rounded-2xl overflow-hidden shadow-lg"
                 style={{ background: 'linear-gradient(135deg, #064e3b 0%, #065f46 45%, #047857 100%)' }}>
-                <div className="px-2 py-3">
+                <div className="px-2 pt-1 pb-2">
                   {/* Date pill */}
                   <div className="flex items-center justify-between">
                     {/* Date */}
@@ -8763,8 +8764,8 @@ function WellnessValleyApp() {
 </h2>
                   </div>
 
-                  {/* Camera � primary CTA opens camera directly; gallery icon for choosing existing photo */}
-                  <div className="mt-5 flex gap-3">
+                  {/* Camera — primary CTA opens camera directly; gallery icon for choosing existing photo */}
+                  <div className="mt-1.5 flex gap-3">
                     <button
                       onClick={() => fileInputRef.current?.openCamera?.()}
                       disabled={loading}
@@ -8792,6 +8793,7 @@ function WellnessValleyApp() {
                   <DetoxDayReminder user={user} />
                 </div>
               </div>
+            </div>
 
             {/* Today's Nutrition Carousel � Calories � Macros � Heart Healthy � Low Carb */}
             <HomeNutritionCarousel
