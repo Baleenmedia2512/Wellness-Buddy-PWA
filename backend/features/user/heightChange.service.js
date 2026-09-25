@@ -18,7 +18,6 @@ import * as userRepo from './user.repository.js';
 import {
   HEIGHT_CHANGE_OTP_FLAG,
   isHeightLocked,
-  maskEmailForDisplay,
   maskPhoneForDisplay,
   parseHeightCm,
   validateHeightCm,
@@ -53,11 +52,11 @@ async function loadUser({ email, userId }) {
 function resolveOtpDestination(user) {
   const email = String(user?.Email || '').trim().toLowerCase();
   if (email.includes('@')) {
-    // Profile banner: masked. Mail is still delivered to the full address.
+    // Profile OTP banner shows the full address so the member can confirm inbox.
     return {
       contactType: 'email',
       recipient: email,
-      display: maskEmailForDisplay(email),
+      display: email,
     };
   }
   const phone = String(user?.PhoneNumber || '').trim();
