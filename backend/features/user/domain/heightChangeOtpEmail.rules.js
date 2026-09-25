@@ -36,18 +36,14 @@ export function buildHeightChangeOtpEmail({
   expiresMinutes = 5,
 } = {}) {
   const code = String(otp || '').trim();
-  const currentLabel = Number.isFinite(Number(currentHeightCm))
-    ? `${Number(currentHeightCm)} cm`
-    : null;
-  const newLabel = Number.isFinite(Number(newHeightCm))
-    ? `${Number(newHeightCm)} cm`
-    : null;
+  const fromCm = Number.isFinite(Number(currentHeightCm)) ? Number(currentHeightCm) : null;
+  const toCm = Number.isFinite(Number(newHeightCm)) ? Number(newHeightCm) : null;
 
   let requestLine;
-  if (currentLabel && newLabel) {
-    requestLine = `You requested to change your height. Current height: ${currentLabel}. New height: ${newLabel}.`;
-  } else if (newLabel) {
-    requestLine = `You requested to change your height to ${newLabel}.`;
+  if (fromCm != null && toCm != null) {
+    requestLine = `You requested to change your height from ${fromCm} cm to ${toCm} cm.`;
+  } else if (toCm != null) {
+    requestLine = `You requested to change your height to ${toCm} cm.`;
   } else {
     requestLine = 'You requested to change your height.';
   }
@@ -64,10 +60,10 @@ export function buildHeightChangeOtpEmail({
   ].join('\n');
 
   let requestHtml;
-  if (currentLabel && newLabel) {
-    requestHtml = `You requested to change your height. Current height: <strong>${escapeHtml(currentLabel)}</strong>. New height: <strong>${escapeHtml(newLabel)}</strong>.`;
-  } else if (newLabel) {
-    requestHtml = `You requested to change your height to <strong>${escapeHtml(newLabel)}</strong>.`;
+  if (fromCm != null && toCm != null) {
+    requestHtml = `You requested to change your height from <strong>${escapeHtml(`${fromCm} cm`)}</strong> to <strong>${escapeHtml(`${toCm} cm`)}</strong>.`;
+  } else if (toCm != null) {
+    requestHtml = `You requested to change your height to <strong>${escapeHtml(`${toCm} cm`)}</strong>.`;
   } else {
     requestHtml = 'You requested to change your height.';
   }
