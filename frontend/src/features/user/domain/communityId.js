@@ -59,12 +59,61 @@ export function isCommunityIdConfirmed({ teamSeat } = {}) {
 }
 
 /**
- * Pending Community ID banner — shown in the yellow box under the field.
- * @param {{ sponsorName?: string|null }} [args]
+ * Pending Community ID banner — yellow box under the field.
+ * @param {{ sponsorName?: string|null, sponsorEmail?: string|null }} [args]
  * @returns {string}
  */
-export function communityIdPendingApprovalMessage({ sponsorName = '' } = {}) {
-  const who = String(sponsorName || '').replace(/\s+/g, ' ').trim();
-  const named = who ? `your sponsor (${who})` : 'your sponsor';
-  return `Approval code sent to ${named}. Get approval from your sponsor by entering the verification code sent to your sponsor.`;
+export function communityIdPendingApprovalMessage({
+  sponsorName = '',
+  sponsorEmail = '',
+} = {}) {
+  const who = String(sponsorName || '').replace(/\s+/g, ' ').trim() || 'your sponsor';
+  const email = String(sponsorEmail || '').trim();
+  const target = email ? `${who} (${email})` : who;
+  return `4-digit code sent to ${target}. Enter the code to continue.`;
+}
+
+/**
+ * Parts for bolding the sponsor target in the pending banner.
+ * @param {{ sponsorName?: string|null, sponsorEmail?: string|null }} [args]
+ * @returns {{ before: string, highlight: string, after: string }}
+ */
+export function communityIdPendingApprovalParts({
+  sponsorName = '',
+  sponsorEmail = '',
+} = {}) {
+  const who = String(sponsorName || '').replace(/\s+/g, ' ').trim() || 'your sponsor';
+  const email = String(sponsorEmail || '').trim();
+  return {
+    before: '4-digit code sent to ',
+    highlight: email ? `${who} (${email})` : who,
+    after: '. Enter the code to continue.',
+  };
+}
+
+/**
+ * First name token for the pair line under Community ID.
+ * @param {unknown} name
+ * @returns {string}
+ */
+export function communityIdPairFirstName(name) {
+  const token = String(name || '').replace(/\s+/g, ' ').trim().split(' ')[0] || '';
+  return token ? token.toUpperCase() : '';
+}
+
+/**
+ * @param {{ sponsorName?: string|null, coSponsorName?: string|null, label?: string|null }} [args]
+ * @returns {string} e.g. "YASHEER - BALAJI" or "YASHEER - NA"
+ */
+export function formatCommunityIdPairLabel({
+  sponsorName = null,
+  coSponsorName = null,
+  label = null,
+} = {}) {
+  const provided = String(label || '').trim();
+  if (provided) return provided;
+  const left = communityIdPairFirstName(sponsorName);
+  if (!left) return '';
+  const right = communityIdPairFirstName(coSponsorName) || 'NA';
+  return `${left} - ${right}`;
 }

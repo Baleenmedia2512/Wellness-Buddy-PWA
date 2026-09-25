@@ -44,7 +44,8 @@ import * as weightRepo from '../weight/weight.repository.js';
 import { resolveMarathonWeightComparison } from '../marathon/domain/marathonWeightComparison.service.js';
 import { persistAvatarKey, avatarUrlForKey, r2AvatarsEnabled } from './avatar-storage.service.js';
 import { isHttpsImageUrl } from '../../shared/lib/images/dataUri.js';
-import { getPublicPendingCommunityIdRequest } from './communityIdApproval.service.js';
+import { getPublicPendingCommunityIdRequest, getCommunityIdLeadPair } from './communityIdApproval.service.js';
+import { findUserIdentity as findCommunityApproverIdentity } from './communityIdApproval.repository.js';
 import {
   COMMUNITY_ID_OTP_FLAG,
   shouldDeferCommunityIdToOtpFlow,
@@ -156,6 +157,8 @@ export async function getProfile({ email, userId = null }) {
   });
 
   let communityIdRequest = null;
+  let communityIdPair = null;
+  let sponsorEmail = null;
   try {
     communityIdRequest = await getPublicPendingCommunityIdRequest(user.UserId);
   } catch (err) {
@@ -163,6 +166,35 @@ export async function getProfile({ email, userId = null }) {
       userId: user.UserId,
       message: err?.message,
     });
+  }
+  if (teamSeat && teamId) {
+    try {
+      communityIdPair = await getCommunityIdLeadPair(teamId);
+    } catch (err) {
+      logger.warn('[profile] Community ID pair lookup failed', {
+        userId: user.UserId,
+        message: err?.message,
+      });
+    }
+  }
+  // Sponsor email for Community ID OTP banner (name + email).
+  sponsorEmail = String(communityIdRequest?.approverEmail || '').trim() || null;
+  if ((!sponsorEmail || !sponsorEmail.includes('@')) && user.CoachId) {
+    try {
+      const coach = await findCommunityApproverIdentity(user.CoachId);
+      const email = String(coach?.Email || '').trim();
+      if (email.includes('@')) {
+        sponsorEmail = email;
+        if (communityIdRequest && !communityIdRequest.approverEmail) {
+          communityIdRequest = { ...communityIdRequest, approverEmail: email };
+        }
+      }
+    } catch (err) {
+      logger.warn('[profile] sponsor email lookup failed', {
+        userId: user.UserId,
+        message: err?.message,
+      });
+    }
   }
   const tdeeBreakdown = buildTdeeBreakdown({ bmr: latestBmr, physicalActivityLevel });
   const sponsorName = sponsorIdeal.sponsorName || null;
@@ -216,6 +248,7 @@ export async function getProfile({ email, userId = null }) {
         coachId: user.CoachId || null,
         coachName,
         sponsorName,
+        sponsorEmail,
         idealCoachId: sponsorIdeal.idealCoachId || null,
         idealCoachName: sponsorIdeal.idealCoachName || null,
         teamId,
@@ -232,6 +265,7 @@ export async function getProfile({ email, userId = null }) {
         physicalActivityLevel,
         communityId: user.CommunityId ?? null,
         communityIdRequest: communityIdRequest || null,
+        communityIdPair: communityIdPair || null,
         timezone: profileTimezone,
         consentAccepted: isConsentRecorded(user),
         consentRequired: isEnabled('ff.consent-gate') && !isConsentRecorded(user),

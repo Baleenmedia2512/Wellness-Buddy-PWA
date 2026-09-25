@@ -18,6 +18,7 @@ import {
   classifyCommunityIdRequest,
   communityIdOtpExpiresAt,
   isCommunityIdOtpExpired,
+  formatCommunityIdPairLabel,
   resolveCoachTeamIdFromApprover,
   resolveConfirmedCommunityId,
   shouldDeferCommunityIdToOtpFlow,
@@ -181,7 +182,7 @@ describe('classifyCommunityIdRequest', () => {
 });
 
 describe('toPublicCommunityIdRequest', () => {
-  it('omits the OTP hash', () => {
+  it('omits the OTP hash and includes approver email', () => {
     const pub = toPublicCommunityIdRequest({
       Id: 1,
       CommunityId: 'WB1234',
@@ -190,12 +191,32 @@ describe('toPublicCommunityIdRequest', () => {
       OtpExpiresAt: '2026-09-19T00:00:00.000Z',
       OtpHash: 'secret',
       MainSponsorName: 'Ada',
-    }, { approverName: 'Bob' });
+    }, { approverName: 'Bob', approverEmail: 'bob@example.com' });
     assert.equal(pub.otpHash, undefined);
     assert.equal(pub.kind, REQUEST_KIND_CO_SPONSOR);
     assert.equal(pub.seat, 'co-sponsor');
     assert.equal(pub.approverName, 'Bob');
+    assert.equal(pub.approverEmail, 'bob@example.com');
     assert.equal(pub.mainSponsorName, 'Ada');
+  });
+});
+
+describe('formatCommunityIdPairLabel', () => {
+  it('formats sponsor and co-sponsor first names', () => {
+    assert.equal(
+      formatCommunityIdPairLabel({
+        sponsorName: 'Mohamed Yasheer',
+        coSponsorName: 'Balaji',
+      }),
+      'MOHAMED - BALAJI',
+    );
+  });
+
+  it('uses NA when unpaired', () => {
+    assert.equal(
+      formatCommunityIdPairLabel({ sponsorName: 'Yasheer', coSponsorName: null }),
+      'YASHEER - NA',
+    );
   });
 });
 

@@ -1,16 +1,17 @@
 /**
  * Home Profile Community ID — create / co-sponsor with 24h sponsor OTP.
- * Confirmed IDs stay editable: Change → new code → sponsor OTP again.
+ * Confirmed / pending: pencil inside the field to edit; tick to send / resend OTP.
  */
 import React, { useEffect, useRef, useState } from 'react';
-import { Hash } from 'lucide-react';
+import { Check, Hash, Pencil, X } from 'lucide-react';
 import {
   COMMUNITY_ID_MAX_LENGTH,
   COMMUNITY_ID_MIN_LENGTH,
   COMMUNITY_ID_PLACEHOLDER,
   sanitizeCommunityIdInput,
   validateCommunityId,
-  communityIdPendingApprovalMessage,
+  communityIdPendingApprovalParts,
+  formatCommunityIdPairLabel,
 } from '../../domain/communityId';
 import { EMAIL_OTP_LENGTH } from '../../domain/otpLength';
 import useOtpInput from '../../hooks/useOtpInput';
@@ -19,19 +20,36 @@ import OtpInputCells from '../../../../shared/components/OtpInputCells.jsx';
 const inputCls =
   'w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none';
 
+const iconBtnCls =
+  'absolute top-1/2 -translate-y-1/2 p-1.5 rounded-md transition-colors disabled:opacity-40 disabled:pointer-events-none';
+
+function resolveApproverEmail(pendingRequest, sponsorEmailProp) {
+  const fromRequest = String(
+    pendingRequest?.approverEmail
+    || pendingRequest?.approver_email
+    || '',
+  ).trim();
+  if (fromRequest.includes('@')) return fromRequest;
+  const fromProp = String(sponsorEmailProp || '').trim();
+  return fromProp.includes('@') ? fromProp : '';
+}
+
 const CommunityIdField = ({
   communityId,
   setCommunityId,
   teamSeat = null,
   otpEnabled = false,
   pendingRequest = null,
+  communityIdPair = null,
   onCreate,
   onVerify,
   busy = false,
   error = '',
   sponsorName = '',
+  sponsorEmail = '',
 }) => {
   const otpCtl = useOtpInput(EMAIL_OTP_LENGTH);
+  const inputRef = useRef(null);
   const confirmed = otpEnabled && !!teamSeat;
   const pending = otpEnabled && pendingRequest && pendingRequest.status === 'pending';
   const [isChanging, setIsChanging] = useState(false);
@@ -46,30 +64,68 @@ const CommunityIdField = ({
     && normalizedValue !== baselineRef.current,
   );
   const editingConfirmed = confirmed && (isChanging || differsFromBaseline);
-  const canCreate = otpEnabled
+  // Pending OTP: keep the code locked until the user taps the pencil.
+  const editingPending = pending && isChanging;
+  const fieldEditable = (!confirmed && !pending)
+    || editingConfirmed
+    || editingPending;
+  const canSubmit = otpEnabled
     && !busy
     && check.valid
     && check.value
-    && (!confirmed || differsFromBaseline);
+    && (
+      (!confirmed && !pending)
+      || (confirmed && differsFromBaseline)
+      || editingPending
+    );
+  const showPencil = (
+    (confirmed && !editingConfirmed && !pending)
+    || (pending && !isChanging)
+  );
+  const showTick = (
+    ((!confirmed || editingConfirmed) && !pending)
+    || editingPending
+  );
+  const showCancelIcon = (editingConfirmed || editingPending) && !busy;
+  const pairLabel = formatCommunityIdPairLabel(communityIdPair || {});
+  const pendingParts = communityIdPendingApprovalParts({
+    sponsorName: pendingRequest?.approverName || sponsorName,
+    sponsorEmail: resolveApproverEmail(pendingRequest, sponsorEmail),
+  });
 
   useEffect(() => {
     otpCtl.reset();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- reset when a new request arrives
   }, [pendingRequest?.id]);
 
-  // Snapshot the confirmed code so Create stays disabled until the user edits it.
+  // Snapshot the confirmed / pending code; restore pending code if the field was cleared.
   useEffect(() => {
-    if (!confirmed) {
+    if (!confirmed && !pending) {
       baselineRef.current = '';
       setIsChanging(false);
       return;
     }
-    if (!pending) {
+    if (pending && pendingRequest?.communityId) {
+      const pendingCode = sanitizeCommunityIdInput(pendingRequest.communityId);
+      baselineRef.current = pendingCode;
+      if (!isChanging && pendingCode) {
+        setCommunityId && setCommunityId(pendingCode);
+      }
+      return;
+    }
+    if (confirmed && !pending) {
       baselineRef.current = sanitizeCommunityIdInput(communityId || '');
       setIsChanging(false);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- only refresh baseline when seat/pending settle
-  }, [confirmed, pending, teamSeat, pendingRequest?.id]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- settle baseline on seat/pending changes
+  }, [confirmed, pending, teamSeat, pendingRequest?.id, pendingRequest?.communityId]);
+
+  useEffect(() => {
+    if ((editingConfirmed || editingPending) && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, [editingConfirmed, editingPending]);
 
   const handleVerify = (code) => {
     if (!onVerify || busy) return;
@@ -77,6 +133,7 @@ const CommunityIdField = ({
   };
 
   const handleStartChange = () => {
+    if (busy) return;
     setIsChanging(true);
   };
 
@@ -85,6 +142,11 @@ const CommunityIdField = ({
     if (baselineRef.current) {
       setCommunityId && setCommunityId(baselineRef.current);
     }
+  };
+
+  const handleSubmit = () => {
+    if (!canSubmit || !onCreate) return;
+    onCreate(check.value);
   };
 
   if (!otpEnabled) {
@@ -118,12 +180,15 @@ const CommunityIdField = ({
     );
   }
 
+  const rightPad = showCancelIcon ? 'pr-20' : (showPencil || showTick ? 'pr-11' : '');
+
   return (
     <div>
       <label className="block text-sm font-medium text-gray-700 mb-1">Community ID</label>
       <div className="relative">
         <Hash className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
         <input
+          ref={inputRef}
           type="text"
           autoComplete="off"
           autoCapitalize="characters"
@@ -132,69 +197,98 @@ const CommunityIdField = ({
           onChange={(e) => setCommunityId && setCommunityId(
             sanitizeCommunityIdInput(e.target.value),
           )}
-          readOnly={confirmed && !editingConfirmed && !pending}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && canSubmit) {
+              e.preventDefault();
+              handleSubmit();
+            }
+            if (e.key === 'Escape' && (editingConfirmed || editingPending)) {
+              e.preventDefault();
+              handleCancelChange();
+            }
+          }}
+          readOnly={!fieldEditable}
           maxLength={COMMUNITY_ID_MAX_LENGTH}
           placeholder={COMMUNITY_ID_PLACEHOLDER}
-          className={`${inputCls} pl-9 font-mono tracking-wide uppercase ${
-            confirmed && !editingConfirmed && !pending
-              ? 'bg-gray-50 text-gray-700'
-              : ''
+          className={`${inputCls} pl-9 ${rightPad} font-mono tracking-wide uppercase ${
+            !fieldEditable ? 'bg-gray-50 text-gray-700' : ''
           }`}
           style={{ fontSize: '16px' }}
+          aria-label="Community ID"
         />
-      </div>
 
-      {confirmed && !pending && !editingConfirmed && (
-        <>
-          <p className="text-xs text-gray-500 mt-1">
-            Confirmed as {teamSeat === 'co-sponsor' ? 'Co-Sponsor' : 'Sponsor'}.
-            You can change it with a new sponsor approval code.
-          </p>
+        {showPencil && (
           <button
             type="button"
             disabled={busy}
             onClick={handleStartChange}
-            className="mt-2 w-full py-2 rounded-lg text-sm font-semibold text-green-700 border border-green-200 bg-white"
+            className={`${iconBtnCls} right-2 text-green-700 hover:bg-green-50`}
+            aria-label="Edit Community ID"
+            title="Edit"
           >
-            Change
+            <Pencil className="w-4 h-4" />
           </button>
-        </>
-      )}
+        )}
 
-      {(!confirmed || editingConfirmed) && !pending && (
-        <>
-          <p className="text-xs text-gray-500 mt-1">
-            Enter a new code to open a joint coaching account (1st seat), or an existing
-            code to join as 2nd seat. Approval uses a 24-hour code. This does not grant
-            Sponsor nav — that starts when you have downline members.
-          </p>
+        {showCancelIcon && (
           <button
             type="button"
-            disabled={!canCreate}
-            onClick={() => onCreate && onCreate(check.value)}
-            className="mt-2 w-full py-2 rounded-lg text-sm font-semibold text-white bg-green-600 disabled:bg-gray-300 disabled:text-gray-500"
+            disabled={busy}
+            onClick={handleCancelChange}
+            className={`${iconBtnCls} right-10 text-gray-500 hover:bg-gray-100`}
+            aria-label="Cancel Community ID change"
+            title="Cancel"
           >
-            {busy ? 'Sending…' : (confirmed ? 'Request change' : 'Create')}
+            <X className="w-4 h-4" />
           </button>
-          {editingConfirmed && (
-            <button
-              type="button"
-              disabled={busy}
-              onClick={handleCancelChange}
-              className="mt-2 w-full py-2 rounded-lg text-xs font-medium text-gray-600 border border-gray-200"
-            >
-              Cancel
-            </button>
-          )}
-        </>
+        )}
+
+        {showTick && (
+          <button
+            type="button"
+            disabled={!canSubmit}
+            onClick={handleSubmit}
+            className={`${iconBtnCls} right-2 ${
+              canSubmit
+                ? 'text-green-700 hover:bg-green-50'
+                : 'text-gray-300'
+            }`}
+            aria-label={busy ? 'Sending approval request' : (confirmed || pending ? 'Request Community ID change' : 'Create Community ID')}
+            title={busy ? 'Sending…' : (confirmed || pending ? 'Request change' : 'Create')}
+          >
+            <Check className="w-4 h-4" strokeWidth={2.5} />
+          </button>
+        )}
+      </div>
+
+      {pairLabel ? (
+        <p className="text-sm font-semibold text-gray-800 mt-3 tracking-wide">
+          {pairLabel}
+        </p>
+      ) : null}
+
+      {confirmed && !pending && !editingConfirmed && (
+        <p className={`text-xs text-gray-500 ${pairLabel ? 'mt-1.5' : 'mt-3'}`}>
+          Confirmed as {teamSeat === 'co-sponsor' ? 'Co-Sponsor' : 'Sponsor'}.
+          Tap the pencil to change it with a new sponsor approval code.
+        </p>
       )}
 
-      {pending && (
+      {((!confirmed && !pending) || editingConfirmed || editingPending) && (
+        <p className={`text-xs text-gray-500 ${pairLabel ? 'mt-1.5' : 'mt-3'}`}>
+          Enter a new code to open a joint coaching account (1st seat), or an existing
+          code to join as 2nd seat. Approval uses a 24-hour code. Tap the tick to send
+          the request. This does not grant Sponsor nav — that starts when you have
+          downline members.
+        </p>
+      )}
+
+      {pending && !editingPending && (
         <div className="mt-3 space-y-2">
           <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-            {communityIdPendingApprovalMessage({
-              sponsorName: pendingRequest.approverName || sponsorName,
-            })}
+            {pendingParts.before}
+            <strong>{pendingParts.highlight}</strong>
+            {pendingParts.after}
           </p>
           <OtpInputCells
             otpCtl={otpCtl}
@@ -214,8 +308,8 @@ const CommunityIdField = ({
           </button>
           <button
             type="button"
-            disabled={busy || !canCreate}
-            onClick={() => onCreate && onCreate(check.value)}
+            disabled={busy || !canSubmit}
+            onClick={handleSubmit}
             className="w-full py-2 rounded-lg text-xs font-medium text-green-700 border border-green-200"
           >
             Resend code
@@ -226,7 +320,7 @@ const CommunityIdField = ({
       {error && (
         <p className="text-xs text-red-600 mt-2">{error}</p>
       )}
-      {(!confirmed || editingConfirmed || pending) && (
+      {((!confirmed && !pending) || editingConfirmed || editingPending || (pending && !editingPending)) && (
         <p className="text-xs text-gray-400 mt-1">
           {(communityId || '').length}/{COMMUNITY_ID_MAX_LENGTH} · Min {COMMUNITY_ID_MIN_LENGTH} · Letters and numbers only
         </p>

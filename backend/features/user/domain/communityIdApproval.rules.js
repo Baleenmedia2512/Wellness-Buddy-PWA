@@ -221,13 +221,17 @@ export function classifyCommunityIdRequest({
  * Strip OTP hash before returning a pending request to the client.
  *
  * @param {object|null} row
- * @param {{ approverName?: string|null }} [opts]
+ * @param {{ approverName?: string|null, approverEmail?: string|null }} [opts]
  */
-export function toPublicCommunityIdRequest(row, { approverName = null } = {}) {
+export function toPublicCommunityIdRequest(row, {
+  approverName = null,
+  approverEmail = null,
+} = {}) {
   if (!row) return null;
   const kind = row.RequestKind === REQUEST_KIND_CO_SPONSOR
     ? REQUEST_KIND_CO_SPONSOR
     : REQUEST_KIND_CREATE;
+  const email = String(approverEmail || '').trim() || null;
   return {
     id: row.Id ?? null,
     communityId: row.CommunityId ?? null,
@@ -235,9 +239,34 @@ export function toPublicCommunityIdRequest(row, { approverName = null } = {}) {
     status: row.Status ?? REQUEST_STATUS_PENDING,
     expiresAt: row.OtpExpiresAt ?? null,
     approverName: approverName || null,
+    approverEmail: email,
     mainSponsorName: row.MainSponsorName || null,
     seat: kind === REQUEST_KIND_CO_SPONSOR ? 'co-sponsor' : 'sponsor',
   };
+}
+
+/**
+ * First name token for Community ID pair display (YASHEER - BALAJI).
+ * @param {unknown} name
+ * @returns {string}
+ */
+export function communityIdPairFirstName(name) {
+  const token = String(name || '').replace(/\s+/g, ' ').trim().split(' ')[0] || '';
+  return token ? token.toUpperCase() : '';
+}
+
+/**
+ * @param {{ sponsorName?: string|null, coSponsorName?: string|null }} args
+ * @returns {string} e.g. "YASHEER - BALAJI" or "YASHEER - NA"
+ */
+export function formatCommunityIdPairLabel({
+  sponsorName = null,
+  coSponsorName = null,
+} = {}) {
+  const left = communityIdPairFirstName(sponsorName);
+  if (!left) return '';
+  const right = communityIdPairFirstName(coSponsorName) || 'NA';
+  return `${left} - ${right}`;
 }
 
 /**

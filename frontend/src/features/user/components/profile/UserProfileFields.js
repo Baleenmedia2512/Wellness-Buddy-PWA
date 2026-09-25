@@ -29,11 +29,13 @@ const UserProfileFields = ({
   hideEmailField = false,
   communityIdOtpEnabled = false,
   communityIdRequest = null,
+  communityIdPair = null,
   onCommunityIdCreate,
   onCommunityIdVerify,
   communityIdBusy = false,
   communityIdError = '',
   sponsorName = '',
+  sponsorEmail = '',
 }) => (
   <div className="space-y-4">
     {!hideEmailField && (
@@ -100,11 +102,13 @@ const UserProfileFields = ({
       teamSeat={teamSeat}
       otpEnabled={communityIdOtpEnabled}
       pendingRequest={communityIdRequest}
+      communityIdPair={communityIdPair}
       onCreate={onCommunityIdCreate}
       onVerify={onCommunityIdVerify}
       busy={communityIdBusy}
       error={communityIdError}
       sponsorName={sponsorName}
+      sponsorEmail={sponsorEmail}
     />
     <div>
       <label className="flex items-center gap-1 text-sm font-medium text-gray-700 mb-1">

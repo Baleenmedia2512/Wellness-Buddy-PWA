@@ -27,6 +27,7 @@ import {
   canAttemptCommunityIdOtp,
   classifyCommunityIdRequest,
   communityIdOtpExpiresAt,
+  formatCommunityIdPairLabel,
   isCommunityIdOtpExpired,
   resolveCoachTeamIdFromApprover,
   resolveConfirmedCommunityId,
@@ -97,8 +98,10 @@ export async function getPublicPendingCommunityIdRequest(userId) {
       return null;
     }
     const approver = await requestRepo.findUserIdentity(pending.ApproverId);
+    const approverEmail = String(approver?.Email || '').trim();
     return toPublicCommunityIdRequest(pending, {
       approverName: approver?.UserName || null,
+      approverEmail: approverEmail.includes('@') ? approverEmail : null,
     });
   } catch (err) {
     if (requestRepo.isCommunityIdRequestsTableMissing(err)) {
@@ -106,6 +109,41 @@ export async function getPublicPendingCommunityIdRequest(userId) {
       return null;
     }
     throw err;
+  }
+}
+
+/**
+ * Sponsor / Co-Sponsor first-name pair for Profile under Community ID.
+ * Additive — null when the user has no lead seat on an active team.
+ *
+ * @param {string|null|undefined} teamId
+ * @returns {Promise<{
+ *   sponsorName: string|null,
+ *   coSponsorName: string|null,
+ *   label: string,
+ * }|null>}
+ */
+export async function getCommunityIdLeadPair(teamId) {
+  const code = normalizeTeamCodeFromCommunityId(teamId);
+  if (!code) return null;
+  try {
+    const team = await requestRepo.findActiveCoachTeam(code);
+    if (!team?.CoachId && !team?.CoCoachId) return null;
+    const [sponsor, coSponsor] = await Promise.all([
+      team.CoachId ? requestRepo.findUserIdentity(team.CoachId) : Promise.resolve(null),
+      team.CoCoachId ? requestRepo.findUserIdentity(team.CoCoachId) : Promise.resolve(null),
+    ]);
+    const sponsorName = sponsor?.UserName ? String(sponsor.UserName).trim() : null;
+    const coSponsorName = coSponsor?.UserName ? String(coSponsor.UserName).trim() : null;
+    const label = formatCommunityIdPairLabel({ sponsorName, coSponsorName });
+    if (!label) return null;
+    return { sponsorName, coSponsorName, label };
+  } catch (err) {
+    logger.warn('[community-id] lead pair lookup failed', {
+      teamId: code,
+      message: err?.message,
+    });
+    return null;
   }
 }
 
@@ -243,6 +281,7 @@ export async function requestCommunityIdApproval({ email = null, userId = null, 
 
   const publicRequest = toPublicCommunityIdRequest(inserted, {
     approverName: approver.UserName || null,
+    approverEmail: String(approver.Email || '').trim(),
   });
 
   return {

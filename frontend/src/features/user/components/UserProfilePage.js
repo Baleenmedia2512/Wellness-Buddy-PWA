@@ -81,9 +81,11 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
   const [initialWeightDate, setInitialWeightDate] = useState(null);
   const [marathonWeightComparison, setMarathonWeightComparison] = useState(null);
   const [coachName, setCoachName] = useState('');
+  const [sponsorEmail, setSponsorEmail] = useState('');
   const [idealCoachName, setIdealCoachName] = useState('');
   const [teamSeat, setTeamSeat] = useState(null);
   const [communityIdRequest, setCommunityIdRequest] = useState(null);
+  const [communityIdPair, setCommunityIdPair] = useState(null);
   const [communityIdBusy, setCommunityIdBusy] = useState(false);
   const [communityIdError, setCommunityIdError] = useState('');
   const [isLoading, setIsLoading] = useState(true);
@@ -187,9 +189,17 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
           ? String(data.sponsorName || data.coachName).trim()
           : '',
       );
+      setSponsorEmail(
+        String(
+          data?.communityIdRequest?.approverEmail
+          || data?.sponsorEmail
+          || '',
+        ).trim(),
+      );
       setIdealCoachName(data?.idealCoachName ? String(data.idealCoachName).trim() : '');
       setTeamSeat(data?.teamSeat || null);
       setCommunityIdRequest(data?.communityIdRequest || null);
+      setCommunityIdPair(data?.communityIdPair || null);
       setCommunityIdError('');
       transformationPhotos.loadFromProfile(data?.transformationPhotos);
       if (data?.profileImage) {
@@ -332,6 +342,9 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
         communityId: code,
       });
       setCommunityIdRequest(data.communityIdRequest || null);
+      if (data.communityIdRequest?.approverEmail) {
+        setSponsorEmail(String(data.communityIdRequest.approverEmail).trim());
+      }
       if (data.communityIdRequest?.communityId) {
         form.setCommunityId(String(data.communityIdRequest.communityId));
       }
@@ -610,11 +623,13 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
                   teamSeat={teamSeat}
                   communityIdOtpEnabled={isFlagEnabled(COMMUNITY_ID_OTP_FLAG)}
                   communityIdRequest={communityIdRequest}
+                  communityIdPair={communityIdPair}
                   onCommunityIdCreate={handleCommunityIdCreate}
                   onCommunityIdVerify={handleCommunityIdVerify}
                   communityIdBusy={communityIdBusy}
                   communityIdError={communityIdError}
                   sponsorName={coachName}
+                  sponsorEmail={sponsorEmail}
                 />
                 <UserProfileBodyMetrics
                   bodyMetrics={form.bodyMetrics}
