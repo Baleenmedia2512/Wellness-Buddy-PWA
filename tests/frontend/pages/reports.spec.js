@@ -16,6 +16,7 @@ test.describe('Reports Module', () => {
     await page.addInitScript(() => {
       localStorage.setItem('ff.reports-module', 'true');
       localStorage.setItem('ff.wellness-score-sheet', 'true');
+      sessionStorage.clear();
     });
 
     // Mock user auth & session API routes
@@ -80,7 +81,7 @@ test.describe('Reports Module', () => {
       });
     });
 
-    await page.route('**/api/reports/wellness-score*', async (route) => {
+    await page.route(url => url.href.includes('/api/reports/wellness-score') && !url.href.includes('wellness-score-report'), async (route) => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -262,7 +263,7 @@ test.describe('Reports Module', () => {
     const reportsNavBtn = page.locator('button[aria-label="Reports Dashboard"], button:has-text("Reports")').first();
     await reportsNavBtn.click();
 
-    const searchInput = page.locator('input[placeholder*="Search"]');
+    const searchInput = page.locator('input[placeholder*="Search"]').first();
     await expect(searchInput).toBeVisible();
 
     // Type search query
@@ -586,6 +587,291 @@ test.describe('Reports Module', () => {
     // 9. Click another metric card (Fat %) to ensure navigation works consistently
     await fatCard.click();
     await expect(backNavBtn).toBeVisible();
+  });
+
+  // ── RPT-008 ─────────────────────────────────────────────────────────────
+  test('RPT-008: Date filter pills (Today, Yesterday, Custom Date) and date picker popover in Wellness Score report tab', async ({ page }) => {
+    await page.route('**/api/reports/wellness-score-report*', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          data: {
+            scoreDate: '2026-09-17',
+            members: [],
+            pagination: { page: 1, limit: 10, totalRecords: 0, totalPages: 0 },
+            teamScopeCounts: { mine: 0, direct: 0, full: 0 },
+          },
+        }),
+      });
+    });
+
+    await page.goto('/');
+    const reportsNavBtn = page.locator('button[aria-label="Reports Dashboard"], button:has-text("Reports")').first();
+    await expect(reportsNavBtn).toBeVisible({ timeout: 15000 });
+    await reportsNavBtn.click();
+
+    const wellnessScoreTab = page.locator('#reports-tab-wellness-score');
+    await expect(wellnessScoreTab).toBeVisible({ timeout: 10000 });
+    await wellnessScoreTab.click();
+
+    const wellnessPanel = page.locator('#reports-panel-wellness-score');
+    await expect(wellnessPanel).toBeVisible({ timeout: 10000 });
+
+    const todayPill = wellnessPanel.locator('button[aria-label="Today"]');
+    const yesterdayPill = wellnessPanel.locator('button[aria-label="Yesterday"]');
+    const customDatePill = wellnessPanel.locator('button[aria-label="Custom Date"]');
+
+    await expect(todayPill).toBeVisible();
+    await expect(yesterdayPill).toBeVisible();
+    await expect(customDatePill).toBeVisible();
+
+    // Click Yesterday pill
+    await yesterdayPill.click();
+    await expect(yesterdayPill).toHaveClass(/bg-teal-700/);
+
+    // Click Custom Date pill to toggle SingleDayPicker popover
+    await customDatePill.click();
+    const prevMonthBtn = wellnessPanel.locator('button[aria-label="Previous month"]');
+    const nextMonthBtn = wellnessPanel.locator('button[aria-label="Next month"]');
+    await expect(prevMonthBtn).toBeVisible({ timeout: 5000 });
+    await expect(nextMonthBtn).toBeVisible({ timeout: 5000 });
+
+    // Click Today pill to reset date selection
+    await todayPill.click();
+    await expect(todayPill).toHaveClass(/bg-teal-700/);
+  });
+
+  // ── RPT-009 ─────────────────────────────────────────────────────────────
+  test('RPT-009: Member search and interactive column sorting in Wellness Score report tab', async ({ page }) => {
+    await page.route('**/api/reports/wellness-score-report*', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          data: {
+            scoreDate: '2026-09-17',
+            members: [
+              { userId: 201, name: 'Jane Cooper', todayWeight: 68, previousWeight: 70, wellnessScore: 92, sponsor: 'Coach Mark' },
+            ],
+            pagination: { page: 1, limit: 10, totalRecords: 1, totalPages: 1 },
+            teamScopeCounts: { mine: 1, direct: 1, full: 1 },
+          },
+        }),
+      });
+    });
+
+    await page.goto('/');
+    await page.evaluate(() => sessionStorage.clear());
+
+    const reportsNavBtn = page.locator('button[aria-label="Reports Dashboard"], button:has-text("Reports")').first();
+    await expect(reportsNavBtn).toBeVisible({ timeout: 15000 });
+    await reportsNavBtn.click();
+
+    const wellnessScoreTab = page.locator('#reports-tab-wellness-score');
+    await expect(wellnessScoreTab).toBeVisible({ timeout: 10000 });
+    await wellnessScoreTab.click();
+
+    const wellnessPanel = page.locator('#reports-panel-wellness-score');
+    await expect(wellnessPanel).toBeVisible({ timeout: 10000 });
+
+    // Test search query input
+    const searchInput = wellnessPanel.locator('input[placeholder*="Search"]');
+    await expect(searchInput).toBeVisible();
+    await searchInput.fill('Jane');
+    await expect(searchInput).toHaveValue('Jane');
+
+    // Test sortable header buttons (Sort by NAME, WEIGHT, WELLNESS SCORE)
+    const nameSortBtn = wellnessPanel.locator('button[aria-label*="Sort by NAME"]');
+    const weightSortBtn = wellnessPanel.locator('button[aria-label*="Sort by WEIGHT"]');
+    const scoreSortBtn = wellnessPanel.locator('button[aria-label*="Sort by WELLNESS"]');
+
+    await expect(nameSortBtn).toBeVisible();
+    await expect(weightSortBtn).toBeVisible();
+    await expect(scoreSortBtn).toBeVisible();
+
+    const weightTh = wellnessPanel.getByRole('columnheader', { name: 'Sort by WEIGHT' });
+    await expect(weightTh).toBeVisible();
+
+    // Click sort by Weight column
+    await weightSortBtn.click();
+    await expect(weightTh).toHaveAttribute('aria-sort', /(descending|ascending)/);
+  });
+
+  // ── RPT-010 ─────────────────────────────────────────────────────────────
+  test('RPT-010: Table pagination and member rows rendering in Wellness Score report tab', async ({ page }) => {
+    await page.route('**/api/reports/wellness-score-report*', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          data: {
+            scoreDate: '2026-09-17',
+            members: [
+              { userId: 301, name: 'Alice Walker', todayWeight: 62.5, previousWeight: 63.0, wellnessScore: 88, sponsor: 'Coach Sarah' },
+              { userId: 302, name: 'Charlie Brown', todayWeight: 75.0, previousWeight: 74.5, wellnessScore: 95, sponsor: 'Coach Sarah' },
+            ],
+            pagination: { page: 1, limit: 10, totalRecords: 15, totalPages: 2, hasNextPage: true, hasPreviousPage: false },
+            teamScopeCounts: { mine: 2, direct: 15, full: 15 },
+          },
+          pagination: { page: 1, limit: 10, totalRecords: 15, totalPages: 2, hasNextPage: true, hasPreviousPage: false },
+        }),
+      });
+    });
+
+    await page.goto('/');
+    await page.evaluate(() => sessionStorage.clear());
+
+    const reportsNavBtn = page.locator('button[aria-label="Reports Dashboard"], button:has-text("Reports")').first();
+    await expect(reportsNavBtn).toBeVisible({ timeout: 15000 });
+    await reportsNavBtn.click();
+
+    const wellnessScoreTab = page.locator('#reports-tab-wellness-score');
+    await expect(wellnessScoreTab).toBeVisible({ timeout: 10000 });
+    await wellnessScoreTab.click();
+
+    const wellnessPanel = page.locator('#reports-panel-wellness-score');
+    await expect(wellnessPanel).toBeVisible({ timeout: 10000 });
+
+    // Verify member names and values are rendered in table rows
+    await expect(wellnessPanel.getByText('Alice', { exact: false })).toBeVisible({ timeout: 10000 });
+    await expect(wellnessPanel.getByText('Charlie', { exact: false })).toBeVisible({ timeout: 10000 });
+
+    // Verify pagination elements (Showing count and Next button)
+    const showingText = wellnessPanel.locator('p').filter({ hasText: 'Showing' });
+    await expect(showingText).toBeVisible({ timeout: 10000 });
+    const nextBtn = wellnessPanel.locator('button', { hasText: 'Next' });
+    await expect(nextBtn).toBeVisible();
+    await expect(nextBtn).toBeEnabled();
+  });
+
+  // ── RPT-011 ─────────────────────────────────────────────────────────────
+  test('RPT-011: Share Excel export button triggers export process in Wellness Score report tab', async ({ page }) => {
+    const mockMembers = Array.from({ length: 10 }, (_, i) => ({
+      userId: 400 + i,
+      name: `Member ${i + 1}`,
+      todayWeight: 65 + i,
+      previousWeight: 66 + i,
+      wellnessScore: 80 + i,
+      sponsor: 'Coach Test',
+    }));
+
+    await page.route('**/api/reports/wellness-score-report*', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          scoreDate: '2026-09-17',
+          data: {
+            scoreDate: '2026-09-17',
+            members: mockMembers,
+            pagination: { page: 1, limit: 10, totalRecords: 10, totalPages: 1, hasNextPage: false, hasPreviousPage: false },
+            teamScopeCounts: { mine: 2, direct: 10, full: 10 },
+          },
+          pagination: { page: 1, limit: 10, totalRecords: 10, totalPages: 1, hasNextPage: false, hasPreviousPage: false },
+        }),
+      });
+    });
+
+    await page.goto('/');
+    await page.evaluate(() => sessionStorage.clear());
+
+    const reportsNavBtn = page.locator('button[aria-label="Reports Dashboard"], button:has-text("Reports")').first();
+    await expect(reportsNavBtn).toBeVisible({ timeout: 15000 });
+    await reportsNavBtn.click();
+
+    const wellnessScoreTab = page.locator('#reports-tab-wellness-score');
+    await expect(wellnessScoreTab).toBeVisible({ timeout: 10000 });
+    await wellnessScoreTab.click();
+
+    const wellnessPanel = page.locator('#reports-panel-wellness-score');
+    await expect(wellnessPanel).toBeVisible({ timeout: 10000 });
+
+    // Locate Share Excel button
+    const shareBtn = wellnessPanel.locator('button[aria-label="Share Excel"]');
+    await expect(shareBtn).toBeVisible();
+    await shareBtn.click();
+
+    // Verify export toast indicator
+    const exportToast = page.getByText(/Preparing Excel|Report ready to share|Export/i);
+    await expect(exportToast.first()).toBeVisible({ timeout: 10000 });
+  });
+
+  // ── RPT-012 ─────────────────────────────────────────────────────────────
+  test('RPT-012: Multi-page pagination navigation loads Page 2 members in Wellness Score report tab', async ({ page }) => {
+    const page1Members = Array.from({ length: 10 }, (_, i) => ({
+      userId: 500 + i,
+      name: `PersonOne-${i + 1}`,
+      todayWeight: 60 + i,
+      previousWeight: 61 + i,
+      wellnessScore: 70 + i,
+      sponsor: 'Coach Alex',
+    }));
+
+    const page2Members = Array.from({ length: 10 }, (_, i) => ({
+      userId: 510 + i,
+      name: `PersonTwo-${i + 1}`,
+      todayWeight: 75 + i,
+      previousWeight: 76 + i,
+      wellnessScore: 85 + i,
+      sponsor: 'Coach Alex',
+    }));
+
+    await page.route('**/api/reports/wellness-score-report*', async (route) => {
+      const url = route.request().url();
+      const isPage2 = url.includes('page=2');
+      const members = isPage2 ? page2Members : page1Members;
+      const pageNum = isPage2 ? 2 : 1;
+
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          scoreDate: '2026-09-17',
+          data: {
+            scoreDate: '2026-09-17',
+            members,
+            hasNextPage: !isPage2,
+            hasPreviousPage: isPage2,
+            pagination: { page: pageNum, limit: 10, totalRecords: 20, totalPages: 2, hasNextPage: !isPage2, hasPreviousPage: isPage2 },
+            teamScopeCounts: { mine: 2, direct: 20, full: 20 },
+          },
+          pagination: { page: pageNum, limit: 10, totalRecords: 20, totalPages: 2, hasNextPage: !isPage2, hasPreviousPage: isPage2 },
+        }),
+      });
+    });
+
+    await page.goto('/');
+    await page.evaluate(() => sessionStorage.clear());
+
+    const reportsNavBtn = page.locator('button[aria-label="Reports Dashboard"], button:has-text("Reports")').first();
+    await expect(reportsNavBtn).toBeVisible({ timeout: 15000 });
+    await reportsNavBtn.click();
+
+    const wellnessScoreTab = page.locator('#reports-tab-wellness-score');
+    await expect(wellnessScoreTab).toBeVisible({ timeout: 10000 });
+    await wellnessScoreTab.click();
+
+    const wellnessPanel = page.locator('#reports-panel-wellness-score');
+    await expect(wellnessPanel).toBeVisible({ timeout: 10000 });
+
+    // Verify Page 1 first member is visible
+    await expect(wellnessPanel.getByText('PersonOne-1', { exact: true })).toBeVisible({ timeout: 10000 });
+
+    // Click Next button to navigate to Page 2
+    const nextBtn = wellnessPanel.locator('button', { hasText: 'Next' });
+    await expect(nextBtn).toBeEnabled();
+    await nextBtn.click();
+
+    // Verify Page 2 member is rendered and Previous button becomes enabled
+    await expect(wellnessPanel.getByText('PersonTwo-1', { exact: true })).toBeVisible({ timeout: 10000 });
+    const prevBtn = wellnessPanel.getByRole('button', { name: 'Previous', exact: true });
+    await expect(prevBtn).toBeEnabled();
   });
 });
 

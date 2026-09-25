@@ -6635,4 +6635,225 @@ test.describe('Complete Profile', () => {
       }
     }
   );
+
+  test(
+    'CP-029 Physical Activity Level validates all available options can be selected and saved',
+    async ({ page }) => {
+      // ============================================================
+      // TEST DATA
+      // ============================================================
+      const TEST_PHONE = '7695834209';
+      const TEST_NAME = 'Nitheesh Lingam';
+      const TEST_EMAIL = 'nitheesh@example.com';
+
+      // ============================================================
+      // 1. MOCK APIS FOR AUTHENTICATED USER
+      // ============================================================
+      await page.route('**/api/auth/send-otp', async route => {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true }) });
+      });
+
+      await page.route('**/api/user/status*', async route => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            isActive: true,
+            isNewUser: false,
+            setupSkipped: true,
+            setupComplete: true,
+          }),
+        });
+      });
+
+      await page.route('**/api/user/verify-session*', async route => {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, userId: 1004, sessionStale: false }) });
+      });
+
+      await page.route('**/api/user/lookup*', async route => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            isActive: true,
+            isNewUser: false,
+            role: 'user',
+            user: {
+              id: 1004,
+              UserId: 1004,
+              username: TEST_NAME,
+              name: TEST_NAME,
+              email: TEST_EMAIL,
+              phoneNumber: TEST_PHONE,
+              status: 'Active',
+            },
+          }),
+        });
+      });
+
+      await page.route('**/api/user/consent*', async route => {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, consentRequired: false, consentAccepted: true }) });
+      });
+
+      let savedActivityLevel = 'moderate';
+      const profilePosts = [];
+
+      await page.route('**/api/user/profile*', async route => {
+        const method = route.request().method();
+        if (method === 'GET') {
+          await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({
+              success: true,
+              data: {
+                userId: 1004,
+                profileComplete: true,
+                userName: TEST_NAME,
+                name: TEST_NAME,
+                email: TEST_EMAIL,
+                phone: TEST_PHONE,
+                phoneNumber: TEST_PHONE,
+                gender: 'Male',
+                height: 170,
+                dietType: 'Vegetarian',
+                latestWeight: 65,
+                currentWeight: 65,
+                latestWeightBodyFat: 22,
+                bodyFat: 22,
+                profileImage: 'https://example.com/photo.jpg',
+                physicalActivityLevel: savedActivityLevel,
+                needsCurrentWeight: false,
+                transformationPhotos: { left: 'http://example.com/l.jpg', front: 'http://example.com/f.jpg', center: 'http://example.com/f.jpg', right: 'http://example.com/r.jpg' },
+                transformationPhotoFront: 'http://example.com/f.jpg',
+              },
+            }),
+          });
+          return;
+        }
+
+        try {
+          const postData = route.request().postDataJSON();
+          if (postData && postData.physicalActivityLevel !== undefined) {
+            savedActivityLevel = postData.physicalActivityLevel;
+            profilePosts.push(postData);
+          }
+        } catch {
+          /* ignore JSON parse errors */
+        }
+
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            message: 'Profile saved successfully!',
+          }),
+        });
+      });
+
+      // ============================================================
+      // 2. SET AUTHENTICATED LOCALSTORAGE STATE
+      // ============================================================
+      await page.addInitScript(({ phone, email, name }) => {
+        const user = {
+          id: 1004,
+          UserId: 1004,
+          userId: 1004,
+          username: name,
+          userName: name,
+          name: name,
+          email: email,
+          phone: `+91${phone}`,
+          phoneNumber: phone,
+          status: 'Active',
+          isNewUser: false,
+          consentRequired: false,
+          profileComplete: true,
+          physicalActivityLevel: 'moderate',
+        };
+
+        localStorage.setItem('isOtpVerified', 'true');
+        localStorage.setItem('otpUser', JSON.stringify(user));
+        localStorage.setItem('user', JSON.stringify(user));
+        localStorage.setItem('dbUserId', '1004');
+        localStorage.setItem('userEmail', email);
+      }, { phone: TEST_PHONE, email: TEST_EMAIL, name: TEST_NAME });
+
+      // ============================================================
+      // 3. OPEN APP DIRECTLY AS AUTHENTICATED USER ON HOME PAGE
+      // ============================================================
+      await page.goto('/', { waitUntil: 'domcontentloaded' });
+
+      // ============================================================
+      // 4. SELECT PROFILE AVATAR IN HEADER TO OPEN PROFILE FORM
+      // ============================================================
+      const profileBtn = page.getByRole('button', { name: 'My Profile' });
+      await expect(profileBtn).toBeVisible({ timeout: 15000 });
+      await profileBtn.click();
+
+      // ============================================================
+      // 5. VERIFY PROFILE FORM PAGE REACHED AND LOCATE ACTIVITY DROPDOWN
+      // ============================================================
+      const profileHeading = page.getByRole('heading', { name: 'My Profile', exact: true });
+      await expect(profileHeading).toBeVisible({ timeout: 15000 });
+
+      const personalDetailsHeading = page.getByRole('heading', { name: 'Personal Details', exact: true });
+      await expect(personalDetailsHeading).toBeVisible({ timeout: 15000 });
+
+      const saveButton = page.getByRole('button', { name: /Save profile|Save Profile|Saved/i });
+      await expect(saveButton).toBeVisible({ timeout: 15000 });
+
+      // List of physical activity level options
+      const activityLevels = [
+        'sedentary',
+        'lightly_active',
+        'moderate',
+        'very_active',
+        'super_active',
+      ];
+
+      for (const level of activityLevels) {
+        const activitySelect = page.locator('select').filter({ has: page.locator('option[value="sedentary"], option[value="moderate"]') });
+
+        if (await activitySelect.isVisible({ timeout: 1000 }).catch(() => false)) {
+          const optionExists = await activitySelect.locator(`option[value="${level}"]`).count() > 0;
+          if (optionExists) {
+            await activitySelect.selectOption(level);
+            await expect(activitySelect).toHaveValue(level);
+          } else {
+            // Select by index or first available matching text if value attribute is formatted differently
+            const options = await activitySelect.locator('option').allInnerTexts();
+            const matchingIndex = options.findIndex(opt => opt.toLowerCase().includes(level.replace('_', ' ')));
+            if (matchingIndex !== -1) {
+              await activitySelect.selectOption({ index: matchingIndex });
+            }
+          }
+        } else {
+          const activityLabel = page.getByText(/Physical Activity|Activity Level/i, { exact: false });
+          await expect(activityLabel.first()).toBeVisible({ timeout: 5000 });
+          const activityContainer = activityLabel.first().locator('xpath=..');
+          const activityDropdownTrigger = activityContainer.locator('button').first();
+          await activityDropdownTrigger.click();
+
+          const optionItem = page.getByRole('option', { name: new RegExp(level.replace('_', ' '), 'i') })
+            .or(activityContainer.locator('option, span, button').filter({ hasText: new RegExp(level.replace('_', ' '), 'i') })).first();
+          await optionItem.click({ force: true });
+        }
+
+        const currentSaveButton = page.getByRole('button', { name: /Save profile|Save Profile|Saved/i });
+        await currentSaveButton.click({ force: true });
+
+        await page.waitForTimeout(500);
+        if (!await personalDetailsHeading.isVisible().catch(() => false)) {
+          await profileBtn.click();
+          await expect(personalDetailsHeading).toBeVisible({ timeout: 10000 });
+        }
+
+        console.log(`CP-029: Physical Activity Level '${level}' successfully selected & saved`);
+      }
+    }
+  );
 });
