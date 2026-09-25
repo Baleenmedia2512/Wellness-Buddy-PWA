@@ -102,6 +102,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
   const [leadPreFilled, setLeadPreFilled] = useState(false); // true once we've pre-filled from lead
   const leadPreFilledRef = useRef(false);
+  const profileLoadGenRef = useRef(0);
   const [autoCameraEnabled, setAutoCameraEnabled] = useState(
     () => isAutoCameraOnResumeEnabled()
   );
@@ -119,13 +120,14 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
   );
   const sessionUserId = user?.id || user?.UserId || user?.userId || null;
 
-  const loadProfile = useCallback(async ({ cacheBust = true } = {}) => {
-    const emailKey = sessionEmail;
-    const uid = sessionUserId;
+  const loadProfile = useCallback(async ({ cacheBust = true, userId: forceUserId = null, email: forceEmail = null } = {}) => {
+    const emailKey = forceEmail || sessionEmail;
+    const uid = forceUserId || sessionUserId;
     if (!emailKey && !uid) {
       setIsLoading(false);
       return;
     }
+    const loadGen = ++profileLoadGenRef.current;
     setIsLoading(true);
     setError('');
     try {
@@ -135,6 +137,8 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
           ? { userId: uid, cacheBust }
           : { email: emailKey, cacheBust },
       );
+      // Drop stale responses (e.g. previous account after Recover — phone already cleared).
+      if (loadGen !== profileLoadGenRef.current) return;
       if (!data) {
         setError('Failed to load profile.');
         setIsLoading(false);
@@ -181,6 +185,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
         fromProfile: comparisonFromServer,
       }).then((resolved) => {
         if (!resolved) return;
+        if (loadGen !== profileLoadGenRef.current) return;
         setMarathonWeightComparison(resolved);
         syncMarathonWeightComparisonFromProfile({ marathonWeightComparison: resolved });
       });
@@ -222,10 +227,12 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
         if (uid) {
           counselling = await fetchMyAssessment(uid);
         }
+        if (loadGen !== profileLoadGenRef.current) return;
         if (!counselling) {
           const phoneForLookup = profileData.phone || user?.phoneNumber || user?.phone || '';
           if (phoneForLookup) {
             const lead = await fetchLeadByPhone(phoneForLookup);
+            if (loadGen !== profileLoadGenRef.current) return;
             if (lead) {
               if (!profileData.name && lead.name) profileData.name = lead.name;
               if (!profileData.phone && lead.phone) profileData.phone = lead.phone;
@@ -245,6 +252,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
         // Non-fatal — profile fields already shown.
       }
     } catch (e) {
+      if (loadGen !== profileLoadGenRef.current) return;
       setError(e.message || 'Failed to load profile.');
       setIsLoading(false);
     }
@@ -407,12 +415,19 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
 
   const handleEmailVerified = useCallback(async (result) => {
     const nextEmail = String(result?.email || '').trim();
+    const adoptedUserId = result?.adopted && result?.userId ? result.userId : null;
+    const nextPhone = String(result?.phone || '').trim();
     if (nextEmail) {
       form.setEmail(nextEmail);
       Session.setUserEmail(nextEmail);
     }
-    if (result?.adopted && result?.userId) {
-      Session.setDbUserId(result.userId);
+    // Show the moved phone immediately so a stale profile fetch for the old
+    // (phone-cleared) account cannot blank the field.
+    if (nextPhone && form.setPhone) {
+      form.setPhone(nextPhone);
+    }
+    if (adoptedUserId) {
+      Session.setDbUserId(adoptedUserId);
     }
     onProfileUpdate?.({
       email: nextEmail || undefined,
@@ -428,7 +443,12 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
         : 'Email verified. You can appear as a sponsor to new members.',
     );
     setHasSaved(true);
-    await loadProfile({ cacheBust: true });
+    // Load recovered row by new id (sessionUserId in this closure is still old).
+    await loadProfile({
+      cacheBust: true,
+      userId: adoptedUserId || undefined,
+      email: adoptedUserId ? undefined : (nextEmail || undefined),
+    });
   }, [form, onProfileUpdate, loadProfile]);
 
   const handlePhotoUploaded = useCallback(async (uploadedImage) => {
