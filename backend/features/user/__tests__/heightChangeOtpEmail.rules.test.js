@@ -6,12 +6,18 @@ import assert from 'node:assert/strict';
 import { buildHeightChangeOtpEmail } from '../domain/heightChangeOtpEmail.rules.js';
 
 describe('buildHeightChangeOtpEmail', () => {
-  it('includes code and new height', () => {
-    const mail = buildHeightChangeOtpEmail({ otp: '4821', newHeightCm: 175 });
+  it('includes code and current → new height', () => {
+    const mail = buildHeightChangeOtpEmail({
+      otp: '4821',
+      currentHeightCm: 178,
+      newHeightCm: 180,
+    });
     assert.match(mail.subject, /height/i);
     assert.match(mail.text, /4821/);
-    assert.match(mail.text, /175 cm/);
+    assert.match(mail.text, /Current height: 178 cm/);
+    assert.match(mail.text, /New height: 180 cm/);
     assert.match(mail.html, /4821/);
-    assert.match(mail.html, /175 cm/);
+    assert.match(mail.html, /178 cm/);
+    assert.match(mail.html, /180 cm/);
   });
 });

@@ -22,30 +22,59 @@ ${bodyInner}
 }
 
 /**
- * @param {{ otp: string, newHeightCm?: number, expiresMinutes?: number }} input
+ * @param {{
+ *   otp: string,
+ *   currentHeightCm?: number|null,
+ *   newHeightCm?: number|null,
+ *   expiresMinutes?: number,
+ * }} input
  */
 export function buildHeightChangeOtpEmail({
   otp,
-  newHeightCm,
+  currentHeightCm = null,
+  newHeightCm = null,
   expiresMinutes = 5,
 } = {}) {
   const code = String(otp || '').trim();
-  const heightLabel = Number.isFinite(Number(newHeightCm))
+  const currentLabel = Number.isFinite(Number(currentHeightCm))
+    ? `${Number(currentHeightCm)} cm`
+    : null;
+  const newLabel = Number.isFinite(Number(newHeightCm))
     ? `${Number(newHeightCm)} cm`
-    : 'a new height';
+    : null;
+
+  let requestLine;
+  if (currentLabel && newLabel) {
+    requestLine = `You requested to change your height. Current height: ${currentLabel}. New height: ${newLabel}.`;
+  } else if (newLabel) {
+    requestLine = `You requested to change your height to ${newLabel}.`;
+  } else {
+    requestLine = 'You requested to change your height.';
+  }
+
   const subject = 'Wellness Valley — confirm height change';
   const text = [
     'Wellness Valley',
     '',
-    `You requested to change your profile height to ${heightLabel}.`,
+    requestLine,
     `Enter this code in the app. It expires in ${expiresMinutes} minutes.`,
     `Code: ${code}`,
     '',
     'If you did not request this, you can ignore this message.',
   ].join('\n');
+
+  let requestHtml;
+  if (currentLabel && newLabel) {
+    requestHtml = `You requested to change your height. Current height: <strong>${escapeHtml(currentLabel)}</strong>. New height: <strong>${escapeHtml(newLabel)}</strong>.`;
+  } else if (newLabel) {
+    requestHtml = `You requested to change your height to <strong>${escapeHtml(newLabel)}</strong>.`;
+  } else {
+    requestHtml = 'You requested to change your height.';
+  }
+
   const html = wrapHtml(
     `<p>Wellness Valley</p>`
-    + `<p>You requested to change your profile height to <strong>${escapeHtml(heightLabel)}</strong>.</p>`
+    + `<p>${requestHtml}</p>`
     + `<p>Enter this code in the app. It expires in ${expiresMinutes} minutes.</p>`
     + `<p>Code: <strong>${escapeHtml(code)}</strong></p>`
     + `<p>If you did not request this, you can ignore this message.</p>`,

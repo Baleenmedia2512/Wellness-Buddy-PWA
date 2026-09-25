@@ -371,7 +371,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
       });
       setPendingHeightCm(check.value);
       setHeightOtpPending(true);
-      setHeightOtpDestination(data.destinationMasked || '');
+      setHeightOtpDestination(data.destination || data.destinationMasked || '');
       setSuccessMessage(data.message || 'Verification code sent.');
     } catch (e) {
       setHeightOtpError(e.message || 'Could not send the height verification code.');

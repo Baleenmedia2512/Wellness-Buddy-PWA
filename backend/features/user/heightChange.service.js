@@ -18,7 +18,6 @@ import * as userRepo from './user.repository.js';
 import {
   HEIGHT_CHANGE_OTP_FLAG,
   isHeightLocked,
-  maskEmailForDisplay,
   maskPhoneForDisplay,
   parseHeightCm,
   validateHeightCm,
@@ -53,12 +52,13 @@ async function loadUser({ email, userId }) {
 function resolveOtpDestination(user) {
   const email = String(user?.Email || '').trim().toLowerCase();
   if (email.includes('@')) {
-    return { contactType: 'email', recipient: email, masked: maskEmailForDisplay(email) };
+    // Profile already shows this address — show full email in the OTP banner.
+    return { contactType: 'email', recipient: email, display: email };
   }
   const phone = String(user?.PhoneNumber || '').trim();
   if (phone && /^\+?[0-9]{10,15}$/.test(phone.replace(/[\s\-()]/g, ''))) {
     const cleaned = phone.replace(/[\s\-()]/g, '');
-    return { contactType: 'phone', recipient: cleaned, masked: maskPhoneForDisplay(cleaned) };
+    return { contactType: 'phone', recipient: cleaned, display: maskPhoneForDisplay(cleaned) };
   }
   return null;
 }
@@ -122,7 +122,10 @@ export async function requestHeightChangeOtp({ email = null, userId = null, heig
   }
 
   if (dest.contactType === 'email') {
-    await deliverEmailHeightOtp(dest.recipient, check.value);
+    await deliverEmailHeightOtp(dest.recipient, {
+      currentHeightCm: parseHeightCm(user.Height),
+      newHeightCm: check.value,
+    });
   } else {
     const sent = await sendOtp({ recipient: dest.recipient, contactType: 'phone' });
     if (sent?.httpStatus && sent.httpStatus >= 400) {
@@ -144,10 +147,12 @@ export async function requestHeightChangeOtp({ email = null, userId = null, heig
     httpStatus: 200,
     body: {
       success: true,
-      message: `We sent a 4-digit code to ${dest.masked}.`,
+      message: `We sent a 4-digit code to ${dest.display}.`,
       contactType: dest.contactType,
-      destinationMasked: dest.masked,
+      destination: dest.display,
+      destinationMasked: dest.display,
       height: check.value,
+      currentHeight: parseHeightCm(user.Height),
       expiresInSeconds: 300,
     },
   };
@@ -161,7 +166,7 @@ function otpExpiryIst(minutesFromNow) {
   return expiresAt.toISOString().replace('T', ' ').replace('Z', '').substring(0, 23);
 }
 
-async function deliverEmailHeightOtp(recipient, heightCm) {
+async function deliverEmailHeightOtp(recipient, { currentHeightCm, newHeightCm }) {
   await authRepo.deactivateActiveOtps(recipient, 'email');
   const otp = generateEmailOtp();
   const otpHash = await bcrypt.hash(otp, 10);
@@ -173,7 +178,12 @@ async function deliverEmailHeightOtp(recipient, heightCm) {
     IsActive: true,
     CreatedAt: nowUtc(),
   });
-  const mail = buildHeightChangeOtpEmail({ otp, newHeightCm: heightCm, expiresMinutes: 5 });
+  const mail = buildHeightChangeOtpEmail({
+    otp,
+    currentHeightCm,
+    newHeightCm,
+    expiresMinutes: 5,
+  });
   await sendTransactionalMail({
     to: recipient,
     subject: mail.subject,
