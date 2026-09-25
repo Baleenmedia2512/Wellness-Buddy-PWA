@@ -29,9 +29,11 @@ import {
   communityIdOtpExpiresAt,
   formatCommunityIdPairLabel,
   isCommunityIdOtpExpired,
+  occupancyWithoutUser,
   resolveCoachTeamIdFromApprover,
   resolveConfirmedCommunityId,
   toPublicCommunityIdRequest,
+  userAlreadyOwnsCommunityId,
 } from './domain/communityIdApproval.rules.js';
 import {
   buildCoSponsorCommunityIdOtpEmail,
@@ -154,9 +156,15 @@ async function buildAlreadyOwnedResponse({
   leadSeat,
   occupancy,
 }) {
+  // Always echo the code they actually hold — never the different code they typed
+  // (that incorrectly skipped OTP on Profile Change).
+  const ownedCode = normalizeTeamCodeFromCommunityId(leadSeat?.teamId)
+    || normalizeTeamCodeFromCommunityId(requester.CommunityId)
+    || normalizeTeamCodeFromCommunityId(code);
+
   let seat = leadSeat?.seat || null;
-  if (!seat) {
-    const heal = await assignLeadSeat(supabase, code, Number(requester.UserId));
+  if (!seat && ownedCode === normalizeTeamCodeFromCommunityId(code)) {
+    const heal = await assignLeadSeat(supabase, ownedCode, Number(requester.UserId));
     if (heal.ok) {
       seat = heal.seat === 'already'
         ? (Number(occupancy?.sponsorUserId) === Number(requester.UserId)
@@ -180,7 +188,7 @@ async function buildAlreadyOwnedResponse({
 
   let communityIdPair = null;
   try {
-    communityIdPair = await getCommunityIdLeadPair(code);
+    communityIdPair = await getCommunityIdLeadPair(ownedCode);
   } catch {
     communityIdPair = null;
   }
@@ -192,8 +200,8 @@ async function buildAlreadyOwnedResponse({
     body: {
       success: true,
       alreadyOwned: true,
-      communityId: code,
-      teamId: code,
+      communityId: ownedCode,
+      teamId: ownedCode,
       teamSeat: seat,
       communityIdPair,
       message: 'This Community ID is already yours.',
@@ -232,9 +240,16 @@ export async function requestCommunityIdApproval({ email = null, userId = null, 
     throw err;
   }
 
-  // Already on team_table for this code — never start a new OTP flow.
+  // Already confirmed on this exact code — never start a new OTP flow.
   const storedCommunityId = normalizeTeamCodeFromCommunityId(requester.CommunityId);
-  if (storedCommunityId && storedCommunityId === code) {
+  const ownsRequested = userAlreadyOwnsCommunityId({
+    code,
+    storedCommunityId,
+    confirmedCode,
+    leadSeatTeamId: leadSeat?.teamId,
+    leadSeat: leadSeat?.seat,
+  });
+  if (ownsRequested) {
     return buildAlreadyOwnedResponse({
       supabase,
       requester,
@@ -244,13 +259,25 @@ export async function requestCommunityIdApproval({ email = null, userId = null, 
     });
   }
 
-  const classified = classifyCommunityIdRequest({
+  let classified = classifyCommunityIdRequest({
     requestedCode: code,
     requesterId: requester.UserId,
     requesterCoachId: requester.CoachId,
     requesterConfirmedCode: confirmedCode,
     occupancy,
   });
+
+  // Stale seat / pending row on the *new* code must not skip OTP when the user
+  // is changing away from a different confirmed Community ID.
+  if (!classified.ok && classified.status === CLAIM_ALREADY_OWNED) {
+    classified = classifyCommunityIdRequest({
+      requestedCode: code,
+      requesterId: requester.UserId,
+      requesterCoachId: requester.CoachId,
+      requesterConfirmedCode: confirmedCode,
+      occupancy: occupancyWithoutUser(occupancy, requester.UserId),
+    });
+  }
 
   if (!classified.ok) {
     if (classified.status === CLAIM_ALREADY_OWNED) {

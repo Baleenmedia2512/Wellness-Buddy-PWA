@@ -181,9 +181,10 @@ export function classifyCommunityIdRequest({
   const sponsorId = toPositiveUserId(occupancy?.sponsorUserId);
   const coId = toPositiveUserId(occupancy?.coSponsorUserId);
   const pendingCreateId = toPositiveUserId(occupancy?.pendingCreateRequesterId);
-  const effectiveSponsor = sponsorId || pendingCreateId;
 
-  if (uid && (effectiveSponsor === uid || coId === uid)) {
+  // Active coach_teams seats only. A pending create OTP is NOT ownership — treating
+  // the requester's own pending create as "already yours" skips OTP on change.
+  if (uid && (sponsorId === uid || coId === uid)) {
     return {
       ok: false,
       status: CLAIM_ALREADY_OWNED,
@@ -191,6 +192,10 @@ export function classifyCommunityIdRequest({
       code,
     };
   }
+
+  // Another member's pending create occupies the sponsor slot. Ignore self.
+  const effectiveSponsor = sponsorId
+    || (pendingCreateId && pendingCreateId !== uid ? pendingCreateId : null);
 
   if (effectiveSponsor && coId && effectiveSponsor !== coId) {
     return { ok: false, status: CLAIM_FULL, message: FULL_MESSAGE, code };
@@ -284,6 +289,65 @@ export function resolveConfirmedCommunityId({
     return normalizeTeamCodeFromCommunityId(communityId || teamId);
   }
   return normalizeTeamCodeFromCommunityId(teamId);
+}
+
+/**
+ * True only when the requested code is already this user's confirmed Community ID.
+ * Used to skip OTP — must not fire for a different code the UI is trying to change to.
+ *
+ * @param {{
+ *   code?: unknown,
+ *   storedCommunityId?: unknown,
+ *   confirmedCode?: unknown,
+ *   leadSeatTeamId?: unknown,
+ *   leadSeat?: unknown,
+ * }} args
+ * @returns {boolean}
+ */
+export function userAlreadyOwnsCommunityId({
+  code = null,
+  storedCommunityId = null,
+  confirmedCode = null,
+  leadSeatTeamId = null,
+  leadSeat = null,
+} = {}) {
+  const normalized = normalizeTeamCodeFromCommunityId(code);
+  if (!normalized) return false;
+  const stored = normalizeTeamCodeFromCommunityId(storedCommunityId);
+  const confirmed = normalizeTeamCodeFromCommunityId(confirmedCode);
+  const seatTeam = normalizeTeamCodeFromCommunityId(leadSeatTeamId);
+  if (stored === normalized || confirmed === normalized) return true;
+  return Boolean(leadSeat) && seatTeam === normalized;
+}
+
+/**
+ * Drop this user from occupancy so a stale coach_teams / pending row cannot
+ * block Profile Change of Community ID (must still go through sponsor OTP).
+ *
+ * @param {{
+ *   sponsorUserId?: number|null,
+ *   coSponsorUserId?: number|null,
+ *   pendingCreateRequesterId?: number|null,
+ * }} occupancy
+ * @param {unknown} userId
+ */
+export function occupancyWithoutUser(occupancy = {}, userId = null) {
+  const uid = toPositiveUserId(userId);
+  if (!uid) {
+    return {
+      sponsorUserId: toPositiveUserId(occupancy?.sponsorUserId),
+      coSponsorUserId: toPositiveUserId(occupancy?.coSponsorUserId),
+      pendingCreateRequesterId: toPositiveUserId(occupancy?.pendingCreateRequesterId),
+    };
+  }
+  const sponsorUserId = toPositiveUserId(occupancy?.sponsorUserId);
+  const coSponsorUserId = toPositiveUserId(occupancy?.coSponsorUserId);
+  const pendingCreateRequesterId = toPositiveUserId(occupancy?.pendingCreateRequesterId);
+  return {
+    sponsorUserId: sponsorUserId === uid ? null : sponsorUserId,
+    coSponsorUserId: coSponsorUserId === uid ? null : coSponsorUserId,
+    pendingCreateRequesterId: pendingCreateRequesterId === uid ? null : pendingCreateRequesterId,
+  };
 }
 
 /**

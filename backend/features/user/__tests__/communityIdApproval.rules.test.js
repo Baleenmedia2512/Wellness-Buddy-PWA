@@ -19,10 +19,12 @@ import {
   communityIdOtpExpiresAt,
   isCommunityIdOtpExpired,
   formatCommunityIdPairLabel,
+  occupancyWithoutUser,
   resolveCoachTeamIdFromApprover,
   resolveConfirmedCommunityId,
   shouldDeferCommunityIdToOtpFlow,
   toPublicCommunityIdRequest,
+  userAlreadyOwnsCommunityId,
 } from '../domain/communityIdApproval.rules.js';
 
 describe('shouldDeferCommunityIdToOtpFlow', () => {
@@ -152,6 +154,17 @@ describe('classifyCommunityIdRequest', () => {
     assert.equal(out.mainSponsorId, 3);
   });
 
+  it('does not treat the requester own pending create as already owned', () => {
+    const out = classifyCommunityIdRequest({
+      ...base,
+      requesterConfirmedCode: 'OTHER99',
+      occupancy: { pendingCreateRequesterId: 20 },
+    });
+    assert.equal(out.ok, true);
+    assert.equal(out.status, CLAIM_CREATE);
+    assert.equal(out.kind, REQUEST_KIND_CREATE);
+  });
+
   it('rejects a full team', () => {
     const out = classifyCommunityIdRequest({
       ...base,
@@ -171,6 +184,18 @@ describe('classifyCommunityIdRequest', () => {
     assert.equal(out.kind, REQUEST_KIND_CREATE);
   });
 
+  it('allows change even when a stale seat lists the user on the new code', () => {
+    const out = classifyCommunityIdRequest({
+      ...base,
+      requestedCode: 'YASHEER12M',
+      requesterConfirmedCode: 'YASHEER12MM0',
+      occupancy: { sponsorUserId: 10, coSponsorUserId: 20 },
+    });
+    // Still already-owned at classify (active seat) — service strips self and retries.
+    assert.equal(out.ok, false);
+    assert.equal(out.status, CLAIM_ALREADY_OWNED);
+  });
+
   it('rejects requesting a code the user already owns', () => {
     const out = classifyCommunityIdRequest({
       ...base,
@@ -178,6 +203,66 @@ describe('classifyCommunityIdRequest', () => {
     });
     assert.equal(out.ok, false);
     assert.equal(out.status, CLAIM_ALREADY_OWNED);
+  });
+});
+
+describe('userAlreadyOwnsCommunityId', () => {
+  it('is true only for the confirmed / stored / seat code', () => {
+    assert.equal(
+      userAlreadyOwnsCommunityId({
+        code: 'YASHEER12M',
+        storedCommunityId: 'YASHEER12MM0',
+        confirmedCode: 'YASHEER12MM0',
+        leadSeatTeamId: 'YASHEER12MM0',
+        leadSeat: 'co-sponsor',
+      }),
+      false,
+    );
+    assert.equal(
+      userAlreadyOwnsCommunityId({
+        code: 'YASHEER12MM0',
+        storedCommunityId: 'YASHEER12MM0',
+        confirmedCode: 'YASHEER12MM0',
+        leadSeatTeamId: 'YASHEER12MM0',
+        leadSeat: 'co-sponsor',
+      }),
+      true,
+    );
+  });
+});
+
+describe('occupancyWithoutUser', () => {
+  it('clears this user from all occupancy slots', () => {
+    assert.deepEqual(
+      occupancyWithoutUser({
+        sponsorUserId: 10,
+        coSponsorUserId: 20,
+        pendingCreateRequesterId: 20,
+      }, 20),
+      {
+        sponsorUserId: 10,
+        coSponsorUserId: null,
+        pendingCreateRequesterId: null,
+      },
+    );
+  });
+
+  it('after stripping self, change to a free code classifies as create', () => {
+    const stripped = occupancyWithoutUser({
+      sponsorUserId: 10,
+      coSponsorUserId: 20,
+      pendingCreateRequesterId: null,
+    }, 20);
+    const out = classifyCommunityIdRequest({
+      requestedCode: 'YASHEER12M',
+      requesterId: 20,
+      requesterCoachId: 9,
+      requesterConfirmedCode: 'YASHEER12MM0',
+      occupancy: stripped,
+    });
+    assert.equal(out.ok, true);
+    assert.equal(out.status, CLAIM_CO_SPONSOR);
+    assert.equal(out.mainSponsorId, 10);
   });
 });
 

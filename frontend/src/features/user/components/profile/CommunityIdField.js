@@ -55,13 +55,12 @@ const CommunityIdField = ({
   const [isChanging, setIsChanging] = useState(false);
   const baselineRef = useRef('');
   const check = validateCommunityId(communityId);
-  const normalizedValue = check.value
-    ? sanitizeCommunityIdInput(check.value)
-    : '';
+  // Compare raw sanitized input (not only valid check.value). Otherwise a too-short
+  // edit like YASHEER12MM0 → M0 looks "unchanged", tick just closes edit, no OTP.
+  const sanitizedInput = sanitizeCommunityIdInput(communityId || '');
   const differsFromBaseline = Boolean(
-    normalizedValue
-    && baselineRef.current
-    && normalizedValue !== baselineRef.current,
+    baselineRef.current
+    && sanitizedInput !== baselineRef.current,
   );
   const editingConfirmed = confirmed && (isChanging || differsFromBaseline);
   // Pending OTP: keep the code locked until the user taps the pencil.
@@ -101,6 +100,8 @@ const CommunityIdField = ({
   }, [pendingRequest?.id]);
 
   // Snapshot the confirmed / pending code; restore pending code if the field was cleared.
+  // When a pending OTP request arrives, always exit edit mode so the OTP cells show
+  // (otherwise Change → tick leaves isChanging=true and hides verify UI).
   useEffect(() => {
     if (!confirmed && !pending) {
       baselineRef.current = '';
@@ -110,7 +111,8 @@ const CommunityIdField = ({
     if (pending && pendingRequest?.communityId) {
       const pendingCode = sanitizeCommunityIdInput(pendingRequest.communityId);
       baselineRef.current = pendingCode;
-      if (!isChanging && pendingCode) {
+      setIsChanging(false);
+      if (pendingCode) {
         setCommunityId && setCommunityId(pendingCode);
       }
       return;
@@ -153,6 +155,9 @@ const CommunityIdField = ({
       return;
     }
     if (!canSubmit || !onCreate) return;
+    // Leave edit mode before the request returns so OTP entry is visible for
+    // both first-time create and change-of-existing Community ID.
+    setIsChanging(false);
     onCreate(check.value);
   };
 
@@ -335,6 +340,9 @@ const CommunityIdField = ({
 
       {error && (
         <p className="text-xs text-red-600 mt-2">{error}</p>
+      )}
+      {!error && !check.valid && (editingConfirmed || editingPending || (!confirmed && !pending)) && check.message && (
+        <p className="text-xs text-red-600 mt-2">{check.message}</p>
       )}
       {((!confirmed && !pending) || editingConfirmed || editingPending || (pending && !editingPending)) && (
         <p className="text-xs text-gray-400 mt-1">
