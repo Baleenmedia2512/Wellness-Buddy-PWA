@@ -28,6 +28,7 @@ const UserProfileFields = ({
   communityId, setCommunityId,
   teamSeat = null,
   hideEmailField = false,
+  hideCommunityIdField = false,
   communityIdOtpEnabled = false,
   communityIdRequest = null,
   communityIdPair = null,
@@ -113,20 +114,22 @@ const UserProfileFields = ({
       <input type="text" inputMode="numeric" pattern="[0-9]*" value={phone} onChange={(e) => setPhone(e.target.value)}
         placeholder="e.g. +91 9876543210" className={inputCls} style={{ fontSize: '16px' }} />
     </Field>
-    <CommunityIdField
-      communityId={communityId}
-      setCommunityId={setCommunityId}
-      teamSeat={teamSeat}
-      otpEnabled={communityIdOtpEnabled}
-      pendingRequest={communityIdRequest}
-      communityIdPair={communityIdPair}
-      onCreate={onCommunityIdCreate}
-      onVerify={onCommunityIdVerify}
-      busy={communityIdBusy}
-      error={communityIdError}
-      sponsorName={sponsorName}
-      sponsorEmail={sponsorEmail}
-    />
+    {!hideCommunityIdField && (
+      <CommunityIdField
+        communityId={communityId}
+        setCommunityId={setCommunityId}
+        teamSeat={teamSeat}
+        otpEnabled={communityIdOtpEnabled}
+        pendingRequest={communityIdRequest}
+        communityIdPair={communityIdPair}
+        onCreate={onCommunityIdCreate}
+        onVerify={onCommunityIdVerify}
+        busy={communityIdBusy}
+        error={communityIdError}
+        sponsorName={sponsorName}
+        sponsorEmail={sponsorEmail}
+      />
+    )}
     <div>
       <label className="flex items-center gap-1 text-sm font-medium text-gray-700 mb-1">
         <Flame className="w-4 h-4 text-orange-500" /> BMR (kcal)

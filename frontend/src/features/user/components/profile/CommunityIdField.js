@@ -196,7 +196,14 @@ const CommunityIdField = ({
 
   return (
     <div>
-      <label className="block text-sm font-medium text-gray-700 mb-1">Community ID</label>
+      <div className="flex items-baseline gap-16 mb-1 min-w-0">
+        <label className="text-sm font-medium text-gray-700 shrink-0">Community ID</label>
+        {pairLabel ? (
+          <span className="text-sm font-medium text-gray-700 tracking-wide truncate min-w-0">
+            {pairLabel}
+          </span>
+        ) : null}
+      </div>
       <div className="relative">
         <Hash className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
         <input
@@ -285,14 +292,8 @@ const CommunityIdField = ({
         )}
       </div>
 
-      {pairLabel ? (
-        <p className="text-sm font-semibold text-gray-800 mt-3 tracking-wide">
-          {pairLabel}
-        </p>
-      ) : null}
-
       {confirmed && editingConfirmed && !differsFromBaseline && !pending && (
-        <p className={`text-xs text-gray-500 ${pairLabel ? 'mt-1.5' : 'mt-3'}`}>
+        <p className="text-xs text-gray-500 mt-3">
           Tap the tick when done, or change the code to request a new sponsor approval.
         </p>
       )}

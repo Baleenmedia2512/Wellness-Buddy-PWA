@@ -28,6 +28,7 @@ import { loadProfileMarathonWeightComparison } from '../../marathon';
 import { fetchMyAssessment, fetchLeadByPhone } from '../../counselling/services/counsellingApi';
 import UserProfileFields from './profile/UserProfileFields';
 import ProfileEmailKycSection from './profile/ProfileEmailKycSection';
+import CommunityIdField from './profile/CommunityIdField';
 import UserProfileBodyMetrics from './profile/UserProfileBodyMetrics';
 import IdealWeightCards from './profile/IdealWeightCards';
 import DietDropdown from './profile/DietDropdown';
@@ -729,20 +730,10 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
                     <span>Some details were pre-filled from your wellness counselling session. Please review and save.</span>
                   </div>
                 )}
-                <div ref={emailKycRef}>
-                  <ProfileEmailKycSection
-                    userId={user?.id || user?.UserId || user?.userId || Session.getDbUserId() || null}
-                    userName={form.name}
-                    verifiedEmail={accountEmail}
-                    disabled={isSaving || isUploadingPhoto}
-                    mode={emailKycMode}
-                    onModeChange={setEmailKycMode}
-                    onVerified={handleEmailVerified}
-                  />
-                </div>
                 <UserProfileFields
                   email={form.email}
                   hideEmailField
+                  hideCommunityIdField
                   name={form.name} setName={form.setName}
                   height={form.height} setHeight={form.setHeight}
                   phone={form.phone} setPhone={form.setPhone}
@@ -751,18 +742,6 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
                   setBmr={form.setBmr}
                   physicalActivityLevel={form.physicalActivityLevel}
                   setPhysicalActivityLevel={form.setPhysicalActivityLevel}
-                  communityId={form.communityId}
-                  setCommunityId={form.setCommunityId}
-                  teamSeat={teamSeat}
-                  communityIdOtpEnabled={isFlagEnabled(COMMUNITY_ID_OTP_FLAG)}
-                  communityIdRequest={communityIdRequest}
-                  communityIdPair={communityIdPair}
-                  onCommunityIdCreate={handleCommunityIdCreate}
-                  onCommunityIdVerify={handleCommunityIdVerify}
-                  communityIdBusy={communityIdBusy}
-                  communityIdError={communityIdError}
-                  sponsorName={coachName}
-                  sponsorEmail={sponsorEmail}
                   heightOtpEnabled={isFlagEnabled(HEIGHT_CHANGE_OTP_FLAG)}
                   lockedHeight={lockedHeight}
                   onHeightRequestOtp={handleHeightRequestOtp}
@@ -772,6 +751,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
                   heightOtpPending={heightOtpPending}
                   heightOtpDestination={heightOtpDestination}
                 />
+                <DietDropdown value={form.dietType} onChange={form.setDietType} />
                 <UserProfileBodyMetrics
                   bodyMetrics={form.bodyMetrics}
                   gender={form.gender}
@@ -783,6 +763,31 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
                   value={form.recoveredHealthIssues || []}
                   onChange={form.setRecoveredHealthIssues}
                 />
+                <div ref={emailKycRef}>
+                  <ProfileEmailKycSection
+                    userId={user?.id || user?.UserId || user?.userId || Session.getDbUserId() || null}
+                    userName={form.name}
+                    verifiedEmail={accountEmail}
+                    disabled={isSaving || isUploadingPhoto}
+                    mode={emailKycMode}
+                    onModeChange={setEmailKycMode}
+                    onVerified={handleEmailVerified}
+                  />
+                </div>
+                <CommunityIdField
+                  communityId={form.communityId}
+                  setCommunityId={form.setCommunityId}
+                  teamSeat={teamSeat}
+                  otpEnabled={isFlagEnabled(COMMUNITY_ID_OTP_FLAG)}
+                  pendingRequest={communityIdRequest}
+                  communityIdPair={communityIdPair}
+                  onCreate={handleCommunityIdCreate}
+                  onVerify={handleCommunityIdVerify}
+                  busy={communityIdBusy}
+                  error={communityIdError}
+                  sponsorName={coachName}
+                  sponsorEmail={sponsorEmail}
+                />
                 <IdealWeightCards
                   height={form.height}
                   latestWeight={latestWeight}
@@ -790,7 +795,6 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
                   initialWeightDate={initialWeightDate}
                   marathonWeightComparison={marathonWeightComparison}
                 />
-                <DietDropdown value={form.dietType} onChange={form.setDietType} />
               </div>
             )}
           </div>
