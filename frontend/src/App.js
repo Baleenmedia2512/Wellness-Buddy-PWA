@@ -7773,6 +7773,45 @@ function WellnessValleyApp() {
               }
               if (profileData?.adopted && profileData?.userId) {
                 Session.setDbUserId(profileData.userId);
+                clearUserIdCache();
+              }
+              // Persist otpUser so refresh restores the recovered account
+              // (same pattern as OnboardingIdentityPage). Without this, refresh
+              // reloads the pre-recover id/email from localStorage.
+              if (profileData?.email || profileData?.adopted) {
+                const cachedRaw = Session.getOtpUserRaw();
+                if (cachedRaw) {
+                  try {
+                    const cached = JSON.parse(cachedRaw);
+                    Session.setOtpUser({
+                      ...cached,
+                      ...(profileData.email
+                        ? { email: profileData.email, Email: profileData.email }
+                        : {}),
+                      ...(profileData.adopted && profileData.userId
+                        ? {
+                          id: profileData.userId,
+                          UserId: profileData.userId,
+                          userId: profileData.userId,
+                        }
+                        : {}),
+                      ...(profileData.phone
+                        ? {
+                          phone: profileData.phone,
+                          phoneNumber: profileData.phone,
+                          PhoneNumber: profileData.phone,
+                        }
+                        : {}),
+                      ...(profileData.name?.trim()
+                        ? {
+                          username: profileData.name.trim(),
+                          userName: profileData.name.trim(),
+                          UserName: profileData.name.trim(),
+                        }
+                        : {}),
+                    });
+                  } catch { /* non-fatal */ }
+                }
               }
               if (profileData?.email || profileData?.adopted) {
                 setUser((prevUser) => {
@@ -7781,6 +7820,13 @@ function WellnessValleyApp() {
                     ...prevUser,
                     email: profileData.email || prevUser.email,
                     Email: profileData.email || prevUser.Email,
+                    ...(profileData.name?.trim()
+                      ? {
+                        username: profileData.name.trim(),
+                        userName: profileData.name.trim(),
+                        displayName: profileData.name.trim(),
+                      }
+                      : {}),
                     ...(profileData.adopted && profileData.userId
                       ? {
                         id: profileData.userId,
