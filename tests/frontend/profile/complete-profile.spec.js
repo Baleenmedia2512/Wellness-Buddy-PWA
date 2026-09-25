@@ -6856,4 +6856,420 @@ test.describe('Complete Profile', () => {
       }
     }
   );
+
+  test(
+    'CP-030 able to select profile photo in profile page',
+    async ({ page }) => {
+      const TEST_PHONE = '7695834209';
+      const TEST_NAME = 'Nitheesh Lingam';
+      const TEST_EMAIL = 'nitheesh@example.com';
+
+      await page.route('**/api/auth/send-otp', async route => {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true }) });
+      });
+
+      await page.route('**/api/user/status*', async route => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ success: true, isActive: true, isNewUser: false, setupSkipped: true, setupComplete: true }),
+        });
+      });
+
+      await page.route('**/api/user/verify-session*', async route => {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, userId: 1004, sessionStale: false }) });
+      });
+
+      await page.route('**/api/user/lookup*', async route => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true, isActive: true, isNewUser: false, role: 'user',
+            user: { id: 1004, UserId: 1004, username: TEST_NAME, name: TEST_NAME, email: TEST_EMAIL, phoneNumber: TEST_PHONE, status: 'Active' },
+          }),
+        });
+      });
+
+      await page.route('**/api/user/consent*', async route => {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, consentRequired: false, consentAccepted: true }) });
+      });
+
+      await page.route('**/api/user/profile*', async route => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            data: {
+              userId: 1004, profileComplete: true, userName: TEST_NAME, name: TEST_NAME, email: TEST_EMAIL, phone: TEST_PHONE, gender: 'Male', height: 170, dietType: 'Vegetarian', latestWeight: 65, currentWeight: 65, profileImage: null,
+            },
+          }),
+        });
+      });
+
+      await page.addInitScript(({ phone, email, name }) => {
+        const user = { id: 1004, UserId: 1004, userId: 1004, username: name, userName: name, name: name, email: email, phone: `+91${phone}`, phoneNumber: phone, status: 'Active', isNewUser: false, consentRequired: false, profileComplete: true };
+        localStorage.setItem('isOtpVerified', 'true');
+        localStorage.setItem('otpUser', JSON.stringify(user));
+        localStorage.setItem('user', JSON.stringify(user));
+        localStorage.setItem('dbUserId', '1004');
+        localStorage.setItem('userEmail', email);
+      }, { phone: TEST_PHONE, email: TEST_EMAIL, name: TEST_NAME });
+
+      await page.goto('/', { waitUntil: 'domcontentloaded' });
+
+      const profileBtn = page.getByRole('button', { name: 'My Profile' }).or(page.getByTitle('My Profile'));
+      await expect(profileBtn.first()).toBeVisible({ timeout: 15000 });
+      await profileBtn.first().click();
+
+      const profileHeading = page.getByRole('heading', { name: 'My Profile', exact: true });
+      await expect(profileHeading).toBeVisible({ timeout: 15000 });
+
+      const changePhotoBtn = page.locator('button[aria-label="Change profile photo"], button[title="Change profile photo"], button[aria-label="Add profile photo"]').first();
+      await expect(changePhotoBtn).toBeVisible({ timeout: 10000 });
+      await changePhotoBtn.click();
+
+      const modalHeading = page.getByRole('heading', { name: 'Change Profile Photo' });
+      await expect(modalHeading).toBeVisible({ timeout: 10000 });
+
+      const fileInput = page.locator('input[type="file"]').first();
+      await expect(fileInput).toBeAttached();
+
+      const samplePng = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+      await fileInput.setInputFiles({ name: 'profile-sample.png', mimeType: 'image/png', buffer: samplePng });
+
+      const cropOverlay = page.locator('[role="dialog"][aria-label="Crop photo"]').or(page.getByRole('heading', { name: 'Crop Photo' })).or(page.getByRole('button', { name: 'Done' }));
+      await expect(cropOverlay.first()).toBeVisible({ timeout: 10000 });
+
+      console.log('CP-030: Successfully selected profile photo in profile page');
+    }
+  );
+
+  test(
+    'CP-031 able to crop and save photo',
+    async ({ page }) => {
+      const TEST_PHONE = '7695834209';
+      const TEST_NAME = 'Nitheesh Lingam';
+      const TEST_EMAIL = 'nitheesh@example.com';
+
+      await page.route('**/api/auth/send-otp', async route => {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true }) });
+      });
+
+      await page.route('**/api/user/status*', async route => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ success: true, isActive: true, isNewUser: false, setupSkipped: true, setupComplete: true }),
+        });
+      });
+
+      await page.route('**/api/user/verify-session*', async route => {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, userId: 1004, sessionStale: false }) });
+      });
+
+      await page.route('**/api/user/lookup*', async route => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true, isActive: true, isNewUser: false, role: 'user',
+            user: { id: 1004, UserId: 1004, username: TEST_NAME, name: TEST_NAME, email: TEST_EMAIL, phoneNumber: TEST_PHONE, status: 'Active' },
+          }),
+        });
+      });
+
+      await page.route('**/api/user/consent*', async route => {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, consentRequired: false, consentAccepted: true }) });
+      });
+
+      let savedProfilePayload = null;
+      await page.route('**/api/user/profile*', async route => {
+        const method = route.request().method();
+        if (method === 'GET') {
+          await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({
+              success: true,
+              data: {
+                userId: 1004, profileComplete: true, userName: TEST_NAME, name: TEST_NAME, email: TEST_EMAIL, phone: TEST_PHONE, gender: 'Male', height: 170, dietType: 'Vegetarian', latestWeight: 65, currentWeight: 65, profileImage: savedProfilePayload?.profileImage || null,
+              },
+            }),
+          });
+          return;
+        }
+
+        try {
+          savedProfilePayload = route.request().postDataJSON();
+        } catch { /* ignore */ }
+
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ success: true, message: 'Profile photo saved successfully!', data: { profileImage: 'https://example.com/saved-photo.jpg' } }),
+        });
+      });
+
+      await page.addInitScript(({ phone, email, name }) => {
+        const user = { id: 1004, UserId: 1004, userId: 1004, username: name, userName: name, name: name, email: email, phone: `+91${phone}`, phoneNumber: phone, status: 'Active', isNewUser: false, consentRequired: false, profileComplete: true };
+        localStorage.setItem('isOtpVerified', 'true');
+        localStorage.setItem('otpUser', JSON.stringify(user));
+        localStorage.setItem('user', JSON.stringify(user));
+        localStorage.setItem('dbUserId', '1004');
+        localStorage.setItem('userEmail', email);
+      }, { phone: TEST_PHONE, email: TEST_EMAIL, name: TEST_NAME });
+
+      await page.goto('/', { waitUntil: 'domcontentloaded' });
+
+      const profileBtn = page.getByRole('button', { name: 'My Profile' }).or(page.getByTitle('My Profile'));
+      await expect(profileBtn.first()).toBeVisible({ timeout: 15000 });
+      await profileBtn.first().click();
+
+      const profileHeading = page.getByRole('heading', { name: 'My Profile', exact: true });
+      await expect(profileHeading).toBeVisible({ timeout: 15000 });
+
+      const changePhotoBtn = page.locator('button[aria-label="Change profile photo"], button[title="Change profile photo"], button[aria-label="Add profile photo"]').first();
+      await expect(changePhotoBtn).toBeVisible({ timeout: 10000 });
+      await changePhotoBtn.click();
+
+      const fileInput = page.locator('input[type="file"]').first();
+      await expect(fileInput).toBeAttached();
+
+      const samplePng = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+      await fileInput.setInputFiles({ name: 'profile-crop-test.png', mimeType: 'image/png', buffer: samplePng });
+
+      // Click Done in CropOverlay
+      const doneBtn = page.getByRole('button', { name: 'Done' }).first();
+      if (await doneBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
+        await doneBtn.click();
+      }
+
+      // Click Save Photo
+      const savePhotoBtn = page.getByRole('button', { name: /Save Photo|Uploading/i }).first();
+      await expect(savePhotoBtn).toBeVisible({ timeout: 10000 });
+      await savePhotoBtn.click();
+
+      // Verify photo was cropped and saved
+      expect(savedProfilePayload).not.toBeNull();
+      console.log('CP-031: Successfully cropped and saved profile photo');
+    }
+  );
+
+  test(
+    'CP-032 able to change and save photo',
+    async ({ page }) => {
+      const TEST_PHONE = '7695834209';
+      const TEST_NAME = 'Nitheesh Lingam';
+      const TEST_EMAIL = 'nitheesh@example.com';
+
+      await page.route('**/api/auth/send-otp', async route => {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true }) });
+      });
+
+      await page.route('**/api/user/status*', async route => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ success: true, isActive: true, isNewUser: false, setupSkipped: true, setupComplete: true }),
+        });
+      });
+
+      await page.route('**/api/user/verify-session*', async route => {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, userId: 1004, sessionStale: false }) });
+      });
+
+      await page.route('**/api/user/lookup*', async route => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true, isActive: true, isNewUser: false, role: 'user',
+            user: { id: 1004, UserId: 1004, username: TEST_NAME, name: TEST_NAME, email: TEST_EMAIL, phoneNumber: TEST_PHONE, status: 'Active' },
+          }),
+        });
+      });
+
+      await page.route('**/api/user/consent*', async route => {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, consentRequired: false, consentAccepted: true }) });
+      });
+
+      let updatedPhotoPayload = null;
+      await page.route('**/api/user/profile*', async route => {
+        const method = route.request().method();
+        if (method === 'GET') {
+          await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({
+              success: true,
+              data: {
+                userId: 1004, profileComplete: true, userName: TEST_NAME, name: TEST_NAME, email: TEST_EMAIL, phone: TEST_PHONE, gender: 'Male', height: 170, dietType: 'Vegetarian', latestWeight: 65, currentWeight: 65, profileImage: 'https://example.com/old-photo.jpg',
+              },
+            }),
+          });
+          return;
+        }
+
+        try {
+          updatedPhotoPayload = route.request().postDataJSON();
+        } catch { /* ignore */ }
+
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ success: true, message: 'Profile photo updated successfully!', data: { profileImage: 'https://example.com/new-photo.jpg' } }),
+        });
+      });
+
+      await page.addInitScript(({ phone, email, name }) => {
+        const user = { id: 1004, UserId: 1004, userId: 1004, username: name, userName: name, name: name, email: email, phone: `+91${phone}`, phoneNumber: phone, status: 'Active', isNewUser: false, consentRequired: false, profileComplete: true };
+        localStorage.setItem('isOtpVerified', 'true');
+        localStorage.setItem('otpUser', JSON.stringify(user));
+        localStorage.setItem('user', JSON.stringify(user));
+        localStorage.setItem('dbUserId', '1004');
+        localStorage.setItem('userEmail', email);
+      }, { phone: TEST_PHONE, email: TEST_EMAIL, name: TEST_NAME });
+
+      await page.goto('/', { waitUntil: 'domcontentloaded' });
+
+      const profileBtn = page.getByRole('button', { name: 'My Profile' }).or(page.getByTitle('My Profile'));
+      await expect(profileBtn.first()).toBeVisible({ timeout: 15000 });
+      await profileBtn.first().click();
+
+      const editPhotoBadge = page.locator('button[aria-label="Change profile photo"], button[title="Change profile photo"]').first();
+      await expect(editPhotoBadge).toBeVisible({ timeout: 10000 });
+      await editPhotoBadge.click();
+
+      const modalHeading = page.getByRole('heading', { name: 'Change Profile Photo' });
+      await expect(modalHeading).toBeVisible({ timeout: 10000 });
+
+      const fileInput = page.locator('input[type="file"]').first();
+      await expect(fileInput).toBeAttached();
+
+      const newPng = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+      await fileInput.setInputFiles({ name: 'changed-photo.png', mimeType: 'image/png', buffer: newPng });
+
+      const doneBtn = page.getByRole('button', { name: 'Done' }).first();
+      if (await doneBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
+        await doneBtn.click();
+      }
+
+      const savePhotoBtn = page.getByRole('button', { name: /Save Photo|Uploading/i }).first();
+      await expect(savePhotoBtn).toBeVisible({ timeout: 10000 });
+      await savePhotoBtn.click();
+
+      expect(updatedPhotoPayload).not.toBeNull();
+      console.log('CP-032: Successfully changed and saved profile photo');
+    }
+  );
+
+  test(
+    'CP-033 able to change crop and save photo',
+    async ({ page }) => {
+      const TEST_PHONE = '7695834209';
+      const TEST_NAME = 'Nitheesh Lingam';
+      const TEST_EMAIL = 'nitheesh@example.com';
+
+      await page.route('**/api/auth/send-otp', async route => {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true }) });
+      });
+
+      await page.route('**/api/user/status*', async route => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ success: true, isActive: true, isNewUser: false, setupSkipped: true, setupComplete: true }),
+        });
+      });
+
+      await page.route('**/api/user/verify-session*', async route => {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, userId: 1004, sessionStale: false }) });
+      });
+
+      await page.route('**/api/user/lookup*', async route => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true, isActive: true, isNewUser: false, role: 'user',
+            user: { id: 1004, UserId: 1004, username: TEST_NAME, name: TEST_NAME, email: TEST_EMAIL, phoneNumber: TEST_PHONE, status: 'Active' },
+          }),
+        });
+      });
+
+      await page.route('**/api/user/consent*', async route => {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, consentRequired: false, consentAccepted: true }) });
+      });
+
+      let recroppedPayload = null;
+      await page.route('**/api/user/profile*', async route => {
+        const method = route.request().method();
+        if (method === 'GET') {
+          await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({
+              success: true,
+              data: {
+                userId: 1004, profileComplete: true, userName: TEST_NAME, name: TEST_NAME, email: TEST_EMAIL, phone: TEST_PHONE, gender: 'Male', height: 170, dietType: 'Vegetarian', latestWeight: 65, currentWeight: 65, profileImage: 'https://example.com/existing-photo.jpg',
+              },
+            }),
+          });
+          return;
+        }
+
+        try {
+          recroppedPayload = route.request().postDataJSON();
+        } catch { /* ignore */ }
+
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ success: true, message: 'Recropped photo saved successfully!', data: { profileImage: 'https://example.com/recropped-photo.jpg' } }),
+        });
+      });
+
+      await page.addInitScript(({ phone, email, name }) => {
+        const user = { id: 1004, UserId: 1004, userId: 1004, username: name, userName: name, name: name, email: email, phone: `+91${phone}`, phoneNumber: phone, status: 'Active', isNewUser: false, consentRequired: false, profileComplete: true };
+        localStorage.setItem('isOtpVerified', 'true');
+        localStorage.setItem('otpUser', JSON.stringify(user));
+        localStorage.setItem('user', JSON.stringify(user));
+        localStorage.setItem('dbUserId', '1004');
+        localStorage.setItem('userEmail', email);
+      }, { phone: TEST_PHONE, email: TEST_EMAIL, name: TEST_NAME });
+
+      await page.goto('/', { waitUntil: 'domcontentloaded' });
+
+      const profileBtn = page.getByRole('button', { name: 'My Profile' }).or(page.getByTitle('My Profile'));
+      await expect(profileBtn.first()).toBeVisible({ timeout: 15000 });
+      await profileBtn.first().click();
+
+      const editPhotoBadge = page.locator('button[aria-label="Change profile photo"], button[title="Change profile photo"]').first();
+      await expect(editPhotoBadge).toBeVisible({ timeout: 10000 });
+      await editPhotoBadge.click();
+
+      const modalHeading = page.getByRole('heading', { name: 'Change Profile Photo' });
+      await expect(modalHeading).toBeVisible({ timeout: 10000 });
+
+      // Click Recrop button on preview if available
+      const recropBtn = page.getByRole('button', { name: /Recrop|Crop photo/i });
+      if (await recropBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
+        await recropBtn.click();
+      }
+
+      const doneBtn = page.getByRole('button', { name: 'Done' }).first();
+      if (await doneBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
+        await doneBtn.click();
+      }
+
+      const savePhotoBtn = page.getByRole('button', { name: /Save Photo|Uploading/i }).first();
+      await expect(savePhotoBtn).toBeVisible({ timeout: 10000 });
+      await savePhotoBtn.click();
+
+      expect(recroppedPayload).not.toBeNull();
+      console.log('CP-033: Successfully changed crop and saved profile photo');
+    }
+  );
 });

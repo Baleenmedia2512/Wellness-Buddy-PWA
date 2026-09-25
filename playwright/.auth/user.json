@@ -5,6 +5,10 @@
       "origin": "http://127.0.0.1:3002",
       "localStorage": [
         {
+          "name": "profileComplete_v2_test@example.com",
+          "value": "true"
+        },
+        {
           "name": "userEmail",
           "value": "test@example.com"
         },
@@ -14,10 +18,6 @@
         },
         {
           "name": "isOtpVerified",
-          "value": "true"
-        },
-        {
-          "name": "profileComplete_v2_test@example.com",
           "value": "true"
         },
         {
