@@ -341,6 +341,25 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
         email: accountEmail || undefined,
         communityId: code,
       });
+
+      // Already confirmed on the server — lock field to pencil mode (no OTP).
+      if (data.alreadyOwned) {
+        const seat = data.teamSeat || 'sponsor';
+        setCommunityIdRequest(null);
+        if (data.communityId) form.setCommunityId(String(data.communityId));
+        setTeamSeat(seat);
+        if (data.communityIdPair) setCommunityIdPair(data.communityIdPair);
+        setSuccessMessage(data.message || 'Community ID confirmed.');
+        setHasSaved(true);
+        onProfileUpdate?.({
+          communityId: data.communityId || null,
+          teamSearchRefresh: true,
+        });
+        await loadProfile({ cacheBust: true });
+        setTeamSeat(seat);
+        return;
+      }
+
       setCommunityIdRequest(data.communityIdRequest || null);
       if (data.communityIdRequest?.approverEmail) {
         setSponsorEmail(String(data.communityIdRequest.approverEmail).trim());
@@ -353,7 +372,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
     } finally {
       setCommunityIdBusy(false);
     }
-  }, [sessionUserId, accountEmail, form]);
+  }, [sessionUserId, accountEmail, form, loadProfile, onProfileUpdate]);
 
   const handleCommunityIdVerify = useCallback(async (otp) => {
     setCommunityIdError('');
@@ -365,9 +384,11 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
         email: accountEmail || undefined,
         otp,
       });
+      const confirmedSeat = data.teamSeat || null;
       setCommunityIdRequest(null);
       if (data.communityId) form.setCommunityId(String(data.communityId));
-      if (data.teamSeat) setTeamSeat(data.teamSeat);
+      // Lock the field to pencil mode immediately — do not wait on profile reload.
+      if (confirmedSeat) setTeamSeat(confirmedSeat);
       onProfileUpdate?.({
         communityId: data.communityId || null,
         teamSearchRefresh: true,
@@ -375,6 +396,10 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
       setSuccessMessage(data.message || 'Community ID confirmed.');
       setHasSaved(true);
       await loadProfile({ cacheBust: true });
+      // Profile reload can briefly miss the new coach_teams seat; keep confirmed UI.
+      if (confirmedSeat) {
+        setTeamSeat(confirmedSeat);
+      }
     } catch (e) {
       setCommunityIdError(e.message || 'That approval code did not match.');
     } finally {

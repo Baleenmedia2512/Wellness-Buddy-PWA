@@ -188,12 +188,46 @@ export async function requestCommunityIdApproval({ email = null, userId = null, 
 
   if (!classified.ok) {
     if (classified.status === CLAIM_ALREADY_OWNED) {
+      let seat = leadSeat.seat || null;
+      // Heal missing coach_teams seat when team_table already has this Community ID.
+      if (!seat) {
+        const heal = await assignLeadSeat(
+          supabase,
+          classified.code,
+          Number(requester.UserId),
+        );
+        if (heal.ok) {
+          seat = heal.seat === 'already'
+            ? (Number(occupancy?.sponsorUserId) === Number(requester.UserId)
+              ? 'sponsor'
+              : 'co-sponsor')
+            : heal.seat;
+        }
+      }
+      if (!seat && Number(occupancy?.sponsorUserId) === Number(requester.UserId)) {
+        seat = 'sponsor';
+      } else if (!seat && Number(occupancy?.coSponsorUserId) === Number(requester.UserId)) {
+        seat = 'co-sponsor';
+      }
+
+      let communityIdPair = null;
+      try {
+        communityIdPair = await getCommunityIdLeadPair(classified.code);
+      } catch {
+        communityIdPair = null;
+      }
+
+      clearProfileCache({ email: requester.Email, userId: requester.UserId });
+
       return {
         httpStatus: 200,
         body: {
           success: true,
           alreadyOwned: true,
           communityId: classified.code,
+          teamId: classified.code,
+          teamSeat: seat,
+          communityIdPair,
           message: classified.message,
         },
       };
@@ -347,7 +381,11 @@ export async function verifyCommunityIdOtp({ email = null, userId = null, otp })
   const nextCode = normalizeTeamCodeFromCommunityId(pending.CommunityId);
   const previousCode = normalizeTeamCodeFromCommunityId(previousSeat.teamId);
 
-  const seatResult = await assignLeadSeat(supabase, pending.CommunityId, Number(requester.UserId));
+  const seatResult = await assignLeadSeat(
+    supabase,
+    nextCode || pending.CommunityId,
+    Number(requester.UserId),
+  );
   if (!seatResult.ok) {
     throw new ValidationError(409, seatResult.error || 'This Community ID is unavailable.');
   }
@@ -368,9 +406,10 @@ export async function verifyCommunityIdOtp({ email = null, userId = null, otp })
     existingCoachTeamId: requester.CoachTeamId,
   });
 
+  const confirmedCode = nextCode || pending.CommunityId;
   const teamUpdate = {
-    CommunityId: pending.CommunityId,
-    TeamId: pending.CommunityId,
+    CommunityId: confirmedCode,
+    TeamId: confirmedCode,
   };
   if (coachTeamId) {
     teamUpdate.CoachTeamId = coachTeamId;
@@ -381,7 +420,7 @@ export async function verifyCommunityIdOtp({ email = null, userId = null, otp })
 
   logger.info('[community-id] request approved', {
     requesterId: requester.UserId,
-    communityId: pending.CommunityId,
+    communityId: confirmedCode,
     coachTeamId: coachTeamId || null,
     teamSeat: resolvedSeat,
   });
@@ -395,8 +434,8 @@ export async function verifyCommunityIdOtp({ email = null, userId = null, otp })
       message: resolvedSeat === 'co-sponsor'
         ? 'You are now Co-Sponsor of this Community ID.'
         : 'Community ID confirmed. You are the Sponsor.',
-      communityId: pending.CommunityId,
-      teamId: pending.CommunityId,
+      communityId: confirmedCode,
+      teamId: confirmedCode,
       teamSeat: resolvedSeat,
     },
   };

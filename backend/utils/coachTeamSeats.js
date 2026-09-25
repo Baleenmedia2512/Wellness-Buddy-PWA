@@ -190,14 +190,17 @@ export async function resolveLeadSeatForUser(supabase, userId) {
   const id = Number(userId);
   if (!Number.isFinite(id)) return { seat: null, teamId: null };
 
-  const { data, error } = await supabase
+  // Use limit(1) — maybeSingle() errors when a user is on 2+ coach_teams rows,
+  // which would hide a valid Sponsor/Co-Sponsor seat on Profile (no pencil).
+  const { data: rows, error } = await supabase
     .from('coach_teams_table')
     .select('TeamId, CoachId, CoCoachId')
     .or(`CoachId.eq.${id},CoCoachId.eq.${id}`)
     .eq('Status', 'active')
-    .maybeSingle();
+    .limit(1);
 
-  if (error || !data) return { seat: null, teamId: null };
+  if (error || !rows?.length) return { seat: null, teamId: null };
+  const data = rows[0];
   if (Number(data.CoachId) === id) {
     return { seat: 'sponsor', teamId: data.TeamId || null };
   }
@@ -255,7 +258,11 @@ export async function userHasSponsorTeam(supabase, userId) {
  * @returns {Promise<{ ok: boolean, seat: 'sponsor'|'co-sponsor'|'already'|null, error?: string }>}
  */
 export async function assignLeadSeat(supabase, teamId, userId) {
-  if (!teamId || !userId) {
+  if (!teamId || !String(teamId).trim()) {
+    return { ok: false, seat: null, error: 'Team ID and user are required' };
+  }
+  const uid = Number(userId);
+  if (!Number.isFinite(uid) || uid <= 0) {
     return { ok: false, seat: null, error: 'Team ID and user are required' };
   }
 
@@ -272,7 +279,7 @@ export async function assignLeadSeat(supabase, teamId, userId) {
     const { error: insertError } = await supabase.from('coach_teams_table').insert([
       {
         TeamId: teamId,
-        CoachId: userId,
+        CoachId: uid,
         CoCoachId: null,
         Status: 'active',
       },
@@ -307,14 +314,14 @@ export async function assignLeadSeat(supabase, teamId, userId) {
     return { ok: false, seat: null, error: 'Failed to claim team seat' };
   }
 
-  if (fresh.CoachId === userId || fresh.CoCoachId === userId) {
+  if (Number(fresh.CoachId) === uid || Number(fresh.CoCoachId) === uid) {
     return { ok: true, seat: 'already' };
   }
 
   const updateTime = nowUtc();
 
   if (fresh.Status !== 'active') {
-    const reactivation = resolveInactiveTeamSeatAssignment(fresh, userId);
+    const reactivation = resolveInactiveTeamSeatAssignment(fresh, uid);
     if (!reactivation.ok) {
       return { ok: false, seat: null, error: reactivation.error || 'Team is unavailable' };
     }
@@ -347,7 +354,7 @@ export async function assignLeadSeat(supabase, teamId, userId) {
     return { ok: false, seat: null, error: 'Team is unavailable' };
   }
 
-  if (latest.CoachId === userId || latest.CoCoachId === userId) {
+  if (Number(latest.CoachId) === uid || Number(latest.CoCoachId) === uid) {
     return { ok: true, seat: 'already' };
   }
 
@@ -358,7 +365,7 @@ export async function assignLeadSeat(supabase, teamId, userId) {
   if (latest.CoachId && !latest.CoCoachId) {
     const { data: coRows, error: coError } = await supabase
       .from('coach_teams_table')
-      .update({ CoCoachId: userId, UpdatedAt: updateTime })
+      .update({ CoCoachId: uid, UpdatedAt: updateTime })
       .eq('TeamId', teamId)
       .eq('Status', 'active')
       .is('CoCoachId', null)
@@ -374,7 +381,7 @@ export async function assignLeadSeat(supabase, teamId, userId) {
   // Active row with empty CoachId (unexpected) — claim Sponsor
   const { data: sponsorRows, error: sponsorError } = await supabase
     .from('coach_teams_table')
-    .update({ CoachId: userId, UpdatedAt: updateTime })
+    .update({ CoachId: uid, UpdatedAt: updateTime })
     .eq('TeamId', teamId)
     .eq('Status', 'active')
     .is('CoachId', null)
