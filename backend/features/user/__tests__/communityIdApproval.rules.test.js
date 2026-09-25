@@ -207,14 +207,12 @@ describe('classifyCommunityIdRequest', () => {
 });
 
 describe('userAlreadyOwnsCommunityId', () => {
-  it('is true only for the confirmed / stored / seat code', () => {
+  it('is true only when profile Community ID / TeamId matches', () => {
     assert.equal(
       userAlreadyOwnsCommunityId({
         code: 'YASHEER12M',
         storedCommunityId: 'YASHEER12MM0',
         confirmedCode: 'YASHEER12MM0',
-        leadSeatTeamId: 'YASHEER12MM0',
-        leadSeat: 'co-sponsor',
       }),
       false,
     );
@@ -223,10 +221,21 @@ describe('userAlreadyOwnsCommunityId', () => {
         code: 'YASHEER12MM0',
         storedCommunityId: 'YASHEER12MM0',
         confirmedCode: 'YASHEER12MM0',
-        leadSeatTeamId: 'YASHEER12MM0',
-        leadSeat: 'co-sponsor',
       }),
       true,
+    );
+  });
+
+  it('ignores a stale coach_teams seat on a different code', () => {
+    assert.equal(
+      userAlreadyOwnsCommunityId({
+        code: 'YASHEER12M',
+        storedCommunityId: 'YASHEER12MM0',
+        confirmedCode: 'YASHEER12MM0',
+        leadSeatTeamId: 'YASHEER12M',
+        leadSeat: 'co-sponsor',
+      }),
+      false,
     );
   });
 });

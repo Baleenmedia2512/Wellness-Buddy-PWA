@@ -86,7 +86,11 @@ export async function getProfile({ email, userId = null }) {
     repo.getLatestWeightBodyFat(user.UserId),
     repo.getTeamCodeFields(user.UserId),
   ]);
-  const leadSeat = await resolveLeadSeatForUser(getSupabaseClient(), user.UserId);
+  const leadSeat = await resolveLeadSeatForUser(
+    getSupabaseClient(),
+    user.UserId,
+    user.CommunityId || teamCodeFields?.TeamId || null,
+  );
   const teamId = teamCodeFields?.TeamId || leadSeat.teamId || null;
   const coachTeamId = teamCodeFields?.CoachTeamId || null;
   const teamSeat = leadSeat.seat || null;

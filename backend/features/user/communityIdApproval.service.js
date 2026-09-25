@@ -8,7 +8,7 @@ import { ValidationError } from '../../shared/lib/ValidationError.js';
 import { isEnabled } from '../../shared/lib/feature-flags.js';
 import { cache, cacheKeys } from '../../utils/cache.js';
 import { getSupabaseClient } from '../../utils/supabaseClient.js';
-import { assignLeadSeat, releaseLeadSeat, resolveLeadSeatForUser } from '../../utils/coachTeamSeats.js';
+import { assignLeadSeat, releaseLeadSeat, releaseOtherLeadSeats, resolveLeadSeatForUser } from '../../utils/coachTeamSeats.js';
 import { generateEmailOtp } from '../auth/domain/otp-length.rules.js';
 import { sendTransactionalMail } from '../../shared/lib/smtp-mail.js';
 import * as userRepo from './user.repository.js';
@@ -218,7 +218,13 @@ export async function requestCommunityIdApproval({ email = null, userId = null, 
   }
 
   const supabase = getSupabaseClient();
-  const leadSeat = await resolveLeadSeatForUser(supabase, requester.UserId);
+  const profileTeamHint = normalizeTeamCodeFromCommunityId(requester.CommunityId)
+    || normalizeTeamCodeFromCommunityId(requester.TeamId);
+  const leadSeat = await resolveLeadSeatForUser(
+    supabase,
+    requester.UserId,
+    profileTeamHint,
+  );
   const confirmedCode = resolveConfirmedCommunityId({
     teamId: requester.TeamId,
     communityId: requester.CommunityId,
@@ -246,8 +252,6 @@ export async function requestCommunityIdApproval({ email = null, userId = null, 
     code,
     storedCommunityId,
     confirmedCode,
-    leadSeatTeamId: leadSeat?.teamId,
-    leadSeat: leadSeat?.seat,
   });
   if (ownsRequested) {
     return buildAlreadyOwnedResponse({
@@ -434,9 +438,23 @@ export async function verifyCommunityIdOtp({ email = null, userId = null, otp })
   }
 
   const supabase = getSupabaseClient();
-  const previousSeat = await resolveLeadSeatForUser(supabase, requester.UserId);
   const nextCode = normalizeTeamCodeFromCommunityId(pending.CommunityId);
+  const profileHint = normalizeTeamCodeFromCommunityId(requester.CommunityId)
+    || normalizeTeamCodeFromCommunityId(requester.TeamId);
+  const previousSeat = await resolveLeadSeatForUser(
+    supabase,
+    requester.UserId,
+    profileHint,
+  );
   const previousCode = normalizeTeamCodeFromCommunityId(previousSeat.teamId);
+
+  // Release old / stale seats first, then claim the new code.
+  // Assign-before-release left users on two teams and blocked later changes.
+  if (nextCode) {
+    await releaseOtherLeadSeats(supabase, Number(requester.UserId), nextCode);
+  } else if (previousSeat.seat && previousCode) {
+    await releaseLeadSeat(supabase, Number(requester.UserId), previousCode);
+  }
 
   const seatResult = await assignLeadSeat(
     supabase,
@@ -445,10 +463,6 @@ export async function verifyCommunityIdOtp({ email = null, userId = null, otp })
   );
   if (!seatResult.ok) {
     throw new ValidationError(409, seatResult.error || 'This Community ID is unavailable.');
-  }
-
-  if (previousSeat.seat && previousCode && nextCode && previousCode !== nextCode) {
-    await releaseLeadSeat(supabase, Number(requester.UserId), previousCode);
   }
 
   const resolvedSeat = seatResult.seat === 'already'

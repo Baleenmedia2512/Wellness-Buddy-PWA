@@ -292,8 +292,10 @@ export function resolveConfirmedCommunityId({
 }
 
 /**
- * True only when the requested code is already this user's confirmed Community ID.
- * Used to skip OTP — must not fire for a different code the UI is trying to change to.
+ * True only when the requested code matches this user's profile Community ID / TeamId.
+ * Do NOT treat a coach_teams seat alone as ownership — a stale seat on an old code
+ * (e.g. YASHEER12M) while profile still shows YASHEER12MM0 would skip OTP and
+ * Profile would never update ("change does not work").
  *
  * @param {{
  *   code?: unknown,
@@ -308,16 +310,12 @@ export function userAlreadyOwnsCommunityId({
   code = null,
   storedCommunityId = null,
   confirmedCode = null,
-  leadSeatTeamId = null,
-  leadSeat = null,
 } = {}) {
   const normalized = normalizeTeamCodeFromCommunityId(code);
   if (!normalized) return false;
   const stored = normalizeTeamCodeFromCommunityId(storedCommunityId);
   const confirmed = normalizeTeamCodeFromCommunityId(confirmedCode);
-  const seatTeam = normalizeTeamCodeFromCommunityId(leadSeatTeamId);
-  if (stored === normalized || confirmed === normalized) return true;
-  return Boolean(leadSeat) && seatTeam === normalized;
+  return stored === normalized || confirmed === normalized;
 }
 
 /**
