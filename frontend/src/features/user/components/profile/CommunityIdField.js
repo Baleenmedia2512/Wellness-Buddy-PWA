@@ -291,13 +291,6 @@ const CommunityIdField = ({
         </p>
       ) : null}
 
-      {confirmed && !pending && !editingConfirmed && (
-        <p className={`text-xs text-gray-500 ${pairLabel ? 'mt-1.5' : 'mt-3'}`}>
-          Confirmed as {teamSeat === 'co-sponsor' ? 'Co-Sponsor' : 'Sponsor'}.
-          Tap the pencil to change it with a new sponsor approval code.
-        </p>
-      )}
-
       {confirmed && editingConfirmed && !differsFromBaseline && !pending && (
         <p className={`text-xs text-gray-500 ${pairLabel ? 'mt-1.5' : 'mt-3'}`}>
           Tap the tick when done, or change the code to request a new sponsor approval.
