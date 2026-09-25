@@ -168,12 +168,16 @@ function isIncompleteProfileMappedAfter(testimonial, afterValue) {
 }
 
 /**
- * Transformation Before/After from Profile slots:
- * Left → Before always when present.
- * After defaults to Left only when no After is stored yet (new users).
- * Profile Right never maps to After. A later Left change updates Before only.
+ * Transformation Before/After from Profile slots — **new users only**.
+ * If Before already exists on the Transformation row, Profile Left/Right are ignored.
+ * New / empty: Left → Before; After defaults to Left. Profile Right never maps to After.
  */
 export function seedMineTestimonialFromProfileSlots(testimonial, { leftUrl, weightKg } = {}) {
+  // Existing user: keep Transformation photos as stored — do not overlay Profile.
+  if (isStoredPhoto(testimonial?.beforeImageUrl)) {
+    return { ...testimonial };
+  }
+
   const hasLeft = isStoredPhoto(leftUrl);
   const weight = firstPositiveKg(weightKg);
   if (!testimonial && !hasLeft && weight == null) return null;

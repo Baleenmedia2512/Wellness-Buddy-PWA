@@ -37,8 +37,8 @@ describe('seedTestimonialFromProfilePhotos', () => {
       { before_image_path: '99/real.jpg', after_image_path: null, status: 'incomplete' },
       { left: 'https://cdn.example/left.jpg' },
     );
-    assert.equal(seeded.before_image_path, 'https://cdn.example/left.jpg');
-    assert.equal(seeded.after_image_path, 'https://cdn.example/left.jpg');
+    // Existing Before → Profile Left ignored
+    assert.equal(seeded.before_image_path, '99/real.jpg');
   });
 
   it('keeps testimonial After when only profile left changes on pending row', () => {
@@ -50,7 +50,7 @@ describe('seedTestimonialFromProfilePhotos', () => {
       },
       { left: 'https://cdn.example/left.jpg' },
     );
-    assert.equal(seeded.before_image_path, 'https://cdn.example/left.jpg');
+    assert.equal(seeded.before_image_path, '99/before.jpg');
     assert.equal(seeded.after_image_path, '99/after.jpg');
   });
 
@@ -87,7 +87,7 @@ describe('seedTestimonialFromProfilePhotos', () => {
         right: 'https://cdn.example/right.jpg',
       },
     );
-    assert.equal(seeded.before_image_path, 'https://cdn.example/new-left.jpg');
+    assert.equal(seeded.before_image_path, '99/old-left.jpg');
     assert.equal(seeded.after_image_path, '99/old-left.jpg');
   });
 
@@ -103,8 +103,9 @@ describe('seedTestimonialFromProfilePhotos', () => {
         right: 'https://cdn.example/right.jpg',
       },
     );
-    assert.equal(seeded.before_image_path, 'https://cdn.example/left.jpg');
-    assert.equal(seeded.after_image_path, 'https://cdn.example/left.jpg');
+    // Existing Before → leave unchanged
+    assert.equal(seeded.before_image_path, '99/before_1700000000000.jpg');
+    assert.equal(seeded.after_image_path, '99/after_1700000001000.jpg');
   });
 
   it('ignores profile right when it is the only slot', () => {

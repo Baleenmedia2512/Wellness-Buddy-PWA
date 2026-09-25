@@ -1,7 +1,8 @@
 /**
- * Sync Profile / BCM Left slot onto testimonial Before.
- * After stays a Left copy on create; later Left changes update Before only.
- * Keeps status incomplete and skips OTP — direct Transformation submit still owns approval.
+ * Sync Profile / BCM Left onto testimonial Before — **new users only**.
+ * If the member already has a real Transformation Before photo, skip (existing user).
+ * After stays a Left copy on create; Profile Right never drives After.
+ * Keeps status incomplete and skips OTP — Transformation submit still owns approval.
  */
 import * as repo from './testimonials.repository.js';
 import { validateSyncProfilePhotos } from './testimonials.validators.js';
@@ -21,7 +22,7 @@ import {
 } from '../user/domain/transformationPhotos.rules.js';
 import { getSupabaseClient } from '../../utils/supabaseClient.js';
 import logger from '../../shared/lib/logger.js';
-import { shouldHydratePhotosFromProfile } from './domain/photoCompleteness.rules.js';
+import { hasRealBeforePhoto, shouldHydratePhotosFromProfile } from './domain/photoCompleteness.rules.js';
 
 const FALLBACK_DURATION = '1 days';
 
@@ -121,6 +122,8 @@ async function resolveCoachIdForSync(userId) {
 }
 
 /**
+ * Profile / BCM Left → testimonial Before — only when the member has no
+ * Transformation yet (new user / video-only stub). Existing Before is never overwritten.
  * @param {object} rawBody
  * @returns {Promise<{ httpStatus: number, body: object }>}
  */
@@ -140,6 +143,19 @@ export async function syncProfilePhotosToTestimonial(rawBody) {
   }
 
   const existing = await repo.findByUserId(userId);
+
+  // Existing user with Transformation photos — do not push Profile/BCM Left again.
+  if (existing && hasRealBeforePhoto(existing)) {
+    logger.info('[profilePhotoSync] skipped — existing transformation Before present', {
+      userId,
+      testimonialId: existing.id,
+    });
+    return {
+      httpStatus: 200,
+      body: { success: true, skipped: true, reason: 'existing_transformation' },
+    };
+  }
+
   const ts = Date.now();
 
   if (!existing) {

@@ -1,7 +1,7 @@
 /**
- * Seed testimonial list/detail rows from profile transformation_photos (Left slot).
- * Mirrors frontend seedMineTestimonialFromProfileSlots for read-only upline cards.
- * Left → Before; After defaults to Left only when none is stored. Profile Right is ignored.
+ * Seed testimonial list/detail from profile Left — **new users only**.
+ * If the row already has a real Before path, Profile Left/Right are ignored.
+ * New / empty: Left → Before; After defaults to Left. Profile Right is ignored.
  */
 import {
   isStoredTransformationPhoto,
@@ -9,6 +9,7 @@ import {
 } from '../../user/domain/transformationPhotos.rules.js';
 import { isRealImagePath } from './testimonials-list.pagination.js';
 import { isIncompleteProfileMappedAfter, testimonialHasRealAfter } from './profilePhotoSync.rules.js';
+import { hasRealBeforePhoto } from './photoCompleteness.rules.js';
 
 const DATA_IMAGE_RE = /^data:image\/[a-zA-Z0-9+.-]+;base64,/;
 const HTTPS_RE = /^https:\/\//i;
@@ -34,6 +35,11 @@ function isStoredPath(value) {
  * @returns {object|null}
  */
 export function seedTestimonialFromProfilePhotos(testimonial, transformationPhotosRaw) {
+  // Existing Transformation Before — do not overlay Profile Left.
+  if (testimonial && hasRealBeforePhoto(testimonial)) {
+    return testimonial;
+  }
+
   const slots = mapTransformationPhotos(transformationPhotosRaw);
   const leftUrl = slots.left;
   const hasLeft = isStoredTransformationPhoto(leftUrl);

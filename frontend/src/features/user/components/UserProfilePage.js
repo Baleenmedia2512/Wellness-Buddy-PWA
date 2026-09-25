@@ -44,7 +44,6 @@ import { invalidateHasTeamMembersCache } from '../../team/services/teamSearchSer
 import { bumpAvatarDisplayVersion } from '../services/avatarDisplayVersion';
 import { getProfile } from '../services/user.api';
 import useTransformationPhotos from '../hooks/useTransformationPhotos';
-import { persistOnboardingTestimonialPhotos } from '../services/persistOnboardingTestimonialPhotos';
 import { hasValidProfileName } from '../domain/profileCompleteness';
 import { isFlagEnabled } from '../../../config/featureFlags';
 import { COMMUNITY_ID_OTP_FLAG } from '../domain/communityId';
@@ -271,34 +270,15 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
       // BMR is system-calculated on the profile page — never write it from this form.
       delete payload.bmr;
       const photoExtras = transformationPhotos.payloadExtras();
-      // Only newly uploaded Centre slot updates ProfileImage (same as onboarding).
+      // Centre goes only in transformationPhotos — server uploads R2 avatar from front.
       const centrePhoto = photoExtras.transformationPhotos?.front || null;
       Object.assign(payload, photoExtras);
-      if (centrePhoto) {
-        payload.profileImage = centrePhoto;
-      }
       if (user?.id && !payload.userId) {
         payload.userId = user.id;
       }
       const data = await saveProfile(payload);
       transformationPhotos.clearPending();
-      const leftPending = photoExtras.transformationPhotos?.left || null;
-      if (user?.id && (latestWeight != null || leftPending)) {
-        try {
-          await persistOnboardingTestimonialPhotos({
-            userId: user.id,
-            weightKg: latestWeight,
-            leftImageBase64: leftPending,
-            goalType: deriveWeightGoalMode({
-              heightCm: form.height,
-              currentWeightKg: latestWeight,
-            }) || form.weightGoalMode || 'loss',
-            recoveredHealthIssues: form.recoveredHealthIssues || [],
-          });
-        } catch {
-          // Non-fatal — profile photos already saved.
-        }
-      }
+      // Profile Left/Right must not update Transformation Before/After.
       if (user?.id) {
         invalidateHasTeamMembersCache(user.id);
       }
@@ -317,9 +297,9 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
         teamSearchRefresh: true,
       });
       if (user?.id) getUserContext(user.id).catch(() => {});
-      await loadProfile({ cacheBust: true });
       setSuccessMessage(data.message || 'Profile saved successfully!');
       setHasSaved(true);
+      loadProfile({ cacheBust: true }).catch(() => {});
     } catch (e) {
       setError(e.message || 'Failed to save profile');
     } finally {
