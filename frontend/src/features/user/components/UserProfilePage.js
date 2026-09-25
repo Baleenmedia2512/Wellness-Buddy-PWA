@@ -47,6 +47,7 @@ import useTransformationPhotos from '../hooks/useTransformationPhotos';
 import { hasValidProfileName } from '../domain/profileCompleteness';
 import { isFlagEnabled } from '../../../config/featureFlags';
 import { COMMUNITY_ID_OTP_FLAG } from '../domain/communityId';
+import { looksLikeEmail } from '../domain/onboardingEmail';
 
 const COLORS = ['bg-blue-500', 'bg-green-500', 'bg-purple-500', 'bg-pink-500', 'bg-indigo-500', 'bg-yellow-500', 'bg-red-500', 'bg-teal-500'];
 const colorOf = (name, email) => COLORS[(name || email || '').length % COLORS.length];
@@ -437,10 +438,13 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
       phone: result?.phone,
       teamSearchRefresh: true,
     });
+    const hadVerifiedEmail = looksLikeEmail(accountEmail);
     setSuccessMessage(
       result?.adopted
         ? 'Account recovered and email verified.'
-        : 'Email verified. You can appear as a sponsor to new members.',
+        : hadVerifiedEmail
+          ? 'Email updated and verified.'
+          : 'Email verified. You can appear as a sponsor to new members.',
     );
     setHasSaved(true);
     // Load recovered row by new id (sessionUserId in this closure is still old).
@@ -449,7 +453,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
       userId: adoptedUserId || undefined,
       email: adoptedUserId ? undefined : (nextEmail || undefined),
     });
-  }, [form, onProfileUpdate, loadProfile]);
+  }, [form, onProfileUpdate, loadProfile, accountEmail]);
 
   const handlePhotoUploaded = useCallback(async (uploadedImage) => {
     // Optimistic preview — keep previous photo if refresh fails.
