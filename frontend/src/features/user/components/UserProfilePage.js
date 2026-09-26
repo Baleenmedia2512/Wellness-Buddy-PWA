@@ -228,6 +228,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
     };
 
     // Instant paint from Home/Header cache — avoid Personal Details spinner on every open.
+    // After save (cacheBust) keep current fields visible — no full-section reload flash.
     if (!cacheBust) {
       const cached = getCachedProfile({ email: emailKey, userId: uid });
       if (cached?.data) {
@@ -235,8 +236,6 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
       } else {
         setIsLoading(true);
       }
-    } else {
-      setIsLoading(true);
     }
 
     try {

@@ -7850,7 +7850,9 @@ function WellnessValleyApp() {
                 });
               }
               profileCompletedRef.current = false;
-              checkProfileCompletion(email, null, { afterSave: true });
+              // silent: stay on My Profile — non-silent sets profileChecking and
+              // swaps the whole app to the auth bridge (looks like a full reload).
+              checkProfileCompletion(email, user, { afterSave: true, silent: true });
               if (profileData?.name?.trim()) {
                 setSavedUserName(profileData.name.trim());
                 if (email) cacheProfileUserName(email, profileData.name);
@@ -7876,7 +7878,7 @@ function WellnessValleyApp() {
               }
               // Increment profileKey so Header re-fetches avatar/name
               setHeaderProfileKey((k) => k + 1);
-              // Activity log: Home should refresh cards when returning from profile edits
+              // Refresh Home cards under the profile overlay (no full-app gate).
               triggerNutritionRefresh({ immediate: true, source: 'profile-update' });
               setBodyParamsRefreshKey((k) => k + 1);
             }}
@@ -8681,7 +8683,8 @@ function WellnessValleyApp() {
           onProfileSaved={(profileData) => {
             const email = user?.email || Session.getUserEmail() || "";
             profileCompletedRef.current = false;
-            checkProfileCompletion(email, null, { afterSave: true });
+            // silent: avoid full-app auth bridge / profileChecking gate on save.
+            checkProfileCompletion(email, user, { afterSave: true, silent: true });
             if (profileData?.name?.trim()) {
               setSavedUserName(profileData.name.trim());
               cacheProfileUserName(email, profileData.name);
