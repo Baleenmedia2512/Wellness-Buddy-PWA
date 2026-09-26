@@ -1,6 +1,6 @@
 /**
  * Portrait 9:16 cover-crop after a Left/Centre/Right or Before/After pick.
- * The frame stays the same size; the user pans/zooms, then we bake object-fit:cover.
+ * Aspect stays locked; corner dots resize the frame, then pan/zoom fills it.
  */
 import React, { useCallback, useRef } from 'react';
 import useImageCropper from './useImageCropper';
@@ -45,7 +45,7 @@ export default function usePortraitCoverCrop({ onApply, onError, zIndex = DEFAUL
     cropShape: 'rect',
     objectFit: 'cover',
     title: 'Adjust photo',
-    hint: 'Drag or pinch to choose what fills the portrait frame',
+    hint: 'Drag corner dots to resize · drag or pinch to move',
     cropImage: cropPortraitCover,
     onError: (msg) => onErrorRef.current?.(msg),
     onCropped: (dataUrl) => onApplyRef.current?.(dataUrl, pendingKeyRef.current),
@@ -76,6 +76,7 @@ export default function usePortraitCoverCrop({ onApply, onError, zIndex = DEFAUL
   const overlay = cropper.showCropper && cropper.rawImageSrc ? (
     <CropOverlay
       {...cropper}
+      resizable
       onCancel={cropper.cancelCropper}
       onDone={cropper.apply}
       zIndex={zIndex}
