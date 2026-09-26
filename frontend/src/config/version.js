@@ -74,33 +74,36 @@
 
 export const APP_VERSION = {
   // Current version number (displayed to users)
-  VERSION: '3.5.0',
+  VERSION: '3.5.1',
   
   // Version code (for Android builds - must match build.gradle)
   // Also used as CFBundleVersion for iOS builds - must match Info.plist
   // NOTE: versionCode must never decrease for Play Store compatibility.
-  VERSION_CODE: 71,
+  VERSION_CODE: 72,
   
   // iOS build number (CFBundleVersion in Info.plist) - must match Info.plist / pbxproj
-  IOS_BUILD_NUMBER: 71,
+  IOS_BUILD_NUMBER: 74,
   
   // Release name (for Play Store / App Store)
-  RELEASE_NAME: 'Version  3.5.0',
+  RELEASE_NAME: 'Version  3.5.1',
   
   // Build date
-  BUILD_DATE: '2026-09-10',
+  BUILD_DATE: '2026-09-26',
   
   // Platform release notes..
   PLATFORMS: {
-    ANDROID: { versionCode: 71, versionName: '3.5.0' },
-    IOS: { buildNumber: 71, versionName: '3.5.0' },
+    ANDROID: { versionCode: 72, versionName: '3.5.1' },
+    IOS: { buildNumber: 74, versionName: '3.5.1' },
   },
 };
 
 /**
  * 📋 CHANGE LOG
  * 
- * Version 3.5.0 (Code 71 / iOS build 71) - 2026-09-10 [ANDROID + iOS — not yet released]
+ * Version 3.5.1 (Code 72 / iOS build 74) - 2026-09-26 [ANDROID + iOS — not yet released]
+ *   🐛 Patch release — bug fixes and stability improvements
+ *
+ * Version 3.5.0 (Code 71 / iOS build 73) - 2026-09-10 [ANDROID + iOS RELEASE]
  *   🚀 Minor version bump — version sync across all platforms
  *   ✨ Community ID create / co-sponsor via 24h sponsor OTP (ADR-0013)
  *
