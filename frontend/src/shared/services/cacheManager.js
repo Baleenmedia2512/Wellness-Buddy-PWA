@@ -125,6 +125,13 @@ class CacheManager {
   }
 
   /**
+   * In-flight promise for a cache key, if any (for cross-key profile dedup).
+   */
+  getPending(key) {
+    return this.pendingRequests.get(key) || null;
+  }
+
+  /**
    * Execute a function with cache and deduplication
    * Prevents duplicate simultaneous requests
    * 

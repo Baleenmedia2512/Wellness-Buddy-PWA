@@ -13,7 +13,7 @@
 // Lead pre-fill: on first load, if the profile has no name or phone and the
 // user has a phone number from auth, the app checks for a counselling lead
 // record with the same phone and pre-populates the form fields.
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, LogOut, Trash2, CheckCircle, Sparkles, Camera, KeyRound } from 'lucide-react';
 import { getUserContext } from '../../../shared/services/userIdentity';
 import * as Session from '../../../shared/services/sessionStorage';
@@ -43,7 +43,7 @@ import ProfilePhotoViewer from './picture/ProfilePhotoViewer';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
 import { invalidateHasTeamMembersCache } from '../../team/services/teamSearchService';
 import { bumpAvatarDisplayVersion } from '../services/avatarDisplayVersion';
-import { getProfile } from '../services/user.api';
+import { getCachedProfile, getProfile } from '../services/user.api';
 import useTransformationPhotos from '../hooks/useTransformationPhotos';
 import { hasValidProfileName } from '../domain/profileCompleteness';
 import { isFlagEnabled } from '../../../config/featureFlags';
@@ -97,7 +97,13 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
   const [heightOtpPending, setHeightOtpPending] = useState(false);
   const [heightOtpDestination, setHeightOtpDestination] = useState('');
   const [pendingHeightCm, setPendingHeightCm] = useState(null);
-  const [isLoading, setIsLoading] = useState(true);
+  // Start without spinner when Home/Header already warmed the shared profile cache.
+  const [isLoading, setIsLoading] = useState(() => {
+    const email = resolveAccountEmail(user, null);
+    const uid = user?.id || user?.UserId || user?.userId || null;
+    if (!email && !uid) return false;
+    return !getCachedProfile({ email, userId: uid })?.data;
+  });
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
@@ -129,7 +135,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
   );
   const sessionUserId = user?.id || user?.UserId || user?.userId || null;
 
-  const loadProfile = useCallback(async ({ cacheBust = true, userId: forceUserId = null, email: forceEmail = null } = {}) => {
+  const loadProfile = useCallback(async ({ cacheBust = false, userId: forceUserId = null, email: forceEmail = null } = {}) => {
     const emailKey = forceEmail || sessionEmail;
     const uid = forceUserId || sessionUserId;
     if (!emailKey && !uid) {
@@ -137,22 +143,9 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
       return;
     }
     const loadGen = ++profileLoadGenRef.current;
-    setIsLoading(true);
     setError('');
-    try {
-      // Prefer userId when both exist so we always load the signed-in row.
-      const { data } = await fetchProfile(
-        uid
-          ? { userId: uid, cacheBust }
-          : { email: emailKey, cacheBust },
-      );
-      // Drop stale responses (e.g. previous account after Recover — phone already cleared).
-      if (loadGen !== profileLoadGenRef.current) return;
-      if (!data) {
-        setError('Failed to load profile.');
-        setIsLoading(false);
-        return;
-      }
+
+    const applyProfileData = (data) => {
       const profileData = {
         name: data?.userName || '',
         height: data?.height ? String(data.height) : '',
@@ -231,6 +224,36 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
       }
       // Stop spinner as soon as core profile is ready — do not wait on counselling.
       setIsLoading(false);
+      return profileData;
+    };
+
+    // Instant paint from Home/Header cache — avoid Personal Details spinner on every open.
+    if (!cacheBust) {
+      const cached = getCachedProfile({ email: emailKey, userId: uid });
+      if (cached?.data) {
+        applyProfileData(cached.data);
+      } else {
+        setIsLoading(true);
+      }
+    } else {
+      setIsLoading(true);
+    }
+
+    try {
+      // Pass both keys so email-cached Home data and userId lookups share one cache.
+      const { data } = await fetchProfile({
+        userId: uid || undefined,
+        email: emailKey || undefined,
+        cacheBust,
+      });
+      // Drop stale responses (e.g. previous account after Recover — phone already cleared).
+      if (loadGen !== profileLoadGenRef.current) return;
+      if (!data) {
+        setError('Failed to load profile.');
+        setIsLoading(false);
+        return;
+      }
+      const profileData = applyProfileData(data);
 
       // Counselling pre-fill only when key fields are still empty (background).
       const needsCounsellingPrefill =
@@ -275,12 +298,13 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
   // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: avoid re-fetch loops from form identity
   }, [sessionEmail, sessionUserId]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (sessionEmail || sessionUserId) {
       setSuccessMessage('');
       setHasSaved(false);
       setError('');
-      loadProfile();
+      // Soft open: reuse shared profile cache (Header/Home). Bust only after saves.
+      loadProfile({ cacheBust: false });
       return;
     }
     setIsLoading(false);
