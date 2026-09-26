@@ -84,7 +84,7 @@ const UserProfileFields = ({
         value={gender || ''}
         onChange={(e) => setGender(e.target.value)}
         required
-        className={`${inputCls} ${!gender ? 'text-gray-400' : 'text-gray-800'}`}
+        className={`${inputCls} bg-white ${!gender ? 'text-gray-400' : 'text-gray-800'}`}
         style={{ fontSize: '16px' }}
       >
         <option value="" disabled>
