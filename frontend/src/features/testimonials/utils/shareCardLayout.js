@@ -15,7 +15,9 @@ const ISSUES_OUTER_PAD = 26;
 const ISSUES_BOX_PAD = 22;
 const ISSUES_TITLE_H = 52;
 const CHIP_ROW_H = 81;
-const EMPTY_BOTTOM = 16;
+const EMPTY_BOTTOM = 8;
+/** Two-line legal footer under the result pill / health issues. */
+export const DISCLAIMER_H = 46;
 const PHOTO_MIN = 340;
 const PHOTO_MAX = 690;
 
@@ -60,7 +62,8 @@ export function shareCardPhotoHeight({ issueCount = 0, hasResultPill = false } =
     + NAME_H
     + PHOTO_META_H
     + (hasResultPill ? RESULT_PILL_H : 0)
-    + issuesH;
+    + issuesH
+    + DISCLAIMER_H;
   const raw = CARD_H - used;
   return Math.max(PHOTO_MIN, Math.min(PHOTO_MAX, raw));
 }

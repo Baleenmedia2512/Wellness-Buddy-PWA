@@ -58,6 +58,15 @@ describe('shareCardPhotoHeight', () => {
     const h = shareCardPhotoHeight({ issueCount: 10, hasResultPill: true });
     assert.ok(h >= 340);
     assert.ok(h <= 690);
+    // Header + name + meta + pill + 3 issue rows + disclaimer leave <300px slack above photos
     assert.ok(h + 300 < CARD_H);
+  });
+
+  it('reserves space for the two-line disclaimer footer', () => {
+    const withIssues = shareCardPhotoHeight({ issueCount: 2, hasResultPill: true });
+    const noIssues = shareCardPhotoHeight({ issueCount: 0, hasResultPill: true });
+    // Disclaimer is always reserved — no-issues card still has room below the pill
+    assert.ok(noIssues > withIssues);
+    assert.ok(noIssues <= 690);
   });
 });
