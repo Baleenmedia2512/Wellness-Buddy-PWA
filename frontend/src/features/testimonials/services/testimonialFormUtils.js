@@ -29,11 +29,36 @@ const MIN_WEIGHT_KG = 1;
 const MAX_WEIGHT_KG = 500;
 
 /**
+ * Keep decimal typing intact (e.g. "72." → "72.", "72,5" → "72.5").
+ * Caps at 3 integer digits + 2 decimals to match DB numeric(5,2).
+ */
+export function sanitizeWeightTyping(raw) {
+  let s = String(raw ?? '').replace(',', '.');
+  s = s.replace(/[^\d.]/g, '');
+  const dot = s.indexOf('.');
+  if (dot !== -1) {
+    s = `${s.slice(0, dot + 1)}${s.slice(dot + 1).replace(/\./g, '')}`;
+  }
+  const match = s.match(/^(\d{0,3})(?:\.(\d{0,2}))?/);
+  if (!match) return '';
+  return match[2] !== undefined ? `${match[1]}.${match[2]}` : (match[1] || (s.startsWith('.') ? '.' : ''));
+}
+
+/** Parse a weight field to a positive number, or null when incomplete/invalid. */
+export function parseWeightKg(raw) {
+  const trimmed = String(raw ?? '').trim().replace(',', '.');
+  if (!trimmed || trimmed === '.') return null;
+  const n = parseFloat(trimmed);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+/**
  * Validate a weight field before submit (1–500 kg, no zero/empty).
+ * Accepts decimals (e.g. 72.5) and comma decimals (e.g. 72,5).
  * @returns {string|null} Error message, or null when valid.
  */
 export function validateWeightKg(value, label = 'Weight') {
-  const trimmed = String(value ?? '').trim();
+  const trimmed = String(value ?? '').trim().replace(',', '.');
   if (!trimmed) return `${label} is required`;
   const n = parseFloat(trimmed);
   if (!Number.isFinite(n) || n < MIN_WEIGHT_KG || n > MAX_WEIGHT_KG) {

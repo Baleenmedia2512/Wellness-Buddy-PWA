@@ -60,6 +60,17 @@ describe('validateSubmitTestimonial', () => {
     assert.equal(result.hasAfter, true);
     assert.deepEqual(result.recoveredHealthIssues, ['Diabetes']);
   });
+
+  it('accepts decimal before/after weights', () => {
+    const result = validateSubmitTestimonial(beforeOnlyBody({
+      beforeWeightKg: '85.5',
+      afterImageBase64: TINY_BASE64,
+      afterWeightKg: '72,25',
+      recoveredHealthIssues: [],
+    }));
+    assert.equal(result.beforeWeightKg, 85.5);
+    assert.equal(result.afterWeightKg, 72.25);
+  });
 });
 
 describe('validateEditTestimonial', () => {

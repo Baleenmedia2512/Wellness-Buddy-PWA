@@ -68,6 +68,8 @@ import {
   parseDurationText,
   formatDurationText,
   sanitizeDurationDigits,
+  sanitizeWeightTyping,
+  parseWeightKg,
   validateDurationFields,
   isUsableDurationText,
   liveWeightDiffKg,
@@ -810,10 +812,7 @@ function MemberCard({
     || draftAfter?.previewUrl || draftAfter?.imageBase64
   );
 
-  const parseWeightInput = useCallback((raw) => {
-    const v = parseFloat(String(raw ?? '').trim().replace(',', '.'));
-    return Number.isFinite(v) && v > 0 ? v : null;
-  }, []);
+  const parseWeightInput = useCallback((raw) => parseWeightKg(raw), []);
 
   const commitBeforeWeight = useCallback((raw) => {
     const v = parseWeightInput(raw);
@@ -1399,7 +1398,7 @@ function MemberCard({
                     autoFocus
                     value={beforeWeightText ?? ''}
                     onChange={(e) => {
-                      const raw = e.target.value;
+                      const raw = sanitizeWeightTyping(e.target.value);
                       setBeforeWeightText(raw);
                       commitBeforeWeight(raw);
                     }}
@@ -1529,7 +1528,7 @@ function MemberCard({
                     autoFocus
                     value={afterWeightText ?? ''}
                     onChange={(e) => {
-                      const raw = e.target.value;
+                      const raw = sanitizeWeightTyping(e.target.value);
                       setAfterWeightText(raw);
                       commitAfterWeight(raw);
                     }}
@@ -1576,10 +1575,18 @@ function MemberCard({
             <>
               <div>
                 <label className="block text-[10px] font-medium text-gray-400 mb-1">Before weight (kg)</label>
-                <input type="text" inputMode="decimal" pattern="[0-9]*" step="0.1" min="1" max="500"
+                <input type="text" inputMode="decimal" autoComplete="off" step="0.1" min="1" max="500"
                   placeholder={String(testimonial?.beforeWeightKg ?? '')}
-                  value={draftBefore?.weightKg ?? ''}
-                  onChange={(e) => setDraftBefore(prev => ({ ...prev, weightKg: parseFloat(e.target.value) || undefined }))}
+                  value={draftBefore?.weightText ?? (draftBefore?.weightKg != null ? String(draftBefore.weightKg) : '')}
+                  onChange={(e) => {
+                    const text = sanitizeWeightTyping(e.target.value);
+                    const v = parseWeightKg(text);
+                    setDraftBefore((prev) => ({
+                      ...prev,
+                      weightText: text,
+                      weightKg: v != null ? v : undefined,
+                    }));
+                  }}
                   className="w-full border border-gray-200 rounded-xl px-2.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400" />
               </div>
               <div>
@@ -1596,10 +1603,18 @@ function MemberCard({
           {draftAfter && (
             <div className={draftBefore ? '' : 'col-span-2'}>
               <label className="block text-[10px] font-medium text-gray-400 mb-1">After weight (kg)</label>
-              <input type="text" inputMode="decimal" pattern="[0-9]*" step="0.1" min="1" max="500"
+              <input type="text" inputMode="decimal" autoComplete="off" step="0.1" min="1" max="500"
                 placeholder={String(hasAfter ? (testimonial?.afterWeightKg ?? '') : '')}
-                value={draftAfter?.weightKg ?? ''}
-                onChange={(e) => setDraftAfter(prev => ({ ...prev, weightKg: parseFloat(e.target.value) || undefined }))}
+                value={draftAfter?.weightText ?? (draftAfter?.weightKg != null ? String(draftAfter.weightKg) : '')}
+                onChange={(e) => {
+                  const text = sanitizeWeightTyping(e.target.value);
+                  const v = parseWeightKg(text);
+                  setDraftAfter((prev) => ({
+                    ...(prev || {}),
+                    weightText: text,
+                    weightKg: v != null ? v : undefined,
+                  }));
+                }}
                 className="w-full border border-gray-200 rounded-xl px-2.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" />
             </div>
           )}

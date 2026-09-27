@@ -2,6 +2,8 @@ import {
   formatDurationText,
   validateDurationFields,
   validateWeightKg,
+  sanitizeWeightTyping,
+  parseWeightKg,
   PORTRAIT_IMAGE_CLASS,
   PORTRAIT_IMAGE_CLASS_SM,
 } from '../testimonialFormUtils.js';
@@ -12,14 +14,32 @@ describe('validateWeightKg', () => {
     expect(validateWeightKg('0', 'Before weight')).toMatch(/between 1 and 500/i);
   });
 
-  it('accepts valid weights', () => {
+  it('accepts valid weights including decimals', () => {
     expect(validateWeightKg('72.5', 'Before weight')).toBeNull();
+    expect(validateWeightKg('72,5', 'Before weight')).toBeNull();
     expect(validateWeightKg('1', 'Before weight')).toBeNull();
     expect(validateWeightKg('500', 'Before weight')).toBeNull();
   });
 
   it('rejects out of range', () => {
     expect(validateWeightKg('501', 'Before weight')).toMatch(/between 1 and 500/i);
+  });
+});
+
+describe('sanitizeWeightTyping / parseWeightKg', () => {
+  it('preserves in-progress decimal typing', () => {
+    expect(sanitizeWeightTyping('72.')).toBe('72.');
+    expect(sanitizeWeightTyping('72,')).toBe('72.');
+    expect(sanitizeWeightTyping('72.5')).toBe('72.5');
+    expect(sanitizeWeightTyping('72.55')).toBe('72.55');
+    expect(sanitizeWeightTyping('72.555')).toBe('72.55');
+  });
+
+  it('parses decimal and comma weights', () => {
+    expect(parseWeightKg('72.5')).toBe(72.5);
+    expect(parseWeightKg('72,5')).toBe(72.5);
+    expect(parseWeightKg('72.')).toBe(72);
+    expect(parseWeightKg('')).toBeNull();
   });
 });
 

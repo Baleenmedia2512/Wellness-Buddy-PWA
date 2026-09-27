@@ -99,9 +99,10 @@ function validateOptionalBase64Image(value, fieldName) {
 }
 
 function validateWeight(value, fieldName) {
-  const n = parseFloat(value);
-  if (isNaN(n) || n <= 0 || n > 500) throw new ValidationError(422, `${fieldName} must be a positive number â‰¤ 500`);
-  return n;
+  // Accept decimals (72.5) and locale commas (72,5). DB column is numeric(5,2).
+  const n = parseFloat(String(value ?? '').trim().replace(',', '.'));
+  if (isNaN(n) || n <= 0 || n > 500) throw new ValidationError(422, `${fieldName} must be a positive number ≤ 500`);
+  return Math.round(n * 100) / 100;
 }
 
 /**
