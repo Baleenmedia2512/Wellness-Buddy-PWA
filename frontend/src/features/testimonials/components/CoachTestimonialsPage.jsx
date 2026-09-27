@@ -74,6 +74,8 @@ import {
   isUsableDurationText,
   liveWeightDiffKg,
   canShareTransformationPhoto,
+  hasApprovalReadyBeforePhoto,
+  hasStoredTransformationPhotoCard,
 } from '../services/testimonialFormUtils.js';
 import { resolveRowTeamUploadPerformance } from '../utils/testimonialTeamPerformance.js';
 import { uniqueConditions, isSameIssueList, withoutHealthIssue } from '../utils/uniqueConditions.js';
@@ -1030,7 +1032,8 @@ function MemberCard({
       testimonial?.healthVideoPath || testimonial?.businessVideoPath
       || testimonial?.healthVideoUrl || testimonial?.businessVideoUrl,
     );
-    const hasVisiblePhotoCard = Boolean(testimonial?.beforeImageUrl && testimonial?.afterImageUrl);
+    // Profile-seeded URLs look like Before/After but are not on the testimonial row.
+    const hasVisiblePhotoCard = hasStoredTransformationPhotoCard(testimonial);
     const issuesNeedOtp = dirtySlots.includes('issues') && (hasAfter || hasResultVideo || hasVisiblePhotoCard);
     const afterWeightDirty = draftAfter?.weightKg !== undefined
       && afterWeightDiffers(testimonial?.beforeWeightKg, draftAfter.weightKg);
@@ -1087,15 +1090,22 @@ function MemberCard({
       }
     }
 
-    // Visible Before+After (including a Profile-seeded clone) needs duration + OTP.
+    const approvalReadyBefore = hasApprovalReadyBeforePhoto({ testimonial, draftBefore });
+    // New users / profile-seeded cards must upload Transformation Before so OTP can start.
+    if (!isSilentSave && !approvalReadyBefore) {
+      setSubmitError('Add a Before photo on this Transformation card, then submit for approval.');
+      return;
+    }
+
+    // Visible Before+After (stored Transformation photos or drafts) needs duration + OTP.
     // Health issues are optional.
     const willComplete =
-      Boolean(draftBefore?.imageBase64 || testimonial?.beforeImageUrl)
-      && Boolean(draftAfter?.imageBase64 || testimonial?.afterImageUrl || hasAfter);
+      Boolean(draftBefore?.imageBase64 || (hasVisiblePhotoCard && testimonial?.beforeImageUrl))
+      && Boolean(draftAfter?.imageBase64 || (hasVisiblePhotoCard && testimonial?.afterImageUrl) || hasAfter);
     const issuesForSubmit = Array.isArray(draftIssues)
       ? draftIssues.filter(Boolean)
       : (testimonial?.recoveredHealthIssues || []);
-    const submittingPhotoCard = Boolean(hasVisiblePhotoCard || willComplete || afterWeightDirty);
+    const submittingPhotoCard = Boolean(hasVisiblePhotoCard || willComplete || afterWeightDirty || approvalReadyBefore);
     // Health issues are optional — user may submit without selecting any.
     if (submittingPhotoCard && !usableDurationForSubmit) {
       setSubmitError('Add a duration in days or months (e.g. 3 months) before submitting.');
@@ -1108,14 +1118,6 @@ function MemberCard({
     // First-time submit needs the before image bytes in the payload.
     if (!testimonial?.id && dirtySlots.includes('before') && !draftBefore?.imageBase64) {
       setSubmitError('Before photo failed to prepare. Please pick it again.');
-      return;
-    }
-    if (!testimonial?.id && dirtySlots.includes('after') && !dirtySlots.includes('before') && !testimonial?.beforeImageUrl) {
-      setSubmitError('Please add a before photo before submitting.');
-      return;
-    }
-    if (!testimonial?.id && !dirtySlots.includes('before') && !testimonial?.beforeImageUrl) {
-      setSubmitError('Please add a before photo before submitting.');
       return;
     }
 

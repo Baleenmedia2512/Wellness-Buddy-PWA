@@ -1526,6 +1526,15 @@ export async function submitAllEdits(rawBody) {
 
   const needsOtp = photoNeedsOtp || Boolean(issuesOtpChannel) || hasVideoDirty;
 
+  // Member asked for coach approval — never silent-save with otpSent:false
+  // (that surfaces as "Coach approval did not start" in the app).
+  if (payload.submitForApproval && !needsOtp) {
+    throw new ValidationError(
+      422,
+      'Add before and after photos on Transformation, then submit for coach approval.',
+    );
+  }
+
   if (!needsOtp) {
     if (hasPhotoDirty && !isComplete) {
       photoUpdates.status = 'incomplete';

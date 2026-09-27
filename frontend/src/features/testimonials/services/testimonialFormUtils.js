@@ -121,6 +121,33 @@ export function canShareTransformationPhoto(testimonial) {
   return testimonial?.status === 'verified';
 }
 
+/**
+ * Profile Left may paint Before/After on Mine, but those URLs are not stored on
+ * the testimonial row (profile ↔ Transformation sync is disabled).
+ */
+export function isProfileSeededTransformation(testimonial) {
+  return Boolean(testimonial?.photosFromProfileSeed);
+}
+
+/**
+ * True when Before is ready for coach approval OTP:
+ * fresh draft bytes, or a real stored Transformation photo (not profile seed).
+ */
+export function hasApprovalReadyBeforePhoto({ testimonial, draftBefore } = {}) {
+  if (draftBefore?.imageBase64) return true;
+  if (isProfileSeededTransformation(testimonial)) return false;
+  return Boolean(testimonial?.id && testimonial?.beforeImageUrl);
+}
+
+/**
+ * Visible Before+After that can start sponsor OTP without re-uploading.
+ * Profile-seeded clones do not count.
+ */
+export function hasStoredTransformationPhotoCard(testimonial) {
+  if (isProfileSeededTransformation(testimonial)) return false;
+  return Boolean(testimonial?.beforeImageUrl && testimonial?.afterImageUrl);
+}
+
 /** CSS class for portrait testimonial thumbnails — cover fills the frame; top-anchored so faces stay visible. */
 export const PORTRAIT_IMAGE_CLASS =
   'w-full aspect-[9/16] object-cover object-top overflow-hidden rounded-2xl border-2';

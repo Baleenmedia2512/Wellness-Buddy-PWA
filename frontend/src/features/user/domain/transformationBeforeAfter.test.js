@@ -163,6 +163,7 @@ describe('transformation Before vs After pairing', () => {
     });
     assert.equal(seeded.beforeImageUrl, 'data:image/jpeg;base64,left');
     assert.equal(seeded.afterImageUrl, 'data:image/jpeg;base64,left');
+    assert.equal(seeded.photosFromProfileSeed, true);
   });
 
   it('does not replace stored After when Profile Left changes', () => {

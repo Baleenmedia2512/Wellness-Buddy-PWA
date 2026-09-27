@@ -178,6 +178,7 @@ export function seedMineTestimonialFromProfileSlots(testimonial, { leftUrl, weig
   const weight = firstPositiveKg(weightKg);
   if (!testimonial && !hasLeft && weight == null) return null;
 
+  const hadStoredBefore = isStoredPhoto(testimonial?.beforeImageUrl);
   const next = testimonial ? { ...testimonial } : {
     status: 'incomplete',
     recoveredHealthIssues: [],
@@ -190,6 +191,11 @@ export function seedMineTestimonialFromProfileSlots(testimonial, { leftUrl, weig
 
   if (hasLeft) {
     next.beforeImageUrl = String(leftUrl).trim();
+    // Profile Left is display-only — Transformation submit must upload real photos
+    // (profile ↔ Transformation sync is disabled).
+    if (!hadStoredBefore) {
+      next.photosFromProfileSeed = true;
+    }
   }
   const beforeW = firstPositiveKg(next.beforeWeightKg, weight);
   if (beforeW != null) next.beforeWeightKg = beforeW;
@@ -197,6 +203,7 @@ export function seedMineTestimonialFromProfileSlots(testimonial, { leftUrl, weig
   if (!realAfter && !storedAfter) {
     if (hasLeft) {
       next.afterImageUrl = String(leftUrl).trim();
+      if (!hadStoredBefore) next.photosFromProfileSeed = true;
     } else if (isStoredPhoto(next.beforeImageUrl)) {
       next.afterImageUrl = next.beforeImageUrl;
     }
