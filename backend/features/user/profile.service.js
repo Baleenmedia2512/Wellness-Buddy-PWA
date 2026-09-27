@@ -67,17 +67,27 @@ const notFound = () => ({ httpStatus: 404, body: { success: false, message: 'Use
 
 /** Drop both email- and userId-keyed profile caches (clients often GET by userId). */
 function clearProfileCaches({ email, userId } = {}) {
+  const bases = [];
   if (userId != null && String(userId).trim() !== '') {
-    try { cache.delete(cacheKeys.userProfile(`id:${userId}`)); } catch { /* non-fatal */ }
+    bases.push(cacheKeys.userProfile(`id:${userId}`));
   }
   const emailKey = String(email || '').trim().toLowerCase();
   if (emailKey) {
-    try { cache.delete(cacheKeys.userProfile(emailKey)); } catch { /* non-fatal */ }
+    bases.push(cacheKeys.userProfile(emailKey));
+  }
+  for (const base of bases) {
+    try {
+      // Un-suffixed (legacy) + version-routed transformation-photo variants.
+      cache.delete(base);
+      cache.delete(`${base}:tp-r2`);
+      cache.delete(`${base}:tp-legacy`);
+    } catch { /* non-fatal */ }
   }
 }
 
-export async function getProfile({ email, userId = null }) {
-  const cacheKey = email
+export async function getProfile({ email, userId = null, appVersion = null }) {
+  const preferTransformR2 = shouldPreferTransformationR2Urls({ appVersion });
+  const cacheKeyBase = email
     ? cacheKeys.userProfile(String(email || '').toLowerCase())
     : cacheKeys.userProfile(`id:${userId}`);
   const cacheKey = `${cacheKeyBase}:tp-${preferTransformR2 ? 'r2' : 'legacy'}`;
