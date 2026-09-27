@@ -752,7 +752,7 @@ const BodyParamsForm = ({
           </div>
 
           {/* Transformation Photos — Profile Left / Centre / Right (team_table) */}
-          <div className="pt-1">
+          <div className="pt-1 pb-2">
             <label className="text-xs font-semibold text-indigo-800 uppercase tracking-wide mb-2 block">
               Transformation Photos
             </label>
@@ -768,7 +768,6 @@ const BodyParamsForm = ({
                 try {
                   await vm.transformationPhotos.setSlotFromFile(slot, file);
                 } catch (e) {
-                  // Surface via existing error banner if needed
                   console.warn('[BodyParamsForm] transformation photo failed', e?.message || e);
                 }
               }}
@@ -776,8 +775,8 @@ const BodyParamsForm = ({
           </div>
         </div>
 
-        {/* Actions */}
-        <div className="sticky bottom-0 bg-white px-5 py-4 border-t border-gray-100 flex gap-3 rounded-b-2xl">
+        {/* Actions — keep clear of photo Camera/Gallery above */}
+        <div className="sticky bottom-0 bg-white px-5 py-4 border-t border-gray-100 flex gap-3 rounded-b-2xl z-20">
           <button
             type="button"
             onClick={requestClose}

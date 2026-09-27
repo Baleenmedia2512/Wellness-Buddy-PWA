@@ -1,7 +1,7 @@
 /**
  * Transformation photos — Left / Centre / Right tabs.
  * Portrait (9:16) frames match testimonial before/after upload UX.
- * Picked photos cover the frame; the user pans/zooms to choose the visible area.
+ * Camera / Gallery use icon buttons → system picker (no in-frame live camera).
  */
 import React, { useEffect, useRef, useState } from 'react';
 import { Camera, CheckCircle2, Images } from 'lucide-react';
@@ -73,9 +73,9 @@ const TransformationPhotosSection = ({
   };
 
   return (
-    <div className="flex flex-col gap-3 h-full min-h-0">
+    <div className="flex flex-col gap-3">
       {coverCrop.overlay}
-      <div className="grid grid-cols-3 gap-1 rounded-xl bg-gray-100 p-1 shrink-0">
+      <div className="grid grid-cols-3 gap-1 rounded-xl bg-gray-100 p-1">
         {POSE_SLOT_KEYS.map((type) => {
           const hasPhoto = Boolean(previews?.[type]) && !brokenSlots[type];
           const active = type === poseType;
@@ -97,7 +97,7 @@ const TransformationPhotosSection = ({
         })}
       </div>
 
-      <div className="flex-1 min-h-0 flex flex-col items-center justify-center gap-2 overflow-y-auto py-1">
+      <div className="flex flex-col items-center justify-center gap-2 py-1">
         {showPreview ? (
           <button
             type="button"
@@ -138,7 +138,7 @@ const TransformationPhotosSection = ({
           <p className="text-[11px] text-red-600 text-center px-2">{cropError}</p>
         ) : null}
 
-        <div className={`grid grid-cols-2 gap-2 w-full ${PORTRAIT_FRAME_MAX} mx-auto shrink-0`}>
+        <div className={`grid grid-cols-2 gap-2 w-full ${PORTRAIT_FRAME_MAX} mx-auto`}>
           <input
             ref={cameraRef}
             type="file"
