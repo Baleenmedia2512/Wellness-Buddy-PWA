@@ -258,8 +258,8 @@ export function useBodyParamsCard({
   /** True after any user-driven field change since last open/reset/save. */
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   /**
-   * When a typed phone matches an existing (non-activated) member — ask Reuse vs Create new.
-   * @type {[{ phone: string, userId: number, existingCard: object|null }, Function]}
+   * When a typed phone matches an existing member (incl. activated) — ask Override vs New.
+   * @type {[{ phone: string, userId: number, existingCard: object|null, activated?: boolean }, Function]}
    */
   const [phoneExistsPrompt, setPhoneExistsPrompt] = useState(null);
   const [phoneExistsBusy, setPhoneExistsBusy] = useState(false);
@@ -288,8 +288,12 @@ export function useBodyParamsCard({
   const photoPrefillRequestIdRef = useRef(0);
   /** Avoid re-applying the same BCM prefill on every status poll for one phone. */
   const lastBcmPrefillPhoneRef = useRef('');
-  /** Digits the coach already chose Reuse for (dropdown select or modal Reuse). */
+  /** Digits the coach already chose Override for (dropdown select or modal Override). */
   const phoneReuseAcceptedRef = useRef('');
+  /** Digits the coach already chose New for — keep phone, force a new card on save. */
+  const phoneNewAcceptedRef = useRef('');
+  /** 'override' | 'new' | '' — sent on create so backend can allow activated / force insert. */
+  const phoneConflictActionRef = useRef('');
   /** Apply Profile diet/PAL once per open+member (Profile is SoT; avoid clobbering edits). */
   const profileFieldsPrefillKeyRef = useRef('');
   // Stores the last prefix typed while coachUserId was still null, so we can

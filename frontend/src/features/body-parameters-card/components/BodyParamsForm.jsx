@@ -806,7 +806,7 @@ const BodyParamsForm = ({
       <BcmPhoneExistsModal
         isOpen={Boolean(vm.phoneExistsPrompt)}
         isBusy={vm.phoneExistsBusy}
-        onReuse={vm.handlePhoneExistsReuse}
+        onOverride={vm.handlePhoneExistsReuse}
         onCreateNew={vm.handlePhoneExistsCreateNew}
       />
     </div>

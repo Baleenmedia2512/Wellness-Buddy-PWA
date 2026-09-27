@@ -39,10 +39,10 @@ describe('getFirstMissingBcmRequiredField', () => {
 });
 
 describe('BCM_PHONE_EXISTS_CHOICE_MESSAGE', () => {
-  it('matches the product copy for reuse vs create new', () => {
+  it('matches the product copy for override vs new', () => {
     assert.equal(
       BCM_PHONE_EXISTS_CHOICE_MESSAGE,
-      'This number already exists. Do you want to reuse it or create a new one?',
+      'This number already exists. Override the existing card, or create a new card for this number?',
     );
   });
 });

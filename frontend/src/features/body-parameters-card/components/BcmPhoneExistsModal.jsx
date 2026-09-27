@@ -2,7 +2,7 @@
  * BcmPhoneExistsModal.jsx
  *
  * Shown when the coach enters a phone that already belongs to a team member
- * (non-activated). Offers Reuse vs Create new.
+ * (including activated). Offers Override vs New.
  */
 import React from 'react';
 import { BCM_PHONE_EXISTS_CHOICE_MESSAGE } from '../domain/formValidation.rules.js';
@@ -11,14 +11,14 @@ import { BCM_PHONE_EXISTS_CHOICE_MESSAGE } from '../domain/formValidation.rules.
  * @param {{
  *   isOpen: boolean,
  *   isBusy?: boolean,
- *   onReuse: () => void,
+ *   onOverride: () => void,
  *   onCreateNew: () => void,
  * }} props
  */
 export default function BcmPhoneExistsModal({
   isOpen,
   isBusy = false,
-  onReuse,
+  onOverride,
   onCreateNew,
 }) {
   if (!isOpen) return null;
@@ -63,15 +63,15 @@ export default function BcmPhoneExistsModal({
             onClick={onCreateNew}
             className="rounded-md border border-gray-300 bg-white px-3.5 py-1.5 text-[13px] font-medium text-gray-700 disabled:opacity-50 hover:bg-gray-50"
           >
-            Create new
+            New
           </button>
           <button
             type="button"
             disabled={isBusy}
-            onClick={onReuse}
+            onClick={onOverride}
             className="rounded-md border border-green-600 bg-gradient-to-r from-green-600 to-green-600 px-3.5 py-1.5 text-[13px] font-medium text-white disabled:opacity-50"
           >
-            Reuse
+            Override
           </button>
         </div>
       </div>

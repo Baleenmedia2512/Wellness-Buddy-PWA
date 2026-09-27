@@ -4,7 +4,12 @@
  */
 import { validateCreateCard } from '../validation/card.schema.js';
 import { canCreateCard } from '../domain/permissions/card.policy.js';
-import { enrichPayloadWithCalculatedBmr } from '../domain/card.rules.js';
+import {
+  enrichPayloadWithCalculatedBmr,
+  allowsActivatedBcmCreate,
+  shouldForceNewBcmCard,
+  BCM_ACTIVATED_MEMBER_MESSAGE,
+} from '../domain/card.rules.js';
 import {
   insertCard,
   createTeamMemberFromPhone,
@@ -22,7 +27,6 @@ import { syncCardToProfileAfterSave } from '../data/sync.repo.js';
 import { syncBcmPhotosToTestimonial } from '../domain/bcmTestimonialPhotoSync.js';
 import { ValidationError } from '../../../shared/lib/ValidationError.js';
 import logger from '../../../shared/lib/logger.js';
-import { BCM_ACTIVATED_MEMBER_MESSAGE } from '../domain/card.rules.js';
 
 /**
  * @param {object} body - raw request body
@@ -45,12 +49,15 @@ export async function handleCreateCard(body) {
   let userId = payload.userId;
   /** True when createTeamMemberFromPhone inserted a brand-new team_table row. */
   let isNewMember = false;
+  const allowActivated = allowsActivatedBcmCreate(payload.phoneConflictAction);
+  const forceNewCard = shouldForceNewBcmCard(payload.phoneConflictAction);
 
   if (payload.phoneNumber) {
     logger.info('[body-params-card] 📞 Creating team_table member from phone', {
       createdBy: payload.createdBy,
       phoneNumber: payload.phoneNumber,
-      name: payload.name
+      name: payload.name,
+      phoneConflictAction: payload.phoneConflictAction,
     });
     // CoachId is not set here — member chooses coach during onboarding.
     // counsellorId is only used to detach legacy wrong CoachId assignments.
@@ -62,12 +69,13 @@ export async function handleCreateCard(body) {
       bmr:           payload.bmr,
       weightKg:      payload.weightKg,
       fatPercent:    payload.fatPercent,
+      allowActivated,
     });
     userId = memberId;
     isNewMember = Boolean(isNew);
     logger.info('[body-params-card] ✅ Team member ready', { userId, isNew: isNewMember, type: typeof userId });
   } else if (userId) {
-    if (await isUserActivatedForBcm(userId)) {
+    if (!allowActivated && await isUserActivatedForBcm(userId)) {
       try {
         await hardDeleteCardsForUserId(userId);
       } catch (purgeErr) {
@@ -82,18 +90,20 @@ export async function handleCreateCard(body) {
 
   // Prefer this coach's existing card so Save keeps it on THEIR BCM list.
   // Do not update another coach's card (that made the card "disappear" from My BCM).
-  const existingCard = userId
+  // "New" always inserts a fresh card for the same phone.
+  const existingCard = (!forceNewCard && userId)
     ? await findLatestCardByUserIdAndCreatedBy(userId, payload.createdBy)
     : null;
   logger.info('[handleCreateCard] 🔍 Checking for existing card', { 
     userId,
     createdBy: payload.createdBy,
+    forceNewCard,
     existingCardId: existingCard?.id || 'none' 
   });
 
   let card;
   if (existingCard) {
-    // UPDATE this coach's existing card
+    // UPDATE this coach's existing card (Override / default)
     logger.info('[body-params-card] 🔄 UPDATING existing card', { cardId: existingCard.id, userId });
     card = await updateCard(existingCard.id, {
       name:         payload.name,
@@ -112,7 +122,7 @@ export async function handleCreateCard(body) {
       recordedDate: payload.recordedDate,
       locationName: payload.locationName,
       recoveredHealthIssues: payload.recoveredHealthIssues,
-    });
+    }, { allowActivated });
     logger.info('[body-params-card] ✅ Card updated', { cardId: card.id, created_by: card.created_by });
     if (userId && !card.user_id) {
       await linkCardToUser(card.id, userId);
@@ -120,7 +130,7 @@ export async function handleCreateCard(body) {
     }
   } else {
     // CREATE new card owned by this coach
-    logger.info('[body-params-card] 🆕 CREATING new card', { userId, createdBy: payload.createdBy });
+    logger.info('[body-params-card] 🆕 CREATING new card', { userId, createdBy: payload.createdBy, forceNewCard });
     card = await insertCard({ ...payload, userId });
     logger.info('[body-params-card] ✅ Card created', { 
       cardId: card.id, 

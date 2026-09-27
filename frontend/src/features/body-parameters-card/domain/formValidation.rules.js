@@ -17,7 +17,7 @@ export const BCM_DEPENDENT_PARENTS = {
 };
 
 export const BCM_PHONE_EXISTS_CHOICE_MESSAGE =
-  'This number already exists. Do you want to reuse it or create a new one?';
+  'This number already exists. Override the existing card, or create a new card for this number?';
 
 function filled(val) {
   return val != null && String(val).trim() !== '';
