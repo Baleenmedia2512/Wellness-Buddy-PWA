@@ -617,10 +617,6 @@ export async function editTestimonial(rawBody) {
   const isNowComplete = hasRealAfterPhoto;
   const afterWeightNow = updates.afterWeightKg ?? existing.after_weight_kg;
 
-  if (isNowComplete && resolvedHealthIssues.length === 0) {
-    throw new ValidationError(422, 'At least one recovered health issue is required');
-  }
-
   if (isNowComplete) {
     // Full testimonial â€” reset to pending and issue new OTP
     const otp       = generateOtp();
@@ -1122,14 +1118,10 @@ export async function submitVideo(rawBody) {
     uploads.businessVideoPath = payload.businessVideoPath;
   }
 
-  // Replace directly so removals are honoured.
+  // Replace directly so removals are honoured. Health issues are optional.
   const resolvedHealthIssues = payload.recoveredHealthIssues !== undefined
     ? normalizeHealthIssuesList(payload.recoveredHealthIssues)
     : (existing.recovered_health_issues ?? []);
-
-  if (resolvedHealthIssues.length === 0) {
-    throw new ValidationError(422, 'At least one recovered health issue is required before uploading videos for verification.');
-  }
 
   const otp       = generateOtp();
   const otpHash   = await bcrypt.hash(otp, 10);
@@ -1519,15 +1511,8 @@ export async function submitAllEdits(rawBody) {
     photoUpdates.afterImagePath = newBeforePath;
   }
 
-  // Validate health issues are present when completing a testimonial
+  // Health issues are optional — empty list is allowed on photo submit.
   const resolvedHealthIssues = mergedIssues;
-
-  if (photoNeedsOtp && resolvedHealthIssues.length === 0) {
-    throw new ValidationError(
-      422,
-      'At least one recovered health issue is required before submitting before + after photos.',
-    );
-  }
 
   // Capture previous photo paths for email diff BEFORE saving
   const prevBeforeImagePath = slots.has('before') ? existing.before_image_path : null;

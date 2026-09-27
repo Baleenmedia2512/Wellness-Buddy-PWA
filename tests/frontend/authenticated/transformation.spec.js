@@ -15,7 +15,7 @@
  * - TR-010: Result Video Playback in Full Team Scope (Suresh Kumar Video)
  * - TR-011: Inside-Card Health Issue Search & Multi-Select Autocomplete (Add and Remove Conditions)
  * - TR-012: Upload Completeness Filter Chips (Fully Uploaded, Partial, Not Uploaded)
- * - TR-013: Mandatory Health Issue Validation on Photo Submit
+ * - TR-013: Optional Health Issue — photo submit allowed with zero issues selected
  * - TR-014: Inline Weight Editing with Live "Lost/Gained X kg" Badge Recalculation
  * - TR-015: Resend OTP Flow in Expired State
  */
@@ -585,7 +585,7 @@ test.describe('Transformation Module (Testimonials Hub)', () => {
     await expect(karthikCard).not.toBeVisible();
   });
 
-  test('TR-013 Mandatory Health Issue Validation - Block Photo Submission when Zero Issues Selected', async ({ page }) => {
+  test('TR-013 Optional Health Issue - Photo Submission Allowed when Zero Issues Selected', async ({ page }) => {
     currentTestimonial.recoveredHealthIssues = [];
     const transformationPage = new TransformationPage(page);
     await transformationPage.clickRefresh();
@@ -605,13 +605,13 @@ test.describe('Transformation Module (Testimonials Hub)', () => {
     }
     await page.waitForTimeout(500);
 
-    // Click Submit for Approval
+    // Click Submit for Approval — health issues are optional
     await transformationPage.clickSubmitForApproval();
 
-    // Assert validation error banner is displayed
+    // Assert we do NOT block on missing health issues
     await expect(
       page.getByText(/Add at least one Health Issue before submitting/i)
-    ).toBeVisible({ timeout: 5000 });
+    ).not.toBeVisible({ timeout: 3000 });
   });
 
   test('TR-014 Inline Weight Editing - Dynamically Recalculates Lost Weight Badge Live', async ({ page }) => {

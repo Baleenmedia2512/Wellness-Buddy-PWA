@@ -795,16 +795,13 @@ export default function TestimonialsHub({ userId, focusOnly = null, onFocusClose
 
   const handleHealthIssuesSave = useCallback(async () => {
     if (!userId || (!existing && !existingVideo)) return;
-    if (!Array.isArray(healthIssues) || healthIssues.length === 0) {
-      setHealthIssuesError('Please add at least one recovered health issue.');
-      setHealthIssuesSuccess(null);
-      return;
-    }
+    // Health issues are optional — empty list clears / saves with none selected.
+    const issuesToSave = Array.isArray(healthIssues) ? healthIssues : [];
     setHealthIssuesError(null);
     setHealthIssuesSuccess(null);
     setHealthIssuesSaving(true);
     try {
-      const result = await editTestimonial({ userId, recoveredHealthIssues: healthIssues });
+      const result = await editTestimonial({ userId, recoveredHealthIssues: issuesToSave });
       setHealthIssuesSuccess(result?.message || 'Health issues saved successfully.');
       setHealthIssuesExpanded(false);
       reload();
@@ -996,7 +993,6 @@ export default function TestimonialsHub({ userId, focusOnly = null, onFocusClose
                     value={healthIssues}
                     onChange={setHealthIssues}
                     disabled={healthIssuesSaving}
-                    required
                   />
                   {healthIssuesError && (
                     <div className="bg-red-50 border border-red-200 rounded-xl px-3 py-2.5 text-xs text-red-700">

@@ -140,7 +140,7 @@ export function validateSubmitTestimonial(body) {
     goalType,
     durationText:          normalizedDuration,
     hasAfter,
-    recoveredHealthIssues: validateRecoveredHealthIssues(recoveredHealthIssues, { required: hasAfter }),
+    recoveredHealthIssues: validateRecoveredHealthIssues(recoveredHealthIssues, { required: false }),
   };
 }
 
@@ -579,7 +579,7 @@ export function validateUpdateMemberHealthIssues(body) {
   return {
     coachId: coachIdN,
     userId: userIdN,
-    recoveredHealthIssues: validateRecoveredHealthIssues(recoveredHealthIssues, { required: true }),
+    recoveredHealthIssues: validateRecoveredHealthIssues(recoveredHealthIssues, { required: false }),
   };
 }
 

@@ -1088,26 +1088,21 @@ function MemberCard({
       }
     }
 
-    // Visible Before+After (including a Profile-seeded clone) needs issues + duration + OTP.
+    // Visible Before+After (including a Profile-seeded clone) needs duration + OTP.
+    // Health issues are optional.
     const willComplete =
       Boolean(draftBefore?.imageBase64 || testimonial?.beforeImageUrl)
       && Boolean(draftAfter?.imageBase64 || testimonial?.afterImageUrl || hasAfter);
-    const issuesForSubmit = Array.isArray(draftIssues) && draftIssues.filter(Boolean).length > 0
+    const issuesForSubmit = Array.isArray(draftIssues)
       ? draftIssues.filter(Boolean)
       : (testimonial?.recoveredHealthIssues || []);
     const submittingPhotoCard = Boolean(hasVisiblePhotoCard || willComplete || afterWeightDirty);
-    if (
-      submittingPhotoCard
-      && (!Array.isArray(issuesForSubmit) || issuesForSubmit.filter(Boolean).length === 0)
-    ) {
-      setSubmitError('Add at least one Health Issue before submitting for coach approval.');
-      return;
-    }
+    // Health issues are optional — user may submit without selecting any.
     if (submittingPhotoCard && !usableDurationForSubmit) {
       setSubmitError('Add a duration in days or months (e.g. 3 months) before submitting.');
       return;
     }
-    if (submittingPhotoCard && issuesForSubmit.length > 0 && payload.recoveredHealthIssues == null) {
+    if (submittingPhotoCard && payload.recoveredHealthIssues == null && Array.isArray(draftIssues)) {
       payload.recoveredHealthIssues = issuesForSubmit;
     }
 
@@ -1175,11 +1170,10 @@ function MemberCard({
       }
       if (!isSilentSave && !otpSent) {
         const hasDuration = Boolean(usableDurationForSubmit);
-        const hasIssues = Array.isArray(issuesForSubmit) && issuesForSubmit.filter(Boolean).length > 0;
         setSubmitError(
-          hasDuration && hasIssues
+          hasDuration
             ? 'Coach approval did not start. Please tap Submit again — if it still fails, add the Before/After photos once more.'
-            : 'Coach approval did not start. Add a duration and at least one health issue, then submit again.',
+            : 'Coach approval did not start. Add a duration in days or months, then submit again.',
         );
         return;
       }

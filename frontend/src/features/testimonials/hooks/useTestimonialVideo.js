@@ -178,10 +178,7 @@ export function useTestimonialVideo({ userId, healthIssues = [] }) {
       return false;
     }
 
-    if (!Array.isArray(healthIssues) || healthIssues.length === 0) {
-      setError('Add at least one recovered health issue in the Health Issues section before uploading videos for verification.');
-      return false;
-    }
+    // Health issues are optional — videos may be submitted without them.
 
     setSubmitting(true);
     try {
