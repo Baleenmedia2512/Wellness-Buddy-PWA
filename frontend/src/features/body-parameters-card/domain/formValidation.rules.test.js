@@ -4,6 +4,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  BCM_PHONE_EXISTS_CHOICE_MESSAGE,
   getBcmParentNeededHint,
   getBcmRequiredFieldError,
   getFirstMissingBcmRequiredField,
@@ -17,8 +18,9 @@ describe('getBcmRequiredFieldError', () => {
     assert.equal(getBcmRequiredFieldError('name', { name: 'Ada' }), null);
   });
 
-  it('asks for phone immediately when empty or incomplete', () => {
-    assert.equal(getBcmRequiredFieldError('phoneNumber', { phoneNumber: '' }), 'Phone number is required');
+  it('allows empty phone (optional) but rejects incomplete digits', () => {
+    assert.equal(getBcmRequiredFieldError('phoneNumber', { phoneNumber: '' }), null);
+    assert.equal(getBcmRequiredFieldError('phoneNumber', { phoneNumber: '   ' }), null);
     assert.equal(
       getBcmRequiredFieldError('phoneNumber', { phoneNumber: '98765' }),
       'Please enter a valid phone number (10–15 digits)',
@@ -28,10 +30,20 @@ describe('getBcmRequiredFieldError', () => {
 });
 
 describe('getFirstMissingBcmRequiredField', () => {
-  it('prefers name over phone so save can scroll to the first gap', () => {
+  it('only requires name; empty phone is allowed', () => {
     assert.equal(getFirstMissingBcmRequiredField({ name: '', phoneNumber: '' }), 'name');
-    assert.equal(getFirstMissingBcmRequiredField({ name: 'Ada', phoneNumber: '' }), 'phoneNumber');
+    assert.equal(getFirstMissingBcmRequiredField({ name: 'Ada', phoneNumber: '' }), null);
+    assert.equal(getFirstMissingBcmRequiredField({ name: 'Ada', phoneNumber: '98765' }), 'phoneNumber');
     assert.equal(getFirstMissingBcmRequiredField({ name: 'Ada', phoneNumber: '9876543210' }), null);
+  });
+});
+
+describe('BCM_PHONE_EXISTS_CHOICE_MESSAGE', () => {
+  it('matches the product copy for reuse vs create new', () => {
+    assert.equal(
+      BCM_PHONE_EXISTS_CHOICE_MESSAGE,
+      'This number already exists. Do you want to reuse it or create a new one?',
+    );
   });
 });
 

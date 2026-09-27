@@ -3,7 +3,8 @@
  * Pure. Used so range checks do not wait silently until a parent field is filled.
  */
 
-export const BCM_REQUIRED_FIELDS = ['name', 'phoneNumber'];
+/** Name is required. Phone is optional (empty OK); format checked when present. */
+export const BCM_REQUIRED_FIELDS = ['name'];
 
 /** Dependent metric → parent field that must be filled first. */
 export const BCM_DEPENDENT_PARENTS = {
@@ -14,6 +15,9 @@ export const BCM_DEPENDENT_PARENTS = {
   weightKg: { parent: 'heightCm', label: 'Weight' },
   bodyAge: { parent: 'age', label: 'Body Age' },
 };
+
+export const BCM_PHONE_EXISTS_CHOICE_MESSAGE =
+  'This number already exists. Do you want to reuse it or create a new one?';
 
 function filled(val) {
   return val != null && String(val).trim() !== '';
@@ -47,7 +51,8 @@ export function getBcmRequiredFieldError(field, form) {
   }
   if (field === 'phoneNumber') {
     const raw = String(form?.phoneNumber || '').trim();
-    if (!raw) return 'Phone number is required';
+    // Phone is optional — empty is valid for create without saving a mobile number.
+    if (!raw) return null;
     const cleaned = raw.replace(/[\s\-()]/g, '');
     if (!/^\+?[0-9]{10,15}$/.test(cleaned)) {
       return 'Please enter a valid phone number (10–15 digits)';
@@ -59,11 +64,13 @@ export function getBcmRequiredFieldError(field, form) {
 
 /**
  * First required field the coach must fill (for scroll/focus).
+ * Phone is optional — only name blocks save when empty.
  * @param {object} form
  * @returns {'name'|'phoneNumber'|null}
  */
 export function getFirstMissingBcmRequiredField(form) {
   if (getBcmRequiredFieldError('name', form)) return 'name';
+  // Incomplete phone (partial digits) still needs focus before save.
   if (getBcmRequiredFieldError('phoneNumber', form)) return 'phoneNumber';
   return null;
 }

@@ -76,7 +76,7 @@ const PhoneAutocomplete = ({
   return (
     <div ref={wrapperRef} className="relative flex flex-col gap-1">
       <label className="text-xs font-semibold text-indigo-800 uppercase tracking-wide">
-        Phone Number
+        Phone Number <span className="normal-case font-normal text-gray-400">(optional)</span>
       </label>
       <div className="relative">
         <NativeInput
@@ -89,7 +89,7 @@ const PhoneAutocomplete = ({
           onKeyDown={handleKeyDown}
           onFocus={handleFocus}
           onBlur={onBlur}
-          placeholder="Client phone — creates team member"
+          placeholder="Client phone (optional)"
           maxLength={10}
           className={`w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 bg-white pr-8 ${borderClass}`}
           autoComplete="off"

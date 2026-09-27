@@ -40,6 +40,8 @@ export async function handlePhoneStatus(query) {
         message: activated ? BCM_ACTIVATED_MEMBER_MESSAGE : null,
         // Additive — lets the form reload profile transformation photos without autocomplete.
         userId: userId != null ? userId : null,
+        /** True when phone matches a team_table row (reuse / create-new prompt). */
+        exists: userId != null,
         existingCard: activated ? null : existingCard,
       },
     },

@@ -12,6 +12,7 @@ import PhoneAutocomplete from './PhoneAutocomplete.jsx';
 import NativeInput from '../../../shared/components/NativeInput.jsx';
 import HealthIssuesFilterSelect from './HealthIssuesFilterSelect.jsx';
 import BcmUnsavedChangesModal from './BcmUnsavedChangesModal.jsx';
+import BcmPhoneExistsModal from './BcmPhoneExistsModal.jsx';
 import DietDropdown from '../../user/components/profile/DietDropdown.js';
 import PhysicalActivityField from '../../user/components/profile/PhysicalActivityField.js';
 import TransformationPhotosSection from '../../user/components/profile/TransformationPhotosSection.js';
@@ -262,6 +263,10 @@ const BodyParamsForm = ({
       scrollToField(phoneRef);
       return;
     }
+    if (vm.phoneExistsPrompt) {
+      scrollToField(phoneRef);
+      return;
+    }
     await vm.handleSave();
   };
 
@@ -357,7 +362,7 @@ const BodyParamsForm = ({
             error={vm.nameError}
           />
 
-          {/* Phone Number — required identity field sits with Name */}
+          {/* Phone Number — optional; existing numbers prompt Reuse / Create new */}
           <PhoneAutocomplete
             value={vm.form.phoneNumber}
             onChange={vm.setPhoneField}
@@ -796,6 +801,13 @@ const BodyParamsForm = ({
         isSaving={vm.isSaving}
         onDiscard={handleDiscard}
         onKeepEditing={handleKeepEditing}
+      />
+
+      <BcmPhoneExistsModal
+        isOpen={Boolean(vm.phoneExistsPrompt)}
+        isBusy={vm.phoneExistsBusy}
+        onReuse={vm.handlePhoneExistsReuse}
+        onCreateNew={vm.handlePhoneExistsCreateNew}
       />
     </div>
   );

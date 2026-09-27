@@ -33,6 +33,11 @@ import {
   resolvePhoneStatusPhotoPrefillUserId,
 } from '../domain/bcmTransformationPhotosPrefill.js';
 
+/** Phone digits already confirmed as Reuse — skip the exists dialog. */
+function cleanPhoneDigits(s) {
+  return String(s || '').trim().replace(/[\s\-()]/g, '');
+}
+
 /**
  * Normalise any phone string to a 10-digit Indian national number for prefix
  * matching. Handles: "9876543210", "+919876543210", "919876543210", "09876543210".
@@ -252,6 +257,12 @@ export function useBodyParamsCard({
   const [shareUrl, setShareUrl] = useState('');
   /** True after any user-driven field change since last open/reset/save. */
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  /**
+   * When a typed phone matches an existing (non-activated) member — ask Reuse vs Create new.
+   * @type {[{ phone: string, userId: number, existingCard: object|null }, Function]}
+   */
+  const [phoneExistsPrompt, setPhoneExistsPrompt] = useState(null);
+  const [phoneExistsBusy, setPhoneExistsBusy] = useState(false);
 
   const [bmiUserEdited, setBmiUserEdited] = useState(false);
   const [bmrUserEdited, setBmrUserEdited] = useState(false);
@@ -277,6 +288,8 @@ export function useBodyParamsCard({
   const photoPrefillRequestIdRef = useRef(0);
   /** Avoid re-applying the same BCM prefill on every status poll for one phone. */
   const lastBcmPrefillPhoneRef = useRef('');
+  /** Digits the coach already chose Reuse for (dropdown select or modal Reuse). */
+  const phoneReuseAcceptedRef = useRef('');
   /** Apply Profile diet/PAL once per open+member (Profile is SoT; avoid clobbering edits). */
   const profileFieldsPrefillKeyRef = useRef('');
   // Stores the last prefix typed while coachUserId was still null, so we can
@@ -295,14 +308,16 @@ export function useBodyParamsCard({
   /**
    * Immediate phone activation check — runs as soon as digits are complete AND
    * coachUserId is resolved (lookup may finish after the user finished typing).
+   * Existing (non-activated) numbers prompt Reuse vs Create new — no silent prefill.
    */
   useEffect(() => {
     if (!isOpen) return undefined;
 
-    const clean = String(form.phoneNumber || '').trim().replace(/[\s\-()]/g, '');
+    const clean = cleanPhoneDigits(form.phoneNumber);
     if (!/^\+?[0-9]{10,15}$/.test(clean)) {
       setPhoneFieldError((prev) => (isActivatedPhoneErrorMessage(prev) ? '' : prev));
       lastBcmPrefillPhoneRef.current = '';
+      setPhoneExistsPrompt(null);
       return undefined;
     }
 
@@ -321,6 +336,8 @@ export function useBodyParamsCard({
           debugLog('📱 [PhoneStatus] result', status);
           if (status.activated) {
             lastBcmPrefillPhoneRef.current = '';
+            phoneReuseAcceptedRef.current = '';
+            setPhoneExistsPrompt(null);
             setPhoneFieldError(status.message || BCM_PHONE_EXISTS_MESSAGE);
             setPhoneSuggestions([]);
             setError((prev) => (isActivatedPhoneErrorMessage(prev) ? '' : prev));
@@ -329,39 +346,66 @@ export function useBodyParamsCard({
 
           setPhoneFieldError('');
 
-          // Restore prior BCM card + profile photos (photos are on team_table, not the card).
-          if (lastBcmPrefillPhoneRef.current !== clean) {
-            lastBcmPrefillPhoneRef.current = clean;
-            if (status.existingCard) {
+          // Edit mode: keep silent restore of this card's member — no choice prompt.
+          if (isEditMode) {
+            if (lastBcmPrefillPhoneRef.current !== clean && status.existingCard) {
+              lastBcmPrefillPhoneRef.current = clean;
               setForm((prev) => {
                 const next = applyExistingBcmCardToForm(prev, status.existingCard, displayTimezone);
                 venueRef.current = String(next.locationName || '').trim();
                 return next;
               });
-              if (status.existingCard.bmi != null && status.existingCard.bmi !== '') {
-                setBmiUserEdited(true);
+            }
+            return;
+          }
+
+          // Number already on team_table — ask Reuse vs Create new (unless already accepted).
+          if (status.exists || status.userId) {
+            if (phoneReuseAcceptedRef.current === clean) {
+              // Reuse already chosen — apply card/photos once.
+              if (lastBcmPrefillPhoneRef.current === clean) return;
+              lastBcmPrefillPhoneRef.current = clean;
+              if (status.existingCard) {
+                setForm((prev) => {
+                  const next = applyExistingBcmCardToForm(prev, status.existingCard, displayTimezone);
+                  venueRef.current = String(next.locationName || '').trim();
+                  return next;
+                });
+                if (status.existingCard.bmi != null && status.existingCard.bmi !== '') {
+                  setBmiUserEdited(true);
+                }
+                if (status.existingCard.bmr != null && status.existingCard.bmr !== '') {
+                  setBmrUserEdited(true);
+                }
               }
-              if (status.existingCard.bmr != null && status.existingCard.bmr !== '') {
-                setBmrUserEdited(true);
+              const photoUserId = resolvePhoneStatusPhotoPrefillUserId(status);
+              if (photoUserId && coachIdNum) {
+                const photoRequestId = ++photoPrefillRequestIdRef.current;
+                fetchMemberPrefill({ userId: photoUserId, coachId: coachIdNum })
+                  .then((prefill) => {
+                    if (cancelled || photoRequestId !== photoPrefillRequestIdRef.current) return;
+                    if (prefill?.transformationPhotos) {
+                      transformationPhotos.loadFromProfile(prefill.transformationPhotos);
+                    }
+                  })
+                  .catch((err) => {
+                    if (cancelled || photoRequestId !== photoPrefillRequestIdRef.current) return;
+                    console.warn('[BodyParamsCard] photo prefill after phone status failed', err?.message || err);
+                  });
               }
+              return;
             }
 
-            const photoUserId = resolvePhoneStatusPhotoPrefillUserId(status);
-            if (photoUserId && coachIdNum) {
-              const photoRequestId = ++photoPrefillRequestIdRef.current;
-              fetchMemberPrefill({ userId: photoUserId, coachId: coachIdNum })
-                .then((prefill) => {
-                  if (cancelled || photoRequestId !== photoPrefillRequestIdRef.current) return;
-                  if (prefill?.transformationPhotos) {
-                    transformationPhotos.loadFromProfile(prefill.transformationPhotos);
-                  }
-                })
-                .catch((err) => {
-                  if (cancelled || photoRequestId !== photoPrefillRequestIdRef.current) return;
-                  console.warn('[BodyParamsCard] photo prefill after phone status failed', err?.message || err);
-                });
-            }
+            setPhoneExistsPrompt({
+              phone: clean,
+              userId: status.userId,
+              existingCard: status.existingCard || null,
+            });
+            return;
           }
+
+          setPhoneExistsPrompt(null);
+          lastBcmPrefillPhoneRef.current = '';
         })
         .catch((err) => {
           if (cancelled || requestId !== phoneStatusRequestIdRef.current) return;
@@ -373,7 +417,15 @@ export function useBodyParamsCard({
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [form.phoneNumber, coachUserId, isOpen, phoneStatusNonce, displayTimezone, transformationPhotos.loadFromProfile]);
+  }, [
+    form.phoneNumber,
+    coachUserId,
+    isOpen,
+    isEditMode,
+    phoneStatusNonce,
+    displayTimezone,
+    transformationPhotos.loadFromProfile,
+  ]);
 
   const recheckPhoneStatus = useCallback(() => {
     setPhoneStatusNonce((n) => n + 1);
@@ -428,7 +480,10 @@ export function useBodyParamsCard({
     setAttemptedSubmit(false);
     setNameTouched(false);
     setHasUnsavedChanges(false);
+    setPhoneExistsPrompt(null);
+    setPhoneExistsBusy(false);
     lastBcmPrefillPhoneRef.current = '';
+    phoneReuseAcceptedRef.current = '';
     profileFieldsPrefillKeyRef.current = '';
     photoPrefillRequestIdRef.current += 1;
     transformationPhotos.clearPending();
@@ -605,7 +660,7 @@ export function useBodyParamsCard({
 
   /**
    * Called when the phone input changes. Updates form + triggers debounced prefix search.
-   * Activation / "User already exists" is handled by the phoneNumber + coachUserId effect.
+   * Activation / exists-choice is handled by the phoneNumber + coachUserId effect.
    */
   const setPhoneField = useCallback((value) => {
     setForm((prev) => ({ ...prev, phoneNumber: value }));
@@ -613,8 +668,14 @@ export function useBodyParamsCard({
     if (isActivatedPhoneErrorMessage(error)) setError('');
 
     const digits = value.replace(/\D/g, '');
-    // Clear activated-phone error while the number is incomplete; effect re-sets when complete.
+    const clean = cleanPhoneDigits(value);
+    // Typing a different number clears a prior Reuse acceptance / open prompt.
+    if (phoneReuseAcceptedRef.current && phoneReuseAcceptedRef.current !== clean) {
+      phoneReuseAcceptedRef.current = '';
+      lastBcmPrefillPhoneRef.current = '';
+    }
     if (digits.length < 10) {
+      setPhoneExistsPrompt(null);
       setPhoneFieldError((prev) => (isActivatedPhoneErrorMessage(prev) ? '' : prev));
     }
 
@@ -636,6 +697,7 @@ export function useBodyParamsCard({
       pendingPhonePrefixRef.current = null;
 
       // Client-side filtering — instant, no network round-trip.
+      // Exact match no longer auto-prefills — phone-status shows Reuse / Create new.
       phoneDebounceRef.current = setTimeout(() => {
         debugLog('📱 [PhoneSearch] Searching for:', digits, 'in', allTeamMembers.length, 'members');
         const results = allTeamMembers
@@ -654,28 +716,23 @@ export function useBodyParamsCard({
           .filter(Boolean);
         debugLog('📱 [PhoneSearch] Results:', results.length, 'matches');
         setPhoneSuggestions(results);
-
-        if (results.length === 1) {
-          const exactMatch = results[0];
-          const normalizedMatch = toNationalDigits(exactMatch.phoneNumber);
-          const normalizedSearch = toNationalDigits(digits);
-          if (normalizedMatch === normalizedSearch) {
-            debugLog('🎯 [PhoneSearch] EXACT MATCH - Auto-filling:', exactMatch);
-            fillFromMemberRef.current?.(exactMatch);
-            setPhoneSuggestions([]);
-          }
-        }
       }, 150);
     }
   }, [coachUserId, allTeamMembers, error, markDirty]);
 
   /**
    * Called when the user selects a suggestion from the phone autocomplete.
-   * Prefills all filled profile metrics (team_table + latest weight) for BCM.
+   * Explicit pick = Reuse; prefills metrics without showing the exists dialog.
    */
   const fillFromMember = useCallback(async (member) => {
     if (!member) return;
     markDirty();
+
+    const memberPhone = cleanPhoneDigits(member.phoneNumber);
+    if (memberPhone) {
+      phoneReuseAcceptedRef.current = memberPhone;
+      setPhoneExistsPrompt(null);
+    }
 
     if (member.phoneNumber && coachUserId) {
       try {
@@ -684,6 +741,7 @@ export function useBodyParamsCard({
           coachId: coachUserId,
         });
         if (status.activated) {
+          phoneReuseAcceptedRef.current = '';
           setPhoneFieldError(status.message || BCM_PHONE_EXISTS_MESSAGE);
           setPhoneSuggestions([]);
           setForm((prev) => ({
@@ -701,6 +759,7 @@ export function useBodyParamsCard({
     setForm((prev) => applyMemberPrefillToForm(prev, member));
     setPhoneSuggestions([]);
     setPhoneFieldError('');
+    if (memberPhone) lastBcmPrefillPhoneRef.current = memberPhone;
 
     let enriched = member;
     if (member.userId && coachUserId) {
@@ -723,6 +782,7 @@ export function useBodyParamsCard({
       } catch (err) {
         const msg = err?.message || '';
         if (isActivatedPhoneErrorMessage(msg)) {
+          phoneReuseAcceptedRef.current = '';
           setPhoneFieldError(BCM_PHONE_EXISTS_MESSAGE);
           setPhoneSuggestions([]);
           return;
@@ -779,6 +839,10 @@ export function useBodyParamsCard({
     setShareUrl('');
     setBmiUserEdited(false);
     setBmrUserEdited(false);
+    setPhoneExistsPrompt(null);
+    setPhoneExistsBusy(false);
+    lastBcmPrefillPhoneRef.current = '';
+    phoneReuseAcceptedRef.current = '';
     clearDirty();
     transformationPhotos.clearPending();
     transformationPhotos.loadFromProfile(null);
@@ -804,29 +868,124 @@ export function useBodyParamsCard({
     });
   }, [form]);
 
-  const cleanPhone = (s) => s.trim().replace(/[\s\-()]/g, '');
+  const cleanPhone = cleanPhoneDigits;
 
+  const phoneTrimmed = form.phoneNumber.trim();
+  const phoneFormatOk = !phoneTrimmed || /^\+?[0-9]{10,15}$/.test(cleanPhone(form.phoneNumber));
   const isValid =
     form.name.trim().length > 0 &&
-    form.phoneNumber.trim().length > 0 &&
-    /^\+?[0-9]{10,15}$/.test(cleanPhone(form.phoneNumber)) &&
-    !phoneFieldError;
+    phoneFormatOk &&
+    !phoneFieldError &&
+    !phoneExistsPrompt;
 
   const nameError = (attemptedSubmit || nameTouched) && !form.name.trim()
     ? 'Name is required'
     : '';
   const phoneBlocked = isActivatedPhoneErrorMessage(phoneFieldError);
-  const canAttemptSave = !isSaving && !phoneBlocked;
+  const canAttemptSave = !isSaving && !phoneBlocked && !phoneExistsPrompt;
+
+  /**
+   * Reuse existing member/card for the typed phone.
+   */
+  const handlePhoneExistsReuse = useCallback(async () => {
+    const pending = phoneExistsPrompt;
+    if (!pending?.phone) return;
+    setPhoneExistsBusy(true);
+    try {
+      phoneReuseAcceptedRef.current = pending.phone;
+      setPhoneExistsPrompt(null);
+      setPhoneSuggestions([]);
+      setPhoneFieldError('');
+      lastBcmPrefillPhoneRef.current = pending.phone;
+      markDirty();
+
+      if (pending.existingCard) {
+        setForm((prev) => {
+          const next = applyExistingBcmCardToForm(prev, pending.existingCard, displayTimezone);
+          venueRef.current = String(next.locationName || '').trim();
+          return next;
+        });
+        if (pending.existingCard.bmi != null && pending.existingCard.bmi !== '') {
+          setBmiUserEdited(true);
+        }
+        if (pending.existingCard.bmr != null && pending.existingCard.bmr !== '') {
+          setBmrUserEdited(true);
+        } else {
+          setBmrUserEdited(false);
+        }
+      }
+
+      if (pending.userId && coachUserId) {
+        try {
+          const prefill = await fetchMemberPrefill({
+            userId: pending.userId,
+            coachId: coachUserId,
+          });
+          if (prefill) {
+            const memberLike = {
+              userId: pending.userId,
+              userName: prefill.userName || pending.existingCard?.name || '',
+              phoneNumber: pending.phone,
+              heightCm: prefill.heightCm,
+              bmr: prefill.bmr,
+              gender: prefill.gender,
+              age: prefill.age,
+              visceralFat: prefill.visceralFat,
+              bodyAge: prefill.bodyAge,
+              chestCm: prefill.chestCm,
+              waistCm: prefill.waistCm,
+              hipCm: prefill.hipCm,
+              fatPercent: prefill.fatPercent,
+              bmi: prefill.bmi,
+              weightKg: prefill.weightKg,
+              dietType: prefill.dietType,
+              physicalActivityLevel: prefill.physicalActivityLevel,
+              recoveredHealthIssues: prefill.recoveredHealthIssues,
+            };
+            setForm((prev) => applyMemberPrefillToForm(prev, memberLike));
+            if (prefill.transformationPhotos) {
+              transformationPhotos.loadFromProfile(prefill.transformationPhotos);
+            }
+            if (prefill.bmi != null && prefill.bmi !== '') setBmiUserEdited(true);
+            setBmrUserEdited(false);
+          }
+        } catch (err) {
+          console.warn('[BodyParamsCard] reuse prefill failed', err?.message || err);
+        }
+      }
+    } finally {
+      setPhoneExistsBusy(false);
+    }
+  }, [
+    phoneExistsPrompt,
+    coachUserId,
+    displayTimezone,
+    markDirty,
+    transformationPhotos.loadFromProfile,
+  ]);
+
+  /**
+   * Create a new BCM card without associating this existing number —
+   * clears the phone so the card can be saved without a mobile number.
+   */
+  const handlePhoneExistsCreateNew = useCallback(() => {
+    setPhoneExistsPrompt(null);
+    setPhoneExistsBusy(false);
+    phoneReuseAcceptedRef.current = '';
+    lastBcmPrefillPhoneRef.current = '';
+    setPhoneSuggestions([]);
+    setPhoneFieldError('');
+    setForm((prev) => ({ ...prev, phoneNumber: '' }));
+    markDirty();
+  }, [markDirty]);
 
   const handleSave = useCallback(async () => {
     setAttemptedSubmit(true);
     setNameTouched(true);
     if (!form.name.trim()) { return; }
-    if (!form.phoneNumber.trim()) {
-      setPhoneFieldError('Phone number is required');
-      return;
-    }
-    if (!/^\+?[0-9]{10,15}$/.test(cleanPhone(form.phoneNumber))) {
+    if (phoneExistsPrompt) { return; }
+    const phoneRaw = form.phoneNumber.trim();
+    if (phoneRaw && !/^\+?[0-9]{10,15}$/.test(cleanPhone(form.phoneNumber))) {
       setPhoneFieldError('Please enter a valid phone number (10–15 digits)');
       return;
     }
@@ -865,6 +1024,8 @@ export function useBodyParamsCard({
       || null
     );
 
+    const phoneToSave = phoneRaw ? cleanPhone(form.phoneNumber) : null;
+
     // ⚡ Notify parent immediately with form data so it can start
     // pre-rendering + pre-capturing the card image in parallel with the API call.
     const creatorName = String(
@@ -873,7 +1034,7 @@ export function useBodyParamsCard({
     if (onSaveStart) {
       onSaveStart({
         name: form.name.trim(),
-        phoneNumber: form.phoneNumber.trim(),
+        phoneNumber: phoneToSave || '',
         age: form.age,
         gender: form.gender,
         heightCm: form.heightCm,
@@ -909,7 +1070,7 @@ export function useBodyParamsCard({
         createdBy: coachUserId,
         userId: targetUserId,
         name: form.name.trim(),
-        phoneNumber: cleanPhone(form.phoneNumber),
+        ...(phoneToSave ? { phoneNumber: phoneToSave } : {}),
         age: form.age || undefined,
         gender: form.gender || undefined,
         heightCm: form.heightCm || undefined,
@@ -1048,13 +1209,17 @@ export function useBodyParamsCard({
     } finally {
       setIsSaving(false);
     }
-  }, [isValid, form, coachUserId, targetUserId, onSaveSuccess, onSaveStart, isEditMode, existingCard, user, bmrUserEdited, externalVenue, phoneFieldError, clearDirty, transformationPhotos.payloadExtras]);
+  }, [isValid, form, coachUserId, targetUserId, onSaveSuccess, onSaveStart, isEditMode, existingCard, user, bmrUserEdited, externalVenue, phoneFieldError, phoneExistsPrompt, clearDirty, transformationPhotos.payloadExtras, displayTimezone]);
 
   return {
     form, setField,
     setPhoneField, fillFromMember,
     phoneSuggestions, phoneSearchLoading,
     phoneFieldError,
+    phoneExistsPrompt,
+    phoneExistsBusy,
+    handlePhoneExistsReuse,
+    handlePhoneExistsCreateNew,
     recheckPhoneStatus,
     setWeightManually, setBmiManually, setBmrManually,
     transformationPhotos: {
