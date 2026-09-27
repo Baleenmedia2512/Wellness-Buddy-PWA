@@ -159,6 +159,7 @@ import {
   getCachedProfileUserName,
 } from "./shared/utils/shareUtils";
 import { hasValidProfileName } from "./features/user/domain/profileCompleteness";
+import { shouldForceBcmProfileReview } from "./features/user/domain/bcmProfileReview";
 import { resolveLocationFields, stripLocationDiagnostics } from "./shared/utils/resolveLocationFields";
 import {
   startUserLocationCache,
@@ -3416,13 +3417,11 @@ function WellnessValleyApp() {
         if (bcmReviewedOnServer && uid) {
           Session.markBcmProfileReviewed(uid);
         }
-        if (
-          result.data?.isBcmLead === true
-          && uid
-          && !bcmReviewedOnServer
-          && !bcmReviewedLocally
-          && !transformationPhotosGateRef.current
-        ) {
+        const forceBcmReview = shouldForceBcmProfileReview({
+          isBcmLead: result.data?.isBcmLead === true,
+          bcmProfileReviewed: bcmReviewedOnServer || bcmReviewedLocally,
+        });
+        if (forceBcmReview && uid && !transformationPhotosGateRef.current) {
           debugLog("📋 [Profile] BCM lead — showing Complete Profile for review");
           setIdentityResolved(true);
           setShowOnboardingIdentity(false);

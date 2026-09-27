@@ -24,3 +24,19 @@ export function shouldForceBcmProfileReview({
 } = {}) {
   return isBcmLead === true && bcmProfileReviewed !== true;
 }
+
+/**
+ * Persist review when the client confirms Complete Profile, or when the
+ * account already meets completeness (covers older clients that omit the flag).
+ * @param {{
+ *   bcmProfileReviewed?: boolean,
+ *   profileComplete?: boolean,
+ * }} input
+ * @returns {boolean}
+ */
+export function shouldPersistBcmProfileReviewed({
+  bcmProfileReviewed = false,
+  profileComplete = false,
+} = {}) {
+  return bcmProfileReviewed === true || profileComplete === true;
+}

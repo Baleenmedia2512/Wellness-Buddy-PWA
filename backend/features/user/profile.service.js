@@ -21,7 +21,10 @@ import {
   hasValidBodyFatSource,
   isProfileComplete,
 } from './domain/profileCompleteness.js';
-import { isBcmProfileReviewedRecorded } from './domain/bcmProfileReview.rules.js';
+import {
+  isBcmProfileReviewedRecorded,
+  shouldPersistBcmProfileReviewed,
+} from './domain/bcmProfileReview.rules.js';
 import { buildProfileCardSyncPayload } from '../body-parameters-card/domain/sync.rules.js';
 import { computeBmiFromHeightWeight } from '../body-parameters-card/domain/card.rules.js';
 import { getSupabaseClient } from '../../utils/supabaseClient.js';
@@ -509,18 +512,6 @@ export async function updateProfile(input) {
     }
   }
 
-  // Complete Profile (BCM/BPC) — persist review so APK reinstall does not re-prompt.
-  if (bcmProfileReviewed === true) {
-    try {
-      await repo.markBcmProfileReviewedIfNeeded(userId, nowUtc());
-    } catch (reviewErr) {
-      logger.warn('[profile/update] bcm profile reviewed stamp failed', {
-        userId,
-        message: reviewErr?.message,
-      });
-    }
-  }
-
   // Profile page loads by userId; must clear id: cache or Left/Centre/Right look stale for ~60s.
   clearProfileCaches({ email: accountEmail, userId });
 
@@ -761,6 +752,38 @@ export async function updateProfile(input) {
     bmr: effectiveBmr,
     physicalActivityLevel: effectiveActivity,
   });
+
+  const refreshedHeight = appliedHeight != null
+    ? parseFloat(appliedHeight)
+    : (refreshedUser?.Height != null ? parseFloat(refreshedUser.Height) : null);
+  const refreshedDiet = dietType || refreshedUser?.DietType || null;
+  const refreshedGender = gender || refreshedUser?.Gender || null;
+  const refreshedName = name || refreshedUser?.UserName || null;
+  const profileCompleteAfterSave = isProfileComplete({
+    height: refreshedHeight,
+    dietType: refreshedDiet,
+    userName: refreshedName,
+    email: accountEmail,
+    phoneNumber: cleanedPhoneNumber || refreshedUser?.PhoneNumber || null,
+    gender: refreshedGender,
+    latestWeightBodyFat: savedBodyFat,
+    bodyFatRequired: true,
+  });
+  // Persist BCM/BPC review so APK reinstall does not re-prompt (column may be
+  // missing pre-migration — repository soft-no-ops in that case).
+  if (shouldPersistBcmProfileReviewed({
+    bcmProfileReviewed: bcmProfileReviewed === true,
+    profileComplete: profileCompleteAfterSave,
+  })) {
+    try {
+      await repo.markBcmProfileReviewedIfNeeded(userId, nowUtc());
+    } catch (reviewErr) {
+      logger.warn('[profile/update] bcm profile reviewed stamp failed', {
+        userId,
+        message: reviewErr?.message,
+      });
+    }
+  }
 
   const responseBody = {
     success: true, message: 'User profile updated successfully',

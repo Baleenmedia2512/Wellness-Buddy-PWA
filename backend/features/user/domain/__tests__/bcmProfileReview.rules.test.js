@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import {
   isBcmProfileReviewedRecorded,
   shouldForceBcmProfileReview,
+  shouldPersistBcmProfileReviewed,
 } from '../bcmProfileReview.rules.js';
 
 describe('isBcmProfileReviewedRecorded', () => {
@@ -33,6 +34,39 @@ describe('shouldForceBcmProfileReview', () => {
     );
     assert.equal(
       shouldForceBcmProfileReview({ isBcmLead: false, bcmProfileReviewed: false }),
+      false,
+    );
+  });
+
+  it('does not force after server review so APK reinstall skips Complete Profile', () => {
+    assert.equal(
+      shouldForceBcmProfileReview({
+        isBcmLead: true,
+        bcmProfileReviewed: true,
+      }),
+      false,
+    );
+  });
+});
+
+describe('shouldPersistBcmProfileReviewed', () => {
+  it('persists when the client confirms review', () => {
+    assert.equal(
+      shouldPersistBcmProfileReviewed({ bcmProfileReviewed: true, profileComplete: false }),
+      true,
+    );
+  });
+
+  it('persists when the profile is already complete (older clients)', () => {
+    assert.equal(
+      shouldPersistBcmProfileReviewed({ bcmProfileReviewed: false, profileComplete: true }),
+      true,
+    );
+  });
+
+  it('does not persist when incomplete and not confirmed', () => {
+    assert.equal(
+      shouldPersistBcmProfileReviewed({ bcmProfileReviewed: false, profileComplete: false }),
       false,
     );
   });
