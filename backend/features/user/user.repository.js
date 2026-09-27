@@ -560,6 +560,46 @@ export async function updateUserById(userId, updateData) {
 }
 
 /**
+ * Soft-load EntryUser + BcmProfileReviewedAt (column may be missing pre-migration).
+ * @returns {Promise<{ EntryUser?: string|null, BcmProfileReviewedAt?: string|null }|null>}
+ */
+export async function getBcmReviewFields(userId) {
+  try {
+    return await findByUserId(userId, '"EntryUser", "BcmProfileReviewedAt"');
+  } catch (err) {
+    const msg = String(err?.message || err || '');
+    if (/BcmProfileReviewedAt/i.test(msg)) {
+      try {
+        return await findByUserId(userId, '"EntryUser"');
+      } catch (err2) {
+        const msg2 = String(err2?.message || err2 || '');
+        if (/EntryUser|column/i.test(msg2)) return null;
+        throw err2;
+      }
+    }
+    if (/EntryUser|column/i.test(msg)) return null;
+    throw err;
+  }
+}
+
+/**
+ * Set BcmProfileReviewedAt once (idempotent). No-ops if column missing.
+ * @returns {Promise<boolean>} true when recorded (or already set)
+ */
+export async function markBcmProfileReviewedIfNeeded(userId, reviewedAt) {
+  try {
+    const row = await findByUserId(userId, '"BcmProfileReviewedAt"');
+    if (row?.BcmProfileReviewedAt) return true;
+    await updateUserById(userId, { BcmProfileReviewedAt: reviewedAt });
+    return true;
+  } catch (err) {
+    const msg = String(err?.message || err || '');
+    if (/BcmProfileReviewedAt|column/i.test(msg)) return false;
+    throw err;
+  }
+}
+
+/**
  * After email-adopt: move BCM cards + copy empty profile metrics from the
  * phone stub onto the recovered email account so Complete Profile prefills.
  *

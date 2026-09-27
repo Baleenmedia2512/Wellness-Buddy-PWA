@@ -21,6 +21,7 @@ import {
   hasValidBodyFatSource,
   isProfileComplete,
 } from './domain/profileCompleteness.js';
+import { isBcmProfileReviewedRecorded } from './domain/bcmProfileReview.rules.js';
 import { buildProfileCardSyncPayload } from '../body-parameters-card/domain/sync.rules.js';
 import { computeBmiFromHeightWeight } from '../body-parameters-card/domain/card.rules.js';
 import { getSupabaseClient } from '../../utils/supabaseClient.js';
@@ -82,14 +83,19 @@ export async function getProfile({ email, userId = null }) {
     : await repo.getProfile(email);
   if (!user) return notFound();
 
-  const [latestWeight, initialWeightRow, latestBodyMetricsCard, sponsorIdeal, latestWeightBodyFatResolved, teamCodeFields] = await Promise.all([
+  const [latestWeight, initialWeightRow, latestBodyMetricsCard, sponsorIdeal, latestWeightBodyFatResolved, teamCodeFields, bcmReviewFields] = await Promise.all([
     repo.getLatestWeight(user.UserId),
     repo.getInitialWeight(user.UserId),
     findLatestLinkedBodyMetricsCard(user.UserId),
     resolveSponsorAndIdealCoach(user.UserId, { viewerUserId: user.UserId }),
     repo.getLatestWeightBodyFat(user.UserId),
     repo.getTeamCodeFields(user.UserId),
+    repo.getBcmReviewFields(user.UserId),
   ]);
+  const entryUser = bcmReviewFields?.EntryUser ?? user.EntryUser ?? null;
+  const bcmProfileReviewed = isBcmProfileReviewedRecorded(
+    bcmReviewFields?.BcmProfileReviewedAt,
+  );
   const leadSeat = await resolveLeadSeatForUser(
     getSupabaseClient(),
     user.UserId,
@@ -286,8 +292,10 @@ export async function getProfile({ email, userId = null }) {
         recoveredHealthIssues: mapTeamRecoveredHealthIssues(user.recovered_health_issues),
         transformationPhotos: mapTransformationPhotos(user.transformation_photos),
         // Phone lead created from coach BCM — Complete Profile should open once for review.
-        isBcmLead: String(user.EntryUser || '') === 'Body Parameters Card'
+        isBcmLead: String(entryUser || '') === 'Body Parameters Card'
           || Boolean(latestBodyMetricsCard?.id),
+        // Server-side; survives APK reinstall (localStorage bcmProfileReviewed_* is cache only).
+        bcmProfileReviewed,
       },
     },
   };
@@ -377,7 +385,7 @@ export async function updateProfile(input) {
   const {
     email, userId: inputUserId, name, height, bmr, dietType, profileImage, phoneNumber, gender,
     weightGoalMode, physicalActivityLevel, communityId, timezoneIana, bodyFat,
-    currentWeight, transformationPhotos, appVersion = null,
+    currentWeight, transformationPhotos, bcmProfileReviewed = undefined, appVersion = null,
   } = input;
   const deferCommunityId = shouldDeferCommunityIdToOtpFlow({
     flagEnabled: isEnabled(COMMUNITY_ID_OTP_FLAG),
@@ -498,6 +506,18 @@ export async function updateProfile(input) {
       const msg = String(photoErr?.message || photoErr || '');
       if (!/transformation_photos|column/i.test(msg)) throw photoErr;
       logger.warn('[profile/update] transformation_photos column missing; skipped', { userId });
+    }
+  }
+
+  // Complete Profile (BCM/BPC) — persist review so APK reinstall does not re-prompt.
+  if (bcmProfileReviewed === true) {
+    try {
+      await repo.markBcmProfileReviewedIfNeeded(userId, nowUtc());
+    } catch (reviewErr) {
+      logger.warn('[profile/update] bcm profile reviewed stamp failed', {
+        userId,
+        message: reviewErr?.message,
+      });
     }
   }
 

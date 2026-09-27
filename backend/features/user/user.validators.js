@@ -202,7 +202,7 @@ export function validateUpdateProfile(body) {
       throw new ValidationError(400, 'Invalid transformationPhotos. Must be an object with optional front, left, and right images.');
     } else {
       const normalized = {};
-      TRANSFORMATION_PHOTO_SLOTS.forEach((slot) => {
+      TRANSFORM_PHOTO_SLOTS.forEach((slot) => {
         if (!(slot in raw)) return;
         const value = raw[slot];
         if (value == null || value === '') return;
@@ -213,6 +213,15 @@ export function validateUpdateProfile(body) {
       });
       transformationPhotos = hasTransformationPhotoUpdates(normalized) ? normalized : undefined;
     }
+  }
+
+  // Complete Profile (BCM/BPC review) — optional; old clients omit it.
+  let bcmProfileReviewed;
+  if ('bcmProfileReviewed' in body || 'bcm_profile_reviewed' in body) {
+    const raw = body.bcmProfileReviewed !== undefined
+      ? body.bcmProfileReviewed
+      : body.bcm_profile_reviewed;
+    bcmProfileReviewed = raw === true || raw === 'true' || raw === 1 || raw === '1';
   }
 
   return {
@@ -239,6 +248,7 @@ export function validateUpdateProfile(body) {
     hipCm,
     recoveredHealthIssues,
     transformationPhotos,
+    bcmProfileReviewed,
   };
 }
 

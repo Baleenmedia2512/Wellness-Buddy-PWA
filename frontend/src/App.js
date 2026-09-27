@@ -3408,12 +3408,19 @@ function WellnessValleyApp() {
           || Session.getDbUserId()
           || null;
         identityConfirmedRef.current = true;
-        // BCM lead: always show Complete Profile once so the member can review
+        // BCM lead: show Complete Profile once so the member can review
         // prefilled height/weight/etc. before Transformation Photos / home.
+        // Server bcmProfileReviewed survives APK reinstall; localStorage is cache.
+        const bcmReviewedOnServer = result.data?.bcmProfileReviewed === true;
+        const bcmReviewedLocally = uid ? Session.isBcmProfileReviewed(uid) : false;
+        if (bcmReviewedOnServer && uid) {
+          Session.markBcmProfileReviewed(uid);
+        }
         if (
           result.data?.isBcmLead === true
           && uid
-          && !Session.isBcmProfileReviewed(uid)
+          && !bcmReviewedOnServer
+          && !bcmReviewedLocally
           && !transformationPhotosGateRef.current
         ) {
           debugLog("📋 [Profile] BCM lead — showing Complete Profile for review");
