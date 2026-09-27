@@ -402,17 +402,23 @@ export function useBodyParamsCard({
             }
 
             setPhoneSuggestions([]);
-            setPhoneExistsPrompt({
+            setPhoneExistsPrompt((prev) => ({
               phone: clean,
               userId: status.userId,
               existingCard: status.existingCard || null,
               activated: Boolean(status.activated),
-            });
+              // Keep autocomplete suggestion if status re-fired for the same phone.
+              suggestionMember: prev?.phone === clean ? (prev.suggestionMember || null) : null,
+            }));
             return;
           }
 
-          setPhoneExistsPrompt(null);
-          lastBcmPrefillPhoneRef.current = '';
+          // Do not clear an open Override/New prompt for this same phone —
+          // autocomplete may have matched a local team member before status confirms.
+          setPhoneExistsPrompt((prev) => (prev?.phone === clean ? prev : null));
+          if (phoneReuseAcceptedRef.current !== clean && phoneNewAcceptedRef.current !== clean) {
+            lastBcmPrefillPhoneRef.current = '';
+          }
         })
         .catch((err) => {
           if (cancelled || requestId !== phoneStatusRequestIdRef.current) return;
@@ -736,7 +742,7 @@ export function useBodyParamsCard({
 
   /**
    * Called when the user selects a suggestion from the phone autocomplete.
-   * Always asks Override vs New — never silent prefill.
+   * Always asks Override vs New immediately — never silent prefill.
    */
   const fillFromMember = useCallback(async (member) => {
     if (!member) return;
@@ -759,32 +765,36 @@ export function useBodyParamsCard({
 
     if (!memberPhone) return;
 
-    let existingCard = null;
-    let activated = false;
-    let userId = member.userId || null;
-
-    if (coachUserId) {
-      try {
-        const status = await fetchPhoneBcmStatus({
-          phoneNumber: String(member.phoneNumber).trim(),
-          coachId: coachUserId,
-        });
-        activated = Boolean(status.activated);
-        existingCard = status.existingCard || null;
-        if (status.userId) userId = status.userId;
-      } catch (err) {
-        console.warn('[BodyParamsCard] phone status before choice failed', err?.message || err);
-      }
-    }
-
+    // Show the choice dialog right away (do not wait on phone-status).
     setPhoneExistsPrompt({
       phone: memberPhone,
-      userId,
-      existingCard,
-      activated,
-      /** Suggestion row — used if Override is chosen before status returns a card. */
+      userId: member.userId || null,
+      existingCard: null,
+      activated: false,
       suggestionMember: member,
     });
+
+    if (!coachUserId) return;
+
+    try {
+      const status = await fetchPhoneBcmStatus({
+        phoneNumber: String(member.phoneNumber).trim(),
+        coachId: coachUserId,
+      });
+      setPhoneExistsPrompt((prev) => {
+        // User already dismissed / chose / changed phone — do not revive.
+        if (!prev || prev.phone !== memberPhone) return prev;
+        return {
+          ...prev,
+          userId: status.userId || prev.userId,
+          existingCard: status.existingCard || null,
+          activated: Boolean(status.activated),
+          suggestionMember: prev.suggestionMember || member,
+        };
+      });
+    } catch (err) {
+      console.warn('[BodyParamsCard] phone status before choice failed', err?.message || err);
+    }
   }, [coachUserId, markDirty]);
 
   fillFromMemberRef.current = fillFromMember;
