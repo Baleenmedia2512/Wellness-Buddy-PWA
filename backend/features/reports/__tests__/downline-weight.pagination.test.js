@@ -190,6 +190,39 @@ describe('applyTeamFilter / status / search helpers', () => {
       [2, 1, 3],
     );
   });
+
+  it('sorts by difference closest-to-ideal first', () => {
+    const sorted = sortDownlineWeightRows(
+      [
+        row({
+          userId: 1,
+          status: 'above_ideal',
+          currentWeight: 80,
+          idealMax: 64.9,
+          difference: 15.1,
+        }),
+        row({
+          userId: 2,
+          status: 'above_ideal',
+          currentWeight: 50.7,
+          idealMax: 47.7,
+          difference: 3.0,
+        }),
+        row({
+          userId: 3,
+          status: 'above_ideal',
+          currentWeight: 54,
+          idealMax: 51.8,
+          difference: 2.2,
+        }),
+      ],
+      SORT_KEYS.DIFFERENCE,
+    );
+    assert.deepEqual(
+      sorted.map((r) => r.userId),
+      [3, 2, 1],
+    );
+  });
 });
 
 describe('buildDownlineWeightPaginationMeta', () => {

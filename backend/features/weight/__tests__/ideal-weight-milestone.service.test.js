@@ -45,7 +45,17 @@ describe('maybeRecordIdealWeightMilestone', () => {
           memberName: 'Alice',
           heightCm: 170,
         }),
-        findCoachContact: async () => ({ email: 'coach@example.com', name: 'Coach' }),
+        findCoachContact: async (id) => {
+          if (String(id) === '99') return { email: 'sponsor@example.com', name: 'Sponsor' };
+          if (String(id) === '77') return { email: 'coach@example.com', name: 'Ideal Coach' };
+          return { email: null, name: null };
+        },
+        resolveSponsorAndIdealCoach: async () => ({
+          sponsorId: '99',
+          sponsorName: 'Sponsor',
+          idealCoachId: '77',
+          idealCoachName: 'Ideal Coach',
+        }),
         sendCoachEmail: async (payload) => {
           state.emails.push(payload);
           return { success: true };
@@ -55,7 +65,7 @@ describe('maybeRecordIdealWeightMilestone', () => {
     };
   }
 
-  it('stamps and emails when this insert is the first in-range log', async () => {
+  it('stamps and emails sponsor + ideal coach when this insert is first in-range', async () => {
     const { state, deps } = makeDeps({
       listActiveWeightsAsc: async () => [
         { ID: 2, Weight: 60, CreatedAt: '2024-06-01T00:00:00.000Z' },
@@ -73,9 +83,35 @@ describe('maybeRecordIdealWeightMilestone', () => {
     assert.equal(result.recorded, true);
     assert.equal(result.notified, true);
     assert.equal(result.reason, 'sent');
+    assert.equal(result.emailed, 2);
     assert.ok(state.reachedAt);
-    assert.equal(state.emails.length, 1);
+    assert.equal(state.emails.length, 2);
     assert.match(state.emails[0].subject, /reached ideal weight/i);
+  });
+
+  it('sends one email when sponsor and ideal coach are the same person', async () => {
+    const { state, deps } = makeDeps({
+      listActiveWeightsAsc: async () => [
+        { ID: 2, Weight: 60, CreatedAt: '2024-06-01T00:00:00.000Z' },
+      ],
+      resolveSponsorAndIdealCoach: async () => ({
+        sponsorId: '99',
+        sponsorName: 'Same Person',
+        idealCoachId: '99',
+        idealCoachName: 'Same Person',
+      }),
+      findCoachContact: async () => ({ email: 'same@example.com', name: 'Same Person' }),
+    });
+    const result = await maybeRecordIdealWeightMilestone({
+      userId: 1,
+      weightKg: 60,
+      heightCm: 170,
+      isNewInsert: true,
+      newEntryId: 2,
+      newEntryCreatedAt: '2024-06-01T00:00:00.000Z',
+    }, deps);
+    assert.equal(result.emailed, 1);
+    assert.equal(state.emails.length, 1);
   });
 
   it('records historical first without email when earlier in-range exists', async () => {

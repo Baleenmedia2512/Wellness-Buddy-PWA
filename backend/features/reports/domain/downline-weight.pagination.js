@@ -24,6 +24,7 @@ export const SORT_KEYS = Object.freeze({
   NAME: 'name',
   WEIGHT: 'weight',
   REACHED_DATE: 'reached_date',
+  DIFFERENCE: 'difference',
 });
 
 const OFF_TRACK_STATUSES = new Set(['above_ideal', 'below_ideal']);
@@ -106,6 +107,10 @@ export function normalizeDownlineWeightPagination(raw = {}) {
     'reached-date': SORT_KEYS.REACHED_DATE,
     'reached date': SORT_KEYS.REACHED_DATE,
     first_reached: SORT_KEYS.REACHED_DATE,
+    difference: SORT_KEYS.DIFFERENCE,
+    closest: SORT_KEYS.DIFFERENCE,
+    gap: SORT_KEYS.DIFFERENCE,
+    'kg_to_ideal': SORT_KEYS.DIFFERENCE,
   };
   const sort = Object.values(SORT_KEYS).includes(sortRaw)
     ? sortRaw
@@ -241,6 +246,29 @@ export function filterRowsBySearch(rows, searchNormalized) {
 }
 
 /**
+ * kg still to go to enter the ideal band (0 when on_track). Null when unknown.
+ * @param {object} row
+ * @returns {number|null}
+ */
+export function getKgToIdeal(row) {
+  if (row?.difference != null && Number.isFinite(Number(row.difference))) {
+    return Number(row.difference);
+  }
+  const currentWeight = row?.currentWeight;
+  const idealMin = row?.idealMin;
+  const idealMax = row?.idealMax;
+  if (currentWeight == null || idealMin == null || idealMax == null) return null;
+  if (row?.status === 'above_ideal') {
+    return Number((currentWeight - idealMax).toFixed(1));
+  }
+  if (row?.status === 'below_ideal') {
+    return Number((idealMin - currentWeight).toFixed(1));
+  }
+  if (row?.status === 'on_track') return 0;
+  return null;
+}
+
+/**
  * @template T
  * @param {T[]} rows
  * @param {string} sort
@@ -273,6 +301,21 @@ export function sortDownlineWeightRows(rows, sort = SORT_KEYS.STATUS) {
       if (!aOk) return 1;
       if (!bOk) return -1;
       return bMs - aMs; // newest first
+    });
+    return list;
+  }
+  if (sort === SORT_KEYS.DIFFERENCE) {
+    // Closest to ideal first (1.5 kg before 15 kg). Nulls last.
+    list.sort((a, b) => {
+      const ad = getKgToIdeal(a);
+      const bd = getKgToIdeal(b);
+      const aOk = ad != null && Number.isFinite(ad);
+      const bOk = bd != null && Number.isFinite(bd);
+      if (!aOk && !bOk) return 0;
+      if (!aOk) return 1;
+      if (!bOk) return -1;
+      if (ad !== bd) return ad - bd;
+      return String(a?.userName || '').localeCompare(String(b?.userName || ''));
     });
     return list;
   }
