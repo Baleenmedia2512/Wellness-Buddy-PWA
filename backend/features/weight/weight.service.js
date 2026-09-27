@@ -193,10 +193,12 @@ export async function saveWeight(input) {
   await touchUserActivity(userId);
   await invalidateUserProfileCache(userId);
 
+  let profileHeightCm = null;
   try {
     const profileRow = await userRepo.findByUserId(parseInt(userId, 10), '"Height"');
+    profileHeightCm = profileRow?.Height ? parseFloat(profileRow.Height) : null;
     const derivedGoalMode = deriveWeightGoalMode({
-      heightCm: profileRow?.Height ? parseFloat(profileRow.Height) : null,
+      heightCm: profileHeightCm,
       currentWeightKg: weight,
     });
     if (derivedGoalMode) {
@@ -207,6 +209,26 @@ export async function saveWeight(input) {
       userId: String(userId),
       err: goalModeErr?.message,
     });
+  }
+
+  // First ideal-weight milestone (BMI 19–23) + sponsor email. Best-effort; never fails save.
+  if (!entryId) {
+    try {
+      const { maybeRecordIdealWeightMilestone } = await import('./ideal-weight-milestone.service.js');
+      await maybeRecordIdealWeightMilestone({
+        userId,
+        weightKg: weight,
+        heightCm: profileHeightCm,
+        isNewInsert: true,
+        newEntryId: data?.ID || data?.id || null,
+        newEntryCreatedAt: data?.CreatedAt ?? createdAtLegacy,
+      });
+    } catch (milestoneErr) {
+      logger.warn('weight.saveWeight: ideal milestone skipped', {
+        userId: String(userId),
+        err: milestoneErr?.message,
+      });
+    }
   }
 
   // PR 6 — promote the capture pending → weight. Best-effort: the weight row

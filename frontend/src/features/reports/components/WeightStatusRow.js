@@ -22,11 +22,27 @@ function getBarProps(currentWeight, idealMin, idealMax) {
 }
 
 export default function WeightStatusRow({ row, teamPerformance = null }) {
-  const { userName, email, communityId, currentWeight, idealMin, idealMax, status } = row;
+  const { userName, email, communityId, currentWeight, idealMin, idealMax, status, firstReachedAt } = row;
   const bar = getBarProps(currentWeight, idealMin, idealMax);
   const mail = String(email || '').trim();
   const cid = String(communityId || '').trim();
   const subtitle = mail && cid ? `${mail} | ${cid}` : (mail || cid);
+
+  let reachedLabel = null;
+  if (firstReachedAt) {
+    try {
+      const d = new Date(firstReachedAt);
+      if (!Number.isNaN(d.getTime())) {
+        reachedLabel = d.toLocaleDateString('en-GB', {
+          day: '2-digit',
+          month: 'short',
+          year: 'numeric',
+        });
+      }
+    } catch {
+      reachedLabel = null;
+    }
+  }
 
   let deltaLabel = null;
   if (currentWeight !== null && idealMin !== null && idealMax !== null) {
@@ -74,6 +90,12 @@ export default function WeightStatusRow({ row, teamPerformance = null }) {
           </p>
         </div>
       </div>
+
+      {reachedLabel && (
+        <p className="mt-2 text-xs text-green-700 font-medium">
+          Reached ideal: {reachedLabel}
+        </p>
+      )}
 
       {/* Progress bar */}
       {bar && (

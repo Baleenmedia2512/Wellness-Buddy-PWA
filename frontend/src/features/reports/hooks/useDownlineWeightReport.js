@@ -76,6 +76,7 @@ export function useDownlineWeightReport({ coachId, tabVisitKey = 0 }) {
         teamScope,
         statusFilter,
         debouncedSearch,
+        statusFilter === STATUS_FILTERS.ON_TRACK ? 'reached_date' : 'status',
         DOWNLINE_WEIGHT_PAGE_SIZE,
       ].join('|'),
     [coachId, teamScope, statusFilter, debouncedSearch],
@@ -95,6 +96,8 @@ export function useDownlineWeightReport({ coachId, tabVisitKey = 0 }) {
       else setLoading(true);
       setError(null);
 
+      const sort = statusFilter === STATUS_FILTERS.ON_TRACK ? 'reached_date' : 'status';
+
       try {
         const data = await fetchDownlineWeightStatus(coachId, {
           page,
@@ -102,7 +105,7 @@ export function useDownlineWeightReport({ coachId, tabVisitKey = 0 }) {
           search: debouncedSearch,
           teamFilter: teamScope,
           statusFilter,
-          sort: 'status',
+          sort,
           bustCache,
         });
 

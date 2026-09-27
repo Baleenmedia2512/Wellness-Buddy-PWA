@@ -309,6 +309,59 @@ export async function getLatestWeightsForUsers(userIds) {
 }
 
 /**
+ * Batch-load IdealWeightReachedAt for Ideal Weight Report rows.
+ * Missing column → empty map (migration not applied yet).
+ *
+ * @param {number[]} userIds
+ * @returns {Promise<Map<number, string|null>>}
+ */
+export async function getIdealWeightReachedAtForUsers(userIds) {
+  const map = new Map();
+  if (!userIds || userIds.length === 0) return map;
+
+  const uniqueIds = [...new Set(
+    userIds.map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0),
+  )];
+  if (uniqueIds.length === 0) return map;
+
+  const supabase = getSupabaseClient();
+  const chunks = [];
+  for (let i = 0; i < uniqueIds.length; i += WEIGHT_USER_ID_CHUNK) {
+    chunks.push(uniqueIds.slice(i, i + WEIGHT_USER_ID_CHUNK));
+  }
+
+  try {
+    const results = await Promise.all(
+      chunks.map(async (chunk) => {
+        const { data, error } = await supabase
+          .from('team_table')
+          .select('"UserId", "IdealWeightReachedAt"')
+          .in('"UserId"', chunk);
+        if (error) throw error;
+        return data || [];
+      }),
+    );
+
+    for (const rows of results) {
+      for (const row of rows) {
+        const uid = Number(row.UserId);
+        if (!Number.isFinite(uid)) continue;
+        map.set(uid, row.IdealWeightReachedAt ?? null);
+      }
+    }
+  } catch (err) {
+    const msg = String(err?.message || err || '');
+    if (/IdealWeightReachedAt/i.test(msg) && /column|does not exist|not find|unknown/i.test(msg)) {
+      logger.warn('[reports] IdealWeightReachedAt missing — run add_ideal_weight_reached_columns.sql');
+      return map;
+    }
+    throw err;
+  }
+
+  return map;
+}
+
+/**
  * Merge chunked weight rows into Map keyed by UserId.
  * When scoreDateYmd is set: todayWeight is the exact-day log only (else null);
  * previousWeight is the next-latest entry before that.

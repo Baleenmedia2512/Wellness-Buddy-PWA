@@ -23,6 +23,7 @@ export const SORT_KEYS = Object.freeze({
   STATUS: 'status',
   NAME: 'name',
   WEIGHT: 'weight',
+  REACHED_DATE: 'reached_date',
 });
 
 const OFF_TRACK_STATUSES = new Set(['above_ideal', 'below_ideal']);
@@ -99,7 +100,16 @@ export function normalizeDownlineWeightPagination(raw = {}) {
   const statusFilter = STATUS_FILTER_ALIASES[statusRaw] || STATUS_FILTERS.OFF_TRACK;
 
   const sortRaw = String(raw.sort || SORT_KEYS.STATUS).trim().toLowerCase();
-  const sort = Object.values(SORT_KEYS).includes(sortRaw) ? sortRaw : SORT_KEYS.STATUS;
+  const sortAliases = {
+    reached_date: SORT_KEYS.REACHED_DATE,
+    reacheddate: SORT_KEYS.REACHED_DATE,
+    'reached-date': SORT_KEYS.REACHED_DATE,
+    'reached date': SORT_KEYS.REACHED_DATE,
+    first_reached: SORT_KEYS.REACHED_DATE,
+  };
+  const sort = Object.values(SORT_KEYS).includes(sortRaw)
+    ? sortRaw
+    : (sortAliases[sortRaw] || SORT_KEYS.STATUS);
 
   return { page, limit, search, teamFilter, statusFilter, sort };
 }
@@ -253,6 +263,19 @@ export function sortDownlineWeightRows(rows, sort = SORT_KEYS.STATUS) {
     });
     return list;
   }
+  if (sort === SORT_KEYS.REACHED_DATE) {
+    list.sort((a, b) => {
+      const aMs = a?.firstReachedAt ? new Date(a.firstReachedAt).getTime() : NaN;
+      const bMs = b?.firstReachedAt ? new Date(b.firstReachedAt).getTime() : NaN;
+      const aOk = Number.isFinite(aMs);
+      const bOk = Number.isFinite(bMs);
+      if (!aOk && !bOk) return 0;
+      if (!aOk) return 1;
+      if (!bOk) return -1;
+      return bMs - aMs; // newest first
+    });
+    return list;
+  }
   list.sort((a, b) => (STATUS_ORDER[a?.status] ?? 99) - (STATUS_ORDER[b?.status] ?? 99));
   return list;
 }
@@ -284,6 +307,7 @@ export function toDownlineWeightListSummary(row) {
     status: row.status,
     difference,
     lastUpdated: row.lastUpdated ?? null,
+    firstReachedAt: row.firstReachedAt ?? null,
     isDirect: row.isDirect === true,
     coachId: row.coachId ?? null,
     reportsToCoachId: row.reportsToCoachId ?? null,
