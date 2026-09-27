@@ -132,7 +132,7 @@ export async function updateCard(id, payload, opts = {}) {
     recovered_health_issues: Array.isArray(payload.recoveredHealthIssues)
       ? payload.recoveredHealthIssues
       : [],
-    // Stamp update time so list/share show update time; create keeps created_at only.
+    // Stamp update time for audit/cache — list/share Date still uses created_at (session time).
     updated_at: new Date().toISOString(),
   };
 
