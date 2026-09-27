@@ -326,12 +326,9 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
         delete payload.email;
       }
       const photoExtras = transformationPhotos.payloadExtras();
-      // Only newly uploaded Centre slot updates ProfileImage (same as onboarding).
+      // Centre goes only in transformationPhotos — server uploads R2 avatar from front.
       const centrePhoto = photoExtras.transformationPhotos?.front || null;
       Object.assign(payload, photoExtras);
-      if (centrePhoto) {
-        payload.profileImage = centrePhoto;
-      }
       if (user?.id && !payload.userId) {
         payload.userId = user.id;
       }
@@ -361,6 +358,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
       transformationPhotos.clearPending();
       setSuccessMessage(data.message || 'Profile saved successfully!');
       setHasSaved(true);
+      loadProfile({ cacheBust: true }).catch(() => {});
     } catch (e) {
       setError(e.message || 'Failed to save profile');
     } finally {

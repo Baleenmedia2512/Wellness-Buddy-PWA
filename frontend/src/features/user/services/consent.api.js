@@ -20,19 +20,33 @@ export async function fetchConsentStatus({ userId, email }) {
 }
 
 export async function recordConsentAcceptance({ userId, email }) {
-  const res = await fetch(`${getApiBaseUrl()}/api/user/consent`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      userId: userId || undefined,
-      email: email || undefined,
-      consentAccepted: true,
-      consentVersion: CURRENT_CONSENT_VERSION,
-      deviceInfo: buildClientDeviceInfo(),
-    }),
-  });
-  const data = await res.json().catch(() => ({}));
-  return { ok: res.ok && data?.success === true, status: res.status, data };
+  try {
+    const res = await fetch(`${getApiBaseUrl()}/api/user/consent`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        userId: userId || undefined,
+        email: email || undefined,
+        consentAccepted: true,
+        consentVersion: CURRENT_CONSENT_VERSION,
+        deviceInfo: buildClientDeviceInfo(),
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    return { ok: res.ok && data?.success === true, status: res.status, data };
+  } catch (err) {
+    return {
+      ok: false,
+      status: 0,
+      data: {
+        message:
+          err?.message === 'Failed to fetch'
+            || /Failed to fetch|NetworkError|Load failed/i.test(String(err?.message || ''))
+            ? 'Cannot reach the server. Check that the backend is running and REACT_APP_API_BASE_URL is correct.'
+            : (err?.message || 'Could not save your consent. Please try again.'),
+      },
+    };
+  }
 }
 
 /** Decline: remove account that never accepted consent (new users). */

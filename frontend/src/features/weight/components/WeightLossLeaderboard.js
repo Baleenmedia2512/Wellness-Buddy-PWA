@@ -13,12 +13,16 @@ import { useAutoScrollStrip } from '../../../shared/hooks/useAutoScrollStrip.js'
 import LeaderboardAvatar from '../../leaderboard/components/LeaderboardAvatar.js';
 import LeaderboardRankBadge from '../../leaderboard/components/LeaderboardRankBadge.js';
 import { sortLeaderboardByRankAsc } from '../../leaderboard/utils/leaderboardOrder.js';
+import { LEADERBOARD_CONFIG } from '../../../config/leaderboardConfig.js';
+import { useRaceLeaderboardRealtime } from '../../leaderboard/hooks/useRaceLeaderboardRealtime.js';
 
 // ---------------------------------------------------------------------------
 // SWR cache — hierarchy-scoped (per logged-in user).
 // Stale data shows instantly on back-navigation; fresh data arrives quietly.
 // ---------------------------------------------------------------------------
-const WEIGHT_LB_CACHE_TTL = 5 * 60 * 1000;
+const WEIGHT_LB_CACHE_TTL = 15 * 1000;
+// Keep a short poll even when Realtime is configured (WS can fail silently).
+const POLL_MS = LEADERBOARD_CONFIG.REFRESH_INTERVAL;
 // v4: hierarchy-scoped Top N (per logged-in user)
 const WEIGHT_LB_CACHE_KEY_PREFIX = 'wv.lb.weight.v5.';
 const WEIGHT_LB_LEGACY_KEYS = ['wv.lb.weight', 'wv.lb.weight.v2', 'wv.lb.weight.v3', 'wv.lb.weight.v4'];
@@ -147,16 +151,17 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, email
     },
   }));
 
-  // Skip network if SWR cache is fresh; refresh every 5 min while visible
+  useRaceLeaderboardRealtime(fetchLeaderboard);
+
+  // Instant paint from SWR cache; Realtime pings + slower poll backup
   useEffect(() => {
     const cached = readWeightLBCache(userId);
     if (cached?.length) {
       setLeaderboardData(cached);
       setIsVisible(true);
-    } else {
-      fetchLeaderboard();
     }
-    return setVisibilityAwareInterval(fetchLeaderboard, WEIGHT_LB_CACHE_TTL);
+    fetchLeaderboard();
+    return setVisibilityAwareInterval(fetchLeaderboard, POLL_MS);
   }, [fetchLeaderboard, userId]);
 
   // Smooth fade-in when the strip becomes visible

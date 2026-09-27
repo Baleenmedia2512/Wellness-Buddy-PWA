@@ -95,16 +95,14 @@ export default function OnboardingTransformationPhotosPage({
       const extras = transformationPhotos.payloadExtras();
       const centrePending = extras.transformationPhotos?.front || null;
       const hasPhotoUpdates = Boolean(extras.transformationPhotos);
-      // Existing users adding only Left/Right must not re-POST an old Centre as profileImage.
+      // Do not also POST centre as profileImage (duplicates ~100KB+). Server uses front for R2 avatar.
       if (hasPhotoUpdates) {
         await saveProfile({
           ...(email ? { email } : {}),
           ...(userId ? { userId } : {}),
           ...extras,
-          ...(centrePending ? { profileImage: centrePending } : {}),
         });
         transformationPhotos.clearPending();
-        // Bust Leaderboard / Top 10 avatar URLs (centre may drive /api/user/avatar).
         bumpAvatarDisplayVersion();
       }
       const centreForUi = centrePending || transformationPhotos.frontImageBase64();

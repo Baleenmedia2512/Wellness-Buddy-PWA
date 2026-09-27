@@ -18,7 +18,8 @@ import { rankWellnessLeaderboardEntries } from '../../../utils/wellnessScoreLead
 import { computeDailyScoreForDate } from '../../../features/wellness-score/api/daily-score.handler.js';
 import { resolveLeaderboardViewerId } from '../../../utils/leaderboardViewer.js';
 
-const LEADERBOARD_CACHE_TTL_MS = 2 * 60 * 1000;
+const LEADERBOARD_CACHE_TTL_MS = 15 * 1000;
+
 /** PostgREST `.in()` URL limit — batch score lookups for large allowed sets. */
 const SCORE_LOOKUP_CHUNK = 150;
 
@@ -119,15 +120,28 @@ export default async function handler(req, res) {
 
     let scores = await fetchScoresForUsers(supabase, allowedIds, scoreDate);
 
-    // New users have no persisted row until /daily runs. Compute the viewer
-    // so Top 10 is not empty on first Home paint.
-    const viewerHasScore = scores.some((row) => Number(row.user_id) === viewerUserId);
-    if (!viewerHasScore && allowedIds.includes(viewerUserId)) {
-      try {
-        await computeDailyScoreForDate({ userId: viewerUserId, date: scoreDate });
-        scores = await fetchScoresForUsers(supabase, allowedIds, scoreDate);
-      } catch (computeErr) {
-        logger.debug('[WELLNESS-LB] Viewer score compute skipped', { err: computeErr.message });
+    // Keep the viewer's row in sync with Home (/daily). Missing OR stale
+    // snapshots used to leave you off Top 10 while the card already showed
+    // the live score (persist can lag or fail without blocking /daily).
+    const VIEWER_SCORE_MAX_AGE_MS = 20 * 1000;
+    if (allowedIds.includes(viewerUserId)) {
+      const viewerRow = scores.find((row) => Number(row.user_id) === viewerUserId);
+      const computedAtMs = viewerRow?.computed_at
+        ? Date.parse(viewerRow.computed_at)
+        : NaN;
+      const viewerStale =
+        !viewerRow
+        || !Number.isFinite(computedAtMs)
+        || Date.now() - computedAtMs > VIEWER_SCORE_MAX_AGE_MS;
+      if (viewerStale) {
+        try {
+          await computeDailyScoreForDate({ userId: viewerUserId, date: scoreDate });
+          scores = await fetchScoresForUsers(supabase, allowedIds, scoreDate);
+        } catch (computeErr) {
+          logger.debug('[WELLNESS-LB] Viewer score compute skipped', {
+            err: computeErr.message,
+          });
+        }
       }
     }
 

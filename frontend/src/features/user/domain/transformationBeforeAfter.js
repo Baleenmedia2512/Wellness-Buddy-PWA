@@ -174,6 +174,11 @@ function isIncompleteProfileMappedAfter(testimonial, afterValue) {
  * Profile Right never maps to After. A later Left change updates Before only.
  */
 export function seedMineTestimonialFromProfileSlots(testimonial, { leftUrl, weightKg } = {}) {
+  // Existing user: keep Transformation photos as stored — do not overlay Profile.
+  if (isStoredPhoto(testimonial?.beforeImageUrl)) {
+    return { ...testimonial };
+  }
+
   const hasLeft = isStoredPhoto(leftUrl);
   const weight = firstPositiveKg(weightKg);
   if (!testimonial && !hasLeft && weight == null) return null;

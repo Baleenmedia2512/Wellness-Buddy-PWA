@@ -10,6 +10,9 @@
 
 const TARGET_BYTES = 900 * 1024;
 const MAX_DIM = 1200;
+/** Profile Left/Centre/Right — smaller wire payload for fast POST (R2 stores compressed again server-side). */
+export const PROFILE_TRANSFORM_TARGET_BYTES = 100 * 1024;
+export const PROFILE_TRANSFORM_MAX_DIM = 800;
 const LOAD_TIMEOUT_MS = 20000;
 
 /**
@@ -269,12 +272,20 @@ function loadImageFromUrl(url) {
 
 /**
  * @param {File} file
+ * @param {{ targetBytes?: number, maxDim?: number }} [options]
  * @returns {Promise<{ base64: string, preview: string }>}
  */
-export async function compressImage(file) {
+export async function compressImage(file, options = {}) {
   if (!file) {
     throw new Error('No photo selected.');
   }
+
+  const targetBytes = Number(options.targetBytes) > 0
+    ? Number(options.targetBytes)
+    : TARGET_BYTES;
+  const maxDim = Number(options.maxDim) > 0
+    ? Number(options.maxDim)
+    : MAX_DIM;
 
   const buffer = await readFileBuffer(file);
   const orientation = readJpegOrientation(buffer);
@@ -300,8 +311,8 @@ export async function compressImage(file) {
     const drawOrientation = resolved.applyExif ? orientation : 1;
     let drawW = resolved.applyExif ? resolved.srcW : resolved.width;
     let drawH = resolved.applyExif ? resolved.srcH : resolved.height;
-    if (drawW > MAX_DIM || drawH > MAX_DIM) {
-      const ratio = Math.min(MAX_DIM / drawW, MAX_DIM / drawH);
+    if (drawW > maxDim || drawH > maxDim) {
+      const ratio = Math.min(maxDim / drawW, maxDim / drawH);
       drawW = Math.round(drawW * ratio);
       drawH = Math.round(drawH * ratio);
     }
@@ -319,7 +330,7 @@ export async function compressImage(file) {
     transformCanvasForOrientation(ctx, drawW, drawH, drawOrientation);
     ctx.drawImage(img, 0, 0, drawW, drawH);
 
-    const maxBase64Len = Math.ceil(TARGET_BYTES / 0.75);
+    const maxBase64Len = Math.ceil(targetBytes / 0.75);
     let quality = 0.85;
     let dataUrl = canvas.toDataURL('image/jpeg', quality);
     while (dataUrl.length > maxBase64Len && quality > 0.15) {
