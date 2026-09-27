@@ -713,11 +713,38 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
             </tr>
           ) : (
             <tr>
-              <td style={{ padding: '0 0 20px' }} />
+              <td style={{ padding: '0 0 4px' }} />
             </tr>
           )}
         </tbody>
       </table>
+
+      <div style={{ padding: '4px 18px 10px', textAlign: 'center' }}>
+        <p
+          style={{
+            margin: 0,
+            fontSize: 10,
+            fontWeight: 500,
+            color: '#9ca3af',
+            lineHeight: '14px',
+            fontFamily: CARD_FONT,
+          }}
+        >
+          The views expressed are that of individuals.
+        </p>
+        <p
+          style={{
+            margin: '2px 0 0',
+            fontSize: 10,
+            fontWeight: 500,
+            color: '#9ca3af',
+            lineHeight: '14px',
+            fontFamily: CARD_FONT,
+          }}
+        >
+          These products are not intended to diagnose, treat or cure any disease.
+        </p>
+      </div>
     </div>
   );
 });

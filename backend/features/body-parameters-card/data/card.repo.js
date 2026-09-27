@@ -88,10 +88,12 @@ export async function insertCard(payload) {
  * Update an existing body-parameters card by id.
  * @param {number} id
  * @param {object} payload - validated + coerced from validateUpdateCard
+ * @param {{ allowActivated?: boolean }} [opts]
  * @returns {object} updated row
  */
-export async function updateCard(id, payload) {
+export async function updateCard(id, payload, opts = {}) {
   const supabase = getSupabaseClient();
+  const allowActivated = opts.allowActivated === true;
 
   const { data: existingRow, error: existingErr } = await supabase
     .from(TABLE)
@@ -103,7 +105,7 @@ export async function updateCard(id, payload) {
   if (!existingRow) {
     throw new ValidationError(404, 'Card not found');
   }
-  if (existingRow.user_id && await isUserActivatedForBcm(existingRow.user_id)) {
+  if (!allowActivated && existingRow.user_id && await isUserActivatedForBcm(existingRow.user_id)) {
     await rejectBcmForActivatedMember(existingRow.user_id);
   }
 
@@ -130,7 +132,7 @@ export async function updateCard(id, payload) {
     recovered_health_issues: Array.isArray(payload.recoveredHealthIssues)
       ? payload.recoveredHealthIssues
       : [],
-    // Stamp update time so list/share show update time; create keeps created_at only.
+    // Stamp update time for audit/cache — list/share Date still uses created_at (session time).
     updated_at: new Date().toISOString(),
   };
 
@@ -631,7 +633,7 @@ async function findLatestFullCardByUserId(userId) {
  * Never assigns CoachId from the counsellor. May clear a legacy wrong assignment
  * when counsellorId matches CoachId and the member never completed coach selection.
  *
- * @param {{ name: string, phoneNumber: string, counsellorId?: number|null, heightCm?: number|null, bmr?: number|null, weightKg?: number|null, fatPercent?: number|null }} input
+ * @param {{ name: string, phoneNumber: string, counsellorId?: number|null, heightCm?: number|null, bmr?: number|null, weightKg?: number|null, fatPercent?: number|null, allowActivated?: boolean }} input
  * @returns {Promise<{ userId: number, isNew: boolean }>}
  */
 export async function createTeamMemberFromPhone({
@@ -642,6 +644,7 @@ export async function createTeamMemberFromPhone({
   bmr,
   weightKg,
   fatPercent,
+  allowActivated = false,
 }) {
   const supabase = getSupabaseClient();
   const storedPhone = canonicalPhoneForStorage(phoneNumber);
@@ -668,7 +671,10 @@ export async function createTeamMemberFromPhone({
   if (existingMember) {
     const existingUserId = existingMember.UserId;
     const approved = await hasApprovedCoachSelection(existingUserId);
-    if (isMemberActivatedForBcmExclusion({ hasApprovedCoachSelection: approved })) {
+    if (
+      !allowActivated
+      && isMemberActivatedForBcmExclusion({ hasApprovedCoachSelection: approved })
+    ) {
       logger.info('[body-params-card] blocking BCM for activated member', {
         userId: existingUserId,
       });
@@ -1069,9 +1075,8 @@ export async function getMemberPrefillForCard(userId) {
   if (error) throw error;
   if (!data) return null;
 
-  if (await isUserActivatedForBcm(uid)) {
-    await rejectBcmForActivatedMember(uid);
-  }
+  // Activated members may still be prefilled when the coach chose Override / New.
+  // Do not purge cards from a read path.
 
   const num = (v) => (v != null && Number.isFinite(Number(v)) ? Number(v) : null);
   const heightCm = data.Height != null ? Number(data.Height) : null;

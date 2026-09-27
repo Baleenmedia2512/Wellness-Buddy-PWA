@@ -1,13 +1,24 @@
 import { getSupabaseClient } from "../../../utils/supabaseClient.js";
 import logger from '../../../shared/lib/logger.js';
 import { isActiveTeamStatus } from '../../../utils/teamHierarchyBuilder.js';
+import {
+  buildLeadPartnerByUserId,
+  listPrimaryDirectReports,
+} from '../../../utils/teamHierarchyTree.js';
+import { resolveCommunityPeerCoachIds } from '../../../utils/communityTeamVisibility.js';
 import { getLatestWeightMetricsByUserIds } from '../../../features/user/user.repository.js';
 import { computeBmiFromHeightWeight } from '../../../features/body-parameters-card/domain/card.rules.js';
 
 /**
  * API: Get Hierarchical Team Structure
- * Returns nested team hierarchy for the All Teams view
- * Supports multi-level Coach → Co-Coach → Members structure
+ * Returns nested team hierarchy for the All Teams / Leadership Dashboard view.
+ *
+ * Primary tree edges use CoachId only. Co-coach partners are attached as
+ * metadata and (for shared-team leads) their CoachId downline is merged at
+ * the root — never via recursive CoCoachId parent relationships.
+ *
+ * Same Community ID independent coaches are merged for Team visibility only
+ * (their Direct/Full downlines) — never as Coach / Co-Coach of each other.
  *
  * By default, allMembers (used by Diary / team search) contains Active users only.
  * Pass includeInactive=true to include Inactive users in the flat list.
@@ -151,13 +162,14 @@ export default async function handler(req, res) {
       return;
     }
 
-    // Derive CoCoachId from coach_teams_table (instead of storing redundantly)
-    // Get all unique CoachTeamIds
+    // Load coach_teams for display CoCoachId + lead-partner exclusion map.
+    // Tree edges use CoachId only (see teamHierarchyTree.js).
     // TEMPORARY: CoachTeamId is currently TeamId string until database migration
     const coachTeamIds = [...new Set(allUsers.map(u => u.CoachTeamId).filter(Boolean))];
     logger.debug(`📊 [team-hierarchy] Fetching ${coachTeamIds.length} coach teams for co-coach derivation`);
     
     const coachTeamsMap = {}; // Maps TeamId string -> {CoachId, CoCoachId}
+    const coachTeamRows = [];
     if (coachTeamIds.length > 0) {
       const { data: coachTeams, error: teamsError } = await supabase
         .from("coach_teams_table")
@@ -169,6 +181,7 @@ export default async function handler(req, res) {
         console.error("❌ [team-hierarchy] Error fetching coach teams:", teamsError);
       } else if (coachTeams) {
         coachTeams.forEach(team => {
+          coachTeamRows.push(team);
           coachTeamsMap[team.TeamId] = { // TEMPORARY: Map by TeamId string
             coachId: team.CoachId,
             coCoachId: team.CoCoachId
@@ -177,8 +190,10 @@ export default async function handler(req, res) {
         logger.debug(`✅ [team-hierarchy] Loaded ${coachTeams.length} active coach team partnerships`);
       }
     }
+
+    const leadPartnerByUserId = buildLeadPartnerByUserId(coachTeamRows);
     
-    // Helper function to derive coCoachId for a user
+    // Helper: display-only coCoachId for members (not used for tree edges)
     const deriveCoCoachId = (user) => {
       if (!user.CoachTeamId) return null;
       
@@ -229,33 +244,28 @@ export default async function handler(req, res) {
     });
 
     // Collect the active descendants of an Inactive node, recursively.
-    // Called when buildHierarchy encounters an Inactive direct report — the
-    // inactive node itself is hidden; its active children bubble up to the
-    // nearest active ancestor.
+    // Walk CoachId only — never derived CoCoachId.
     // NOTE: defined before buildHierarchy but only called at runtime (mutual
     //       recursion is safe because both are fully defined before first call).
-    const collectPromotedChildren = (inactiveUserId, promotedParentId, visited, coachPartnerIds) => {
+    const collectPromotedChildren = (inactiveUserId, promotedParentId, visited) => {
       const result = [];
       const newVisited = new Set(visited);
       newVisited.add(inactiveUserId);
 
-      const directReports = allUsers.filter((u) => {
-        const derivedCoCoachId = userMap.get(u.UserId)?.coCoachId;
-        return (
-          (u.CoachId === inactiveUserId || derivedCoCoachId === inactiveUserId) &&
-          u.UserId !== inactiveUserId &&
-          !coachPartnerIds.includes(u.UserId) &&
-          !newVisited.has(u.UserId)
-        );
-      });
+      const directReports = listPrimaryDirectReports(
+        allUsers,
+        inactiveUserId,
+        leadPartnerByUserId,
+        newVisited,
+      );
 
       directReports.forEach((report) => {
         if (!isActiveTeamStatus(report.Status)) {
           // Inactive chain: keep promoting deeper
-          const deeper = collectPromotedChildren(report.UserId, promotedParentId, newVisited, coachPartnerIds);
+          const deeper = collectPromotedChildren(report.UserId, promotedParentId, newVisited);
           result.push(...deeper);
         } else {
-          const childNode = buildHierarchy(report.UserId, promotedParentId, newVisited, coachPartnerIds);
+          const childNode = buildHierarchy(report.UserId, promotedParentId, newVisited);
           if (childNode) {
             childNode.isCoachRelationship = true;
             result.push(childNode);
@@ -266,12 +276,11 @@ export default async function handler(req, res) {
       return result;
     };
 
-    // Recursive function to build hierarchy (creates duplicate entries for dual reporting)
+    // Recursive function to build primary CoachId hierarchy
     const buildHierarchy = (
       userId,
       parentCoachId = null,
       visited = new Set(),
-      coachPartnerIds = [userId], // IDs of co-coach partners (to exclude from nested view)
     ) => {
       const user = userMap.get(userId);
       if (!user) return null;
@@ -293,17 +302,13 @@ export default async function handler(req, res) {
         teamMembers: [],
       };
 
-      // Find all direct reports (where CoachId OR derived coCoachId matches userId)
-      // EXCLUDE co-coach partners from appearing as nested members
-      // NOTE: u.CoCoachId does NOT exist on raw DB rows — must use userMap for the derived value
-      const directReports = allUsers.filter((u) => {
-        const derivedCoCoachId = userMap.get(u.UserId)?.coCoachId;
-        return (
-          (u.CoachId === userId || derivedCoCoachId === userId) &&
-          u.UserId !== userId &&
-          !coachPartnerIds.includes(u.UserId)
-        );
-      });
+      // Primary CoachId directs only. Co-coach partners of this node are excluded.
+      const directReports = listPrimaryDirectReports(
+        allUsers,
+        userId,
+        leadPartnerByUserId,
+        newVisited,
+      );
 
       logger.debug(
         `🔍 [team-hierarchy] User ${user.userName} (${userId}) has ${directReports.length} direct reports:`,
@@ -314,47 +319,25 @@ export default async function handler(req, res) {
         })),
       );
 
-      // For each direct report, create entries for BOTH coach and co-coach relationships
       directReports.forEach((report) => {
         // Skip if report is the same as current user (self-reference)
         if (report.UserId === userId) return;
 
         // If this direct report is Inactive: hide it, promote its active descendants up
         if (!isActiveTeamStatus(report.Status)) {
-          const promoted = collectPromotedChildren(report.UserId, userId, newVisited, coachPartnerIds);
+          const promoted = collectPromotedChildren(report.UserId, userId, newVisited);
           promoted.forEach((child) => userNode.teamMembers.push(child));
           return;
         }
 
-        // If this user reports through CoachId
-        if (report.CoachId === userId) {
-          const childNode = buildHierarchy(
-            report.UserId,
-            userId,
-            newVisited,
-            coachPartnerIds,
-          );
-          if (childNode) {
-            childNode.isCoachRelationship = true;
-            userNode.teamMembers.push(childNode);
-          }
-        }
-
-        // If this user reports through CoCoachId (and it's different from CoachId)
-        if (
-          report.CoCoachId === userId &&
-          report.CoCoachId !== report.CoachId
-        ) {
-          const childNode = buildHierarchy(
-            report.UserId,
-            userId,
-            newVisited,
-            coachPartnerIds,
-          );
-          if (childNode) {
-            childNode.isCoachRelationship = false;
-            userNode.teamMembers.push(childNode);
-          }
+        const childNode = buildHierarchy(
+          report.UserId,
+          userId,
+          newVisited,
+        );
+        if (childNode) {
+          childNode.isCoachRelationship = true;
+          userNode.teamMembers.push(childNode);
         }
       });
 
@@ -388,7 +371,6 @@ export default async function handler(req, res) {
 
     // Check if this coach has a co-coach partner
     // Query coach_teams_table using BOTH the user's ID and their CoachTeamId
-    let coachPartnerIds = [coachIdInt];
     let managedTeam = null;
     
     // Try multiple approaches to find the partnership:
@@ -428,22 +410,24 @@ export default async function handler(req, res) {
       loggedInUserId: coachIdInt,
       loggedInUserTeamId: loggedInCoach.CoachTeamId
     });
-    
-    if (managedTeam && managedTeam.CoachId && managedTeam.CoCoachId) {
-      // This coach has a co-coach partner - exclude both from each other's nested view
-      coachPartnerIds = [managedTeam.CoachId, managedTeam.CoCoachId];
+
+    if (managedTeam?.CoachId && managedTeam?.CoCoachId) {
+      const a = Number(managedTeam.CoachId);
+      const b = Number(managedTeam.CoCoachId);
+      if (Number.isFinite(a) && Number.isFinite(b) && a !== b) {
+        leadPartnerByUserId.set(a, b);
+        leadPartnerByUserId.set(b, a);
+      }
       logger.debug(`👥 [team-hierarchy] Co-coach partnership detected:`, {
         TeamId: managedTeam.TeamId,
         CoachId: managedTeam.CoachId,
         CoCoachId: managedTeam.CoCoachId,
         LoggedInCoach: coachIdInt,
-        WillExcludePartnerIds: coachPartnerIds
       });
     }
 
-    // Build hierarchy starting from logged-in coach
-    // Pass coachPartnerIds to exclude partner from nested view
-    const hierarchy = buildHierarchy(coachIdInt, null, new Set(), coachPartnerIds);
+    // Build primary CoachId hierarchy starting from logged-in coach
+    const hierarchy = buildHierarchy(coachIdInt, null, new Set());
 
     // If co-coach partnership exists, store co-coach info but DON'T add to team members
     if (managedTeam && managedTeam.CoachId && managedTeam.CoCoachId) {
@@ -463,7 +447,7 @@ export default async function handler(req, res) {
           ...partnerData,
           isCoach: !loggedInIsCoach,
           isCoCoach: loggedInIsCoach,
-          parentCoachId: coachIdInt,
+          parentCoachId: null,
           teamMembers: [],
           directMemberCount: 0,
           totalMemberCount: 0,
@@ -484,33 +468,19 @@ export default async function handler(req, res) {
           }
         });
 
-        // Find ALL members who report to EITHER partner (merge both teams)
+        // Shared visibility: append partner's primary CoachId directs + subtrees.
         const existingIds = new Set(hierarchy.teamMembers.map(m => m.userId));
         existingIds.add(coachIdInt);
         existingIds.add(partnerId);
 
-        // Find all members who report to either partner, or share the same CoachTeamId.
-        // Shared-team members may only have CoachTeamId aligned (not CoachId = sponsor user id).
-        const sharedTeamId = managedTeam.TeamId
-          ? String(managedTeam.TeamId).trim().toUpperCase()
-          : null;
-        const partnerMembers = allUsers.filter(u => {
-          const derivedCoCoachId = userMap.get(u.UserId)?.coCoachId;
-          const userCoachTeamId = u.CoachTeamId
-            ? String(u.CoachTeamId).trim().toUpperCase()
-            : null;
-          const onSharedTeam = Boolean(sharedTeamId && userCoachTeamId === sharedTeamId);
-          const reportsToEitherPartner = (
-            u.CoachId === coachIdInt ||
-            u.CoachId === partnerId ||
-            derivedCoCoachId === coachIdInt ||
-            derivedCoCoachId === partnerId ||
-            onSharedTeam
-          );
-          return reportsToEitherPartner && !existingIds.has(u.UserId);
-        });
+        const partnerMembers = listPrimaryDirectReports(
+          allUsers,
+          partnerId,
+          leadPartnerByUserId,
+          existingIds,
+        );
 
-        logger.debug(`👥 [team-hierarchy] Merging ${partnerMembers.length} team members from partnership:`,
+        logger.debug(`👥 [team-hierarchy] Merging ${partnerMembers.length} partner CoachId directs:`,
           partnerMembers.map(m => ({ 
             UserId: m.UserId, 
             UserName: m.UserName, 
@@ -525,20 +495,24 @@ export default async function handler(req, res) {
           if (!isActiveTeamStatus(member.Status)) {
             const promoted = collectPromotedChildren(
               member.UserId,
-              coachIdInt,
+              partnerId,
               new Set([coachIdInt, partnerId]),
-              coachPartnerIds,
             );
-            promoted.forEach((child) => hierarchy.teamMembers.push(child));
+            promoted.forEach((child) => {
+              if (!existingIds.has(child.userId)) {
+                existingIds.add(child.userId);
+                hierarchy.teamMembers.push(child);
+              }
+            });
             return;
           }
           const memberNode = buildHierarchy(
             member.UserId,
-            coachIdInt,
+            partnerId,
             new Set([coachIdInt, partnerId]),
-            coachPartnerIds
           );
-          if (memberNode) {
+          if (memberNode && !existingIds.has(memberNode.userId)) {
+            existingIds.add(memberNode.userId);
             hierarchy.teamMembers.push(memberNode);
           }
         });
@@ -552,6 +526,64 @@ export default async function handler(req, res) {
       }
     } else {
       logger.debug(`ℹ️ [team-hierarchy] No co-coach partnership found for user ${coachIdInt}`);
+    }
+
+    // Same Community ID: merge independent peer coaches' Direct/Full downlines
+    // for Team visibility. Do not attach coCoachInfo or create CoachId edges.
+    const partnerIdsForCommunity = managedTeam?.CoachId && managedTeam?.CoCoachId
+      ? [managedTeam.CoachId, managedTeam.CoCoachId].filter((id) => Number(id) !== coachIdInt)
+      : [];
+    const communityPeerIds = resolveCommunityPeerCoachIds(coachIdInt, allUsers, {
+      partnerIds: partnerIdsForCommunity,
+    });
+
+    if (hierarchy && communityPeerIds.length > 0) {
+      const existingIds = new Set(hierarchy.teamMembers.map((m) => m.userId));
+      existingIds.add(coachIdInt);
+      for (const pid of partnerIdsForCommunity) existingIds.add(Number(pid));
+      for (const peerId of communityPeerIds) existingIds.add(Number(peerId));
+
+      logger.debug(`🏘️ [team-hierarchy] Merging ${communityPeerIds.length} community peer coach trees:`,
+        communityPeerIds);
+
+      for (const peerId of communityPeerIds) {
+        const peerMembers = listPrimaryDirectReports(
+          allUsers,
+          peerId,
+          leadPartnerByUserId,
+          existingIds,
+        );
+
+        peerMembers.forEach((member) => {
+          if (!isActiveTeamStatus(member.Status)) {
+            const promoted = collectPromotedChildren(
+              member.UserId,
+              peerId,
+              new Set([coachIdInt, peerId]),
+            );
+            promoted.forEach((child) => {
+              if (!existingIds.has(child.userId)) {
+                existingIds.add(child.userId);
+                hierarchy.teamMembers.push(child);
+              }
+            });
+            return;
+          }
+          const memberNode = buildHierarchy(
+            member.UserId,
+            peerId,
+            new Set([coachIdInt, peerId]),
+          );
+          if (memberNode && !existingIds.has(memberNode.userId)) {
+            existingIds.add(memberNode.userId);
+            hierarchy.teamMembers.push(memberNode);
+          }
+        });
+      }
+
+      hierarchy.directMemberCount = hierarchy.teamMembers.length;
+      hierarchy.totalMemberCount = hierarchy.directMemberCount
+        + hierarchy.teamMembers.reduce((sum, m) => sum + (m.totalMemberCount || 0), 0);
     }
 
     // Flatten hierarchy to get all members (for Diary / team search).

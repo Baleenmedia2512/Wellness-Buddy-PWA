@@ -206,7 +206,7 @@ test.describe('BCM Module (Body Composition Metrics)', () => {
       });
     });
 
-    // Mock phone BCM status
+    // Mock phone BCM status (unknown number — no exists prompt)
     await page.route('**/api/body-parameters-card/phone-status*', async (route) => {
       await route.fulfill({
         status: 200,
@@ -216,6 +216,7 @@ test.describe('BCM Module (Body Composition Metrics)', () => {
           data: {
             activated: false,
             message: null,
+            userId: null,
             existingCard: null
           }
         })
@@ -318,8 +319,14 @@ test.describe('BCM Module (Body Composition Metrics)', () => {
 
     // Setup Mock for create
     let createCalled = false;
+    let lastCreateBody = null;
     await page.route('**/api/body-parameters-card/create', async (route) => {
       createCalled = true;
+      try {
+        lastCreateBody = route.request().postDataJSON();
+      } catch {
+        lastCreateBody = null;
+      }
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -328,7 +335,7 @@ test.describe('BCM Module (Body Composition Metrics)', () => {
           data: {
             id: 5,
             name: 'NEW CLIENT',
-            phoneNumber: '9876543210',
+            phoneNumber: null,
             heightCm: 172,
             weightKg: 65,
             recordedDate: '2026-08-24',
@@ -339,24 +346,19 @@ test.describe('BCM Module (Body Composition Metrics)', () => {
       });
     });
 
-    // Verify form requirements: Save & Share does not submit when name/phone are invalid or empty
+    // Name is required; phone is optional
     const saveButton = page.getByRole('button', { name: 'Save & Share' });
 
     // Try to save with everything empty - creation should not be called
     await saveButton.click();
     expect(createCalled).toBe(false);
 
-    // Fill Name but keep Phone empty - creation should still not be called
+    // Fill Name but keep Phone empty - creation should succeed without phone
     await page.getByPlaceholder('FULL NAME').fill('NEW CLIENT');
     await saveButton.click();
-    expect(createCalled).toBe(false);
-
-    // Fill Phone
-    await page.getByPlaceholder('Client phone — creates team member').fill('9876543210');
-
-    // Now it should save successfully
-    await saveButton.click();
     await page.waitForTimeout(500);
+    expect(createCalled).toBe(true);
+    expect(lastCreateBody?.phoneNumber == null || lastCreateBody?.phoneNumber === '').toBe(true);
 
     // Verify that the BCM modal closes (meaning success)
     await expect(page.getByRole('heading', { name: 'Your Body Parameters' })).not.toBeVisible();
@@ -572,8 +574,8 @@ test.describe('BCM Module (Body Composition Metrics)', () => {
     await expect(fatLabel).toContainText('(20–30%)');
   });
 
-  test('BCM-011 Duplicate Phone Duplication Protection', async ({ page }) => {
-    // Intercept phone-status request to simulate duplicate registered phone number
+  test('BCM-011 Existing Activated Phone Prompts Override Or New', async ({ page }) => {
+    // Intercept phone-status request to simulate activated (registered) phone number
     await page.route('**/api/body-parameters-card/phone-status*', async (route) => {
       await route.fulfill({
         status: 200,
@@ -583,6 +585,8 @@ test.describe('BCM Module (Body Composition Metrics)', () => {
           data: {
             activated: true,
             message: 'User already exists',
+            userId: 55,
+            exists: true,
             existingCard: null
           }
         })
@@ -594,35 +598,162 @@ test.describe('BCM Module (Body Composition Metrics)', () => {
     // Fill validation fields
     await page.getByPlaceholder('FULL NAME').fill('DUPLICATE USER');
 
-    const phoneInput = page.getByPlaceholder('Client phone — creates team member');
+    const phoneInput = page.getByPlaceholder('Client phone (optional)');
     await phoneInput.fill('9999999999');
     await page.waitForTimeout(500);
 
-    // Verify duplicate error displays
-    await expect(page.getByText('User already exists')).toBeVisible();
+    // Activated number shows Override / New dialog (not a hard field block)
+    await expect(page.getByText(
+      'This number already exists. Override the existing card, or create a new card for this number?'
+    )).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Override' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'New' })).toBeVisible();
 
-    // Save button must remain disabled
+    // Save stays disabled until the coach chooses
     const saveButton = page.getByRole('button', { name: 'Save & Share' });
     await expect(saveButton).toBeDisabled();
+
+    // New keeps the phone and unlocks save
+    await page.getByRole('button', { name: 'New' }).click();
+    await expect(phoneInput).toHaveValue('9999999999');
+    await expect(saveButton).toBeEnabled();
   });
 
-  test('BCM-012 Exact Phone Match Autocomplete Auto-Prefill', async ({ page }) => {
+  test('BCM-012 Existing Phone Prompts Override Or New', async ({ page }) => {
+    await page.route('**/api/body-parameters-card/phone-status*', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          ok: true,
+          data: {
+            activated: false,
+            message: null,
+            userId: 101,
+            exists: true,
+            existingCard: {
+              id: 1,
+              name: 'MEMBER ONE',
+              phoneNumber: '9876543210',
+              heightCm: 175,
+              gender: 'Male',
+              age: 28,
+            }
+          }
+        })
+      });
+    });
+
+    await page.route('**/api/body-parameters-card/member-prefill*', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          ok: true,
+          data: {
+            userName: 'MEMBER ONE',
+            heightCm: 175,
+            gender: 'Male',
+            age: 28,
+          }
+        })
+      });
+    });
+
     await page.getByRole('button', { name: 'Create Body Parameters Card' }).click();
 
-    // Enter matching phone number of MEMBER ONE
-    const phoneInput = page.getByPlaceholder('Client phone — creates team member');
+    const phoneInput = page.getByPlaceholder('Client phone (optional)');
     await phoneInput.fill('9876543210');
     await page.waitForTimeout(500);
 
-    // Exact match triggers fillFromMember automatically -> Name, Height, Gender, Age, and calculated BMI should be auto-filled
+    await expect(page.getByText(
+      'This number already exists. Override the existing card, or create a new card for this number?'
+    )).toBeVisible();
+
+    // New keeps the phone so a fresh card can be saved for that number
+    await page.getByRole('button', { name: 'New' }).click();
+    await expect(phoneInput).toHaveValue('9876543210');
+
+    // Re-enter (change then restore) and choose Override to prefill
+    await phoneInput.fill('9876543211');
+    await phoneInput.fill('9876543210');
+    await page.waitForTimeout(500);
+    await expect(page.getByText(
+      'This number already exists. Override the existing card, or create a new card for this number?'
+    )).toBeVisible();
+    await page.getByRole('button', { name: 'Override' }).click();
+    await page.waitForTimeout(500);
+
     await expect(page.getByPlaceholder('FULL NAME')).toHaveValue('MEMBER ONE');
-    
-    // Height input specifically inside the Height label div
     const heightInput = page.locator('div').filter({ has: page.locator('> label').filter({ hasText: /^Height/i }) }).locator('input');
     await expect(heightInput).toHaveValue('175');
     await expect(page.locator('div:has(> label:has-text("Gender")) select')).toHaveValue('Male');
-    
     const ageInput = page.locator('div').filter({ has: page.locator('> label').filter({ hasText: /^Age$/ }) }).locator('input');
     await expect(ageInput).toHaveValue('28');
+  });
+
+  test('BCM-013 Phone Autocomplete Pick Still Prompts Override Or New', async ({ page }) => {
+    await page.route('**/api/body-parameters-card/phone-status*', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          ok: true,
+          data: {
+            activated: false,
+            message: null,
+            userId: 202,
+            exists: true,
+            existingCard: {
+              id: 2,
+              name: 'JAFAR',
+              phoneNumber: '6369591703',
+              heightCm: 150,
+              gender: 'Male',
+            }
+          }
+        })
+      });
+    });
+
+    // Flat team list used by client-side phone autocomplete
+    await page.route('**/api/team/hierarchy/**', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          data: [{
+            userId: 202,
+            userName: 'Jafar',
+            phoneNumber: '6369591703',
+            heightCm: 150,
+            bmr: 1748,
+            gender: 'Male',
+          }],
+        })
+      });
+    });
+
+    await page.getByRole('button', { name: 'Create Body Parameters Card' }).click();
+
+    const phoneInput = page.getByPlaceholder('Client phone (optional)');
+    await phoneInput.fill('6369');
+    await page.waitForTimeout(400);
+
+    const suggestion = page.getByText(/6369591703/);
+    await expect(suggestion).toBeVisible();
+    await suggestion.click();
+    await page.waitForTimeout(400);
+
+    // Must ask — autocomplete must not silent-override
+    await expect(page.getByText(
+      'This number already exists. Override the existing card, or create a new card for this number?'
+    )).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Override' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'New' })).toBeVisible();
+
+    // Name should NOT be prefilled until Override
+    await expect(page.getByPlaceholder('FULL NAME')).toHaveValue('');
   });
 });

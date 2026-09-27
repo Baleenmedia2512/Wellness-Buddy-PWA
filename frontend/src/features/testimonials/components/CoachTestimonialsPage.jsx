@@ -68,10 +68,14 @@ import {
   parseDurationText,
   formatDurationText,
   sanitizeDurationDigits,
+  sanitizeWeightTyping,
+  parseWeightKg,
   validateDurationFields,
   isUsableDurationText,
   liveWeightDiffKg,
   canShareTransformationPhoto,
+  hasApprovalReadyBeforePhoto,
+  hasStoredTransformationPhotoCard,
 } from '../services/testimonialFormUtils.js';
 import { resolveRowTeamUploadPerformance } from '../utils/testimonialTeamPerformance.js';
 import { uniqueConditions, isSameIssueList, withoutHealthIssue } from '../utils/uniqueConditions.js';
@@ -810,10 +814,7 @@ function MemberCard({
     || draftAfter?.previewUrl || draftAfter?.imageBase64
   );
 
-  const parseWeightInput = useCallback((raw) => {
-    const v = parseFloat(String(raw ?? '').trim().replace(',', '.'));
-    return Number.isFinite(v) && v > 0 ? v : null;
-  }, []);
+  const parseWeightInput = useCallback((raw) => parseWeightKg(raw), []);
 
   const commitBeforeWeight = useCallback((raw) => {
     const v = parseWeightInput(raw);
@@ -1031,7 +1032,8 @@ function MemberCard({
       testimonial?.healthVideoPath || testimonial?.businessVideoPath
       || testimonial?.healthVideoUrl || testimonial?.businessVideoUrl,
     );
-    const hasVisiblePhotoCard = Boolean(testimonial?.beforeImageUrl && testimonial?.afterImageUrl);
+    // Profile-seeded URLs look like Before/After but are not on the testimonial row.
+    const hasVisiblePhotoCard = hasStoredTransformationPhotoCard(testimonial);
     const issuesNeedOtp = dirtySlots.includes('issues') && (hasAfter || hasResultVideo || hasVisiblePhotoCard);
     const afterWeightDirty = draftAfter?.weightKg !== undefined
       && afterWeightDiffers(testimonial?.beforeWeightKg, draftAfter.weightKg);
@@ -1088,40 +1090,34 @@ function MemberCard({
       }
     }
 
-    // Visible Before+After (including a Profile-seeded clone) needs issues + duration + OTP.
-    const willComplete =
-      Boolean(draftBefore?.imageBase64 || testimonial?.beforeImageUrl)
-      && Boolean(draftAfter?.imageBase64 || testimonial?.afterImageUrl || hasAfter);
-    const issuesForSubmit = Array.isArray(draftIssues) && draftIssues.filter(Boolean).length > 0
-      ? draftIssues.filter(Boolean)
-      : (testimonial?.recoveredHealthIssues || []);
-    const submittingPhotoCard = Boolean(hasVisiblePhotoCard || willComplete || afterWeightDirty);
-    if (
-      submittingPhotoCard
-      && (!Array.isArray(issuesForSubmit) || issuesForSubmit.filter(Boolean).length === 0)
-    ) {
-      setSubmitError('Add at least one Health Issue before submitting for coach approval.');
+    const approvalReadyBefore = hasApprovalReadyBeforePhoto({ testimonial, draftBefore });
+    // New users / profile-seeded cards must upload Transformation Before so OTP can start.
+    if (!isSilentSave && !approvalReadyBefore) {
+      setSubmitError('Add a Before photo on this Transformation card, then submit for approval.');
       return;
     }
+
+    // Visible Before+After (stored Transformation photos or drafts) needs duration + OTP.
+    // Health issues are optional.
+    const willComplete =
+      Boolean(draftBefore?.imageBase64 || (hasVisiblePhotoCard && testimonial?.beforeImageUrl))
+      && Boolean(draftAfter?.imageBase64 || (hasVisiblePhotoCard && testimonial?.afterImageUrl) || hasAfter);
+    const issuesForSubmit = Array.isArray(draftIssues)
+      ? draftIssues.filter(Boolean)
+      : (testimonial?.recoveredHealthIssues || []);
+    const submittingPhotoCard = Boolean(hasVisiblePhotoCard || willComplete || afterWeightDirty || approvalReadyBefore);
+    // Health issues are optional — user may submit without selecting any.
     if (submittingPhotoCard && !usableDurationForSubmit) {
       setSubmitError('Add a duration in days or months (e.g. 3 months) before submitting.');
       return;
     }
-    if (submittingPhotoCard && issuesForSubmit.length > 0 && payload.recoveredHealthIssues == null) {
+    if (submittingPhotoCard && payload.recoveredHealthIssues == null && Array.isArray(draftIssues)) {
       payload.recoveredHealthIssues = issuesForSubmit;
     }
 
     // First-time submit needs the before image bytes in the payload.
     if (!testimonial?.id && dirtySlots.includes('before') && !draftBefore?.imageBase64) {
       setSubmitError('Before photo failed to prepare. Please pick it again.');
-      return;
-    }
-    if (!testimonial?.id && dirtySlots.includes('after') && !dirtySlots.includes('before') && !testimonial?.beforeImageUrl) {
-      setSubmitError('Please add a before photo before submitting.');
-      return;
-    }
-    if (!testimonial?.id && !dirtySlots.includes('before') && !testimonial?.beforeImageUrl) {
-      setSubmitError('Please add a before photo before submitting.');
       return;
     }
 
@@ -1175,11 +1171,10 @@ function MemberCard({
       }
       if (!isSilentSave && !otpSent) {
         const hasDuration = Boolean(usableDurationForSubmit);
-        const hasIssues = Array.isArray(issuesForSubmit) && issuesForSubmit.filter(Boolean).length > 0;
         setSubmitError(
-          hasDuration && hasIssues
+          hasDuration
             ? 'Coach approval did not start. Please tap Submit again — if it still fails, add the Before/After photos once more.'
-            : 'Coach approval did not start. Add a duration and at least one health issue, then submit again.',
+            : 'Coach approval did not start. Add a duration in days or months, then submit again.',
         );
         return;
       }
@@ -1405,7 +1400,7 @@ function MemberCard({
                     autoFocus
                     value={beforeWeightText ?? ''}
                     onChange={(e) => {
-                      const raw = e.target.value;
+                      const raw = sanitizeWeightTyping(e.target.value);
                       setBeforeWeightText(raw);
                       commitBeforeWeight(raw);
                     }}
@@ -1535,7 +1530,7 @@ function MemberCard({
                     autoFocus
                     value={afterWeightText ?? ''}
                     onChange={(e) => {
-                      const raw = e.target.value;
+                      const raw = sanitizeWeightTyping(e.target.value);
                       setAfterWeightText(raw);
                       commitAfterWeight(raw);
                     }}
@@ -1582,10 +1577,18 @@ function MemberCard({
             <>
               <div>
                 <label className="block text-[10px] font-medium text-gray-400 mb-1">Before weight (kg)</label>
-                <input type="text" inputMode="decimal" pattern="[0-9]*" step="0.1" min="1" max="500"
+                <input type="text" inputMode="decimal" autoComplete="off" step="0.1" min="1" max="500"
                   placeholder={String(testimonial?.beforeWeightKg ?? '')}
-                  value={draftBefore?.weightKg ?? ''}
-                  onChange={(e) => setDraftBefore(prev => ({ ...prev, weightKg: parseFloat(e.target.value) || undefined }))}
+                  value={draftBefore?.weightText ?? (draftBefore?.weightKg != null ? String(draftBefore.weightKg) : '')}
+                  onChange={(e) => {
+                    const text = sanitizeWeightTyping(e.target.value);
+                    const v = parseWeightKg(text);
+                    setDraftBefore((prev) => ({
+                      ...prev,
+                      weightText: text,
+                      weightKg: v != null ? v : undefined,
+                    }));
+                  }}
                   className="w-full border border-gray-200 rounded-xl px-2.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400" />
               </div>
               <div>
@@ -1602,10 +1605,18 @@ function MemberCard({
           {draftAfter && (
             <div className={draftBefore ? '' : 'col-span-2'}>
               <label className="block text-[10px] font-medium text-gray-400 mb-1">After weight (kg)</label>
-              <input type="text" inputMode="decimal" pattern="[0-9]*" step="0.1" min="1" max="500"
+              <input type="text" inputMode="decimal" autoComplete="off" step="0.1" min="1" max="500"
                 placeholder={String(hasAfter ? (testimonial?.afterWeightKg ?? '') : '')}
-                value={draftAfter?.weightKg ?? ''}
-                onChange={(e) => setDraftAfter(prev => ({ ...prev, weightKg: parseFloat(e.target.value) || undefined }))}
+                value={draftAfter?.weightText ?? (draftAfter?.weightKg != null ? String(draftAfter.weightKg) : '')}
+                onChange={(e) => {
+                  const text = sanitizeWeightTyping(e.target.value);
+                  const v = parseWeightKg(text);
+                  setDraftAfter((prev) => ({
+                    ...(prev || {}),
+                    weightText: text,
+                    weightKg: v != null ? v : undefined,
+                  }));
+                }}
                 className="w-full border border-gray-200 rounded-xl px-2.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" />
             </div>
           )}
@@ -2070,6 +2081,7 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
       if (Number.isFinite(latestWeightKg) && latestWeightKg > 0) {
         userPayload.latestWeightKg = latestWeightKg;
       }
+      // New users with Left/Centre/Right: Left defaults into Transformation Before (After mirrors until real After).
       const leftUrl = profileResult?.success
         ? profileResult?.data?.transformationPhotos?.left
         : null;

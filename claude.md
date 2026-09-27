@@ -153,6 +153,7 @@ All work-in-progress is gated behind a feature flag. No exception.
 | `ff.r2-captures` | ON | @principal-eng | 2027-03-05 | ADR-0012 — capture photos once in R2; food/weight/education/good-habit pointer to the same key. Kill switch if env missing. Diary capture image 302s; JSON format still returns Base64. |
 | `ff.r2-transformation-photos` | ON | @principal-eng | 2027-03-22 | Dual-write Left/Centre/Right `transformation_photos` to R2 keys; keep base64 in JSONB for live ≤3.5.0. GET profile returns R2 URLs for app ≥3.5.1; missing version → legacy base64. |
 | `ff.community-id-otp` | ON | @principal-eng | 2027-03-18 | ADR-0013 — Profile Community ID create/co-sponsor via 24h sponsor OTP. Live 3.4.9 still saves Community ID on profile POST; 3.5.0+ uses OTP. |
+| `ff.height-change-otp` | ON | @principal-eng | 2027-03-25 | Profile height: first save free; later changes need email/phone OTP. Apps below 3.5.0 still change height on profile POST; 3.5.0+ uses OTP. |
 
 **Frontend-only UI flags (`frontend/src/config/featureFlags.js`, no backend mirror):** `ff.shake-calculator` (OFF), `ff.contact-picker` (OFF).
 

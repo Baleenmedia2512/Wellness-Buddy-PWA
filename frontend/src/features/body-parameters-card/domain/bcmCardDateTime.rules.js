@@ -32,13 +32,14 @@ export function resolveBcmDisplayTimezone(userOrTimezone) {
 
 /**
  * Timestamp shown on BCM list / share / form.
- * Prefer update time when the card was updated; otherwise create time.
+ * Prefer create/session time — Override or metric edits stamp `updatedAt` to now,
+ * but the card Date should stay the counselling session time unless createdAt is missing.
  * @param {{ updatedAt?: string|null, createdAt?: string|null }|null|undefined} card
  * @returns {string|null}
  */
 export function resolveBcmCardDisplayTimestamp(card) {
   if (!card || typeof card !== 'object') return null;
-  return card.updatedAt || card.createdAt || null;
+  return card.createdAt || card.updatedAt || null;
 }
 
 /**

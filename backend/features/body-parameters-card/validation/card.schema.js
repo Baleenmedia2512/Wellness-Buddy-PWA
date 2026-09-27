@@ -152,7 +152,7 @@ export function validateCreateCard(body) {
   const { createdBy, userId, name, age, gender, heightCm, weightKg,
           bmi, fatPercent, bmr, bodyAge, visceralFat, chestCm, waistCm, hipCm,
           recordedDate, locationName, phoneNumber, bmrManualOverride,
-          dietType, physicalActivityLevel } = body;
+          dietType, physicalActivityLevel, phoneConflictAction } = body;
 
   if (!createdBy) throw new ValidationError(400, 'createdBy is required');
   const createdByN = parseInt(createdBy, 10);
@@ -191,6 +191,15 @@ export function validateCreateCard(body) {
   const physicalActivityLevelVal = _optionalPhysicalActivityLevel(physicalActivityLevel);
   const transformationPhotosVal = _optionalTransformationPhotos(body);
 
+  let phoneConflictActionVal = null;
+  if (phoneConflictAction != null && phoneConflictAction !== '') {
+    const action = String(phoneConflictAction).trim().toLowerCase();
+    if (action !== 'override' && action !== 'new') {
+      throw new ValidationError(422, 'phoneConflictAction must be override or new');
+    }
+    phoneConflictActionVal = action;
+  }
+
   return {
     createdBy: createdByN,
     userId:    userId ? parseInt(userId) : null,
@@ -215,6 +224,7 @@ export function validateCreateCard(body) {
     dietType: dietTypeVal,
     physicalActivityLevel: physicalActivityLevelVal,
     transformationPhotos: transformationPhotosVal,
+    phoneConflictAction: phoneConflictActionVal,
   };
 }
 

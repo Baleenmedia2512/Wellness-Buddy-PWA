@@ -137,14 +137,7 @@ export function useTestimonial({ userId, healthIssues = [] }) {
 
     const isCompleting = isCompletingMode;
     const isEditing    = isEditMode;
-    const isBeforeOnlySubmit = !isCompleting && !afterImage;
-    // Health issues required only when an after photo is being submitted (coach OTP flow).
-    const willSendOtp  = isCompleting || !!afterImage;
-
-    if (!isBeforeOnlySubmit && willSendOtp && (!Array.isArray(healthIssues) || healthIssues.length === 0)) {
-      setError('Add at least one recovered health issue in the Health Issues section before submitting for verification.');
-      return false;
-    }
+    // Health issues are optional — user may submit without selecting any.
 
     // After photo slot: new upload or editing an existing after photo
     if (isCompleting) {

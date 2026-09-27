@@ -11,20 +11,51 @@ import { syncMarathonWeightComparisonFromProfile } from '../../marathon/marathon
 
 const base = () => getApiBaseUrl();
 
-/** Sync read of the shared getProfile cache — null when missing or expired. */
-export function getCachedProfile(email) {
+function profileCacheKeyEmail(email) {
   if (!email) return null;
-  const key = cacheManager.generateKey('userProfile', String(email).toLowerCase());
-  return cacheManager.get(key, cacheManager.ttls.userProfile);
+  return cacheManager.generateKey('userProfile', String(email).toLowerCase());
+}
+
+function profileCacheKeyUserId(userId) {
+  if (userId == null || userId === '') return null;
+  return cacheManager.generateKey('userProfile', `id:${userId}`);
+}
+
+/** Ordered cache keys for a profile lookup (id + email share the same payload). */
+function profileCacheKeys({ email, userId } = {}) {
+  return [profileCacheKeyUserId(userId), profileCacheKeyEmail(email)].filter(Boolean);
+}
+
+/** Sync read of the shared getProfile cache — null when missing or expired. */
+export function getCachedProfile(emailOrOpts) {
+  let email;
+  let userId;
+  if (emailOrOpts && typeof emailOrOpts === 'object' && !Array.isArray(emailOrOpts)) {
+    ({ email, userId } = emailOrOpts);
+  } else {
+    email = emailOrOpts;
+  }
+  for (const key of profileCacheKeys({ email, userId })) {
+    const hit = cacheManager.get(key, cacheManager.ttls.userProfile);
+    if (hit !== null) return hit;
+  }
+  return null;
+}
+
+/** Write the same profile payload under email and userId keys so Header/Profile share cache. */
+function mirrorProfileCache(data, { email, userId } = {}) {
+  if (!data) return;
+  const responseEmail = data?.data?.email || email;
+  const responseUserId = data?.data?.userId ?? data?.data?.UserId ?? userId;
+  for (const key of profileCacheKeys({ email: responseEmail, userId: responseUserId })) {
+    cacheManager.set(key, data);
+  }
 }
 
 /** Invalidate cached profile reads (e.g. after consent acceptance). */
 export function clearProfileCache({ email, userId } = {}) {
-  if (email) {
-    cacheManager.clear(cacheManager.generateKey('userProfile', String(email).toLowerCase()));
-  }
-  if (userId != null && userId !== '') {
-    cacheManager.clear(cacheManager.generateKey('userProfile', `id:${userId}`));
+  for (const key of profileCacheKeys({ email, userId })) {
+    cacheManager.clear(key);
   }
 }
 
@@ -33,6 +64,9 @@ export function clearProfileCache({ email, userId } = {}) {
  * NutritionDashboard, WeightDashboard, and nutrition BMR/macro hooks.
  * Pass `cacheBust: true` after a profile save to force a fresh read.
  * Accepts email string (legacy) or `{ email, userId, cacheBust, signal }`.
+ *
+ * Email and userId keys are mirrored so Home (email) and My Profile (userId)
+ * reuse the same cached payload instead of refetching on every open.
  */
 export async function getProfile(emailOrOpts, maybeOpts = {}) {
   let email;
@@ -48,18 +82,34 @@ export async function getProfile(emailOrOpts, maybeOpts = {}) {
   if (!email && (userId == null || userId === '')) {
     throw new Error('getProfile: email or userId required');
   }
-  const key = email
-    ? cacheManager.generateKey('userProfile', String(email).toLowerCase())
-    : cacheManager.generateKey('userProfile', `id:${userId}`);
-  if (cacheBust) cacheManager.clear(key);
+  const keys = profileCacheKeys({ email, userId });
+  // Prefer email key for in-flight dedup when present (Header / nutrition share it).
+  // userId key is checked for hits and mirrored after fetch for Profile opens.
+  const primaryKey = profileCacheKeyEmail(email) || profileCacheKeyUserId(userId);
+
+  if (cacheBust) {
+    keys.forEach((key) => cacheManager.clear(key));
+  } else {
+    // Hit either key — Header often caches by email while Profile loads by userId.
+    for (const key of keys) {
+      const hit = cacheManager.get(key, cacheManager.ttls.userProfile);
+      if (hit !== null) return hit;
+    }
+    // Share in-flight work across email/id keys (Header + Profile opening together).
+    for (const key of keys) {
+      const pending = cacheManager.getPending(key);
+      if (pending) return pending;
+    }
+  }
 
   return cacheManager.execute(
-    key,
+    primaryKey,
     async () => {
       const ts = cacheBust ? `&_t=${Date.now()}` : '';
-      const qs = email
-        ? `email=${encodeURIComponent(email)}`
-        : `userId=${encodeURIComponent(String(userId))}`;
+      // Prefer userId for the network read when both exist (signed-in row).
+      const qs = (userId != null && userId !== '')
+        ? `userId=${encodeURIComponent(String(userId))}`
+        : `email=${encodeURIComponent(email)}`;
       const res = await apiFetch(
         `${base()}/api/user/profile?${qs}${ts}`,
         signal ? { signal } : undefined,
@@ -68,6 +118,7 @@ export async function getProfile(emailOrOpts, maybeOpts = {}) {
       handlePossibleAppUpdateRequired(res, data);
       if (data?.success && data?.data) {
         syncMarathonWeightComparisonFromProfile(data.data);
+        mirrorProfileCache(data, { email, userId });
       }
       return data;
     },

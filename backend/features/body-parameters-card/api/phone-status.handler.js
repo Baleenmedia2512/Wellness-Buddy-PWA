@@ -1,6 +1,7 @@
 /**
  * phone-status.handler.js — GET /api/body-parameters-card/phone-status
- * Reports whether a phone belongs to an activated member (BCM blocked).
+ * Reports whether a phone belongs to an existing / activated member
+ * (UI prompts Override vs New; create still requires phoneConflictAction for activated).
  */
 import { validatePhoneStatusQuery } from '../validation/card.schema.js';
 import { canSearchTeamPhones } from '../domain/permissions/card.policy.js';
@@ -40,6 +41,8 @@ export async function handlePhoneStatus(query) {
         message: activated ? BCM_ACTIVATED_MEMBER_MESSAGE : null,
         // Additive — lets the form reload profile transformation photos without autocomplete.
         userId: userId != null ? userId : null,
+        /** True when phone matches a team_table row (reuse / create-new prompt). */
+        exists: userId != null,
         existingCard: activated ? null : existingCard,
       },
     },
