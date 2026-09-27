@@ -730,7 +730,7 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
             fontFamily: CARD_FONT,
           }}
         >
-          the views expressed are that of individuals.
+          The views expressed are that of individuals.
         </p>
         <p
           style={{
@@ -742,7 +742,7 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
             fontFamily: CARD_FONT,
           }}
         >
-          these products are not intended to diagnose, treat or cure any disease.
+          These products are not intended to diagnose, treat or cure any disease.
         </p>
       </div>
     </div>
