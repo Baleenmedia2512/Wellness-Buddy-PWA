@@ -259,7 +259,7 @@ export function useBodyParamsCard({
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   /**
    * When a typed phone matches an existing member (incl. activated) — ask Override vs New.
-   * @type {[{ phone: string, userId: number, existingCard: object|null, activated?: boolean }, Function]}
+   * @type {[{ phone: string, userId: number, existingCard: object|null, activated?: boolean, suggestionMember?: object|null }, Function]}
    */
   const [phoneExistsPrompt, setPhoneExistsPrompt] = useState(null);
   const [phoneExistsBusy, setPhoneExistsBusy] = useState(false);
@@ -736,90 +736,56 @@ export function useBodyParamsCard({
 
   /**
    * Called when the user selects a suggestion from the phone autocomplete.
-   * Explicit pick = Override; prefills metrics without showing the exists dialog.
+   * Always asks Override vs New — never silent prefill.
    */
   const fillFromMember = useCallback(async (member) => {
     if (!member) return;
     markDirty();
 
     const memberPhone = cleanPhoneDigits(member.phoneNumber);
-    if (memberPhone) {
-      phoneReuseAcceptedRef.current = memberPhone;
-      phoneNewAcceptedRef.current = '';
-      phoneConflictActionRef.current = 'override';
-      setPhoneExistsPrompt(null);
-    }
+    // Clear any prior choice so the dialog always appears for this pick.
+    phoneReuseAcceptedRef.current = '';
+    phoneNewAcceptedRef.current = '';
+    phoneConflictActionRef.current = '';
+    lastBcmPrefillPhoneRef.current = '';
+    setPhoneSuggestions([]);
+    setPhoneFieldError('');
 
-    if (member.phoneNumber && coachUserId) {
+    // Put the phone on the form immediately; wait for Override/New before prefill.
+    setForm((prev) => ({
+      ...prev,
+      phoneNumber: member.phoneNumber || prev.phoneNumber,
+    }));
+
+    if (!memberPhone) return;
+
+    let existingCard = null;
+    let activated = false;
+    let userId = member.userId || null;
+
+    if (coachUserId) {
       try {
         const status = await fetchPhoneBcmStatus({
           phoneNumber: String(member.phoneNumber).trim(),
           coachId: coachUserId,
         });
-        if (status.activated) {
-          // Still allow Override for activated — keep acceptance and continue prefill.
-          phoneConflictActionRef.current = 'override';
-        }
+        activated = Boolean(status.activated);
+        existingCard = status.existingCard || null;
+        if (status.userId) userId = status.userId;
       } catch (err) {
-        console.warn('[BodyParamsCard] phone status before prefill failed', err?.message || err);
+        console.warn('[BodyParamsCard] phone status before choice failed', err?.message || err);
       }
     }
 
-    // Apply suggestion fields immediately (may already include weight from team hierarchy).
-    setForm((prev) => applyMemberPrefillToForm(prev, member));
-    setPhoneSuggestions([]);
-    setPhoneFieldError('');
-    if (memberPhone) lastBcmPrefillPhoneRef.current = memberPhone;
-
-    let enriched = member;
-    if (member.userId && coachUserId) {
-      try {
-        const prefill = await fetchMemberPrefill({
-          userId: member.userId,
-          coachId: coachUserId,
-        });
-        enriched = mergePrefillFields(member, prefill);
-        debugLog('📦 [BodyParamsCard] member-prefill response', {
-          weightKg: enriched.weightKg,
-          fatPercent: enriched.fatPercent,
-          bmi: enriched.bmi,
-          raw: prefill,
-        });
-        setForm((prev) => applyMemberPrefillToForm(prev, enriched));
-        if (prefill?.transformationPhotos) {
-          transformationPhotos.loadFromProfile(prefill.transformationPhotos);
-        }
-      } catch (err) {
-        const msg = err?.message || '';
-        if (isActivatedPhoneErrorMessage(msg)) {
-          phoneReuseAcceptedRef.current = '';
-          phoneNewAcceptedRef.current = '';
-          phoneConflictActionRef.current = '';
-          setPhoneFieldError('');
-          setPhoneSuggestions([]);
-          if (memberPhone) {
-            setPhoneExistsPrompt({
-              phone: memberPhone,
-              userId: member.userId,
-              existingCard: null,
-              activated: true,
-            });
-          }
-          return;
-        }
-        console.warn('[BodyParamsCard] member prefill failed', msg || err);
-      }
-    }
-
-    if (enriched.bmi != null && enriched.bmi !== '') {
-      setBmiUserEdited(true);
-    } else {
-      setBmiUserEdited(false);
-    }
-    // Always allow BMR auto-fill after member prefill (recompute from weight + fat%).
-    setBmrUserEdited(false);
-    debugLog('✅ [BodyParamsCard] pre-filled from member', enriched);
-  }, [coachUserId, markDirty, transformationPhotos.loadFromProfile]);
+    setPhoneExistsPrompt({
+      phone: memberPhone,
+      userId,
+      existingCard,
+      activated,
+      /** Suggestion row — used if Override is chosen before status returns a card. */
+      suggestionMember: member,
+    });
+  }, [coachUserId, markDirty]);
 
   fillFromMemberRef.current = fillFromMember;
 
@@ -937,6 +903,10 @@ export function useBodyParamsCard({
         } else {
           setBmrUserEdited(false);
         }
+      } else if (pending.suggestionMember) {
+        // Autocomplete pick — apply suggestion row immediately, then enrich via prefill API.
+        setForm((prev) => applyMemberPrefillToForm(prev, pending.suggestionMember));
+        setBmrUserEdited(false);
       }
 
       if (pending.userId && coachUserId) {
@@ -948,7 +918,7 @@ export function useBodyParamsCard({
           if (prefill) {
             const memberLike = {
               userId: pending.userId,
-              userName: prefill.userName || pending.existingCard?.name || '',
+              userName: prefill.userName || pending.existingCard?.name || pending.suggestionMember?.userName || '',
               phoneNumber: pending.phone,
               heightCm: prefill.heightCm,
               bmr: prefill.bmr,
@@ -990,6 +960,7 @@ export function useBodyParamsCard({
 
   /**
    * Create a new BCM card for the same phone number (does not clear the phone).
+   * Does not copy existing member metrics — coach fills a blank card.
    */
   const handlePhoneExistsCreateNew = useCallback(() => {
     const pending = phoneExistsPrompt;
@@ -1002,9 +973,35 @@ export function useBodyParamsCard({
     lastBcmPrefillPhoneRef.current = '';
     setPhoneSuggestions([]);
     setPhoneFieldError('');
-    // Keep the phone — New means a fresh card for this number.
+    // Keep only the phone; clear identity/metrics so New is a blank card for that number.
+    if (phone) {
+      setForm((prev) => ({
+        ...prev,
+        phoneNumber: phone,
+        name: '',
+        age: '',
+        gender: '',
+        heightCm: '',
+        weightKg: '',
+        bmi: '',
+        fatPercent: '',
+        bmr: '',
+        visceralFat: '',
+        bodyAge: '',
+        chestCm: '',
+        waistCm: '',
+        hipCm: '',
+        recoveredHealthIssues: [],
+        dietType: '',
+        physicalActivityLevel: '',
+      }));
+      setBmiUserEdited(false);
+      setBmrUserEdited(false);
+      transformationPhotos.clearPending();
+      transformationPhotos.loadFromProfile(null);
+    }
     markDirty();
-  }, [markDirty, phoneExistsPrompt, form.phoneNumber]);
+  }, [markDirty, phoneExistsPrompt, form.phoneNumber, transformationPhotos.clearPending, transformationPhotos.loadFromProfile]);
 
   const handleSave = useCallback(async () => {
     setAttemptedSubmit(true);

@@ -691,4 +691,69 @@ test.describe('BCM Module (Body Composition Metrics)', () => {
     const ageInput = page.locator('div').filter({ has: page.locator('> label').filter({ hasText: /^Age$/ }) }).locator('input');
     await expect(ageInput).toHaveValue('28');
   });
+
+  test('BCM-013 Phone Autocomplete Pick Still Prompts Override Or New', async ({ page }) => {
+    await page.route('**/api/body-parameters-card/phone-status*', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          ok: true,
+          data: {
+            activated: false,
+            message: null,
+            userId: 202,
+            exists: true,
+            existingCard: {
+              id: 2,
+              name: 'JAFAR',
+              phoneNumber: '6369591703',
+              heightCm: 150,
+              gender: 'Male',
+            }
+          }
+        })
+      });
+    });
+
+    // Flat team list used by client-side phone autocomplete
+    await page.route('**/api/team/hierarchy/**', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          data: [{
+            userId: 202,
+            userName: 'Jafar',
+            phoneNumber: '6369591703',
+            heightCm: 150,
+            bmr: 1748,
+            gender: 'Male',
+          }],
+        })
+      });
+    });
+
+    await page.getByRole('button', { name: 'Create Body Parameters Card' }).click();
+
+    const phoneInput = page.getByPlaceholder('Client phone (optional)');
+    await phoneInput.fill('6369');
+    await page.waitForTimeout(400);
+
+    const suggestion = page.getByText(/6369591703/);
+    await expect(suggestion).toBeVisible();
+    await suggestion.click();
+    await page.waitForTimeout(400);
+
+    // Must ask — autocomplete must not silent-override
+    await expect(page.getByText(
+      'This number already exists. Override the existing card, or create a new card for this number?'
+    )).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Override' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'New' })).toBeVisible();
+
+    // Name should NOT be prefilled until Override
+    await expect(page.getByPlaceholder('FULL NAME')).toHaveValue('');
+  });
 });
