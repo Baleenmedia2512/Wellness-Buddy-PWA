@@ -1,6 +1,7 @@
 /**
  * phone-status.handler.js — GET /api/body-parameters-card/phone-status
- * Reports whether a phone belongs to an activated member (BCM blocked).
+ * Reports whether a phone belongs to an existing / activated member
+ * (UI prompts Override vs New; create still requires phoneConflictAction for activated).
  */
 import { validatePhoneStatusQuery } from '../validation/card.schema.js';
 import { canSearchTeamPhones } from '../domain/permissions/card.policy.js';

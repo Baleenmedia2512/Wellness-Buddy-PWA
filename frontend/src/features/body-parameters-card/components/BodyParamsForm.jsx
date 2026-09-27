@@ -362,7 +362,7 @@ const BodyParamsForm = ({
             error={vm.nameError}
           />
 
-          {/* Phone Number — optional; existing numbers prompt Reuse / Create new */}
+          {/* Phone Number — optional; existing numbers prompt Override / New */}
           <PhoneAutocomplete
             value={vm.form.phoneNumber}
             onChange={vm.setPhoneField}
