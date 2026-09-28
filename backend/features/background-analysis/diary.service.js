@@ -620,6 +620,7 @@ export function toDiaryEntry(
             glycemicIndex: row.GlycemicIndex ?? null,
           },
           processedBy: row.ProcessedBy,
+          source:      row.Source ?? null,
           deviceInfo:  row.DeviceInfo,
         },
       };

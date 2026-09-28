@@ -4878,7 +4878,7 @@ function WellnessValleyApp() {
       const result = {
         nutrition: totalNutrition,
         category: { name: categoryName },
-        source: "Manual Entry",
+        source: "manual",
         isRealData: true,
         isManualEntry: true,
         itemCount: detailedItems.length,
@@ -5992,7 +5992,10 @@ function WellnessValleyApp() {
           userId: actualUserId,
           imagePath: saveFile.name,
           imageBase64: saveProcessedImage,
-          analysisResult,
+          analysisResult:
+            analysisResult && typeof analysisResult === 'object'
+              ? { ...analysisResult, source: analysisResult.source || 'ai' }
+              : analysisResult,
           deviceInfo: window.navigator.userAgent,
           userEmail: saveUser?.email || saveUser?.Email || "unknown",
           captureTimestamp: saveExifTimestamp || null,

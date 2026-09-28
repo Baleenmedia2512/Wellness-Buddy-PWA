@@ -146,7 +146,7 @@ export async function fetchMealsForDate(userId, date, timezoneIana = IANA_IST) {
       'TotalVitaminA, TotalVitaminC, TotalVitaminD, TotalVitaminE, TotalVitaminK',
       'TotalVitaminB1, TotalVitaminB2, TotalVitaminB3, TotalVitaminB6, TotalVitaminB9, TotalVitaminB12',
       'TotalCalcium, TotalIron, TotalMagnesium, TotalPotassium, TotalZinc, TotalPhosphorus',
-      'ProcessedBy, DeviceInfo, CreatedAt',
+      'ProcessedBy, Source, DeviceInfo, CreatedAt',
     ].join(', '))
     .eq('UserID', String(userId))
     .eq('IsDeleted', 0)
@@ -221,7 +221,7 @@ const MEAL_DETAIL_COLUMNS = [
   'TotalVitaminA, TotalVitaminC, TotalVitaminD, TotalVitaminE, TotalVitaminK',
   'TotalVitaminB1, TotalVitaminB2, TotalVitaminB3, TotalVitaminB6, TotalVitaminB9, TotalVitaminB12',
   'TotalCalcium, TotalIron, TotalMagnesium, TotalPotassium, TotalZinc, TotalPhosphorus',
-  'ProcessedBy, DeviceInfo, CreatedAt',
+  'ProcessedBy, Source, DeviceInfo, CreatedAt',
 ].join(', ');
 
 /** Full meal row by ID — indexed lookup, no day scan. */
