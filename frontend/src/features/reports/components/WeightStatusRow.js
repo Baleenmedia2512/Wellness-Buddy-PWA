@@ -76,13 +76,13 @@ export default function WeightStatusRow({ row, teamPerformance = null }) {
       {/* Weight details */}
       <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-gray-600">
         <div>
-          <span className="text-gray-400">Current</span>
+          <span className="text-gray-400">Current weight</span>
           <p className="font-semibold text-gray-800 text-sm mt-0.5">
             {currentWeight !== null ? `${currentWeight} kg` : '—'}
           </p>
         </div>
         <div>
-          <span className="text-gray-400">Ideal range</span>
+          <span className="text-gray-400">Ideal weight range</span>
           <p className="font-semibold text-gray-800 text-sm mt-0.5">
             {idealMin !== null && idealMax !== null
               ? `${idealMin} – ${idealMax} kg`
@@ -111,7 +111,7 @@ export default function WeightStatusRow({ row, teamPerformance = null }) {
             />
             {/* Current weight marker */}
             <div
-              className={`absolute inset-y-0 w-1 rounded-full ${
+              className={`absolute inset-y-0 w-2 rounded-full ${
                 status === 'above_ideal'
                   ? 'bg-orange-400'
                   : status === 'below_ideal'
@@ -122,7 +122,7 @@ export default function WeightStatusRow({ row, teamPerformance = null }) {
             />
           </div>
           {deltaLabel && (
-            <p className={`mt-1 text-xs font-medium ${
+            <p className={`mt-1 text-s font-medium ${
               status === 'above_ideal' ? 'text-orange-600' : 'text-blue-600'
             }`}>
               {deltaLabel}
