@@ -121,6 +121,10 @@ export async function fetchPhoneBcmStatus({ phoneNumber, coachId }) {
     activated: Boolean(result.data?.activated),
     message: result.data?.message || null,
     userId: Number.isFinite(userIdN) && userIdN > 0 ? userIdN : null,
+    exists: Boolean(
+      result.data?.exists
+      ?? (Number.isFinite(userIdN) && userIdN > 0),
+    ),
     existingCard: result.data?.existingCard || null,
   };
 }

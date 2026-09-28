@@ -1,7 +1,8 @@
 // ProfileEmailKycSection — verify email on Home Profile (non-blocking KYC).
 // Account recovery (adopt existing email) is a separate path when the address is taken.
-import React, { useCallback, useEffect, useState } from 'react';
-import { Mail, ShieldCheck } from 'lucide-react';
+// Verified email: Community ID–style pencil → edit → tick (OTP) / cancel.
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { Check, Mail, Pencil, ShieldCheck, X } from 'lucide-react';
 import { sendOtp } from '../../services/authService';
 import {
   checkOnboardingEmail,
@@ -18,8 +19,11 @@ import { EMAIL_OTP_LENGTH } from '../../domain/otpLength';
 import useResendCountdown from '../../hooks/useResendCountdown';
 import OtpInputCells from '../../../../shared/components/OtpInputCells.jsx';
 
-const inputCls =
-  'w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none text-base';
+const iconBtnCls =
+  'shrink-0 p-1.5 rounded-md transition-colors disabled:opacity-40 disabled:pointer-events-none';
+
+const fieldShellCls =
+  'flex items-center gap-1.5 w-full min-w-0 rounded-lg border border-gray-300 bg-white px-3 py-2';
 
 /**
  * @param {{
@@ -55,15 +59,27 @@ const ProfileEmailKycSection = ({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [otpExpiresIn, setOtpExpiresIn] = useState(ONBOARDING_EMAIL_OTP_SECONDS);
+  const [isChanging, setIsChanging] = useState(false);
+  const inputRef = useRef(null);
+  const baselineEmail = String(verifiedEmail || '').trim().toLowerCase();
 
   const otpCtl = useOtpInput(EMAIL_OTP_LENGTH);
   const resend = useResendCountdown(60, step === 'otp');
 
   const typedEmail = String(email || '').trim().toLowerCase();
   const emailValid = looksLikeEmail(typedEmail);
+  const differsFromBaseline = Boolean(
+    baselineEmail
+    && typedEmail
+    && typedEmail !== baselineEmail,
+  );
+  const editingVerified = alreadyVerified && isChanging;
+  const canFinishUnchangedEdit = editingVerified && step === 'form' && emailValid && !differsFromBaseline;
+  const canSubmitChange = editingVerified && step === 'form' && emailValid && differsFromBaseline && !saving && !disabled;
 
   useEffect(() => {
     if (mode === 'recover') {
+      setIsChanging(false);
       setStep('form');
       setAdoptExisting(true);
       setError('');
@@ -71,6 +87,24 @@ const ProfileEmailKycSection = ({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- reset when switching into recover
   }, [mode]);
+
+  // After a successful verify, parent updates verifiedEmail — exit edit mode.
+  useEffect(() => {
+    if (!looksLikeEmail(verifiedEmail) || mode === 'recover') return;
+    setIsChanging(false);
+    setStep('form');
+    setEmail('');
+    setError('');
+    otpCtl.reset();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- settle when saved email changes
+  }, [verifiedEmail, mode]);
+
+  useEffect(() => {
+    if (editingVerified && step === 'form' && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, [editingVerified, step]);
 
   useEffect(() => {
     if (step !== 'otp') return undefined;
@@ -143,6 +177,35 @@ const ProfileEmailKycSection = ({
     }
   }, [emailValid, userId, typedEmail, isRecover, startOtpStep, otpCtl, resend]);
 
+  const handleStartChange = useCallback(() => {
+    if (disabled || saving) return;
+    setError('');
+    setAdoptExisting(false);
+    setStep('form');
+    setEmail(baselineEmail);
+    otpCtl.reset();
+    setIsChanging(true);
+  }, [disabled, saving, baselineEmail, otpCtl]);
+
+  const handleCancelChange = useCallback(() => {
+    if (saving) return;
+    setIsChanging(false);
+    setStep('form');
+    setEmail('');
+    setAdoptExisting(false);
+    setError('');
+    otpCtl.reset();
+  }, [saving, otpCtl]);
+
+  const handleTick = useCallback(() => {
+    if (canFinishUnchangedEdit) {
+      handleCancelChange();
+      return;
+    }
+    if (!canSubmitChange) return;
+    handleSendCode();
+  }, [canFinishUnchangedEdit, canSubmitChange, handleCancelChange, handleSendCode]);
+
   const handleAdoptYes = useCallback(async () => {
     setError('');
     setSaving(true);
@@ -188,6 +251,7 @@ const ProfileEmailKycSection = ({
         userId: data.user?.id,
         phone: data.user?.phone,
       });
+      setIsChanging(false);
       setStep('form');
       setEmail('');
       otpCtl.reset();
@@ -214,22 +278,33 @@ const ProfileEmailKycSection = ({
     }
   }, [dispatchOtp, typedEmail, otpCtl, resend]);
 
-  if (alreadyVerified) {
+  if (alreadyVerified && !isChanging) {
     return (
-      <div className="rounded-xl border border-green-100 bg-green-50/60 p-3 space-y-2">
+      <div className="rounded-xl border border-green-100 bg-green-50/60 p-3 space-y-2 min-w-0">
         <div className="flex items-center gap-2 text-sm font-semibold text-green-800">
-          <ShieldCheck className="w-4 h-4" />
+          <ShieldCheck className="w-4 h-4 shrink-0" />
           Email verified
         </div>
-        <div className="relative">
-          <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-          <input
-            type="email"
-            value={verifiedEmail}
-            readOnly
-            className={`${inputCls} bg-white text-gray-600 cursor-not-allowed`}
+        <div className={`${fieldShellCls} cursor-default`}>
+          <Mail className="w-4 h-4 text-gray-400 shrink-0" aria-hidden />
+          <span
+            className="flex-1 min-w-0 truncate text-base text-gray-600"
             style={{ fontSize: '16px' }}
-          />
+            title={verifiedEmail}
+            aria-label="Verified email"
+          >
+            {verifiedEmail}
+          </span>
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={handleStartChange}
+            className={`${iconBtnCls} text-green-700 hover:bg-green-50`}
+            aria-label="Edit email"
+            title="Edit"
+          >
+            <Pencil className="w-4 h-4" />
+          </button>
         </div>
         <p className="text-xs text-gray-500">
           Verified emails can appear as a sponsor option for new members.
@@ -238,52 +313,122 @@ const ProfileEmailKycSection = ({
     );
   }
 
+  const showInlineEditIcons = editingVerified && step === 'form';
+  const tickEnabled = canFinishUnchangedEdit || canSubmitChange;
+
   return (
     <div
       id="profile-email-kyc"
-      className={`rounded-xl border p-3 space-y-3 ${
+      className={`rounded-xl border p-3 space-y-3 min-w-0 ${
         isRecover
           ? 'border-blue-100 bg-blue-50/50'
-          : 'border-amber-100 bg-amber-50/50'
+          : editingVerified
+            ? 'border-green-100 bg-green-50/60'
+            : 'border-amber-100 bg-amber-50/50'
       }`}
     >
-      <div>
+      <div className="min-w-0">
         <p className="text-sm font-semibold text-gray-800">
-          {isRecover ? 'Recover account' : 'Verify email'}
+          {isRecover
+            ? 'Recover account'
+            : editingVerified
+              ? 'Change email'
+              : 'Verify email'}
         </p>
         <p className="text-xs text-gray-500 mt-0.5">
           {isRecover
             ? 'Enter the email of your existing account. After OTP, this phone moves onto that account.'
-            : 'Verify so new members can find you as a sponsor.'}
+            : editingVerified
+              ? 'Enter a new address. We send a 5-minute code to prove it is yours.'
+              : 'Verify so new members can find you as a sponsor.'}
         </p>
       </div>
 
       {step === 'form' && (
         <>
-          <div className="relative">
-            <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+          <div className={`${fieldShellCls} focus-within:ring-2 focus-within:ring-green-500 focus-within:border-green-500`}>
+            <Mail className="w-4 h-4 text-gray-400 shrink-0" aria-hidden />
             <input
+              ref={inputRef}
               type="email"
               inputMode="email"
               autoComplete="email"
               value={email}
               onChange={(e) => setEmail(e.target.value.trim())}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && showInlineEditIcons && tickEnabled) {
+                  e.preventDefault();
+                  handleTick();
+                }
+                if (e.key === 'Escape' && showInlineEditIcons) {
+                  e.preventDefault();
+                  handleCancelChange();
+                }
+              }}
               placeholder="you@example.com"
               disabled={disabled || saving}
-              className={inputCls}
+              className="flex-1 min-w-0 border-0 bg-transparent p-0 outline-none text-base text-gray-800 placeholder:text-gray-400 disabled:opacity-60"
               style={{ fontSize: '16px' }}
+              aria-label={editingVerified ? 'New email' : 'Email'}
             />
+            {showInlineEditIcons && (
+              <>
+                <button
+                  type="button"
+                  disabled={saving}
+                  onClick={handleCancelChange}
+                  className={`${iconBtnCls} text-gray-500 hover:bg-gray-100`}
+                  aria-label="Cancel email change"
+                  title="Cancel"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  disabled={!tickEnabled}
+                  onClick={handleTick}
+                  className={`${iconBtnCls} ${
+                    tickEnabled
+                      ? 'text-green-700 hover:bg-green-50'
+                      : 'text-gray-300'
+                  }`}
+                  aria-label={
+                    saving
+                      ? 'Sending verification code'
+                      : canFinishUnchangedEdit
+                        ? 'Done editing email'
+                        : 'Send verification code'
+                  }
+                  title={
+                    saving
+                      ? 'Sending…'
+                      : canFinishUnchangedEdit
+                        ? 'Done'
+                        : 'Send code'
+                  }
+                >
+                  <Check className="w-4 h-4" strokeWidth={2.5} />
+                </button>
+              </>
+            )}
           </div>
-          <button
-            type="button"
-            onClick={handleSendCode}
-            disabled={disabled || saving || !emailValid}
-            className="w-full py-2.5 bg-green-600 text-white rounded-lg text-sm font-semibold disabled:opacity-50"
-          >
-            {saving
-              ? 'Checking…'
-              : (isRecover ? 'Find account' : 'Send verification code')}
-          </button>
+          {showInlineEditIcons && canFinishUnchangedEdit && (
+            <p className="text-xs text-gray-500">
+              Tap the tick when done, or change the address to verify a new email.
+            </p>
+          )}
+          {!showInlineEditIcons && (
+            <button
+              type="button"
+              onClick={handleSendCode}
+              disabled={disabled || saving || !emailValid}
+              className="w-full py-2.5 bg-green-600 text-white rounded-lg text-sm font-semibold disabled:opacity-50"
+            >
+              {saving
+                ? 'Checking…'
+                : (isRecover ? 'Find account' : 'Send verification code')}
+            </button>
+          )}
           {isRecover && (
             <button
               type="button"
@@ -304,7 +449,7 @@ const ProfileEmailKycSection = ({
             We email a 5-minute code. After you verify, this phone replaces the
             old number on that account.
           </p>
-          <p className="text-sm font-semibold text-gray-900 truncate">{typedEmail}</p>
+          <p className="text-sm font-semibold text-gray-900 truncate min-w-0" title={typedEmail}>{typedEmail}</p>
           <button
             type="button"
             onClick={handleAdoptYes}
@@ -315,7 +460,12 @@ const ProfileEmailKycSection = ({
           </button>
           <button
             type="button"
-            onClick={() => { setStep('form'); setError(''); setAdoptExisting(isRecover); }}
+            onClick={() => {
+              setStep('form');
+              setError('');
+              setAdoptExisting(isRecover);
+              if (editingVerified) setEmail(baselineEmail);
+            }}
             disabled={saving}
             className="w-full py-2 rounded-lg text-sm font-semibold border border-gray-300 text-gray-600"
           >
@@ -329,7 +479,7 @@ const ProfileEmailKycSection = ({
           <p className="text-sm text-gray-700 text-center">
             We sent a 4-digit code to
           </p>
-          <p className="text-sm font-semibold text-gray-900 text-center truncate">{typedEmail}</p>
+          <p className="text-sm font-semibold text-gray-900 text-center truncate min-w-0 max-w-full px-1" title={typedEmail}>{typedEmail}</p>
           <OtpInputCells
             otpCtl={otpCtl}
             length={EMAIL_OTP_LENGTH}
@@ -365,16 +515,37 @@ const ProfileEmailKycSection = ({
             disabled={!otpCtl.isComplete || saving || otpExpiresIn <= 0}
             className="w-full py-2.5 bg-green-600 text-white rounded-lg text-sm font-semibold disabled:opacity-50"
           >
-            {saving ? 'Verifying…' : (adoptExisting ? 'Recover & verify' : 'Verify email')}
+            {saving
+              ? 'Verifying…'
+              : (adoptExisting
+                ? 'Recover & verify'
+                : editingVerified
+                  ? 'Verify & update email'
+                  : 'Verify email')}
           </button>
           <button
             type="button"
-            onClick={() => { setStep('form'); setError(''); otpCtl.reset(); }}
+            onClick={() => {
+              setStep('form');
+              setError('');
+              otpCtl.reset();
+              if (editingVerified) setEmail(typedEmail || baselineEmail);
+            }}
             disabled={saving}
             className="w-full py-2 rounded-lg text-sm font-semibold border border-gray-300 text-gray-600"
           >
             Change email
           </button>
+          {editingVerified && (
+            <button
+              type="button"
+              onClick={handleCancelChange}
+              disabled={saving}
+              className="w-full py-2 rounded-lg text-sm font-semibold border border-gray-300 text-gray-600"
+            >
+              Keep current email
+            </button>
+          )}
         </div>
       )}
 

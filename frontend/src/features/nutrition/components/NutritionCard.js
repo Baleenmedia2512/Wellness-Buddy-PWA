@@ -20,6 +20,7 @@ import {
 } from "../../diary/domain/activityType";
 import { buildDiaryShareSuffix } from "../../diary/domain/share/suffixes";
 import { withMarathonWhatsAppNotice } from "../../marathon";
+import { pickShareAvatarSrc } from "../../user/services/avatarDisplayVersion";
 const NutritionCard = ({
   data,
   onDataUpdate,
@@ -772,6 +773,11 @@ const NutritionCard = ({
     detailedItems,
     portionAnalysis,
   } = data;
+  const avatarSrc = pickShareAvatarSrc({
+    savedProfileImage,
+    sharePhotoBase64,
+    photoURL: user?.photoURL,
+  });
   return (
     <>
       {/* Hidden container for sharing - includes image + card at high resolution */}
@@ -801,13 +807,13 @@ const NutritionCard = ({
               gap: "24px",
             }}
           >
-            {(savedProfileImage || sharePhotoBase64 || user?.photoURL) ? (
+            {avatarSrc ? (
               <div style={{
                 width: 80,
                 height: 80,
                 borderRadius: "50%",
                 border: "3px solid rgba(255,255,255,0.95)",
-                backgroundImage: `url(${savedProfileImage || sharePhotoBase64 || user?.photoURL})`,
+                backgroundImage: `url(${avatarSrc})`,
                 backgroundSize: "cover",
                 backgroundPosition: "center",
                 flexShrink: 0,

@@ -3,7 +3,7 @@
  * Shown after Complete Profile for new users, and on login for existing users
  * who still have any empty slot (so we do not miss transformation photo data).
  * Compact no-scroll layout; Continue only when all three photos are set.
- * Profile photos stay on Profile only — they do not seed Transformation Before/After.
+ * Photos save to the profile only — they do not sync to Transformation Before/After.
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Camera } from 'lucide-react';
@@ -44,7 +44,7 @@ export default function OnboardingTransformationPhotosPage({
   const doneCount = useMemo(
     () => POSE_SLOT_KEYS.filter((key) => {
       const value = transformationPhotos.previews?.[key];
-      return typeof value === 'string' && value.trim().length > 0;
+      return Boolean(value);
     }).length,
     [transformationPhotos.previews],
   );
@@ -105,7 +105,6 @@ export default function OnboardingTransformationPhotosPage({
         transformationPhotos.clearPending();
         bumpAvatarDisplayVersion();
       }
-      // Profile Left/Right must not update Transformation Before/After.
       const centreForUi = centrePending || transformationPhotos.frontImageBase64();
       await onComplete?.({ profileImage: centreForUi || undefined });
     } catch (e) {

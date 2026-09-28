@@ -13,6 +13,8 @@ import {
   shouldDetachCounsellorCoachAssignment,
   isMemberActivatedForBcmExclusion,
   BCM_ACTIVATED_MEMBER_MESSAGE,
+  allowsActivatedBcmCreate,
+  shouldForceNewBcmCard,
 } from './card.rules.js';
 
 describe('buildTeamMemberInsert', () => {
@@ -107,6 +109,22 @@ describe('isMemberActivatedForBcmExclusion', () => {
 
   it('exposes a stable user-facing message', () => {
     assert.equal(BCM_ACTIVATED_MEMBER_MESSAGE, 'User already exists');
+  });
+});
+
+describe('phoneConflictAction helpers', () => {
+  it('allows activated create only for override / new', () => {
+    assert.equal(allowsActivatedBcmCreate('override'), true);
+    assert.equal(allowsActivatedBcmCreate('new'), true);
+    assert.equal(allowsActivatedBcmCreate(null), false);
+    assert.equal(allowsActivatedBcmCreate(undefined), false);
+    assert.equal(allowsActivatedBcmCreate('reuse'), false);
+  });
+
+  it('forces a new card only for new', () => {
+    assert.equal(shouldForceNewBcmCard('new'), true);
+    assert.equal(shouldForceNewBcmCard('override'), false);
+    assert.equal(shouldForceNewBcmCard(null), false);
   });
 });
 

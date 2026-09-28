@@ -172,6 +172,16 @@ const REGISTRY = Object.freeze({
     defaultEnabled: true,
     description:    'Profile Community ID Create + sponsor OTP (create / co-sponsor).',
   },
+
+  // Profile height: first Save free; later changes need email/phone OTP.
+  // Default ON. Set REACT_APP_FF_HEIGHT_CHANGE_OTP=false or
+  // localStorage 'ff.height-change-otp'='false' to restore free height edits.
+  'ff.height-change-otp': {
+    envKey:         'REACT_APP_FF_HEIGHT_CHANGE_OTP',
+    storageKey:     'ff.height-change-otp',
+    defaultEnabled: true,
+    description:    'Profile height lock after first save; OTP to change.',
+  },
 });
 
 function readStorage(key) {

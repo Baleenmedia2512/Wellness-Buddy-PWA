@@ -379,6 +379,8 @@ const CompleteProfilePage = ({
       payload.recoveredHealthIssues = Array.isArray(recoveredHealthIssues)
         ? recoveredHealthIssues
         : [];
+      // Persist BCM/BPC review on the server (survives APK reinstall).
+      payload.bcmProfileReviewed = true;
 
       await saveProfile(payload);
 

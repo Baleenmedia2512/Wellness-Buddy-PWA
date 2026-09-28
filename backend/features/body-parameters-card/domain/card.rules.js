@@ -114,8 +114,30 @@ export function shouldClearBpcLeadCoachId({
  * Message when BCM is blocked for an activated member (coach OTP approved).
  * Approved coach/sponsor selection only happens after the member signed in and
  * selected a coach — that is the product definition of "activated".
+ * Coach may still proceed when they explicitly choose Override / New on create.
  */
 export const BCM_ACTIVATED_MEMBER_MESSAGE = 'User already exists';
+
+/** Coach choice when the typed phone already exists (create payload). */
+export const BCM_PHONE_CONFLICT_ACTIONS = Object.freeze(['override', 'new']);
+
+/**
+ * True when create may proceed for an activated member after an explicit choice.
+ * @param {string|null|undefined} phoneConflictAction
+ * @returns {boolean}
+ */
+export function allowsActivatedBcmCreate(phoneConflictAction) {
+  return phoneConflictAction === 'override' || phoneConflictAction === 'new';
+}
+
+/**
+ * True when create must insert a new card even if this coach already has one.
+ * @param {string|null|undefined} phoneConflictAction
+ * @returns {boolean}
+ */
+export function shouldForceNewBcmCard(phoneConflictAction) {
+  return phoneConflictAction === 'new';
+}
 
 /**
  * True when this member must be excluded from BCM create/list.

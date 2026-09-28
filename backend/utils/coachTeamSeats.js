@@ -75,30 +75,210 @@ export function resolveMemberCoachTeamId({ claimedTeamId = null, guide = null } 
 }
 
 /**
- * Resolve whether userId is Sponsor or Co-Sponsor on an active team.
+ * Pure seat-clear payload when a lead leaves (or changes) Community ID.
+ * Sponsor leave with a co-sponsor → promote co-sponsor to CoachId.
+ * Solo sponsor leave → mark team inactive (CoachId is NOT NULL — never null it).
+ *
+ * @param {{
+ *   seat?: 'sponsor'|'co-sponsor'|null,
+ *   team?: { CoachId?: unknown, CoCoachId?: unknown }|null,
+ *   userId?: unknown,
+ * }} args
+ * @returns {{ CoachId?: number|null, CoCoachId?: number|null, Status?: string }|null}
+ */
+export function buildLeadSeatReleaseUpdate({
+  seat = null,
+  team = null,
+  userId = null,
+} = {}) {
+  if (!team || (seat !== 'sponsor' && seat !== 'co-sponsor')) return null;
+  const uid = Number(userId);
+  if (!Number.isFinite(uid) || uid <= 0) return null;
+
+  const sponsorId = team.CoachId != null ? Number(team.CoachId) : null;
+  const coId = team.CoCoachId != null ? Number(team.CoCoachId) : null;
+
+  if (seat === 'co-sponsor') {
+    if (coId !== uid) return null;
+    return { CoCoachId: null };
+  }
+
+  if (sponsorId !== uid) return null;
+  if (Number.isFinite(coId) && coId > 0 && coId !== uid) {
+    return { CoachId: coId, CoCoachId: null };
+  }
+  // Solo sponsor: deactivate — do not set CoachId null (DB NOT NULL).
+  return { Status: 'inactive', CoCoachId: null };
+}
+
+/**
+ * Clear this user's Sponsor / Co-Sponsor seat on a specific active team.
+ * Pass teamId when releasing a known previous seat after claiming a new one
+ * (resolveLeadSeatForUser uses maybeSingle and breaks if the user is on two teams).
+ *
  * @param {object} supabase
  * @param {number} userId
+ * @param {string|null} [teamId] When omitted, resolves the user's current lead seat.
+ * @returns {Promise<{ released: boolean, seat: 'sponsor'|'co-sponsor'|null, teamId: string|null }>}
+ */
+export async function releaseLeadSeat(supabase, userId, teamId = null) {
+  const id = Number(userId);
+  if (!Number.isFinite(id) || id <= 0) {
+    return { released: false, seat: null, teamId: null };
+  }
+
+  let seat = null;
+  let targetTeamId = teamId && String(teamId).trim() ? String(teamId).trim() : null;
+
+  if (!targetTeamId) {
+    const current = await resolveLeadSeatForUser(supabase, id);
+    if (!current.seat || !current.teamId) {
+      return { released: false, seat: null, teamId: null };
+    }
+    seat = current.seat;
+    targetTeamId = current.teamId;
+  }
+
+  const { data: rows, error } = await supabase
+    .from('coach_teams_table')
+    .select('TeamId, CoachId, CoCoachId, Status')
+    .eq('TeamId', targetTeamId)
+    .eq('Status', 'active')
+    .limit(1);
+
+  if (error) throw error;
+  const team = rows?.[0];
+  if (!team) {
+    return { released: false, seat, teamId: targetTeamId };
+  }
+
+  if (!seat) {
+    if (Number(team.CoachId) === id) seat = 'sponsor';
+    else if (Number(team.CoCoachId) === id) seat = 'co-sponsor';
+    else return { released: false, seat: null, teamId: targetTeamId };
+  }
+
+  const patch = buildLeadSeatReleaseUpdate({
+    seat,
+    team,
+    userId: id,
+  });
+  if (!patch) {
+    return { released: false, seat, teamId: targetTeamId };
+  }
+
+  const { error: updateError } = await supabase
+    .from('coach_teams_table')
+    .update({ ...patch, UpdatedAt: nowUtc() })
+    .eq('TeamId', targetTeamId)
+    .eq('Status', 'active');
+
+  if (updateError) throw updateError;
+
+  return {
+    released: true,
+    seat,
+    teamId: targetTeamId,
+  };
+}
+
+/**
+ * Resolve whether userId is Sponsor or Co-Sponsor on an active team.
+ * When preferTeamId is set and the user sits on multiple teams, prefer that row
+ * (Profile Community ID) over a stale seat on an old code.
+ *
+ * @param {object} supabase
+ * @param {number} userId
+ * @param {string|null} [preferTeamId]
  * @returns {Promise<{ seat: 'sponsor'|'co-sponsor'|null, teamId: string|null }>}
  */
-export async function resolveLeadSeatForUser(supabase, userId) {
+export async function resolveLeadSeatForUser(supabase, userId, preferTeamId = null) {
   const id = Number(userId);
   if (!Number.isFinite(id)) return { seat: null, teamId: null };
 
-  const { data, error } = await supabase
+  const preferred = preferTeamId && String(preferTeamId).trim()
+    ? String(preferTeamId).trim().toUpperCase()
+    : null;
+
+  // Fetch all active seats — a user can briefly sit on 2 teams during a bad change.
+  const { data: rows, error } = await supabase
     .from('coach_teams_table')
     .select('TeamId, CoachId, CoCoachId')
     .or(`CoachId.eq.${id},CoCoachId.eq.${id}`)
     .eq('Status', 'active')
-    .maybeSingle();
+    .limit(10);
 
-  if (error || !data) return { seat: null, teamId: null };
-  if (Number(data.CoachId) === id) {
-    return { seat: 'sponsor', teamId: data.TeamId || null };
+  if (error || !rows?.length) return { seat: null, teamId: null };
+
+  const mapped = rows.map((data) => {
+    const teamId = data.TeamId || null;
+    if (Number(data.CoachId) === id) return { seat: 'sponsor', teamId };
+    if (Number(data.CoCoachId) === id) return { seat: 'co-sponsor', teamId };
+    return { seat: null, teamId };
+  }).filter((row) => row.seat);
+
+  if (!mapped.length) return { seat: null, teamId: null };
+
+  if (preferred) {
+    const match = mapped.find(
+      (row) => String(row.teamId || '').trim().toUpperCase() === preferred,
+    );
+    if (match) return match;
   }
-  if (Number(data.CoCoachId) === id) {
-    return { seat: 'co-sponsor', teamId: data.TeamId || null };
+
+  return mapped[0];
+}
+
+/**
+ * Every active Sponsor / Co-Sponsor seat for this user.
+ *
+ * @param {object} supabase
+ * @param {number} userId
+ * @returns {Promise<Array<{ seat: 'sponsor'|'co-sponsor', teamId: string }>>}
+ */
+export async function listLeadSeatsForUser(supabase, userId) {
+  const id = Number(userId);
+  if (!Number.isFinite(id) || id <= 0) return [];
+
+  const { data: rows, error } = await supabase
+    .from('coach_teams_table')
+    .select('TeamId, CoachId, CoCoachId')
+    .or(`CoachId.eq.${id},CoCoachId.eq.${id}`)
+    .eq('Status', 'active')
+    .limit(10);
+
+  if (error) throw error;
+
+  return (rows || []).map((data) => {
+    const teamId = data.TeamId ? String(data.TeamId).trim() : '';
+    if (!teamId) return null;
+    if (Number(data.CoachId) === id) return { seat: 'sponsor', teamId };
+    if (Number(data.CoCoachId) === id) return { seat: 'co-sponsor', teamId };
+    return null;
+  }).filter(Boolean);
+}
+
+/**
+ * Release every lead seat except keepTeamId (used when changing Community ID).
+ *
+ * @param {object} supabase
+ * @param {number} userId
+ * @param {string|null} [keepTeamId]
+ * @returns {Promise<number>} how many seats were released
+ */
+export async function releaseOtherLeadSeats(supabase, userId, keepTeamId = null) {
+  const keep = keepTeamId && String(keepTeamId).trim()
+    ? String(keepTeamId).trim().toUpperCase()
+    : null;
+  const seats = await listLeadSeatsForUser(supabase, userId);
+  let released = 0;
+  for (const seat of seats) {
+    const code = String(seat.teamId || '').trim().toUpperCase();
+    if (keep && code === keep) continue;
+    const result = await releaseLeadSeat(supabase, userId, seat.teamId);
+    if (result.released) released += 1;
   }
-  return { seat: null, teamId: data.TeamId || null };
+  return released;
 }
 
 /**
@@ -149,7 +329,11 @@ export async function userHasSponsorTeam(supabase, userId) {
  * @returns {Promise<{ ok: boolean, seat: 'sponsor'|'co-sponsor'|'already'|null, error?: string }>}
  */
 export async function assignLeadSeat(supabase, teamId, userId) {
-  if (!teamId || !userId) {
+  if (!teamId || !String(teamId).trim()) {
+    return { ok: false, seat: null, error: 'Team ID and user are required' };
+  }
+  const uid = Number(userId);
+  if (!Number.isFinite(uid) || uid <= 0) {
     return { ok: false, seat: null, error: 'Team ID and user are required' };
   }
 
@@ -166,7 +350,7 @@ export async function assignLeadSeat(supabase, teamId, userId) {
     const { error: insertError } = await supabase.from('coach_teams_table').insert([
       {
         TeamId: teamId,
-        CoachId: userId,
+        CoachId: uid,
         CoCoachId: null,
         Status: 'active',
       },
@@ -201,14 +385,14 @@ export async function assignLeadSeat(supabase, teamId, userId) {
     return { ok: false, seat: null, error: 'Failed to claim team seat' };
   }
 
-  if (fresh.CoachId === userId || fresh.CoCoachId === userId) {
+  if (Number(fresh.CoachId) === uid || Number(fresh.CoCoachId) === uid) {
     return { ok: true, seat: 'already' };
   }
 
   const updateTime = nowUtc();
 
   if (fresh.Status !== 'active') {
-    const reactivation = resolveInactiveTeamSeatAssignment(fresh, userId);
+    const reactivation = resolveInactiveTeamSeatAssignment(fresh, uid);
     if (!reactivation.ok) {
       return { ok: false, seat: null, error: reactivation.error || 'Team is unavailable' };
     }
@@ -241,7 +425,7 @@ export async function assignLeadSeat(supabase, teamId, userId) {
     return { ok: false, seat: null, error: 'Team is unavailable' };
   }
 
-  if (latest.CoachId === userId || latest.CoCoachId === userId) {
+  if (Number(latest.CoachId) === uid || Number(latest.CoCoachId) === uid) {
     return { ok: true, seat: 'already' };
   }
 
@@ -252,7 +436,7 @@ export async function assignLeadSeat(supabase, teamId, userId) {
   if (latest.CoachId && !latest.CoCoachId) {
     const { data: coRows, error: coError } = await supabase
       .from('coach_teams_table')
-      .update({ CoCoachId: userId, UpdatedAt: updateTime })
+      .update({ CoCoachId: uid, UpdatedAt: updateTime })
       .eq('TeamId', teamId)
       .eq('Status', 'active')
       .is('CoCoachId', null)
@@ -268,7 +452,7 @@ export async function assignLeadSeat(supabase, teamId, userId) {
   // Active row with empty CoachId (unexpected) — claim Sponsor
   const { data: sponsorRows, error: sponsorError } = await supabase
     .from('coach_teams_table')
-    .update({ CoachId: userId, UpdatedAt: updateTime })
+    .update({ CoachId: uid, UpdatedAt: updateTime })
     .eq('TeamId', teamId)
     .eq('Status', 'active')
     .is('CoachId', null)

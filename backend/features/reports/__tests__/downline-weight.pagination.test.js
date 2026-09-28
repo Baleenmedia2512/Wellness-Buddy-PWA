@@ -10,9 +10,11 @@ import {
   applyTeamFilter,
   filterRowsByStatusFilter,
   filterRowsBySearch,
+  sortDownlineWeightRows,
   paginateDownlineWeightRecords,
   TEAM_FILTERS,
   STATUS_FILTERS,
+  SORT_KEYS,
 } from '../domain/downline-weight.pagination.js';
 
 function row(partial) {
@@ -28,6 +30,7 @@ function row(partial) {
     reportsToCoachId: partial.reportsToCoachId ?? 1,
     teamPerformance: partial.teamPerformance ?? null,
     lastUpdated: partial.lastUpdated ?? null,
+    firstReachedAt: partial.firstReachedAt ?? null,
   };
 }
 
@@ -55,6 +58,17 @@ describe('normalizeDownlineWeightPagination', () => {
 
   it('caps limit at max page size', () => {
     assert.equal(normalizeDownlineWeightPagination({ limit: 9999 }).limit, 100);
+  });
+
+  it('accepts reached_date sort', () => {
+    assert.equal(
+      normalizeDownlineWeightPagination({ sort: 'reached_date' }).sort,
+      SORT_KEYS.REACHED_DATE,
+    );
+    assert.equal(
+      normalizeDownlineWeightPagination({ sort: 'first_reached' }).sort,
+      SORT_KEYS.REACHED_DATE,
+    );
   });
 });
 
@@ -160,6 +174,54 @@ describe('applyTeamFilter / status / search helpers', () => {
   it('filters status and search', () => {
     assert.equal(filterRowsByStatusFilter(members, STATUS_FILTERS.OFF_TRACK).length, 1);
     assert.equal(filterRowsBySearch(members, 'ann').length, 1);
+  });
+
+  it('sorts by reached_date newest first (nulls last)', () => {
+    const sorted = sortDownlineWeightRows(
+      [
+        row({ userId: 1, status: 'on_track', firstReachedAt: '2024-01-01T00:00:00.000Z' }),
+        row({ userId: 2, status: 'on_track', firstReachedAt: '2024-06-01T00:00:00.000Z' }),
+        row({ userId: 3, status: 'on_track', firstReachedAt: null }),
+      ],
+      SORT_KEYS.REACHED_DATE,
+    );
+    assert.deepEqual(
+      sorted.map((r) => r.userId),
+      [2, 1, 3],
+    );
+  });
+
+  it('sorts by difference closest-to-ideal first', () => {
+    const sorted = sortDownlineWeightRows(
+      [
+        row({
+          userId: 1,
+          status: 'above_ideal',
+          currentWeight: 80,
+          idealMax: 64.9,
+          difference: 15.1,
+        }),
+        row({
+          userId: 2,
+          status: 'above_ideal',
+          currentWeight: 50.7,
+          idealMax: 47.7,
+          difference: 3.0,
+        }),
+        row({
+          userId: 3,
+          status: 'above_ideal',
+          currentWeight: 54,
+          idealMax: 51.8,
+          difference: 2.2,
+        }),
+      ],
+      SORT_KEYS.DIFFERENCE,
+    );
+    assert.deepEqual(
+      sorted.map((r) => r.userId),
+      [3, 2, 1],
+    );
   });
 });
 

@@ -1,9 +1,10 @@
-// Editable name / height / phone / community ID / gender fields + email.
-// BMR is display-only when bmrReadOnly (profile page) — calculated from weight/formula.
+// Editable name / height / phone / community ID / gender / BMR fields + email.
+// Pass bmrReadOnly to keep BMR display-only (e.g. calculated preview contexts).
 import React from 'react';
 import { Flame, Mail } from 'lucide-react';
 import PhysicalActivityField from './PhysicalActivityField';
 import CommunityIdField from './CommunityIdField';
+import HeightField from './HeightField';
 import { VALID_GENDERS } from '../../domain/profileCompleteness';
 
 const inputCls =
@@ -27,13 +28,24 @@ const UserProfileFields = ({
   communityId, setCommunityId,
   teamSeat = null,
   hideEmailField = false,
+  hideCommunityIdField = false,
   communityIdOtpEnabled = false,
   communityIdRequest = null,
+  communityIdPair = null,
   onCommunityIdCreate,
   onCommunityIdVerify,
   communityIdBusy = false,
   communityIdError = '',
   sponsorName = '',
+  sponsorEmail = '',
+  heightOtpEnabled = false,
+  lockedHeight = null,
+  onHeightRequestOtp,
+  onHeightVerifyOtp,
+  heightOtpBusy = false,
+  heightOtpError = '',
+  heightOtpPending = false,
+  heightOtpDestination = '',
 }) => (
   <div className="space-y-4">
     {!hideEmailField && (
@@ -72,7 +84,7 @@ const UserProfileFields = ({
         value={gender || ''}
         onChange={(e) => setGender(e.target.value)}
         required
-        className={`${inputCls} ${!gender ? 'text-gray-400' : 'text-gray-800'}`}
+        className={`${inputCls} bg-white ${!gender ? 'text-gray-400' : 'text-gray-800'}`}
         style={{ fontSize: '16px' }}
       >
         <option value="" disabled>
@@ -86,26 +98,38 @@ const UserProfileFields = ({
       </select>
     </Field>
 
-    <Field label="Height (cm)" required>
-      <input type="text" inputMode="decimal" pattern="[0-9]*" value={height} onChange={(e) => setHeight(e.target.value)}
-        placeholder="e.g. 170" min="50" max="198" className={inputCls} style={{ fontSize: '16px' }} />
-    </Field>
+    <HeightField
+      height={height}
+      setHeight={setHeight}
+      otpEnabled={heightOtpEnabled}
+      lockedHeight={lockedHeight}
+      onRequestOtp={onHeightRequestOtp}
+      onVerifyOtp={onHeightVerifyOtp}
+      busy={heightOtpBusy}
+      error={heightOtpError}
+      otpPending={heightOtpPending}
+      destinationMasked={heightOtpDestination}
+    />
     <Field label="Phone Number" required>
       <input type="text" inputMode="numeric" pattern="[0-9]*" value={phone} onChange={(e) => setPhone(e.target.value)}
         placeholder="e.g. +91 9876543210" className={inputCls} style={{ fontSize: '16px' }} />
     </Field>
-    <CommunityIdField
-      communityId={communityId}
-      setCommunityId={setCommunityId}
-      teamSeat={teamSeat}
-      otpEnabled={communityIdOtpEnabled}
-      pendingRequest={communityIdRequest}
-      onCreate={onCommunityIdCreate}
-      onVerify={onCommunityIdVerify}
-      busy={communityIdBusy}
-      error={communityIdError}
-      sponsorName={sponsorName}
-    />
+    {!hideCommunityIdField && (
+      <CommunityIdField
+        communityId={communityId}
+        setCommunityId={setCommunityId}
+        teamSeat={teamSeat}
+        otpEnabled={communityIdOtpEnabled}
+        pendingRequest={communityIdRequest}
+        communityIdPair={communityIdPair}
+        onCreate={onCommunityIdCreate}
+        onVerify={onCommunityIdVerify}
+        busy={communityIdBusy}
+        error={communityIdError}
+        sponsorName={sponsorName}
+        sponsorEmail={sponsorEmail}
+      />
+    )}
     <div>
       <label className="flex items-center gap-1 text-sm font-medium text-gray-700 mb-1">
         <Flame className="w-4 h-4 text-orange-500" /> BMR (kcal)
@@ -122,7 +146,7 @@ const UserProfileFields = ({
         className={
           bmrReadOnly
             ? 'w-full px-3 py-2 border border-gray-200 bg-gray-50 text-gray-600 rounded-lg cursor-not-allowed outline-none'
-            : 'w-full px-3 py-2 border border-orange-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none'
+            : inputCls
         }
       />
       {bmrReadOnly && (

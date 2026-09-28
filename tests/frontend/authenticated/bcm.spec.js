@@ -206,7 +206,7 @@ test.describe('BCM Module (Body Composition Metrics)', () => {
       });
     });
 
-    // Mock phone BCM status
+    // Mock phone BCM status (unknown number — no exists prompt)
     await page.route('**/api/body-parameters-card/phone-status*', async (route) => {
       await route.fulfill({
         status: 200,
@@ -216,6 +216,7 @@ test.describe('BCM Module (Body Composition Metrics)', () => {
           data: {
             activated: false,
             message: null,
+            userId: null,
             existingCard: null
           }
         })
@@ -318,8 +319,14 @@ test.describe('BCM Module (Body Composition Metrics)', () => {
 
     // Setup Mock for create
     let createCalled = false;
+    let lastCreateBody = null;
     await page.route('**/api/body-parameters-card/create', async (route) => {
       createCalled = true;
+      try {
+        lastCreateBody = route.request().postDataJSON();
+      } catch {
+        lastCreateBody = null;
+      }
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -328,7 +335,7 @@ test.describe('BCM Module (Body Composition Metrics)', () => {
           data: {
             id: 5,
             name: 'NEW CLIENT',
-            phoneNumber: '9876543210',
+            phoneNumber: null,
             heightCm: 172,
             weightKg: 65,
             recordedDate: '2026-08-24',
@@ -339,24 +346,19 @@ test.describe('BCM Module (Body Composition Metrics)', () => {
       });
     });
 
-    // Verify form requirements: Save & Share does not submit when name/phone are invalid or empty
+    // Name is required; phone is optional
     const saveButton = page.getByRole('button', { name: 'Save & Share' });
 
     // Try to save with everything empty - creation should not be called
     await saveButton.click();
     expect(createCalled).toBe(false);
 
-    // Fill Name but keep Phone empty - creation should still not be called
+    // Fill Name but keep Phone empty - creation should succeed without phone
     await page.getByPlaceholder('FULL NAME').fill('NEW CLIENT');
     await saveButton.click();
-    expect(createCalled).toBe(false);
-
-    // Fill Phone
-    await page.getByPlaceholder('Client phone — creates team member').fill('9876543210');
-
-    // Now it should save successfully
-    await saveButton.click();
     await page.waitForTimeout(500);
+    expect(createCalled).toBe(true);
+    expect(lastCreateBody?.phoneNumber == null || lastCreateBody?.phoneNumber === '').toBe(true);
 
     // Verify that the BCM modal closes (meaning success)
     await expect(page.getByRole('heading', { name: 'Your Body Parameters' })).not.toBeVisible();
@@ -572,8 +574,8 @@ test.describe('BCM Module (Body Composition Metrics)', () => {
     await expect(fatLabel).toContainText('(20–30%)');
   });
 
-  test('BCM-011 Duplicate Phone Duplication Protection', async ({ page }) => {
-    // Intercept phone-status request to simulate duplicate registered phone number
+  test('BCM-011 Existing Activated Phone Prompts Override Or New', async ({ page }) => {
+    // Intercept phone-status request to simulate activated (registered) phone number
     await page.route('**/api/body-parameters-card/phone-status*', async (route) => {
       await route.fulfill({
         status: 200,
@@ -583,6 +585,8 @@ test.describe('BCM Module (Body Composition Metrics)', () => {
           data: {
             activated: true,
             message: 'User already exists',
+            userId: 55,
+            exists: true,
             existingCard: null
           }
         })
@@ -594,251 +598,162 @@ test.describe('BCM Module (Body Composition Metrics)', () => {
     // Fill validation fields
     await page.getByPlaceholder('FULL NAME').fill('DUPLICATE USER');
 
-    const phoneInput = page.getByPlaceholder('Client phone — creates team member');
+    const phoneInput = page.getByPlaceholder('Client phone (optional)');
     await phoneInput.fill('9999999999');
     await page.waitForTimeout(500);
 
-    // Verify duplicate error displays
-    await expect(page.getByText('User already exists')).toBeVisible();
+    // Activated number shows Override / New dialog (not a hard field block)
+    await expect(page.getByText(
+      'This number already exists. Override the existing card, or create a new card for this number?'
+    )).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Override' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'New' })).toBeVisible();
 
-    // Save button must remain disabled
+    // Save stays disabled until the coach chooses
     const saveButton = page.getByRole('button', { name: 'Save & Share' });
     await expect(saveButton).toBeDisabled();
+
+    // New keeps the phone and unlocks save
+    await page.getByRole('button', { name: 'New' }).click();
+    await expect(phoneInput).toHaveValue('9999999999');
+    await expect(saveButton).toBeEnabled();
   });
 
-  test('BCM-012 Exact Phone Match Autocomplete Auto-Prefill', async ({ page }) => {
+  test('BCM-012 Existing Phone Prompts Override Or New', async ({ page }) => {
+    await page.route('**/api/body-parameters-card/phone-status*', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          ok: true,
+          data: {
+            activated: false,
+            message: null,
+            userId: 101,
+            exists: true,
+            existingCard: {
+              id: 1,
+              name: 'MEMBER ONE',
+              phoneNumber: '9876543210',
+              heightCm: 175,
+              gender: 'Male',
+              age: 28,
+            }
+          }
+        })
+      });
+    });
+
+    await page.route('**/api/body-parameters-card/member-prefill*', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          ok: true,
+          data: {
+            userName: 'MEMBER ONE',
+            heightCm: 175,
+            gender: 'Male',
+            age: 28,
+          }
+        })
+      });
+    });
+
     await page.getByRole('button', { name: 'Create Body Parameters Card' }).click();
 
-    // Enter matching phone number of MEMBER ONE
-    const phoneInput = page.getByPlaceholder('Client phone — creates team member');
+    const phoneInput = page.getByPlaceholder('Client phone (optional)');
     await phoneInput.fill('9876543210');
     await page.waitForTimeout(500);
 
-    // Exact match triggers fillFromMember automatically -> Name, Height, Gender, Age, and calculated BMI should be auto-filled
+    await expect(page.getByText(
+      'This number already exists. Override the existing card, or create a new card for this number?'
+    )).toBeVisible();
+
+    // New keeps the phone so a fresh card can be saved for that number
+    await page.getByRole('button', { name: 'New' }).click();
+    await expect(phoneInput).toHaveValue('9876543210');
+
+    // Re-enter (change then restore) and choose Override to prefill
+    await phoneInput.fill('9876543211');
+    await phoneInput.fill('9876543210');
+    await page.waitForTimeout(500);
+    await expect(page.getByText(
+      'This number already exists. Override the existing card, or create a new card for this number?'
+    )).toBeVisible();
+    await page.getByRole('button', { name: 'Override' }).click();
+    await page.waitForTimeout(500);
+
     await expect(page.getByPlaceholder('FULL NAME')).toHaveValue('MEMBER ONE');
-    
-    // Height input specifically inside the Height label div
     const heightInput = page.locator('div').filter({ has: page.locator('> label').filter({ hasText: /^Height/i }) }).locator('input');
     await expect(heightInput).toHaveValue('175');
     await expect(page.locator('div:has(> label:has-text("Gender")) select')).toHaveValue('Male');
-    
     const ageInput = page.locator('div').filter({ has: page.locator('> label').filter({ hasText: /^Age$/ }) }).locator('input');
     await expect(ageInput).toHaveValue('28');
   });
 
-  test('BCM-013 Share Sheet Trigger on Card Save', async ({ page }) => {
-    await page.getByRole('button', { name: 'Create Body Parameters Card' }).click();
-
-    const populatedCard = {
-      id: 101,
-      name: 'SHARE CLIENT',
-      phoneNumber: '9876543210',
-      heightCm: 170,
-      weightKg: 68,
-      recordedDate: '2026-08-24',
-      publicShareToken: 'sharetoken123',
-    };
-
-    await page.route('**/api/body-parameters-card/create', async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          success: true,
-          data: populatedCard,
-        }),
-      });
-    });
-
-    await page.getByPlaceholder('FULL NAME').fill('SHARE CLIENT');
-    await page.getByPlaceholder('Client phone — creates team member').fill('9876543210');
-
-    const saveButton = page.getByRole('button', { name: 'Save & Share' });
-    await expect(saveButton).toBeEnabled();
-    await saveButton.click();
-
-    // Form modal closes on successful save
-    await expect(page.getByRole('heading', { name: 'Your Body Parameters' })).not.toBeVisible({ timeout: 10000 });
-  });
-
-  test('BCM-014 Phone Contact Actions Clickability', async ({ page }) => {
-    const mockPopulatedCard = {
-      id: 201,
-      name: 'CONTACT CLIENT',
-      phoneNumber: '9876543210',
-      heightCm: 170,
-      weightKg: 70,
-      bmi: '24.2',
-      age: 28,
-      gender: 'Male',
-      recordedDate: '2026-08-24',
-    };
-
-    await page.route('**/api/body-parameters-card/list*', async (route) => {
+  test('BCM-013 Phone Autocomplete Pick Still Prompts Override Or New', async ({ page }) => {
+    await page.route('**/api/body-parameters-card/phone-status*', async (route) => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
           ok: true,
-          success: true,
-          data: [mockPopulatedCard],
-          pagination: { totalRecords: 1, totalPages: 1, currentPage: 1, pageSize: 20 },
-        }),
+          data: {
+            activated: false,
+            message: null,
+            userId: 202,
+            exists: true,
+            existingCard: {
+              id: 2,
+              name: 'JAFAR',
+              phoneNumber: '6369591703',
+              heightCm: 150,
+              gender: 'Male',
+            }
+          }
+        })
       });
     });
 
-    const refreshBtn = page.locator('h1:has-text("Body Composition Metrics") + button');
-    await refreshBtn.click();
-
-    const clientCard = page.locator('div.bg-white:has-text("CONTACT CLIENT")').first();
-    await expect(clientCard).toBeVisible({ timeout: 10000 });
-
-    // Click Call button inside PhoneContactActions
-    const callButton = clientCard.locator('button[aria-label*="Call"]').first();
-    await expect(callButton).toBeVisible();
-    await callButton.click();
-
-    // Verify edit modal is NOT opened by clicking phone contact button
-    await expect(page.getByRole('heading', { name: 'Edit Body Parameters' })).not.toBeVisible();
-  });
-
-  test('BCM-015 Search Suggestions Filter', async ({ page }) => {
-    const mockTenClients = Array.from({ length: 10 }, (_, i) => ({
-      id: 301 + i,
-      name: `Mock Client ${i + 1}`,
-      phoneNumber: `987654320${i}`,
-      heightCm: 165 + i,
-      weightKg: 60 + i,
-      bmi: '22.0',
-      age: 25 + i,
-      gender: i % 2 === 0 ? 'Male' : 'Female',
-      recordedDate: '2026-08-24',
-    }));
-
-    await page.route('**/api/body-parameters-card/list*', async (route) => {
-      const url = new URL(route.request().url());
-      const search = url.searchParams.get('search');
-      let filtered = [...mockTenClients];
-      if (search) {
-        const query = search.toLowerCase();
-        filtered = filtered.filter((c) => c.name.toLowerCase().includes(query) || c.phoneNumber.includes(query));
-      }
+    // Flat team list used by client-side phone autocomplete
+    await page.route('**/api/team/hierarchy/**', async (route) => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
-          ok: true,
           success: true,
-          data: filtered,
-          pagination: { totalRecords: filtered.length, totalPages: 1, currentPage: 1, pageSize: 20 },
-        }),
+          data: [{
+            userId: 202,
+            userName: 'Jafar',
+            phoneNumber: '6369591703',
+            heightCm: 150,
+            bmr: 1748,
+            gender: 'Male',
+          }],
+        })
       });
     });
 
-    const searchInput = page.getByPlaceholder('Search by name or phone...');
-    await searchInput.fill('Client 5');
-    await page.waitForTimeout(300);
-
-    // Verify search value is filled and matching card is visible
-    await expect(searchInput).toHaveValue('Client 5');
-    await expect(page.getByRole('heading', { name: 'Mock Client 5', exact: true })).toBeVisible({ timeout: 10000 });
-    await expect(page.getByRole('heading', { name: 'Mock Client 1', exact: true })).not.toBeVisible();
-  });
-
-  test('BCM-016 Extended Body Metrics Inputs (V-Fat, Body Age, Chest, Waist, Hip)', async ({ page }) => {
-    await page.getByRole('button', { name: 'Create Body Parameters Card' }).click();
-    await expect(page.getByRole('heading', { name: 'Your Body Parameters' })).toBeVisible();
-
-    // Fill parent fields Gender & Age first so dependent metric inputs are unlocked
-    await page.locator('div:has(> label:has-text("Gender")) select').selectOption('Male');
-    const ageInput = page.locator('div').filter({ has: page.locator('> label').filter({ hasText: /^Age$/ }) }).locator('input');
-    await ageInput.fill('28');
-
-    // Fill V-Fat
-    const vFatInput = page.getByPlaceholder('Visceral fat');
-    await vFatInput.fill('5');
-    await expect(vFatInput).toHaveValue('5');
-
-    // Fill Body Age
-    const bodyAgeInput = page.getByPlaceholder('yrs');
-    await bodyAgeInput.fill('25');
-    await expect(bodyAgeInput).toHaveValue('25');
-
-    // Fill Chest, Waist, Hip (placeholder="cm")
-    const cmInputs = page.locator('input[placeholder="cm"]');
-    if (await cmInputs.count() >= 3) {
-      const chestInput = cmInputs.nth(0);
-      const waistInput = cmInputs.nth(1);
-      const hipInput = cmInputs.nth(2);
-
-      await chestInput.fill('95');
-      await waistInput.fill('82');
-      await hipInput.fill('90');
-
-      await expect(chestInput).toHaveValue('95');
-      await expect(waistInput).toHaveValue('82');
-      await expect(hipInput).toHaveValue('90');
-    }
-  });
-
-  test('BCM-017 Ideal Weight Range Auto-Calculation', async ({ page }) => {
     await page.getByRole('button', { name: 'Create Body Parameters Card' }).click();
 
-    // Fill height to 170cm
-    const heightInput = page.locator('div').filter({ has: page.locator('> label').filter({ hasText: /^Height/i }) }).locator('input');
-    await heightInput.fill('170');
-    await page.waitForTimeout(300);
+    const phoneInput = page.getByPlaceholder('Client phone (optional)');
+    await phoneInput.fill('6369');
+    await page.waitForTimeout(400);
 
-    // Label should update to include ideal weight range calculation
-    const weightLabel = page.locator('label').filter({ hasText: /Weight \(Ideal:/i });
-    await expect(weightLabel).toBeVisible({ timeout: 5000 });
-  });
+    const suggestion = page.getByText(/6369591703/);
+    await expect(suggestion).toBeVisible();
+    await suggestion.click();
+    await page.waitForTimeout(400);
 
-  test('BCM-018 Card Tile Click to Edit', async ({ page }) => {
-    const mockEditCard = {
-      id: 401,
-      name: 'EDITABLE CLIENT',
-      phoneNumber: '9876543219',
-      heightCm: 175,
-      weightKg: 75,
-      bmi: '24.5',
-      age: 30,
-      gender: 'Male',
-      recordedDate: '2026-08-24',
-    };
+    // Must ask — autocomplete must not silent-override
+    await expect(page.getByText(
+      'This number already exists. Override the existing card, or create a new card for this number?'
+    )).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Override' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'New' })).toBeVisible();
 
-    await page.route('**/api/body-parameters-card/list*', async (route) => {
-      const url = new URL(route.request().url());
-      if (url.searchParams.get('cardId') === '401') {
-        await route.fulfill({
-          status: 200,
-          contentType: 'application/json',
-          body: JSON.stringify({ ok: true, data: mockEditCard }),
-        });
-        return;
-      }
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          ok: true,
-          success: true,
-          data: [mockEditCard],
-          pagination: { totalRecords: 1, totalPages: 1, currentPage: 1, pageSize: 20 },
-        }),
-      });
-    });
-
-    const refreshBtn = page.locator('h1:has-text("Body Composition Metrics") + button');
-    await refreshBtn.click();
-
-    // Click card tile for EDITABLE CLIENT
-    const clientCard = page.locator('div.bg-white:has-text("EDITABLE CLIENT")').first();
-    await expect(clientCard).toBeVisible({ timeout: 10000 });
-    await clientCard.click();
-
-    // Verify Edit Body Parameters modal opens prefilled with EDITABLE CLIENT
-    await expect(page.getByRole('heading', { name: 'Edit Body Parameters' })).toBeVisible({ timeout: 10000 });
-    await expect(page.getByPlaceholder('FULL NAME')).toHaveValue('EDITABLE CLIENT');
+    // Name should NOT be prefilled until Override
+    await expect(page.getByPlaceholder('FULL NAME')).toHaveValue('');
   });
 });

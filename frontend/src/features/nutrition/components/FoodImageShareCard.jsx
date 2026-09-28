@@ -13,6 +13,7 @@
  */
 import React, { forwardRef } from "react";
 import { getVersionString } from "../../../config/version";
+import { pickShareAvatarSrc } from "../../user/services/avatarDisplayVersion";
 
 const FoodImageShareCard = forwardRef(function FoodImageShareCard(
   { user, savedUserName, savedProfileImage, sharePhotoBase64, imageSrc, foodNames = [] },
@@ -22,7 +23,11 @@ const FoodImageShareCard = forwardRef(function FoodImageShareCard(
 
   const displayName =
     savedUserName || user?.displayName || user?.name || "Wellness User";
-  const avatar = savedProfileImage || sharePhotoBase64 || user?.photoURL;
+  const avatar = pickShareAvatarSrc({
+    savedProfileImage,
+    sharePhotoBase64,
+    photoURL: user?.photoURL,
+  });
 
   return (
     <div

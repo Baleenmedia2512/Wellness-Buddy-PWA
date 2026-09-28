@@ -30,6 +30,7 @@ export default function AppVersionHardBlock({
   onUpdateNow,
   playUnavailable = false,
   androidUpdating = false,
+  awaitingRetry = false,
 }) {
   const platform = getClientPlatform();
   const message =
@@ -47,6 +48,7 @@ export default function AppVersionHardBlock({
 
   const showAndroidPlayHint = platform === 'android' && androidUpdating && !playUnavailable;
   const showPlayFallback = platform === 'android' && playUnavailable;
+  const showAwaitingRetry = platform === 'android' && awaitingRetry && !playUnavailable;
 
   return (
     <div className="fixed inset-0 z-[20000] flex items-center justify-center bg-gradient-to-b from-emerald-50 to-white p-6">
@@ -72,6 +74,11 @@ export default function AppVersionHardBlock({
         {showAndroidPlayHint && (
           <p className="text-xs text-emerald-700 mb-2">
             Opening Google Play update…
+          </p>
+        )}
+        {showAwaitingRetry && (
+          <p className="text-xs text-amber-700 mb-2">
+            Update did not finish. Stay on Wi‑Fi, tap Update Now, and wait until Play shows Open.
           </p>
         )}
         {showPlayFallback && (

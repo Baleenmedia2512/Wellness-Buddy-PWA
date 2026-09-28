@@ -409,4 +409,31 @@ describe('collectVisibleHierarchyUsers — upline people, own downline, not othe
     assert.equal(kabirIds.has(Amit), true);
     assert.equal(kabirIds.has(Priya), true);
   });
+
+  it('Usha sees Jasper as peer when Jasper is in Balaji Direct via Leenah co-coach', () => {
+    // Balaji Direct Team (shared) = Balaji CoachId directs + Leenah directs.
+    // Usha and Jasper are both in that Direct Team → peers on leaderboard.
+    const BalajiCoach = 500;
+    const Leenah = 501;
+    const UshaMember = 502;
+    const JasperMember = 503;
+    const JasperKid = 504;
+    const PaulMember = 505;
+    const tree = buildReportingContext([
+      { UserId: BalajiCoach, UserName: 'Balaji', Role: 'admin', CoachId: null, Status: 'Active' },
+      { UserId: Leenah, UserName: 'Leenah', Role: 'user', CoachId: BalajiCoach, Status: 'Active' },
+      { UserId: UshaMember, UserName: 'Usha', Role: 'user', CoachId: BalajiCoach, Status: 'Active' },
+      { UserId: PaulMember, UserName: 'Paul', Role: 'user', CoachId: BalajiCoach, Status: 'Active' },
+      { UserId: JasperMember, UserName: 'Jasper', Role: 'user', CoachId: Leenah, Status: 'Active' },
+      { UserId: JasperKid, UserName: 'JasperKid', Role: 'user', CoachId: JasperMember, Status: 'Active' },
+    ]);
+    tree.parentPartnerRootIds = [Leenah];
+
+    const visible = collectVisibleHierarchyUsers(UshaMember, tree);
+    const idSet = new Set(visible.map((m) => m.UserId));
+    assert.equal(idSet.has(JasperMember), true, 'Jasper is peer (Balaji Direct via Leenah)');
+    assert.equal(idSet.has(Leenah), true, 'Leenah is peer / partner node');
+    assert.equal(idSet.has(PaulMember), true, 'Paul is CoachId sibling peer');
+    assert.equal(idSet.has(JasperKid), false, 'peer downline must stay hidden');
+  });
 });

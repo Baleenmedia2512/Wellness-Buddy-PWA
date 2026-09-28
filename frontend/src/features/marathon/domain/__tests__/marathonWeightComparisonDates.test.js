@@ -24,42 +24,42 @@ describe('getMarathonWeightComparisonDates', () => {
     assert.equal(getMarathonWeightComparisonDates('2026-08-31'), null);
   });
 
-  it('maps Marathon 1 Day 0 to previous month Day 10 (11th)', () => {
+  it('maps Marathon 1 Day 0 to prior month Marathon 2 Day 10 (25th)', () => {
     assert.deepEqual(getMarathonWeightComparisonDates('2026-08-01'), {
       currentDay0Ymd: '2026-08-01',
-      previousDay10Ymd: '2026-07-11',
+      previousDay10Ymd: '2026-07-25',
       marathonNumber: 1,
     });
     assert.deepEqual(getMarathonWeightComparisonDates('2026-09-01'), {
       currentDay0Ymd: '2026-09-01',
-      previousDay10Ymd: '2026-08-11',
+      previousDay10Ymd: '2026-08-25',
       marathonNumber: 1,
     });
   });
 
-  it('maps Marathon 2 Day 0 to same month Day 10 (25th)', () => {
+  it('maps Marathon 2 Day 0 to same month Marathon 1 Day 10 (11th)', () => {
     assert.deepEqual(getMarathonWeightComparisonDates('2026-08-15'), {
       currentDay0Ymd: '2026-08-15',
-      previousDay10Ymd: '2026-08-25',
+      previousDay10Ymd: '2026-08-11',
       marathonNumber: 2,
     });
     assert.deepEqual(getMarathonWeightComparisonDates('2026-09-15'), {
       currentDay0Ymd: '2026-09-15',
-      previousDay10Ymd: '2026-09-25',
+      previousDay10Ymd: '2026-09-11',
       marathonNumber: 2,
     });
   });
 });
 
 describe('getMarathonGapComparisonDates', () => {
-  it('resolves gap days between marathons', () => {
+  it('resolves gap days using the last completed marathon Day 10', () => {
     assert.deepEqual(getMarathonGapComparisonDates('2026-09-12'), {
-      previousDay10Ymd: '2026-09-25',
+      previousDay10Ymd: '2026-09-11',
       upcomingDay0Ymd: '2026-09-15',
       upcomingMarathonNumber: 2,
     });
     assert.deepEqual(getMarathonGapComparisonDates('2026-09-26'), {
-      previousDay10Ymd: '2026-09-11',
+      previousDay10Ymd: '2026-09-25',
       upcomingDay0Ymd: '2026-10-01',
       upcomingMarathonNumber: 1,
     });

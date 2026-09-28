@@ -263,7 +263,7 @@ describe('shouldEnsureCoachTeamRowOnCommunityIdSync', () => {
     );
   });
 
-  it('attempts co-sponsor claim when joining an existing shared team code', () => {
+  it('does not auto-claim Co-Sponsor when joining an existing shared team code', () => {
     assert.equal(
       shouldEnsureCoachTeamRowOnCommunityIdSync({
         role: 'user',
@@ -271,19 +271,29 @@ describe('shouldEnsureCoachTeamRowOnCommunityIdSync', () => {
         resolvedFound: true,
         communityIdExplicitlyUpdated: true,
       }),
-      true,
+      false,
     );
   });
 
-  it('backfills co-sponsor when TeamId already matches shared code but seat missing', () => {
+  it('does not backfill Co-Sponsor when TeamId already matches shared code but seat missing', () => {
     assert.equal(
       shouldEnsureCoachTeamRowOnCommunityIdSync({
         role: 'user',
         teamSeat: null,
         resolvedFound: true,
         communityIdExplicitlyUpdated: false,
-        targetCode: 'YASHEER1234',
-        teamId: 'YASHEER1234',
+      }),
+      false,
+    );
+  });
+
+  it('keeps seat sync when the user already holds a lead seat', () => {
+    assert.equal(
+      shouldEnsureCoachTeamRowOnCommunityIdSync({
+        role: 'user',
+        teamSeat: 'sponsor',
+        resolvedFound: true,
+        communityIdExplicitlyUpdated: true,
       }),
       true,
     );

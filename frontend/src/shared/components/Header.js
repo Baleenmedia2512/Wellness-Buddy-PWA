@@ -64,7 +64,9 @@ const Header = ({
         const shouldBust = profileKey !== prevProfileKeyRef.current;
         prevProfileKeyRef.current = profileKey;
         const data = await getProfile(
-          email ? { email, cacheBust: shouldBust } : { userId, cacheBust: shouldBust },
+          email
+            ? { email, userId: userId || undefined, cacheBust: shouldBust }
+            : { userId, cacheBust: shouldBust },
         );
         if (data.success && data.data) {
           const phoneNumber = data.data.phoneNumber || user?.phoneNumber || user?.phone;

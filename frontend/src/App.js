@@ -117,6 +117,10 @@ import { useAppVersionPolicy } from "./shared/hooks/useAppVersionPolicy";
 import { useMandatoryAppUpdate } from "./shared/hooks/useMandatoryAppUpdate";
 import AppVersionHardBlock from "./shared/components/AppVersionGate";
 import { getApiBaseUrl } from "./config/api.config";
+import {
+  buildUserAvatarUrl,
+  getAvatarDisplayVersion,
+} from "./features/user/services/avatarDisplayVersion";
 import { apiFetch } from "./shared/services/apiFetch";
 import { handlePossibleAppUpdateRequired } from "./shared/services/appVersionEnforce.client";
 import {
@@ -155,6 +159,7 @@ import {
   getCachedProfileUserName,
 } from "./shared/utils/shareUtils";
 import { hasValidProfileName } from "./features/user/domain/profileCompleteness";
+import { shouldForceBcmProfileReview } from "./features/user/domain/bcmProfileReview";
 import { resolveLocationFields, stripLocationDiagnostics } from "./shared/utils/resolveLocationFields";
 import {
   startUserLocationCache,
@@ -3404,14 +3409,19 @@ function WellnessValleyApp() {
           || Session.getDbUserId()
           || null;
         identityConfirmedRef.current = true;
-        // BCM lead: always show Complete Profile once so the member can review
+        // BCM lead: show Complete Profile once so the member can review
         // prefilled height/weight/etc. before Transformation Photos / home.
-        if (
-          result.data?.isBcmLead === true
-          && uid
-          && !Session.isBcmProfileReviewed(uid)
-          && !transformationPhotosGateRef.current
-        ) {
+        // Server bcmProfileReviewed survives APK reinstall; localStorage is cache.
+        const bcmReviewedOnServer = result.data?.bcmProfileReviewed === true;
+        const bcmReviewedLocally = uid ? Session.isBcmProfileReviewed(uid) : false;
+        if (bcmReviewedOnServer && uid) {
+          Session.markBcmProfileReviewed(uid);
+        }
+        const forceBcmReview = shouldForceBcmProfileReview({
+          isBcmLead: result.data?.isBcmLead === true,
+          bcmProfileReviewed: bcmReviewedOnServer || bcmReviewedLocally,
+        });
+        if (forceBcmReview && uid && !transformationPhotosGateRef.current) {
           debugLog("📋 [Profile] BCM lead — showing Complete Profile for review");
           setIdentityResolved(true);
           setShowOnboardingIdentity(false);
@@ -4358,19 +4368,34 @@ function WellnessValleyApp() {
     return () => clearTimeout(timeoutId);
   }, [user]); // Re-run when user changes
 
-  // Convert user profile photo to base64 for CORS-safe use in html2canvas share cards.
-  // Uses an AbortController so an in-flight fetch is cancelled if the user logs
-  // out / changes photoURL while it's loading (prevents "setState on unmounted"
-  // warnings and stale writes overwriting newer data).
+  // Convert profile photo to base64 for CORS-safe use in html2canvas share cards.
+  // Never fetch R2/Google URLs directly from the browser — bucket CORS blocks
+  // localhost (and often production). Prefer same-origin /api/user/avatar?inline=1.
+  // AbortController cancels in-flight work on logout / photo change.
   useEffect(() => {
     const photoUrl = user?.photoURL;
-    if (!photoUrl) {
+    const userId = user?.id || user?.UserId || user?.userId;
+    if (photoUrl && String(photoUrl).startsWith("data:image/")) {
+      setSharePhotoBase64(photoUrl);
+      return undefined;
+    }
+    const inlineUrl = buildUserAvatarUrl(
+      apiBaseUrl,
+      userId,
+      getAvatarDisplayVersion(),
+      { inline: true },
+    );
+    const fetchUrl = inlineUrl || photoUrl;
+    if (!fetchUrl) {
       setSharePhotoBase64(null);
       return undefined;
     }
     const { signal, cancel } = createAbortGroup();
-    fetch(photoUrl, { signal })
-      .then((res) => res.blob())
+    fetch(fetchUrl, { signal })
+      .then((res) => {
+        if (!res.ok) throw new Error(`avatar fetch ${res.status}`);
+        return res.blob();
+      })
       .then(
         (blob) =>
           new Promise((resolve, reject) => {
@@ -4388,7 +4413,7 @@ function WellnessValleyApp() {
         if (!signal.aborted) setSharePhotoBase64(null);
       });
     return cancel;
-  }, [user?.photoURL]);
+  }, [user?.photoURL, user?.id, user?.UserId, user?.userId, apiBaseUrl]);
 
   // Keep Manual Entry JS chunk warm while user is on Home (photo → classify stays instant).
   useEffect(() => {
@@ -7438,6 +7463,7 @@ function WellnessValleyApp() {
         onUpdateNow={mandatoryUpdate.retryUpdate}
         playUnavailable={mandatoryUpdate.playUnavailable}
         androidUpdating={mandatoryUpdate.phase === 'play_flow' || mandatoryUpdate.phase === 'starting'}
+        awaitingRetry={mandatoryUpdate.phase === 'awaiting_retry'}
       />
     );
   }
@@ -7840,7 +7866,9 @@ function WellnessValleyApp() {
                 });
               }
               profileCompletedRef.current = false;
-              checkProfileCompletion(email, null, { afterSave: true });
+              // silent: stay on My Profile — non-silent sets profileChecking and
+              // swaps the whole app to the auth bridge (looks like a full reload).
+              checkProfileCompletion(email, user, { afterSave: true, silent: true });
               if (profileData?.name?.trim()) {
                 setSavedUserName(profileData.name.trim());
                 if (email) cacheProfileUserName(email, profileData.name);
@@ -7866,7 +7894,7 @@ function WellnessValleyApp() {
               }
               // Increment profileKey so Header re-fetches avatar/name
               setHeaderProfileKey((k) => k + 1);
-              // Activity log: Home should refresh cards when returning from profile edits
+              // Refresh Home cards under the profile overlay (no full-app gate).
               triggerNutritionRefresh({ immediate: true, source: 'profile-update' });
               setBodyParamsRefreshKey((k) => k + 1);
             }}
@@ -8679,7 +8707,8 @@ function WellnessValleyApp() {
           onProfileSaved={(profileData) => {
             const email = user?.email || Session.getUserEmail() || "";
             profileCompletedRef.current = false;
-            checkProfileCompletion(email, null, { afterSave: true });
+            // silent: avoid full-app auth bridge / profileChecking gate on save.
+            checkProfileCompletion(email, user, { afterSave: true, silent: true });
             if (profileData?.name?.trim()) {
               setSavedUserName(profileData.name.trim());
               cacheProfileUserName(email, profileData.name);
@@ -8710,10 +8739,11 @@ function WellnessValleyApp() {
               </div>
             )}
 
-            {/* -- Hero banner: greeting + Camera / Gallery CTAs (always visible) -- */}
-            <div className="mx-1 mt-1 rounded-2xl overflow-hidden shadow-lg"
+            {/* -- Hero banner: greeting + Camera / Gallery CTAs (sticky while home scrolls) -- */}
+            <div className="sticky top-0 z-20 -mx-2 xs:-mx-3 px-2 xs:px-3 pt-0.5 pb-1 bg-gray-50">
+            <div className="mx-1 mt-0 rounded-2xl overflow-hidden shadow-lg"
                 style={{ background: 'linear-gradient(135deg, #064e3b 0%, #065f46 45%, #047857 100%)' }}>
-                <div className="px-2 py-3">
+                <div className="px-2 pt-1 pb-2">
                   {/* Date pill */}
                   <div className="flex items-center justify-between">
                     {/* Date */}
@@ -8761,8 +8791,8 @@ function WellnessValleyApp() {
 </h2>
                   </div>
 
-                  {/* Camera � primary CTA opens camera directly; gallery icon for choosing existing photo */}
-                  <div className="mt-5 flex gap-3">
+                  {/* Camera — primary CTA opens camera directly; gallery icon for choosing existing photo */}
+                  <div className="mt-1.5 flex gap-3">
                     <button
                       onClick={() => fileInputRef.current?.openCamera?.()}
                       disabled={loading}
@@ -8790,6 +8820,7 @@ function WellnessValleyApp() {
                   <DetoxDayReminder user={user} />
                 </div>
               </div>
+            </div>
 
             {/* Today's Nutrition Carousel � Calories � Macros � Heart Healthy � Low Carb */}
             <HomeNutritionCarousel

@@ -80,6 +80,14 @@ export async function fetchProfileCompletion({ apiBaseUrl, email, userId, afterS
         // Cache the per-email fast-path flag so subsequent boots can skip
         // the gate before the network responds.
         if (email) Session.markProfileComplete(email);
+        const reviewedUid =
+          latestData.userId
+          ?? latestData.UserId
+          ?? userId
+          ?? null;
+        if (latestData.bcmProfileReviewed === true && reviewedUid != null) {
+          Session.markBcmProfileReviewed(reviewedUid);
+        }
         return {
           status: "complete",
           identityComplete: true,
