@@ -182,6 +182,16 @@ const REGISTRY = Object.freeze({
     defaultEnabled: true,
     description:    'Profile height lock after first save; OTP to change.',
   },
+
+  // BroadCast — paid how-to + payment entry. Upload and Burst wait on recharge.
+  // Default ON. Set REACT_APP_FF_BROADCAST=false or
+  // localStorage 'ff.broadcast'='false' to hide the tab.
+  'ff.broadcast': {
+    envKey:         'REACT_APP_FF_BROADCAST',
+    storageKey:     'ff.broadcast',
+    defaultEnabled: true,
+    description:    'BroadCast paid screen: how-to video and payment entry.',
+  },
 });
 
 function readStorage(key) {
