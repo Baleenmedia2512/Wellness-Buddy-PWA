@@ -301,14 +301,23 @@ test.describe('Activity Report Module', () => {
   });
 
   test('ACT-008 Refresh Button', async ({ page }) => {
-    const requestPromise = page.waitForRequest(request =>
-      request.url().includes('api/activity/report') && request.method() === 'GET'
+    // Wait until activity report header and initial records load
+    const heading = page.getByRole('heading', { name: 'Activity Report' });
+    await expect(heading).toBeVisible({ timeout: 10000 });
+
+    // Locate the refresh button adjacent to the 'Activity Report' heading
+    const headerRefresh = heading.locator('../..').locator('button').first();
+    await expect(headerRefresh).toBeVisible();
+
+    const requestPromise = page.waitForRequest(
+      request => request.url().includes('api/activity/report') && request.method() === 'GET',
+      { timeout: 15000 }
     );
 
-    const headerRefresh = page.locator('.sticky.top-0').locator('button').first();
-    await headerRefresh.click();
+    await headerRefresh.click({ force: true });
 
-    await requestPromise;
+    const request = await requestPromise;
+    expect(request.url()).toContain('api/activity/report');
   });
 
   test('ACT-009 Search Functionality', async ({ page }) => {

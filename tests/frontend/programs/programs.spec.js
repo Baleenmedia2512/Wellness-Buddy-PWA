@@ -1911,6 +1911,11 @@ test(
               'email'
             );
 
+          const userId =
+            url.searchParams.get(
+              'userId'
+            );
+
 
           // ------------------------------------------------------
           // COACH PROFILE
@@ -1918,7 +1923,9 @@ test(
 
           if (
             email ===
-            COACH_EMAIL
+            COACH_EMAIL ||
+            userId ===
+            String(COACH_ID)
           ) {
 
             await route.fulfill({
@@ -1996,7 +2003,9 @@ test(
 
           if (
             email ===
-            NORMAL_USER_EMAIL
+            NORMAL_USER_EMAIL ||
+            userId ===
+            String(NORMAL_USER_ID)
           ) {
 
             await route.fulfill({

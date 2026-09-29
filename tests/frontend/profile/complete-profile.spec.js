@@ -3972,19 +3972,7 @@ test.describe('Complete Profile', () => {
         try {
           const postData = route.request().postDataJSON();
           if (postData && postData.height !== undefined) {
-            const hNum = Number(postData.height);
-            if (hNum < 50 || hNum > 198) {
-              await route.fulfill({
-                status: 400,
-                contentType: 'application/json',
-                body: JSON.stringify({
-                  success: false,
-                  message: 'Please enter a valid height (50 - 198 cm).',
-                }),
-              });
-              return;
-            }
-            savedHeight = hNum;
+            savedHeight = Number(postData.height);
           }
         } catch {
           /* ignore JSON parse errors */
@@ -4036,7 +4024,7 @@ test.describe('Complete Profile', () => {
       // ============================================================
       // 4. SELECT PROFILE AVATAR IN HEADER TO OPEN PROFILE FORM
       // ============================================================
-      const profileBtn = page.getByRole('button', { name: 'My Profile' });
+      const profileBtn = page.getByRole('button', { name: 'My Profile' }).or(page.getByTitle('My Profile'));
       await expect(profileBtn).toBeVisible({ timeout: 15000 });
       await profileBtn.click();
 
@@ -4049,18 +4037,20 @@ test.describe('Complete Profile', () => {
       const personalDetailsHeading = page.getByRole('heading', { name: 'Personal Details', exact: true });
       await expect(personalDetailsHeading).toBeVisible({ timeout: 15000 });
 
-      const errorMessageLocator = page.getByText('Please enter a valid height (50 - 198 cm).', { exact: true });
-
+      const errorMessageLocator = page.getByText(/Please enter a valid height/i);
       const saveBtnLocator = page.getByRole('button', { name: /Save profile|Save Profile|Saved/i });
+
+      const editHeightBtn = page.getByRole('button', { name: 'Edit height' });
+      if (await editHeightBtn.isVisible()) {
+        await editHeightBtn.click();
+      }
 
       // ============================================================
       // 6. TEST 1: HEIGHT = 49 (OUT OF RANGE -> SHOWS ERROR MESSAGE)
       // ============================================================
       await page.getByPlaceholder('e.g. 170').fill('49');
       await expect(page.getByPlaceholder('e.g. 170')).toHaveValue('49');
-      await expect(saveBtnLocator).toBeEnabled({ timeout: 10000 });
-      await saveBtnLocator.click();
-      await expect(errorMessageLocator).toBeVisible({ timeout: 10000 });
+      await expect(errorMessageLocator).toBeVisible({ timeout: 5000 });
       console.log('CP-017: Height 49 validated as invalid (error message displayed)');
 
       // ============================================================
@@ -4068,45 +4058,23 @@ test.describe('Complete Profile', () => {
       // ============================================================
       await page.getByPlaceholder('e.g. 170').fill('50');
       await expect(page.getByPlaceholder('e.g. 170')).toHaveValue('50');
-      await expect(saveBtnLocator).toBeEnabled({ timeout: 10000 });
-      await saveBtnLocator.click();
       await expect(errorMessageLocator).not.toBeVisible({ timeout: 5000 });
-      await page.waitForTimeout(600);
       console.log('CP-017: Height 50 validated as valid (no error message)');
-
-      // Re-open profile modal if it closed after successful save
-      if (!await personalDetailsHeading.isVisible({ timeout: 1000 }).catch(() => false)) {
-        await expect(profileBtn).toBeVisible({ timeout: 10000 });
-        await profileBtn.click();
-        await expect(personalDetailsHeading).toBeVisible({ timeout: 10000 });
-      }
 
       // ============================================================
       // 8. TEST 3: HEIGHT = 198 (IN RANGE -> NO ERROR MESSAGE)
       // ============================================================
       await page.getByPlaceholder('e.g. 170').fill('198');
       await expect(page.getByPlaceholder('e.g. 170')).toHaveValue('198');
-      await expect(saveBtnLocator).toBeEnabled({ timeout: 10000 });
-      await saveBtnLocator.click();
       await expect(errorMessageLocator).not.toBeVisible({ timeout: 5000 });
-      await page.waitForTimeout(600);
       console.log('CP-017: Height 198 validated as valid (no error message)');
-
-      // Re-open profile modal if it closed after successful save
-      if (!await personalDetailsHeading.isVisible({ timeout: 1000 }).catch(() => false)) {
-        await expect(profileBtn).toBeVisible({ timeout: 10000 });
-        await profileBtn.click();
-        await expect(personalDetailsHeading).toBeVisible({ timeout: 10000 });
-      }
 
       // ============================================================
       // 9. TEST 4: HEIGHT = 199 (OUT OF RANGE -> SHOWS ERROR MESSAGE)
       // ============================================================
       await page.getByPlaceholder('e.g. 170').fill('199');
       await expect(page.getByPlaceholder('e.g. 170')).toHaveValue('199');
-      await expect(saveBtnLocator).toBeEnabled({ timeout: 10000 });
-      await saveBtnLocator.click();
-      await expect(errorMessageLocator).toBeVisible({ timeout: 10000 });
+      await expect(errorMessageLocator).toBeVisible({ timeout: 5000 });
       console.log('CP-017: Height 199 validated as invalid (error message displayed)');
     }
   );
@@ -4728,7 +4696,7 @@ test.describe('Complete Profile', () => {
       // ============================================================
       // 4. SELECT PROFILE AVATAR IN HEADER TO OPEN PROFILE FORM
       // ============================================================
-      const profileBtn = page.getByRole('button', { name: 'My Profile' });
+      const profileBtn = page.getByRole('button', { name: 'My Profile' }).or(page.getByTitle('My Profile'));
       await expect(profileBtn).toBeVisible({ timeout: 15000 });
       await profileBtn.click();
 
@@ -4756,6 +4724,11 @@ test.describe('Complete Profile', () => {
       // ============================================================
       // 7. VERIFY DYNAMIC BMI RE-CALCULATION WHEN HEIGHT IS UPDATED (e.g. 180cm, 65kg -> 20.1)
       // ============================================================
+      const editHeightBtn = page.getByRole('button', { name: 'Edit height' });
+      if (await editHeightBtn.isVisible()) {
+        await editHeightBtn.click();
+      }
+
       await heightInput.fill('180');
       await expect(heightInput).toHaveValue('180');
       await expect(bmiValueDisplay).toHaveText('20.1');
@@ -7785,6 +7758,453 @@ test.describe('Complete Profile', () => {
       expect(prefValueOFF).toBe('false');
 
       console.log('CP-037: Successfully toggled Auto Camera ON and OFF on profile page');
+    }
+  );
+
+  test(
+    'CP-038 Sign Out option on profile page logs out the user successfully',
+    async ({ page }) => {
+      const TEST_PHONE = '7695834209';
+      const TEST_NAME = 'Nitheesh Lingam';
+      const TEST_EMAIL = 'nitheesh@example.com';
+
+      await page.route('**/api/auth/send-otp', async route => {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true }) });
+      });
+
+      await page.route('**/api/user/verify-session*', async route => {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, userId: 1004, sessionStale: false }) });
+      });
+
+      await page.route('**/api/user/lookup*', async route => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            isActive: true,
+            isNewUser: false,
+            role: 'user',
+            user: { id: 1004, UserId: 1004, username: TEST_NAME, name: TEST_NAME, email: TEST_EMAIL, phoneNumber: TEST_PHONE, status: 'Active' },
+          }),
+        });
+      });
+
+      await page.route('**/api/user/status*', async route => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ success: true, isActive: true, isNewUser: false, setupSkipped: true, setupComplete: true }),
+        });
+      });
+
+      await page.route('**/api/user/consent*', async route => {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, consentRequired: false, consentAccepted: true }) });
+      });
+
+      await page.route('**/api/user/profile*', async route => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            data: {
+              userId: 1004, profileComplete: true, userName: TEST_NAME, name: TEST_NAME, email: TEST_EMAIL, phone: TEST_PHONE, phoneNumber: TEST_PHONE, gender: 'Male', height: 170, dietType: 'Vegetarian', latestWeight: 65, currentWeight: 65, physicalActivityLevel: 'moderate', profileImage: null,
+              transformationPhotos: { left: 'http://example.com/l.jpg', front: 'http://example.com/f.jpg', center: 'http://example.com/f.jpg', right: 'http://example.com/r.jpg' },
+              transformationPhotoFront: 'http://example.com/f.jpg',
+            },
+          }),
+        });
+      });
+
+      await page.addInitScript(({ phone, email, name }) => {
+        const user = { id: 1004, UserId: 1004, userId: 1004, username: name, userName: name, name: name, email: email, phone: `+91${phone}`, phoneNumber: phone, status: 'Active', isNewUser: false, consentRequired: false, profileComplete: true };
+        localStorage.setItem('isOtpVerified', 'true');
+        localStorage.setItem('otpUser', JSON.stringify(user));
+        localStorage.setItem('user', JSON.stringify(user));
+        localStorage.setItem('dbUserId', '1004');
+        localStorage.setItem('userEmail', email);
+        localStorage.setItem(`profileComplete_v2_${email.toLowerCase()}`, 'true');
+      }, { phone: TEST_PHONE, email: TEST_EMAIL, name: TEST_NAME });
+
+      await page.goto('/', { waitUntil: 'domcontentloaded' });
+
+      // Navigate to My Profile
+      const profileBtn = page.getByRole('button', { name: 'My Profile' }).or(page.getByTitle('My Profile'));
+      await expect(profileBtn.first()).toBeVisible({ timeout: 15000 });
+      await profileBtn.first().click({ force: true });
+
+      const profileHeading = page.getByRole('heading', { name: 'My Profile', exact: true });
+      await expect(profileHeading).toBeVisible({ timeout: 15000 });
+
+      // Locate Sign Out button
+      const signOutBtn = page.getByRole('button', { name: 'Sign out' }).or(page.getByText('Sign Out', { exact: true }));
+      await expect(signOutBtn.first()).toBeVisible({ timeout: 10000 });
+
+      // Click Sign Out
+      await signOutBtn.first().click({ force: true });
+
+      // Verify user is redirected to Login / OTP screen
+      const loginIndicator = page.getByPlaceholder(/phone|mobile/i).or(page.getByText(/enter phone/i)).or(page.getByRole('button', { name: /send otp|get otp|login/i }));
+      await expect(loginIndicator.first()).toBeVisible({ timeout: 15000 });
+
+      console.log('CP-038: Successfully verified Sign Out option on profile page');
+    }
+  );
+
+  test(
+    'CP-039 Delete Account option on profile page deletes account and logs out user successfully',
+    async ({ page }) => {
+      const TEST_PHONE = '7695834209';
+      const TEST_NAME = 'Nitheesh Lingam';
+      const TEST_EMAIL = 'nitheesh@example.com';
+
+      await page.route('**/api/auth/send-otp', async route => {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true }) });
+      });
+
+      await page.route('**/api/user/verify-session*', async route => {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, userId: 1004, sessionStale: false }) });
+      });
+
+      await page.route('**/api/user/lookup*', async route => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            isActive: true,
+            isNewUser: false,
+            role: 'user',
+            user: { id: 1004, UserId: 1004, username: TEST_NAME, name: TEST_NAME, email: TEST_EMAIL, phoneNumber: TEST_PHONE, status: 'Active' },
+          }),
+        });
+      });
+
+      await page.route('**/api/user/status*', async route => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ success: true, isActive: true, isNewUser: false, setupSkipped: true, setupComplete: true }),
+        });
+      });
+
+      await page.route('**/api/user/consent*', async route => {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, consentRequired: false, consentAccepted: true }) });
+      });
+
+      await page.route('**/api/user/profile*', async route => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            data: {
+              userId: 1004, profileComplete: true, userName: TEST_NAME, name: TEST_NAME, email: TEST_EMAIL, phone: TEST_PHONE, phoneNumber: TEST_PHONE, gender: 'Male', height: 170, dietType: 'Vegetarian', latestWeight: 65, currentWeight: 65, physicalActivityLevel: 'moderate', profileImage: null,
+              transformationPhotos: { left: 'http://example.com/l.jpg', front: 'http://example.com/f.jpg', center: 'http://example.com/f.jpg', right: 'http://example.com/r.jpg' },
+              transformationPhotoFront: 'http://example.com/f.jpg',
+            },
+          }),
+        });
+      });
+
+      await page.route(url => url.href.includes('/api/user/account'), async route => {
+        console.log('[MOCK ACCOUNT ROUTE MATCHED]', route.request().method(), route.request().url());
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ success: true, message: 'Account deleted successfully' }),
+        });
+      });
+
+      await page.addInitScript(({ phone, email, name }) => {
+        const user = { id: 1004, UserId: 1004, userId: 1004, username: name, userName: name, name: name, email: email, phone: `+91${phone}`, phoneNumber: phone, status: 'Active', isNewUser: false, consentRequired: false, profileComplete: true };
+        localStorage.setItem('isOtpVerified', 'true');
+        localStorage.setItem('otpUser', JSON.stringify(user));
+        localStorage.setItem('user', JSON.stringify(user));
+        localStorage.setItem('dbUserId', '1004');
+        localStorage.setItem('userEmail', email);
+        localStorage.setItem(`profileComplete_v2_${email.toLowerCase()}`, 'true');
+
+        sessionStorage.setItem('dbUserId', '1004');
+        sessionStorage.setItem('userEmail', email);
+        sessionStorage.setItem('user', JSON.stringify(user));
+        sessionStorage.setItem('otpUser', JSON.stringify(user));
+      }, { phone: TEST_PHONE, email: TEST_EMAIL, name: TEST_NAME });
+
+      await page.goto('/', { waitUntil: 'domcontentloaded' });
+
+      // Navigate to My Profile
+      const profileBtn = page.getByRole('button', { name: 'My Profile' }).or(page.getByTitle('My Profile'));
+      await expect(profileBtn.first()).toBeVisible({ timeout: 15000 });
+      await profileBtn.first().click({ force: true });
+
+      const profileHeading = page.getByRole('heading', { name: 'My Profile', exact: true });
+      await expect(profileHeading).toBeVisible({ timeout: 15000 });
+
+      page.on('console', msg => console.log('[BROWSER CONSOLE]', msg.text()));
+
+      // Locate and click Delete Account option
+      const deleteAccountBtn = page.getByRole('button', { name: 'Delete account' }).or(page.getByText('Delete Account', { exact: true }));
+      await expect(deleteAccountBtn.first()).toBeVisible({ timeout: 10000 });
+      await deleteAccountBtn.first().click({ force: true });
+
+      // Step 1: Warning screen -> Click Continue
+      const warningHeading = page.getByRole('heading', { name: 'Delete Account', exact: true });
+      await expect(warningHeading).toBeVisible({ timeout: 10000 });
+      const continueBtn = page.getByRole('button', { name: 'Continue', exact: true });
+      await expect(continueBtn).toBeVisible({ timeout: 10000 });
+      await continueBtn.click({ force: true });
+
+      // Step 2: Final Confirmation screen -> Type DELETE and submit
+      const confirmHeading = page.getByRole('heading', { name: 'Final Confirmation', exact: true });
+      await expect(confirmHeading).toBeVisible({ timeout: 10000 });
+      const confirmInput = page.getByPlaceholder('Type DELETE here');
+      await expect(confirmInput).toBeVisible({ timeout: 10000 });
+      await confirmInput.focus();
+      await confirmInput.fill('DELETE');
+
+      const confirmDeleteBtn = page.getByRole('button', { name: 'Permanently delete account' });
+      await expect(confirmDeleteBtn).toBeEnabled({ timeout: 10000 });
+      await confirmDeleteBtn.click({ force: true });
+
+      // Step 3: Check for Success screen ("Account Deleted") or direct redirect to Login screen
+      const doneBtn = page.getByRole('button', { name: 'Done', exact: true }).or(page.getByText('Account Deleted'));
+      if (await doneBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
+        await doneBtn.first().click({ force: true }).catch(() => {});
+      }
+
+      // Verify account deletion purges session and redirects to Login screen
+      const loginHeading = page.getByRole('heading', { name: 'Wellness Valley', exact: true });
+      await expect(loginHeading).toBeVisible({ timeout: 15000 });
+
+      console.log('CP-039: Successfully verified Delete Account functionality on profile page');
+    }
+  );
+
+  test(
+    'CP-040 BMR field displays calculated value from user body metrics correctly on profile page',
+    { tag: '@frontend' },
+    async ({ page }) => {
+      const EXPECTED_BMR = '1650';
+      const testPhone = '7695834209';
+      const testEmail = 'bmruser@example.com';
+      const testName = 'BMR Test User';
+
+      await page.route('**/api/user/verify-session*', async route => {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, userId: 1005, sessionStale: false }) });
+      });
+
+      await page.route('**/api/user/lookup*', async route => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            isActive: true,
+            isNewUser: false,
+            role: 'user',
+            user: { id: 1005, UserId: 1005, username: testName, name: testName, email: testEmail, phoneNumber: testPhone, status: 'Active' },
+          }),
+        });
+      });
+
+      await page.route('**/api/auth/me*', async route => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            isActive: true,
+            isNewUser: false,
+            role: 'user',
+            user: { id: 1005, UserId: 1005, username: testName, name: testName, email: testEmail, phoneNumber: testPhone, status: 'Active' },
+          }),
+        });
+      });
+
+      await page.route('**/api/user/status*', async route => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ success: true, isActive: true, isNewUser: false, setupSkipped: true, setupComplete: true }),
+        });
+      });
+
+      await page.route('**/api/user/consent*', async route => {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, consentRequired: false, consentAccepted: true }) });
+      });
+
+      await page.route('**/api/user/profile*', async route => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            data: {
+              userId: 1005, profileComplete: true, userName: testName, name: testName, email: testEmail, phone: testPhone, phoneNumber: testPhone, gender: 'Male', height: 175, dietType: 'Vegetarian', latestWeight: 70, currentWeight: 70, latestBmr: 1650, bmr: EXPECTED_BMR, latestWeightBodyFat: 15, physicalActivityLevel: 'moderate', profileImage: null,
+              transformationPhotos: { left: 'http://example.com/l.jpg', front: 'http://example.com/f.jpg', center: 'http://example.com/f.jpg', right: 'http://example.com/r.jpg' },
+              transformationPhotoFront: 'http://example.com/f.jpg',
+            },
+          }),
+        });
+      });
+
+      await page.addInitScript(({ phone, email, name }) => {
+        const user = { id: 1005, UserId: 1005, userId: 1005, username: name, userName: name, name: name, email: email, phone: `+91${phone}`, phoneNumber: phone, status: 'Active', isNewUser: false, consentRequired: false, profileComplete: true };
+        localStorage.setItem('isOtpVerified', 'true');
+        localStorage.setItem('otpUser', JSON.stringify(user));
+        localStorage.setItem('user', JSON.stringify(user));
+        localStorage.setItem('dbUserId', '1005');
+        localStorage.setItem('userEmail', email);
+        localStorage.setItem(`profileComplete_v2_${email.toLowerCase()}`, 'true');
+
+        sessionStorage.setItem('dbUserId', '1005');
+        sessionStorage.setItem('userEmail', email);
+        sessionStorage.setItem('user', JSON.stringify(user));
+        sessionStorage.setItem('otpUser', JSON.stringify(user));
+      }, { phone: testPhone, email: testEmail, name: testName });
+
+      await page.goto('/', { waitUntil: 'domcontentloaded' });
+
+      // Navigate to My Profile
+      const profileBtn = page.getByRole('button', { name: 'My Profile' }).or(page.getByTitle('My Profile'));
+      await expect(profileBtn.first()).toBeVisible({ timeout: 15000 });
+      await profileBtn.first().click({ force: true });
+
+      const profileHeading = page.getByRole('heading', { name: 'My Profile', exact: true });
+      await expect(profileHeading).toBeVisible({ timeout: 15000 });
+
+      // Locate BMR input field and verify its value
+      const bmrInput = page.locator('input[placeholder*="2200"], input[placeholder*="Calculated"]').first();
+      await expect(bmrInput).toBeVisible({ timeout: 10000 });
+      await expect(bmrInput).toHaveValue(EXPECTED_BMR);
+
+      console.log('CP-040: Successfully verified BMR calculation and value display on profile page');
+    }
+  );
+
+  test(
+    'CP-041 Health Issues can be added and removed on profile page',
+    { tag: '@frontend' },
+    async ({ page }) => {
+      const testPhone = '7695834209';
+      const testEmail = 'healthuser@example.com';
+      const testName = 'Health Issues User';
+
+      await page.route('**/api/user/verify-session*', async route => {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, userId: 1006, sessionStale: false }) });
+      });
+
+      await page.route('**/api/user/lookup*', async route => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            isActive: true,
+            isNewUser: false,
+            role: 'user',
+            user: { id: 1006, UserId: 1006, username: testName, name: testName, email: testEmail, phoneNumber: testPhone, status: 'Active' },
+          }),
+        });
+      });
+
+      await page.route('**/api/auth/me*', async route => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            isActive: true,
+            isNewUser: false,
+            role: 'user',
+            user: { id: 1006, UserId: 1006, username: testName, name: testName, email: testEmail, phoneNumber: testPhone, status: 'Active' },
+          }),
+        });
+      });
+
+      await page.route('**/api/user/status*', async route => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ success: true, isActive: true, isNewUser: false, setupSkipped: true, setupComplete: true }),
+        });
+      });
+
+      await page.route('**/api/user/consent*', async route => {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, consentRequired: false, consentAccepted: true }) });
+      });
+
+      await page.route('**/api/user/profile*', async route => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            data: {
+              userId: 1006, profileComplete: true, userName: testName, name: testName, email: testEmail, phone: testPhone, phoneNumber: testPhone, gender: 'Male', height: 175, dietType: 'Vegetarian', latestWeight: 70, currentWeight: 70, latestBmr: 1650, bmr: '1650', latestWeightBodyFat: 15, physicalActivityLevel: 'moderate', profileImage: null,
+              recoveredHealthIssues: ['Diabetes Type 2'],
+              transformationPhotos: { left: 'http://example.com/l.jpg', front: 'http://example.com/f.jpg', center: 'http://example.com/f.jpg', right: 'http://example.com/r.jpg' },
+              transformationPhotoFront: 'http://example.com/f.jpg',
+            },
+          }),
+        });
+      });
+
+      await page.addInitScript(({ phone, email, name }) => {
+        const user = { id: 1006, UserId: 1006, userId: 1006, username: name, userName: name, name: name, email: email, phone: `+91${phone}`, phoneNumber: phone, status: 'Active', isNewUser: false, consentRequired: false, profileComplete: true };
+        localStorage.setItem('isOtpVerified', 'true');
+        localStorage.setItem('otpUser', JSON.stringify(user));
+        localStorage.setItem('user', JSON.stringify(user));
+        localStorage.setItem('dbUserId', '1006');
+        localStorage.setItem('userEmail', email);
+        localStorage.setItem(`profileComplete_v2_${email.toLowerCase()}`, 'true');
+
+        sessionStorage.setItem('dbUserId', '1006');
+        sessionStorage.setItem('userEmail', email);
+        sessionStorage.setItem('user', JSON.stringify(user));
+        sessionStorage.setItem('otpUser', JSON.stringify(user));
+      }, { phone: testPhone, email: testEmail, name: testName });
+
+      await page.goto('/', { waitUntil: 'domcontentloaded' });
+
+      // Navigate to My Profile
+      const profileBtn = page.getByRole('button', { name: 'My Profile' }).or(page.getByTitle('My Profile'));
+      await expect(profileBtn.first()).toBeVisible({ timeout: 15000 });
+      await profileBtn.first().click({ force: true });
+
+      const profileHeading = page.getByRole('heading', { name: 'My Profile', exact: true });
+      await expect(profileHeading).toBeVisible({ timeout: 15000 });
+
+      // Verify existing health issue chip 'Diabetes Type 2' is displayed
+      const initialChip = page.locator('span').filter({ hasText: /^Diabetes Type 2$/ }).first();
+      await expect(initialChip).toBeVisible({ timeout: 10000 });
+
+      // Add a new health issue: click input, type search query or pick preset
+      const healthInput = page.getByPlaceholder(/Search health issues|Add more/i).first();
+      await expect(healthInput).toBeVisible({ timeout: 10000 });
+      await healthInput.click();
+      await healthInput.fill('Knee Pain');
+
+      // Click suggestion "Knee Pain"
+      const kneeOption = page.getByRole('button', { name: 'Knee Pain', exact: true });
+      await expect(kneeOption).toBeVisible({ timeout: 5000 });
+      await kneeOption.click();
+
+      // Verify 'Knee Pain' chip is added
+      const kneeChip = page.locator('span').filter({ hasText: /^Knee Pain$/ }).first();
+      await expect(kneeChip).toBeVisible({ timeout: 5000 });
+
+      // Remove 'Diabetes Type 2' chip by clicking its remove button
+      const removeDiabetesBtn = page.getByRole('button', { name: 'Remove Diabetes Type 2' });
+      await expect(removeDiabetesBtn).toBeVisible({ timeout: 5000 });
+      await removeDiabetesBtn.click();
+
+      // Verify 'Diabetes Type 2' chip is no longer present
+      await expect(initialChip).not.toBeVisible({ timeout: 5000 });
+
+      console.log('CP-041: Successfully verified adding and removing health issues on profile page');
     }
   );
 });

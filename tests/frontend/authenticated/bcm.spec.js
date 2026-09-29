@@ -89,6 +89,14 @@ test.describe('BCM Module (Body Composition Metrics)', () => {
               waistCm: 80,
               hipCm: 88,
               bmr: 1550
+            },
+            {
+              UserId: 202,
+              UserName: 'JAFAR',
+              phoneNumber: '6369591703',
+              height: 150,
+              gender: 'Male',
+              bmr: 1748
             }
           ]
         })
@@ -716,40 +724,59 @@ test.describe('BCM Module (Body Composition Metrics)', () => {
       });
     });
 
-    // Flat team list used by client-side phone autocomplete
+    // Mock team hierarchy used by teamHierarchyService.getFlatTeamList
+    const mockTeamData = {
+      success: true,
+      allMembers: [{
+        UserId: 202,
+        UserName: 'Jafar',
+        phoneNumber: '6369591703',
+        heightCm: 150,
+        bmr: 1748,
+        gender: 'Male',
+      }],
+      data: [{
+        userId: 202,
+        userName: 'Jafar',
+        phoneNumber: '6369591703',
+        heightCm: 150,
+        bmr: 1748,
+        gender: 'Male',
+      }]
+    };
+
+    await page.route('**/api/coach/team-hierarchy*', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(mockTeamData)
+      });
+    });
+
     await page.route('**/api/team/hierarchy/**', async (route) => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({
-          success: true,
-          data: [{
-            userId: 202,
-            userName: 'Jafar',
-            phoneNumber: '6369591703',
-            heightCm: 150,
-            bmr: 1748,
-            gender: 'Male',
-          }],
-        })
+        body: JSON.stringify(mockTeamData)
       });
     });
 
     await page.getByRole('button', { name: 'Create Body Parameters Card' }).click();
 
     const phoneInput = page.getByPlaceholder('Client phone (optional)');
-    await phoneInput.fill('6369');
-    await page.waitForTimeout(400);
+    await phoneInput.click();
+    await phoneInput.fill('');
+    await phoneInput.pressSequentially('6369', { delay: 40 });
 
-    const suggestion = page.getByText(/6369591703/);
-    await expect(suggestion).toBeVisible();
-    await suggestion.click();
-    await page.waitForTimeout(400);
+    const suggestion = page.locator('li[role="option"]').filter({ hasText: '6369591703' });
+    await expect(suggestion).toBeVisible({ timeout: 10000 });
+
+    // Autocomplete option relies on onMouseDown/onTouchEnd handlers
+    await suggestion.dispatchEvent('mousedown');
 
     // Must ask — autocomplete must not silent-override
-    await expect(page.getByText(
-      'This number already exists. Override the existing card, or create a new card for this number?'
-    )).toBeVisible();
+    const modalHeading = page.getByRole('heading', { name: 'Number already exists' });
+    await expect(modalHeading).toBeVisible({ timeout: 10000 });
     await expect(page.getByRole('button', { name: 'Override' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'New' })).toBeVisible();
 
