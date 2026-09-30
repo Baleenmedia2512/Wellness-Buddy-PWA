@@ -225,7 +225,7 @@ export function buildAnalysisFromManualFood(m) {
     : undefined;
 
   const withMeta = (base) => {
-    const out = { ...base };
+    const out = { ...base, source: 'manual' };
     if (mealKind) out.mealKind = mealKind;
     if (intakeSlot) out.intakeSlot = intakeSlot;
     return out;

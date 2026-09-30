@@ -85,6 +85,7 @@ export function useShakeCalculator() {
         detailedItems: [],
         confidence: 'high',
         processedBy: 'shake_calculator',
+        source: 'manual',
       };
     }
     const n = shakeItem.nutrition;
@@ -118,6 +119,7 @@ export function useShakeCalculator() {
       }],
       confidence: 'high',
       processedBy: 'shake_calculator',
+      source: 'manual',
     };
   }, [shakeItem, servings, totals]);
 

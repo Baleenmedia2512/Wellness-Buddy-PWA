@@ -216,14 +216,14 @@ const HeightField = ({
                 ? 'Sending verification code'
                 : canFinishUnchangedEdit
                   ? 'Done editing height'
-                  : (locked || otpPending ? 'Send height change code' : 'Confirm height')
+                  : (locked || otpPending ? 'Send approval code to coach' : 'Confirm height')
             }
             title={
               busy
                 ? 'Sending…'
                 : canFinishUnchangedEdit
                   ? 'Done'
-                  : (locked || otpPending ? 'Send code' : 'Confirm')
+                  : (locked || otpPending ? 'Send to coach' : 'Confirm')
             }
           >
             <Check className="w-4 h-4" strokeWidth={2.5} />
@@ -233,21 +233,21 @@ const HeightField = ({
 
       {locked && editingLocked && !differsFromBaseline && !otpPending && (
         <p className="text-xs text-gray-500 mt-1.5">
-          Tap the tick when done, or change the value to get a verification code.
+          Tap the tick when done, or change the value to ask your coach for approval.
         </p>
       )}
 
       {!locked && (
         <p className="text-xs text-gray-500 mt-1">
-          Save Profile once to lock height. After that, changes need a verification code.
+          Enter your height and save Profile. After the first save, your coach must approve any change.
         </p>
       )}
 
       {otpPending && !isChanging && (
         <div className="mt-3 space-y-2">
           <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-            We sent a 4-digit code
-            {destinationMasked ? ` to ${destinationMasked}` : ''}. Enter it to update your height.
+            We sent a 4-digit approval code to your coach
+            {destinationMasked ? ` (${destinationMasked})` : ''}. Ask them for the code, then enter it here.
           </p>
           <OtpInputCells
             otpCtl={otpCtl}
@@ -271,7 +271,7 @@ const HeightField = ({
             onClick={handleSubmit}
             className="w-full py-2 rounded-lg text-xs font-medium text-green-700 border border-green-200"
           >
-            Resend code
+            Resend code to coach
           </button>
         </div>
       )}

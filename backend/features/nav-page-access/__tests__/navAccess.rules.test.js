@@ -10,6 +10,7 @@ import {
   canAccessPage,
   validateMatrixInput,
   normalizeMatrix,
+  matrixWithDefaultsForNewPages,
   DEFAULT_NAV_ACCESS_MATRIX,
   allowedPageKeys,
   allPagesAllowed,
@@ -43,12 +44,13 @@ describe('resolveMatrixRole', () => {
 });
 
 describe('DEFAULT_NAV_ACCESS_MATRIX', () => {
-  it('seeds customer to Home/Diary/Programmes/Transformation only', () => {
+  it('seeds customer to Home, Diary, Programmes, Transformation, and BroadCast', () => {
     const pages = DEFAULT_NAV_ACCESS_MATRIX.user;
     assert.equal(pages.home, true);
     assert.equal(pages.dashboard, true);
     assert.equal(pages.enrollment, true);
     assert.equal(pages.testimonials, true);
+    assert.equal(pages.broadcast, true);
     assert.equal(pages['activity-report'], false);
     assert.equal(pages.counselling, false);
     assert.equal(pages['physical-club'], false);
@@ -58,8 +60,31 @@ describe('DEFAULT_NAV_ACCESS_MATRIX', () => {
   it('seeds sponsor/admin/developer with all pages on', () => {
     for (const role of ['coach', 'admin', 'developer']) {
       const keys = allowedPageKeys(DEFAULT_NAV_ACCESS_MATRIX[role]);
-      assert.equal(keys.length, 8);
+      assert.equal(keys.length, 9);
     }
+  });
+
+  it('keeps an explicit BroadCast off and fills the key when an older matrix omits it', () => {
+    const older = {
+      user: {
+        home: true,
+        dashboard: true,
+        enrollment: true,
+        testimonials: true,
+        'activity-report': false,
+        counselling: false,
+        'physical-club': false,
+        reports: false,
+      },
+      coach: { home: true, broadcast: false },
+      admin: { home: true },
+      developer: { home: true },
+    };
+    const filled = matrixWithDefaultsForNewPages(older);
+    assert.equal(filled.user.broadcast, true);
+    assert.equal(filled.user.reports, false);
+    assert.equal(filled.coach.broadcast, false);
+    assert.equal(filled.admin.broadcast, true);
   });
 });
 

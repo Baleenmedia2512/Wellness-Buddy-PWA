@@ -14,5 +14,6 @@ export {
   allowedPageKeys,
   allPagesAllowed,
   normalizeMatrix,
+  matrixWithDefaultsForNewPages,
   validateMatrixInput,
 } from './domain/navAccess.rules.js';

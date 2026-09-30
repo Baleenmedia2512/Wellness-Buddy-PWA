@@ -12,6 +12,7 @@ export const NAV_PAGE_KEYS = Object.freeze([
   'physical-club',
   'testimonials',
   'reports',
+  'broadcast',
 ]);
 
 /** Roles stored in the matrix (UI labels Customer / Sponsor / Admin / Developer). */
@@ -30,6 +31,7 @@ const CUSTOMER_DEFAULT = Object.freeze({
   'physical-club': false,
   testimonials: true,
   reports: false,
+  broadcast: true,
 });
 
 /** Default matrix when DB row is missing. */
@@ -77,7 +79,39 @@ export function normalizePageMap(pages) {
 }
 
 /**
+ * Read-path matrix. Keys saved in JSON keep their boolean.
+ * A page added after that save (no key yet) uses the role default,
+ * so BroadCast appears without a manual migration.
+ *
+ * @param {unknown} matrix
+ * @returns {Record<string, Record<string, boolean>>}
+ */
+export function matrixWithDefaultsForNewPages(matrix) {
+  const src = matrix && typeof matrix === 'object' && !Array.isArray(matrix) ? matrix : {};
+  const seeded = {};
+  for (const role of MATRIX_ROLES) {
+    const roleSrc = src[role] && typeof src[role] === 'object' && !Array.isArray(src[role])
+      ? src[role]
+      : null;
+    const defaults = DEFAULT_NAV_ACCESS_MATRIX[role];
+    if (!roleSrc) {
+      seeded[role] = { ...defaults };
+      continue;
+    }
+    const merged = {};
+    for (const key of NAV_PAGE_KEYS) {
+      merged[key] = Object.prototype.hasOwnProperty.call(roleSrc, key)
+        ? roleSrc[key]
+        : defaults[key];
+    }
+    seeded[role] = merged;
+  }
+  return normalizeMatrix(seeded);
+}
+
+/**
  * Normalize full matrix; fill missing roles from defaults.
+ * Missing page keys default to false (deny). Saves use this path.
  *
  * @param {unknown} matrix
  * @returns {Record<string, Record<string, boolean>>}
