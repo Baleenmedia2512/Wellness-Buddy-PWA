@@ -108,6 +108,7 @@ export default function WeightStatusRow({ row, teamPerformance = null }) {
                 left:  `${bar.idealStartPct}%`,
                 width: `${bar.idealEndPct - bar.idealStartPct}%`,
               }}
+              
             />
             {/* Current weight marker */}
             <div
