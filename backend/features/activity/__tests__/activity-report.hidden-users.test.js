@@ -4,28 +4,18 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  ACTIVITY_REPORT_HIDE_ROLES,
   activityReportHiddenCacheToken,
   canManageActivityReportHiddenUsers,
   excludeHiddenActivityReportUserIds,
-  normalizeActivityReportViewerRole,
 } from '../domain/activity-report.hidden-users.js';
 
 describe('canManageActivityReportHiddenUsers', () => {
-  it('allows admin, developer, coach, and upline', () => {
-    for (const role of ACTIVITY_REPORT_HIDE_ROLES) {
-      assert.equal(canManageActivityReportHiddenUsers({ role }), true, role);
-    }
+  it('allows hide when Activity is available', () => {
+    assert.equal(canManageActivityReportHiddenUsers({ activityAvailable: true }), true);
   });
 
-  it('allows sponsor and co-sponsor (co-coach) lead seats', () => {
-    assert.equal(canManageActivityReportHiddenUsers({ role: 'user', leadSeat: 'sponsor' }), true);
-    assert.equal(canManageActivityReportHiddenUsers({ role: 'user', leadSeat: 'co-sponsor' }), true);
-  });
-
-  it('denies regular customers without a lead seat', () => {
-    assert.equal(canManageActivityReportHiddenUsers({ role: 'user' }), false);
-    assert.equal(canManageActivityReportHiddenUsers({ role: 'member' }), false);
+  it('denies hide when Activity is not available, regardless of role or seat', () => {
+    assert.equal(canManageActivityReportHiddenUsers({ activityAvailable: false }), false);
     assert.equal(canManageActivityReportHiddenUsers({}), false);
   });
 });
@@ -61,10 +51,3 @@ describe('activityReportHiddenCacheToken', () => {
   });
 });
 
-describe('normalizeActivityReportViewerRole', () => {
-  it('maps member/customer to user', () => {
-    assert.equal(normalizeActivityReportViewerRole('member'), 'user');
-    assert.equal(normalizeActivityReportViewerRole('Customer'), 'user');
-    assert.equal(normalizeActivityReportViewerRole('coach'), 'coach');
-  });
-});

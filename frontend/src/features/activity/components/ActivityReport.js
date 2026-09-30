@@ -728,9 +728,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0, t
   };
 
   const canManageHidden = canManageActivityReportHiddenUsers({
-    userRole,
-    effectiveRole,
-    showTeamScope,
+    activityAvailable: true,
   });
 
   /** Long-press Hide User is for inactive (Not Posted) members only. */

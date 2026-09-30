@@ -3,9 +3,8 @@
  * Hide is global across all Activity Report viewers.
  */
 import { ValidationError } from '../../shared/lib/ValidationError.js';
-import { getSupabaseClient } from '../../utils/supabaseClient.js';
-import { resolveLeadSeatForUser } from '../../utils/coachTeamSeats.js';
 import * as userRepo from '../user/user.repository.js';
+import { canAccessPage, getForMe } from '../nav-page-access/index.js';
 import { resolveActivityReportUserIds } from './domain/activity-report.scope.js';
 import { canManageActivityReportHiddenUsers } from './domain/activity-report.hidden-users.js';
 import * as hiddenRepo from './activity-report-hidden.repository.js';
@@ -16,25 +15,18 @@ async function assertCanManageHiddenUsers(viewerUserId) {
     throw new ValidationError(400, 'userId is required');
   }
 
-  const [profile, seat] = await Promise.all([
-    userRepo.findByUserId(viewerId, '"UserId", "Role"'),
-    resolveLeadSeatForUser(getSupabaseClient(), viewerId),
-  ]);
-
+  const profile = await userRepo.findByUserId(viewerId, '"UserId", "Role"');
   if (!profile) {
     throw new ValidationError(404, 'Viewer not found');
   }
 
-  const allowed = canManageActivityReportHiddenUsers({
-    role: profile.Role,
-    leadSeat: seat?.seat || null,
-  });
-
-  if (!allowed) {
+  const access = await getForMe({ requesterUserId: viewerId });
+  const activityAvailable = canAccessPage(access.body?.data?.pages, 'activity-report');
+  if (!canManageActivityReportHiddenUsers({ activityAvailable })) {
     throw new ValidationError(403, 'You are not allowed to hide or unhide Activity Report users');
   }
 
-  return { viewerId, role: profile.Role, leadSeat: seat?.seat || null };
+  return { viewerId, role: profile.Role };
 }
 
 /**
