@@ -6,9 +6,9 @@ import { validateCreateCard } from '../validation/card.schema.js';
 import { canCreateCard } from '../domain/permissions/card.policy.js';
 import {
   enrichPayloadWithCalculatedBmr,
-  allowsActivatedBcmCreate,
   shouldForceNewBcmCard,
   BCM_ACTIVATED_MEMBER_MESSAGE,
+  BCM_COUNSELLED_BY_OTHER_MESSAGE,
 } from '../domain/card.rules.js';
 import {
   insertCard,
@@ -20,8 +20,8 @@ import {
   linkCardToUser,
   enforceBpcLeadNoCoachUntilOnboarding,
   invalidateBpcListCache,
-  isUserActivatedForBcm,
-  hardDeleteCardsForUserId,
+  getBcmPhoneActivationStatus,
+  getBcmMemberCounsellingAccess,
 } from '../data/card.repo.js';
 import { syncCardToProfileAfterSave } from '../data/sync.repo.js';
 import { syncBcmPhotosToTestimonial } from '../domain/bcmTestimonialPhotoSync.js';
@@ -49,15 +49,22 @@ export async function handleCreateCard(body) {
   let userId = payload.userId;
   /** True when createTeamMemberFromPhone inserted a brand-new team_table row. */
   let isNewMember = false;
-  const allowActivated = allowsActivatedBcmCreate(payload.phoneConflictAction);
   const forceNewCard = shouldForceNewBcmCard(payload.phoneConflictAction);
 
   if (payload.phoneNumber) {
-    logger.info('[body-params-card] 📞 Creating team_table member from phone', {
+    const phoneAccess = await getBcmPhoneActivationStatus(payload.phoneNumber, {
+      coachId: payload.createdBy,
+    });
+    if (phoneAccess.activated) {
+      throw new ValidationError(409, BCM_ACTIVATED_MEMBER_MESSAGE);
+    }
+    if (phoneAccess.counselledByOther) {
+      throw new ValidationError(403, BCM_COUNSELLED_BY_OTHER_MESSAGE);
+    }
+    logger.info('[body-params-card] Creating team_table member from phone', {
       createdBy: payload.createdBy,
-      phoneNumber: payload.phoneNumber,
-      name: payload.name,
       phoneConflictAction: payload.phoneConflictAction,
+      canOverride: phoneAccess.canOverride,
     });
     // CoachId is not set here — member chooses coach during onboarding.
     // counsellorId is only used to detach legacy wrong CoachId assignments.
@@ -69,22 +76,20 @@ export async function handleCreateCard(body) {
       bmr:           payload.bmr,
       weightKg:      payload.weightKg,
       fatPercent:    payload.fatPercent,
-      allowActivated,
+      allowActivated: false,
     });
     userId = memberId;
     isNewMember = Boolean(isNew);
-    logger.info('[body-params-card] ✅ Team member ready', { userId, isNew: isNewMember, type: typeof userId });
+    logger.info('[body-params-card] Team member ready', { userId, isNew: isNewMember });
   } else if (userId) {
-    if (!allowActivated && await isUserActivatedForBcm(userId)) {
-      try {
-        await hardDeleteCardsForUserId(userId);
-      } catch (purgeErr) {
-        logger.warn('[handleCreateCard] purge before activated reject failed', {
-          userId,
-          message: purgeErr?.message,
-        });
-      }
+    const memberAccess = await getBcmMemberCounsellingAccess(userId, {
+      coachId: payload.createdBy,
+    });
+    if (memberAccess.activated) {
       throw new ValidationError(409, BCM_ACTIVATED_MEMBER_MESSAGE);
+    }
+    if (memberAccess.counselledByOther) {
+      throw new ValidationError(403, BCM_COUNSELLED_BY_OTHER_MESSAGE);
     }
   }
 
@@ -122,7 +127,7 @@ export async function handleCreateCard(body) {
       recordedDate: payload.recordedDate,
       locationName: payload.locationName,
       recoveredHealthIssues: payload.recoveredHealthIssues,
-    }, { allowActivated });
+    }, { allowActivated: false });
     logger.info('[body-params-card] ✅ Card updated', { cardId: card.id, created_by: card.created_by });
     if (userId && !card.user_id) {
       await linkCardToUser(card.id, userId);

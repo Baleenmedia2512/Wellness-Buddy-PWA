@@ -1,13 +1,16 @@
 /**
  * phone-status.handler.js — GET /api/body-parameters-card/phone-status
- * Reports whether a phone belongs to an existing / activated member
- * (UI prompts Override vs New; create still requires phoneConflictAction for activated).
+ * Activated members are blocked. Override is offered only for a BCM this coach
+ * counselled. A co-sponsor's card is not returned.
  */
 import { validatePhoneStatusQuery } from '../validation/card.schema.js';
 import { canSearchTeamPhones } from '../domain/permissions/card.policy.js';
 import { getBcmPhoneActivationStatus } from '../data/card.repo.js';
 import { ValidationError } from '../../../shared/lib/ValidationError.js';
-import { BCM_ACTIVATED_MEMBER_MESSAGE } from '../domain/card.rules.js';
+import {
+  BCM_ACTIVATED_MEMBER_MESSAGE,
+  BCM_COUNSELLED_BY_OTHER_MESSAGE,
+} from '../domain/card.rules.js';
 import logger from '../../../shared/lib/logger.js';
 
 /**
@@ -21,13 +24,23 @@ export async function handlePhoneStatus(query) {
     throw new ValidationError(403, 'Not authorised to check phone status');
   }
 
-  const { activated, userId, existingCard } = await getBcmPhoneActivationStatus(phoneNumber, {
-    coachId,
-  });
+  const {
+    activated,
+    userId,
+    existingCard,
+    canOverride,
+    counselledByOther,
+  } = await getBcmPhoneActivationStatus(phoneNumber, { coachId });
+
+  let message = null;
+  if (activated) message = BCM_ACTIVATED_MEMBER_MESSAGE;
+  else if (counselledByOther) message = BCM_COUNSELLED_BY_OTHER_MESSAGE;
 
   logger.info('[body-params-card] phone-status', {
     coachId,
     activated,
+    canOverride,
+    counselledByOther,
     hasUser: userId != null,
     hasExistingCard: Boolean(existingCard?.id),
   });
@@ -38,12 +51,12 @@ export async function handlePhoneStatus(query) {
       ok: true,
       data: {
         activated,
-        message: activated ? BCM_ACTIVATED_MEMBER_MESSAGE : null,
-        // Additive — lets the form reload profile transformation photos without autocomplete.
+        message,
         userId: userId != null ? userId : null,
-        /** True when phone matches a team_table row (reuse / create-new prompt). */
         exists: userId != null,
-        existingCard: activated ? null : existingCard,
+        canOverride: canOverride === true,
+        counselledByOther: counselledByOther === true,
+        existingCard: canOverride ? existingCard : null,
       },
     },
   };

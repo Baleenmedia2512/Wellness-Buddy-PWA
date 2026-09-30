@@ -306,10 +306,10 @@ describe('formatCommunityIdPairLabel', () => {
     );
   });
 
-  it('uses NA when unpaired', () => {
+  it('uses N/A when unpaired', () => {
     assert.equal(
       formatCommunityIdPairLabel({ sponsorName: 'Yasheer', coSponsorName: null }),
-      'YASHEER - NA',
+      'YASHEER - N/A',
     );
   });
 });

@@ -64,9 +64,23 @@ function normalizeName(value) {
 }
 
 const BCM_PHONE_EXISTS_MESSAGE = 'User already exists';
+const BCM_COUNSELLED_BY_OTHER_MESSAGE =
+  'This BCM was counselled by someone else. You cannot override it.';
 
-function isActivatedPhoneErrorMessage(msg) {
-  return /user already exists/i.test(String(msg || ''));
+function isBcmPhoneBlockedMessage(msg) {
+  const text = String(msg || '');
+  return /user already exists/i.test(text) || /counselled by someone else/i.test(text);
+}
+
+function bcmPhoneBlockMessage(status) {
+  if (!status) return '';
+  if (status.activated) return status.message || BCM_PHONE_EXISTS_MESSAGE;
+  if (status.counselledByOther) return status.message || BCM_COUNSELLED_BY_OTHER_MESSAGE;
+  return '';
+}
+
+function canOfferBcmOverride(status) {
+  return status?.canOverride === true && !status.activated && !status.counselledByOther;
 }
 
 /** Map hierarchy / API member row into phone suggestion + prefill payload. */
@@ -312,14 +326,14 @@ export function useBodyParamsCard({
   /**
    * Immediate phone activation check — runs as soon as digits are complete AND
    * coachUserId is resolved (lookup may finish after the user finished typing).
-   * Existing numbers (incl. activated) prompt Override vs New — no silent prefill.
+   * Override is offered only for a BCM this coach counselled, before the member starts the app.
    */
   useEffect(() => {
     if (!isOpen) return undefined;
 
     const clean = cleanPhoneDigits(form.phoneNumber);
     if (!/^\+?[0-9]{10,15}$/.test(clean)) {
-      setPhoneFieldError((prev) => (isActivatedPhoneErrorMessage(prev) ? '' : prev));
+      setPhoneFieldError((prev) => (isBcmPhoneBlockedMessage(prev) ? '' : prev));
       lastBcmPrefillPhoneRef.current = '';
       setPhoneExistsPrompt(null);
       return undefined;
@@ -339,18 +353,30 @@ export function useBodyParamsCard({
           if (cancelled || requestId !== phoneStatusRequestIdRef.current) return;
           debugLog('📱 [PhoneStatus] result', status);
 
+          const blockedMessage = bcmPhoneBlockMessage(status);
+          if (blockedMessage) {
+            phoneReuseAcceptedRef.current = '';
+            phoneNewAcceptedRef.current = '';
+            phoneConflictActionRef.current = '';
+            lastBcmPrefillPhoneRef.current = '';
+            setPhoneExistsPrompt(null);
+            setPhoneSuggestions([]);
+            setPhoneFieldError(blockedMessage);
+            setError('');
+            return;
+          }
+
           const choiceAlreadyMade =
             phoneReuseAcceptedRef.current === clean
             || phoneNewAcceptedRef.current === clean;
+          const offerOverride = canOfferBcmOverride(status);
 
-          // Number already on team_table (activated or not) — ask Override vs New.
-          if (status.activated || status.exists || status.userId) {
+          if (offerOverride) {
             setPhoneFieldError('');
-            setError((prev) => (isActivatedPhoneErrorMessage(prev) ? '' : prev));
+            setError((prev) => (isBcmPhoneBlockedMessage(prev) ? '' : prev));
 
-            // Edit mode: keep silent restore of this card's member — no choice prompt.
             if (isEditMode) {
-              if (!status.activated && lastBcmPrefillPhoneRef.current !== clean && status.existingCard) {
+              if (lastBcmPrefillPhoneRef.current !== clean && status.existingCard) {
                 lastBcmPrefillPhoneRef.current = clean;
                 setForm((prev) => {
                   const next = applyExistingBcmCardToForm(prev, status.existingCard, displayTimezone);
@@ -363,11 +389,9 @@ export function useBodyParamsCard({
 
             if (choiceAlreadyMade) {
               if (phoneNewAcceptedRef.current === clean) {
-                // New already chosen — keep typed values; do not re-prompt.
                 setPhoneExistsPrompt(null);
                 return;
               }
-              // Override already chosen — apply card/photos once.
               if (lastBcmPrefillPhoneRef.current === clean) return;
               lastBcmPrefillPhoneRef.current = clean;
               if (status.existingCard) {
@@ -406,16 +430,13 @@ export function useBodyParamsCard({
               phone: clean,
               userId: status.userId,
               existingCard: status.existingCard || null,
-              activated: Boolean(status.activated),
-              // Keep autocomplete suggestion if status re-fired for the same phone.
+              activated: false,
               suggestionMember: prev?.phone === clean ? (prev.suggestionMember || null) : null,
             }));
             return;
           }
 
-          // Do not clear an open Override/New prompt for this same phone —
-          // autocomplete may have matched a local team member before status confirms.
-          setPhoneExistsPrompt((prev) => (prev?.phone === clean ? prev : null));
+          setPhoneExistsPrompt(null);
           if (phoneReuseAcceptedRef.current !== clean && phoneNewAcceptedRef.current !== clean) {
             lastBcmPrefillPhoneRef.current = '';
           }
@@ -680,7 +701,7 @@ export function useBodyParamsCard({
   const setPhoneField = useCallback((value) => {
     setForm((prev) => ({ ...prev, phoneNumber: value }));
     markDirty();
-    if (isActivatedPhoneErrorMessage(error)) setError('');
+    if (isBcmPhoneBlockedMessage(error)) setError('');
 
     const digits = value.replace(/\D/g, '');
     const clean = cleanPhoneDigits(value);
@@ -696,7 +717,7 @@ export function useBodyParamsCard({
     }
     if (digits.length < 10) {
       setPhoneExistsPrompt(null);
-      setPhoneFieldError((prev) => (isActivatedPhoneErrorMessage(prev) ? '' : prev));
+      setPhoneFieldError((prev) => (isBcmPhoneBlockedMessage(prev) ? '' : prev));
     }
 
     if (digits.length < 1) {
@@ -742,55 +763,46 @@ export function useBodyParamsCard({
 
   /**
    * Called when the user selects a suggestion from the phone autocomplete.
-   * Always asks Override vs New immediately — never silent prefill.
+   * Asks Override vs New only when this coach counselled that BCM.
    */
   const fillFromMember = useCallback(async (member) => {
     if (!member) return;
     markDirty();
 
     const memberPhone = cleanPhoneDigits(member.phoneNumber);
-    // Clear any prior choice so the dialog always appears for this pick.
     phoneReuseAcceptedRef.current = '';
     phoneNewAcceptedRef.current = '';
     phoneConflictActionRef.current = '';
     lastBcmPrefillPhoneRef.current = '';
     setPhoneSuggestions([]);
     setPhoneFieldError('');
+    setPhoneExistsPrompt(null);
 
-    // Put the phone on the form immediately; wait for Override/New before prefill.
     setForm((prev) => ({
       ...prev,
       phoneNumber: member.phoneNumber || prev.phoneNumber,
     }));
 
-    if (!memberPhone) return;
-
-    // Show the choice dialog right away (do not wait on phone-status).
-    setPhoneExistsPrompt({
-      phone: memberPhone,
-      userId: member.userId || null,
-      existingCard: null,
-      activated: false,
-      suggestionMember: member,
-    });
-
-    if (!coachUserId) return;
+    if (!memberPhone || !coachUserId) return;
 
     try {
       const status = await fetchPhoneBcmStatus({
         phoneNumber: String(member.phoneNumber).trim(),
         coachId: coachUserId,
       });
-      setPhoneExistsPrompt((prev) => {
-        // User already dismissed / chose / changed phone — do not revive.
-        if (!prev || prev.phone !== memberPhone) return prev;
-        return {
-          ...prev,
-          userId: status.userId || prev.userId,
-          existingCard: status.existingCard || null,
-          activated: Boolean(status.activated),
-          suggestionMember: prev.suggestionMember || member,
-        };
+      const blockedMessage = bcmPhoneBlockMessage(status);
+      if (blockedMessage) {
+        setPhoneFieldError(blockedMessage);
+        setPhoneExistsPrompt(null);
+        return;
+      }
+      if (!canOfferBcmOverride(status)) return;
+      setPhoneExistsPrompt({
+        phone: memberPhone,
+        userId: status.userId || member.userId || null,
+        existingCard: status.existingCard || null,
+        activated: false,
+        suggestionMember: member,
       });
     } catch (err) {
       console.warn('[BodyParamsCard] phone status before choice failed', err?.message || err);
@@ -852,7 +864,7 @@ export function useBodyParamsCard({
 
   const onPhoneBlur = useCallback(() => {
     setPhoneFieldError((prev) => {
-      if (isActivatedPhoneErrorMessage(prev)) return prev;
+      if (isBcmPhoneBlockedMessage(prev)) return prev;
       return getBcmRequiredFieldError('phoneNumber', form) || '';
     });
   }, [form]);
@@ -861,7 +873,7 @@ export function useBodyParamsCard({
     setAttemptedSubmit(true);
     setNameTouched(true);
     setPhoneFieldError((prev) => {
-      if (isActivatedPhoneErrorMessage(prev)) return prev;
+      if (isBcmPhoneBlockedMessage(prev)) return prev;
       return getBcmRequiredFieldError('phoneNumber', form) || prev;
     });
   }, [form]);
@@ -879,7 +891,7 @@ export function useBodyParamsCard({
   const nameError = (attemptedSubmit || nameTouched) && !form.name.trim()
     ? 'Name is required'
     : '';
-  const phoneBlocked = isActivatedPhoneErrorMessage(phoneFieldError);
+  const phoneBlocked = isBcmPhoneBlockedMessage(phoneFieldError);
   const canAttemptSave = !isSaving && !phoneBlocked && !phoneExistsPrompt;
 
   /**
@@ -1238,24 +1250,15 @@ export function useBodyParamsCard({
       return true;
     } catch (err) {
       const msg = err.message || 'Failed to save. Please try again.';
-      if (isActivatedPhoneErrorMessage(msg)) {
-        const clean = phoneToSave || cleanPhone(form.phoneNumber);
-        if (clean) {
-          phoneReuseAcceptedRef.current = '';
-          phoneNewAcceptedRef.current = '';
-          phoneConflictActionRef.current = '';
-          setPhoneExistsPrompt({
-            phone: clean,
-            userId: null,
-            existingCard: null,
-            activated: true,
-          });
-          setPhoneFieldError('');
-          setError('');
-        } else {
-          setPhoneFieldError(BCM_PHONE_EXISTS_MESSAGE);
-          setError('');
-        }
+      if (isBcmPhoneBlockedMessage(msg)) {
+        phoneReuseAcceptedRef.current = '';
+        phoneNewAcceptedRef.current = '';
+        phoneConflictActionRef.current = '';
+        setPhoneExistsPrompt(null);
+        setPhoneFieldError(
+          /someone else/i.test(msg) ? BCM_COUNSELLED_BY_OTHER_MESSAGE : BCM_PHONE_EXISTS_MESSAGE,
+        );
+        setError('');
       } else {
         setError(msg);
       }
