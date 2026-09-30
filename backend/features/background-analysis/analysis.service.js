@@ -19,6 +19,7 @@ import { nowUtc, addUtcDays, parseClientTimestampToUtc, normalizeStoredTimestamp
 import logger from '../../shared/lib/logger.js';
 import { computeMealGlycemicIndex } from '../food-corrections/mealGlycemicIndex.js';
 import { confirmPersisted, confirmFailed } from '../../shared/lib/ai-orchestration/AIAnalysisOrchestrator.js';
+import { resolveNutritionSource } from './domain/nutrition-source.js';
 
 const convertConfidenceToNumeric = (confidence) => {
   if (typeof confidence === 'number') return confidence;
@@ -60,6 +61,7 @@ function extractNutrition(analysisResult, deviceInfo) {
   let totalGlycemicIndex = null;
   let micronutrients = {};
   let processedBy = 'manual_app';
+  let source = null;
 
   // Source-of-truth list mirrors features/nutrition/domain/micronutrientRules.js
   // Maps the AI JSON snake_case keys → DB PascalCase column names.
@@ -110,7 +112,7 @@ function extractNutrition(analysisResult, deviceInfo) {
         ?? (analysis.total.glycemic_index != null ? analysis.total.glycemic_index : null);
       micronutrients = pickMicros(analysis.total);
       confidenceScore = convertConfidenceToNumeric(analysis.confidence);
-      processedBy = deviceInfo && deviceInfo.includes('Android Background Service')
+      processedBy = typeof deviceInfo === 'string' && deviceInfo.includes('Android Background Service')
         ? 'background_service' : 'manual_app';
     } else if (analysis.nutrition) {
       totalCalories = analysis.nutrition.calories || null;
@@ -149,6 +151,7 @@ function extractNutrition(analysisResult, deviceInfo) {
     if (analysis?.processedBy) {
       processedBy = String(analysis.processedBy).toLowerCase().trim();
     }
+    source = resolveNutritionSource(analysis, processedBy);
   } catch (err) {
     logger.warn('extractNutrition: failed to parse analysisResult', { error: err?.message });
   }
@@ -157,7 +160,7 @@ function extractNutrition(analysisResult, deviceInfo) {
     totalCalories, totalProtein, totalCarbs, totalFat, totalFiber,
     totalSugar, totalSodium, totalCholesterol, totalGlycemicIndex,
     micronutrients,
-    confidenceScore, processedBy,
+    confidenceScore, processedBy, source,
   };
 }
 
@@ -228,7 +231,7 @@ export async function save(input) {
     totalCalories, totalProtein, totalCarbs, totalFat, totalFiber,
     totalSugar, totalSodium, totalCholesterol, totalGlycemicIndex,
     micronutrients,
-    confidenceScore, processedBy,
+    confidenceScore, processedBy, source,
   } = nutrition;
 
   const imageBase64ToSave = ImageBase64 && ImageBase64.trim() !== '' ? ImageBase64 : null;
@@ -291,6 +294,7 @@ export async function save(input) {
     DeviceInfo: deviceInfo
       || (processedBy === 'background_service' ? 'Android Background Service' : 'Wellness Valley Web App'),
     ImageBase64: imageBase64ToSave,
+    ...(source ? { Source: source } : {}),
   };
 
   // PR 6 — idempotent upsert keyed by CaptureID. The speculative pre-insert

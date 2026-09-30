@@ -370,3 +370,12 @@ registerFlag({
   description:    'Profile height: first save free; later changes need the coach (CoachId) to approve by email. Kill switch; version routing (3.5.0+) strips differing height on profile save.',
   defaultEnabled: true,
 });
+
+registerFlag({
+  name:           'ff.broadcast',
+  owner:          '@principal-eng',
+  createdAt:      '2026-09-29',
+  removeBy:       '2027-03-29',
+  description:    'BroadCast paid screen: how-to video and payment entry. Upload and Burst stay locked until recharge. Kill switch hides the tab.',
+  defaultEnabled: true,
+});

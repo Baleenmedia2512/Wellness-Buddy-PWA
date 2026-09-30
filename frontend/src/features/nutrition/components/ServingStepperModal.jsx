@@ -240,5 +240,6 @@ export function buildWaterAnalysisResult(ml = 200) {
     total: nutrition,
     confidence: 'high',
     processedBy: 'water_preset',
+    source: 'manual',
   };
 }
