@@ -47,6 +47,7 @@ import { resolveSponsorAndIdealCoach } from '../../utils/sponsorCoachResolution.
 import * as weightRepo from '../weight/weight.repository.js';
 import { resolveMarathonWeightComparison } from '../marathon/domain/marathonWeightComparison.service.js';
 import { persistAvatarKey, avatarUrlForKey, r2AvatarsEnabled } from './avatar-storage.service.js';
+import { shouldSkipProfileImageBase64 } from './domain/profileImageWrite.rules.js';
 import {
   persistTransformationPhotosR2Orphan,
   transformationPhotoUrlForKey,
@@ -486,12 +487,15 @@ export async function updateProfile(input) {
     });
   }
 
-  const { updateData, cleanedPhoneNumber } = buildProfileUpdate({
+  const { updateData, cleanedPhoneNumber, avatarDataUri } = buildProfileUpdate({
     ...input,
     height: appliedHeight,
     communityId: appliedCommunityId,
     existingTransformationPhotos: user.transformation_photos,
-    skipProfileImageBase64: r2Client,
+    skipProfileImageBase64: shouldSkipProfileImageBase64({
+      r2Enabled: r2AvatarsEnabled(),
+      appVersion,
+    }),
   });
 
   const teamFieldsFromCommunityId = buildTeamFieldsFromProfileCommunityId(appliedCommunityId);
