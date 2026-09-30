@@ -367,6 +367,6 @@ registerFlag({
   owner:          '@principal-eng',
   createdAt:      '2026-09-25',
   removeBy:       '2027-03-25',
-  description:    'Profile height: first save free; later changes need email/phone OTP. Kill switch; version routing (3.5.0+) strips differing height on profile save.',
+  description:    'Profile height: first save free; later changes need the coach (CoachId) to approve by email. Kill switch; version routing (3.5.0+) strips differing height on profile save.',
   defaultEnabled: true,
 });

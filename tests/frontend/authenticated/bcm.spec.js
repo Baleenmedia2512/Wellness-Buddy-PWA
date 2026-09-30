@@ -250,6 +250,7 @@ test.describe('BCM Module (Body Composition Metrics)', () => {
     // Verify all 4 cards are loaded
     await expect(page.getByText('4 Cards')).toBeVisible();
     await expect(page.getByRole('heading', { name: 'VIKKEY', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Share VIKKEY' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'NITHEESHLINGAM R', exact: true })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'AVINASH', exact: true })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'TEST_AVINASH', exact: true })).toBeVisible();
