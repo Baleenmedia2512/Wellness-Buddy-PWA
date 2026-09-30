@@ -1610,6 +1610,40 @@ test.describe('Homepage', () => {
     await expect(page.getByRole('button', { name: /Transformation|Testimonials/i }).first()).toBeVisible({ timeout: 10000 });
   });
 
+  test('HOME-012 User can select Today, Yesterday, Last 10 Days, and Custom Range date options on Home page', async ({ page }) => {
+    await loginAndNavigateToHome(page);
+
+    // Verify Today pill is visible and selectable
+    const todayPill = page.getByRole('button', { name: 'Today', exact: true });
+    await expect(todayPill).toBeVisible({ timeout: 10000 });
+    await todayPill.click();
+
+    // Verify Yesterday pill is visible and selectable
+    const yesterdayPill = page.getByRole('button', { name: 'Yesterday', exact: true });
+    await expect(yesterdayPill).toBeVisible({ timeout: 10000 });
+    await yesterdayPill.click();
+
+    // Verify Last 10 Days pill is visible and selectable
+    const last10Pill = page.getByRole('button', { name: 'Last 10 Days', exact: true });
+    await expect(last10Pill).toBeVisible({ timeout: 10000 });
+    await last10Pill.click();
+
+    // Verify Custom Range pill is visible and opens date picker
+    const customPill = page.getByRole('button', { name: /Custom Range|Custom/i }).first();
+    await expect(customPill).toBeVisible({ timeout: 10000 });
+    await customPill.click();
+
+    // Verify Date Range Picker calendar modal is displayed
+    const datePickerModal = page.locator('button[aria-label="Previous month"]').or(page.getByText('Select start date')).first();
+    await expect(datePickerModal).toBeVisible({ timeout: 10000 });
+
+    // Click Done to close custom date picker
+    const doneBtn = page.getByRole('button', { name: 'Done', exact: true });
+    if (await doneBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
+      await doneBtn.click();
+    }
+  });
+
 });
 
 

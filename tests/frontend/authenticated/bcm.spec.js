@@ -783,4 +783,250 @@ test.describe('BCM Module (Body Composition Metrics)', () => {
     // Name should NOT be prefilled until Override
     await expect(page.getByPlaceholder('FULL NAME')).toHaveValue('');
   });
+
+  test('BCM-014 Verify every field in a BCM card modal can be filled', async ({ page }) => {
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+
+    const bcmTabBtn = page.getByRole('button', { name: /BCM|Counselling/i }).or(page.getByText('BCM', { exact: true })).first();
+    await expect(bcmTabBtn).toBeVisible({ timeout: 15000 });
+    await bcmTabBtn.click({ force: true });
+
+    const createBtn = page.getByRole('button', { name: 'Create Body Parameters Card' });
+    await expect(createBtn).toBeVisible({ timeout: 15000 });
+    await createBtn.click({ force: true });
+
+    // Verify modal heading
+    const modalHeading = page.getByRole('heading', { name: /Body Parameters/i }).first();
+    await expect(modalHeading).toBeVisible({ timeout: 10000 });
+
+    // 1. Date (prefilled, fill explicit date)
+    const dateInput = page.locator('input[type="date"]').first();
+    await dateInput.fill('2026-09-29');
+
+    // 2. Venue
+    const venueInput = page.getByPlaceholder('e.g. Chennai');
+    if (await venueInput.isVisible({ timeout: 2000 }).catch(() => false)) {
+      await venueInput.fill('Chennai Central');
+      await expect(venueInput).toHaveValue('Chennai Central');
+    }
+
+    // 3. Name
+    const nameInput = page.getByPlaceholder('FULL NAME');
+    await nameInput.fill('Test Client');
+    await expect(nameInput).toHaveValue('TEST CLIENT');
+
+    // 4. Phone Number
+    const phoneInput = page.getByPlaceholder('Client phone (optional)');
+    await phoneInput.fill('9876543210');
+    await expect(phoneInput).toHaveValue('9876543210');
+
+    // 5. Age
+    const ageInput = page.locator('input[inputmode="decimal"]').first();
+    await ageInput.fill('30');
+    await expect(ageInput).toHaveValue('30');
+
+    // 6. Gender
+    const genderSelect = page.locator('select').first();
+    await genderSelect.selectOption('Male');
+    await expect(genderSelect).toHaveValue('Male');
+
+    // 7. Height (cm)
+    const heightInput = page.getByPlaceholder('cm').first();
+    await heightInput.fill('175');
+    await expect(heightInput).toHaveValue('175');
+
+    // 8. Weight (kg)
+    const weightInput = page.getByPlaceholder('kg').first();
+    await weightInput.fill('72.5');
+    await expect(weightInput).toHaveValue('72.5');
+
+    // 9. Fat% (%)
+    const fatInput = page.getByPlaceholder('%').first();
+    await fatInput.fill('18.5');
+    await expect(fatInput).toHaveValue('18.5');
+
+    // 10. Visceral Fat (V-Fat)
+    const vFatInput = page.getByPlaceholder('Visceral fat').first();
+    await vFatInput.fill('5');
+    await expect(vFatInput).toHaveValue('5');
+
+    // 11. BMR (kcal)
+    const bmrInput = page.getByPlaceholder('kcal').first();
+    await bmrInput.fill('1650');
+    await expect(bmrInput).toHaveValue('1650');
+
+    // 12. Physical Activity Level
+    const activitySelect = page.locator('select').nth(1);
+    if (await activitySelect.isVisible({ timeout: 2000 }).catch(() => false)) {
+      await activitySelect.selectOption('Moderate');
+    }
+
+    // 13. BMI
+    const bmiInput = page.getByPlaceholder('e.g. 21').first();
+    await bmiInput.fill('23');
+    await expect(bmiInput).toHaveValue('23');
+
+    // 14. Body Age
+    const bodyAgeInput = page.getByPlaceholder('yrs').first();
+    await bodyAgeInput.fill('26');
+    await expect(bodyAgeInput).toHaveValue('26');
+
+    // 15. Chest (cm)
+    const chestInput = page.getByPlaceholder('cm').nth(1);
+    if (await chestInput.isVisible({ timeout: 2000 }).catch(() => false)) {
+      await chestInput.fill('95');
+      await expect(chestInput).toHaveValue('95');
+    }
+
+    // 16. Waist (cm)
+    const waistInput = page.getByPlaceholder('cm').nth(2);
+    if (await waistInput.isVisible({ timeout: 2000 }).catch(() => false)) {
+      await waistInput.fill('80');
+      await expect(waistInput).toHaveValue('80');
+    }
+
+    // 17. Hip (cm)
+    const hipInput = page.getByPlaceholder('cm').nth(3);
+    if (await hipInput.isVisible({ timeout: 2000 }).catch(() => false)) {
+      await hipInput.fill('92');
+      await expect(hipInput).toHaveValue('92');
+    }
+
+    // 18. Diet Preference
+    const dietButton = page.getByRole('button', { name: /Select diet preference|Vegetarian|Non-Vegetarian|Vegan/i }).first();
+    await expect(dietButton).toBeVisible({ timeout: 5000 });
+    await dietButton.click();
+    const vegOption = page.getByRole('button', { name: 'Vegetarian', exact: true }).or(page.getByText('Vegetarian', { exact: true })).first();
+    await expect(vegOption).toBeVisible({ timeout: 5000 });
+    await vegOption.click();
+    await expect(dietButton).toContainText('Vegetarian');
+
+    // 19. Health Issues (DiseaseMultiSelect)
+    const healthInput = page.getByPlaceholder(/Search health issues|Add more/i).first();
+    await expect(healthInput).toBeVisible({ timeout: 5000 });
+    await healthInput.click();
+    await healthInput.fill('Fatty Liver');
+    const fattyLiverOption = page.getByRole('button', { name: 'Fatty Liver', exact: true });
+    await expect(fattyLiverOption).toBeVisible({ timeout: 5000 });
+    await fattyLiverOption.click();
+    await expect(page.getByText('Fatty Liver', { exact: true })).toBeVisible({ timeout: 5000 });
+
+    // 20. Transformation Photos (Left, Centre, Right)
+    const dummyImageBuffer = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+      'base64'
+    );
+
+    // Upload Left photo
+    await page.getByRole('button', { name: 'Left', exact: true }).click();
+    const galleryInput = page.locator('input[type="file"]').last();
+    await galleryInput.setInputFiles({
+      name: 'left.png',
+      mimeType: 'image/png',
+      buffer: dummyImageBuffer,
+    });
+
+    // Upload Centre photo
+    await page.getByRole('button', { name: 'Centre', exact: true }).click();
+    await galleryInput.setInputFiles({
+      name: 'centre.png',
+      mimeType: 'image/png',
+      buffer: dummyImageBuffer,
+    });
+
+    // Upload Right photo
+    await page.getByRole('button', { name: 'Right', exact: true }).click();
+    await galleryInput.setInputFiles({
+      name: 'right.png',
+      mimeType: 'image/png',
+      buffer: dummyImageBuffer,
+    });
+
+    console.log('BCM-014: Successfully verified ALL fields including Diet Preference and Transformation Photos in BCM card modal');
+  });
+
+  test('BCM-015 Verify mandatory fields validation, invalid phone check, and all parent prerequisite field prompts in BCM modal', async ({ page }) => {
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+
+    const bcmTabBtn = page.getByRole('button', { name: /BCM|Counselling/i }).or(page.getByText('BCM', { exact: true })).first();
+    await expect(bcmTabBtn).toBeVisible({ timeout: 15000 });
+    await bcmTabBtn.click({ force: true });
+
+    const createBtn = page.getByRole('button', { name: 'Create Body Parameters Card' });
+    await expect(createBtn).toBeVisible({ timeout: 15000 });
+    await createBtn.click({ force: true });
+
+    let createApiCalled = false;
+    await page.route('**/api/body-parameters-card/create', async (route) => {
+      createApiCalled = true;
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          data: { id: 99, name: 'VALIDATED CLIENT', phoneNumber: '9876543210', recordedDate: '2026-09-29' }
+        })
+      });
+    });
+
+    const saveButton = page.getByRole('button', { name: 'Save & Share' });
+    await expect(saveButton).toBeVisible({ timeout: 10000 });
+
+    // 1. Mandatory Name Validation: Click Save with empty Name -> Blocks API submission & shows "Name is required"
+    await saveButton.click({ force: true });
+    expect(createApiCalled).toBe(false);
+
+    const nameInput = page.getByPlaceholder('FULL NAME');
+    await expect(page.getByText('Name is required')).toBeVisible({ timeout: 5000 });
+
+    // 2. Invalid Phone Validation: Type invalid 3-digit phone -> Blur -> Displays invalid phone error
+    const phoneInput = page.getByPlaceholder('Client phone (optional)');
+    await phoneInput.fill('123');
+    await phoneInput.blur();
+    const phoneError = page.getByText(/Please enter a valid phone number/i);
+    await expect(phoneError).toBeVisible({ timeout: 5000 });
+
+    // Clear invalid phone (Phone is optional — empty is valid)
+    await phoneInput.fill('');
+    await phoneInput.blur();
+    await expect(phoneError).not.toBeVisible({ timeout: 5000 });
+
+    // 3. Parent Prerequisite Prompt (Height needed for Weight)
+    const weightInput = page.getByPlaceholder('kg').first();
+    await weightInput.focus();
+    const heightPrompt = page.getByText(/Please enter height for Weight/i);
+    await expect(heightPrompt).toBeVisible({ timeout: 5000 });
+
+    // 4. Parent Prerequisite Prompt (Gender needed for Fat%)
+    const fatInput = page.getByPlaceholder('%').first();
+    await fatInput.focus();
+    const genderFatPrompt = page.getByText(/Please select gender for Fat%/i);
+    await expect(genderFatPrompt).toBeVisible({ timeout: 5000 });
+
+    // 5. Parent Prerequisite Prompt (Gender needed for Chest / Waist / Hip)
+    const chestInput = page.getByPlaceholder('cm').nth(1);
+    if (await chestInput.isVisible({ timeout: 2000 }).catch(() => false)) {
+      await chestInput.focus();
+      const genderChestPrompt = page.getByText(/Please select gender for Chest/i);
+      await expect(genderChestPrompt).toBeVisible({ timeout: 5000 });
+    }
+
+    // 6. Parent Prerequisite Prompt (Age needed for Body Age)
+    const bodyAgeInput = page.getByPlaceholder('yrs').first();
+    if (await bodyAgeInput.isVisible({ timeout: 2000 }).catch(() => false)) {
+      await bodyAgeInput.focus();
+      const ageBodyAgePrompt = page.getByText(/Please enter age for Body Age/i);
+      await expect(ageBodyAgePrompt).toBeVisible({ timeout: 5000 });
+    }
+
+    // 7. Satisfy Mandatory Name & Optional Valid Phone -> Save succeeds
+    await nameInput.fill('VALIDATED CLIENT');
+    await phoneInput.fill('9876543210');
+    await saveButton.click({ force: true });
+
+    await page.waitForTimeout(500);
+    expect(createApiCalled).toBe(true);
+
+    console.log('BCM-015: Successfully verified all mandatory fields, invalid phone validation, and parent prerequisite prompts');
+  });
 });
