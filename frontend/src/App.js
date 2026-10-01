@@ -122,6 +122,7 @@ import {
   getAvatarDisplayVersion,
 } from "./features/user/services/avatarDisplayVersion";
 import { apiFetch } from "./shared/services/apiFetch";
+import NetworkStatusNotice from "./shared/components/NetworkStatusNotice";
 import { handlePossibleAppUpdateRequired } from "./shared/services/appVersionEnforce.client";
 import {
   saveNutritionAnalysis,
@@ -8460,6 +8461,7 @@ function WellnessValleyApp() {
   // Main app interface — Home stays mounted under overlays (display:none)
   return (
     <>
+      <NetworkStatusNotice />
       <div
         style={{ display: homeOverlay ? 'none' : undefined }}
         aria-hidden={Boolean(homeOverlay)}

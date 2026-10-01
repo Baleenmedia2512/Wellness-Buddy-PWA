@@ -252,7 +252,13 @@ const BodyParamsForm = ({
     setShowUnsavedModal(false);
   };
 
+  const shareOnly = vm.isEditMode && !vm.hasUnsavedChanges;
+
   const handleSave = async () => {
+    if (shareOnly) {
+      vm.handleShareExisting();
+      return;
+    }
     vm.markAttemptedSubmit();
     const missing = getFirstMissingBcmRequiredField(vm.form);
     if (missing === 'name') {
@@ -790,7 +796,13 @@ const BodyParamsForm = ({
             disabled={!vm.canAttemptSave}
             className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-green-600 to-green-600 text-white text-sm font-semibold disabled:opacity-50 transition-colors"
           >
-            {vm.isSaving ? 'Saving…' : vm.isEditMode ? 'Update & Share' : 'Save & Share'}
+            {vm.isSaving
+              ? 'Saving…'
+              : shareOnly
+                ? 'Share'
+                : vm.isEditMode
+                  ? 'Update & Share'
+                  : 'Save & Share'}
           </button>
         </div>
       </div>

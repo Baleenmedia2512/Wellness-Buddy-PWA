@@ -17,6 +17,11 @@ import { teamHierarchyService } from '../../../shared/services/teamHierarchyServ
 import { getApiBaseUrl } from '../../../config/api.config.js';
 import { buildOnboardingShareUrl } from '../domain/platform-store.rules.js';
 import { debugLog } from '../../../shared/utils/logger.js';
+import {
+  isNetworkNoticeMessage,
+  userFacingNetworkMessage,
+  NETWORK_FAILURE_MESSAGE,
+} from '../../../shared/services/networkNotice.js';
 import { CapacitorHttp } from '@capacitor/core';
 import { getAppVersionHeaders } from '../../../shared/services/apiFetch.js';
 import { todayBusinessDate } from '../../../shared/utils/datetimeUtils.js';
@@ -352,6 +357,7 @@ export function useBodyParamsCard({
         .then((status) => {
           if (cancelled || requestId !== phoneStatusRequestIdRef.current) return;
           debugLog('📱 [PhoneStatus] result', status);
+          setError((prev) => (isNetworkNoticeMessage(prev) ? '' : prev));
 
           const blockedMessage = bcmPhoneBlockMessage(status);
           if (blockedMessage) {
@@ -443,7 +449,8 @@ export function useBodyParamsCard({
         })
         .catch((err) => {
           if (cancelled || requestId !== phoneStatusRequestIdRef.current) return;
-          console.warn('[BodyParamsCard] phone status check failed', err?.message || err);
+          setPhoneExistsPrompt(null);
+          setError(userFacingNetworkMessage(err) || err?.message || NETWORK_FAILURE_MESSAGE);
         });
     }, 150);
 
@@ -805,7 +812,8 @@ export function useBodyParamsCard({
         suggestionMember: member,
       });
     } catch (err) {
-      console.warn('[BodyParamsCard] phone status before choice failed', err?.message || err);
+      setPhoneExistsPrompt(null);
+      setError(userFacingNetworkMessage(err) || err?.message || NETWORK_FAILURE_MESSAGE);
     }
   }, [coachUserId, markDirty]);
 
@@ -1249,7 +1257,7 @@ export function useBodyParamsCard({
 
       return true;
     } catch (err) {
-      const msg = err.message || 'Failed to save. Please try again.';
+      const msg = userFacingNetworkMessage(err) || err.message || 'Failed to save. Please try again.';
       if (isBcmPhoneBlockedMessage(msg)) {
         phoneReuseAcceptedRef.current = '';
         phoneNewAcceptedRef.current = '';
@@ -1267,6 +1275,25 @@ export function useBodyParamsCard({
       setIsSaving(false);
     }
   }, [isValid, form, coachUserId, targetUserId, onSaveSuccess, onSaveStart, isEditMode, existingCard, user, bmrUserEdited, externalVenue, phoneFieldError, phoneExistsPrompt, clearDirty, transformationPhotos.payloadExtras, displayTimezone]);
+
+  /** Edit with no field changes — open share for the saved card, do not PATCH. */
+  const handleShareExisting = useCallback(() => {
+    if (!isEditMode || !existingCard?.id || hasUnsavedChanges) return false;
+    const { previousCard: prevCard = null, ...cardCore } = existingCard;
+    const creatorName = String(
+      user?.userName || user?.name || user?.username || user?.displayName || ''
+    ).trim();
+    const card = {
+      ...cardCore,
+      creatorName: cardCore.creatorName || creatorName,
+    };
+    const url = buildOnboardingShareUrl(getApiBaseUrl());
+    if (onSaveStart) onSaveStart(card);
+    setSavedCard(card);
+    setShareUrl(url);
+    if (onSaveSuccess) onSaveSuccess(card, url, prevCard);
+    return true;
+  }, [isEditMode, existingCard, hasUnsavedChanges, user, onSaveStart, onSaveSuccess]);
 
   return {
     form, setField,
@@ -1298,6 +1325,6 @@ export function useBodyParamsCard({
     isEditMode,
     hasUnsavedChanges,
     savedCard, shareUrl,
-    handleSave, resetForm,
+    handleSave, handleShareExisting, resetForm,
   };
 }
