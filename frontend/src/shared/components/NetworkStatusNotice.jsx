@@ -1,6 +1,7 @@
 /**
- * Full-screen network state. Shown on every screen when the device is
- * offline, an API call is slow, or the call fails because of the network.
+ * Offline and hard failures cover the screen.
+ * A measured slow link, or an API call that is simply taking a while,
+ * shows a banner and leaves the app usable.
  */
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -32,39 +33,50 @@ const COPY = {
     body: 'Wellness Valley needs an internet connection. This screen stays until you are back online.',
     hint: 'Waiting for connection',
   },
-  slow: {
-    title: 'Still connecting',
-    body: 'Your network is slow. Keep this screen open — we’ll continue as soon as the request finishes.',
+  degraded: {
+    title: 'Your connection looks slow',
+    body: 'You can keep using the app. Some screens may take longer to load.',
+    hint: 'Slow connection',
+  },
+  waiting: {
+    title: 'Taking longer than usual',
+    body: 'The app is still working. You can keep this screen open.',
     hint: 'Please wait',
   },
   failure: {
-    title: 'Cannot reach the server',
-    body: 'The connection dropped before we could finish. Check your network, then try again.',
+    title: 'Can\'t connect right now',
+    body: 'We couldn\'t finish that request. Check your connection, then try again.',
     hint: 'Connection problem',
+  },
+  server: {
+    title: 'Something went wrong on our side',
+    body: 'The server had a problem. Try again in a moment.',
+    hint: 'Server problem',
   },
 };
 
-function StatusIcon({ kind }) {
-  const Icon = kind === 'offline' ? WifiOff : kind === 'slow' ? LoaderCircle : CloudOff;
-  const spinning = kind === 'slow';
+function StatusIcon({ kind, compact = false }) {
+  const Icon = kind === 'offline' || kind === 'degraded' ? WifiOff : kind === 'waiting' ? LoaderCircle : CloudOff;
+  const spinning = kind === 'waiting';
   return (
     <div
       aria-hidden="true"
       style={{
-        width: 96,
-        height: 96,
-        borderRadius: 32,
+        width: compact ? 36 : 96,
+        height: compact ? 36 : 96,
+        borderRadius: compact ? 12 : 32,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
+        flexShrink: 0,
         background: 'rgba(255,255,255,0.85)',
         border: '1px solid rgba(16,185,129,0.25)',
-        boxShadow: '0 16px 40px rgba(6,78,59,0.12)',
-        marginBottom: 28,
+        boxShadow: compact ? 'none' : '0 16px 40px rgba(6,78,59,0.12)',
+        marginBottom: compact ? 0 : 28,
       }}
     >
       <Icon
-        size={40}
+        size={compact ? 18 : 40}
         color="#047857"
         strokeWidth={1.75}
         style={spinning ? { animation: 'wv-net-spin 1s linear infinite' } : undefined}
@@ -78,7 +90,13 @@ export default function NetworkStatusNotice() {
   const [notice, setNotice] = useState(null);
 
   useEffect(() => {
-    installNetworkMonitoring({ isApiRequest, http: CapacitorHttp });
+    let probeUrl = '';
+    try {
+      probeUrl = `${getApiBaseUrl()}/api/misc/server-time`;
+    } catch {
+      probeUrl = '';
+    }
+    installNetworkMonitoring({ isApiRequest, http: CapacitorHttp, probeUrl });
   }, []);
 
   useEffect(() => subscribeNetworkNotice(setNotice), []);
@@ -86,6 +104,39 @@ export default function NetworkStatusNotice() {
   const kind = !online ? 'offline' : (notice?.type || '');
   const copy = COPY[kind];
   if (!copy || typeof document === 'undefined') return null;
+
+  if (kind === 'degraded' || kind === 'waiting') {
+    return createPortal(
+      <div
+        role="status"
+        aria-live="polite"
+        style={{
+          position: 'fixed',
+          top: 'max(12px, env(safe-area-inset-top, 0px))',
+          left: 12,
+          right: 12,
+          zIndex: 10040,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 12,
+          padding: '12px 14px',
+          borderRadius: 16,
+          background: '#ffffff',
+          border: '1px solid rgba(16,185,129,0.35)',
+          boxShadow: '0 10px 28px rgba(6,78,59,0.12)',
+          pointerEvents: 'none',
+        }}
+      >
+        <style>{`@keyframes wv-net-spin { to { transform: rotate(360deg); } }`}</style>
+        <StatusIcon kind={kind} compact />
+        <div style={{ textAlign: 'left' }}>
+          <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: '#064e3b' }}>{copy.title}</p>
+          <p style={{ margin: '2px 0 0', fontSize: 13, lineHeight: 1.4, color: '#64748b' }}>{copy.body}</p>
+        </div>
+      </div>,
+      document.body,
+    );
+  }
 
   return createPortal(
     <div
@@ -156,7 +207,7 @@ export default function NetworkStatusNotice() {
         {copy.body}
       </p>
 
-      {kind === 'offline' || kind === 'slow' ? (
+      {kind === 'offline' ? (
         <div
           aria-hidden="true"
           style={{ display: 'flex', gap: 8, marginTop: 28 }}
