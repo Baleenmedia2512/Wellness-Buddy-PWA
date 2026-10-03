@@ -13,6 +13,8 @@ import {
   validateCommunityId,
   isCommunityIdConfirmed,
   communityIdPendingApprovalMessage,
+  formatCommunityIdPairLabel,
+  communityIdPairDisplayParts,
 } from './communityId.js';
 
 describe('normalizeCommunityId', () => {
@@ -105,16 +107,65 @@ describe('isCommunityIdConfirmed', () => {
 });
 
 describe('communityIdPendingApprovalMessage', () => {
-  it('names the sponsor and asks the user to enter the verification code', () => {
-    const text = communityIdPendingApprovalMessage({ sponsorName: 'Nitheesh Lingam' });
-    assert.match(text, /Approval code sent to your sponsor \(Nitheesh Lingam\)/);
-    assert.match(text, /verification code sent to your sponsor/i);
+  it('names the sponsor and email for the 4-digit code banner', () => {
+    const text = communityIdPendingApprovalMessage({
+      sponsorName: 'Nitheesh Lingam',
+      sponsorEmail: 'nitheesh@example.com',
+    });
+    assert.match(text, /4-digit code sent to Nitheesh Lingam \(nitheesh@example\.com\)/);
+    assert.match(text, /Enter the code to continue/);
   });
 
   it('falls back when the sponsor name is missing', () => {
     assert.match(
       communityIdPendingApprovalMessage({ sponsorName: '' }),
-      /Approval code sent to your sponsor\./,
+      /4-digit code sent to your sponsor\./,
+    );
+  });
+});
+
+describe('formatCommunityIdPairLabel', () => {
+  it('shows partner first name when paired', () => {
+    assert.equal(
+      formatCommunityIdPairLabel({
+        sponsorName: 'Mohamed Yasheer',
+        coSponsorName: 'Balaji Kumar',
+      }),
+      'MOHAMED - BALAJI',
+    );
+  });
+
+  it('shows N/A when there is no co-sponsor', () => {
+    assert.equal(
+      formatCommunityIdPairLabel({
+        sponsorName: 'Yasheer',
+        coSponsorName: null,
+      }),
+      'YASHEER - N/A',
+    );
+  });
+
+  it('shows N/A for a missing coach and keeps the co-coach name', () => {
+    assert.deepEqual(
+      communityIdPairDisplayParts({
+        sponsorName: null,
+        coSponsorName: 'Balaji Kumar',
+      }),
+      { left: 'N/A', right: 'BALAJI' },
+    );
+  });
+
+  it('turns a stored NA label into N/A', () => {
+    assert.equal(
+      formatCommunityIdPairLabel({ label: 'YASHEER - NA' }),
+      'YASHEER - N/A',
+    );
+  });
+
+  it('prefers a server-provided label', () => {
+    assert.equal(
+      formatCommunityIdPairLabel({ label: 'YASHEER - BALAJI' }),
+      'YASHEER - BALAJI',
     );
   });
 });

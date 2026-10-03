@@ -1,6 +1,9 @@
 /** Shared report date-range presets (Activity, Wellness Score, etc.). */
 
-export const REPORT_DATE_RANGE_TODAY = Object.freeze({ value: 'today', label: 'Today' });
+export const REPORT_DATE_RANGE_TODAY = Object.freeze({
+  value: 'today',
+  label: 'Today',
+});
 export const REPORT_DATE_RANGE_YESTERDAY = Object.freeze({ value: 'yesterday', label: 'Yesterday' });
 export const REPORT_DATE_RANGE_LAST_7 = Object.freeze({ value: 'last7days', label: 'Last 7 Days' });
 export const REPORT_DATE_RANGE_LAST_10 = Object.freeze({ value: 'last10days', label: 'Last 10 Days' });

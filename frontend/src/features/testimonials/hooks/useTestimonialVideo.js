@@ -64,6 +64,7 @@ export function useTestimonialVideo({ userId, healthIssues = [] }) {
     setWarning(null);
     setSuccess(null);
     setPendingTestimonialId(null);
+    
   }, []);
 
   const startEdit = useCallback(() => {
@@ -120,6 +121,14 @@ export function useTestimonialVideo({ userId, healthIssues = [] }) {
       setError(null);
       setWarning(null);
 
+      // Restrict photos / non-video files: only video files are allowed
+      const isImage = file.type?.startsWith('image/') || /\.(jpe?g|png|gif|webp|bmp|heic|heif|svg)$/i.test(file.name || '');
+      const isVideo = file.type?.startsWith('video/') || /\.(mp4|mov|webm|3gp|mkv|avi|m4v)$/i.test(file.name || '');
+      if (isImage || !isVideo) {
+        setError('Only video files are allowed for results. Photos and images are not allowed.');
+        return;
+      }
+
       const maxDuration = slot === 'health' ? MAX_HEALTH_DURATION_S : MAX_BUSINESS_DURATION_S;
       const maxLabel    = slot === 'health' ? '1 min' : '2 min';
       const maxBytes = (slot === 'health' ? MAX_HEALTH_VIDEO_MB : MAX_BUSINESS_VIDEO_MB) * 1024 * 1024;
@@ -169,10 +178,7 @@ export function useTestimonialVideo({ userId, healthIssues = [] }) {
       return false;
     }
 
-    if (!Array.isArray(healthIssues) || healthIssues.length === 0) {
-      setError('Add at least one recovered health issue in the Health Issues section before uploading videos for verification.');
-      return false;
-    }
+    // Health issues are optional — videos may be submitted without them.
 
     setSubmitting(true);
     try {

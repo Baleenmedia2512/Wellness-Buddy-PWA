@@ -24,6 +24,13 @@ import {
   drySaladSlotFromDeviceNow,
 } from "../domain/foodSuggestionRank";
 
+/**
+ * Time-slot usual combo stays on screen as suggestions.
+ * false = do not drop it into the tray; the user taps what they want.
+ * Set true to restore the previous auto-preselect.
+ */
+const AUTO_PRESELECT_USUAL_COMBO = false;
+
 /** Session cache so Clear all / cancel cannot wipe the next Target Nutrition prefill. */
 function usualComboCacheKey(userId, slot) {
   return `wv:dry-salad-usual-combo:${String(userId || "")}:${String(slot || "any")}`;
@@ -176,8 +183,10 @@ const SmartFoodSearchModal = ({
         usualComboRef.current = cachedCombo;
         setUsualCombo(cachedCombo);
         if (slot) setDrySaladSlot(slot);
-        didPrefillRef.current = true;
-        setSelectedItems(cachedCombo.map((item) => toSelectableItem(item)));
+        if (AUTO_PRESELECT_USUAL_COMBO) {
+          didPrefillRef.current = true;
+          setSelectedItems(cachedCombo.map((item) => toSelectableItem(item)));
+        }
       }
     }
 
@@ -234,7 +243,8 @@ const SmartFoodSearchModal = ({
     skipTypeSelect,
   ]);
 
-  // Dry salad: usual combo for this time of day, pre-selected and ready to save
+  // Dry salad: usual combo for this time of day, listed for the user to add.
+  // Auto-preselect is off (AUTO_PRESELECT_USUAL_COMBO) so the tray starts empty.
   useEffect(() => {
     if (!isOpen || !catalogMode || !apiBaseUrl || !userId) return undefined;
     if (showTypeSelect && !skipTypeSelect) return undefined;
@@ -257,7 +267,7 @@ const SmartFoodSearchModal = ({
         setOftenWith(extras);
         writeUsualComboCache(userId, slot || drySaladSlotFromDeviceNow(), selected);
         // Prefill every open unless user hit Clear all this visit (local only).
-        if (!clearedSelectionRef.current) {
+        if (AUTO_PRESELECT_USUAL_COMBO && !clearedSelectionRef.current) {
           didPrefillRef.current = true;
           setSelectedItems(selected.map((item) => toSelectableItem(item)));
         }
@@ -584,12 +594,10 @@ const SmartFoodSearchModal = ({
           {catalogMode && hasSelected && !showManualForm && (
             <div>
               <p className="text-[11px] text-green-700 font-medium px-0.5 mb-2">
-                Usual {drySaladSlot || "time"} combo selected — remove or add items, then save
+                Your picks — add or remove items, then save
               </p>
               <p className="text-sm font-bold text-gray-900 mb-2 px-0.5">
-                {usualCombo.length > 0
-                  ? drySaladUsualComboTitle(drySaladSlot)
-                  : "Your meal"}
+                Your meal
               </p>
               <div className="space-y-1.5">
                 {renderFoodRows(selectedItems, "selected", true)}

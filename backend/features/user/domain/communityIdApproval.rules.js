@@ -25,6 +25,7 @@ export const REQUEST_STATUS_EXPIRED = 'expired';
 
 export const CLAIM_NO_SPONSOR = 'no-sponsor';
 export const CLAIM_ALREADY_OWNED = 'already-owned';
+/** @deprecated Kept for older clients/tests; change requests are now allowed. */
 export const CLAIM_ALREADY_CONFIRMED = 'already-confirmed';
 export const CLAIM_FULL = 'full';
 export const CLAIM_INVALID = 'invalid';
@@ -33,8 +34,6 @@ export const CLAIM_CO_SPONSOR = 'co-sponsor';
 
 const NO_SPONSOR_MESSAGE =
   'Link a sponsor before creating a Community ID. Ask your wellness centre to connect you.';
-const ALREADY_CONFIRMED_MESSAGE =
-  'You already have a confirmed Community ID. It cannot be changed from Profile.';
 const ALREADY_OWNED_MESSAGE = 'This Community ID is already yours.';
 const FULL_MESSAGE =
   'This Community ID already has a Sponsor and Co-Sponsor.';
@@ -176,21 +175,16 @@ export function classifyCommunityIdRequest({
       code,
     };
   }
-  if (confirmed && confirmed !== code) {
-    return {
-      ok: false,
-      status: CLAIM_ALREADY_CONFIRMED,
-      message: ALREADY_CONFIRMED_MESSAGE,
-      code,
-    };
-  }
+  // Confirmed users may request a different Community ID (Profile Change).
+  // On OTP verify the previous lead seat is released before the new one is assigned.
 
   const sponsorId = toPositiveUserId(occupancy?.sponsorUserId);
   const coId = toPositiveUserId(occupancy?.coSponsorUserId);
   const pendingCreateId = toPositiveUserId(occupancy?.pendingCreateRequesterId);
-  const effectiveSponsor = sponsorId || pendingCreateId;
 
-  if (uid && (effectiveSponsor === uid || coId === uid)) {
+  // Active coach_teams seats only. A pending create OTP is NOT ownership — treating
+  // the requester's own pending create as "already yours" skips OTP on change.
+  if (uid && (sponsorId === uid || coId === uid)) {
     return {
       ok: false,
       status: CLAIM_ALREADY_OWNED,
@@ -198,6 +192,10 @@ export function classifyCommunityIdRequest({
       code,
     };
   }
+
+  // Another member's pending create occupies the sponsor slot. Ignore self.
+  const effectiveSponsor = sponsorId
+    || (pendingCreateId && pendingCreateId !== uid ? pendingCreateId : null);
 
   if (effectiveSponsor && coId && effectiveSponsor !== coId) {
     return { ok: false, status: CLAIM_FULL, message: FULL_MESSAGE, code };
@@ -228,13 +226,17 @@ export function classifyCommunityIdRequest({
  * Strip OTP hash before returning a pending request to the client.
  *
  * @param {object|null} row
- * @param {{ approverName?: string|null }} [opts]
+ * @param {{ approverName?: string|null, approverEmail?: string|null }} [opts]
  */
-export function toPublicCommunityIdRequest(row, { approverName = null } = {}) {
+export function toPublicCommunityIdRequest(row, {
+  approverName = null,
+  approverEmail = null,
+} = {}) {
   if (!row) return null;
   const kind = row.RequestKind === REQUEST_KIND_CO_SPONSOR
     ? REQUEST_KIND_CO_SPONSOR
     : REQUEST_KIND_CREATE;
+  const email = String(approverEmail || '').trim() || null;
   return {
     id: row.Id ?? null,
     communityId: row.CommunityId ?? null,
@@ -242,9 +244,34 @@ export function toPublicCommunityIdRequest(row, { approverName = null } = {}) {
     status: row.Status ?? REQUEST_STATUS_PENDING,
     expiresAt: row.OtpExpiresAt ?? null,
     approverName: approverName || null,
+    approverEmail: email,
     mainSponsorName: row.MainSponsorName || null,
     seat: kind === REQUEST_KIND_CO_SPONSOR ? 'co-sponsor' : 'sponsor',
   };
+}
+
+/**
+ * First name token for Community ID pair display (YASHEER - BALAJI).
+ * @param {unknown} name
+ * @returns {string}
+ */
+export function communityIdPairFirstName(name) {
+  const token = String(name || '').replace(/\s+/g, ' ').trim().split(' ')[0] || '';
+  return token ? token.toUpperCase() : '';
+}
+
+/**
+ * @param {{ sponsorName?: string|null, coSponsorName?: string|null }} args
+ * @returns {string} e.g. "YASHEER - BALAJI" or "YASHEER - N/A"
+ */
+export function formatCommunityIdPairLabel({
+  sponsorName = null,
+  coSponsorName = null,
+} = {}) {
+  const left = communityIdPairFirstName(sponsorName);
+  if (!left) return '';
+  const right = communityIdPairFirstName(coSponsorName) || 'N/A';
+  return `${left} - ${right}`;
 }
 
 /**
@@ -262,6 +289,63 @@ export function resolveConfirmedCommunityId({
     return normalizeTeamCodeFromCommunityId(communityId || teamId);
   }
   return normalizeTeamCodeFromCommunityId(teamId);
+}
+
+/**
+ * True only when the requested code matches this user's profile Community ID / TeamId.
+ * Do NOT treat a coach_teams seat alone as ownership — a stale seat on an old code
+ * (e.g. YASHEER12M) while profile still shows YASHEER12MM0 would skip OTP and
+ * Profile would never update ("change does not work").
+ *
+ * @param {{
+ *   code?: unknown,
+ *   storedCommunityId?: unknown,
+ *   confirmedCode?: unknown,
+ *   leadSeatTeamId?: unknown,
+ *   leadSeat?: unknown,
+ * }} args
+ * @returns {boolean}
+ */
+export function userAlreadyOwnsCommunityId({
+  code = null,
+  storedCommunityId = null,
+  confirmedCode = null,
+} = {}) {
+  const normalized = normalizeTeamCodeFromCommunityId(code);
+  if (!normalized) return false;
+  const stored = normalizeTeamCodeFromCommunityId(storedCommunityId);
+  const confirmed = normalizeTeamCodeFromCommunityId(confirmedCode);
+  return stored === normalized || confirmed === normalized;
+}
+
+/**
+ * Drop this user from occupancy so a stale coach_teams / pending row cannot
+ * block Profile Change of Community ID (must still go through sponsor OTP).
+ *
+ * @param {{
+ *   sponsorUserId?: number|null,
+ *   coSponsorUserId?: number|null,
+ *   pendingCreateRequesterId?: number|null,
+ * }} occupancy
+ * @param {unknown} userId
+ */
+export function occupancyWithoutUser(occupancy = {}, userId = null) {
+  const uid = toPositiveUserId(userId);
+  if (!uid) {
+    return {
+      sponsorUserId: toPositiveUserId(occupancy?.sponsorUserId),
+      coSponsorUserId: toPositiveUserId(occupancy?.coSponsorUserId),
+      pendingCreateRequesterId: toPositiveUserId(occupancy?.pendingCreateRequesterId),
+    };
+  }
+  const sponsorUserId = toPositiveUserId(occupancy?.sponsorUserId);
+  const coSponsorUserId = toPositiveUserId(occupancy?.coSponsorUserId);
+  const pendingCreateRequesterId = toPositiveUserId(occupancy?.pendingCreateRequesterId);
+  return {
+    sponsorUserId: sponsorUserId === uid ? null : sponsorUserId,
+    coSponsorUserId: coSponsorUserId === uid ? null : coSponsorUserId,
+    pendingCreateRequesterId: pendingCreateRequesterId === uid ? null : pendingCreateRequesterId,
+  };
 }
 
 /**

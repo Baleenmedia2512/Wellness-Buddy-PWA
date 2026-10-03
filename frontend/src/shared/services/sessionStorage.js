@@ -172,8 +172,9 @@ export const clearProfileComplete = (email) => {
 };
 
 // ─── bcmProfileReviewed_<userId> ───────────────────────────────────────────
-// BCM lead: show Complete Profile once so the member can review prefilled
-// height/weight/etc., even when profileComplete is already true.
+// Device cache for BCM Complete Profile review. Source of truth is
+// team_table.BcmProfileReviewedAt (GET profile → bcmProfileReviewed).
+// Cleared on APK reinstall — server flag prevents re-prompt after reinstall.
 export const isBcmProfileReviewed = (userId) => {
   if (userId == null || String(userId).trim() === "") return false;
   return safeGet("bcmProfileReviewed_" + String(userId)) === "true";

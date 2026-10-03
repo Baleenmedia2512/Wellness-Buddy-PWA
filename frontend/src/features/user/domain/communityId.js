@@ -59,12 +59,94 @@ export function isCommunityIdConfirmed({ teamSeat } = {}) {
 }
 
 /**
- * Pending Community ID banner — shown in the yellow box under the field.
- * @param {{ sponsorName?: string|null }} [args]
+ * Pending Community ID banner — yellow box under the field.
+ * @param {{ sponsorName?: string|null, sponsorEmail?: string|null }} [args]
  * @returns {string}
  */
-export function communityIdPendingApprovalMessage({ sponsorName = '' } = {}) {
-  const who = String(sponsorName || '').replace(/\s+/g, ' ').trim();
-  const named = who ? `your sponsor (${who})` : 'your sponsor';
-  return `Approval code sent to ${named}. Get approval from your sponsor by entering the verification code sent to your sponsor.`;
+export function communityIdPendingApprovalMessage({
+  sponsorName = '',
+  sponsorEmail = '',
+} = {}) {
+  const who = String(sponsorName || '').replace(/\s+/g, ' ').trim() || 'your sponsor';
+  const email = String(sponsorEmail || '').trim();
+  const target = email ? `${who} (${email})` : who;
+  return `4-digit code sent to ${target}. Enter the code to continue.`;
+}
+
+/**
+ * Parts for bolding the sponsor target in the pending banner.
+ * @param {{ sponsorName?: string|null, sponsorEmail?: string|null }} [args]
+ * @returns {{ before: string, highlight: string, after: string }}
+ */
+export function communityIdPendingApprovalParts({
+  sponsorName = '',
+  sponsorEmail = '',
+} = {}) {
+  const who = String(sponsorName || '').replace(/\s+/g, ' ').trim() || 'your sponsor';
+  const email = String(sponsorEmail || '').trim();
+  return {
+    before: '4-digit code sent to ',
+    highlight: email ? `${who} (${email})` : who,
+    after: '. Enter the code to continue.',
+  };
+}
+
+/**
+ * First name token for the pair line under Community ID.
+ * @param {unknown} name
+ * @returns {string}
+ */
+export function communityIdPairFirstName(name) {
+  const token = String(name || '').replace(/\s+/g, ' ').trim().split(' ')[0] || '';
+  return token ? token.toUpperCase() : '';
+}
+
+const PAIR_EMPTY = 'N/A';
+
+function normalizePairToken(token) {
+  const text = String(token || '').trim();
+  if (!text || text.toUpperCase() === 'NA' || text.toUpperCase() === 'N/A') return PAIR_EMPTY;
+  return text;
+}
+
+/**
+ * Coach and co-coach tokens for the Community ID header.
+ * Missing side is N/A so both names stay visible.
+ *
+ * @param {{ sponsorName?: string|null, coSponsorName?: string|null, label?: string|null }} [args]
+ * @returns {{ left: string, right: string }|null}
+ */
+export function communityIdPairDisplayParts({
+  sponsorName = null,
+  coSponsorName = null,
+  label = null,
+} = {}) {
+  const leftName = communityIdPairFirstName(sponsorName);
+  const rightName = communityIdPairFirstName(coSponsorName);
+  if (leftName || rightName) {
+    return {
+      left: leftName || PAIR_EMPTY,
+      right: rightName || PAIR_EMPTY,
+    };
+  }
+  const provided = String(label || '').trim();
+  if (!provided) return null;
+  const parts = provided.split(/\s+-\s+/).map((part) => part.trim()).filter(Boolean);
+  if (parts.length >= 2) {
+    return {
+      left: normalizePairToken(parts[0]),
+      right: normalizePairToken(parts.slice(1).join(' - ')),
+    };
+  }
+  return { left: normalizePairToken(provided), right: PAIR_EMPTY };
+}
+
+/**
+ * @param {{ sponsorName?: string|null, coSponsorName?: string|null, label?: string|null }} [args]
+ * @returns {string} e.g. "YASHEER - BALAJI" or "YASHEER - N/A"
+ */
+export function formatCommunityIdPairLabel(args = {}) {
+  const parts = communityIdPairDisplayParts(args);
+  if (!parts) return '';
+  return `${parts.left} - ${parts.right}`;
 }

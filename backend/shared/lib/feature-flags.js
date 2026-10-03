@@ -336,6 +336,15 @@ registerFlag({
 });
 
 registerFlag({
+  name:           'ff.r2-transformation-photos',
+  owner:          '@principal-eng',
+  createdAt:      '2026-09-22',
+  removeBy:       '2027-03-22',
+  description:    'Dual-write Left/Centre/Right transformation_photos to R2 keys; keep base64 in JSONB for live apps. GET profile returns R2 URLs for app ≥3.5.1; older/missing get base64. Kill switch when R2 env missing.',
+  defaultEnabled: true,
+});
+
+registerFlag({
   name:           'ff.nav-page-access',
   owner:          '@principal-eng',
   createdAt:      '2026-09-17',
@@ -350,5 +359,23 @@ registerFlag({
   createdAt:      '2026-09-18',
   removeBy:       '2027-03-18',
   description:    'ADR-0013 — Profile Community ID create/co-sponsor requires 24h sponsor OTP. Kill switch; version routing (3.5.0+) skips immediate Community ID apply on profile save. Live 3.4.9 stays on legacy profile save.',
+  defaultEnabled: true,
+});
+
+registerFlag({
+  name:           'ff.height-change-otp',
+  owner:          '@principal-eng',
+  createdAt:      '2026-09-25',
+  removeBy:       '2027-03-25',
+  description:    'Profile height: first save free; later changes need the coach (CoachId) to approve by email. Kill switch; version routing (3.5.0+) strips differing height on profile save.',
+  defaultEnabled: true,
+});
+
+registerFlag({
+  name:           'ff.broadcast',
+  owner:          '@principal-eng',
+  createdAt:      '2026-09-29',
+  removeBy:       '2027-03-29',
+  description:    'BroadCast paid screen: how-to video and payment entry. Upload and Burst stay locked until recharge. Kill switch hides the tab.',
   defaultEnabled: true,
 });

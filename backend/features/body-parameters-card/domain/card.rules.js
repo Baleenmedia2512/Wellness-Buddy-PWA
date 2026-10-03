@@ -114,8 +114,52 @@ export function shouldClearBpcLeadCoachId({
  * Message when BCM is blocked for an activated member (coach OTP approved).
  * Approved coach/sponsor selection only happens after the member signed in and
  * selected a coach — that is the product definition of "activated".
+ * Activated members are not shown for edit and cannot be overridden.
  */
 export const BCM_ACTIVATED_MEMBER_MESSAGE = 'User already exists';
+
+/**
+ * Another counsellor (including a co-sponsor) already saved this BCM.
+ * Only the counsellor who created it may override, and only before activation.
+ */
+export const BCM_COUNSELLED_BY_OTHER_MESSAGE =
+  'This BCM was counselled by someone else. You cannot override it.';
+
+/** Coach choice when the typed phone already has a card this coach created. */
+export const BCM_PHONE_CONFLICT_ACTIONS = Object.freeze(['override', 'new']);
+
+/**
+ * Activated members are never created or updated from BCM, including Override / New.
+ * @param {string|null|undefined} _phoneConflictAction
+ * @returns {boolean}
+ */
+export function allowsActivatedBcmCreate(_phoneConflictAction) {
+  return false;
+}
+
+/**
+ * Override is allowed only when this coach counselled the BCM and the member
+ * has not started using the app.
+ *
+ * @param {{ activated?: boolean, counselledByViewer?: boolean }} input
+ * @returns {boolean}
+ */
+export function canOverrideBcmForMember({
+  activated = false,
+  counselledByViewer = false,
+} = {}) {
+  if (activated) return false;
+  return counselledByViewer === true;
+}
+
+/**
+ * True when create must insert a new card even if this coach already has one.
+ * @param {string|null|undefined} phoneConflictAction
+ * @returns {boolean}
+ */
+export function shouldForceNewBcmCard(phoneConflictAction) {
+  return phoneConflictAction === 'new';
+}
 
 /**
  * True when this member must be excluded from BCM create/list.

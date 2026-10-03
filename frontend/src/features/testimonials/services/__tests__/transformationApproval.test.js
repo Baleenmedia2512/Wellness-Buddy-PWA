@@ -8,6 +8,8 @@ import {
   isPlaceholderDurationText,
   liveWeightDiffKg,
   canShareTransformationPhoto,
+  hasApprovalReadyBeforePhoto,
+  hasStoredTransformationPhotoCard,
 } from '../testimonialFormUtils.js';
 
 describe('duration usability', () => {
@@ -35,5 +37,42 @@ describe('canShareTransformationPhoto', () => {
     assert.equal(canShareTransformationPhoto({ status: 'pending' }), false);
     assert.equal(canShareTransformationPhoto({ status: 'incomplete' }), false);
     assert.equal(canShareTransformationPhoto(null), false);
+  });
+});
+
+describe('approval-ready Transformation photos', () => {
+  it('rejects profile-seeded URLs as stored photo cards', () => {
+    assert.equal(hasStoredTransformationPhotoCard({
+      beforeImageUrl: 'https://cdn.example/left.jpg',
+      afterImageUrl: 'https://cdn.example/left.jpg',
+      photosFromProfileSeed: true,
+    }), false);
+    assert.equal(hasStoredTransformationPhotoCard({
+      id: 9,
+      beforeImageUrl: 'https://cdn.example/before.jpg',
+      afterImageUrl: 'https://cdn.example/after.jpg',
+    }), true);
+  });
+
+  it('requires draft Before bytes when Mine is only profile-seeded', () => {
+    const seeded = {
+      photosFromProfileSeed: true,
+      beforeImageUrl: 'https://cdn.example/left.jpg',
+      afterImageUrl: 'https://cdn.example/left.jpg',
+    };
+    assert.equal(hasApprovalReadyBeforePhoto({ testimonial: seeded }), false);
+    assert.equal(hasApprovalReadyBeforePhoto({
+      testimonial: seeded,
+      draftBefore: { imageBase64: 'abc' },
+    }), true);
+  });
+
+  it('accepts a stored Transformation Before for re-submit OTP', () => {
+    assert.equal(hasApprovalReadyBeforePhoto({
+      testimonial: {
+        id: 3,
+        beforeImageUrl: 'https://cdn.example/before.jpg',
+      },
+    }), true);
   });
 });

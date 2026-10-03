@@ -617,10 +617,6 @@ export async function editTestimonial(rawBody) {
   const isNowComplete = hasRealAfterPhoto;
   const afterWeightNow = updates.afterWeightKg ?? existing.after_weight_kg;
 
-  if (isNowComplete && resolvedHealthIssues.length === 0) {
-    throw new ValidationError(422, 'At least one recovered health issue is required');
-  }
-
   if (isNowComplete) {
     // Full testimonial â€” reset to pending and issue new OTP
     const otp       = generateOtp();
@@ -820,6 +816,7 @@ export async function listForCoach(rawQuery) {
         lastUpdated: lean.lastUpdated,
         uploadStatus: lean.uploadStatus,
         progress: lean.progress,
+        canEditHealthIssues: lean.canEditHealthIssues !== false,
       };
     }),
   );
@@ -1121,14 +1118,10 @@ export async function submitVideo(rawBody) {
     uploads.businessVideoPath = payload.businessVideoPath;
   }
 
-  // Replace directly so removals are honoured.
+  // Replace directly so removals are honoured. Health issues are optional.
   const resolvedHealthIssues = payload.recoveredHealthIssues !== undefined
     ? normalizeHealthIssuesList(payload.recoveredHealthIssues)
     : (existing.recovered_health_issues ?? []);
-
-  if (resolvedHealthIssues.length === 0) {
-    throw new ValidationError(422, 'At least one recovered health issue is required before uploading videos for verification.');
-  }
 
   const otp       = generateOtp();
   const otpHash   = await bcrypt.hash(otp, 10);
@@ -1518,15 +1511,8 @@ export async function submitAllEdits(rawBody) {
     photoUpdates.afterImagePath = newBeforePath;
   }
 
-  // Validate health issues are present when completing a testimonial
+  // Health issues are optional — empty list is allowed on photo submit.
   const resolvedHealthIssues = mergedIssues;
-
-  if (photoNeedsOtp && resolvedHealthIssues.length === 0) {
-    throw new ValidationError(
-      422,
-      'At least one recovered health issue is required before submitting before + after photos.',
-    );
-  }
 
   // Capture previous photo paths for email diff BEFORE saving
   const prevBeforeImagePath = slots.has('before') ? existing.before_image_path : null;
@@ -1539,6 +1525,15 @@ export async function submitAllEdits(rawBody) {
     || existing.status === 'incomplete';
 
   const needsOtp = photoNeedsOtp || Boolean(issuesOtpChannel) || hasVideoDirty;
+
+  // Member asked for coach approval — never silent-save with otpSent:false
+  // (that surfaces as "Coach approval did not start" in the app).
+  if (payload.submitForApproval && !needsOtp) {
+    throw new ValidationError(
+      422,
+      'Add before and after photos on Transformation, then submit for coach approval.',
+    );
+  }
 
   if (!needsOtp) {
     if (hasPhotoDirty && !isComplete) {
@@ -1812,13 +1807,14 @@ export async function resendUnifiedOtp(rawBody) {
 
 /**
  * Coach updates a reporting member's recovered health issues (no OTP).
+ * Downline / shared-team only — never an upline ancestor.
  */
 export async function updateMemberHealthIssues(rawBody) {
   const payload = validateUpdateMemberHealthIssues(rawBody);
 
-  const allowed = await repo.isReportingMember(payload.coachId, payload.userId, 'full');
+  const allowed = await repo.isEditableReportingMember(payload.coachId, payload.userId);
   if (!allowed) {
-    throw new ValidationError(403, 'Member is not in your team hierarchy');
+    throw new ValidationError(403, 'You can only update health issues for your team members, not your upline');
   }
 
   const existing = await repo.findByUserId(payload.userId);
@@ -1829,7 +1825,7 @@ export async function updateMemberHealthIssues(rawBody) {
   const mergedIssues = normalizeHealthIssuesList(payload.recoveredHealthIssues);
 
   await repo.updateTestimonial(existing.id, {
-    recoveredHealthIssues: resolvedIssues,
+    recoveredHealthIssues: mergedIssues,
   });
 
   return {
@@ -1837,7 +1833,7 @@ export async function updateMemberHealthIssues(rawBody) {
     body: {
       success: true,
       message: 'Health issue updated.',
-      recoveredHealthIssues: resolvedIssues,
+      recoveredHealthIssues: mergedIssues,
     },
   };
 }

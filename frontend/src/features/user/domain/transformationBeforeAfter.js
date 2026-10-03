@@ -169,15 +169,21 @@ function isIncompleteProfileMappedAfter(testimonial, afterValue) {
 
 /**
  * Transformation Before/After from Profile slots:
- * Left → Before always when present.
- * After defaults to Left only when no After is stored yet (new users).
+ * Left → Before always when present (new users with Left/Centre/Right uploads).
+ * After defaults to Left only when no After is stored yet.
  * Profile Right never maps to After. A later Left change updates Before only.
  */
 export function seedMineTestimonialFromProfileSlots(testimonial, { leftUrl, weightKg } = {}) {
+  // Existing user: keep Transformation photos as stored — do not overlay Profile.
+  if (isStoredPhoto(testimonial?.beforeImageUrl)) {
+    return { ...testimonial };
+  }
+
   const hasLeft = isStoredPhoto(leftUrl);
   const weight = firstPositiveKg(weightKg);
   if (!testimonial && !hasLeft && weight == null) return null;
 
+  const hadStoredBefore = isStoredPhoto(testimonial?.beforeImageUrl);
   const next = testimonial ? { ...testimonial } : {
     status: 'incomplete',
     recoveredHealthIssues: [],
@@ -190,6 +196,11 @@ export function seedMineTestimonialFromProfileSlots(testimonial, { leftUrl, weig
 
   if (hasLeft) {
     next.beforeImageUrl = String(leftUrl).trim();
+    // Profile Left is display-only — Transformation submit must upload real photos
+    // (profile ↔ Transformation sync is disabled).
+    if (!hadStoredBefore) {
+      next.photosFromProfileSeed = true;
+    }
   }
   const beforeW = firstPositiveKg(next.beforeWeightKg, weight);
   if (beforeW != null) next.beforeWeightKg = beforeW;
@@ -197,6 +208,7 @@ export function seedMineTestimonialFromProfileSlots(testimonial, { leftUrl, weig
   if (!realAfter && !storedAfter) {
     if (hasLeft) {
       next.afterImageUrl = String(leftUrl).trim();
+      if (!hadStoredBefore) next.photosFromProfileSeed = true;
     } else if (isStoredPhoto(next.beforeImageUrl)) {
       next.afterImageUrl = next.beforeImageUrl;
     }

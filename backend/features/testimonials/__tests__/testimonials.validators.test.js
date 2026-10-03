@@ -42,14 +42,13 @@ describe('validateSubmitTestimonial', () => {
     assert.deepEqual(result.recoveredHealthIssues, ['Diabetes']);
   });
 
-  it('requires recovered health issues when after photo is included', () => {
-    assert.throws(
-      () => validateSubmitTestimonial(beforeOnlyBody({
-        afterImageBase64: TINY_BASE64,
-        afterWeightKg: 72,
-      })),
-      (err) => err instanceof ValidationError && /recovered health issue/i.test(err.message),
-    );
+  it('accepts after photo submit without recovered health issues', () => {
+    const result = validateSubmitTestimonial(beforeOnlyBody({
+      afterImageBase64: TINY_BASE64,
+      afterWeightKg: 72,
+    }));
+    assert.equal(result.hasAfter, true);
+    assert.deepEqual(result.recoveredHealthIssues, []);
   });
 
   it('accepts after photo submit when recovered health issues are present', () => {
@@ -60,6 +59,17 @@ describe('validateSubmitTestimonial', () => {
     }));
     assert.equal(result.hasAfter, true);
     assert.deepEqual(result.recoveredHealthIssues, ['Diabetes']);
+  });
+
+  it('accepts decimal before/after weights', () => {
+    const result = validateSubmitTestimonial(beforeOnlyBody({
+      beforeWeightKg: '85.5',
+      afterImageBase64: TINY_BASE64,
+      afterWeightKg: '72,25',
+      recoveredHealthIssues: [],
+    }));
+    assert.equal(result.beforeWeightKg, 85.5);
+    assert.equal(result.afterWeightKg, 72.25);
   });
 });
 
@@ -94,15 +104,13 @@ describe('validateUpdateMemberHealthIssues', () => {
     );
   });
 
-  it('requires at least one non-empty health issue', () => {
-    assert.throws(
-      () => validateUpdateMemberHealthIssues({
-        coachId: 10,
-        userId: 713,
-        recoveredHealthIssues: [],
-      }),
-      (err) => err instanceof ValidationError && /recovered health issue/i.test(err.message),
-    );
+  it('accepts an empty recoveredHealthIssues list', () => {
+    const result = validateUpdateMemberHealthIssues({
+      coachId: 10,
+      userId: 713,
+      recoveredHealthIssues: [],
+    });
+    assert.deepEqual(result.recoveredHealthIssues, []);
   });
 });
 

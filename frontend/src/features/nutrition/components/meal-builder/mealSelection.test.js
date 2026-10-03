@@ -33,10 +33,11 @@ describe('meal selection helpers', () => {
     quantity_g: 50,
   };
 
-  test('normalizeServings falls back to 1', () => {
-    expect(normalizeServings(2)).toBe(2);
-    expect(normalizeServings(0)).toBe(1);
-    expect(normalizeServings('x')).toBe(1);
+  test('normalizeServings supports decimal quantities like 0.5 and 1.5 and falls back to 0.5', () => {
+    expect(normalizeServings(0.5)).toBe(0.5);
+    expect(normalizeServings(1.5)).toBe(1.5);
+    expect(normalizeServings(0)).toBe(0.5);
+    expect(normalizeServings('x')).toBe(0.5);
   });
 
   test('computeSelectedKcal scales by servings', () => {

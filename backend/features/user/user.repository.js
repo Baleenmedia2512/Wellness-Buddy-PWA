@@ -316,6 +316,27 @@ export async function listAvatarsForRecompress({ from = 0, to = 49 } = {}) {
 }
 
 /**
+ * Rows with transformation_photos JSONB (filter in script for pending R2 keys).
+ * @param {{ from: number, to: number }} range inclusive Supabase .range()
+ */
+export async function listTransformationPhotosForBackfill({ from = 0, to = 49 } = {}) {
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from(TEAM)
+    .select('"UserId", transformation_photos')
+    .not('transformation_photos', 'is', null)
+    .order('UserId', { ascending: true })
+    .range(from, to);
+  if (error) {
+    if (isMissingColumn(error, 'transformation_photos')) {
+      throw new Error('transformation_photos column missing — run its migration before backfill');
+    }
+    throw error;
+  }
+  return data || [];
+}
+
+/**
  * All persisted R2 keys (any ProfileImage type). Used to avoid deleting live avatars.
  * @param {{ from: number, to: number }} range inclusive Supabase .range()
  */
@@ -557,6 +578,46 @@ export async function updateUserById(userId, updateData) {
     .update(updateData)
     .eq('UserId', userId);
   if (error) throw error;
+}
+
+/**
+ * Soft-load EntryUser + BcmProfileReviewedAt (column may be missing pre-migration).
+ * @returns {Promise<{ EntryUser?: string|null, BcmProfileReviewedAt?: string|null }|null>}
+ */
+export async function getBcmReviewFields(userId) {
+  try {
+    return await findByUserId(userId, '"EntryUser", "BcmProfileReviewedAt"');
+  } catch (err) {
+    const msg = String(err?.message || err || '');
+    if (/BcmProfileReviewedAt/i.test(msg)) {
+      try {
+        return await findByUserId(userId, '"EntryUser"');
+      } catch (err2) {
+        const msg2 = String(err2?.message || err2 || '');
+        if (/EntryUser|column/i.test(msg2)) return null;
+        throw err2;
+      }
+    }
+    if (/EntryUser|column/i.test(msg)) return null;
+    throw err;
+  }
+}
+
+/**
+ * Set BcmProfileReviewedAt once (idempotent). No-ops if column missing.
+ * @returns {Promise<boolean>} true when recorded (or already set)
+ */
+export async function markBcmProfileReviewedIfNeeded(userId, reviewedAt) {
+  try {
+    const row = await findByUserId(userId, '"BcmProfileReviewedAt"');
+    if (row?.BcmProfileReviewedAt) return true;
+    await updateUserById(userId, { BcmProfileReviewedAt: reviewedAt });
+    return true;
+  } catch (err) {
+    const msg = String(err?.message || err || '');
+    if (/BcmProfileReviewedAt|column/i.test(msg)) return false;
+    throw err;
+  }
 }
 
 /**

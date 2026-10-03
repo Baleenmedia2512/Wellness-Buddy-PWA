@@ -16,6 +16,7 @@
  */
 
 import React, { useState, useRef, useEffect } from 'react';
+import { createPortal, flushSync } from 'react-dom';
 import { Smartphone, GraduationCap, HelpCircle, Share2, ArrowUp, ArrowDown, Star } from 'lucide-react';
 import { useSwipeToDelete } from '../../../../shared/hooks/useSwipeToDelete';
 import { parseAnalysisData, recalculateTotals, getMealCategory } from '../../../nutrition/services/nutritionDashboard/analysisHelpers';
@@ -36,7 +37,12 @@ import {
   resolveWeightDeltaDisplay,
   formatPositiveWeightKg,
 } from '../../domain/share';
-import { resolveDiaryThumbSource, fetchDiaryShareImageSrc, waitForShareImageDecode } from '../../utils/diaryThumbUrl';
+import {
+  resolveDiaryThumbSource,
+  fetchDiaryShareImageSrc,
+  waitForShareImageDecode,
+  inlineDiaryShareImages,
+} from '../../utils/diaryThumbUrl';
 import { activityPhotoTemplate, handleActivityPhotoError } from '../../../../shared/assets/activityPhotoTemplates';
 
 /** Red up / green down arrow for weight delta (SVG — avoids blue emoji squares). */
@@ -561,6 +567,7 @@ export function WeightRow({
   const { swipe, swipeEnabled } = useDiaryRowSwipe({ canDelete, onDelete, entry });
   const [isSharing, setIsSharing] = useState(false);
   const [shareImgSrc, setShareImgSrc] = useState(null);
+  const [shareImgHeight, setShareImgHeight] = useState(null);
   const shareCardRef = useRef(null);
   const shareImgRef = useRef(null);
   const thumb = thumbPropsFromEntry(entry, { ownerUserId, viewerUserId });
@@ -586,19 +593,26 @@ export function WeightRow({
         imgSrc = await fetchDiaryShareImageSrc(thumb);
       }
       if (imgSrc) {
-        setShareImgSrc(imgSrc);
-        if (shareImgRef.current) {
-          shareImgRef.current.src = imgSrc;
-          shareImgRef.current.style.display = 'block';
+        flushSync(() => {
+          setShareImgSrc(imgSrc);
+          setShareImgHeight(null);
+        });
+        const img = shareImgRef.current;
+        if (img) {
           try {
-            if (typeof shareImgRef.current.decode === 'function') {
-              await shareImgRef.current.decode();
+            if (typeof img.decode === 'function') {
+              await img.decode();
             } else {
               await waitForShareImageDecode(imgSrc);
             }
           } catch {
             await waitForShareImageDecode(imgSrc);
           }
+          const frameWidth = shareCardRef.current?.clientWidth || 420;
+          const nw = img.naturalWidth || frameWidth;
+          const nh = img.naturalHeight || frameWidth;
+          const height = Math.max(1, Math.min(420, Math.round(frameWidth * (nh / nw))));
+          flushSync(() => setShareImgHeight(height));
         } else {
           await waitForShareImageDecode(imgSrc);
         }
@@ -633,24 +647,23 @@ export function WeightRow({
     }
   };
 
-  return (
-    <SwipeDeleteShell swipe={swipe} enabled={swipeEnabled}>
-      {/* Off-screen weight share card */}
+  const shareCard = (
       <div
         ref={shareCardRef}
         aria-hidden="true"
         style={{ position: 'fixed', left: '-9999px', top: 0, width: 420, background: '#ffffff', fontFamily: '-apple-system, BlinkMacSystemFont, sans-serif' }}
       >
-        <div style={{ background: 'linear-gradient(135deg, #16a34a 0%, #15803d 100%)', padding: '16px 20px 12px' }}>
-          <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.7)', margin: 0, letterSpacing: 0.3 }}>WELLNESS VALLEY · {shareTime}</p>
-          <div style={{ marginTop: 8, lineHeight: '24px', fontSize: 0 }}>
+        <div style={{ background: 'linear-gradient(135deg, #16a34a 0%, #15803d 100%)', padding: '16px 20px 14px' }}>
+          <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.7)', margin: 0, letterSpacing: 0.3, lineHeight: '16px' }}>WELLNESS VALLEY · {shareTime}</p>
+          <p style={{ margin: '10px 0 0', padding: '0 0 4px', lineHeight: '32px' }}>
             <img
               src={WEIGHT_MANUAL_LOG_ICON_SRC}
               alt=""
+              width="22"
+              height="22"
               style={{
                 width: 22,
                 height: 22,
-                objectFit: 'contain',
                 display: 'inline-block',
                 verticalAlign: 'middle',
                 marginRight: 8,
@@ -659,25 +672,25 @@ export function WeightRow({
             <span style={{
               display: 'inline-block',
               verticalAlign: 'middle',
-              fontSize: 20,
+              fontSize: 22,
               fontWeight: 700,
-              color: '#fff',
-              lineHeight: '24px',
+              color: '#ffffff',
+              lineHeight: '32px',
             }}
             >
               Weight Update
             </span>
-          </div>
+          </p>
         </div>
-        {thumb.hasImage && (
+        {shareImgSrc && (
           <img
             ref={shareImgRef}
+            src={shareImgSrc}
             alt=""
             style={{
               width: '100%',
-              height: 'auto',
-              display: 'none',
-              maxHeight: 420,
+              height: shareImgHeight ? `${shareImgHeight}px` : 'auto',
+              display: 'block',
               objectFit: 'contain',
               background: '#f9fafb',
             }}
@@ -716,6 +729,11 @@ export function WeightRow({
           <p style={{ fontSize: 9, color: '#16a34a', margin: 0, textAlign: 'center', fontWeight: 600, letterSpacing: 0.3 }}>Track your wellness journey • Wellness Valley</p>
         </div>
       </div>
+  );
+
+  return (
+    <SwipeDeleteShell swipe={swipe} enabled={swipeEnabled}>
+      {typeof document !== 'undefined' ? createPortal(shareCard, document.body) : shareCard}
 
       {swipeEnabled && (
         <div aria-hidden className="absolute inset-0 z-0 flex items-center justify-end pr-5 overflow-hidden rounded-xl">
@@ -818,6 +836,8 @@ export function EducationRow({
     if (swipe.dragging || swipe.leaving || isSharing || !swipe.elRef.current) return;
     setIsSharing(true);
     try {
+      // Inline API→R2 photos as data URLs so html2canvas keeps the thumb.
+      await inlineDiaryShareImages(swipe.elRef.current);
       await captureAndShare(swipe.elRef.current, {
         title: `Education - ${p.topic || 'Session'}`,
         text: withMarathonWhatsAppNotice(shareText, { timezoneIana }),
@@ -926,6 +946,8 @@ export function GoodHabitRow({
     if (swipe.dragging || swipe.leaving || isSharing || !swipe.elRef.current) return;
     setIsSharing(true);
     try {
+      // Inline API→R2 photos as data URLs so html2canvas keeps the thumb.
+      await inlineDiaryShareImages(swipe.elRef.current);
       await captureAndShare(swipe.elRef.current, {
         title,
         text: withMarathonWhatsAppNotice(shareText, { timezoneIana }),

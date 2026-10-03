@@ -1,6 +1,7 @@
 import { getSupabaseClient } from '../../../utils/supabaseClient.js';
 import logger from '../../../shared/lib/logger.js';
 import { nowUtc } from '../../../shared/lib/datetime/index.js';
+import { bustRaceLeaderboardCaches } from '../../../utils/cache.js';
 import { filterEducationLogsOnly } from '../domain/education-log.helpers.js';
 import {
   applyDayFilterWidened,
@@ -137,6 +138,7 @@ export async function upsertDailyScore({
     });
     return null;
   }
+  bustRaceLeaderboardCaches();
   return data;
 }
 

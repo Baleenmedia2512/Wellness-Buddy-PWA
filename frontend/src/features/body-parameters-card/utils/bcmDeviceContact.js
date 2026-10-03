@@ -14,7 +14,7 @@ import { Capacitor } from '@capacitor/core';
 import { Contacts, PhoneType } from '@capacitor-community/contacts';
 import { debugLog } from '../../../shared/utils/logger.js';
 import { buildBcmContactDisplayName } from '../domain/bcmContactName.rules.js';
-import { normalizePhoneDigits, phonesMatch } from '../domain/bcmContactPhone.rules.js';
+import { normalizePhoneDigits } from '../domain/bcmContactPhone.rules.js';
 import * as PermissionManager from '../../../shared/services/permissionManager.js';
 import BcmContacts from '../../../shared/plugins/bcmContactsPlugin.js';
 import {
@@ -28,9 +28,6 @@ export { normalizePhoneDigits, phonesMatch } from '../domain/bcmContactPhone.rul
 
 const BCM_CONTACT_NOTE = 'Wellness Valley BCM';
 const CONTACT_ID_PREFIX = 'wv.bcm.contactId.';
-
-/** Trailing yymmdd (new) or yy/mm/dd (legacy) used in BCM contact display names. */
-const BCM_NAME_DATE_RE = /(?:\d{6}|\d{2}\/\d{2}\/\d{2})\s*$/;
 
 function contactIdStorageKey(phone) {
   const digits = normalizePhoneDigits(phone);
@@ -75,20 +72,6 @@ function digitsOnlyPhone(phone) {
   const digits = raw.replace(/\D/g, '');
   if (!digits) return '';
   return hasPlus ? `+${digits}` : digits;
-}
-
-function contactDisplayName(contact) {
-  return String(
-    contact?.name?.display
-    || contact?.name?.given
-    || '',
-  ).trim();
-}
-
-function looksLikeBcmContact(contact) {
-  const note = String(contact?.note || '');
-  if (note.includes(BCM_CONTACT_NOTE)) return true;
-  return BCM_NAME_DATE_RE.test(contactDisplayName(contact));
 }
 
 /** Pull message/code from Capacitor / plugin Error shapes. */
@@ -153,32 +136,21 @@ async function resolveContactsPermissionWithPrompt() {
 }
 
 /**
- * Find existing BCM-managed contact ids for this phone (stored id + address-book scan).
+ * Find existing BCM-managed contact ids for this phone.
+ * Fast path: use the id we stored on last save (no full address-book scan).
+ * Full scan only when we have no stored id — that scan is slow on large books.
  * @param {string} phone
  * @returns {Promise<string[]>}
  */
 async function findBcmContactIds(phone) {
-  const ids = new Set();
   const stored = readStoredContactId(phone);
-  if (stored) ids.add(stored);
-
-  try {
-    const { contacts } = await Contacts.getContacts({
-      projection: { name: true, phones: true, note: true },
-    });
-    for (const c of contacts || []) {
-      if (!c?.contactId) continue;
-      const phoneHit = (c.phones || []).some((p) => phonesMatch(p?.number, phone));
-      if (!phoneHit) continue;
-      if (looksLikeBcmContact(c) || (stored && c.contactId === stored)) {
-        ids.add(c.contactId);
-      }
-    }
-  } catch (err) {
-    debugLog('📱 [BCM contact] getContacts failed', err?.message || err);
+  if (stored) {
+    return [stored];
   }
 
-  return [...ids];
+  // First save for this phone — nothing to overwrite; skip getContacts entirely.
+  // (Scanning the whole address book was the main delay on Override / re-save.)
+  return [];
 }
 
 /**

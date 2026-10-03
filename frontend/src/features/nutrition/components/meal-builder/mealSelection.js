@@ -11,7 +11,7 @@ import {
 
 export function normalizeServings(raw) {
   const n = Number(raw);
-  return Number.isFinite(n) && n > 0 ? n : 1;
+  return Number.isFinite(n) && n > 0 ? n : 0.5;
 }
 
 export function computeSelectedKcal(items = []) {

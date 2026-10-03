@@ -7,10 +7,12 @@ import logger from '../../shared/lib/logger.js';
 import {
   loadReportingContext,
   loadReportingContextForCoach,
-  getFullReportingMembers,
-  getDirectReportingMembers,
   buildReportingChildrenIndex,
 } from '../../utils/reportingHierarchyService.js';
+import {
+  getSharedTeamDirectMembers,
+  getSharedTeamFullMembers,
+} from '../../utils/sharedTeamReporting.js';
 import { shiftDateYmd, IANA_IST } from '../../shared/lib/datetime/index.js';
 import { classifyWeightsForScoreDate } from './domain/wellness-score-report.weight.js';
 
@@ -60,29 +62,40 @@ function getPartnerRootIds(context, rootCoachId) {
 }
 
 /**
+ * Same-community independent coach ids (visibility only).
+ * @param {object} context
+ * @param {number} rootCoachId
+ * @returns {number[]}
+ */
+function getCommunityPeerRootIds(context, rootCoachId) {
+  const rootId = Number(rootCoachId);
+  const peers = Array.isArray(context?.communityPeerRootIds) ? context.communityPeerRootIds : [];
+  return peers
+    .map((id) => Number(id))
+    .filter((id) => Number.isFinite(id) && id !== rootId);
+}
+
+/**
  * Walk the reporting hierarchy and derive parent links plus direct-to-root flags.
- * When a Sponsor/Co-Sponsor partner exists, Direct includes both leads' direct
- * members (and the partner lead) so Ideal Weight Mine/Direct/Full match the
- * shared-team model.
+ * Direct includes:
+ * - own CoachId directs
+ * - Sponsor/Co-Sponsor partner lead + partner directs
+ * - same-Community-ID peer coaches' directs (peer coaches themselves excluded)
  */
 function extractReportingHierarchyMeta(context, rootCoachId) {
   const rootId = Number(rootCoachId);
   const partnerIds = getPartnerRootIds(context, rootId);
+  const communityPeerIds = getCommunityPeerRootIds(context, rootId);
   const parentByUserId = new Map();
   const childrenByParentId = buildReportingChildrenIndex(context, rootId);
   const directToRoot = new Set(
-    getDirectReportingMembers(rootId, context)
+    getSharedTeamDirectMembers(rootId, context)
       .map((m) => Number(m.UserId))
       .filter((id) => id !== rootId),
   );
 
-  for (const partnerId of partnerIds) {
-    directToRoot.add(partnerId);
-    for (const m of getDirectReportingMembers(partnerId, context)) {
-      const id = Number(m.UserId);
-      if (id !== rootId) directToRoot.add(id);
-    }
-    const partnerIndex = buildReportingChildrenIndex(context, partnerId);
+  for (const mergeRootId of [...partnerIds, ...communityPeerIds]) {
+    const partnerIndex = buildReportingChildrenIndex(context, mergeRootId);
     for (const [parentId, childIds] of partnerIndex) {
       if (!childrenByParentId.has(parentId)) {
         childrenByParentId.set(parentId, childIds);
@@ -101,32 +114,14 @@ function extractReportingHierarchyMeta(context, rootCoachId) {
 
 /**
  * Full reporting roster for Ideal Weight / Wellness Score reports.
- * Unions the viewer's tree with Sponsor/Co-Sponsor partner downline when linked.
+ * Unions the viewer's tree with Sponsor/Co-Sponsor partner downline and
+ * same-Community-ID peer coach downlines when linked.
  * @param {number} coachId
  * @param {object} context
  * @returns {import('../../utils/reportingHierarchyService.js').TeamUser[]}
  */
 function collectReportTeamMembers(coachId, context) {
-  const rootId = Number(coachId);
-  const byId = new Map();
-
-  for (const m of getFullReportingMembers(rootId, context)) {
-    byId.set(Number(m.UserId), m);
-  }
-
-  for (const partnerId of getPartnerRootIds(context, rootId)) {
-    const partner = context.userById?.get(partnerId);
-    if (partner && Number(partner.UserId) !== rootId) {
-      byId.set(Number(partner.UserId), partner);
-    }
-    for (const m of getFullReportingMembers(partnerId, context)) {
-      const id = Number(m.UserId);
-      if (id === rootId) continue;
-      if (!byId.has(id)) byId.set(id, m);
-    }
-  }
-
-  return [...byId.values()];
+  return getSharedTeamFullMembers(coachId, context);
 }
 
 function mapReportingMembersToRaw(reportingMembers, coachId, parentByUserId, directToRoot) {
@@ -249,7 +244,7 @@ export async function getFullTeamMembers(coachId) {
 export async function getDirectDownline(coachId) {
   const supabase = getSupabaseClient();
   const context = await loadReportingContextForCoach(supabase, coachId);
-  return getDirectReportingMembers(coachId, context)
+  return getSharedTeamDirectMembers(coachId, context)
     .filter((member) => member.UserId !== coachId)
     .map((member) => ({
       UserId: member.UserId,
@@ -310,6 +305,59 @@ export async function getLatestWeightsForUsers(userIds) {
   for (const rows of results) {
     mergeLatestWeightRows(rows, map);
   }
+  return map;
+}
+
+/**
+ * Batch-load IdealWeightReachedAt for Ideal Weight Report rows.
+ * Missing column → empty map (migration not applied yet).
+ *
+ * @param {number[]} userIds
+ * @returns {Promise<Map<number, string|null>>}
+ */
+export async function getIdealWeightReachedAtForUsers(userIds) {
+  const map = new Map();
+  if (!userIds || userIds.length === 0) return map;
+
+  const uniqueIds = [...new Set(
+    userIds.map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0),
+  )];
+  if (uniqueIds.length === 0) return map;
+
+  const supabase = getSupabaseClient();
+  const chunks = [];
+  for (let i = 0; i < uniqueIds.length; i += WEIGHT_USER_ID_CHUNK) {
+    chunks.push(uniqueIds.slice(i, i + WEIGHT_USER_ID_CHUNK));
+  }
+
+  try {
+    const results = await Promise.all(
+      chunks.map(async (chunk) => {
+        const { data, error } = await supabase
+          .from('team_table')
+          .select('"UserId", "IdealWeightReachedAt"')
+          .in('"UserId"', chunk);
+        if (error) throw error;
+        return data || [];
+      }),
+    );
+
+    for (const rows of results) {
+      for (const row of rows) {
+        const uid = Number(row.UserId);
+        if (!Number.isFinite(uid)) continue;
+        map.set(uid, row.IdealWeightReachedAt ?? null);
+      }
+    }
+  } catch (err) {
+    const msg = String(err?.message || err || '');
+    if (/IdealWeightReachedAt/i.test(msg) && /column|does not exist|not find|unknown/i.test(msg)) {
+      logger.warn('[reports] IdealWeightReachedAt missing — run add_ideal_weight_reached_columns.sql');
+      return map;
+    }
+    throw err;
+  }
+
   return map;
 }
 

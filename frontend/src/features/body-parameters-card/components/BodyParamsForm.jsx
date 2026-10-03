@@ -12,6 +12,7 @@ import PhoneAutocomplete from './PhoneAutocomplete.jsx';
 import NativeInput from '../../../shared/components/NativeInput.jsx';
 import HealthIssuesFilterSelect from './HealthIssuesFilterSelect.jsx';
 import BcmUnsavedChangesModal from './BcmUnsavedChangesModal.jsx';
+import BcmPhoneExistsModal from './BcmPhoneExistsModal.jsx';
 import DietDropdown from '../../user/components/profile/DietDropdown.js';
 import PhysicalActivityField from '../../user/components/profile/PhysicalActivityField.js';
 import TransformationPhotosSection from '../../user/components/profile/TransformationPhotosSection.js';
@@ -251,7 +252,13 @@ const BodyParamsForm = ({
     setShowUnsavedModal(false);
   };
 
+  const shareOnly = vm.isEditMode && !vm.hasUnsavedChanges;
+
   const handleSave = async () => {
+    if (shareOnly) {
+      vm.handleShareExisting();
+      return;
+    }
     vm.markAttemptedSubmit();
     const missing = getFirstMissingBcmRequiredField(vm.form);
     if (missing === 'name') {
@@ -259,6 +266,10 @@ const BodyParamsForm = ({
       return;
     }
     if (missing === 'phoneNumber') {
+      scrollToField(phoneRef);
+      return;
+    }
+    if (vm.phoneExistsPrompt) {
       scrollToField(phoneRef);
       return;
     }
@@ -277,11 +288,11 @@ const BodyParamsForm = ({
   const heightNeededHint = getBcmParentNeededHint('heightCm', vm.form, { requestedFor });
 
   return (
-    <div 
+    <div
       className="fixed inset-0 bg-black bg-opacity-50 z-[70] flex items-center justify-center p-3"
       onClick={handleBackdropClick}
     >
-      <div 
+      <div
         className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[92vh] overflow-y-auto relative z-[71]"
         onClick={(e) => e.stopPropagation()}
       >
@@ -324,7 +335,7 @@ const BodyParamsForm = ({
             <InputField
               label="Time"
               value={vm.form.recordedTime}
-              onChange={() => {}}
+              onChange={() => { }}
               type="time"
               readOnly
             />
@@ -345,10 +356,10 @@ const BodyParamsForm = ({
           )}
 
           {/* Name */}
-          <InputField 
+          <InputField
             label="Name"
-            value={vm.form.name} 
-            onChange={(v) => vm.setField('name', v)} 
+            value={vm.form.name}
+            onChange={(v) => vm.setField('name', v)}
             placeholder="FULL NAME"
             autoCapitalize="characters"
             inputRef={nameRef}
@@ -357,7 +368,7 @@ const BodyParamsForm = ({
             error={vm.nameError}
           />
 
-          {/* Phone Number — required identity field sits with Name */}
+          {/* Phone Number — optional; existing numbers prompt Override / New */}
           <PhoneAutocomplete
             value={vm.form.phoneNumber}
             onChange={vm.setPhoneField}
@@ -374,13 +385,13 @@ const BodyParamsForm = ({
           />
 
           {/* Age - Full Width */}
-          <InputField 
-            label="Age" 
-            value={vm.form.age} 
+          <InputField
+            label="Age"
+            value={vm.form.age}
             onChange={(v) => {
               vm.setField('age', v);
               clearParentRequestIfFilled('age', v);
-            }} 
+            }}
             type="number"
             inputMode="decimal"
             maxLength={2}
@@ -391,13 +402,13 @@ const BodyParamsForm = ({
           />
 
           {/* Gender - Full Width */}
-          <SelectField 
-            label="Gender" 
-            value={vm.form.gender} 
+          <SelectField
+            label="Gender"
+            value={vm.form.gender}
             onChange={(v) => {
               vm.setField('gender', v);
               if (isValidBcmGender(v)) setRequestedFor(null);
-            }} 
+            }}
             options={['Male', 'Female']}
             inputRef={genderRef}
             onEnter={() => focusNextField(heightRef)}
@@ -409,14 +420,14 @@ const BodyParamsForm = ({
           <hr className="border-green-100" />
 
           {/* Height - Full Width */}
-          <InputField 
-            label="Height (cm)" 
-            value={vm.form.heightCm} 
+          <InputField
+            label="Height (cm)"
+            value={vm.form.heightCm}
             onChange={(v) => {
               vm.setField('heightCm', v);
               clearParentRequestIfFilled('heightCm', v);
-            }} 
-            type="number" 
+            }}
+            type="number"
             placeholder="cm"
             inputRef={heightRef}
             onEnter={() => focusNextField(weightRef)}
@@ -437,17 +448,17 @@ const BodyParamsForm = ({
               // Calculate ideal weight range: BMI 18.5 to 23
               const minIdealWeight = heightVal >= 50 && heightVal <= 250 ? Math.round((18.5 * Math.pow(heightVal / 100, 2)) * 10) / 10 : null;
               const maxIdealWeight = heightVal >= 50 && heightVal <= 250 ? Math.round((23 * Math.pow(heightVal / 100, 2)) * 10) / 10 : null;
-              
+
               const isUnderweight = vm.form.weightKg !== '' && !isNaN(weightVal) && minIdealWeight && weightVal < minIdealWeight;
               const isOverweight = vm.form.weightKg !== '' && !isNaN(weightVal) && maxIdealWeight && weightVal > maxIdealWeight;
-              
+
               const handleKeyDown = (e) => {
                 if (e.key === 'Enter') {
                   e.preventDefault();
                   focusNextField(fatRef);
                 }
               };
-              
+
               return (
                 <>
                   <input
@@ -463,11 +474,10 @@ const BodyParamsForm = ({
                     onKeyDown={handleKeyDown}
                     onFocus={() => { takeUserToParent('weightKg'); }}
                     placeholder="kg"
-                    className={`rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 bg-white border ${
-                      isUnderweight || isOverweight
+                    className={`rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 bg-white border ${isUnderweight || isOverweight
                         ? 'border-red-400 text-red-600 focus:ring-red-300'
                         : 'border-indigo-200 focus:ring-indigo-400'
-                    }`}
+                      }`}
                   />
                   {isUnderweight && minIdealWeight && maxIdealWeight && (
                     <p className="text-[10px] text-red-500 mt-0.5">
@@ -494,14 +504,14 @@ const BodyParamsForm = ({
               const minFat = vm.form.gender === 'Male' ? 10 : vm.form.gender === 'Female' ? 20 : null;
               const maxFat = vm.form.gender === 'Male' ? 20 : vm.form.gender === 'Female' ? 30 : null;
               const isOutOfRange = vm.form.fatPercent !== '' && !isNaN(fatVal) && minFat !== null && (fatVal < minFat || fatVal > maxFat);
-              
+
               const handleKeyDown = (e) => {
                 if (e.key === 'Enter') {
                   e.preventDefault();
                   focusNextField(vfatRef);
                 }
               };
-              
+
               return (
                 <>
                   <input
@@ -517,11 +527,10 @@ const BodyParamsForm = ({
                     onKeyDown={handleKeyDown}
                     onFocus={() => { takeUserToParent('fatPercent'); }}
                     placeholder="%"
-                    className={`rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 bg-white border ${
-                      isOutOfRange
+                    className={`rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 bg-white border ${isOutOfRange
                         ? 'border-red-400 text-red-600 focus:ring-red-300'
                         : 'border-indigo-200 focus:ring-indigo-400'
-                    }`}
+                      }`}
                   />
                   {isOutOfRange && (
                     <p className="text-[10px] text-red-500 mt-0.5">
@@ -582,14 +591,14 @@ const BodyParamsForm = ({
             {(() => {
               const bmiVal = parseFloat(vm.form.bmi);
               const isOutOfRange = vm.form.bmi !== '' && !isNaN(bmiVal) && (bmiVal < 19 || bmiVal > 23);
-              
+
               const handleKeyDown = (e) => {
                 if (e.key === 'Enter') {
                   e.preventDefault();
                   focusNextField(bodyAgeRef);
                 }
               };
-              
+
               return (
                 <>
                   <input
@@ -601,11 +610,10 @@ const BodyParamsForm = ({
                     onChange={(e) => vm.setBmiManually(e.target.value)}
                     onKeyDown={handleKeyDown}
                     placeholder="e.g. 21"
-                    className={`rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 bg-white border ${
-                      isOutOfRange
+                    className={`rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 bg-white border ${isOutOfRange
                         ? 'border-red-400 text-red-600 focus:ring-red-300'
                         : 'border-indigo-200 focus:ring-indigo-400'
-                    }`}
+                      }`}
                   />
                   {isOutOfRange && (
                     <p className="text-[10px] text-red-500 mt-0.5">
@@ -628,14 +636,14 @@ const BodyParamsForm = ({
               const bodyAgeVal = parseFloat(vm.form.bodyAge);
               const actualAge = parseFloat(vm.form.age);
               const isOlderThanActual = vm.form.bodyAge !== '' && vm.form.age !== '' && !isNaN(bodyAgeVal) && !isNaN(actualAge) && bodyAgeVal > actualAge;
-              
+
               const handleKeyDown = (e) => {
                 if (e.key === 'Enter') {
                   e.preventDefault();
                   focusNextField(chestRef);
                 }
               };
-              
+
               return (
                 <>
                   <input
@@ -651,11 +659,10 @@ const BodyParamsForm = ({
                     onKeyDown={handleKeyDown}
                     onFocus={() => { takeUserToParent('bodyAge'); }}
                     placeholder="yrs"
-                    className={`rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 bg-white border ${
-                      isOlderThanActual
+                    className={`rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 bg-white border ${isOlderThanActual
                         ? 'border-red-400 text-red-600 focus:ring-red-300'
                         : 'border-indigo-200 focus:ring-indigo-400'
-                    }`}
+                      }`}
                   />
                   {isOlderThanActual && (
                     <p className="text-[10px] text-red-500 mt-0.5">
@@ -751,7 +758,7 @@ const BodyParamsForm = ({
           </div>
 
           {/* Transformation Photos — Profile Left / Centre / Right (team_table) */}
-          <div className="pt-1">
+          <div className="pt-1 pb-2">
             <label className="text-xs font-semibold text-indigo-800 uppercase tracking-wide mb-2 block">
               Transformation Photos
             </label>
@@ -767,7 +774,6 @@ const BodyParamsForm = ({
                 try {
                   await vm.transformationPhotos.setSlotFromFile(slot, file);
                 } catch (e) {
-                  // Surface via existing error banner if needed
                   console.warn('[BodyParamsForm] transformation photo failed', e?.message || e);
                 }
               }}
@@ -775,8 +781,8 @@ const BodyParamsForm = ({
           </div>
         </div>
 
-        {/* Actions */}
-        <div className="sticky bottom-0 bg-white px-5 py-4 border-t border-gray-100 flex gap-3 rounded-b-2xl">
+        {/* Actions — keep clear of photo Camera/Gallery above */}
+        <div className="sticky bottom-0 bg-white px-5 py-4 border-t border-gray-100 flex gap-3 rounded-b-2xl z-20">
           <button
             type="button"
             onClick={requestClose}
@@ -790,7 +796,13 @@ const BodyParamsForm = ({
             disabled={!vm.canAttemptSave}
             className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-green-600 to-green-600 text-white text-sm font-semibold disabled:opacity-50 transition-colors"
           >
-            {vm.isSaving ? 'Saving…' : vm.isEditMode ? 'Update & Share' : 'Save & Share'}
+            {vm.isSaving
+              ? 'Saving…'
+              : shareOnly
+                ? 'Share'
+                : vm.isEditMode
+                  ? 'Update & Share'
+                  : 'Save & Share'}
           </button>
         </div>
       </div>
@@ -800,6 +812,13 @@ const BodyParamsForm = ({
         isSaving={vm.isSaving}
         onDiscard={handleDiscard}
         onKeepEditing={handleKeepEditing}
+      />
+
+      <BcmPhoneExistsModal
+        isOpen={Boolean(vm.phoneExistsPrompt)}
+        isBusy={vm.phoneExistsBusy}
+        onOverride={vm.handlePhoneExistsReuse}
+        onCreateNew={vm.handlePhoneExistsCreateNew}
       />
     </div>
   );

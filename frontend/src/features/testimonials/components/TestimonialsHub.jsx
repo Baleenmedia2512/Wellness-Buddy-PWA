@@ -45,6 +45,7 @@ import { withTestimonialMediaCacheBust } from '../utils/testimonialMediaUrl.js';
 import {
   PORTRAIT_IMAGE_CLASS_SM,
   sanitizeDurationDigits,
+  sanitizeWeightTyping,
 } from '../services/testimonialFormUtils.js';
 import DiseaseMultiSelect from './DiseaseMultiSelect.jsx';
 import OtpInline from './OtpInline.jsx';
@@ -361,9 +362,9 @@ function BeforePhotoSlotContent({
             Before Weight (kg) <span className="text-red-500">*</span>
           </label>
           <input
-            type="text" inputMode="decimal" pattern="[0-9]*" min="1" max="500" step="0.1" placeholder="e.g. 85.0"
+            type="text" inputMode="decimal" autoComplete="off" min="1" max="500" step="0.1" placeholder="e.g. 85.0"
             value={form.beforeWeightKg}
-            onChange={(e) => setField('beforeWeightKg', e.target.value)}
+            onChange={(e) => setField('beforeWeightKg', sanitizeWeightTyping(e.target.value))}
             className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
           />
         </div>
@@ -475,9 +476,9 @@ function AfterPhotoSlotContent({
             After Weight (kg) <span className="text-red-500">*</span>
           </label>
           <input
-            type="text" inputMode="decimal" pattern="[0-9]*" min="1" max="500" step="0.1" placeholder="e.g. 72.5"
+            type="text" inputMode="decimal" autoComplete="off" min="1" max="500" step="0.1" placeholder="e.g. 72.5"
             value={form.afterWeightKg}
-            onChange={(e) => setField('afterWeightKg', e.target.value)}
+            onChange={(e) => setField('afterWeightKg', sanitizeWeightTyping(e.target.value))}
             className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
           />
         </div>
@@ -795,16 +796,13 @@ export default function TestimonialsHub({ userId, focusOnly = null, onFocusClose
 
   const handleHealthIssuesSave = useCallback(async () => {
     if (!userId || (!existing && !existingVideo)) return;
-    if (!Array.isArray(healthIssues) || healthIssues.length === 0) {
-      setHealthIssuesError('Please add at least one recovered health issue.');
-      setHealthIssuesSuccess(null);
-      return;
-    }
+    // Health issues are optional — empty list clears / saves with none selected.
+    const issuesToSave = Array.isArray(healthIssues) ? healthIssues : [];
     setHealthIssuesError(null);
     setHealthIssuesSuccess(null);
     setHealthIssuesSaving(true);
     try {
-      const result = await editTestimonial({ userId, recoveredHealthIssues: healthIssues });
+      const result = await editTestimonial({ userId, recoveredHealthIssues: issuesToSave });
       setHealthIssuesSuccess(result?.message || 'Health issues saved successfully.');
       setHealthIssuesExpanded(false);
       reload();
@@ -996,7 +994,6 @@ export default function TestimonialsHub({ userId, focusOnly = null, onFocusClose
                     value={healthIssues}
                     onChange={setHealthIssues}
                     disabled={healthIssuesSaving}
-                    required
                   />
                   {healthIssuesError && (
                     <div className="bg-red-50 border border-red-200 rounded-xl px-3 py-2.5 text-xs text-red-700">
