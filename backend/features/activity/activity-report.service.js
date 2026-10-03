@@ -22,6 +22,7 @@ import {
   collectActivityReportClubNames,
   collectActivityReportFilterOptions,
   emptyActivityReportFilterOptions,
+  activityReportSortUsesSponsor,
   paginateActivityReportRecords,
   slicePreparedActivityReportRows,
 } from './domain/activity-report.pagination.js';
@@ -350,10 +351,11 @@ async function buildPagedActivityRecords({
   attendanceStatus = ACTIVITY_REPORT_ATTENDANCE.POSTED,
 }) {
   const search = String(paginationOpts.search || '').trim();
-  // Sponsor/coach search needs full enrichment before filter; default path
-  // enriches only the returned page.
+  // Sponsor/coach search, export, and sponsor-column sort need names on every
+  // row before the full set is ordered. Other sorts enrich only the page.
   const needsFullSponsorPass = Boolean(search)
-    || Boolean(paginationOpts.exportAll);
+    || Boolean(paginationOpts.exportAll)
+    || activityReportSortUsesSponsor(paginationOpts.sort);
 
   let sponsorByUser = null;
   if (needsFullSponsorPass) {
