@@ -22,7 +22,7 @@ describe('activity report level / member type display', () => {
     assert.equal(formatActivityReportMemberType('coach'), 'Customer');
   });
 
-  it('includes member type, sponsor, then level in share lines', () => {
+  it('includes member type, club, then sponsor in share lines', () => {
     const text = buildActivityReportShareText({
       activityLabel: 'Weight',
       activityId: 'weight',
@@ -38,7 +38,7 @@ describe('activity report level / member type display', () => {
         weight: 62,
       }],
     });
-    assert.match(text, /Ana \| Sponsor \| Level: 1 \| Sponsor: Kiran/);
+    assert.match(text, /Ana \| Sponsor \| Level: 1 \| Club: Remote \| Sponsor: Kiran/);
   });
 
   it('includes attendance in the share header', () => {

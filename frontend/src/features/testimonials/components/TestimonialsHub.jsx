@@ -204,7 +204,10 @@ function OverallStatusBar({ slots, photoSuccess, videoSuccess }) {
 
 // ── Image picker ──────────────────────────────────────────────────────────────
 
-function InlineImagePicker({ image, existingPreviewUrl, mediaVersion, cameraRef, galleryRef, onCameraChange, onGalleryChange }) {
+function InlineImagePicker({
+  image, existingPreviewUrl, mediaVersion, cameraRef, galleryRef,
+  onCameraChange, onGalleryChange, onRecrop,
+}) {
   const previewSrc = image?.preview
     || withTestimonialMediaCacheBust(existingPreviewUrl, mediaVersion)
     || null;
@@ -214,11 +217,22 @@ function InlineImagePicker({ image, existingPreviewUrl, mediaVersion, cameraRef,
     <div className="space-y-2">
       {previewSrc ? (
         <div className="space-y-2">
-          <img
-            src={previewSrc}
-            alt={isExistingOnly ? 'Current photo' : 'Selected'}
-            className={`${PORTRAIT_IMAGE_CLASS_SM} max-w-[160px] mx-auto`}
-          />
+          <button
+            type="button"
+            onClick={image && onRecrop ? onRecrop : undefined}
+            disabled={!image || !onRecrop}
+            className="block w-full max-w-[160px] mx-auto overflow-hidden rounded-xl disabled:cursor-default"
+            aria-label={image && onRecrop ? 'Adjust photo' : undefined}
+          >
+            <img
+              src={previewSrc}
+              alt={isExistingOnly ? 'Current photo' : 'Selected'}
+              className={`${PORTRAIT_IMAGE_CLASS_SM} max-w-[160px] mx-auto`}
+            />
+          </button>
+          {image && onRecrop ? (
+            <p className="text-[11px] text-gray-400 text-center">Tap photo to drag or pinch the visible area</p>
+          ) : null}
           <div className="flex gap-2 max-w-[160px] mx-auto">
             <TouchFeedbackButton
               onClick={() => cameraRef.current?.click()}
@@ -312,6 +326,7 @@ function BeforePhotoSlotContent({
   mediaVersion,
   beforeCameraRef, beforeGalleryRef,
   onBeforeCameraChange, onBeforeGalleryChange,
+  onRecropBefore,
   submitting, error,
   onSubmit, onCancel,
 }) {
@@ -336,6 +351,7 @@ function BeforePhotoSlotContent({
         galleryRef={beforeGalleryRef}
         onCameraChange={onBeforeCameraChange}
         onGalleryChange={onBeforeGalleryChange}
+        onRecrop={onRecropBefore}
       />
 
       {/* Metadata fields */}
@@ -428,6 +444,7 @@ function AfterPhotoSlotContent({
   isEditMode,
   afterCameraRef, afterGalleryRef,
   onAfterCameraChange, onAfterGalleryChange,
+  onRecropAfter,
   submitting, error,
   onSubmit, onCancel,
 }) {
@@ -449,6 +466,7 @@ function AfterPhotoSlotContent({
         galleryRef={afterGalleryRef}
         onCameraChange={onAfterCameraChange}
         onGalleryChange={onAfterGalleryChange}
+        onRecrop={onRecropAfter}
       />
 
       {hasPhoto && (
@@ -623,6 +641,7 @@ export default function TestimonialsHub({ userId, focusOnly = null, onFocusClose
     form, setField,
     beforeImage, afterImage,
     handleBeforeImageChange, handleAfterImageChange,
+    recropBefore, recropAfter, portraitCoverOverlay,
     existing, reload,
     isEditMode, isCompletingMode,
     submitting, error, success,
@@ -842,6 +861,7 @@ export default function TestimonialsHub({ userId, focusOnly = null, onFocusClose
 
   return (
     <div className={`max-w-lg mx-auto px-4 pt-4 space-y-3 ${isFocused ? 'pb-6' : 'pb-24'}`}>
+      {portraitCoverOverlay}
 
       {/* ── Overall status bar (hidden in focused edit modal) ─────────────── */}
       {!isFocused && (
@@ -896,6 +916,7 @@ export default function TestimonialsHub({ userId, focusOnly = null, onFocusClose
             beforeGalleryRef={beforeGalleryRef}
             onBeforeCameraChange={handleBeforeImageChange}
             onBeforeGalleryChange={handleBeforeImageChange}
+            onRecropBefore={recropBefore}
             submitting={submitting}
             error={error}
             onSubmit={handlePhotoSubmit}
@@ -910,7 +931,7 @@ export default function TestimonialsHub({ userId, focusOnly = null, onFocusClose
               key={`before-thumb-${mediaVersion}`}
               src={withTestimonialMediaCacheBust(existing.beforeImageUrl, mediaVersion)}
               alt="Before"
-              className="w-14 h-20 object-contain bg-gray-50 rounded-xl border border-gray-200 shrink-0"
+              className="w-14 h-20 object-cover rounded-xl border border-gray-200 shrink-0"
             />
             <div className="flex-1 min-w-0 space-y-0.5">
               <p className="text-xs font-semibold text-gray-700">Before: {existing.beforeWeightKg} kg</p>
@@ -934,7 +955,7 @@ export default function TestimonialsHub({ userId, focusOnly = null, onFocusClose
           {!isFocused && (
             <div className="flex items-center gap-2 px-1 pt-2">
               <HeartPulse className="h-4 w-4 text-gray-400" />
-              <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Health Issues</p>
+              <p className="text-xs font-bold text-gray-400 tracking-wider">Health Issues while joining this community</p>
               <span className="text-[10px] text-gray-400 font-normal ml-auto">Shared for photo &amp; video verification</span>
             </div>
           )}
@@ -943,7 +964,7 @@ export default function TestimonialsHub({ userId, focusOnly = null, onFocusClose
             icon={HeartPulse}
             iconBg="bg-rose-50"
             iconColor="text-rose-500"
-            title="Health Issues"
+            title="Health Issues while joining this community"
             subtitle={
               healthIssuesExpanded || isFocused
                 ? null
@@ -1069,6 +1090,7 @@ export default function TestimonialsHub({ userId, focusOnly = null, onFocusClose
               afterGalleryRef={afterGalleryRef}
               onAfterCameraChange={handleAfterImageChange}
               onAfterGalleryChange={handleAfterImageChange}
+              onRecropAfter={recropAfter}
               submitting={submitting}
               error={error}
               onSubmit={handlePhotoSubmit}
@@ -1084,7 +1106,7 @@ export default function TestimonialsHub({ userId, focusOnly = null, onFocusClose
               key={`after-thumb-${mediaVersion}`}
               src={withTestimonialMediaCacheBust(existing.afterImageUrl, mediaVersion)}
               alt="After"
-              className="w-14 h-20 object-contain bg-gray-50 rounded-xl border border-gray-200 shrink-0"
+              className="w-14 h-20 object-cover rounded-xl border border-gray-200 shrink-0"
             />
             <div className="flex-1 min-w-0 space-y-0.5">
               <p className="text-xs font-semibold text-gray-700">After: {existing?.afterWeightKg} kg</p>

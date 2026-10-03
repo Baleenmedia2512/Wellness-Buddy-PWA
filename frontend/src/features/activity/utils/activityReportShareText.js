@@ -35,9 +35,9 @@ function activityDetailLine(record, activityId) {
   ];
   const sponsor = record.sponsorName || record.coachName;
   parts.push(`Level: ${formatActivityReportLevel(record.level)}`);
+  parts.push(`Club: ${club}`);
   if (sponsor && sponsor !== 'N/A') parts.push(`Sponsor: ${sponsor}`);
   parts.push(
-    `Club: ${club}`,
     `${record.date || '—'} ${record.time || ''}`.trim(),
   );
 

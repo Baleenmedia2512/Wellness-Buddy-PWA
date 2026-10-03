@@ -3,8 +3,6 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import { X, Search, Check, ShoppingCart } from "lucide-react";
 import {
   dedupeSearchBuckets,
-  resolveQuantityUnit,
-  formatServingPortion,
 } from "../domain/nutritionFields";
 import { isFlagEnabled } from "../../../config/featureFlags";
 import FloatingMealTray from "./meal-builder/FloatingMealTray";
@@ -25,6 +23,37 @@ import {
   drySaladOftenTitle,
   drySaladSlotFromDeviceNow,
 } from "../domain/foodSuggestionRank";
+
+/** Session cache so Clear all / cancel cannot wipe the next Target Nutrition prefill. */
+function usualComboCacheKey(userId, slot) {
+  return `wv:dry-salad-usual-combo:${String(userId || "")}:${String(slot || "any")}`;
+}
+
+function readUsualComboCache(userId, slot) {
+  if (!userId || typeof sessionStorage === "undefined") return [];
+  try {
+    const raw = sessionStorage.getItem(usualComboCacheKey(userId, slot));
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeUsualComboCache(userId, slot, items) {
+  if (!userId || typeof sessionStorage === "undefined") return;
+  try {
+    const list = Array.isArray(items) ? items : [];
+    if (list.length === 0) {
+      sessionStorage.removeItem(usualComboCacheKey(userId, slot));
+      return;
+    }
+    sessionStorage.setItem(usualComboCacheKey(userId, slot), JSON.stringify(list));
+  } catch {
+    /* quota / private mode — ignore */
+  }
+}
 
 /**
  * SmartFoodSearchModal
@@ -78,6 +107,10 @@ const SmartFoodSearchModal = ({
   const wasOpenRef = useRef(false);
   const addToastTimerRef = useRef(null);
   const didPrefillRef = useRef(false);
+  /** True after Clear all this visit — do not auto-reselect combo until next open. */
+  const clearedSelectionRef = useRef(false);
+  /** Last known usual combo — Clear all must not wipe this; next open can re-prefill. */
+  const usualComboRef = useRef([]);
   const selectedItemsRef = useRef(selectedItems);
   selectedItemsRef.current = selectedItems;
 
@@ -96,38 +129,64 @@ const SmartFoodSearchModal = ({
     setManualFiber("");
   };
 
+  /** Clear tray picks for this visit only — never touches usual combo / history. */
+  const clearMealSelection = useCallback(() => {
+    clearedSelectionRef.current = true;
+    setSelectedItems([]);
+    setMealSheetOpen(false);
+  }, []);
+
   useEffect(() => {
-    if (isOpen) {
-      wasOpenRef.current = true;
-      const q = typeof initialQuery === "string" ? initialQuery : "";
-
-      setShowTypeSelect(!skipTypeSelect);
-      setSearchQuery(q);
-      setMasterItems([]);
-      setMyItems([]);
-      setCommunityItems([]);
-      setShowManualForm(false);
-      setSelectedItems([]);
-      setMealSheetOpen(false);
-      setLatestFoods([]);
-      setOftenWith([]);
-      setUsualCombo([]);
-      setDrySaladSlot(null);
-      setAddToast("");
-      setError("");
-      resetManualForm();
-      saveStartedRef.current = false;
-      didPrefillRef.current = false;
-
-      if (q.trim().length >= 1 || catalogMode) {
-        setIsSearching(true);
-        const timer = setTimeout(() => performSearch(q.trim()), 80);
-        return () => clearTimeout(timer);
-      }
-      return undefined;
-    }
+    if (!isOpen) {
       wasOpenRef.current = false;
       return undefined;
+    }
+
+    const justOpened = !wasOpenRef.current;
+    wasOpenRef.current = true;
+    const q = typeof initialQuery === "string" ? initialQuery : "";
+
+    setShowTypeSelect(!skipTypeSelect);
+    setSearchQuery(q);
+    setMasterItems([]);
+    setMyItems([]);
+    setCommunityItems([]);
+    setShowManualForm(false);
+    setMealSheetOpen(false);
+    setLatestFoods([]);
+    setOftenWith([]);
+    setAddToast("");
+    setError("");
+    resetManualForm();
+    saveStartedRef.current = false;
+
+    // New visit: clear tray only. Keep usualCombo so Clear all / cancel cannot
+    // erase the remembered combo before the next suggestions fetch returns.
+    if (justOpened) {
+      clearedSelectionRef.current = false;
+      didPrefillRef.current = false;
+      setSelectedItems([]);
+      const slot = catalogMode ? drySaladSlotFromDeviceNow() : null;
+      const cachedCombo = catalogMode
+        ? (usualComboRef.current.length > 0
+          ? usualComboRef.current
+          : readUsualComboCache(userId, slot))
+        : [];
+      if (cachedCombo.length > 0) {
+        usualComboRef.current = cachedCombo;
+        setUsualCombo(cachedCombo);
+        if (slot) setDrySaladSlot(slot);
+        didPrefillRef.current = true;
+        setSelectedItems(cachedCombo.map((item) => toSelectableItem(item)));
+      }
+    }
+
+    if (q.trim().length >= 1 || catalogMode) {
+      setIsSearching(true);
+      const timer = setTimeout(() => performSearch(q.trim()), 80);
+      return () => clearTimeout(timer);
+    }
+    return undefined;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, skipTypeSelect, initialQuery, catalogMode]);
 
@@ -158,8 +217,9 @@ const SmartFoodSearchModal = ({
         setLatestFoods(filterRegularFoodSearchItems(data.latest || []));
         setOftenWith(filterRegularFoodSearchItems(data.oftenWith || []));
       })
-      .catch(() => {
-        /* abort / network — leave prior suggestions */
+      .catch((err) => {
+        if (err?.name === "AbortError") return;
+        /* network — leave prior suggestions */
       });
 
     return () => controller.abort();
@@ -187,18 +247,24 @@ const SmartFoodSearchModal = ({
       signal: controller.signal,
     })
       .then((data) => {
+        if (controller.signal.aborted) return;
         const selected = data.selected || [];
         const extras = data.suggestions || [];
-        setDrySaladSlot(data.slot || null);
+        const slot = data.slot || null;
+        setDrySaladSlot(slot);
+        usualComboRef.current = selected;
         setUsualCombo(selected);
         setOftenWith(extras);
-        if (!didPrefillRef.current && selected.length > 0) {
+        writeUsualComboCache(userId, slot || drySaladSlotFromDeviceNow(), selected);
+        // Prefill every open unless user hit Clear all this visit (local only).
+        if (!clearedSelectionRef.current) {
           didPrefillRef.current = true;
           setSelectedItems(selected.map((item) => toSelectableItem(item)));
         }
       })
-      .catch(() => {
-        /* abort / network — leave empty combo */
+      .catch((err) => {
+        if (err?.name === "AbortError") return;
+        /* network — keep cached usualComboRef / usualCombo */
       });
 
     return () => controller.abort();
@@ -286,9 +352,12 @@ const SmartFoodSearchModal = ({
 
   const handleQuantityChange = (name, rawValue) => {
     const qty = parseFloat(rawValue);
-    const whole = Number.isNaN(qty) || qty < 1 ? 1 : Math.round(qty);
+    // Half-serving steps (0.5, 1, 1.5, …); min 0.5
+    const snapped = Number.isNaN(qty) || qty < 0.5
+      ? 0.5
+      : Math.round(qty * 2) / 2;
     setSelectedItems((prev) =>
-      prev.map((s) => (s.name === name ? { ...s, servings: whole } : s)),
+      prev.map((s) => (s.name === name ? { ...s, servings: snapped } : s)),
     );
   };
 
@@ -373,6 +442,8 @@ const SmartFoodSearchModal = ({
     ? filterSuggestionsAgainstSelected(oftenWith, selectedItems)
     : filterSuggestionsAgainstSelected(latestFoods, selectedItems);
   const drySaladOftenRows = filterSuggestionsAgainstSelected(oftenWith, selectedItems);
+  // Selected items move to the top list; hide them from combo/catalog to avoid duplicates
+  const usualComboRows = filterSuggestionsAgainstSelected(usualCombo, selectedItems);
   const catalogRows = catalogMode && !hasTypedQuery
     ? filterSuggestionsAgainstSelected(masterItems, selectedItems)
     : masterItems;
@@ -425,6 +496,44 @@ const SmartFoodSearchModal = ({
       />
     ));
 
+  // When typing a name, pin search hits under the search bar (above selected/combo).
+  const renderCatalogResults = (mealBuilder) =>
+    !showManualForm && showCatalogResults ? (
+      <div className="space-y-4">
+        {catalogRows.length > 0 && (
+          <div>
+            <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5 px-1">
+              {catalogMode ? "Target Nutrition catalog" : "Nutrition library"}
+            </p>
+            <div className="space-y-1.5">
+              {renderFoodRows(catalogRows, "master", mealBuilder)}
+            </div>
+          </div>
+        )}
+        {!catalogMode && hasMyItems && (
+          <div>
+            <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5 px-1">My History</p>
+            <div className="space-y-1.5">{renderFoodRows(myItems, "my", mealBuilder)}</div>
+          </div>
+        )}
+        {!catalogMode && hasCommunityItems && (
+          <div>
+            <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5 px-1">Community</p>
+            <div className="space-y-1.5">{renderFoodRows(communityItems, "community", mealBuilder)}</div>
+          </div>
+        )}
+        {!isSearching
+          && catalogRows.length === 0
+          && !hasMyItems
+          && !hasCommunityItems
+          && (hasTypedQuery || !usualCombo.length) && (
+          <p className="text-sm text-gray-400 text-center py-4">
+            No food found — try a different name
+          </p>
+        )}
+      </div>
+    ) : null;
+
   // ── Full-screen Meal Builder ──────────────────────────────────────────────
   if (useFullScreen) {
     return (
@@ -448,7 +557,7 @@ const SmartFoodSearchModal = ({
           </h1>
         </div>
 
-        <div className={`flex-1 overflow-y-auto px-4 py-3 space-y-3 ${hasSelected ? "pb-28" : ""}`}>
+        <div className={`flex-1 overflow-y-auto px-4 py-3 space-y-3 ${hasSelected ? "pb-40" : ""}`}>
           {searchBar}
 
           {addToast && (
@@ -456,6 +565,8 @@ const SmartFoodSearchModal = ({
               {addToast}
             </p>
           )}
+
+          {hasTypedQuery && renderCatalogResults(true)}
 
           {showRegularSuggestions && (
             <div>
@@ -470,16 +581,40 @@ const SmartFoodSearchModal = ({
             </div>
           )}
 
-          {showDrySaladSuggestions && usualCombo.length > 0 && (
+          {catalogMode && hasSelected && !showManualForm && (
             <div>
               <p className="text-[11px] text-green-700 font-medium px-0.5 mb-2">
                 Usual {drySaladSlot || "time"} combo selected — remove or add items, then save
               </p>
               <p className="text-sm font-bold text-gray-900 mb-2 px-0.5">
+                {usualCombo.length > 0
+                  ? drySaladUsualComboTitle(drySaladSlot)
+                  : "Your meal"}
+              </p>
+              <div className="space-y-1.5">
+                {renderFoodRows(selectedItems, "selected", true)}
+              </div>
+            </div>
+          )}
+
+          {showDrySaladSuggestions && usualComboRows.length > 0 && !hasSelected && (
+            <div>
+              <p className="text-sm font-bold text-gray-900 mb-2 px-0.5">
                 {drySaladUsualComboTitle(drySaladSlot)}
               </p>
               <div className="space-y-1.5">
-                {renderFoodRows(usualCombo, "usual", true)}
+                {renderFoodRows(usualComboRows, "usual", true)}
+              </div>
+            </div>
+          )}
+
+          {showDrySaladSuggestions && usualComboRows.length > 0 && hasSelected && (
+            <div>
+              <p className="text-sm font-bold text-gray-900 mb-2 px-0.5">
+                Add from usual combo
+              </p>
+              <div className="space-y-1.5">
+                {renderFoodRows(usualComboRows, "usual", true)}
               </div>
             </div>
           )}
@@ -495,37 +630,7 @@ const SmartFoodSearchModal = ({
             </div>
           )}
 
-          {!showManualForm && showCatalogResults && (
-            <div className="space-y-4">
-              {(catalogRows.length > 0) && (
-                <div>
-                  <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5 px-1">
-                    {catalogMode ? "Target Nutrition catalog" : "Nutrition library"}
-                  </p>
-                  <div className="space-y-1.5">
-                    {renderFoodRows(catalogRows, "master", true)}
-                  </div>
-                </div>
-              )}
-              {!catalogMode && hasMyItems && (
-                <div>
-                  <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5 px-1">My History</p>
-                  <div className="space-y-1.5">{renderFoodRows(myItems, "my", true)}</div>
-                </div>
-              )}
-              {!catalogMode && hasCommunityItems && (
-                <div>
-                  <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5 px-1">Community</p>
-                  <div className="space-y-1.5">{renderFoodRows(communityItems, "community", true)}</div>
-                </div>
-              )}
-              {!isSearching && catalogRows.length === 0 && !hasMyItems && !hasCommunityItems && !usualCombo.length && (
-                <p className="text-sm text-gray-400 text-center py-4">
-                  No food found — try a different name
-                </p>
-              )}
-            </div>
-          )}
+          {!hasTypedQuery && renderCatalogResults(true)}
 
           {!showManualForm && !searching && !catalogMode && suggestionRows.length === 0 && !hasSelected && (
             <div className="flex flex-col items-center justify-center py-14 text-center">
@@ -594,6 +699,7 @@ const SmartFoodSearchModal = ({
             totalKcal={selectedTotal}
             onOpenSheet={() => setMealSheetOpen(true)}
             onSave={handleAddSelected}
+            onClear={clearMealSelection}
           />
         ) : null}
 
@@ -604,10 +710,7 @@ const SmartFoodSearchModal = ({
           macroSummary={macroSummary}
           onClose={() => setMealSheetOpen(false)}
           onSave={handleAddSelected}
-          onClear={() => {
-            setSelectedItems([]);
-            setMealSheetOpen(false);
-          }}
+          onClear={clearMealSelection}
           onRemove={(item) => {
             handleToggleItem(item);
           }}
@@ -689,13 +792,15 @@ const SmartFoodSearchModal = ({
         <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2.5">
               {searchBar}
 
+          {hasTypedQuery && renderCatalogResults(false)}
+
           {!showManualForm && hasSelected && (
             <div className="bg-orange-50 border border-orange-200 rounded-xl px-3 py-2.5">
               <div className="flex items-center justify-between mb-2">
                     <p className="text-xs font-semibold text-orange-700">
                       {selectedItems.length} item{selectedItems.length > 1 ? "s" : ""} · {selectedTotal} kcal total
                     </p>
-                    <button type="button" onClick={() => setSelectedItems([])} className="text-[11px] text-orange-400 font-medium">
+                    <button type="button" onClick={clearMealSelection} className="text-[11px] text-orange-400 font-medium">
                       Clear all
                     </button>
               </div>
@@ -704,29 +809,24 @@ const SmartFoodSearchModal = ({
                   const count = Number(item.servings);
                   const servings = Number.isFinite(count) && count > 0 ? count : 1;
                   const kcal = Math.round((item.calories ?? 0) * servings);
-                  const unitLabel = item.quantityLabel || resolveQuantityUnit(item).shortLabel;
                   return (
-                    <div key={item.name} className="flex items-center gap-2 bg-white border border-orange-100 rounded-xl px-2.5 py-1.5">
+                    <div key={item.name} className="flex items-start gap-2 bg-white border border-orange-100 rounded-xl px-2.5 py-1.5">
                       <div className="flex-1 min-w-0">
-                        <p className="text-xs font-medium text-gray-800 truncate">{item.name}</p>
-                        <p className="text-[11px] text-orange-600 font-semibold">
-                          {kcal} kcal
-                          {(item.portion || item.portion_label) ? (
-                            <span className="font-normal text-gray-400"> · {formatServingPortion(item, servings)}</span>
-                          ) : null}
-                        </p>
-                      </div>
-                        <input
-                          type="text"
-                          inputMode="decimal"
-                          value={item.servings ?? 1}
-                          onChange={(e) => handleQuantityChange(item.name, e.target.value)}
+                        <p className="text-xs font-medium text-gray-800 break-words leading-snug">{item.name}</p>
+                        <div className="flex items-center justify-between gap-2 mt-1">
+                          <p className="text-[11px] text-orange-600 font-semibold">{kcal} kcal</p>
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            value={item.servings ?? 1}
+                            onChange={(e) => handleQuantityChange(item.name, e.target.value)}
                             className="w-12 text-center border border-orange-200 rounded-lg px-1.5 py-1 text-xs"
-                          style={{ fontSize: "14px" }}
-                          aria-label={`Number of ${unitLabel}`}
-                        />
-                        <span className="text-[11px] text-gray-500 min-w-[2.5rem]">{unitLabel}</span>
-                          <button type="button" onClick={() => handleToggleItem(item)} className="text-gray-300 hover:text-red-400">
+                            style={{ fontSize: "14px" }}
+                            aria-label={`Quantity for ${item.name}`}
+                          />
+                        </div>
+                      </div>
+                      <button type="button" onClick={() => handleToggleItem(item)} className="text-gray-300 hover:text-red-400 flex-shrink-0">
                         <X className="w-3.5 h-3.5" />
                       </button>
                     </div>
@@ -745,30 +845,7 @@ const SmartFoodSearchModal = ({
                 </div>
               )}
 
-              {!showManualForm && showCatalogResults && (
-                <div className="space-y-4">
-                  {catalogRows.length > 0 && (
-                    <div>
-                      <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5 px-1">
-                        {catalogMode ? "Target Nutrition catalog" : "Nutrition library"}
-                      </p>
-                      <div className="space-y-1.5">{renderFoodRows(catalogRows, "master", false)}</div>
-                    </div>
-                  )}
-              {!catalogMode && hasMyItems && (
-                <div>
-                  <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5 px-1">My History</p>
-                      <div className="space-y-1.5">{renderFoodRows(myItems, "my", false)}</div>
-                    </div>
-                  )}
-                  {!catalogMode && hasCommunityItems && (
-                    <div>
-                      <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5 px-1">Community</p>
-                      <div className="space-y-1.5">{renderFoodRows(communityItems, "community", false)}</div>
-                  </div>
-                  )}
-                </div>
-              )}
+              {!hasTypedQuery && renderCatalogResults(false)}
 
               {showManualForm && (
                 <div className="space-y-4">
@@ -795,7 +872,7 @@ const SmartFoodSearchModal = ({
             </>
           ) : hasSelected ? (
             <>
-                  <button type="button" onClick={() => setSelectedItems([])} className="px-4 py-3 border-2 border-gray-200 rounded-xl text-sm font-semibold">Clear</button>
+                  <button type="button" onClick={clearMealSelection} className="px-4 py-3 border-2 border-gray-200 rounded-xl text-sm font-semibold">Clear</button>
                   <button type="button" onClick={handleAddSelected} className="flex-1 px-4 py-3 bg-green-600 text-white rounded-xl text-sm font-semibold flex items-center justify-center gap-2">
                     <Check className="w-4 h-4" /> Save
               </button>
@@ -823,9 +900,9 @@ const FoodItemRow = ({ item, selected, onToggle, mealBuilder = false }) => {
           selected ? "bg-green-50 border-green-500" : "bg-white border-gray-200 hover:border-green-300"
         }`}
       >
-        <div className="flex-1 min-w-0">
-          <p className={`text-sm font-medium truncate ${selected ? "text-green-900" : "text-gray-800"}`}>{item.name}</p>
-          <p className="text-xs text-gray-400 mt-0.5">
+        <div className="flex-1 min-w-0 pr-1">
+          <p className={`text-sm font-medium leading-snug line-clamp-2 break-words ${selected ? "text-green-900" : "text-gray-800"}`}>{item.name}</p>
+          <p className="text-xs text-gray-400 mt-0.5 leading-snug">
             {portion ? <span>{portion} · </span> : null}
             {item.calories ?? "?"} kcal
             {item.protein ? ` · ${item.protein}g protein` : ""}

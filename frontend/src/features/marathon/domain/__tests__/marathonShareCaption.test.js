@@ -173,7 +173,7 @@ describe('appendMarathonWhatsAppNotice', () => {
     );
     assert.equal(
       result,
-      `${CURRENT_DAY_CAPTION}, Day 1, 75.00 kg → 74.50 kg ↓ 0.50 kg`,
+      `${CURRENT_DAY_CAPTION}, Day 1, 75.00 kg → 74.50 kg ⬇️ 0.50 kg`,
     );
   });
 

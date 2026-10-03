@@ -8,6 +8,7 @@ import {
   validateSubmitTestimonial,
   validateEditTestimonial,
   validateUpdateMemberHealthIssues,
+  validateSubmitAllEdits,
 } from '../testimonials.validators.js';
 import { ValidationError } from '../../../shared/lib/ValidationError.js';
 
@@ -102,5 +103,39 @@ describe('validateUpdateMemberHealthIssues', () => {
       }),
       (err) => err instanceof ValidationError && /recovered health issue/i.test(err.message),
     );
+  });
+});
+
+describe('validateSubmitAllEdits duration', () => {
+  it('rejects stub duration text that used to be written on video-only rows', () => {
+    assert.throws(
+      () => validateSubmitAllEdits({
+        userId: 713,
+        dirtySlots: [],
+        durationText: '—',
+      }),
+      (err) => err instanceof ValidationError && /days.*months/i.test(err.message),
+    );
+  });
+
+  it('accepts weight-only edits without a duration', () => {
+    const result = validateSubmitAllEdits({
+      userId: 713,
+      dirtySlots: [],
+      afterWeightKg: 73,
+    });
+    assert.equal(result.afterWeightKg, 73);
+    assert.equal(result.durationText, undefined);
+    assert.equal(result.submitForApproval, false);
+  });
+
+  it('passes through submitForApproval', () => {
+    const result = validateSubmitAllEdits({
+      userId: 713,
+      dirtySlots: ['issues'],
+      recoveredHealthIssues: ['Knee Pain'],
+      submitForApproval: true,
+    });
+    assert.equal(result.submitForApproval, true);
   });
 });

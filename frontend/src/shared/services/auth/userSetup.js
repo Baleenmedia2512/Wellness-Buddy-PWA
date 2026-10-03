@@ -79,12 +79,12 @@ export async function fetchUserStatus({ apiBaseUrl, email }) {
       return { result: "userNotFound" };
     }
     if (data.isNewUser) {
-      return { result: "newUser", role: data.role };
+      return { result: "newUser", role: data.role || "user" };
     }
     if (data.success && !data.isActive) {
-      return { result: "active", role: data.role };
+      return { result: "active", role: data.role || "user" };
     }
-    return { result: "active", role: data.role };
+    return { result: "active", role: data.role || "user" };
   } catch (err) {
     // Fail-open: caller treats unknown network state as "let user in".
     return { result: "active", error: err };

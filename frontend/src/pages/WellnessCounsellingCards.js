@@ -11,12 +11,14 @@ import {
   deleteBodyParamsCard,
   buildBpcSearchSuggestions,
 } from "../features/body-parameters-card";
-import { CapacitorHttp } from '@capacitor/core';
 import { debugLog } from '../shared/utils/logger.js';
-import { getAppVersionHeaders } from '../shared/services/apiFetch.js';
+import { getUserId } from '../shared/services/userIdentity.js';
 import CustomAlertModal from '../shared/components/CustomAlertModal';
 import PhoneContactActions from '../shared/components/PhoneContactActions.jsx';
-import { format } from 'date-fns';
+import {
+  formatBcmListCardDateTime,
+  resolveBcmDisplayTimezone,
+} from '../features/body-parameters-card/domain/bcmCardDateTime.rules.js';
 
 const PAGE_SIZE = 20;
 
@@ -44,6 +46,7 @@ const BodyParamsCardTile = memo(function BodyParamsCardTile({
   onEdit,
   onDelete,
   isDeleting = false,
+  timezoneIana,
 }) {
   return (
     <div
@@ -116,7 +119,7 @@ const BodyParamsCardTile = memo(function BodyParamsCardTile({
             <span>{card.gender || '—'}</span>
             <span>
               Date:{' '}
-              {card.recordedDate ? format(new Date(card.recordedDate), 'd MMM yyyy') : 'N/A'}
+              {formatBcmListCardDateTime(card, timezoneIana)}
             </span>
           </div>
           {card.locationName ? (
@@ -135,6 +138,7 @@ const BodyParamsCardTile = memo(function BodyParamsCardTile({
  * Shows body parameter cards for team members in a tile/grid layout
  */
 const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = null }) => {
+  const displayTimezone = resolveBcmDisplayTimezone(user);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState(null);
@@ -260,22 +264,14 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
     setHighlightedSuggestion(-1);
   }, []);
 
-  const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
-
-  const getUserId = useCallback(async (email) => {
-    if (!email) throw new Error("User email is required");
+  /** Resolve coach/user id — phone sessions may have userId with no email. */
+  const resolveCoachId = useCallback(async () => {
     if (coachIdRef.current) return coachIdRef.current;
-
-    const response = await CapacitorHttp.get({
-      url: `${apiBaseUrl}/api/user/lookup?email=${encodeURIComponent(email)}`,
-      headers: getAppVersionHeaders(),
-    });
-    const data = response.data;
-
-    if (!data.success) throw new Error(data.message || "User not found");
-    coachIdRef.current = data.userId;
-    return data.userId;
-  }, [apiBaseUrl]);
+    const id = await getUserId(user);
+    if (!id) return null;
+    coachIdRef.current = id;
+    return id;
+  }, [user]);
 
   const applyPageResult = useCallback((page, append, cards, meta) => {
     setPagination(meta);
@@ -293,7 +289,8 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
     isBackground = false,
     bustCache = false,
   }) => {
-    if (!user?.email) {
+    const coachId = await resolveCoachId();
+    if (!coachId) {
       setError("User information not available. Please log in again.");
       setLoading(false);
       setLoadingMore(false);
@@ -323,10 +320,9 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
     setError(null);
 
     try {
-      const userId = await getUserId(user.email);
       if (requestId !== requestIdRef.current) return;
 
-      const { cards, pagination: meta } = await listBodyParamsCards(userId, {
+      const { cards, pagination: meta } = await listBodyParamsCards(coachId, {
         page,
         limit: PAGE_SIZE,
         search,
@@ -355,7 +351,7 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
         setRefreshing(false);
       }
     }
-  }, [user?.email, getUserId, applyPageResult]);
+  }, [resolveCoachId, applyPageResult]);
 
   /** True after the first successful page-1 load for the current user/refreshKey. */
   const hasLoadedOnceRef = useRef(false);
@@ -374,6 +370,7 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
     setError(null);
 
     if (hardReset) {
+      coachIdRef.current = null;
       hasLoadedOnceRef.current = false;
       setBodyParamsCards([]);
       setPagination({ totalRecords: 0, currentPage: 0, hasNextPage: false });
@@ -446,7 +443,7 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
 
   const handleEditCard = async (card) => {
     try {
-      const userId = await getUserId(user.email);
+      const userId = await resolveCoachId();
       const fresh = await getBodyParamsCard(userId, card.id);
       const merged = {
         ...card,
@@ -480,7 +477,7 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
     setCardPendingDelete(null);
     setDeletingCardId(card.id);
     try {
-      const coachId = await getUserId(user.email);
+      const coachId = await resolveCoachId();
       await deleteBodyParamsCard({ id: card.id, coachId });
       pageCacheRef.current.clear();
       setBodyParamsCards((prev) => prev.filter((c) => c.id !== card.id));
@@ -496,7 +493,7 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
     } finally {
       setDeletingCardId(null);
     }
-  }, [cardPendingDelete, deletingCardId, getUserId, user?.email]);
+  }, [cardPendingDelete, deletingCardId, resolveCoachId]);
 
   if (loading && bodyParamsCards.length === 0 && !error) {
     return (
@@ -607,6 +604,7 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
                   onEdit={handleEditCard}
                   onDelete={handleDeleteCard}
                   isDeleting={deletingCardId === card.id}
+                  timezoneIana={displayTimezone}
                 />
               ))}
             </div>
@@ -712,6 +710,7 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
         shareUrl={bodyParamsShareData?.shareUrl}
         preCapCard={bodyParamsPreCapCard}
         previousCard={bodyParamsShareData?.previousCard ?? null}
+        user={user}
       />
 
       <CustomAlertModal

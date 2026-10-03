@@ -19,6 +19,7 @@ import {
   hardDeleteCardsForUserId,
 } from '../data/card.repo.js';
 import { syncCardToProfileAfterSave } from '../data/sync.repo.js';
+import { syncBcmPhotosToTestimonial } from '../domain/bcmTestimonialPhotoSync.js';
 import { ValidationError } from '../../../shared/lib/ValidationError.js';
 import logger from '../../../shared/lib/logger.js';
 import { BCM_ACTIVATED_MEMBER_MESSAGE } from '../domain/card.rules.js';
@@ -139,6 +140,9 @@ export async function handleCreateCard(body) {
     bmr:           payload.bmr,
     weightKg:      payload.weightKg,
     fatPercent:    payload.fatPercent,
+    dietType:      payload.dietType,
+    physicalActivityLevel: payload.physicalActivityLevel,
+    transformationPhotos: payload.transformationPhotos,
   };
 
   let syncResult = { synced: false, userId: card.user_id ?? userId ?? null };
@@ -155,6 +159,16 @@ export async function handleCreateCard(body) {
   }
 
   const linkedUserId = card.user_id ?? userId ?? null;
+  if (linkedUserId && payload.transformationPhotos) {
+    await syncBcmPhotosToTestimonial({
+      userId: linkedUserId,
+      transformationPhotos: payload.transformationPhotos,
+      weightKg: payload.weightKg,
+      heightCm: payload.heightCm,
+      recoveredHealthIssues: payload.recoveredHealthIssues,
+    });
+  }
+
   if (linkedUserId) {
     try {
       await enforceBpcLeadNoCoachUntilOnboarding(linkedUserId);
@@ -206,9 +220,13 @@ export async function handleCreateCard(body) {
         hipCm:            card.hip_cm,
         recordedDate:     card.recorded_date,
         locationName:     card.location_name,
+        createdAt:        card.created_at,
+        updatedAt:        card.updated_at ?? null,
         recoveredHealthIssues: Array.isArray(card.recovered_health_issues)
           ? card.recovered_health_issues
           : (payload.recoveredHealthIssues || []),
+        dietType:         payload.dietType || null,
+        physicalActivityLevel: payload.physicalActivityLevel || null,
         phoneNumber:      phoneNumber || payload.phoneNumber || null,
         userId:           card.user_id ?? userId ?? null,
         profileSynced:    syncResult.synced,

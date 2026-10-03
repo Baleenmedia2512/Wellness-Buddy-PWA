@@ -1,7 +1,7 @@
 // Authentication flow controller — OTP send + verify.
 // Phone-only channel: MDT SMS OTP via /api/auth/send-otp + verify-otp.
-// WebOTP API (navigator.credentials.get) auto-reads the code on Android.
-// iOS: autoComplete="one-time-code" on the OTP field surfaces the SMS suggestion.
+// SMS suggestion: first OTP cell uses autoComplete="one-time-code" (iOS + Android).
+// WebOTP API also auto-reads when the SMS includes @domain #code.
 import { useRef, useState } from 'react';
 import { sendOtp as sendOtpApi, verifyOtp as verifyOtpApi } from '../services/authService';
 import {

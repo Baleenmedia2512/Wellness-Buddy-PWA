@@ -3,12 +3,87 @@
  * Governs both the create (POST) and the public-resolve (GET) paths.
  */
 import { ValidationError } from '../../../shared/lib/ValidationError.js';
+import { VALID_DIETS } from '../../user/user.validators.js';
+import { isValidPhysicalActivityLevel } from '../../../utils/tdeeCalculations.js';
+import {
+  TRANSFORMATION_PHOTO_SLOTS,
+  hasTransformationPhotoUpdates,
+  isStoredTransformationPhoto,
+} from '../../user/domain/transformationPhotos.rules.js';
 
 const VALID_GENDERS = ['Male', 'Female', 'Other'];
 
 /** Same limits as testimonials recoveredHealthIssues. */
 const MAX_HEALTH_ISSUES = 20;
 const MAX_ISSUE_LEN = 120;
+
+/**
+ * Optional diet preference — Profile source of truth (team_table.DietType).
+ * Not persisted on body_parameters_cards.
+ *
+ * @param {*} val
+ * @returns {string|null}
+ */
+function _optionalDietType(val) {
+  if (val === undefined || val === null || val === '') return null;
+  const s = String(val).trim();
+  if (!VALID_DIETS.includes(s)) {
+    throw new ValidationError(422, `dietType must be one of: ${VALID_DIETS.join(', ')}`);
+  }
+  return s;
+}
+
+/**
+ * Optional physical activity — Profile source of truth (team_table.PhysicalActivityLevel).
+ * Not persisted on body_parameters_cards.
+ *
+ * @param {*} val
+ * @returns {string|null}
+ */
+function _optionalPhysicalActivityLevel(val) {
+  if (val === undefined || val === null || val === '') return null;
+  const s = String(val).trim();
+  if (!isValidPhysicalActivityLevel(s)) {
+    throw new ValidationError(422, 'physicalActivityLevel is invalid');
+  }
+  return s;
+}
+
+/**
+ * Optional Left/Centre/Right photos — Profile SoT (team_table.transformation_photos).
+ * Not persisted on body_parameters_cards.
+ *
+ * @param {object} body
+ * @returns {object|null}
+ */
+function _optionalTransformationPhotos(body) {
+  if (!body || typeof body !== 'object') return null;
+  if (!('transformationPhotos' in body) && !('transformation_photos' in body)) return null;
+  const raw = body.transformationPhotos !== undefined
+    ? body.transformationPhotos
+    : body.transformation_photos;
+  if (raw == null) return null;
+  if (typeof raw !== 'object' || Array.isArray(raw)) {
+    throw new ValidationError(
+      422,
+      'transformationPhotos must be an object with optional front, left, and right images',
+    );
+  }
+  const normalized = {};
+  for (const slot of TRANSFORMATION_PHOTO_SLOTS) {
+    if (!(slot in raw)) continue;
+    const value = raw[slot];
+    if (value == null || value === '') continue;
+    if (!isStoredTransformationPhoto(value)) {
+      throw new ValidationError(
+        422,
+        `Invalid transformationPhotos.${slot}. Provide an image data URL.`,
+      );
+    }
+    normalized[slot] = String(value).trim();
+  }
+  return hasTransformationPhotoUpdates(normalized) ? normalized : null;
+}
 
 /**
  * Optional recovered health issues (testimonials-compatible).
@@ -76,7 +151,8 @@ export function validateCreateCard(body) {
 
   const { createdBy, userId, name, age, gender, heightCm, weightKg,
           bmi, fatPercent, bmr, bodyAge, visceralFat, chestCm, waistCm, hipCm,
-          recordedDate, locationName, phoneNumber, bmrManualOverride } = body;
+          recordedDate, locationName, phoneNumber, bmrManualOverride,
+          dietType, physicalActivityLevel } = body;
 
   if (!createdBy) throw new ValidationError(400, 'createdBy is required');
   const createdByN = parseInt(createdBy, 10);
@@ -111,6 +187,9 @@ export function validateCreateCard(body) {
 
   const phoneVal = _optionalPhone(phoneNumber);
   const recoveredHealthIssues = normalizeRecoveredHealthIssues(body);
+  const dietTypeVal = _optionalDietType(dietType);
+  const physicalActivityLevelVal = _optionalPhysicalActivityLevel(physicalActivityLevel);
+  const transformationPhotosVal = _optionalTransformationPhotos(body);
 
   return {
     createdBy: createdByN,
@@ -133,6 +212,9 @@ export function validateCreateCard(body) {
     phoneNumber: phoneVal,
     bmrManualOverride: bmrManualOverride === true || bmrManualOverride === 'true',
     recoveredHealthIssues,
+    dietType: dietTypeVal,
+    physicalActivityLevel: physicalActivityLevelVal,
+    transformationPhotos: transformationPhotosVal,
   };
 }
 
@@ -149,7 +231,8 @@ export function validateUpdateCard(body) {
 
   const { id, name, age, gender, heightCm, weightKg,
           bmi, fatPercent, bmr, bodyAge, visceralFat, chestCm, waistCm, hipCm,
-          recordedDate, locationName, phoneNumber, bmrManualOverride } = body;
+          recordedDate, locationName, phoneNumber, bmrManualOverride,
+          dietType, physicalActivityLevel } = body;
 
   if (!id) throw new ValidationError(400, 'id is required');
   const idN = parseInt(id);
@@ -183,6 +266,9 @@ export function validateUpdateCard(body) {
 
   const phoneVal = _optionalPhone(phoneNumber);
   const recoveredHealthIssues = normalizeRecoveredHealthIssues(body);
+  const dietTypeVal = _optionalDietType(dietType);
+  const physicalActivityLevelVal = _optionalPhysicalActivityLevel(physicalActivityLevel);
+  const transformationPhotosVal = _optionalTransformationPhotos(body);
 
   return {
     id:          idN,
@@ -204,6 +290,9 @@ export function validateUpdateCard(body) {
     phoneNumber: phoneVal,
     bmrManualOverride: bmrManualOverride === true || bmrManualOverride === 'true',
     recoveredHealthIssues,
+    dietType: dietTypeVal,
+    physicalActivityLevel: physicalActivityLevelVal,
+    transformationPhotos: transformationPhotosVal,
   };
 }
 

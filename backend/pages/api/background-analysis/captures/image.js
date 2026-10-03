@@ -28,8 +28,8 @@ export default async function handler(req, res) {
     }
 
     if (result.body?.data?.r2Url) {
-      res.setHeader('Cache-Control', 'private, max-age=300');
-      return res.redirect(302, result.body.data.r2Url);
+      const { sendImageRedirect } = await import('../../../../shared/lib/r2/sendImageRedirect.js');
+      if (sendImageRedirect(res, result.body.data.r2Url)) return;
     }
     return res.status(404).json({ ok: false, error: { code: 'NO_IMAGE', message: 'No image' } });
   } catch (err) {

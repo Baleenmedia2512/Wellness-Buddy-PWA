@@ -76,21 +76,22 @@ describe('paginateDownlineWeightRecords', () => {
     ),
   ];
 
-  it('returns first page of 20 for full + all', () => {
+  it('returns first page of 20 for full + all (includes viewer)', () => {
+    const fullTotal = members.length + 1;
     const { records, pagination, statusCounts, teamScopeCounts } = paginateDownlineWeightRecords(
       self,
       members,
       { teamFilter: 'full', statusFilter: 'all', page: 1, limit: 20 },
     );
     assert.equal(records.length, 20);
-    assert.equal(pagination.totalRecords, members.length);
+    assert.equal(pagination.totalRecords, fullTotal);
     assert.equal(pagination.hasNextPage, true);
     assert.equal(pagination.page, 1);
     assert.equal(pagination.limit, 20);
-    assert.equal(teamScopeCounts.full, members.length);
+    assert.equal(teamScopeCounts.full, fullTotal);
     assert.equal(teamScopeCounts.direct, 2);
     assert.equal(teamScopeCounts.mine, 1);
-    assert.equal(statusCounts.all, members.length);
+    assert.equal(statusCounts.all, fullTotal);
   });
 
   it('scopes to direct + off_track and paginates', () => {
@@ -135,8 +136,8 @@ describe('paginateDownlineWeightRecords', () => {
       page: 3,
       limit: 20,
     });
-    assert.equal(pagination.totalRecords, 44);
-    assert.equal(records.length, 4);
+    assert.equal(pagination.totalRecords, members.length + 1);
+    assert.equal(records.length, 5);
     assert.equal(pagination.hasNextPage, false);
   });
 });
@@ -148,10 +149,12 @@ describe('applyTeamFilter / status / search helpers', () => {
     row({ userId: 3, status: 'on_track', isDirect: false, userName: 'Ann' }),
   ];
 
-  it('applies team scopes', () => {
+  it('applies team scopes (Full includes viewer first)', () => {
     assert.equal(applyTeamFilter(self, members, TEAM_FILTERS.MINE).length, 1);
     assert.equal(applyTeamFilter(self, members, TEAM_FILTERS.DIRECT).length, 1);
-    assert.equal(applyTeamFilter(self, members, TEAM_FILTERS.FULL).length, 2);
+    const full = applyTeamFilter(self, members, TEAM_FILTERS.FULL);
+    assert.equal(full.length, 3);
+    assert.equal(full[0].userId, 1);
   });
 
   it('filters status and search', () => {

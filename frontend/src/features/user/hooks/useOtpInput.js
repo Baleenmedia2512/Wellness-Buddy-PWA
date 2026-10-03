@@ -1,5 +1,5 @@
 // OTP input controller — supports native keyboard, custom keypad, paste,
-// WebOTP API auto-fill, and iOS autoComplete="one-time-code" multi-char input.
+// WebOTP API auto-fill, and autoComplete="one-time-code" multi-char input (iOS + Android).
 import { useRef, useState } from 'react';
 import { SMS_OTP_LENGTH } from '../domain/otpLength';
 import { resolveOtpDigits } from '../domain/otpInputPaste';

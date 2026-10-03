@@ -45,6 +45,19 @@ export async function editTestimonial(payload) {
 }
 
 /**
+ * Sync Profile / BCM Left onto testimonial Before (no OTP). After is not updated from Profile Right.
+ * @param {{ userId, beforeImageBase64?, afterImageBase64?, beforeWeightKg?, goalType?, recoveredHealthIssues? }} payload
+ */
+export async function syncProfilePhotosToTestimonial(payload) {
+  const res = await CapacitorHttp.post({
+    url:     `${base()}/sync-profile-photos`,
+    headers: { 'Content-Type': 'application/json' },
+    data:    payload,
+  });
+  return parseApiResponse(res, 'Failed to sync profile photos to testimonial');
+}
+
+/**
  * Fetch the current user's own testimonial.
  * @param {number} userId
  */

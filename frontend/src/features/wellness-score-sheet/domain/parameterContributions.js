@@ -4,6 +4,7 @@
  */
 
 import { PARAMETER_TIME_WINDOW_KEYS, formatClockTime } from './parameterIcons';
+import { getParameterMeta } from './parameterRegistry';
 
 const WINDOW_BUFFER_SECONDS = 59;
 
@@ -226,9 +227,10 @@ export function buildParameterContributionView({ parameter, meals = [], timeWind
   const key = parameter?.key;
   const earned = Math.round(parameter?.earnedPoints ?? 0);
   const max = Math.round(parameter?.maxPoints ?? 0);
+  const meta = getParameterMeta(key);
   const base = {
     key,
-    title: parameter?.label || key,
+    title: meta?.label || parameter?.label || key,
     earnedPoints: earned,
     maxPoints: max,
     percentage: max > 0 ? Math.round((earned / max) * 100) : 0,

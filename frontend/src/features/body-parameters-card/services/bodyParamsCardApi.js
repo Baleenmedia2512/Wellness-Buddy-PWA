@@ -97,7 +97,7 @@ export async function searchPhonesByPrefix({ prefix, coachId }) {
  * Called as soon as a complete phone is typed (does not wait for Save).
  *
  * @param {{ phoneNumber: string, coachId: number|string }} opts
- * @returns {Promise<{ activated: boolean, message: string|null }>}
+ * @returns {Promise<{ activated: boolean, message: string|null, userId: number|null, existingCard: object|null }>}
  */
 export async function fetchPhoneBcmStatus({ phoneNumber, coachId }) {
   const response = await CapacitorHttp.get({
@@ -115,9 +115,12 @@ export async function fetchPhoneBcmStatus({ phoneNumber, coachId }) {
     throw new Error(result?.error?.message || result?.message || `Phone status check failed (${status})`);
   }
   if (!result?.ok) throw new Error(result?.error?.message || 'Phone status check failed');
+  const rawUserId = result.data?.userId;
+  const userIdN = rawUserId != null ? Number(rawUserId) : NaN;
   return {
     activated: Boolean(result.data?.activated),
     message: result.data?.message || null,
+    userId: Number.isFinite(userIdN) && userIdN > 0 ? userIdN : null,
     existingCard: result.data?.existingCard || null,
   };
 }

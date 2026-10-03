@@ -6,6 +6,8 @@ import assert from 'node:assert/strict';
 import {
   activeActivityReportTableFilters,
   activityReportFilterQuery,
+  ACTIVITY_REPORT_ATTENDANCE,
+  ACTIVITY_REPORT_ATTENDANCE_OPTIONS,
   formatActivityReportAttendance,
   formatActivityReportFilterOption,
   normalizeActivityReportTableFilters,
@@ -81,7 +83,22 @@ describe('activityReportTableFilters', () => {
   });
 
   it('labels attendance filter values', () => {
-    assert.equal(formatActivityReportAttendance('attended'), 'Attended');
-    assert.equal(formatActivityReportAttendance('not_attended'), 'Not attended');
+    assert.equal(formatActivityReportAttendance('posted'), 'Posted');
+    assert.equal(formatActivityReportAttendance('not_posted'), 'Not Posted');
+    assert.equal(formatActivityReportAttendance('attended'), 'Posted');
+    assert.equal(formatActivityReportAttendance('not_attended'), 'Not Posted');
+  });
+
+  it('keeps Posted / Not Posted option ids aligned with the API', () => {
+    assert.equal(ACTIVITY_REPORT_ATTENDANCE.POSTED, 'posted');
+    assert.equal(ACTIVITY_REPORT_ATTENDANCE.NOT_POSTED, 'not_posted');
+    assert.deepEqual(
+      ACTIVITY_REPORT_ATTENDANCE_OPTIONS.map((option) => option.id),
+      ['posted', 'not_posted'],
+    );
+    assert.notEqual(
+      ACTIVITY_REPORT_ATTENDANCE_OPTIONS[0].id,
+      ACTIVITY_REPORT_ATTENDANCE_OPTIONS[1].id,
+    );
   });
 });

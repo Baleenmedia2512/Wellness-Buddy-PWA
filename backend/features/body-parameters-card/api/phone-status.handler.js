@@ -38,6 +38,8 @@ export async function handlePhoneStatus(query) {
       data: {
         activated,
         message: activated ? BCM_ACTIVATED_MEMBER_MESSAGE : null,
+        // Additive — lets the form reload profile transformation photos without autocomplete.
+        userId: userId != null ? userId : null,
         existingCard: activated ? null : existingCard,
       },
     },

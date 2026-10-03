@@ -66,8 +66,20 @@ describe('isWithinEnabledAiWindow', () => {
     );
   });
 
-  it('false mid-morning with defaults', () => {
+  it('false mid-morning with null windows (no invented times)', () => {
     assert.equal(isWithinEnabledAiWindow(midMorning, null), false);
+  });
+
+  it('true during custom breakfast-only admin window', () => {
+    const breakfastNow = new Date('2026-08-20T01:00:00.000Z'); // 06:30 IST
+    assert.equal(
+      isWithinEnabledAiWindow(breakfastNow, {
+        breakfast: { enabled: true, start: '05:30:00', end: '08:30:00' },
+        lunch: { enabled: false, start: '12:00:00', end: '16:00:00' },
+        dinner: { enabled: false, start: '17:30:00', end: '20:30:00' },
+      }),
+      true,
+    );
   });
 });
 
@@ -166,6 +178,40 @@ describe('decideMealWindowAutoAi', () => {
         aiFoodAnalysisWindowOpen: false,
         aiFoodAnalysisAllowed: false,
         aiFoodAnalysisDenyReason: 'outside_ai_window',
+      },
+    });
+    assert.equal(d.shouldAutoAi, false);
+    assert.equal(d.reason, 'outside-meal-window');
+  });
+
+  it('auto-AI during admin breakfast-only window', () => {
+    const breakfastNow = new Date('2026-08-20T01:00:00.000Z'); // 06:30 IST
+    const d = decideMealWindowAutoAi({
+      now: breakfastNow,
+      creditsFlagEnabled: true,
+      creditStatus: {
+        ...creditsOk,
+        availabilityWindows: {
+          breakfast: { enabled: true, start: '05:30:00', end: '08:30:00' },
+          lunch: { enabled: false, start: '12:00:00', end: '16:00:00' },
+          dinner: { enabled: false, start: '17:30:00', end: '20:30:00' },
+        },
+      },
+    });
+    assert.equal(d.shouldAutoAi, true);
+    assert.equal(d.reason, 'meal-auto');
+  });
+
+  it('manual when no availabilityWindows and no backend window flag', () => {
+    const d = decideMealWindowAutoAi({
+      now: lunchNow,
+      creditsFlagEnabled: true,
+      creditStatus: {
+        enabled: true,
+        remaining: 3,
+        used: 0,
+        pending: 0,
+        dailyLimit: 3,
       },
     });
     assert.equal(d.shouldAutoAi, false);

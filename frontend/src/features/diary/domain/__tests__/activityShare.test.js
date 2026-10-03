@@ -333,16 +333,16 @@ describe('buildDiaryShareSuffix', () => {
     })).toBe('Curr: 77 kg');
   });
 
-  test('weight suffix includes prev, curr, and arrow', () => {
+  test('weight suffix includes prev, curr, arrow, and delta amount', () => {
     expect(buildDiaryShareSuffix('weight', {
       previousWeight: 55.7,
       currentWeight: 55.6,
-    })).toBe('Prev: 55.7 kg\nCurr: 55.6 kg ⬇️');
+    })).toBe('Prev: 55.7 kg\nCurr: 55.6 kg ⬇️ 100 g');
 
     expect(buildDiaryShareSuffix('weight', {
       previousWeight: 70,
       currentWeight: 71,
-    })).toBe('Prev: 70 kg\nCurr: 71 kg ⬆️');
+    })).toBe('Prev: 70 kg\nCurr: 71 kg ⬆️ 1 kg');
 
     expect(buildDiaryShareSuffix('weight', {
       currentWeight: 55.6,
@@ -354,30 +354,30 @@ describe('buildDiaryShareSuffix', () => {
     })).toBe('Prev: 74 kg\nCurr: 74 kg');
   });
 
-  test('weight suffix lists Ideal, Prev, Curr with arrow on curr', () => {
+  test('weight suffix lists Ideal, Prev, Curr with arrow and amount on curr', () => {
     expect(buildDiaryShareSuffix('weight', {
       previousWeight: 73.65,
       currentWeight: 73.4,
       idealWeight: 73.6,
-    })).toBe('Ideal: 73.6 kg\nPrev: 73.65 kg\nCurr: 73.4 kg ⬇️');
+    })).toBe('Ideal: 73.6 kg\nPrev: 73.65 kg\nCurr: 73.4 kg ⬇️ 250 g');
 
     expect(buildDiaryShareSuffix('weight', {
       previousWeight: 73.4,
       currentWeight: 72.9,
       idealWeight: 73.7,
-    })).toBe('Ideal: 73.7 kg\nPrev: 73.4 kg\nCurr: 72.9 kg ⬇️');
+    })).toBe('Ideal: 73.7 kg\nPrev: 73.4 kg\nCurr: 72.9 kg ⬇️ 500 g');
 
     expect(buildDiaryShareSuffix('weight', {
       previousWeight: 72.9,
       currentWeight: 72.85,
       idealWeight: 73.7,
-    })).toBe('Ideal: 73.7 kg\nPrev: 72.9 kg\nCurr: 72.85 kg ⬇️');
+    })).toBe('Ideal: 73.7 kg\nPrev: 72.9 kg\nCurr: 72.85 kg ⬇️ 50 g');
 
     expect(buildDiaryShareSuffix('weight', {
       previousWeight: 73.4,
       currentWeight: 74.1,
       idealWeight: 73.7,
-    })).toBe('Ideal: 73.7 kg\nPrev: 73.4 kg\nCurr: 74.1 kg ⬆️');
+    })).toBe('Ideal: 73.7 kg\nPrev: 73.4 kg\nCurr: 74.1 kg ⬆️ 700 g');
 
     expect(buildDiaryShareSuffix('weight', {
       currentWeight: 55.6,

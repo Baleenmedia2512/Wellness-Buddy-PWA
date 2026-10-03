@@ -303,6 +303,12 @@ export function buildFormPrefillFromMember(member) {
   copyNum('fatPercent');
   copyNum('bmi');
   copyNum('weightKg');
+  if (member.dietType && String(member.dietType).trim()) {
+    patch.dietType = String(member.dietType).trim();
+  }
+  if (member.physicalActivityLevel && String(member.physicalActivityLevel).trim()) {
+    patch.physicalActivityLevel = String(member.physicalActivityLevel).trim();
+  }
   if (Array.isArray(member.recoveredHealthIssues) && member.recoveredHealthIssues.length) {
     patch.recoveredHealthIssues = member.recoveredHealthIssues
       .filter((x) => typeof x === 'string' && x.trim())

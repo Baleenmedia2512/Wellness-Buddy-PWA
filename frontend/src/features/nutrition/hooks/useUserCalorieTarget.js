@@ -1,9 +1,10 @@
 /**
  * useUserCalorieTarget — fetch the user's TDEE-based daily calorie target.
  *
- * Wraps fetchUserCalorieTarget() with a useEffect that re-runs on email/apiBaseUrl/
- * bmrUpdateKey change AND on tab visibility change (so editing BMR or activity in the
- * profile screen and returning to nutrition picks up the new value).
+ * Wraps fetchUserCalorieTarget() with a useEffect that re-runs on email/userId/
+ * apiBaseUrl/bmrUpdateKey change AND on tab visibility change (so editing BMR
+ * or activity in the profile screen and returning to nutrition picks up the
+ * new value). Works for phone-only users (userId) as well as email login.
  */
 import { useState, useEffect } from 'react';
 import { fetchUserCalorieTarget, DEFAULT_CALORIE_TARGET } from '../services/nutritionDashboard';
@@ -13,12 +14,15 @@ export function useUserCalorieTarget({ user, apiBaseUrl, bmrUpdateKey = 0, enabl
   const [calorieTarget, setCalorieTarget] = useState(DEFAULT_CALORIE_TARGET);
   const [bmrLoading, setBmrLoading] = useState(true);
 
+  const email = (user?.email || user?.Email || '').trim() || null;
+  const userId = user?.id || user?.UserId || user?.userId || null;
+
   useEffect(() => {
     if (!enabled) {
       setBmrLoading(false);
       return undefined;
     }
-    if (!user?.email) {
+    if (!email && (userId == null || userId === '')) {
       setBmrLoading(false);
       return undefined;
     }
@@ -26,7 +30,11 @@ export function useUserCalorieTarget({ user, apiBaseUrl, bmrUpdateKey = 0, enabl
     let cancelled = false;
     setBmrLoading(true);
     const load = async () => {
-      const target = await fetchUserCalorieTarget({ apiBaseUrl, email: user.email });
+      const target = await fetchUserCalorieTarget({
+        apiBaseUrl,
+        email: email || undefined,
+        userId: email ? undefined : userId,
+      });
       if (!cancelled) {
         setCalorieTarget(target);
         setBmrLoading(false);
@@ -45,7 +53,7 @@ export function useUserCalorieTarget({ user, apiBaseUrl, bmrUpdateKey = 0, enabl
       cancelled = true;
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [user?.email, apiBaseUrl, bmrUpdateKey, enabled]);
+  }, [email, userId, apiBaseUrl, bmrUpdateKey, enabled]);
 
   return { calorieTarget, bmrLoading };
 }

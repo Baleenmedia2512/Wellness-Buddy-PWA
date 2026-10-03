@@ -1,4 +1,5 @@
 import React from 'react';
+import BathroomScaleIcon from '../../../shared/components/icons/BathroomScaleIcon';
 import {
   getParameterIcon,
   getScoringModeHint,
@@ -10,7 +11,7 @@ import {
  */
 export default function WellnessScoreSetupRow({ category, config, onChange, timeWindows = null }) {
   const { enabled, maxPoints } = config;
-  const Icon = getParameterIcon(category.key);
+  const Icon = category.key === 'weight_post' ? BathroomScaleIcon : getParameterIcon(category.key);
   const modeLabel = SCORING_MODE_LABELS[category.scoringMode] || category.scoringMode;
   const hint = getScoringModeHint(category.scoringMode, category.key, null, {
     adminView: true,

@@ -21,7 +21,6 @@ const UserProfileBody = ({
       <>
         <UserProfileFields
           email={email}
-          setEmail={form.setEmail}
           name={form.name} setName={form.setName}
           height={form.height} setHeight={form.setHeight}
           phone={form.phone} setPhone={form.setPhone}
@@ -34,6 +33,7 @@ const UserProfileBody = ({
         />
         <UserProfileBodyMetrics
           bodyMetrics={form.bodyMetrics}
+          gender={form.gender}
           onChange={form.setBodyMetricField}
           heightCm={form.height}
           weightKg={latestWeight}

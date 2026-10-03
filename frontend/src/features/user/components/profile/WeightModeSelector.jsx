@@ -2,26 +2,28 @@
 import React, { useMemo } from 'react';
 import { deriveWeightGoalMode } from '../../../weight/services/weightFormService';
 import { EmojiOrNative } from '../../../../shared/components/icons/EmojiImage';
+import BathroomScaleIcon from '../../../../shared/components/icons/BathroomScaleIcon';
 
 const MODE_META = {
   loss: {
     pill: 'bg-red-500',
     wrap: 'bg-red-100',
-    icon: '🔥',
+    icon: <EmojiOrNative emoji="🔥" className="w-4 h-4" nativeClassName="text-sm leading-none" />,
     label: 'Loss Mode',
     hint: 'App will alert you when weight increases unexpectedly.',
   },
   gain: {
     pill: 'bg-blue-500',
     wrap: 'bg-blue-100',
-    icon: '💪',
+    icon: <EmojiOrNative emoji="💪" className="w-4 h-4" nativeClassName="text-sm leading-none" />,
     label: 'Gain Mode',
     hint: 'App will alert you when weight decreases unexpectedly.',
   },
   maintain: {
     pill: 'bg-green-500',
     wrap: 'bg-green-100',
-    icon: '⚖️',
+    // Same weighing-scale asset as Manual Log (`/scale.png`).
+    icon: <BathroomScaleIcon className="w-4 h-4" alt="" />,
     label: 'Maintain',
     hint: 'You are within your ideal weight range.',
   },
@@ -47,7 +49,7 @@ const WeightModeSelector = ({ height, currentWeight, fallbackMode = 'loss' }) =>
         <span
           className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-bold text-white shadow-md ${meta.pill}`}
         >
-          <EmojiOrNative emoji={meta.icon} className="w-4 h-4" nativeClassName="text-sm leading-none" />
+          {meta.icon}
           <span>{meta.label}</span>
         </span>
       </div>

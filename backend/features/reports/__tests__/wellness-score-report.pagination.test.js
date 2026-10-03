@@ -141,16 +141,16 @@ describe('paginateWellnessScoreReportRecords — percentage order', () => {
     }),
   ];
 
-  it('Full Team is downline only — coach is under Mine, not Full', () => {
+  it('Full Team includes viewer first, then downline', () => {
     const { records, teamScopeCounts } = paginateWellnessScoreReportRecords(self, members, {
       teamFilter: 'full',
       exportAll: true,
     });
-    assert.equal(teamScopeCounts.full, 3);
+    assert.equal(teamScopeCounts.full, 4);
     assert.equal(teamScopeCounts.mine, 1);
-    assert.equal(records.length, 3);
-    assert.equal(records[0].name, 'Rekha');
-    assert.equal(records.every((r) => r.name !== 'CoachTop'), true);
+    assert.equal(records.length, 4);
+    assert.equal(records[0].name, 'CoachTop');
+    assert.equal(records.filter((r) => r.name === 'CoachTop').length, 1);
   });
 
   it('orders by percentage DESC then computed_at DESC on ties', () => {

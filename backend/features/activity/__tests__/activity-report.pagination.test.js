@@ -89,6 +89,22 @@ describe('normalizeActivityReportPagination', () => {
     });
     assert.deepEqual(p.columnFilters, { memberType: 'sponsor' });
   });
+
+  it('keeps already-parsed columnFilters when re-normalizing paginationOpts', () => {
+    const p = normalizeActivityReportPagination({
+      page: 1,
+      limit: 20,
+      search: '',
+      sort: 'date',
+      sortDir: 'desc',
+      exportAll: false,
+      clubFilter: '',
+      filterColumn: '',
+      filterValue: '',
+      columnFilters: { level: '1' },
+    });
+    assert.deepEqual(p.columnFilters, { level: '1' });
+  });
 });
 
 describe('club filter', () => {
@@ -165,6 +181,26 @@ describe('filter / sort / paginate', () => {
     assert.deepEqual(sponsors.map((r) => r.memberName), ['Alice']);
     const levelTwo = filterActivityReportRecordsByColumn(typed, 'level', '2');
     assert.deepEqual(levelTwo.map((r) => r.memberName), ['Bob']);
+  });
+
+  it('paginates level 1 from parsed columnFilters and excludes other levels', () => {
+    const typed = [
+      { memberName: 'Meena', memberType: 'member', level: 4, date: '2026-09-19' },
+      { memberName: 'Direct A', memberType: 'sponsor', level: 1, date: '2026-09-19' },
+      { memberName: 'Nested', memberType: 'member', level: 2, date: '2026-09-18' },
+      { memberName: 'Direct B', memberType: 'member', level: 1, date: '2026-09-17' },
+    ];
+    const { records, pagination } = paginateActivityReportRecords(typed, {
+      page: 1,
+      limit: 20,
+      search: '',
+      sort: 'memberName',
+      sortDir: 'asc',
+      columnFilters: { level: '1' },
+    });
+    assert.deepEqual(records.map((r) => r.memberName), ['Direct A', 'Direct B']);
+    assert.equal(pagination.totalRecords, 2);
+    assert.ok(records.every((r) => r.level === 1));
   });
 
   it('applies stacked column filters with AND', () => {

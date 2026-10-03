@@ -4,13 +4,18 @@
  * Eligible: leaf downline members (under a coach, not a leader role, no own
  * team members) plus admin/developer staff (for testing/ops).
  *
- * Windows (IST defaults, inclusive): lunch 12:00–16:00 and dinner 17:30–20:30.
+ * Time windows: admin-configured AI Credits availability only (breakfast /
+ * lunch / dinner enabled + start/end). No separate hardcoded meal times.
  *
  * Legacy note (§5.1): when `appVersion` is missing/unknown, callers may skip
  * these gates so older clients without X-App-Version keep prior credit-only
  * behaviour. Versioned clients (current app) always enforce.
  */
 import { IANA_IST, timeOfDayInTimezone } from '../../../shared/lib/datetime/index.js';
+import {
+  DEFAULT_AVAILABILITY_WINDOWS,
+  evaluateAiAvailability,
+} from './availability.rules.js';
 
 /** Roles that must never use AI food analysis (team leaders). */
 export const AI_FOOD_LEADER_ROLES = Object.freeze(
@@ -22,19 +27,22 @@ export const AI_FOOD_STAFF_ROLES = Object.freeze(
   new Set(['admin', 'developer']),
 );
 
-/** Default lunch window (inclusive), HH:MM:SS — kept for callers/tests. */
+/**
+ * @deprecated Prefer admin availability windows via evaluateAiAvailability.
+ * Kept as aliases of admin lunch/dinner defaults for older imports/tests.
+ */
 export const AI_FOOD_ANALYSIS_WINDOW = Object.freeze({
-  start: '12:00:00',
-  end: '16:00:00',
+  start: DEFAULT_AVAILABILITY_WINDOWS.lunch.start,
+  end: DEFAULT_AVAILABILITY_WINDOWS.lunch.end,
 });
 
-/** Default dinner window (inclusive), HH:MM:SS. */
+/** @deprecated See AI_FOOD_ANALYSIS_WINDOW */
 export const AI_FOOD_DINNER_WINDOW = Object.freeze({
-  start: '17:30:00',
-  end: '20:30:00',
+  start: DEFAULT_AVAILABILITY_WINDOWS.dinner.start,
+  end: DEFAULT_AVAILABILITY_WINDOWS.dinner.end,
 });
 
-/** Default windows where AI food analysis is available. */
+/** @deprecated Prefer DEFAULT_AVAILABILITY_WINDOWS / evaluateAiAvailability */
 export const AI_FOOD_ANALYSIS_WINDOWS = Object.freeze([
   AI_FOOD_ANALYSIS_WINDOW,
   AI_FOOD_DINNER_WINDOW,
@@ -42,7 +50,7 @@ export const AI_FOOD_ANALYSIS_WINDOWS = Object.freeze([
 
 /**
  * First app version that receives leaf-member + window enforcement.
- * Missing / older → legacy credit-only gate (see shouldEnforceAiFoodAccess).
+ * Missing / older → legacy (no leaf/window) while older binaries remain supported.
  */
 export const AI_FOOD_ACCESS_MIN_APP_VERSION = '3.4.7';
 
@@ -78,16 +86,18 @@ export function isEligibleAiFoodAnalysisMember({
 }
 
 /**
- * Inclusive start/end check for one window in a given IANA timezone.
+ * Inclusive start/end check for one explicit window in a given IANA timezone.
+ * Callers must pass the window — there is no implicit hardcoded meal time.
+ *
  * @param {Date|string|number} [now]
  * @param {string} [timezoneIana]
- * @param {{ start?: string, end?: string }} [window]
+ * @param {{ start?: string, end?: string }|null} [window]
  * @returns {boolean}
  */
 export function isWithinAiFoodAnalysisWindow(
   now = new Date(),
   timezoneIana = IANA_IST,
-  window = AI_FOOD_ANALYSIS_WINDOW,
+  window = null,
 ) {
   if (!window?.start || !window?.end) return false;
   const startMin = timeStringToMinutes(window.start);
@@ -104,21 +114,21 @@ export function isWithinAiFoodAnalysisWindow(
 }
 
 /**
- * True when now falls in any configured AI window (lunch and/or dinner).
+ * True when now falls in any of the given windows.
+ * Empty / missing list → closed (no hardcoded fallback).
+ *
  * @param {Date|string|number} [now]
  * @param {string} [timezoneIana]
- * @param {Array<{ start?: string, end?: string }>} [windows]
+ * @param {Array<{ start?: string, end?: string }>|null|undefined} [windows]
  * @returns {boolean}
  */
 export function isWithinAnyAiFoodAnalysisWindow(
   now = new Date(),
   timezoneIana = IANA_IST,
-  windows = AI_FOOD_ANALYSIS_WINDOWS,
+  windows = null,
 ) {
-  const list = Array.isArray(windows) && windows.length > 0
-    ? windows
-    : AI_FOOD_ANALYSIS_WINDOWS;
-  return list.some((w) => isWithinAiFoodAnalysisWindow(now, timezoneIana, w));
+  if (!Array.isArray(windows) || windows.length === 0) return false;
+  return windows.some((w) => isWithinAiFoodAnalysisWindow(now, timezoneIana, w));
 }
 
 /**
@@ -141,6 +151,7 @@ export function shouldEnforceAiFoodAccess(appVersion, compareSemver) {
 
 /**
  * Combined access decision (pure).
+ * Window open = admin AI Credits availability (enabled slots + start/end).
  *
  * @param {{
  *   role?: string|null,
@@ -148,6 +159,8 @@ export function shouldEnforceAiFoodAccess(appVersion, compareSemver) {
  *   coachId?: number|string|null,
  *   now?: Date|string|number,
  *   timezoneIana?: string,
+ *   availabilityWindows?: object|null,
+ *   availableInWindow?: boolean|null,
  * }} opts
  * @returns {{
  *   eligible: boolean,
@@ -162,17 +175,31 @@ export function evaluateAiFoodAnalysisAccess({
   coachId = null,
   now = new Date(),
   timezoneIana = IANA_IST,
+  availabilityWindows = null,
+  availableInWindow = null,
 } = {}) {
   const eligible = isEligibleAiFoodAnalysisMember({ role, hasDownlineMembers, coachId });
+
+  let windowOpen;
+  if (typeof availableInWindow === 'boolean') {
+    windowOpen = availableInWindow;
+  } else {
+    const avail = evaluateAiAvailability({
+      now,
+      timezoneIana: timezoneIana || IANA_IST,
+      availabilityWindows,
+    });
+    windowOpen = Boolean(avail.availableInWindow);
+  }
+
   if (!eligible) {
     return {
       eligible: false,
-      windowOpen: isWithinAnyAiFoodAnalysisWindow(now, timezoneIana),
+      windowOpen,
       allowed: false,
       reason: 'not_eligible_downline',
     };
   }
-  const windowOpen = isWithinAnyAiFoodAnalysisWindow(now, timezoneIana);
   if (!windowOpen) {
     return {
       eligible: true,

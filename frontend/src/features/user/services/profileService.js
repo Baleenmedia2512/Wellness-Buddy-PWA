@@ -111,6 +111,36 @@ export const saveProfile = async (payload) => {
   return data;
 };
 
+export const requestCommunityId = async ({ userId, email, communityId }) => {
+  const apiBase = getApiBaseUrl();
+  const res = await apiFetch(`${apiBase}/api/user/community-id/request`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ userId, email, communityId }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.success) {
+    throw new Error(data.message || 'Could not send the Community ID approval request.');
+  }
+  clearProfileCaches({ email, userId });
+  return data;
+};
+
+export const verifyCommunityIdOtp = async ({ userId, email, otp }) => {
+  const apiBase = getApiBaseUrl();
+  const res = await apiFetch(`${apiBase}/api/user/community-id/verify-otp`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ userId, email, otp }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.success) {
+    throw new Error(data.message || 'That approval code did not match.');
+  }
+  clearProfileCaches({ email, userId });
+  return data;
+};
+
 export const snoozeProfilePicture = async (userId) => {
   const res = await fetch(`${getApiBaseUrl()}/api/user/snooze-pic`, {
     method: 'POST',

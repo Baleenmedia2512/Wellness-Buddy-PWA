@@ -1,8 +1,8 @@
 /**
  * Meaningful Lucide icons per wellness score parameter.
+ * Weight Post uses BathroomScaleIcon in the row components (shared /scale.png).
  */
 import {
-  Scale,
   GraduationCap,
   Coffee,
   Utensils,
@@ -33,7 +33,7 @@ import {
 
 /** @type {Record<string, React.ComponentType<{ className?: string }>>} */
 export const PARAMETER_ICONS = {
-  weight_post: Scale,
+  // weight_post → BathroomScaleIcon in ScoreCategoryRow / WellnessScoreSetupRow
   edu_post: GraduationCap,
   breakfast_post: Coffee,
   lunch_post: Utensils,

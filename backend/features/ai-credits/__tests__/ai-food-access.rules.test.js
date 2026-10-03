@@ -14,6 +14,13 @@ import {
 } from '../domain/ai-food-access.rules.js';
 import { compareSemver } from '../../app-version/domain/version.rules.js';
 
+const ADMIN_LUNCH = { start: '12:00:00', end: '16:00:00' };
+const ADMIN_WINDOWS = {
+  breakfast: { enabled: false, start: '05:30:00', end: '08:30:00' },
+  lunch: { enabled: true, start: '12:00:00', end: '16:00:00' },
+  dinner: { enabled: true, start: '17:30:00', end: '20:30:00' },
+};
+
 describe('isEligibleAiFoodAnalysisMember', () => {
   it('allows leaf member under a coach', () => {
     assert.equal(
@@ -59,65 +66,65 @@ describe('isEligibleAiFoodAnalysisMember', () => {
 });
 
 describe('isWithinAiFoodAnalysisWindow', () => {
-  it('is open at 12:00 IST', () => {
-    // 12:00 IST = 06:30 UTC
+  it('requires an explicit window (no hardcoded default)', () => {
     assert.equal(
       isWithinAiFoodAnalysisWindow(new Date('2026-08-26T06:30:00.000Z'), 'Asia/Kolkata'),
-      true,
-    );
-  });
-
-  it('is open at 15:59 IST', () => {
-    // 15:59 IST = 10:29 UTC
-    assert.equal(
-      isWithinAiFoodAnalysisWindow(new Date('2026-08-26T10:29:00.000Z'), 'Asia/Kolkata'),
-      true,
-    );
-  });
-
-  it('is closed at 11:59 IST', () => {
-    // 11:59 IST = 06:29 UTC
-    assert.equal(
-      isWithinAiFoodAnalysisWindow(new Date('2026-08-26T06:29:00.000Z'), 'Asia/Kolkata'),
       false,
     );
   });
 
-  it('is closed at 16:01 IST', () => {
-    // 16:01 IST = 10:31 UTC
+  it('is open at 12:00 IST when lunch window is passed', () => {
     assert.equal(
-      isWithinAiFoodAnalysisWindow(new Date('2026-08-26T10:31:00.000Z'), 'Asia/Kolkata'),
+      isWithinAiFoodAnalysisWindow(
+        new Date('2026-08-26T06:30:00.000Z'),
+        'Asia/Kolkata',
+        ADMIN_LUNCH,
+      ),
+      true,
+    );
+  });
+
+  it('is closed at 11:59 IST for lunch window', () => {
+    assert.equal(
+      isWithinAiFoodAnalysisWindow(
+        new Date('2026-08-26T06:29:00.000Z'),
+        'Asia/Kolkata',
+        ADMIN_LUNCH,
+      ),
       false,
     );
   });
 });
 
 describe('isWithinAnyAiFoodAnalysisWindow', () => {
-  it('is open during dinner 18:00 IST', () => {
-    // 18:00 IST = 12:30 UTC
+  it('is closed when no windows are provided', () => {
     assert.equal(
       isWithinAnyAiFoodAnalysisWindow(new Date('2026-08-26T12:30:00.000Z'), 'Asia/Kolkata'),
-      true,
+      false,
     );
   });
 
-  it('is closed between lunch and dinner (16:30 IST)', () => {
-    // 16:30 IST = 11:00 UTC
+  it('is open during dinner when dinner window is listed', () => {
     assert.equal(
-      isWithinAnyAiFoodAnalysisWindow(new Date('2026-08-26T11:00:00.000Z'), 'Asia/Kolkata'),
-      false,
+      isWithinAnyAiFoodAnalysisWindow(
+        new Date('2026-08-26T12:30:00.000Z'),
+        'Asia/Kolkata',
+        [{ start: '17:30:00', end: '20:30:00' }],
+      ),
+      true,
     );
   });
 });
 
 describe('evaluateAiFoodAnalysisAccess', () => {
-  it('allows eligible leaf inside window', () => {
+  it('allows eligible leaf inside admin lunch window', () => {
     const r = evaluateAiFoodAnalysisAccess({
       role: 'user',
       hasDownlineMembers: false,
       coachId: 42,
       now: new Date('2026-08-26T07:00:00.000Z'), // 12:30 IST
       timezoneIana: 'Asia/Kolkata',
+      availabilityWindows: ADMIN_WINDOWS,
     });
     assert.deepEqual(r, {
       eligible: true,
@@ -127,16 +134,44 @@ describe('evaluateAiFoodAnalysisAccess', () => {
     });
   });
 
-  it('denies outside window with outside_ai_window', () => {
+  it('honours custom admin breakfast-only window', () => {
     const r = evaluateAiFoodAnalysisAccess({
       role: 'user',
       hasDownlineMembers: false,
       coachId: 42,
-      now: new Date('2026-08-26T03:00:00.000Z'), // 08:30 IST
+      now: new Date('2026-08-26T01:00:00.000Z'), // 06:30 IST
       timezoneIana: 'Asia/Kolkata',
+      availabilityWindows: {
+        breakfast: { enabled: true, start: '05:30:00', end: '08:30:00' },
+        lunch: { enabled: false, start: '12:00:00', end: '16:00:00' },
+        dinner: { enabled: false, start: '17:30:00', end: '20:30:00' },
+      },
+    });
+    assert.equal(r.allowed, true);
+    assert.equal(r.windowOpen, true);
+  });
+
+  it('denies outside admin windows with outside_ai_window', () => {
+    const r = evaluateAiFoodAnalysisAccess({
+      role: 'user',
+      hasDownlineMembers: false,
+      coachId: 42,
+      now: new Date('2026-08-26T03:00:00.000Z'), // 08:30 IST — after breakfast if only lunch/dinner on
+      timezoneIana: 'Asia/Kolkata',
+      availabilityWindows: ADMIN_WINDOWS,
     });
     assert.equal(r.allowed, false);
     assert.equal(r.reason, 'outside_ai_window');
+  });
+
+  it('uses availableInWindow boolean when provided', () => {
+    const r = evaluateAiFoodAnalysisAccess({
+      role: 'user',
+      hasDownlineMembers: false,
+      coachId: 42,
+      availableInWindow: true,
+    });
+    assert.equal(r.allowed, true);
   });
 
   it('denies coach with not_eligible_downline', () => {
@@ -146,6 +181,7 @@ describe('evaluateAiFoodAnalysisAccess', () => {
       coachId: null,
       now: new Date('2026-08-26T07:00:00.000Z'),
       timezoneIana: 'Asia/Kolkata',
+      availabilityWindows: ADMIN_WINDOWS,
     });
     assert.equal(r.allowed, false);
     assert.equal(r.reason, 'not_eligible_downline');

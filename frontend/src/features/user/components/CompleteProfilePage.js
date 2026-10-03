@@ -1,10 +1,15 @@
-// CompleteProfilePage — post-OTP onboarding: remaining profile fields
-// (gender, height, diet, weight, Fat %, photo). Name/email collected earlier.
+// CompleteProfilePage — post-sponsor onboarding: remaining profile fields
+// (gender, height, diet, weight, Fat %). Email + Community ID are Profile KYC.
 import React, { useEffect, useState, useCallback } from 'react';
 import { User } from 'lucide-react';
 import { fetchProfile, saveProfile } from '../services/profileService';
 import useImageCropper from '../hooks/useImageCropper';
 import useFaceDetection from '../hooks/useFaceDetection';
+import {
+  buildUserAvatarUrl,
+  getAvatarDisplayVersion,
+} from '../services/avatarDisplayVersion';
+import { getApiBaseUrl } from '../../../config/api.config';
 import CropOverlay from './shared/CropOverlay';
 import CompleteProfileChecklist from './complete/CompleteProfileChecklist';
 import CompleteRequiredFields, {
@@ -156,18 +161,21 @@ const CompleteProfilePage = ({
           }
         }
 
-        const hasH = typeof profile?.height === 'number' && profile.height >= 50 && profile.height <= 250;
-        if (hasH) setHeight(String(profile.height));
+        const heightRaw = profile?.height;
+        const heightNum = heightRaw != null && heightRaw !== '' ? Number(heightRaw) : NaN;
+        const hasH = Number.isFinite(heightNum) && heightNum >= 50 && heightNum <= 250;
+        if (hasH) setHeight(String(heightNum));
 
         if (typeof profile?.dietType === 'string' && profile.dietType.trim()) {
           setDietType(profile.dietType);
         }
 
-        const hasWeight = profile?.latestWeight != null
-          && Number.isFinite(Number(profile.latestWeight));
+        const weightRaw = profile?.latestWeight;
+        const weightNum = weightRaw != null && weightRaw !== '' ? Number(weightRaw) : NaN;
+        const hasWeight = Number.isFinite(weightNum) && weightNum > 0;
         const needsWeight = profile?.needsCurrentWeight === true || !hasWeight;
         setShowCurrentWeight(needsWeight);
-        if (hasWeight) setCurrentWeight(String(profile.latestWeight));
+        if (hasWeight) setCurrentWeight(String(weightNum));
 
         const bm = profile?.bodyMetrics || {};
         const fatFallback = hasValidBodyFatPercent(profile?.latestWeightBodyFat)
@@ -209,9 +217,10 @@ const CompleteProfilePage = ({
           return;
         }
 
-        const result = loginEmail
-          ? await fetchProfile({ email: loginEmail })
-          : await fetchProfile({ userId: uid });
+        // Prefer userId for BCM phone leads — email alone can resolve a different account.
+        const result = uid
+          ? await fetchProfile({ userId: uid })
+          : await fetchProfile({ email: loginEmail });
         if (!mounted) return;
         const profile = result?.data;
         if (!profile) {
@@ -258,12 +267,12 @@ const CompleteProfilePage = ({
   const pictureValid = !showPictureSection
     || hasExistingPhoto
     || !!profileImage;
-  const formValid = nameValid && emailValid && genderValid && heightValid && dietValid
+  // Name already collected on Welcome; email is Profile KYC (not this step).
+  const hideName = identityLocked;
+  const hideEmail = true;
+  const formValid = nameValid && (hideEmail || emailValid) && genderValid && heightValid && dietValid
     && currentWeightValid && fatPercentValid && pictureValid;
 
-  // Name/email already collected on Welcome / identity — never flash them here.
-  const hideName = identityLocked;
-  const hideEmail = identityLocked || emailLocked;
   const checks = [
     ...(hideName ? [] : [{ label: 'Name', done: nameValid }]),
     ...(hideEmail ? [] : [{ label: 'Email', done: emailValid }]),
@@ -277,11 +286,28 @@ const CompleteProfilePage = ({
     checks.push({ label: 'Profile Picture', done: pictureValid });
   }
 
+  const handleRecrop = useCallback(() => {
+    if (saving || cropper.isPreparingCrop) return;
+    setPicError('');
+    if (cropper.rawImageSrc) {
+      cropper.reopenCropper();
+      return;
+    }
+    const uid = user?.id || user?.UserId || user?.userId || null;
+    const fallbackSrc = buildUserAvatarUrl(
+      apiBaseUrl || getApiBaseUrl(),
+      uid,
+      getAvatarDisplayVersion(),
+      { inline: true },
+    );
+    cropper.openExistingImage(previewUrl, { fallbackSrc });
+  }, [saving, cropper, previewUrl, user, apiBaseUrl]);
+
   const handleSave = useCallback(async () => {
     setError('');
     if (!formValid) {
       if (!nameValid) setError('Please enter your full name.');
-      else if (!emailValid) setError('Please enter a valid email address.');
+      else if (!hideEmail && !emailValid) setError('Please enter a valid email address.');
       else if (!genderValid) setError('Please select Male or Female.');
       else if (!heightValid) setError('Please enter a valid height (50 - 250 cm).');
       else if (!dietValid) setError('Please select a diet preference.');
@@ -300,12 +326,12 @@ const CompleteProfilePage = ({
     try {
       const uid = user?.id || user?.userId || user?.UserId;
       const hadEmail = !!(user?.email || user?.Email);
+      const accountEmail = hadEmail
+        ? String(user?.email || user?.Email).trim().toLowerCase()
+        : '';
 
-      if (!hadEmail) {
-        if (!uid) {
-          setError('Unable to identify your account. Please re-login.');
-          return;
-        }
+      // Email is verified later on Profile — do not collect it here.
+      if (!hadEmail && uid && trimmedName) {
         const base = apiBaseUrl || API;
         const res = await fetch(`${base}/api/user/save-email`, {
           method: 'POST',
@@ -313,22 +339,22 @@ const CompleteProfilePage = ({
           body: JSON.stringify({
             userId: uid,
             name: trimmedName,
-            email: trimmedEmail,
           }),
         });
         const data = await res.json();
         if (!res.ok || !data.success) {
-          setError(data.message || 'Failed to save email. Please try again.');
+          setError(data.message || 'Failed to save name. Please try again.');
           return;
         }
       }
 
       const payload = {
-        email: trimmedEmail,
         name: trimmedName,
         height: heightNum,
         dietType,
       };
+      if (uid) payload.userId = uid;
+      if (accountEmail) payload.email = accountEmail;
       if (showGender && gender) payload.gender = gender;
       if (showPictureSection && profileImage) payload.profileImage = profileImage;
       if (showCurrentWeight && isValidCurrentWeight(currentWeight)) {
@@ -357,7 +383,7 @@ const CompleteProfilePage = ({
       await saveProfile(payload);
 
       onComplete({
-        email: trimmedEmail,
+        email: accountEmail || undefined,
         userName: trimmedName,
         height: heightNum,
         dietType,
@@ -374,17 +400,22 @@ const CompleteProfilePage = ({
       setSaving(false);
     }
   }, [
-    formValid, nameValid, emailValid, genderValid, heightValid, dietValid,
+    formValid, nameValid, emailValid, hideEmail, genderValid, heightValid, dietValid,
     currentWeightValid, fatPercentValid, pictureValid,
     showPictureSection, profileImage, user, apiBaseUrl,
-    trimmedName, trimmedEmail, heightNum, dietType, showGender, gender, previewUrl, onComplete,
+    trimmedName, heightNum, dietType, showGender, gender, previewUrl, onComplete,
     showCurrentWeight, currentWeight, optionalMetrics, recoveredHealthIssues,
   ]);
 
   return (
     <div className="fixed inset-0 bg-gray-50 overflow-y-auto" style={{ zIndex: 9999 }}>
       {cropper.showCropper && cropper.rawImageSrc && (
-        <CropOverlay {...cropper} onCancel={cropper.cancelCropper} onDone={cropper.apply} zIndex={10050} />
+        <CropOverlay
+          {...cropper}
+          onCancel={profileImage ? cropper.closeCropper : cropper.cancelCropper}
+          onDone={cropper.apply}
+          zIndex={10050}
+        />
       )}
       <div className="bg-gradient-to-r from-green-500 to-green-600 px-6 pt-14 pb-8">
         <div className="flex items-center gap-3 mb-2">
@@ -425,6 +456,7 @@ const CompleteProfilePage = ({
           <div className="pt-2 border-t border-gray-100">
             <UserProfileBodyMetrics
               bodyMetrics={optionalMetrics}
+              gender={gender}
               heightCm={height}
               weightKg={currentWeight}
               onChange={(key, value) => {
@@ -448,10 +480,14 @@ const CompleteProfilePage = ({
         <CompletePictureSection
           show={showPictureSection}
           previewUrl={previewUrl}
-          faceStatus={hasExistingPhoto && !profileImage ? 'face_found' : face.status}
-          onRecrop={cropper.reopenCropper}
+          faceStatus={
+            cropper.isPreparingCrop
+              ? 'detecting'
+              : (hasExistingPhoto && !profileImage ? 'face_found' : face.status)
+          }
+          onRecrop={handleRecrop}
           onSelectFile={cropper.selectFile}
-          isSaving={saving}
+          isSaving={saving || cropper.isPreparingCrop}
           error={picError}
         />
         <button

@@ -7,6 +7,7 @@ import wellnessValleyIcon from "../../assets/wellness-valley-icon.png";
 import { getProfile } from "../../features/user/services/user.api";
 import { isFlagEnabled } from "../../config/featureFlags";
 import { canAccessReportsModule } from "../../features/reports/domain/reportsAccess.rules.js";
+import { hasValidProfileName } from "../../features/user/domain/profileCompleteness";
 
 const Header = ({
   user,
@@ -31,6 +32,8 @@ const Header = ({
   manualModeActive = false,
   onToggleManualMode,
   navOnly = false,
+  /** null = fail-open (all tabs); object = DB role page map */
+  allowedPages = null,
 }) => {
   const [savedUserName, setSavedUserName] = useState(null);
   const [savedProfileImage, setSavedProfileImage] = useState(null);
@@ -40,22 +43,43 @@ const Header = ({
   const reportsEnabled = isFlagEnabled('ff.reports-module')
     && canAccessReportsModule(userRole);
 
+  // After Centre / profile photo save, App updates user.profileImage immediately —
+  // apply it here so header does not keep a stale getProfile avatar until refetch.
+  useEffect(() => {
+    const fromUser = user?.profileImage || user?.ProfileImage || user?.photoURL;
+    if (typeof fromUser === 'string' && fromUser.startsWith('data:image/')) {
+      setSavedProfileImage(fromUser);
+    }
+  }, [user?.profileImage, user?.ProfileImage, user?.photoURL]);
+
   // Fetch saved user name + avatar for header display.
-  // Re-runs when email changes OR when profileKey is incremented (after a save).
+  // Re-runs when email/userId changes OR when profileKey is incremented (after a save).
   // Uses shared getProfile cache so Home / Diary / nutrition hooks do not re-hit the network.
   useEffect(() => {
     const fetchUserProfile = async () => {
-      if (!user?.email) return;
+      const email = user?.email || user?.Email || null;
+      const userId = user?.id || user?.UserId || user?.userId || null;
+      if (!email && !userId) return;
       try {
         const shouldBust = profileKey !== prevProfileKeyRef.current;
         prevProfileKeyRef.current = profileKey;
-        const data = await getProfile(user.email, { cacheBust: shouldBust });
+        const data = await getProfile(
+          email ? { email, cacheBust: shouldBust } : { userId, cacheBust: shouldBust },
+        );
         if (data.success && data.data) {
-          if (data.data.userName) {
+          const phoneNumber = data.data.phoneNumber || user?.phoneNumber || user?.phone;
+          const profileEmail = data.data.email || email;
+          if (hasValidProfileName(data.data.userName, { email: profileEmail, phoneNumber })) {
             setSavedUserName(data.data.userName);
-            cacheProfileUserName(user.email, data.data.userName);
+            if (profileEmail) cacheProfileUserName(profileEmail, data.data.userName);
+          } else {
+            setSavedUserName(null);
           }
-          if (data.data.profileImage) setSavedProfileImage(data.data.profileImage);
+          // Same display preference as leaderboard avatar: profileImage, else Centre transform.
+          const nextImage = data.data.profileImage
+            || data.data.transformationPhotos?.front
+            || null;
+          if (nextImage) setSavedProfileImage(nextImage);
           else if (shouldBust) setSavedProfileImage(null);
         }
       } catch (err) {
@@ -64,10 +88,27 @@ const Header = ({
     };
     fetchUserProfile();
   // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: profileKey drives force-refresh
-  }, [user?.email, profileKey]);
+  }, [user?.email, user?.Email, user?.id, user?.UserId, user?.userId, profileKey]);
 
-  const userName = savedUserName || user?.displayName || user?.username || user?.email || "User";
-  const userEmail = user?.email || "";
+  const phoneNumber = user?.phoneNumber || user?.PhoneNumber || user?.phone;
+  const userEmail = user?.email || user?.Email || "";
+  const userName = (() => {
+    const candidates = [
+      savedUserName,
+      user?.userName,
+      user?.username,
+      user?.displayName,
+    ];
+    return candidates.find((n) => hasValidProfileName(n, { email: userEmail, phoneNumber }))
+      || userEmail
+      || "User";
+  })();
+  // Prefer fetched profile; fall back to session user after Centre photo save (before refetch lands).
+  const headerAvatarSrc = savedProfileImage
+    || user?.profileImage
+    || user?.ProfileImage
+    || user?.photoURL
+    || null;
 
   const getInitial = () => {
     if (userName) return userName.charAt(0).toUpperCase();
@@ -100,6 +141,7 @@ const Header = ({
           onShowTestimonials={onShowTestimonials}
           onShowReports={onShowReports}
           reportsEnabled={reportsEnabled}
+          allowedPages={allowedPages}
         />
       </nav>
     );
@@ -151,9 +193,9 @@ const Header = ({
             title="My Profile"
             ariaLabel="My Profile"
           >
-            {savedProfileImage ? (
+            {headerAvatarSrc ? (
               <img
-                src={savedProfileImage}
+                src={headerAvatarSrc}
                 alt="User Avatar"
                 className="h-9 w-9 sm:h-10 sm:w-10 rounded-full border border-gray-300 shadow-sm"
                 loading="lazy"
@@ -184,6 +226,7 @@ const Header = ({
           onShowTestimonials={onShowTestimonials}
           onShowReports={onShowReports}
           reportsEnabled={reportsEnabled}
+          allowedPages={allowedPages}
         />
       </nav>
     </header>

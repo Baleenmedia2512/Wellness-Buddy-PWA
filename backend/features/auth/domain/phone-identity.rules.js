@@ -64,3 +64,55 @@ export function phonesMatch(a, b) {
 
   return national(da) === national(db);
 }
+
+/**
+ * Rank a team_table row when multiple phone matches exist.
+ * Prefer Active BCM leads with real profile data over empty placeholder accounts.
+ *
+ * @param {object|null|undefined} row
+ * @returns {number}
+ */
+export function scorePhoneLookupCandidate(row) {
+  if (!row) return -1;
+  let score = 0;
+  const status = String(row.Status || '').toLowerCase();
+  if (status === 'active') score += 100;
+  if (status === 'inactive') score -= 50;
+
+  const entry = String(row.EntryUser || '');
+  if (entry === 'Body Parameters Card') score += 50;
+
+  const height = row.Height != null && row.Height !== '' ? Number(row.Height) : NaN;
+  if (Number.isFinite(height) && height >= 50 && height <= 250) score += 20;
+
+  const name = String(row.UserName || '').trim();
+  if (name && !/^user_\d+$/i.test(name)) score += 10;
+
+  return score;
+}
+
+/**
+ * Pick the best team_table row among phone-lookup candidates.
+ * Tie-break: lower UserId (oldest account).
+ *
+ * @param {object[]} rows
+ * @returns {object|null}
+ */
+export function pickBestPhoneLookupCandidate(rows) {
+  if (!Array.isArray(rows) || rows.length === 0) return null;
+  const unique = [];
+  const seen = new Set();
+  for (const row of rows) {
+    const id = Number(row?.UserId);
+    if (!Number.isFinite(id) || id < 1 || seen.has(id)) continue;
+    seen.add(id);
+    unique.push(row);
+  }
+  if (unique.length === 0) return null;
+  unique.sort((a, b) => {
+    const scoreDiff = scorePhoneLookupCandidate(b) - scorePhoneLookupCandidate(a);
+    if (scoreDiff !== 0) return scoreDiff;
+    return Number(a.UserId) - Number(b.UserId);
+  });
+  return unique[0];
+}

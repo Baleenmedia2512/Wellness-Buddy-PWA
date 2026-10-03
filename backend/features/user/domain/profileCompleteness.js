@@ -36,7 +36,7 @@ export function hasValidProfileName(userName, context = {}) {
 
 /**
  * First onboarding gate: chosen display name only (before sponsor / OTP).
- * Email is collected later on the remaining-profile step.
+ * Email verification is Profile KYC (non-blocking) — not part of identity.
  * @param {{ userName?: string|null, email?: string|null, phoneNumber?: string|null }} input
  * @returns {boolean}
  */
@@ -99,6 +99,7 @@ export function hasValidBodyFatSource({
  * Field completeness for remaining-profile onboarding (gender, height, diet, fat%).
  * Avatar is the Centre transformation photo (separate step) — not required here.
  * Body fat is required when no weight / BPC source exists.
+ * Email is Profile KYC — not required to finish setup or use the app.
  */
 export function isProfileComplete({
   height,
@@ -115,12 +116,11 @@ export function isProfileComplete({
 }) {
   const hasHeight = typeof height === 'number' && height >= 50 && height <= 250;
   const hasDiet = typeof dietType === 'string' && dietType.trim() !== '';
-  const hasEmail = typeof email === 'string' && email.trim() !== '' && email.includes('@');
   const hasName = hasValidProfileName(userName, { email, phoneNumber });
   const hasGender = hasValidProfileGender(gender, bodyMetrics);
   const hasBodyFat = !bodyFatRequired
     || hasValidBodyFatSource({ bodyFat, latestWeightBodyFat, bodyMetrics });
-  return !!(hasHeight && hasDiet && hasEmail && hasName && hasGender && hasBodyFat);
+  return !!(hasHeight && hasDiet && hasName && hasGender && hasBodyFat);
 }
 
 export { VALID_GENDERS, MIN_BODY_FAT_PCT, MAX_BODY_FAT_PCT };

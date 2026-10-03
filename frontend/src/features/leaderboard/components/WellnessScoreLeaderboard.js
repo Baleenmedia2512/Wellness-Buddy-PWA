@@ -6,6 +6,7 @@ import React, {
   forwardRef,
   useImperativeHandle,
 } from 'react';
+import { Trophy } from 'lucide-react';
 import { debugLog } from '../../../shared/utils/logger.js';
 import { resolveSponsorCoachNames } from '../../../shared/utils/sponsorCoachLabels.js';
 import { setVisibilityAwareInterval } from '../../../shared/utils/visibilityAwareInterval.js';
@@ -74,16 +75,16 @@ const writeCache = (userId, data) => {
 };
 
 /**
- * Top wellness scores for today (IST) — swipeable strip on Home.
- * Display order: Rank 1 → Rank N (ascending).
- * Ranked among the logged-in user's allowed hierarchy (not global Top 10).
+ * Top wellness scores for today (IST).
+ * @param {'strip'|'tile'} variant - strip = auto-scroll headline (legacy); tile = static card list
  */
-const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, viewerName, email }, ref) => {
+const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, viewerName, email, variant = 'strip' }, ref) => {
   const [leaderboardData, setLeaderboardData] = useState(() => readCache(userId) ?? []);
   const [isVisible, setIsVisible] = useState(() => (readCache(userId)?.length ?? 0) > 0);
   const [hasEntered, setHasEntered] = useState(() => (readCache(userId)?.length ?? 0) > 0);
+  const isTile = variant === 'tile';
   const { viewportRef, trackRef, interactionHandlers } = useAutoScrollStrip({
-    enabled: isVisible && leaderboardData.length > 0,
+    enabled: !isTile && isVisible && leaderboardData.length > 0,
   });
 
   const fetchInFlightRef = useRef(false);
@@ -236,6 +237,66 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, vi
     </div>
     );
   };
+
+  const renderTileRow = (user) => {
+    const shownName = displayLeaderboardName(user, userId, viewerName);
+    return (
+      <li key={user.userId} className="flex items-center gap-2.5 py-2.5">
+        <LeaderboardRankBadge
+          rank={user.rank}
+          colorClass={getRankColor(user.rank)}
+        />
+        <LeaderboardAvatar
+          apiBaseUrl={apiBaseUrl}
+          userId={user.userId}
+          email={user.email}
+          userName={shownName}
+          profileImage={user.profileImage}
+        />
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-semibold text-gray-800">{shownName}</p>
+          {(() => {
+            const { sponsorName, idealCoachName } = resolveSponsorCoachNames(user);
+            if (!sponsorName && !idealCoachName) return null;
+            return (
+              <p className="truncate text-[10px] text-gray-500">
+                {[sponsorName && `Sponsor: ${sponsorName}`, idealCoachName && `Coach: ${idealCoachName}`]
+                  .filter(Boolean)
+                  .join(' · ')}
+              </p>
+            );
+          })()}
+        </div>
+        <span className="shrink-0 rounded-lg bg-violet-50 px-2 py-1 text-xs font-bold text-violet-700">
+          {Math.round(user.totalEarned ?? 0)}/{Math.round(user.totalPossible ?? 0)}
+        </span>
+      </li>
+    );
+  };
+
+  if (isTile) {
+    return (
+      <section
+        className={`mx-1 rounded-2xl border border-violet-100 bg-white p-3 shadow-sm transition-opacity duration-500 ease-out ${
+          hasEntered ? 'opacity-100' : 'opacity-0'
+        }`}
+        aria-label={`Top ${topN} Wellness Score`}
+      >
+        <header className="mb-1 flex items-center gap-2 border-b border-violet-50 pb-2">
+          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-100" aria-hidden>
+            <Trophy className="h-4 w-4 text-violet-700" />
+          </span>
+          <div className="min-w-0">
+            <h3 className="text-sm font-bold text-violet-900">Top {topN} Wellness Score</h3>
+            <p className="text-[11px] text-violet-700/80">Today&apos;s ranking</p>
+          </div>
+        </header>
+        <ul className="divide-y divide-violet-50">
+          {leaderboardData.map(renderTileRow)}
+        </ul>
+      </section>
+    );
+  }
 
   return (
     <div

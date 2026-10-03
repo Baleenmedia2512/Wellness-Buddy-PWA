@@ -1,11 +1,12 @@
 /**
- * Activity Report attendance filter — attended (logged) vs not attended (no log).
- * Missing / unknown values stay `attended` so older clients keep the legacy table.
+ * Activity Report attendance filter — posted (logged) vs not posted (no log).
+ * Missing / unknown values stay `posted` so older clients keep the legacy table.
+ * Legacy aliases: `attended` / `not_attended` still normalize correctly.
  */
 
 export const ACTIVITY_REPORT_ATTENDANCE = Object.freeze({
-  ATTENDED: 'attended',
-  NOT_ATTENDED: 'not_attended',
+  POSTED: 'posted',
+  NOT_POSTED: 'not_posted',
 });
 
 /**
@@ -17,14 +18,19 @@ export function normalizeActivityReportAttendance(raw) {
     .trim()
     .toLowerCase()
     .replace(/-/g, '_');
-  if (value === ACTIVITY_REPORT_ATTENDANCE.NOT_ATTENDED || value === 'notattended') {
-    return ACTIVITY_REPORT_ATTENDANCE.NOT_ATTENDED;
+  if (
+    value === ACTIVITY_REPORT_ATTENDANCE.NOT_POSTED
+    || value === 'notposted'
+    || value === 'not_attended'
+    || value === 'notattended'
+  ) {
+    return ACTIVITY_REPORT_ATTENDANCE.NOT_POSTED;
   }
-  return ACTIVITY_REPORT_ATTENDANCE.ATTENDED;
+  return ACTIVITY_REPORT_ATTENDANCE.POSTED;
 }
 
 export function isNotAttendedActivityReport(raw) {
-  return normalizeActivityReportAttendance(raw) === ACTIVITY_REPORT_ATTENDANCE.NOT_ATTENDED;
+  return normalizeActivityReportAttendance(raw) === ACTIVITY_REPORT_ATTENDANCE.NOT_POSTED;
 }
 
 /**

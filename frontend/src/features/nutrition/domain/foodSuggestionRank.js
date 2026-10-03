@@ -2,8 +2,14 @@
  * Client helpers for food suggestions ranking / filter.
  */
 
-/** Target Nutrition / Herbalife catalog tokens — excluded from regular-food suggestions. */
+/**
+ * Non-meal items excluded from regular Add Food Latest / search suggestions:
+ * water & beverages, Herbalife / Target Nutrition catalog, and common supplement brands.
+ */
 const REGULAR_FOOD_EXCLUDED_NAME_PATTERNS = [
+  // Water (Plain Water, Lemon Water, etc. — not "watermelon")
+  /\bwater\b/,
+  // Herbalife / Target Nutrition
   /herbalife/,
   /herbal\s*life/,
   /herballife/,
@@ -21,13 +27,23 @@ const REGULAR_FOOD_EXCLUDED_NAME_PATTERNS = [
   /xtra[- ]?cal/,
   /shakemate/,
   /personalized\s*protein/,
+  // Third-party supplements / wellness products (not meals)
+  /\bvriti\s*life\b/,
+  /\bdino\s*shake\b/,
+  /\bdinoshake\b/,
+  /\bhn\s*-/,
+  /skin\s*booster/,
+  /\bjoint\s*support\b/,
+  /\bherbal\b/,
+  /\blift\s*off\b/,
+  /\bh\s*24\b/,
 ];
 
 function normalizeSuggestionNameForCatalogCheck(name) {
   return String(name || '').trim().replace(/^\*+\s*/, '').toLowerCase();
 }
 
-/** Regular Add Food must not surface Herbalife / Target Nutrition catalog items. */
+/** Regular Add Food must not surface water, supplements, or Herbalife / Target Nutrition catalog items. */
 export function isHerbalifeProductSuggestionName(name) {
   const normalized = normalizeSuggestionNameForCatalogCheck(name);
   if (!normalized) return false;

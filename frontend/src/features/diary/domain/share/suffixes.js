@@ -10,7 +10,7 @@
  */
 
 import { DIARY_FOOD_ACTIVITY } from '../activityType';
-import { formatPositiveWeightKg } from './weightShare';
+import { formatPositiveWeightKg, formatWeightDeltaAmount } from './weightShare';
 import { formatWaterVolume } from '../formatVolume';
 import { formatShakeProductScoops } from './shakeShare';
 import { giZone } from '../../../nutrition/domain/foodItemNutritionFacts';
@@ -80,8 +80,9 @@ export function buildDiaryShareSuffix(activityType, payload = {}) {
       let curr = `Curr: ${current} kg`;
       if (previous != null) {
         const delta = Math.round((current - previous) * 100) / 100;
-        if (delta < 0) curr += ' ⬇️';
-        else if (delta > 0) curr += ' ⬆️';
+        const amount = formatWeightDeltaAmount(Math.abs(delta));
+        if (delta < 0) curr += amount ? ` ⬇️ ${amount}` : ' ⬇️';
+        else if (delta > 0) curr += amount ? ` ⬆️ ${amount}` : ' ⬆️';
       }
       lines.push(curr);
       return lines.join('\n');

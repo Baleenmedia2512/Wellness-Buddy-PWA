@@ -144,6 +144,24 @@ export function buildWellnessScoreReportPaginationMeta(totalRecords, page, pageS
 }
 
 /**
+ * Full Team = viewer (level 0) + active downline — same as Activity Report /
+ * Ideal Weight Report.
+ *
+ * @param {object|null} self
+ * @param {object[]} members
+ * @returns {object[]}
+ */
+function mergeSelfIntoFullTeam(self, members) {
+  const list = Array.isArray(members) ? members : [];
+  if (!self) return list;
+  const selfId = Number(self.userId ?? self.UserId);
+  const withoutSelf = Number.isFinite(selfId)
+    ? list.filter((row) => Number(row?.userId ?? row?.UserId) !== selfId)
+    : list;
+  return [self, ...withoutSelf];
+}
+
+/**
  * @param {object|null} self
  * @param {object[]} members
  * @param {string} teamFilter
@@ -156,9 +174,7 @@ export function applyTeamFilter(self, members, teamFilter) {
   if (teamFilter === TEAM_FILTERS.DIRECT) {
     return list.filter((row) => row?.isDirect === true);
   }
-  // Full Team = active downline only (same as Ideal Weight Report).
-  // Logged-in coach appears under Mine, not Full Team.
-  return list;
+  return mergeSelfIntoFullTeam(self, list);
 }
 
 /**
@@ -171,7 +187,7 @@ export function countRowsByTeamFilter(self, members) {
   return {
     [TEAM_FILTERS.MINE]: self ? 1 : 0,
     [TEAM_FILTERS.DIRECT]: directCount,
-    [TEAM_FILTERS.FULL]: list.length,
+    [TEAM_FILTERS.FULL]: mergeSelfIntoFullTeam(self, list).length,
   };
 }
 

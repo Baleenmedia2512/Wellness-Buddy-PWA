@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import {
   decideOnboardingEmailAction,
   planAdoptPhoneTransfer,
+  buildAdoptProfileMetricsPatch,
   EMAIL_TAKEN_ADOPT_MESSAGE,
 } from '../domain/onboardingEmail.rules.js';
 
@@ -70,5 +71,27 @@ describe('planAdoptPhoneTransfer', () => {
     });
     assert.equal(result.ok, true);
     assert.equal(result.samePhone, true);
+  });
+});
+
+describe('buildAdoptProfileMetricsPatch', () => {
+  it('copies height and diet from BCM stub when adopted account is empty', () => {
+    const patch = buildAdoptProfileMetricsPatch(
+      { Height: 170, DietType: 'Vegetarian', Gender: 'Male', Bmr: 1500 },
+      { Height: null, DietType: null, Gender: null, Bmr: null },
+    );
+    assert.equal(patch.Height, 170);
+    assert.equal(patch.DietType, 'Vegetarian');
+    assert.equal(patch.Gender, 'Male');
+    assert.equal(patch.Bmr, 1500);
+  });
+
+  it('does not overwrite existing height on adopted account', () => {
+    const patch = buildAdoptProfileMetricsPatch(
+      { Height: 170, DietType: 'Vegan' },
+      { Height: 165, DietType: null },
+    );
+    assert.equal(patch.Height, undefined);
+    assert.equal(patch.DietType, 'Vegan');
   });
 });

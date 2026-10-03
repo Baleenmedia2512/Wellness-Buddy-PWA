@@ -11,9 +11,13 @@ import {
 
 export function toSelectableItem(item) {
   const qtyUnit = resolveQuantityUnit(item);
+  const raw = Number(item?.servings ?? item?.servingCount);
+  const servings = Number.isFinite(raw) && raw > 0
+    ? Math.max(0.5, Math.round(raw * 2) / 2)
+    : 1;
   return {
     ...item,
-    servings: 1,
+    servings,
     refWeightG: referenceWeightG(item),
     quantityUnit: qtyUnit.unit,
     quantityLabel: qtyUnit.shortLabel,
@@ -46,12 +50,12 @@ export default function useMealSelection(initial = []) {
 
   const setQuantity = useCallback((name, rawValue) => {
     const qty = parseFloat(rawValue);
+    // Half-serving steps (0.5, 1, 1.5, …); min 0.5
+    const snapped = Number.isNaN(qty) || qty < 0.5
+      ? 0.5
+      : Math.round(qty * 2) / 2;
     setSelectedItems((prev) =>
-      prev.map((s) =>
-        s.name === name
-          ? { ...s, servings: Number.isNaN(qty) || qty < 0 ? 0 : qty }
-          : s,
-      ),
+      prev.map((s) => (s.name === name ? { ...s, servings: snapped } : s)),
     );
   }, []);
 

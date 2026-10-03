@@ -62,8 +62,8 @@ describe('backend marathon gap comparison dates', () => {
 
 describe('backend marathon day formatting', () => {
   it('formats Day 0 vs Day N against Day 0 baseline', () => {
-    assert.equal(formatMarathonDayComparisonLine(75, 74.5), '75.00 kg → 74.50 kg ↓ 0.50 kg');
-    assert.equal(formatMarathonDayComparisonLine(75, 76), '75.00 kg → 76.00 kg ↑ 1.00 kg');
+    assert.equal(formatMarathonDayComparisonLine(75, 74.5), '75.00 kg → 74.50 kg ⬇️ 0.50 kg');
+    assert.equal(formatMarathonDayComparisonLine(75, 76), '75.00 kg → 76.00 kg ⬆️ 1.00 kg');
     assert.equal(formatMarathonDayComparisonLine(75, 75), '75.00 kg → 75.00 kg');
     assert.equal(formatMarathonDayComparisonLine(75, null), '75.00 kg → —');
   });
@@ -83,7 +83,7 @@ describe('backend marathon day formatting', () => {
       day0Weight: 75,
       dayWeight: 74,
     });
-    assert.equal(day2.displayLine, '75.00 kg → 74.00 kg ↓ 1.00 kg');
+    assert.equal(day2.displayLine, '75.00 kg → 74.00 kg ⬇️ 1.00 kg');
   });
 
   it('builds running progress for Day 0 with previous marathon end comparison', () => {
@@ -114,7 +114,7 @@ describe('backend marathon day formatting', () => {
     });
     assert.equal(result.mode, 'running');
     assert.equal(result.days.length, 11);
-    assert.equal(result.days[2].displayLine, '75.00 kg → 74.00 kg ↓ 1.00 kg');
+    assert.equal(result.days[2].displayLine, '75.00 kg → 74.00 kg ⬇️ 1.00 kg');
   });
 });
 

@@ -28,7 +28,7 @@ const CompletePictureSection = ({
         onCameraSelect={onSelectFile} onGallerySelect={onSelectFile} />
       <div className="flex items-start gap-2 text-xs text-gray-500">
         <Upload className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
-        <p>Upload any photo — crop it to fit your profile circle.</p>
+        <p>Crop this photo, or take / upload a new one.</p>
       </div>
     </div>
   );

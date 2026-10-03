@@ -17,11 +17,14 @@ function looksLikeEmail(value) {
 function mapSetupApiError(raw, fallback) {
   const msg = String(raw || "").trim();
   if (/email is required/i.test(msg)) {
-    return "Email is required. Go back and verify your email first.";
+    return "Could not identify your account. Please re-login and try again.";
   }
   return msg || fallback;
 }
 
+/**
+ * Sponsor selection only. Community ID is entered later on Home → Profile.
+ */
 const SetupWizard = ({
   onClose,
   onNavigateToOTP,
@@ -29,25 +32,12 @@ const SetupWizard = ({
   userEmail: userEmailProp = '',
   userId: userIdProp = null,
 }) => {
-  // Step 1: Coach Search, Step 2: Team ID
-  const [step, setStep] = useState(1);
-
-  // Step 1: Coach Search
   const [searchQuery, setSearchQuery] = useState("");
   const [coaches, setCoaches] = useState([]);
   const [selectedCoach, setSelectedCoach] = useState(null);
   const [searching, setSearching] = useState(false);
-
-  // Step 2: Team ID
-  const [teamId, setTeamId] = useState("");
-  const [teamIdStatus, setTeamIdStatus] = useState(null); // 'new', 'available', 'taken', 'taken-by-you'
-  const [teamIdInfo, setTeamIdInfo] = useState(null); // Store additional info like existingCoach
-  const [checkingTeamId, setCheckingTeamId] = useState(false);
-  const [claimingTeamId, setClaimingTeamId] = useState(false);
   const [sendingRequest, setSendingRequest] = useState(false);
   const sendingRequestRef = useRef(false);
-
-  // General
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [resolvedEmail, setResolvedEmail] = useState("");
@@ -72,12 +62,6 @@ const SetupWizard = ({
     return candidates.map((v) => String(v || "").trim()).find(looksLikeEmail) || "";
   };
 
-  const resolveRequester = () => {
-    const email = collectSessionEmail();
-    const userId = resolveUserId();
-    return { email, userId };
-  };
-
   const persistEmail = (email) => {
     const clean = String(email || "").trim();
     if (!looksLikeEmail(clean)) return;
@@ -93,16 +77,12 @@ const SetupWizard = ({
     }
   };
 
-  const ensureEmail = async () => {
-    const existing = collectSessionEmail();
-    if (existing) {
-      persistEmail(existing);
-      return existing;
-    }
-    return "";
+  const resolveRequester = () => {
+    const email = collectSessionEmail();
+    const userId = resolveUserId();
+    return { email, userId };
   };
 
-  // Mask email function
   const maskEmail = (email) => {
     if (!email) return "";
     const [username, domain] = email.split("@");
@@ -110,19 +90,6 @@ const SetupWizard = ({
     const visibleChars = Math.min(3, Math.floor(username.length / 2));
     const masked = username.substring(0, visibleChars) + "***";
     return `${masked}@${domain}`;
-  };
-
-  // Format Team ID as user types (auto-uppercase)
-  const formatTeamId = (value) => {
-    const cleaned = value
-      .trim()
-      .replace(/[^a-zA-Z0-9]/g, "")
-      .toUpperCase();
-    return cleaned.slice(0, 100);
-  };
-
-  const isValidTeamIdFormat = (id) => {
-    return /^[a-zA-Z0-9]{4,100}$/.test(id);
   };
 
   useEffect(() => {
@@ -152,7 +119,7 @@ const SetupWizard = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userEmailProp, userIdProp]);
 
-  // ── Demo account: auto-select Yasheer J, skip Team ID, send request ───────
+  // Demo account: auto-select Yasheer J and send request
   const DEMO_EMAIL = 'testereasywork@gmail.com';
   useEffect(() => {
     const userEmail = collectSessionEmail() || userEmailProp || localStorage.getItem('userEmail') || '';
@@ -160,12 +127,11 @@ const SetupWizard = ({
 
     const autoComplete = async () => {
       try {
-        // Step 1: search for Yasheer J
         const response = await axios.get(
           `${API_BASE}/api/users/search?q=Yasheer J&email=${encodeURIComponent(userEmail)}`
         );
-        const coaches = response.data.coaches || [];
-        const yasheer = coaches.find(c =>
+        const list = response.data.coaches || [];
+        const yasheer = list.find(c =>
           c.userName.toLowerCase().includes('yasheer')
         );
         if (!yasheer) {
@@ -177,14 +143,12 @@ const SetupWizard = ({
         setCoaches([yasheer]);
         setSearchQuery('Yasheer J');
 
-        // Step 2: auto send the upline request (skip Team ID)
-        const requestResponse = await axios.post(
+        await axios.post(
           `${API_BASE}/api/upline/request`,
           { coachId: yasheer.userId, email: userEmail }
         );
-        debugLog('✅ [Demo] Upline request sent automatically:', requestResponse.data);
+        debugLog('✅ [Demo] Upline request sent automatically');
 
-        // Step 3: navigate to OTP screen
         if (onNavigateToOTP) {
           onNavigateToOTP();
         } else if (onClose) {
@@ -192,16 +156,13 @@ const SetupWizard = ({
         }
       } catch (err) {
         console.error('[SetupWizard] Demo auto-complete failed:', err);
-        // Fallback: show Step 2 with Yasheer J pre-selected
-        setStep(2);
       }
     };
 
     autoComplete();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  // ─────────────────────────────────────────────────────────────────────────
 
-  // Real-time search with debounce
   useEffect(() => {
     if (searchQuery.trim().length < 2) {
       setCoaches([]);
@@ -211,12 +172,12 @@ const SetupWizard = ({
 
     const delaySearch = setTimeout(() => {
       searchCoaches(searchQuery);
-    }, 500); // 500ms debounce
+    }, 500);
 
     return () => clearTimeout(delaySearch);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchQuery]);
 
-  // Search coaches
   const searchCoaches = async (query) => {
     setSearching(true);
     setError("");
@@ -229,11 +190,7 @@ const SetupWizard = ({
         )}&email=${encodeURIComponent(userEmail || "")}`,
       );
 
-      setCoaches(response.data.coaches);
-
-      if (response.data.coaches.length === 0) {
-        // Don't show error immediately, just empty list
-      }
+      setCoaches(response.data.coaches || []);
     } catch (err) {
       console.error(err);
       setCoaches([]);
@@ -242,49 +199,7 @@ const SetupWizard = ({
     }
   };
 
-  // Check Team ID availability
-  const checkTeamIdAvailability = async () => {
-    if (!isValidTeamIdFormat(teamId)) {
-      setError("Community ID must be at least 4 letters or numbers");
-      setTeamIdStatus(null);
-      return;
-    }
-
-    setCheckingTeamId(true);
-    setError("");
-
-    try {
-      const userEmail = await ensureEmail();
-      const { userId } = resolveRequester();
-      if (!userEmail) {
-        setError("Email is required. Go back and verify your email first.");
-        setTeamIdStatus(null);
-        return;
-      }
-
-      const params = new URLSearchParams({ teamId, email: userEmail });
-      if (userId) params.set("userId", String(userId));
-
-      const response = await axios.get(
-        `${API_BASE}/api/team/check-availability?${params.toString()}`,
-      );
-
-      setTeamIdStatus(response.data.status);
-      setTeamIdInfo(response.data);
-
-      if (response.data.status === "taken-by-you") {
-        setSuccess("You already own this ID.");
-      }
-    } catch (err) {
-      setError(mapSetupApiError(err.response?.data?.error, "Failed to check Community ID"));
-      setTeamIdStatus(null);
-    } finally {
-      setCheckingTeamId(false);
-    }
-  };
-
-  // Skip Team ID - Send approval request WITHOUT claiming Team ID (but still requires OTP)
-  const skipTeamIdAndSendRequest = async () => {
+  const sendSponsorRequest = async () => {
     if (sendingRequestRef.current) return;
     if (!selectedCoach) {
       setError("Please select a guide first");
@@ -296,98 +211,30 @@ const SetupWizard = ({
     setError("");
 
     try {
-      const userEmail = await ensureEmail();
-      const { userId } = resolveRequester();
-      if (!userEmail) {
-        setError("Email is required. Go back and verify your email first.");
+      const { email: userEmail, userId } = resolveRequester();
+      if (!userEmail && !userId) {
+        setError("Could not identify your account. Please re-login and try again.");
         return;
       }
 
-      debugLog(
-        "⏭️ Skipping Team ID - Sending approval request WITHOUT Team ID:",
-        {
-          coachId: selectedCoach.userId,
-          coachName: selectedCoach.userName,
-          email: userEmail,
-          userId: userId || null,
-        },
-      );
-
-      const requestBody = { coachId: selectedCoach.userId, email: userEmail };
-      if (userId) requestBody.userId = userId;
-      const requestResponse = await axios.post(
-        `${API_BASE}/api/upline/request`,
-        requestBody,
-      );
-
-      debugLog("Approval request sent (no Team ID):", requestResponse.data);
-
-      setSuccess(`Request sent!`);
-      if (onNavigateToOTP) {
-        onNavigateToOTP();
-      } else if (onClose) {
-        onClose();
-      }
-    } catch (err) {
-      console.error("Skip setup error:", err);
-      console.error("Error response:", err.response?.data);
-      setError(mapSetupApiError(err.response?.data?.error || err.message, "Failed to send request"));
-    } finally {
-      sendingRequestRef.current = false;
-      setSendingRequest(false);
-    }
-  };
-
-  // Claim Team ID and send approval request
-  const claimTeamIdAndSendRequest = async () => {
-    if (sendingRequestRef.current) return;
-    if (!selectedCoach) {
-      setError("Please select a guide first");
-      return;
-    }
-    if (teamIdStatus === 'taken') {
-      setError('This Community ID is full. Enter another ID or skip.');
-      return;
-    }
-
-    sendingRequestRef.current = true;
-    setClaimingTeamId(true);
-    setError("");
-
-    try {
-      const userEmail = await ensureEmail();
-      const { userId } = resolveRequester();
-      if (!userEmail) {
-        setError("Email is required. Go back and verify your email first.");
-        return;
-      }
-
-      debugLog("Claiming Team ID:", { teamId, email: userEmail, userId: userId || null });
-
-      // Step 1: Claim Team ID
-      const claimBody = { teamId, email: userEmail };
-      if (userId) claimBody.userId = userId;
-      const claimResponse = await axios.post(`${API_BASE}/api/team/claim-id`, claimBody);
-
-      debugLog("Team ID claimed successfully:", claimResponse.data);
-
-      debugLog("Sending approval request:", {
+      debugLog("Sending sponsor approval request:", {
         coachId: selectedCoach.userId,
-        email: userEmail,
+        coachName: selectedCoach.userName,
+        email: userEmail || null,
         userId: userId || null,
       });
 
-      // Step 2: Send approval request to selected guide (not necessarily Sponsor)
-      const requestBody = { coachId: selectedCoach.userId, email: userEmail };
+      const requestBody = { coachId: selectedCoach.userId };
+      if (userEmail) requestBody.email = userEmail;
       if (userId) requestBody.userId = userId;
+
       const requestResponse = await axios.post(
         `${API_BASE}/api/upline/request`,
         requestBody,
       );
 
       debugLog("Approval request sent:", requestResponse.data);
-
-      setSuccess(`Request sent!`);
+      setSuccess("Request sent!");
       if (onNavigateToOTP) {
         onNavigateToOTP();
       } else if (onClose) {
@@ -395,58 +242,22 @@ const SetupWizard = ({
       }
     } catch (err) {
       console.error("Setup error:", err);
-      console.error("Error response:", err.response?.data);
-      setError(mapSetupApiError(err.response?.data?.error || err.message, "Failed to complete setup"));
+      setError(mapSetupApiError(err.response?.data?.error || err.message, "Failed to send request"));
     } finally {
       sendingRequestRef.current = false;
-      setClaimingTeamId(false);
+      setSendingRequest(false);
     }
   };
 
-  // Auto-check Team ID when user types (needs email — APIs require it)
-  useEffect(() => {
-    if (teamId.length >= 4 && isValidTeamIdFormat(teamId)) {
-      const timer = setTimeout(() => {
-        checkTeamIdAvailability();
-      }, 500);
-      return () => clearTimeout(timer);
-    } else {
-      setTeamIdStatus(null);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [teamId]);
-
   return (
-    <div className="fixed inset-0 z-[9999] bg-green-900/40 backdrop-blur-sm flex items-center justify-center sm:p-6 overflow-y-auto">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
       <motion.div
-        initial={{ opacity: 0, scale: 0.95, y: 20 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.95, y: 20 }}
-        className="w-full h-full sm:h-auto sm:max-w-md bg-white sm:rounded-[2rem] shadow-2xl overflow-hidden relative flex flex-col"
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="bg-white rounded-3xl shadow-2xl w-full max-w-md max-h-[90vh] flex flex-col overflow-hidden"
       >
-        {/* Logout Button */}
-        <button
-          onClick={onLogout}
-          className="absolute right-4 top-4 z-10 text-gray-400 hover:text-red-500 transition-colors p-2 rounded-full hover:bg-red-50"
-          title="Log Out"
-        >
-          <svg
-            className="w-6 h-6"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
-            />
-          </svg>
-        </button>
-
-        <div className="shrink-0">
-          <div className="flex items-center gap-3 px-5 pt-6 pb-4 pr-14">
+        <div className="px-8 pt-8 pb-4">
+          <div className="flex items-center gap-4">
             <div className="w-14 h-14 shrink-0 rounded-2xl flex items-center justify-center overflow-hidden">
               <img
                 src={wellnessValleyIcon}
@@ -472,131 +283,30 @@ const SetupWizard = ({
 
         <div className="px-8 pb-8 flex-1 overflow-y-auto custom-scrollbar">
           <AnimatePresence mode="wait">
-            {step === 1 && (
-              <motion.div
-                key="step1"
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -20 }}
-                transition={{ duration: 0.2 }}
-              >
-                <div className="mb-6">
-                  {/* find your coach */}
-                  <h3 className="text-base font-semibold text-gray-900 mb-3 leading-snug">
-                    Search and select the person name (sponsor) who invited you to this program
-                  </h3>
+            <motion.div
+              key="sponsor"
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              transition={{ duration: 0.2 }}
+            >
+              <div className="mb-6">
+                <h3 className="text-base font-semibold text-gray-900 mb-3 leading-snug">
+                  Search and select the person name (sponsor) who invited you to this program
+                </h3>
+                
 
-                  <div className="relative group">
-                    <input
-                      type="text"
-                      className="w-full pl-11 pr-4 py-3.5 bg-white border-2 border-green-500 rounded-2xl text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-4 focus:ring-green-500/10 transition-all shadow-sm"
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      placeholder="Type your sponsor name or email..."
-                      autoFocus
-                    />
-                    <svg
-                      className="absolute left-4 top-4 w-5 h-5 text-green-500"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-                      />
-                    </svg>
-                    {searching && (
-                      <div className="absolute right-4 top-4">
-                        <div className="animate-spin h-5 w-5 border-2 border-green-500 border-t-transparent rounded-full"></div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Results or Empty State */}
-                <div className="min-h-[80px] mb-4">
-                  {coaches.length > 0 ? (
-                    <div className="space-y-2 max-h-[180px] overflow-y-auto pr-1 custom-scrollbar p-1">
-                      {coaches.map((coach) => (
-                        <div
-                          key={coach.userId}
-                          onClick={() => setSelectedCoach(coach)}
-                          className={`p-3 rounded-xl cursor-pointer transition-all flex items-center gap-3 border ${
-                            selectedCoach?.userId === coach.userId
-                              ? "bg-green-50 border-green-500 shadow-md shadow-green-100"
-                              : "bg-white border-gray-100 shadow-sm hover:border-green-200 hover:shadow-md"
-                          }`}
-                        >
-                          <div
-                            className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold shrink-0 ${
-                              selectedCoach?.userId === coach.userId
-                                ? "bg-green-500 text-white"
-                                : "bg-gray-100 text-gray-500"
-                            }`}
-                          >
-                            {coach.userName.charAt(0).toUpperCase()}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="font-bold text-gray-900 truncate">
-                              {coach.userName}
-                            </div>
-                            <div className="text-xs text-gray-500 truncate">
-                              {maskEmail(coach.email)}
-                            </div>
-                          </div>
-                          {selectedCoach?.userId === coach.userId && (
-                            <div className="text-green-500 bg-white rounded-full p-1 shadow-sm">
-                              <svg
-                                className="w-5 h-5"
-                                fill="none"
-                                stroke="currentColor"
-                                viewBox="0 0 24 24"
-                              >
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  strokeWidth={3}
-                                  d="M5 13l4 4L19 7"
-                                />
-                              </svg>
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="flex flex-col items-center justify-center h-full text-gray-400 text-sm p-4 text-center">
-                      <p>
-                        {searchQuery.length > 1 && !searching
-                          ? "No sponsors found"
-                          : "Start typing to search..."}
-                      </p>
-                    </div>
-                  )}
-                </div>
-
-                {/* Info Box Removed */}
-
-                <button
-                  className={`w-full py-3.5 rounded-xl font-bold text-base transition-all flex items-center justify-center gap-2 ${
-                    selectedCoach
-                      ? "bg-green-600 text-white hover:bg-green-700 shadow-lg shadow-green-200"
-                      : "bg-gray-100 text-gray-400 cursor-not-allowed"
-                  }`}
-                  onClick={() => {
-                    if (!selectedCoach) return;
-                    setError("");
-                    setSuccess("");
-                    setStep(2);
-                  }}
-                  disabled={!selectedCoach}
-                >
-                  <span>Continue</span>
+                <div className="relative group">
+                  <input
+                    type="text"
+                    className="w-full pl-11 pr-4 py-3.5 bg-white border-2 border-green-500 rounded-2xl text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-4 focus:ring-green-500/10 transition-all shadow-sm"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Type your sponsor name or email..."
+                    autoFocus
+                  />
                   <svg
-                    className="w-5 h-5"
+                    className="absolute left-4 top-4 w-5 h-5 text-green-500"
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"
@@ -605,208 +315,114 @@ const SetupWizard = ({
                       strokeLinecap="round"
                       strokeLinejoin="round"
                       strokeWidth={2}
-                      d="M13 7l5 5m0 0l-5 5m5-5H6"
+                      d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
                     />
                   </svg>
-                </button>
-              </motion.div>
-            )}
-
-            {step === 2 && (
-              <motion.div
-                key="step2"
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -20 }}
-                transition={{ duration: 0.2 }}
-              >
-                <div className="bg-green-50 rounded-xl p-4 flex items-center justify-between mb-6 border border-green-100">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-green-200 rounded-full flex items-center justify-center text-green-700 font-bold">
-                      {selectedCoach?.userName?.charAt(0)?.toUpperCase()}
+                  {searching && (
+                    <div className="absolute right-4 top-4">
+                      <div className="animate-spin h-5 w-5 border-2 border-green-500 border-t-transparent rounded-full"></div>
                     </div>
-                    <div>
-                      <p className="text-xs text-green-600 font-medium">
-                        Selected guide
-                      </p>
-                      <div className="text-sm font-bold text-gray-900">
-                        {selectedCoach?.userName}
-                      </div>
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setStep(1)}
-                    className="text-green-600 text-sm font-bold hover:text-green-700"
-                  >
-                    Change
-                  </button>
+                  )}
                 </div>
+              </div>
 
-                <div className="mb-6">
-                  <h3 className="text-base font-semibold text-gray-900 mb-1 leading-snug">
-                    Enter your Community ID
-                  </h3>
-                  <p className="text-gray-500 text-sm mb-4">
-                    Create a new ID as Sponsor, join an open seat as Co-Sponsor,
-                    or skip to join as a member under your guide.
-                  </p>
-
-                  <div className="relative">
-                    <input
-                      type="text"
-                      className={`w-full py-6 bg-gray-50 rounded-xl text-center text-2xl font-mono tracking-widest border-2 focus:ring-0 transition-all uppercase ${
-                        teamIdStatus === "new"
-                          ? "border-blue-500 text-blue-700"
-                          : teamIdStatus === "available"
-                          ? "border-green-500 text-green-700"
-                          : teamIdStatus === "taken"
-                          ? "border-red-300 text-red-600"
-                          : teamIdStatus === "taken-by-you"
-                          ? "border-yellow-500 text-yellow-700"
-                          : "border-transparent text-gray-500"
-                      }`}
-                      value={teamId}
-                      onChange={(e) => {
-                        setTeamId(formatTeamId(e.target.value));
-                        setTeamIdStatus(null);
-                        setTeamIdInfo(null);
-                        setError("");
-                        setSuccess("");
-                      }}
-                      placeholder="W112072XXX"
-                      maxLength={100}
-                      autoCapitalize="characters"
-                      autoFocus
-                    />
-                    <div className="absolute right-4 top-1/2 -translate-y-1/2">
-                      {checkingTeamId ? (
-                        <div className="animate-spin h-6 w-6 border-2 border-green-500 border-t-transparent rounded-full" />
-                      ) : null}
-                    </div>
+              <div className="min-h-[80px] mb-4">
+                {coaches.length > 0 ? (
+                  <div className="space-y-2 max-h-[180px] overflow-y-auto pr-1 custom-scrollbar p-1">
+                    {coaches.map((coach) => (
+                      <div
+                        key={coach.userId}
+                        onClick={() => setSelectedCoach(coach)}
+                        className={`p-3 rounded-xl cursor-pointer transition-all flex items-center gap-3 border ${
+                          selectedCoach?.userId === coach.userId
+                            ? "bg-green-50 border-green-500 shadow-md shadow-green-100"
+                            : "bg-white border-gray-100 shadow-sm hover:border-green-200 hover:shadow-md"
+                        }`}
+                      >
+                        <div
+                          className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold shrink-0 ${
+                            selectedCoach?.userId === coach.userId
+                              ? "bg-green-500 text-white"
+                              : "bg-gray-100 text-gray-500"
+                          }`}
+                        >
+                          {coach.userName.charAt(0).toUpperCase()}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="font-bold text-gray-900 truncate">
+                            {coach.userName}
+                          </div>
+                          <div className="text-xs text-gray-500 truncate">
+                            {maskEmail(coach.email)}
+                          </div>
+                        </div>
+                        {selectedCoach?.userId === coach.userId && (
+                          <div className="text-green-500 bg-white rounded-full p-1 shadow-sm">
+                            <svg
+                              className="w-5 h-5"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={3}
+                                d="M5 13l4 4L19 7"
+                              />
+                            </svg>
+                          </div>
+                        )}
+                      </div>
+                    ))}
                   </div>
-
-                  {teamIdStatus && !error && (
-                    <div className="mt-4">
-                      {teamIdStatus === "new" && (
-                        <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 text-left">
-                          <h4 className="text-blue-900 font-bold text-sm">
-                            New Community ID
-                          </h4>
-                          <p className="text-blue-600/80 text-xs font-medium">
-                            You will become the Sponsor. Co-Sponsor seat stays open.
-                          </p>
-                        </div>
-                      )}
-                      {teamIdStatus === "available" && (
-                        <div className="bg-green-50 border border-green-100 rounded-xl p-3 text-left">
-                          <h4 className="text-green-900 font-bold text-sm">
-                            Join as Co-Sponsor
-                          </h4>
-                          <p className="text-green-600/80 text-xs font-medium">
-                            {teamIdInfo?.existingCoach?.name
-                              ? `Sponsor: ${teamIdInfo.existingCoach.name}`
-                              : "One lead seat is open on this team."}
-                          </p>
-                        </div>
-                      )}
-                      {teamIdStatus === "taken" && (
-                        <div className="bg-red-50 border border-red-100 rounded-xl p-3 text-left">
-                          <h4 className="text-red-900 font-bold text-sm">
-                            Community ID unavailable
-                          </h4>
-                          <p className="text-red-600/80 text-xs font-medium">
-                            Sponsor and Co-Sponsor seats are full. Enter another ID or skip.
-                          </p>
-                        </div>
-                      )}
-                      {teamIdStatus === "taken-by-you" && (
-                        <div className="bg-yellow-50 border border-yellow-100 rounded-xl p-3 text-left">
-                          <h4 className="text-yellow-900 font-bold text-sm">
-                            You already claimed this Community ID
-                          </h4>
-                          <p className="text-yellow-600/80 text-xs font-medium">
-                            Continue to send the approval request to your guide.
-                          </p>
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {error && (
-                    <p className="text-red-500 text-xs mt-2 text-center">{error}</p>
-                  )}
-                  {success && (
-                    <p className="text-green-600 text-xs mt-2 text-center">{success}</p>
-                  )}
-
-                  <div className="mt-3 text-center">
-                    <p className="text-gray-400 text-xs">
-                      {teamId.length} characters · Min 4 · Letters & numbers only
+                ) : (
+                  <div className="flex flex-col items-center justify-center h-full text-gray-400 text-sm p-4 text-center">
+                    <p>
+                      {searchQuery.length > 1 && !searching
+                        ? "No sponsors found"
+                        : "Start typing to search..."}
                     </p>
                   </div>
-                </div>
+                )}
+              </div>
 
-                <div className="space-y-3">
-                  <div className="flex gap-3">
-                    <button
-                      type="button"
-                      className="w-14 py-3.5 rounded-xl font-bold text-base bg-gray-100 text-gray-600 hover:bg-gray-200 transition-all flex items-center justify-center"
-                      onClick={() => setStep(1)}
-                      aria-label="Back"
-                      disabled={claimingTeamId || sendingRequest}
-                    >
-                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                      </svg>
-                    </button>
-                    <button
-                      type="button"
-                      className={`flex-1 py-3.5 rounded-xl font-bold text-base transition-all flex items-center justify-center gap-2 ${
-                        (teamIdStatus === "new" ||
-                          teamIdStatus === "available" ||
-                          teamIdStatus === "taken-by-you") &&
-                        !claimingTeamId
-                          ? "bg-green-600 text-white hover:bg-green-700 shadow-lg shadow-green-200"
-                          : "bg-gray-100 text-gray-400 cursor-not-allowed"
-                      }`}
-                      onClick={claimTeamIdAndSendRequest}
-                      disabled={
-                        (teamIdStatus !== "new" &&
-                          teamIdStatus !== "available" &&
-                          teamIdStatus !== "taken-by-you") ||
-                        claimingTeamId
-                      }
-                    >
-                      {claimingTeamId ? (
-                        <>
-                          <div className="animate-spin h-5 w-5 border-2 border-white border-t-transparent rounded-full" />
-                          <span>Processing...</span>
-                        </>
-                      ) : (
-                        <span>Continue with Community ID</span>
-                      )}
-                    </button>
-                  </div>
+              {error && (
+                <p className="text-red-500 text-xs mb-3 text-center">{error}</p>
+              )}
+              {success && (
+                <p className="text-green-600 text-xs mb-3 text-center">{success}</p>
+              )}
 
-                  <button
-                    type="button"
-                    className="w-full py-3 rounded-xl font-semibold text-sm bg-transparent border-2 border-gray-300 text-gray-600 hover:border-green-500 hover:text-green-600 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:border-gray-300 disabled:hover:text-gray-600"
-                    onClick={skipTeamIdAndSendRequest}
-                    disabled={sendingRequest || claimingTeamId}
-                  >
-                    {sendingRequest ? (
-                      <>
-                        <div className="animate-spin h-4 w-4 border-2 border-gray-600 border-t-transparent rounded-full" />
-                        <span>Sending...</span>
-                      </>
-                    ) : (
-                      <span>Skip Community ID</span>
-                    )}
-                  </button>
-                </div>
-              </motion.div>
-            )}
+              <button
+                className={`w-full py-3.5 rounded-xl font-bold text-base transition-all flex items-center justify-center gap-2 ${
+                  selectedCoach && !sendingRequest
+                    ? "bg-green-600 text-white hover:bg-green-700 shadow-lg shadow-green-200"
+                    : "bg-gray-100 text-gray-400 cursor-not-allowed"
+                }`}
+                onClick={sendSponsorRequest}
+                disabled={!selectedCoach || sendingRequest}
+              >
+                {sendingRequest ? (
+                  <>
+                    <div className="animate-spin h-5 w-5 border-2 border-white border-t-transparent rounded-full" />
+                    <span>Sending...</span>
+                  </>
+                ) : (
+                  <span>Continue</span>
+                )}
+              </button>
+
+              {typeof onLogout === "function" && (
+                <button
+                  type="button"
+                  onClick={onLogout}
+                  className="w-full mt-3 py-2 text-sm text-gray-500 underline"
+                >
+                  Sign out
+                </button>
+              )}
+            </motion.div>
           </AnimatePresence>
         </div>
       </motion.div>

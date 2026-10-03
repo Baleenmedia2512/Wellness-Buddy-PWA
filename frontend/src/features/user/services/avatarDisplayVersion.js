@@ -31,8 +31,11 @@ export function subscribeAvatarDisplayVersion(fn) {
 }
 
 /** Build avatar GET URL with optional cache-bust query. */
-export function buildUserAvatarUrl(apiBaseUrl, userId, version = generation) {
+export function buildUserAvatarUrl(apiBaseUrl, userId, version = generation, options = {}) {
   if (!apiBaseUrl || userId == null || userId === '') return null;
-  const base = `${apiBaseUrl}/api/user/avatar?userId=${encodeURIComponent(userId)}`;
-  return version > 0 ? `${base}&_v=${version}` : base;
+  const params = new URLSearchParams();
+  params.set('userId', String(userId));
+  if (Number(version) > 0) params.set('_v', String(version));
+  if (options.inline) params.set('inline', '1');
+  return `${apiBaseUrl}/api/user/avatar?${params.toString()}`;
 }

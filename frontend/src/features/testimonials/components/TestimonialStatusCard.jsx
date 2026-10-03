@@ -80,7 +80,7 @@ export default function TestimonialStatusCard({ testimonial, onEdit, onAddAfter,
       {(testimonial.beforeImageUrl || testimonial.afterImageUrl) && (
         <div className="flex gap-3">
           {testimonial.beforeImageUrl && (
-            <div className="flex-1 text-center">
+            <div className="flex-1 text-center overflow-hidden rounded-xl">
               <img
                 src={testimonial.beforeImageUrl}
                 alt="Before"
@@ -91,7 +91,7 @@ export default function TestimonialStatusCard({ testimonial, onEdit, onAddAfter,
             </div>
           )}
           {testimonial.afterImageUrl && (
-            <div className="flex-1 text-center">
+            <div className="flex-1 text-center overflow-hidden rounded-xl">
               <img
                 src={testimonial.afterImageUrl}
                 alt="After"

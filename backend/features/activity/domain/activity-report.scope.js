@@ -30,13 +30,30 @@ export function normalizeTeamScope(teamScope) {
   return TEAM_SCOPES.FULL;
 }
 
+/**
+ * Full Team includes the viewer (level 0) plus every Active downline.
+ * @param {number} userId
+ * @param {Array<number|string>} fullIds
+ * @returns {number[]}
+ */
+export function mergeViewerIntoFullTeamIds(userId, fullIds = []) {
+  const rootId = Number(userId);
+  const downline = (Array.isArray(fullIds) ? fullIds : [])
+    .map((id) => Number(id))
+    .filter((id) => Number.isFinite(id) && id !== rootId);
+  if (!Number.isFinite(rootId)) return downline;
+  return [rootId, ...downline];
+}
+
 function buildTeamScopeCounts(directIds, fullIds, { isSharedLead = false } = {}) {
   const hasRoster = directIds.length > 0 || fullIds.length > 0;
+  const hasTeam = hasRoster || isSharedLead;
   return {
     mine: 1,
     direct: directIds.length,
-    full: fullIds.length,
-    hasTeam: hasRoster || isSharedLead,
+    // Full Team badge = viewer (level 0) + Active downline.
+    full: hasTeam ? fullIds.length + 1 : 0,
+    hasTeam,
   };
 }
 
@@ -95,5 +112,10 @@ export async function resolveActivityReportUserIds({ userId, role, teamScope }) 
     return { userIds: directIds, teamScope: scope, teamScopeCounts, memberMeta };
   }
 
-  return { userIds: fullIds, teamScope: scope, teamScopeCounts, memberMeta };
+  return {
+    userIds: mergeViewerIntoFullTeamIds(userId, fullIds),
+    teamScope: scope,
+    teamScopeCounts,
+    memberMeta,
+  };
 }

@@ -35,8 +35,8 @@ export function hasValidProfileName(userName, context = {}) {
 }
 
 /**
- * First onboarding gate (new app): real name plus a verified email.
- * Backend `needsName` stays name-only so older app binaries are not blocked.
+ * First onboarding gate: chosen display name only.
+ * Email verification is Profile KYC (non-blocking) — not part of identity.
  * @param {{ userName?: string|null, email?: string|null, phoneNumber?: string|null }} input
  * @returns {boolean}
  */
@@ -45,8 +45,7 @@ export function isOnboardingIdentityComplete({
   email,
   phoneNumber,
 } = {}) {
-  const hasEmail = typeof email === 'string' && email.includes('@');
-  return hasValidProfileName(userName, { email, phoneNumber }) && hasEmail;
+  return hasValidProfileName(userName, { email, phoneNumber });
 }
 
 export function hasValidProfileGender(gender, bodyMetrics = null) {
@@ -81,6 +80,7 @@ export function hasValidBodyFatSource({
 /**
  * Field completeness for remaining-profile onboarding.
  * Avatar is Centre transformation photo (separate step) — not required here.
+ * Email is Profile KYC — not required to finish setup or use the app.
  */
 export function isProfileComplete({
   height,
@@ -97,10 +97,9 @@ export function isProfileComplete({
 }) {
   const hasHeight = typeof height === 'number' && height >= 50 && height <= 250;
   const hasDiet = typeof dietType === 'string' && dietType.trim() !== '';
-  const hasEmail = typeof email === 'string' && email.trim() !== '' && email.includes('@');
   const hasName = hasValidProfileName(userName, { email, phoneNumber });
   const hasGender = hasValidProfileGender(gender, bodyMetrics);
   const hasBodyFat = !bodyFatRequired
     || hasValidBodyFatSource({ bodyFat, latestWeightBodyFat, bodyMetrics });
-  return !!(hasHeight && hasDiet && hasEmail && hasName && hasGender && hasBodyFat);
+  return !!(hasHeight && hasDiet && hasName && hasGender && hasBodyFat);
 }

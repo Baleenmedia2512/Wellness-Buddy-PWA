@@ -11,6 +11,8 @@ import {
   resolveDisplayCommunityId,
   sanitizeCommunityIdInput,
   validateCommunityId,
+  isCommunityIdConfirmed,
+  communityIdPendingApprovalMessage,
 } from './communityId.js';
 
 describe('normalizeCommunityId', () => {
@@ -88,6 +90,31 @@ describe('resolveDisplayCommunityId', () => {
     assert.equal(
       resolveDisplayCommunityId({ communityId: '', teamId: 'W112072XXX' }),
       'W112072XXX',
+    );
+  });
+});
+
+describe('isCommunityIdConfirmed', () => {
+  it('treats a lead seat as confirmed', () => {
+    assert.equal(isCommunityIdConfirmed({ teamSeat: 'sponsor', communityId: 'WB12' }), true);
+  });
+
+  it('does not treat a typed code as confirmed', () => {
+    assert.equal(isCommunityIdConfirmed({ teamSeat: null, communityId: 'WB1234' }), false);
+  });
+});
+
+describe('communityIdPendingApprovalMessage', () => {
+  it('names the sponsor and asks the user to enter the verification code', () => {
+    const text = communityIdPendingApprovalMessage({ sponsorName: 'Nitheesh Lingam' });
+    assert.match(text, /Approval code sent to your sponsor \(Nitheesh Lingam\)/);
+    assert.match(text, /verification code sent to your sponsor/i);
+  });
+
+  it('falls back when the sponsor name is missing', () => {
+    assert.match(
+      communityIdPendingApprovalMessage({ sponsorName: '' }),
+      /Approval code sent to your sponsor\./,
     );
   });
 });

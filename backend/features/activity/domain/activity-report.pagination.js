@@ -150,7 +150,8 @@ export function normalizeActivityReportColumnFilter(raw = {}) {
 
 /**
  * Stacked facet filters (AND across columns; OR within a column via `|`).
- * Additive `filter_<column>` params plus legacy filterColumn/filterValue.
+ * Accepts query `filter_<column>` params, legacy filterColumn/filterValue,
+ * or an already-parsed `columnFilters` map (validator → service → paginate).
  * Missing params stay empty so old clients are unchanged.
  *
  * @param {object} raw
@@ -158,6 +159,19 @@ export function normalizeActivityReportColumnFilter(raw = {}) {
  */
 export function normalizeActivityReportColumnFilters(raw = {}) {
   const applied = {};
+
+  // Service re-normalizes paginationOpts that already have columnFilters and
+  // no filter_* keys. Dropping this map would silently ignore Level/Type/Club.
+  const existing = raw.columnFilters;
+  if (existing && typeof existing === 'object' && !Array.isArray(existing)) {
+    for (const [column, value] of Object.entries(existing)) {
+      const values = parseActivityReportFilterValues(value);
+      if (ACTIVITY_REPORT_FILTER_COLUMNS.has(column) && values.length) {
+        applied[column] = values.join(ACTIVITY_REPORT_FILTER_VALUE_SEP);
+      }
+    }
+  }
+
   for (const key of Object.keys(raw || {})) {
     if (!key.startsWith('filter_')) continue;
     const column = key.slice('filter_'.length);
@@ -315,7 +329,11 @@ export function filterActivityReportRecordsByColumn(records, filterColumn, filte
   }
 
   if (column === 'level') {
-    return list.filter((record) => String(record?.level) === value);
+    const wanted = Number(value);
+    return list.filter((record) => {
+      const level = Number(record?.level);
+      return Number.isFinite(level) && Number.isFinite(wanted) && level === wanted;
+    });
   }
 
   const target = value.toLowerCase();

@@ -39,6 +39,13 @@ describe('avatarDisplayVersion', () => {
     );
   });
 
+  it('buildUserAvatarUrl appends inline=1 for crop fallback', () => {
+    assert.equal(
+      buildUserAvatarUrl('https://api.example', 42, 0, { inline: true }),
+      'https://api.example/api/user/avatar?userId=42&inline=1',
+    );
+  });
+
   it('buildUserAvatarUrl returns null without base or userId', () => {
     assert.equal(buildUserAvatarUrl('', 1, 1), null);
     assert.equal(buildUserAvatarUrl('https://api.example', null, 1), null);

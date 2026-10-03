@@ -51,10 +51,17 @@ export function getScopeRows(self, members, teamScope) {
   if (teamScope === TEAM_SCOPES.MINE) {
     return self ? [self] : [];
   }
+  const list = Array.isArray(members) ? members : [];
   if (teamScope === TEAM_SCOPES.DIRECT) {
-    return members.filter((row) => row.isDirect === true);
+    return list.filter((row) => row.isDirect === true);
   }
-  return members;
+  // Full Team = viewer (level 0) + active downline (same as Activity Report).
+  if (!self) return list;
+  const selfId = Number(self.userId ?? self.UserId);
+  const withoutSelf = Number.isFinite(selfId)
+    ? list.filter((row) => Number(row?.userId ?? row?.UserId) !== selfId)
+    : list;
+  return [self, ...withoutSelf];
 }
 
 /** Member counts per team scope tab (for segmented control labels). */

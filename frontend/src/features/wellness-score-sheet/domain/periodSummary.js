@@ -49,7 +49,7 @@ export function aggregateWellnessPeriodDetails(days = []) {
       const meta = getParameterMeta(key);
       parameterMap.set(key, {
         key,
-        label: parameter?.label || meta?.label || key,
+        label: meta?.label || parameter?.label || key,
         scoringMode: parameter?.scoringMode || meta?.scoringMode,
         earnedSum: earned,
         maxPoints,

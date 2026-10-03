@@ -5,6 +5,7 @@
  *   1. Wellness Score Setup (ff.wellness-score-sheet)
  *   2. Activity Time Setup (always for admin)
  *   3. AI Configuration Setup (ff.ai-credits)
+ *   4. Page Access (ff.nav-page-access)
  */
 import React, { useEffect, useState, startTransition } from 'react';
 import { ArrowLeft, Settings2 } from 'lucide-react';
@@ -14,6 +15,7 @@ import TimeWindowSettingsModal from '../../shared/components/TimeWindowSettingsM
 import { useNutritionRefreshOptional } from '../../shared/context/NutritionRefreshContext';
 import { WellnessScoreSetup } from '../../features/wellness-score-sheet';
 import { AiCreditsSetup } from '../../features/ai-credits';
+import { NavPageAccessSetup } from '../../features/nav-page-access';
 import {
   ADMIN_CONFIG_TABS,
   ADMIN_CONFIG_TAB_LABELS,
@@ -43,10 +45,13 @@ export default function AdminConfigSetup({
   apiBaseUrl,
   onBack,
   initialTab = ADMIN_CONFIG_TABS.WELLNESS_SCORE,
+  /** Refetch live nav ACL after Page Access save (mobile + web). */
+  onNavAccessSaved,
 }) {
   const wellnessScoreEnabled = isFlagEnabled('ff.wellness-score-sheet');
   const aiCreditsEnabled = isFlagEnabled('ff.ai-credits');
-  const flagOpts = { wellnessScoreEnabled, aiCreditsEnabled };
+  const navPageAccessEnabled = isFlagEnabled('ff.nav-page-access');
+  const flagOpts = { wellnessScoreEnabled, aiCreditsEnabled, navPageAccessEnabled };
   const nutritionRefresh = useNutritionRefreshOptional();
 
   const [activeTab, setActiveTab] = useState(() =>
@@ -60,6 +65,9 @@ export default function AdminConfigSetup({
   );
   const [aiMounted, setAiMounted] = useState(
     () => resolveAdminConfigTab(initialTab, flagOpts) === ADMIN_CONFIG_TABS.AI_CONFIG,
+  );
+  const [pageAccessMounted, setPageAccessMounted] = useState(
+    () => resolveAdminConfigTab(initialTab, flagOpts) === ADMIN_CONFIG_TABS.PAGE_ACCESS,
   );
   const [resolvedUserId, setResolvedUserId] = useState(user?.id || null);
 
@@ -78,18 +86,21 @@ export default function AdminConfigSetup({
     if (next === ADMIN_CONFIG_TABS.WELLNESS_SCORE) setWellnessMounted(true);
     if (next === ADMIN_CONFIG_TABS.ACTIVITY_TIME) setActivityMounted(true);
     if (next === ADMIN_CONFIG_TABS.AI_CONFIG) setAiMounted(true);
+    if (next === ADMIN_CONFIG_TABS.PAGE_ACCESS) setPageAccessMounted(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialTab, wellnessScoreEnabled, aiCreditsEnabled]);
+  }, [initialTab, wellnessScoreEnabled, aiCreditsEnabled, navPageAccessEnabled]);
 
   const selectTab = (tab) => {
     if (tab === activeTab) return;
     if (tab === ADMIN_CONFIG_TABS.WELLNESS_SCORE && !wellnessScoreEnabled) return;
     if (tab === ADMIN_CONFIG_TABS.AI_CONFIG && !aiCreditsEnabled) return;
+    if (tab === ADMIN_CONFIG_TABS.PAGE_ACCESS && !navPageAccessEnabled) return;
     startTransition(() => {
       setActiveTab(tab);
       if (tab === ADMIN_CONFIG_TABS.WELLNESS_SCORE) setWellnessMounted(true);
       if (tab === ADMIN_CONFIG_TABS.ACTIVITY_TIME) setActivityMounted(true);
       if (tab === ADMIN_CONFIG_TABS.AI_CONFIG) setAiMounted(true);
+      if (tab === ADMIN_CONFIG_TABS.PAGE_ACCESS) setPageAccessMounted(true);
       scrollAdminConfigToTop();
     });
   };
@@ -97,6 +108,7 @@ export default function AdminConfigSetup({
   const wellnessActive = activeTab === ADMIN_CONFIG_TABS.WELLNESS_SCORE;
   const activityActive = activeTab === ADMIN_CONFIG_TABS.ACTIVITY_TIME;
   const aiActive = activeTab === ADMIN_CONFIG_TABS.AI_CONFIG;
+  const pageAccessActive = activeTab === ADMIN_CONFIG_TABS.PAGE_ACCESS;
 
   const handleTimeWindowsUpdated = () => {
     nutritionRefresh?.triggerRefresh?.({
@@ -130,7 +142,7 @@ export default function AdminConfigSetup({
           </div>
 
           <div
-            className="mt-3 flex w-full gap-1 rounded-xl border border-gray-200 bg-white p-1 shadow-sm"
+            className="mt-3 flex w-full gap-1 overflow-x-auto rounded-xl border border-gray-200 bg-white p-1 shadow-sm"
             role="tablist"
             aria-label="Admin Config Setup tabs"
           >
@@ -172,6 +184,20 @@ export default function AdminConfigSetup({
                 className={TAB_BTN(aiActive)}
               >
                 <span className="truncate">{ADMIN_CONFIG_TAB_LABELS[ADMIN_CONFIG_TABS.AI_CONFIG]}</span>
+              </button>
+            )}
+            {navPageAccessEnabled && (
+              <button
+                type="button"
+                role="tab"
+                id="admin-config-tab-page-access"
+                aria-controls="admin-config-panel-page-access"
+                aria-selected={pageAccessActive}
+                tabIndex={pageAccessActive ? 0 : -1}
+                onClick={() => selectTab(ADMIN_CONFIG_TABS.PAGE_ACCESS)}
+                className={TAB_BTN(pageAccessActive)}
+              >
+                <span className="truncate">{ADMIN_CONFIG_TAB_LABELS[ADMIN_CONFIG_TABS.PAGE_ACCESS]}</span>
               </button>
             )}
           </div>
@@ -226,6 +252,23 @@ export default function AdminConfigSetup({
             user={user}
             apiBaseUrl={apiBaseUrl}
             embedded
+          />
+        </div>
+      )}
+
+      {pageAccessMounted && navPageAccessEnabled && (
+        <div
+          id="admin-config-panel-page-access"
+          role="tabpanel"
+          aria-labelledby="admin-config-tab-page-access"
+          hidden={!pageAccessActive}
+          className={pageAccessActive ? '' : 'hidden'}
+        >
+          <NavPageAccessSetup
+            user={user}
+            apiBaseUrl={apiBaseUrl}
+            embedded
+            onSaved={onNavAccessSaved}
           />
         </div>
       )}

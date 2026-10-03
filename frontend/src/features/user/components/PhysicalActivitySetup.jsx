@@ -9,6 +9,7 @@ import React, { useState } from 'react';
 import { Activity } from 'lucide-react';
 import { PHYSICAL_ACTIVITY_OPTIONS } from '../../../shared/utils/tdeeCalculations.js';
 import { saveProfile } from '../services/profileService';
+import * as Session from '../../../shared/services/sessionStorage.js';
 
 export default function PhysicalActivitySetup({ user, onComplete }) {
   const [selected, setSelected] = useState(null);
@@ -21,7 +22,8 @@ export default function PhysicalActivitySetup({ user, onComplete }) {
       return;
     }
     const email = (user?.email || user?.Email || '').trim();
-    if (!email) {
+    const userId = user?.id || user?.UserId || user?.userId || Session.getDbUserId() || null;
+    if (!email && !userId) {
       setError('Unable to identify your account. Please re-login.');
       return;
     }
@@ -30,7 +32,10 @@ export default function PhysicalActivitySetup({ user, onComplete }) {
     try {
       // saveProfile clears the shared getProfile cache so the onboarding gate
       // cannot re-read a stale profile without physicalActivityLevel.
-      const data = await saveProfile({ email, physicalActivityLevel: selected });
+      const payload = { physicalActivityLevel: selected };
+      if (email) payload.email = email;
+      if (userId) payload.userId = userId;
+      const data = await saveProfile(payload);
       await onComplete?.({
         physicalActivityLevel: selected,
         calorieTarget: data.data?.calorieTarget ?? null,

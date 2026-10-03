@@ -1,6 +1,6 @@
 // Step 1 — Warning screen with bullet list of what will be lost.
 import React from 'react';
-import { AlertTriangle, Loader, Mail, X } from 'lucide-react';
+import { AlertTriangle, X } from 'lucide-react';
 import TouchFeedbackButton from '../../../../shared/components/TouchFeedbackButton';
 
 const ITEMS = [
@@ -41,7 +41,7 @@ const DeleteStepWarning = ({ onClose, onContinue, sending, errorMessage }) => (
         ))}
       </ul>
       <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-2">
-        <p className="text-xs text-amber-700"><strong>⚠️ Note:</strong> Once deleted, your account and all data cannot be recovered.</p>
+        <p className="text-xs text-amber-700"><strong>⚠️ Note:</strong> Once deleted, your account and all data cannot be recovered. Use Recover Account on Profile if you meant to restore an old email login.</p>
       </div>
       {errorMessage && (
         <div className="mt-2 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
@@ -54,7 +54,7 @@ const DeleteStepWarning = ({ onClose, onContinue, sending, errorMessage }) => (
       <TouchFeedbackButton onClick={onContinue} disabled={sending}
         className="flex-1 py-3 px-4 rounded-xl bg-red-600 text-white text-sm font-semibold hover:bg-red-700 flex items-center justify-center gap-1.5 disabled:opacity-60"
         ariaLabel="Continue">
-        {sending ? <><Loader className="h-4 w-4 animate-spin" /> Sending...</> : <><Mail className="h-4 w-4" /> Continue</>}
+        Continue
       </TouchFeedbackButton>
     </div>
   </>
