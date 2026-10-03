@@ -1,8 +1,11 @@
 /**
  * bcmContactName.rules.js — pure contact display-name rules for BCM.
- * Format: "{name} {venueShort}{yymmdd}"
- * Example: praveen + "St.louis church" + 2026-08-20 → "praveen slc260820"
+ * Format: "{name} {venueShort} WV {yymmdd}"
+ * Example: praveen + "St.louis church" + 2026-08-20 → "praveen slc WV 260820"
+ * "WV" is a search token so coaches can find these contacts in the phone book.
  */
+
+const BCM_CONTACT_SEARCH_TOKEN = 'WV';
 
 /**
  * @param {string|null|undefined} isoDate - YYYY-MM-DD, DD/MM/YYYY, or Date-parseable
@@ -60,12 +63,11 @@ export function abbreviateVenue(venue) {
 
 /**
  * @param {{ name?: string|null, venue?: string|null, recordedDate?: string|null }} input
- * @returns {string} e.g. "praveen slc260820"
+ * @returns {string} e.g. "praveen slc WV 260820"
  */
 export function buildBcmContactDisplayName({ name, venue, recordedDate } = {}) {
   const person = String(name || '').trim();
   const venuePart = abbreviateVenue(venue);
   const datePart = formatBcmContactDate(recordedDate);
-  const suffix = `${venuePart}${datePart}`;
-  return [person, suffix].filter(Boolean).join(' ');
+  return [person, venuePart, BCM_CONTACT_SEARCH_TOKEN, datePart].filter(Boolean).join(' ');
 }
