@@ -24,7 +24,7 @@ import {
   buildAnalysisFromGeminiAnalysis,
   hasRecognizedFood,
 } from '../../features/captures';
-import { SmartFoodSearchModal } from '../../features/nutrition';
+import { SmartFoodSearchModal, allowHerbalifeShakePost } from '../../features/nutrition';
 import { buildAnalysisFromManualFood as buildManualFoodAnalysis } from '../../features/nutrition';
 import { seedMealAfterPromotion } from '../../features/nutrition/services/seedMealAfterPromotion';
 import { ManualWeightEntryModal, saveWeight, warmLatestWeightCache } from '../../features/weight';
@@ -406,7 +406,7 @@ export default function UnknownEntryFlow({
     }
   };
 
-  const handleFoodSave = (manualData) => {
+  const handleFoodSave = async (manualData) => {
     let analysisResult;
     try {
       analysisResult = buildAnalysisFromManualFood(manualData);
@@ -414,6 +414,11 @@ export default function UnknownEntryFlow({
       setError("Couldn't save — please try again.");
       return;
     }
+    const allowShake = await allowHerbalifeShakePost({
+      userId,
+      analysisResult,
+    });
+    if (!allowShake) return;
     // Close immediately; promote continues in background.
     finish({ kind: 'food', captureId });
     void promoteUnknownToFood({
@@ -438,6 +443,11 @@ export default function UnknownEntryFlow({
   /** Saves the AI-detected food result that the user confirmed on the review screen. */
   const handleAiFoodConfirm = async () => {
     if (!aiFood?.analysisResult) return;
+    const allowShake = await allowHerbalifeShakePost({
+      userId,
+      analysisResult: aiFood.analysisResult,
+    });
+    if (!allowShake) return;
     try {
       const result = await promoteUnknownToFood({
         captureId,
