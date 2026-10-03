@@ -1,7 +1,7 @@
 import { getSupabaseClient } from '../../../utils/supabaseClient.js';
 import logger from '../../../shared/lib/logger.js';
 import { nowUtc } from '../../../shared/lib/datetime/index.js';
-import { DEFAULT_NAV_ACCESS_MATRIX, normalizeMatrix } from '../domain/navAccess.rules.js';
+import { DEFAULT_NAV_ACCESS_MATRIX, matrixWithDefaultsForNewPages } from '../domain/navAccess.rules.js';
 
 const TABLE = 'nav_page_access_config_table';
 
@@ -38,7 +38,7 @@ export async function insertConfig({ matrix, updatedByUserId }) {
 
 export function configOrDefault(row) {
   return {
-    matrix: normalizeMatrix(row?.matrix ?? DEFAULT_NAV_ACCESS_MATRIX),
+    matrix: matrixWithDefaultsForNewPages(row?.matrix ?? DEFAULT_NAV_ACCESS_MATRIX),
     updatedAt: row?.updated_at ?? null,
     updatedByUserId: row?.updated_by_user_id ?? null,
   };

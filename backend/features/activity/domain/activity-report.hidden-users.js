@@ -3,47 +3,17 @@
  *
  * Hide is global (IsHidden on the member). Hiding never deletes
  * team_table users or activity records.
- */
-
-/** Roles that may hide/unhide members in Activity Report. */
-export const ACTIVITY_REPORT_HIDE_ROLES = Object.freeze([
-  'admin',
-  'developer',
-  'coach',
-  'upline',
-]);
-
-/**
- * Lead seats that map to product "Sponsor" / "Co-Coach".
- * @type {ReadonlyArray<'sponsor'|'co-sponsor'>}
- */
-export const ACTIVITY_REPORT_HIDE_LEAD_SEATS = Object.freeze([
-  'sponsor',
-  'co-sponsor',
-]);
-
-/**
- * @param {string|null|undefined} role
- * @returns {string}
- */
-export function normalizeActivityReportViewerRole(role) {
-  const r = String(role || '').trim().toLowerCase();
-  if (r === 'member' || r === 'customer') return 'user';
-  return r;
-}
-
-/**
- * Eligible when profile role is admin/developer/coach/upline, or the viewer
- * holds a sponsor / co-sponsor (co-coach) lead seat.
  *
- * @param {{ role?: string|null, leadSeat?: string|null }} args
+ * Who may hide: whoever can open Activity (nav page `activity-report`).
+ * Profile role and coach-team Sponsor / Co-Sponsor seat are not the gate.
+ */
+
+/**
+ * @param {{ activityAvailable?: boolean }} args
  * @returns {boolean}
  */
-export function canManageActivityReportHiddenUsers({ role = null, leadSeat = null } = {}) {
-  const normalized = normalizeActivityReportViewerRole(role);
-  if (ACTIVITY_REPORT_HIDE_ROLES.includes(normalized)) return true;
-  const seat = String(leadSeat || '').toLowerCase();
-  return ACTIVITY_REPORT_HIDE_LEAD_SEATS.includes(seat);
+export function canManageActivityReportHiddenUsers({ activityAvailable = false } = {}) {
+  return activityAvailable === true;
 }
 
 /**

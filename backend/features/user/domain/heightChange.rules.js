@@ -4,8 +4,8 @@
  *
  * Legacy (not breaking): appVersion < HEIGHT_CHANGE_OTP_MIN_APP_VERSION or
  * missing version still applies height on POST /api/user/profile.
- * 3.5.0+ with the flag ON strips differing height updates and uses
- * POST /api/user/height/request-otp + verify-otp.
+ * 3.5.0+ with the flag ON strips differing height updates. The member asks
+ * their coach (CoachId) to approve by email code.
  */
 import { isAtLeastVersion } from '../../app-version/domain/version.rules.js';
 
@@ -13,6 +13,10 @@ export const HEIGHT_CHANGE_OTP_FLAG = 'ff.height-change-otp';
 export const HEIGHT_CHANGE_OTP_MIN_APP_VERSION = '3.5.0';
 export const HEIGHT_CHANGE_OTP_MIN_CM = 50;
 export const HEIGHT_CHANGE_OTP_MAX_CM = 198;
+/** Coach has time to read the email and share the code. */
+export const HEIGHT_CHANGE_OTP_HOURS = 24;
+/** Isolated from login email OTPs on otp_tokens_table. */
+export const HEIGHT_CHANGE_OTP_CONTACT_TYPE = 'height-change';
 
 /**
  * @param {unknown} value

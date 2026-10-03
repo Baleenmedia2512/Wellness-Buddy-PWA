@@ -11,7 +11,7 @@ import {
   sanitizeCommunityIdInput,
   validateCommunityId,
   communityIdPendingApprovalParts,
-  formatCommunityIdPairLabel,
+  communityIdPairDisplayParts,
 } from '../../domain/communityId';
 import { EMAIL_OTP_LENGTH } from '../../domain/otpLength';
 import useOtpInput from '../../hooks/useOtpInput';
@@ -88,7 +88,7 @@ const CommunityIdField = ({
     || editingPending
   );
   const showCancelIcon = (editingConfirmed || editingPending) && !busy;
-  const pairLabel = formatCommunityIdPairLabel(communityIdPair || {});
+  const pairParts = communityIdPairDisplayParts(communityIdPair || {});
   const pendingParts = communityIdPendingApprovalParts({
     sponsorName: pendingRequest?.approverName || sponsorName,
     sponsorEmail: resolveApproverEmail(pendingRequest, sponsorEmail),
@@ -196,11 +196,13 @@ const CommunityIdField = ({
 
   return (
     <div>
-      <div className="flex items-baseline gap-16 mb-1 min-w-0">
-        <label className="text-sm font-medium text-gray-700 shrink-0">Community ID</label>
-        {pairLabel ? (
-          <span className="text-sm font-medium text-gray-700 tracking-wide truncate min-w-0">
-            {pairLabel}
+      <div className="mb-1 flex items-start justify-between gap-3">
+        <label className="shrink-0 pt-0.5 text-sm font-medium text-gray-700">Community ID</label>
+        {pairParts ? (
+          <span className="min-w-0 flex-1 text-right text-sm font-medium leading-snug text-gray-800 break-words">
+            <span>{pairParts.left}</span>
+            <span className="text-gray-400"> - </span>
+            <span>{pairParts.right}</span>
           </span>
         ) : null}
       </div>

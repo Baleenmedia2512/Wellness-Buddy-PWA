@@ -101,19 +101,52 @@ export function communityIdPairFirstName(name) {
   return token ? token.toUpperCase() : '';
 }
 
+const PAIR_EMPTY = 'N/A';
+
+function normalizePairToken(token) {
+  const text = String(token || '').trim();
+  if (!text || text.toUpperCase() === 'NA' || text.toUpperCase() === 'N/A') return PAIR_EMPTY;
+  return text;
+}
+
 /**
+ * Coach and co-coach tokens for the Community ID header.
+ * Missing side is N/A so both names stay visible.
+ *
  * @param {{ sponsorName?: string|null, coSponsorName?: string|null, label?: string|null }} [args]
- * @returns {string} e.g. "YASHEER - BALAJI" or "YASHEER - NA"
+ * @returns {{ left: string, right: string }|null}
  */
-export function formatCommunityIdPairLabel({
+export function communityIdPairDisplayParts({
   sponsorName = null,
   coSponsorName = null,
   label = null,
 } = {}) {
+  const leftName = communityIdPairFirstName(sponsorName);
+  const rightName = communityIdPairFirstName(coSponsorName);
+  if (leftName || rightName) {
+    return {
+      left: leftName || PAIR_EMPTY,
+      right: rightName || PAIR_EMPTY,
+    };
+  }
   const provided = String(label || '').trim();
-  if (provided) return provided;
-  const left = communityIdPairFirstName(sponsorName);
-  if (!left) return '';
-  const right = communityIdPairFirstName(coSponsorName) || 'NA';
-  return `${left} - ${right}`;
+  if (!provided) return null;
+  const parts = provided.split(/\s+-\s+/).map((part) => part.trim()).filter(Boolean);
+  if (parts.length >= 2) {
+    return {
+      left: normalizePairToken(parts[0]),
+      right: normalizePairToken(parts.slice(1).join(' - ')),
+    };
+  }
+  return { left: normalizePairToken(provided), right: PAIR_EMPTY };
+}
+
+/**
+ * @param {{ sponsorName?: string|null, coSponsorName?: string|null, label?: string|null }} [args]
+ * @returns {string} e.g. "YASHEER - BALAJI" or "YASHEER - N/A"
+ */
+export function formatCommunityIdPairLabel(args = {}) {
+  const parts = communityIdPairDisplayParts(args);
+  if (!parts) return '';
+  return `${parts.left} - ${parts.right}`;
 }

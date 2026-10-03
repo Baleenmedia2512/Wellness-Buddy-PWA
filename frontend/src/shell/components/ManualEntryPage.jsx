@@ -181,6 +181,7 @@ function shakePayloadToAnalysis(payload) {
     confidence: payload?.confidence || 'high',
     processedBy: payload?.processedBy || 'shake_calculator',
     shakeProducts,
+    source: 'manual',
   };
 }
 

@@ -173,7 +173,7 @@ const REGISTRY = Object.freeze({
     description:    'Profile Community ID Create + sponsor OTP (create / co-sponsor).',
   },
 
-  // Profile height: first Save free; later changes need email/phone OTP.
+  // Profile height: first Save free; later changes need the coach's email approval.
   // Default ON. Set REACT_APP_FF_HEIGHT_CHANGE_OTP=false or
   // localStorage 'ff.height-change-otp'='false' to restore free height edits.
   'ff.height-change-otp': {
@@ -181,6 +181,16 @@ const REGISTRY = Object.freeze({
     storageKey:     'ff.height-change-otp',
     defaultEnabled: true,
     description:    'Profile height lock after first save; OTP to change.',
+  },
+
+  // BroadCast — paid how-to + payment entry. Upload and Burst wait on recharge.
+  // Default ON. Set REACT_APP_FF_BROADCAST=false or
+  // localStorage 'ff.broadcast'='false' to hide the tab.
+  'ff.broadcast': {
+    envKey:         'REACT_APP_FF_BROADCAST',
+    storageKey:     'ff.broadcast',
+    defaultEnabled: true,
+    description:    'BroadCast paid screen: how-to video and payment entry.',
   },
 });
 

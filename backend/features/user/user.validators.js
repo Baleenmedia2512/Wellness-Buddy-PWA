@@ -202,7 +202,7 @@ export function validateUpdateProfile(body) {
       throw new ValidationError(400, 'Invalid transformationPhotos. Must be an object with optional front, left, and right images.');
     } else {
       const normalized = {};
-      TRANSFORM_PHOTO_SLOTS.forEach((slot) => {
+      TRANSFORMATION_PHOTO_SLOTS.forEach((slot) => {
         if (!(slot in raw)) return;
         const value = raw[slot];
         if (value == null || value === '') return;

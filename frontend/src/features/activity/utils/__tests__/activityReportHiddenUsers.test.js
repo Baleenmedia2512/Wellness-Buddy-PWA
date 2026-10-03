@@ -6,35 +6,12 @@ import assert from 'node:assert/strict';
 import { canManageActivityReportHiddenUsers } from '../activityReportHiddenUsers.js';
 
 describe('canManageActivityReportHiddenUsers (frontend)', () => {
-  it('allows admin and developer', () => {
-    assert.equal(canManageActivityReportHiddenUsers({ userRole: 'admin' }), true);
-    assert.equal(canManageActivityReportHiddenUsers({ userRole: 'developer' }), true);
+  it('allows hide when Activity is available', () => {
+    assert.equal(canManageActivityReportHiddenUsers({ activityAvailable: true }), true);
   });
 
-  it('allows coach and upline', () => {
-    assert.equal(canManageActivityReportHiddenUsers({ userRole: 'coach' }), true);
-    assert.equal(canManageActivityReportHiddenUsers({ userRole: 'upline' }), true);
-  });
-
-  it('allows elevated coach API role or team-scope (sponsor / co-coach)', () => {
-    assert.equal(
-      canManageActivityReportHiddenUsers({ userRole: 'user', effectiveRole: 'coach' }),
-      true,
-    );
-    assert.equal(
-      canManageActivityReportHiddenUsers({ userRole: 'user', showTeamScope: true }),
-      true,
-    );
-  });
-
-  it('denies regular customers', () => {
-    assert.equal(
-      canManageActivityReportHiddenUsers({
-        userRole: 'user',
-        effectiveRole: 'member',
-        showTeamScope: false,
-      }),
-      false,
-    );
+  it('denies hide when Activity is not available', () => {
+    assert.equal(canManageActivityReportHiddenUsers({ activityAvailable: false }), false);
+    assert.equal(canManageActivityReportHiddenUsers({}), false);
   });
 });

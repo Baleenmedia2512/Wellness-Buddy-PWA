@@ -12,6 +12,7 @@ import {
   shouldClearBpcLeadCoachId,
   isMemberActivatedForBcmExclusion,
   BCM_ACTIVATED_MEMBER_MESSAGE,
+  canOverrideBcmForMember,
 } from '../domain/card.rules.js';
 import { getLatestWeight, getLatestWeightBodyFat, getLatestWeightMetricsByUserIds } from '../../user/user.repository.js';
 import logger from '../../../shared/lib/logger.js';
@@ -474,37 +475,70 @@ export async function findTeamMemberIdByPhone(phoneNumber) {
 }
 
 /**
- * Whether this phone belongs to an activated member (BCM blocked).
- * When not activated, also returns the latest saved BCM card fields so the form
- * can restore name/venue/height/etc. (prefer this coach's card, else any).
+ * Whether this coach may override this member's BCM.
+ * Override is only their own card, and only before the member starts the app.
+ * Another counsellor's card (including a co-sponsor) is never returned.
+ *
+ * @param {number} userId
+ * @param {{ coachId?: number|null, phoneNumber?: string|null }} [opts]
+ * @returns {Promise<{ activated: boolean, userId: number|null, existingCard: object|null, canOverride: boolean, counselledByOther: boolean }>}
+ */
+export async function getBcmMemberCounsellingAccess(userId, { coachId = null, phoneNumber = null } = {}) {
+  const uid = parseInt(userId, 10);
+  const empty = {
+    activated: false,
+    userId: null,
+    existingCard: null,
+    canOverride: false,
+    counselledByOther: false,
+  };
+  if (!Number.isFinite(uid) || uid < 1) return empty;
+
+  const activated = await isUserActivatedForBcm(uid);
+  const coachIdN = parseInt(coachId, 10);
+  const ownCard = Number.isFinite(coachIdN) && coachIdN > 0
+    ? await findLatestFullCardByUserIdAndCreatedBy(uid, coachIdN)
+    : null;
+
+  let counselledByOther = false;
+  if (!ownCard) {
+    const anyCard = await findLatestFullCardByUserId(uid);
+    const creator = parseInt(anyCard?.created_by, 10);
+    counselledByOther = Boolean(anyCard?.id) && creator !== coachIdN;
+  }
+
+  const counselledByViewer = Boolean(ownCard?.id);
+  return {
+    activated,
+    userId: uid,
+    existingCard: (!activated && ownCard)
+      ? mapFullCardRowToPrefill(ownCard, phoneNumber)
+      : null,
+    canOverride: canOverrideBcmForMember({ activated, counselledByViewer }),
+    counselledByOther: !activated && counselledByOther,
+  };
+}
+
+/**
+ * Whether this phone belongs to an activated member, and whether this coach
+ * counselled the BCM. Never returns another counsellor's card.
  *
  * @param {string} phoneNumber
  * @param {{ coachId?: number|null }} [opts]
- * @returns {Promise<{ activated: boolean, userId: number|null, existingCard: object|null }>}
+ * @returns {Promise<{ activated: boolean, userId: number|null, existingCard: object|null, canOverride: boolean, counselledByOther: boolean }>}
  */
 export async function getBcmPhoneActivationStatus(phoneNumber, { coachId = null } = {}) {
   const userId = await findTeamMemberIdByPhone(phoneNumber);
-  if (!userId) return { activated: false, userId: null, existingCard: null };
-
-  const activated = await isUserActivatedForBcm(userId);
-  if (activated) {
-    return { activated: true, userId, existingCard: null };
+  if (!userId) {
+    return {
+      activated: false,
+      userId: null,
+      existingCard: null,
+      canOverride: false,
+      counselledByOther: false,
+    };
   }
-
-  const coachIdN = parseInt(coachId, 10);
-  let card = null;
-  if (Number.isFinite(coachIdN) && coachIdN > 0) {
-    card = await findLatestFullCardByUserIdAndCreatedBy(userId, coachIdN);
-  }
-  if (!card) {
-    card = await findLatestFullCardByUserId(userId);
-  }
-
-  return {
-    activated: false,
-    userId,
-    existingCard: mapFullCardRowToPrefill(card, phoneNumber),
-  };
+  return getBcmMemberCounsellingAccess(userId, { coachId, phoneNumber });
 }
 
 function mapFullCardRowToPrefill(card, phoneNumber) {

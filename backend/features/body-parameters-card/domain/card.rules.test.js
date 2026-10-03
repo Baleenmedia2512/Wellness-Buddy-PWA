@@ -13,7 +13,9 @@ import {
   shouldDetachCounsellorCoachAssignment,
   isMemberActivatedForBcmExclusion,
   BCM_ACTIVATED_MEMBER_MESSAGE,
+  BCM_COUNSELLED_BY_OTHER_MESSAGE,
   allowsActivatedBcmCreate,
+  canOverrideBcmForMember,
   shouldForceNewBcmCard,
 } from './card.rules.js';
 
@@ -113,9 +115,9 @@ describe('isMemberActivatedForBcmExclusion', () => {
 });
 
 describe('phoneConflictAction helpers', () => {
-  it('allows activated create only for override / new', () => {
-    assert.equal(allowsActivatedBcmCreate('override'), true);
-    assert.equal(allowsActivatedBcmCreate('new'), true);
+  it('never allows BCM create or override for an activated member', () => {
+    assert.equal(allowsActivatedBcmCreate('override'), false);
+    assert.equal(allowsActivatedBcmCreate('new'), false);
     assert.equal(allowsActivatedBcmCreate(null), false);
     assert.equal(allowsActivatedBcmCreate(undefined), false);
     assert.equal(allowsActivatedBcmCreate('reuse'), false);
@@ -125,6 +127,33 @@ describe('phoneConflictAction helpers', () => {
     assert.equal(shouldForceNewBcmCard('new'), true);
     assert.equal(shouldForceNewBcmCard('override'), false);
     assert.equal(shouldForceNewBcmCard(null), false);
+  });
+});
+
+describe('canOverrideBcmForMember', () => {
+  it('allows override only for a card this coach counselled before the member starts the app', () => {
+    assert.equal(canOverrideBcmForMember({
+      activated: false,
+      counselledByViewer: true,
+    }), true);
+  });
+
+  it('blocks activated members and cards counselled by someone else, including a co-sponsor', () => {
+    assert.equal(canOverrideBcmForMember({
+      activated: true,
+      counselledByViewer: true,
+    }), false);
+    assert.equal(canOverrideBcmForMember({
+      activated: false,
+      counselledByViewer: false,
+    }), false);
+    assert.equal(canOverrideBcmForMember({}), false);
+  });
+});
+
+describe('BCM_COUNSELLED_BY_OTHER_MESSAGE', () => {
+  it('tells the coach they cannot override another counsellor\'s BCM', () => {
+    assert.match(BCM_COUNSELLED_BY_OTHER_MESSAGE, /someone else/i);
   });
 });
 

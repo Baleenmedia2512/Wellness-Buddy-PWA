@@ -100,6 +100,7 @@ export function transformToBackgroundServiceFormat(analysisResult) {
         total,
         confidence: analysisResult.confidence || 'medium',
         ...(analysisResult.processedBy ? { processedBy: analysisResult.processedBy } : {}),
+        ...(analysisResult.source ? { source: analysisResult.source } : {}),
         ...(analysisResult.category ? { category: analysisResult.category } : {}),
         ...(analysisResult.shakeProducts ? { shakeProducts: analysisResult.shakeProducts } : {}),
       };
@@ -119,6 +120,7 @@ export function transformToBackgroundServiceFormat(analysisResult) {
       total: macros(nutrition),
       confidence: confidence || 'medium',
       ...(analysisResult.processedBy ? { processedBy: analysisResult.processedBy } : {}),
+      ...(analysisResult.source ? { source: analysisResult.source } : {}),
       ...(analysisResult.shakeProducts ? { shakeProducts: analysisResult.shakeProducts } : {}),
     };
   } catch (error) {

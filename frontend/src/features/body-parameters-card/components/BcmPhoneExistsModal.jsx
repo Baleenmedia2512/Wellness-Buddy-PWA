@@ -1,8 +1,8 @@
 /**
  * BcmPhoneExistsModal.jsx
  *
- * Shown when the coach enters a phone that already belongs to a team member
- * (including activated). Offers Override vs New.
+ * Shown when this coach already counselled the BCM and the member has not
+ * started the app. Offers Override vs New for that card only.
  */
 import React from 'react';
 import { BCM_PHONE_EXISTS_CHOICE_MESSAGE } from '../domain/formValidation.rules.js';
