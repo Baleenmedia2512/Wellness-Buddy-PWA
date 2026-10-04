@@ -16,7 +16,7 @@ export const teamHierarchyService = {
    * @returns {Promise<Object>} - Hierarchical team data
    */
   async getTeamHierarchy(coachId, includeInactive = false) {
-    const cacheKey = cacheManager.generateKey("teamHierarchy", "v4-search-club", coachId, includeInactive);
+    const cacheKey = cacheManager.generateKey("teamHierarchy", "v5-search-club-upline", coachId, includeInactive);
     return cacheManager.execute(
       cacheKey,
       async () => {

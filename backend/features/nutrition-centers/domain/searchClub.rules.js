@@ -1,6 +1,7 @@
 /**
  * Club shown on Diary user search.
- * A person uses their own club. When they have none, the direct coach's club is used.
+ * A person uses their own club. When they have none, walk the coach chain
+ * (coach, then that coach's upline) until a club is found.
  * Several clubs for one owner: the latest registration wins.
  */
 
@@ -27,11 +28,32 @@ export function primaryClubNameByOwner(centers) {
   return names;
 }
 
-export function resolveSearchClubName({ userId, coachId } = {}, clubByOwner) {
-  const lookup = (id) => {
-    const key = ownerKey(id);
-    if (key == null || !clubByOwner) return '';
-    return String(clubByOwner.get(key) || '').trim();
-  };
-  return lookup(userId) || lookup(coachId) || null;
+export function coachIdByUser(users) {
+  const map = new Map();
+  for (const user of users || []) {
+    const id = ownerKey(user?.UserId ?? user?.userId);
+    if (id == null) continue;
+    map.set(id, ownerKey(user?.CoachId ?? user?.coachId));
+  }
+  return map;
+}
+
+/**
+ * Own club, else the nearest upline club. Stops on a missing parent or a loop.
+ * @param {number|string} userId
+ * @param {Map<number, string>} clubByOwner
+ * @param {Map<number, number|null>} coachByUser
+ */
+export function resolveSearchClubName(userId, clubByOwner, coachByUser) {
+  const seen = new Set();
+  let current = ownerKey(userId);
+  while (current != null && !seen.has(current)) {
+    seen.add(current);
+    const club = clubByOwner ? String(clubByOwner.get(current) || '').trim() : '';
+    if (club) return club;
+    const parent = coachByUser ? coachByUser.get(current) : null;
+    if (parent == null || parent === current) break;
+    current = parent;
+  }
+  return null;
 }

@@ -40,8 +40,8 @@ export default function TeamSearchResults({
       ) : suggestions.length > 0 ? (
         <ul className="py-1">
           {suggestions.map((member, index) => {
-            const diaryLine = resultVariant === 'diary'
-              ? formatDiarySearchDetails(member)
+            const diaryDetails = resultVariant === 'diary'
+              ? formatDiarySearchDetails(member, { includeName: false })
               : '';
             const subtitle = resultVariant === 'diary'
               ? ''
@@ -50,17 +50,22 @@ export default function TeamSearchResults({
             <li key={`${member.userId}-${index}`}>
               <button
                 onClick={() => onSelect(member)}
-                className="w-full px-4 py-2.5 text-left hover:bg-gray-50 transition-colors flex items-center gap-3"
+                className="w-full px-4 py-2.5 text-left hover:bg-gray-50 transition-colors flex items-start gap-3"
               >
                 <div className="flex-shrink-0 w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
                   <User className="h-4 w-4 text-green-600" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  {diaryLine ? (
-                    <p className="text-sm font-medium text-gray-900 truncate">
-                      {diaryLine}
-                      {member.isSelf && <span className="ml-2 text-xs text-green-600">(Me)</span>}
-                    </p>
+                  {resultVariant === 'diary' ? (
+                    <>
+                      <p className="text-sm font-medium text-gray-900 break-words">
+                        {member.userName}
+                        {member.isSelf && <span className="ml-2 text-xs text-green-600">(Me)</span>}
+                      </p>
+                      {diaryDetails ? (
+                        <p className="text-xs text-gray-500 break-words">{diaryDetails}</p>
+                      ) : null}
+                    </>
                   ) : (
                     <>
                       <p className="text-sm font-medium text-gray-900 truncate">

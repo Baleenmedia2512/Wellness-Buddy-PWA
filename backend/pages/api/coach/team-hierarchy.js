@@ -11,6 +11,7 @@ import { computeBmiFromHeightWeight } from '../../../features/body-parameters-ca
 import {
   primaryClubNameByOwner,
   resolveSearchClubName,
+  coachIdByUser,
 } from '../../../features/nutrition-centers/domain/searchClub.rules.js';
 
 /**
@@ -695,16 +696,24 @@ export default async function handler(req, res) {
 
     let coachClubName = null;
     try {
-      const ownerIds = new Set();
-      const addOwner = (id) => {
-        const n = Number(id);
-        if (Number.isFinite(n)) ownerIds.add(n);
+      const coachByUser = coachIdByUser(allUsers);
+      const ancestorIds = (startId) => {
+        const ids = [];
+        const seen = new Set();
+        let current = Number(startId);
+        while (Number.isFinite(current) && !seen.has(current)) {
+          seen.add(current);
+          ids.push(current);
+          const parent = coachByUser.get(current);
+          if (parent == null || parent === current) break;
+          current = parent;
+        }
+        return ids;
       };
-      addOwner(coachIdInt);
-      addOwner(hierarchy.coachId);
+      const ownerIds = new Set();
+      for (const id of ancestorIds(coachIdInt)) ownerIds.add(id);
       for (const m of allMembers) {
-        addOwner(m.UserId);
-        addOwner(m.CoachId);
+        for (const id of ancestorIds(m.UserId)) ownerIds.add(id);
       }
       const clubs = [];
       const ids = [...ownerIds];
@@ -720,15 +729,9 @@ export default async function handler(req, res) {
         if (data?.length) clubs.push(...data);
       }
       const clubByOwner = primaryClubNameByOwner(clubs);
-      coachClubName = resolveSearchClubName(
-        { userId: coachIdInt, coachId: hierarchy.coachId },
-        clubByOwner,
-      );
+      coachClubName = resolveSearchClubName(coachIdInt, clubByOwner, coachByUser);
       for (const m of allMembers) {
-        m.clubName = resolveSearchClubName(
-          { userId: m.UserId, coachId: m.CoachId },
-          clubByOwner,
-        );
+        m.clubName = resolveSearchClubName(m.UserId, clubByOwner, coachByUser);
       }
     } catch (clubErr) {
       logger.warn('[team-hierarchy] club enrich failed', {
