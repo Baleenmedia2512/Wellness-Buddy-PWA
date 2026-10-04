@@ -25,6 +25,7 @@ const Spinner = () => (
 const LoginEmailEntry = ({
   email, setEmail, onSubmit, loading,
   countryDial, setCountryDial, errorMessage,
+  termsAccepted, setTermsAccepted, onOpenTerms, onOpenPrivacy,
 }) => {
   const inputRef = useRef(null);
   const { supported: contactPickerSupported, picking, pick } = useContactPicker();
@@ -42,7 +43,14 @@ const LoginEmailEntry = ({
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    if (!termsAccepted) return;
     onSubmit();
+  };
+
+  const openDoc = (event, open) => {
+    event.preventDefault();
+    event.stopPropagation();
+    open?.();
   };
 
   return (
@@ -123,12 +131,41 @@ const LoginEmailEntry = ({
           We&apos;ll send a {SMS_OTP_LENGTH}-digit code via SMS to verify your number.
         </p>
       </div>
+      <div className="flex items-start gap-2.5">
+        <input
+          id="signup-terms"
+          type="checkbox"
+          checked={termsAccepted === true}
+          onChange={(e) => setTermsAccepted?.(e.target.checked)}
+          disabled={loading}
+          aria-label="Accept Terms of Service and Privacy Policy"
+          className="mt-0.5 h-[18px] w-[18px] shrink-0 rounded border-gray-300 accent-[#2563eb]"
+        />
+        <label htmlFor="signup-terms" className="text-sm leading-snug text-gray-600">
+          By Signing up, I accept the{' '}
+          <button
+            type="button"
+            className="inline compact-touch p-0 align-baseline font-medium text-[#2563eb] underline underline-offset-2"
+            onClick={(e) => openDoc(e, onOpenTerms)}
+          >
+            Terms of Service
+          </button>
+          {' '}and acknowledge the{' '}
+          <button
+            type="button"
+            className="inline compact-touch p-0 align-baseline font-medium text-[#2563eb] underline underline-offset-2"
+            onClick={(e) => openDoc(e, onOpenPrivacy)}
+          >
+            Privacy Policy
+          </button>
+        </label>
+      </div>
       {errorMessage && (
         <p className="text-sm text-red-600 text-center">{errorMessage}</p>
       )}
       <button
         type="submit"
-        disabled={loading || !email}
+        disabled={loading || !email || termsAccepted !== true}
         className="w-full flex items-center justify-center px-4 xs:px-6 py-3 xs:py-3.5 bg-gradient-to-r from-green-400 to-teal-400 text-white rounded-xl shadow-sm hover:shadow-md hover:from-green-500 hover:to-teal-500 transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-400 disabled:opacity-50 min-h-[48px]"
       >
         {loading ? <span className="flex items-center"><Spinner />Sending OTP...</span> : 'Send OTP'}

@@ -16,7 +16,7 @@ export const teamHierarchyService = {
    * @returns {Promise<Object>} - Hierarchical team data
    */
   async getTeamHierarchy(coachId, includeInactive = false) {
-    const cacheKey = cacheManager.generateKey("teamHierarchy", "v3-coachid-primary", coachId, includeInactive);
+    const cacheKey = cacheManager.generateKey("teamHierarchy", "v4-search-club", coachId, includeInactive);
     return cacheManager.execute(
       cacheKey,
       async () => {
@@ -51,7 +51,7 @@ export const teamHierarchyService = {
       // ✅ Use backend's pre-built flat array — already deduplicated, Active-only, and complete
       // Avoids members being dropped by broken nested tree walk
       if (hierarchyData.allMembers && hierarchyData.allMembers.length > 0) {
-        return hierarchyData.allMembers.map((member) => ({
+        const list = hierarchyData.allMembers.map((member) => ({
           userId: member.UserId,
           userName: member.UserName,
           email: member.Email || "",
@@ -66,6 +66,7 @@ export const teamHierarchyService = {
           isCoachRelationship: true,
           level: 0,
           phoneNumber: member.phoneNumber || member.PhoneNumber || null,
+          clubName: member.clubName || null,
           heightCm: member.height != null ? member.height : (member.heightCm != null ? member.heightCm : null),
           bmr: member.bmr != null ? member.bmr : null,
           gender: member.gender || member.Gender || null,
@@ -79,6 +80,10 @@ export const teamHierarchyService = {
           fatPercent: member.fatPercent != null ? member.fatPercent : null,
           bmi: member.bmi != null ? member.bmi : null,
         }));
+        list.coachClubName = hierarchyData.coachClubName
+          || hierarchyData.loggedInCoach?.clubName
+          || null;
+        return list;
       }
 
       // Fallback: walk hierarchy tree if allMembers not available
@@ -103,6 +108,7 @@ export const teamHierarchyService = {
             isCoachRelationship: node.isCoachRelationship,
             level: 0,
             phoneNumber: node.phoneNumber || null,
+            clubName: node.clubName || null,
             heightCm: node.height != null ? node.height : (node.heightCm != null ? node.heightCm : null),
             bmr: node.bmr != null ? node.bmr : null,
             gender: node.gender || null,
@@ -124,6 +130,9 @@ export const teamHierarchyService = {
       if (hierarchyData.hierarchy) {
         flatten(hierarchyData.hierarchy);
       }
+      flatList.coachClubName = hierarchyData.coachClubName
+        || hierarchyData.loggedInCoach?.clubName
+        || null;
       return flatList;
     } catch (error) {
       console.error("Flat team list error:", error);

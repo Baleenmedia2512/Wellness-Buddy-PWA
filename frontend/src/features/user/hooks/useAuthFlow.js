@@ -11,6 +11,8 @@ import {
 } from '../domain/contactIdentifier';
 import { debugLog } from '../../../shared/utils/logger.js';
 import storage from '../../../shared/lib/storage.js';
+import { persistLocalConsentAcceptance } from '../domain/consent.js';
+import { recordConsentAcceptance } from '../services/consent.api.js';
 
 export default function useAuthFlow({ onOtpVerified } = {}) {
   // `email` keeps its name for backward-compat with existing tests/UI; it now
@@ -25,6 +27,7 @@ export default function useAuthFlow({ onOtpVerified } = {}) {
   // `contactType` is derived at send time and frozen for the verify step so
   // a half-typed change to the input doesn't switch flows mid-verification.
   const [activeChannel, setActiveChannel] = useState(null); // 'email' | 'phone' | null
+  const [termsAccepted, setTermsAccepted] = useState(false);
 
   // E.164 phone frozen for the verify step (phone channel only).
   const phoneRecipientRef = useRef(null);
@@ -88,7 +91,9 @@ export default function useAuthFlow({ onOtpVerified } = {}) {
           setErrorMessage('Session expired. Please resend the OTP.');
           return false;
         }
-        data = await verifyOtpApi(phoneRecipient, otpValue, undefined, 'phone');
+        data = await verifyOtpApi(phoneRecipient, otpValue, undefined, 'phone', {
+          consentAccepted: termsAccepted === true,
+        });
       } else {
         setErrorMessage('Session expired. Please resend the OTP.');
         return false;
@@ -97,17 +102,26 @@ export default function useAuthFlow({ onOtpVerified } = {}) {
         setErrorMessage(data.message || 'Invalid OTP.');
         return false;
       }
-      setVerified(true);
-      setSuccessMessage('OTP verified successfully!');
+      const acceptedUserId = data.user?.id || data.user?.UserId;
+      const needsConsentWrite = termsAccepted === true
+        && data.user?.consentRequired !== false
+        && Boolean(acceptedUserId);
+      if (termsAccepted === true) {
+        persistLocalConsentAcceptance();
+        if (data.user) data.user = { ...data.user, consentRequired: false };
+      }
       const userDataWithNewFlag = { ...data.user, isNewUser: data.isNewUser === true };
       storage.set('otpUser', JSON.stringify(userDataWithNewFlag));
-      // Short success beat, then hand off immediately — App shows a logo bridge
-      // while consent/status resolve (avoids Login remount flicker).
-      setTimeout(async () => {
-        setSuccessMessage('');
-        if (onOtpVerified) await onOtpVerified(data.isNewUser === true);
-        setVerified(false);
-      }, 400);
+      if (needsConsentWrite) {
+        recordConsentAcceptance({
+          userId: acceptedUserId,
+          email: data.user?.email || undefined,
+        }).catch((err) => {
+          console.warn('[verify-otp] consent save failed after signup acceptance', err?.message);
+        });
+      }
+      // Leave the OTP screen as soon as the code is accepted.
+      if (onOtpVerified) await onOtpVerified(data.isNewUser === true);
       return true;
     } catch {
       setErrorMessage('Failed to verify OTP. Please try again.');
@@ -131,6 +145,7 @@ export default function useAuthFlow({ onOtpVerified } = {}) {
     verified, loading, errorMessage, successMessage,
     setErrorMessage,
     activeChannel,
+    termsAccepted, setTermsAccepted,
     sendOtp, verifyOtp, resetOtpScreen,
   };
 }

@@ -5,6 +5,7 @@ import { debugLog } from '../../../shared/utils/logger.js';
 import { getDeviceTimezoneIana } from '../../../shared/utils/deviceTimezone.js';
 import { apiFetch } from '../../../shared/services/apiFetch.js';
 import { handlePossibleAppUpdateRequired } from '../../../shared/services/appVersionEnforce.client.js';
+import { buildClientDeviceInfo, CURRENT_CONSENT_VERSION } from '../domain/consent.js';
 
 const post = async (path, body) => {
   const apiBase = getApiBaseUrl();
@@ -65,7 +66,7 @@ const post = async (path, body) => {
 export const sendOtp = (recipient, contactType = 'email') =>
   post('/api/auth/send-otp', { recipient, contactType });
 
-export const verifyOtp = (recipient, otp, purpose, contactType = 'email') => {
+export const verifyOtp = (recipient, otp, purpose, contactType = 'email', extra = {}) => {
   const body = {
     recipient,
     otp,
@@ -73,6 +74,11 @@ export const verifyOtp = (recipient, otp, purpose, contactType = 'email') => {
     timezoneIana: getDeviceTimezoneIana() ?? '',
   };
   if (purpose) body.purpose = purpose;
+  if (extra?.consentAccepted === true) {
+    body.consentAccepted = true;
+    body.consentVersion = CURRENT_CONSENT_VERSION;
+    body.deviceInfo = buildClientDeviceInfo();
+  }
   return post('/api/auth/verify-otp', body);
 };
 

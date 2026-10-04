@@ -156,7 +156,7 @@ const OnboardingIdentityPage = ({ user, onComplete }) => {
                 autoComplete="name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="Enter your full name"
+                placeholder="Enter your Name"
                 className={inputCls(name && !nameValid)}
                 style={{ fontSize: '16px' }}
               />
