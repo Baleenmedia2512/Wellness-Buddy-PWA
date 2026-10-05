@@ -13,12 +13,40 @@ import { sendMdtSms } from './data/mdt-sms.client.js';
 import { nowUtc } from '../../shared/lib/datetime/index.js';
 import { syncUserTimezoneIfChanged } from '../user/timezone-sync.service.js';
 import { isEnabled } from '../../shared/lib/feature-flags.js';
-import { isConsentRecorded } from './domain/consent.rules.js';
+import {
+  consentInsertFields,
+  isConsentRecorded,
+  shouldStampSignupConsent,
+} from './domain/consent.rules.js';
 
 const DEMO_ACCOUNTS = ['testereasywork@gmail.com'];
 
 function consentGateOn() {
   return isEnabled('ff.consent-gate');
+}
+
+/**
+ * Record the signup checkbox on the account when this request includes a valid acceptance.
+ * Older apps omit the fields, so their accounts stay unconsented and keep the post-login form.
+ */
+async function stampAcceptedConsent(userInfo, input) {
+  if (!userInfo?.UserId) return userInfo;
+  if (!shouldStampSignupConsent(userInfo, input, consentGateOn())) return userInfo;
+  const fields = consentInsertFields(nowUtc(), {
+    version: input.consentVersion,
+    ipAddress: input.ipAddress || null,
+    deviceInfo: input.deviceInfo || null,
+  });
+  try {
+    await repo.updateUserConsent(userInfo.UserId, fields);
+  } catch (err) {
+    logger.warn('[verify-otp] could not record signup consent', {
+      userId: userInfo.UserId,
+      message: err?.message,
+    });
+    return userInfo;
+  }
+  return { ...userInfo, ...fields };
 }
 
 function toAuthUserPayload(userInfo, { phone, consentGate } = {}) {
@@ -110,11 +138,11 @@ async function createAndDeliverOtp({ recipient, contactType }) {
 }
 
 /**
- * Enterprise consent: identify (create/find) the user on OTP first.
- * Consent is recorded later via POST /api/user/consent against this UserId.
- * New accounts start with ConsentAcceptedAt = null → consentRequired until Agree.
+ * Identify (create/find) the user on OTP.
+ * New app sends signup checkbox acceptance on this request and it is stored here.
+ * Older apps omit it — those accounts stay unconsented until POST /api/user/consent.
  */
-async function resolveUserAfterOtp({ recipient, contactType }) {
+async function resolveUserAfterOtp({ recipient, contactType, consentInput }) {
   const gate = consentGateOn();
   let userInfo;
   let isNewUser = false;
@@ -158,6 +186,7 @@ async function resolveUserAfterOtp({ recipient, contactType }) {
         phoneHint: maskPhoneForLog(recipient),
       });
     }
+    userInfo = await stampAcceptedConsent(userInfo, consentInput);
     return {
       isNewUser,
       user: toAuthUserPayload(userInfo, { phone: recipient, consentGate: gate }),
@@ -182,6 +211,7 @@ async function resolveUserAfterOtp({ recipient, contactType }) {
     logger.debug('🆕 [verify-otp] New user created (consent pending):', recipient);
   }
 
+  userInfo = await stampAcceptedConsent(userInfo, consentInput);
   return {
     isNewUser,
     user: toAuthUserPayload(userInfo, { consentGate: gate }),
@@ -308,7 +338,7 @@ export async function sendOtp({ recipient, contactType }) {
   return { httpStatus: 200, body: { success: true } };
 }
 
-async function handleDemoVerify({ recipient, otp, purpose }) {
+async function handleDemoVerify({ recipient, otp, purpose, consentInput }) {
   const validDeleteOtp = purpose === 'delete' && otp === '6543';
   const validLoginOtp = purpose !== 'delete' && otp === '1234';
   if (!validDeleteOtp && !validLoginOtp) {
@@ -340,6 +370,8 @@ async function handleDemoVerify({ recipient, otp, purpose }) {
     logger.debug('🆕 [verify-otp] Demo account created in DB (consent pending):', recipient);
   }
 
+  userInfo = await stampAcceptedConsent(userInfo, consentInput);
+
   return {
     httpStatus: 200,
     body: {
@@ -355,7 +387,7 @@ export async function verifyOtp(input) {
   const { recipient, otp, contactType, purpose } = input;
 
   if (DEMO_ACCOUNTS.includes(recipient)) {
-    const result = await handleDemoVerify({ recipient, otp, purpose });
+    const result = await handleDemoVerify({ recipient, otp, purpose, consentInput: input });
     if (result.httpStatus === 200 && result.body?.user?.id) {
       await syncUserTimezoneIfChanged(result.body.user.id, input.timezoneIana);
     }
@@ -383,7 +415,7 @@ export async function verifyOtp(input) {
 
   await repo.markOtpVerified(otpData.ID);
 
-  const resolved = await resolveUserAfterOtp({ recipient, contactType });
+  const resolved = await resolveUserAfterOtp({ recipient, contactType, consentInput: input });
   const { isNewUser, user } = resolved;
 
   await syncUserTimezoneIfChanged(user.id, input.timezoneIana);

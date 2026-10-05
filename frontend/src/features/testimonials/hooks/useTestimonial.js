@@ -1,4 +1,4 @@
-﻿/**
+/**
  * useTestimonial.js â€” State and lifecycle for the member testimonial form.
  * Handles image picking (file input â†’ base64), form state, submit, and edit mode.
  */
@@ -107,14 +107,14 @@ export function useTestimonial({ userId, healthIssues = [] }) {
     [makeImageHandler],
   );
 
-  const recropBefore = useCallback(() => {
+  const recropBefore = useCallback((existingUrl) => {
     pendingImageSetterRef.current = setBeforeImage;
-    void coverCrop.recrop(beforeImage?.preview, 'before');
+    void coverCrop.recrop(beforeImage?.preview || existingUrl, 'before');
   }, [coverCrop, beforeImage?.preview]);
 
-  const recropAfter = useCallback(() => {
+  const recropAfter = useCallback((existingUrl) => {
     pendingImageSetterRef.current = setAfterImage;
-    void coverCrop.recrop(afterImage?.preview, 'after');
+    void coverCrop.recrop(afterImage?.preview || existingUrl, 'after');
   }, [coverCrop, afterImage?.preview]);
 
   // ── Submit ─────────────────────────────────────────────────────────────────

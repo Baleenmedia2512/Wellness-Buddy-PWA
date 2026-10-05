@@ -12,7 +12,7 @@ import React, { useState, useEffect, useRef, lazy, Suspense, useMemo, useCallbac
 import { flushSync } from 'react-dom';
 import { Calendar, ChevronLeft, ChevronRight, Footprints, Smartphone } from 'lucide-react';
 import TouchFeedbackButton from '../../shared/components/TouchFeedbackButton';
-import { TeamMemberSearch, formatMemberSubtitle, subtitleCommunityId } from '../../features/team';
+import { TeamMemberSearch, formatDiarySearchDetails } from '../../features/team';
 import TeamMemberProfileModal from '../../shared/components/TeamMemberProfileModal';
 import { isFlagEnabled } from '../../config/featureFlags';
 import { useNutritionRefresh } from '../../shared/context/NutritionRefreshContext';
@@ -837,6 +837,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
           selectedMember={selectedMember}
           onMemberSelect={setSelectedMember}
           refreshKey={teamSearchRefreshKey}
+          resultVariant="diary"
         />
         
         <div className="w-full max-w-md mx-auto md:max-w-2xl lg:max-w-4xl">
@@ -867,10 +868,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
                       className="text-blue-600 active:text-green-600 hover:underline"
                     >
                       {(() => {
-                        const subtitle = formatMemberSubtitle(
-                          selectedMember.email,
-                          subtitleCommunityId(selectedMember),
-                        );
+                        const subtitle = formatDiarySearchDetails(selectedMember, { includeName: false });
                         return subtitle
                           ? subtitle
                           : `Viewing ${selectedMember.userName}'s data`;

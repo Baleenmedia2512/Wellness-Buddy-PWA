@@ -326,6 +326,7 @@ async function performOtpLogin(page, phone = TEST_PHONE) {
     .getByLabel('Mobile Number')
     .fill(phone);
 
+  await page.getByRole('checkbox', { name: 'Accept Terms of Service and Privacy Policy' }).check();
   await page
     .getByRole('button', {
       name: 'Send OTP',
@@ -473,6 +474,10 @@ test.describe('Login', () => {
 
     await expect(mobileInput).toHaveValue('7695834209');
 
+    await expect(sendOtpButton).toBeDisabled();
+
+    await page.getByRole('checkbox', { name: 'Accept Terms of Service and Privacy Policy' }).check();
+
     await expect(sendOtpButton).toBeEnabled();
 
   });
@@ -535,6 +540,8 @@ test.describe('Login', () => {
       name: 'Send OTP'
     });
 
+    await page.getByRole('checkbox', { name: 'Accept Terms of Service and Privacy Policy' }).check();
+
     await expect(sendOtpButton).toBeEnabled();
 
     await sendOtpButton.click();
@@ -561,6 +568,7 @@ test.describe('Login', () => {
 
     await page.getByLabel('Mobile Number').fill('7695834209');
 
+    await page.getByRole('checkbox', { name: 'Accept Terms of Service and Privacy Policy' }).check();
     await page.getByRole('button', {
       name: 'Send OTP'
     }).click();
@@ -591,6 +599,7 @@ test.describe('Login', () => {
 
     await page.getByLabel('Mobile Number').fill('7695834209');
 
+    await page.getByRole('checkbox', { name: 'Accept Terms of Service and Privacy Policy' }).check();
     await page.getByRole('button', {
       name: 'Send OTP'
     }).click();
@@ -629,6 +638,7 @@ test.describe('Login', () => {
 
     await page.getByLabel('Mobile Number').fill('7695834209');
 
+    await page.getByRole('checkbox', { name: 'Accept Terms of Service and Privacy Policy' }).check();
     await page.getByRole('button', {
       name: 'Send OTP'
     }).click();
@@ -659,6 +669,7 @@ test.describe('Login', () => {
 
     await page.getByLabel('Mobile Number').fill('7695834209');
 
+    await page.getByRole('checkbox', { name: 'Accept Terms of Service and Privacy Policy' }).check();
     await page.getByRole('button', {
       name: 'Send OTP'
     }).click();
@@ -713,6 +724,7 @@ test.describe('Login', () => {
 
     await page.getByLabel('Mobile Number').fill('7695834209');
 
+    await page.getByRole('checkbox', { name: 'Accept Terms of Service and Privacy Policy' }).check();
     await page.getByRole('button', {
       name: 'Send OTP'
     }).click();
@@ -767,6 +779,7 @@ test.describe('Login', () => {
 
     const sendOtpBtn = page.getByRole('button', { name: 'Send OTP' });
     await expect(sendOtpBtn).toBeVisible({ timeout: 15000 });
+    await page.getByRole('checkbox', { name: 'Accept Terms of Service and Privacy Policy' }).check();
     await sendOtpBtn.click();
 
     // 2. Locate 4 OTP input cells
@@ -817,6 +830,7 @@ test.describe('Login', () => {
 
     await page.getByLabel('Mobile Number').fill('7695834209');
 
+    await page.getByRole('checkbox', { name: 'Accept Terms of Service and Privacy Policy' }).check();
     await page.getByRole('button', {
       name: 'Send OTP'
     }).click();
@@ -892,6 +906,7 @@ test.describe('Login', () => {
 
     await page.getByLabel('Mobile Number').fill('7695834209');
 
+    await page.getByRole('checkbox', { name: 'Accept Terms of Service and Privacy Policy' }).check();
     await page.getByRole('button', {
       name: 'Send OTP',
     }).click();
@@ -951,6 +966,7 @@ test.describe('Login', () => {
     await page.getByLabel('Mobile Number').fill('7695834209');
 
     // Send OTP
+    await page.getByRole('checkbox', { name: 'Accept Terms of Service and Privacy Policy' }).check();
     await page.getByRole('button', {
       name: 'Send OTP',
     }).click();
@@ -1005,6 +1021,7 @@ test.describe('Login', () => {
 
     await page.getByLabel('Mobile Number').fill('7695834209');
 
+    await page.getByRole('checkbox', { name: 'Accept Terms of Service and Privacy Policy' }).check();
     await page.getByRole('button', {
       name: 'Send OTP',
     }).click();
@@ -1176,6 +1193,7 @@ test.describe('Post-login flows', () => {
     // Send OTP
     // ==========================================================
 
+    await page.getByRole('checkbox', { name: 'Accept Terms of Service and Privacy Policy' }).check();
     await page
       .getByRole('button', {
         name: 'Send OTP',
@@ -1319,7 +1337,7 @@ test.describe('Post-login flows', () => {
   // ============================================================
 
   test(
-    'AUTH-020 new user is shown consent form after login',
+    'AUTH-020 new user is not shown a second consent form after signup',
     async ({ page }) => {
 
       await page.route(
@@ -1361,6 +1379,10 @@ test.describe('Post-login flows', () => {
 
 
       await expect(
+        page.getByText('Enter OTP', { exact: true })
+      ).toBeHidden({ timeout: 15000 });
+
+      await expect(
         page.getByRole(
           'heading',
           {
@@ -1368,50 +1390,7 @@ test.describe('Post-login flows', () => {
               'User Consent Form',
           }
         )
-      ).toBeVisible({
-        timeout: 15000,
-      });
-
-
-      await expect(
-        page.getByText(
-          'Consent to Collect and Use Personal and Health Information',
-          {
-            exact: true,
-          }
-        )
-      ).toBeVisible();
-
-
-      await expect(
-        page.getByText(
-          'I Agree',
-          {
-            exact: true,
-          }
-        ).last()
-      ).toBeVisible();
-
-
-      await expect(
-        page.getByText(
-          "I Don't Agree",
-          {
-            exact: true,
-          }
-        ).last()
-      ).toBeVisible();
-
-
-      await expect(
-        page.getByRole(
-          'button',
-          {
-            name:
-              'Continue',
-          }
-        )
-      ).toBeVisible();
+      ).toHaveCount(0);
 
     }
   );
@@ -1819,7 +1798,7 @@ test.describe('Post-login flows', () => {
   // ============================================================
 
   test(
-    'AUTH-022 new user is returned to login after disagreeing with consent',
+    'AUTH-022 signup acceptance does not open a second consent form',
     async ({ page }) => {
 
       // ============================================================
@@ -1904,196 +1883,19 @@ test.describe('Post-login flows', () => {
       // 3. VERIFY CONSENT FORM
       // ============================================================
 
-      const consentHeading =
-        page.getByRole(
-          'heading',
-          {
-            name: 'User Consent Form',
-            exact: true,
-          }
-        );
+      await expect(
+        page.getByText('Enter OTP', { exact: true })
+      ).toBeHidden({ timeout: 15000 });
 
       await expect(
-        consentHeading
-      ).toBeVisible({
-        timeout: 15000,
-      });
-
-
-      // ============================================================
-      // 4. SELECT "I DON'T AGREE"
-      //
-      // IMPORTANT:
-      //
-      // Selecting this option immediately opens:
-      //
-      //     "Leave or continue?"
-      //
-      // So we must NOT click the underlying Continue button.
-      // ============================================================
-
-      const dontAgree =
-        page.getByText(
-          "I Don't Agree",
-          {
-            exact: true,
-          }
-        ).last();
-
-      await expect(
-        dontAgree
-      ).toBeVisible({
-        timeout: 10000,
-      });
-
-      await dontAgree.click();
-
-
-      // ============================================================
-      // 5. VERIFY DISAGREE CONFIRMATION MODAL
-      // ============================================================
-
-      await expect(
-        page.getByText(
-          'Leave or continue?',
-          {
-            exact: true,
-          }
-        )
-      ).toBeVisible({
-        timeout: 10000,
-      });
-
-
-      await expect(
-        page.getByText(
-          "If you leave, you'll be signed out and returned to the login screen.",
-          {
-            exact: false,
-          }
-        )
-      ).toBeVisible({
-        timeout: 10000,
-      });
-
-
-      // ============================================================
-      // 6. LOCATE "LEAVE" BUTTON
-      //
-      // The Leave action is the actual decline action.
-      // ============================================================
-
-      const leaveButton =
-        page.getByRole(
-          'button',
-          {
-            name: 'Leave',
-            exact: true,
-          }
-        );
-
-      await expect(
-        leaveButton
-      ).toBeVisible({
-        timeout: 10000,
-      });
-
-
-      // ============================================================
-      // 7. WAIT FOR DELETE REQUEST
-      //
-      // Register BEFORE clicking Leave.
-      // ============================================================
-
-      const deleteRequest =
-        page.waitForRequest(
-          request =>
-            request.url().includes(
-              '/api/user/consent'
-            ) &&
-            request.method() === 'DELETE'
-        );
-
-
-      // ============================================================
-      // 8. CLICK LEAVE
-      //
-      // This calls onDecline() in ConsentForm.
-      // ============================================================
-
-      await leaveButton.click();
-
-
-      // ============================================================
-      // 9. VERIFY DELETE REQUEST
-      // ============================================================
-
-      await deleteRequest;
+        page.getByRole('heading', {
+          name: 'User Consent Form',
+          exact: true,
+        })
+      ).toHaveCount(0);
 
       console.log(
-        'AUTH-022 DELETE REQUEST RECEIVED'
-      );
-
-
-      // ============================================================
-      // 10. CONSENT FORM SHOULD DISAPPEAR
-      // ============================================================
-
-      await expect(
-        consentHeading
-      ).not.toBeVisible({
-        timeout: 15000,
-      });
-
-
-      // ============================================================
-      // 11. LOGIN PAGE SHOULD RETURN
-      // ============================================================
-
-      await expect(
-        page.getByLabel(
-          'Mobile Number'
-        )
-      ).toBeVisible({
-        timeout: 15000,
-      });
-
-
-      // ============================================================
-      // 12. SEND OTP BUTTON SHOULD BE AVAILABLE
-      // ============================================================
-
-      await expect(
-        page.getByRole(
-          'button',
-          {
-            name: 'Send OTP',
-            exact: true,
-          }
-        )
-      ).toBeVisible({
-        timeout: 10000,
-      });
-
-
-      // ============================================================
-      // 13. OTP SCREEN SHOULD NOT BE DISPLAYED
-      // ============================================================
-
-      await expect(
-        page.getByText(
-          'Enter OTP',
-          {
-            exact: true,
-          }
-        )
-      ).not.toBeVisible({
-        timeout: 10000,
-      });
-
-
-      console.log(
-        'AUTH-022 PASSED: new user returned to login after declining consent'
+        'AUTH-022 PASSED: signup checkbox is the only consent ask'
       );
     }
   );

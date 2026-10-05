@@ -1,7 +1,7 @@
 // src/features/user/components/Login.js
 // Orchestrator — wires useAuthFlow + useOtpInput + useResendCountdown.
-// Enterprise consent flow: Phone → OTP (identify user) → Consent Form in App.js
-// (bound to userId). Consent is NOT asked before identity is known.
+// Signup consent: checkbox + Terms / Privacy links before OTP.
+// Acceptance is sent with verify-otp and stored on the new account.
 import React, { useEffect, useState } from 'react';
 import TermsAndConditions from '../../../shared/components/TermsAndConditions';
 import PrivacyPolicy from '../../../shared/components/PrivacyPolicy';
@@ -68,7 +68,11 @@ const Login = ({ onSignIn, loading, error, onOtpVerified, forceOtpVerification }
             <LoginEmailEntry email={auth.email} setEmail={auth.setEmail}
               countryDial={auth.countryDial} setCountryDial={auth.setCountryDial}
               onSubmit={handleSendOtp} loading={auth.loading}
-              errorMessage={auth.errorMessage} />
+              errorMessage={auth.errorMessage}
+              termsAccepted={auth.termsAccepted}
+              setTermsAccepted={auth.setTermsAccepted}
+              onOpenTerms={() => setShowTerms(true)}
+              onOpenPrivacy={() => setShowPrivacy(true)} />
           ) : (
             <LoginOtpEntry otpCtl={otpCtl} onVerify={auth.verifyOtp}
               loading={auth.loading} verified={auth.verified}
@@ -76,12 +80,6 @@ const Login = ({ onSignIn, loading, error, onOtpVerified, forceOtpVerification }
               countdown={resend.countdown} canResend={resend.canResend}
               onResend={handleResendOtp} onBack={handleBackToEmail} />
           )}
-          <p className="mt-6 text-center text-xs text-gray-400">
-            By continuing, you agree to our{' '}
-            <button onClick={() => setShowTerms(true)} className="text-green-500 hover:text-green-600 underline">Terms</button>{' '}
-            and{' '}
-            <button onClick={() => setShowPrivacy(true)} className="text-green-500 hover:text-green-600 underline">Privacy Policy</button>
-          </p>
         </div>
       </div>
       {showTerms && <TermsAndConditions onClose={() => setShowTerms(false)} />}

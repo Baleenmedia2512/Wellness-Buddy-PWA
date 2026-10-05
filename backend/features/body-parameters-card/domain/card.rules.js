@@ -123,7 +123,7 @@ export const BCM_ACTIVATED_MEMBER_MESSAGE = 'User already exists';
  * Only the counsellor who created it may override, and only before activation.
  */
 export const BCM_COUNSELLED_BY_OTHER_MESSAGE =
-  'This BCM was counselled by someone else. You cannot override it.';
+  'This person was counselled by someone else. You cannot override it.';
 
 /** Coach choice when the typed phone already has a card this coach created. */
 export const BCM_PHONE_CONFLICT_ACTIONS = Object.freeze(['override', 'new']);

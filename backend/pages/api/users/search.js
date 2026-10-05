@@ -1,10 +1,10 @@
-﻿/**
+/**
  * Search Coaches
  * GET /api/users/search?q={query}
  *
  * Search for sponsors by name, email, or phone.
- * Only users with a verified account email are returned (email ownership
- * is proven via OTP / Google; unverified phone-only users stay hidden).
+ * Only users with both a verified account email and a Community ID are
+ * returned. Email alone is not enough to appear as a sponsor.
  * Used in upline / sponsor selection during onboarding.
  */
 
@@ -14,7 +14,7 @@ import {
   rankSponsorSearchUsers,
   restoreDeveloperBotInSponsorSearch,
 } from '../../../features/user/domain/developerBot.rules.js';
-import { hasVerifiedSponsorEmail } from '../../../features/user/domain/sponsorVisibility.rules.js';
+import { isEligibleSponsor } from '../../../features/user/domain/sponsorVisibility.rules.js';
 
 export default async function handler(req, res) {
   // Prevent browser/service worker caching of dynamic data
@@ -91,7 +91,7 @@ export default async function handler(req, res) {
     const supabase = getSupabaseClient();
 
     // Search for sponsors by name, email, or phone, excluding current user.
-    // Require a non-empty Email — phone-only / unverified users are not sponsors.
+    // Email and Community ID are both required.
     const orParts = [
       `UserName.ilike.%${searchQuery}%`,
       `Email.ilike.%${searchQuery}%`,
@@ -102,10 +102,12 @@ export default async function handler(req, res) {
 
     const { data: coaches, error } = await supabase
       .from('team_table')
-      .select('UserId, UserName, Email, TeamId, Role, PhoneNumber')
+      .select('UserId, UserName, Email, TeamId, Role, PhoneNumber, CommunityId')
       .eq('Status', 'Active')
       .not('Email', 'is', null)
       .neq('Email', '')
+      .not('CommunityId', 'is', null)
+      .neq('CommunityId', '')
       .neq('Email', currentUserEmail || '')
       .or(orParts.join(','))
       .order('UserName', { ascending: true })
@@ -113,12 +115,12 @@ export default async function handler(req, res) {
 
     if (error) throw error;
 
-    const withVerifiedEmail = (coaches || []).filter(hasVerifiedSponsorEmail);
+    const eligibleSponsors = (coaches || []).filter(isEligibleSponsor);
 
     const eligibleCoaches = rankSponsorSearchUsers(
       restoreDeveloperBotInSponsorSearch(
-        withVerifiedEmail,
-        filterPublicAggregateUsers(withVerifiedEmail),
+        eligibleSponsors,
+        filterPublicAggregateUsers(eligibleSponsors),
       ),
     );
 
