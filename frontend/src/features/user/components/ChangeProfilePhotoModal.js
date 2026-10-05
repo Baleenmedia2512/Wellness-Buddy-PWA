@@ -113,7 +113,11 @@ const ChangeProfilePhotoModal = ({
     setError('');
     setIsSaving(true);
     try {
-      const payload = { profileImage };
+      // Keep Centre transform slot in sync — Centre is the product profile photo.
+      const payload = {
+        profileImage,
+        transformationPhotos: { front: profileImage },
+      };
       if (email) payload.email = email;
       if (user?.id != null) payload.userId = user.id;
       await saveProfile(payload);

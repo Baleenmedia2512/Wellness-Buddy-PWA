@@ -47,7 +47,10 @@ import { resolveSponsorAndIdealCoach } from '../../utils/sponsorCoachResolution.
 import * as weightRepo from '../weight/weight.repository.js';
 import { resolveMarathonWeightComparison } from '../marathon/domain/marathonWeightComparison.service.js';
 import { persistAvatarKey, avatarUrlForKey, r2AvatarsEnabled } from './avatar-storage.service.js';
-import { shouldSkipProfileImageBase64 } from './domain/profileImageWrite.rules.js';
+import {
+  resolveIncomingAvatarDataUri,
+  shouldSkipProfileImageBase64,
+} from './domain/profileImageWrite.rules.js';
 import {
   persistTransformationPhotosR2Orphan,
   transformationPhotoUrlForKey,
@@ -354,13 +357,18 @@ function buildProfileUpdate({
     const cleaned = String(phoneNumber).trim().replace(/[\s\-()]/g, '');
     if (/^\+?[0-9]{10,15}$/.test(cleaned)) { updateData.PhoneNumber = cleaned; cleanedPhoneNumber = cleaned; }
   }
-  if (profileImage != null && profileImage.startsWith('data:image/')) {
+  // Explicit profileImage, or Centre (front) transform — both set the profile avatar.
+  const avatarIncoming = resolveIncomingAvatarDataUri({
+    profileImage,
+    transformationPhotos,
+  });
+  if (avatarIncoming) {
     if (skipProfileImageBase64) {
       // 3.5.1+: R2 avatar only — do not write multi-MB ProfileImage base64.
-      avatarDataUri = profileImage;
+      avatarDataUri = avatarIncoming;
       updateData.profile_pic_snooze = null;
     } else {
-      updateData.ProfileImage = profileImage;
+      updateData.ProfileImage = avatarIncoming;
       updateData.profile_pic_snooze = null;
     }
   }
@@ -376,7 +384,6 @@ function buildProfileUpdate({
       : [];
   }
   // transformation_photos handled separately (R2 keys + orphan slots) — not in updateData.
-  void transformationPhotos;
   void existingTransformationPhotos;
   return { updateData, cleanedPhoneNumber, avatarDataUri };
 }
@@ -852,7 +859,11 @@ export async function updateProfile(input) {
         : refreshedUser?.CommunityId ?? undefined,
       timezone: resolveProfileTimezone(refreshedUser?.timezone_iana),
       calorieTarget: calorieTarget || undefined,
-      profileImageUpdated: !!profileImage,
+      profileImageUpdated: !!(
+        profileImage
+        || (transformationPhotos && typeof transformationPhotos === 'object'
+          && transformationPhotos.front)
+      ),
       bodyFat: savedBodyFat || undefined,
       currentWeight: savedCurrentWeight || undefined,
       teamId: teamCodeSync?.teamId || undefined,

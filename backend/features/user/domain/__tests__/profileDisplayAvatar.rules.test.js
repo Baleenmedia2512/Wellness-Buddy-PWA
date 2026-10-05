@@ -6,11 +6,40 @@ import assert from 'node:assert/strict';
 import { resolveProfileDisplayAvatar } from '../profileDisplayAvatar.rules.js';
 
 describe('resolveProfileDisplayAvatar', () => {
-  it('prefers R2 key over https, transform, and base64', () => {
+  it('prefers Centre frontKey over ProfileImageKey and Google', () => {
     const resolved = resolveProfileDisplayAvatar({
       profileImageKey: 'avatars/1.jpg',
       profileImage: 'https://lh3.googleusercontent.com/a/x',
+      transformationPhotos: {
+        front: 'data:image/jpeg;base64,FRONT',
+        frontKey: 'transformation/1/front/abc.jpg',
+      },
+      r2Enabled: true,
+      resolveR2Url: (key) => `https://cdn.example/${key}`,
+    });
+    assert.deepEqual(resolved, {
+      kind: 'redirect',
+      url: 'https://cdn.example/transformation/1/front/abc.jpg',
+    });
+  });
+
+  it('prefers Centre data URI over Google https ProfileImage', () => {
+    const resolved = resolveProfileDisplayAvatar({
+      profileImage: 'https://lh3.googleusercontent.com/a/x',
       transformationPhotos: { front: 'data:image/jpeg;base64,FRONT' },
+    });
+    assert.deepEqual(resolved, {
+      kind: 'dataUri',
+      value: 'data:image/jpeg;base64,FRONT',
+      persistAsProfileAvatar: false,
+    });
+  });
+
+  it('uses ProfileImageKey when no Centre photo', () => {
+    const resolved = resolveProfileDisplayAvatar({
+      profileImageKey: 'avatars/1.jpg',
+      profileImage: 'https://lh3.googleusercontent.com/a/x',
+      transformationPhotos: { front: null, left: null, right: null },
       r2Enabled: true,
       resolveR2Url: (key) => `https://cdn.example/${key}`,
     });
@@ -20,10 +49,10 @@ describe('resolveProfileDisplayAvatar', () => {
     });
   });
 
-  it('uses https ProfileImage when no R2 key', () => {
+  it('uses https ProfileImage when no Centre and no R2 key', () => {
     const resolved = resolveProfileDisplayAvatar({
       profileImage: 'https://lh3.googleusercontent.com/a/x',
-      transformationPhotos: { front: 'data:image/jpeg;base64,FRONT' },
+      transformationPhotos: { front: null, left: null, right: null },
     });
     assert.deepEqual(resolved, {
       kind: 'redirect',

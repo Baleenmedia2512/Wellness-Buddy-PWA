@@ -1,13 +1,14 @@
 /**
  * Display avatar resolution — same order as My Profile UI:
- *   1. R2 ProfileImageKey (when configured)
- *   2. https ProfileImage (e.g. Google)
- *   3. Centre transformation R2 key (frontKey) when configured
- *   4. Centre transformation photo (transformationPhotos.front)
+ *   1. Centre transformation R2 key (frontKey) when configured
+ *   2. Centre transformation photo (transformationPhotos.front)
+ *   3. R2 ProfileImageKey (explicit avatar upload / synced copy)
+ *   4. https ProfileImage (e.g. Google) — only when no Centre photo
  *   5. Legacy data:image ProfileImage (only when no centre transform)
  *
- * Profile GET exposes (1)+(2) as `profileImage`; the FE then falls back to (3)/(4).
- * /api/user/avatar must follow this full chain so leaderboards match My Profile.
+ * Centre is the product profile photo. A stale Google / ProfileImageKey must
+ * not hide a saved Centre image on mobile Home / leaderboard / My Profile.
+ * /api/user/avatar must follow this full chain so lists match My Profile.
  */
 import { isHttpsImageUrl } from '../../../shared/lib/images/dataUri.js';
 import { mapTransformationPhotosRecord } from './transformationPhotos.rules.js';
@@ -31,15 +32,6 @@ export function resolveProfileDisplayAvatar({
   r2Enabled = false,
   resolveR2Url = null,
 } = {}) {
-  if (r2Enabled && profileImageKey && typeof resolveR2Url === 'function') {
-    const url = resolveR2Url(profileImageKey);
-    if (url) return { kind: 'redirect', url };
-  }
-
-  if (isHttpsImageUrl(profileImage)) {
-    return { kind: 'redirect', url: String(profileImage).trim() };
-  }
-
   const transform = mapTransformationPhotosRecord(transformationPhotos);
   if (r2Enabled && transform.frontKey && typeof resolveR2Url === 'function') {
     const url = resolveR2Url(transform.frontKey);
@@ -54,6 +46,15 @@ export function resolveProfileDisplayAvatar({
     if (front.startsWith('data:image/')) {
       return { kind: 'dataUri', value: front, persistAsProfileAvatar: false };
     }
+  }
+
+  if (r2Enabled && profileImageKey && typeof resolveR2Url === 'function') {
+    const url = resolveR2Url(profileImageKey);
+    if (url) return { kind: 'redirect', url };
+  }
+
+  if (isHttpsImageUrl(profileImage)) {
+    return { kind: 'redirect', url: String(profileImage).trim() };
   }
 
   if (typeof profileImage === 'string' && profileImage.startsWith('data:image/')) {
