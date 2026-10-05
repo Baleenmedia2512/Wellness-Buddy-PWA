@@ -82,6 +82,13 @@ const RESULT_BURST_RIGHT_SRC = svgDataUri(
   + '</svg>',
 );
 
+const DISCLAIMER_INFO_SRC = svgDataUri(
+  '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none">'
+  + '<circle cx="12" cy="12" r="10" stroke="#059669" stroke-width="2"/>'
+  + '<path d="M12 11v6M12 7h.01" stroke="#059669" stroke-width="2.2" stroke-linecap="round"/>'
+  + '</svg>',
+);
+
 function blobToDataUrl(blob) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -719,13 +726,50 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
         </tbody>
       </table>
 
-      <div style={{ padding: '4px 18px 10px', textAlign: 'center' }}>
+      <div
+        style={{
+          marginTop: 4,
+          padding: '10px 20px 12px',
+          textAlign: 'center',
+          background: '#f0fdf4',
+          borderTop: '1px solid #bbf7d0',
+        }}
+      >
+        <div style={{ marginBottom: 5, fontSize: 0 }}>
+          <img
+            src={DISCLAIMER_INFO_SRC}
+            alt=""
+            aria-hidden="true"
+            style={{
+              display: 'inline-block',
+              width: 12,
+              height: 12,
+              marginRight: 5,
+              verticalAlign: 'middle',
+            }}
+          />
+          <span
+            style={{
+              display: 'inline-block',
+              fontSize: 9,
+              fontWeight: 700,
+              letterSpacing: '0.12em',
+              textTransform: 'uppercase',
+              color: '#059669',
+              lineHeight: '12px',
+              fontFamily: CARD_FONT,
+              verticalAlign: 'middle',
+            }}
+          >
+            Disclaimer
+          </span>
+        </div>
         <p
           style={{
             margin: 0,
             fontSize: 10,
             fontWeight: 500,
-            color: '#9ca3af',
+            color: '#6b7280',
             lineHeight: '14px',
             fontFamily: CARD_FONT,
           }}
@@ -734,10 +778,10 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
         </p>
         <p
           style={{
-            margin: '2px 0 0',
+            margin: '3px 0 0',
             fontSize: 10,
             fontWeight: 500,
-            color: '#9ca3af',
+            color: '#6b7280',
             lineHeight: '14px',
             fontFamily: CARD_FONT,
           }}

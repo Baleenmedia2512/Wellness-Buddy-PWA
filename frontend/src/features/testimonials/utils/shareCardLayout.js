@@ -16,8 +16,8 @@ const ISSUES_BOX_PAD = 22;
 const ISSUES_TITLE_H = 52;
 const CHIP_ROW_H = 81;
 const EMPTY_BOTTOM = 8;
-/** Two-line legal footer under the result pill / health issues. */
-export const DISCLAIMER_H = 46;
+/** Branded legal footer under the result pill / health issues. */
+export const DISCLAIMER_H = 72;
 const PHOTO_MIN = 340;
 const PHOTO_MAX = 690;
 
