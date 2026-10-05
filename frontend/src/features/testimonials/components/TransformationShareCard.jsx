@@ -82,10 +82,29 @@ const RESULT_BURST_RIGHT_SRC = svgDataUri(
   + '</svg>',
 );
 
-const DISCLAIMER_INFO_SRC = svgDataUri(
-  '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none">'
-  + '<circle cx="12" cy="12" r="10" stroke="#059669" stroke-width="2"/>'
-  + '<path d="M12 11v6M12 7h.01" stroke="#059669" stroke-width="2.2" stroke-linecap="round"/>'
+/**
+ * Compact disclaimer footer as one SVG so html2canvas always paints the text
+ * (nested DOM text inside yellow inline-block was blank in the share bitmap).
+ */
+const DISCLAIMER_FOOTER_SRC = svgDataUri(
+  '<svg xmlns="http://www.w3.org/2000/svg" width="420" height="78" viewBox="0 0 420 78">'
+  // Compact red speech-bubble badge
+  + '<path d="M155 9h110a7 7 0 0 1 7 7v10a7 7 0 0 1-7 7h-48l-7 6-7-6h-48a7 7 0 0 1-7-7V16a7 7 0 0 1 7-7z"'
+  + ' fill="#ffffff" stroke="#dc2626" stroke-width="2.5"/>'
+  + '<circle cx="210" cy="9" r="8" fill="#ffffff"/>'
+  + '<circle cx="210" cy="9" r="7" fill="#facc15"/>'
+  + '<text x="210" y="12.5" text-anchor="middle" font-family="Arial Black, Arial, Helvetica, sans-serif"'
+  + ' font-size="10" font-weight="900" fill="#ffffff">!</text>'
+  + '<text x="210" y="26.5" text-anchor="middle" font-family="Arial Black, Arial, Helvetica, sans-serif"'
+  + ' font-size="10" font-weight="900" fill="#dc2626" letter-spacing="0.8">DISCLAIMER</text>'
+  // Compact yellow panel + black legal lines
+  + '<rect x="18" y="40" width="384" height="34" rx="6" ry="6" fill="#fde047"/>'
+  + '<text x="210" y="54" text-anchor="middle" font-family="Arial, Helvetica, sans-serif"'
+  + ' font-size="9.5" font-weight="600" fill="#000000">'
+  + 'The views expressed are that of individuals.</text>'
+  + '<text x="210" y="66" text-anchor="middle" font-family="Arial, Helvetica, sans-serif"'
+  + ' font-size="9.5" font-weight="600" fill="#000000">'
+  + 'These products are not intended to diagnose, treat or cure any disease.</text>'
   + '</svg>',
 );
 
@@ -726,68 +745,17 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
         </tbody>
       </table>
 
-      <div
-        style={{
-          marginTop: 4,
-          padding: '10px 20px 12px',
-          textAlign: 'center',
-          background: '#f0fdf4',
-          borderTop: '1px solid #bbf7d0',
-        }}
-      >
-        <div style={{ marginBottom: 5, fontSize: 0 }}>
-          <img
-            src={DISCLAIMER_INFO_SRC}
-            alt=""
-            aria-hidden="true"
-            style={{
-              display: 'inline-block',
-              width: 12,
-              height: 12,
-              marginRight: 5,
-              verticalAlign: 'middle',
-            }}
-          />
-          <span
-            style={{
-              display: 'inline-block',
-              fontSize: 9,
-              fontWeight: 700,
-              letterSpacing: '0.12em',
-              textTransform: 'uppercase',
-              color: '#059669',
-              lineHeight: '12px',
-              fontFamily: CARD_FONT,
-              verticalAlign: 'middle',
-            }}
-          >
-            Disclaimer
-          </span>
-        </div>
-        <p
+      <div style={{ marginTop: 0, padding: '2px 40px 6px', textAlign: 'center' }}>
+        <img
+          src={DISCLAIMER_FOOTER_SRC}
+          alt="Disclaimer: The views expressed are that of individuals. These products are not intended to diagnose, treat or cure any disease."
           style={{
-            margin: 0,
-            fontSize: 10,
-            fontWeight: 500,
-            color: '#6b7280',
-            lineHeight: '14px',
-            fontFamily: CARD_FONT,
+            display: 'block',
+            width: 400,
+            height: 74,
+            margin: '0 auto',
           }}
-        >
-          The views expressed are that of individuals.
-        </p>
-        <p
-          style={{
-            margin: '3px 0 0',
-            fontSize: 10,
-            fontWeight: 500,
-            color: '#6b7280',
-            lineHeight: '14px',
-            fontFamily: CARD_FONT,
-          }}
-        >
-          These products are not intended to diagnose, treat or cure any disease.
-        </p>
+        />
       </div>
     </div>
   );
