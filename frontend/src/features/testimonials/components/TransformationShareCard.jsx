@@ -259,7 +259,7 @@ function BrushLabel({ label, side }) {
         position: 'absolute',
         left: '7%',
         right: '7%',
-        bottom: 10,
+        bottom: 16,
         height: 92,
         textAlign: 'center',
       }}
@@ -613,7 +613,7 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
         <tbody>
           {diff ? (
             <tr>
-              <td style={{ textAlign: 'center', padding: '4px 16px 0', verticalAlign: 'top' }}>
+              <td style={{ textAlign: 'center', padding: '0 16px 0', verticalAlign: 'top' }}>
                 <img
                   src={RESULT_BURST_LEFT_SRC}
                   alt=""
@@ -719,7 +719,7 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
         </tbody>
       </table>
 
-      <div style={{ padding: '4px 18px 10px', textAlign: 'center' }}>
+      <div style={{ padding: '4px 16px 10px', textAlign: 'center' }}>
         <p
           style={{
             margin: 0,
