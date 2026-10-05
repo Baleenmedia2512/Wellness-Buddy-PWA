@@ -45,6 +45,7 @@ import { invalidateHasTeamMembersCache } from '../../team/services/teamSearchSer
 import { bumpAvatarDisplayVersion } from '../services/avatarDisplayVersion';
 import { getCachedProfile, getProfile } from '../services/user.api';
 import useTransformationPhotos from '../hooks/useTransformationPhotos';
+import { persistOnboardingTestimonialPhotos } from '../services/persistOnboardingTestimonialPhotos';
 import { hasValidProfileName } from '../domain/profileCompleteness';
 import { isFlagEnabled } from '../../../config/featureFlags';
 import { COMMUNITY_ID_OTP_FLAG } from '../domain/communityId';
@@ -326,14 +327,31 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
         delete payload.email;
       }
       const photoExtras = transformationPhotos.payloadExtras();
-      // Centre goes only in transformationPhotos — server uploads R2 avatar from front.
+      // Centre (front) also becomes the profile avatar on the server.
       const centrePhoto = photoExtras.transformationPhotos?.front || null;
       Object.assign(payload, photoExtras);
       if (user?.id && !payload.userId) {
         payload.userId = user.id;
       }
       const data = await saveProfile(payload);
-      // Profile Left/Centre/Right stay on the profile only — do not sync to Transformation.
+      // Profile Left → Transformation Before (Centre/Right stay profile-only).
+      const leftPending = photoExtras.transformationPhotos?.left || null;
+      if (user?.id && leftPending) {
+        try {
+          await persistOnboardingTestimonialPhotos({
+            userId: user.id,
+            weightKg: latestWeight,
+            leftImageBase64: leftPending,
+            goalType: deriveWeightGoalMode({
+              heightCm: form.height,
+              currentWeightKg: latestWeight,
+            }) || form.weightGoalMode || 'loss',
+            recoveredHealthIssues: form.recoveredHealthIssues || [],
+          });
+        } catch {
+          // Non-fatal — profile photos already saved.
+        }
+      }
       if (user?.id) {
         invalidateHasTeamMembersCache(user.id);
       }
