@@ -26,6 +26,7 @@ export function useOfflineCaptureQueue(handleImageSelect, showToast) {
   // schedule their own drain pass without coalescing into a single one.
   const [_trigger, setTrigger] = useState(0);
 
+
   // Effect 1: register the wake listener and handle mount-time drain.
   useEffect(() => {
     // The setter form means the drain effect always receives the latest
