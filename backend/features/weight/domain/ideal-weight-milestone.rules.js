@@ -4,6 +4,85 @@
  */
 import { computeIdealWeightRange } from '../../../utils/weightValidation.js';
 
+/** Max CoachId upline levels emailed on first ideal-weight reach (coach + co-coach each). */
+export const IDEAL_REACH_NOTIFY_MAX_LEVELS = 3;
+
+/**
+ * @param {unknown} value
+ * @returns {string|null}
+ */
+function toUserIdString(value) {
+  if (value == null || value === '') return null;
+  const n = Number(value);
+  if (Number.isFinite(n) && n > 0) return String(n);
+  const s = String(value).trim();
+  return s || null;
+}
+
+/**
+ * Build unique notify targets: coach + co-coach for each of up to N CoachId ancestors.
+ * Ancestors are nearest-first (level 1 = direct sponsor). Co-coach is the partner
+ * from coach_teams (Sponsor ↔ Co-Sponsor), not a recursive parent edge.
+ *
+ * @param {{
+ *   ancestorCoachIds?: Array<number|string|null|undefined>,
+ *   partnerByCoachId?: Map<string|number, number|string|null|undefined>|Record<string, number|string|null|undefined>|null,
+ *   memberUserId?: number|string|null,
+ *   maxLevels?: number,
+ * }} input
+ * @returns {Array<{ userId: string, role: 'coach'|'cocoach', level: number }>}
+ */
+export function collectIdealReachNotifyTargets({
+  ancestorCoachIds = [],
+  partnerByCoachId = null,
+  memberUserId = null,
+  maxLevels = IDEAL_REACH_NOTIFY_MAX_LEVELS,
+} = {}) {
+  const memberId = toUserIdString(memberUserId);
+  const limit = Number.isFinite(Number(maxLevels)) && Number(maxLevels) > 0
+    ? Math.floor(Number(maxLevels))
+    : IDEAL_REACH_NOTIFY_MAX_LEVELS;
+
+  /** @type {Map<string, string>} */
+  const partners = new Map();
+  if (partnerByCoachId instanceof Map) {
+    for (const [k, v] of partnerByCoachId.entries()) {
+      const key = toUserIdString(k);
+      const partner = toUserIdString(v);
+      if (key && partner) partners.set(key, partner);
+    }
+  } else if (partnerByCoachId && typeof partnerByCoachId === 'object') {
+    for (const [k, v] of Object.entries(partnerByCoachId)) {
+      const key = toUserIdString(k);
+      const partner = toUserIdString(v);
+      if (key && partner) partners.set(key, partner);
+    }
+  }
+
+  const seen = new Set();
+  const out = [];
+  const chain = (Array.isArray(ancestorCoachIds) ? ancestorCoachIds : []).slice(0, limit);
+
+  for (let i = 0; i < chain.length; i += 1) {
+    const level = i + 1;
+    const coachId = toUserIdString(chain[i]);
+    if (!coachId || coachId === memberId) continue;
+
+    if (!seen.has(coachId)) {
+      seen.add(coachId);
+      out.push({ userId: coachId, role: 'coach', level });
+    }
+
+    const partnerId = partners.get(coachId) || null;
+    if (!partnerId || partnerId === memberId || partnerId === coachId) continue;
+    if (seen.has(partnerId)) continue;
+    seen.add(partnerId);
+    out.push({ userId: partnerId, role: 'cocoach', level });
+  }
+
+  return out;
+}
+
 /**
  * @param {number|string|null|undefined} weightKg
  * @param {number|string|null|undefined} heightCm

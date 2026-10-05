@@ -4,6 +4,9 @@
 import { getSupabaseClient } from '../../../utils/supabaseClient.js';
 import { nowUtc } from '../../../shared/lib/datetime/index.js';
 import { sendTransactionalMail } from '../../../shared/lib/smtp-mail.js';
+import { buildLeadPartnerByUserId } from '../../../utils/teamHierarchyTree.js';
+import { walkCoachIdChain } from '../../../utils/sponsorCoachResolution.js';
+import { IDEAL_REACH_NOTIFY_MAX_LEVELS } from '../domain/ideal-weight-milestone.rules.js';
 import logger from '../../../shared/lib/logger.js';
 
 const ACTIVE_WEIGHT_FILTER = 'IsDeleted.is.null,IsDeleted.eq.false,IsDeleted.eq.0';
@@ -175,6 +178,67 @@ export async function findMemberCoachContext(userId) {
     memberName: data?.UserName ?? null,
     heightCm: Number.isFinite(heightCm) ? heightCm : null,
   };
+}
+
+/**
+ * Nearest-first CoachId ancestors for notify fan-out (up to maxLevels).
+ * Starts at direct sponsor (`startCoachId`), not the member.
+ *
+ * @param {number|string|null|undefined} startCoachId
+ * @param {number} [maxLevels]
+ * @returns {Promise<string[]>}
+ */
+export async function listCoachAncestorIdsForNotify(
+  startCoachId,
+  maxLevels = IDEAL_REACH_NOTIFY_MAX_LEVELS,
+) {
+  if (startCoachId == null || startCoachId === '') return [];
+  const limit = Number.isFinite(Number(maxLevels)) && Number(maxLevels) > 0
+    ? Math.floor(Number(maxLevels))
+    : IDEAL_REACH_NOTIFY_MAX_LEVELS;
+  try {
+    const chain = await walkCoachIdChain(String(startCoachId));
+    return (chain || []).slice(0, limit).map((id) => String(id));
+  } catch (err) {
+    logger.warn('[ideal-milestone] coach ancestor walk failed', {
+      startCoachId,
+      error: err?.message || String(err),
+    });
+    return [];
+  }
+}
+
+/**
+ * Active coach_teams Sponsor ↔ Co-Sponsor partners for the given lead user IDs.
+ *
+ * @param {Array<number|string>} userIds
+ * @returns {Promise<Map<number, number>>} leadUserId → partnerUserId
+ */
+export async function findLeadPartnersByUserIds(userIds) {
+  const ids = [...new Set(
+    (userIds || [])
+      .map((id) => Number(id))
+      .filter((id) => Number.isFinite(id) && id > 0),
+  )];
+  if (ids.length === 0) return new Map();
+
+  const supabase = getSupabaseClient();
+  const orFilter = ids.map((id) => `CoachId.eq.${id},CoCoachId.eq.${id}`).join(',');
+  const { data, error } = await supabase
+    .from('coach_teams_table')
+    .select('CoachId, CoCoachId')
+    .or(orFilter)
+    .eq('Status', 'active');
+
+  if (error) {
+    logger.warn('[ideal-milestone] lead partner lookup failed', {
+      count: ids.length,
+      error: error.message,
+    });
+    return new Map();
+  }
+
+  return buildLeadPartnerByUserId(data || []);
 }
 
 /**
