@@ -70,7 +70,7 @@ function normalizeName(value) {
 
 const BCM_PHONE_EXISTS_MESSAGE = 'User already exists';
 const BCM_COUNSELLED_BY_OTHER_MESSAGE =
-  'This BCM was counselled by someone else. You cannot override it.';
+  'This person was counselled by someone else. You cannot override it.';
 
 function isBcmPhoneBlockedMessage(msg) {
   const text = String(msg || '');

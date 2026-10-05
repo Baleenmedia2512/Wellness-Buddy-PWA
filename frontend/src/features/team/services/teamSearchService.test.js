@@ -1,6 +1,7 @@
 import {
   resolveTeamSearchDisplayName,
   formatMemberSubtitle,
+  formatDiarySearchDetails,
   filterMembers,
   subtitleCommunityId,
   withDirectCoachCommunityIds,
@@ -52,6 +53,25 @@ describe('formatMemberSubtitle', () => {
 
   it('never returns a bare pipe', () => {
     expect(formatMemberSubtitle('  ', '  ')).toBe('');
+  });
+});
+
+describe('formatDiarySearchDetails', () => {
+  it('lists name, community id, uppercase club name, and phone', () => {
+    expect(formatDiarySearchDetails({
+      userName: 'Adithya',
+      communityId: 'WB12345',
+      clubName: 'Wellness Valley',
+      phoneNumber: '9360515518',
+    })).toBe('Adithya | WB12345 | WELLNESS VALLEY | 9360515518');
+  });
+
+  it('drops empty parts and can hide the name', () => {
+    expect(formatDiarySearchDetails({
+      userName: 'Adithya',
+      communityId: 'WB12345',
+      phoneNumber: '9360515518',
+    }, { includeName: false })).toBe('WB12345 | 9360515518');
   });
 });
 

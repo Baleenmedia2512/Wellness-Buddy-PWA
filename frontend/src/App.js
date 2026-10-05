@@ -142,7 +142,7 @@ import { useOfflineCaptureQueue } from './hooks/useOfflineCaptureQueue';
 import { useWeightCapture } from './hooks/useWeightCapture';
 import { weightDetectionService } from "./features/weight";
 import CelebrationConfetti from "./shared/components/CelebrationConfetti";
-import { duplicateDetectionService } from "./features/nutrition";
+import { duplicateDetectionService, allowHerbalifeShakePost } from "./features/nutrition";
 import { applyUserCorrections } from "./features/nutrition";
 import { aggregateFoodTotals } from "./features/nutrition";
 import {
@@ -5040,6 +5040,14 @@ function WellnessValleyApp() {
           return;
         }
         const analysisResult = buildAnalysisFromGeminiAnalysis(analysis);
+        const allowShake = await allowHerbalifeShakePost({
+          userId: user.id,
+          analysisResult,
+        });
+        if (!allowShake) {
+          setUnknownShareView((v) => ({ ...v, retrying: false }));
+          return;
+        }
         const promoteResult = await promoteUnknownToFood({
           captureId,
           viewerUserId: user.id,
@@ -5152,6 +5160,11 @@ function WellnessValleyApp() {
       showToast("Couldn't save — please try again");
       return;
     }
+    const allowShake = await allowHerbalifeShakePost({
+      userId: user.id,
+      analysisResult,
+    });
+    if (!allowShake) return;
     // Close immediately; promote continues in background.
     setShareEditView({ open: false, captureId: null });
     setUnknownShareView((v) => ({ ...v, open: false }));
@@ -5340,6 +5353,16 @@ function WellnessValleyApp() {
         try {
           if (foodOk) {
             const analysisResult = buildAnalysisFromGeminiAnalysis(detectedType.details);
+            const allowShake = await allowHerbalifeShakePost({
+              userId: ownerUserId,
+              analysisResult,
+            });
+            if (!allowShake) {
+              await releaseCredit('shake_repost_declined');
+              updatePendingCaptureType(pendingSharePromise, 'unknown');
+              clearCaptureAnalyzing(captureId);
+              return;
+            }
             const promoteResult = await promoteUnknownToFood({
               captureId,
               viewerUserId: ownerUserId,
@@ -6038,6 +6061,16 @@ function WellnessValleyApp() {
           userEmail: saveUser?.email || saveUser?.Email || "unknown",
           captureTimestamp: saveExifTimestamp || null,
         };
+
+        const allowShake = await allowHerbalifeShakePost({
+          userId: actualUserId,
+          analysisResult: savePayload.analysisResult,
+        });
+        if (!allowShake) {
+          if (!silent) setSaveLoading(false);
+          if (!silent) setLoadingState("idle");
+          return;
+        }
 
         let duplicateCheck;
         try {

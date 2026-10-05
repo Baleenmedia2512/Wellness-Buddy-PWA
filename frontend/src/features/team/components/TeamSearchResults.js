@@ -4,16 +4,20 @@
  * loading, results, or empty.
  *
  * Display:
- *   Line 1 — User Name
- *   Line 2 — Email | member's own Community ID (omit empty sides / bare "|")
+ *   default — name, then email | Community ID
+ *   diary   — Name | Community ID | CLUB NAME | Phone
  */
 import React from 'react';
 import { User } from 'lucide-react';
-import { formatMemberSubtitle, subtitleCommunityId } from '../services/teamSearchService';
+import {
+  formatDiarySearchDetails,
+  formatMemberSubtitle,
+  subtitleCommunityId,
+} from '../services/teamSearchService';
 
 export default function TeamSearchResults({
   dropdownRef, loading, loadError = false, rosterReady = true, suggestions,
-  selectedMemberId, onSelect,
+  selectedMemberId, onSelect, resultVariant = 'default',
 }) {
   return (
     <div
@@ -36,27 +40,43 @@ export default function TeamSearchResults({
       ) : suggestions.length > 0 ? (
         <ul className="py-1">
           {suggestions.map((member, index) => {
-            const subtitle = formatMemberSubtitle(
-              member.email,
-              subtitleCommunityId(member),
-            );
+            const diaryDetails = resultVariant === 'diary'
+              ? formatDiarySearchDetails(member, { includeName: false })
+              : '';
+            const subtitle = resultVariant === 'diary'
+              ? ''
+              : formatMemberSubtitle(member.email, subtitleCommunityId(member));
             return (
             <li key={`${member.userId}-${index}`}>
               <button
                 onClick={() => onSelect(member)}
-                className="w-full px-4 py-2.5 text-left hover:bg-gray-50 transition-colors flex items-center gap-3"
+                className="w-full px-4 py-2.5 text-left hover:bg-gray-50 transition-colors flex items-start gap-3"
               >
                 <div className="flex-shrink-0 w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
                   <User className="h-4 w-4 text-green-600" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-gray-900 truncate">
-                    {member.userName}
-                    {member.isSelf && <span className="ml-2 text-xs text-green-600">(Me)</span>}
-                  </p>
-                  {subtitle ? (
-                    <p className="text-xs text-gray-500 truncate">{subtitle}</p>
-                  ) : null}
+                  {resultVariant === 'diary' ? (
+                    <>
+                      <p className="text-sm font-medium text-gray-900 break-words">
+                        {member.userName}
+                        {member.isSelf && <span className="ml-2 text-xs text-green-600">(Me)</span>}
+                      </p>
+                      {diaryDetails ? (
+                        <p className="text-xs text-gray-500 break-words">{diaryDetails}</p>
+                      ) : null}
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-sm font-medium text-gray-900 truncate">
+                        {member.userName}
+                        {member.isSelf && <span className="ml-2 text-xs text-green-600">(Me)</span>}
+                      </p>
+                      {subtitle ? (
+                        <p className="text-xs text-gray-500 truncate">{subtitle}</p>
+                      ) : null}
+                    </>
+                  )}
                 </div>
                 {selectedMemberId === member.userId && (
                   <div className="flex-shrink-0 w-2 h-2 rounded-full bg-green-500" />
@@ -68,7 +88,9 @@ export default function TeamSearchResults({
         </ul>
       ) : (
         <div className="px-4 py-3 text-sm text-gray-500">
-          No matches — try part of their name, email, or Community ID.
+          {resultVariant === 'diary'
+            ? 'No matches — try part of their name, Community ID, club, or phone number.'
+            : 'No matches — try part of their name, email, or Community ID.'}
         </div>
       )}
     </div>

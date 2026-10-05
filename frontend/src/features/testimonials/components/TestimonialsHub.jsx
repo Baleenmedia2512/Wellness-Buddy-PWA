@@ -213,6 +213,7 @@ function InlineImagePicker({
     || withTestimonialMediaCacheBust(existingPreviewUrl, mediaVersion)
     || null;
   const isExistingOnly = !image && !!existingPreviewUrl;
+  const canRecrop = Boolean(onRecrop) && Boolean(image?.preview || existingPreviewUrl);
 
   return (
     <div className="space-y-2">
@@ -220,10 +221,10 @@ function InlineImagePicker({
         <div className="space-y-2">
           <button
             type="button"
-            onClick={image && onRecrop ? onRecrop : undefined}
-            disabled={!image || !onRecrop}
+            onClick={canRecrop ? () => onRecrop(existingPreviewUrl) : undefined}
+            disabled={!canRecrop}
             className="block w-full max-w-[160px] mx-auto overflow-hidden rounded-xl disabled:cursor-default"
-            aria-label={image && onRecrop ? 'Adjust photo' : undefined}
+            aria-label={canRecrop ? 'Adjust photo' : undefined}
           >
             <img
               src={previewSrc}
@@ -231,7 +232,7 @@ function InlineImagePicker({
               className={`${PORTRAIT_IMAGE_CLASS_SM} max-w-[160px] mx-auto`}
             />
           </button>
-          {image && onRecrop ? (
+          {canRecrop ? (
             <p className="text-[11px] text-gray-400 text-center">Tap photo to drag or pinch the visible area</p>
           ) : null}
           <div className="flex gap-2 max-w-[160px] mx-auto">
@@ -250,7 +251,7 @@ function InlineImagePicker({
           </div>
           <p className="text-xs text-green-600 font-medium text-center flex items-center justify-center gap-1">
             <CheckCircle className="h-3.5 w-3.5" />
-            {isExistingOnly ? 'Current photo — replace to change' : 'Photo selected'}
+            {isExistingOnly ? 'Current photo — tap it to adjust the crop' : 'Photo selected'}
           </p>
         </div>
       ) : (

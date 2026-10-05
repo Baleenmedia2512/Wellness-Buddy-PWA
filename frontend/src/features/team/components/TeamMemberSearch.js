@@ -12,7 +12,7 @@ import TeamSearchResults from './TeamSearchResults';
 import { useTeamSearch } from '../hooks/useTeamSearch';
 
 const TeamMemberSearch = ({
-  user, userRole, selectedMember, onMemberSelect, refreshKey = 0,
+  user, userRole, selectedMember, onMemberSelect, refreshKey = 0, resultVariant = 'default',
 }) => {
   const vm = useTeamSearch({
     user, userRole, selectedMember, onMemberSelect, refreshKey,
@@ -45,6 +45,7 @@ const TeamMemberSearch = ({
               suggestions={vm.suggestions}
               selectedMemberId={selectedMember?.userId}
               onSelect={vm.selectMember}
+              resultVariant={resultVariant}
             />
           )}
         </div>

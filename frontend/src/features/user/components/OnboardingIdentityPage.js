@@ -147,7 +147,7 @@ const OnboardingIdentityPage = ({ user, onComplete }) => {
         <div className="bg-white rounded-2xl shadow-sm p-5 space-y-5 max-w-md mx-auto">
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-2">
-              Full Name <span className="text-red-500">*</span>
+              Enter your Name <span className="text-red-500">*</span>
             </label>
             <div className="relative">
               <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" />
@@ -156,7 +156,7 @@ const OnboardingIdentityPage = ({ user, onComplete }) => {
                 autoComplete="name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="Enter your full name"
+                placeholder="Enter your Name"
                 className={inputCls(name && !nameValid)}
                 style={{ fontSize: '16px' }}
               />

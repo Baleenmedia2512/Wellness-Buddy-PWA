@@ -27,7 +27,7 @@ const DEFAULT_CROP_Z_INDEX = 10050;
 
 /**
  * @param {{
- *   onApply: (dataUrl: string, key?: string) => void | Promise<void>,
+ *   onApply: (dataUrl: string, key?: string, originalUrl?: string | null, croppedAreaPixels?: object | null, rotation?: number) => void | Promise<void>,
  *   onError?: (message: string) => void,
  *   zIndex?: number,
  * }} opts
@@ -48,7 +48,16 @@ export default function usePortraitCoverCrop({ onApply, onError, zIndex = DEFAUL
     hint: 'Drag corner dots to resize · drag or pinch to move',
     cropImage: cropPortraitCover,
     onError: (msg) => onErrorRef.current?.(msg),
-    onCropped: (dataUrl) => onApplyRef.current?.(dataUrl, pendingKeyRef.current),
+    onCropped: (dataUrl, meta) => {
+      const key = pendingKeyRef.current;
+      onApplyRef.current?.(
+        dataUrl,
+        key,
+        lastSourceRef.current[key] || null,
+        meta?.croppedAreaPixels || null,
+        Number(meta?.rotation) || 0,
+      );
+    },
   });
 
   const pickFile = useCallback(async (file, key = 'default') => {
@@ -70,6 +79,7 @@ export default function usePortraitCoverCrop({ onApply, onError, zIndex = DEFAUL
     pendingKeyRef.current = key;
     const source = lastSourceRef.current[key] || src;
     if (!source) return;
+    lastSourceRef.current[key] = source;
     await cropper.openExistingImage(source, { replace: true });
   }, [cropper]);
 
