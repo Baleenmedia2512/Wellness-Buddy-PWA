@@ -415,18 +415,21 @@ function PhotoCell({ src, label, scriptLabel, weightKg, isVerified, side, photoH
           letterSpacing: '1.4px',
           textTransform: 'uppercase',
           lineHeight: '14px',
+          fontFamily: CARD_FONT,
         }}
         >
           {label}
         </p>
         {weightKg > 0 && (
           <p style={{
-            margin: '2px 0 0',
+            margin: '3px 0 6px',
             textAlign: 'center',
-            fontSize: 16,
+            fontSize: 17,
             fontWeight: 800,
             color: '#111827',
-            lineHeight: '20px',
+            lineHeight: '22px',
+            fontFamily: CARD_FONT,
+            overflow: 'visible',
           }}
           >
             {weightKg} kg
@@ -439,14 +442,14 @@ function PhotoCell({ src, label, scriptLabel, weightKg, isVerified, side, photoH
 
 function HealthIssueChip({ label, widthPct }) {
   const compact = widthPct <= 25;
-  const circle = 40;
+  const circle = 28;
   return (
     <div
       style={{
         display: 'inline-block',
         width: `${widthPct}%`,
         verticalAlign: 'top',
-        padding: '6px 8px 2px',
+        padding: '2px 4px 0',
         boxSizing: 'border-box',
         textAlign: 'center',
       }}
@@ -459,20 +462,20 @@ function HealthIssueChip({ label, widthPct }) {
           borderRadius: circle / 2,
           background: '#fce7f3',
           lineHeight: `${circle}px`,
-          fontSize: 18,
+          fontSize: 13,
         }}
       >
         {healthIssueShareIcon(label)}
       </div>
       <p
         style={{
-          margin: '5px 0 0',
-          padding: '0 3px',
-          fontSize: compact ? 10 : 11,
+          margin: '3px 0 0',
+          padding: '0 2px',
+          fontSize: compact ? 9 : 10,
           fontWeight: 700,
           color: '#4b5563',
-          lineHeight: '14px',
-          height: 28,
+          lineHeight: '12px',
+          height: 24,
           overflow: 'hidden',
           wordWrap: 'break-word',
           overflowWrap: 'anywhere',
@@ -639,16 +642,16 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
         <tbody>
           {diff ? (
             <tr>
-              <td style={{ textAlign: 'center', padding: '4px 16px 0', verticalAlign: 'top' }}>
+              <td style={{ textAlign: 'center', padding: '8px 16px 2px', verticalAlign: 'top' }}>
                 <img
                   src={RESULT_BURST_LEFT_SRC}
                   alt=""
                   aria-hidden="true"
                   style={{
                     display: 'inline-block',
-                    width: 38,
-                    height: 28,
-                    marginRight: 4,
+                    width: 32,
+                    height: 24,
+                    marginRight: 3,
                     verticalAlign: 'middle',
                   }}
                 />
@@ -656,11 +659,11 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
                   style={{
                     display: 'inline-block',
                     background: PILL_BG,
-                    borderRadius: 22,
-                    padding: '8px 22px',
-                    lineHeight: '22px',
+                    borderRadius: 18,
+                    padding: '5px 16px',
+                    lineHeight: '18px',
                     fontFamily: CARD_FONT,
-                    fontSize: 17,
+                    fontSize: 15,
                     fontWeight: 800,
                     color: PILL_BLUE,
                     verticalAlign: 'middle',
@@ -678,9 +681,9 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
                   aria-hidden="true"
                   style={{
                     display: 'inline-block',
-                    width: 38,
-                    height: 28,
-                    marginLeft: 4,
+                    width: 32,
+                    height: 24,
+                    marginLeft: 3,
                     verticalAlign: 'middle',
                   }}
                 />
@@ -689,14 +692,14 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
           ) : null}
           {issues.length > 0 ? (
             <tr>
-              <td style={{ padding: '10px 10px 14px', verticalAlign: 'top' }}>
+              <td style={{ padding: '4px 12px 6px', verticalAlign: 'top' }}>
                 <div
                   style={{
                     background: '#fff1f2',
                     border: '1px solid #f9a8d4',
-                    borderRadius: 16,
-                    boxShadow: '0 2px 5px rgba(190, 24, 93, 0.15)',
-                    padding: '10px 8px 8px',
+                    borderRadius: 12,
+                    boxShadow: '0 1px 3px rgba(190, 24, 93, 0.12)',
+                    padding: '4px 6px 4px',
                     boxSizing: 'border-box',
                   }}
                 >
@@ -704,8 +707,8 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
                     style={{
                       margin: 0,
                       fontFamily: SCRIPT_FONT,
-                      fontSize: 24,
-                      lineHeight: '30px',
+                      fontSize: 18,
+                      lineHeight: '22px',
                       color: '#be185d',
                       textAlign: 'center',
                     }}
@@ -714,12 +717,12 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
                   </p>
                   <p
                     style={{
-                      margin: '1px 0 6px',
-                      fontSize: 11,
+                      margin: '0 0 2px',
+                      fontSize: 9,
                       fontWeight: 500,
                       fontStyle: 'italic',
                       color: '#9ca3af',
-                      lineHeight: '15px',
+                      lineHeight: '12px',
                       textAlign: 'center',
                     }}
                   >
@@ -739,7 +742,7 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
             </tr>
           ) : (
             <tr>
-              <td style={{ padding: '0 0 4px' }} />
+              <td style={{ padding: '0 0 2px' }} />
             </tr>
           )}
         </tbody>
