@@ -670,7 +670,7 @@ test.describe('Homepage', () => {
     await expect(page.getByText('Meeting session', { exact: false })).toBeVisible({ timeout: 10000 });
 
     // Click through all Meeting Session options to verify they are all selectable
-    const meetingSessions = ['Blueprint for Success', 'HALA', 'Daily Education', 'Wellness Seminar', 'Academy'];
+    const meetingSessions = ['Blueprint for Success', 'HALA', 'Daily Education', 'Wellness Seminar', 'Academy','PC Meet','Focus Training','Coaches Training'];
     for (const session of meetingSessions) {
       const sessionBtn = page.getByRole('button', { name: session, exact: true });
       await expect(sessionBtn).toBeVisible();
