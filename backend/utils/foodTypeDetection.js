@@ -341,6 +341,115 @@ function isExemptedBeverageOnly(analysisData) {
   }
 }
 
+/** Target Nutrition catalog saves (dry-salad mealKind). */
+const DRY_SALAD_MEAL_KIND = 'dry-salad';
+
+/**
+ * Meal-replacement / protein shakes that DO count as breakfast/lunch/dinner.
+ * @param {string} name
+ * @returns {boolean}
+ */
+function isMealShakeName(name) {
+  const n = normalizeFoodName(name);
+  if (!n) return false;
+  return (
+    n.includes('formula 1') ||
+    n.includes('formula1') ||
+    n.includes('f1 shake') ||
+    n.includes('meal replacement') ||
+    n.includes('protein shake')
+  );
+}
+
+/**
+ * Target Nutrition / supplement products that are NOT meals.
+ * Meal shakes (Formula 1, etc.) are excluded from this list via isMealShakeName.
+ */
+const NON_MEAL_SUPPLEMENT_PATTERNS = [
+  /\bvriti\s*life\b/,
+  /\bvritilife\b/,
+  /\btriphala\b/,
+  /digestive\s*health/,
+  /multivitamin/,
+  /fish\s*oil/,
+  /\bsupplement\b/,
+  /cell\s*activator/,
+  /nightworks/,
+  /niteworks/,
+  /xtra[- ]?cal/,
+  /shakemate/,
+  /personalized\s*protein/,
+  /\bdino\s*shake\b/,
+  /\bdinoshake\b/,
+  /\bhn\s*-/,
+  /skin\s*booster/,
+  /\bjoint\s*support\b/,
+  /\blift\s*off\b/,
+  /\bh\s*24\b/,
+  /formula\s*2\b/,
+  /formula2\b/,
+  /\btablet\b/,
+  /\bcapsule\b/,
+];
+
+/**
+ * @param {string} name
+ * @returns {boolean}
+ */
+function isNonMealSupplement(name) {
+  if (!name) return false;
+  if (isMealShakeName(name)) return false;
+  if (isAfreshEnergyDrink(name)) return true;
+  const n = normalizeFoodName(name);
+  if (!n) return false;
+  return NON_MEAL_SUPPLEMENT_PATTERNS.some((re) => re.test(n));
+}
+
+/**
+ * @param {object|null|undefined} parsed
+ * @returns {string}
+ */
+function getAnalysisProcessedBy(parsed) {
+  return String(parsed?.processedBy || '').toLowerCase().trim();
+}
+
+/**
+ * True when a nutrition log should NOT count as breakfast/lunch/dinner.
+ * Skips: beverage-only, Afresh, Target Nutrition (dry-salad) without a meal shake,
+ * and supplement-only entries (e.g. Vritilife Triphala).
+ * Keeps: real food and meal shakes (Formula 1 / shake calculator).
+ *
+ * Do NOT use for water intake — use isExemptedBeverageOnly there.
+ *
+ * @param {string|Object} analysisData
+ * @returns {boolean}
+ */
+function isNonMealNutritionOnly(analysisData) {
+  try {
+    const parsed = typeof analysisData === 'string' ? JSON.parse(analysisData) : analysisData;
+    if (!parsed) return false;
+
+    const by = getAnalysisProcessedBy(parsed);
+    if (by === 'shake_calculator') return false;
+    if (by === 'water_preset' || by === 'afresh_preset') return true;
+
+    const foods = extractFoodItemsFromAnalysis(parsed);
+    if (foods.length === 0) return false;
+
+    if (foods.some((f) => isMealShakeName(getFoodItemName(f)))) return false;
+
+    // Target Nutrition catalog without a meal shake → not breakfast/lunch/dinner
+    if (parsed.mealKind === DRY_SALAD_MEAL_KIND) return true;
+
+    return foods.every((f) => {
+      const name = getFoodItemName(f);
+      return isExemptedFood(name) || isNonMealSupplement(name);
+    });
+  } catch {
+    return false;
+  }
+}
+
 module.exports = {
   getFoodTypeByUnit,
   getFoodTypeByName,
@@ -348,9 +457,13 @@ module.exports = {
   areTypesCompatible,
   validateCorrectionByType,
   isExemptedBeverageOnly,
+  isNonMealNutritionOnly,
+  isNonMealSupplement,
+  isMealShakeName,
   isExemptedFood,
   isAfreshEnergyDrink,
   extractFoodItemsFromAnalysis,
   getFoodItemName,
-  EXEMPTED_MEAL_FOODS
+  EXEMPTED_MEAL_FOODS,
+  DRY_SALAD_MEAL_KIND,
 };
