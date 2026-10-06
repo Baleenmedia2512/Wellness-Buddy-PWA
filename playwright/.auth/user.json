@@ -5,6 +5,10 @@
       "origin": "http://127.0.0.1:3002",
       "localStorage": [
         {
+          "name": "profileComplete_v2_test@example.com",
+          "value": "true"
+        },
+        {
           "name": "userEmail",
           "value": "test@example.com"
         },
@@ -19,6 +23,10 @@
         {
           "name": "dbUserId",
           "value": "99999"
+        },
+        {
+          "name": "wv.profileUserName.test@example.com",
+          "value": "Test Coach"
         }
       ]
     }

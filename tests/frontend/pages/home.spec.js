@@ -1177,6 +1177,7 @@ test.describe('Homepage', () => {
     // 2. SECOND IMAGE UPLOAD & PREVIOUS WORKOUT KCAL MAINTENANCE CHECK
     // ============================================================
     const galleryButton2 = page.getByRole('button', { name: 'Choose from gallery' });
+    await expect(galleryButton2).toBeVisible({ timeout: 15000 });
     const [fileChooser2] = await Promise.all([
       page.waitForEvent('filechooser'),
       galleryButton2.click(),
@@ -1528,6 +1529,120 @@ test.describe('Homepage', () => {
       page.getByText('Herbalife Beta Heart', { exact: false })
     );
     await expect(diaryEntry.first()).toBeVisible({ timeout: 15000 });
+  });
+
+  test('HOME-011: Navigation bar displays only 4 tabs (Home, Diary, Programmes, Transformation) when page access is restricted, and all tabs when full access is granted', async ({ page }) => {
+    // Enable nav page access feature flag
+    await page.addInitScript(() => {
+      localStorage.setItem('ff.nav-page-access', 'true');
+    });
+
+    let navAccessResponsePages = {
+      home: true,
+      dashboard: true,
+      enrollment: true,
+      testimonials: true,
+      'activity-report': false,
+      counselling: false,
+      'physical-club': false,
+      reports: false,
+    };
+
+    // Route mock for /api/nav-access/for-me
+    await page.route('**/api/nav-access/for-me*', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          pages: navAccessResponsePages,
+          accountRole: 'user',
+        }),
+      });
+    });
+
+    // 1. Perform Login with Restricted Access (only Home, Diary, Programmes, Transformation allowed)
+    await loginAndNavigateToHome(page, 'user');
+
+    // Verify only the 4 specified tabs are visible in the navbar
+    const homeTab = page.getByRole('button', { name: /Home/i }).or(page.getByText('Home', { exact: true }));
+    const diaryTab = page.getByRole('button', { name: /Diary/i }).or(page.getByText('Diary', { exact: true }));
+    const programmesTab = page.getByRole('button', { name: /Programmes|Enrollment/i }).or(page.getByText('Programmes', { exact: true }));
+    const transformationTab = page.getByRole('button', { name: /Transformation|Testimonials/i }).or(page.getByText('Transformation', { exact: true }));
+
+    await expect(homeTab.first()).toBeVisible({ timeout: 10000 });
+    await expect(diaryTab.first()).toBeVisible({ timeout: 10000 });
+    await expect(programmesTab.first()).toBeVisible({ timeout: 10000 });
+    await expect(transformationTab.first()).toBeVisible({ timeout: 10000 });
+
+    // Verify restricted tabs are NOT visible when access is restricted
+    const activityTab = page.getByRole('button', { name: /Activity/i }).or(page.getByText('Activity', { exact: true }));
+    const bcmTab = page.getByRole('button', { name: /BCM|Counselling/i }).or(page.getByText('BCM', { exact: true }));
+    const clubTab = page.getByRole('button', { name: /Club|Physical Club/i }).or(page.getByText('Club', { exact: true }));
+    const reportsTab = page.getByRole('button', { name: /Reports/i }).or(page.getByText('Reports', { exact: true }));
+
+    await expect(activityTab).not.toBeVisible();
+    await expect(bcmTab).not.toBeVisible();
+    await expect(clubTab).not.toBeVisible();
+    await expect(reportsTab).not.toBeVisible();
+
+    // 2. Grant Full Access (all tabs enabled)
+    navAccessResponsePages = {
+      home: true,
+      dashboard: true,
+      'activity-report': true,
+      enrollment: true,
+      counselling: true,
+      'physical-club': true,
+      testimonials: true,
+      reports: true,
+    };
+
+    // Reload page to fetch updated nav access
+    await page.reload();
+
+    // Verify all tabs are visible when full access is granted
+    await expect(page.getByRole('button', { name: /Home/i }).first()).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole('button', { name: /Diary/i }).first()).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole('button', { name: /Activity/i }).or(page.getByText('Activity', { exact: true })).first()).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole('button', { name: /Programmes|Enrollment/i }).first()).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole('button', { name: /BCM|Counselling/i }).or(page.getByText('BCM', { exact: true })).first()).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole('button', { name: /Club|Physical Club/i }).or(page.getByText('Club', { exact: true })).first()).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole('button', { name: /Transformation|Testimonials/i }).first()).toBeVisible({ timeout: 10000 });
+  });
+
+  test('HOME-012 User can select Today, Yesterday, Last 10 Days, and Custom Range date options on Home page', async ({ page }) => {
+    await loginAndNavigateToHome(page);
+
+    // Verify Today pill is visible and selectable
+    const todayPill = page.getByRole('button', { name: 'Today', exact: true });
+    await expect(todayPill).toBeVisible({ timeout: 10000 });
+    await todayPill.click();
+
+    // Verify Yesterday pill is visible and selectable
+    const yesterdayPill = page.getByRole('button', { name: 'Yesterday', exact: true });
+    await expect(yesterdayPill).toBeVisible({ timeout: 10000 });
+    await yesterdayPill.click();
+
+    // Verify Last 10 Days pill is visible and selectable
+    const last10Pill = page.getByRole('button', { name: 'Last 10 Days', exact: true });
+    await expect(last10Pill).toBeVisible({ timeout: 10000 });
+    await last10Pill.click();
+
+    // Verify Custom Range pill is visible and opens date picker
+    const customPill = page.getByRole('button', { name: /Custom Range|Custom/i }).first();
+    await expect(customPill).toBeVisible({ timeout: 10000 });
+    await customPill.click();
+
+    // Verify Date Range Picker calendar modal is displayed
+    const datePickerModal = page.locator('button[aria-label="Previous month"]').or(page.getByText('Select start date')).first();
+    await expect(datePickerModal).toBeVisible({ timeout: 10000 });
+
+    // Click Done to close custom date picker
+    const doneBtn = page.getByRole('button', { name: 'Done', exact: true });
+    if (await doneBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
+      await doneBtn.click();
+    }
   });
 
 });

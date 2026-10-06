@@ -23,7 +23,7 @@ import NativeInput from '../../../shared/components/NativeInput.jsx';
 import LoadingSpinner from '../../../shared/components/LoadingSpinner';
 import {
   listForCoach, getMyTestimonial, getMyVideoTestimonial, getTeamTestimonialReport,
-  getTestimonialDetail, submitAllEdits, verifyUnifiedOtp, resendUnifiedOtp, prepareTestimonialVideoUpload,
+  getTestimonialDetail, submitAllEdits, verifyUnifiedOtp, resendUnifiedOtp, cancelUnifiedOtp, prepareTestimonialVideoUpload,
 } from '../services/testimonialApi.js';
 import { getProfile } from '../../user/services/user.api.js';
 import { uploadTestimonialVideoInChunks } from '../services/testimonialVideoUpload.js';
@@ -411,10 +411,12 @@ function UnifiedOtpInline({
   otpExpired: otpExpiredProp = null,
   onVerified,
   onOtpMetaUpdate,
+  onClose,
 }) {
   const [otp,     setOtp]     = React.useState('');
   const [loading, setLoading] = React.useState(false);
   const [resending, setResending] = React.useState(false);
+  const [closing, setClosing] = React.useState(false);
   const [err,     setErr]     = React.useState(null);
   const [info,    setInfo]    = React.useState(null);
   const [expiresAt, setExpiresAt] = React.useState(otpExpiresAt);
@@ -440,6 +442,16 @@ function UnifiedOtpInline({
     const extracted = extractOtpFromText(raw, EMAIL_OTP_LENGTH);
     setOtp(extracted ?? String(raw ?? '').replace(/\D/g, '').slice(0, EMAIL_OTP_LENGTH));
     setErr(null);
+  };
+
+  const handleClose = async () => {
+    if (closing || loading || resending) return;
+    setClosing(true);
+    try {
+      await onClose?.();
+    } finally {
+      setClosing(false);
+    }
   };
 
   const submit = async () => {
@@ -491,8 +503,20 @@ function UnifiedOtpInline({
   };
 
   return (
-    <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 space-y-3">
-      <div className="flex items-center gap-2">
+    <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 space-y-3 relative">
+      {onClose && (
+        <button
+          type="button"
+          onClick={handleClose}
+          disabled={closing}
+          className="absolute top-3 right-3 p-1.5 rounded-full text-amber-700 hover:text-amber-900 hover:bg-amber-100 transition-colors disabled:opacity-50"
+          aria-label="Close OTP verification and revert changes"
+          title="Close and revert changes"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      )}
+      <div className="flex items-center gap-2 pr-7">
         <ShieldCheck className="h-4 w-4 text-amber-600 shrink-0" />
         <p className="text-sm font-semibold text-amber-800">
           Enter the 4-digit approval code sent to your sponsor {sponsorLabel} through email
@@ -697,6 +721,53 @@ function MemberCard({
   const [draftHealthPreview,   setDraftHealthPreview]   = useState(null);
   const [draftBusinessPreview, setDraftBusinessPreview] = useState(null);
   const [draftIssues,   setDraftIssues]   = useState(null);
+
+  // Baseline snapshot before unverified / pending edits were applied
+  const baselineKey = userId ? `transformation_baseline_${userId}` : null;
+  const baselineTestimonialRef = useRef(null);
+
+  useEffect(() => {
+    if (testimonial && testimonial.status !== 'pending' && !testimonial.hasPendingOtp && !testimonial.otpPending) {
+      const snap = {
+        status: testimonial.status,
+        beforeImagePath: testimonial.beforeImagePath,
+        afterImagePath: testimonial.afterImagePath,
+        beforeWeightKg: testimonial.beforeWeightKg,
+        afterWeightKg: testimonial.afterWeightKg,
+        goalType: testimonial.goalType,
+        durationText: testimonial.durationText,
+        recoveredHealthIssues: testimonial.recoveredHealthIssues,
+        videoStatus: testimonial.videoStatus,
+        healthVideoPath: testimonial.healthVideoPath,
+        businessVideoPath: testimonial.businessVideoPath,
+        beforeImageUrl: testimonial.beforeImageUrl,
+        afterImageUrl: testimonial.afterImageUrl,
+        healthVideoUrl: testimonial.healthVideoUrl,
+        businessVideoUrl: testimonial.businessVideoUrl,
+        verifiedAt: testimonial.verifiedAt,
+      };
+      baselineTestimonialRef.current = snap;
+      if (baselineKey) {
+        try {
+          localStorage.setItem(baselineKey, JSON.stringify(snap));
+        } catch {}
+      }
+    }
+  }, [testimonial, baselineKey]);
+
+  const clearDrafts = useCallback(() => {
+    setDraftBefore((prev) => { revokeBlobUrl(prev?.previewUrl); return null; });
+    setDraftAfter((prev) => { revokeBlobUrl(prev?.previewUrl); return null; });
+    setDraftHealthPath(null);
+    setDraftBusinessPath(null);
+    setDraftHealthPreview((prev) => { revokeBlobUrl(prev); return null; });
+    setDraftBusinessPreview((prev) => { revokeBlobUrl(prev); return null; });
+    setDraftIssues(null);
+    setBeforeWeightText(null);
+    setAfterWeightText(null);
+    setDurationValueText(null);
+    setExpandedSlots(new Set());
+  }, []);
   // Freeze the last approved issue list while new tags are draft/pending OTP.
   useEffect(() => {
     if (draftIssues != null) return;
@@ -1038,6 +1109,33 @@ function MemberCard({
   }, [userId]);
 
   const handleSubmitAll = useCallback(() => {
+    if (testimonial && (testimonial.status === 'verified' || testimonial.verifiedAt || hasAfter)) {
+      const snap = {
+        status: testimonial.status || 'verified',
+        verifiedAt: testimonial.verifiedAt || new Date().toISOString(),
+        beforeImagePath: testimonial.beforeImagePath,
+        afterImagePath: testimonial.afterImagePath,
+        beforeWeightKg: testimonial.beforeWeightKg,
+        afterWeightKg: testimonial.afterWeightKg,
+        goalType: testimonial.goalType,
+        durationText: testimonial.durationText,
+        recoveredHealthIssues: testimonial.recoveredHealthIssues,
+        videoStatus: testimonial.videoStatus,
+        healthVideoPath: testimonial.healthVideoPath,
+        businessVideoPath: testimonial.businessVideoPath,
+        beforeImageUrl: testimonial.beforeImageUrl,
+        afterImageUrl: testimonial.afterImageUrl,
+        healthVideoUrl: testimonial.healthVideoUrl,
+        businessVideoUrl: testimonial.businessVideoUrl,
+      };
+      baselineTestimonialRef.current = snap;
+      if (baselineKey) {
+        try {
+          localStorage.setItem(baselineKey, JSON.stringify(snap));
+        } catch {}
+      }
+    }
+
     const photoOrVideoChanged = dirtySlots.some((s) => ['before', 'after', 'health', 'business'].includes(s));
     const hasResultVideo = Boolean(
       testimonial?.healthVideoPath || testimonial?.businessVideoPath
@@ -1132,17 +1230,6 @@ function MemberCard({
       return;
     }
 
-    const clearDrafts = () => {
-      setDraftBefore((prev) => { revokeBlobUrl(prev?.previewUrl); return null; });
-      setDraftAfter((prev) => { revokeBlobUrl(prev?.previewUrl); return null; });
-      setDraftHealthPath(null);
-      setDraftBusinessPath(null);
-      setDraftHealthPreview((prev) => { revokeBlobUrl(prev); return null; });
-      setDraftBusinessPreview((prev) => { revokeBlobUrl(prev); return null; });
-      setDraftIssues(null);
-      setExpandedSlots(new Set());
-    };
-
     setSubmitError(null);
 
     const reloadMine = async (patchedTestimonial) => {
@@ -1235,6 +1322,52 @@ function MemberCard({
     setUnifiedOtpVerified(true);
     onOtpVerified?.();
   }, [onOtpVerified]);
+
+  const handleUnifiedOtpClose = useCallback(async () => {
+    clearDrafts();
+    setSubmitDone(false);
+    setUnifiedOtpVerified(true);
+    setSubmitError(null);
+
+    let baseline = baselineTestimonialRef.current;
+    if (!baseline && baselineKey) {
+      try {
+        const stored = localStorage.getItem(baselineKey);
+        if (stored) baseline = JSON.parse(stored);
+      } catch {}
+    }
+
+    try {
+      const result = await cancelUnifiedOtp({
+        userId,
+        restoreData: baseline || undefined,
+      });
+      const reverted = result?.testimonial || baseline;
+      if (reverted && typeof onMineRefresh === 'function') {
+        await onMineRefresh({
+          ...(testimonial || {}),
+          ...reverted,
+          status: reverted.status || 'verified',
+          hasPendingOtp: false,
+          otpPending: false,
+          otpExpired: false,
+          otpExpiresAt: null,
+        });
+      }
+    } catch {
+      if (typeof onMineRefresh === 'function') {
+        await onMineRefresh({
+          ...(testimonial || {}),
+          ...(baseline || {}),
+          status: baseline?.status || 'verified',
+          hasPendingOtp: false,
+          otpPending: false,
+          otpExpired: false,
+          otpExpiresAt: null,
+        });
+      }
+    }
+  }, [userId, clearDrafts, onMineRefresh, testimonial, baselineKey]);
 
   const handleUnifiedOtpMetaUpdate = useCallback(async (meta) => {
     if (!meta) return;
@@ -1654,6 +1787,7 @@ function MemberCard({
           otpExpired={testimonial?.otpExpired}
           onVerified={handleUnifiedOtpVerified}
           onOtpMetaUpdate={handleUnifiedOtpMetaUpdate}
+          onClose={handleUnifiedOtpClose}
         />
       )}
 
@@ -1733,21 +1867,6 @@ function MemberCard({
               )}
             </div>
           )}
-          {/* Status badge */}
-          <div className="flex gap-1.5 flex-wrap items-center">
-            {testimonial.status === 'pending' && (
-              <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold flex items-center gap-0.5 border ${
-                testimonial.otpExpired || isOtpExpiredClient(testimonial.otpExpiresAt)
-                  ? 'bg-red-100 border-red-200 text-red-800'
-                  : 'bg-amber-100 border-amber-200 text-amber-800'
-              }`}>
-                <Clock className="h-2.5 w-2.5" />
-                {testimonial.otpExpired || isOtpExpiredClient(testimonial.otpExpiresAt)
-                  ? 'OTP expired'
-                  : 'Awaiting OTP'}
-              </span>
-            )}
-          </div>
         </div>
       )}
 
