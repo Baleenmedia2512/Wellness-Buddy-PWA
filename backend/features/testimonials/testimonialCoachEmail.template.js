@@ -158,15 +158,22 @@ function buildPhotosRow(beforeUrl, afterUrl) {
 /**
  * Full Transformation share card (same image members share in-app).
  * Prefer cid: inline attachment so Gmail does not strip remote signed URLs.
+ * @param {string} shareCardSrc
+ * @param {string|null} [previewHref]
  */
-export function buildShareCardRow(shareCardSrc) {
+export function buildShareCardRow(shareCardSrc, previewHref = null) {
   if (!shareCardSrc) return '';
+  const img = buildPhotoImg(shareCardSrc, 'Transformation card', 280);
+  const linked = (previewHref && /^https?:\/\//i.test(String(previewHref)))
+    ? `<a href="${escapeHtml(previewHref)}" target="_blank" rel="noopener noreferrer" style="display:inline-block;text-decoration:none;">${img}</a>`
+    : img;
   return `
     <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="margin:0 0 14px 0;">
       <tr>
         <td align="center" style="padding:0;">
           <p style="margin:0 0 8px;color:#6b7280;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;font-family:Arial,Helvetica,sans-serif;">Transformation Card</p>
-          ${buildPhotoImg(shareCardSrc, 'Transformation card', 320)}
+          ${linked}
+          <p style="margin:6px 0 0;color:#9ca3af;font-size:9px;font-family:Arial,Helvetica,sans-serif;">Tap card to open preview</p>
         </td>
       </tr>
     </table>`;
@@ -1020,8 +1027,13 @@ export function buildUnifiedSubmitEmailHtml({
     })
     : '';
 
-  // Single full card when there is no previous pair to compare.
-  const currentCard = (!compareCards && isComplete && beforeUrl && afterUrl)
+  // New-only share card when Previous is missing — must still show (was a blank email bug).
+  const singleShareCard = (!compareCards && currentCardImageUrl)
+    ? buildShareCardRow(currentCardImageUrl, currentPreviewHref)
+    : '';
+
+  // HTML Before|After card when there is no share-card image at all.
+  const currentCard = (!compareCards && !singleShareCard && isComplete && beforeUrl && afterUrl)
     ? buildTransformationCardEmailBlock({
       memberName,
       beforeUrl,
@@ -1035,7 +1047,7 @@ export function buildUnifiedSubmitEmailHtml({
     })
     : '';
 
-  const hasCard = Boolean(compareCards || currentCard);
+  const hasCard = Boolean(compareCards || singleShareCard || currentCard);
 
   // Do not show single-photo PREVIOUS → NEW strips when Transformation Cards are present.
   const beforeDiff = '';
@@ -1104,6 +1116,7 @@ export function buildUnifiedSubmitEmailHtml({
               ${beforeDiff}
               ${afterDiff}
               ${compareCards}
+              ${singleShareCard}
               ${previousCard}
               ${currentCard}
               ${shareCardBlock}

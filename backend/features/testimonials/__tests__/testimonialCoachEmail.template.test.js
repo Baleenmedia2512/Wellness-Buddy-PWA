@@ -174,4 +174,32 @@ describe('testimonial coach email photos keep aspect ratio', () => {
       afterWeight: 70,
     }), '');
   });
+
+  it('unified email shows New-only share card when Previous is missing', () => {
+    const html = buildUnifiedSubmitEmailHtml({
+      memberName: 'Alex',
+      otp: '1234',
+      changedSlots: ['after'],
+      goalType: 'loss',
+      beforeWeight: 90.9,
+      afterWeight: 60.8,
+      durationText: '6 months',
+      beforeUrl: null,
+      afterUrl: null,
+      previousBeforeUrl: null,
+      previousAfterUrl: null,
+      currentCardImageUrl: 'cid:transformation-card@wellnessvalley',
+      currentPreviewHref: 'https://example.com/new-card.jpg',
+      healthVideoUrl: null,
+      businessVideoUrl: null,
+      recoveredHealthIssues: [],
+      isComplete: true,
+    });
+    assert.match(html, /Transformation Card/);
+    assert.match(html, /cid:transformation-card@wellnessvalley/);
+    assert.match(html, /https:\/\/example\.com\/new-card\.jpg/);
+    assert.doesNotMatch(html, />Previous</);
+    // Must not fall back to stats-only email when a share card exists.
+    assert.doesNotMatch(html, /has gained|has lost/i);
+  });
 });

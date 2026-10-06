@@ -25,23 +25,28 @@ const ASSETS_DIR = join(__dirname, '../assets');
 let cachedFontCss = null;
 
 function cardFontCss() {
-  if (cachedFontCss) return cachedFontCss;
-  const regular = readFileSync(join(ASSETS_DIR, 'NotoSans-Regular.ttf')).toString('base64');
-  const bold = readFileSync(join(ASSETS_DIR, 'NotoSans-Bold.ttf')).toString('base64');
-  cachedFontCss = `
-    @font-face {
-      font-family: 'CardSans';
-      src: url('data:font/ttf;base64,${regular}') format('truetype');
-      font-weight: 400;
-      font-style: normal;
-    }
-    @font-face {
-      font-family: 'CardSans';
-      src: url('data:font/ttf;base64,${bold}') format('truetype');
-      font-weight: 700;
-      font-style: normal;
-    }
-  `;
+  if (cachedFontCss !== null) return cachedFontCss;
+  try {
+    const regular = readFileSync(join(ASSETS_DIR, 'NotoSans-Regular.ttf')).toString('base64');
+    const bold = readFileSync(join(ASSETS_DIR, 'NotoSans-Bold.ttf')).toString('base64');
+    cachedFontCss = `
+      @font-face {
+        font-family: 'CardSans';
+        src: url('data:font/ttf;base64,${regular}') format('truetype');
+        font-weight: 400;
+        font-style: normal;
+      }
+      @font-face {
+        font-family: 'CardSans';
+        src: url('data:font/ttf;base64,${bold}') format('truetype');
+        font-weight: 700;
+        font-style: normal;
+      }
+    `;
+  } catch {
+    // Fonts optional — compose still produces photos + labels without them.
+    cachedFontCss = '';
+  }
   return cachedFontCss;
 }
 

@@ -188,21 +188,20 @@ const PREV_SHARE_CARD_CID = 'transformation-card-prev@wellnessvalley';
  * @returns {Promise<string|null>} storage path when uploaded
  */
 async function uploadShareCardImage(userId, shareCardImageBase64, composeFromPhotos = null) {
-  // Client capture first — matches the polished in-app Transformation Card
-  // (server SVG compose was showing blank/tofu text as the New email thumb).
+  // Prefer polished client capture; always fall back to server compose so the
+  // email never ships without a Transformation Card when photos exist.
   let newJpeg = bufferFromOptionalBase64(shareCardImageBase64);
 
   const beforePath = composeFromPhotos?.beforeImagePath;
   const afterPath = composeFromPhotos?.afterImagePath;
   const canCompose = Boolean(
-    !newJpeg
-    && (composeFromPhotos?.beforeImageBase64 || beforePath)
+    (composeFromPhotos?.beforeImageBase64 || beforePath)
     && (composeFromPhotos?.afterImageBase64 || afterPath)
     && !(beforePath && repo.isVideoOnlyPlaceholder?.(beforePath))
     && !(afterPath && repo.isVideoOnlyPlaceholder?.(afterPath)),
   );
 
-  if (canCompose) {
+  if (!newJpeg && canCompose) {
     try {
       let beforeBuffer = bufferFromOptionalBase64(composeFromPhotos.beforeImageBase64);
       let afterBuffer = bufferFromOptionalBase64(composeFromPhotos.afterImageBase64);
@@ -238,7 +237,14 @@ async function uploadShareCardImage(userId, shareCardImageBase64, composeFromPho
     }
   }
 
-  if (!newJpeg?.length) return null;
+  if (!newJpeg?.length) {
+    logger.warn('[testimonials.service] No share card for email (client capture and compose both missing)', {
+      userId,
+      hadClientCapture: Boolean(shareCardImageBase64),
+      canCompose,
+    });
+    return null;
+  }
 
   const path = repo.shareCardStoragePath(userId);
   const prevPath = repo.previousShareCardStoragePath(userId);
