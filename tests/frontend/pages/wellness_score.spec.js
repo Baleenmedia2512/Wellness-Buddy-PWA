@@ -215,6 +215,7 @@ test.describe('Wellness Score - Time-Based Parameters (SCORE_01)', () => {
     await phoneInput.fill(TEST_PHONE);
 
     const submitPhoneBtn = page.getByRole('button', { name: /Send OTP|Continue|Submit/i }).first();
+    await page.getByRole('checkbox', { name: 'Accept Terms of Service and Privacy Policy' }).check();
     await submitPhoneBtn.click();
 
     await expect(page.getByText('Enter OTP', { exact: true })).toBeVisible({ timeout: 15000 });

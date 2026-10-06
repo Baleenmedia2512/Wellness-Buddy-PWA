@@ -14,6 +14,7 @@ import {
   isCommunityIdConfirmed,
   communityIdPendingApprovalMessage,
   formatCommunityIdPairLabel,
+  communityIdPairDisplayParts,
 } from './communityId.js';
 
 describe('normalizeCommunityId', () => {
@@ -134,13 +135,30 @@ describe('formatCommunityIdPairLabel', () => {
     );
   });
 
-  it('shows NA when there is no co-sponsor', () => {
+  it('shows N/A when there is no co-sponsor', () => {
     assert.equal(
       formatCommunityIdPairLabel({
         sponsorName: 'Yasheer',
         coSponsorName: null,
       }),
-      'YASHEER - NA',
+      'YASHEER - N/A',
+    );
+  });
+
+  it('shows N/A for a missing coach and keeps the co-coach name', () => {
+    assert.deepEqual(
+      communityIdPairDisplayParts({
+        sponsorName: null,
+        coSponsorName: 'Balaji Kumar',
+      }),
+      { left: 'N/A', right: 'BALAJI' },
+    );
+  });
+
+  it('turns a stored NA label into N/A', () => {
+    assert.equal(
+      formatCommunityIdPairLabel({ label: 'YASHEER - NA' }),
+      'YASHEER - N/A',
     );
   });
 

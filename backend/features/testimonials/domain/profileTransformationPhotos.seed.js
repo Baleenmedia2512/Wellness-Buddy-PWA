@@ -1,5 +1,5 @@
 /**
- * Profile transformation_photos no longer seed Transformation Before/After.
+ * Profile Left can seed Transformation Before (display + sync-profile-photos).
  * Helpers stay for list visibility checks on real testimonial image paths.
  */
 import { isRealImagePath } from './testimonials-list.pagination.js';

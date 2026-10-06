@@ -29,10 +29,11 @@ export function hasLocalConsentAcceptance() {
  * @returns {boolean}
  */
 export function shouldOpenConsentGate(consentRequired, user = null) {
-  if (consentRequired !== true) return false;
-  if (hasLocalConsentAcceptance()) return false;
-  if (user?.consentRequired === false) return false;
-  return true;
+  // Asked once, on the signup screen, before the account is created.
+  // Do not open a second consent page after login.
+  void consentRequired;
+  void user;
+  return false;
 }
 
 export function persistLocalConsentAcceptance(version = CURRENT_CONSENT_VERSION) {

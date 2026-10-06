@@ -5,9 +5,9 @@
  * multi-MB base64 blobs in JSON list endpoints.
  *
  * Preference order matches My Profile display (see profileDisplayAvatar.rules.js):
- *   1. R2 object (ProfileImageKey) → 302 to public or signed URL
- *   2. https://… ProfileImage (Google) → 302 redirect
- *   3. Centre transformation photo (transformation_photos.front)
+ *   1. Centre transformation R2 key / photo (product profile photo)
+ *   2. R2 object (ProfileImageKey) → 302 to public or signed URL
+ *   3. https://… ProfileImage (Google) → 302 redirect
  *   4. data:image/* ProfileImage still in DB → upload to R2 when configured, else binary
  *   5. missing / invalid → 404 (frontend falls back to letter avatar)
  *
@@ -19,8 +19,11 @@ import { applyCors, methodNotAllowed } from '../../../shared/lib/handler.js';
 import { cache, cacheKeys } from '../../../utils/cache.js';
 import { parseDataUri } from '../../../shared/lib/images/dataUri.js';
 import { avatarRedirectUrl } from '../../../shared/lib/r2/s3.js';
-import { persistAvatarKey, r2AvatarsEnabled } from '../../../features/user/avatar-storage.service.js';
-import { r2TransformationPhotosEnabled } from '../../../features/user/transformation-photo-storage.service.js';
+import { persistAvatarKey, r2AvatarsEnabled, avatarUrlForKey } from '../../../features/user/avatar-storage.service.js';
+import {
+  r2TransformationPhotosEnabled,
+  transformationPhotoUrlForKey,
+} from '../../../features/user/transformation-photo-storage.service.js';
 import { resolveProfileDisplayAvatar } from '../../../features/user/domain/profileDisplayAvatar.rules.js';
 import { wantsInlineAvatar } from '../../../features/user/domain/avatarInline.rules.js';
 import { getAvatarSource } from '../../../features/user/user.repository.js';
@@ -101,7 +104,11 @@ export default async function handler(req, res) {
       profileImage: data.ProfileImage,
       transformationPhotos: data.transformation_photos,
       r2Enabled: r2AvatarsEnabled() || r2TransformationPhotosEnabled(),
-      resolveR2Url: avatarRedirectUrl,
+      resolveR2Url: (key) => (
+        transformationPhotoUrlForKey(key)
+        || avatarUrlForKey(key)
+        || avatarRedirectUrl(key)
+      ),
     });
 
     if (resolved.kind === 'redirect') {

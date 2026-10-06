@@ -97,7 +97,7 @@ export async function searchPhonesByPrefix({ prefix, coachId }) {
  * Called as soon as a complete phone is typed (does not wait for Save).
  *
  * @param {{ phoneNumber: string, coachId: number|string }} opts
- * @returns {Promise<{ activated: boolean, message: string|null, userId: number|null, existingCard: object|null }>}
+ * @returns {Promise<{ activated: boolean, message: string|null, userId: number|null, exists: boolean, canOverride: boolean, counselledByOther: boolean, existingCard: object|null }>}
  */
 export async function fetchPhoneBcmStatus({ phoneNumber, coachId }) {
   const response = await CapacitorHttp.get({
@@ -125,6 +125,8 @@ export async function fetchPhoneBcmStatus({ phoneNumber, coachId }) {
       result.data?.exists
       ?? (Number.isFinite(userIdN) && userIdN > 0),
     ),
+    canOverride: result.data?.canOverride === true,
+    counselledByOther: result.data?.counselledByOther === true,
     existingCard: result.data?.existingCard || null,
   };
 }

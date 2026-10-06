@@ -1,7 +1,7 @@
 /**
  * bcmDeviceContact.js
  * Create or overwrite coach device contacts for BCM members.
- * Display name: "{name} {venueShort}{yymmdd}" e.g. "praveen slc260820"
+ * Display name: "{name} {venueShort} WV {yymmdd}" e.g. "praveen slc WV 260820"
  *
  * Plugin has no updateContact — overwrite = delete prior BCM contact + create.
  * Only deletes contacts we created (stored id / note marker / BCM name pattern).

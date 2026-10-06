@@ -237,6 +237,7 @@ test.describe('Homepage', () => {
     await mobileInput.fill(TEST_PHONE);
 
     const sendOtpButton = page.getByRole('button', { name: 'Send OTP' });
+    await page.getByRole('checkbox', { name: 'Accept Terms of Service and Privacy Policy' }).check();
     await sendOtpButton.click();
 
     await expect(page.getByText('Enter OTP', { exact: true })).toBeVisible({ timeout: 15000 });

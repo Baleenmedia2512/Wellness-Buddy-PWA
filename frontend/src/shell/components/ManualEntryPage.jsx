@@ -22,6 +22,7 @@ import {
 import {
   SmartFoodSearchModal,
   ShakeCalculatorModal,
+  allowHerbalifeShakePost,
   ServingStepperModal,
   buildWaterAnalysisResult,
   buildAfreshAnalysisResult,
@@ -706,6 +707,11 @@ export default function ManualEntryPage({
   /** Auto-save AI food → Home NutritionCard (totals + items) + tell-in-chat. */
   const persistAiFoodAndShowOnHome = useCallback(async (analysisToSave) => {
     if (!analysisToSave || !captureId || !userId) return;
+    const allowShake = await allowHerbalifeShakePost({
+      userId,
+      analysisResult: analysisToSave,
+    });
+    if (!allowShake) return;
     setAiSaving(true);
     setAiModalStage('scanning');
     try {
@@ -926,6 +932,11 @@ export default function ManualEntryPage({
 
   const handleFoodSave = async (manualData) => {
     const analysis = buildAnalysisFromManualFood(manualData);
+    const allowShake = await allowHerbalifeShakePost({
+      userId,
+      analysisResult: analysis,
+    });
+    if (!allowShake) return;
     const foodName = analysis?.foods?.[0]?.name || manualData?.name || 'Food';
     const foodItems = extractFoodShareItems(analysis);
     const n = analysis?.total || analysis?.foods?.[0]?.nutrition || {};
@@ -1306,6 +1317,10 @@ export default function ManualEntryPage({
       <ShakeCalculatorModal
         isOpen={activeForm === MANUAL_LOG_CATEGORY.SHAKE}
         onClose={() => setActiveForm(null)}
+        onBeforeLog={(payload) => allowHerbalifeShakePost({
+          userId,
+          analysisResult: payload,
+        })}
         onLog={handleShakeLog}
       />
       <ServingStepperModal

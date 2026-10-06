@@ -146,7 +146,7 @@ export function withDirectCoachCommunityIds(members) {
 
 /** Fetch the coach's full team (Active members only) and prepend the coach themselves. */
 export async function fetchTeamMembers({
-  coachId, coachName, coachEmail, coachRole, coachCommunityId = null,
+  coachId, coachName, coachEmail, coachRole, coachCommunityId = null, coachPhone = null,
 }) {
   const flatList = await teamHierarchyService.getFlatTeamList(coachId);
   // Defense-in-depth: backend already returns Active-only; drop any Inactive rows.
@@ -162,6 +162,8 @@ export async function fetchTeamMembers({
       userName: coachName || '',
       email: coachEmail,
       communityId: coachCommunityId || null,
+      phoneNumber: coachPhone || null,
+      clubName: flatList.coachClubName || null,
       role: coachRole,
       status: 'Active',
       isSelf: true,
@@ -196,6 +198,7 @@ export function filterMembers(members, query) {
       (m.userName || '').toLowerCase().includes(q) ||
       (m.email || '').toLowerCase().includes(q) ||
       String(m.phoneNumber || m.PhoneNumber || '').toLowerCase().includes(q) ||
+      String(m.clubName || '').toLowerCase().includes(q) ||
       String(subtitleCommunityId(m) || '').toLowerCase().includes(q),
   );
 }
@@ -214,6 +217,21 @@ export function formatMemberSubtitle(email, communityId) {
   return '';
 }
 
+/**
+ * Diary search row: Name | Community ID | Club name | Phone.
+ * Club name is uppercased. Empty parts are left out so the line never has a bare pipe.
+ */
+export function formatDiarySearchDetails(member, { includeName = true } = {}) {
+  const club = String(member?.clubName || '').trim().toUpperCase();
+  const parts = [
+    includeName ? String(member?.userName || member?.name || '').trim() : '',
+    String(member?.communityId || '').trim(),
+    club,
+    String(member?.phoneNumber || member?.PhoneNumber || '').trim(),
+  ].filter(Boolean);
+  return parts.join(' | ');
+}
+
 /** Map the slim DB shape into the user-object shape the rest of the app expects. */
 export function toSelectedUser(member) {
   const timezone = member.timezone || member.timezoneIana || null;
@@ -224,6 +242,8 @@ export function toSelectedUser(member) {
     userName: member.userName,
     email: member.email,
     communityId: member.communityId || null,
+    phoneNumber: member.phoneNumber || member.PhoneNumber || null,
+    clubName: member.clubName || null,
     directCoachCommunityId: member.directCoachCommunityId || null,
     coachId: member.coachId ?? null,
     role: member.role,

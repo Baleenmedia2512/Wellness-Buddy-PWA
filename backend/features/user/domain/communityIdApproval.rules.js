@@ -262,7 +262,7 @@ export function communityIdPairFirstName(name) {
 
 /**
  * @param {{ sponsorName?: string|null, coSponsorName?: string|null }} args
- * @returns {string} e.g. "YASHEER - BALAJI" or "YASHEER - NA"
+ * @returns {string} e.g. "YASHEER - BALAJI" or "YASHEER - N/A"
  */
 export function formatCommunityIdPairLabel({
   sponsorName = null,
@@ -270,7 +270,7 @@ export function formatCommunityIdPairLabel({
 } = {}) {
   const left = communityIdPairFirstName(sponsorName);
   if (!left) return '';
-  const right = communityIdPairFirstName(coSponsorName) || 'NA';
+  const right = communityIdPairFirstName(coSponsorName) || 'N/A';
   return `${left} - ${right}`;
 }
 

@@ -419,23 +419,20 @@ async function goToCompleteProfile(page) {
   });
 
 
-  const agreeRadio = page.getByRole('radio', { name: /I Agree I consent/i });
+  const agreeBox = page.getByRole('checkbox', { name: 'Accept Terms of Service and Privacy Policy' });
 
   await expect(
-    agreeRadio
+    agreeBox
   ).toBeVisible({
     timeout:
       10000,
   });
 
-  await agreeRadio.click({
-    force:
-      true,
-  });
+  await agreeBox.check();
 
 
   console.log(
-    'CP SETUP: I Agree clicked'
+    'CP SETUP: terms accepted'
   );
 
 
@@ -1174,6 +1171,8 @@ test.describe('Complete Profile', () => {
         );
 
 
+      await page.getByRole('checkbox', { name: 'Accept Terms of Service and Privacy Policy' }).check();
+
       await expect(
         sendOtpButton
       ).toBeEnabled();
@@ -1232,124 +1231,12 @@ test.describe('Complete Profile', () => {
       }
 
 
-      // ============================================================
-      // 11. CONSENT PAGE
-      // ============================================================
-
-      const consentHeading =
-        page.getByRole(
-          'heading',
-          {
-            name:
-              'User Consent Form',
-
-            exact:
-              true,
-          }
-        );
-
-
       await expect(
-        consentHeading
-      ).toBeVisible({
-        timeout:
-          15000,
-      });
-
-
-      console.log(
-        'CP-003 CONSENT FORM DISPLAYED'
-      );
-
-
-      // ============================================================
-      // 12. SELECT I AGREE
-      // ============================================================
-
-      const agreeOption =
-        page
-          .locator('label')
-          .filter({
-            hasText:
-              'I Agree',
-          })
-          .last();
-
-
-      await expect(
-        agreeOption
-      ).toBeVisible({
-        timeout:
-          10000,
-      });
-
-
-      await agreeOption.click({
-        force:
-          true,
-      });
-
-
-      console.log(
-        'CP-003 I AGREE SELECTED'
-      );
-
-
-      // ============================================================
-      // 13. CONSENT CONTINUE
-      // ============================================================
-
-      const consentContinue =
-        page.getByRole(
-          'button',
-          {
-            name:
-              'Continue',
-
-            exact:
-              true,
-          }
-        );
-
-
-      await expect(
-        consentContinue
-      ).toBeEnabled({
-        timeout:
-          10000,
-      });
-
-
-      await consentContinue.click();
-
-
-      // ============================================================
-      // 14. WAIT FOR CONSENT POST
-      // ============================================================
-
-      await expect
-        .poll(
-          () =>
-            consentAccepted,
-          {
-            timeout:
-              10000,
-          }
-        )
-        .toBe(true);
-
-
-      // ============================================================
-      // 15. CONSENT FORM DISAPPEARS
-      // ============================================================
-
-      await expect(
-        consentHeading
-      ).not.toBeVisible({
-        timeout:
-          15000,
-      });
-
+        page.getByRole('heading', {
+          name: 'User Consent Form',
+          exact: true,
+        })
+      ).toHaveCount(0);
 
       // ============================================================
       // 16. NAME ENTRY PAGE
@@ -1756,6 +1643,7 @@ test.describe('Complete Profile', () => {
       await mobileInput.fill(TEST_PHONE);
 
       const sendOtpButton = page.getByRole('button', { name: 'Send OTP', exact: true });
+      await page.getByRole('checkbox', { name: 'Accept Terms of Service and Privacy Policy' }).check();
       await expect(sendOtpButton).toBeEnabled();
       await sendOtpButton.click();
 
@@ -1765,15 +1653,7 @@ test.describe('Complete Profile', () => {
         await otpInputs.nth(i).fill(TEST_OTP[i]);
       }
 
-      // Accept User Consent
-      const agreeOption = page.locator('label').filter({ hasText: 'I Agree' }).last();
-      await expect(agreeOption).toBeVisible({ timeout: 15000 });
-      await agreeOption.click({ force: true });
-
-      const consentContinue = page.getByRole('button', { name: 'Continue', exact: true });
-      await consentContinue.click();
-
-      await expect(page.getByRole('heading', { name: 'User Consent Form', exact: true })).not.toBeVisible({ timeout: 15000 });
+      await expect(page.getByRole('heading', { name: 'User Consent Form', exact: true })).toHaveCount(0);
 
       // Verify Identity Screen (Full Name only)
       const fullNameInput = page.getByPlaceholder('Enter your full name');
@@ -1916,6 +1796,7 @@ test.describe('Complete Profile', () => {
       const mobileInput = page.getByLabel('Mobile Number');
       await expect(mobileInput).toBeVisible({ timeout: 15000 });
       await mobileInput.fill(TEST_PHONE);
+      await page.getByRole('checkbox', { name: 'Accept Terms of Service and Privacy Policy' }).check();
       await page.getByRole('button', { name: 'Send OTP', exact: true }).click();
 
       // ============================================================
@@ -2113,6 +1994,7 @@ test.describe('Complete Profile', () => {
 
       await mobileInput.fill(TEST_PHONE);
 
+      await page.getByRole('checkbox', { name: 'Accept Terms of Service and Privacy Policy' }).check();
       await page
         .getByRole('button', {
           name: 'Send OTP',
@@ -2334,6 +2216,7 @@ test.describe('Complete Profile', () => {
       const mobileInput = page.getByLabel('Mobile Number');
       await expect(mobileInput).toBeVisible({ timeout: 15000 });
       await mobileInput.fill(TEST_PHONE);
+      await page.getByRole('checkbox', { name: 'Accept Terms of Service and Privacy Policy' }).check();
       await page.getByRole('button', { name: 'Send OTP', exact: true }).click();
 
       // ============================================================
@@ -2538,6 +2421,7 @@ test.describe('Complete Profile', () => {
 
       await mobileInput.fill(TEST_PHONE);
 
+      await page.getByRole('checkbox', { name: 'Accept Terms of Service and Privacy Policy' }).check();
       await page
         .getByRole('button', {
           name: 'Send OTP',
@@ -2749,6 +2633,7 @@ test.describe('Complete Profile', () => {
       const mobileInput = page.getByLabel('Mobile Number');
       await expect(mobileInput).toBeVisible({ timeout: 15000 });
       await mobileInput.fill(TEST_PHONE);
+      await page.getByRole('checkbox', { name: 'Accept Terms of Service and Privacy Policy' }).check();
       await page.getByRole('button', { name: 'Send OTP', exact: true }).click();
 
       // ============================================================

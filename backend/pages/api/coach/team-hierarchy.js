@@ -8,6 +8,11 @@ import {
 import { resolveCommunityPeerCoachIds } from '../../../utils/communityTeamVisibility.js';
 import { getLatestWeightMetricsByUserIds } from '../../../features/user/user.repository.js';
 import { computeBmiFromHeightWeight } from '../../../features/body-parameters-card/domain/card.rules.js';
+import {
+  primaryClubNameByOwner,
+  resolveSearchClubName,
+  coachIdByUser,
+} from '../../../features/nutrition-centers/domain/searchClub.rules.js';
 
 /**
  * API: Get Hierarchical Team Structure
@@ -689,6 +694,51 @@ export default async function handler(req, res) {
       });
     }
 
+    let coachClubName = null;
+    try {
+      const coachByUser = coachIdByUser(allUsers);
+      const ancestorIds = (startId) => {
+        const ids = [];
+        const seen = new Set();
+        let current = Number(startId);
+        while (Number.isFinite(current) && !seen.has(current)) {
+          seen.add(current);
+          ids.push(current);
+          const parent = coachByUser.get(current);
+          if (parent == null || parent === current) break;
+          current = parent;
+        }
+        return ids;
+      };
+      const ownerIds = new Set();
+      for (const id of ancestorIds(coachIdInt)) ownerIds.add(id);
+      for (const m of allMembers) {
+        for (const id of ancestorIds(m.UserId)) ownerIds.add(id);
+      }
+      const clubs = [];
+      const ids = [...ownerIds];
+      for (let i = 0; i < ids.length; i += 100) {
+        const slice = ids.slice(i, i + 100);
+        const { data, error } = await supabase
+          .from('nutrition_centers_table')
+          .select('id, center_name, owner_user_id, registered_at')
+          .in('owner_user_id', slice)
+          .eq('status', 'active')
+          .eq('is_deleted', false);
+        if (error) throw error;
+        if (data?.length) clubs.push(...data);
+      }
+      const clubByOwner = primaryClubNameByOwner(clubs);
+      coachClubName = resolveSearchClubName(coachIdInt, clubByOwner, coachByUser);
+      for (const m of allMembers) {
+        m.clubName = resolveSearchClubName(m.UserId, clubByOwner, coachByUser);
+      }
+    } catch (clubErr) {
+      logger.warn('[team-hierarchy] club enrich failed', {
+        message: clubErr?.message || String(clubErr),
+      });
+    }
+
     logger.debug(
       `✅ [team-hierarchy] Team hierarchy built for coach ${coachIdInt}: ${allMembers.length} unique members`,
     );
@@ -718,7 +768,9 @@ export default async function handler(req, res) {
         coachId: hierarchy.coachId,
         coCoachId: hierarchy.coCoachId,
         totalMemberCount: hierarchy.totalMemberCount,
+        clubName: coachClubName,
       },
+      coachClubName,
       hierarchy: hierarchy,
       allMembers: allMembers, // Flat array of all unique team members
       stats: {

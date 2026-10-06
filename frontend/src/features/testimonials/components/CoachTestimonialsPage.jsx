@@ -13,7 +13,7 @@
 import React, { useEffect, useCallback, useState, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  AlertCircle, ArrowLeft, Camera, CheckCircle, CircleDot, Clock,
+  AlertCircle, ArrowLeft, Camera, CheckCircle, CircleDot, Clock, Crop,
   Images, Mail, Pencil, Plus, RefreshCw, Save, ShieldCheck, Upload, Users, Video,
   X, TrendingDown, TrendingUp,
 } from 'lucide-react';
@@ -1007,6 +1007,17 @@ function MemberCard({
     void coverCrop.pickFile(file, slot);
   }, [coverCrop]);
 
+  const handleAdjustExisting = useCallback((slot) => {
+    const src = slot === 'after'
+      ? (draftAfter?.previewUrl || testimonial?.afterImageUrl)
+      : (draftBefore?.previewUrl || testimonial?.beforeImageUrl);
+    if (!src) return;
+    cropSlotRef.current = slot;
+    setPickerSlot(null);
+    setSubmitError(null);
+    void coverCrop.recrop(src, slot);
+  }, [coverCrop, draftAfter?.previewUrl, draftBefore?.previewUrl, testimonial?.afterImageUrl, testimonial?.beforeImageUrl]);
+
   const handleVideoFile = useCallback(async (slot, file) => {
     const numericUserId = Number(userId);
     if (!numericUserId) {
@@ -1494,7 +1505,12 @@ function MemberCard({
               )}
             </div>
             {editable && pickerSlot === 'before' && (
-              <div className="flex gap-1.5 mt-1.5 justify-center">
+              <div className="flex flex-wrap gap-1.5 mt-1.5 justify-center">
+                <button type="button" onClick={() => handleAdjustExisting('before')}
+                  disabled={coverCrop.isPreparing}
+                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-gray-300 text-gray-700 text-[10px] font-bold disabled:opacity-50">
+                  <Crop className="h-3 w-3" /> Adjust
+                </button>
                 <button type="button" onClick={() => openPhotoPicker(beforeCamRef)}
                   className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-green-600 text-white text-[10px] font-bold">
                   <Camera className="h-3 w-3" /> Camera
@@ -1624,7 +1640,12 @@ function MemberCard({
               )}
             </div>
             {editable && pickerSlot === 'after' && (
-              <div className="flex gap-1.5 mt-1.5 justify-center">
+              <div className="flex flex-wrap gap-1.5 mt-1.5 justify-center">
+                <button type="button" onClick={() => handleAdjustExisting('after')}
+                  disabled={coverCrop.isPreparing || !(draftAfter?.previewUrl || testimonial?.afterImageUrl)}
+                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-gray-300 text-gray-700 text-[10px] font-bold disabled:opacity-50">
+                  <Crop className="h-3 w-3" /> Adjust
+                </button>
                 <button type="button" onClick={() => openPhotoPicker(afterCamRef)}
                   className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-purple-600 text-white text-[10px] font-bold">
                   <Camera className="h-3 w-3" /> Camera

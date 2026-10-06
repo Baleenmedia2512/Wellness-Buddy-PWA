@@ -597,8 +597,7 @@ test.describe('BCM Module (Body Composition Metrics)', () => {
     await expect(fatLabel).toContainText('(20–30%)');
   });
 
-  test('BCM-011 Existing Activated Phone Prompts Override Or New', async ({ page }) => {
-    // Intercept phone-status request to simulate activated (registered) phone number
+  test('BCM-011 Existing Activated Phone Is Blocked', async ({ page }) => {
     await page.route('**/api/body-parameters-card/phone-status*', async (route) => {
       await route.fulfill({
         status: 200,
@@ -610,6 +609,8 @@ test.describe('BCM Module (Body Composition Metrics)', () => {
             message: 'User already exists',
             userId: 55,
             exists: true,
+            canOverride: false,
+            counselledByOther: false,
             existingCard: null
           }
         })
@@ -618,28 +619,18 @@ test.describe('BCM Module (Body Composition Metrics)', () => {
 
     await page.getByRole('button', { name: 'Create Body Parameters Card' }).click();
 
-    // Fill validation fields
     await page.getByPlaceholder('FULL NAME').fill('DUPLICATE USER');
 
     const phoneInput = page.getByPlaceholder('Client phone (optional)');
     await phoneInput.fill('9999999999');
     await page.waitForTimeout(500);
 
-    // Activated number shows Override / New dialog (not a hard field block)
-    await expect(page.getByText(
-      'This number already exists. Override the existing card, or create a new card for this number?'
-    )).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Override' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'New' })).toBeVisible();
+    await expect(page.getByText('User already exists')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Override' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'New' })).toHaveCount(0);
 
-    // Save stays disabled until the coach chooses
     const saveButton = page.getByRole('button', { name: 'Save & Share' });
     await expect(saveButton).toBeDisabled();
-
-    // New keeps the phone and unlocks save
-    await page.getByRole('button', { name: 'New' }).click();
-    await expect(phoneInput).toHaveValue('9999999999');
-    await expect(saveButton).toBeEnabled();
   });
 
   test('BCM-012 Existing Phone Prompts Override Or New', async ({ page }) => {
@@ -654,6 +645,8 @@ test.describe('BCM Module (Body Composition Metrics)', () => {
             message: null,
             userId: 101,
             exists: true,
+            canOverride: true,
+            counselledByOther: false,
             existingCard: {
               id: 1,
               name: 'MEMBER ONE',
@@ -727,6 +720,8 @@ test.describe('BCM Module (Body Composition Metrics)', () => {
             message: null,
             userId: 202,
             exists: true,
+            canOverride: true,
+            counselledByOther: false,
             existingCard: {
               id: 2,
               name: 'JAFAR',

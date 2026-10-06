@@ -1,5 +1,6 @@
 // CompleteProfilePage — post-sponsor onboarding: remaining profile fields
 // (gender, height, diet, weight, Fat %). Email + Community ID are Profile KYC.
+// BMI stays off this screen; it is calculated from height + weight.
 import React, { useEffect, useState, useCallback } from 'react';
 import { User } from 'lucide-react';
 import { fetchProfile, saveProfile } from '../services/profileService';
@@ -461,6 +462,7 @@ const CompleteProfilePage = ({
               gender={gender}
               heightCm={height}
               weightKg={currentWeight}
+              hideReadOnly
               onChange={(key, value) => {
                 if (key === 'bmi') return;
                 setOptionalMetrics((prev) => ({ ...prev, [key]: value }));
