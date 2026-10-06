@@ -222,14 +222,44 @@ export async function captureTransformationCardAsBlob(el) {
 }
 
 /**
+ * Ensure Before/After photos on the share card are painted before capture.
+ * Optionally swap in draft data-URLs so email matches the in-app pair.
+ * @param {HTMLElement} el
+ * @param {{ beforeSrc?: string|null, afterSrc?: string|null }} [photoSrc]
+ */
+export async function prepareTransformationCardPhotos(el, photoSrc = {}) {
+  if (!el) return;
+  const imgs = Array.from(el.querySelectorAll('img[data-keep-ratio]'));
+  const [beforeImg, afterImg] = imgs;
+  if (beforeImg && photoSrc.beforeSrc) {
+    beforeImg.removeAttribute('crossorigin');
+    beforeImg.src = photoSrc.beforeSrc;
+  }
+  if (afterImg && photoSrc.afterSrc) {
+    afterImg.removeAttribute('crossorigin');
+    afterImg.src = photoSrc.afterSrc;
+  }
+  await Promise.all(imgs.map(waitForImage));
+  // Second pass — wait until decoded pixels exist (avoids blank/wrong After in email).
+  await Promise.all(imgs.map(async (img) => {
+    if (img.complete && img.naturalWidth > 0) return;
+    await waitForImage(img);
+  }));
+}
+
+/**
  * JPEG data URL of the share card for coach OTP email upload (keeps under API size limit).
  * @param {HTMLElement} el
- * @param {{ quality?: number, maxBase64Chars?: number }} [opts]
+ * @param {{ quality?: number, maxBase64Chars?: number, beforeSrc?: string|null, afterSrc?: string|null }} [opts]
  * @returns {Promise<string>}
  */
 export async function captureTransformationCardAsJpegDataUrl(el, opts = {}) {
   const quality = opts.quality ?? 0.82;
   const maxBase64Chars = opts.maxBase64Chars ?? Math.floor(1.35 * 1024 * 1024);
+  await prepareTransformationCardPhotos(el, {
+    beforeSrc: opts.beforeSrc,
+    afterSrc: opts.afterSrc,
+  });
   const pngBlob = await captureTransformationCardAsBlob(el);
   const bitmap = typeof createImageBitmap === 'function'
     ? await createImageBitmap(pngBlob)

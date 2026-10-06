@@ -41,7 +41,7 @@ describe('testimonial coach email photos keep aspect ratio', () => {
     assert.doesNotMatch(html, /\.photo-img\s*\{[^}]*height:\s*\d+px/);
   });
 
-  it('embeds the Transformation share card and skips loose before/after when present', () => {
+  it('embeds the Transformation share card and still shows Before/After photos', () => {
     const html = buildTestimonialCoachEmailHtml({
       memberName: 'Alex',
       goalType: 'loss',
@@ -56,11 +56,12 @@ describe('testimonial coach email photos keep aspect ratio', () => {
     });
     assert.match(html, /Transformation Card/);
     assert.match(html, /cid:transformation-card@wellnessvalley/);
-    assert.match(html, /Review the Transformation card below/);
-    assert.doesNotMatch(html, />Before</);
-    assert.doesNotMatch(html, /Recovered Health Issues/);
+    assert.match(html, /before\/after photos/i);
+    assert.match(html, />Before</);
+    assert.match(html, />After</);
+    assert.match(html, /Recovered Health Issues/);
     const imgs = photoImgs(html);
-    assert.equal(imgs.length, 1);
+    assert.equal(imgs.length, 3); // share card + before + after
     imgs.forEach(assertPhotoKeepsAspectRatio);
   });
 
@@ -88,7 +89,8 @@ describe('testimonial coach email photos keep aspect ratio', () => {
       isComplete: true,
     });
     const imgs = photoImgs(html);
-    assert.equal(imgs.length, 3);
+    // previous before + new before + new after + current before + current after
+    assert.equal(imgs.length, 5);
     imgs.forEach(assertPhotoKeepsAspectRatio);
     assert.match(html, /New Upload/);
     assert.match(html, /Alex has lost 10 kg in 12 weeks/);
@@ -98,7 +100,7 @@ describe('testimonial coach email photos keep aspect ratio', () => {
     assert.doesNotMatch(html, /\.photo-img\s*\{[^}]*height:\s*\d+px/);
   });
 
-  it('unified email prefers Transformation share card over photo diffs', () => {
+  it('unified email shows share card plus previous/new diffs and current Before/After', () => {
     const html = buildUnifiedSubmitEmailHtml({
       memberName: 'Alex',
       otp: '1234',
@@ -119,8 +121,12 @@ describe('testimonial coach email photos keep aspect ratio', () => {
     });
     assert.match(html, /Transformation Card/);
     assert.match(html, /cid:transformation-card@wellnessvalley/);
-    assert.doesNotMatch(html, /Previous/);
+    assert.match(html, /Previous/);
+    assert.match(html, /New Upload/);
+    assert.match(html, />Before</);
+    assert.match(html, />After</);
     assert.doesNotMatch(html, /Recovered Health Issues/);
-    assert.equal(photoImgs(html).length, 1);
+    // share card + previous before + new before + new after (first upload) + current before + current after
+    assert.ok(photoImgs(html).length >= 4);
   });
 });

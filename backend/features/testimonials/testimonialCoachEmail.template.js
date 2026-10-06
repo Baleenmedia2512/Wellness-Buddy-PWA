@@ -192,17 +192,15 @@ export function buildTestimonialCoachEmailHtml({
   const safeOtp = formatOtpDisplay(otp);
   const goalLabel = goalType === 'loss' ? 'Weight Loss' : 'Weight Gain';
   const hasShareCard = Boolean(shareCardSrc);
-  const progressHtml = hasShareCard
-    ? ''
-    : buildProgressPill(memberName, goalType, beforeWeight, afterWeight, durationText);
-  const detailsBlock = hasShareCard
-    ? buildShareCardRow(shareCardSrc)
-    : `${buildStatsRow(beforeWeight, afterWeight, goalLabel, durationText)}
+  const progressHtml = buildProgressPill(memberName, goalType, beforeWeight, afterWeight, durationText);
+  // Share card + explicit Before/After (same pair as in-app) so both photos always display.
+  const detailsBlock = `${hasShareCard ? buildShareCardRow(shareCardSrc) : ''}
+              ${buildStatsRow(beforeWeight, afterWeight, goalLabel, durationText)}
               ${buildPhotosRow(beforeUrl, afterUrl)}
               ${buildHealthIssuesRow(recoveredHealthIssues)}
-              ${progressHtml}`;
+              ${hasShareCard ? '' : progressHtml}`;
   const reviewStep = hasShareCard
-    ? '1. Review the Transformation card below.<br />'
+    ? '1. Review the Transformation card and the before/after photos below.<br />'
     : '1. Review the before and after photos and recovered health issues.<br />';
 
   return `<!DOCTYPE html>
@@ -706,36 +704,37 @@ export function buildUnifiedSubmitEmailHtml({
   const goalLabel  = (goalType === 'loss') ? 'Weight Loss' : 'Weight Gain';
   const durationSafe = String(durationText ?? '').trim();
   const canShowProgress = Boolean(
-    !hasShareCard
-    && isComplete
+    isComplete
     && Number.isFinite(Number(beforeWeight))
     && Number.isFinite(Number(afterWeight))
     && durationSafe
     && durationSafe !== '—',
   );
-  const progressHtml = canShowProgress
+  // Progress pill stays on the share card; avoid duplicating it when card is embedded.
+  const progressHtml = (!hasShareCard && canShowProgress)
     ? buildProgressPill(memberName, goalType, beforeWeight, afterWeight, durationSafe)
     : '';
 
   const changedBlock = buildChangedSlotsBlock(changedSlots);
 
-  // When the full share card is present, skip redundant photo diffs / loose photos.
-  const beforeDiff = (!hasShareCard && slots.has('before'))
+  // Previous vs new when a photo slot changed (how it was → how it is now).
+  const beforeDiff = slots.has('before')
     ? buildPhotoDiffBlock(previousBeforeUrl, beforeUrl, 'Before Photo', !previousBeforeUrl)
     : '';
 
-  const afterDiff = (!hasShareCard && slots.has('after'))
+  const afterDiff = slots.has('after')
     ? buildPhotoDiffBlock(previousAfterUrl, afterUrl, 'After Photo', !previousAfterUrl)
     : '';
 
-  const currentPhotosBlock = (!hasShareCard && isComplete && beforeUrl && afterUrl && !slots.has('before') && !slots.has('after'))
+  // Always show current Before | After when we have both URLs (same pair as in-app).
+  const currentPhotosBlock = (isComplete && beforeUrl && afterUrl)
     ? buildPhotosRow(beforeUrl, afterUrl)
     : '';
 
   const healthVideoBlock   = slots.has('health')   ? buildVideoUpdatedRow('Health Results Video — Updated',   healthVideoUrl,   '#059669') : '';
   const businessVideoBlock = slots.has('business') ? buildVideoUpdatedRow('Business Results Video — Updated', businessVideoUrl, '#2563eb') : '';
 
-  const statsBlock = (!hasShareCard && isComplete && beforeWeight && afterWeight)
+  const statsBlock = (isComplete && beforeWeight && afterWeight)
     ? buildStatsRow(beforeWeight, afterWeight, goalLabel, durationText)
     : '';
 
@@ -783,10 +782,10 @@ export function buildUnifiedSubmitEmailHtml({
               </p>
 
               ${changedBlock}
-              ${shareCardBlock}
-              ${statsBlock}
               ${beforeDiff}
               ${afterDiff}
+              ${shareCardBlock}
+              ${statsBlock}
               ${currentPhotosBlock}
               ${healthVideoBlock}
               ${businessVideoBlock}

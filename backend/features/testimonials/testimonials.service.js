@@ -1365,12 +1365,13 @@ async function sendUnifiedCoachEmail({
 
   const [beforeUrl, afterUrl, prevBeforeUrl, prevAfterUrl, healthVideoUrl, businessVideoUrl, shareCardAttachment] =
     await Promise.all([
-      (isComplete && beforeImagePath && slots.has('before')) ? repo.getEmailSignedUrl(beforeImagePath)         : Promise.resolve(null),
-      (isComplete && afterImagePath  && slots.has('after'))  ? repo.getEmailSignedUrl(afterImagePath)          : Promise.resolve(null),
-      (slots.has('before') && previousBeforeImagePath)       ? repo.getEmailSignedUrl(previousBeforeImagePath) : Promise.resolve(null),
-      (slots.has('after')  && previousAfterImagePath)        ? repo.getEmailSignedUrl(previousAfterImagePath)  : Promise.resolve(null),
-      (slots.has('health') && healthVideoPath)               ? repo.getEmailSignedUrl(healthVideoPath)         : Promise.resolve(null),
-      (slots.has('business') && businessVideoPath)           ? repo.getEmailSignedUrl(businessVideoPath)       : Promise.resolve(null),
+      // Always resolve current photos when complete so email can show Before|After like the app.
+      (isComplete && beforeImagePath) ? repo.getEmailSignedUrl(beforeImagePath) : Promise.resolve(null),
+      (isComplete && afterImagePath)  ? repo.getEmailSignedUrl(afterImagePath)  : Promise.resolve(null),
+      (slots.has('before') && previousBeforeImagePath) ? repo.getEmailSignedUrl(previousBeforeImagePath) : Promise.resolve(null),
+      (slots.has('after')  && previousAfterImagePath)  ? repo.getEmailSignedUrl(previousAfterImagePath)  : Promise.resolve(null),
+      (slots.has('health') && healthVideoPath)         ? repo.getEmailSignedUrl(healthVideoPath)         : Promise.resolve(null),
+      (slots.has('business') && businessVideoPath)     ? repo.getEmailSignedUrl(businessVideoPath)       : Promise.resolve(null),
       userId ? loadShareCardEmailAttachment(userId) : Promise.resolve(null),
     ]);
 

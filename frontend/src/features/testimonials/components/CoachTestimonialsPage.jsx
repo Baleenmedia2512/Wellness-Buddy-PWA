@@ -41,6 +41,7 @@ import {
   TransformationShareActions,
   captureTransformationCardAsJpegDataUrl,
 } from './TransformationShareCard.jsx';
+
 import { CARD_W, CARD_H } from '../utils/shareCardLayout.js';
 import { getCachedVideoThumbnail } from '../utils/videoThumbnailCache.js';
 import { jpegDataUrlToObjectUrl, revokeBlobUrl, withTestimonialMediaCacheBust } from '../utils/testimonialMediaUrl.js';
@@ -1218,8 +1219,21 @@ function MemberCard({
           await new Promise((resolve) => {
             requestAnimationFrame(() => requestAnimationFrame(resolve));
           });
+          // Prefer live preview URLs so Before/After match the in-app pair.
+          const toImgSrc = (draft, fallback) => {
+            if (draft?.previewUrl) return draft.previewUrl;
+            if (typeof draft?.imageBase64 === 'string' && draft.imageBase64) {
+              return draft.imageBase64.startsWith('data:')
+                ? draft.imageBase64
+                : `data:image/jpeg;base64,${draft.imageBase64}`;
+            }
+            return fallback || null;
+          };
+          const beforeSrc = toImgSrc(draftBefore, beforeImageSrc);
+          const afterSrc = toImgSrc(draftAfter, afterImageSrc);
           payload.shareCardImageBase64 = await captureTransformationCardAsJpegDataUrl(
             shareCardRef.current,
+            { beforeSrc, afterSrc },
           );
         } catch {
           // Non-fatal — email falls back to Before/After photo rows.
