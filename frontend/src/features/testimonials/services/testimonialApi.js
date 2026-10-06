@@ -316,6 +316,19 @@ export async function resendUnifiedOtp(payload) {
 }
 
 /**
+ * Cancel pending unified OTP and revert edits to previous state.
+ * @param {{ userId: number, restoreData?: object }} payload
+ */
+export async function cancelUnifiedOtp(payload) {
+  const res = await CapacitorHttp.post({
+    url:     `${base()}/cancel-unified-otp`,
+    headers: { 'Content-Type': 'application/json' },
+    data:    payload,
+  });
+  return parseApiResponse(res, 'Failed to cancel approval request');
+}
+
+/**
  * Coach: update a reporting member's recovered health issues (no OTP).
  * @param {{ coachId: number, userId: number, recoveredHealthIssues: string[] }} payload
  */

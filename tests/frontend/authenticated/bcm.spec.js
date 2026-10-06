@@ -184,6 +184,20 @@ test.describe('BCM Module (Body Composition Metrics)', () => {
     // Mock body parameter cards listing
     await page.route('**/api/body-parameters-card/list*', async (route) => {
       const url = new URL(route.request().url());
+      const cardId = url.searchParams.get('cardId');
+      if (cardId) {
+        const found = MOCK_CARDS.find((c) => String(c.id) === String(cardId));
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            ok: true,
+            data: found || MOCK_CARDS[0],
+          }),
+        });
+        return;
+      }
+
       const search = url.searchParams.get('search');
       
       let filteredCards = [...MOCK_CARDS];
@@ -1029,5 +1043,89 @@ test.describe('BCM Module (Body Composition Metrics)', () => {
     expect(createApiCalled).toBe(true);
 
     console.log('BCM-015: Successfully verified all mandatory fields, invalid phone validation, and parent prerequisite prompts');
+  });
+
+  test('BCM-016 Verify share option near edit icon opens WhatsApp in every BCM card', async ({ page }) => {
+    // Intercept window.open in page context to capture WhatsApp dispatch
+    await page.evaluate(() => {
+      window.__whatsappCalls = [];
+      // Remove navigator.share to exercise web WhatsApp sharing flow
+      if ('share' in navigator) {
+        try {
+          delete navigator.share;
+        } catch {
+          navigator.share = undefined;
+        }
+      }
+      if ('canShare' in navigator) {
+        try {
+          delete navigator.canShare;
+        } catch {
+          navigator.canShare = undefined;
+        }
+      }
+
+      window.open = (url, target, features) => {
+        window.__whatsappCalls.push({
+          url: String(url || ''),
+          target: String(target || ''),
+          features: String(features || ''),
+        });
+        return { close: () => {}, focus: () => {} };
+      };
+    });
+
+    // Verify each BCM card tile renders share option adjacent to edit icon and opens WhatsApp
+    for (const card of MOCK_CARDS) {
+      // 1. Locate the card container for this specific member
+      const cardTile = page.locator('div.bg-white.rounded-xl', { hasText: card.name }).first();
+      await expect(cardTile).toBeVisible({ timeout: 5000 });
+
+      // 2. Identify Edit and Share buttons belonging to this card
+      const editBtn = cardTile.getByRole('button', { name: `Edit ${card.name}` });
+      const shareBtn = cardTile.getByRole('button', { name: `Share ${card.name}` });
+
+      // 3. Verify both icons are visible, active, and located together near each other in the action group
+      await expect(editBtn).toBeVisible({ timeout: 5000 });
+      await expect(shareBtn).toBeVisible({ timeout: 5000 });
+      await expect(shareBtn).toBeEnabled();
+
+      const actionGroup = editBtn.locator('..');
+      await expect(actionGroup.getByRole('button', { name: `Share ${card.name}` })).toBeVisible();
+
+      // 4. Click the Share button near the Edit icon
+      const priorCallCount = await page.evaluate(() => window.__whatsappCalls.length);
+      await shareBtn.click();
+
+      // 5. Verify share option opens WhatsApp with member metrics caption
+      await expect.poll(async () => {
+        return await page.evaluate(() => window.__whatsappCalls.length);
+      }, { timeout: 10000 }).toBeGreaterThan(priorCallCount);
+
+      const latestCall = await page.evaluate(() => window.__whatsappCalls[window.__whatsappCalls.length - 1]);
+      
+      // Assert that WhatsApp wa.me URL is opened with target _blank
+      expect(latestCall.url).toMatch(/^https:\/\/wa\.me\/\?text=/);
+      expect(latestCall.target).toBe('_blank');
+
+      // Decode WhatsApp URL and verify personalized caption details
+      const parsedUrl = new URL(latestCall.url);
+      const messageText = parsedUrl.searchParams.get('text') || '';
+
+      expect(messageText).toContain(`Hi ${card.name}`);
+      expect(messageText).toMatch(/This is (Test|your coach)/);
+      expect(messageText).toContain('body composition metrics herewith');
+
+      if (card.locationName) {
+        expect(messageText).toContain(`at the fat camp in ${card.locationName}`);
+      } else {
+        expect(messageText).toContain('at the fat camp.');
+      }
+
+      // Allow share session cleanup before triggering the next card
+      await page.waitForTimeout(300);
+    }
+
+    console.log('BCM-016: Successfully verified share option near edit icon opens WhatsApp for every BCM card');
   });
 });
