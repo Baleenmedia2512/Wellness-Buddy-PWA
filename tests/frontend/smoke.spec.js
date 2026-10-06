@@ -1,3 +1,12 @@
+﻿/**
+ * tests/frontend/smoke.spec.js
+ * E2E test suite for Smoke Module.
+ * 
+ *
+ * Requirements Covered:
+ * - application loads successfully
+ */
+
 const { test, expect } = require('@playwright/test');
 
 test.describe('Frontend Smoke Test', () => {

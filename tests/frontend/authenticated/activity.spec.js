@@ -1,3 +1,26 @@
+﻿/**
+ * tests/frontend/authenticated/activity.spec.js
+ * E2E test suite for Activity Module.
+ * 
+ *
+ * Requirements Covered:
+ * - ACT-001: Initial Load and Elements Visibility
+ * - ACT-002: Team Scope Toggles
+ * - ACT-003: Date Range Filters (Yesterday & Custom)
+ * - ACT-004: Category Switching & Dynamic Table Headers
+ * - ACT-005: Data Fetching (Weight - Today - Mine)
+ * - ACT-006: Data Fetching (Water - Yesterday - Direct Team)
+ * - ACT-007: Empty State Handling
+ * - ACT-008: Refresh Button
+ * - ACT-009: Search Functionality
+ * - ACT-010: Pagination
+ * - ACT-011: Export Report
+ * - ACT-012: Sorting Columns
+ * - ACT-013: API Error Handling
+ * - ACT-014: Role-Based Scope Visibility (No Team)
+ * - ACT-015: Hide and Unhide Inactive Users Permission Check
+ */
+
 const { test, expect } = require('@playwright/test');
 
 // Base response we can merge overlays into

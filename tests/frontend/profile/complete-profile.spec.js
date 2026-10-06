@@ -1,3 +1,52 @@
+﻿/**
+ * tests/frontend/profile/complete-profile.spec.js
+ * E2E test suite for Complete Profile Module.
+ * 
+ *
+ * Requirements Covered:
+ * - CP-001: complete profile page is displayed
+ * - CP-002: complete profile displays all required fields
+ * - CP-003: Name validation controls Continue button availability and moves to next page
+ * - CP-004: Profile Email KYC section handles email collision and OTP code dispatch
+ * - CP-005: Coach Authentication appears after email OTP verification
+ * - CP-006: Gender selection controls Save & Continue
+ * - CP-007: Height field validation for minimum and maximum boundaries
+ * - CP-008: Diet Preference selection controls Save & Continue and progression
+ * - CP-009: Current Weight field validation for minimum and maximum boundaries
+ * - CP-010: Body Fat field validation for minimum and maximum boundaries
+ * - CP-011: Complete profile submission and progression to next page
+ * - CP-012: Transformation Photos uploads Left, Centre, and Right images and progresses to next page
+ * - CP-013: Physical Activity page allows selecting any option, enables Continue correctly, and moves to next page
+ * - CP-014: user can select all main application navigation options
+ * - CP-015: user can select profile from header and reach profile form
+ * - CP-016: Name field validation in profile form controls Save Profile button availability
+ * - CP-017: Height field validation for minimum and maximum boundaries (49, 50, 198, 199) in profile page
+ * - CP-018: Phone number field validation for digit length (10-15 digits) in profile page
+ * - CP-019: Body Fat % field validation for range (1-70) controls Save Profile button availability
+ * - CP-020: BMI calculation verification for height and weight on profile page
+ * - CP-021: Age field validation for minimum and maximum boundaries (0, 1, 120, 121) in profile page
+ * - CP-022: Profile Physical Activity field allows selecting all available options
+ * - CP-023: Visceral Fat (V-Fat) field validation for minimum and maximum boundaries (0, 1, 59, 60) in profile page
+ * - CP-024: Body Age field validation for minimum and maximum boundaries (0, 1, 120, 121) in profile page
+ * - CP-025: Waist (waistCm) field validation for minimum and maximum boundaries (0, 30, 200, 201) in profile page
+ * - CP-026: Chest (chestCm) field validation for minimum and maximum boundaries (0, 30, 200, 201) in profile page
+ * - CP-027: Hip (hipCm) field validation for minimum and maximum boundaries (0, 30, 200, 201) in profile page
+ * - CP-028: Diet Preference validates all available options can be selected
+ * - CP-029: Physical Activity Level validates all available options can be selected and saved
+ * - CP-030: able to select profile photo in profile page
+ * - CP-031: able to recrop existing profile photo and save
+ * - CP-032: able to change and save photo
+ * - CP-033: able to change crop and save photo
+ * - CP-034: able to use recover account option on profile page
+ * - CP-035: recover account with invalid email displays error message and no OTP section
+ * - CP-036: recover account with valid email allows OTP entry and successful verification
+ * - CP-037: able to toggle auto camera ON and OFF on profile page
+ * - CP-038: Sign Out option on profile page logs out the user successfully
+ * - CP-039: Delete Account option on profile page deletes account and logs out user successfully
+ * - CP-040: BMR field displays calculated value from user body metrics correctly on profile page
+ * - CP-041: Health Issues can be added and removed on profile page
+ */
+
 const { test, expect } = require('@playwright/test');
 
 // ============================================================
