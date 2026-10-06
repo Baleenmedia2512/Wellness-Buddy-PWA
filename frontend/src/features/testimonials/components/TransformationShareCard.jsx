@@ -82,6 +82,32 @@ const RESULT_BURST_RIGHT_SRC = svgDataUri(
   + '</svg>',
 );
 
+/**
+ * Compact disclaimer footer as one SVG so html2canvas always paints the text
+ * (nested DOM text inside yellow inline-block was blank in the share bitmap).
+ */
+const DISCLAIMER_FOOTER_SRC = svgDataUri(
+  '<svg xmlns="http://www.w3.org/2000/svg" width="420" height="78" viewBox="0 0 420 78">'
+  // Compact red speech-bubble badge
+  + '<path d="M155 9h110a7 7 0 0 1 7 7v10a7 7 0 0 1-7 7h-48l-7 6-7-6h-48a7 7 0 0 1-7-7V16a7 7 0 0 1 7-7z"'
+  + ' fill="#ffffff" stroke="#dc2626" stroke-width="2.5"/>'
+  + '<circle cx="210" cy="9" r="8" fill="#ffffff"/>'
+  + '<circle cx="210" cy="9" r="7" fill="#facc15"/>'
+  + '<text x="210" y="12.5" text-anchor="middle" font-family="Arial Black, Arial, Helvetica, sans-serif"'
+  + ' font-size="10" font-weight="900" fill="#ffffff">!</text>'
+  + '<text x="210" y="26.5" text-anchor="middle" font-family="Arial Black, Arial, Helvetica, sans-serif"'
+  + ' font-size="10" font-weight="900" fill="#dc2626" letter-spacing="0.8">DISCLAIMER</text>'
+  // Compact yellow panel + black legal lines
+  + '<rect x="18" y="40" width="384" height="34" rx="6" ry="6" fill="#fde047"/>'
+  + '<text x="210" y="54" text-anchor="middle" font-family="Arial, Helvetica, sans-serif"'
+  + ' font-size="9.5" font-weight="600" fill="#000000">'
+  + 'The views expressed are that of individuals.</text>'
+  + '<text x="210" y="66" text-anchor="middle" font-family="Arial, Helvetica, sans-serif"'
+  + ' font-size="9.5" font-weight="600" fill="#000000">'
+  + 'These products are not intended to diagnose, treat or cure any disease.</text>'
+  + '</svg>',
+);
+
 function blobToDataUrl(blob) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -389,18 +415,21 @@ function PhotoCell({ src, label, scriptLabel, weightKg, isVerified, side, photoH
           letterSpacing: '1.4px',
           textTransform: 'uppercase',
           lineHeight: '14px',
+          fontFamily: CARD_FONT,
         }}
         >
           {label}
         </p>
         {weightKg > 0 && (
           <p style={{
-            margin: '2px 0 0',
+            margin: '3px 0 6px',
             textAlign: 'center',
-            fontSize: 16,
+            fontSize: 17,
             fontWeight: 800,
             color: '#111827',
-            lineHeight: '20px',
+            lineHeight: '22px',
+            fontFamily: CARD_FONT,
+            overflow: 'visible',
           }}
           >
             {weightKg} kg
@@ -413,14 +442,14 @@ function PhotoCell({ src, label, scriptLabel, weightKg, isVerified, side, photoH
 
 function HealthIssueChip({ label, widthPct }) {
   const compact = widthPct <= 25;
-  const circle = 40;
+  const circle = 28;
   return (
     <div
       style={{
         display: 'inline-block',
         width: `${widthPct}%`,
         verticalAlign: 'top',
-        padding: '6px 8px 2px',
+        padding: '2px 4px 0',
         boxSizing: 'border-box',
         textAlign: 'center',
       }}
@@ -433,20 +462,20 @@ function HealthIssueChip({ label, widthPct }) {
           borderRadius: circle / 2,
           background: '#fce7f3',
           lineHeight: `${circle}px`,
-          fontSize: 18,
+          fontSize: 13,
         }}
       >
         {healthIssueShareIcon(label)}
       </div>
       <p
         style={{
-          margin: '5px 0 0',
-          padding: '0 3px',
-          fontSize: compact ? 10 : 11,
+          margin: '3px 0 0',
+          padding: '0 2px',
+          fontSize: compact ? 9 : 10,
           fontWeight: 700,
           color: '#4b5563',
-          lineHeight: '14px',
-          height: 28,
+          lineHeight: '12px',
+          height: 24,
           overflow: 'hidden',
           wordWrap: 'break-word',
           overflowWrap: 'anywhere',
@@ -613,16 +642,16 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
         <tbody>
           {diff ? (
             <tr>
-              <td style={{ textAlign: 'center', padding: '4px 16px 0', verticalAlign: 'top' }}>
+              <td style={{ textAlign: 'center', padding: '8px 16px 2px', verticalAlign: 'top' }}>
                 <img
                   src={RESULT_BURST_LEFT_SRC}
                   alt=""
                   aria-hidden="true"
                   style={{
                     display: 'inline-block',
-                    width: 38,
-                    height: 28,
-                    marginRight: 4,
+                    width: 32,
+                    height: 24,
+                    marginRight: 3,
                     verticalAlign: 'middle',
                   }}
                 />
@@ -630,11 +659,11 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
                   style={{
                     display: 'inline-block',
                     background: PILL_BG,
-                    borderRadius: 22,
-                    padding: '8px 22px',
-                    lineHeight: '22px',
+                    borderRadius: 18,
+                    padding: '5px 16px',
+                    lineHeight: '18px',
                     fontFamily: CARD_FONT,
-                    fontSize: 17,
+                    fontSize: 15,
                     fontWeight: 800,
                     color: PILL_BLUE,
                     verticalAlign: 'middle',
@@ -652,9 +681,9 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
                   aria-hidden="true"
                   style={{
                     display: 'inline-block',
-                    width: 38,
-                    height: 28,
-                    marginLeft: 4,
+                    width: 32,
+                    height: 24,
+                    marginLeft: 3,
                     verticalAlign: 'middle',
                   }}
                 />
@@ -663,14 +692,14 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
           ) : null}
           {issues.length > 0 ? (
             <tr>
-              <td style={{ padding: '10px 10px 14px', verticalAlign: 'top' }}>
+              <td style={{ padding: '4px 12px 6px', verticalAlign: 'top' }}>
                 <div
                   style={{
                     background: '#fff1f2',
                     border: '1px solid #f9a8d4',
-                    borderRadius: 16,
-                    boxShadow: '0 2px 5px rgba(190, 24, 93, 0.15)',
-                    padding: '10px 8px 8px',
+                    borderRadius: 12,
+                    boxShadow: '0 1px 3px rgba(190, 24, 93, 0.12)',
+                    padding: '4px 6px 4px',
                     boxSizing: 'border-box',
                   }}
                 >
@@ -678,8 +707,8 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
                     style={{
                       margin: 0,
                       fontFamily: SCRIPT_FONT,
-                      fontSize: 24,
-                      lineHeight: '30px',
+                      fontSize: 18,
+                      lineHeight: '22px',
                       color: '#be185d',
                       textAlign: 'center',
                     }}
@@ -688,12 +717,12 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
                   </p>
                   <p
                     style={{
-                      margin: '1px 0 6px',
-                      fontSize: 11,
+                      margin: '0 0 2px',
+                      fontSize: 9,
                       fontWeight: 500,
                       fontStyle: 'italic',
                       color: '#9ca3af',
-                      lineHeight: '15px',
+                      lineHeight: '12px',
                       textAlign: 'center',
                     }}
                   >
@@ -713,37 +742,23 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
             </tr>
           ) : (
             <tr>
-              <td style={{ padding: '0 0 4px' }} />
+              <td style={{ padding: '0 0 2px' }} />
             </tr>
           )}
         </tbody>
       </table>
 
-      <div style={{ padding: '4px 18px 10px', textAlign: 'center' }}>
-        <p
+      <div style={{ marginTop: 0, padding: '2px 40px 6px', textAlign: 'center' }}>
+        <img
+          src={DISCLAIMER_FOOTER_SRC}
+          alt="Disclaimer: The views expressed are that of individuals. These products are not intended to diagnose, treat or cure any disease."
           style={{
-            margin: 0,
-            fontSize: 10,
-            fontWeight: 500,
-            color: '#9ca3af',
-            lineHeight: '14px',
-            fontFamily: CARD_FONT,
+            display: 'block',
+            width: 400,
+            height: 74,
+            margin: '0 auto',
           }}
-        >
-          The views expressed are that of individuals.
-        </p>
-        <p
-          style={{
-            margin: '2px 0 0',
-            fontSize: 10,
-            fontWeight: 500,
-            color: '#9ca3af',
-            lineHeight: '14px',
-            fontFamily: CARD_FONT,
-          }}
-        >
-          These products are not intended to diagnose, treat or cure any disease.
-        </p>
+        />
       </div>
     </div>
   );

@@ -22,6 +22,14 @@ describe('maybeRecordIdealWeightMilestone', () => {
       notifiedAt: null,
       emails: [],
     };
+    const contacts = {
+      10: { email: 'l1-coach@example.com', name: 'L1 Coach' },
+      11: { email: 'l1-cocoach@example.com', name: 'L1 CoCoach' },
+      20: { email: 'l2-coach@example.com', name: 'L2 Coach' },
+      21: { email: 'l2-cocoach@example.com', name: 'L2 CoCoach' },
+      30: { email: 'l3-coach@example.com', name: 'L3 Coach' },
+      31: { email: 'l3-cocoach@example.com', name: 'L3 CoCoach' },
+    };
     return {
       state,
       deps: {
@@ -41,21 +49,17 @@ describe('maybeRecordIdealWeightMilestone', () => {
           return true;
         },
         findMemberCoachContext: async () => ({
-          coachId: 99,
+          coachId: 10,
           memberName: 'Alice',
           heightCm: 170,
         }),
-        findCoachContact: async (id) => {
-          if (String(id) === '99') return { email: 'sponsor@example.com', name: 'Sponsor' };
-          if (String(id) === '77') return { email: 'coach@example.com', name: 'Ideal Coach' };
-          return { email: null, name: null };
-        },
-        resolveSponsorAndIdealCoach: async () => ({
-          sponsorId: '99',
-          sponsorName: 'Sponsor',
-          idealCoachId: '77',
-          idealCoachName: 'Ideal Coach',
-        }),
+        listCoachAncestorIdsForNotify: async () => ['10', '20', '30'],
+        findLeadPartnersByUserIds: async () => new Map([
+          [10, 11],
+          [20, 21],
+          [30, 31],
+        ]),
+        findCoachContact: async (id) => contacts[String(id)] || { email: null, name: null },
         sendCoachEmail: async (payload) => {
           state.emails.push(payload);
           return { success: true };
@@ -65,7 +69,7 @@ describe('maybeRecordIdealWeightMilestone', () => {
     };
   }
 
-  it('stamps and emails sponsor + ideal coach when this insert is first in-range', async () => {
+  it('stamps and emails coach + cocoach up to 3 levels when insert is first in-range', async () => {
     const { state, deps } = makeDeps({
       listActiveWeightsAsc: async () => [
         { ID: 2, Weight: 60, CreatedAt: '2024-06-01T00:00:00.000Z' },
@@ -83,24 +87,26 @@ describe('maybeRecordIdealWeightMilestone', () => {
     assert.equal(result.recorded, true);
     assert.equal(result.notified, true);
     assert.equal(result.reason, 'sent');
-    assert.equal(result.emailed, 2);
+    assert.equal(result.emailed, 6);
     assert.ok(state.reachedAt);
-    assert.equal(state.emails.length, 2);
+    assert.equal(state.emails.length, 6);
     assert.match(state.emails[0].subject, /reached ideal weight/i);
+    assert.match(state.emails[0].text, /Co-Coach|Coach/);
   });
 
-  it('sends one email when sponsor and ideal coach are the same person', async () => {
+  it('dedupes when coach and cocoach share an email', async () => {
     const { state, deps } = makeDeps({
       listActiveWeightsAsc: async () => [
         { ID: 2, Weight: 60, CreatedAt: '2024-06-01T00:00:00.000Z' },
       ],
-      resolveSponsorAndIdealCoach: async () => ({
-        sponsorId: '99',
-        sponsorName: 'Same Person',
-        idealCoachId: '99',
-        idealCoachName: 'Same Person',
-      }),
-      findCoachContact: async () => ({ email: 'same@example.com', name: 'Same Person' }),
+      listCoachAncestorIdsForNotify: async () => ['10'],
+      findLeadPartnersByUserIds: async () => new Map([[10, 11]]),
+      findCoachContact: async (id) => {
+        if (String(id) === '10' || String(id) === '11') {
+          return { email: 'shared@example.com', name: 'Shared' };
+        }
+        return { email: null, name: null };
+      },
     });
     const result = await maybeRecordIdealWeightMilestone({
       userId: 1,

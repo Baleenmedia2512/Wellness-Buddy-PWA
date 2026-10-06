@@ -5,6 +5,7 @@
 	"bundledWebRuntime": false,
 	"android": {
 		"allowMixedContent": true,
+		"initialFocus": true,
 		"captureInput": false,
 		"webContentsDebuggingEnabled": false,
 		"backgroundColor": "#ffffff",
@@ -80,6 +81,7 @@
 		"CAPCameraPlugin",
 		"FilesystemPlugin",
 		"GeolocationPlugin",
+		"KeyboardPlugin",
 		"PushNotificationsPlugin",
 		"SharePlugin",
 		"SplashScreenPlugin",

@@ -61,17 +61,17 @@ export function formatMarathonDayComparisonLine(day0Weight, dayWeight) {
   const dayLabel = formatMarathonKgValue(dayWeight);
   const hasDay0 = isValidMarathonWeightKg(day0Weight);
   const hasDay = isValidMarathonWeightKg(dayWeight);
+  const baseLine = `Day 0 : ${day0Label} → Curr: ${dayLabel}`;
 
-  if (!hasDay0 && !hasDay) return MARATHON_WEIGHT_MISSING_LABEL;
-  if (!hasDay0 && hasDay) return `${MARATHON_WEIGHT_MISSING_LABEL} → ${dayLabel}`;
-  if (hasDay0 && !hasDay) return `${day0Label} → ${MARATHON_WEIGHT_MISSING_LABEL}`;
+  if (!hasDay0 && !hasDay) return `Day 0 : ${MARATHON_WEIGHT_MISSING_LABEL} → Curr: ${MARATHON_WEIGHT_MISSING_LABEL}`;
+  if (!hasDay0 || !hasDay) return baseLine;
 
   const baseline = roundMarathonWeightKg(Number(day0Weight));
   const current = roundMarathonWeightKg(Number(dayWeight));
   const weightDifference = roundMarathonWeightKg(current - baseline);
   const direction = resolveMarathonWeightDirection(baseline, current);
-  if (direction === 'unchanged') return `${day0Label} → ${dayLabel}`;
-  return `${day0Label} → ${dayLabel}${formatMarathonDayChangeSuffix(direction, weightDifference)}`;
+  if (direction === 'unchanged') return baseLine;
+  return `${baseLine}${formatMarathonDayChangeSuffix(direction, weightDifference)}`;
 }
 
 /**
