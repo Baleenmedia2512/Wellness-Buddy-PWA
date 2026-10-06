@@ -7,6 +7,8 @@ const config = {
   // ✅ ANDROID PERFORMANCE: Optimize for fast image loading
   android: {
     allowMixedContent: true,
+    // Give WebView focus on launch so login phone autofocus can open the IME.
+    initialFocus: true,
     // Must stay false: captureInput=true replaces the WebView IME with a generic
     // BaseInputConnection, which always shows QWERTY and ignores type="tel"/inputmode.
     captureInput: false,
@@ -51,7 +53,10 @@ const config = {
     allowsLinkPreview: false,
     scrollEnabled: true,
     backgroundColor: '#ffffff',
-    limitsNavigationsToAppBoundDomains: false
+    limitsNavigationsToAppBoundDomains: false,
+    // Allow login/OTP autofocus to open the number pad without an extra tap.
+    // (Capacitor Bridge also sets keyboardShouldRequireUserInteraction=false.)
+    initialFocus: true,
   },
   
   plugins: {
