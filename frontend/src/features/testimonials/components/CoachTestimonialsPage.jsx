@@ -39,6 +39,7 @@ import HealthIssueCoachEditor from './HealthIssueCoachEditor.jsx';
 import {
   TransformationCardContent,
   TransformationShareActions,
+  captureTransformationCardAsJpegDataUrl,
 } from './TransformationShareCard.jsx';
 import { CARD_W, CARD_H } from '../utils/shareCardLayout.js';
 import { getCachedVideoThumbnail } from '../utils/videoThumbnailCache.js';
@@ -1209,7 +1210,23 @@ function MemberCard({
     // Photo / video changes — apply fresh signed URLs from the submit response before clearing local previews.
     setIsSubmitting(true);
     setCaptureFlowBusy(true);
-    void submitAllEdits(payload)
+    void (async () => {
+      // Capture the same Transformation share card the member shares — coach email embeds it.
+      if (submittingPhotoCard && shareCardRef.current) {
+        try {
+          // Let React paint draft weights/photos onto the hidden card before capture.
+          await new Promise((resolve) => {
+            requestAnimationFrame(() => requestAnimationFrame(resolve));
+          });
+          payload.shareCardImageBase64 = await captureTransformationCardAsJpegDataUrl(
+            shareCardRef.current,
+          );
+        } catch {
+          // Non-fatal — email falls back to Before/After photo rows.
+        }
+      }
+      return submitAllEdits(payload);
+    })()
       .then(finishSubmit)
       .catch((err) => {
         setSubmitError(err?.message || 'Failed to submit. Please try again.');
@@ -2025,6 +2042,12 @@ function MemberCard({
               afterImageUrl: afterImageSrc,
               beforeWeightKg: displayBeforeKg || testimonial.beforeWeightKg,
               afterWeightKg: displayAfterKg || testimonial.afterWeightKg,
+              goalType: draftBefore?.goalType || testimonial.goalType,
+              durationText: (
+                isUsableDurationText(draftBefore?.durationText)
+                  ? draftBefore.durationText
+                  : testimonial.durationText
+              ),
               recoveredHealthIssues: draftIssues ?? testimonial.recoveredHealthIssues,
             }}
             userName={user?.userName || user?.displayName || user?.name || null}

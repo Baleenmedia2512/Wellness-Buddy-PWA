@@ -156,6 +156,23 @@ function buildPhotosRow(beforeUrl, afterUrl) {
 }
 
 /**
+ * Full Transformation share card (same image members share in-app).
+ * Prefer cid: inline attachment so Gmail does not strip remote signed URLs.
+ */
+export function buildShareCardRow(shareCardSrc) {
+  if (!shareCardSrc) return '';
+  return `
+    <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="margin:0 0 14px 0;">
+      <tr>
+        <td align="center" style="padding:0;">
+          <p style="margin:0 0 8px;color:#6b7280;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;font-family:Arial,Helvetica,sans-serif;">Transformation Card</p>
+          ${buildPhotoImg(shareCardSrc, 'Transformation card', 320)}
+        </td>
+      </tr>
+    </table>`;
+}
+
+/**
  * @param {object} params
  * @returns {string}
  */
@@ -169,11 +186,24 @@ export function buildTestimonialCoachEmailHtml({
   beforeUrl,
   afterUrl,
   recoveredHealthIssues,
+  shareCardSrc = null,
 }) {
   const safeMember = escapeHtml(memberName);
   const safeOtp = formatOtpDisplay(otp);
   const goalLabel = goalType === 'loss' ? 'Weight Loss' : 'Weight Gain';
-  const progressHtml = buildProgressPill(memberName, goalType, beforeWeight, afterWeight, durationText);
+  const hasShareCard = Boolean(shareCardSrc);
+  const progressHtml = hasShareCard
+    ? ''
+    : buildProgressPill(memberName, goalType, beforeWeight, afterWeight, durationText);
+  const detailsBlock = hasShareCard
+    ? buildShareCardRow(shareCardSrc)
+    : `${buildStatsRow(beforeWeight, afterWeight, goalLabel, durationText)}
+              ${buildPhotosRow(beforeUrl, afterUrl)}
+              ${buildHealthIssuesRow(recoveredHealthIssues)}
+              ${progressHtml}`;
+  const reviewStep = hasShareCard
+    ? '1. Review the Transformation card below.<br />'
+    : '1. Review the before and after photos and recovered health issues.<br />';
 
   return `<!DOCTYPE html>
 <html lang="en" xmlns="http://www.w3.org/1999/xhtml">
@@ -223,10 +253,7 @@ export function buildTestimonialCoachEmailHtml({
                 Review the details below and share the OTP with <strong style="color:#111827;">${safeMember}</strong> to verify.
               </p>
 
-              ${buildStatsRow(beforeWeight, afterWeight, goalLabel, durationText)}
-              ${buildPhotosRow(beforeUrl, afterUrl)}
-              ${buildHealthIssuesRow(recoveredHealthIssues)}
-              ${progressHtml}
+              ${detailsBlock}
 
               <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="margin:0 0 10px 0;">
                 <tr>
@@ -243,7 +270,7 @@ export function buildTestimonialCoachEmailHtml({
                   <td style="background-color:#fffbeb;border:1px solid #fcd34d;border-radius:8px;padding:10px 12px;">
                     <p style="margin:0 0 4px;color:#92400e;font-size:12px;font-weight:700;font-family:Arial,Helvetica,sans-serif;line-height:1.3;">Verification instructions</p>
                     <p style="margin:0;color:#92400e;font-size:12px;line-height:1.45;font-family:Arial,Helvetica,sans-serif;">
-                      1. Review the before and after photos and recovered health issues.<br />
+                      ${reviewStep}
                       2. Share the OTP with <strong>${safeMember}</strong> if approved.<br />
                       3. Member enters OTP in the Wellness Valley app.<br />
                       4. Do not share the OTP if not approved.
@@ -669,15 +696,18 @@ export function buildUnifiedSubmitEmailHtml({
   businessVideoUrl,
   recoveredHealthIssues,
   isComplete,
+  shareCardSrc = null,
 }) {
   const safeMember = escapeHtml(memberName);
   const safeOtp    = formatOtpDisplay(otp);
   const slots      = new Set(changedSlots || []);
+  const hasShareCard = Boolean(shareCardSrc);
 
   const goalLabel  = (goalType === 'loss') ? 'Weight Loss' : 'Weight Gain';
   const durationSafe = String(durationText ?? '').trim();
   const canShowProgress = Boolean(
-    isComplete
+    !hasShareCard
+    && isComplete
     && Number.isFinite(Number(beforeWeight))
     && Number.isFinite(Number(afterWeight))
     && durationSafe
@@ -689,24 +719,28 @@ export function buildUnifiedSubmitEmailHtml({
 
   const changedBlock = buildChangedSlotsBlock(changedSlots);
 
-  const beforeDiff = slots.has('before')
+  // When the full share card is present, skip redundant photo diffs / loose photos.
+  const beforeDiff = (!hasShareCard && slots.has('before'))
     ? buildPhotoDiffBlock(previousBeforeUrl, beforeUrl, 'Before Photo', !previousBeforeUrl)
     : '';
 
-  const afterDiff = slots.has('after')
+  const afterDiff = (!hasShareCard && slots.has('after'))
     ? buildPhotoDiffBlock(previousAfterUrl, afterUrl, 'After Photo', !previousAfterUrl)
     : '';
 
-  const currentPhotosBlock = (isComplete && beforeUrl && afterUrl && !slots.has('before') && !slots.has('after'))
+  const currentPhotosBlock = (!hasShareCard && isComplete && beforeUrl && afterUrl && !slots.has('before') && !slots.has('after'))
     ? buildPhotosRow(beforeUrl, afterUrl)
     : '';
 
   const healthVideoBlock   = slots.has('health')   ? buildVideoUpdatedRow('Health Results Video — Updated',   healthVideoUrl,   '#059669') : '';
   const businessVideoBlock = slots.has('business') ? buildVideoUpdatedRow('Business Results Video — Updated', businessVideoUrl, '#2563eb') : '';
 
-  const statsBlock = (isComplete && beforeWeight && afterWeight)
+  const statsBlock = (!hasShareCard && isComplete && beforeWeight && afterWeight)
     ? buildStatsRow(beforeWeight, afterWeight, goalLabel, durationText)
     : '';
+
+  const shareCardBlock = hasShareCard ? buildShareCardRow(shareCardSrc) : '';
+  const issuesBlock = hasShareCard ? '' : buildHealthIssuesRow(recoveredHealthIssues);
 
   return `<!DOCTYPE html>
 <html lang="en" xmlns="http://www.w3.org/1999/xhtml">
@@ -749,13 +783,14 @@ export function buildUnifiedSubmitEmailHtml({
               </p>
 
               ${changedBlock}
+              ${shareCardBlock}
               ${statsBlock}
               ${beforeDiff}
               ${afterDiff}
               ${currentPhotosBlock}
               ${healthVideoBlock}
               ${businessVideoBlock}
-              ${buildHealthIssuesRow(recoveredHealthIssues)}
+              ${issuesBlock}
               ${progressHtml}
 
               <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="margin:10px 0;">

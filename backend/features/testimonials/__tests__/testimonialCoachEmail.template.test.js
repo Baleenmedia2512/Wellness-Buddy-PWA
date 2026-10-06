@@ -8,6 +8,7 @@ import assert from 'node:assert/strict';
 import {
   buildTestimonialCoachEmailHtml,
   buildUnifiedSubmitEmailHtml,
+  buildShareCardRow,
 } from '../testimonialCoachEmail.template.js';
 
 function photoImgs(html) {
@@ -40,6 +41,34 @@ describe('testimonial coach email photos keep aspect ratio', () => {
     assert.doesNotMatch(html, /\.photo-img\s*\{[^}]*height:\s*\d+px/);
   });
 
+  it('embeds the Transformation share card and skips loose before/after when present', () => {
+    const html = buildTestimonialCoachEmailHtml({
+      memberName: 'Alex',
+      goalType: 'loss',
+      beforeWeight: 80,
+      afterWeight: 70,
+      durationText: '12 weeks',
+      otp: '1234',
+      beforeUrl: 'https://example.com/before.jpg',
+      afterUrl: 'https://example.com/after.jpg',
+      recoveredHealthIssues: ['Knee Pain'],
+      shareCardSrc: 'cid:transformation-card@wellnessvalley',
+    });
+    assert.match(html, /Transformation Card/);
+    assert.match(html, /cid:transformation-card@wellnessvalley/);
+    assert.match(html, /Review the Transformation card below/);
+    assert.doesNotMatch(html, />Before</);
+    assert.doesNotMatch(html, /Recovered Health Issues/);
+    const imgs = photoImgs(html);
+    assert.equal(imgs.length, 1);
+    imgs.forEach(assertPhotoKeepsAspectRatio);
+  });
+
+  it('buildShareCardRow returns empty when src missing', () => {
+    assert.equal(buildShareCardRow(null), '');
+    assert.equal(buildShareCardRow(''), '');
+  });
+
   it('does not lock img height on first-upload or previous/new comparison photos', () => {
     const html = buildUnifiedSubmitEmailHtml({
       memberName: 'Alex',
@@ -67,5 +96,31 @@ describe('testimonial coach email photos keep aspect ratio', () => {
     assert.match(html, />Duration</);
     assert.match(html, /12 weeks/);
     assert.doesNotMatch(html, /\.photo-img\s*\{[^}]*height:\s*\d+px/);
+  });
+
+  it('unified email prefers Transformation share card over photo diffs', () => {
+    const html = buildUnifiedSubmitEmailHtml({
+      memberName: 'Alex',
+      otp: '1234',
+      changedSlots: ['before', 'after'],
+      goalType: 'loss',
+      beforeWeight: 80,
+      afterWeight: 70,
+      durationText: '12 weeks',
+      beforeUrl: 'https://example.com/before-new.jpg',
+      afterUrl: 'https://example.com/after-new.jpg',
+      previousBeforeUrl: 'https://example.com/before-old.jpg',
+      previousAfterUrl: null,
+      healthVideoUrl: null,
+      businessVideoUrl: null,
+      recoveredHealthIssues: ['Knee Pain'],
+      isComplete: true,
+      shareCardSrc: 'cid:transformation-card@wellnessvalley',
+    });
+    assert.match(html, /Transformation Card/);
+    assert.match(html, /cid:transformation-card@wellnessvalley/);
+    assert.doesNotMatch(html, /Previous/);
+    assert.doesNotMatch(html, /Recovered Health Issues/);
+    assert.equal(photoImgs(html).length, 1);
   });
 });

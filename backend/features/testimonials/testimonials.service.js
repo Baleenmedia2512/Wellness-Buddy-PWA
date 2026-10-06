@@ -154,6 +154,49 @@ function storagePath(userId, side, timestamp) {
   return `${userId}/${side}_${timestamp}.jpg`;
 }
 
+/** Inline CID used in coach emails for the Transformation share card image. */
+const SHARE_CARD_CID = 'transformation-card@wellnessvalley';
+
+/**
+ * Upload optional client-captured Transformation share card (same image as in-app share).
+ * @param {number} userId
+ * @param {string|null|undefined} shareCardImageBase64
+ * @returns {Promise<string|null>} storage path when uploaded
+ */
+async function uploadShareCardImage(userId, shareCardImageBase64) {
+  if (!shareCardImageBase64 || typeof shareCardImageBase64 !== 'string') return null;
+  const path = repo.shareCardStoragePath(userId);
+  await repo.uploadImage(shareCardImageBase64, path);
+  return path;
+}
+
+/**
+ * Load share card bytes for inline email attachment (Gmail-safe).
+ * @param {number} userId
+ * @returns {Promise<{ cid: string, content: Buffer, filename: string, contentType: string, contentDisposition: string }|null>}
+ */
+async function loadShareCardEmailAttachment(userId) {
+  if (!userId) return null;
+  const path = repo.shareCardStoragePath(userId);
+  try {
+    const content = await repo.downloadBuffer(path, { retries: 2 });
+    if (!content?.length) return null;
+    return {
+      cid: SHARE_CARD_CID,
+      content,
+      filename: 'transformation-card.jpg',
+      contentType: 'image/jpeg',
+      contentDisposition: 'inline',
+    };
+  } catch (err) {
+    logger.info('[testimonials.service] Share card not available for email', {
+      userId,
+      message: err?.message || String(err),
+    });
+    return null;
+  }
+}
+
 function healthIssuesEqual(left, right) {
   const normalize = (value) => (
     (Array.isArray(value) ? value : [])
@@ -215,6 +258,7 @@ async function sendHealthIssueOtpEmail({
       beforeImagePath: existing.before_image_path,
       afterImagePath:  existing.after_image_path,
       recoveredHealthIssues,
+      userId:          existing.user_id ?? userInfo?.userId ?? null,
     });
 
     return 'Health issues updated. Your coach received a new photo OTP by email with your latest images.';
@@ -303,10 +347,23 @@ async function enrichTestimonialForDisplay(testimonial, opts = {}) {
   };
 }
 
-async function sendCoachEmail({ coachEmail, memberName, goalType, beforeWeight, afterWeight, durationText, otp, beforeImagePath, afterImagePath, recoveredHealthIssues }) {
-  const [beforeUrl, afterUrl] = await Promise.all([
+async function sendCoachEmail({
+  coachEmail,
+  memberName,
+  goalType,
+  beforeWeight,
+  afterWeight,
+  durationText,
+  otp,
+  beforeImagePath,
+  afterImagePath,
+  recoveredHealthIssues,
+  userId = null,
+}) {
+  const [beforeUrl, afterUrl, shareCardAttachment] = await Promise.all([
     repo.getEmailSignedUrl(beforeImagePath),
     repo.getEmailSignedUrl(afterImagePath),
+    userId ? loadShareCardEmailAttachment(userId) : Promise.resolve(null),
   ]);
 
   const emailParams = {
@@ -319,6 +376,7 @@ async function sendCoachEmail({ coachEmail, memberName, goalType, beforeWeight, 
     beforeUrl,
     afterUrl,
     recoveredHealthIssues: recoveredHealthIssues ?? [],
+    shareCardSrc: shareCardAttachment ? `cid:${SHARE_CARD_CID}` : null,
   };
 
   const transporter = nodemailer.createTransport({
@@ -341,9 +399,14 @@ async function sendCoachEmail({ coachEmail, memberName, goalType, beforeWeight, 
     headers: {
       'Content-Language': 'en',
     },
+    ...(shareCardAttachment ? { attachments: [shareCardAttachment] } : {}),
   });
 
-  logger.info('[testimonials.service] Coach email dispatched', { coachEmail, memberName });
+  logger.info('[testimonials.service] Coach email dispatched', {
+    coachEmail,
+    memberName,
+    hasShareCard: Boolean(shareCardAttachment),
+  });
 }
 
 // â”€â”€â”€ Service functions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -423,6 +486,7 @@ export async function submitTestimonial(rawBody) {
 
   // Only email coach (or co-coach fallback) when the testimonial is complete
   if (payload.hasAfter) {
+    await uploadShareCardImage(payload.userId, payload.shareCardImageBase64);
     const coachInfo = recipient.coachInfo;
     if (coachInfo?.email) {
       await sendCoachEmail({
@@ -437,6 +501,7 @@ export async function submitTestimonial(rawBody) {
         beforeImagePath: beforePath,
         afterImagePath:  afterPath,
         recoveredHealthIssues: payload.recoveredHealthIssues,
+        userId:          payload.userId,
       });
     }
   }
@@ -631,6 +696,7 @@ export async function editTestimonial(rawBody) {
 
     if (coachInfo?.email && userInfo?.userName) {
       const currentBeforePath = updates.beforeImagePath ?? existing.before_image_path;
+      await uploadShareCardImage(payload.userId, payload.shareCardImageBase64);
       await sendCoachEmail({
         coachEmail:    coachInfo.email,
         coachName:     coachInfo.name,
@@ -643,6 +709,7 @@ export async function editTestimonial(rawBody) {
         beforeImagePath: currentBeforePath,
         afterImagePath:  afterPathNow,
         recoveredHealthIssues: resolvedHealthIssues,
+        userId:          payload.userId,
       });
     }
 
@@ -1292,10 +1359,11 @@ async function sendUnifiedCoachEmail({
   businessVideoPath,
   recoveredHealthIssues,
   isComplete,
+  userId = null,
 }) {
   const slots = new Set(changedSlots);
 
-  const [beforeUrl, afterUrl, prevBeforeUrl, prevAfterUrl, healthVideoUrl, businessVideoUrl] =
+  const [beforeUrl, afterUrl, prevBeforeUrl, prevAfterUrl, healthVideoUrl, businessVideoUrl, shareCardAttachment] =
     await Promise.all([
       (isComplete && beforeImagePath && slots.has('before')) ? repo.getEmailSignedUrl(beforeImagePath)         : Promise.resolve(null),
       (isComplete && afterImagePath  && slots.has('after'))  ? repo.getEmailSignedUrl(afterImagePath)          : Promise.resolve(null),
@@ -1303,6 +1371,7 @@ async function sendUnifiedCoachEmail({
       (slots.has('after')  && previousAfterImagePath)        ? repo.getEmailSignedUrl(previousAfterImagePath)  : Promise.resolve(null),
       (slots.has('health') && healthVideoPath)               ? repo.getEmailSignedUrl(healthVideoPath)         : Promise.resolve(null),
       (slots.has('business') && businessVideoPath)           ? repo.getEmailSignedUrl(businessVideoPath)       : Promise.resolve(null),
+      userId ? loadShareCardEmailAttachment(userId) : Promise.resolve(null),
     ]);
 
   const emailParams = {
@@ -1321,6 +1390,7 @@ async function sendUnifiedCoachEmail({
     businessVideoUrl,
     recoveredHealthIssues: recoveredHealthIssues ?? [],
     isComplete,
+    shareCardSrc: shareCardAttachment ? `cid:${SHARE_CARD_CID}` : null,
   };
 
   const transporter = nodemailer.createTransport({
@@ -1335,9 +1405,15 @@ async function sendUnifiedCoachEmail({
     text:    { content: buildUnifiedSubmitEmailText(emailParams),  charset: 'utf-8' },
     html:    { content: buildUnifiedSubmitEmailHtml(emailParams),  charset: 'utf-8' },
     headers: { 'Content-Language': 'en' },
+    ...(shareCardAttachment ? { attachments: [shareCardAttachment] } : {}),
   });
 
-  logger.info('[testimonials.service] Unified coach email dispatched', { coachEmail, memberName, changedSlots });
+  logger.info('[testimonials.service] Unified coach email dispatched', {
+    coachEmail,
+    memberName,
+    changedSlots,
+    hasShareCard: Boolean(shareCardAttachment),
+  });
 }
 
 /**
@@ -1603,6 +1679,7 @@ export async function submitAllEdits(rawBody) {
       emailChangedSlots.push('duration');
     }
 
+    await uploadShareCardImage(payload.userId, payload.shareCardImageBase64);
     await sendUnifiedCoachEmail({
       coachEmail:             coachInfo.email,
       memberName:             userInfo.userName,
@@ -1620,6 +1697,7 @@ export async function submitAllEdits(rawBody) {
       businessVideoPath:      finalBusinessVideo,
       recoveredHealthIssues:  resolvedHealthIssues,
       isComplete,
+      userId:                 payload.userId,
     });
   }
 
@@ -1785,6 +1863,7 @@ export async function resendUnifiedOtp(rawBody) {
     businessVideoPath: row.business_video_path,
     recoveredHealthIssues: row.recovered_health_issues ?? [],
     isComplete,
+    userId,
   });
 
   const display = await enrichTestimonialForDisplay(await repo.findByUserId(userId));

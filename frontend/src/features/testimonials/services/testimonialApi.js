@@ -277,6 +277,7 @@ export async function getTeamTestimonialReport(coachId) {
  *   healthVideoPath?: string,
  *   businessVideoPath?: string,
  *   recoveredHealthIssues?: string[],
+ *   shareCardImageBase64?: string,
  * }} payload
  */
 export async function submitAllEdits(payload) {

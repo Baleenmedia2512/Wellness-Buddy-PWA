@@ -27,6 +27,11 @@ export function isVideoOnlyPlaceholder(path) {
 const SIGNED_URL_EXPIRY_SECONDS = 1800;       // 30 min — in-app display
 const EMAIL_SIGNED_URL_EXPIRY_SECONDS = 604800; // 7 days — coach email
 
+/** Stable path for the Transformation share card embedded in coach OTP emails. */
+export function shareCardStoragePath(userId) {
+  return `${userId}/share_card.jpg`;
+}
+
 // ─── Storage helpers ──────────────────────────────────────────────────────────
 
 /**

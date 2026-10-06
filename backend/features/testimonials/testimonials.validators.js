@@ -132,6 +132,8 @@ export function validateSubmitTestimonial(body) {
   }
   const normalizedDuration = validateDurationText(durationText);
 
+  const shareCardImage = validateOptionalBase64Image(body.shareCardImageBase64, 'shareCardImageBase64');
+
   return {
     userId:                userIdN,
     beforeImageBase64,
@@ -142,6 +144,7 @@ export function validateSubmitTestimonial(body) {
     durationText:          normalizedDuration,
     hasAfter,
     recoveredHealthIssues: validateRecoveredHealthIssues(recoveredHealthIssues, { required: false }),
+    ...(shareCardImage !== undefined ? { shareCardImageBase64: shareCardImage } : {}),
   };
 }
 
@@ -200,6 +203,9 @@ export function validateEditTestimonial(body) {
   if (recoveredHealthIssues !== undefined) {
     result.recoveredHealthIssues = validateRecoveredHealthIssues(recoveredHealthIssues);
   }
+
+  const shareCardImage = validateOptionalBase64Image(body.shareCardImageBase64, 'shareCardImageBase64');
+  if (shareCardImage !== undefined) result.shareCardImageBase64 = shareCardImage;
 
   return result;
 }
@@ -551,6 +557,9 @@ const result = {
   if (durationText !== undefined) {
     result.durationText = validateDurationText(durationText);
   }
+
+  const shareCardImage = validateOptionalBase64Image(body.shareCardImageBase64, 'shareCardImageBase64');
+  if (shareCardImage !== undefined) result.shareCardImageBase64 = shareCardImage;
 
   return result;
 }

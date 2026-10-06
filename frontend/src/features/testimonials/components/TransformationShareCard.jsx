@@ -221,6 +221,52 @@ export async function captureTransformationCardAsBlob(el) {
   });
 }
 
+/**
+ * JPEG data URL of the share card for coach OTP email upload (keeps under API size limit).
+ * @param {HTMLElement} el
+ * @param {{ quality?: number, maxBase64Chars?: number }} [opts]
+ * @returns {Promise<string>}
+ */
+export async function captureTransformationCardAsJpegDataUrl(el, opts = {}) {
+  const quality = opts.quality ?? 0.82;
+  const maxBase64Chars = opts.maxBase64Chars ?? Math.floor(1.35 * 1024 * 1024);
+  const pngBlob = await captureTransformationCardAsBlob(el);
+  const bitmap = typeof createImageBitmap === 'function'
+    ? await createImageBitmap(pngBlob)
+    : null;
+
+  const canvas = document.createElement('canvas');
+  if (bitmap) {
+    canvas.width = bitmap.width;
+    canvas.height = bitmap.height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('Could not encode transformation card');
+    ctx.drawImage(bitmap, 0, 0);
+    if (typeof bitmap.close === 'function') bitmap.close();
+  } else {
+    const pngUrl = await blobToDataUrl(pngBlob);
+    const img = await new Promise((resolve, reject) => {
+      const image = new Image();
+      image.onload = () => resolve(image);
+      image.onerror = () => reject(new Error('Could not encode transformation card'));
+      image.src = pngUrl;
+    });
+    canvas.width = img.naturalWidth || img.width;
+    canvas.height = img.naturalHeight || img.height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('Could not encode transformation card');
+    ctx.drawImage(img, 0, 0);
+  }
+
+  let q = quality;
+  let dataUrl = canvas.toDataURL('image/jpeg', q);
+  while (dataUrl.length > maxBase64Chars && q > 0.45) {
+    q = Math.max(0.45, q - 0.08);
+    dataUrl = canvas.toDataURL('image/jpeg', q);
+  }
+  return dataUrl;
+}
+
 function transformationFileName(userName) {
   return `transformation-${String(userName || 'result').replace(/\s+/g, '-').toLowerCase()}.png`;
 }
