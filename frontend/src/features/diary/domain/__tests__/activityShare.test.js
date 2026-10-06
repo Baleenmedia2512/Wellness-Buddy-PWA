@@ -72,11 +72,32 @@ describe('diary activityType', () => {
     })).toBe(DIARY_FOOD_ACTIVITY.SHAKE);
   });
 
-  test('hides meal badge for water and afresh only', () => {
+  test('hides meal badge for water, afresh, and Target Nutrition', () => {
     expect(shouldShowMealBadge(DIARY_FOOD_ACTIVITY.WATER)).toBe(false);
     expect(shouldShowMealBadge(DIARY_FOOD_ACTIVITY.AFRESH)).toBe(false);
+    expect(shouldShowMealBadge(DIARY_FOOD_ACTIVITY.TARGET_NUTRITION)).toBe(false);
     expect(shouldShowMealBadge(DIARY_FOOD_ACTIVITY.FOOD)).toBe(true);
     expect(shouldShowMealBadge(DIARY_FOOD_ACTIVITY.SHAKE)).toBe(true);
+  });
+
+  test('detects Vritilife Triphala as Target Nutrition (no breakfast badge)', () => {
+    expect(resolveFoodActivityType({
+      analysisData: {
+        mealKind: 'dry-salad',
+        foods: [{ name: '*Vritilife Triphala* (Digestive Health)' }],
+      },
+      foodData: {
+        name: '*Vritilife Triphala* (Digestive Health)',
+        detailedItems: [{ name: '*Vritilife Triphala* (Digestive Health)' }],
+      },
+    })).toBe(DIARY_FOOD_ACTIVITY.TARGET_NUTRITION);
+
+    expect(resolveFoodActivityType({
+      foodData: {
+        name: '*Vritilife Triphala* (Digestive Health)',
+        detailedItems: [{ name: '*Vritilife Triphala* (Digestive Health)' }],
+      },
+    })).toBe(DIARY_FOOD_ACTIVITY.TARGET_NUTRITION);
   });
 
   test('extracts volume and scoops independently', () => {
@@ -541,6 +562,24 @@ describe('resolveFoodRowPresentation', () => {
       calories: 4,
     });
     expect(view.shareText).toBe('*Consumed: 1 scoop* Afresh,');
+  });
+
+  test('Target Nutrition Triphala hides Breakfast meal badge', () => {
+    const view = resolveFoodRowPresentation({
+      analysisData: {
+        mealKind: 'dry-salad',
+        foods: [{ name: '*Vritilife Triphala* (Digestive Health)' }],
+      },
+      foodData: {
+        name: '*Vritilife Triphala* (Digestive Health)',
+        detailedItems: [{ name: '*Vritilife Triphala* (Digestive Health)' }],
+        nutrition: { calories: 0 },
+      },
+      calories: 0,
+      mealLabel: 'Breakfast',
+    });
+    expect(view.activityType).toBe('target_nutrition');
+    expect(view.showMealBadge).toBe(false);
   });
 
   test('food row share caption lists every item and total kcal', () => {
