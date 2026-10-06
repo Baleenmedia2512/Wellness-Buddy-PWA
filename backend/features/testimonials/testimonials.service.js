@@ -154,11 +154,12 @@ function storagePath(userId, side, timestamp) {
   return `${userId}/${side}_${timestamp}.jpg`;
 }
 
-/** Inline CID used in coach emails for the Transformation share card image. */
-const SHARE_CARD_CID = 'transformation-card@wellnessvalley';
+/** Inline CIDs for Before/After photos in the Transformation card email block. */
+const BEFORE_PHOTO_CID = 'transformation-before@wellnessvalley';
+const AFTER_PHOTO_CID = 'transformation-after@wellnessvalley';
 
 /**
- * Upload optional client-captured Transformation share card (same image as in-app share).
+ * Upload optional client-captured Transformation share card (kept for in-app share parity).
  * @param {number} userId
  * @param {string|null|undefined} shareCardImageBase64
  * @returns {Promise<string|null>} storage path when uploaded
@@ -171,30 +172,53 @@ async function uploadShareCardImage(userId, shareCardImageBase64) {
 }
 
 /**
- * Load share card bytes for inline email attachment (Gmail-safe).
- * @param {number} userId
+ * Load a storage photo as an inline email attachment (Gmail-safe).
+ * @param {string|null|undefined} path
+ * @param {string} cid
+ * @param {string} filename
  * @returns {Promise<{ cid: string, content: Buffer, filename: string, contentType: string, contentDisposition: string }|null>}
  */
-async function loadShareCardEmailAttachment(userId) {
-  if (!userId) return null;
-  const path = repo.shareCardStoragePath(userId);
+async function loadPhotoEmailAttachment(path, cid, filename) {
+  if (!path || repo.isVideoOnlyPlaceholder?.(path)) return null;
   try {
     const content = await repo.downloadBuffer(path, { retries: 2 });
     if (!content?.length) return null;
     return {
-      cid: SHARE_CARD_CID,
+      cid,
       content,
-      filename: 'transformation-card.jpg',
+      filename,
       contentType: 'image/jpeg',
       contentDisposition: 'inline',
     };
   } catch (err) {
-    logger.info('[testimonials.service] Share card not available for email', {
-      userId,
+    logger.info('[testimonials.service] Photo not available for email CID', {
+      path,
       message: err?.message || String(err),
     });
     return null;
   }
+}
+
+/**
+ * Resolve Before/After src for the email Transformation card.
+ * Prefer inline CID attachments so left/right always show the uploaded photos.
+ * @param {string|null|undefined} beforeImagePath
+ * @param {string|null|undefined} afterImagePath
+ * @returns {Promise<{ beforeSrc: string|null, afterSrc: string|null, attachments: object[] }>}
+ */
+async function resolveTransformationCardEmailPhotos(beforeImagePath, afterImagePath) {
+  const [beforeAtt, afterAtt, beforeSigned, afterSigned] = await Promise.all([
+    loadPhotoEmailAttachment(beforeImagePath, BEFORE_PHOTO_CID, 'before.jpg'),
+    loadPhotoEmailAttachment(afterImagePath, AFTER_PHOTO_CID, 'after.jpg'),
+    beforeImagePath ? repo.getEmailSignedUrl(beforeImagePath) : Promise.resolve(null),
+    afterImagePath ? repo.getEmailSignedUrl(afterImagePath) : Promise.resolve(null),
+  ]);
+  const attachments = [beforeAtt, afterAtt].filter(Boolean);
+  return {
+    beforeSrc: beforeAtt ? `cid:${BEFORE_PHOTO_CID}` : beforeSigned,
+    afterSrc: afterAtt ? `cid:${AFTER_PHOTO_CID}` : afterSigned,
+    attachments,
+  };
 }
 
 function healthIssuesEqual(left, right) {
@@ -360,11 +384,8 @@ async function sendCoachEmail({
   recoveredHealthIssues,
   userId = null,
 }) {
-  const [beforeUrl, afterUrl, shareCardAttachment] = await Promise.all([
-    repo.getEmailSignedUrl(beforeImagePath),
-    repo.getEmailSignedUrl(afterImagePath),
-    userId ? loadShareCardEmailAttachment(userId) : Promise.resolve(null),
-  ]);
+  void userId;
+  const cardPhotos = await resolveTransformationCardEmailPhotos(beforeImagePath, afterImagePath);
 
   const emailParams = {
     memberName,
@@ -373,10 +394,10 @@ async function sendCoachEmail({
     afterWeight,
     durationText,
     otp,
-    beforeUrl,
-    afterUrl,
+    beforeUrl: cardPhotos.beforeSrc,
+    afterUrl: cardPhotos.afterSrc,
     recoveredHealthIssues: recoveredHealthIssues ?? [],
-    shareCardSrc: shareCardAttachment ? `cid:${SHARE_CARD_CID}` : null,
+    shareCardSrc: null,
   };
 
   const transporter = nodemailer.createTransport({
@@ -399,13 +420,14 @@ async function sendCoachEmail({
     headers: {
       'Content-Language': 'en',
     },
-    ...(shareCardAttachment ? { attachments: [shareCardAttachment] } : {}),
+    ...(cardPhotos.attachments.length ? { attachments: cardPhotos.attachments } : {}),
   });
 
   logger.info('[testimonials.service] Coach email dispatched', {
     coachEmail,
     memberName,
-    hasShareCard: Boolean(shareCardAttachment),
+    hasBeforePhoto: Boolean(cardPhotos.beforeSrc),
+    hasAfterPhoto: Boolean(cardPhotos.afterSrc),
   });
 }
 
@@ -1363,17 +1385,22 @@ async function sendUnifiedCoachEmail({
 }) {
   const slots = new Set(changedSlots);
 
-  const [beforeUrl, afterUrl, prevBeforeUrl, prevAfterUrl, healthVideoUrl, businessVideoUrl, shareCardAttachment] =
+  const cardPhotosPromise = (isComplete && beforeImagePath && afterImagePath)
+    ? resolveTransformationCardEmailPhotos(beforeImagePath, afterImagePath)
+    : Promise.resolve({ beforeSrc: null, afterSrc: null, attachments: [] });
+
+  const [cardPhotos, prevBeforeUrl, prevAfterUrl, healthVideoUrl, businessVideoUrl] =
     await Promise.all([
-      // Always resolve current photos when complete so email can show Before|After like the app.
-      (isComplete && beforeImagePath) ? repo.getEmailSignedUrl(beforeImagePath) : Promise.resolve(null),
-      (isComplete && afterImagePath)  ? repo.getEmailSignedUrl(afterImagePath)  : Promise.resolve(null),
+      cardPhotosPromise,
       (slots.has('before') && previousBeforeImagePath) ? repo.getEmailSignedUrl(previousBeforeImagePath) : Promise.resolve(null),
       (slots.has('after')  && previousAfterImagePath)  ? repo.getEmailSignedUrl(previousAfterImagePath)  : Promise.resolve(null),
       (slots.has('health') && healthVideoPath)         ? repo.getEmailSignedUrl(healthVideoPath)         : Promise.resolve(null),
       (slots.has('business') && businessVideoPath)     ? repo.getEmailSignedUrl(businessVideoPath)       : Promise.resolve(null),
-      userId ? loadShareCardEmailAttachment(userId) : Promise.resolve(null),
     ]);
+  void userId;
+
+  const beforeUrl = cardPhotos.beforeSrc;
+  const afterUrl = cardPhotos.afterSrc;
 
   const emailParams = {
     memberName,
@@ -1391,7 +1418,7 @@ async function sendUnifiedCoachEmail({
     businessVideoUrl,
     recoveredHealthIssues: recoveredHealthIssues ?? [],
     isComplete,
-    shareCardSrc: shareCardAttachment ? `cid:${SHARE_CARD_CID}` : null,
+    shareCardSrc: null,
   };
 
   const transporter = nodemailer.createTransport({
@@ -1406,14 +1433,15 @@ async function sendUnifiedCoachEmail({
     text:    { content: buildUnifiedSubmitEmailText(emailParams),  charset: 'utf-8' },
     html:    { content: buildUnifiedSubmitEmailHtml(emailParams),  charset: 'utf-8' },
     headers: { 'Content-Language': 'en' },
-    ...(shareCardAttachment ? { attachments: [shareCardAttachment] } : {}),
+    ...(cardPhotos.attachments.length ? { attachments: cardPhotos.attachments } : {}),
   });
 
   logger.info('[testimonials.service] Unified coach email dispatched', {
     coachEmail,
     memberName,
     changedSlots,
-    hasShareCard: Boolean(shareCardAttachment),
+    hasBeforePhoto: Boolean(beforeUrl),
+    hasAfterPhoto: Boolean(afterUrl),
   });
 }
 

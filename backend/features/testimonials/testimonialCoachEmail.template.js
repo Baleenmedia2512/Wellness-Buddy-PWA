@@ -173,6 +173,136 @@ export function buildShareCardRow(shareCardSrc) {
 }
 
 /**
+ * Email Transformation card built from the real Before/After storage photos.
+ * Left = beforeUrl, right = afterUrl (same pair as in-app). Prefer cid: URLs.
+ */
+export function buildTransformationCardEmailBlock({
+  memberName,
+  beforeUrl,
+  afterUrl,
+  beforeWeight,
+  afterWeight,
+  goalType,
+  durationText,
+  recoveredHealthIssues,
+}) {
+  if (!beforeUrl || !afterUrl) return '';
+
+  const safeMember = escapeHtml(memberName);
+  const beforeKg = formatWeight(beforeWeight);
+  const afterKg = formatWeight(afterWeight);
+  const durationSafe = String(durationText ?? '').trim();
+  const bw = Number(beforeWeight);
+  const aw = Number(afterWeight);
+  const canProgress = Number.isFinite(bw) && Number.isFinite(aw) && durationSafe && durationSafe !== '—';
+  const isLoss = goalType !== 'gain';
+  const verb = isLoss ? 'Lost' : 'Gained';
+  const diffKg = canProgress ? formatWeight(Math.abs(aw - bw)) : '';
+  const progressText = canProgress
+    ? `${verb} ${diffKg} kgs${durationSafe ? ` in ${escapeHtml(durationSafe)}` : ''}`
+    : '';
+  const issues = Array.isArray(recoveredHealthIssues)
+    ? recoveredHealthIssues.map((i) => String(i ?? '').trim()).filter(Boolean).slice(0, 10)
+    : [];
+  const issuePills = issues.map((issue) => (
+    `<span style="display:inline-block;margin:3px 3px 0 0;padding:4px 8px;background-color:#ffffff;border:1px solid #f9a8d4;border-radius:9999px;color:#9f1239;font-size:10px;font-weight:600;font-family:Arial,Helvetica,sans-serif;line-height:1.3;">${escapeHtml(issue)}</span>`
+  )).join('');
+
+  return `
+    <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="margin:0 0 14px 0;">
+      <tr>
+        <td align="center" style="padding:0 0 8px 0;">
+          <p style="margin:0;color:#6b7280;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;font-family:Arial,Helvetica,sans-serif;">Transformation Card</p>
+        </td>
+      </tr>
+      <tr>
+        <td align="center" style="padding:0;">
+          <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="340" style="width:340px;max-width:100%;background-color:#ffffff;border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;">
+            <tr>
+              <td align="center" style="background-color:#059669;padding:12px 14px;">
+                <p style="margin:0;color:#ffffff;font-size:16px;font-weight:700;font-family:Arial,Helvetica,sans-serif;line-height:1.2;">Wellness Valley</p>
+                <p style="margin:3px 0 0;color:#a7f3d0;font-size:11px;font-weight:600;font-family:Arial,Helvetica,sans-serif;">Transformation Results</p>
+              </td>
+            </tr>
+            <tr>
+              <td align="center" style="padding:12px 12px 8px 12px;">
+                <p style="margin:0;color:#111827;font-size:18px;font-weight:800;font-family:Arial,Helvetica,sans-serif;line-height:1.25;letter-spacing:0.3px;">${safeMember}</p>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:0 10px 8px 10px;">
+                <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
+                  <tr>
+                    <td width="50%" valign="top" align="center" class="photo-col" style="padding:0 3px 0 0;">
+                      <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
+                        <tr>
+                          <td align="center" style="background-color:#f3f4f6;border-radius:10px;padding:4px;">
+                            ${buildPhotoImg(beforeUrl, 'Before', 150)}
+                            <p style="margin:6px 0 0;color:#e11d72;font-size:14px;font-weight:700;font-family:Georgia,'Times New Roman',serif;font-style:italic;line-height:1.2;">Before</p>
+                          </td>
+                        </tr>
+                        <tr>
+                          <td align="center" style="padding:6px 0 0 0;">
+                            <p style="margin:0;color:#9ca3af;font-size:9px;font-weight:700;letter-spacing:1px;text-transform:uppercase;font-family:Arial,Helvetica,sans-serif;">BEFORE</p>
+                            <p style="margin:2px 0 0;color:#111827;font-size:14px;font-weight:800;font-family:Arial,Helvetica,sans-serif;">${beforeKg} kg</p>
+                          </td>
+                        </tr>
+                      </table>
+                    </td>
+                    <td width="50%" valign="top" align="center" class="photo-col" style="padding:0 0 0 3px;">
+                      <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
+                        <tr>
+                          <td align="center" style="background-color:#f3f4f6;border-radius:10px;padding:4px;">
+                            ${buildPhotoImg(afterUrl, 'After', 150)}
+                            <p style="margin:6px 0 0;color:#16a34a;font-size:14px;font-weight:700;font-family:Georgia,'Times New Roman',serif;font-style:italic;line-height:1.2;">After</p>
+                          </td>
+                        </tr>
+                        <tr>
+                          <td align="center" style="padding:6px 0 0 0;">
+                            <p style="margin:0;color:#9ca3af;font-size:9px;font-weight:700;letter-spacing:1px;text-transform:uppercase;font-family:Arial,Helvetica,sans-serif;">AFTER</p>
+                            <p style="margin:2px 0 0;color:#111827;font-size:14px;font-weight:800;font-family:Arial,Helvetica,sans-serif;">${afterKg} kg</p>
+                          </td>
+                        </tr>
+                      </table>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+            ${progressText ? `
+            <tr>
+              <td align="center" style="padding:0 12px 10px 12px;">
+                <span style="display:inline-block;padding:6px 14px;background-color:#dbeafe;border-radius:9999px;color:#2563eb;font-size:12px;font-weight:800;font-family:Arial,Helvetica,sans-serif;line-height:1.3;">${progressText}</span>
+              </td>
+            </tr>` : ''}
+            ${issues.length ? `
+            <tr>
+              <td style="padding:0 12px 12px 12px;">
+                <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
+                  <tr>
+                    <td style="background-color:#fff1f2;border:1px solid #f9a8d4;border-radius:10px;padding:8px 10px;">
+                      <p style="margin:0;color:#be185d;font-size:14px;font-weight:700;font-family:Georgia,'Times New Roman',serif;font-style:italic;text-align:center;">Health Issues</p>
+                      <p style="margin:2px 0 6px;color:#9ca3af;font-size:9px;font-style:italic;font-family:Arial,Helvetica,sans-serif;text-align:center;">while joining in the community</p>
+                      <p style="margin:0;text-align:center;line-height:1.5;">${issuePills}</p>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>` : ''}
+            <tr>
+              <td align="center" style="padding:0 12px 12px 12px;">
+                <p style="margin:0;padding:8px 10px;background-color:#fde047;border-radius:6px;color:#111827;font-size:9px;font-weight:600;font-family:Arial,Helvetica,sans-serif;line-height:1.35;">
+                  The views expressed are that of individuals. These products are not intended to diagnose, treat or cure any disease.
+                </p>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>`;
+}
+
+/**
  * @param {object} params
  * @returns {string}
  */
@@ -191,16 +321,27 @@ export function buildTestimonialCoachEmailHtml({
   const safeMember = escapeHtml(memberName);
   const safeOtp = formatOtpDisplay(otp);
   const goalLabel = goalType === 'loss' ? 'Weight Loss' : 'Weight Gain';
-  const hasShareCard = Boolean(shareCardSrc);
-  const progressHtml = buildProgressPill(memberName, goalType, beforeWeight, afterWeight, durationText);
-  // Share card + explicit Before/After (same pair as in-app) so both photos always display.
-  const detailsBlock = `${hasShareCard ? buildShareCardRow(shareCardSrc) : ''}
+  // Prefer HTML card from real Before/After URLs (left/right) — never a stale client bitmap.
+  const transformationCard = buildTransformationCardEmailBlock({
+    memberName,
+    beforeUrl,
+    afterUrl,
+    beforeWeight,
+    afterWeight,
+    goalType,
+    durationText,
+    recoveredHealthIssues,
+  });
+  const hasCard = Boolean(transformationCard);
+  const detailsBlock = hasCard
+    ? transformationCard
+    : `${shareCardSrc ? buildShareCardRow(shareCardSrc) : ''}
               ${buildStatsRow(beforeWeight, afterWeight, goalLabel, durationText)}
               ${buildPhotosRow(beforeUrl, afterUrl)}
               ${buildHealthIssuesRow(recoveredHealthIssues)}
-              ${hasShareCard ? '' : progressHtml}`;
-  const reviewStep = hasShareCard
-    ? '1. Review the Transformation card and the before/after photos below.<br />'
+              ${buildProgressPill(memberName, goalType, beforeWeight, afterWeight, durationText)}`;
+  const reviewStep = hasCard
+    ? '1. Review the Transformation card (Before on the left, After on the right).<br />'
     : '1. Review the before and after photos and recovered health issues.<br />';
 
   return `<!DOCTYPE html>
@@ -699,7 +840,6 @@ export function buildUnifiedSubmitEmailHtml({
   const safeMember = escapeHtml(memberName);
   const safeOtp    = formatOtpDisplay(otp);
   const slots      = new Set(changedSlots || []);
-  const hasShareCard = Boolean(shareCardSrc);
 
   const goalLabel  = (goalType === 'loss') ? 'Weight Loss' : 'Weight Gain';
   const durationSafe = String(durationText ?? '').trim();
@@ -710,10 +850,6 @@ export function buildUnifiedSubmitEmailHtml({
     && durationSafe
     && durationSafe !== '—',
   );
-  // Progress pill stays on the share card; avoid duplicating it when card is embedded.
-  const progressHtml = (!hasShareCard && canShowProgress)
-    ? buildProgressPill(memberName, goalType, beforeWeight, afterWeight, durationSafe)
-    : '';
 
   const changedBlock = buildChangedSlotsBlock(changedSlots);
 
@@ -726,20 +862,38 @@ export function buildUnifiedSubmitEmailHtml({
     ? buildPhotoDiffBlock(previousAfterUrl, afterUrl, 'After Photo', !previousAfterUrl)
     : '';
 
-  // Always show current Before | After when we have both URLs (same pair as in-app).
-  const currentPhotosBlock = (isComplete && beforeUrl && afterUrl)
+  // Real Before (left) / After (right) card from storage URLs — matches in-app pair.
+  const transformationCard = (isComplete && beforeUrl && afterUrl)
+    ? buildTransformationCardEmailBlock({
+      memberName,
+      beforeUrl,
+      afterUrl,
+      beforeWeight,
+      afterWeight,
+      goalType,
+      durationText,
+      recoveredHealthIssues,
+    })
+    : '';
+  const hasCard = Boolean(transformationCard);
+
+  const progressHtml = (!hasCard && canShowProgress)
+    ? buildProgressPill(memberName, goalType, beforeWeight, afterWeight, durationSafe)
+    : '';
+
+  const currentPhotosBlock = (!hasCard && isComplete && beforeUrl && afterUrl)
     ? buildPhotosRow(beforeUrl, afterUrl)
     : '';
 
   const healthVideoBlock   = slots.has('health')   ? buildVideoUpdatedRow('Health Results Video — Updated',   healthVideoUrl,   '#059669') : '';
   const businessVideoBlock = slots.has('business') ? buildVideoUpdatedRow('Business Results Video — Updated', businessVideoUrl, '#2563eb') : '';
 
-  const statsBlock = (isComplete && beforeWeight && afterWeight)
+  const statsBlock = (!hasCard && isComplete && beforeWeight && afterWeight)
     ? buildStatsRow(beforeWeight, afterWeight, goalLabel, durationText)
     : '';
 
-  const shareCardBlock = hasShareCard ? buildShareCardRow(shareCardSrc) : '';
-  const issuesBlock = hasShareCard ? '' : buildHealthIssuesRow(recoveredHealthIssues);
+  const shareCardBlock = (!hasCard && shareCardSrc) ? buildShareCardRow(shareCardSrc) : '';
+  const issuesBlock = hasCard ? '' : buildHealthIssuesRow(recoveredHealthIssues);
 
   return `<!DOCTYPE html>
 <html lang="en" xmlns="http://www.w3.org/1999/xhtml">
@@ -784,6 +938,7 @@ export function buildUnifiedSubmitEmailHtml({
               ${changedBlock}
               ${beforeDiff}
               ${afterDiff}
+              ${transformationCard}
               ${shareCardBlock}
               ${statsBlock}
               ${currentPhotosBlock}
