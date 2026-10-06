@@ -1219,18 +1219,24 @@ function MemberCard({
           await new Promise((resolve) => {
             requestAnimationFrame(() => requestAnimationFrame(resolve));
           });
-          // Prefer live preview URLs so Before/After match the in-app pair.
+          // Prefer draft JPEG bytes (not page screenshots) so After stays the real photo.
           const toImgSrc = (draft, fallback) => {
-            if (draft?.previewUrl) return draft.previewUrl;
             if (typeof draft?.imageBase64 === 'string' && draft.imageBase64) {
               return draft.imageBase64.startsWith('data:')
                 ? draft.imageBase64
                 : `data:image/jpeg;base64,${draft.imageBase64}`;
             }
+            if (draft?.previewUrl && !String(draft.previewUrl).includes('blob:')) {
+              return draft.previewUrl;
+            }
+            if (draft?.previewUrl) return draft.previewUrl;
             return fallback || null;
           };
           const beforeSrc = toImgSrc(draftBefore, beforeImageSrc);
           const afterSrc = toImgSrc(draftAfter, afterImageSrc);
+          if (!beforeSrc || !afterSrc) {
+            throw new Error('Before/After photos not ready for card capture');
+          }
           payload.shareCardImageBase64 = await captureTransformationCardAsJpegDataUrl(
             shareCardRef.current,
             { beforeSrc, afterSrc },
