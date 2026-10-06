@@ -1523,19 +1523,10 @@ async function sendUnifiedCoachEmail({
     ),
   );
 
-  const [cardPhotos, previousCardPhotos, currentShareCardAttRaw, previousShareCardAttRaw, healthVideoUrl, businessVideoUrl] =
+  // Prefer Transformation Card images only — do not attach loose before/after
+  // JPEGs (Gmail lists those as "4 Attachments" like before-previous.jpg).
+  const [currentShareCardAttRaw, previousShareCardAttRaw, healthVideoUrl, businessVideoUrl] =
     await Promise.all([
-      (isComplete && beforeImagePath && afterImagePath)
-        ? resolveTransformationCardEmailPhotos(beforeImagePath, afterImagePath)
-        : Promise.resolve({ beforeSrc: null, afterSrc: null, attachments: [] }),
-      (isComplete && previousPairDistinct)
-        ? resolveTransformationCardEmailPhotos(previousCardBeforePath, previousCardAfterPath, {
-          beforeCid: PREV_BEFORE_PHOTO_CID,
-          afterCid: PREV_AFTER_PHOTO_CID,
-          beforeFile: 'before-previous.jpg',
-          afterFile: 'after-previous.jpg',
-        })
-        : Promise.resolve({ beforeSrc: null, afterSrc: null, attachments: [] }),
       userId
         ? loadPhotoEmailAttachment(repo.shareCardStoragePath(userId), SHARE_CARD_CID, 'transformation-card.jpg')
         : Promise.resolve(null),
@@ -1559,13 +1550,29 @@ async function sendUnifiedCoachEmail({
   const currentShareCardAtt = currentShareCardAttRaw;
   const previousShareCardAtt = shareCardsIdentical ? null : previousShareCardAttRaw;
   const showPreviousShareCard = Boolean(previousShareCardAtt) && !shareCardsIdentical;
+  const hasShareCardThumbs = Boolean(currentShareCardAtt || previousShareCardAtt);
 
-  const attachments = [
-    ...cardPhotos.attachments,
-    ...previousCardPhotos.attachments,
-    currentShareCardAtt,
-    previousShareCardAtt,
-  ].filter(Boolean);
+  // Loose Before/After CIDs only when share cards are missing (HTML card fallback).
+  const emptyPhotos = { beforeSrc: null, afterSrc: null, attachments: [] };
+  const [cardPhotos, previousCardPhotos] = hasShareCardThumbs
+    ? [emptyPhotos, emptyPhotos]
+    : await Promise.all([
+      (isComplete && beforeImagePath && afterImagePath)
+        ? resolveTransformationCardEmailPhotos(beforeImagePath, afterImagePath)
+        : Promise.resolve(emptyPhotos),
+      (isComplete && previousPairDistinct)
+        ? resolveTransformationCardEmailPhotos(previousCardBeforePath, previousCardAfterPath, {
+          beforeCid: PREV_BEFORE_PHOTO_CID,
+          afterCid: PREV_AFTER_PHOTO_CID,
+          beforeFile: 'before-previous.jpg',
+          afterFile: 'after-previous.jpg',
+        })
+        : Promise.resolve(emptyPhotos),
+    ]);
+
+  const attachments = hasShareCardThumbs
+    ? [currentShareCardAtt, previousShareCardAtt].filter(Boolean)
+    : [...cardPhotos.attachments, ...previousCardPhotos.attachments].filter(Boolean);
 
   // HTTPS preview links — New opens current share_card, Previous opens share_card_prev.
   const previewHrefs = {
@@ -1631,9 +1638,9 @@ async function sendUnifiedCoachEmail({
     coachEmail,
     memberName,
     changedSlots,
-    hasBeforePhoto: Boolean(cardPhotos.beforeSrc),
-    hasAfterPhoto: Boolean(cardPhotos.afterSrc),
-    hasPreviousCard: Boolean(previousCardPhotos.beforeSrc && previousCardPhotos.afterSrc),
+    hasShareCards: hasShareCardThumbs,
+    attachmentCount: attachments.length,
+    hasPreviousCard: showPreviousShareCard,
   });
 }
 
