@@ -87,24 +87,11 @@ const RESULT_BURST_RIGHT_SRC = svgDataUri(
  * (nested DOM text inside yellow inline-block was blank in the share bitmap).
  */
 const DISCLAIMER_FOOTER_SRC = svgDataUri(
-  '<svg xmlns="http://www.w3.org/2000/svg" width="420" height="78" viewBox="0 0 420 78">'
-  // Compact red speech-bubble badge
-  + '<path d="M155 9h110a7 7 0 0 1 7 7v10a7 7 0 0 1-7 7h-48l-7 6-7-6h-48a7 7 0 0 1-7-7V16a7 7 0 0 1 7-7z"'
-  + ' fill="#ffffff" stroke="#dc2626" stroke-width="2.5"/>'
-  + '<circle cx="210" cy="9" r="8" fill="#ffffff"/>'
-  + '<circle cx="210" cy="9" r="7" fill="#facc15"/>'
-  + '<text x="210" y="12.5" text-anchor="middle" font-family="Arial Black, Arial, Helvetica, sans-serif"'
-  + ' font-size="10" font-weight="900" fill="#ffffff">!</text>'
-  + '<text x="210" y="26.5" text-anchor="middle" font-family="Arial Black, Arial, Helvetica, sans-serif"'
-  + ' font-size="10" font-weight="900" fill="#dc2626" letter-spacing="0.8">DISCLAIMER</text>'
-  // Compact yellow panel + black legal lines
-  + '<rect x="18" y="40" width="384" height="34" rx="6" ry="6" fill="#fde047"/>'
-  + '<text x="210" y="54" text-anchor="middle" font-family="Arial, Helvetica, sans-serif"'
-  + ' font-size="9.5" font-weight="600" fill="#000000">'
-  + 'The views expressed are that of individuals.</text>'
-  + '<text x="210" y="66" text-anchor="middle" font-family="Arial, Helvetica, sans-serif"'
-  + ' font-size="9.5" font-weight="600" fill="#000000">'
-  + 'These products are not intended to diagnose, treat or cure any disease.</text>'
+  '<svg xmlns="http://www.w3.org/2000/svg" width="420" height="92" viewBox="0 0 420 92">'
+  + '<rect x="12" y="6" width="396" height="80" rx="12" ry="12" fill="#fde047" stroke="#dc2626" stroke-width="2.5"/>'
+  + '<text x="210" y="29" text-anchor="middle" font-family="Arial Black, Arial, Helvetica, sans-serif" font-size="15" font-weight="900" fill="#dc2626">DISCLAIMER</text>'
+  + '<text x="210" y="51" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="11" font-weight="600" fill="#000000">The views expressed are that of individuals.</text>'
+  + '<text x="210" y="68" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="11" font-weight="600" fill="#000000">These products are not intended to diagnose, treat or cure any disease.</text>'
   + '</svg>',
 );
 
@@ -441,50 +428,40 @@ function PhotoCell({ src, label, scriptLabel, weightKg, isVerified, side, photoH
 }
 
 function HealthIssueChip({ label, widthPct }) {
-  const compact = widthPct <= 25;
-  const circle = 28;
   return (
     <div
       style={{
         display: 'inline-block',
         width: `${widthPct}%`,
         verticalAlign: 'top',
-        padding: '2px 4px 0',
+        padding: '3px 4px',
         boxSizing: 'border-box',
         textAlign: 'center',
       }}
     >
       <div
         style={{
-          width: circle,
-          height: circle,
-          margin: '0 auto',
-          borderRadius: circle / 2,
-          background: '#fce7f3',
-          lineHeight: `${circle}px`,
-          fontSize: 13,
-        }}
-      >
-        {healthIssueShareIcon(label)}
-      </div>
-      <p
-        style={{
-          margin: '3px 0 0',
-          padding: '0 2px',
-          fontSize: compact ? 9 : 10,
-          fontWeight: 700,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          width: '100%',
+          minHeight: 28,
+          padding: '6px 8px',
+          boxSizing: 'border-box',
+          border: '1.5px solid #f9a8d4',
+          borderRadius: 8,
+          background: '#ffffff',
           color: '#4b5563',
-          lineHeight: '12px',
-          height: 24,
-          overflow: 'hidden',
-          wordWrap: 'break-word',
-          overflowWrap: 'anywhere',
-          textAlign: 'center',
           fontFamily: CARD_FONT,
+          fontSize: 9.5,
+          fontWeight: 700,
+          lineHeight: '12px',
+          textAlign: 'center',
+          overflowWrap: 'anywhere',
         }}
       >
         {label}
-      </p>
+      </div>
     </div>
   );
 }
@@ -748,14 +725,14 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
         </tbody>
       </table>
 
-      <div style={{ marginTop: 0, padding: '2px 40px 6px', textAlign: 'center' }}>
+      <div style={{ marginTop: 12, padding: '2px 40px 6px', textAlign: 'center' }}>
         <img
           src={DISCLAIMER_FOOTER_SRC}
           alt="Disclaimer: The views expressed are that of individuals. These products are not intended to diagnose, treat or cure any disease."
           style={{
             display: 'block',
             width: 400,
-            height: 74,
+            height: 88,
             margin: '0 auto',
           }}
         />
