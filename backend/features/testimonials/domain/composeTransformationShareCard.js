@@ -1,7 +1,7 @@
 /**
  * Server-side Transformation share card (JPEG) for coach OTP emails.
- * Built from real Before/After storage bytes — never from a client html2canvas
- * capture (which can bake Mine edit UI into the After slot).
+ * Built from real Before/After photo bytes — never from client html2canvas
+ * (which can bake Mine edit UI into the After slot).
  */
 import sharp from 'sharp';
 
@@ -44,6 +44,23 @@ async function coverTopJpeg(input, width, height) {
     .resize(width, height, { fit: 'cover', position: 'top' })
     .jpeg({ quality: 88, mozjpeg: true })
     .toBuffer();
+}
+
+/**
+ * Decode optional raw/data-URI base64 into a Buffer.
+ * @param {string|null|undefined} base64
+ * @returns {Buffer|null}
+ */
+export function bufferFromOptionalBase64(base64) {
+  if (typeof base64 !== 'string' || !base64) return null;
+  const cleaned = base64.replace(/^data:[^;]+;base64,/, '');
+  if (!cleaned) return null;
+  try {
+    const buf = Buffer.from(cleaned, 'base64');
+    return buf.length ? buf : null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -91,18 +108,21 @@ export async function composeTransformationShareCardJpeg(opts) {
   const afterX = PHOTO_SIDE_PAD + PHOTO_W + PHOTO_GAP;
   const metaY = PHOTO_TOP + PHOTO_H + 8;
   const pillY = metaY + META_H + 8;
+  const footerTop = PHOTO_TOP + PHOTO_H;
 
-  const svg = Buffer.from(`
+  // Transparent overlay — must NOT paint a full-card white rect (that hid the photos).
+  const overlaySvg = Buffer.from(`
     <svg width="${CARD_W}" height="${CARD_H}" xmlns="http://www.w3.org/2000/svg">
-      <rect width="100%" height="100%" fill="#ffffff"/>
       <rect x="0" y="0" width="${CARD_W}" height="${HEADER_H}" fill="#059669"/>
       <text x="16" y="28" font-family="Arial, Helvetica, sans-serif" font-size="20" font-weight="800" fill="#ffffff">Wellness Valley${version ? ` (${version})` : ''}</text>
       <text x="16" y="48" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="600" fill="#a7f3d0">Transformation Results</text>
+      <rect x="0" y="${HEADER_H}" width="${CARD_W}" height="${NAME_H}" fill="#ffffff"/>
       <text x="${CARD_W / 2}" y="${HEADER_H + 34}" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="800" fill="#111827">${name}</text>
       <rect x="${beforeX}" y="${PHOTO_TOP + PHOTO_H - 36}" width="${PHOTO_W}" height="28" rx="6" fill="#e11d72"/>
       <text x="${beforeX + PHOTO_W / 2}" y="${PHOTO_TOP + PHOTO_H - 16}" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="16" font-weight="700" fill="#ffffff">Before</text>
       <rect x="${afterX}" y="${PHOTO_TOP + PHOTO_H - 36}" width="${PHOTO_W}" height="28" rx="6" fill="#16a34a"/>
       <text x="${afterX + PHOTO_W / 2}" y="${PHOTO_TOP + PHOTO_H - 16}" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="16" font-weight="700" fill="#ffffff">After</text>
+      <rect x="0" y="${footerTop}" width="${CARD_W}" height="${CARD_H - footerTop}" fill="#ffffff"/>
       <text x="${beforeX + PHOTO_W / 2}" y="${metaY + 14}" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="11" font-weight="700" fill="#9ca3af">BEFORE</text>
       <text x="${beforeX + PHOTO_W / 2}" y="${metaY + 36}" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="17" font-weight="800" fill="#111827">${beforeKg} kg</text>
       <text x="${afterX + PHOTO_W / 2}" y="${metaY + 14}" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="11" font-weight="700" fill="#9ca3af">AFTER</text>
@@ -120,11 +140,10 @@ export async function composeTransformationShareCardJpeg(opts) {
       background: { r: 255, g: 255, b: 255 },
     },
   })
-    .jpeg({ quality: 85, mozjpeg: true })
     .composite([
       { input: beforeSlot, top: PHOTO_TOP, left: beforeX },
       { input: afterSlot, top: PHOTO_TOP, left: afterX },
-      { input: svg, top: 0, left: 0 },
+      { input: overlaySvg, top: 0, left: 0 },
     ])
     .jpeg({ quality: 85, mozjpeg: true })
     .toBuffer();

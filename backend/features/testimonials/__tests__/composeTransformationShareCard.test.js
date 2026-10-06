@@ -20,7 +20,7 @@ async function solidJpeg(width, height, color) {
 }
 
 describe('composeTransformationShareCardJpeg', () => {
-  it('builds a 540×960 JPEG from real Before/After photo bytes', async () => {
+  it('builds a 540×960 JPEG with visible Before/After photos (not covered by overlay)', async () => {
     const beforeBuffer = await solidJpeg(200, 300, { r: 200, g: 80, b: 80 });
     const afterBuffer = await solidJpeg(200, 300, { r: 80, g: 160, b: 80 });
     const jpeg = await composeTransformationShareCardJpeg({
@@ -38,6 +38,17 @@ describe('composeTransformationShareCardJpeg', () => {
     assert.equal(meta.format, 'jpeg');
     assert.equal(meta.width, 540);
     assert.equal(meta.height, 960);
+
+    // Sample centre of Before slot (must not be white — overlay used to hide photos).
+    const { data, info } = await sharp(jpeg)
+      .extract({ left: 80, top: 200, width: 40, height: 40 })
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    let redish = 0;
+    for (let i = 0; i < data.length; i += info.channels) {
+      if (data[i] > 150 && data[i + 1] < 120 && data[i + 2] < 120) redish += 1;
+    }
+    assert.ok(redish > 20, 'Before photo pixels should show through the overlay');
   });
 
   it('rejects missing photo buffers', async () => {
