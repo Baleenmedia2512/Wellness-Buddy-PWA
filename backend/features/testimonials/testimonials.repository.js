@@ -32,6 +32,11 @@ export function shareCardStoragePath(userId) {
   return `${userId}/share_card.jpg`;
 }
 
+/** Previous share card kept one generation back for Previous | New email compare. */
+export function previousShareCardStoragePath(userId) {
+  return `${userId}/share_card_prev.jpg`;
+}
+
 // ─── Storage helpers ──────────────────────────────────────────────────────────
 
 /**

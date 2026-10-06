@@ -159,9 +159,12 @@ const BEFORE_PHOTO_CID = 'transformation-before@wellnessvalley';
 const AFTER_PHOTO_CID = 'transformation-after@wellnessvalley';
 const PREV_BEFORE_PHOTO_CID = 'transformation-before-prev@wellnessvalley';
 const PREV_AFTER_PHOTO_CID = 'transformation-after-prev@wellnessvalley';
+const SHARE_CARD_CID = 'transformation-card@wellnessvalley';
+const PREV_SHARE_CARD_CID = 'transformation-card-prev@wellnessvalley';
 
 /**
- * Upload optional client-captured Transformation share card (kept for in-app share parity).
+ * Upload optional client-captured Transformation share card.
+ * Keeps the previous card at share_card_prev.jpg for Previous | New email compare.
  * @param {number} userId
  * @param {string|null|undefined} shareCardImageBase64
  * @returns {Promise<string|null>} storage path when uploaded
@@ -169,6 +172,15 @@ const PREV_AFTER_PHOTO_CID = 'transformation-after-prev@wellnessvalley';
 async function uploadShareCardImage(userId, shareCardImageBase64) {
   if (!shareCardImageBase64 || typeof shareCardImageBase64 !== 'string') return null;
   const path = repo.shareCardStoragePath(userId);
+  const prevPath = repo.previousShareCardStoragePath(userId);
+  try {
+    const existing = await repo.downloadBuffer(path, { retries: 1 });
+    if (existing?.length) {
+      await repo.uploadBuffer(prevPath, existing, 'image/jpeg');
+    }
+  } catch {
+    // No previous card yet — first upload.
+  }
   await repo.uploadImage(shareCardImageBase64, path);
   return path;
 }
@@ -1420,7 +1432,7 @@ async function sendUnifiedCoachEmail({
     ),
   );
 
-  const [cardPhotos, previousCardPhotos, healthVideoUrl, businessVideoUrl] =
+  const [cardPhotos, previousCardPhotos, currentShareCardAtt, previousShareCardAtt, healthVideoUrl, businessVideoUrl] =
     await Promise.all([
       (isComplete && beforeImagePath && afterImagePath)
         ? resolveTransformationCardEmailPhotos(beforeImagePath, afterImagePath)
@@ -1433,18 +1445,37 @@ async function sendUnifiedCoachEmail({
           afterFile: 'after-previous.jpg',
         })
         : Promise.resolve({ beforeSrc: null, afterSrc: null, attachments: [] }),
+      userId
+        ? loadPhotoEmailAttachment(repo.shareCardStoragePath(userId), SHARE_CARD_CID, 'transformation-card.jpg')
+        : Promise.resolve(null),
+      (userId && previousPairDistinct)
+        ? loadPhotoEmailAttachment(
+          repo.previousShareCardStoragePath(userId),
+          PREV_SHARE_CARD_CID,
+          'transformation-card-prev.jpg',
+        )
+        : Promise.resolve(null),
       (slots.has('health') && healthVideoPath)     ? repo.getEmailSignedUrl(healthVideoPath)   : Promise.resolve(null),
       (slots.has('business') && businessVideoPath) ? repo.getEmailSignedUrl(businessVideoPath) : Promise.resolve(null),
     ]);
 
-  const attachments = [...cardPhotos.attachments, ...previousCardPhotos.attachments];
+  const attachments = [
+    ...cardPhotos.attachments,
+    ...previousCardPhotos.attachments,
+    currentShareCardAtt,
+    previousShareCardAtt,
+  ].filter(Boolean);
 
-  // HTTPS preview links for tap-to-open (CID images cannot be opened by click in mail).
+  // HTTPS preview links for tap-to-open (prefer full card image URL).
   const [currentPreviewHref, previousPreviewHref] = await Promise.all([
-    afterImagePath ? repo.getEmailSignedUrl(afterImagePath) : Promise.resolve(null),
-    previousCardAfterPath && previousPairDistinct
-      ? repo.getEmailSignedUrl(previousCardAfterPath)
-      : Promise.resolve(null),
+    userId
+      ? repo.getEmailSignedUrl(repo.shareCardStoragePath(userId))
+      : (afterImagePath ? repo.getEmailSignedUrl(afterImagePath) : Promise.resolve(null)),
+    (userId && previousPairDistinct)
+      ? repo.getEmailSignedUrl(repo.previousShareCardStoragePath(userId))
+      : (previousCardAfterPath && previousPairDistinct
+        ? repo.getEmailSignedUrl(previousCardAfterPath)
+        : Promise.resolve(null)),
   ]);
 
   const emailParams = {
@@ -1464,6 +1495,8 @@ async function sendUnifiedCoachEmail({
     previousGoalType,
     previousDurationText,
     previousRecoveredHealthIssues,
+    previousCardImageUrl: previousShareCardAtt ? `cid:${PREV_SHARE_CARD_CID}` : null,
+    currentCardImageUrl: currentShareCardAtt ? `cid:${SHARE_CARD_CID}` : null,
     previousPreviewHref,
     currentPreviewHref,
     healthVideoUrl,

@@ -133,8 +133,10 @@ describe('testimonial coach email photos keep aspect ratio', () => {
       previousAfterUrl: 'cid:transformation-after-prev@wellnessvalley',
       previousBeforeWeight: 90.9,
       previousAfterWeight: 70,
-      previousPreviewHref: 'https://example.com/prev-after.jpg',
-      currentPreviewHref: 'https://example.com/new-after.jpg',
+      previousCardImageUrl: 'cid:transformation-card-prev@wellnessvalley',
+      currentCardImageUrl: 'cid:transformation-card@wellnessvalley',
+      previousPreviewHref: 'https://example.com/prev-card.jpg',
+      currentPreviewHref: 'https://example.com/new-card.jpg',
       healthVideoUrl: null,
       businessVideoUrl: null,
       recoveredHealthIssues: ['Knee Pain'],
@@ -143,13 +145,16 @@ describe('testimonial coach email photos keep aspect ratio', () => {
     assert.match(html, /Transformation Card/);
     assert.match(html, />Previous</);
     assert.match(html, />New</);
-    assert.match(html, /Tap to open preview/);
-    assert.match(html, /https:\/\/example\.com\/prev-after\.jpg/);
-    assert.match(html, /https:\/\/example\.com\/new-after\.jpg/);
+    assert.match(html, /Tap card to open full preview|Tap card to open preview/);
+    assert.match(html, /cid:transformation-card-prev@wellnessvalley/);
+    assert.match(html, /cid:transformation-card@wellnessvalley/);
+    assert.match(html, /https:\/\/example\.com\/prev-card\.jpg/);
+    assert.match(html, /https:\/\/example\.com\/new-card\.jpg/);
     const prevIdx = html.indexOf('>Previous<');
     const newIdx = html.indexOf('>New<');
     assert.ok(prevIdx >= 0 && newIdx > prevIdx);
-    assert.equal(photoImgs(html).length, 4); // prev before/after + new before/after
+    // One card image per side (not 4 loose before/after photos)
+    assert.equal(photoImgs(html).length, 2);
   });
 
   it('compare row requires both previous and new pairs', () => {
