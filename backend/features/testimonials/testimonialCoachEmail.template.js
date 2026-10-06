@@ -285,7 +285,7 @@ export function buildTransformationCardCompareRow({
       <tr>
         <td align="center" style="padding:0 0 8px 0;">
           <p style="margin:0;color:#6b7280;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;font-family:Arial,Helvetica,sans-serif;">Transformation Card</p>
-          <p style="margin:4px 0 0;color:#9ca3af;font-size:11px;font-family:Arial,Helvetica,sans-serif;">Previous and New cards — tap New to open the full Transformation Card preview</p>
+          <p style="margin:4px 0 0;color:#9ca3af;font-size:11px;font-family:Arial,Helvetica,sans-serif;">Previous and New cards — tap New for the latest full Transformation Card preview</p>
         </td>
       </tr>
       <tr>

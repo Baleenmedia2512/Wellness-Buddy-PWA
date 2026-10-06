@@ -56,6 +56,7 @@ import {
   countTestimonialsUploadLevels,
 } from './domain/testimonials-list.pagination.js';
 import { isInlineImageReference } from './domain/profileTransformationPhotos.seed.js';
+import { composeTransformationShareCardJpeg } from './domain/composeTransformationShareCard.js';
 import { nowUtc } from '../../shared/lib/datetime/index.js';
 import {
   buildTestimonialCoachEmailHtml,
@@ -163,14 +164,57 @@ const SHARE_CARD_CID = 'transformation-card@wellnessvalley';
 const PREV_SHARE_CARD_CID = 'transformation-card-prev@wellnessvalley';
 
 /**
- * Upload optional client-captured Transformation share card.
- * Keeps the previous card at share_card_prev.jpg for Previous | New email compare.
+ * Upload Transformation share card for coach email Previous | New compare.
+ * Prefers a server-composed card from real Before/After storage bytes so the
+ * New card never embeds Mine edit UI from client html2canvas.
+ * Keeps the previous card at share_card_prev.jpg.
+ *
  * @param {number} userId
- * @param {string|null|undefined} shareCardImageBase64
+ * @param {string|null|undefined} shareCardImageBase64 - client capture fallback
+ * @param {{
+ *   beforeImagePath?: string|null,
+ *   afterImagePath?: string|null,
+ *   memberName?: string|null,
+ *   beforeWeightKg?: number|null,
+ *   afterWeightKg?: number|null,
+ *   goalType?: string|null,
+ *   durationText?: string|null,
+ * }|null} [composeFromPhotos]
  * @returns {Promise<string|null>} storage path when uploaded
  */
-async function uploadShareCardImage(userId, shareCardImageBase64) {
-  if (!shareCardImageBase64 || typeof shareCardImageBase64 !== 'string') return null;
+async function uploadShareCardImage(userId, shareCardImageBase64, composeFromPhotos = null) {
+  let base64 = typeof shareCardImageBase64 === 'string' ? shareCardImageBase64 : null;
+
+  const beforePath = composeFromPhotos?.beforeImagePath;
+  const afterPath = composeFromPhotos?.afterImagePath;
+  if (beforePath && afterPath && !repo.isVideoOnlyPlaceholder?.(beforePath)
+    && !repo.isVideoOnlyPlaceholder?.(afterPath)) {
+    try {
+      const [beforeBuffer, afterBuffer] = await Promise.all([
+        repo.downloadBuffer(beforePath, { retries: 2 }),
+        repo.downloadBuffer(afterPath, { retries: 2 }),
+      ]);
+      if (beforeBuffer?.length && afterBuffer?.length) {
+        const jpeg = await composeTransformationShareCardJpeg({
+          beforeBuffer,
+          afterBuffer,
+          memberName: composeFromPhotos.memberName,
+          beforeWeightKg: composeFromPhotos.beforeWeightKg,
+          afterWeightKg: composeFromPhotos.afterWeightKg,
+          goalType: composeFromPhotos.goalType,
+          durationText: composeFromPhotos.durationText,
+        });
+        base64 = jpeg.toString('base64');
+      }
+    } catch (err) {
+      logger.warn('[testimonials.service] Server share-card compose failed; using client capture', {
+        userId,
+        message: err?.message || String(err),
+      });
+    }
+  }
+
+  if (!base64 || typeof base64 !== 'string') return null;
   const path = repo.shareCardStoragePath(userId);
   const prevPath = repo.previousShareCardStoragePath(userId);
   try {
@@ -181,7 +225,7 @@ async function uploadShareCardImage(userId, shareCardImageBase64) {
   } catch {
     // No previous card yet — first upload.
   }
-  await repo.uploadImage(shareCardImageBase64, path);
+  await repo.uploadImage(base64, path);
   return path;
 }
 
@@ -527,7 +571,15 @@ export async function submitTestimonial(rawBody) {
 
   // Only email coach (or co-coach fallback) when the testimonial is complete
   if (payload.hasAfter) {
-    await uploadShareCardImage(payload.userId, payload.shareCardImageBase64);
+    await uploadShareCardImage(payload.userId, payload.shareCardImageBase64, {
+      beforeImagePath: beforePath,
+      afterImagePath: afterPath,
+      memberName: userInfo.userName,
+      beforeWeightKg: payload.beforeWeightKg,
+      afterWeightKg: payload.afterWeightKg,
+      goalType: payload.goalType,
+      durationText: payload.durationText,
+    });
     const coachInfo = recipient.coachInfo;
     if (coachInfo?.email) {
       await sendCoachEmail({
@@ -737,7 +789,15 @@ export async function editTestimonial(rawBody) {
 
     if (coachInfo?.email && userInfo?.userName) {
       const currentBeforePath = updates.beforeImagePath ?? existing.before_image_path;
-      await uploadShareCardImage(payload.userId, payload.shareCardImageBase64);
+      await uploadShareCardImage(payload.userId, payload.shareCardImageBase64, {
+        beforeImagePath: currentBeforePath,
+        afterImagePath: afterPathNow,
+        memberName: userInfo.userName,
+        beforeWeightKg: updates.beforeWeightKg ?? existing.before_weight_kg,
+        afterWeightKg: afterWeightNow,
+        goalType: updates.goalType ?? existing.goal_type,
+        durationText: updates.durationText ?? existing.duration_text,
+      });
       await sendCoachEmail({
         coachEmail:    coachInfo.email,
         coachName:     coachInfo.name,
@@ -1466,17 +1526,18 @@ async function sendUnifiedCoachEmail({
     previousShareCardAtt,
   ].filter(Boolean);
 
-  // HTTPS preview links for tap-to-open (prefer full card image URL).
-  const [currentPreviewHref, previousPreviewHref] = await Promise.all([
-    userId
-      ? repo.getEmailSignedUrl(repo.shareCardStoragePath(userId))
-      : (afterImagePath ? repo.getEmailSignedUrl(afterImagePath) : Promise.resolve(null)),
-    (userId && previousPairDistinct)
-      ? repo.getEmailSignedUrl(repo.previousShareCardStoragePath(userId))
+  // HTTPS preview links — New opens current share_card, Previous opens share_card_prev.
+  // Named fields (not array destructure) so Previous/New can never be swapped.
+  const previewHrefs = {
+    current: userId
+      ? await repo.getEmailSignedUrl(repo.shareCardStoragePath(userId))
+      : (afterImagePath ? await repo.getEmailSignedUrl(afterImagePath) : null),
+    previous: (userId && previousPairDistinct)
+      ? await repo.getEmailSignedUrl(repo.previousShareCardStoragePath(userId))
       : (previousCardAfterPath && previousPairDistinct
-        ? repo.getEmailSignedUrl(previousCardAfterPath)
-        : Promise.resolve(null)),
-  ]);
+        ? await repo.getEmailSignedUrl(previousCardAfterPath)
+        : null),
+  };
 
   const emailParams = {
     memberName,
@@ -1497,8 +1558,8 @@ async function sendUnifiedCoachEmail({
     previousRecoveredHealthIssues,
     previousCardImageUrl: previousShareCardAtt ? `cid:${PREV_SHARE_CARD_CID}` : null,
     currentCardImageUrl: currentShareCardAtt ? `cid:${SHARE_CARD_CID}` : null,
-    previousPreviewHref,
-    currentPreviewHref,
+    previousPreviewHref: previewHrefs.previous,
+    currentPreviewHref: previewHrefs.current,
     healthVideoUrl,
     businessVideoUrl,
     recoveredHealthIssues: recoveredHealthIssues ?? [],
@@ -1794,7 +1855,15 @@ export async function submitAllEdits(rawBody) {
       emailChangedSlots.push('duration');
     }
 
-    await uploadShareCardImage(payload.userId, payload.shareCardImageBase64);
+    await uploadShareCardImage(payload.userId, payload.shareCardImageBase64, {
+      beforeImagePath: finalBeforePath,
+      afterImagePath: finalAfterPath,
+      memberName: userInfo.userName,
+      beforeWeightKg: photoUpdates.beforeWeightKg ?? existing.before_weight_kg,
+      afterWeightKg: photoUpdates.afterWeightKg ?? existing.after_weight_kg,
+      goalType: photoUpdates.goalType ?? existing.goal_type,
+      durationText: resolvedDuration,
+    });
     await sendUnifiedCoachEmail({
       coachEmail:             coachInfo.email,
       memberName:             userInfo.userName,

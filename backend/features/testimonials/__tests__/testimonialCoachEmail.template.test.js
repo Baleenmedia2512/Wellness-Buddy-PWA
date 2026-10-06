@@ -153,6 +153,13 @@ describe('testimonial coach email photos keep aspect ratio', () => {
     const prevIdx = html.indexOf('>Previous<');
     const newIdx = html.indexOf('>New<');
     assert.ok(prevIdx >= 0 && newIdx > prevIdx);
+    // Previous preview href wraps Previous; New href wraps New (never swapped).
+    // Markup order: <a href=prev>…Previous…</a> … <a href=new>…New…</a>
+    const prevHrefIdx = html.indexOf('https://example.com/prev-card.jpg');
+    const newHrefIdx = html.indexOf('https://example.com/new-card.jpg');
+    assert.ok(prevHrefIdx >= 0 && prevHrefIdx < prevIdx, 'prev preview href wraps Previous');
+    assert.ok(newHrefIdx > prevIdx && newHrefIdx < newIdx, 'new preview href wraps New');
+    assert.ok(prevHrefIdx < newHrefIdx);
     // One card image per side (not 4 loose before/after photos)
     assert.equal(photoImgs(html).length, 2);
   });
