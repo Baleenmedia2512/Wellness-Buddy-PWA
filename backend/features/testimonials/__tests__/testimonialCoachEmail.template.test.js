@@ -10,6 +10,7 @@ import {
   buildUnifiedSubmitEmailHtml,
   buildShareCardRow,
   buildTransformationCardEmailBlock,
+  buildTransformationCardCompareRow,
 } from '../testimonialCoachEmail.template.js';
 
 function photoImgs(html) {
@@ -117,7 +118,7 @@ describe('testimonial coach email photos keep aspect ratio', () => {
     assert.doesNotMatch(html, /\.photo-img\s*\{[^}]*height:\s*\d+px/);
   });
 
-  it('unified email shows previous unchanged card and current updated card', () => {
+  it('unified email shows Previous and New Transformation Cards side by side', () => {
     const html = buildUnifiedSubmitEmailHtml({
       memberName: 'Alex',
       otp: '1234',
@@ -132,23 +133,33 @@ describe('testimonial coach email photos keep aspect ratio', () => {
       previousAfterUrl: 'cid:transformation-after-prev@wellnessvalley',
       previousBeforeWeight: 90.9,
       previousAfterWeight: 70,
-      previousGoalType: 'loss',
-      previousDurationText: '6 months',
-      previousRecoveredHealthIssues: ['Knee Pain'],
+      previousPreviewHref: 'https://example.com/prev-after.jpg',
+      currentPreviewHref: 'https://example.com/new-after.jpg',
       healthVideoUrl: null,
       businessVideoUrl: null,
       recoveredHealthIssues: ['Knee Pain'],
       isComplete: true,
     });
-    assert.match(html, /Previous Transformation Card/);
-    assert.match(html, /New Transformation Card/);
-    const prevIdx = html.indexOf('Previous Transformation Card');
-    const currIdx = html.indexOf('New Transformation Card');
-    assert.ok(prevIdx >= 0 && currIdx > prevIdx);
-    assert.doesNotMatch(html, /Previous<\/p>/); // no single-photo PREVIOUS/NEW strip
-    const currentHtml = html.slice(currIdx);
-    const beforeIdx = currentHtml.indexOf('cid:transformation-before@wellnessvalley');
-    const afterIdx = currentHtml.indexOf('cid:transformation-after@wellnessvalley');
-    assert.ok(beforeIdx >= 0 && afterIdx > beforeIdx);
+    assert.match(html, /Transformation Card/);
+    assert.match(html, />Previous</);
+    assert.match(html, />New</);
+    assert.match(html, /Tap to open preview/);
+    assert.match(html, /https:\/\/example\.com\/prev-after\.jpg/);
+    assert.match(html, /https:\/\/example\.com\/new-after\.jpg/);
+    const prevIdx = html.indexOf('>Previous<');
+    const newIdx = html.indexOf('>New<');
+    assert.ok(prevIdx >= 0 && newIdx > prevIdx);
+    assert.equal(photoImgs(html).length, 4); // prev before/after + new before/after
+  });
+
+  it('compare row requires both previous and new pairs', () => {
+    assert.equal(buildTransformationCardCompareRow({
+      previousBeforeUrl: null,
+      previousAfterUrl: null,
+      beforeUrl: 'https://example.com/b.jpg',
+      afterUrl: 'https://example.com/a.jpg',
+      beforeWeight: 80,
+      afterWeight: 70,
+    }), '');
   });
 });

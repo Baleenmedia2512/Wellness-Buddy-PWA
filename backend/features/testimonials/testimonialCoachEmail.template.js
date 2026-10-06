@@ -173,6 +173,135 @@ export function buildShareCardRow(shareCardSrc) {
 }
 
 /**
+ * One compact Transformation Card preview (email-safe).
+ * Click opens previewHref in the browser when provided.
+ */
+function buildCompactTransformationPreview({
+  label,
+  beforeUrl,
+  afterUrl,
+  beforeWeight,
+  afterWeight,
+  previewHref = null,
+  tone = 'new',
+}) {
+  if (!beforeUrl || !afterUrl) return '';
+  const isPrev = tone === 'previous';
+  const border = isPrev ? '#fecdd3' : '#bbf7d0';
+  const bg = isPrev ? '#fff1f2' : '#f0fdf4';
+  const titleColor = isPrev ? '#9f1239' : '#047857';
+  const beforeKg = formatWeight(beforeWeight);
+  const afterKg = formatWeight(afterWeight);
+  const safeLabel = escapeHtml(label);
+
+  const body = `
+    <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color:${bg};border:1px solid ${border};border-radius:8px;overflow:hidden;">
+      <tr>
+        <td align="center" style="padding:6px 6px 4px 6px;">
+          <p style="margin:0;color:${titleColor};font-size:10px;font-weight:700;letter-spacing:0.6px;text-transform:uppercase;font-family:Arial,Helvetica,sans-serif;">${safeLabel}</p>
+        </td>
+      </tr>
+      <tr>
+        <td style="padding:0 6px 6px 6px;">
+          <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
+            <tr>
+              <td width="50%" valign="top" align="center" style="padding:0 2px 0 0;">
+                ${buildPhotoImg(beforeUrl, 'Before', 88)}
+                <p style="margin:3px 0 0;color:#9ca3af;font-size:8px;font-weight:700;font-family:Arial,Helvetica,sans-serif;">BEFORE</p>
+                <p style="margin:1px 0 0;color:#111827;font-size:11px;font-weight:800;font-family:Arial,Helvetica,sans-serif;">${beforeKg} kg</p>
+              </td>
+              <td width="50%" valign="top" align="center" style="padding:0 0 0 2px;">
+                ${buildPhotoImg(afterUrl, 'After', 88)}
+                <p style="margin:3px 0 0;color:#9ca3af;font-size:8px;font-weight:700;font-family:Arial,Helvetica,sans-serif;">AFTER</p>
+                <p style="margin:1px 0 0;color:#111827;font-size:11px;font-weight:800;font-family:Arial,Helvetica,sans-serif;">${afterKg} kg</p>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+      <tr>
+        <td align="center" style="padding:0 6px 8px 6px;">
+          <p style="margin:0;color:#6b7280;font-size:9px;font-family:Arial,Helvetica,sans-serif;">Tap to open preview</p>
+        </td>
+      </tr>
+    </table>`;
+
+  if (previewHref && /^https?:\/\//i.test(String(previewHref))) {
+    return `
+      <a href="${escapeHtml(previewHref)}" target="_blank" rel="noopener noreferrer"
+         style="display:block;text-decoration:none;color:inherit;">
+        ${body}
+      </a>`;
+  }
+  return body;
+}
+
+/**
+ * Previous + New Transformation Cards side by side (no long scroll).
+ * Each small card is clickable to open a full photo preview.
+ */
+export function buildTransformationCardCompareRow({
+  previousBeforeUrl,
+  previousAfterUrl,
+  previousBeforeWeight,
+  previousAfterWeight,
+  previousPreviewHref = null,
+  beforeUrl,
+  afterUrl,
+  beforeWeight,
+  afterWeight,
+  currentPreviewHref = null,
+}) {
+  const hasPrevious = Boolean(previousBeforeUrl && previousAfterUrl);
+  const hasCurrent = Boolean(beforeUrl && afterUrl);
+  if (!hasPrevious || !hasCurrent) return '';
+
+  const previousCell = buildCompactTransformationPreview({
+    label: 'Previous',
+    beforeUrl: previousBeforeUrl,
+    afterUrl: previousAfterUrl,
+    beforeWeight: previousBeforeWeight,
+    afterWeight: previousAfterWeight,
+    previewHref: previousPreviewHref,
+    tone: 'previous',
+  });
+  const newCell = buildCompactTransformationPreview({
+    label: 'New',
+    beforeUrl,
+    afterUrl,
+    beforeWeight,
+    afterWeight,
+    previewHref: currentPreviewHref,
+    tone: 'new',
+  });
+
+  return `
+    <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="margin:0 0 14px 0;">
+      <tr>
+        <td align="center" style="padding:0 0 8px 0;">
+          <p style="margin:0;color:#6b7280;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;font-family:Arial,Helvetica,sans-serif;">Transformation Card</p>
+          <p style="margin:4px 0 0;color:#9ca3af;font-size:11px;font-family:Arial,Helvetica,sans-serif;">Previous and New side by side — tap a card to open preview</p>
+        </td>
+      </tr>
+      <tr>
+        <td>
+          <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
+            <tr>
+              <td width="46%" valign="top" class="photo-col" style="padding:0 2px 0 0;">
+                ${previousCell}
+              </td>
+              <td width="8%" valign="middle" align="center" style="padding:0 2px;color:#059669;font-size:18px;font-weight:700;font-family:Arial,Helvetica,sans-serif;">&#8594;</td>
+              <td width="46%" valign="top" class="photo-col" style="padding:0 0 0 2px;">
+                ${newCell}
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>`;
+}
+
+/**
  * Email Transformation card built from the real Before/After storage photos.
  * Left = beforeUrl, right = afterUrl (same pair as in-app). Prefer cid: URLs.
  * @param {string} [heading] - e.g. "Previous Transformation Card" / "Current Transformation Card"
@@ -190,7 +319,7 @@ export function buildTransformationCardEmailBlock({
 }) {
   if (!beforeUrl || !afterUrl) return '';
 
-  const safeMember = escapeHtml(memberName);
+  const safeMember = escapeHtml(memberName || 'Member');
   const safeHeading = escapeHtml(heading);
   const beforeKg = formatWeight(beforeWeight);
   const afterKg = formatWeight(afterWeight);
@@ -839,6 +968,8 @@ export function buildUnifiedSubmitEmailHtml({
   previousGoalType = null,
   previousDurationText = null,
   previousRecoveredHealthIssues = null,
+  previousPreviewHref = null,
+  currentPreviewHref = null,
   healthVideoUrl,
   businessVideoUrl,
   recoveredHealthIssues,
@@ -861,23 +992,24 @@ export function buildUnifiedSubmitEmailHtml({
 
   const changedBlock = buildChangedSlotsBlock(changedSlots);
 
-  // Previous Transformation Card (full card — not single After photo PREVIOUS/NEW).
-  const previousCard = (previousBeforeUrl && previousAfterUrl)
-    ? buildTransformationCardEmailBlock({
-      memberName,
-      beforeUrl: previousBeforeUrl,
-      afterUrl: previousAfterUrl,
-      beforeWeight: previousBeforeWeight ?? beforeWeight,
-      afterWeight: previousAfterWeight ?? afterWeight,
-      goalType: previousGoalType ?? goalType,
-      durationText: previousDurationText ?? durationText,
-      recoveredHealthIssues: previousRecoveredHealthIssues ?? recoveredHealthIssues,
-      heading: 'Previous Transformation Card',
+  // Side-by-side small Previous | New cards (tap to open preview) — no long scroll.
+  const compareCards = (previousBeforeUrl && previousAfterUrl && beforeUrl && afterUrl)
+    ? buildTransformationCardCompareRow({
+      previousBeforeUrl,
+      previousAfterUrl,
+      previousBeforeWeight: previousBeforeWeight ?? beforeWeight,
+      previousAfterWeight: previousAfterWeight ?? afterWeight,
+      previousPreviewHref,
+      beforeUrl,
+      afterUrl,
+      beforeWeight,
+      afterWeight,
+      currentPreviewHref,
     })
     : '';
 
-  // New / current Transformation Card after this update.
-  const currentCard = (isComplete && beforeUrl && afterUrl)
+  // Single full card when there is no previous pair to compare.
+  const currentCard = (!compareCards && isComplete && beforeUrl && afterUrl)
     ? buildTransformationCardEmailBlock({
       memberName,
       beforeUrl,
@@ -887,17 +1019,16 @@ export function buildUnifiedSubmitEmailHtml({
       goalType,
       durationText,
       recoveredHealthIssues,
-      heading: previousCard
-        ? 'New Transformation Card'
-        : 'Transformation Card',
+      heading: 'Transformation Card',
     })
     : '';
 
-  const hasCard = Boolean(currentCard || previousCard);
+  const hasCard = Boolean(compareCards || currentCard);
 
   // Do not show single-photo PREVIOUS → NEW strips when Transformation Cards are present.
   const beforeDiff = '';
   const afterDiff = '';
+  const previousCard = '';
 
   const progressHtml = (!hasCard && canShowProgress)
     ? buildProgressPill(memberName, goalType, beforeWeight, afterWeight, durationSafe)
@@ -960,6 +1091,7 @@ export function buildUnifiedSubmitEmailHtml({
               ${changedBlock}
               ${beforeDiff}
               ${afterDiff}
+              ${compareCards}
               ${previousCard}
               ${currentCard}
               ${shareCardBlock}

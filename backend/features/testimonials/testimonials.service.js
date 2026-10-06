@@ -1439,6 +1439,14 @@ async function sendUnifiedCoachEmail({
 
   const attachments = [...cardPhotos.attachments, ...previousCardPhotos.attachments];
 
+  // HTTPS preview links for tap-to-open (CID images cannot be opened by click in mail).
+  const [currentPreviewHref, previousPreviewHref] = await Promise.all([
+    afterImagePath ? repo.getEmailSignedUrl(afterImagePath) : Promise.resolve(null),
+    previousCardAfterPath && previousPairDistinct
+      ? repo.getEmailSignedUrl(previousCardAfterPath)
+      : Promise.resolve(null),
+  ]);
+
   const emailParams = {
     memberName,
     otp,
@@ -1456,6 +1464,8 @@ async function sendUnifiedCoachEmail({
     previousGoalType,
     previousDurationText,
     previousRecoveredHealthIssues,
+    previousPreviewHref,
+    currentPreviewHref,
     healthVideoUrl,
     businessVideoUrl,
     recoveredHealthIssues: recoveredHealthIssues ?? [],
