@@ -157,6 +157,8 @@ function storagePath(userId, side, timestamp) {
 /** Inline CIDs for Before/After photos in the Transformation card email block. */
 const BEFORE_PHOTO_CID = 'transformation-before@wellnessvalley';
 const AFTER_PHOTO_CID = 'transformation-after@wellnessvalley';
+const PREV_BEFORE_PHOTO_CID = 'transformation-before-prev@wellnessvalley';
+const PREV_AFTER_PHOTO_CID = 'transformation-after-prev@wellnessvalley';
 
 /**
  * Upload optional client-captured Transformation share card (kept for in-app share parity).
@@ -200,23 +202,28 @@ async function loadPhotoEmailAttachment(path, cid, filename) {
 }
 
 /**
- * Resolve Before/After src for the email Transformation card.
+ * Resolve Before/After src for an email Transformation card.
  * Prefer inline CID attachments so left/right always show the uploaded photos.
  * @param {string|null|undefined} beforeImagePath
  * @param {string|null|undefined} afterImagePath
+ * @param {{ beforeCid?: string, afterCid?: string, beforeFile?: string, afterFile?: string }} [ids]
  * @returns {Promise<{ beforeSrc: string|null, afterSrc: string|null, attachments: object[] }>}
  */
-async function resolveTransformationCardEmailPhotos(beforeImagePath, afterImagePath) {
+async function resolveTransformationCardEmailPhotos(beforeImagePath, afterImagePath, ids = {}) {
+  const beforeCid = ids.beforeCid || BEFORE_PHOTO_CID;
+  const afterCid = ids.afterCid || AFTER_PHOTO_CID;
+  const beforeFile = ids.beforeFile || 'before.jpg';
+  const afterFile = ids.afterFile || 'after.jpg';
   const [beforeAtt, afterAtt, beforeSigned, afterSigned] = await Promise.all([
-    loadPhotoEmailAttachment(beforeImagePath, BEFORE_PHOTO_CID, 'before.jpg'),
-    loadPhotoEmailAttachment(afterImagePath, AFTER_PHOTO_CID, 'after.jpg'),
+    loadPhotoEmailAttachment(beforeImagePath, beforeCid, beforeFile),
+    loadPhotoEmailAttachment(afterImagePath, afterCid, afterFile),
     beforeImagePath ? repo.getEmailSignedUrl(beforeImagePath) : Promise.resolve(null),
     afterImagePath ? repo.getEmailSignedUrl(afterImagePath) : Promise.resolve(null),
   ]);
   const attachments = [beforeAtt, afterAtt].filter(Boolean);
   return {
-    beforeSrc: beforeAtt ? `cid:${BEFORE_PHOTO_CID}` : beforeSigned,
-    afterSrc: afterAtt ? `cid:${AFTER_PHOTO_CID}` : afterSigned,
+    beforeSrc: beforeAtt ? `cid:${beforeCid}` : beforeSigned,
+    afterSrc: afterAtt ? `cid:${afterCid}` : afterSigned,
     attachments,
   };
 }
@@ -1377,6 +1384,11 @@ async function sendUnifiedCoachEmail({
   afterImagePath,
   previousBeforeImagePath,
   previousAfterImagePath,
+  previousBeforeWeight = null,
+  previousAfterWeight = null,
+  previousGoalType = null,
+  previousDurationText = null,
+  previousRecoveredHealthIssues = null,
   healthVideoPath,
   businessVideoPath,
   recoveredHealthIssues,
@@ -1384,23 +1396,48 @@ async function sendUnifiedCoachEmail({
   userId = null,
 }) {
   const slots = new Set(changedSlots);
-
-  const cardPhotosPromise = (isComplete && beforeImagePath && afterImagePath)
-    ? resolveTransformationCardEmailPhotos(beforeImagePath, afterImagePath)
-    : Promise.resolve({ beforeSrc: null, afterSrc: null, attachments: [] });
-
-  const [cardPhotos, prevBeforeUrl, prevAfterUrl, healthVideoUrl, businessVideoUrl] =
-    await Promise.all([
-      cardPhotosPromise,
-      (slots.has('before') && previousBeforeImagePath) ? repo.getEmailSignedUrl(previousBeforeImagePath) : Promise.resolve(null),
-      (slots.has('after')  && previousAfterImagePath)  ? repo.getEmailSignedUrl(previousAfterImagePath)  : Promise.resolve(null),
-      (slots.has('health') && healthVideoPath)         ? repo.getEmailSignedUrl(healthVideoPath)         : Promise.resolve(null),
-      (slots.has('business') && businessVideoPath)     ? repo.getEmailSignedUrl(businessVideoPath)       : Promise.resolve(null),
-    ]);
   void userId;
 
-  const beforeUrl = cardPhotos.beforeSrc;
-  const afterUrl = cardPhotos.afterSrc;
+  // Previous Transformation Card = state before this submit.
+  // Unchanged side keeps the current path; changed side uses the previous storage path.
+  const previousCardBeforePath = (slots.has('before') && previousBeforeImagePath)
+    ? previousBeforeImagePath
+    : beforeImagePath;
+  const previousCardAfterPath = (slots.has('after') && previousAfterImagePath)
+    ? previousAfterImagePath
+    : ((slots.has('before') && previousBeforeImagePath && !previousAfterImagePath)
+      ? previousBeforeImagePath // seeded After mirrored Before before the change
+      : afterImagePath);
+  const photoSlotChanged = slots.has('before') || slots.has('after');
+  const previousPairDistinct = Boolean(
+    isComplete
+    && photoSlotChanged
+    && previousCardBeforePath
+    && previousCardAfterPath
+    && (
+      previousCardBeforePath !== beforeImagePath
+      || previousCardAfterPath !== afterImagePath
+    ),
+  );
+
+  const [cardPhotos, previousCardPhotos, healthVideoUrl, businessVideoUrl] =
+    await Promise.all([
+      (isComplete && beforeImagePath && afterImagePath)
+        ? resolveTransformationCardEmailPhotos(beforeImagePath, afterImagePath)
+        : Promise.resolve({ beforeSrc: null, afterSrc: null, attachments: [] }),
+      (isComplete && previousPairDistinct)
+        ? resolveTransformationCardEmailPhotos(previousCardBeforePath, previousCardAfterPath, {
+          beforeCid: PREV_BEFORE_PHOTO_CID,
+          afterCid: PREV_AFTER_PHOTO_CID,
+          beforeFile: 'before-previous.jpg',
+          afterFile: 'after-previous.jpg',
+        })
+        : Promise.resolve({ beforeSrc: null, afterSrc: null, attachments: [] }),
+      (slots.has('health') && healthVideoPath)     ? repo.getEmailSignedUrl(healthVideoPath)   : Promise.resolve(null),
+      (slots.has('business') && businessVideoPath) ? repo.getEmailSignedUrl(businessVideoPath) : Promise.resolve(null),
+    ]);
+
+  const attachments = [...cardPhotos.attachments, ...previousCardPhotos.attachments];
 
   const emailParams = {
     memberName,
@@ -1410,10 +1447,15 @@ async function sendUnifiedCoachEmail({
     beforeWeight,
     afterWeight,
     durationText,
-    beforeUrl,
-    afterUrl,
-    previousBeforeUrl: prevBeforeUrl,
-    previousAfterUrl:  prevAfterUrl,
+    beforeUrl: cardPhotos.beforeSrc,
+    afterUrl: cardPhotos.afterSrc,
+    previousBeforeUrl: previousCardPhotos.beforeSrc,
+    previousAfterUrl: previousCardPhotos.afterSrc,
+    previousBeforeWeight,
+    previousAfterWeight,
+    previousGoalType,
+    previousDurationText,
+    previousRecoveredHealthIssues,
     healthVideoUrl,
     businessVideoUrl,
     recoveredHealthIssues: recoveredHealthIssues ?? [],
@@ -1433,15 +1475,16 @@ async function sendUnifiedCoachEmail({
     text:    { content: buildUnifiedSubmitEmailText(emailParams),  charset: 'utf-8' },
     html:    { content: buildUnifiedSubmitEmailHtml(emailParams),  charset: 'utf-8' },
     headers: { 'Content-Language': 'en' },
-    ...(cardPhotos.attachments.length ? { attachments: cardPhotos.attachments } : {}),
+    ...(attachments.length ? { attachments } : {}),
   });
 
   logger.info('[testimonials.service] Unified coach email dispatched', {
     coachEmail,
     memberName,
     changedSlots,
-    hasBeforePhoto: Boolean(beforeUrl),
-    hasAfterPhoto: Boolean(afterUrl),
+    hasBeforePhoto: Boolean(cardPhotos.beforeSrc),
+    hasAfterPhoto: Boolean(cardPhotos.afterSrc),
+    hasPreviousCard: Boolean(previousCardPhotos.beforeSrc && previousCardPhotos.afterSrc),
   });
 }
 
@@ -1720,8 +1763,14 @@ export async function submitAllEdits(rawBody) {
       durationText:           resolvedDuration,
       beforeImagePath:        finalBeforePath,
       afterImagePath:         finalAfterPath,
-      previousBeforeImagePath: isBeforeFirstUpload ? null : prevBeforeImagePath,
-      previousAfterImagePath:  isAfterFirstUpload  ? null : prevAfterImagePath,
+      // Keep previous paths for the Previous Transformation Card (even if first real After).
+      previousBeforeImagePath: prevBeforeImagePath,
+      previousAfterImagePath:  prevAfterImagePath,
+      previousBeforeWeight:    existing.before_weight_kg,
+      previousAfterWeight:     existing.after_weight_kg,
+      previousGoalType:        existing.goal_type,
+      previousDurationText:    existing.duration_text,
+      previousRecoveredHealthIssues: existing.recovered_health_issues ?? [],
       healthVideoPath:        finalHealthVideo,
       businessVideoPath:      finalBusinessVideo,
       recoveredHealthIssues:  resolvedHealthIssues,

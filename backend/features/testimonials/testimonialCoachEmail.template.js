@@ -175,6 +175,7 @@ export function buildShareCardRow(shareCardSrc) {
 /**
  * Email Transformation card built from the real Before/After storage photos.
  * Left = beforeUrl, right = afterUrl (same pair as in-app). Prefer cid: URLs.
+ * @param {string} [heading] - e.g. "Previous Transformation Card" / "Current Transformation Card"
  */
 export function buildTransformationCardEmailBlock({
   memberName,
@@ -185,10 +186,12 @@ export function buildTransformationCardEmailBlock({
   goalType,
   durationText,
   recoveredHealthIssues,
+  heading = 'Transformation Card',
 }) {
   if (!beforeUrl || !afterUrl) return '';
 
   const safeMember = escapeHtml(memberName);
+  const safeHeading = escapeHtml(heading);
   const beforeKg = formatWeight(beforeWeight);
   const afterKg = formatWeight(afterWeight);
   const durationSafe = String(durationText ?? '').trim();
@@ -212,7 +215,7 @@ export function buildTransformationCardEmailBlock({
     <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="margin:0 0 14px 0;">
       <tr>
         <td align="center" style="padding:0 0 8px 0;">
-          <p style="margin:0;color:#6b7280;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;font-family:Arial,Helvetica,sans-serif;">Transformation Card</p>
+          <p style="margin:0;color:#6b7280;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;font-family:Arial,Helvetica,sans-serif;">${safeHeading}</p>
         </td>
       </tr>
       <tr>
@@ -831,6 +834,11 @@ export function buildUnifiedSubmitEmailHtml({
   afterUrl,
   previousBeforeUrl,
   previousAfterUrl,
+  previousBeforeWeight = null,
+  previousAfterWeight = null,
+  previousGoalType = null,
+  previousDurationText = null,
+  previousRecoveredHealthIssues = null,
   healthVideoUrl,
   businessVideoUrl,
   recoveredHealthIssues,
@@ -853,17 +861,23 @@ export function buildUnifiedSubmitEmailHtml({
 
   const changedBlock = buildChangedSlotsBlock(changedSlots);
 
-  // Previous vs new when a photo slot changed (how it was → how it is now).
-  const beforeDiff = slots.has('before')
-    ? buildPhotoDiffBlock(previousBeforeUrl, beforeUrl, 'Before Photo', !previousBeforeUrl)
+  // Previous Transformation Card (full card — not single After photo PREVIOUS/NEW).
+  const previousCard = (previousBeforeUrl && previousAfterUrl)
+    ? buildTransformationCardEmailBlock({
+      memberName,
+      beforeUrl: previousBeforeUrl,
+      afterUrl: previousAfterUrl,
+      beforeWeight: previousBeforeWeight ?? beforeWeight,
+      afterWeight: previousAfterWeight ?? afterWeight,
+      goalType: previousGoalType ?? goalType,
+      durationText: previousDurationText ?? durationText,
+      recoveredHealthIssues: previousRecoveredHealthIssues ?? recoveredHealthIssues,
+      heading: 'Previous Transformation Card',
+    })
     : '';
 
-  const afterDiff = slots.has('after')
-    ? buildPhotoDiffBlock(previousAfterUrl, afterUrl, 'After Photo', !previousAfterUrl)
-    : '';
-
-  // Real Before (left) / After (right) card from storage URLs — matches in-app pair.
-  const transformationCard = (isComplete && beforeUrl && afterUrl)
+  // New / current Transformation Card after this update.
+  const currentCard = (isComplete && beforeUrl && afterUrl)
     ? buildTransformationCardEmailBlock({
       memberName,
       beforeUrl,
@@ -873,9 +887,17 @@ export function buildUnifiedSubmitEmailHtml({
       goalType,
       durationText,
       recoveredHealthIssues,
+      heading: previousCard
+        ? 'New Transformation Card'
+        : 'Transformation Card',
     })
     : '';
-  const hasCard = Boolean(transformationCard);
+
+  const hasCard = Boolean(currentCard || previousCard);
+
+  // Do not show single-photo PREVIOUS → NEW strips when Transformation Cards are present.
+  const beforeDiff = '';
+  const afterDiff = '';
 
   const progressHtml = (!hasCard && canShowProgress)
     ? buildProgressPill(memberName, goalType, beforeWeight, afterWeight, durationSafe)
@@ -938,7 +960,8 @@ export function buildUnifiedSubmitEmailHtml({
               ${changedBlock}
               ${beforeDiff}
               ${afterDiff}
-              ${transformationCard}
+              ${previousCard}
+              ${currentCard}
               ${shareCardBlock}
               ${statsBlock}
               ${currentPhotosBlock}

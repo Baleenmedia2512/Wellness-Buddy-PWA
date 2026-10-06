@@ -89,7 +89,7 @@ describe('testimonial coach email photos keep aspect ratio', () => {
     assert.equal(buildShareCardRow(''), '');
   });
 
-  it('does not lock img height on first-upload or previous/new comparison photos', () => {
+  it('first update without previous After shows only the new Transformation Card', () => {
     const html = buildUnifiedSubmitEmailHtml({
       memberName: 'Alex',
       otp: '1234',
@@ -108,18 +108,16 @@ describe('testimonial coach email photos keep aspect ratio', () => {
       isComplete: true,
     });
     const imgs = photoImgs(html);
-    // previous before + new before (first-upload after has no previous) + card before + card after
-    // afterDiff first-upload: placeholder (no img) + new after img → + card before + card after
-    assert.ok(imgs.length >= 4);
+    assert.equal(imgs.length, 2); // current card Before + After only
     imgs.forEach(assertPhotoKeepsAspectRatio);
-    assert.match(html, /New Upload/);
     assert.match(html, /Transformation Card/);
+    assert.doesNotMatch(html, /Previous Transformation Card/);
+    assert.doesNotMatch(html, /New Upload/);
     assert.match(html, /Lost 10 kgs in 12 weeks/);
-    assert.match(html, /12 weeks/);
     assert.doesNotMatch(html, /\.photo-img\s*\{[^}]*height:\s*\d+px/);
   });
 
-  it('unified email Transformation card uses Before left and After right', () => {
+  it('unified email shows previous unchanged card and current updated card', () => {
     const html = buildUnifiedSubmitEmailHtml({
       memberName: 'Alex',
       otp: '1234',
@@ -130,19 +128,27 @@ describe('testimonial coach email photos keep aspect ratio', () => {
       durationText: '6 months',
       beforeUrl: 'cid:transformation-before@wellnessvalley',
       afterUrl: 'cid:transformation-after@wellnessvalley',
-      previousBeforeUrl: null,
-      previousAfterUrl: 'https://example.com/after-old.jpg',
+      previousBeforeUrl: 'cid:transformation-before-prev@wellnessvalley',
+      previousAfterUrl: 'cid:transformation-after-prev@wellnessvalley',
+      previousBeforeWeight: 90.9,
+      previousAfterWeight: 70,
+      previousGoalType: 'loss',
+      previousDurationText: '6 months',
+      previousRecoveredHealthIssues: ['Knee Pain'],
       healthVideoUrl: null,
       businessVideoUrl: null,
       recoveredHealthIssues: ['Knee Pain'],
       isComplete: true,
     });
-    assert.match(html, /Transformation Card/);
-    assert.match(html, /Previous/);
-    const cardStart = html.indexOf('Transformation Card');
-    const cardHtml = html.slice(cardStart);
-    const beforeIdx = cardHtml.indexOf('cid:transformation-before@wellnessvalley');
-    const afterIdx = cardHtml.indexOf('cid:transformation-after@wellnessvalley');
+    assert.match(html, /Previous Transformation Card/);
+    assert.match(html, /New Transformation Card/);
+    const prevIdx = html.indexOf('Previous Transformation Card');
+    const currIdx = html.indexOf('New Transformation Card');
+    assert.ok(prevIdx >= 0 && currIdx > prevIdx);
+    assert.doesNotMatch(html, /Previous<\/p>/); // no single-photo PREVIOUS/NEW strip
+    const currentHtml = html.slice(currIdx);
+    const beforeIdx = currentHtml.indexOf('cid:transformation-before@wellnessvalley');
+    const afterIdx = currentHtml.indexOf('cid:transformation-after@wellnessvalley');
     assert.ok(beforeIdx >= 0 && afterIdx > beforeIdx);
   });
 });
