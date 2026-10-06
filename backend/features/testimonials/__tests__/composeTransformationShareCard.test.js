@@ -49,6 +49,19 @@ describe('composeTransformationShareCardJpeg', () => {
       if (data[i] > 150 && data[i + 1] < 120 && data[i + 2] < 120) redish += 1;
     }
     assert.ok(redish > 20, 'Before photo pixels should show through the overlay');
+
+    // Name text must paint (embedded Noto Sans) — not empty tofu boxes.
+    const nameBand = await sharp(jpeg)
+      .extract({ left: 120, top: 70, width: 300, height: 30 })
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    let darkText = 0;
+    for (let i = 0; i < nameBand.data.length; i += nameBand.info.channels) {
+      if (nameBand.data[i] < 40 && nameBand.data[i + 1] < 40 && nameBand.data[i + 2] < 40) {
+        darkText += 1;
+      }
+    }
+    assert.ok(darkText > 30, 'Member name text should render with embedded font');
   });
 
   it('rejects missing photo buffers', async () => {

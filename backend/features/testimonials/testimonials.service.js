@@ -168,12 +168,12 @@ const PREV_SHARE_CARD_CID = 'transformation-card-prev@wellnessvalley';
 
 /**
  * Upload Transformation share card for coach email Previous | New compare.
- * Prefers a server-composed card from real Before/After photo bytes (request
- * base64 first, then storage) so New always uses the just-uploaded After.
+ * Prefers the in-app client capture (same look as Previous). Falls back to a
+ * server-composed card from Before/After photo bytes when capture is missing.
  * Rotates the prior card to share_card_prev.jpg only when it differs.
  *
  * @param {number} userId
- * @param {string|null|undefined} shareCardImageBase64 - client capture fallback
+ * @param {string|null|undefined} shareCardImageBase64 - client capture (preferred)
  * @param {{
  *   beforeImagePath?: string|null,
  *   afterImagePath?: string|null,
@@ -188,12 +188,15 @@ const PREV_SHARE_CARD_CID = 'transformation-card-prev@wellnessvalley';
  * @returns {Promise<string|null>} storage path when uploaded
  */
 async function uploadShareCardImage(userId, shareCardImageBase64, composeFromPhotos = null) {
-  let newJpeg = null;
+  // Client capture first — matches the polished in-app Transformation Card
+  // (server SVG compose was showing blank/tofu text as the New email thumb).
+  let newJpeg = bufferFromOptionalBase64(shareCardImageBase64);
 
   const beforePath = composeFromPhotos?.beforeImagePath;
   const afterPath = composeFromPhotos?.afterImagePath;
   const canCompose = Boolean(
-    (composeFromPhotos?.beforeImageBase64 || beforePath)
+    !newJpeg
+    && (composeFromPhotos?.beforeImageBase64 || beforePath)
     && (composeFromPhotos?.afterImageBase64 || afterPath)
     && !(beforePath && repo.isVideoOnlyPlaceholder?.(beforePath))
     && !(afterPath && repo.isVideoOnlyPlaceholder?.(afterPath)),
@@ -201,7 +204,6 @@ async function uploadShareCardImage(userId, shareCardImageBase64, composeFromPho
 
   if (canCompose) {
     try {
-      // Prefer in-request bytes so New uses the After just uploaded (not a stale path).
       let beforeBuffer = bufferFromOptionalBase64(composeFromPhotos.beforeImageBase64);
       let afterBuffer = bufferFromOptionalBase64(composeFromPhotos.afterImageBase64);
       const downloads = [];
@@ -229,16 +231,13 @@ async function uploadShareCardImage(userId, shareCardImageBase64, composeFromPho
         });
       }
     } catch (err) {
-      logger.warn('[testimonials.service] Server share-card compose failed; using client capture', {
+      logger.warn('[testimonials.service] Server share-card compose failed', {
         userId,
         message: err?.message || String(err),
       });
     }
   }
 
-  if (!newJpeg && typeof shareCardImageBase64 === 'string' && shareCardImageBase64) {
-    newJpeg = bufferFromOptionalBase64(shareCardImageBase64);
-  }
   if (!newJpeg?.length) return null;
 
   const path = repo.shareCardStoragePath(userId);
