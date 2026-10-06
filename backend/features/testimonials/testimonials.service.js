@@ -248,10 +248,13 @@ async function uploadShareCardImage(userId, shareCardImageBase64, composeFromPho
 
   const path = repo.shareCardStoragePath(userId);
   const prevPath = repo.previousShareCardStoragePath(userId);
+  // When Before/After photo bytes changed, always archive the prior card for Previous | New.
+  const photoChanged = Boolean(
+    composeFromPhotos?.beforeImageBase64 || composeFromPhotos?.afterImageBase64,
+  );
   try {
     const existing = await repo.downloadBuffer(path, { retries: 1 });
-    // Only keep Previous when it actually differs — avoids New === Previous in email.
-    if (existing?.length && !existing.equals(newJpeg)) {
+    if (existing?.length && (photoChanged || !existing.equals(newJpeg))) {
       await repo.uploadBuffer(prevPath, existing, 'image/jpeg');
     }
   } catch {
@@ -1530,7 +1533,7 @@ async function sendUnifiedCoachEmail({
 
   // Prefer Transformation Card images only — do not attach loose before/after
   // JPEGs (Gmail lists those as "4 Attachments" like before-previous.jpg).
-  const [currentShareCardAttRaw, previousShareCardAttRaw, healthVideoUrl, businessVideoUrl] =
+  const [currentShareCardAttRaw, previousShareCardAttStored, healthVideoUrl, businessVideoUrl] =
     await Promise.all([
       userId
         ? loadPhotoEmailAttachment(repo.shareCardStoragePath(userId), SHARE_CARD_CID, 'transformation-card.jpg')
@@ -1545,6 +1548,52 @@ async function sendUnifiedCoachEmail({
       (slots.has('health') && healthVideoPath)     ? repo.getEmailSignedUrl(healthVideoPath)   : Promise.resolve(null),
       (slots.has('business') && businessVideoPath) ? repo.getEmailSignedUrl(businessVideoPath) : Promise.resolve(null),
     ]);
+
+  // When After/Before changed but share_card_prev is missing, build Previous from
+  // the old photo pair so the email still shows Previous | New.
+  let previousShareCardAttRaw = previousShareCardAttStored;
+  if (
+    userId
+    && previousPairDistinct
+    && !previousShareCardAttRaw
+    && previousCardBeforePath
+    && previousCardAfterPath
+  ) {
+    try {
+      const [prevBeforeBuf, prevAfterBuf] = await Promise.all([
+        repo.downloadBuffer(previousCardBeforePath, { retries: 2 }),
+        repo.downloadBuffer(previousCardAfterPath, { retries: 2 }),
+      ]);
+      if (prevBeforeBuf?.length && prevAfterBuf?.length) {
+        const prevJpeg = await composeTransformationShareCardJpeg({
+          beforeBuffer: prevBeforeBuf,
+          afterBuffer: prevAfterBuf,
+          memberName,
+          beforeWeightKg: previousBeforeWeight,
+          afterWeightKg: previousAfterWeight,
+          goalType: previousGoalType,
+          durationText: previousDurationText,
+        });
+        await repo.uploadBuffer(
+          repo.previousShareCardStoragePath(userId),
+          prevJpeg,
+          'image/jpeg',
+        );
+        previousShareCardAttRaw = {
+          cid: PREV_SHARE_CARD_CID,
+          content: prevJpeg,
+          filename: 'transformation-card-prev.jpg',
+          contentType: 'image/jpeg',
+          contentDisposition: 'inline',
+        };
+      }
+    } catch (err) {
+      logger.warn('[testimonials.service] Could not compose Previous share card for email', {
+        userId,
+        message: err?.message || String(err),
+      });
+    }
+  }
 
   // Drop Previous share card when it is byte-identical to New (avoids duplicate thumbs).
   const shareCardsIdentical = Boolean(
