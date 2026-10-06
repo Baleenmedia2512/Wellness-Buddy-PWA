@@ -1,6 +1,6 @@
 // Login entry step — phone number only input.
 // Phone OTP flow:
-//   - autocomplete="tel" lets Android/iOS fill the number from saved contacts.
+//   - Auto-focus opens the OS numeric keypad by default (same pad as Enter OTP).
 //   - Country code picker defaults to India (+91).
 //   - After OTP is sent, WebOTP (useWebOtp hook) auto-reads the code from SMS
 //     on Android Chrome / Capacitor WebView — no user interaction needed.
@@ -14,7 +14,12 @@ import { isFlagEnabled } from '../../../../config/featureFlags';
 import CountryFlagIcon from '../../../../shared/components/icons/CountryFlagIcon';
 import { isIOS } from '../../../../shared/utils/platform';
 import NativeInput from '../../../../shared/components/NativeInput.jsx';
+import {
+  focusInputForKeyboard,
+  scheduleFocusInputForKeyboard,
+} from '../../../../shared/utils/focusInputForKeyboard.js';
 import { SMS_OTP_LENGTH } from '../../domain/otpLength';
+
 const Spinner = () => (
   <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
@@ -34,12 +39,24 @@ const LoginEmailEntry = ({
   const ios = isIOS();
   const selectedCountry = COUNTRY_CODES.find((c) => c.dial === countryDial) || DEFAULT_COUNTRY;
 
-  // Auto-focus phone input on mount so Android keyboard + number suggestions
-  // appear immediately (mirrors Swiggy/Zomato UX).
-  useEffect(() => {
-    const t = setTimeout(() => inputRef.current?.focus(), 300);
-    return () => clearTimeout(t);
-  }, []);
+  // Focus phone field on mount so the OS number pad opens immediately
+  // (same behaviour as Enter OTP).
+  useEffect(() => scheduleFocusInputForKeyboard(() => inputRef.current), []);
+
+  // Keep the phone field focused so the number pad does not dismiss when the
+  // user taps the terms checkbox / label (mousedown preventDefault stops focus steal).
+  const keepPhoneKeyboard = (event) => {
+    event.preventDefault();
+  };
+
+  const restorePhoneKeyboard = () => {
+    requestAnimationFrame(() => focusInputForKeyboard(inputRef.current));
+  };
+
+  const handleTermsChange = (checked) => {
+    setTermsAccepted?.(checked);
+    restorePhoneKeyboard();
+  };
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -106,6 +123,7 @@ const LoginEmailEntry = ({
             inputMode="numeric"
             pattern="[0-9]*"
             autoComplete="off"
+            autoFocus
             name="tel"
             value={email}
             onChange={(e) => {
@@ -132,16 +150,34 @@ const LoginEmailEntry = ({
         </p>
       </div>
       <div className="flex items-start gap-2.5">
-        <input
+        {/*
+          Use a button checkbox (not <input type="checkbox">) so iOS/Android
+          never move focus away from the phone field — number pad stays open.
+        */}
+        <button
+          type="button"
           id="signup-terms"
-          type="checkbox"
-          checked={termsAccepted === true}
-          onChange={(e) => setTermsAccepted?.(e.target.checked)}
-          disabled={loading}
+          role="checkbox"
+          aria-checked={termsAccepted === true}
           aria-label="Accept Terms of Service and Privacy Policy"
-          className="mt-0.5 h-[18px] w-[18px] shrink-0 rounded border-gray-300 accent-[#2563eb]"
-        />
-        <label htmlFor="signup-terms" className="text-sm leading-snug text-gray-600">
+          disabled={loading}
+          onMouseDown={keepPhoneKeyboard}
+          onPointerDown={keepPhoneKeyboard}
+          onTouchStart={keepPhoneKeyboard}
+          onClick={() => handleTermsChange(!(termsAccepted === true))}
+          className={`mt-0.5 h-[18px] w-[18px] shrink-0 rounded border flex items-center justify-center ${
+            termsAccepted === true
+              ? 'border-[#2563eb] bg-[#2563eb] text-white'
+              : 'border-gray-300 bg-white'
+          }`}
+        >
+          {termsAccepted === true && (
+            <svg viewBox="0 0 16 16" className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3.5 8.5 6.5 11.5 12.5 4.5" />
+            </svg>
+          )}
+        </button>
+        <div className="text-sm leading-snug text-gray-600">
           By Signing up, I accept the{' '}
           <button
             type="button"
@@ -158,7 +194,7 @@ const LoginEmailEntry = ({
           >
             Privacy Policy
           </button>
-        </label>
+        </div>
       </div>
       {errorMessage && (
         <p className="text-sm text-red-600 text-center">{errorMessage}</p>

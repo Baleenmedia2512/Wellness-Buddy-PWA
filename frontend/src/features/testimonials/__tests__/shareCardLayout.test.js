@@ -56,10 +56,18 @@ describe('shareCardPhotoHeight', () => {
 
   it('always leaves room for the rest of the 9:16 card', () => {
     const h = shareCardPhotoHeight({ issueCount: 10, hasResultPill: true });
-    assert.ok(h >= 340);
+    assert.ok(h >= 400);
     assert.ok(h <= 690);
-    // Header + name + meta + pill + 3 issue rows + disclaimer leave <300px slack above photos
+    // Compact health-issues + disclaimer still leave photos dominant on the 9:16 card
     assert.ok(h + 300 < CARD_H);
+  });
+
+  it('keeps photos large when health issues are present (no heavy shrink)', () => {
+    const noIssues = shareCardPhotoHeight({ issueCount: 0, hasResultPill: true });
+    const withIssues = shareCardPhotoHeight({ issueCount: 6, hasResultPill: true });
+    // With 6 issues, photos should stay close to the no-issues card (not crushed)
+    assert.ok(withIssues >= 500);
+    assert.ok(noIssues - withIssues < 200);
   });
 
   it('reserves space for the two-line disclaimer footer', () => {

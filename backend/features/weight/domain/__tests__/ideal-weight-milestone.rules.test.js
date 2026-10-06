@@ -4,11 +4,61 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  collectIdealReachNotifyTargets,
+  IDEAL_REACH_NOTIFY_MAX_LEVELS,
   isWeightInIdealRange,
   findFirstIdealReachedEntry,
   shouldAttemptIdealMilestoneOnSave,
   isSaveTheFirstIdealReach,
 } from '../ideal-weight-milestone.rules.js';
+
+describe('collectIdealReachNotifyTargets', () => {
+  it('includes coach + cocoach for up to 3 levels, nearest first', () => {
+    const targets = collectIdealReachNotifyTargets({
+      ancestorCoachIds: [10, 20, 30, 40],
+      partnerByCoachId: new Map([
+        [10, 11],
+        [20, 21],
+        [30, 31],
+        [40, 41],
+      ]),
+      memberUserId: 1,
+    });
+    assert.equal(IDEAL_REACH_NOTIFY_MAX_LEVELS, 3);
+    assert.deepEqual(targets, [
+      { userId: '10', role: 'coach', level: 1 },
+      { userId: '11', role: 'cocoach', level: 1 },
+      { userId: '20', role: 'coach', level: 2 },
+      { userId: '21', role: 'cocoach', level: 2 },
+      { userId: '30', role: 'coach', level: 3 },
+      { userId: '31', role: 'cocoach', level: 3 },
+    ]);
+  });
+
+  it('skips missing partners and dedupes repeated user ids', () => {
+    const targets = collectIdealReachNotifyTargets({
+      ancestorCoachIds: [10, 20],
+      partnerByCoachId: { 10: 20, 20: null },
+      memberUserId: 1,
+    });
+    assert.deepEqual(targets, [
+      { userId: '10', role: 'coach', level: 1 },
+      { userId: '20', role: 'cocoach', level: 1 },
+    ]);
+  });
+
+  it('excludes the member when they appear in the chain', () => {
+    const targets = collectIdealReachNotifyTargets({
+      ancestorCoachIds: [1, 20],
+      partnerByCoachId: new Map([[20, 21]]),
+      memberUserId: 1,
+    });
+    assert.deepEqual(targets, [
+      { userId: '20', role: 'coach', level: 2 },
+      { userId: '21', role: 'cocoach', level: 2 },
+    ]);
+  });
+});
 
 describe('isWeightInIdealRange', () => {
   // 170 cm → idealMin ≈ 54.91, idealMax ≈ 66.47
