@@ -8,17 +8,19 @@ export const CARD_H = 960;
 export const MAX_VISIBLE_ISSUES = 10;
 
 const HEADER_H = 62;
-const NAME_H = 52;
-const PHOTO_META_H = 44;
-const RESULT_PILL_H = 48;
-const ISSUES_OUTER_PAD = 26;
-const ISSUES_BOX_PAD = 22;
-const ISSUES_TITLE_H = 52;
-const CHIP_ROW_H = 81;
-const EMPTY_BOTTOM = 8;
-/** Two-line legal footer under the result pill / health issues. */
-export const DISCLAIMER_H = 46;
-const PHOTO_MIN = 340;
+const NAME_H = 48;
+/** BEFORE/AFTER label + weight kg line under each photo (must not clip). */
+const PHOTO_META_H = 56;
+const RESULT_PILL_H = 44;
+/** Keep health-issues compact so photos stay close to the no-issues card size. */
+const ISSUES_OUTER_PAD = 8;
+const ISSUES_BOX_PAD = 10;
+const ISSUES_TITLE_H = 34;
+const CHIP_ROW_H = 56;
+const EMPTY_BOTTOM = 4;
+/** Compact badge + yellow legal footer under the result pill / health issues. */
+export const DISCLAIMER_H = 80;
+const PHOTO_MIN = 400;
 const PHOTO_MAX = 690;
 
 /**

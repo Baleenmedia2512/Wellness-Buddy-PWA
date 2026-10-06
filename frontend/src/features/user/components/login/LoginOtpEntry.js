@@ -13,6 +13,7 @@
 import React, { useCallback, useEffect, useRef } from 'react';
 import useWebOtp from '../../hooks/useWebOtp';
 import OtpInputCells from '../../../../shared/components/OtpInputCells.jsx';
+import { scheduleFocusInputForKeyboard } from '../../../../shared/utils/focusInputForKeyboard.js';
 import { nextOtpLastTried, shouldSubmitOtp } from '../../domain/otpAutoVerify';
 
 const LoginOtpEntry = ({
@@ -25,10 +26,10 @@ const LoginOtpEntry = ({
   // keyboard appears immediately and iOS QuickType can surface the OTP
   // suggestion without requiring an extra tap.
   // eslint-disable-next-line react-hooks/exhaustive-deps -- refs.current is a stable ref object; mount-only focus is intentional
-  useEffect(() => {
-    const t = setTimeout(() => refs.current[0]?.focus(), 300);
-    return () => clearTimeout(t);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(
+    () => scheduleFocusInputForKeyboard(() => refs.current[0]),
+    [],
+  ); // eslint-disable-line react-hooks/exhaustive-deps
 
   // WebOTP API: Android Chrome auto-reads the OTP from the SMS and populates
   // all cells + triggers verify without any user interaction.

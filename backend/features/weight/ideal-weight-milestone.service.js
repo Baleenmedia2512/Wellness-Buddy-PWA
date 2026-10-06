@@ -1,9 +1,9 @@
 /**
- * ideal-weight-milestone.service.js — Detect first BMI 19–23 reach; email sponsor + coach.
+ * ideal-weight-milestone.service.js — Detect first BMI 19–23 reach; email upline.
  *
- * Product locks (Ideal Weight Report):
- * - Recipients = Sponsor (direct CoachId) AND Ideal-Weight Coach (ADR-0007),
- *   when different people / emails. Same person → one email only.
+ * Product locks:
+ * - Recipients = Coach + Co-Coach for up to 3 CoachId ancestor levels
+ *   (level 1 = direct sponsor). Same person / email → one send.
  * - First reach only (no re-entry notify / date rewrite)
  * - First log already in range counts
  * - Trigger on new insert only (not edits)
@@ -12,7 +12,9 @@
  * @module backend/features/weight/ideal-weight-milestone.service
  */
 import {
+  collectIdealReachNotifyTargets,
   findFirstIdealReachedEntry,
+  IDEAL_REACH_NOTIFY_MAX_LEVELS,
   isSaveTheFirstIdealReach,
   isWeightInIdealRange,
   shouldAttemptIdealMilestoneOnSave,
@@ -21,7 +23,6 @@ import * as repo from './data/ideal-weight-milestone.repo.js';
 import { isEnabled } from '../../shared/lib/feature-flags.js';
 import { normalizeStoredTimestampToUtcIso } from '../../shared/lib/datetime/index.js';
 import { computeIdealWeightRange } from '../../utils/weightValidation.js';
-import { resolveSponsorAndIdealCoach } from '../../utils/sponsorCoachResolution.js';
 import logger from '../../shared/lib/logger.js';
 
 function escapeHtml(value) {
@@ -47,8 +48,26 @@ function formatDisplayDate(isoOrDate) {
   }
 }
 
-function buildEmail({ recipientName, recipientRole, memberName, weightKg, idealMin, idealMax, reachedAt }) {
-  const roleLabel = recipientRole === 'sponsor' ? 'Sponsor' : 'Coach';
+function roleLabelForEmail(recipientRole) {
+  if (recipientRole === 'cocoach') return 'Co-Coach';
+  if (recipientRole === 'sponsor') return 'Sponsor';
+  return 'Coach';
+}
+
+function buildEmail({
+  recipientName,
+  recipientRole,
+  level = null,
+  memberName,
+  weightKg,
+  idealMin,
+  idealMax,
+  reachedAt,
+}) {
+  const roleLabel = roleLabelForEmail(recipientRole);
+  const levelSuffix = Number.isFinite(Number(level)) && Number(level) > 0
+    ? ` · Level ${Number(level)}`
+    : '';
   const safeRecipient = escapeHtml(recipientName || roleLabel);
   const safeMember = escapeHtml(memberName || 'Your team member');
   const dateLabel = formatDisplayDate(reachedAt);
@@ -68,7 +87,7 @@ function buildEmail({ recipientName, recipientRole, memberName, weightKg, idealM
     `Current weight: ${weightLabel}`,
     `Ideal range: ${rangeLabel}`,
     '',
-    `Wellness Valley · Ideal Weight milestone (${roleLabel})`,
+    `Wellness Valley · Ideal Weight milestone (${roleLabel}${levelSuffix})`,
   ].join('\n');
 
   const html = `
@@ -81,7 +100,7 @@ function buildEmail({ recipientName, recipientRole, memberName, weightKg, idealM
       <p style="margin: 0 0 8px;">Current weight: <strong>${escapeHtml(weightLabel)}</strong></p>
       <p style="margin: 0 0 16px;">Ideal range: <strong>${escapeHtml(rangeLabel)}</strong></p>
       <p style="margin: 24px 0 0; font-size: 12px; color: #9ca3af;">
-        Wellness Valley · Ideal Weight milestone · ${escapeHtml(roleLabel)}
+        Wellness Valley · Ideal Weight milestone · ${escapeHtml(roleLabel)}${escapeHtml(levelSuffix)}
       </p>
     </div>
   `.trim();
@@ -105,65 +124,77 @@ function toReachedAtIso(createdAt) {
 }
 
 /**
- * Build unique email targets: Sponsor + Ideal-Weight Coach (ADR-0007).
- * Same person / same email → one send.
+ * Resolve contacts for notify targets; same email → one send.
+ * Prefer coach over cocoach when the same address appears twice.
  *
- * @param {{
- *   sponsorId: string|null,
- *   sponsorName: string|null,
- *   idealCoachId: string|null,
- *   idealCoachName: string|null,
- * }} labels
+ * @param {Array<{ userId: string, role: 'coach'|'cocoach', level: number }>} targets
  * @param {(id: number|string) => Promise<{ email: string|null, name: string|null }>} findContact
- * @returns {Promise<Array<{ userId: string, email: string, name: string|null, role: 'sponsor'|'coach' }>>}
+ * @returns {Promise<Array<{ userId: string, email: string, name: string|null, role: 'coach'|'cocoach', level: number }>>}
  */
-export async function buildIdealReachEmailRecipients(labels, findContact) {
-  const candidates = [];
-  if (labels?.sponsorId) {
-    candidates.push({
-      userId: String(labels.sponsorId),
-      nameHint: labels.sponsorName,
-      role: 'sponsor',
-    });
-  }
-  if (labels?.idealCoachId) {
-    candidates.push({
-      userId: String(labels.idealCoachId),
-      nameHint: labels.idealCoachName,
-      role: 'coach',
-    });
-  }
-
+export async function buildIdealReachEmailRecipients(targets, findContact) {
+  const list = Array.isArray(targets) ? targets : [];
   const byEmail = new Map();
-  for (const c of candidates) {
-    const contact = await findContact(c.userId);
+
+  for (const t of list) {
+    if (!t?.userId) continue;
+    const contact = await findContact(t.userId);
     const email = contact?.email ? String(contact.email).trim().toLowerCase() : '';
     if (!email) continue;
+
+    const next = {
+      userId: String(t.userId),
+      email: contact.email,
+      name: contact.name || null,
+      role: t.role === 'cocoach' ? 'cocoach' : 'coach',
+      level: Number(t.level) || 1,
+    };
+
     if (byEmail.has(email)) {
       const existing = byEmail.get(email);
-      if (existing.role === 'coach' && c.role === 'sponsor') {
-        byEmail.set(email, {
-          userId: c.userId,
-          email: contact.email,
-          name: contact.name || c.nameHint || existing.name,
-          role: 'sponsor',
-        });
+      // Prefer coach role; prefer nearer level when roles tie.
+      if (existing.role === 'cocoach' && next.role === 'coach') {
+        byEmail.set(email, next);
+      } else if (
+        existing.role === next.role
+        && Number(next.level) < Number(existing.level)
+      ) {
+        byEmail.set(email, next);
       }
       continue;
     }
-    byEmail.set(email, {
-      userId: c.userId,
-      email: contact.email,
-      name: contact.name || c.nameHint || null,
-      role: c.role,
-    });
+    byEmail.set(email, next);
   }
   return [...byEmail.values()];
 }
 
 /**
+ * Walk up to 3 CoachId levels and attach each level's co-coach partner.
+ *
+ * @param {number|string} memberUserId
+ * @param {number|string|null|undefined} sponsorCoachId
+ * @param {object} db
+ * @returns {Promise<Array<{ userId: string, role: 'coach'|'cocoach', level: number }>>}
+ */
+export async function resolveIdealReachNotifyTargets(memberUserId, sponsorCoachId, db) {
+  const listAncestors = db.listCoachAncestorIdsForNotify || repo.listCoachAncestorIdsForNotify;
+  const findPartners = db.findLeadPartnersByUserIds || repo.findLeadPartnersByUserIds;
+
+  const ancestorCoachIds = await listAncestors(
+    sponsorCoachId,
+    IDEAL_REACH_NOTIFY_MAX_LEVELS,
+  );
+  const partnerByCoachId = await findPartners(ancestorCoachIds);
+  return collectIdealReachNotifyTargets({
+    ancestorCoachIds,
+    partnerByCoachId,
+    memberUserId,
+    maxLevels: IDEAL_REACH_NOTIFY_MAX_LEVELS,
+  });
+}
+
+/**
  * After a successful weight insert: stamp first IdealWeightReachedAt if needed,
- * and email Sponsor + Ideal-Weight Coach when this save is the chronological first reach.
+ * and email coach + co-coach up to 3 upline levels when this save is the first reach.
  *
  * Failures are logged and never thrown — weight save must stay non-blocking.
  *
@@ -195,10 +226,12 @@ export async function maybeRecordIdealWeightMilestone(params, deps = {}) {
     claimIdealWeightReachedNotify:
       deps.claimIdealWeightReachedNotify || repo.claimIdealWeightReachedNotify,
     findMemberCoachContext: deps.findMemberCoachContext || repo.findMemberCoachContext,
+    listCoachAncestorIdsForNotify:
+      deps.listCoachAncestorIdsForNotify || repo.listCoachAncestorIdsForNotify,
+    findLeadPartnersByUserIds:
+      deps.findLeadPartnersByUserIds || repo.findLeadPartnersByUserIds,
     findCoachContact: deps.findCoachContact || repo.findCoachContact,
     sendCoachEmail: deps.sendCoachEmail || repo.sendCoachEmail,
-    resolveSponsorAndIdealCoach:
-      deps.resolveSponsorAndIdealCoach || resolveSponsorAndIdealCoach,
   };
 
   if (!userId) {
@@ -260,8 +293,12 @@ export async function maybeRecordIdealWeightMilestone(params, deps = {}) {
       return { recorded: true, notified: false, reason: 'notify_already_claimed' };
     }
 
-    const labels = await db.resolveSponsorAndIdealCoach(userId);
-    const recipients = await buildIdealReachEmailRecipients(labels, db.findCoachContact);
+    const targets = await resolveIdealReachNotifyTargets(
+      userId,
+      context.coachId,
+      db,
+    );
+    const recipients = await buildIdealReachEmailRecipients(targets, db.findCoachContact);
 
     if (recipients.length === 0) {
       return { recorded: true, notified: false, reason: 'no_recipient_email' };
@@ -273,6 +310,7 @@ export async function maybeRecordIdealWeightMilestone(params, deps = {}) {
       const mail = buildEmail({
         recipientName: recipient.name,
         recipientRole: recipient.role,
+        level: recipient.level,
         memberName: context.memberName,
         weightKg,
         idealMin: range?.idealMin,
@@ -292,6 +330,7 @@ export async function maybeRecordIdealWeightMilestone(params, deps = {}) {
           userId,
           recipientId: recipient.userId,
           role: recipient.role,
+          level: recipient.level,
           error: sent.error,
         });
       }
@@ -301,11 +340,14 @@ export async function maybeRecordIdealWeightMilestone(params, deps = {}) {
       return { recorded: true, notified: false, reason: 'email_failed', emailed: 0 };
     }
 
-    logger.info('[ideal-milestone] sponsor/coach notified of ideal weight reach', {
+    logger.info('[ideal-milestone] coach/co-coach notified of ideal weight reach', {
       userId,
       emailed: sentCount,
-      sponsorId: labels?.sponsorId ?? null,
-      idealCoachId: labels?.idealCoachId ?? null,
+      targets: targets.length,
+      levels: Math.min(IDEAL_REACH_NOTIFY_MAX_LEVELS, targets.reduce(
+        (max, t) => Math.max(max, Number(t.level) || 0),
+        0,
+      )),
     });
     return { recorded: true, notified: true, reason: 'sent', emailed: sentCount };
   } catch (err) {
