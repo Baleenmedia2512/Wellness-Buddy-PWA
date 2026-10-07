@@ -1549,13 +1549,13 @@ async function sendUnifiedCoachEmail({
       (slots.has('business') && businessVideoPath) ? repo.getEmailSignedUrl(businessVideoPath) : Promise.resolve(null),
     ]);
 
-  // When After/Before changed but share_card_prev is missing, build Previous from
-  // the old photo pair so the email still shows Previous | New.
+  // When After/Before changed, always rebuild Previous from the OLD photo pair.
+  // Reusing a stale client capture often had a broken After slot in the outer thumb
+  // while the HTTPS preview looked fine (looked like Previous/New were swapped).
   let previousShareCardAttRaw = previousShareCardAttStored;
   if (
     userId
     && previousPairDistinct
-    && !previousShareCardAttRaw
     && previousCardBeforePath
     && previousCardAfterPath
   ) {
@@ -1624,11 +1624,8 @@ async function sendUnifiedCoachEmail({
         : Promise.resolve(emptyPhotos),
     ]);
 
-  const attachments = hasShareCardThumbs
-    ? [currentShareCardAtt, previousShareCardAtt].filter(Boolean)
-    : [...cardPhotos.attachments, ...previousCardPhotos.attachments].filter(Boolean);
-
-  // HTTPS preview links — New opens current share_card, Previous opens share_card_prev.
+  // HTTPS URLs for both the outer thumb AND tap-preview — same file, so Gmail
+  // cannot mix up two similar cid: attachments (outer looked swapped vs preview).
   const previewHrefs = {
     current: userId
       ? await repo.getEmailSignedUrl(repo.shareCardStoragePath(userId))
@@ -1639,6 +1636,23 @@ async function sendUnifiedCoachEmail({
         ? await repo.getEmailSignedUrl(previousCardAfterPath)
         : null),
   };
+
+  // Prefer HTTPS for the visible card image; CID only if signed URL is unavailable.
+  const previousCardImageUrl = previewHrefs.previous
+    || (previousShareCardAtt ? `cid:${PREV_SHARE_CARD_CID}` : null);
+  const currentCardImageUrl = previewHrefs.current
+    || (currentShareCardAtt ? `cid:${SHARE_CARD_CID}` : null);
+  const usingRemoteShareCards = Boolean(
+    (previousCardImageUrl && String(previousCardImageUrl).startsWith('http'))
+    || (currentCardImageUrl && String(currentCardImageUrl).startsWith('http')),
+  );
+
+  // When outer thumbs use HTTPS, skip CID share-card attachments (avoids Gmail mix-ups).
+  const attachments = usingRemoteShareCards
+    ? [...cardPhotos.attachments, ...previousCardPhotos.attachments].filter(Boolean)
+    : hasShareCardThumbs
+      ? [currentShareCardAtt, previousShareCardAtt].filter(Boolean)
+      : [...cardPhotos.attachments, ...previousCardPhotos.attachments].filter(Boolean);
 
   const emailParams = {
     memberName,
@@ -1662,8 +1676,8 @@ async function sendUnifiedCoachEmail({
     previousGoalType,
     previousDurationText,
     previousRecoveredHealthIssues,
-    previousCardImageUrl: previousShareCardAtt ? `cid:${PREV_SHARE_CARD_CID}` : null,
-    currentCardImageUrl: currentShareCardAtt ? `cid:${SHARE_CARD_CID}` : null,
+    previousCardImageUrl,
+    currentCardImageUrl,
     previousPreviewHref: previewHrefs.previous,
     currentPreviewHref: previewHrefs.current,
     healthVideoUrl,
