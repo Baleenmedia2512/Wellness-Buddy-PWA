@@ -1,3 +1,23 @@
+﻿/**
+ * tests/frontend/pages/home.spec.js
+ * E2E test suite for Home Module.
+ * 
+ *
+ * Requirements Covered:
+ * - HOME-001: verify take photo and gallery uploaded photo displays next page correctly
+ * - HOME-002: developer role can see wellness score setup; non-developer cannot
+ * - HOME-003: after uploading image, weight option can be selected, weight is editable, shared to whatsapp, and updated in profile
+ * - HOME-004: upload image and increase/decrease scoop and save, maintain previously updated scoop on fresh image selection
+ * - HOME-005: upload image, select all options in education, pick Wellness Seminar and In-person, save, and verify education modal behavior on revisit
+ * - HOME-006: upload image and select water, test increase/decrease ml, quick add presets, save, and verify consumed water ml is maintained on fresh image upload
+ * - HOME-007: upload image, search food options (vegetable biriyani, mutton rice), save meal, and verify in diary
+ * - HOME-008: upload image, select Workout, test increase/decrease calories and quick add presets, save, and verify previously logged calories are maintained on fresh image upload
+ * - HOME-009: upload image, select Good Habit, save, and verify it is stored in the diary page
+ * - HOME-010: upload image, select Target Nutrition, search Herbalife Beta Heart and Herbalife Niteworks, test multi-add with decimal rounding, save meal, and verify in diary
+ * - HOME-011: Navigation bar displays only 4 tabs (Home, Diary, Programmes, Transformation) when page access is restricted, and all tabs when full access is granted
+ * - HOME-012: User can select Today, Yesterday, Last 10 Days, and Custom Range date options on Home page
+ */
+
 import { test, expect } from '@playwright/test';
 
 test.describe('Homepage', () => {

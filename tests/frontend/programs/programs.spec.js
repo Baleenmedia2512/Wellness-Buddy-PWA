@@ -1,3 +1,18 @@
+﻿/**
+ * tests/frontend/programs/programs.spec.js
+ * E2E test suite for Programs Module.
+ * 
+ *
+ * Requirements Covered:
+ * - PROG-001: user can open Programs page and select all programs
+ * - PROG-002: update button state changes with program selection and cancel returns home
+ * - PROG-003: coach can edit own and downline Programs; normal user has no member search
+ * - PROG-004: user can create a program enrollment
+ * - PROG-005: user can enroll in programs and update existing enrollment
+ * - PROG-006: coach can switch member, use Back to My Enrollment and View Mine
+ * - PROG-007: coach can edit own, downline coach and downline coach member programs
+ */
+
 import { test, expect } from '@playwright/test';
 
 test(

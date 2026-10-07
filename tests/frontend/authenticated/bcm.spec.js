@@ -1,3 +1,27 @@
+﻿/**
+ * tests/frontend/authenticated/bcm.spec.js
+ * E2E test suite for Bcm Module.
+ * 
+ *
+ * Requirements Covered:
+ * - BCM-001: Navigation and Initial Load
+ * - BCM-002: Refresh Functionality
+ * - BCM-003: Create Modal and Prefilled Venue
+ * - BCM-004: Form Required Fields Validation
+ * - BCM-005: Search Functionality
+ * - BCM-006: Edit Card
+ * - BCM-007: Delete Card
+ * - BCM-008: Auto-Calculations (BMI & BMR)
+ * - BCM-009: Manual Override Locks on Auto-Calculations
+ * - BCM-010: Gender-Based Placeholder and Hint updates
+ * - BCM-011: Existing Activated Phone Is Blocked
+ * - BCM-012: Existing Phone Prompts Override Or New
+ * - BCM-013: Phone Autocomplete Pick Still Prompts Override Or New
+ * - BCM-014: Verify every field in a BCM card modal can be filled
+ * - BCM-015: Verify mandatory fields validation, invalid phone check, and all parent prerequisite field prompts in BCM modal
+ * - BCM-016: Verify share option near edit icon opens WhatsApp in every BCM card
+ */
+
 const { test, expect } = require('@playwright/test');
 
 test.describe('BCM Module (Body Composition Metrics)', () => {

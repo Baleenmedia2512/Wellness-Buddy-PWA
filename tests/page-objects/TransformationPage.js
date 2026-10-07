@@ -31,6 +31,7 @@ class TransformationPage {
       .or(page.locator('input[inputmode="numeric"]'))
       .or(page.locator('input[data-otp="true"]'));
     this.verifyWithOtpButton = page.getByRole('button', { name: /Verify with OTP/i });
+    this.closeOtpButton = page.getByRole('button', { name: /^Close$/i });
     this.resendOtpButton = page.getByRole('button', { name: /Resend OTP/i });
 
     // Search Inputs

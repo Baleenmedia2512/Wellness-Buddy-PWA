@@ -1,3 +1,34 @@
+﻿/**
+ * tests/frontend/authenticated/club.spec.js
+ * E2E test suite for Club Module.
+ * 
+ *
+ * Requirements Covered:
+ * - CLUB-001: Map Initialization and Controls
+ * - CLUB-002: Team and Date Filters Functionality
+ * - CLUB-003: Registration Validation & Server Error Handling
+ * - CLUB-004: Successful Registration Flow
+ * - CLUB-005: Deletion Flow Cancel & Server Error Handling
+ * - CLUB-006: Search Functionality
+ * - CLUB-007: Refresh Functionality
+ * - CLUB-008: API Failure on Load
+ * - CLUB-009: Unregister Button Authorization Check
+ * - CLUB-010: Map Zoom Controls Functionality
+ * - CLUB-011: FAB Navigation to Registration
+ * - CLUB-012: Map Fullscreen Toggle
+ * - CLUB-013: Map Marker Click and Info Window Content
+ * - CLUB-014: Map MapType (Satellite/Map) and Labels Controls
+ * - CLUB-015: Center Card Action Navigation (Edit and Street View)
+ * - CLUB-016: Delete Center and Verify Refresh Sync
+ * - CLUB-017: Attendee List Modal Verification
+ * - CLUB-018: Search Center Verification
+ * - CLUB-019: Center Edit Submission Flow
+ * - CLUB-020: Center Edit Cancellation
+ * - CLUB-021: "My Centres" List Visibility
+ * - CLUB-022: Attendee Modal Empty State Verification
+ * - CLUB-023: Call Owner Link Validation
+ */
+
 const { test, expect } = require('@playwright/test');
 
 test.describe('Club Module (Nutrition Centers)', () => {

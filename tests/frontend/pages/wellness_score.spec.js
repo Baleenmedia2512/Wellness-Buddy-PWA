@@ -1,3 +1,13 @@
+﻿/**
+ * tests/frontend/pages/wellness_score.spec.js
+ * E2E test suite for Wellness Score Module.
+ * 
+ *
+ * Requirements Covered:
+ * - SCORE_01: Required time-based parameters (Breakfast, Dinner, Education, Weight) display full 100 points when logged within window and 0 points otherwise
+ * - SCORE_02: All wellness score parameter components across Activity, Nutrition, and Progress can be selected to view contribution details modal
+ */
+
 import { test, expect } from '@playwright/test';
 
 test.describe('Wellness Score - Time-Based Parameters (SCORE_01)', () => {

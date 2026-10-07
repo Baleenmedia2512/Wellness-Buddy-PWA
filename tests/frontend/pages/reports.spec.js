@@ -1,9 +1,22 @@
-/**
+﻿/**
  * tests/frontend/pages/reports.spec.js
  * E2E test suite for Reports Module.
  * 
+ *
+ *
  * Requirements Covered:
  * - RPT-001: Enter into the report module and able to click ideal weight, wellness score, nutrition and trend
+ * - RPT-002: Mine, Direct Team, and Full Team selection updates bracket numbering
+ * - RPT-003: Filter Ideal Weight report by status chips
+ * - RPT-004: Search member by name in Ideal Weight report
+ * - RPT-005: Mine, Direct Team, and Full Team scope filtering in Wellness Score report tab
+ * - RPT-006: Nutrition section components, date range presets, and parameter cards are clickable
+ * - RPT-007: Trend section allows selecting all metric cards, date range buttons, and custom date picker
+ * - RPT-008: Date filter pills (Today, Yesterday, Custom Date) and date picker popover in Wellness Score report tab
+ * - RPT-009: Member search and interactive column sorting in Wellness Score report tab
+ * - RPT-010: Table pagination and member rows rendering in Wellness Score report tab
+ * - RPT-011: Share Excel export button triggers export process in Wellness Score report tab
+ * - RPT-012: Multi-page pagination navigation loads Page 2 members in Wellness Score report tab
  */
 
 const { test, expect } = require('@playwright/test');

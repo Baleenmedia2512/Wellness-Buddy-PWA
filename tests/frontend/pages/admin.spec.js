@@ -1,3 +1,15 @@
+﻿/**
+ * tests/frontend/pages/admin.spec.js
+ * E2E test suite for Admin Module.
+ * 
+ *
+ * Requirements Covered:
+ * - admin-001: admin logs in, clicks Settings option on home page, and toggles each wellness score component modifying total points
+ * - admin-002: in admin config setup, each activity_time option can be editable and savable
+ * - admin-003: in admin config setup, AI config can be enabled/disabled, credits incremented/decremented, and breakfast, lunch, and dinner timings set
+ * - admin-004: in page access, all checkboxes can be selected and unselected successfully
+ */
+
 import { test, expect } from '@playwright/test';
 
 test.describe('Admin Page - Wellness Score & Activity Time Settings (ADMIN_001)', () => {
