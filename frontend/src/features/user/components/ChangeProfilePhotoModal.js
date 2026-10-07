@@ -113,10 +113,11 @@ const ChangeProfilePhotoModal = ({
     setError('');
     setIsSaving(true);
     try {
-      // Keep Centre transform slot in sync — Centre is the product profile photo.
+      // Profile photo only — do not overwrite Centre (transformation front).
+      // New users get profile from Centre on first Centre upload; later profile
+      // changes must leave Centre unchanged.
       const payload = {
         profileImage,
-        transformationPhotos: { front: profileImage },
       };
       if (email) payload.email = email;
       if (user?.id != null) payload.userId = user.id;

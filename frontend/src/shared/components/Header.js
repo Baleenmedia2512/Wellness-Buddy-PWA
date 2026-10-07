@@ -78,7 +78,7 @@ const Header = ({
           } else {
             setSavedUserName(null);
           }
-          // Same display preference as leaderboard avatar: profileImage, else Centre transform.
+          // Same order as /api/user/avatar + My Profile: profileImage, else Centre.
           const nextImage = data.data.profileImage
             || data.data.transformationPhotos?.front
             || null;

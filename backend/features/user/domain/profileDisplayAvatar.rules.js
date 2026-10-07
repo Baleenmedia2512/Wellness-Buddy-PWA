@@ -1,14 +1,14 @@
 /**
- * Display avatar resolution — same order as My Profile UI:
- *   1. Centre transformation R2 key (frontKey) when configured
- *   2. Centre transformation photo (transformationPhotos.front)
- *   3. R2 ProfileImageKey (explicit avatar upload / synced copy)
- *   4. https ProfileImage (e.g. Google) — only when no Centre photo
- *   5. Legacy data:image ProfileImage (only when no centre transform)
+ * Display avatar resolution — same order as My Profile / Home header:
+ *   1. R2 ProfileImageKey (explicit avatar upload / synced copy)
+ *   2. https ProfileImage (e.g. Google)
+ *   3. Legacy data:image ProfileImage
+ *   4. Centre transformation R2 key (frontKey) when configured
+ *   5. Centre transformation photo (transformationPhotos.front)
  *
- * Centre is the product profile photo. A stale Google / ProfileImageKey must
- * not hide a saved Centre image on mobile Home / leaderboard / My Profile.
- * /api/user/avatar must follow this full chain so lists match My Profile.
+ * Profile photo wins over Centre so leaderboard / lists match My Profile.
+ * Centre is only a fallback when no profile image is set.
+ * /api/user/avatar must follow this chain so ranking matches Home header.
  */
 import { isHttpsImageUrl } from '../../../shared/lib/images/dataUri.js';
 import { mapTransformationPhotosRecord } from './transformationPhotos.rules.js';
@@ -32,6 +32,19 @@ export function resolveProfileDisplayAvatar({
   r2Enabled = false,
   resolveR2Url = null,
 } = {}) {
+  if (r2Enabled && profileImageKey && typeof resolveR2Url === 'function') {
+    const url = resolveR2Url(profileImageKey);
+    if (url) return { kind: 'redirect', url };
+  }
+
+  if (isHttpsImageUrl(profileImage)) {
+    return { kind: 'redirect', url: String(profileImage).trim() };
+  }
+
+  if (typeof profileImage === 'string' && profileImage.startsWith('data:image/')) {
+    return { kind: 'dataUri', value: profileImage, persistAsProfileAvatar: true };
+  }
+
   const transform = mapTransformationPhotosRecord(transformationPhotos);
   if (r2Enabled && transform.frontKey && typeof resolveR2Url === 'function') {
     const url = resolveR2Url(transform.frontKey);
@@ -46,19 +59,6 @@ export function resolveProfileDisplayAvatar({
     if (front.startsWith('data:image/')) {
       return { kind: 'dataUri', value: front, persistAsProfileAvatar: false };
     }
-  }
-
-  if (r2Enabled && profileImageKey && typeof resolveR2Url === 'function') {
-    const url = resolveR2Url(profileImageKey);
-    if (url) return { kind: 'redirect', url };
-  }
-
-  if (isHttpsImageUrl(profileImage)) {
-    return { kind: 'redirect', url: String(profileImage).trim() };
-  }
-
-  if (typeof profileImage === 'string' && profileImage.startsWith('data:image/')) {
-    return { kind: 'dataUri', value: profileImage, persistAsProfileAvatar: true };
   }
 
   return { kind: 'none' };
