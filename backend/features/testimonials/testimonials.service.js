@@ -1531,34 +1531,38 @@ async function sendUnifiedCoachEmail({
     ),
   );
 
-  // Prefer Transformation Card images only — do not attach loose before/after
-  // JPEGs (Gmail lists those as "4 Attachments" like before-previous.jpg).
-  const [currentShareCardAttRaw, previousShareCardAttStored, healthVideoUrl, businessVideoUrl] =
-    await Promise.all([
-      userId
-        ? loadPhotoEmailAttachment(repo.shareCardStoragePath(userId), SHARE_CARD_CID, 'transformation-card.jpg')
-        : Promise.resolve(null),
-      (userId && previousPairDistinct)
-        ? loadPhotoEmailAttachment(
-          repo.previousShareCardStoragePath(userId),
-          PREV_SHARE_CARD_CID,
-          'transformation-card-prev.jpg',
-        )
-        : Promise.resolve(null),
-      (slots.has('health') && healthVideoPath)     ? repo.getEmailSignedUrl(healthVideoPath)   : Promise.resolve(null),
-      (slots.has('business') && businessVideoPath) ? repo.getEmailSignedUrl(businessVideoPath) : Promise.resolve(null),
-    ]);
+  // Outer compare uses HTTPS Before|After photo URLs (clear in Gmail).
+  // Full Transformation Card is only for tap-preview — never as the outer thumb
+  // (share-card JPEGs can show nested/broken After in the small email view).
+  const [
+    currentBeforeHref,
+    currentAfterHref,
+    previousBeforeHref,
+    previousAfterHref,
+    currentSharePreviewHref,
+    previousSharePreviewHref,
+    healthVideoUrl,
+    businessVideoUrl,
+  ] = await Promise.all([
+    (isComplete && beforeImagePath) ? repo.getEmailSignedUrl(beforeImagePath) : Promise.resolve(null),
+    (isComplete && afterImagePath) ? repo.getEmailSignedUrl(afterImagePath) : Promise.resolve(null),
+    (previousPairDistinct && previousCardBeforePath)
+      ? repo.getEmailSignedUrl(previousCardBeforePath)
+      : Promise.resolve(null),
+    (previousPairDistinct && previousCardAfterPath)
+      ? repo.getEmailSignedUrl(previousCardAfterPath)
+      : Promise.resolve(null),
+    userId ? repo.getEmailSignedUrl(repo.shareCardStoragePath(userId)) : Promise.resolve(null),
+    (userId && previousPairDistinct)
+      ? repo.getEmailSignedUrl(repo.previousShareCardStoragePath(userId))
+      : Promise.resolve(null),
+    (slots.has('health') && healthVideoPath) ? repo.getEmailSignedUrl(healthVideoPath) : Promise.resolve(null),
+    (slots.has('business') && businessVideoPath) ? repo.getEmailSignedUrl(businessVideoPath) : Promise.resolve(null),
+  ]);
 
-  // When After/Before changed, always rebuild Previous from the OLD photo pair.
-  // Reusing a stale client capture often had a broken After slot in the outer thumb
-  // while the HTTPS preview looked fine (looked like Previous/New were swapped).
-  let previousShareCardAttRaw = previousShareCardAttStored;
-  if (
-    userId
-    && previousPairDistinct
-    && previousCardBeforePath
-    && previousCardAfterPath
-  ) {
+  // Ensure Previous share card exists for tap-preview (compose from old photos if needed).
+  let previousPreviewHref = previousSharePreviewHref;
+  if (userId && previousPairDistinct && !previousPreviewHref && previousCardBeforePath && previousCardAfterPath) {
     try {
       const [prevBeforeBuf, prevAfterBuf] = await Promise.all([
         repo.downloadBuffer(previousCardBeforePath, { retries: 2 }),
@@ -1579,80 +1583,23 @@ async function sendUnifiedCoachEmail({
           prevJpeg,
           'image/jpeg',
         );
-        previousShareCardAttRaw = {
-          cid: PREV_SHARE_CARD_CID,
-          content: prevJpeg,
-          filename: 'transformation-card-prev.jpg',
-          contentType: 'image/jpeg',
-          contentDisposition: 'inline',
-        };
+        previousPreviewHref = await repo.getEmailSignedUrl(repo.previousShareCardStoragePath(userId));
       }
     } catch (err) {
-      logger.warn('[testimonials.service] Could not compose Previous share card for email', {
+      logger.warn('[testimonials.service] Could not compose Previous share card for preview', {
         userId,
         message: err?.message || String(err),
       });
+      previousPreviewHref = previousAfterHref;
     }
   }
 
-  // Drop Previous share card when it is byte-identical to New (avoids duplicate thumbs).
-  const shareCardsIdentical = Boolean(
-    currentShareCardAttRaw?.content?.length
-    && previousShareCardAttRaw?.content?.length
-    && currentShareCardAttRaw.content.equals(previousShareCardAttRaw.content),
-  );
-  const currentShareCardAtt = currentShareCardAttRaw;
-  const previousShareCardAtt = shareCardsIdentical ? null : previousShareCardAttRaw;
-  const showPreviousShareCard = Boolean(previousShareCardAtt) && !shareCardsIdentical;
-  const hasShareCardThumbs = Boolean(currentShareCardAtt || previousShareCardAtt);
-
-  // Loose Before/After CIDs only when share cards are missing (HTML card fallback).
-  const emptyPhotos = { beforeSrc: null, afterSrc: null, attachments: [] };
-  const [cardPhotos, previousCardPhotos] = hasShareCardThumbs
-    ? [emptyPhotos, emptyPhotos]
-    : await Promise.all([
-      (isComplete && beforeImagePath && afterImagePath)
-        ? resolveTransformationCardEmailPhotos(beforeImagePath, afterImagePath)
-        : Promise.resolve(emptyPhotos),
-      (isComplete && previousPairDistinct)
-        ? resolveTransformationCardEmailPhotos(previousCardBeforePath, previousCardAfterPath, {
-          beforeCid: PREV_BEFORE_PHOTO_CID,
-          afterCid: PREV_AFTER_PHOTO_CID,
-          beforeFile: 'before-previous.jpg',
-          afterFile: 'after-previous.jpg',
-        })
-        : Promise.resolve(emptyPhotos),
-    ]);
-
-  // HTTPS URLs for both the outer thumb AND tap-preview — same file, so Gmail
-  // cannot mix up two similar cid: attachments (outer looked swapped vs preview).
-  const previewHrefs = {
-    current: userId
-      ? await repo.getEmailSignedUrl(repo.shareCardStoragePath(userId))
-      : (afterImagePath ? await repo.getEmailSignedUrl(afterImagePath) : null),
-    previous: (userId && showPreviousShareCard)
-      ? await repo.getEmailSignedUrl(repo.previousShareCardStoragePath(userId))
-      : (previousCardAfterPath && previousPairDistinct && !shareCardsIdentical
-        ? await repo.getEmailSignedUrl(previousCardAfterPath)
-        : null),
-  };
-
-  // Prefer HTTPS for the visible card image; CID only if signed URL is unavailable.
-  const previousCardImageUrl = previewHrefs.previous
-    || (previousShareCardAtt ? `cid:${PREV_SHARE_CARD_CID}` : null);
-  const currentCardImageUrl = previewHrefs.current
-    || (currentShareCardAtt ? `cid:${SHARE_CARD_CID}` : null);
-  const usingRemoteShareCards = Boolean(
-    (previousCardImageUrl && String(previousCardImageUrl).startsWith('http'))
-    || (currentCardImageUrl && String(currentCardImageUrl).startsWith('http')),
+  const hasPhotoCompare = Boolean(
+    previousBeforeHref && previousAfterHref && currentBeforeHref && currentAfterHref,
   );
 
-  // When outer thumbs use HTTPS, skip CID share-card attachments (avoids Gmail mix-ups).
-  const attachments = usingRemoteShareCards
-    ? [...cardPhotos.attachments, ...previousCardPhotos.attachments].filter(Boolean)
-    : hasShareCardThumbs
-      ? [currentShareCardAtt, previousShareCardAtt].filter(Boolean)
-      : [...cardPhotos.attachments, ...previousCardPhotos.attachments].filter(Boolean);
+  // No CID photo attachments — HTTPS only (no "4 Attachments" strip in Gmail).
+  const attachments = [];
 
   const emailParams = {
     memberName,
@@ -1662,24 +1609,20 @@ async function sendUnifiedCoachEmail({
     beforeWeight,
     afterWeight,
     durationText,
-    beforeUrl: cardPhotos.beforeSrc,
-    afterUrl: cardPhotos.afterSrc,
-    // Hide previous photo pair in compare when share cards matched (New === old).
-    previousBeforeUrl: showPreviousShareCard || (previousPairDistinct && !shareCardsIdentical)
-      ? previousCardPhotos.beforeSrc
-      : null,
-    previousAfterUrl: showPreviousShareCard || (previousPairDistinct && !shareCardsIdentical)
-      ? previousCardPhotos.afterSrc
-      : null,
+    beforeUrl: currentBeforeHref,
+    afterUrl: currentAfterHref,
+    previousBeforeUrl: hasPhotoCompare ? previousBeforeHref : null,
+    previousAfterUrl: hasPhotoCompare ? previousAfterHref : null,
     previousBeforeWeight,
     previousAfterWeight,
     previousGoalType,
     previousDurationText,
     previousRecoveredHealthIssues,
-    previousCardImageUrl,
-    currentCardImageUrl,
-    previousPreviewHref: previewHrefs.previous,
-    currentPreviewHref: previewHrefs.current,
+    // Outer thumbs = Before|After photos; full card only via tap-preview href.
+    previousCardImageUrl: null,
+    currentCardImageUrl: null,
+    previousPreviewHref: previousPreviewHref || previousAfterHref,
+    currentPreviewHref: currentSharePreviewHref || currentAfterHref,
     healthVideoUrl,
     businessVideoUrl,
     recoveredHealthIssues: recoveredHealthIssues ?? [],
@@ -1706,9 +1649,9 @@ async function sendUnifiedCoachEmail({
     coachEmail,
     memberName,
     changedSlots,
-    hasShareCards: hasShareCardThumbs,
-    attachmentCount: attachments.length,
-    hasPreviousCard: showPreviousShareCard,
+    hasPhotoCompare,
+    hasCurrentSharePreview: Boolean(currentSharePreviewHref),
+    hasPreviousSharePreview: Boolean(previousPreviewHref),
   });
 }
 

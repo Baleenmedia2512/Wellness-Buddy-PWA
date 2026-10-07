@@ -118,7 +118,7 @@ describe('testimonial coach email photos keep aspect ratio', () => {
     assert.doesNotMatch(html, /\.photo-img\s*\{[^}]*height:\s*\d+px/);
   });
 
-  it('unified email shows Previous and New Transformation Cards side by side', () => {
+  it('unified email shows Previous and New Before|After photo pairs side by side', () => {
     const html = buildUnifiedSubmitEmailHtml({
       memberName: 'Alex',
       otp: '1234',
@@ -127,14 +127,14 @@ describe('testimonial coach email photos keep aspect ratio', () => {
       beforeWeight: 90.9,
       afterWeight: 60.8,
       durationText: '6 months',
-      beforeUrl: 'cid:transformation-before@wellnessvalley',
-      afterUrl: 'cid:transformation-after@wellnessvalley',
-      previousBeforeUrl: 'cid:transformation-before-prev@wellnessvalley',
-      previousAfterUrl: 'cid:transformation-after-prev@wellnessvalley',
+      beforeUrl: 'https://example.com/before-new.jpg',
+      afterUrl: 'https://example.com/after-new.jpg',
+      previousBeforeUrl: 'https://example.com/before-old.jpg',
+      previousAfterUrl: 'https://example.com/after-old.jpg',
       previousBeforeWeight: 90.9,
       previousAfterWeight: 70,
-      previousCardImageUrl: 'cid:transformation-card-prev@wellnessvalley',
-      currentCardImageUrl: 'cid:transformation-card@wellnessvalley',
+      previousCardImageUrl: null,
+      currentCardImageUrl: null,
       previousPreviewHref: 'https://example.com/prev-card.jpg',
       currentPreviewHref: 'https://example.com/new-card.jpg',
       healthVideoUrl: null,
@@ -142,26 +142,26 @@ describe('testimonial coach email photos keep aspect ratio', () => {
       recoveredHealthIssues: ['Knee Pain'],
       isComplete: true,
     });
-    assert.match(html, /Transformation Card/);
+    assert.match(html, /Before vs After/);
     assert.match(html, />Previous</);
     assert.match(html, />New</);
-    assert.match(html, /Tap card to open full preview|Tap card to open preview/);
-    assert.match(html, /cid:transformation-card-prev@wellnessvalley/);
-    assert.match(html, /cid:transformation-card@wellnessvalley/);
+    assert.match(html, /Tap for full Transformation Card/);
+    assert.match(html, /https:\/\/example\.com\/before-old\.jpg/);
+    assert.match(html, /https:\/\/example\.com\/after-old\.jpg/);
+    assert.match(html, /https:\/\/example\.com\/before-new\.jpg/);
+    assert.match(html, /https:\/\/example\.com\/after-new\.jpg/);
     assert.match(html, /https:\/\/example\.com\/prev-card\.jpg/);
     assert.match(html, /https:\/\/example\.com\/new-card\.jpg/);
     const prevIdx = html.indexOf('>Previous<');
     const newIdx = html.indexOf('>New<');
     assert.ok(prevIdx >= 0 && newIdx > prevIdx);
     // Previous preview href wraps Previous; New href wraps New (never swapped).
-    // Markup order: <a href=prev>…Previous…</a> … <a href=new>…New…</a>
     const prevHrefIdx = html.indexOf('https://example.com/prev-card.jpg');
     const newHrefIdx = html.indexOf('https://example.com/new-card.jpg');
     assert.ok(prevHrefIdx >= 0 && prevHrefIdx < prevIdx, 'prev preview href wraps Previous');
     assert.ok(newHrefIdx > prevIdx && newHrefIdx < newIdx, 'new preview href wraps New');
-    assert.ok(prevHrefIdx < newHrefIdx);
-    // One card image per side (not 4 loose before/after photos)
-    assert.equal(photoImgs(html).length, 2);
+    // 4 photos: Previous Before/After + New Before/After
+    assert.equal(photoImgs(html).length, 4);
   });
 
   it('compare row requires both previous and new pairs', () => {

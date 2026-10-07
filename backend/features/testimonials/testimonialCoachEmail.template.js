@@ -180,9 +180,9 @@ export function buildShareCardRow(shareCardSrc, previewHref = null) {
 }
 
 /**
- * One compact Transformation Card preview (email-safe).
- * Prefer a single share-card image (full card). Fallback = After photo only.
- * Click opens previewHref in the browser when provided.
+ * One compact Previous/New cell: real Before | After photos (never a share-card
+ * JPEG — those can bake nested UI into the After slot in Gmail).
+ * Tap opens the full Transformation Card preview when previewHref is set.
  */
 function buildCompactTransformationPreview({
   label,
@@ -194,9 +194,9 @@ function buildCompactTransformationPreview({
   previewHref = null,
   tone = 'new',
 }) {
-  void beforeUrl;
-  const faceUrl = cardImageUrl || afterUrl;
-  if (!faceUrl) return '';
+  const hasPair = Boolean(beforeUrl && afterUrl);
+  const faceUrl = hasPair ? null : (cardImageUrl || afterUrl);
+  if (!hasPair && !faceUrl) return '';
   const isPrev = tone === 'previous';
   const border = isPrev ? '#fecdd3' : '#bbf7d0';
   const bg = isPrev ? '#fff1f2' : '#f0fdf4';
@@ -204,8 +204,22 @@ function buildCompactTransformationPreview({
   const beforeKg = formatWeight(beforeWeight);
   const afterKg = formatWeight(afterWeight);
   const safeLabel = escapeHtml(label);
-  // Full share card is taller (9:16) — keep width modest so Previous|New fit without scroll.
-  const imgWidth = cardImageUrl ? 150 : 140;
+
+  const photosBlock = hasPair
+    ? `
+      <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
+        <tr>
+          <td width="50%" valign="top" style="padding:0 2px 0 0;">
+            ${buildPhotoImg(beforeUrl, `${label} Before`, 120)}
+            <p style="margin:4px 0 0;color:#9ca3af;font-size:9px;font-weight:700;letter-spacing:0.4px;text-transform:uppercase;font-family:Arial,Helvetica,sans-serif;">Before</p>
+          </td>
+          <td width="50%" valign="top" style="padding:0 0 0 2px;">
+            ${buildPhotoImg(afterUrl, `${label} After`, 120)}
+            <p style="margin:4px 0 0;color:#9ca3af;font-size:9px;font-weight:700;letter-spacing:0.4px;text-transform:uppercase;font-family:Arial,Helvetica,sans-serif;">After</p>
+          </td>
+        </tr>
+      </table>`
+    : buildPhotoImg(faceUrl, `${label} Transformation Card`, 140);
 
   const body = `
     <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color:${bg};border:1px solid ${border};border-radius:8px;overflow:hidden;">
@@ -216,7 +230,7 @@ function buildCompactTransformationPreview({
       </tr>
       <tr>
         <td align="center" style="padding:0 8px 4px 8px;">
-          ${buildPhotoImg(faceUrl, `${label} Transformation Card`, imgWidth)}
+          ${photosBlock}
         </td>
       </tr>
       <tr>
@@ -228,7 +242,7 @@ function buildCompactTransformationPreview({
       </tr>
       <tr>
         <td align="center" style="padding:0 6px 8px 6px;">
-          <p style="margin:0;color:#9ca3af;font-size:9px;font-family:Arial,Helvetica,sans-serif;">Tap card to open preview</p>
+          <p style="margin:0;color:#9ca3af;font-size:9px;font-family:Arial,Helvetica,sans-serif;">Tap for full Transformation Card</p>
         </td>
       </tr>
     </table>`;
@@ -244,8 +258,8 @@ function buildCompactTransformationPreview({
 }
 
 /**
- * Previous + New Transformation Cards side by side (no long scroll).
- * Each small card is clickable to open a full photo preview.
+ * Previous + New side by side — each shows Before | After photos.
+ * Tap opens the full Transformation Card preview.
  */
 export function buildTransformationCardCompareRow({
   previousBeforeUrl,
@@ -261,9 +275,9 @@ export function buildTransformationCardCompareRow({
   currentCardImageUrl = null,
   currentPreviewHref = null,
 }) {
-  // Prefer real share-card images; otherwise need Before+After pair for fallback face.
-  const hasPrevious = Boolean(previousCardImageUrl || (previousBeforeUrl && previousAfterUrl));
-  const hasCurrent = Boolean(currentCardImageUrl || (beforeUrl && afterUrl));
+  // Prefer real Before|After photo pairs (clear in Gmail). Share-card JPEG is fallback only.
+  const hasPrevious = Boolean((previousBeforeUrl && previousAfterUrl) || previousCardImageUrl);
+  const hasCurrent = Boolean((beforeUrl && afterUrl) || currentCardImageUrl);
   if (!hasPrevious || !hasCurrent) return '';
 
   const previousCell = buildCompactTransformationPreview({
@@ -272,7 +286,8 @@ export function buildTransformationCardCompareRow({
     afterUrl: previousAfterUrl,
     beforeWeight: previousBeforeWeight,
     afterWeight: previousAfterWeight,
-    cardImageUrl: previousCardImageUrl,
+    // Only use share-card image when the photo pair is missing.
+    cardImageUrl: (previousBeforeUrl && previousAfterUrl) ? null : previousCardImageUrl,
     previewHref: previousPreviewHref,
     tone: 'previous',
   });
@@ -282,7 +297,7 @@ export function buildTransformationCardCompareRow({
     afterUrl,
     beforeWeight,
     afterWeight,
-    cardImageUrl: currentCardImageUrl,
+    cardImageUrl: (beforeUrl && afterUrl) ? null : currentCardImageUrl,
     previewHref: currentPreviewHref,
     tone: 'new',
   });
@@ -291,8 +306,8 @@ export function buildTransformationCardCompareRow({
     <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="margin:0 0 14px 0;">
       <tr>
         <td align="center" style="padding:0 0 8px 0;">
-          <p style="margin:0;color:#6b7280;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;font-family:Arial,Helvetica,sans-serif;">Transformation Card</p>
-          <p style="margin:4px 0 0;color:#9ca3af;font-size:11px;font-family:Arial,Helvetica,sans-serif;">Previous and New cards — tap New for the latest full Transformation Card preview</p>
+          <p style="margin:0;color:#6b7280;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;font-family:Arial,Helvetica,sans-serif;">Before vs After</p>
+          <p style="margin:4px 0 0;color:#9ca3af;font-size:11px;font-family:Arial,Helvetica,sans-serif;">Previous and New — tap for the full Transformation Card preview</p>
         </td>
       </tr>
       <tr>
