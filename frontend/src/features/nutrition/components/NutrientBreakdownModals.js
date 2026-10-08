@@ -3,6 +3,7 @@ import FoodBreakdownModal from './FoodBreakdownModal';
 import GlycemicIndexModal from './GlycemicIndexModal';
 import {
   extractFoodContributions,
+  getNutrientDecimals,
   getNutrientDisplayName,
   getNutrientUnit,
   getNutrientTotal,
@@ -69,6 +70,7 @@ export default function NutrientBreakdownModals({
       )}
       foodBreakdown={extractFoodContributions(analyses, nutrient).breakdown}
       foodsLoading={analysesLoading && analyses.length === 0}
+      decimals={getNutrientDecimals(nutrient)}
     />
   );
 }
