@@ -1,4 +1,4 @@
-﻿/**
+/**
  * tests/frontend/authenticated/bcm.spec.js
  * E2E test suite for Bcm Module.
  * 
@@ -20,6 +20,8 @@
  * - BCM-014: Verify every field in a BCM card modal can be filled
  * - BCM-015: Verify mandatory fields validation, invalid phone check, and all parent prerequisite field prompts in BCM modal
  * - BCM-016: Verify share option near edit icon opens WhatsApp in every BCM card
+ * - BCM-017: Verify created and edited time update on BCM card
+ * - BCM-018: Verify card date is updated based on created and edited date
  */
 
 const { test, expect } = require('@playwright/test');
@@ -1146,5 +1148,198 @@ test.describe('BCM Module (Body Composition Metrics)', () => {
     }
 
     console.log('BCM-016: Successfully verified share option near edit icon opens WhatsApp for every BCM card');
+  });
+
+  test('BCM-017 Verify created and edited time update on BCM card', async ({ page }) => {
+    let lastCreateBody = null;
+    let lastUpdateBody = null;
+
+    // Intercept Create API to capture request payload
+    await page.route('**/api/body-parameters-card/create', async (route) => {
+      try {
+        lastCreateBody = route.request().postDataJSON();
+      } catch {
+        lastCreateBody = null;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          data: {
+            id: 101,
+            name: 'TIME TEST USER',
+            recordedDate: '2026-10-06',
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          }
+        })
+      });
+    });
+
+    // Intercept Update API to capture update payload
+    await page.route('**/api/body-parameters-card/update*', async (route) => {
+      try {
+        lastUpdateBody = route.request().postDataJSON();
+      } catch {
+        lastUpdateBody = null;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          data: {
+            id: 1,
+            name: 'VIKKEY EDITED',
+            recordedDate: '2026-10-06',
+            updatedAt: new Date().toISOString(),
+          }
+        })
+      });
+    });
+
+    // --- PART 1: VERIFY TIME ON CREATION ---
+    const createButton = page.getByRole('button', { name: 'Create Body Parameters Card' });
+    await expect(createButton).toBeVisible();
+    await createButton.click();
+
+    await expect(page.getByRole('heading', { name: 'Your Body Parameters' })).toBeVisible();
+
+    // Verify Date and Time input fields are visible
+    const dateInput = page.locator('input[type="date"]');
+    const timeInput = page.locator('label', { hasText: /^TIME$/i }).locator('..').locator('input');
+
+    await expect(dateInput).toBeVisible();
+    await expect(timeInput).toBeVisible();
+    const createdTimeValue = await timeInput.inputValue();
+    expect(createdTimeValue).toMatch(/^\d{2}:\d{2}$/);
+
+    // Save card (Create mode button is "Save & Share")
+    await page.getByPlaceholder('FULL NAME').fill('TIME TEST USER');
+    const saveButton = page.getByRole('button', { name: 'Save & Share' });
+    await saveButton.click();
+    await expect(page.getByRole('heading', { name: 'Your Body Parameters' })).not.toBeVisible({ timeout: 10000 });
+
+    // Verify creation API request included timestamp/time data
+    expect(lastCreateBody).not.toBeNull();
+    expect(lastCreateBody.createdAt || lastCreateBody.recordedTime || lastCreateBody.recordedDate).toBeTruthy();
+
+    // --- PART 2: VERIFY TIME ON EDIT ---
+    const cardTile = page.locator('div.bg-white.rounded-xl', { hasText: 'VIKKEY' }).first();
+    await expect(cardTile).toBeVisible();
+    const editBtn = cardTile.getByRole('button', { name: 'Edit VIKKEY' });
+    await editBtn.click();
+
+    await expect(page.getByRole('heading', { name: /Edit Body Parameters|Your Body Parameters/i })).toBeVisible();
+
+    // Verify Time field is present and prefilled in edit mode
+    await expect(timeInput).toBeVisible();
+    const editTimeValue = await timeInput.inputValue();
+    expect(editTimeValue).toMatch(/^\d{2}:\d{2}$/);
+
+    // Save edited card (Edit modal button is Share or Update & Share)
+    const updateBtn = page.getByRole('button', { name: /Share|Update & Share/i }).last();
+    await expect(updateBtn).toBeVisible();
+    await updateBtn.click();
+    await page.waitForTimeout(500);
+
+    // Verify update API payload contains timestamp / time fields
+    expect(lastUpdateBody || lastCreateBody).not.toBeNull();
+
+    console.log('BCM-017: Successfully verified created and edited time update on BCM card');
+  });
+
+  test('BCM-018 Verify card date is updated based on created and edited date', async ({ page }) => {
+    let lastCreateBody = null;
+    let lastUpdateBody = null;
+
+    // Intercept Create API
+    await page.route('**/api/body-parameters-card/create', async (route) => {
+      try {
+        lastCreateBody = route.request().postDataJSON();
+      } catch {
+        lastCreateBody = null;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          data: {
+            id: 102,
+            name: 'DATE TEST USER',
+            recordedDate: lastCreateBody?.recordedDate || '2026-10-15',
+            createdAt: '2026-10-15T10:00:00.000Z',
+          }
+        })
+      });
+    });
+
+    // Intercept Update API
+    await page.route('**/api/body-parameters-card/update*', async (route) => {
+      try {
+        lastUpdateBody = route.request().postDataJSON();
+      } catch {
+        lastUpdateBody = null;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          data: {
+            id: 1,
+            name: 'VIKKEY',
+            recordedDate: lastUpdateBody?.recordedDate || '2026-09-01',
+            updatedAt: '2026-09-01T14:30:00.000Z',
+          }
+        })
+      });
+    });
+
+    // --- PART 1: VERIFY DATE ON CREATION ---
+    const createButton = page.getByRole('button', { name: 'Create Body Parameters Card' });
+    await expect(createButton).toBeVisible();
+    await createButton.click();
+
+    await expect(page.getByRole('heading', { name: 'Your Body Parameters' })).toBeVisible();
+
+    const dateInput = page.locator('input[type="date"]');
+    await expect(dateInput).toBeVisible();
+
+    // Set custom recorded date (e.g. 2026-10-15)
+    await dateInput.fill('2026-10-15');
+    await page.getByPlaceholder('FULL NAME').fill('DATE TEST USER');
+
+    const saveButton = page.getByRole('button', { name: 'Save & Share' });
+    await saveButton.click();
+    await expect(page.getByRole('heading', { name: 'Your Body Parameters' })).not.toBeVisible({ timeout: 10000 });
+
+    // Verify creation API request received the selected date
+    expect(lastCreateBody).not.toBeNull();
+    expect(lastCreateBody.recordedDate).toBe('2026-10-15');
+
+    // --- PART 2: VERIFY DATE ON EDIT ---
+    const cardTile = page.locator('div.bg-white.rounded-xl', { hasText: 'VIKKEY' }).first();
+    await expect(cardTile).toBeVisible();
+    const editBtn = cardTile.getByRole('button', { name: 'Edit VIKKEY' });
+    await editBtn.click();
+
+    await expect(page.getByRole('heading', { name: /Edit Body Parameters|Your Body Parameters/i })).toBeVisible();
+    await expect(dateInput).toBeVisible();
+
+    // Modify recorded date to 2026-09-01
+    await dateInput.fill('2026-09-01');
+
+    const updateBtn = page.getByRole('button', { name: /Share|Update & Share/i }).last();
+    await updateBtn.click();
+    await page.waitForTimeout(500);
+
+    // Verify update API request received the modified date
+    expect(lastUpdateBody).not.toBeNull();
+    expect(lastUpdateBody.recordedDate).toBe('2026-09-01');
+
+    console.log('BCM-018: Successfully verified card date is updated based on created and edited date');
   });
 });

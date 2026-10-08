@@ -1,4 +1,4 @@
-﻿/**
+/**
  * tests/frontend/authenticated/club.spec.js
  * E2E test suite for Club Module.
  * 
@@ -604,7 +604,7 @@ test.describe('Club Module (Nutrition Centers)', () => {
     await expect(page.getByText('Database connection failed')).toBeVisible({ timeout: 5000 });
     
     // Verify the 'Try Again' button is present
-    await expect(page.getByRole('button', { name: /Try Again/i })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Try Again', exact: true })).toBeVisible();
   });
 
   test('CLUB-009 Unregister Button Authorization Check', async ({ page }) => {
