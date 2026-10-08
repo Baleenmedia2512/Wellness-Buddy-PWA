@@ -510,7 +510,11 @@ const MOCK_MEMBER_PRIYA = {
   Role: 'user',
   CoachId: 99999,
   Status: 'Active',
+  communityId: 'COMM-0099',
+  clubName: 'Chennai Wellness Club',
+  phoneNumber: '9876543210',
 };
+
 
 const MOCK_PRIYA_PROFILE = {
   userId: 10002,

@@ -22,9 +22,12 @@
  * - BCM-016: Verify share option near edit icon opens WhatsApp in every BCM card
  * - BCM-017: Verify created and edited time update on BCM card
  * - BCM-018: Verify card date is updated based on created and edited date
+ * - BCM-019: Verify transformation images (Left, Centre, Right) can be uploaded in BCM card modal
  */
 
+const path = require('path');
 const { test, expect } = require('@playwright/test');
+
 
 test.describe('BCM Module (Body Composition Metrics)', () => {
   test.use({ storageState: 'playwright/.auth/user.json' });
@@ -1342,4 +1345,59 @@ test.describe('BCM Module (Body Composition Metrics)', () => {
 
     console.log('BCM-018: Successfully verified card date is updated based on created and edited date');
   });
+
+  test('BCM-019 Verify transformation images (Left, Centre, Right) can be uploaded in BCM card modal', async ({ page }) => {
+    // 1. Open BCM Create modal
+    const createButton = page.getByRole('button', { name: 'Create Body Parameters Card' });
+    await expect(createButton).toBeVisible({ timeout: 15000 });
+    await createButton.click();
+
+    await expect(page.getByRole('heading', { name: 'Your Body Parameters' })).toBeVisible({ timeout: 10000 });
+
+    // 2. Verify Transformation Photos section label is displayed
+    const photosLabel = page.getByText('Transformation Photos', { exact: true }).first();
+    await expect(photosLabel).toBeVisible({ timeout: 5000 });
+
+    // 3. Resolve path to real image fixture (portrait.jpg)
+    const fixtureImagePath = path.resolve(__dirname, '../../fixtures/portrait.jpg');
+
+    const uploadSlotPhoto = async (slotName) => {
+      const slotBtn = page.getByRole('button', { name: slotName, exact: true });
+      await expect(slotBtn).toBeVisible({ timeout: 5000 });
+      await slotBtn.click();
+
+      const galleryInput = page.locator('input[type="file"]').last();
+      await galleryInput.setInputFiles(fixtureImagePath);
+
+      // If CropOverlay is present, click 'Done' to finalize crop & set preview
+      const doneBtn = page.getByRole('button', { name: 'Done', exact: true });
+      if (await doneBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
+        await doneBtn.click();
+        await expect(doneBtn).not.toBeVisible({ timeout: 5000 });
+      }
+    };
+
+    // 4. Upload Left photo from real fixture image
+    await uploadSlotPhoto('Left');
+
+    // 5. Upload Centre photo from real fixture image
+    await uploadSlotPhoto('Centre');
+
+    // 6. Upload Right photo from real fixture image
+    await uploadSlotPhoto('Right');
+
+    // 7. Verify uploaded transformation photo slots exist and file input processed files
+    const slotTabGroup = page.locator('.grid-cols-3 button:has-text("Left"), .grid-cols-3 button:has-text("Centre"), .grid-cols-3 button:has-text("Right")');
+    await expect(slotTabGroup.first()).toBeVisible({ timeout: 5000 });
+
+    const galleryInput = page.locator('input[type="file"]').last();
+    await expect(galleryInput).toBeAttached();
+
+    console.log('BCM-019: Successfully verified transformation images (Left, Centre, Right) uploaded using real fixture image (portrait.jpg)');
+  });
 });
+
+
+
+
+

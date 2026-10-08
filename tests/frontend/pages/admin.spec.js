@@ -1,4 +1,4 @@
-﻿/**
+/**
  * tests/frontend/pages/admin.spec.js
  * E2E test suite for Admin Module.
  * 
@@ -716,10 +716,10 @@ test.describe('Admin Page - Wellness Score & Activity Time Settings (ADMIN_001)'
           body: JSON.stringify({
             success: true,
             matrix: {
-              user: { home: true, dashboard: true, 'activity-report': true, enrollment: true, counselling: true, 'physical-club': true, testimonials: true, reports: true },
-              coach: { home: true, dashboard: true, 'activity-report': true, enrollment: true, counselling: true, 'physical-club': true, testimonials: true, reports: true },
-              admin: { home: true, dashboard: true, 'activity-report': true, enrollment: true, counselling: true, 'physical-club': true, testimonials: true, reports: true },
-              developer: { home: true, dashboard: true, 'activity-report': true, enrollment: true, counselling: true, 'physical-club': true, testimonials: true, reports: true },
+              user: { home: true, dashboard: true, 'activity-report': true, enrollment: true, counselling: true, 'physical-club': true, testimonials: true, reports: true, broadcast: true },
+              coach: { home: true, dashboard: true, 'activity-report': true, enrollment: true, counselling: true, 'physical-club': true, testimonials: true, reports: true, broadcast: true },
+              admin: { home: true, dashboard: true, 'activity-report': true, enrollment: true, counselling: true, 'physical-club': true, testimonials: true, reports: true, broadcast: true },
+              developer: { home: true, dashboard: true, 'activity-report': true, enrollment: true, counselling: true, 'physical-club': true, testimonials: true, reports: true, broadcast: true },
             },
           }),
         });
@@ -762,7 +762,8 @@ test.describe('Admin Page - Wellness Score & Activity Time Settings (ADMIN_001)'
     await expect(checkboxes.first()).toBeVisible({ timeout: 10000 });
 
     const checkboxCount = await checkboxes.count();
-    expect(checkboxCount).toBe(32); // 4 roles * 8 pages
+    expect(checkboxCount).toBe(36); // 4 roles * 9 pages
+
 
     for (let i = 0; i < checkboxCount; i++) {
       const checkbox = checkboxes.nth(i);
