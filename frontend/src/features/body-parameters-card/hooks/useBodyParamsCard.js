@@ -18,6 +18,7 @@ import { getApiBaseUrl } from '../../../config/api.config.js';
 import { buildOnboardingShareUrl } from '../domain/platform-store.rules.js';
 import { debugLog } from '../../../shared/utils/logger.js';
 import {
+  dismissNetworkFailure,
   isNetworkNoticeMessage,
   userFacingNetworkMessage,
   NETWORK_FAILURE_MESSAGE,
@@ -504,9 +505,20 @@ export function useBodyParamsCard({
     ].map((v) => (v == null ? '' : String(v))).join('\u0001');
   }, [existingCard]);
 
+  // Tracks open→closed so a late detail fetch can hydrate, but we never wipe
+  // in-progress edits when existingCard gains fields after the user typed.
+  const formOpenSessionRef = useRef(false);
+
   // Create: prefill Venue from header. Edit: use the card's saved Venue.
   useLayoutEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen) {
+      formOpenSessionRef.current = false;
+      return;
+    }
+    const justOpened = !formOpenSessionRef.current;
+    formOpenSessionRef.current = true;
+    if (!justOpened && hasUnsavedChanges) return;
+
     const next = cardToFormState(existingCard, displayTimezone);
     if (!isEditMode) {
       const fromHeader = externalVenue != null ? String(externalVenue).trim() : '';
@@ -532,7 +544,7 @@ export function useBodyParamsCard({
     transformationPhotos.clearPending();
     transformationPhotos.loadFromProfile(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, existingCardSnapshot, isEditMode, displayTimezone]);
+  }, [isOpen, existingCardSnapshot, isEditMode, displayTimezone, hasUnsavedChanges]);
 
   // Edit (and reopen with a linked card): reload profile transformation photos.
   useEffect(() => {
@@ -551,6 +563,8 @@ export function useBodyParamsCard({
       })
       .catch((err) => {
         if (cancelled || photoRequestId !== photoPrefillRequestIdRef.current) return;
+        // Prefill is best-effort — don't leave the global connection overlay up.
+        dismissNetworkFailure();
         console.warn('[BodyParamsCard] edit photo prefill failed', err?.message || err);
       });
 
@@ -589,7 +603,9 @@ export function useBodyParamsCard({
           setCoachUserId(data.userId);
         }
       })
-      .catch(() => { });
+      .catch(() => {
+        dismissNetworkFailure();
+      });
 
     return () => { cancelled = true; };
   }, [user?.email]);
@@ -622,7 +638,9 @@ export function useBodyParamsCard({
           .filter(Boolean);
         setPhoneSuggestions(results);
       })
-      .catch(() => { });
+      .catch(() => {
+        dismissNetworkFailure();
+      });
     return () => { cancelled = true; };
   }, [coachUserId]);
 
