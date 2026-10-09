@@ -317,7 +317,7 @@ export async function resendUnifiedOtp(payload) {
 }
 
 /**
- * Coach: update a reporting member's recovered health issues (no OTP).
+ * Legacy coach health-issue update (API always rejects — members edit on Mine).
  * @param {{ coachId: number, userId: number, recoveredHealthIssues: string[] }} payload
  */
 export async function updateMemberHealthIssues(payload) {

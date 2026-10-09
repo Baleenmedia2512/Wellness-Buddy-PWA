@@ -402,7 +402,6 @@ export async function updateTestimonialVideos(id, payload) {
 export async function listForCoach(coachId, scope = 'direct') {
   const resolvedContext = await loadTeamReportingContext(coachId);
   const members = await fetchReportingTeamMembers(coachId, scope, resolvedContext);
-  const editableIds = await fetchEditableTeamMemberIds(coachId, resolvedContext);
 
   if (!members || members.length === 0) return [];
 
@@ -445,10 +444,11 @@ export async function listForCoach(coachId, scope = 'direct') {
     }
   }
 
+  // Coaches may view downline health issues but never edit them on Transformation.
   const rows = members.map((m) => ({
     user:        m,
     testimonial: testimonialMap[m.UserId] ?? null,
-    canEditHealthIssues: editableIds.has(Number(m.UserId)),
+    canEditHealthIssues: false,
   }));
 
   if (scope === 'full') {
@@ -663,24 +663,6 @@ async function fetchReportingTeamMembers(coachId, scope = 'direct', context = nu
 }
 
 /**
- * Downline + shared-team members only (never CoachId-chain uplines).
- * Used for write permission (e.g. health issues) — Full list may still *show* uplines.
- * @param {number} coachId
- * @param {import('../../utils/reportingHierarchyService.js').ReportingContext} [context]
- * @returns {Promise<Set<number>>}
- */
-async function fetchEditableTeamMemberIds(coachId, context = null) {
-  const resolvedContext = context ?? await loadTeamReportingContext(coachId);
-  const { getSharedTeamFullMembers } = await import('../../utils/sharedTeamReporting.js');
-  return new Set(
-    getSharedTeamFullMembers(coachId, resolvedContext)
-      .filter((member) => Number(member.UserId) !== Number(coachId))
-      .filter((member) => isActiveTeamStatus(member.Status))
-      .map((member) => Number(member.UserId)),
-  );
-}
-
-/**
  * True when userId is in coach's reporting hierarchy (no testimonial query).
  * Full scope includes uplines for *view* (transformation photos).
  * @param {number} coachId
@@ -694,15 +676,13 @@ export async function isReportingMember(coachId, userId, scope = 'full') {
 }
 
 /**
- * True when coach may *edit* this member's testimonial health issues.
- * Downline / shared-team only — never an upline ancestor.
+ * Coaches cannot edit another member's Transformation health issues.
+ * Only true when viewing own record (Mine).
  * @param {number} coachId
  * @param {number} userId
  */
 export async function isEditableReportingMember(coachId, userId) {
-  if (Number(coachId) === Number(userId)) return true;
-  const editableIds = await fetchEditableTeamMemberIds(coachId);
-  return editableIds.has(Number(userId));
+  return Number(coachId) === Number(userId);
 }
 
 /**

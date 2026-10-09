@@ -1023,7 +1023,7 @@ export async function listForCoach(rawQuery) {
         lastUpdated: lean.lastUpdated,
         uploadStatus: lean.uploadStatus,
         progress: lean.progress,
-        canEditHealthIssues: lean.canEditHealthIssues !== false,
+        canEditHealthIssues: lean.canEditHealthIssues === true,
       };
     }),
   );
@@ -2140,34 +2140,14 @@ export async function resendUnifiedOtp(rawBody) {
 }
 
 /**
- * Coach updates a reporting member's recovered health issues (no OTP).
- * Downline / shared-team only — never an upline ancestor.
+ * Coach health-issue edits on Transformation are not allowed.
+ * Members edit their own issues via Mine submit/edit flows (OTP when needed).
+ * Endpoint kept so older clients get a clear 403 instead of a silent no-op.
  */
 export async function updateMemberHealthIssues(rawBody) {
-  const payload = validateUpdateMemberHealthIssues(rawBody);
-
-  const allowed = await repo.isEditableReportingMember(payload.coachId, payload.userId);
-  if (!allowed) {
-    throw new ValidationError(403, 'You can only update health issues for your team members, not your upline');
-  }
-
-  const existing = await repo.findByUserId(payload.userId);
-  if (!existing) {
-    throw new ValidationError(404, 'No testimonial found for this user');
-  }
-
-  const mergedIssues = normalizeHealthIssuesList(payload.recoveredHealthIssues);
-
-  await repo.updateTestimonial(existing.id, {
-    recoveredHealthIssues: mergedIssues,
-  });
-
-  return {
-    httpStatus: 200,
-    body: {
-      success: true,
-      message: 'Health issue updated.',
-      recoveredHealthIssues: mergedIssues,
-    },
-  };
+  validateUpdateMemberHealthIssues(rawBody);
+  throw new ValidationError(
+    403,
+    'Coaches cannot edit health issues for team members. Only the member can update their own health issues.',
+  );
 }

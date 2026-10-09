@@ -624,7 +624,7 @@ function MemberCard({
   onMineRefresh,
   onOtpVerified,
   knownHealthIssues = [],
-  canEditHealthIssues = true,
+  canEditHealthIssues = false,
 }) {
   const { user } = row;
   const [detailTestimonial, setDetailTestimonial] = useState(null);
@@ -1800,7 +1800,7 @@ function MemberCard({
             currentIssues={draftIssues ?? issues}
             approvedIssues={approvedIssues}
             knownHealthIssues={knownHealthIssues}
-            // Mine: draft into submit. Team downline: coach can save. Upline: view only.
+            // Mine: draft into submit. Team (downline/upline): view only — member edits own issues.
             persist={editable ? false : (Boolean(testimonial?.id) && canEditHealthIssues)}
             allowRemove={editable || canEditHealthIssues}
             editable={editable}
@@ -1810,7 +1810,7 @@ function MemberCard({
           />
           {!editable && !canEditHealthIssues && (
             <p className="text-[10px] text-gray-400 italic">
-              Upline health issues are view-only.
+              Health issues are view-only. Only the member can edit them.
             </p>
           )}
           {testimonial && canShareTransformationPhoto(testimonial) && (testimonial.beforeImageUrl || hasAfter) &&
@@ -2789,7 +2789,7 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
           userId={row.user.userId}
           coachId={coachId}
           knownHealthIssues={knownHealthIssues}
-          canEditHealthIssues={isMineScope || row.canEditHealthIssues !== false}
+          canEditHealthIssues={isMineScope}
           onMineRefresh={isMineScope ? refreshMineRow : undefined}
           onOtpVerified={isMineScope ? () => loadDirectAndMine() : undefined}
         />

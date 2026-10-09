@@ -566,7 +566,7 @@ const result = {
 
 /**
  * Validate payload for POST /api/testimonials/update-health-issues
- * Coach updates a reporting member's recovered health issues (no OTP).
+ * Payload shape kept for older clients; service always rejects with 403.
  */
 export function validateUpdateMemberHealthIssues(body) {
   if (!body) throw new ValidationError(400, 'Request body is missing');
