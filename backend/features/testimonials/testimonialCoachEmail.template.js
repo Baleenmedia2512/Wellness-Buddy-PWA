@@ -7,6 +7,11 @@
  * Use ASCII-only copy and explicit charset in nodemailer sendMail().
  */
 
+import {
+  isTransformationWeightLoss,
+  transformationWeightVerb,
+} from './domain/transformationWeightDirection.js';
+
 function escapeHtml(value) {
   return String(value ?? '')
     .replace(/&/g, '&amp;')
@@ -42,23 +47,23 @@ function weightChangeKg(beforeWeight, afterWeight) {
   return Math.abs(Number(afterWeight) - Number(beforeWeight));
 }
 
-function buildProgressSentence(memberName, goalType, beforeWeight, afterWeight, durationText) {
+function buildProgressSentence(memberName, _goalType, beforeWeight, afterWeight, durationText) {
   const weightStr = formatWeight(weightChangeKg(beforeWeight, afterWeight));
-  const verb = goalType === 'loss' ? 'lost' : 'gained';
+  const verb = transformationWeightVerb(beforeWeight, afterWeight, { capitalize: false }) || 'changed';
   return `${escapeHtml(memberName)} has ${verb} ${weightStr} kg in ${escapeHtml(durationText)}.`;
 }
 
-function buildProgressSentencePlain(memberName, goalType, beforeWeight, afterWeight, durationText) {
+function buildProgressSentencePlain(memberName, _goalType, beforeWeight, afterWeight, durationText) {
   const n = weightChangeKg(beforeWeight, afterWeight);
   const weightStr = n % 1 === 0 ? String(n) : n.toFixed(1);
-  const verb = goalType === 'loss' ? 'lost' : 'gained';
+  const verb = transformationWeightVerb(beforeWeight, afterWeight, { capitalize: false }) || 'changed';
   return `${memberName} has ${verb} ${weightStr} kg in ${durationText}.`;
 }
 
 /** Progress sentence as a rounded pill (matches recovered-issue chips). */
 function buildProgressPill(memberName, goalType, beforeWeight, afterWeight, durationText) {
   const text = buildProgressSentence(memberName, goalType, beforeWeight, afterWeight, durationText);
-  const isLoss = goalType === 'loss';
+  const isLoss = isTransformationWeightLoss(beforeWeight, afterWeight) !== false;
   const bg = isLoss ? '#ecfdf5' : '#eff6ff';
   const border = isLoss ? '#a7f3d0' : '#bfdbfe';
   const color = isLoss ? '#047857' : '#1d4ed8';
@@ -353,9 +358,8 @@ export function buildTransformationCardEmailBlock({
   const durationSafe = String(durationText ?? '').trim();
   const bw = Number(beforeWeight);
   const aw = Number(afterWeight);
-  const canProgress = Number.isFinite(bw) && Number.isFinite(aw) && durationSafe && durationSafe !== '—';
-  const isLoss = goalType !== 'gain';
-  const verb = isLoss ? 'Lost' : 'Gained';
+  const verb = transformationWeightVerb(bw, aw);
+  const canProgress = Boolean(verb) && durationSafe && durationSafe !== '—';
   const diffKg = canProgress ? formatWeight(Math.abs(aw - bw)) : '';
   const progressText = canProgress
     ? `${verb} ${diffKg} kgs${durationSafe ? ` in ${escapeHtml(durationSafe)}` : ''}`

@@ -34,6 +34,7 @@ import {
   issueColumnsForCount,
   shareCardPhotoHeight,
 } from '../utils/shareCardLayout.js';
+import { isTransformationWeightLoss } from '../services/testimonialFormUtils.js';
 
 export { CARD_H, CARD_W };
 
@@ -596,10 +597,10 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
   const beforeSrc = testimonial?.beforeImageUrl || null;
   const afterSrc = testimonial?.afterImageUrl || null;
   const showPhotoRow = Boolean(beforeSrc || afterSrc || bw > 0 || aw > 0);
-  const diff = (bw > 0 && aw > 0) ? Math.abs(aw - bw).toFixed(1) : null;
+  const isLoss = isTransformationWeightLoss(bw, aw);
+  const diff = isLoss == null ? null : Math.abs(aw - bw).toFixed(1);
   const isVerified = testimonial?.status === 'verified';
-  const isLoss = testimonial?.goalType !== 'gain';
-  const verb = isLoss ? 'Lost' : 'Gained';
+  const verb = isLoss === false ? 'Gained' : 'Lost';
   const issues = (testimonial?.recoveredHealthIssues ?? []).filter(Boolean).slice(0, MAX_VISIBLE_ISSUES);
   const durationText = testimonial?.durationText || '';
   const displayName = String(userName || 'Customer').trim() || 'Customer';

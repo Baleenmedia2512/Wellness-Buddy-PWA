@@ -7,6 +7,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import sharp from 'sharp';
+import { transformationWeightVerb } from './transformationWeightDirection.js';
 
 const CARD_W = 540;
 const CARD_H = 960;
@@ -128,12 +129,11 @@ export async function composeTransformationShareCardJpeg(opts) {
   const afterKg = escapeXml(formatKg(opts.afterWeightKg));
   const bw = Number(opts.beforeWeightKg);
   const aw = Number(opts.afterWeightKg);
-  const hasDiff = Number.isFinite(bw) && Number.isFinite(aw) && bw > 0 && aw > 0;
+  const hasDiff = Number.isFinite(bw) && Number.isFinite(aw) && bw > 0 && aw > 0 && bw !== aw;
   const diff = hasDiff ? Math.abs(aw - bw).toFixed(1) : null;
-  const isLoss = opts.goalType !== 'gain';
-  const verb = isLoss ? 'Lost' : 'Gained';
+  const verb = transformationWeightVerb(bw, aw);
   const duration = String(opts.durationText || '').trim();
-  const pill = diff
+  const pill = diff && verb
     ? `${verb} ${diff} kgs${duration ? ` in ${escapeXml(duration)}` : ''}`
     : '';
   const version = escapeXml(String(opts.appVersionLabel || '').trim());
