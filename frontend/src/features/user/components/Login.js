@@ -10,6 +10,7 @@ import useAuthFlow from '../hooks/useAuthFlow';
 import useOtpInput from '../hooks/useOtpInput';
 import useResendCountdown from '../hooks/useResendCountdown';
 import { SMS_OTP_LENGTH } from '../domain/otpLength';
+import { DEMO_LOGIN_OTP, isDemoPhone } from '../domain/demoAccount';
 import LoginBlobs from './login/LoginBlobs';
 import LoginEmailEntry from './login/LoginEmailEntry';
 import LoginOtpEntry from './login/LoginOtpEntry';
@@ -25,6 +26,17 @@ const Login = ({ onSignIn, loading, error, onOtpVerified, forceOtpVerification }
     if (forceOtpVerification) { auth.setOtpSent(true); }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: listed deps would cause an infinite re-render
   }, [forceOtpVerification]);
+
+  // Cashfree / demo phone: auto-fill fixed OTP so reviewers are not blocked by SMS.
+  useEffect(() => {
+    if (!auth.otpSent) return;
+    if (!isDemoPhone(auth.email, auth.countryDial)) return;
+    const timer = setTimeout(() => {
+      otpCtl.fillAll(DEMO_LOGIN_OTP);
+    }, 400);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fill once when OTP step opens
+  }, [auth.otpSent]);
 
   const handleSendOtp = async () => {
     const ok = await auth.sendOtp();
@@ -60,7 +72,9 @@ const Login = ({ onSignIn, loading, error, onOtpVerified, forceOtpVerification }
             </h1>
             <p className="text-sm xs:text-base text-gray-500">
               {auth.otpSent
-                ? `We've sent a ${SMS_OTP_LENGTH}-digit code via SMS to your phone`
+                ? (isDemoPhone(auth.email, auth.countryDial)
+                  ? 'Verification code will fill automatically'
+                  : `We've sent a ${SMS_OTP_LENGTH}-digit code via SMS to your phone`)
                 : 'Enter your mobile number to continue'}
             </p>
           </div>
