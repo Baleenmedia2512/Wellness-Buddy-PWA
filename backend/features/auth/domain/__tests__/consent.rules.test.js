@@ -8,6 +8,7 @@ import {
   CURRENT_CONSENT_VERSION,
   hasValidConsentAcceptance,
   isConsentRecorded,
+  shouldStampSignupConsent,
   consentInsertFields,
 } from '../consent.rules.js';
 
@@ -32,6 +33,17 @@ describe('consent.rules', () => {
     assert.equal(isConsentRecorded({ ConsentAcceptedAt: '2026-07-31T10:00:00.000Z' }), true);
     assert.equal(isConsentRecorded({ ConsentAcceptedAt: null }), false);
     assert.equal(isConsentRecorded(null), false);
+  });
+
+  it('shouldStampSignupConsent only when gate on, unconsented, and acceptance valid', () => {
+    const input = { consentAccepted: true, consentVersion: CURRENT_CONSENT_VERSION };
+    assert.equal(shouldStampSignupConsent({ ConsentAcceptedAt: null }, input, true), true);
+    assert.equal(shouldStampSignupConsent({ ConsentAcceptedAt: null }, input, false), false);
+    assert.equal(
+      shouldStampSignupConsent({ ConsentAcceptedAt: '2026-07-31T10:00:00.000Z' }, input, true),
+      false,
+    );
+    assert.equal(shouldStampSignupConsent({ ConsentAcceptedAt: null }, {}, true), false);
   });
 
   it('consentInsertFields sets version + audit columns', () => {
