@@ -317,6 +317,19 @@ export async function resendUnifiedOtp(payload) {
 }
 
 /**
+ * Cancel pending unified OTP and revert pending photo/video edits.
+ * @param {{ userId: number, restoreData?: object }} payload
+ */
+export async function cancelUnifiedOtp(payload) {
+  const res = await CapacitorHttp.post({
+    url:     `${base()}/cancel-unified-otp`,
+    headers: { 'Content-Type': 'application/json' },
+    data:    payload,
+  });
+  return parseApiResponse(res, 'Failed to cancel OTP');
+}
+
+/**
  * Legacy coach health-issue update (API always rejects — members edit on Mine).
  * @param {{ coachId: number, userId: number, recoveredHealthIssues: string[] }} payload
  */
