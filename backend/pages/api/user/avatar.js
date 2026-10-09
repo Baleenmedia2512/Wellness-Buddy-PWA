@@ -4,11 +4,11 @@
  * Serves a single profile photo for leaderboard/list UIs without embedding
  * multi-MB base64 blobs in JSON list endpoints.
  *
- * Preference order matches My Profile display (see profileDisplayAvatar.rules.js):
- *   1. Centre transformation R2 key / photo (product profile photo)
- *   2. R2 object (ProfileImageKey) → 302 to public or signed URL
- *   3. https://… ProfileImage (Google) → 302 redirect
- *   4. data:image/* ProfileImage still in DB → upload to R2 when configured, else binary
+ * Preference order matches My Profile / Home header (see profileDisplayAvatar.rules.js):
+ *   1. R2 object (ProfileImageKey) → 302 to public or signed URL
+ *   2. https://… ProfileImage (Google) → 302 redirect
+ *   3. data:image/* ProfileImage still in DB → upload to R2 when configured, else binary
+ *   4. Centre transformation R2 key / photo (fallback only)
  *   5. missing / invalid → 404 (frontend falls back to letter avatar)
  *
  * Optional `inline=1` streams bytes instead of 302 so the profile cropper can

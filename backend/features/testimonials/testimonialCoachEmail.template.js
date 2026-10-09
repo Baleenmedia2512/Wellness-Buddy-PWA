@@ -156,6 +156,312 @@ function buildPhotosRow(beforeUrl, afterUrl) {
 }
 
 /**
+ * Full Transformation share card (same image members share in-app).
+ * Prefer cid: inline attachment so Gmail does not strip remote signed URLs.
+ * @param {string} shareCardSrc
+ * @param {string|null} [previewHref]
+ */
+export function buildShareCardRow(shareCardSrc, previewHref = null) {
+  if (!shareCardSrc) return '';
+  const img = buildPhotoImg(shareCardSrc, 'Transformation card', 280);
+  const linked = (previewHref && /^https?:\/\//i.test(String(previewHref)))
+    ? `<a href="${escapeHtml(previewHref)}" target="_blank" rel="noopener noreferrer" style="display:inline-block;text-decoration:none;">${img}</a>`
+    : img;
+  return `
+    <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="margin:0 0 14px 0;">
+      <tr>
+        <td align="center" style="padding:0;">
+          <p style="margin:0 0 8px;color:#6b7280;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;font-family:Arial,Helvetica,sans-serif;">Transformation Card</p>
+          ${linked}
+          <p style="margin:6px 0 0;color:#9ca3af;font-size:9px;font-family:Arial,Helvetica,sans-serif;">Tap card to open preview</p>
+        </td>
+      </tr>
+    </table>`;
+}
+
+/**
+ * One compact Previous/New cell: real Before | After photos (never a share-card
+ * JPEG — those can bake nested UI into the After slot in Gmail).
+ * Tap opens the full Transformation Card preview when previewHref is set.
+ */
+function buildCompactTransformationPreview({
+  label,
+  beforeUrl,
+  afterUrl,
+  beforeWeight,
+  afterWeight,
+  cardImageUrl = null,
+  previewHref = null,
+  tone = 'new',
+}) {
+  const hasPair = Boolean(beforeUrl && afterUrl);
+  const faceUrl = hasPair ? null : (cardImageUrl || afterUrl);
+  if (!hasPair && !faceUrl) return '';
+  const isPrev = tone === 'previous';
+  const border = isPrev ? '#fecdd3' : '#bbf7d0';
+  const bg = isPrev ? '#fff1f2' : '#f0fdf4';
+  const titleColor = isPrev ? '#9f1239' : '#047857';
+  const beforeKg = formatWeight(beforeWeight);
+  const afterKg = formatWeight(afterWeight);
+  const safeLabel = escapeHtml(label);
+
+  const photosBlock = hasPair
+    ? `
+      <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
+        <tr>
+          <td width="50%" valign="top" style="padding:0 2px 0 0;">
+            ${buildPhotoImg(beforeUrl, `${label} Before`, 120)}
+            <p style="margin:4px 0 0;color:#9ca3af;font-size:9px;font-weight:700;letter-spacing:0.4px;text-transform:uppercase;font-family:Arial,Helvetica,sans-serif;">Before</p>
+          </td>
+          <td width="50%" valign="top" style="padding:0 0 0 2px;">
+            ${buildPhotoImg(afterUrl, `${label} After`, 120)}
+            <p style="margin:4px 0 0;color:#9ca3af;font-size:9px;font-weight:700;letter-spacing:0.4px;text-transform:uppercase;font-family:Arial,Helvetica,sans-serif;">After</p>
+          </td>
+        </tr>
+      </table>`
+    : buildPhotoImg(faceUrl, `${label} Transformation Card`, 140);
+
+  const body = `
+    <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color:${bg};border:1px solid ${border};border-radius:8px;overflow:hidden;">
+      <tr>
+        <td align="center" style="padding:6px 6px 4px 6px;">
+          <p style="margin:0;color:${titleColor};font-size:10px;font-weight:700;letter-spacing:0.6px;text-transform:uppercase;font-family:Arial,Helvetica,sans-serif;">${safeLabel}</p>
+        </td>
+      </tr>
+      <tr>
+        <td align="center" style="padding:0 8px 4px 8px;">
+          ${photosBlock}
+        </td>
+      </tr>
+      <tr>
+        <td align="center" style="padding:0 6px 4px 6px;">
+          <p style="margin:0;color:#6b7280;font-size:10px;font-weight:600;font-family:Arial,Helvetica,sans-serif;line-height:1.35;">
+            ${beforeKg} kg &#8594; ${afterKg} kg
+          </p>
+        </td>
+      </tr>
+      <tr>
+        <td align="center" style="padding:0 6px 8px 6px;">
+          <p style="margin:0;color:#9ca3af;font-size:9px;font-family:Arial,Helvetica,sans-serif;">Tap for full Transformation Card</p>
+        </td>
+      </tr>
+    </table>`;
+
+  if (previewHref && /^https?:\/\//i.test(String(previewHref))) {
+    return `
+      <a href="${escapeHtml(previewHref)}" target="_blank" rel="noopener noreferrer"
+         style="display:block;text-decoration:none;color:inherit;">
+        ${body}
+      </a>`;
+  }
+  return body;
+}
+
+/**
+ * Previous + New side by side — each shows Before | After photos.
+ * Tap opens the full Transformation Card preview.
+ */
+export function buildTransformationCardCompareRow({
+  previousBeforeUrl,
+  previousAfterUrl,
+  previousBeforeWeight,
+  previousAfterWeight,
+  previousCardImageUrl = null,
+  previousPreviewHref = null,
+  beforeUrl,
+  afterUrl,
+  beforeWeight,
+  afterWeight,
+  currentCardImageUrl = null,
+  currentPreviewHref = null,
+}) {
+  // Prefer real Before|After photo pairs (clear in Gmail). Share-card JPEG is fallback only.
+  const hasPrevious = Boolean((previousBeforeUrl && previousAfterUrl) || previousCardImageUrl);
+  const hasCurrent = Boolean((beforeUrl && afterUrl) || currentCardImageUrl);
+  if (!hasPrevious || !hasCurrent) return '';
+
+  const previousCell = buildCompactTransformationPreview({
+    label: 'Previous',
+    beforeUrl: previousBeforeUrl,
+    afterUrl: previousAfterUrl,
+    beforeWeight: previousBeforeWeight,
+    afterWeight: previousAfterWeight,
+    // Only use share-card image when the photo pair is missing.
+    cardImageUrl: (previousBeforeUrl && previousAfterUrl) ? null : previousCardImageUrl,
+    previewHref: previousPreviewHref,
+    tone: 'previous',
+  });
+  const newCell = buildCompactTransformationPreview({
+    label: 'New',
+    beforeUrl,
+    afterUrl,
+    beforeWeight,
+    afterWeight,
+    cardImageUrl: (beforeUrl && afterUrl) ? null : currentCardImageUrl,
+    previewHref: currentPreviewHref,
+    tone: 'new',
+  });
+
+  return `
+    <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="margin:0 0 14px 0;">
+      <tr>
+        <td align="center" style="padding:0 0 8px 0;">
+          <p style="margin:0;color:#6b7280;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;font-family:Arial,Helvetica,sans-serif;">Before vs After</p>
+          <p style="margin:4px 0 0;color:#9ca3af;font-size:11px;font-family:Arial,Helvetica,sans-serif;">Previous and New — tap for the full Transformation Card preview</p>
+        </td>
+      </tr>
+      <tr>
+        <td>
+          <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
+            <tr>
+              <td width="46%" valign="top" class="photo-col" style="padding:0 2px 0 0;">
+                ${previousCell}
+              </td>
+              <td width="8%" valign="middle" align="center" style="padding:0 2px;color:#059669;font-size:18px;font-weight:700;font-family:Arial,Helvetica,sans-serif;">&#8594;</td>
+              <td width="46%" valign="top" class="photo-col" style="padding:0 0 0 2px;">
+                ${newCell}
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>`;
+}
+
+/**
+ * Email Transformation card built from the real Before/After storage photos.
+ * Left = beforeUrl, right = afterUrl (same pair as in-app). Prefer cid: URLs.
+ * @param {string} [heading] - e.g. "Previous Transformation Card" / "Current Transformation Card"
+ */
+export function buildTransformationCardEmailBlock({
+  memberName,
+  beforeUrl,
+  afterUrl,
+  beforeWeight,
+  afterWeight,
+  goalType,
+  durationText,
+  recoveredHealthIssues,
+  heading = 'Transformation Card',
+}) {
+  if (!beforeUrl || !afterUrl) return '';
+
+  const safeMember = escapeHtml(memberName || 'Member');
+  const safeHeading = escapeHtml(heading);
+  const beforeKg = formatWeight(beforeWeight);
+  const afterKg = formatWeight(afterWeight);
+  const durationSafe = String(durationText ?? '').trim();
+  const bw = Number(beforeWeight);
+  const aw = Number(afterWeight);
+  const canProgress = Number.isFinite(bw) && Number.isFinite(aw) && durationSafe && durationSafe !== '—';
+  const isLoss = goalType !== 'gain';
+  const verb = isLoss ? 'Lost' : 'Gained';
+  const diffKg = canProgress ? formatWeight(Math.abs(aw - bw)) : '';
+  const progressText = canProgress
+    ? `${verb} ${diffKg} kgs${durationSafe ? ` in ${escapeHtml(durationSafe)}` : ''}`
+    : '';
+  const issues = Array.isArray(recoveredHealthIssues)
+    ? recoveredHealthIssues.map((i) => String(i ?? '').trim()).filter(Boolean).slice(0, 10)
+    : [];
+  const issuePills = issues.map((issue) => (
+    `<span style="display:inline-block;margin:3px 3px 0 0;padding:4px 8px;background-color:#ffffff;border:1px solid #f9a8d4;border-radius:9999px;color:#9f1239;font-size:10px;font-weight:600;font-family:Arial,Helvetica,sans-serif;line-height:1.3;">${escapeHtml(issue)}</span>`
+  )).join('');
+
+  return `
+    <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="margin:0 0 14px 0;">
+      <tr>
+        <td align="center" style="padding:0 0 8px 0;">
+          <p style="margin:0;color:#6b7280;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;font-family:Arial,Helvetica,sans-serif;">${safeHeading}</p>
+        </td>
+      </tr>
+      <tr>
+        <td align="center" style="padding:0;">
+          <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="340" style="width:340px;max-width:100%;background-color:#ffffff;border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;">
+            <tr>
+              <td align="center" style="background-color:#059669;padding:12px 14px;">
+                <p style="margin:0;color:#ffffff;font-size:16px;font-weight:700;font-family:Arial,Helvetica,sans-serif;line-height:1.2;">Wellness Valley</p>
+                <p style="margin:3px 0 0;color:#a7f3d0;font-size:11px;font-weight:600;font-family:Arial,Helvetica,sans-serif;">Transformation Results</p>
+              </td>
+            </tr>
+            <tr>
+              <td align="center" style="padding:12px 12px 8px 12px;">
+                <p style="margin:0;color:#111827;font-size:18px;font-weight:800;font-family:Arial,Helvetica,sans-serif;line-height:1.25;letter-spacing:0.3px;">${safeMember}</p>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:0 10px 8px 10px;">
+                <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
+                  <tr>
+                    <td width="50%" valign="top" align="center" class="photo-col" style="padding:0 3px 0 0;">
+                      <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
+                        <tr>
+                          <td align="center" style="background-color:#f3f4f6;border-radius:10px;padding:4px;">
+                            ${buildPhotoImg(beforeUrl, 'Before', 150)}
+                            <p style="margin:6px 0 0;color:#e11d72;font-size:14px;font-weight:700;font-family:Georgia,'Times New Roman',serif;font-style:italic;line-height:1.2;">Before</p>
+                          </td>
+                        </tr>
+                        <tr>
+                          <td align="center" style="padding:6px 0 0 0;">
+                            <p style="margin:0;color:#9ca3af;font-size:9px;font-weight:700;letter-spacing:1px;text-transform:uppercase;font-family:Arial,Helvetica,sans-serif;">BEFORE</p>
+                            <p style="margin:2px 0 0;color:#111827;font-size:14px;font-weight:800;font-family:Arial,Helvetica,sans-serif;">${beforeKg} kg</p>
+                          </td>
+                        </tr>
+                      </table>
+                    </td>
+                    <td width="50%" valign="top" align="center" class="photo-col" style="padding:0 0 0 3px;">
+                      <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
+                        <tr>
+                          <td align="center" style="background-color:#f3f4f6;border-radius:10px;padding:4px;">
+                            ${buildPhotoImg(afterUrl, 'After', 150)}
+                            <p style="margin:6px 0 0;color:#16a34a;font-size:14px;font-weight:700;font-family:Georgia,'Times New Roman',serif;font-style:italic;line-height:1.2;">After</p>
+                          </td>
+                        </tr>
+                        <tr>
+                          <td align="center" style="padding:6px 0 0 0;">
+                            <p style="margin:0;color:#9ca3af;font-size:9px;font-weight:700;letter-spacing:1px;text-transform:uppercase;font-family:Arial,Helvetica,sans-serif;">AFTER</p>
+                            <p style="margin:2px 0 0;color:#111827;font-size:14px;font-weight:800;font-family:Arial,Helvetica,sans-serif;">${afterKg} kg</p>
+                          </td>
+                        </tr>
+                      </table>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+            ${progressText ? `
+            <tr>
+              <td align="center" style="padding:0 12px 10px 12px;">
+                <span style="display:inline-block;padding:6px 14px;background-color:#dbeafe;border-radius:9999px;color:#2563eb;font-size:12px;font-weight:800;font-family:Arial,Helvetica,sans-serif;line-height:1.3;">${progressText}</span>
+              </td>
+            </tr>` : ''}
+            ${issues.length ? `
+            <tr>
+              <td style="padding:0 12px 12px 12px;">
+                <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
+                  <tr>
+                    <td style="background-color:#fff1f2;border:1px solid #f9a8d4;border-radius:10px;padding:8px 10px;">
+                      <p style="margin:0;color:#be185d;font-size:14px;font-weight:700;font-family:Georgia,'Times New Roman',serif;font-style:italic;text-align:center;">Health Issues</p>
+                      <p style="margin:2px 0 6px;color:#9ca3af;font-size:9px;font-style:italic;font-family:Arial,Helvetica,sans-serif;text-align:center;">while joining in the community</p>
+                      <p style="margin:0;text-align:center;line-height:1.5;">${issuePills}</p>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>` : ''}
+            <tr>
+              <td align="center" style="padding:0 12px 12px 12px;">
+                <p style="margin:0;padding:8px 10px;background-color:#fde047;border-radius:6px;color:#111827;font-size:9px;font-weight:600;font-family:Arial,Helvetica,sans-serif;line-height:1.35;">
+                  The views expressed are that of individuals. These products are not intended to diagnose, treat or cure any disease.
+                </p>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>`;
+}
+
+/**
  * @param {object} params
  * @returns {string}
  */
@@ -169,11 +475,33 @@ export function buildTestimonialCoachEmailHtml({
   beforeUrl,
   afterUrl,
   recoveredHealthIssues,
+  shareCardSrc = null,
 }) {
   const safeMember = escapeHtml(memberName);
   const safeOtp = formatOtpDisplay(otp);
   const goalLabel = goalType === 'loss' ? 'Weight Loss' : 'Weight Gain';
-  const progressHtml = buildProgressPill(memberName, goalType, beforeWeight, afterWeight, durationText);
+  // Prefer HTML card from real Before/After URLs (left/right) — never a stale client bitmap.
+  const transformationCard = buildTransformationCardEmailBlock({
+    memberName,
+    beforeUrl,
+    afterUrl,
+    beforeWeight,
+    afterWeight,
+    goalType,
+    durationText,
+    recoveredHealthIssues,
+  });
+  const hasCard = Boolean(transformationCard);
+  const detailsBlock = hasCard
+    ? transformationCard
+    : `${shareCardSrc ? buildShareCardRow(shareCardSrc) : ''}
+              ${buildStatsRow(beforeWeight, afterWeight, goalLabel, durationText)}
+              ${buildPhotosRow(beforeUrl, afterUrl)}
+              ${buildHealthIssuesRow(recoveredHealthIssues)}
+              ${buildProgressPill(memberName, goalType, beforeWeight, afterWeight, durationText)}`;
+  const reviewStep = hasCard
+    ? '1. Review the Transformation card (Before on the left, After on the right).<br />'
+    : '1. Review the before and after photos and recovered health issues.<br />';
 
   return `<!DOCTYPE html>
 <html lang="en" xmlns="http://www.w3.org/1999/xhtml">
@@ -223,10 +551,7 @@ export function buildTestimonialCoachEmailHtml({
                 Review the details below and share the OTP with <strong style="color:#111827;">${safeMember}</strong> to verify.
               </p>
 
-              ${buildStatsRow(beforeWeight, afterWeight, goalLabel, durationText)}
-              ${buildPhotosRow(beforeUrl, afterUrl)}
-              ${buildHealthIssuesRow(recoveredHealthIssues)}
-              ${progressHtml}
+              ${detailsBlock}
 
               <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="margin:0 0 10px 0;">
                 <tr>
@@ -243,7 +568,7 @@ export function buildTestimonialCoachEmailHtml({
                   <td style="background-color:#fffbeb;border:1px solid #fcd34d;border-radius:8px;padding:10px 12px;">
                     <p style="margin:0 0 4px;color:#92400e;font-size:12px;font-weight:700;font-family:Arial,Helvetica,sans-serif;line-height:1.3;">Verification instructions</p>
                     <p style="margin:0;color:#92400e;font-size:12px;line-height:1.45;font-family:Arial,Helvetica,sans-serif;">
-                      1. Review the before and after photos and recovered health issues.<br />
+                      ${reviewStep}
                       2. Share the OTP with <strong>${safeMember}</strong> if approved.<br />
                       3. Member enters OTP in the Wellness Valley app.<br />
                       4. Do not share the OTP if not approved.
@@ -665,10 +990,20 @@ export function buildUnifiedSubmitEmailHtml({
   afterUrl,
   previousBeforeUrl,
   previousAfterUrl,
+  previousBeforeWeight = null,
+  previousAfterWeight = null,
+  previousGoalType = null,
+  previousDurationText = null,
+  previousRecoveredHealthIssues = null,
+  previousPreviewHref = null,
+  currentPreviewHref = null,
+  previousCardImageUrl = null,
+  currentCardImageUrl = null,
   healthVideoUrl,
   businessVideoUrl,
   recoveredHealthIssues,
   isComplete,
+  shareCardSrc = null,
 }) {
   const safeMember = escapeHtml(memberName);
   const safeOtp    = formatOtpDisplay(otp);
@@ -683,30 +1018,74 @@ export function buildUnifiedSubmitEmailHtml({
     && durationSafe
     && durationSafe !== '—',
   );
-  const progressHtml = canShowProgress
-    ? buildProgressPill(memberName, goalType, beforeWeight, afterWeight, durationSafe)
-    : '';
 
   const changedBlock = buildChangedSlotsBlock(changedSlots);
 
-  const beforeDiff = slots.has('before')
-    ? buildPhotoDiffBlock(previousBeforeUrl, beforeUrl, 'Before Photo', !previousBeforeUrl)
+  // Side-by-side small Previous | New cards (card image only) — tap opens full preview.
+  const compareCards = (
+    (previousCardImageUrl || (previousBeforeUrl && previousAfterUrl))
+    && (currentCardImageUrl || (beforeUrl && afterUrl))
+  )
+    ? buildTransformationCardCompareRow({
+      previousBeforeUrl,
+      previousAfterUrl,
+      previousBeforeWeight: previousBeforeWeight ?? beforeWeight,
+      previousAfterWeight: previousAfterWeight ?? afterWeight,
+      previousCardImageUrl,
+      previousPreviewHref,
+      beforeUrl,
+      afterUrl,
+      beforeWeight,
+      afterWeight,
+      currentCardImageUrl,
+      currentPreviewHref,
+    })
     : '';
 
-  const afterDiff = slots.has('after')
-    ? buildPhotoDiffBlock(previousAfterUrl, afterUrl, 'After Photo', !previousAfterUrl)
+  // New-only share card when Previous is missing — must still show (was a blank email bug).
+  const singleShareCard = (!compareCards && currentCardImageUrl)
+    ? buildShareCardRow(currentCardImageUrl, currentPreviewHref)
     : '';
 
-  const currentPhotosBlock = (isComplete && beforeUrl && afterUrl && !slots.has('before') && !slots.has('after'))
+  // HTML Before|After card when there is no share-card image at all.
+  const currentCard = (!compareCards && !singleShareCard && isComplete && beforeUrl && afterUrl)
+    ? buildTransformationCardEmailBlock({
+      memberName,
+      beforeUrl,
+      afterUrl,
+      beforeWeight,
+      afterWeight,
+      goalType,
+      durationText,
+      recoveredHealthIssues,
+      heading: 'Transformation Card',
+    })
+    : '';
+
+  const hasCard = Boolean(compareCards || singleShareCard || currentCard);
+
+  // Do not show single-photo PREVIOUS → NEW strips when Transformation Cards are present.
+  const beforeDiff = '';
+  const afterDiff = '';
+  const previousCard = '';
+
+  const progressHtml = (!hasCard && canShowProgress)
+    ? buildProgressPill(memberName, goalType, beforeWeight, afterWeight, durationSafe)
+    : '';
+
+  const currentPhotosBlock = (!hasCard && isComplete && beforeUrl && afterUrl)
     ? buildPhotosRow(beforeUrl, afterUrl)
     : '';
 
   const healthVideoBlock   = slots.has('health')   ? buildVideoUpdatedRow('Health Results Video — Updated',   healthVideoUrl,   '#059669') : '';
   const businessVideoBlock = slots.has('business') ? buildVideoUpdatedRow('Business Results Video — Updated', businessVideoUrl, '#2563eb') : '';
 
-  const statsBlock = (isComplete && beforeWeight && afterWeight)
+  const statsBlock = (!hasCard && isComplete && beforeWeight && afterWeight)
     ? buildStatsRow(beforeWeight, afterWeight, goalLabel, durationText)
     : '';
+
+  const shareCardBlock = (!hasCard && shareCardSrc) ? buildShareCardRow(shareCardSrc) : '';
+  const issuesBlock = hasCard ? '' : buildHealthIssuesRow(recoveredHealthIssues);
 
   return `<!DOCTYPE html>
 <html lang="en" xmlns="http://www.w3.org/1999/xhtml">
@@ -749,13 +1128,18 @@ export function buildUnifiedSubmitEmailHtml({
               </p>
 
               ${changedBlock}
-              ${statsBlock}
               ${beforeDiff}
               ${afterDiff}
+              ${compareCards}
+              ${singleShareCard}
+              ${previousCard}
+              ${currentCard}
+              ${shareCardBlock}
+              ${statsBlock}
               ${currentPhotosBlock}
               ${healthVideoBlock}
               ${businessVideoBlock}
-              ${buildHealthIssuesRow(recoveredHealthIssues)}
+              ${issuesBlock}
               ${progressHtml}
 
               <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="margin:10px 0;">

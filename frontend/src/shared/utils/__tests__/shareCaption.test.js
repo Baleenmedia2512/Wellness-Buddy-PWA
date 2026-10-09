@@ -42,7 +42,7 @@ describe('composeQuickShareCaption', () => {
     const caption = composeQuickShareCaption(BRAND, FOOD_SUFFIX);
     assert.equal(
       appendMarathonWhatsAppNotice(caption, '2026-08-04'),
-      `${BRAND}, 1890 kcal\nMasala Dosa - GI 65 m\nRagi Dosa - GI 45 l\nPlain Ghee Dosa - GI 72 h\nTomorrow is Day 4 - Detox Day`,
+      `${BRAND}, 1890 kcal\nMasala Dosa - GI 65 m\nRagi Dosa - GI 45 l\nPlain Ghee Dosa - GI 72 h\nTomorrow is Marathon Day 4 - Detox Day`,
     );
   });
 });

@@ -1,4 +1,4 @@
-import { isExemptedBeverageOnly } from '../../../utils/foodTypeDetection.js';
+import { isNonMealNutritionOnly } from '../../../utils/foodTypeDetection.js';
 import { IANA_IST } from '../../../shared/lib/datetime/index.js';
 import { isOnTime, isLate, filterFoodByMealWindow } from './window.helpers.js';
 import { filterEducationLogsOnly } from './education-log.helpers.js';
@@ -356,7 +356,7 @@ export function calculateGoodHabitPost({ maxPoints, habitLogs }) {
 }
 
 function solidFoodRecords(foodRecords) {
-  return (foodRecords || []).filter((r) => !isExemptedBeverageOnly(r.AnalysisData));
+  return (foodRecords || []).filter((r) => !isNonMealNutritionOnly(r.AnalysisData));
 }
 
 export function calculateBreakfastPost({

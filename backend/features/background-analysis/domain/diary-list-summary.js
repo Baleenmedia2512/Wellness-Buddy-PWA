@@ -9,6 +9,7 @@ const ACTIVITY = Object.freeze({
   WATER: 'water',
   AFRESH: 'afresh',
   SHAKE: 'shake',
+  TARGET_NUTRITION: 'target_nutrition',
 });
 
 /**
@@ -16,7 +17,8 @@ const ACTIVITY = Object.freeze({
  * @param {string|null|undefined} processedBy
  * @returns {{
  *   name: string,
- *   activityType: 'food'|'water'|'afresh'|'shake',
+ *   activityType: 'food'|'water'|'afresh'|'shake'|'target_nutrition',
+ *   mealKind: string|null,
  *   volumeMl: number|null,
  *   scoops: number|null,
  *   servings: number,
@@ -40,10 +42,14 @@ export function extractFoodListSummary(analysisData, processedBy = null) {
     calories: Math.round(Number(item?.calories ?? item?.nutrition?.calories ?? 0) || 0),
     glycemicIndex: readItemGlycemicIndex(item),
   }));
+  const mealKind = typeof raw?.mealKind === 'string' && raw.mealKind.trim()
+    ? raw.mealKind.trim()
+    : null;
 
   return {
     name,
     activityType,
+    mealKind,
     volumeMl,
     scoops,
     servings,
@@ -105,9 +111,10 @@ function resolveActivityType(processedBy, raw, foods, title) {
   if (by === 'shake_calculator') return ACTIVITY.SHAKE;
 
   const names = foods
-    .map((item) => String(item?.name || '').toLowerCase().trim())
+    .map((item) => String(item?.name || item?.foodName || '').toLowerCase().trim())
     .filter(Boolean);
   const primary = names[0] || String(title || '').toLowerCase().trim();
+  const allLabels = names.length > 0 ? names : (primary ? [primary] : []);
 
   if (isWaterName(primary) || (names.length === 1 && isWaterName(names[0]))) {
     return ACTIVITY.WATER;
@@ -116,7 +123,16 @@ function resolveActivityType(processedBy, raw, foods, title) {
     return ACTIVITY.WATER;
   }
   if (names.some(isAfreshName) || isAfreshName(primary)) return ACTIVITY.AFRESH;
-  if (names.some(isShakeName) || isShakeName(primary)) return ACTIVITY.SHAKE;
+  if (names.some(isShakeName) || isShakeName(primary) || allLabels.some(isMealShakeName)) {
+    return ACTIVITY.SHAKE;
+  }
+
+  // Target Nutrition catalog / supplements — not breakfast/lunch/dinner
+  if (raw?.mealKind === 'dry-salad') return ACTIVITY.TARGET_NUTRITION;
+  if (allLabels.length > 0 && allLabels.every(isNonMealSupplementName)) {
+    return ACTIVITY.TARGET_NUTRITION;
+  }
+
   return ACTIVITY.FOOD;
 }
 
@@ -146,7 +162,53 @@ function isShakeName(name) {
   if (!name) return false;
   return name.includes('herbalife shake')
     || name.includes('protein shake')
-    || name === 'shake';
+    || name === 'shake'
+    || isMealShakeName(name);
+}
+
+function isMealShakeName(name) {
+  if (!name) return false;
+  const n = String(name).toLowerCase().replace(/[^\w\s]/g, ' ').replace(/\s+/g, ' ').trim();
+  return n.includes('formula 1')
+    || n.includes('formula1')
+    || n.includes('f1 shake')
+    || n.includes('meal replacement')
+    || n.includes('protein shake');
+}
+
+const NON_MEAL_SUPPLEMENT_PATTERNS = [
+  /\bvriti\s*life\b/,
+  /\bvritilife\b/,
+  /\btriphala\b/,
+  /digestive\s*health/,
+  /multivitamin/,
+  /fish\s*oil/,
+  /\bsupplement\b/,
+  /cell\s*activator/,
+  /nightworks/,
+  /niteworks/,
+  /xtra[- ]?cal/,
+  /shakemate/,
+  /personalized\s*protein/,
+  /\bdino\s*shake\b/,
+  /\bdinoshake\b/,
+  /\bhn\s*-/,
+  /skin\s*booster/,
+  /\bjoint\s*support\b/,
+  /\blift\s*off\b/,
+  /\bh\s*24\b/,
+  /formula\s*2\b/,
+  /formula2\b/,
+  /\btablet\b/,
+  /\bcapsule\b/,
+];
+
+function isNonMealSupplementName(name) {
+  if (!name) return false;
+  if (isMealShakeName(name)) return false;
+  if (isAfreshName(name)) return true;
+  const n = String(name).toLowerCase().replace(/[^\w\s]/g, ' ').replace(/\s+/g, ' ').trim();
+  return NON_MEAL_SUPPLEMENT_PATTERNS.some((re) => re.test(n));
 }
 
 function sumVolumeMl(foods) {

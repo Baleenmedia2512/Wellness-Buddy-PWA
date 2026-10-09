@@ -39,7 +39,9 @@ import HealthIssueCoachEditor from './HealthIssueCoachEditor.jsx';
 import {
   TransformationCardContent,
   TransformationShareActions,
+  captureTransformationCardAsJpegDataUrl,
 } from './TransformationShareCard.jsx';
+
 import { CARD_W, CARD_H } from '../utils/shareCardLayout.js';
 import { getCachedVideoThumbnail } from '../utils/videoThumbnailCache.js';
 import { jpegDataUrlToObjectUrl, revokeBlobUrl, withTestimonialMediaCacheBust } from '../utils/testimonialMediaUrl.js';
@@ -675,7 +677,6 @@ function MemberCard({
   onMineRefresh,
   onOtpVerified,
   knownHealthIssues = [],
-  canEditHealthIssues = true,
 }) {
   const { user } = row;
   const [detailTestimonial, setDetailTestimonial] = useState(null);
@@ -1331,7 +1332,42 @@ function MemberCard({
     // Photo / video changes — apply fresh signed URLs from the submit response before clearing local previews.
     setIsSubmitting(true);
     setCaptureFlowBusy(true);
-    void submitAllEdits(payload)
+    void (async () => {
+      // Capture the same Transformation share card the member shares — coach email embeds it.
+      if (submittingPhotoCard && shareCardRef.current) {
+        try {
+          // Let React paint draft weights/photos onto the hidden card before capture.
+          await new Promise((resolve) => {
+            requestAnimationFrame(() => requestAnimationFrame(resolve));
+          });
+          // Prefer draft JPEG bytes (not page screenshots) so After stays the real photo.
+          const toImgSrc = (draft, fallback) => {
+            if (typeof draft?.imageBase64 === 'string' && draft.imageBase64) {
+              return draft.imageBase64.startsWith('data:')
+                ? draft.imageBase64
+                : `data:image/jpeg;base64,${draft.imageBase64}`;
+            }
+            if (draft?.previewUrl && !String(draft.previewUrl).includes('blob:')) {
+              return draft.previewUrl;
+            }
+            if (draft?.previewUrl) return draft.previewUrl;
+            return fallback || null;
+          };
+          const beforeSrc = toImgSrc(draftBefore, beforeImageSrc);
+          const afterSrc = toImgSrc(draftAfter, afterImageSrc);
+          if (!beforeSrc || !afterSrc) {
+            throw new Error('Before/After photos not ready for card capture');
+          }
+          payload.shareCardImageBase64 = await captureTransformationCardAsJpegDataUrl(
+            shareCardRef.current,
+            { beforeSrc, afterSrc },
+          );
+        } catch {
+          // Non-fatal — email falls back to Before/After photo rows.
+        }
+      }
+      return submitAllEdits(payload);
+    })()
       .then(finishSubmit)
       .catch((err) => {
         setSubmitError(err?.message || 'Failed to submit. Please try again.');
@@ -1931,30 +1967,47 @@ function MemberCard({
         </div>
       )}
 
-      {/* Health Issues — below photos, above result video */}
+      {/* Health Issues — below photos, above result video.
+          Mine only: editable. Direct/Full team: read-only chips (coach cannot edit downline). */}
       {(editable || testimonial) && (
         <div className="space-y-1.5 overflow-visible relative z-20">
           <p className="text-[10px] font-bold text-gray-400 tracking-normal whitespace-normal">
             Health Issues while joining this community
           </p>
-          <HealthIssueCoachEditor
-            userId={userId || user?.userId}
-            coachId={coachId}
-            currentIssues={draftIssues ?? issues}
-            approvedIssues={approvedIssues}
-            knownHealthIssues={knownHealthIssues}
-            // Mine: draft into submit. Team downline: coach can save. Upline: view only.
-            persist={editable ? false : (Boolean(testimonial?.id) && canEditHealthIssues)}
-            allowRemove={editable || canEditHealthIssues}
-            editable={editable}
-            disabled={!editable && !canEditHealthIssues}
-            onSaved={handleHealthIssuesSaved}
-            onRemove={handleHealthIssueRemoved}
-          />
-          {!editable && !canEditHealthIssues && (
-            <p className="text-[10px] text-gray-400 italic">
-              Upline health issues are view-only.
-            </p>
+          {editable ? (
+            <HealthIssueCoachEditor
+              userId={userId || user?.userId}
+              coachId={coachId}
+              currentIssues={draftIssues ?? issues}
+              approvedIssues={approvedIssues}
+              knownHealthIssues={knownHealthIssues}
+              persist={false}
+              allowRemove
+              editable
+              disabled={false}
+              onSaved={handleHealthIssuesSaved}
+              onRemove={handleHealthIssueRemoved}
+            />
+          ) : (
+            <div className="rounded-lg border border-indigo-100 bg-indigo-50/40 px-2.5 py-2">
+              {(issues || []).length > 0 ? (
+                <div className="flex flex-wrap gap-1.5">
+                  {issues.map((issue) => (
+                    <span
+                      key={issue}
+                      className="inline-flex max-w-[11rem] truncate rounded-md border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[11px] font-medium text-indigo-800"
+                    >
+                      {issue}
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-gray-400 italic">No health issues recorded.</p>
+              )}
+              <p className="mt-1.5 text-[10px] text-gray-400 italic">
+                View only — only the member can edit health issues.
+              </p>
+            </div>
           )}
           {testimonial && canShareTransformationPhoto(testimonial) && (testimonial.beforeImageUrl || hasAfter) &&
             (editable ? (!hasDirtySlots && !submitDone) : true) && (
@@ -2205,6 +2258,12 @@ function MemberCard({
               afterImageUrl: afterImageSrc,
               beforeWeightKg: displayBeforeKg || testimonial.beforeWeightKg,
               afterWeightKg: displayAfterKg || testimonial.afterWeightKg,
+              goalType: draftBefore?.goalType || testimonial.goalType,
+              durationText: (
+                isUsableDurationText(draftBefore?.durationText)
+                  ? draftBefore.durationText
+                  : testimonial.durationText
+              ),
               recoveredHealthIssues: draftIssues ?? testimonial.recoveredHealthIssues,
             }}
             userName={user?.userName || user?.displayName || user?.name || null}
@@ -2926,7 +2985,6 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
           userId={row.user.userId}
           coachId={coachId}
           knownHealthIssues={knownHealthIssues}
-          canEditHealthIssues={isMineScope || row.canEditHealthIssues !== false}
           onMineRefresh={isMineScope ? refreshMineRow : undefined}
           onOtpVerified={isMineScope ? () => loadDirectAndMine() : undefined}
         />

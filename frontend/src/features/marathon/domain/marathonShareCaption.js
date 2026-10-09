@@ -1,7 +1,7 @@
 /**
  * WhatsApp caption extras for the marathon / Detox day sequence.
  *
- * Ordinary in-marathon days append "Day N" (Day 1, Day 2, …).
+ * Ordinary in-marathon days append "Marathon Day N" (Marathon Day 1, …).
  * Only Marathon start and Detox Days get a 1-day-early "Tomorrow…" line.
  *
  * Add future special labels to MARATHON_WHATSAPP_ADVANCE_SPECIALS
@@ -38,8 +38,8 @@ export const MARATHON_WHATSAPP_ADVANCE_SPECIALS = Object.freeze([
 export function formatMarathonWhatsAppAdvanceNotice(day, label) {
   const cleanLabel = typeof label === 'string' ? label.trim() : '';
   return cleanLabel
-    ? `Tomorrow is Day ${day} - ${cleanLabel}`
-    : `Tomorrow is Day ${day}`;
+    ? `Tomorrow is Marathon Day ${day} - ${cleanLabel}`
+    : `Tomorrow is Marathon Day ${day}`;
 }
 
 /**
@@ -49,7 +49,7 @@ export function formatMarathonWhatsAppAdvanceNotice(day, label) {
  */
 export function formatMarathonWhatsAppCurrentDayNotice(day, label = null) {
   const cleanLabel = typeof label === 'string' ? label.trim() : '';
-  return cleanLabel ? `Day ${day} - ${cleanLabel}` : `Day ${day}`;
+  return cleanLabel ? `Marathon Day ${day} - ${cleanLabel}` : `Marathon Day ${day}`;
 }
 
 /**
@@ -100,13 +100,13 @@ export function getMarathonWhatsAppAdvanceNotice(ymd) {
 }
 
 /**
- * Marathon/Detox eve: tomorrow line only. Other in-marathon days: Day N.
+ * Marathon/Detox eve: tomorrow line only. Other in-marathon days: Marathon Day N.
  * Will not duplicate an existing notice.
  *
  * Weight comparison lines (Previous Marathon End / Current Weight) are only
  * appended when `includeWeightComparison` is true. Callers must pass that for
  * weight shares only — food, water, education, and other captions stay on the
- * Day N / Tomorrow sequence.
+ * Marathon Day N / Tomorrow sequence.
  *
  * @param {unknown} caption
  * @param {unknown} ymd YYYY-MM-DD

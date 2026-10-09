@@ -209,6 +209,123 @@ export async function captureTransformationCardAsBlob(el) {
   });
 }
 
+/**
+ * Resolve Before/After img nodes by slot (never by DOM order alone).
+ * @param {HTMLElement} el
+ */
+function photoSlotImages(el) {
+  const beforeImg = el.querySelector('img[data-photo-slot="before"]')
+    || el.querySelectorAll('img[data-keep-ratio]')[0]
+    || null;
+  const afterImg = el.querySelector('img[data-photo-slot="after"]')
+    || el.querySelectorAll('img[data-keep-ratio]')[1]
+    || null;
+  return { beforeImg, afterImg };
+}
+
+/**
+ * Ensure Before/After photos on the share card are painted before capture.
+ * Optionally swap in draft data-URLs so email matches the in-app pair.
+ * @param {HTMLElement} el
+ * @param {{ beforeSrc?: string|null, afterSrc?: string|null }} [photoSrc]
+ */
+export async function prepareTransformationCardPhotos(el, photoSrc = {}) {
+  if (!el) return;
+  const { beforeImg, afterImg } = photoSlotImages(el);
+  if (beforeImg && photoSrc.beforeSrc) {
+    beforeImg.removeAttribute('crossorigin');
+    beforeImg.src = photoSrc.beforeSrc;
+  }
+  if (afterImg && photoSrc.afterSrc) {
+    afterImg.removeAttribute('crossorigin');
+    afterImg.src = photoSrc.afterSrc;
+  }
+  const imgs = [beforeImg, afterImg].filter(Boolean);
+  await Promise.all(imgs.map(waitForImage));
+  // Reject captures where After never decoded (avoids baking wrong/blank pixels).
+  if (afterImg && !(afterImg.complete && afterImg.naturalWidth > 0)) {
+    throw new Error('After photo not ready for transformation card capture');
+  }
+  if (beforeImg && !(beforeImg.complete && beforeImg.naturalWidth > 0)) {
+    throw new Error('Before photo not ready for transformation card capture');
+  }
+}
+
+/**
+ * JPEG data URL of the share card for coach OTP email upload (keeps under API size limit).
+ * Captures a CLONE so the live share card is never mutated (prevents wrong After bake).
+ * @param {HTMLElement} el
+ * @param {{ quality?: number, maxBase64Chars?: number, beforeSrc?: string|null, afterSrc?: string|null }} [opts]
+ * @returns {Promise<string>}
+ */
+export async function captureTransformationCardAsJpegDataUrl(el, opts = {}) {
+  if (!el) throw new Error('Transformation card is not ready');
+  const quality = opts.quality ?? 0.82;
+  const maxBase64Chars = opts.maxBase64Chars ?? Math.floor(1.35 * 1024 * 1024);
+
+  const host = document.createElement('div');
+  host.setAttribute('aria-hidden', 'true');
+  host.style.cssText = [
+    'position:fixed',
+    'left:0',
+    'top:0',
+    `width:${CARD_W}px`,
+    `height:${CARD_H}px`,
+    'opacity:1',
+    'pointer-events:none',
+    'z-index:-1',
+    'overflow:hidden',
+  ].join(';');
+  const clone = el.cloneNode(true);
+  clone.removeAttribute('id');
+  host.appendChild(clone);
+  document.body.appendChild(host);
+
+  try {
+    await prepareTransformationCardPhotos(clone, {
+      beforeSrc: opts.beforeSrc,
+      afterSrc: opts.afterSrc,
+    });
+    const pngBlob = await captureTransformationCardAsBlob(clone);
+    const bitmap = typeof createImageBitmap === 'function'
+      ? await createImageBitmap(pngBlob)
+      : null;
+
+    const canvas = document.createElement('canvas');
+    if (bitmap) {
+      canvas.width = bitmap.width;
+      canvas.height = bitmap.height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('Could not encode transformation card');
+      ctx.drawImage(bitmap, 0, 0);
+      if (typeof bitmap.close === 'function') bitmap.close();
+    } else {
+      const pngUrl = await blobToDataUrl(pngBlob);
+      const img = await new Promise((resolve, reject) => {
+        const image = new Image();
+        image.onload = () => resolve(image);
+        image.onerror = () => reject(new Error('Could not encode transformation card'));
+        image.src = pngUrl;
+      });
+      canvas.width = img.naturalWidth || img.width;
+      canvas.height = img.naturalHeight || img.height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('Could not encode transformation card');
+      ctx.drawImage(img, 0, 0);
+    }
+
+    let q = quality;
+    let dataUrl = canvas.toDataURL('image/jpeg', q);
+    while (dataUrl.length > maxBase64Chars && q > 0.45) {
+      q = Math.max(0.45, q - 0.08);
+      dataUrl = canvas.toDataURL('image/jpeg', q);
+    }
+    return dataUrl;
+  } finally {
+    host.remove();
+  }
+}
+
 function transformationFileName(userName) {
   return `transformation-${String(userName || 'result').replace(/\s+/g, '-').toLowerCase()}.png`;
 }
@@ -373,6 +490,7 @@ function PhotoCell({ src, label, scriptLabel, weightKg, isVerified, side, photoH
               src={src}
               alt={label}
               data-keep-ratio="1"
+              data-photo-slot={side === 'left' ? 'before' : 'after'}
               crossOrigin="anonymous"
               style={{
                 display: 'block',

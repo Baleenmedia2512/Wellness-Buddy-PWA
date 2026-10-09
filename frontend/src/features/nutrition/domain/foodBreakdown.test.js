@@ -5,6 +5,7 @@
  */
 import {
   extractFoodContributions,
+  getNutrientDecimals,
   getNutrientDisplayName,
   getNutrientUnit,
   getNutrientTotal,
@@ -56,6 +57,32 @@ describe('extractFoodContributions', () => {
     expect(breakdown).toHaveLength(1);
     expect(breakdown[0].foodName).toBe('Shake');
   });
+
+  test('keeps sub-mg vitamin B1 contributions that whole-number rounding would hide', () => {
+    const analyses = [{
+      AnalysisData: {
+        foods: [
+          { name: 'Whole wheat toast', nutrition: { vitamin_b1: 0.4 } },
+        ],
+      },
+    }];
+    const { breakdown, total } = extractFoodContributions(analyses, 'totalVitaminB1');
+    expect(total).toBe(0.4);
+    expect(breakdown).toHaveLength(1);
+    expect(breakdown[0].foodName).toBe('Whole wheat toast');
+    expect(breakdown[0].amount).toBe(0.4);
+  });
+
+  test('falls back to meal-level TotalVitaminB1 when per-food B1 is missing', () => {
+    const analyses = [{
+      TotalVitaminB1: 0.4,
+      AnalysisData: { foods: [{ name: 'Formula 1 Shake', nutrition: {} }] },
+    }];
+    const { breakdown, total } = extractFoodContributions(analyses, 'totalVitaminB1');
+    expect(total).toBe(0.4);
+    expect(breakdown[0].foodName).toBe('Formula 1 Shake');
+    expect(breakdown[0].amount).toBe(0.4);
+  });
 });
 
 describe('nutrient display helpers', () => {
@@ -72,5 +99,12 @@ describe('nutrient display helpers', () => {
     const dailyStats = { totalPotassium: 289 };
     expect(getNutrientTotal('totalPotassium', dailyStats)).toBe(289);
     expect(getNutrientTarget('totalPotassium')).toBe(3500);
+  });
+
+  test('B vitamins keep decimal precision for modal display', () => {
+    expect(getNutrientDecimals('totalVitaminB1')).toBe(2);
+    expect(getNutrientDecimals('totalVitaminB12')).toBe(2);
+    expect(getNutrientDecimals('totalPotassium')).toBe(0);
+    expect(getNutrientTarget('totalVitaminB1')).toBe(1.2);
   });
 });

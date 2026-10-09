@@ -277,6 +277,7 @@ export async function getTeamTestimonialReport(coachId) {
  *   healthVideoPath?: string,
  *   businessVideoPath?: string,
  *   recoveredHealthIssues?: string[],
+ *   shareCardImageBase64?: string,
  * }} payload
  */
 export async function submitAllEdits(payload) {
@@ -316,7 +317,7 @@ export async function resendUnifiedOtp(payload) {
 }
 
 /**
- * Cancel pending unified OTP and revert edits to previous state.
+ * Cancel pending unified OTP and revert pending photo/video edits.
  * @param {{ userId: number, restoreData?: object }} payload
  */
 export async function cancelUnifiedOtp(payload) {
@@ -325,11 +326,11 @@ export async function cancelUnifiedOtp(payload) {
     headers: { 'Content-Type': 'application/json' },
     data:    payload,
   });
-  return parseApiResponse(res, 'Failed to cancel approval request');
+  return parseApiResponse(res, 'Failed to cancel OTP');
 }
 
 /**
- * Coach: update a reporting member's recovered health issues (no OTP).
+ * Legacy coach health-issue update (API always rejects — members edit on Mine).
  * @param {{ coachId: number, userId: number, recoveredHealthIssues: string[] }} payload
  */
 export async function updateMemberHealthIssues(payload) {

@@ -269,9 +269,18 @@ export function FoodRow({
       : listSummary?.activityType === 'afresh' ? 'afresh_preset'
         : listSummary?.activityType === 'shake' ? 'shake_calculator'
           : null);
+  // Lean list omits full AnalysisData — pass enough for meal-badge / subtype detection.
+  const analysisForType = listSummary
+    ? {
+      mealKind: listSummary.mealKind
+        || (listSummary.activityType === 'target_nutrition' ? 'dry-salad' : undefined),
+      foods: foodData.detailedItems,
+      processedBy: processedByForType,
+    }
+    : p.analysisData;
   const presentation = resolveFoodRowPresentation({
     processedBy: processedByForType,
-    analysisData: listSummary ? null : p.analysisData,
+    analysisData: analysisForType,
     foodData,
     calories: cal,
     mealLabel: meal?.label || null,
