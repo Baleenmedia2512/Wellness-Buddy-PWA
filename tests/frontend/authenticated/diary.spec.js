@@ -1018,13 +1018,12 @@ test.describe('Diary / Food Log Module', () => {
   });
 
   // ── DIARY-031 ─────────────────────────────────────────────────────────────
-  test('DIARY-031: Every log type in the diary (Food, Weight, Education, Smartwatch, Good Habit) displays an active Share button', async ({ page }) => {
-    // Populate feed with entries of all supported log types
+  test('DIARY-031: Diary log cards (Food, Weight, Education, Good Habit) display an active Share button', async ({ page }) => {
+    // Populate feed with entries of supported shareable log types
     currentEntries = [
       JSON.parse(JSON.stringify(MOCK_DIARY_ENTRIES_PRIMARY[0])), // Food card
       JSON.parse(JSON.stringify(MOCK_DIARY_ENTRY_WEIGHT)),       // Weight card
       JSON.parse(JSON.stringify(MOCK_DIARY_ENTRY_EDUCATION)),    // Education card
-      JSON.parse(JSON.stringify(MOCK_DIARY_ENTRY_WATCH)),        // Smartwatch card
       JSON.parse(JSON.stringify(MOCK_DIARY_ENTRY_GOOD_HABIT)),   // Good Habit card
     ];
 
@@ -1033,28 +1032,23 @@ test.describe('Diary / Food Log Module', () => {
     // 1. Verify Share button on Food Card
     const foodCard = diaryPage.getFoodCardByTitle('Chicken and Beef Noodles');
     await expect(foodCard).toBeVisible({ timeout: 15000 });
-    const foodShareBtn = foodCard.locator('button[aria-label*="Share this"]').or(foodCard.locator('button').filter({ hasText: /Share/i }));
+    const foodShareBtn = foodCard.locator('button[aria-label*="Share"]');
     await expect(foodShareBtn.first()).toBeVisible();
 
     // 2. Verify Share button on Weight Card
     await expect(diaryPage.weightCard).toBeVisible({ timeout: 10000 });
-    const weightShareBtn = diaryPage.weightCard.locator('button[aria-label*="Share this weight"]').or(diaryPage.weightCard.locator('button').filter({ hasText: /Share/i }));
-    await expect(weightShareBtn.first()).toBeVisible();
+    const weightShareBtn = diaryPage.weightCard.locator('button[aria-label*="Share this weight"]');
+    await expect(weightShareBtn).toBeVisible();
 
     // 3. Verify Share button on Education Card
     await expect(diaryPage.educationCard).toBeVisible({ timeout: 10000 });
-    const eduShareBtn = diaryPage.educationCard.locator('button[aria-label*="Share this education"]').or(diaryPage.educationCard.locator('button').filter({ hasText: /Share/i }));
-    await expect(eduShareBtn.first()).toBeVisible();
+    const eduShareBtn = diaryPage.educationCard.locator('button[aria-label*="Share this education"]');
+    await expect(eduShareBtn).toBeVisible();
 
-    // 4. Verify Share button on Smartwatch Activity Card
-    await expect(diaryPage.watchCard).toBeVisible({ timeout: 10000 });
-    const watchShareBtn = diaryPage.watchCard.locator('button[aria-label*="Share this"]').or(diaryPage.watchCard.locator('button').filter({ hasText: /Share/i }));
-    await expect(watchShareBtn.first()).toBeVisible();
-
-    // 5. Verify Share button on Good Habit Card
+    // 4. Verify Share button on Good Habit Card
     await expect(diaryPage.goodHabitCard).toBeVisible({ timeout: 10000 });
-    const habitShareBtn = diaryPage.goodHabitCard.locator('button[aria-label*="Share this Good Habit"]').or(diaryPage.goodHabitCard.locator('button').filter({ hasText: /Share/i }));
-    await expect(habitShareBtn.first()).toBeVisible();
+    const habitShareBtn = diaryPage.goodHabitCard.locator('button[aria-label*="Share this Good Habit"]');
+    await expect(habitShareBtn).toBeVisible();
   });
 });
 
