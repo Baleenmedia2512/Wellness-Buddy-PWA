@@ -285,7 +285,7 @@ function BrushLabel({ label, side }) {
         position: 'absolute',
         left: '7%',
         right: '7%',
-        bottom: 10,
+        bottom: 16,
         height: 92,
         textAlign: 'center',
       }}
