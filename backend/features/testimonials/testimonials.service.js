@@ -1,4 +1,4 @@
-﻿/**
+/**
  * testimonials.service.js â€” Business logic for the testimonials feature.
  * Orchestrates validation â†’ permissions â†’ data â†’ side-effects (email).
  * Zero HTTP concerns.
@@ -43,6 +43,7 @@ import {
   validateSubmitAllEdits,
   validateVerifyUnifiedOtp,
   validateResendUnifiedOtp,
+  validateCancelUnifiedOtp,
   validateUpdateMemberHealthIssues,
   MAX_HEALTH_VIDEO_BYTES,
   MAX_BUSINESS_VIDEO_BYTES,
@@ -450,6 +451,8 @@ async function enrichTestimonialForDisplay(testimonial, opts = {}) {
     updatedAt:              testimonial.updated_at,
     beforeImageUrl:         beforeUrl,
     afterImageUrl:          afterUrl,
+    beforeImagePath:        testimonial.before_image_path   ?? null,
+    afterImagePath:         testimonial.after_image_path    ?? null,
     healthVideoPath:        testimonial.health_video_path   ?? null,
     businessVideoPath:      testimonial.business_video_path ?? null,
     healthVideoUrl:         healthVideoUrl,
@@ -1870,6 +1873,25 @@ export async function submitAllEdits(rawBody) {
     };
   }
 
+  // Save baseline snapshot of existing record before applying pending updates
+  if (existing) {
+    await repo.saveBaselineSnapshot(payload.userId, {
+      status:                  existing.status,
+      verified_at:             existing.verified_at,
+      before_image_path:       existing.before_image_path,
+      after_image_path:        existing.after_image_path,
+      before_weight_kg:        existing.before_weight_kg,
+      after_weight_kg:         existing.after_weight_kg,
+      goal_type:               existing.goal_type,
+      duration_text:           existing.duration_text,
+      recovered_health_issues: existing.recovered_health_issues,
+      video_status:            existing.video_status,
+      video_verified_at:       existing.video_verified_at,
+      health_video_path:       existing.health_video_path,
+      business_video_path:     existing.business_video_path,
+    });
+  }
+
   // Generate single unified OTP
   const otp       = generateOtp();
   const otpHash   = await bcrypt.hash(otp, 10);
@@ -2028,6 +2050,8 @@ export async function verifyUnifiedOtp(rawBody) {
     });
   }
 
+  await repo.clearBaselineSnapshot(userId);
+
   const verifiedItems = [
     photoPending   && 'photos',
     videoPending   && 'videos',
@@ -2150,4 +2174,122 @@ export async function updateMemberHealthIssues(rawBody) {
     403,
     'Coaches cannot edit health issues for team members. Only the member can update their own health issues.',
   );
+}
+
+/**
+ * Cancel a pending unified OTP approval flow and optionally restore pre-edit baseline data.
+ */
+export async function cancelUnifiedOtp(rawBody) {
+  const { userId, restoreData } = validateCancelUnifiedOtp(rawBody);
+
+  const row = await repo.findByUserId(userId);
+  if (!row) {
+    return {
+      httpStatus: 200,
+      body: {
+        success: true,
+        message: 'No testimonial found to cancel.',
+        testimonial: null,
+      },
+    };
+  }
+
+  // Load server-side baseline snapshot if restoreData is not provided or incomplete
+  const serverSnapshot = await repo.getBaselineSnapshot(userId);
+  const snapshot = (restoreData && typeof restoreData === 'object' && Object.keys(restoreData).length > 0)
+    ? restoreData
+    : serverSnapshot;
+
+  const updates = {
+    otpHash: null,
+    otpExpiresAt: null,
+  };
+  const videoUpdates = {
+    videoOtpHash: null,
+    videoOtpExpiresAt: null,
+  };
+
+  if (snapshot && typeof snapshot === 'object') {
+    const isComplete = hasCompletePhotoTestimonial(snapshot);
+    if (snapshot.status !== undefined) {
+      updates.status = snapshot.status;
+    } else {
+      updates.status = snapshot.verifiedAt || snapshot.verified_at || row.verified_at || isComplete ? 'verified' : 'incomplete';
+    }
+
+    if (snapshot.verifiedAt !== undefined) updates.verifiedAt = snapshot.verifiedAt;
+    else if (snapshot.verified_at !== undefined) updates.verifiedAt = snapshot.verified_at;
+    else if (updates.status === 'verified') updates.verifiedAt = row.verified_at || nowUtc();
+
+    const beforePath = snapshot.beforeImagePath ?? snapshot.before_image_path;
+    if (beforePath !== undefined) updates.beforeImagePath = beforePath;
+
+    const afterPath = snapshot.afterImagePath ?? snapshot.after_image_path;
+    if (afterPath !== undefined) updates.afterImagePath = afterPath;
+
+    const beforeKg = snapshot.beforeWeightKg ?? snapshot.before_weight_kg;
+    if (beforeKg !== undefined) updates.beforeWeightKg = beforeKg;
+
+    const afterKg = snapshot.afterWeightKg ?? snapshot.after_weight_kg;
+    if (afterKg !== undefined) updates.afterWeightKg = afterKg;
+
+    const goal = snapshot.goalType ?? snapshot.goal_type;
+    if (goal !== undefined) updates.goalType = goal;
+
+    const duration = snapshot.durationText ?? snapshot.duration_text;
+    if (duration !== undefined) updates.durationText = duration;
+
+    const issues = snapshot.recoveredHealthIssues ?? snapshot.recovered_health_issues;
+    if (issues !== undefined) updates.recoveredHealthIssues = normalizeHealthIssuesList(issues);
+
+    if (snapshot.videoStatus !== undefined || snapshot.video_status !== undefined) {
+      videoUpdates.videoStatus = snapshot.videoStatus ?? snapshot.video_status;
+    } else {
+      videoUpdates.videoStatus = row.video_verified_at ? 'verified' : 'none';
+    }
+    const healthVid = snapshot.healthVideoPath ?? snapshot.health_video_path;
+    if (healthVid !== undefined) videoUpdates.healthVideoPath = healthVid;
+    const bizVid = snapshot.businessVideoPath ?? snapshot.business_video_path;
+    if (bizVid !== undefined) videoUpdates.businessVideoPath = bizVid;
+
+    if (updates.beforeImagePath || updates.afterImagePath) {
+      await syncTestimonialPathsToProfileSafe({
+        userId,
+        beforeImagePath: updates.beforeImagePath || null,
+        afterImagePath: updates.afterImagePath || null,
+      });
+    }
+  } else {
+    // If no snapshot exists (e.g. legacy pending submission),
+    // and the row has complete photos or was previously verified, ensure it reverts to 'verified'
+    // so that the member can still share their transformation image!
+    const isComplete = hasCompletePhotoTestimonial(row);
+    if (row.verified_at || isComplete) {
+      updates.status = 'verified';
+      updates.verifiedAt = row.verified_at || nowUtc();
+    } else {
+      updates.status = 'incomplete';
+    }
+    if (row.video_verified_at) {
+      videoUpdates.videoStatus = 'verified';
+    } else {
+      videoUpdates.videoStatus = 'none';
+    }
+  }
+
+  await repo.updateTestimonial(row.id, updates);
+  await repo.updateTestimonialVideos(row.id, videoUpdates);
+  await repo.clearBaselineSnapshot(userId);
+
+  const updatedRow = await repo.findByUserId(userId);
+  const display = await enrichTestimonialForDisplay(updatedRow);
+
+  return {
+    httpStatus: 200,
+    body: {
+      success: true,
+      message: 'Pending approval cancelled and changes reverted.',
+      testimonial: display,
+    },
+  };
 }

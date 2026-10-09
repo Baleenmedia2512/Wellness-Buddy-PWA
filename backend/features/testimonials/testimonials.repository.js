@@ -111,6 +111,53 @@ export async function createSignedUploadUrl(path) {
 }
 
 /**
+ * Save baseline snapshot for a member undergoing edit approval.
+ */
+export async function saveBaselineSnapshot(userId, snapshot) {
+  if (!userId || !snapshot) return;
+  try {
+    const supabase = getSupabaseClient();
+    const buffer = Buffer.from(JSON.stringify(snapshot));
+    await supabase.storage
+      .from(BUCKET)
+      .upload(`${userId}/baseline_snapshot.json`, buffer, { contentType: 'application/json', upsert: true });
+  } catch (err) {
+    logger.warn('[testimonials.repo] saveBaselineSnapshot failed', { userId, error: err?.message });
+  }
+}
+
+/**
+ * Retrieve baseline snapshot for reverting pending edits.
+ */
+export async function getBaselineSnapshot(userId) {
+  if (!userId) return null;
+  try {
+    const supabase = getSupabaseClient();
+    const { data, error } = await supabase.storage
+      .from(BUCKET)
+      .download(`${userId}/baseline_snapshot.json`);
+    if (error || !data) return null;
+    const text = await data.text();
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Clear baseline snapshot after verification or cancellation.
+ */
+export async function clearBaselineSnapshot(userId) {
+  if (!userId) return;
+  try {
+    const supabase = getSupabaseClient();
+    await supabase.storage
+      .from(BUCKET)
+      .remove([`${userId}/baseline_snapshot.json`]);
+  } catch {}
+}
+
+/**
  * Check whether a storage object exists at the given path.
  * @param {string} path
  * @returns {Promise<boolean>}

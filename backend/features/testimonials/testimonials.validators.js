@@ -1,4 +1,4 @@
-﻿/**
+/**
  * testimonials.validators.js â€” Input validation for the testimonials feature.
  * Uses the same manual-validation pattern as other features in this codebase.
  *
@@ -665,6 +665,24 @@ export function validateSyncProfilePhotos(body) {
     result.recoveredHealthIssues = validateRecoveredHealthIssues(recoveredHealthIssues);
   }
 
+  return result;
+}
+
+/**
+ * Validate payload for POST /api/testimonials/cancel-unified-otp
+ */
+export function validateCancelUnifiedOtp(body) {
+  if (!body) throw new ValidationError(400, 'Request body is missing');
+
+  const { userId, restoreData } = body;
+  if (!userId) throw new ValidationError(400, 'userId is required');
+  const userIdN = parseInt(userId, 10);
+  if (isNaN(userIdN) || userIdN < 1) throw new ValidationError(400, 'userId must be a valid integer');
+
+  const result = { userId: userIdN };
+  if (restoreData && typeof restoreData === 'object') {
+    result.restoreData = restoreData;
+  }
   return result;
 }
 

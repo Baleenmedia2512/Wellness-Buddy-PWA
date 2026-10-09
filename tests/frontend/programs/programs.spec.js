@@ -1,3 +1,18 @@
+﻿/**
+ * tests/frontend/programs/programs.spec.js
+ * E2E test suite for Programs Module.
+ * 
+ *
+ * Requirements Covered:
+ * - PROG-001: user can open Programs page and select all programs
+ * - PROG-002: update button state changes with program selection and cancel returns home
+ * - PROG-003: coach can edit own and downline Programs; normal user has no member search
+ * - PROG-004: user can create a program enrollment
+ * - PROG-005: user can enroll in programs and update existing enrollment
+ * - PROG-006: coach can switch member, use Back to My Enrollment and View Mine
+ * - PROG-007: coach can edit own, downline coach and downline coach member programs
+ */
+
 import { test, expect } from '@playwright/test';
 
 test(
@@ -391,16 +406,16 @@ test(
       TEST_PHONE
     );
 
-    await page.getByRole('checkbox', { name: 'Accept Terms of Service and Privacy Policy' }).check();
-    await page
-      .getByRole(
-        'button',
-        {
-          name: 'Send OTP',
-          exact: true,
-        }
-      )
-      .click();
+    const sendOtpBtn = page.getByRole(
+      'button',
+      {
+        name: 'Send OTP',
+        exact: true,
+      }
+    );
+    await expect(sendOtpBtn).toBeVisible({ timeout: 15000 });
+    await expect(sendOtpBtn).toBeEnabled({ timeout: 15000 });
+    await sendOtpBtn.click();
 
     // ============================================================
     // 10. OTP SCREEN
@@ -425,17 +440,11 @@ test(
       otpInputs
     ).toHaveCount(4);
 
-    for (
-      let i = 0;
-      i < LOGIN_OTP.length;
-      i++
-    ) {
-
-      await otpInputs
-        .nth(i)
-        .fill(
-          LOGIN_OTP[i]
-        );
+    for (let i = 0; i < LOGIN_OTP.length; i++) {
+      const input = otpInputs.nth(i);
+      await expect(input).toBeVisible({ timeout: 10000 });
+      await input.focus();
+      await input.fill(LOGIN_OTP[i]);
     }
 
     // ============================================================
@@ -1918,6 +1927,11 @@ test(
               'email'
             );
 
+          const userId =
+            url.searchParams.get(
+              'userId'
+            );
+
 
           // ------------------------------------------------------
           // COACH PROFILE
@@ -1925,7 +1939,9 @@ test(
 
           if (
             email ===
-            COACH_EMAIL
+            COACH_EMAIL ||
+            userId ===
+            String(COACH_ID)
           ) {
 
             await route.fulfill({
@@ -2003,7 +2019,9 @@ test(
 
           if (
             email ===
-            NORMAL_USER_EMAIL
+            NORMAL_USER_EMAIL ||
+            userId ===
+            String(NORMAL_USER_ID)
           ) {
 
             await route.fulfill({
@@ -2542,19 +2560,19 @@ test(
       );
 
 
-      await page.getByRole('checkbox', { name: 'Accept Terms of Service and Privacy Policy' }).check();
-      await page
-        .getByRole(
-          'button',
-          {
-            name:
-              'Send OTP',
+      const sendOtpButton = page.getByRole(
+        'button',
+        {
+          name:
+            'Send OTP',
 
-            exact:
-              true,
-          }
-        )
-        .click();
+          exact:
+            true,
+        }
+      );
+      await expect(sendOtpButton).toBeVisible({ timeout: 15000 });
+      await expect(sendOtpButton).toBeEnabled({ timeout: 15000 });
+      await sendOtpButton.click();
 
 
       await expect(
@@ -2584,18 +2602,11 @@ test(
       );
 
 
-      for (
-        let i = 0;
-        i < LOGIN_OTP.length;
-        i++
-      ) {
-
-        await otpInputs
-          .nth(i)
-          .fill(
-            LOGIN_OTP[i]
-          );
-
+      for (let i = 0; i < LOGIN_OTP.length; i++) {
+        const input = otpInputs.nth(i);
+        await expect(input).toBeVisible({ timeout: 10000 });
+        await input.focus();
+        await input.fill(LOGIN_OTP[i]);
       }
 
 
@@ -2640,7 +2651,9 @@ test(
     // ============================================================
 
     const coachContext =
-      await browser.newContext();
+      await browser.newContext({
+        baseURL: process.env.PLAYWRIGHT_BASE_URL || 'http://127.0.0.1:3002',
+      });
 
 
     try {
@@ -2664,18 +2677,18 @@ test(
       // OPEN PROGRAMS
       // ----------------------------------------------------------
 
-      await coachPage
-        .getByRole(
-          'button',
-          {
-            name:
-              'Enrollment',
+      const coachEnrollmentBtn = coachPage.getByRole(
+        'button',
+        {
+          name:
+            'Enrollment',
 
-            exact:
-              true,
-          }
-        )
-        .click();
+          exact:
+            true,
+        }
+      );
+      await expect(coachEnrollmentBtn).toBeVisible({ timeout: 20000 });
+      await coachEnrollmentBtn.click();
 
 
       await expect(
@@ -2945,7 +2958,9 @@ test(
     // ============================================================
 
     const normalUserContext =
-      await browser.newContext();
+      await browser.newContext({
+        baseURL: process.env.PLAYWRIGHT_BASE_URL || 'http://127.0.0.1:3002',
+      });
 
 
     try {
@@ -2969,18 +2984,18 @@ test(
       // OPEN PROGRAMS
       // ----------------------------------------------------------
 
-      await normalUserPage
-        .getByRole(
-          'button',
-          {
-            name:
-              'Enrollment',
+      const normalUserEnrollmentBtn = normalUserPage.getByRole(
+        'button',
+        {
+          name:
+            'Enrollment',
 
-            exact:
-              true,
-          }
-        )
-        .click();
+          exact:
+            true,
+        }
+      );
+      await expect(normalUserEnrollmentBtn).toBeVisible({ timeout: 20000 });
+      await normalUserEnrollmentBtn.click();
 
 
       await expect(

@@ -1,23 +1,25 @@
-/**
+﻿/**
  * tests/frontend/authenticated/transformation.spec.js
  * Comprehensive E2E test suite for Transformation (Testimonials) Module.
  * 
+ *
+ *
  * Requirements Covered:
- * - TR-001: Profile 3-angle upload linkage (Left photo auto-seeding, weight, health issues)
- * - TR-002: Team Scope Tabs (Mine, Direct Team, Full Team navigation & isolation)
- * - TR-003: Share Card Rendering (9:16 portrait card DOM container & Share button action)
- * - TR-004: Edit Dirty State, Coach Approval dispatch, and OTP Verification flow
- * - TR-005: Search Filter by Health Issue and User Name + Header Refresh button
- * - TR-006: Photo Restriction Mode for Result Videos (Strict rejection of photo files)
- * - TR-007: Valid Result Video Upload Updates Preview and Triggers Dirty State
- * - TR-008: Result Video Playback in Mine Scope (Play and Close modal)
- * - TR-009: Result Video Playback in Direct Team Scope (Priya Sharma Video)
- * - TR-010: Result Video Playback in Full Team Scope (Suresh Kumar Video)
- * - TR-011: Inside-Card Health Issue Search & Multi-Select Autocomplete (Add and Remove Conditions)
- * - TR-012: Upload Completeness Filter Chips (Fully Uploaded, Partial, Not Uploaded)
- * - TR-013: Optional Health Issue — photo submit allowed with zero issues selected
- * - TR-014: Inline Weight Editing with Live "Lost/Gained X kg" Badge Recalculation
- * - TR-015: Resend OTP Flow in Expired State
+ * - TR-001: Profile 3-Angle Photo Upload Seeds Left Photo, Weight, and Health Issues into Transformation Card
+ * - TR-002: Team Scope Tabs - Toggle Between Mine, Direct Team, and Full Team Scopes
+ * - TR-003: Share Card Rendering and Action Button Behavior
+ * - TR-004: Edit Dirty State Hides Share, Reveals Submit for Approval, Dispatches Coach Email, and OTP Verifies to Restore Share
+ * - TR-005: Search Team Members by Health Issue, by User Name, and Trigger Data Refresh
+ * - TR-006: Result Video Photo Restriction Mode - Rejects Photo Uploads with Error Banner
+ * - TR-007: Valid Result Video Upload Shows Preview and Triggers Dirty State
+ * - TR-008: Result Video Playback in Mine Scope - Play and Close Modal
+ * - TR-009: Result Video Playback in Direct Team Scope - Priya Sharma Video Play and Close
+ * - TR-010: Result Video Playback in Full Team Scope - Suresh Kumar Video Play and Close
+ * - TR-011: Inside-Card Health Issue Search & Multi-Select Autocomplete - Add and Remove Conditions
+ * - TR-012: Upload Completeness Filter Chips - Filter by Fully Uploaded, Partial, and Not Uploaded
+ * - TR-013: Optional Health Issue - Photo Submission Allowed when Zero Issues Selected
+ * - TR-014: Inline Weight Editing - Dynamically Recalculates Lost Weight Badge Live
+ * - TR-015: Resend OTP Flow - Dispatches New OTP to Sponsor and Displays Confirmation
  */
 const path = require('path');
 const { test, expect } = require('@playwright/test');

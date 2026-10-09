@@ -1,23 +1,23 @@
-/**
+﻿/**
  * tests/frontend/authenticated/diary.spec.js
  * Comprehensive E2E test suite for Diary / Food Log Module (Single-file consolidated architecture).
  * 
+ *
+ *
  * Requirements Covered:
- * - DIARY-001: Diary Page Initial Load & Food Card Rendering (date, title, time, calories, macros)
- * - DIARY-002: Date Picker Navigation (header date button toggles calendar; choosing date updates diary feed)
- * - DIARY-003: Empty State on Date Switch (diary-feed-empty indicator)
- * - DIARY-004: Meal Details Modal Display (Image 1: header title, Logged at time, total calories, macro pills)
- * - DIARY-005: Multi-Food Item List Rendering (avatar initials, chevron >, portion, calories, secondary nutrients)
- * - DIARY-006: Nutrition Facts Modal - Vitamins Breakdown (Image 2: Vitamin A, C, D, E, K, B1, B2, B3, B6, B9, B12)
- * - DIARY-007: Nutrition Facts Modal - Minerals & Sodium/Cholesterol (Image 3: Calcium, Iron, Magnesium, Potassium, Zinc, Phosphorus, Sodium, Cholesterol)
- * - DIARY-006: Nutrition Facts Modal - Vitamins Breakdown (Image 1: Vitamin A, C, D, E, K, B1, B2, B3, B6, B9, B12)
- * - DIARY-007: Nutrition Facts Modal - Minerals & Sodium/Cholesterol (Image 2: Calcium, Iron, Magnesium, Potassium, Zinc, Phosphorus, Sodium, Cholesterol)
- * - DIARY-008: Nutrition Facts Modal - Macros & Glycemic Index (Image 3: Calories, Protein, Carbs, Available Carbs, Fibre, Sugar, Fat, GI badge)
- * - DIARY-009: Close Nutrition Facts Modal (returns cleanly to Meal Details modal)
- * - DIARY-010: Single Food Item Inline Edit & Totals Recalculation (green pencil button, adjust grams, updates meal totals)
- * - DIARY-011: Single Food Item Delete & Undo Flow (red trash shows countdown & Undo, clicking Undo cancels; letting expire deletes & updates totals)
- * - DIARY-012: + Add Item Flow (Missing Food Recovery: + Add Item, food search, suggestion click, save item, recomputes totals)
- * - DIARY-013: Delete Entire Meal from Details Modal (bottom red Delete button calls DELETE /api/background-analysis)
+ * - DIARY-001: Diary Page Initial Load & Food Card Rendering
+ * - DIARY-002: Date Picker Navigation switches calendar date
+ * - DIARY-003: Empty State on Date Switch displays empty prompt
+ * - DIARY-004: Meal Details Modal Display matches visual design (Image 1)
+ * - DIARY-005: Multi-Food Item List Rendering shows all items with macros
+ * - DIARY-006: Nutrition Facts Modal - Vitamins Breakdown (Image 2)
+ * - DIARY-007: Nutrition Facts Modal - Minerals & Sodium/Cholesterol (Image 3)
+ * - DIARY-008: Nutrition Facts Modal - Macros & Glycemic Index (Image 4)
+ * - DIARY-009: Close Nutrition Facts Modal returns cleanly to Meal Details
+ * - DIARY-010: Single Food Item Inline Edit updates serving and recalculates totals
+ * - DIARY-011: Single Food Item Delete & Undo Flow (delete item 1, then delete & undo item 2 in same log)
+ * - DIARY-012: + Add Item Flow recovers missing food with full details
+ * - DIARY-013: Delete Entire Meal from Details Modal removes log
  * - DIARY-014: Food Card displays Share Button and generates share caption
  * - DIARY-015: Feed-Level Swipe-to-Delete triggers undo placeholder and restores on Undo
  * - DIARY-016: Weight Log Row renders weight, capture time, and delta comparison

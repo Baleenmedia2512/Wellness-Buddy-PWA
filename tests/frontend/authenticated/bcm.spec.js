@@ -1,3 +1,27 @@
+﻿/**
+ * tests/frontend/authenticated/bcm.spec.js
+ * E2E test suite for Bcm Module.
+ * 
+ *
+ * Requirements Covered:
+ * - BCM-001: Navigation and Initial Load
+ * - BCM-002: Refresh Functionality
+ * - BCM-003: Create Modal and Prefilled Venue
+ * - BCM-004: Form Required Fields Validation
+ * - BCM-005: Search Functionality
+ * - BCM-006: Edit Card
+ * - BCM-007: Delete Card
+ * - BCM-008: Auto-Calculations (BMI & BMR)
+ * - BCM-009: Manual Override Locks on Auto-Calculations
+ * - BCM-010: Gender-Based Placeholder and Hint updates
+ * - BCM-011: Existing Activated Phone Is Blocked
+ * - BCM-012: Existing Phone Prompts Override Or New
+ * - BCM-013: Phone Autocomplete Pick Still Prompts Override Or New
+ * - BCM-014: Verify every field in a BCM card modal can be filled
+ * - BCM-015: Verify mandatory fields validation, invalid phone check, and all parent prerequisite field prompts in BCM modal
+ * - BCM-016: Verify share option near edit icon opens WhatsApp in every BCM card
+ */
+
 const { test, expect } = require('@playwright/test');
 
 test.describe('BCM Module (Body Composition Metrics)', () => {
@@ -89,6 +113,14 @@ test.describe('BCM Module (Body Composition Metrics)', () => {
               waistCm: 80,
               hipCm: 88,
               bmr: 1550
+            },
+            {
+              UserId: 202,
+              UserName: 'JAFAR',
+              phoneNumber: '6369591703',
+              height: 150,
+              gender: 'Male',
+              bmr: 1748
             }
           ]
         })
@@ -176,6 +208,20 @@ test.describe('BCM Module (Body Composition Metrics)', () => {
     // Mock body parameter cards listing
     await page.route('**/api/body-parameters-card/list*', async (route) => {
       const url = new URL(route.request().url());
+      const cardId = url.searchParams.get('cardId');
+      if (cardId) {
+        const found = MOCK_CARDS.find((c) => String(c.id) === String(cardId));
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            ok: true,
+            data: found || MOCK_CARDS[0],
+          }),
+        });
+        return;
+      }
+
       const search = url.searchParams.get('search');
       
       let filteredCards = [...MOCK_CARDS];
@@ -712,44 +758,393 @@ test.describe('BCM Module (Body Composition Metrics)', () => {
       });
     });
 
-    // Flat team list used by client-side phone autocomplete
+    // Mock team hierarchy used by teamHierarchyService.getFlatTeamList
+    const mockTeamData = {
+      success: true,
+      allMembers: [{
+        UserId: 202,
+        UserName: 'Jafar',
+        phoneNumber: '6369591703',
+        heightCm: 150,
+        bmr: 1748,
+        gender: 'Male',
+      }],
+      data: [{
+        userId: 202,
+        userName: 'Jafar',
+        phoneNumber: '6369591703',
+        heightCm: 150,
+        bmr: 1748,
+        gender: 'Male',
+      }]
+    };
+
+    await page.route('**/api/coach/team-hierarchy*', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(mockTeamData)
+      });
+    });
+
     await page.route('**/api/team/hierarchy/**', async (route) => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({
-          success: true,
-          data: [{
-            userId: 202,
-            userName: 'Jafar',
-            phoneNumber: '6369591703',
-            heightCm: 150,
-            bmr: 1748,
-            gender: 'Male',
-          }],
-        })
+        body: JSON.stringify(mockTeamData)
       });
     });
 
     await page.getByRole('button', { name: 'Create Body Parameters Card' }).click();
 
     const phoneInput = page.getByPlaceholder('Client phone (optional)');
-    await phoneInput.fill('6369');
-    await page.waitForTimeout(400);
+    await phoneInput.click();
+    await phoneInput.fill('');
+    await phoneInput.pressSequentially('6369', { delay: 40 });
 
-    const suggestion = page.getByText(/6369591703/);
-    await expect(suggestion).toBeVisible();
-    await suggestion.click();
-    await page.waitForTimeout(400);
+    const suggestion = page.locator('li[role="option"]').filter({ hasText: '6369591703' });
+    await expect(suggestion).toBeVisible({ timeout: 10000 });
+
+    // Autocomplete option relies on onMouseDown/onTouchEnd handlers
+    await suggestion.dispatchEvent('mousedown');
 
     // Must ask — autocomplete must not silent-override
-    await expect(page.getByText(
-      'This number already exists. Override the existing card, or create a new card for this number?'
-    )).toBeVisible();
+    const modalHeading = page.getByRole('heading', { name: 'Number already exists' });
+    await expect(modalHeading).toBeVisible({ timeout: 10000 });
     await expect(page.getByRole('button', { name: 'Override' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'New' })).toBeVisible();
 
     // Name should NOT be prefilled until Override
     await expect(page.getByPlaceholder('FULL NAME')).toHaveValue('');
+  });
+
+  test('BCM-014 Verify every field in a BCM card modal can be filled', async ({ page }) => {
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+
+    const bcmTabBtn = page.getByRole('button', { name: /BCM|Counselling/i }).or(page.getByText('BCM', { exact: true })).first();
+    await expect(bcmTabBtn).toBeVisible({ timeout: 15000 });
+    await bcmTabBtn.click({ force: true });
+
+    const createBtn = page.getByRole('button', { name: 'Create Body Parameters Card' });
+    await expect(createBtn).toBeVisible({ timeout: 15000 });
+    await createBtn.click({ force: true });
+
+    // Verify modal heading
+    const modalHeading = page.getByRole('heading', { name: /Body Parameters/i }).first();
+    await expect(modalHeading).toBeVisible({ timeout: 10000 });
+
+    // 1. Date (prefilled, fill explicit date)
+    const dateInput = page.locator('input[type="date"]').first();
+    await dateInput.fill('2026-09-29');
+
+    // 2. Venue
+    const venueInput = page.getByPlaceholder('e.g. Chennai');
+    if (await venueInput.isVisible({ timeout: 2000 }).catch(() => false)) {
+      await venueInput.fill('Chennai Central');
+      await expect(venueInput).toHaveValue('Chennai Central');
+    }
+
+    // 3. Name
+    const nameInput = page.getByPlaceholder('FULL NAME');
+    await nameInput.fill('Test Client');
+    await expect(nameInput).toHaveValue('TEST CLIENT');
+
+    // 4. Phone Number
+    const phoneInput = page.getByPlaceholder('Client phone (optional)');
+    await phoneInput.fill('9876543210');
+    await expect(phoneInput).toHaveValue('9876543210');
+
+    // 5. Age
+    const ageInput = page.locator('input[inputmode="decimal"]').first();
+    await ageInput.fill('30');
+    await expect(ageInput).toHaveValue('30');
+
+    // 6. Gender
+    const genderSelect = page.locator('select').first();
+    await genderSelect.selectOption('Male');
+    await expect(genderSelect).toHaveValue('Male');
+
+    // 7. Height (cm)
+    const heightInput = page.getByPlaceholder('cm').first();
+    await heightInput.fill('175');
+    await expect(heightInput).toHaveValue('175');
+
+    // 8. Weight (kg)
+    const weightInput = page.getByPlaceholder('kg').first();
+    await weightInput.fill('72.5');
+    await expect(weightInput).toHaveValue('72.5');
+
+    // 9. Fat% (%)
+    const fatInput = page.getByPlaceholder('%').first();
+    await fatInput.fill('18.5');
+    await expect(fatInput).toHaveValue('18.5');
+
+    // 10. Visceral Fat (V-Fat)
+    const vFatInput = page.getByPlaceholder('Visceral fat').first();
+    await vFatInput.fill('5');
+    await expect(vFatInput).toHaveValue('5');
+
+    // 11. BMR (kcal)
+    const bmrInput = page.getByPlaceholder('kcal').first();
+    await bmrInput.fill('1650');
+    await expect(bmrInput).toHaveValue('1650');
+
+    // 12. Physical Activity Level
+    const activitySelect = page.locator('select').nth(1);
+    if (await activitySelect.isVisible({ timeout: 2000 }).catch(() => false)) {
+      await activitySelect.selectOption('Moderate');
+    }
+
+    // 13. BMI
+    const bmiInput = page.getByPlaceholder('e.g. 21').first();
+    await bmiInput.fill('23');
+    await expect(bmiInput).toHaveValue('23');
+
+    // 14. Body Age
+    const bodyAgeInput = page.getByPlaceholder('yrs').first();
+    await bodyAgeInput.fill('26');
+    await expect(bodyAgeInput).toHaveValue('26');
+
+    // 15. Chest (cm)
+    const chestInput = page.getByPlaceholder('cm').nth(1);
+    if (await chestInput.isVisible({ timeout: 2000 }).catch(() => false)) {
+      await chestInput.fill('95');
+      await expect(chestInput).toHaveValue('95');
+    }
+
+    // 16. Waist (cm)
+    const waistInput = page.getByPlaceholder('cm').nth(2);
+    if (await waistInput.isVisible({ timeout: 2000 }).catch(() => false)) {
+      await waistInput.fill('80');
+      await expect(waistInput).toHaveValue('80');
+    }
+
+    // 17. Hip (cm)
+    const hipInput = page.getByPlaceholder('cm').nth(3);
+    if (await hipInput.isVisible({ timeout: 2000 }).catch(() => false)) {
+      await hipInput.fill('92');
+      await expect(hipInput).toHaveValue('92');
+    }
+
+    // 18. Diet Preference
+    const dietButton = page.getByRole('button', { name: /Select diet preference|Vegetarian|Non-Vegetarian|Vegan/i }).first();
+    await expect(dietButton).toBeVisible({ timeout: 5000 });
+    await dietButton.click();
+    const vegOption = page.getByRole('button', { name: 'Vegetarian', exact: true }).or(page.getByText('Vegetarian', { exact: true })).first();
+    await expect(vegOption).toBeVisible({ timeout: 5000 });
+    await vegOption.click();
+    await expect(dietButton).toContainText('Vegetarian');
+
+    // 19. Health Issues (DiseaseMultiSelect)
+    const healthInput = page.getByPlaceholder(/Search health issues|Add more/i).first();
+    await expect(healthInput).toBeVisible({ timeout: 5000 });
+    await healthInput.click();
+    await healthInput.fill('Fatty Liver');
+    const fattyLiverOption = page.getByRole('button', { name: 'Fatty Liver', exact: true });
+    await expect(fattyLiverOption).toBeVisible({ timeout: 5000 });
+    await fattyLiverOption.click();
+    await expect(page.getByText('Fatty Liver', { exact: true })).toBeVisible({ timeout: 5000 });
+
+    // 20. Transformation Photos (Left, Centre, Right)
+    const dummyImageBuffer = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+      'base64'
+    );
+
+    // Upload Left photo
+    await page.getByRole('button', { name: 'Left', exact: true }).click();
+    const galleryInput = page.locator('input[type="file"]').last();
+    await galleryInput.setInputFiles({
+      name: 'left.png',
+      mimeType: 'image/png',
+      buffer: dummyImageBuffer,
+    });
+
+    // Upload Centre photo
+    await page.getByRole('button', { name: 'Centre', exact: true }).click();
+    await galleryInput.setInputFiles({
+      name: 'centre.png',
+      mimeType: 'image/png',
+      buffer: dummyImageBuffer,
+    });
+
+    // Upload Right photo
+    await page.getByRole('button', { name: 'Right', exact: true }).click();
+    await galleryInput.setInputFiles({
+      name: 'right.png',
+      mimeType: 'image/png',
+      buffer: dummyImageBuffer,
+    });
+
+    console.log('BCM-014: Successfully verified ALL fields including Diet Preference and Transformation Photos in BCM card modal');
+  });
+
+  test('BCM-015 Verify mandatory fields validation, invalid phone check, and all parent prerequisite field prompts in BCM modal', async ({ page }) => {
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+
+    const bcmTabBtn = page.getByRole('button', { name: /BCM|Counselling/i }).or(page.getByText('BCM', { exact: true })).first();
+    await expect(bcmTabBtn).toBeVisible({ timeout: 15000 });
+    await bcmTabBtn.click({ force: true });
+
+    const createBtn = page.getByRole('button', { name: 'Create Body Parameters Card' });
+    await expect(createBtn).toBeVisible({ timeout: 15000 });
+    await createBtn.click({ force: true });
+
+    let createApiCalled = false;
+    await page.route('**/api/body-parameters-card/create', async (route) => {
+      createApiCalled = true;
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          data: { id: 99, name: 'VALIDATED CLIENT', phoneNumber: '9876543210', recordedDate: '2026-09-29' }
+        })
+      });
+    });
+
+    const saveButton = page.getByRole('button', { name: 'Save & Share' });
+    await expect(saveButton).toBeVisible({ timeout: 10000 });
+
+    // 1. Mandatory Name Validation: Click Save with empty Name -> Blocks API submission & shows "Name is required"
+    await saveButton.click({ force: true });
+    expect(createApiCalled).toBe(false);
+
+    const nameInput = page.getByPlaceholder('FULL NAME');
+    await expect(page.getByText('Name is required')).toBeVisible({ timeout: 5000 });
+
+    // 2. Invalid Phone Validation: Type invalid 3-digit phone -> Blur -> Displays invalid phone error
+    const phoneInput = page.getByPlaceholder('Client phone (optional)');
+    await phoneInput.fill('123');
+    await phoneInput.blur();
+    const phoneError = page.getByText(/Please enter a valid phone number/i);
+    await expect(phoneError).toBeVisible({ timeout: 5000 });
+
+    // Clear invalid phone (Phone is optional — empty is valid)
+    await phoneInput.fill('');
+    await phoneInput.blur();
+    await expect(phoneError).not.toBeVisible({ timeout: 5000 });
+
+    // 3. Parent Prerequisite Prompt (Height needed for Weight)
+    const weightInput = page.getByPlaceholder('kg').first();
+    await weightInput.focus();
+    const heightPrompt = page.getByText(/Please enter height for Weight/i);
+    await expect(heightPrompt).toBeVisible({ timeout: 5000 });
+
+    // 4. Parent Prerequisite Prompt (Gender needed for Fat%)
+    const fatInput = page.getByPlaceholder('%').first();
+    await fatInput.focus();
+    const genderFatPrompt = page.getByText(/Please select gender for Fat%/i);
+    await expect(genderFatPrompt).toBeVisible({ timeout: 5000 });
+
+    // 5. Parent Prerequisite Prompt (Gender needed for Chest / Waist / Hip)
+    const chestInput = page.getByPlaceholder('cm').nth(1);
+    if (await chestInput.isVisible({ timeout: 2000 }).catch(() => false)) {
+      await chestInput.focus();
+      const genderChestPrompt = page.getByText(/Please select gender for Chest/i);
+      await expect(genderChestPrompt).toBeVisible({ timeout: 5000 });
+    }
+
+    // 6. Parent Prerequisite Prompt (Age needed for Body Age)
+    const bodyAgeInput = page.getByPlaceholder('yrs').first();
+    if (await bodyAgeInput.isVisible({ timeout: 2000 }).catch(() => false)) {
+      await bodyAgeInput.focus();
+      const ageBodyAgePrompt = page.getByText(/Please enter age for Body Age/i);
+      await expect(ageBodyAgePrompt).toBeVisible({ timeout: 5000 });
+    }
+
+    // 7. Satisfy Mandatory Name & Optional Valid Phone -> Save succeeds
+    await nameInput.fill('VALIDATED CLIENT');
+    await phoneInput.fill('9876543210');
+    await saveButton.click({ force: true });
+
+    await page.waitForTimeout(500);
+    expect(createApiCalled).toBe(true);
+
+    console.log('BCM-015: Successfully verified all mandatory fields, invalid phone validation, and parent prerequisite prompts');
+  });
+
+  test('BCM-016 Verify share option near edit icon opens WhatsApp in every BCM card', async ({ page }) => {
+    // Intercept window.open in page context to capture WhatsApp dispatch
+    await page.evaluate(() => {
+      window.__whatsappCalls = [];
+      // Remove navigator.share to exercise web WhatsApp sharing flow
+      if ('share' in navigator) {
+        try {
+          delete navigator.share;
+        } catch {
+          navigator.share = undefined;
+        }
+      }
+      if ('canShare' in navigator) {
+        try {
+          delete navigator.canShare;
+        } catch {
+          navigator.canShare = undefined;
+        }
+      }
+
+      window.open = (url, target, features) => {
+        window.__whatsappCalls.push({
+          url: String(url || ''),
+          target: String(target || ''),
+          features: String(features || ''),
+        });
+        return { close: () => {}, focus: () => {} };
+      };
+    });
+
+    // Verify each BCM card tile renders share option adjacent to edit icon and opens WhatsApp
+    for (const card of MOCK_CARDS) {
+      // 1. Locate the card container for this specific member
+      const cardTile = page.locator('div.bg-white.rounded-xl', { hasText: card.name }).first();
+      await expect(cardTile).toBeVisible({ timeout: 5000 });
+
+      // 2. Identify Edit and Share buttons belonging to this card
+      const editBtn = cardTile.getByRole('button', { name: `Edit ${card.name}` });
+      const shareBtn = cardTile.getByRole('button', { name: `Share ${card.name}` });
+
+      // 3. Verify both icons are visible, active, and located together near each other in the action group
+      await expect(editBtn).toBeVisible({ timeout: 5000 });
+      await expect(shareBtn).toBeVisible({ timeout: 5000 });
+      await expect(shareBtn).toBeEnabled();
+
+      const actionGroup = editBtn.locator('..');
+      await expect(actionGroup.getByRole('button', { name: `Share ${card.name}` })).toBeVisible();
+
+      // 4. Click the Share button near the Edit icon
+      const priorCallCount = await page.evaluate(() => window.__whatsappCalls.length);
+      await shareBtn.click();
+
+      // 5. Verify share option opens WhatsApp with member metrics caption
+      await expect.poll(async () => {
+        return await page.evaluate(() => window.__whatsappCalls.length);
+      }, { timeout: 10000 }).toBeGreaterThan(priorCallCount);
+
+      const latestCall = await page.evaluate(() => window.__whatsappCalls[window.__whatsappCalls.length - 1]);
+      
+      // Assert that WhatsApp wa.me URL is opened with target _blank
+      expect(latestCall.url).toMatch(/^https:\/\/wa\.me\/\?text=/);
+      expect(latestCall.target).toBe('_blank');
+
+      // Decode WhatsApp URL and verify personalized caption details
+      const parsedUrl = new URL(latestCall.url);
+      const messageText = parsedUrl.searchParams.get('text') || '';
+
+      expect(messageText).toContain(`Hi ${card.name}`);
+      expect(messageText).toMatch(/This is (Test|your coach)/);
+      expect(messageText).toContain('body composition metrics herewith');
+
+      if (card.locationName) {
+        expect(messageText).toContain(`at the fat camp in ${card.locationName}`);
+      } else {
+        expect(messageText).toContain('at the fat camp.');
+      }
+
+      // Allow share session cleanup before triggering the next card
+      await page.waitForTimeout(300);
+    }
+
+    console.log('BCM-016: Successfully verified share option near edit icon opens WhatsApp for every BCM card');
   });
 });

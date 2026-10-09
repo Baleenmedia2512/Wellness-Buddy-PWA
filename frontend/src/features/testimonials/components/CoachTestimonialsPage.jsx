@@ -23,7 +23,7 @@ import NativeInput from '../../../shared/components/NativeInput.jsx';
 import LoadingSpinner from '../../../shared/components/LoadingSpinner';
 import {
   listForCoach, getMyTestimonial, getMyVideoTestimonial, getTeamTestimonialReport,
-  getTestimonialDetail, submitAllEdits, verifyUnifiedOtp, resendUnifiedOtp, prepareTestimonialVideoUpload,
+  getTestimonialDetail, submitAllEdits, verifyUnifiedOtp, resendUnifiedOtp, cancelUnifiedOtp, prepareTestimonialVideoUpload,
 } from '../services/testimonialApi.js';
 import { getProfile } from '../../user/services/user.api.js';
 import { uploadTestimonialVideoInChunks } from '../services/testimonialVideoUpload.js';
@@ -413,14 +413,21 @@ function UnifiedOtpInline({
   otpExpired: otpExpiredProp = null,
   onVerified,
   onOtpMetaUpdate,
+  onClose,
 }) {
   const [otp,     setOtp]     = React.useState('');
   const [loading, setLoading] = React.useState(false);
   const [resending, setResending] = React.useState(false);
+  const [closing, setClosing] = React.useState(false);
+  const [dismissed, setDismissed] = React.useState(false);
   const [err,     setErr]     = React.useState(null);
   const [info,    setInfo]    = React.useState(null);
   const [expiresAt, setExpiresAt] = React.useState(otpExpiresAt);
   const [tick, setTick] = React.useState(0);
+
+  React.useEffect(() => {
+    setDismissed(false);
+  }, [userId, otpExpiresAt]);
 
   React.useEffect(() => {
     setExpiresAt(otpExpiresAt);
@@ -444,6 +451,19 @@ function UnifiedOtpInline({
     setErr(null);
   };
 
+  const handleClose = () => {
+    if (dismissed || closing || loading || resending) return;
+    setDismissed(true);
+    setClosing(true);
+    try {
+      void Promise.resolve(onClose?.()).finally(() => {
+        setClosing(false);
+      });
+    } catch {
+      setClosing(false);
+    }
+  };
+
   const submit = async () => {
     setErr(null);
     setInfo(null);
@@ -457,8 +477,9 @@ function UnifiedOtpInline({
     }
     setLoading(true);
     try {
-      await verifyUnifiedOtp({ userId, otp: otp.trim() });
-      onVerified();
+      const result = await verifyUnifiedOtp({ userId, otp: otp.trim() });
+      setDismissed(true);
+      onVerified?.(result?.testimonial || result?.data);
     } catch (e) {
       const msg = e.message || `Invalid OTP. Please check with ${sponsorLabel}.`;
       setErr(msg);
@@ -492,8 +513,12 @@ function UnifiedOtpInline({
     }
   };
 
+  if (dismissed) {
+    return null;
+  }
+
   return (
-    <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 space-y-3">
+    <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 space-y-3 relative">
       <div className="flex items-center gap-2">
         <ShieldCheck className="h-4 w-4 text-amber-600 shrink-0" />
         <p className="text-sm font-semibold text-amber-800">
@@ -530,21 +555,49 @@ function UnifiedOtpInline({
       {err && <p className="text-xs text-red-600 text-center">{err}</p>}
       {info && <p className="text-xs text-emerald-700 text-center">{info}</p>}
       {!expired ? (
-        <TouchFeedbackButton
-          onClick={submit}
-          disabled={loading || otp.length !== EMAIL_OTP_LENGTH}
-          className="w-full py-3 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-sm font-bold disabled:opacity-60 transition-colors"
-        >
-          {loading ? 'Verifying\u2026' : 'Verify with OTP'}
-        </TouchFeedbackButton>
+        <div className="flex items-center gap-3 w-full">
+          {onClose && (
+            <TouchFeedbackButton
+              type="button"
+              onClick={handleClose}
+              disabled={closing || loading || resending}
+              className="flex-1 py-3 rounded-xl bg-red-500 hover:bg-red-600 active:bg-red-700 text-white text-sm font-bold disabled:opacity-60 transition-colors text-center"
+              aria-label="Close OTP verification and revert changes"
+            >
+              {closing ? 'Closing\u2026' : 'Close'}
+            </TouchFeedbackButton>
+          )}
+          <TouchFeedbackButton
+            type="button"
+            onClick={submit}
+            disabled={loading || otp.length !== EMAIL_OTP_LENGTH}
+            className={`${onClose ? 'flex-1' : 'w-full'} py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white text-sm font-bold disabled:opacity-60 transition-colors text-center`}
+          >
+            {loading ? 'Verifying\u2026' : 'Verify with OTP'}
+          </TouchFeedbackButton>
+        </div>
       ) : (
-        <TouchFeedbackButton
-          onClick={resend}
-          disabled={resending}
-          className="w-full py-3 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-sm font-bold disabled:opacity-60 transition-colors"
-        >
-          {resending ? 'Sending\u2026' : `Resend OTP to ${sponsorLabel}`}
-        </TouchFeedbackButton>
+        <div className="flex items-center gap-3 w-full">
+          {onClose && (
+            <TouchFeedbackButton
+              type="button"
+              onClick={handleClose}
+              disabled={closing || loading || resending}
+              className="flex-1 py-3 rounded-xl bg-red-500 hover:bg-red-600 active:bg-red-700 text-white text-sm font-bold disabled:opacity-60 transition-colors text-center"
+              aria-label="Close OTP verification and revert changes"
+            >
+              {closing ? 'Closing\u2026' : 'Close'}
+            </TouchFeedbackButton>
+          )}
+          <TouchFeedbackButton
+            type="button"
+            onClick={resend}
+            disabled={resending}
+            className={`${onClose ? 'flex-1' : 'w-full'} py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white text-sm font-bold disabled:opacity-60 transition-colors text-center`}
+          >
+            {resending ? 'Sending\u2026' : `Resend OTP to ${sponsorLabel}`}
+          </TouchFeedbackButton>
+        </div>
       )}
     </div>
   );
@@ -698,6 +751,53 @@ function MemberCard({
   const [draftHealthPreview,   setDraftHealthPreview]   = useState(null);
   const [draftBusinessPreview, setDraftBusinessPreview] = useState(null);
   const [draftIssues,   setDraftIssues]   = useState(null);
+
+  // Baseline snapshot before unverified / pending edits were applied
+  const baselineKey = userId ? `transformation_baseline_${userId}` : null;
+  const baselineTestimonialRef = useRef(null);
+
+  useEffect(() => {
+    if (testimonial && testimonial.status !== 'pending' && !testimonial.hasPendingOtp && !testimonial.otpPending) {
+      const snap = {
+        status: testimonial.status,
+        beforeImagePath: testimonial.beforeImagePath,
+        afterImagePath: testimonial.afterImagePath,
+        beforeWeightKg: testimonial.beforeWeightKg,
+        afterWeightKg: testimonial.afterWeightKg,
+        goalType: testimonial.goalType,
+        durationText: testimonial.durationText,
+        recoveredHealthIssues: testimonial.recoveredHealthIssues,
+        videoStatus: testimonial.videoStatus,
+        healthVideoPath: testimonial.healthVideoPath,
+        businessVideoPath: testimonial.businessVideoPath,
+        beforeImageUrl: testimonial.beforeImageUrl,
+        afterImageUrl: testimonial.afterImageUrl,
+        healthVideoUrl: testimonial.healthVideoUrl,
+        businessVideoUrl: testimonial.businessVideoUrl,
+        verifiedAt: testimonial.verifiedAt,
+      };
+      baselineTestimonialRef.current = snap;
+      if (baselineKey) {
+        try {
+          localStorage.setItem(baselineKey, JSON.stringify(snap));
+        } catch {}
+      }
+    }
+  }, [testimonial, baselineKey]);
+
+  const clearDrafts = useCallback(() => {
+    setDraftBefore((prev) => { revokeBlobUrl(prev?.previewUrl); return null; });
+    setDraftAfter((prev) => { revokeBlobUrl(prev?.previewUrl); return null; });
+    setDraftHealthPath(null);
+    setDraftBusinessPath(null);
+    setDraftHealthPreview((prev) => { revokeBlobUrl(prev); return null; });
+    setDraftBusinessPreview((prev) => { revokeBlobUrl(prev); return null; });
+    setDraftIssues(null);
+    setBeforeWeightText(null);
+    setAfterWeightText(null);
+    setDurationValueText(null);
+    setExpandedSlots(new Set());
+  }, []);
   // Freeze the last approved issue list while new tags are draft/pending OTP.
   useEffect(() => {
     if (draftIssues != null) return;
@@ -718,7 +818,12 @@ function MemberCard({
   const [videoSizeAlert,  setVideoSizeAlert]  = useState(null);
   const [submitDone,      setSubmitDone]      = useState(false);
   const [unifiedOtpVerified, setUnifiedOtpVerified] = useState(false);
+  const [unifiedOtpDismissed, setUnifiedOtpDismissed] = useState(false);
   const [mediaEpoch, setMediaEpoch] = useState(0);
+
+  useEffect(() => {
+    setUnifiedOtpDismissed(false);
+  }, [userId, testimonial?.id]);
   const shareCardRef = useRef(null);
   const compressBusyRef = useRef(false);
   const cropSlotRef = useRef('before');
@@ -1039,6 +1144,33 @@ function MemberCard({
   }, [userId]);
 
   const handleSubmitAll = useCallback(() => {
+    if (testimonial && (testimonial.status === 'verified' || testimonial.verifiedAt || hasAfter)) {
+      const snap = {
+        status: testimonial.status || 'verified',
+        verifiedAt: testimonial.verifiedAt || new Date().toISOString(),
+        beforeImagePath: testimonial.beforeImagePath,
+        afterImagePath: testimonial.afterImagePath,
+        beforeWeightKg: testimonial.beforeWeightKg,
+        afterWeightKg: testimonial.afterWeightKg,
+        goalType: testimonial.goalType,
+        durationText: testimonial.durationText,
+        recoveredHealthIssues: testimonial.recoveredHealthIssues,
+        videoStatus: testimonial.videoStatus,
+        healthVideoPath: testimonial.healthVideoPath,
+        businessVideoPath: testimonial.businessVideoPath,
+        beforeImageUrl: testimonial.beforeImageUrl,
+        afterImageUrl: testimonial.afterImageUrl,
+        healthVideoUrl: testimonial.healthVideoUrl,
+        businessVideoUrl: testimonial.businessVideoUrl,
+      };
+      baselineTestimonialRef.current = snap;
+      if (baselineKey) {
+        try {
+          localStorage.setItem(baselineKey, JSON.stringify(snap));
+        } catch {}
+      }
+    }
+
     const photoOrVideoChanged = dirtySlots.some((s) => ['before', 'after', 'health', 'business'].includes(s));
     const hasResultVideo = Boolean(
       testimonial?.healthVideoPath || testimonial?.businessVideoPath
@@ -1133,17 +1265,6 @@ function MemberCard({
       return;
     }
 
-    const clearDrafts = () => {
-      setDraftBefore((prev) => { revokeBlobUrl(prev?.previewUrl); return null; });
-      setDraftAfter((prev) => { revokeBlobUrl(prev?.previewUrl); return null; });
-      setDraftHealthPath(null);
-      setDraftBusinessPath(null);
-      setDraftHealthPreview((prev) => { revokeBlobUrl(prev); return null; });
-      setDraftBusinessPreview((prev) => { revokeBlobUrl(prev); return null; });
-      setDraftIssues(null);
-      setExpandedSlots(new Set());
-    };
-
     setSubmitError(null);
 
     const reloadMine = async (patchedTestimonial) => {
@@ -1192,6 +1313,7 @@ function MemberCard({
       }
       clearDrafts();
       if (otpSent || patched?.hasPendingOtp) {
+        setUnifiedOtpDismissed(false);
         setUnifiedOtpVerified(false);
         setSubmitDone(true);
       }
@@ -1261,16 +1383,88 @@ function MemberCard({
   );
 
   const showUnifiedOtp = editable
+    && !unifiedOtpDismissed
     && !unifiedOtpVerified
     && (submitDone
       || Boolean(testimonial?.hasPendingOtp)
       || Boolean(testimonial?.otpPending));
 
-  const handleUnifiedOtpVerified = useCallback(() => {
+  const handleUnifiedOtpVerified = useCallback((verifiedTestimonial = null) => {
+    setUnifiedOtpDismissed(true);
     setSubmitDone(false);
     setUnifiedOtpVerified(true);
+    if (typeof onMineRefresh === 'function') {
+      void onMineRefresh({
+        ...(testimonial || {}),
+        ...(verifiedTestimonial || {}),
+        status: 'verified',
+        hasPendingOtp: false,
+        otpPending: false,
+        otpExpired: false,
+        otpExpiresAt: null,
+      });
+    }
     onOtpVerified?.();
-  }, [onOtpVerified]);
+  }, [onOtpVerified, onMineRefresh, testimonial]);
+
+  const handleUnifiedOtpClose = useCallback(async () => {
+    setUnifiedOtpDismissed(true);
+    clearDrafts();
+    setSubmitDone(false);
+    setUnifiedOtpVerified(true);
+    setSubmitError(null);
+
+    let baseline = baselineTestimonialRef.current;
+    if (!baseline && baselineKey) {
+      try {
+        const stored = localStorage.getItem(baselineKey);
+        if (stored) baseline = JSON.parse(stored);
+      } catch {}
+    }
+
+    if (typeof onMineRefresh === 'function') {
+      void onMineRefresh({
+        ...(testimonial || {}),
+        ...(baseline || {}),
+        status: baseline?.status || 'verified',
+        hasPendingOtp: false,
+        otpPending: false,
+        otpExpired: false,
+        otpExpiresAt: null,
+      });
+    }
+
+    try {
+      const result = await cancelUnifiedOtp({
+        userId,
+        restoreData: baseline || undefined,
+      });
+      const reverted = result?.testimonial || baseline;
+      if (reverted && typeof onMineRefresh === 'function') {
+        await onMineRefresh({
+          ...(testimonial || {}),
+          ...reverted,
+          status: reverted.status || 'verified',
+          hasPendingOtp: false,
+          otpPending: false,
+          otpExpired: false,
+          otpExpiresAt: null,
+        });
+      }
+    } catch {
+      if (typeof onMineRefresh === 'function') {
+        await onMineRefresh({
+          ...(testimonial || {}),
+          ...(baseline || {}),
+          status: baseline?.status || 'verified',
+          hasPendingOtp: false,
+          otpPending: false,
+          otpExpired: false,
+          otpExpiresAt: null,
+        });
+      }
+    }
+  }, [userId, clearDrafts, onMineRefresh, testimonial, baselineKey]);
 
   const handleUnifiedOtpMetaUpdate = useCallback(async (meta) => {
     if (!meta) return;
@@ -1690,11 +1884,12 @@ function MemberCard({
           otpExpired={testimonial?.otpExpired}
           onVerified={handleUnifiedOtpVerified}
           onOtpMetaUpdate={handleUnifiedOtpMetaUpdate}
+          onClose={handleUnifiedOtpClose}
         />
       )}
 
       {/* Legacy per-slot OTP — only when no unified OTP is pending */}
-      {editable && !showUnifiedOtp && testimonial?.status === 'pending' && testimonial?.id && (
+      {editable && !showUnifiedOtp && !unifiedOtpDismissed && testimonial?.status === 'pending' && testimonial?.id && (
         <OtpInline
           testimonialId={testimonial.id}
           type="photo"
@@ -1769,21 +1964,6 @@ function MemberCard({
               )}
             </div>
           )}
-          {/* Status badge */}
-          <div className="flex gap-1.5 flex-wrap items-center">
-            {testimonial.status === 'pending' && (
-              <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold flex items-center gap-0.5 border ${
-                testimonial.otpExpired || isOtpExpiredClient(testimonial.otpExpiresAt)
-                  ? 'bg-red-100 border-red-200 text-red-800'
-                  : 'bg-amber-100 border-amber-200 text-amber-800'
-              }`}>
-                <Clock className="h-2.5 w-2.5" />
-                {testimonial.otpExpired || isOtpExpiredClient(testimonial.otpExpiresAt)
-                  ? 'OTP expired'
-                  : 'Awaiting OTP'}
-              </span>
-            )}
-          </div>
         </div>
       )}
 
@@ -1966,7 +2146,7 @@ function MemberCard({
             </p>
           )}
 
-          {editable && !showUnifiedOtp && testimonial?.videoStatus === 'pending' && testimonial?.id && (
+          {editable && !showUnifiedOtp && !unifiedOtpDismissed && testimonial?.videoStatus === 'pending' && testimonial?.id && (
             <div className="bg-white rounded-2xl border border-amber-200 shadow-sm px-4 py-4 space-y-1 mt-1">
               <p className="text-xs font-bold text-amber-700 uppercase tracking-wide flex items-center gap-1.5">
                 <ShieldCheck className="h-3.5 w-3.5" /> Verify Your Videos

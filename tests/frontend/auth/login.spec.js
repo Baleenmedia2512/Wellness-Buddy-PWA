@@ -1,3 +1,32 @@
+﻿/**
+ * tests/frontend/auth/login.spec.js
+ * E2E test suite for Login Module.
+ * 
+ *
+ * Requirements Covered:
+ * - AUTH-001: login page is displayed
+ * - AUTH-002: user can enter mobile number
+ * - AUTH-003: empty mobile number is rejected
+ * - AUTH-004: valid mobile number enables Send OTP
+ * - AUTH-005: non-numeric characters are removed from mobile number
+ * - AUTH-006: country code selector is available
+ * - AUTH-007: user can change country code
+ * - AUTH-008: user can request OTP
+ * - AUTH-009: OTP screen displays four input fields
+ * - AUTH-010: user can enter OTP
+ * - AUTH-011: each OTP field accepts one digit
+ * - AUTH-012: user can return to mobile number screen
+ * - AUTH-013: discover OTP verification request
+ * - AUTH-014: invalid OTP displays error
+ * - AUTH-015: discover successful OTP response
+ * - AUTH-016: discover post-verification flow
+ * - AUTH-017: user can login with valid OTP
+ * - AUTH-018: successful login stores authenticated user state
+ * - AUTH-020: new user is not shown a second consent form after signup
+ * - AUTH-021: existing user is shown home after login
+ * - AUTH-022: signup acceptance does not open a second consent form
+ */
+
 const { test, expect } = require('@playwright/test');
 
 const TEST_PHONE = '7695834209';
@@ -799,6 +828,10 @@ test.describe('Login', () => {
     const responseJson = await response.json();
     expect(responseJson.success).toBe(false);
     expect(responseJson.message).toBe('Invalid OTP. Please try again.');
+
+    // 5. Assert invalid OTP error message is displayed on screen
+    const errorMessage = page.getByText('Invalid OTP. Please try again.');
+    await expect(errorMessage).toBeVisible({ timeout: 10000 });
   });
 
   test('AUTH-015 discover successful OTP response', async ({ page }) => {
