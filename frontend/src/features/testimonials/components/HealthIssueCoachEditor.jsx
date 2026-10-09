@@ -1,10 +1,10 @@
 /**
  * HealthIssueCoachEditor.jsx
- * Transformation Health Issues editor — uses the same filter-style search as BCM
- * (chips inside the search field via DiseaseMultiSelect).
+ * Transformation Health Issues editor — Mine (own) card only.
+ * Coaches viewing downline use a read-only chip list in CoachTestimonialsPage.
  *
- * - persist=false (member draft / edit mode): every change calls onSaved immediately
- * - persist=true  (coach live update): changes are local until Save
+ * - persist=false (member draft): every change calls onSaved immediately
+ * - persist=true is legacy; coach live-save API always rejects with 403
  */
 import React, { useEffect, useMemo, useState } from 'react';
 import { Save, HeartPulse } from 'lucide-react';
@@ -34,7 +34,7 @@ export default function HealthIssueCoachEditor({
   currentIssues = [],
   approvedIssues,
   knownHealthIssues = [],
-  persist = true,
+  persist = false,
   allowRemove = false,
   editable = false,
   disabled = false,

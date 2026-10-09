@@ -624,7 +624,6 @@ function MemberCard({
   onMineRefresh,
   onOtpVerified,
   knownHealthIssues = [],
-  canEditHealthIssues = false,
 }) {
   const { user } = row;
   const [detailTestimonial, setDetailTestimonial] = useState(null);
@@ -1788,30 +1787,47 @@ function MemberCard({
         </div>
       )}
 
-      {/* Health Issues — below photos, above result video */}
+      {/* Health Issues — below photos, above result video.
+          Mine only: editable. Direct/Full team: read-only chips (coach cannot edit downline). */}
       {(editable || testimonial) && (
         <div className="space-y-1.5 overflow-visible relative z-20">
           <p className="text-[10px] font-bold text-gray-400 tracking-normal whitespace-normal">
             Health Issues while joining this community
           </p>
-          <HealthIssueCoachEditor
-            userId={userId || user?.userId}
-            coachId={coachId}
-            currentIssues={draftIssues ?? issues}
-            approvedIssues={approvedIssues}
-            knownHealthIssues={knownHealthIssues}
-            // Mine: draft into submit. Team (downline/upline): view only — member edits own issues.
-            persist={editable ? false : (Boolean(testimonial?.id) && canEditHealthIssues)}
-            allowRemove={editable || canEditHealthIssues}
-            editable={editable}
-            disabled={!editable && !canEditHealthIssues}
-            onSaved={handleHealthIssuesSaved}
-            onRemove={handleHealthIssueRemoved}
-          />
-          {!editable && !canEditHealthIssues && (
-            <p className="text-[10px] text-gray-400 italic">
-              Health issues are view-only. Only the member can edit them.
-            </p>
+          {editable ? (
+            <HealthIssueCoachEditor
+              userId={userId || user?.userId}
+              coachId={coachId}
+              currentIssues={draftIssues ?? issues}
+              approvedIssues={approvedIssues}
+              knownHealthIssues={knownHealthIssues}
+              persist={false}
+              allowRemove
+              editable
+              disabled={false}
+              onSaved={handleHealthIssuesSaved}
+              onRemove={handleHealthIssueRemoved}
+            />
+          ) : (
+            <div className="rounded-lg border border-indigo-100 bg-indigo-50/40 px-2.5 py-2">
+              {(issues || []).length > 0 ? (
+                <div className="flex flex-wrap gap-1.5">
+                  {issues.map((issue) => (
+                    <span
+                      key={issue}
+                      className="inline-flex max-w-[11rem] truncate rounded-md border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[11px] font-medium text-indigo-800"
+                    >
+                      {issue}
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-gray-400 italic">No health issues recorded.</p>
+              )}
+              <p className="mt-1.5 text-[10px] text-gray-400 italic">
+                View only — only the member can edit health issues.
+              </p>
+            </div>
           )}
           {testimonial && canShareTransformationPhoto(testimonial) && (testimonial.beforeImageUrl || hasAfter) &&
             (editable ? (!hasDirtySlots && !submitDone) : true) && (
@@ -2789,7 +2805,6 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
           userId={row.user.userId}
           coachId={coachId}
           knownHealthIssues={knownHealthIssues}
-          canEditHealthIssues={isMineScope}
           onMineRefresh={isMineScope ? refreshMineRow : undefined}
           onOtpVerified={isMineScope ? () => loadDirectAndMine() : undefined}
         />
