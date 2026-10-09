@@ -34,6 +34,8 @@
  * - DIARY-027: Search Member in Diary via Community ID displays matching member
  * - DIARY-028: Search Member in Diary via Club Name displays matching member
  * - DIARY-029: Search Member in Diary via Phone Number displays matching member
+ * - DIARY-030: Infinite Scrolling loads additional diary entries on scroll
+ * - DIARY-031: Diary log cards (Food, Weight, Education, Good Habit) display an active Share button
  */
 
 const { test, expect } = require('@playwright/test');
@@ -901,6 +903,158 @@ test.describe('Diary / Food Log Module', () => {
 
     // Verify Priya's meal appears in the scoped feed
     await expect(page.getByText('Priya Salad Bowl')).toBeVisible({ timeout: 10000 });
+  });
+
+  // ── DIARY-030 ─────────────────────────────────────────────────────────────
+  test('DIARY-030: Infinite Scrolling loads additional diary entries on scroll', async ({ page }) => {
+    let listCallCount = 0;
+
+    // Override GET /api/diary/list route to handle pagination (limit: 5, offset: 0 -> offset: 5)
+    await page.route('**/api/diary/list*', async (route) => {
+      const url = new URL(route.request().url());
+      const offset = parseInt(url.searchParams.get('offset') || '0', 10);
+      listCallCount++;
+
+      if (offset === 0) {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            ok: true,
+            data: {
+              date: MOCK_DIARY_DATE_PRIMARY,
+              ownerUserId: '99999',
+              isSelf: true,
+              includesUnknown: true,
+              pagination: { limit: 5, offset: 0, total: 10, hasMore: true, nextOffset: 5 },
+              entries: currentEntries.slice(0, 2),
+            },
+          }),
+        });
+        return;
+      }
+
+      // Page 2 response for next offset with multiple paginated items
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          ok: true,
+          data: {
+            date: MOCK_DIARY_DATE_PRIMARY,
+            ownerUserId: '99999',
+            isSelf: true,
+            includesUnknown: true,
+            pagination: { limit: 5, offset: 5, total: 10, hasMore: false, nextOffset: null },
+            entries: [
+              {
+                kind: 'food',
+                capturedAt: '2026-09-07T08:15:00.000Z',
+                payload: {
+                  id: 902,
+                  userId: 99999,
+                  name: 'Paginated Grilled Salmon',
+                  totals: { calories: 520, protein: 42, carbs: 10, fat: 22 },
+                  listSummary: {
+                    name: 'Paginated Grilled Salmon',
+                    activityType: 'food',
+                    items: [{ name: 'Grilled Salmon', calories: 520 }],
+                  },
+                },
+              },
+              {
+                kind: 'food',
+                capturedAt: '2026-09-07T09:30:00.000Z',
+                payload: {
+                  id: 903,
+                  userId: 99999,
+                  name: 'Avocado & Quinoa Bowl',
+                  totals: { calories: 380, protein: 12, carbs: 45, fat: 18 },
+                  listSummary: {
+                    name: 'Avocado & Quinoa Bowl',
+                    activityType: 'food',
+                    items: [{ name: 'Avocado Bowl', calories: 380 }],
+                  },
+                },
+              },
+              {
+                kind: 'food',
+                capturedAt: '2026-09-07T16:00:00.000Z',
+                payload: {
+                  id: 904,
+                  userId: 99999,
+                  name: 'Herbalife Berry Protein Shake',
+                  totals: { calories: 210, protein: 24, carbs: 18, fat: 3 },
+                  listSummary: {
+                    name: 'Herbalife Berry Protein Shake',
+                    activityType: 'food',
+                    items: [{ name: 'Berry Shake', calories: 210 }],
+                  },
+                },
+              },
+            ],
+          },
+        }),
+      });
+    });
+
+    await diaryPage.gotoDiary();
+
+    // 1. Verify initial entries from Page 1 are visible
+    await expect(diaryPage.getFoodCardByTitle('Chicken and Beef Noodles')).toBeVisible({ timeout: 15000 });
+
+    // 2. Scroll down to the bottom of the timeline feed to trigger infinite scroll
+    await page.evaluate(() => {
+      window.scrollTo(0, document.body.scrollHeight);
+    });
+
+    // 3. Verify all multiple paginated items from Page 2 fetch and render correctly in the feed
+    await expect(page.getByText('Paginated Grilled Salmon')).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText('Avocado & Quinoa Bowl')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('Herbalife Berry Protein Shake')).toBeVisible({ timeout: 10000 });
+
+    // 4. Verify API call count indicates pagination request succeeded
+    expect(listCallCount).toBeGreaterThanOrEqual(2);
+  });
+
+  // ── DIARY-031 ─────────────────────────────────────────────────────────────
+  test('DIARY-031: Every log type in the diary (Food, Weight, Education, Smartwatch, Good Habit) displays an active Share button', async ({ page }) => {
+    // Populate feed with entries of all supported log types
+    currentEntries = [
+      JSON.parse(JSON.stringify(MOCK_DIARY_ENTRIES_PRIMARY[0])), // Food card
+      JSON.parse(JSON.stringify(MOCK_DIARY_ENTRY_WEIGHT)),       // Weight card
+      JSON.parse(JSON.stringify(MOCK_DIARY_ENTRY_EDUCATION)),    // Education card
+      JSON.parse(JSON.stringify(MOCK_DIARY_ENTRY_WATCH)),        // Smartwatch card
+      JSON.parse(JSON.stringify(MOCK_DIARY_ENTRY_GOOD_HABIT)),   // Good Habit card
+    ];
+
+    await diaryPage.gotoDiary();
+
+    // 1. Verify Share button on Food Card
+    const foodCard = diaryPage.getFoodCardByTitle('Chicken and Beef Noodles');
+    await expect(foodCard).toBeVisible({ timeout: 15000 });
+    const foodShareBtn = foodCard.locator('button[aria-label*="Share this"]').or(foodCard.locator('button').filter({ hasText: /Share/i }));
+    await expect(foodShareBtn.first()).toBeVisible();
+
+    // 2. Verify Share button on Weight Card
+    await expect(diaryPage.weightCard).toBeVisible({ timeout: 10000 });
+    const weightShareBtn = diaryPage.weightCard.locator('button[aria-label*="Share this weight"]').or(diaryPage.weightCard.locator('button').filter({ hasText: /Share/i }));
+    await expect(weightShareBtn.first()).toBeVisible();
+
+    // 3. Verify Share button on Education Card
+    await expect(diaryPage.educationCard).toBeVisible({ timeout: 10000 });
+    const eduShareBtn = diaryPage.educationCard.locator('button[aria-label*="Share this education"]').or(diaryPage.educationCard.locator('button').filter({ hasText: /Share/i }));
+    await expect(eduShareBtn.first()).toBeVisible();
+
+    // 4. Verify Share button on Smartwatch Activity Card
+    await expect(diaryPage.watchCard).toBeVisible({ timeout: 10000 });
+    const watchShareBtn = diaryPage.watchCard.locator('button[aria-label*="Share this"]').or(diaryPage.watchCard.locator('button').filter({ hasText: /Share/i }));
+    await expect(watchShareBtn.first()).toBeVisible();
+
+    // 5. Verify Share button on Good Habit Card
+    await expect(diaryPage.goodHabitCard).toBeVisible({ timeout: 10000 });
+    const habitShareBtn = diaryPage.goodHabitCard.locator('button[aria-label*="Share this Good Habit"]').or(diaryPage.goodHabitCard.locator('button').filter({ hasText: /Share/i }));
+    await expect(habitShareBtn.first()).toBeVisible();
   });
 });
 

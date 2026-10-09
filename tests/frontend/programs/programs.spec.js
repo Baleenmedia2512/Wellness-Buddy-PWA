@@ -1,4 +1,4 @@
-﻿/**
+/**
  * tests/frontend/programs/programs.spec.js
  * E2E test suite for Programs Module.
  * 
@@ -405,6 +405,14 @@ test(
     await mobileInput.fill(
       TEST_PHONE
     );
+
+    const termsCheckbox = page.locator('#signup-terms');
+    if (await termsCheckbox.isVisible().catch(() => false)) {
+      const isChecked = await termsCheckbox.getAttribute('aria-checked');
+      if (isChecked !== 'true') {
+        await termsCheckbox.click();
+      }
+    }
 
     const sendOtpBtn = page.getByRole(
       'button',
@@ -2559,6 +2567,13 @@ test(
         phone
       );
 
+      const termsCheckbox = page.locator('#signup-terms');
+      if (await termsCheckbox.isVisible().catch(() => false)) {
+        const isChecked = await termsCheckbox.getAttribute('aria-checked');
+        if (isChecked !== 'true') {
+          await termsCheckbox.click();
+        }
+      }
 
       const sendOtpButton = page.getByRole(
         'button',
