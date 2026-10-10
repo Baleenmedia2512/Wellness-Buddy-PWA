@@ -5,8 +5,6 @@
  * (sharp/librsvg cannot use @font-face → □ tofu on Linux/Vercel).
  */
 import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import opentype from 'opentype.js';
 import sharp from 'sharp';
 import { transformationWeightVerb } from './transformationWeightDirection.js';
@@ -32,14 +30,15 @@ const ISSUE_CHIP_ROW_H = 40;
 /** Title + subtitle + gap before chips ("while joining the community"). */
 const ISSUE_TITLE_H = 44;
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const ASSETS_DIR = join(__dirname, '../assets');
+/** import.meta.url so Next/Vercel file tracing packs the TTFs with the function. */
+const FONT_REGULAR_URL = new URL('../assets/NotoSans-Regular.ttf', import.meta.url);
+const FONT_BOLD_URL = new URL('../assets/NotoSans-Bold.ttf', import.meta.url);
 
 let fontRegular = null;
 let fontBold = null;
 
-function parseFontFile(fileName) {
-  const buf = readFileSync(join(ASSETS_DIR, fileName));
+function parseFontFile(fontUrl) {
+  const buf = readFileSync(fontUrl);
   // Node Buffer → ArrayBuffer slice for opentype.parse (v1.3.x).
   return opentype.parse(
     buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength),
@@ -48,8 +47,8 @@ function parseFontFile(fileName) {
 
 function loadCardFonts() {
   if (fontRegular && fontBold) return;
-  fontRegular = parseFontFile('NotoSans-Regular.ttf');
-  fontBold = parseFontFile('NotoSans-Bold.ttf');
+  fontRegular = parseFontFile(FONT_REGULAR_URL);
+  fontBold = parseFontFile(FONT_BOLD_URL);
   if (!fontRegular?.getPath || !fontBold?.getPath) {
     throw new Error('Share-card Noto fonts failed to load');
   }

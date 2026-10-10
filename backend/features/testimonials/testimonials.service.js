@@ -252,13 +252,11 @@ async function uploadShareCardImage(userId, shareCardImageBase64, composeFromPho
 
   const path = repo.shareCardStoragePath(userId);
   const prevPath = repo.previousShareCardStoragePath(userId);
-  // When Before/After photo bytes changed, always archive the prior card for Previous | New.
-  const photoChanged = Boolean(
-    composeFromPhotos?.beforeImageBase64 || composeFromPhotos?.afterImageBase64,
-  );
+  // Always rotate the prior full card → share_card_prev.jpg so Previous tap-preview
+  // can open the last client/server card (same quality as New).
   try {
     const existing = await repo.downloadBuffer(path, { retries: 1 });
-    if (existing?.length && (photoChanged || !existing.equals(newJpeg))) {
+    if (existing?.length && !existing.equals(newJpeg)) {
       await repo.uploadBuffer(prevPath, existing, 'image/jpeg');
     }
   } catch {
@@ -1564,8 +1562,9 @@ async function sendUnifiedCoachEmail({
     (slots.has('business') && businessVideoPath) ? repo.getEmailSignedUrl(businessVideoPath) : Promise.resolve(null),
   ]);
 
-  // Previous tap-preview: path-composed full card with real glyphs (never □ tofu).
-  // Prefer fresh compose; only reuse archive when that JPEG already has readable text.
+  // Previous tap-preview = full share-card JPEG (not the small Before|After thumbs).
+  // Prefer the archived card that uploadShareCardImage just rotated (client capture,
+  // same look as New). Only path-compose when that archive is missing or □ tofu.
   let previousPreviewHref = null;
   if (userId && previousPairDistinct) {
     const prevSharePath = repo.previousShareCardStoragePath(userId);
@@ -1575,7 +1574,9 @@ async function sendUnifiedCoachEmail({
     } catch {
       existingPrev = null;
     }
-    if (previousCardBeforePath && previousCardAfterPath) {
+    if (existingPrev?.length > 2000 && await shareCardJpegHasReadableText(existingPrev)) {
+      previousPreviewHref = await repo.getEmailSignedUrl(prevSharePath);
+    } else if (previousCardBeforePath && previousCardAfterPath) {
       try {
         const [prevBeforeBuf, prevAfterBuf] = await Promise.all([
           repo.downloadBuffer(previousCardBeforePath, { retries: 2 }),
@@ -1609,12 +1610,11 @@ async function sendUnifiedCoachEmail({
         });
       }
     }
-    if (
-      !previousPreviewHref
-      && existingPrev?.length > 2000
-      && await shareCardJpegHasReadableText(existingPrev)
-    ) {
-      previousPreviewHref = await repo.getEmailSignedUrl(prevSharePath);
+    if (!previousPreviewHref) {
+      logger.warn('[testimonials.service] Previous tap-preview unavailable (no readable full card)', {
+        userId,
+        hadArchive: Boolean(existingPrev?.length),
+      });
     }
   }
 
