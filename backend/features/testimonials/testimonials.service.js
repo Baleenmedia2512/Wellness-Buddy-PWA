@@ -1564,8 +1564,9 @@ async function sendUnifiedCoachEmail({
     (slots.has('business') && businessVideoPath) ? repo.getEmailSignedUrl(businessVideoPath) : Promise.resolve(null),
   ]);
 
-  // Previous tap-preview: prefer a readable archived client card.
-  // Never overwrite it with a tofu server compose (□ boxes). Never link After-only.
+  // Previous tap-preview: rebuild with latest copy (e.g. "while joining the community")
+  // when server compose is readable. Fall back to archived client JPEG if compose is tofu.
+  // Never link After-only as "full Transformation Card".
   let previousPreviewHref = null;
   if (userId && previousPairDistinct) {
     const prevSharePath = repo.previousShareCardStoragePath(userId);
@@ -1575,12 +1576,7 @@ async function sendUnifiedCoachEmail({
     } catch {
       existingPrev = null;
     }
-    const existingReadable = existingPrev?.length > 2000
-      ? await shareCardJpegHasReadableText(existingPrev)
-      : false;
-    if (existingReadable) {
-      previousPreviewHref = await repo.getEmailSignedUrl(prevSharePath);
-    } else if (previousCardBeforePath && previousCardAfterPath) {
+    if (previousCardBeforePath && previousCardAfterPath) {
       try {
         const [prevBeforeBuf, prevAfterBuf] = await Promise.all([
           repo.downloadBuffer(previousCardBeforePath, { retries: 2 }),
@@ -1601,12 +1597,9 @@ async function sendUnifiedCoachEmail({
             await repo.uploadBuffer(prevSharePath, prevJpeg, 'image/jpeg');
             previousPreviewHref = await repo.getEmailSignedUrl(prevSharePath);
           } else {
-            logger.warn('[testimonials.service] Previous share card compose unreadable (tofu); not publishing', {
+            logger.warn('[testimonials.service] Previous share card compose unreadable (tofu); keeping archive', {
               userId,
             });
-            if (existingPrev?.length > 2000) {
-              previousPreviewHref = await repo.getEmailSignedUrl(prevSharePath);
-            }
           }
         }
       } catch (err) {
@@ -1614,10 +1607,10 @@ async function sendUnifiedCoachEmail({
           userId,
           message: err?.message || String(err),
         });
-        if (existingPrev?.length > 2000) {
-          previousPreviewHref = await repo.getEmailSignedUrl(prevSharePath);
-        }
       }
+    }
+    if (!previousPreviewHref && existingPrev?.length > 2000) {
+      previousPreviewHref = await repo.getEmailSignedUrl(prevSharePath);
     }
   }
 
