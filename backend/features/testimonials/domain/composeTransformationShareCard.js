@@ -5,6 +5,8 @@
  * (sharp/librsvg cannot use @font-face → □ tofu on Linux/Vercel).
  */
 import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import opentype from 'opentype.js';
 import sharp from 'sharp';
 import { transformationWeightVerb } from './transformationWeightDirection.js';
