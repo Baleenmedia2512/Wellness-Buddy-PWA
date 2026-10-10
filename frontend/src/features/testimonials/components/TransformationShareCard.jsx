@@ -564,17 +564,17 @@ function HealthIssueChip({ label, widthPct }) {
         style={{
           display: 'block',
           width: '100%',
-          minHeight: 28,
-          padding: '6px 8px',
+          minHeight: 32,
+          padding: '7px 8px',
           boxSizing: 'border-box',
           border: '1.5px solid #f9a8d4',
           borderRadius: 8,
           background: '#ffffff',
           color: '#4b5563',
           fontFamily: CARD_FONT,
-          fontSize: 9.5,
+          fontSize: 12,
           fontWeight: 700,
-          lineHeight: '12px',
+          lineHeight: '15px',
           textAlign: 'center',
           overflowWrap: 'anywhere',
         }}
@@ -739,50 +739,69 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
           {diff ? (
             <tr>
               <td style={{ textAlign: 'center', padding: '8px 16px 2px', verticalAlign: 'top' }}>
-                <img
-                  src={RESULT_BURST_LEFT_SRC}
-                  alt=""
-                  aria-hidden="true"
+                <table
                   style={{
-                    display: 'inline-block',
-                    width: 32,
-                    height: 24,
-                    marginRight: 3,
-                    verticalAlign: 'middle',
+                    margin: '0 auto',
+                    borderCollapse: 'collapse',
+                    tableLayout: 'auto',
                   }}
-                />
-                <span
-                  style={{
-                    display: 'inline-block',
-                    background: PILL_BG,
-                    borderRadius: 18,
-                    padding: '5px 16px',
-                    lineHeight: '18px',
-                    fontFamily: CARD_FONT,
-                    fontSize: 15,
-                    fontWeight: 800,
-                    color: PILL_BLUE,
-                    verticalAlign: 'middle',
-                  }}
+                  cellPadding={0}
+                  cellSpacing={0}
+                  align="center"
                 >
-                  {verb}
-                  {' '}
-                  {diff}
-                  {' kgs'}
-                  {durationText ? ` in ${durationText}` : ''}
-                </span>
-                <img
-                  src={RESULT_BURST_RIGHT_SRC}
-                  alt=""
-                  aria-hidden="true"
-                  style={{
-                    display: 'inline-block',
-                    width: 32,
-                    height: 24,
-                    marginLeft: 3,
-                    verticalAlign: 'middle',
-                  }}
-                />
+                  <tbody>
+                    <tr>
+                      <td style={{ width: 40, textAlign: 'right', verticalAlign: 'middle', padding: 0, lineHeight: 0 }}>
+                        <img
+                          src={RESULT_BURST_LEFT_SRC}
+                          alt=""
+                          aria-hidden="true"
+                          style={{
+                            display: 'block',
+                            width: 32,
+                            height: 24,
+                            margin: '0 4px 0 auto',
+                          }}
+                        />
+                      </td>
+                      <td style={{ textAlign: 'center', verticalAlign: 'middle', padding: '0 2px', whiteSpace: 'nowrap' }}>
+                        <span
+                          style={{
+                            display: 'inline-block',
+                            background: PILL_BG,
+                            borderRadius: 18,
+                            padding: '5px 16px',
+                            lineHeight: '18px',
+                            fontFamily: CARD_FONT,
+                            fontSize: 15,
+                            fontWeight: 800,
+                            color: PILL_BLUE,
+                            textAlign: 'center',
+                          }}
+                        >
+                          {verb}
+                          {' '}
+                          {diff}
+                          {' kgs'}
+                          {durationText ? ` in ${durationText}` : ''}
+                        </span>
+                      </td>
+                      <td style={{ width: 40, textAlign: 'left', verticalAlign: 'middle', padding: 0, lineHeight: 0 }}>
+                        <img
+                          src={RESULT_BURST_RIGHT_SRC}
+                          alt=""
+                          aria-hidden="true"
+                          style={{
+                            display: 'block',
+                            width: 32,
+                            height: 24,
+                            margin: '0 auto 0 4px',
+                          }}
+                        />
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
               </td>
             </tr>
           ) : null}

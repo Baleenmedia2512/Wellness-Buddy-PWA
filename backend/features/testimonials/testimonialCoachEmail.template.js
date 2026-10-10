@@ -368,7 +368,7 @@ export function buildTransformationCardEmailBlock({
     ? recoveredHealthIssues.map((i) => String(i ?? '').trim()).filter(Boolean).slice(0, 10)
     : [];
   const issuePills = issues.map((issue) => (
-    `<span style="display:inline-block;margin:3px 3px 0 0;padding:4px 8px;background-color:#ffffff;border:1px solid #f9a8d4;border-radius:9999px;color:#9f1239;font-size:10px;font-weight:600;font-family:Arial,Helvetica,sans-serif;line-height:1.3;">${escapeHtml(issue)}</span>`
+    `<span style="display:inline-block;margin:3px 3px 0 0;padding:5px 10px;background-color:#ffffff;border:1px solid #f9a8d4;border-radius:9999px;color:#9f1239;font-size:12px;font-weight:600;font-family:Arial,Helvetica,sans-serif;line-height:1.3;">${escapeHtml(issue)}</span>`
   )).join('');
 
   return `
@@ -434,8 +434,8 @@ export function buildTransformationCardEmailBlock({
             </tr>
             ${progressText ? `
             <tr>
-              <td align="center" style="padding:0 12px 10px 12px;">
-                <span style="display:inline-block;padding:6px 14px;background-color:#dbeafe;border-radius:9999px;color:#2563eb;font-size:12px;font-weight:800;font-family:Arial,Helvetica,sans-serif;line-height:1.3;">${progressText}</span>
+              <td align="center" style="padding:0 12px 10px 12px;text-align:center;">
+                <span style="display:inline-block;margin:0 auto;padding:6px 14px;background-color:#dbeafe;border-radius:9999px;color:#2563eb;font-size:12px;font-weight:800;font-family:Arial,Helvetica,sans-serif;line-height:1.3;text-align:center;">${progressText}</span>
               </td>
             </tr>` : ''}
             ${issues.length ? `
