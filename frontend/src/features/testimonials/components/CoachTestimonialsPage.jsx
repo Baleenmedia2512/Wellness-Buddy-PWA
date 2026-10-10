@@ -39,7 +39,6 @@ import HealthIssueCoachEditor from './HealthIssueCoachEditor.jsx';
 import {
   TransformationCardContent,
   TransformationShareActions,
-  captureTransformationCardAsJpegDataUrl,
 } from './TransformationShareCard.jsx';
 
 import { CARD_W, CARD_H } from '../utils/shareCardLayout.js';
@@ -1295,14 +1294,6 @@ function MemberCard({
             ),
           }
         : null;
-      await reloadMine(patched);
-      if (userId) {
-        try {
-          await getProfile({ userId, cacheBust: true });
-        } catch {
-          // Non-fatal — Profile reloads on next open with cache bust.
-        }
-      }
       if (!isSilentSave && !otpSent) {
         const hasDuration = Boolean(usableDurationForSubmit);
         setSubmitError(
@@ -1313,10 +1304,17 @@ function MemberCard({
         return;
       }
       clearDrafts();
+      // Show OTP immediately from submit response; refresh media/profile in background.
       if (otpSent || patched?.hasPendingOtp) {
         setUnifiedOtpDismissed(false);
         setUnifiedOtpVerified(false);
         setSubmitDone(true);
+      }
+      void reloadMine(patched);
+      if (userId) {
+        void getProfile({ userId, cacheBust: true }).catch(() => {
+          // Non-fatal — Profile reloads on next open with cache bust.
+        });
       }
     };
 
@@ -1330,45 +1328,12 @@ function MemberCard({
       return;
     }
 
-    // Photo / video changes — apply fresh signed URLs from the submit response before clearing local previews.
+    // Photo / video changes — return OTP as soon as the API responds.
+    // Server composes the share card + emails the coach after the response (waitUntil).
+    // Skip client html2canvas here so Submit is not blocked on card capture.
     setIsSubmitting(true);
     setCaptureFlowBusy(true);
-    void (async () => {
-      // Capture the same Transformation share card the member shares — coach email embeds it.
-      if (submittingPhotoCard && shareCardRef.current) {
-        try {
-          // Let React paint draft weights/photos onto the hidden card before capture.
-          await new Promise((resolve) => {
-            requestAnimationFrame(() => requestAnimationFrame(resolve));
-          });
-          // Prefer draft JPEG bytes (not page screenshots) so After stays the real photo.
-          const toImgSrc = (draft, fallback) => {
-            if (typeof draft?.imageBase64 === 'string' && draft.imageBase64) {
-              return draft.imageBase64.startsWith('data:')
-                ? draft.imageBase64
-                : `data:image/jpeg;base64,${draft.imageBase64}`;
-            }
-            if (draft?.previewUrl && !String(draft.previewUrl).includes('blob:')) {
-              return draft.previewUrl;
-            }
-            if (draft?.previewUrl) return draft.previewUrl;
-            return fallback || null;
-          };
-          const beforeSrc = toImgSrc(draftBefore, beforeImageSrc);
-          const afterSrc = toImgSrc(draftAfter, afterImageSrc);
-          if (!beforeSrc || !afterSrc) {
-            throw new Error('Before/After photos not ready for card capture');
-          }
-          payload.shareCardImageBase64 = await captureTransformationCardAsJpegDataUrl(
-            shareCardRef.current,
-            { beforeSrc, afterSrc },
-          );
-        } catch {
-          // Non-fatal — email falls back to Before/After photo rows.
-        }
-      }
-      return submitAllEdits(payload);
-    })()
+    void submitAllEdits(payload)
       .then(finishSubmit)
       .catch((err) => {
         setSubmitError(err?.message || 'Failed to submit. Please try again.');
