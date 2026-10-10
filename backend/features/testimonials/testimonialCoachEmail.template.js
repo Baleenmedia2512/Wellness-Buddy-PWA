@@ -450,7 +450,7 @@ export function buildTransformationCardEmailBlock({
                   <tr>
                     <td style="background-color:#fff1f2;border:1px solid #f9a8d4;border-radius:10px;padding:8px 10px;">
                       <p style="margin:0;color:#be185d;font-size:14px;font-weight:700;font-family:Georgia,'Times New Roman',serif;font-style:italic;text-align:center;">Health Issues</p>
-                      <p style="margin:2px 0 6px;color:#9ca3af;font-size:9px;font-style:italic;font-family:Arial,Helvetica,sans-serif;text-align:center;">while joining in the community</p>
+                      <p style="margin:2px 0 10px;color:#9ca3af;font-size:9px;font-style:italic;font-family:Arial,Helvetica,sans-serif;text-align:center;">while joining the community</p>
                       <p style="margin:0;text-align:center;line-height:1.5;">${issuePills}</p>
                     </td>
                   </tr>

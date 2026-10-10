@@ -16,7 +16,8 @@ const RESULT_PILL_H = 44;
 /** Keep health-issues compact so photos stay close to the no-issues card size. */
 const ISSUES_OUTER_PAD = 8;
 const ISSUES_BOX_PAD = 10;
-const ISSUES_TITLE_H = 34;
+/** Title + “while joining the community” + gap before chips. */
+const ISSUES_TITLE_H = 42;
 /** Chip row height for 14px issue labels (may wrap once on long names). */
 const CHIP_ROW_H = 64;
 const EMPTY_BOTTOM = 4;

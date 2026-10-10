@@ -854,7 +854,7 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
                   </p>
                   <p
                     style={{
-                      margin: '0 0 2px',
+                      margin: '0 0 10px',
                       fontSize: 9,
                       fontWeight: 500,
                       fontStyle: 'italic',
@@ -863,9 +863,9 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
                       textAlign: 'center',
                     }}
                   >
-                    while joining in the community
+                    while joining the community
                   </p>
-                  <div style={{ textAlign: 'center', fontSize: 0 }}>
+                  <div style={{ textAlign: 'center', fontSize: 0, paddingBottom: 6 }}>
                     {issues.map((issue) => (
                       <HealthIssueChip
                         key={issue}

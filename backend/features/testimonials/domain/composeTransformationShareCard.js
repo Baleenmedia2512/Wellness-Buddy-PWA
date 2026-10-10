@@ -28,7 +28,8 @@ const MAX_VISIBLE_ISSUES = 10;
 /** Match frontend share card — 14px issue chip labels. */
 const ISSUE_CHIP_FONT = 14;
 const ISSUE_CHIP_ROW_H = 40;
-const ISSUE_TITLE_H = 36;
+/** Title + subtitle + gap before chips ("while joining the community"). */
+const ISSUE_TITLE_H = 44;
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ASSETS_DIR = join(__dirname, '../assets');
@@ -115,7 +116,7 @@ function buildHealthIssuesSvg(issues, topY) {
   const rows = Math.ceil(items.length / cols);
   const boxX = 12;
   const boxW = CARD_W - 24;
-  const boxPad = 8;
+  const boxPad = 10;
   const chipGap = 6;
   const innerW = boxW - boxPad * 2;
   const chipW = Math.floor((innerW - chipGap * (cols - 1)) / cols);
@@ -140,7 +141,7 @@ function buildHealthIssuesSvg(issues, topY) {
   const markup = `
     <rect x="${boxX}" y="${boxY}" width="${boxW}" height="${boxH}" rx="12" ry="12" fill="#fff1f2" stroke="#f9a8d4" stroke-width="1"/>
     <text x="${CARD_W / 2}" y="${boxY + boxPad + 16}" text-anchor="middle" font-family="${CARD_FONT_FAMILY}, sans-serif" font-size="16" font-style="italic" font-weight="700" fill="#be185d">Health Issues</text>
-    <text x="${CARD_W / 2}" y="${boxY + boxPad + 30}" text-anchor="middle" font-family="${CARD_FONT_FAMILY}, sans-serif" font-size="9" font-style="italic" fill="#9ca3af">while joining in the community</text>
+    <text x="${CARD_W / 2}" y="${boxY + boxPad + 30}" text-anchor="middle" font-family="${CARD_FONT_FAMILY}, sans-serif" font-size="9" font-style="italic" fill="#9ca3af">while joining the community</text>
     ${chips}`;
 
   return { markup, height: boxH + 8 };
