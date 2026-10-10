@@ -1564,8 +1564,8 @@ async function sendUnifiedCoachEmail({
     (slots.has('business') && businessVideoPath) ? repo.getEmailSignedUrl(businessVideoPath) : Promise.resolve(null),
   ]);
 
-  // Previous tap-preview: always publish a full-card JPEG when Previous is shown.
-  // Path-based Noto glyphs keep text readable; archive is last-resort fallback.
+  // Previous tap-preview: path-composed full card with real glyphs (never □ tofu).
+  // Prefer fresh compose; only reuse archive when that JPEG already has readable text.
   let previousPreviewHref = null;
   if (userId && previousPairDistinct) {
     const prevSharePath = repo.previousShareCardStoragePath(userId);
@@ -1592,15 +1592,14 @@ async function sendUnifiedCoachEmail({
             durationText: previousDurationText,
             recoveredHealthIssues: previousRecoveredHealthIssues,
           });
-          if (prevJpeg?.length > 2000) {
-            const readable = await shareCardJpegHasReadableText(prevJpeg);
+          if (prevJpeg?.length > 2000 && await shareCardJpegHasReadableText(prevJpeg)) {
             await repo.uploadBuffer(prevSharePath, prevJpeg, 'image/jpeg');
             previousPreviewHref = await repo.getEmailSignedUrl(prevSharePath);
-            if (!readable) {
-              logger.warn('[testimonials.service] Previous compose linked but text look soft', {
-                userId,
-              });
-            }
+          } else {
+            logger.warn('[testimonials.service] Previous compose rejected (missing or □ text)', {
+              userId,
+              bytes: prevJpeg?.length || 0,
+            });
           }
         }
       } catch (err) {
@@ -1610,8 +1609,11 @@ async function sendUnifiedCoachEmail({
         });
       }
     }
-    // Last resort: any archived full card so Previous stays tappable.
-    if (!previousPreviewHref && existingPrev?.length > 2000) {
+    if (
+      !previousPreviewHref
+      && existingPrev?.length > 2000
+      && await shareCardJpegHasReadableText(existingPrev)
+    ) {
       previousPreviewHref = await repo.getEmailSignedUrl(prevSharePath);
     }
   }
