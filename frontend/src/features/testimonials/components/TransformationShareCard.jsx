@@ -213,7 +213,7 @@ export async function captureTransformationCardAsBlob(el) {
         await Promise.all([
           document.fonts.load('800 15px Poppins'),
           document.fonts.load('800 20px Poppins'),
-          document.fonts.load('700 12px Poppins'),
+          document.fonts.load('700 14px Poppins'),
           document.fonts.load('40px Pacifico'),
         ]);
       }
@@ -598,17 +598,17 @@ function HealthIssueChip({ label, widthPct }) {
         style={{
           display: 'block',
           width: '100%',
-          minHeight: 32,
-          padding: '7px 8px',
+          minHeight: 36,
+          padding: '8px 8px',
           boxSizing: 'border-box',
           border: '1.5px solid #f9a8d4',
           borderRadius: 8,
           background: '#ffffff',
           color: '#4b5563',
           fontFamily: CARD_FONT,
-          fontSize: 12,
+          fontSize: 14,
           fontWeight: 700,
-          lineHeight: '15px',
+          lineHeight: '18px',
           textAlign: 'center',
           overflowWrap: 'anywhere',
         }}

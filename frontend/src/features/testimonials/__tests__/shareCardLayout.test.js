@@ -66,8 +66,8 @@ describe('shareCardPhotoHeight', () => {
     const noIssues = shareCardPhotoHeight({ issueCount: 0, hasResultPill: true });
     const withIssues = shareCardPhotoHeight({ issueCount: 6, hasResultPill: true });
     // With 6 issues, photos stay usable; disclaimer budget may shrink them a little
-    assert.ok(withIssues >= 460);
-    assert.ok(noIssues - withIssues < 220);
+    assert.ok(withIssues >= 440);
+    assert.ok(noIssues - withIssues < 240);
   });
 
   it('reserves space for the two-line disclaimer footer', () => {

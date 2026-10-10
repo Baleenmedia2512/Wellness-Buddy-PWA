@@ -17,8 +17,8 @@ const RESULT_PILL_H = 44;
 const ISSUES_OUTER_PAD = 8;
 const ISSUES_BOX_PAD = 10;
 const ISSUES_TITLE_H = 34;
-/** Chip row height for 12px issue labels (may wrap once on long names). */
-const CHIP_ROW_H = 58;
+/** Chip row height for 14px issue labels (may wrap once on long names). */
+const CHIP_ROW_H = 64;
 const EMPTY_BOTTOM = 4;
 /**
  * Red DISCLAIMER SVG footer under the result pill / health issues.

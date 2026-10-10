@@ -186,6 +186,7 @@ const PREV_SHARE_CARD_CID = 'transformation-card-prev@wellnessvalley';
  *   afterWeightKg?: number|null,
  *   goalType?: string|null,
  *   durationText?: string|null,
+ *   recoveredHealthIssues?: string[]|null,
  * }|null} [composeFromPhotos]
  * @returns {Promise<string|null>} storage path when uploaded
  */
@@ -229,6 +230,7 @@ async function uploadShareCardImage(userId, shareCardImageBase64, composeFromPho
           afterWeightKg: composeFromPhotos.afterWeightKg,
           goalType: composeFromPhotos.goalType,
           durationText: composeFromPhotos.durationText,
+          recoveredHealthIssues: composeFromPhotos.recoveredHealthIssues,
         });
       }
     } catch (err) {
@@ -620,6 +622,7 @@ export async function submitTestimonial(rawBody) {
       afterWeightKg: payload.afterWeightKg,
       goalType: payload.goalType,
       durationText: payload.durationText,
+      recoveredHealthIssues: payload.recoveredHealthIssues,
     });
     const coachInfo = recipient.coachInfo;
     if (coachInfo?.email) {
@@ -840,6 +843,7 @@ export async function editTestimonial(rawBody) {
         afterWeightKg: afterWeightNow,
         goalType: updates.goalType ?? existing.goal_type,
         durationText: updates.durationText ?? existing.duration_text,
+        recoveredHealthIssues: resolvedHealthIssues,
       });
       await sendCoachEmail({
         coachEmail:    coachInfo.email,
@@ -1586,6 +1590,7 @@ async function sendUnifiedCoachEmail({
             afterWeightKg: previousAfterWeight,
             goalType: previousGoalType,
             durationText: previousDurationText,
+            recoveredHealthIssues: previousRecoveredHealthIssues,
           });
           const composedReadable = await shareCardJpegHasReadableText(prevJpeg);
           if (composedReadable) {
@@ -1962,6 +1967,7 @@ export async function submitAllEdits(rawBody) {
       afterWeightKg: photoUpdates.afterWeightKg ?? existing.after_weight_kg,
       goalType: photoUpdates.goalType ?? existing.goal_type,
       durationText: resolvedDuration,
+      recoveredHealthIssues: resolvedHealthIssues,
     });
     await sendUnifiedCoachEmail({
       coachEmail:             coachInfo.email,

@@ -368,7 +368,7 @@ export function buildTransformationCardEmailBlock({
     ? recoveredHealthIssues.map((i) => String(i ?? '').trim()).filter(Boolean).slice(0, 10)
     : [];
   const issuePills = issues.map((issue) => (
-    `<span style="display:inline-block;margin:3px 3px 0 0;padding:5px 10px;background-color:#ffffff;border:1px solid #f9a8d4;border-radius:9999px;color:#9f1239;font-size:12px;font-weight:600;font-family:Arial,Helvetica,sans-serif;line-height:1.3;">${escapeHtml(issue)}</span>`
+    `<span style="display:inline-block;margin:3px 3px 0 0;padding:6px 11px;background-color:#ffffff;border:1px solid #f9a8d4;border-radius:9999px;color:#9f1239;font-size:14px;font-weight:600;font-family:Arial,Helvetica,sans-serif;line-height:1.3;">${escapeHtml(issue)}</span>`
   )).join('');
 
   return `

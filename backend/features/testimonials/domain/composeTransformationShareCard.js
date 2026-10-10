@@ -17,11 +17,17 @@ const PHOTO_TOP = HEADER_H + NAME_H;
 const PHOTO_GAP = 8;
 const PHOTO_SIDE_PAD = 12;
 const PHOTO_W = Math.floor((CARD_W - PHOTO_SIDE_PAD * 2 - PHOTO_GAP) / 2);
-/** Leave room below the result pill for the red DISCLAIMER footer. */
-const PHOTO_H = 460;
+/** Default photo height; shrinks when health-issue chips need space. */
+const PHOTO_H_MAX = 460;
+const PHOTO_H_MIN = 320;
 const META_H = 52;
 const DISCLAIMER_H = 110;
 const DISCLAIMER_PAD_X = 40;
+const MAX_VISIBLE_ISSUES = 10;
+/** Match frontend share card — 14px issue chip labels. */
+const ISSUE_CHIP_FONT = 14;
+const ISSUE_CHIP_ROW_H = 40;
+const ISSUE_TITLE_H = 36;
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ASSETS_DIR = join(__dirname, '../assets');
@@ -74,6 +80,66 @@ function formatKg(value) {
   const n = Number(value);
   if (!Number.isFinite(n) || n <= 0) return '—';
   return Number.isInteger(n) ? String(n) : n.toFixed(1);
+}
+
+function normalizeIssueList(list) {
+  return (Array.isArray(list) ? list : [])
+    .map((item) => String(item ?? '').replace(/\s+/g, ' ').trim())
+    .filter(Boolean)
+    .slice(0, MAX_VISIBLE_ISSUES);
+}
+
+function issueColumnsForCount(count) {
+  const n = Math.max(0, Number(count) || 0);
+  if (n <= 0) return 0;
+  if (n <= 3) return n;
+  if (n <= 6) return 3;
+  return 4;
+}
+
+/**
+ * Pink health-issues block (title + 14px chips) under the result pill.
+ * @param {string[]} issues
+ * @param {number} topY
+ * @returns {{ markup: string, height: number }}
+ */
+function buildHealthIssuesSvg(issues, topY) {
+  const items = normalizeIssueList(issues);
+  if (!items.length) return { markup: '', height: 0 };
+
+  const cols = issueColumnsForCount(items.length);
+  const rows = Math.ceil(items.length / cols);
+  const boxX = 12;
+  const boxW = CARD_W - 24;
+  const boxPad = 8;
+  const chipGap = 6;
+  const innerW = boxW - boxPad * 2;
+  const chipW = Math.floor((innerW - chipGap * (cols - 1)) / cols);
+  const chipH = 32;
+  const titleBlockH = ISSUE_TITLE_H;
+  const chipsH = rows * ISSUE_CHIP_ROW_H;
+  const boxH = boxPad + titleBlockH + chipsH + boxPad;
+  const boxY = topY;
+
+  let chips = '';
+  items.forEach((label, idx) => {
+    const col = idx % cols;
+    const row = Math.floor(idx / cols);
+    const x = boxX + boxPad + col * (chipW + chipGap);
+    const y = boxY + boxPad + titleBlockH + row * ISSUE_CHIP_ROW_H;
+    const textY = y + 21;
+    chips += `
+      <rect x="${x}" y="${y}" width="${chipW}" height="${chipH}" rx="8" ry="8" fill="#ffffff" stroke="#f9a8d4" stroke-width="1.5"/>
+      <text x="${x + chipW / 2}" y="${textY}" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="${ISSUE_CHIP_FONT}" font-weight="700" fill="#4b5563">${escapeXml(label)}</text>`;
+  });
+
+  const markup = `
+    <rect x="${boxX}" y="${boxY}" width="${boxW}" height="${boxH}" rx="12" ry="12" fill="#fff1f2" stroke="#f9a8d4" stroke-width="1"/>
+    <text x="${CARD_W / 2}" y="${boxY + boxPad + 16}" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="16" font-style="italic" font-weight="700" fill="#be185d">Health Issues</text>
+    <text x="${CARD_W / 2}" y="${boxY + boxPad + 30}" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="9" font-style="italic" fill="#9ca3af">while joining in the community</text>
+    ${chips}`;
+
+  return { markup, height: boxH + 8 };
 }
 
 /**
@@ -142,6 +208,7 @@ export function bufferFromOptionalBase64(base64) {
  *   goalType?: string|null,
  *   durationText?: string|null,
  *   appVersionLabel?: string|null,
+ *   recoveredHealthIssues?: string[]|null,
  * }} opts
  * @returns {Promise<Buffer>} image/jpeg bytes
  */
@@ -155,9 +222,6 @@ export async function composeTransformationShareCardJpeg(opts) {
     throw new Error('After photo required for share card');
   }
 
-  const beforeSlot = await coverTopJpeg(beforeBuffer, PHOTO_W, PHOTO_H);
-  const afterSlot = await coverTopJpeg(afterBuffer, PHOTO_W, PHOTO_H);
-
   const name = escapeXml(String(opts.memberName || 'Customer').trim() || 'Customer');
   const beforeKg = escapeXml(formatKg(opts.beforeWeightKg));
   const afterKg = escapeXml(formatKg(opts.afterWeightKg));
@@ -167,7 +231,6 @@ export async function composeTransformationShareCardJpeg(opts) {
   const diff = hasDiff ? Math.abs(aw - bw).toFixed(1) : null;
   const verb = transformationWeightVerb(bw, aw);
   const duration = String(opts.durationText || '').replace(/\s+/g, ' ').trim();
-  // Size pill to label (same idea as frontend SVG pill) — fixed 280px left-shifted short text.
   const pillLabel = diff && verb
     ? `${verb} ${diff} kgs${duration ? ` in ${duration}` : ''}`
     : '';
@@ -177,14 +240,32 @@ export async function composeTransformationShareCardJpeg(opts) {
     ? Math.min(CARD_W - 48, Math.max(140, Math.ceil(pillLabel.length * 9.2) + pillPadX * 2))
     : 0;
   const pillH = 30;
+  const issues = normalizeIssueList(opts.recoveredHealthIssues);
+  const issueCols = issueColumnsForCount(issues.length);
+  const issueRows = issueCols ? Math.ceil(issues.length / issueCols) : 0;
+  const issuesReserveH = issueRows === 0
+    ? 0
+    : 8 + 8 + ISSUE_TITLE_H + issueRows * ISSUE_CHIP_ROW_H + 8 + 8;
+  const pillReserveH = pillLabel ? 44 : 0;
+  const usedBelowPhotos = META_H + 8 + pillReserveH + issuesReserveH + DISCLAIMER_H + 8;
+  const photoH = Math.max(
+    PHOTO_H_MIN,
+    Math.min(PHOTO_H_MAX, CARD_H - PHOTO_TOP - usedBelowPhotos),
+  );
+
+  const beforeSlot = await coverTopJpeg(beforeBuffer, PHOTO_W, photoH);
+  const afterSlot = await coverTopJpeg(afterBuffer, PHOTO_W, photoH);
+
   const pillX = pillW ? Math.round((CARD_W - pillW) / 2) : 0;
   const version = escapeXml(String(opts.appVersionLabel || '').trim());
 
   const beforeX = PHOTO_SIDE_PAD;
   const afterX = PHOTO_SIDE_PAD + PHOTO_W + PHOTO_GAP;
-  const metaY = PHOTO_TOP + PHOTO_H + 8;
+  const metaY = PHOTO_TOP + photoH + 8;
   const pillY = metaY + META_H + 8;
-  const footerTop = PHOTO_TOP + PHOTO_H;
+  const footerTop = PHOTO_TOP + photoH;
+  const issuesTop = pillLabel ? pillY + pillH + 10 : metaY + META_H + 8;
+  const { markup: issuesMarkup } = buildHealthIssuesSvg(issues, issuesTop);
   const discY = CARD_H - DISCLAIMER_H + 4;
   const discW = CARD_W - DISCLAIMER_PAD_X * 2;
   const discH = DISCLAIMER_H - 14;
@@ -207,10 +288,10 @@ export async function composeTransformationShareCardJpeg(opts) {
       <text x="16" y="48" font-size="13" font-weight="400" fill="#a7f3d0">Transformation Results</text>
       <rect x="0" y="${HEADER_H}" width="${CARD_W}" height="${NAME_H}" fill="#ffffff"/>
       <text x="${CARD_W / 2}" y="${HEADER_H + 34}" text-anchor="middle" font-size="22" font-weight="700" fill="#111827">${name}</text>
-      <rect x="${beforeX}" y="${PHOTO_TOP + PHOTO_H - 36}" width="${PHOTO_W}" height="28" rx="6" fill="#e11d72"/>
-      <text x="${beforeX + PHOTO_W / 2}" y="${PHOTO_TOP + PHOTO_H - 16}" text-anchor="middle" font-size="16" font-weight="700" fill="#ffffff">Before</text>
-      <rect x="${afterX}" y="${PHOTO_TOP + PHOTO_H - 36}" width="${PHOTO_W}" height="28" rx="6" fill="#16a34a"/>
-      <text x="${afterX + PHOTO_W / 2}" y="${PHOTO_TOP + PHOTO_H - 16}" text-anchor="middle" font-size="16" font-weight="700" fill="#ffffff">After</text>
+      <rect x="${beforeX}" y="${PHOTO_TOP + photoH - 36}" width="${PHOTO_W}" height="28" rx="6" fill="#e11d72"/>
+      <text x="${beforeX + PHOTO_W / 2}" y="${PHOTO_TOP + photoH - 16}" text-anchor="middle" font-size="16" font-weight="700" fill="#ffffff">Before</text>
+      <rect x="${afterX}" y="${PHOTO_TOP + photoH - 36}" width="${PHOTO_W}" height="28" rx="6" fill="#16a34a"/>
+      <text x="${afterX + PHOTO_W / 2}" y="${PHOTO_TOP + photoH - 16}" text-anchor="middle" font-size="16" font-weight="700" fill="#ffffff">After</text>
       <rect x="0" y="${footerTop}" width="${CARD_W}" height="${CARD_H - footerTop}" fill="#ffffff"/>
       <text x="${beforeX + PHOTO_W / 2}" y="${metaY + 14}" text-anchor="middle" font-size="11" font-weight="700" fill="#9ca3af">BEFORE</text>
       <text x="${beforeX + PHOTO_W / 2}" y="${metaY + 36}" text-anchor="middle" font-size="17" font-weight="700" fill="#111827">${beforeKg} kg</text>
@@ -222,6 +303,7 @@ export async function composeTransformationShareCardJpeg(opts) {
       <text x="${pillX + pillW / 2}" y="${pillY + 20}" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="15" font-weight="800" fill="#2563eb">${pill}</text>
       <path d="M${burstRightX} ${burstY + 12}h20M${burstRightX + 8} ${burstY + 4}l18 -4M${burstRightX + 8} ${burstY + 20}l18 4" fill="none" stroke="#059669" stroke-width="3.5" stroke-linecap="round"/>
       ` : ''}
+      ${issuesMarkup}
       <rect x="${DISCLAIMER_PAD_X}" y="${discY}" width="${discW}" height="${discH}" rx="12" ry="12" fill="#ffffff" stroke="#dc2626" stroke-width="3"/>
       <text x="${CARD_W / 2}" y="${discY + 28}" text-anchor="middle" font-size="14" font-weight="700" fill="#dc2626">DISCLAIMER</text>
       <line x1="${DISCLAIMER_PAD_X + 36}" y1="${discY + 36}" x2="${DISCLAIMER_PAD_X + discW - 36}" y2="${discY + 36}" stroke="#dc2626" stroke-width="1.5"/>
