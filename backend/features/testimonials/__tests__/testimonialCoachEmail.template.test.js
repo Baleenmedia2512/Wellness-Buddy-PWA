@@ -85,6 +85,21 @@ describe('testimonial coach email photos keep aspect ratio', () => {
     assert.match(html, /Lost 30\.1 kgs in 6 months/);
   });
 
+  it('buildTransformationCardEmailBlock uses weight delta even when goalType is gain', () => {
+    const html = buildTransformationCardEmailBlock({
+      memberName: 'Alex',
+      beforeUrl: 'https://example.com/before.jpg',
+      afterUrl: 'https://example.com/after.jpg',
+      beforeWeight: 90.9,
+      afterWeight: 60.8,
+      goalType: 'gain',
+      durationText: '6 months',
+      recoveredHealthIssues: [],
+    });
+    assert.match(html, /Lost 30\.1 kgs in 6 months/);
+    assert.doesNotMatch(html, /Gained 30\.1/);
+  });
+
   it('buildShareCardRow returns empty when src missing', () => {
     assert.equal(buildShareCardRow(null), '');
     assert.equal(buildShareCardRow(''), '');

@@ -34,6 +34,8 @@ const ACTIVITY_THUMB = Object.freeze({
  *   foodData?: object,
  *   calories?: number,
  *   mealLabel?: string|null,
+ *   mealCategory?: string|null,
+ *   weightGoalMode?: string|null,
  *   glycemicIndex?: number|null,
  * }} input
  */
@@ -43,6 +45,8 @@ export function resolveFoodRowPresentation({
   foodData = null,
   calories = 0,
   mealLabel = null,
+  mealCategory = null,
+  weightGoalMode = null,
   glycemicIndex = null,
 } = {}) {
   const activityType = resolveFoodActivityType({
@@ -50,7 +54,11 @@ export function resolveFoodRowPresentation({
     analysisData,
     foodData,
   });
-  const showMealBadge = shouldShowMealBadge(activityType);
+  const showMealBadge = shouldShowMealBadge(activityType, {
+    mealLabel,
+    mealCategory,
+    weightGoalMode,
+  });
   const thumbFallback = ACTIVITY_THUMB[activityType] || ACTIVITY_THUMB.food;
   const volumeMl = extractVolumeMl(foodData, analysisData);
   const scoops = extractScoops(foodData, analysisData);

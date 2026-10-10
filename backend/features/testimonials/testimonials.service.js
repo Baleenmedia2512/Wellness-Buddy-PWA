@@ -60,6 +60,7 @@ import { isInlineImageReference } from './domain/profileTransformationPhotos.see
 import {
   bufferFromOptionalBase64,
   composeTransformationShareCardJpeg,
+  shareCardJpegHasReadableText,
 } from './domain/composeTransformationShareCard.js';
 import { nowUtc } from '../../shared/lib/datetime/index.js';
 import {
@@ -185,6 +186,7 @@ const PREV_SHARE_CARD_CID = 'transformation-card-prev@wellnessvalley';
  *   afterWeightKg?: number|null,
  *   goalType?: string|null,
  *   durationText?: string|null,
+ *   recoveredHealthIssues?: string[]|null,
  * }|null} [composeFromPhotos]
  * @returns {Promise<string|null>} storage path when uploaded
  */
@@ -228,6 +230,7 @@ async function uploadShareCardImage(userId, shareCardImageBase64, composeFromPho
           afterWeightKg: composeFromPhotos.afterWeightKg,
           goalType: composeFromPhotos.goalType,
           durationText: composeFromPhotos.durationText,
+          recoveredHealthIssues: composeFromPhotos.recoveredHealthIssues,
         });
       }
     } catch (err) {
@@ -249,13 +252,11 @@ async function uploadShareCardImage(userId, shareCardImageBase64, composeFromPho
 
   const path = repo.shareCardStoragePath(userId);
   const prevPath = repo.previousShareCardStoragePath(userId);
-  // When Before/After photo bytes changed, always archive the prior card for Previous | New.
-  const photoChanged = Boolean(
-    composeFromPhotos?.beforeImageBase64 || composeFromPhotos?.afterImageBase64,
-  );
+  // Always rotate the prior full card → share_card_prev.jpg so Previous tap-preview
+  // can open the last client/server card (same quality as New).
   try {
     const existing = await repo.downloadBuffer(path, { retries: 1 });
-    if (existing?.length && (photoChanged || !existing.equals(newJpeg))) {
+    if (existing?.length && !existing.equals(newJpeg)) {
       await repo.uploadBuffer(prevPath, existing, 'image/jpeg');
     }
   } catch {
@@ -619,6 +620,7 @@ export async function submitTestimonial(rawBody) {
       afterWeightKg: payload.afterWeightKg,
       goalType: payload.goalType,
       durationText: payload.durationText,
+      recoveredHealthIssues: payload.recoveredHealthIssues,
     });
     const coachInfo = recipient.coachInfo;
     if (coachInfo?.email) {
@@ -839,6 +841,7 @@ export async function editTestimonial(rawBody) {
         afterWeightKg: afterWeightNow,
         goalType: updates.goalType ?? existing.goal_type,
         durationText: updates.durationText ?? existing.duration_text,
+        recoveredHealthIssues: resolvedHealthIssues,
       });
       await sendCoachEmail({
         coachEmail:    coachInfo.email,
@@ -1543,7 +1546,6 @@ async function sendUnifiedCoachEmail({
     previousBeforeHref,
     previousAfterHref,
     currentSharePreviewHref,
-    previousSharePreviewHref,
     healthVideoUrl,
     businessVideoUrl,
   ] = await Promise.all([
@@ -1556,44 +1558,77 @@ async function sendUnifiedCoachEmail({
       ? repo.getEmailSignedUrl(previousCardAfterPath)
       : Promise.resolve(null),
     userId ? repo.getEmailSignedUrl(repo.shareCardStoragePath(userId)) : Promise.resolve(null),
-    (userId && previousPairDistinct)
-      ? repo.getEmailSignedUrl(repo.previousShareCardStoragePath(userId))
-      : Promise.resolve(null),
     (slots.has('health') && healthVideoPath) ? repo.getEmailSignedUrl(healthVideoPath) : Promise.resolve(null),
     (slots.has('business') && businessVideoPath) ? repo.getEmailSignedUrl(businessVideoPath) : Promise.resolve(null),
   ]);
 
-  // Ensure Previous share card exists for tap-preview (compose from old photos if needed).
-  let previousPreviewHref = previousSharePreviewHref;
-  if (userId && previousPairDistinct && !previousPreviewHref && previousCardBeforePath && previousCardAfterPath) {
+  // Previous tap-preview = full share-card JPEG (not the small Before|After thumbs).
+  // Prefer the archived card that uploadShareCardImage just rotated (client capture,
+  // same look as New). Only path-compose when that archive is missing or □ tofu.
+  let previousPreviewHref = null;
+  if (userId && previousPairDistinct) {
+    const prevSharePath = repo.previousShareCardStoragePath(userId);
+    let existingPrev = null;
     try {
-      const [prevBeforeBuf, prevAfterBuf] = await Promise.all([
-        repo.downloadBuffer(previousCardBeforePath, { retries: 2 }),
-        repo.downloadBuffer(previousCardAfterPath, { retries: 2 }),
-      ]);
-      if (prevBeforeBuf?.length && prevAfterBuf?.length) {
-        const prevJpeg = await composeTransformationShareCardJpeg({
-          beforeBuffer: prevBeforeBuf,
-          afterBuffer: prevAfterBuf,
-          memberName,
-          beforeWeightKg: previousBeforeWeight,
-          afterWeightKg: previousAfterWeight,
-          goalType: previousGoalType,
-          durationText: previousDurationText,
+      existingPrev = await repo.downloadBuffer(prevSharePath, { retries: 1 });
+    } catch {
+      existingPrev = null;
+    }
+    if (existingPrev?.length > 2000 && await shareCardJpegHasReadableText(existingPrev)) {
+      previousPreviewHref = await repo.getEmailSignedUrl(prevSharePath);
+    } else if (previousCardBeforePath && previousCardAfterPath) {
+      try {
+        const [prevBeforeBuf, prevAfterBuf] = await Promise.all([
+          repo.downloadBuffer(previousCardBeforePath, { retries: 2 }),
+          repo.downloadBuffer(previousCardAfterPath, { retries: 2 }),
+        ]);
+        if (prevBeforeBuf?.length && prevAfterBuf?.length) {
+          const prevJpeg = await composeTransformationShareCardJpeg({
+            beforeBuffer: prevBeforeBuf,
+            afterBuffer: prevAfterBuf,
+            memberName,
+            beforeWeightKg: previousBeforeWeight,
+            afterWeightKg: previousAfterWeight,
+            goalType: previousGoalType,
+            durationText: previousDurationText,
+            recoveredHealthIssues: previousRecoveredHealthIssues,
+          });
+          if (prevJpeg?.length > 2000 && await shareCardJpegHasReadableText(prevJpeg)) {
+            await repo.uploadBuffer(prevSharePath, prevJpeg, 'image/jpeg');
+            previousPreviewHref = await repo.getEmailSignedUrl(prevSharePath);
+          } else {
+            logger.warn('[testimonials.service] Previous compose rejected (missing or □ text)', {
+              userId,
+              bytes: prevJpeg?.length || 0,
+            });
+          }
+        }
+      } catch (err) {
+        logger.warn('[testimonials.service] Could not compose Previous share card for preview', {
+          userId,
+          message: err?.message || String(err),
         });
-        await repo.uploadBuffer(
-          repo.previousShareCardStoragePath(userId),
-          prevJpeg,
-          'image/jpeg',
-        );
-        previousPreviewHref = await repo.getEmailSignedUrl(repo.previousShareCardStoragePath(userId));
       }
-    } catch (err) {
-      logger.warn('[testimonials.service] Could not compose Previous share card for preview', {
+    }
+    if (!previousPreviewHref) {
+      logger.warn('[testimonials.service] Previous tap-preview unavailable (no readable full card)', {
         userId,
-        message: err?.message || String(err),
+        hadArchive: Boolean(existingPrev?.length),
       });
-      previousPreviewHref = previousAfterHref;
+    }
+  }
+
+  // New tap-preview: only the real share-card object (not After-only).
+  let currentPreviewHref = null;
+  if (userId && currentSharePreviewHref) {
+    try {
+      const currentSharePath = repo.shareCardStoragePath(userId);
+      const currentShareBuf = await repo.downloadBuffer(currentSharePath, { retries: 1 });
+      if (currentShareBuf?.length > 2000) {
+        currentPreviewHref = currentSharePreviewHref;
+      }
+    } catch {
+      currentPreviewHref = null;
     }
   }
 
@@ -1624,8 +1659,8 @@ async function sendUnifiedCoachEmail({
     // Outer thumbs = Before|After photos; full card only via tap-preview href.
     previousCardImageUrl: null,
     currentCardImageUrl: null,
-    previousPreviewHref: previousPreviewHref || previousAfterHref,
-    currentPreviewHref: currentSharePreviewHref || currentAfterHref,
+    previousPreviewHref,
+    currentPreviewHref,
     healthVideoUrl,
     businessVideoUrl,
     recoveredHealthIssues: recoveredHealthIssues ?? [],
@@ -1653,7 +1688,7 @@ async function sendUnifiedCoachEmail({
     memberName,
     changedSlots,
     hasPhotoCompare,
-    hasCurrentSharePreview: Boolean(currentSharePreviewHref),
+    hasCurrentSharePreview: Boolean(currentPreviewHref),
     hasPreviousSharePreview: Boolean(previousPreviewHref),
   });
 }
@@ -1950,6 +1985,7 @@ export async function submitAllEdits(rawBody) {
       afterWeightKg: photoUpdates.afterWeightKg ?? existing.after_weight_kg,
       goalType: photoUpdates.goalType ?? existing.goal_type,
       durationText: resolvedDuration,
+      recoveredHealthIssues: resolvedHealthIssues,
     });
     await sendUnifiedCoachEmail({
       coachEmail:             coachInfo.email,

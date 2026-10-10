@@ -1108,9 +1108,11 @@ export default function TestimonialsHub({ userId, focusOnly = null, onFocusClose
             />
             <div className="flex-1 min-w-0 space-y-0.5">
               <p className="text-xs font-semibold text-gray-700">After: {existing?.afterWeightKg} kg</p>
-              {existing?.beforeWeightKg && existing?.afterWeightKg && (
+              {existing?.beforeWeightKg && existing?.afterWeightKg
+                && Number(existing.afterWeightKg) !== Number(existing.beforeWeightKg) && (
                 <p className="text-xs text-gray-500">
-                  Δ {Math.abs(existing.afterWeightKg - existing.beforeWeightKg).toFixed(1)} kg {existing.goalType === 'loss' ? '⬇️' : '⬆️'}
+                  Δ {Math.abs(existing.afterWeightKg - existing.beforeWeightKg).toFixed(1)} kg{' '}
+                  {Number(existing.afterWeightKg) < Number(existing.beforeWeightKg) ? '⬇️' : '⬆️'}
                 </p>
               )}
             </div>

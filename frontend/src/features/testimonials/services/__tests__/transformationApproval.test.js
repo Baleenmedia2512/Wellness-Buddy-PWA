@@ -7,6 +7,7 @@ import {
   isUsableDurationText,
   isPlaceholderDurationText,
   liveWeightDiffKg,
+  isTransformationWeightLoss,
   canShareTransformationPhoto,
   hasApprovalReadyBeforePhoto,
   hasStoredTransformationPhotoCard,
@@ -28,6 +29,14 @@ describe('liveWeightDiffKg', () => {
     assert.equal(liveWeightDiffKg(75, 73), '2.0');
     assert.equal(liveWeightDiffKg(75, 75), null);
     assert.equal(liveWeightDiffKg(75, null), null);
+  });
+});
+
+describe('isTransformationWeightLoss', () => {
+  it('follows real delta even when goalType would say gain', () => {
+    assert.equal(isTransformationWeightLoss(90.9, 60.8), true);
+    assert.equal(isTransformationWeightLoss(60, 70), false);
+    assert.equal(isTransformationWeightLoss(75, 75), null);
   });
 });
 

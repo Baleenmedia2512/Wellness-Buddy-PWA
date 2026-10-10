@@ -84,4 +84,51 @@ describe('parameterContributions', () => {
     expect(view.breakdown.length).toBeGreaterThan(0);
     expect(view.unit).toBe('g');
   });
+
+  test('multi-day nutrient view labels period and includes meal dates', () => {
+    const multiDayMeals = [
+      {
+        CreatedAt: '2026-07-20T08:00:00',
+        AnalysisData: {
+          foods: [{ name: 'Oats', nutrition: { calories: 150 } }],
+        },
+      },
+      {
+        CreatedAt: '2026-07-24T13:22:21',
+        AnalysisData: {
+          foods: [{ name: 'Chicken', nutrition: { calories: 200 } }],
+        },
+      },
+    ];
+    const view = buildParameterContributionView({
+      parameter: {
+        key: 'calories',
+        label: 'Calories',
+        earnedPoints: 6.7,
+        maxPoints: 10,
+      },
+      meals: multiDayMeals,
+      periodDayCount: 10,
+    });
+    expect(view.listLabel).toBe('Top contributing foods over 10 days');
+    expect(view.earnedPoints).toBe(6.7);
+    expect(view.breakdown).toHaveLength(2);
+    expect(view.breakdown[0].foodName).toBe('Chicken');
+    expect(view.breakdown[0].detail).toBe('2026-07-24');
+    expect(view.breakdown[1].detail).toBe('2026-07-20');
+  });
+
+  test('extractNutrientContributions includeDateDetail attaches CreatedAt date', () => {
+    const { breakdown } = extractNutrientContributions(
+      [{
+        CreatedAt: '2026-07-21 09:15:00',
+        AnalysisData: {
+          foods: [{ name: 'Banana', nutrition: { calories: 90 } }],
+        },
+      }],
+      'calories',
+      { includeDateDetail: true },
+    );
+    expect(breakdown[0].detail).toBe('2026-07-21');
+  });
 });

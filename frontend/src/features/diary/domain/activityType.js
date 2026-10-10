@@ -15,10 +15,31 @@ export const DIARY_FOOD_ACTIVITY = Object.freeze({
   TARGET_NUTRITION: 'target_nutrition',
 });
 
-/** Meal badges apply only to real food + meal shakes (not water / afresh / Target Nutrition). */
-export function shouldShowMealBadge(activityType) {
-  return activityType === DIARY_FOOD_ACTIVITY.FOOD
+/**
+ * Meal badges apply only to real food + meal shakes (not water / afresh / Target Nutrition).
+ * Weight Loss mode: Dinner badge only for shakes (regular food does not earn dinner credit).
+ *
+ * @param {string} activityType
+ * @param {{ mealLabel?: string|null, mealCategory?: string|null, weightGoalMode?: string|null }} [opts]
+ */
+export function shouldShowMealBadge(activityType, {
+  mealLabel = null,
+  mealCategory = null,
+  weightGoalMode = null,
+} = {}) {
+  const isMealActivity = activityType === DIARY_FOOD_ACTIVITY.FOOD
     || activityType === DIARY_FOOD_ACTIVITY.SHAKE;
+  if (!isMealActivity) return false;
+
+  // Default matches wellness-score dinner_post (missing → loss).
+  const mode = String(weightGoalMode || 'loss').toLowerCase().trim();
+  const category = String(mealCategory || '').toLowerCase().trim();
+  const label = String(mealLabel || '').toLowerCase().trim();
+  const isDinner = category === 'dinner' || label === 'dinner';
+  if (isDinner && mode === 'loss' && activityType !== DIARY_FOOD_ACTIVITY.SHAKE) {
+    return false;
+  }
+  return true;
 }
 
 /**
@@ -300,10 +321,10 @@ export function extractShakeServings(foodData, analysisData = null) {
 
 /**
  * Per-product scoop counts from a shake calculator save
- * ({ formula1, shakemate, protein }), or null when missing.
+ * ({ formula1, shakemate, protein, activeFibre }), or null when missing.
  * @param {{ detailedItems?: object[], shakeProducts?: object }|null} foodData
  * @param {unknown} [analysisData]
- * @returns {{ formula1: number, shakemate: number, protein: number }|null}
+ * @returns {{ formula1: number, shakemate: number, protein: number, activeFibre: number }|null}
  */
 export function extractShakeProducts(foodData, analysisData = null) {
   const candidates = [
@@ -328,11 +349,13 @@ function normalizeShakeProducts(products) {
   const formula1 = Number(products.formula1);
   const shakemate = Number(products.shakemate);
   const protein = Number(products.protein);
-  if (![formula1, shakemate, protein].some((n) => Number.isFinite(n))) return null;
+  const activeFibre = Number(products.activeFibre);
+  if (![formula1, shakemate, protein, activeFibre].some((n) => Number.isFinite(n))) return null;
   return {
     formula1: Math.max(0, Math.round(formula1) || 0),
     shakemate: Math.max(0, Math.round(shakemate) || 0),
     protein: Math.max(0, Math.round(protein) || 0),
+    activeFibre: Math.max(0, Math.round(activeFibre) || 0),
   };
 }
 

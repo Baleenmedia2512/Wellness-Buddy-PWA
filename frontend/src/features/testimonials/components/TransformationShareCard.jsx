@@ -34,6 +34,7 @@ import {
   issueColumnsForCount,
   shareCardPhotoHeight,
 } from '../utils/shareCardLayout.js';
+import { isTransformationWeightLoss } from '../services/testimonialFormUtils.js';
 
 export { CARD_H, CARD_W };
 
@@ -82,17 +83,50 @@ const RESULT_BURST_RIGHT_SRC = svgDataUri(
   + '</svg>',
 );
 
+function escapeSvgText(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
+/**
+ * Result pill as SVG so html2canvas centers the label (DOM span padding was
+ * left-shifted — font metrics made the blue box wider than the glyphs).
+ */
+function buildResultPillSrc(label) {
+  const text = String(label || '').replace(/\s+/g, ' ').trim();
+  if (!text) return '';
+  const padX = 18;
+  // Bold 15px Arial advance ≈ 0.62em; keep a small safety margin.
+  const textW = Math.ceil(text.length * 9.2);
+  const w = Math.max(120, textW + padX * 2);
+  const h = 30;
+  const midY = 20;
+  return svgDataUri(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">`
+    + `<rect x="0" y="0" width="${w}" height="${h}" rx="15" ry="15" fill="${PILL_BG}"/>`
+    + `<text x="${w / 2}" y="${midY}" text-anchor="middle" `
+    + 'font-family="Arial, Helvetica, sans-serif" font-size="15" font-weight="800" '
+    + `fill="${PILL_BLUE}">${escapeSvgText(text)}</text>`
+    + '</svg>',
+  );
+}
+
 /**
  * Compact disclaimer footer as one SVG so html2canvas always paints the text
  * (nested DOM text inside yellow inline-block was blank in the share bitmap).
+ * Height must stay in sync with DISCLAIMER_H in shareCardLayout.js.
  */
 const DISCLAIMER_FOOTER_SRC = svgDataUri(
-  '<svg xmlns="http://www.w3.org/2000/svg" width="420" height="105" viewBox="0 0 420 105">' +
-  '<rect x="8" y="6" width="404" height="93" rx="14" ry="14" fill="#fff" stroke="#dc2626" stroke-width="3"/>' +
-  '<text x="210" y="28" text-anchor="middle" font-family="Arial Black, Arial, Helvetica, sans-serif" font-size="15" font-weight="900" fill="#dc2626">DISCLAIMER</text>' +
-  '<line x1="45" y1="36" x2="375" y2="36" stroke="#dc2626" stroke-width="1.5"/>' +
-  '<text x="210" y="57" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="11" font-weight="600" fill="#000000">The views expressed are that of individuals.</text>' +
-  '<text x="210" y="75" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="11" font-weight="600" fill="#000000">These products are not intended to diagnose, treat or cure any disease.</text>' +
+  '<svg xmlns="http://www.w3.org/2000/svg" width="420" height="88" viewBox="0 0 420 88">' +
+  '<rect x="8" y="4" width="404" height="80" rx="12" ry="12" fill="#fff" stroke="#dc2626" stroke-width="3"/>' +
+  '<text x="210" y="24" text-anchor="middle" font-family="Arial Black, Arial, Helvetica, sans-serif" font-size="14" font-weight="900" fill="#dc2626">DISCLAIMER</text>' +
+  '<line x1="45" y1="30" x2="375" y2="30" stroke="#dc2626" stroke-width="1.5"/>' +
+  '<text x="210" y="50" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="11" font-weight="600" fill="#000000">The views expressed are that of individuals.</text>' +
+  '<text x="210" y="68" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="11" font-weight="600" fill="#000000">These products are not intended to diagnose, treat or cure any disease.</text>' +
   '</svg>'
 );
 
@@ -177,7 +211,9 @@ export async function captureTransformationCardAsBlob(el) {
       await document.fonts.ready;
       if (document.fonts.load) {
         await Promise.all([
+          document.fonts.load('800 15px Poppins'),
           document.fonts.load('800 20px Poppins'),
+          document.fonts.load('700 14px Poppins'),
           document.fonts.load('40px Pacifico'),
         ]);
       }
@@ -562,17 +598,17 @@ function HealthIssueChip({ label, widthPct }) {
         style={{
           display: 'block',
           width: '100%',
-          minHeight: 28,
-          padding: '6px 8px',
+          minHeight: 36,
+          padding: '8px 8px',
           boxSizing: 'border-box',
           border: '1.5px solid #f9a8d4',
           borderRadius: 8,
           background: '#ffffff',
           color: '#4b5563',
           fontFamily: CARD_FONT,
-          fontSize: 9.5,
+          fontSize: 14,
           fontWeight: 700,
-          lineHeight: '12px',
+          lineHeight: '18px',
           textAlign: 'center',
           overflowWrap: 'anywhere',
         }}
@@ -596,12 +632,12 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
   const beforeSrc = testimonial?.beforeImageUrl || null;
   const afterSrc = testimonial?.afterImageUrl || null;
   const showPhotoRow = Boolean(beforeSrc || afterSrc || bw > 0 || aw > 0);
-  const diff = (bw > 0 && aw > 0) ? Math.abs(aw - bw).toFixed(1) : null;
+  const isLoss = isTransformationWeightLoss(bw, aw);
+  const diff = isLoss == null ? null : Math.abs(aw - bw).toFixed(1);
   const isVerified = testimonial?.status === 'verified';
-  const isLoss = testimonial?.goalType !== 'gain';
-  const verb = isLoss ? 'Lost' : 'Gained';
+  const verb = isLoss === false ? 'Gained' : 'Lost';
   const issues = (testimonial?.recoveredHealthIssues ?? []).filter(Boolean).slice(0, MAX_VISIBLE_ISSUES);
-  const durationText = testimonial?.durationText || '';
+  const durationText = String(testimonial?.durationText || '').trim();
   const displayName = String(userName || 'Customer').trim() || 'Customer';
   const issuesPerRow = issueColumnsForCount(issues.length);
   const chipWidthPct = issuesPerRow > 0 ? 100 / issuesPerRow : 100;
@@ -609,6 +645,11 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
     issueCount: issues.length,
     hasResultPill: Boolean(diff),
   });
+  // Single trimmed label — SVG pill keeps it optically centered in the capture.
+  const resultPillLabel = diff
+    ? [verb, `${diff} kgs`, durationText ? `in ${durationText}` : null].filter(Boolean).join(' ')
+    : '';
+  const resultPillSrc = resultPillLabel ? buildResultPillSrc(resultPillLabel) : '';
 
   return (
     <div
@@ -734,50 +775,52 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
         cellSpacing={0}
       >
         <tbody>
-          {diff ? (
+          {diff && resultPillSrc ? (
             <tr>
-              <td style={{ textAlign: 'center', padding: '8px 16px 2px', verticalAlign: 'top' }}>
+              <td
+                align="center"
+                style={{
+                  padding: '8px 0 2px',
+                  verticalAlign: 'top',
+                  textAlign: 'center',
+                  fontSize: 0,
+                }}
+              >
                 <img
                   src={RESULT_BURST_LEFT_SRC}
                   alt=""
                   aria-hidden="true"
+                  width={32}
+                  height={24}
                   style={{
                     display: 'inline-block',
                     width: 32,
                     height: 24,
-                    marginRight: 3,
+                    marginRight: 6,
                     verticalAlign: 'middle',
                   }}
                 />
-                <span
+                <img
+                  src={resultPillSrc}
+                  alt={resultPillLabel}
                   style={{
                     display: 'inline-block',
-                    background: PILL_BG,
-                    borderRadius: 18,
-                    padding: '5px 16px',
-                    lineHeight: '18px',
-                    fontFamily: CARD_FONT,
-                    fontSize: 15,
-                    fontWeight: 800,
-                    color: PILL_BLUE,
+                    height: 30,
+                    width: 'auto',
                     verticalAlign: 'middle',
                   }}
-                >
-                  {verb}
-                  {' '}
-                  {diff}
-                  {' kgs'}
-                  {durationText ? ` in ${durationText}` : ''}
-                </span>
+                />
                 <img
                   src={RESULT_BURST_RIGHT_SRC}
                   alt=""
                   aria-hidden="true"
+                  width={32}
+                  height={24}
                   style={{
                     display: 'inline-block',
                     width: 32,
                     height: 24,
-                    marginLeft: 3,
+                    marginLeft: 6,
                     verticalAlign: 'middle',
                   }}
                 />
@@ -811,7 +854,7 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
                   </p>
                   <p
                     style={{
-                      margin: '0 0 2px',
+                      margin: '0 0 10px',
                       fontSize: 9,
                       fontWeight: 500,
                       fontStyle: 'italic',
@@ -820,9 +863,9 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
                       textAlign: 'center',
                     }}
                   >
-                    while joining in the community
+                    while joining the community
                   </p>
-                  <div style={{ textAlign: 'center', fontSize: 0 }}>
+                  <div style={{ textAlign: 'center', fontSize: 0, paddingBottom: 6 }}>
                     {issues.map((issue) => (
                       <HealthIssueChip
                         key={issue}
@@ -845,8 +888,8 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
       
       <div
         style={{
-          marginTop: 20,
-          padding: '12px 24px 20px',
+          marginTop: 8,
+          padding: '4px 18px 10px',
           textAlign: 'center',
           width: '100%',
           boxSizing: 'border-box',
@@ -857,8 +900,9 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
           alt="Disclaimer: The views expressed are those of individuals. These products are not intended to diagnose, treat or cure any disease."
           style={{
             display: 'block',
-            width: 'min(100%, 460px)',
-            height: 'auto',
+            width: 420,
+            maxWidth: '100%',
+            height: 88,
             margin: '0 auto',
           }}
         />

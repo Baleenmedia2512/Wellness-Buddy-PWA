@@ -7,6 +7,11 @@
  * Use ASCII-only copy and explicit charset in nodemailer sendMail().
  */
 
+import {
+  isTransformationWeightLoss,
+  transformationWeightVerb,
+} from './domain/transformationWeightDirection.js';
+
 function escapeHtml(value) {
   return String(value ?? '')
     .replace(/&/g, '&amp;')
@@ -42,23 +47,23 @@ function weightChangeKg(beforeWeight, afterWeight) {
   return Math.abs(Number(afterWeight) - Number(beforeWeight));
 }
 
-function buildProgressSentence(memberName, goalType, beforeWeight, afterWeight, durationText) {
+function buildProgressSentence(memberName, _goalType, beforeWeight, afterWeight, durationText) {
   const weightStr = formatWeight(weightChangeKg(beforeWeight, afterWeight));
-  const verb = goalType === 'loss' ? 'lost' : 'gained';
+  const verb = transformationWeightVerb(beforeWeight, afterWeight, { capitalize: false }) || 'changed';
   return `${escapeHtml(memberName)} has ${verb} ${weightStr} kg in ${escapeHtml(durationText)}.`;
 }
 
-function buildProgressSentencePlain(memberName, goalType, beforeWeight, afterWeight, durationText) {
+function buildProgressSentencePlain(memberName, _goalType, beforeWeight, afterWeight, durationText) {
   const n = weightChangeKg(beforeWeight, afterWeight);
   const weightStr = n % 1 === 0 ? String(n) : n.toFixed(1);
-  const verb = goalType === 'loss' ? 'lost' : 'gained';
+  const verb = transformationWeightVerb(beforeWeight, afterWeight, { capitalize: false }) || 'changed';
   return `${memberName} has ${verb} ${weightStr} kg in ${durationText}.`;
 }
 
 /** Progress sentence as a rounded pill (matches recovered-issue chips). */
 function buildProgressPill(memberName, goalType, beforeWeight, afterWeight, durationText) {
   const text = buildProgressSentence(memberName, goalType, beforeWeight, afterWeight, durationText);
-  const isLoss = goalType === 'loss';
+  const isLoss = isTransformationWeightLoss(beforeWeight, afterWeight) !== false;
   const bg = isLoss ? '#ecfdf5' : '#eff6ff';
   const border = isLoss ? '#a7f3d0' : '#bfdbfe';
   const color = isLoss ? '#047857' : '#1d4ed8';
@@ -242,11 +247,16 @@ function buildCompactTransformationPreview({
       </tr>
       <tr>
         <td align="center" style="padding:0 6px 8px 6px;">
-          <p style="margin:0;color:#9ca3af;font-size:9px;font-family:Arial,Helvetica,sans-serif;">Tap for full Transformation Card</p>
+          <p style="margin:0;color:#9ca3af;font-size:9px;font-family:Arial,Helvetica,sans-serif;">${
+            (previewHref && /^https?:\/\//i.test(String(previewHref)))
+              ? 'Tap for full Transformation Card'
+              : 'Before &amp; After preview'
+          }</p>
         </td>
       </tr>
     </table>`;
 
+  // Only link when we have a real full-card JPEG — never a lone After photo.
   if (previewHref && /^https?:\/\//i.test(String(previewHref))) {
     return `
       <a href="${escapeHtml(previewHref)}" target="_blank" rel="noopener noreferrer"
@@ -353,9 +363,8 @@ export function buildTransformationCardEmailBlock({
   const durationSafe = String(durationText ?? '').trim();
   const bw = Number(beforeWeight);
   const aw = Number(afterWeight);
-  const canProgress = Number.isFinite(bw) && Number.isFinite(aw) && durationSafe && durationSafe !== '—';
-  const isLoss = goalType !== 'gain';
-  const verb = isLoss ? 'Lost' : 'Gained';
+  const verb = transformationWeightVerb(bw, aw);
+  const canProgress = Boolean(verb) && durationSafe && durationSafe !== '—';
   const diffKg = canProgress ? formatWeight(Math.abs(aw - bw)) : '';
   const progressText = canProgress
     ? `${verb} ${diffKg} kgs${durationSafe ? ` in ${escapeHtml(durationSafe)}` : ''}`
@@ -364,7 +373,7 @@ export function buildTransformationCardEmailBlock({
     ? recoveredHealthIssues.map((i) => String(i ?? '').trim()).filter(Boolean).slice(0, 10)
     : [];
   const issuePills = issues.map((issue) => (
-    `<span style="display:inline-block;margin:3px 3px 0 0;padding:4px 8px;background-color:#ffffff;border:1px solid #f9a8d4;border-radius:9999px;color:#9f1239;font-size:10px;font-weight:600;font-family:Arial,Helvetica,sans-serif;line-height:1.3;">${escapeHtml(issue)}</span>`
+    `<span style="display:inline-block;margin:3px 3px 0 0;padding:6px 11px;background-color:#ffffff;border:1px solid #f9a8d4;border-radius:9999px;color:#9f1239;font-size:14px;font-weight:600;font-family:Arial,Helvetica,sans-serif;line-height:1.3;">${escapeHtml(issue)}</span>`
   )).join('');
 
   return `
@@ -430,8 +439,8 @@ export function buildTransformationCardEmailBlock({
             </tr>
             ${progressText ? `
             <tr>
-              <td align="center" style="padding:0 12px 10px 12px;">
-                <span style="display:inline-block;padding:6px 14px;background-color:#dbeafe;border-radius:9999px;color:#2563eb;font-size:12px;font-weight:800;font-family:Arial,Helvetica,sans-serif;line-height:1.3;">${progressText}</span>
+              <td align="center" style="padding:0 12px 10px 12px;text-align:center;">
+                <span style="display:inline-block;margin:0 auto;padding:6px 14px;background-color:#dbeafe;border-radius:9999px;color:#2563eb;font-size:12px;font-weight:800;font-family:Arial,Helvetica,sans-serif;line-height:1.3;text-align:center;">${progressText}</span>
               </td>
             </tr>` : ''}
             ${issues.length ? `
@@ -441,7 +450,7 @@ export function buildTransformationCardEmailBlock({
                   <tr>
                     <td style="background-color:#fff1f2;border:1px solid #f9a8d4;border-radius:10px;padding:8px 10px;">
                       <p style="margin:0;color:#be185d;font-size:14px;font-weight:700;font-family:Georgia,'Times New Roman',serif;font-style:italic;text-align:center;">Health Issues</p>
-                      <p style="margin:2px 0 6px;color:#9ca3af;font-size:9px;font-style:italic;font-family:Arial,Helvetica,sans-serif;text-align:center;">while joining in the community</p>
+                      <p style="margin:2px 0 10px;color:#9ca3af;font-size:9px;font-style:italic;font-family:Arial,Helvetica,sans-serif;text-align:center;">while joining the community</p>
                       <p style="margin:0;text-align:center;line-height:1.5;">${issuePills}</p>
                     </td>
                   </tr>

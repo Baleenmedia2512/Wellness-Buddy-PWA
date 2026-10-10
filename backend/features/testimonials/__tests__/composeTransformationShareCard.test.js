@@ -4,7 +4,10 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import sharp from 'sharp';
-import { composeTransformationShareCardJpeg } from '../domain/composeTransformationShareCard.js';
+import {
+  composeTransformationShareCardJpeg,
+  shareCardJpegHasReadableText,
+} from '../domain/composeTransformationShareCard.js';
 
 async function solidJpeg(width, height, color) {
   return sharp({
@@ -62,6 +65,50 @@ describe('composeTransformationShareCardJpeg', () => {
       }
     }
     assert.ok(darkText > 30, 'Member name text should render with embedded font');
+
+    // Red DISCLAIMER border must be fully inside the 960px card (not clipped).
+    const discBand = await sharp(jpeg)
+      .extract({ left: 48, top: 850, width: 40, height: 12 })
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    let redBorder = 0;
+    for (let i = 0; i < discBand.data.length; i += discBand.info.channels) {
+      if (discBand.data[i] > 160 && discBand.data[i + 1] < 100 && discBand.data[i + 2] < 100) {
+        redBorder += 1;
+      }
+    }
+    assert.ok(redBorder > 10, 'Disclaimer red border should be visible near the card bottom');
+    assert.equal(await shareCardJpegHasReadableText(jpeg), true);
+  });
+
+  it('draws 14px health-issue chips when issues are provided', async () => {
+    const beforeBuffer = await solidJpeg(200, 300, { r: 200, g: 80, b: 80 });
+    const afterBuffer = await solidJpeg(200, 300, { r: 80, g: 160, b: 80 });
+    const jpeg = await composeTransformationShareCardJpeg({
+      beforeBuffer,
+      afterBuffer,
+      memberName: 'Test Member',
+      beforeWeightKg: 90.9,
+      afterWeightKg: 60.8,
+      durationText: '6 months',
+      recoveredHealthIssues: ['Knee Pain', 'Back Pain', 'Headache'],
+    });
+    const meta = await sharp(jpeg).metadata();
+    assert.equal(meta.width, 540);
+    assert.equal(meta.height, 960);
+    // Pink issues box sits above the disclaimer — sample a mid-card band for pink fill.
+    const issuesBand = await sharp(jpeg)
+      .extract({ left: 40, top: 700, width: 40, height: 40 })
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    let pinkish = 0;
+    for (let i = 0; i < issuesBand.data.length; i += issuesBand.info.channels) {
+      if (issuesBand.data[i] > 220 && issuesBand.data[i + 1] > 200 && issuesBand.data[i + 2] > 210) {
+        pinkish += 1;
+      }
+    }
+    assert.ok(pinkish > 10, 'Health issues pink box should paint above the disclaimer');
+    assert.equal(await shareCardJpegHasReadableText(jpeg), true);
   });
 
   it('rejects missing photo buffers', async () => {

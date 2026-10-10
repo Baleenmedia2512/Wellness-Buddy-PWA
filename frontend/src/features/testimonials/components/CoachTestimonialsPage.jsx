@@ -75,6 +75,7 @@ import {
   validateDurationFields,
   isUsableDurationText,
   liveWeightDiffKg,
+  isTransformationWeightLoss,
   canShareTransformationPhoto,
   hasApprovalReadyBeforePhoto,
   hasStoredTransformationPhotoCard,
@@ -895,11 +896,11 @@ function MemberCard({
     ?? testimonial?.afterWeightKg
     ?? shownBeforeKg;
   const displayAfterKg  = Number(shownAfterKg ?? 0);
-  const displayGoalType = draftBefore?.goalType ?? testimonial?.goalType;
   const displayDuration = draftBefore?.durationText ?? testimonial?.durationText;
   const usableDuration = isUsableDurationText(displayDuration);
   const liveDiff = liveWeightDiffKg(displayBeforeKg, displayAfterKg);
   const diff = liveDiff;
+  const weightIsLoss = isTransformationWeightLoss(displayBeforeKg, displayAfterKg);
 
   const mediaVersion = `${testimonial?.updatedAt ?? testimonial?.id ?? ''}-${mediaEpoch}`;
   const beforeRaw = draftBefore?.previewUrl
@@ -1903,12 +1904,12 @@ function MemberCard({
           {/* "Lost X kgs in Y duration" — uses live draft weights, not persisted hasAfter */}
           {diff && (
             <div className="flex items-center gap-2 flex-wrap">
-              <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold border ${displayGoalType === 'loss' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-blue-50 text-blue-700 border-blue-200'}`}>
-                {displayGoalType === 'loss'
+              <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold border ${weightIsLoss ? 'bg-green-50 text-green-700 border-green-200' : 'bg-blue-50 text-blue-700 border-blue-200'}`}>
+                {weightIsLoss
                   ? <TrendingDown className="h-3 w-3 shrink-0" />
                   : <TrendingUp   className="h-3 w-3 shrink-0" />
                 }
-                {displayGoalType === 'loss' ? 'Lost' : 'Gained'} {diff} kgs
+                {weightIsLoss ? 'Lost' : 'Gained'} {diff} kgs
                 {usableDuration ? ` in ${displayDuration}` : ''}
               </span>
               {editable && (

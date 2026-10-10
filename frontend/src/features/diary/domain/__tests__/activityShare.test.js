@@ -455,6 +455,11 @@ describe('buildDiaryShareSuffix', () => {
 
     expect(buildDiaryShareSuffix('shake', {
       shakeName: 'Herbalife Shake',
+      shakeProducts: { formula1: 3, shakemate: 2, protein: 1, activeFibre: 1 },
+    })).toBe('*Herbalife Shake,*\n*Formula 1: 3 scoops,*\n*Shakemate: 2 scoops,*\n*Personalized Protein: 1 scoop,*\n*Active Fibre Complex: 1 scoop,*');
+
+    expect(buildDiaryShareSuffix('shake', {
+      shakeName: 'Herbalife Shake',
       servings: 1,
     })).toBe('Herbalife Shake, serving 1');
   });
@@ -494,7 +499,13 @@ describe('extractShakeProducts', () => {
         name: 'Herbalife Shake',
         shakeProducts: { formula1: 3, shakemate: 2, protein: 1 },
       }],
-    })).toEqual({ formula1: 3, shakemate: 2, protein: 1 });
+    })).toEqual({ formula1: 3, shakemate: 2, protein: 1, activeFibre: 0 });
+  });
+
+  test('reads Active Fibre Complex scoops when present', () => {
+    expect(extractShakeProducts({
+      shakeProducts: { formula1: 3, shakemate: 2, protein: 1, activeFibre: 2 },
+    })).toEqual({ formula1: 3, shakemate: 2, protein: 1, activeFibre: 2 });
   });
 });
 
@@ -580,6 +591,44 @@ describe('resolveFoodRowPresentation', () => {
     });
     expect(view.activityType).toBe('target_nutrition');
     expect(view.showMealBadge).toBe(false);
+  });
+
+  test('Weight Loss: dinner badge hidden for solid food, shown for shake', () => {
+    const foodView = resolveFoodRowPresentation({
+      foodData: {
+        name: 'Rice',
+        detailedItems: [{ name: 'Rice' }],
+        nutrition: { calories: 200 },
+      },
+      calories: 200,
+      mealLabel: 'Dinner',
+      mealCategory: 'dinner',
+      weightGoalMode: 'loss',
+    });
+    expect(foodView.activityType).toBe('food');
+    expect(foodView.showMealBadge).toBe(false);
+
+    const shakeView = resolveFoodRowPresentation({
+      processedBy: 'shake_calculator',
+      foodData: {
+        name: 'Herbalife Shake',
+        detailedItems: [{ name: 'Herbalife Shake' }],
+        nutrition: { calories: 220 },
+      },
+      calories: 220,
+      mealLabel: 'Dinner',
+      mealCategory: 'dinner',
+      weightGoalMode: 'loss',
+    });
+    expect(shakeView.activityType).toBe('shake');
+    expect(shakeView.showMealBadge).toBe(true);
+  });
+
+  test('Gain mode: dinner badge still shown for solid food', () => {
+    expect(shouldShowMealBadge('food', {
+      mealCategory: 'dinner',
+      weightGoalMode: 'gain',
+    })).toBe(true);
   });
 
   test('food row share caption lists every item and total kcal', () => {
