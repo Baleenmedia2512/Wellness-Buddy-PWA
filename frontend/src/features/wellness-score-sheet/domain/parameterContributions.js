@@ -64,6 +64,17 @@ function extractClock(createdAt) {
   return match ? match[1] : null;
 }
 
+function extractDateYmd(createdAt) {
+  const match = String(createdAt || '').match(/(\d{4}-\d{2}-\d{2})/);
+  return match ? match[1] : null;
+}
+
+function displayPoints(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 0;
+  return Math.round(n * 10) / 10;
+}
+
 function mealDisplayName(analysis) {
   const data = parseAnalysisData(analysis.AnalysisData);
   const foods = data.foods || [];
@@ -94,12 +105,16 @@ export function roundsToZeroDisplay(amount, decimals = 0) {
 }
 
 /**
- * @returns {{ foodName: string, amount: number, percentage: number }[]}
+ * @param {object[]} meals
+ * @param {string} paramKey
+ * @param {{ includeDateDetail?: boolean }} [options]
+ * @returns {{ breakdown: object[], total: number, unit: string, decimals: number }}
  */
-export function extractNutrientContributions(meals, paramKey) {
+export function extractNutrientContributions(meals, paramKey, options = {}) {
   const cfg = NUTRIENT_CONTRIBUTION_MAP[paramKey];
   if (!cfg) return { breakdown: [], total: 0, unit: '', decimals: 0 };
 
+  const includeDateDetail = Boolean(options.includeDateDetail);
   const foods = [];
 
   for (const analysis of meals || []) {
@@ -107,11 +122,16 @@ export function extractNutrientContributions(meals, paramKey) {
     const data = parseAnalysisData(analysis.AnalysisData);
     const foodList = data.foods || [];
     const mealFoods = [];
+    const dateDetail = includeDateDetail ? extractDateYmd(analysis.CreatedAt) : null;
 
     for (const food of foodList) {
       const amount = readNutritionAmount(food.nutrition || {}, cfg.nutritionKeys);
       if (!roundsToZeroDisplay(amount, cfg.decimals)) {
-        mealFoods.push({ foodName: food.name || food.foodName || 'Unknown food', amount });
+        mealFoods.push({
+          foodName: food.name || food.foodName || 'Unknown food',
+          amount,
+          detail: dateDetail || undefined,
+        });
       }
     }
 
@@ -120,7 +140,11 @@ export function extractNutrientContributions(meals, paramKey) {
     } else if (cfg.dbCol) {
       const mealTotal = Number(analysis[cfg.dbCol]) || 0;
       if (!roundsToZeroDisplay(mealTotal, cfg.decimals)) {
-        foods.push({ foodName: mealDisplayName(analysis), amount: mealTotal });
+        foods.push({
+          foodName: mealDisplayName(analysis),
+          amount: mealTotal,
+          detail: dateDetail || undefined,
+        });
       }
     }
   }
@@ -138,14 +162,16 @@ export function extractNutrientContributions(meals, paramKey) {
 
 /**
  * Meals whose CreatedAt clock falls in a logging window.
+ * @param {{ includeDateDetail?: boolean }} [options]
  */
-export function extractMealWindowContributions(meals, parameterKey, timeWindows) {
+export function extractMealWindowContributions(meals, parameterKey, timeWindows, options = {}) {
   const windowKey = PARAMETER_TIME_WINDOW_KEYS[parameterKey];
   const mealWindow = windowKey ? timeWindows?.[windowKey] : null;
   if (!mealWindow?.start || !mealWindow?.end) {
     return { breakdown: [], total: 0, unit: '', listLabel: 'Logs in window' };
   }
 
+  const includeDateDetail = Boolean(options.includeDateDetail);
   const endWithBuffer = addBufferToTime(mealWindow.end);
   const rows = [];
 
@@ -154,9 +180,11 @@ export function extractMealWindowContributions(meals, parameterKey, timeWindows)
     const time = extractClock(analysis.CreatedAt);
     if (!time || time < mealWindow.start || time > endWithBuffer) continue;
     const clockLabel = formatClockTime(time) || time;
+    const dateYmd = includeDateDetail ? extractDateYmd(analysis.CreatedAt) : null;
+    const detail = dateYmd ? `${dateYmd} · ${clockLabel}` : clockLabel;
     rows.push({
       foodName: mealDisplayName(analysis),
-      detail: clockLabel,
+      detail,
       amount: 1,
       amountLabel: clockLabel,
     });
@@ -182,17 +210,22 @@ export function extractMealWindowContributions(meals, parameterKey, timeWindows)
 
 /**
  * GI: one row per meal with a GI value.
+ * @param {{ includeDateDetail?: boolean }} [options]
  */
-export function extractGiContributions(meals) {
+export function extractGiContributions(meals, options = {}) {
+  const includeDateDetail = Boolean(options.includeDateDetail);
   const rows = [];
   for (const analysis of meals || []) {
     if (analysis?.isUndoPlaceholder) continue;
     const gi = Number(analysis.GlycemicIndex);
     if (!Number.isFinite(gi) || gi <= 0) continue;
     const time = extractClock(analysis.CreatedAt);
+    const clockLabel = time ? formatClockTime(time) : null;
+    const dateYmd = includeDateDetail ? extractDateYmd(analysis.CreatedAt) : null;
+    const detail = [dateYmd, clockLabel].filter(Boolean).join(' · ') || null;
     rows.push({
       foodName: mealDisplayName(analysis),
-      detail: time ? formatClockTime(time) : null,
+      detail,
       amount: gi,
       percentage: 0,
     });
@@ -221,13 +254,23 @@ export function extractGiContributions(meals) {
  *   parameter: object,
  *   meals?: object[],
  *   timeWindows?: object|null,
+ *   periodDayCount?: number,
  * }} args
  */
-export function buildParameterContributionView({ parameter, meals = [], timeWindows = null }) {
+export function buildParameterContributionView({
+  parameter,
+  meals = [],
+  timeWindows = null,
+  periodDayCount = 1,
+}) {
   const key = parameter?.key;
-  const earned = Math.round(parameter?.earnedPoints ?? 0);
-  const max = Math.round(parameter?.maxPoints ?? 0);
+  const earned = displayPoints(parameter?.earnedPoints ?? 0);
+  const max = displayPoints(parameter?.maxPoints ?? 0);
   const meta = getParameterMeta(key);
+  const isMultiDay = Number(periodDayCount) > 1;
+  const foodsListLabel = isMultiDay
+    ? `Top contributing foods over ${periodDayCount} days`
+    : 'Top contributing foods';
   const base = {
     key,
     title: meta?.label || parameter?.label || key,
@@ -236,7 +279,7 @@ export function buildParameterContributionView({ parameter, meals = [], timeWind
     percentage: max > 0 ? Math.round((earned / max) * 100) : 0,
     calculationReason: parameter?.calculationReason || null,
     scoringMode: parameter?.scoringMode || null,
-    listLabel: 'Top contributing foods',
+    listLabel: foodsListLabel,
     emptyHint: 'No contributing foods logged',
     unit: '',
     totalConsumed: null,
@@ -247,37 +290,48 @@ export function buildParameterContributionView({ parameter, meals = [], timeWind
 
   if (!key) return base;
 
+  const detailOpts = { includeDateDetail: isMultiDay };
+
   if (NUTRIENT_CONTRIBUTION_MAP[key]) {
-    const { breakdown, total, unit, decimals } = extractNutrientContributions(meals, key);
+    const { breakdown, total, unit, decimals } = extractNutrientContributions(
+      meals,
+      key,
+      detailOpts,
+    );
     return {
       ...base,
       breakdown,
       totalConsumed: total,
       unit,
       decimals,
-      listLabel: 'Top contributing foods',
+      listLabel: foodsListLabel,
       emptyHint: 'No foods logged for this nutrient',
     };
   }
 
   if (key === 'gi') {
-    const gi = extractGiContributions(meals);
+    const gi = extractGiContributions(meals, detailOpts);
     return {
       ...base,
       ...gi,
       totalConsumed: gi.total,
       showAmountPercent: false,
+      listLabel: isMultiDay
+        ? `Meals by glycemic index over ${periodDayCount} days`
+        : gi.listLabel,
     };
   }
 
   if (MEAL_POST_KEYS.has(key)) {
-    const meal = extractMealWindowContributions(meals, key, timeWindows);
+    const meal = extractMealWindowContributions(meals, key, timeWindows, detailOpts);
     return {
       ...base,
       breakdown: meal.breakdown,
       totalConsumed: meal.total,
       unit: meal.unit,
-      listLabel: meal.listLabel,
+      listLabel: isMultiDay
+        ? `${meal.listLabel} over ${periodDayCount} days`
+        : meal.listLabel,
       emptyHint: meal.emptyHint,
       showAmountPercent: false,
       amountIsLabel: true,
