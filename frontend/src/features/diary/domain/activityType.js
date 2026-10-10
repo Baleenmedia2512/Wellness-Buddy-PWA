@@ -300,10 +300,10 @@ export function extractShakeServings(foodData, analysisData = null) {
 
 /**
  * Per-product scoop counts from a shake calculator save
- * ({ formula1, shakemate, protein }), or null when missing.
+ * ({ formula1, shakemate, protein, activeFibre }), or null when missing.
  * @param {{ detailedItems?: object[], shakeProducts?: object }|null} foodData
  * @param {unknown} [analysisData]
- * @returns {{ formula1: number, shakemate: number, protein: number }|null}
+ * @returns {{ formula1: number, shakemate: number, protein: number, activeFibre: number }|null}
  */
 export function extractShakeProducts(foodData, analysisData = null) {
   const candidates = [
@@ -328,11 +328,13 @@ function normalizeShakeProducts(products) {
   const formula1 = Number(products.formula1);
   const shakemate = Number(products.shakemate);
   const protein = Number(products.protein);
-  if (![formula1, shakemate, protein].some((n) => Number.isFinite(n))) return null;
+  const activeFibre = Number(products.activeFibre);
+  if (![formula1, shakemate, protein, activeFibre].some((n) => Number.isFinite(n))) return null;
   return {
     formula1: Math.max(0, Math.round(formula1) || 0),
     shakemate: Math.max(0, Math.round(shakemate) || 0),
     protein: Math.max(0, Math.round(protein) || 0),
+    activeFibre: Math.max(0, Math.round(activeFibre) || 0),
   };
 }
 

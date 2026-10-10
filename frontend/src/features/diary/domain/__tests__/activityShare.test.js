@@ -455,6 +455,11 @@ describe('buildDiaryShareSuffix', () => {
 
     expect(buildDiaryShareSuffix('shake', {
       shakeName: 'Herbalife Shake',
+      shakeProducts: { formula1: 3, shakemate: 2, protein: 1, activeFibre: 1 },
+    })).toBe('*Herbalife Shake,*\n*Formula 1: 3 scoops,*\n*Shakemate: 2 scoops,*\n*Personalized Protein: 1 scoop,*\n*Active Fibre Complex: 1 scoop,*');
+
+    expect(buildDiaryShareSuffix('shake', {
+      shakeName: 'Herbalife Shake',
       servings: 1,
     })).toBe('Herbalife Shake, serving 1');
   });
@@ -494,7 +499,13 @@ describe('extractShakeProducts', () => {
         name: 'Herbalife Shake',
         shakeProducts: { formula1: 3, shakemate: 2, protein: 1 },
       }],
-    })).toEqual({ formula1: 3, shakemate: 2, protein: 1 });
+    })).toEqual({ formula1: 3, shakemate: 2, protein: 1, activeFibre: 0 });
+  });
+
+  test('reads Active Fibre Complex scoops when present', () => {
+    expect(extractShakeProducts({
+      shakeProducts: { formula1: 3, shakemate: 2, protein: 1, activeFibre: 2 },
+    })).toEqual({ formula1: 3, shakemate: 2, protein: 1, activeFibre: 2 });
   });
 });
 

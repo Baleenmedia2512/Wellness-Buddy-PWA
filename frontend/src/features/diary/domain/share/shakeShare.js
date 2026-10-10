@@ -15,7 +15,7 @@ function scoopUnit(count) {
 /**
  * Compact scoop breakdown for captions, e.g.
  * "Formula 1: 3 scoops, Shakemate: 2 scoops, Personalized Protein: 1 scoop".
- * @param {{ formula1?: number, shakemate?: number, protein?: number }|null|undefined} products
+ * @param {{ formula1?: number, shakemate?: number, protein?: number, activeFibre?: number }|null|undefined} products
  * @returns {string|null}
  */
 export function formatShakeProductScoops(products) {
@@ -23,10 +23,12 @@ export function formatShakeProductScoops(products) {
   const f1 = Math.max(0, Math.round(Number(products.formula1)) || 0);
   const sm = Math.max(0, Math.round(Number(products.shakemate)) || 0);
   const pp = Math.max(0, Math.round(Number(products.protein)) || 0);
+  const af = Math.max(0, Math.round(Number(products.activeFibre)) || 0);
   if (![
     Number(products.formula1),
     Number(products.shakemate),
     Number(products.protein),
+    Number(products.activeFibre),
   ].some((n) => Number.isFinite(n))) {
     return null;
   }
@@ -34,6 +36,7 @@ export function formatShakeProductScoops(products) {
   if (f1 > 0) lines.push(`Formula 1: ${f1} ${scoopUnit(f1)}`);
   if (sm > 0) lines.push(`Shakemate: ${sm} ${scoopUnit(sm)}`);
   if (pp > 0) lines.push(`Personalized Protein: ${pp} ${scoopUnit(pp)}`);
+  if (af > 0) lines.push(`Active Fibre Complex: ${af} ${scoopUnit(af)}`);
   return lines.length > 0 ? lines.join(', ') : null;
 }
 
@@ -41,7 +44,7 @@ export function formatShakeProductScoops(products) {
  * @param {{
  *   shakeName?: string|null,
  *   servings?: number|null,
- *   shakeProducts?: { formula1?: number, shakemate?: number, protein?: number }|null,
+ *   shakeProducts?: { formula1?: number, shakemate?: number, protein?: number, activeFibre?: number }|null,
  * }} input
  * @returns {string}
  */
