@@ -1560,8 +1560,8 @@ async function sendUnifiedCoachEmail({
     (slots.has('business') && businessVideoPath) ? repo.getEmailSignedUrl(businessVideoPath) : Promise.resolve(null),
   ]);
 
-  // Prefer a readable archived Previous card (usually a client capture).
-  // Recompose when missing or when a prior server render left tofu □ boxes.
+  // Rebuild Previous tap-preview so the result pill matches the New card
+  // (text-sized, centered). Fall back to an archived readable JPEG if compose fails.
   let previousPreviewHref = null;
   if (userId && previousPairDistinct) {
     const prevSharePath = repo.previousShareCardStoragePath(userId);
@@ -1571,12 +1571,7 @@ async function sendUnifiedCoachEmail({
     } catch {
       existingPrev = null;
     }
-    const existingReadable = existingPrev?.length
-      ? await shareCardJpegHasReadableText(existingPrev)
-      : false;
-    if (existingReadable) {
-      previousPreviewHref = await repo.getEmailSignedUrl(prevSharePath);
-    } else if (previousCardBeforePath && previousCardAfterPath) {
+    if (previousCardBeforePath && previousCardAfterPath) {
       try {
         const [prevBeforeBuf, prevAfterBuf] = await Promise.all([
           repo.downloadBuffer(previousCardBeforePath, { retries: 2 }),
@@ -1596,17 +1591,6 @@ async function sendUnifiedCoachEmail({
           if (composedReadable) {
             await repo.uploadBuffer(prevSharePath, prevJpeg, 'image/jpeg');
             previousPreviewHref = await repo.getEmailSignedUrl(prevSharePath);
-          } else if (existingPrev?.length) {
-            // Keep prior bytes rather than publishing a worse tofu card.
-            previousPreviewHref = await repo.getEmailSignedUrl(prevSharePath);
-            logger.warn('[testimonials.service] Previous share card compose still unreadable (tofu)', {
-              userId,
-            });
-          } else {
-            previousPreviewHref = previousAfterHref;
-            logger.warn('[testimonials.service] Previous share card compose unreadable; using After photo', {
-              userId,
-            });
           }
         }
       } catch (err) {
@@ -1614,8 +1598,14 @@ async function sendUnifiedCoachEmail({
           userId,
           message: err?.message || String(err),
         });
-        previousPreviewHref = previousAfterHref;
       }
+    }
+    if (!previousPreviewHref && existingPrev?.length
+      && await shareCardJpegHasReadableText(existingPrev)) {
+      previousPreviewHref = await repo.getEmailSignedUrl(prevSharePath);
+    }
+    if (!previousPreviewHref) {
+      previousPreviewHref = previousAfterHref;
     }
   }
 

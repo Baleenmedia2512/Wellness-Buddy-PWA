@@ -83,6 +83,38 @@ const RESULT_BURST_RIGHT_SRC = svgDataUri(
   + '</svg>',
 );
 
+function escapeSvgText(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
+/**
+ * Result pill as SVG so html2canvas centers the label (DOM span padding was
+ * left-shifted — font metrics made the blue box wider than the glyphs).
+ */
+function buildResultPillSrc(label) {
+  const text = String(label || '').replace(/\s+/g, ' ').trim();
+  if (!text) return '';
+  const padX = 18;
+  // Bold 15px Arial advance ≈ 0.62em; keep a small safety margin.
+  const textW = Math.ceil(text.length * 9.2);
+  const w = Math.max(120, textW + padX * 2);
+  const h = 30;
+  const midY = 20;
+  return svgDataUri(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">`
+    + `<rect x="0" y="0" width="${w}" height="${h}" rx="15" ry="15" fill="${PILL_BG}"/>`
+    + `<text x="${w / 2}" y="${midY}" text-anchor="middle" `
+    + 'font-family="Arial, Helvetica, sans-serif" font-size="15" font-weight="800" '
+    + `fill="${PILL_BLUE}">${escapeSvgText(text)}</text>`
+    + '</svg>',
+  );
+}
+
 /**
  * Compact disclaimer footer as one SVG so html2canvas always paints the text
  * (nested DOM text inside yellow inline-block was blank in the share bitmap).
@@ -179,7 +211,9 @@ export async function captureTransformationCardAsBlob(el) {
       await document.fonts.ready;
       if (document.fonts.load) {
         await Promise.all([
+          document.fonts.load('800 15px Poppins'),
           document.fonts.load('800 20px Poppins'),
+          document.fonts.load('700 12px Poppins'),
           document.fonts.load('40px Pacifico'),
         ]);
       }
@@ -603,7 +637,7 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
   const isVerified = testimonial?.status === 'verified';
   const verb = isLoss === false ? 'Gained' : 'Lost';
   const issues = (testimonial?.recoveredHealthIssues ?? []).filter(Boolean).slice(0, MAX_VISIBLE_ISSUES);
-  const durationText = testimonial?.durationText || '';
+  const durationText = String(testimonial?.durationText || '').trim();
   const displayName = String(userName || 'Customer').trim() || 'Customer';
   const issuesPerRow = issueColumnsForCount(issues.length);
   const chipWidthPct = issuesPerRow > 0 ? 100 / issuesPerRow : 100;
@@ -611,6 +645,11 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
     issueCount: issues.length,
     hasResultPill: Boolean(diff),
   });
+  // Single trimmed label — SVG pill keeps it optically centered in the capture.
+  const resultPillLabel = diff
+    ? [verb, `${diff} kgs`, durationText ? `in ${durationText}` : null].filter(Boolean).join(' ')
+    : '';
+  const resultPillSrc = resultPillLabel ? buildResultPillSrc(resultPillLabel) : '';
 
   return (
     <div
@@ -736,72 +775,55 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
         cellSpacing={0}
       >
         <tbody>
-          {diff ? (
+          {diff && resultPillSrc ? (
             <tr>
-              <td style={{ textAlign: 'center', padding: '8px 16px 2px', verticalAlign: 'top' }}>
-                <table
+              <td
+                align="center"
+                style={{
+                  padding: '8px 0 2px',
+                  verticalAlign: 'top',
+                  textAlign: 'center',
+                  fontSize: 0,
+                }}
+              >
+                <img
+                  src={RESULT_BURST_LEFT_SRC}
+                  alt=""
+                  aria-hidden="true"
+                  width={32}
+                  height={24}
                   style={{
-                    margin: '0 auto',
-                    borderCollapse: 'collapse',
-                    tableLayout: 'auto',
+                    display: 'inline-block',
+                    width: 32,
+                    height: 24,
+                    marginRight: 6,
+                    verticalAlign: 'middle',
                   }}
-                  cellPadding={0}
-                  cellSpacing={0}
-                  align="center"
-                >
-                  <tbody>
-                    <tr>
-                      <td style={{ width: 40, textAlign: 'right', verticalAlign: 'middle', padding: 0, lineHeight: 0 }}>
-                        <img
-                          src={RESULT_BURST_LEFT_SRC}
-                          alt=""
-                          aria-hidden="true"
-                          style={{
-                            display: 'block',
-                            width: 32,
-                            height: 24,
-                            margin: '0 4px 0 auto',
-                          }}
-                        />
-                      </td>
-                      <td style={{ textAlign: 'center', verticalAlign: 'middle', padding: '0 2px', whiteSpace: 'nowrap' }}>
-                        <span
-                          style={{
-                            display: 'inline-block',
-                            background: PILL_BG,
-                            borderRadius: 18,
-                            padding: '5px 16px',
-                            lineHeight: '18px',
-                            fontFamily: CARD_FONT,
-                            fontSize: 15,
-                            fontWeight: 800,
-                            color: PILL_BLUE,
-                            textAlign: 'center',
-                          }}
-                        >
-                          {verb}
-                          {' '}
-                          {diff}
-                          {' kgs'}
-                          {durationText ? ` in ${durationText}` : ''}
-                        </span>
-                      </td>
-                      <td style={{ width: 40, textAlign: 'left', verticalAlign: 'middle', padding: 0, lineHeight: 0 }}>
-                        <img
-                          src={RESULT_BURST_RIGHT_SRC}
-                          alt=""
-                          aria-hidden="true"
-                          style={{
-                            display: 'block',
-                            width: 32,
-                            height: 24,
-                            margin: '0 auto 0 4px',
-                          }}
-                        />
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
+                />
+                <img
+                  src={resultPillSrc}
+                  alt={resultPillLabel}
+                  style={{
+                    display: 'inline-block',
+                    height: 30,
+                    width: 'auto',
+                    verticalAlign: 'middle',
+                  }}
+                />
+                <img
+                  src={RESULT_BURST_RIGHT_SRC}
+                  alt=""
+                  aria-hidden="true"
+                  width={32}
+                  height={24}
+                  style={{
+                    display: 'inline-block',
+                    width: 32,
+                    height: 24,
+                    marginLeft: 6,
+                    verticalAlign: 'middle',
+                  }}
+                />
               </td>
             </tr>
           ) : null}

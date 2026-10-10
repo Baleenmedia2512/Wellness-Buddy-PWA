@@ -166,10 +166,18 @@ export async function composeTransformationShareCardJpeg(opts) {
   const hasDiff = Number.isFinite(bw) && Number.isFinite(aw) && bw > 0 && aw > 0 && bw !== aw;
   const diff = hasDiff ? Math.abs(aw - bw).toFixed(1) : null;
   const verb = transformationWeightVerb(bw, aw);
-  const duration = String(opts.durationText || '').trim();
-  const pill = diff && verb
-    ? `${verb} ${diff} kgs${duration ? ` in ${escapeXml(duration)}` : ''}`
+  const duration = String(opts.durationText || '').replace(/\s+/g, ' ').trim();
+  // Size pill to label (same idea as frontend SVG pill) — fixed 280px left-shifted short text.
+  const pillLabel = diff && verb
+    ? `${verb} ${diff} kgs${duration ? ` in ${duration}` : ''}`
     : '';
+  const pill = pillLabel ? escapeXml(pillLabel) : '';
+  const pillPadX = 18;
+  const pillW = pillLabel
+    ? Math.min(CARD_W - 48, Math.max(140, Math.ceil(pillLabel.length * 9.2) + pillPadX * 2))
+    : 0;
+  const pillH = 30;
+  const pillX = pillW ? Math.round((CARD_W - pillW) / 2) : 0;
   const version = escapeXml(String(opts.appVersionLabel || '').trim());
 
   const beforeX = PHOTO_SIDE_PAD;
@@ -181,6 +189,9 @@ export async function composeTransformationShareCardJpeg(opts) {
   const discW = CARD_W - DISCLAIMER_PAD_X * 2;
   const discH = DISCLAIMER_H - 14;
   const fontCss = cardFontCss();
+  const burstY = pillY + 3;
+  const burstLeftX = Math.max(8, pillX - 40);
+  const burstRightX = Math.min(CARD_W - 40, pillX + pillW + 8);
 
   // Transparent overlay — no full-card white rect (that hid the photos).
   const overlaySvg = Buffer.from(`
@@ -205,8 +216,12 @@ export async function composeTransformationShareCardJpeg(opts) {
       <text x="${beforeX + PHOTO_W / 2}" y="${metaY + 36}" text-anchor="middle" font-size="17" font-weight="700" fill="#111827">${beforeKg} kg</text>
       <text x="${afterX + PHOTO_W / 2}" y="${metaY + 14}" text-anchor="middle" font-size="11" font-weight="700" fill="#9ca3af">AFTER</text>
       <text x="${afterX + PHOTO_W / 2}" y="${metaY + 36}" text-anchor="middle" font-size="17" font-weight="700" fill="#111827">${afterKg} kg</text>
-      ${pill ? `<rect x="${(CARD_W - 280) / 2}" y="${pillY}" width="280" height="32" rx="16" fill="#dbeafe"/>
-      <text x="${CARD_W / 2}" y="${pillY + 21}" text-anchor="middle" font-size="14" font-weight="700" fill="#2563eb">${pill}</text>` : ''}
+      ${pill ? `
+      <path d="M${burstLeftX + 34} ${burstY + 12}H${burstLeftX + 14}M${burstLeftX + 26} ${burstY + 4}L${burstLeftX + 8} ${burstY}M${burstLeftX + 26} ${burstY + 20}L${burstLeftX + 8} ${burstY + 24}" fill="none" stroke="#059669" stroke-width="3.5" stroke-linecap="round"/>
+      <rect x="${pillX}" y="${pillY}" width="${pillW}" height="${pillH}" rx="15" ry="15" fill="#dbeafe"/>
+      <text x="${pillX + pillW / 2}" y="${pillY + 20}" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="15" font-weight="800" fill="#2563eb">${pill}</text>
+      <path d="M${burstRightX} ${burstY + 12}h20M${burstRightX + 8} ${burstY + 4}l18 -4M${burstRightX + 8} ${burstY + 20}l18 4" fill="none" stroke="#059669" stroke-width="3.5" stroke-linecap="round"/>
+      ` : ''}
       <rect x="${DISCLAIMER_PAD_X}" y="${discY}" width="${discW}" height="${discH}" rx="12" ry="12" fill="#ffffff" stroke="#dc2626" stroke-width="3"/>
       <text x="${CARD_W / 2}" y="${discY + 28}" text-anchor="middle" font-size="14" font-weight="700" fill="#dc2626">DISCLAIMER</text>
       <line x1="${DISCLAIMER_PAD_X + 36}" y1="${discY + 36}" x2="${DISCLAIMER_PAD_X + discW - 36}" y2="${discY + 36}" stroke="#dc2626" stroke-width="1.5"/>
