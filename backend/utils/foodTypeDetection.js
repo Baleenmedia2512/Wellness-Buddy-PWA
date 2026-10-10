@@ -357,8 +357,47 @@ function isMealShakeName(name) {
     n.includes('formula1') ||
     n.includes('f1 shake') ||
     n.includes('meal replacement') ||
-    n.includes('protein shake')
+    n.includes('protein shake') ||
+    n.includes('herbalife shake')
   );
+}
+
+/**
+ * True when AnalysisData is a meal shake (calculator save or shake-named items).
+ * @param {string|Object} analysisData
+ * @returns {boolean}
+ */
+function isMealShakeNutrition(analysisData) {
+  try {
+    const parsed = typeof analysisData === 'string' ? JSON.parse(analysisData) : analysisData;
+    if (!parsed) return false;
+    if (getAnalysisProcessedBy(parsed) === 'shake_calculator') return true;
+    const foods = extractFoodItemsFromAnalysis(parsed);
+    if (foods.some((f) => isMealShakeName(getFoodItemName(f)))) return true;
+    return isMealShakeName(parsed?.category?.name);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Whether a nutrition log counts as breakfast / lunch / dinner for scoring.
+ *
+ * Weight Loss mode: dinner points only when a meal shake is logged.
+ * Gain / maintain (and unknown meal slots): same as !isNonMealNutritionOnly.
+ *
+ * @param {string|Object} analysisData
+ * @param {{ mealSlot?: 'breakfast'|'lunch'|'dinner'|string|null, goalMode?: string|null }} [opts]
+ * @returns {boolean}
+ */
+function countsAsMealNutrition(analysisData, { mealSlot = null, goalMode = null } = {}) {
+  if (isNonMealNutritionOnly(analysisData)) return false;
+  const slot = String(mealSlot || '').toLowerCase().trim();
+  const mode = String(goalMode || '').toLowerCase().trim();
+  if (slot === 'dinner' && mode === 'loss') {
+    return isMealShakeNutrition(analysisData);
+  }
+  return true;
 }
 
 /**
@@ -460,6 +499,8 @@ module.exports = {
   isNonMealNutritionOnly,
   isNonMealSupplement,
   isMealShakeName,
+  isMealShakeNutrition,
+  countsAsMealNutrition,
   isExemptedFood,
   isAfreshEnergyDrink,
   extractFoodItemsFromAnalysis,

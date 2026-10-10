@@ -15,10 +15,31 @@ export const DIARY_FOOD_ACTIVITY = Object.freeze({
   TARGET_NUTRITION: 'target_nutrition',
 });
 
-/** Meal badges apply only to real food + meal shakes (not water / afresh / Target Nutrition). */
-export function shouldShowMealBadge(activityType) {
-  return activityType === DIARY_FOOD_ACTIVITY.FOOD
+/**
+ * Meal badges apply only to real food + meal shakes (not water / afresh / Target Nutrition).
+ * Weight Loss mode: Dinner badge only for shakes (regular food does not earn dinner credit).
+ *
+ * @param {string} activityType
+ * @param {{ mealLabel?: string|null, mealCategory?: string|null, weightGoalMode?: string|null }} [opts]
+ */
+export function shouldShowMealBadge(activityType, {
+  mealLabel = null,
+  mealCategory = null,
+  weightGoalMode = null,
+} = {}) {
+  const isMealActivity = activityType === DIARY_FOOD_ACTIVITY.FOOD
     || activityType === DIARY_FOOD_ACTIVITY.SHAKE;
+  if (!isMealActivity) return false;
+
+  // Default matches wellness-score dinner_post (missing → loss).
+  const mode = String(weightGoalMode || 'loss').toLowerCase().trim();
+  const category = String(mealCategory || '').toLowerCase().trim();
+  const label = String(mealLabel || '').toLowerCase().trim();
+  const isDinner = category === 'dinner' || label === 'dinner';
+  if (isDinner && mode === 'loss' && activityType !== DIARY_FOOD_ACTIVITY.SHAKE) {
+    return false;
+  }
+  return true;
 }
 
 /**

@@ -173,7 +173,8 @@ function isMealShakeName(name) {
     || n.includes('formula1')
     || n.includes('f1 shake')
     || n.includes('meal replacement')
-    || n.includes('protein shake');
+    || n.includes('protein shake')
+    || n.includes('herbalife shake');
 }
 
 const NON_MEAL_SUPPLEMENT_PATTERNS = [

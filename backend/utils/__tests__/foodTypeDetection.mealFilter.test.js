@@ -9,6 +9,8 @@ import {
   isNonMealNutritionOnly,
   isNonMealSupplement,
   isMealShakeName,
+  isMealShakeNutrition,
+  countsAsMealNutrition,
 } from '../foodTypeDetection.js';
 
 describe('isMealShakeName', () => {
@@ -16,7 +18,40 @@ describe('isMealShakeName', () => {
     assert.equal(isMealShakeName('Formula 1 Shake'), true);
     assert.equal(isMealShakeName('Herbalife Formula1'), true);
     assert.equal(isMealShakeName('Protein Shake'), true);
+    assert.equal(isMealShakeName('Herbalife Shake'), true);
     assert.equal(isMealShakeName('Idli'), false);
+  });
+});
+
+describe('countsAsMealNutrition — Weight Loss dinner = shake only', () => {
+  const riceDinner = { foods: [{ name: 'White Rice' }, { name: 'Sambar' }] };
+  const shakeDinner = {
+    processedBy: 'shake_calculator',
+    foods: [{ name: 'Herbalife Shake' }],
+  };
+  const herbalifeNamed = { foods: [{ name: 'Herbalife Shake' }] };
+
+  it('rejects solid food as dinner in loss mode', () => {
+    assert.equal(countsAsMealNutrition(riceDinner, { mealSlot: 'dinner', goalMode: 'loss' }), false);
+  });
+
+  it('accepts shake calculator dinner in loss mode', () => {
+    assert.equal(countsAsMealNutrition(shakeDinner, { mealSlot: 'dinner', goalMode: 'loss' }), true);
+    assert.equal(isMealShakeNutrition(shakeDinner), true);
+  });
+
+  it('accepts Herbalife Shake name as dinner in loss mode', () => {
+    assert.equal(countsAsMealNutrition(herbalifeNamed, { mealSlot: 'dinner', goalMode: 'loss' }), true);
+  });
+
+  it('still accepts solid food as breakfast/lunch in loss mode', () => {
+    assert.equal(countsAsMealNutrition(riceDinner, { mealSlot: 'breakfast', goalMode: 'loss' }), true);
+    assert.equal(countsAsMealNutrition(riceDinner, { mealSlot: 'lunch', goalMode: 'loss' }), true);
+  });
+
+  it('accepts solid food as dinner in gain / maintain mode', () => {
+    assert.equal(countsAsMealNutrition(riceDinner, { mealSlot: 'dinner', goalMode: 'gain' }), true);
+    assert.equal(countsAsMealNutrition(riceDinner, { mealSlot: 'dinner', goalMode: 'maintain' }), true);
   });
 });
 

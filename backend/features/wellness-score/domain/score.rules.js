@@ -1,4 +1,4 @@
-import { isNonMealNutritionOnly } from '../../../utils/foodTypeDetection.js';
+import { countsAsMealNutrition, isNonMealNutritionOnly } from '../../../utils/foodTypeDetection.js';
 import { IANA_IST } from '../../../shared/lib/datetime/index.js';
 import { isOnTime, isLate, filterFoodByMealWindow } from './window.helpers.js';
 import { filterEducationLogsOnly } from './education-log.helpers.js';
@@ -359,6 +359,13 @@ function solidFoodRecords(foodRecords) {
   return (foodRecords || []).filter((r) => !isNonMealNutritionOnly(r.AnalysisData));
 }
 
+/** Meal posts for a slot — Weight Loss dinner requires a meal shake. */
+function mealFoodRecordsForSlot(foodRecords, mealSlot, goalMode) {
+  return (foodRecords || []).filter((r) =>
+    countsAsMealNutrition(r.AnalysisData, { mealSlot, goalMode }),
+  );
+}
+
 export function calculateBreakfastPost({
   maxPoints, foodRecords, window, timezoneIana = IANA_IST,
 }) {
@@ -390,9 +397,13 @@ export function calculateLunchPost({
 }
 
 export function calculateDinnerPost({
-  maxPoints, foodRecords, window, timezoneIana = IANA_IST,
+  maxPoints, foodRecords, window, timezoneIana = IANA_IST, goalMode = 'loss',
 }) {
-  const meals = filterFoodByMealWindow(solidFoodRecords(foodRecords), window, timezoneIana);
+  const meals = filterFoodByMealWindow(
+    mealFoodRecordsForSlot(foodRecords, 'dinner', goalMode),
+    window,
+    timezoneIana,
+  );
   const base = calculateBinaryLogScore({
     maxPoints,
     records: meals,
@@ -842,6 +853,7 @@ const CALCULATOR_BY_KEY = {
       foodRecords: ctx.foodRecords,
       window: ctx.timeWindows.dinner,
       timezoneIana: ctx.timezoneIana,
+      goalMode: ctx.goalMode,
     }),
   water_qty: (cfg, ctx) =>
     calculateWater({ maxPoints: cfg.maxPoints, consumedMl: ctx.waterConsumedMl, requiredMl: ctx.waterRequiredMl }),

@@ -593,6 +593,44 @@ describe('resolveFoodRowPresentation', () => {
     expect(view.showMealBadge).toBe(false);
   });
 
+  test('Weight Loss: dinner badge hidden for solid food, shown for shake', () => {
+    const foodView = resolveFoodRowPresentation({
+      foodData: {
+        name: 'Rice',
+        detailedItems: [{ name: 'Rice' }],
+        nutrition: { calories: 200 },
+      },
+      calories: 200,
+      mealLabel: 'Dinner',
+      mealCategory: 'dinner',
+      weightGoalMode: 'loss',
+    });
+    expect(foodView.activityType).toBe('food');
+    expect(foodView.showMealBadge).toBe(false);
+
+    const shakeView = resolveFoodRowPresentation({
+      processedBy: 'shake_calculator',
+      foodData: {
+        name: 'Herbalife Shake',
+        detailedItems: [{ name: 'Herbalife Shake' }],
+        nutrition: { calories: 220 },
+      },
+      calories: 220,
+      mealLabel: 'Dinner',
+      mealCategory: 'dinner',
+      weightGoalMode: 'loss',
+    });
+    expect(shakeView.activityType).toBe('shake');
+    expect(shakeView.showMealBadge).toBe(true);
+  });
+
+  test('Gain mode: dinner badge still shown for solid food', () => {
+    expect(shouldShowMealBadge('food', {
+      mealCategory: 'dinner',
+      weightGoalMode: 'gain',
+    })).toBe(true);
+  });
+
   test('food row share caption lists every item and total kcal', () => {
     const view = resolveFoodRowPresentation({
       foodData: {
