@@ -60,7 +60,6 @@ import { isInlineImageReference } from './domain/profileTransformationPhotos.see
 import {
   bufferFromOptionalBase64,
   composeTransformationShareCardJpeg,
-  shareCardJpegHasReadableText,
 } from './domain/composeTransformationShareCard.js';
 import { nowUtc } from '../../shared/lib/datetime/index.js';
 import {
@@ -1563,8 +1562,9 @@ async function sendUnifiedCoachEmail({
   ]);
 
   // Previous tap-preview = full share-card JPEG (not the small Before|After thumbs).
-  // Prefer the archived card that uploadShareCardImage just rotated (client capture,
-  // same look as New). Only path-compose when that archive is missing or □ tofu.
+  // Prefer the archived card from uploadShareCardImage (client capture, same as New).
+  // Always link when a full-card JPEG exists — do not gate on pixel-readability
+  // (that check false-negatives client captures and left Previous untappable).
   let previousPreviewHref = null;
   if (userId && previousPairDistinct) {
     const prevSharePath = repo.previousShareCardStoragePath(userId);
@@ -1574,7 +1574,7 @@ async function sendUnifiedCoachEmail({
     } catch {
       existingPrev = null;
     }
-    if (existingPrev?.length > 2000 && await shareCardJpegHasReadableText(existingPrev)) {
+    if (existingPrev?.length > 2000) {
       previousPreviewHref = await repo.getEmailSignedUrl(prevSharePath);
     } else if (previousCardBeforePath && previousCardAfterPath) {
       try {
@@ -1593,11 +1593,11 @@ async function sendUnifiedCoachEmail({
             durationText: previousDurationText,
             recoveredHealthIssues: previousRecoveredHealthIssues,
           });
-          if (prevJpeg?.length > 2000 && await shareCardJpegHasReadableText(prevJpeg)) {
+          if (prevJpeg?.length > 2000) {
             await repo.uploadBuffer(prevSharePath, prevJpeg, 'image/jpeg');
             previousPreviewHref = await repo.getEmailSignedUrl(prevSharePath);
           } else {
-            logger.warn('[testimonials.service] Previous compose rejected (missing or □ text)', {
+            logger.warn('[testimonials.service] Previous compose produced empty JPEG', {
               userId,
               bytes: prevJpeg?.length || 0,
             });
@@ -1611,7 +1611,7 @@ async function sendUnifiedCoachEmail({
       }
     }
     if (!previousPreviewHref) {
-      logger.warn('[testimonials.service] Previous tap-preview unavailable (no readable full card)', {
+      logger.warn('[testimonials.service] Previous tap-preview unavailable (no full card archive or compose)', {
         userId,
         hadArchive: Boolean(existingPrev?.length),
       });
