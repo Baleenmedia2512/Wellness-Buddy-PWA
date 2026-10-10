@@ -3,7 +3,8 @@
  * Fallback when the client does not send a captured share card.
  * Uses embedded Noto Sans so text is not tofu boxes on Linux/Vercel.
  */
-import { readFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import sharp from 'sharp';
@@ -31,40 +32,43 @@ const ISSUE_TITLE_H = 36;
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ASSETS_DIR = join(__dirname, '../assets');
+/** Real family name inside NotoSans-*.ttf (fc-query). */
+const CARD_FONT_FAMILY = 'Noto Sans';
 
-let cachedFontCss = null;
+let fontconfigReady = false;
 
-function cardFontCss() {
-  if (cachedFontCss !== null) return cachedFontCss;
+/**
+ * sharp/librsvg ignores SVG @font-face. Point fontconfig at our bundled TTFs
+ * so text is real glyphs instead of □ tofu boxes (esp. Linux/Vercel).
+ */
+function ensureShareCardFontconfig() {
+  if (fontconfigReady) return;
   try {
-    const regularPath = join(ASSETS_DIR, 'NotoSans-Regular.ttf');
-    const boldPath = join(ASSETS_DIR, 'NotoSans-Bold.ttf');
-    // Prefer file:// for librsvg (Vercel/Linux); data-URI alone often becomes tofu boxes.
-    const regularFile = `file://${regularPath}`;
-    const boldFile = `file://${boldPath}`;
-    const regular = readFileSync(regularPath).toString('base64');
-    const bold = readFileSync(boldPath).toString('base64');
-    cachedFontCss = `
-      @font-face {
-        font-family: 'CardSans';
-        src: url('${regularFile}') format('truetype'),
-             url('data:font/ttf;base64,${regular}') format('truetype');
-        font-weight: 400;
-        font-style: normal;
-      }
-      @font-face {
-        font-family: 'CardSans';
-        src: url('${boldFile}') format('truetype'),
-             url('data:font/ttf;base64,${bold}') format('truetype');
-        font-weight: 700;
-        font-style: normal;
-      }
-    `;
+    readFileSync(join(ASSETS_DIR, 'NotoSans-Regular.ttf'));
+    readFileSync(join(ASSETS_DIR, 'NotoSans-Bold.ttf'));
+    const cacheDir = join(tmpdir(), 'wv-fontconfig-cache');
+    mkdirSync(cacheDir, { recursive: true });
+    const confPath = join(tmpdir(), 'wv-testimonials-fonts.conf');
+    writeFileSync(
+      confPath,
+      `<?xml version="1.0"?>
+<!DOCTYPE fontconfig SYSTEM "urn:fontconfig:fonts.dtd">
+<fontconfig>
+  <dir>${ASSETS_DIR}</dir>
+  <cachedir>${cacheDir}</cachedir>
+</fontconfig>
+`,
+    );
+    process.env.FONTCONFIG_FILE = confPath;
+    process.env.FONTCONFIG_PATH = ASSETS_DIR;
+    // macOS Homebrew libvips may prefer CoreText unless fontconfig is forced.
+    if (!process.env.PANGOCAIRO_BACKEND) {
+      process.env.PANGOCAIRO_BACKEND = 'fontconfig';
+    }
+    fontconfigReady = true;
   } catch {
-    // Fonts optional — compose still produces photos + labels without them.
-    cachedFontCss = '';
+    fontconfigReady = false;
   }
-  return cachedFontCss;
 }
 
 function escapeXml(value) {
@@ -130,13 +134,13 @@ function buildHealthIssuesSvg(issues, topY) {
     const textY = y + 21;
     chips += `
       <rect x="${x}" y="${y}" width="${chipW}" height="${chipH}" rx="8" ry="8" fill="#ffffff" stroke="#f9a8d4" stroke-width="1.5"/>
-      <text x="${x + chipW / 2}" y="${textY}" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="${ISSUE_CHIP_FONT}" font-weight="700" fill="#4b5563">${escapeXml(label)}</text>`;
+      <text x="${x + chipW / 2}" y="${textY}" text-anchor="middle" font-family="${CARD_FONT_FAMILY}, sans-serif" font-size="${ISSUE_CHIP_FONT}" font-weight="700" fill="#4b5563">${escapeXml(label)}</text>`;
   });
 
   const markup = `
     <rect x="${boxX}" y="${boxY}" width="${boxW}" height="${boxH}" rx="12" ry="12" fill="#fff1f2" stroke="#f9a8d4" stroke-width="1"/>
-    <text x="${CARD_W / 2}" y="${boxY + boxPad + 16}" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="16" font-style="italic" font-weight="700" fill="#be185d">Health Issues</text>
-    <text x="${CARD_W / 2}" y="${boxY + boxPad + 30}" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="9" font-style="italic" fill="#9ca3af">while joining in the community</text>
+    <text x="${CARD_W / 2}" y="${boxY + boxPad + 16}" text-anchor="middle" font-family="${CARD_FONT_FAMILY}, sans-serif" font-size="16" font-style="italic" font-weight="700" fill="#be185d">Health Issues</text>
+    <text x="${CARD_W / 2}" y="${boxY + boxPad + 30}" text-anchor="middle" font-family="${CARD_FONT_FAMILY}, sans-serif" font-size="9" font-style="italic" fill="#9ca3af">while joining in the community</text>
     ${chips}`;
 
   return { markup, height: boxH + 8 };
@@ -269,18 +273,19 @@ export async function composeTransformationShareCardJpeg(opts) {
   const discY = CARD_H - DISCLAIMER_H + 4;
   const discW = CARD_W - DISCLAIMER_PAD_X * 2;
   const discH = DISCLAIMER_H - 14;
-  const fontCss = cardFontCss();
+  ensureShareCardFontconfig();
   const burstY = pillY + 3;
   const burstLeftX = Math.max(8, pillX - 40);
   const burstRightX = Math.min(CARD_W - 40, pillX + pillW + 8);
+  const ff = CARD_FONT_FAMILY;
 
   // Transparent overlay — no full-card white rect (that hid the photos).
+  // Fonts via fontconfig → Noto Sans (SVG @font-face is unsupported by sharp).
   const overlaySvg = Buffer.from(`
     <svg width="${CARD_W}" height="${CARD_H}" xmlns="http://www.w3.org/2000/svg">
       <defs>
         <style type="text/css"><![CDATA[
-          ${fontCss}
-          text { font-family: 'CardSans', Arial, sans-serif; }
+          text { font-family: '${ff}', sans-serif; }
         ]]></style>
       </defs>
       <rect x="0" y="0" width="${CARD_W}" height="${HEADER_H}" fill="#059669"/>
@@ -300,7 +305,7 @@ export async function composeTransformationShareCardJpeg(opts) {
       ${pill ? `
       <path d="M${burstLeftX + 34} ${burstY + 12}H${burstLeftX + 14}M${burstLeftX + 26} ${burstY + 4}L${burstLeftX + 8} ${burstY}M${burstLeftX + 26} ${burstY + 20}L${burstLeftX + 8} ${burstY + 24}" fill="none" stroke="#059669" stroke-width="3.5" stroke-linecap="round"/>
       <rect x="${pillX}" y="${pillY}" width="${pillW}" height="${pillH}" rx="15" ry="15" fill="#dbeafe"/>
-      <text x="${pillX + pillW / 2}" y="${pillY + 20}" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="15" font-weight="800" fill="#2563eb">${pill}</text>
+      <text x="${pillX + pillW / 2}" y="${pillY + 20}" text-anchor="middle" font-family="${ff}, sans-serif" font-size="15" font-weight="700" fill="#2563eb">${pill}</text>
       <path d="M${burstRightX} ${burstY + 12}h20M${burstRightX + 8} ${burstY + 4}l18 -4M${burstRightX + 8} ${burstY + 20}l18 4" fill="none" stroke="#059669" stroke-width="3.5" stroke-linecap="round"/>
       ` : ''}
       ${issuesMarkup}
@@ -312,8 +317,6 @@ export async function composeTransformationShareCardJpeg(opts) {
     </svg>
   `);
 
-  // Rasterize SVG first so librsvg resolves @font-face before composite
-  // (passing raw SVG into composite often yields tofu □ boxes on Linux/Vercel).
   const overlayPng = await sharp(overlaySvg, { density: 96 })
     .resize(CARD_W, CARD_H, { fit: 'fill' })
     .png()

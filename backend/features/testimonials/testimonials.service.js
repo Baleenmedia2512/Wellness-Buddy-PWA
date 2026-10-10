@@ -1564,8 +1564,8 @@ async function sendUnifiedCoachEmail({
     (slots.has('business') && businessVideoPath) ? repo.getEmailSignedUrl(businessVideoPath) : Promise.resolve(null),
   ]);
 
-  // Rebuild Previous tap-preview as a FULL share-card JPEG.
-  // Never link "Tap for full Transformation Card" to a lone After photo.
+  // Previous tap-preview: prefer a readable archived client card.
+  // Never overwrite it with a tofu server compose (□ boxes). Never link After-only.
   let previousPreviewHref = null;
   if (userId && previousPairDistinct) {
     const prevSharePath = repo.previousShareCardStoragePath(userId);
@@ -1575,7 +1575,12 @@ async function sendUnifiedCoachEmail({
     } catch {
       existingPrev = null;
     }
-    if (previousCardBeforePath && previousCardAfterPath) {
+    const existingReadable = existingPrev?.length > 2000
+      ? await shareCardJpegHasReadableText(existingPrev)
+      : false;
+    if (existingReadable) {
+      previousPreviewHref = await repo.getEmailSignedUrl(prevSharePath);
+    } else if (previousCardBeforePath && previousCardAfterPath) {
       try {
         const [prevBeforeBuf, prevAfterBuf] = await Promise.all([
           repo.downloadBuffer(previousCardBeforePath, { retries: 2 }),
@@ -1592,15 +1597,16 @@ async function sendUnifiedCoachEmail({
             durationText: previousDurationText,
             recoveredHealthIssues: previousRecoveredHealthIssues,
           });
-          if (prevJpeg?.length > 2000) {
-            const composedReadable = await shareCardJpegHasReadableText(prevJpeg);
-            if (!composedReadable) {
-              logger.warn('[testimonials.service] Previous share card compose has weak text; still using full card JPEG', {
-                userId,
-              });
-            }
+          if (prevJpeg?.length > 2000 && await shareCardJpegHasReadableText(prevJpeg)) {
             await repo.uploadBuffer(prevSharePath, prevJpeg, 'image/jpeg');
             previousPreviewHref = await repo.getEmailSignedUrl(prevSharePath);
+          } else {
+            logger.warn('[testimonials.service] Previous share card compose unreadable (tofu); not publishing', {
+              userId,
+            });
+            if (existingPrev?.length > 2000) {
+              previousPreviewHref = await repo.getEmailSignedUrl(prevSharePath);
+            }
           }
         }
       } catch (err) {
@@ -1608,10 +1614,10 @@ async function sendUnifiedCoachEmail({
           userId,
           message: err?.message || String(err),
         });
+        if (existingPrev?.length > 2000) {
+          previousPreviewHref = await repo.getEmailSignedUrl(prevSharePath);
+        }
       }
-    }
-    if (!previousPreviewHref && existingPrev?.length > 2000) {
-      previousPreviewHref = await repo.getEmailSignedUrl(prevSharePath);
     }
   }
 
