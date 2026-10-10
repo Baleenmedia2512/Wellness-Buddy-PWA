@@ -4,7 +4,10 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import sharp from 'sharp';
-import { composeTransformationShareCardJpeg } from '../domain/composeTransformationShareCard.js';
+import {
+  composeTransformationShareCardJpeg,
+  shareCardJpegHasReadableText,
+} from '../domain/composeTransformationShareCard.js';
 
 async function solidJpeg(width, height, color) {
   return sharp({
@@ -75,6 +78,7 @@ describe('composeTransformationShareCardJpeg', () => {
       }
     }
     assert.ok(redBorder > 10, 'Disclaimer red border should be visible near the card bottom');
+    assert.equal(await shareCardJpegHasReadableText(jpeg), true);
   });
 
   it('rejects missing photo buffers', async () => {

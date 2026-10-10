@@ -60,6 +60,7 @@ import { isInlineImageReference } from './domain/profileTransformationPhotos.see
 import {
   bufferFromOptionalBase64,
   composeTransformationShareCardJpeg,
+  shareCardJpegHasReadableText,
 } from './domain/composeTransformationShareCard.js';
 import { nowUtc } from '../../shared/lib/datetime/index.js';
 import {
@@ -1543,7 +1544,6 @@ async function sendUnifiedCoachEmail({
     previousBeforeHref,
     previousAfterHref,
     currentSharePreviewHref,
-    previousSharePreviewHref,
     healthVideoUrl,
     businessVideoUrl,
   ] = await Promise.all([
@@ -1556,45 +1556,66 @@ async function sendUnifiedCoachEmail({
       ? repo.getEmailSignedUrl(previousCardAfterPath)
       : Promise.resolve(null),
     userId ? repo.getEmailSignedUrl(repo.shareCardStoragePath(userId)) : Promise.resolve(null),
-    (userId && previousPairDistinct)
-      ? repo.getEmailSignedUrl(repo.previousShareCardStoragePath(userId))
-      : Promise.resolve(null),
     (slots.has('health') && healthVideoPath) ? repo.getEmailSignedUrl(healthVideoPath) : Promise.resolve(null),
     (slots.has('business') && businessVideoPath) ? repo.getEmailSignedUrl(businessVideoPath) : Promise.resolve(null),
   ]);
 
-  // Always (re)compose Previous share card for tap-preview so the red DISCLAIMER
-  // footer is fully visible (archived client captures often clipped it).
-  let previousPreviewHref = previousSharePreviewHref;
-  if (userId && previousPairDistinct && previousCardBeforePath && previousCardAfterPath) {
+  // Prefer a readable archived Previous card (usually a client capture).
+  // Recompose when missing or when a prior server render left tofu □ boxes.
+  let previousPreviewHref = null;
+  if (userId && previousPairDistinct) {
+    const prevSharePath = repo.previousShareCardStoragePath(userId);
+    let existingPrev = null;
     try {
-      const [prevBeforeBuf, prevAfterBuf] = await Promise.all([
-        repo.downloadBuffer(previousCardBeforePath, { retries: 2 }),
-        repo.downloadBuffer(previousCardAfterPath, { retries: 2 }),
-      ]);
-      if (prevBeforeBuf?.length && prevAfterBuf?.length) {
-        const prevJpeg = await composeTransformationShareCardJpeg({
-          beforeBuffer: prevBeforeBuf,
-          afterBuffer: prevAfterBuf,
-          memberName,
-          beforeWeightKg: previousBeforeWeight,
-          afterWeightKg: previousAfterWeight,
-          goalType: previousGoalType,
-          durationText: previousDurationText,
+      existingPrev = await repo.downloadBuffer(prevSharePath, { retries: 1 });
+    } catch {
+      existingPrev = null;
+    }
+    const existingReadable = existingPrev?.length
+      ? await shareCardJpegHasReadableText(existingPrev)
+      : false;
+    if (existingReadable) {
+      previousPreviewHref = await repo.getEmailSignedUrl(prevSharePath);
+    } else if (previousCardBeforePath && previousCardAfterPath) {
+      try {
+        const [prevBeforeBuf, prevAfterBuf] = await Promise.all([
+          repo.downloadBuffer(previousCardBeforePath, { retries: 2 }),
+          repo.downloadBuffer(previousCardAfterPath, { retries: 2 }),
+        ]);
+        if (prevBeforeBuf?.length && prevAfterBuf?.length) {
+          const prevJpeg = await composeTransformationShareCardJpeg({
+            beforeBuffer: prevBeforeBuf,
+            afterBuffer: prevAfterBuf,
+            memberName,
+            beforeWeightKg: previousBeforeWeight,
+            afterWeightKg: previousAfterWeight,
+            goalType: previousGoalType,
+            durationText: previousDurationText,
+          });
+          const composedReadable = await shareCardJpegHasReadableText(prevJpeg);
+          if (composedReadable) {
+            await repo.uploadBuffer(prevSharePath, prevJpeg, 'image/jpeg');
+            previousPreviewHref = await repo.getEmailSignedUrl(prevSharePath);
+          } else if (existingPrev?.length) {
+            // Keep prior bytes rather than publishing a worse tofu card.
+            previousPreviewHref = await repo.getEmailSignedUrl(prevSharePath);
+            logger.warn('[testimonials.service] Previous share card compose still unreadable (tofu)', {
+              userId,
+            });
+          } else {
+            previousPreviewHref = previousAfterHref;
+            logger.warn('[testimonials.service] Previous share card compose unreadable; using After photo', {
+              userId,
+            });
+          }
+        }
+      } catch (err) {
+        logger.warn('[testimonials.service] Could not compose Previous share card for preview', {
+          userId,
+          message: err?.message || String(err),
         });
-        await repo.uploadBuffer(
-          repo.previousShareCardStoragePath(userId),
-          prevJpeg,
-          'image/jpeg',
-        );
-        previousPreviewHref = await repo.getEmailSignedUrl(repo.previousShareCardStoragePath(userId));
+        previousPreviewHref = previousAfterHref;
       }
-    } catch (err) {
-      logger.warn('[testimonials.service] Could not compose Previous share card for preview', {
-        userId,
-        message: err?.message || String(err),
-      });
-      previousPreviewHref = previousPreviewHref || previousAfterHref;
     }
   }
 

@@ -31,18 +31,25 @@ let cachedFontCss = null;
 function cardFontCss() {
   if (cachedFontCss !== null) return cachedFontCss;
   try {
-    const regular = readFileSync(join(ASSETS_DIR, 'NotoSans-Regular.ttf')).toString('base64');
-    const bold = readFileSync(join(ASSETS_DIR, 'NotoSans-Bold.ttf')).toString('base64');
+    const regularPath = join(ASSETS_DIR, 'NotoSans-Regular.ttf');
+    const boldPath = join(ASSETS_DIR, 'NotoSans-Bold.ttf');
+    // Prefer file:// for librsvg (Vercel/Linux); data-URI alone often becomes tofu boxes.
+    const regularFile = `file://${regularPath}`;
+    const boldFile = `file://${boldPath}`;
+    const regular = readFileSync(regularPath).toString('base64');
+    const bold = readFileSync(boldPath).toString('base64');
     cachedFontCss = `
       @font-face {
         font-family: 'CardSans';
-        src: url('data:font/ttf;base64,${regular}') format('truetype');
+        src: url('${regularFile}') format('truetype'),
+             url('data:font/ttf;base64,${regular}') format('truetype');
         font-weight: 400;
         font-style: normal;
       }
       @font-face {
         font-family: 'CardSans';
-        src: url('data:font/ttf;base64,${bold}') format('truetype');
+        src: url('${boldFile}') format('truetype'),
+             url('data:font/ttf;base64,${bold}') format('truetype');
         font-weight: 700;
         font-style: normal;
       }
@@ -82,6 +89,30 @@ async function coverTopJpeg(input, width, height) {
     .resize(width, height, { fit: 'cover', position: 'top' })
     .jpeg({ quality: 88, mozjpeg: true })
     .toBuffer();
+}
+
+/**
+ * True when a share-card JPEG has real painted text (not librsvg tofu boxes).
+ * Samples the member-name band under the green header.
+ * @param {Buffer} jpeg
+ * @returns {Promise<boolean>}
+ */
+export async function shareCardJpegHasReadableText(jpeg) {
+  if (!Buffer.isBuffer(jpeg) || jpeg.length < 500) return false;
+  try {
+    const { data, info } = await sharp(jpeg)
+      .extract({ left: 80, top: 70, width: 380, height: 36 })
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    let dark = 0;
+    for (let i = 0; i < data.length; i += info.channels) {
+      if (data[i] < 45 && data[i + 1] < 45 && data[i + 2] < 45) dark += 1;
+    }
+    // Real "System" / name glyphs paint dozens of near-black pixels; tofu does not.
+    return dark > 40;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -184,6 +215,13 @@ export async function composeTransformationShareCardJpeg(opts) {
     </svg>
   `);
 
+  // Rasterize SVG first so librsvg resolves @font-face before composite
+  // (passing raw SVG into composite often yields tofu □ boxes on Linux/Vercel).
+  const overlayPng = await sharp(overlaySvg, { density: 96 })
+    .resize(CARD_W, CARD_H, { fit: 'fill' })
+    .png()
+    .toBuffer();
+
   return sharp({
     create: {
       width: CARD_W,
@@ -195,7 +233,7 @@ export async function composeTransformationShareCardJpeg(opts) {
     .composite([
       { input: beforeSlot, top: PHOTO_TOP, left: beforeX },
       { input: afterSlot, top: PHOTO_TOP, left: afterX },
-      { input: overlaySvg, top: 0, left: 0 },
+      { input: overlayPng, top: 0, left: 0 },
     ])
     .jpeg({ quality: 85, mozjpeg: true })
     .toBuffer();
