@@ -44,22 +44,13 @@ EXCEPTION
     NULL;
 END $$;
 
-ALTER TABLE public.nutrition_master_profiles_table ENABLE ROW LEVEL SECURITY;
+-- Backend writes via Supabase REST (anon/service). API layer enforces auth.
+-- Match food_pair_stats / ai_credits: RLS off for server-managed tables.
+ALTER TABLE public.nutrition_master_profiles_table DISABLE ROW LEVEL SECURITY;
 
--- Service role bypasses RLS; keep explicit grants for tooling.
+GRANT SELECT, INSERT, UPDATE ON public.nutrition_master_profiles_table TO anon;
 GRANT SELECT, INSERT, UPDATE ON public.nutrition_master_profiles_table TO authenticated;
 GRANT SELECT, INSERT, UPDATE ON public.nutrition_master_profiles_table TO service_role;
-GRANT SELECT ON public.nutrition_master_profiles_table TO anon;
-
-DROP POLICY IF EXISTS nutrition_master_profiles_select_approved ON public.nutrition_master_profiles_table;
-CREATE POLICY nutrition_master_profiles_select_approved
-  ON public.nutrition_master_profiles_table
-  FOR SELECT
-  USING (status = 'approved' OR auth.role() = 'service_role');
-
-DROP POLICY IF EXISTS nutrition_master_profiles_write_service ON public.nutrition_master_profiles_table;
-CREATE POLICY nutrition_master_profiles_write_service
-  ON public.nutrition_master_profiles_table
-  FOR ALL
-  USING (auth.role() = 'service_role')
-  WITH CHECK (auth.role() = 'service_role');
+GRANT USAGE, SELECT ON SEQUENCE public.nutrition_master_profiles_table_id_seq TO anon;
+GRANT USAGE, SELECT ON SEQUENCE public.nutrition_master_profiles_table_id_seq TO authenticated;
+GRANT USAGE, SELECT ON SEQUENCE public.nutrition_master_profiles_table_id_seq TO service_role;
