@@ -86,14 +86,15 @@ const RESULT_BURST_RIGHT_SRC = svgDataUri(
 /**
  * Compact disclaimer footer as one SVG so html2canvas always paints the text
  * (nested DOM text inside yellow inline-block was blank in the share bitmap).
+ * Height must stay in sync with DISCLAIMER_H in shareCardLayout.js.
  */
 const DISCLAIMER_FOOTER_SRC = svgDataUri(
-  '<svg xmlns="http://www.w3.org/2000/svg" width="420" height="105" viewBox="0 0 420 105">' +
-  '<rect x="8" y="6" width="404" height="93" rx="14" ry="14" fill="#fff" stroke="#dc2626" stroke-width="3"/>' +
-  '<text x="210" y="28" text-anchor="middle" font-family="Arial Black, Arial, Helvetica, sans-serif" font-size="15" font-weight="900" fill="#dc2626">DISCLAIMER</text>' +
-  '<line x1="45" y1="36" x2="375" y2="36" stroke="#dc2626" stroke-width="1.5"/>' +
-  '<text x="210" y="57" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="11" font-weight="600" fill="#000000">The views expressed are that of individuals.</text>' +
-  '<text x="210" y="75" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="11" font-weight="600" fill="#000000">These products are not intended to diagnose, treat or cure any disease.</text>' +
+  '<svg xmlns="http://www.w3.org/2000/svg" width="420" height="88" viewBox="0 0 420 88">' +
+  '<rect x="8" y="4" width="404" height="80" rx="12" ry="12" fill="#fff" stroke="#dc2626" stroke-width="3"/>' +
+  '<text x="210" y="24" text-anchor="middle" font-family="Arial Black, Arial, Helvetica, sans-serif" font-size="14" font-weight="900" fill="#dc2626">DISCLAIMER</text>' +
+  '<line x1="45" y1="30" x2="375" y2="30" stroke="#dc2626" stroke-width="1.5"/>' +
+  '<text x="210" y="50" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="11" font-weight="600" fill="#000000">The views expressed are that of individuals.</text>' +
+  '<text x="210" y="68" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="11" font-weight="600" fill="#000000">These products are not intended to diagnose, treat or cure any disease.</text>' +
   '</svg>'
 );
 
@@ -846,8 +847,8 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
       
       <div
         style={{
-          marginTop: 20,
-          padding: '12px 24px 20px',
+          marginTop: 8,
+          padding: '4px 18px 10px',
           textAlign: 'center',
           width: '100%',
           boxSizing: 'border-box',
@@ -858,8 +859,9 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
           alt="Disclaimer: The views expressed are those of individuals. These products are not intended to diagnose, treat or cure any disease."
           style={{
             display: 'block',
-            width: 'min(100%, 460px)',
-            height: 'auto',
+            width: 420,
+            maxWidth: '100%',
+            height: 88,
             margin: '0 auto',
           }}
         />

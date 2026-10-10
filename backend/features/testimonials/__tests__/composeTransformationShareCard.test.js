@@ -62,6 +62,19 @@ describe('composeTransformationShareCardJpeg', () => {
       }
     }
     assert.ok(darkText > 30, 'Member name text should render with embedded font');
+
+    // Red DISCLAIMER border must be fully inside the 960px card (not clipped).
+    const discBand = await sharp(jpeg)
+      .extract({ left: 48, top: 850, width: 40, height: 12 })
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    let redBorder = 0;
+    for (let i = 0; i < discBand.data.length; i += discBand.info.channels) {
+      if (discBand.data[i] > 160 && discBand.data[i + 1] < 100 && discBand.data[i + 2] < 100) {
+        redBorder += 1;
+      }
+    }
+    assert.ok(redBorder > 10, 'Disclaimer red border should be visible near the card bottom');
   });
 
   it('rejects missing photo buffers', async () => {

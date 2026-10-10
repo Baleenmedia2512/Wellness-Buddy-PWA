@@ -1563,9 +1563,10 @@ async function sendUnifiedCoachEmail({
     (slots.has('business') && businessVideoPath) ? repo.getEmailSignedUrl(businessVideoPath) : Promise.resolve(null),
   ]);
 
-  // Ensure Previous share card exists for tap-preview (compose from old photos if needed).
+  // Always (re)compose Previous share card for tap-preview so the red DISCLAIMER
+  // footer is fully visible (archived client captures often clipped it).
   let previousPreviewHref = previousSharePreviewHref;
-  if (userId && previousPairDistinct && !previousPreviewHref && previousCardBeforePath && previousCardAfterPath) {
+  if (userId && previousPairDistinct && previousCardBeforePath && previousCardAfterPath) {
     try {
       const [prevBeforeBuf, prevAfterBuf] = await Promise.all([
         repo.downloadBuffer(previousCardBeforePath, { retries: 2 }),
@@ -1593,7 +1594,7 @@ async function sendUnifiedCoachEmail({
         userId,
         message: err?.message || String(err),
       });
-      previousPreviewHref = previousAfterHref;
+      previousPreviewHref = previousPreviewHref || previousAfterHref;
     }
   }
 

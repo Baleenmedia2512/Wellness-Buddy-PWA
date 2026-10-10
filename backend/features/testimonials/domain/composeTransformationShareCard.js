@@ -17,8 +17,11 @@ const PHOTO_TOP = HEADER_H + NAME_H;
 const PHOTO_GAP = 8;
 const PHOTO_SIDE_PAD = 12;
 const PHOTO_W = Math.floor((CARD_W - PHOTO_SIDE_PAD * 2 - PHOTO_GAP) / 2);
-const PHOTO_H = 480;
+/** Leave room below the result pill for the red DISCLAIMER footer. */
+const PHOTO_H = 460;
 const META_H = 52;
+const DISCLAIMER_H = 110;
+const DISCLAIMER_PAD_X = 40;
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ASSETS_DIR = join(__dirname, '../assets');
@@ -143,6 +146,9 @@ export async function composeTransformationShareCardJpeg(opts) {
   const metaY = PHOTO_TOP + PHOTO_H + 8;
   const pillY = metaY + META_H + 8;
   const footerTop = PHOTO_TOP + PHOTO_H;
+  const discY = CARD_H - DISCLAIMER_H + 4;
+  const discW = CARD_W - DISCLAIMER_PAD_X * 2;
+  const discH = DISCLAIMER_H - 14;
   const fontCss = cardFontCss();
 
   // Transparent overlay — no full-card white rect (that hid the photos).
@@ -170,6 +176,11 @@ export async function composeTransformationShareCardJpeg(opts) {
       <text x="${afterX + PHOTO_W / 2}" y="${metaY + 36}" text-anchor="middle" font-size="17" font-weight="700" fill="#111827">${afterKg} kg</text>
       ${pill ? `<rect x="${(CARD_W - 280) / 2}" y="${pillY}" width="280" height="32" rx="16" fill="#dbeafe"/>
       <text x="${CARD_W / 2}" y="${pillY + 21}" text-anchor="middle" font-size="14" font-weight="700" fill="#2563eb">${pill}</text>` : ''}
+      <rect x="${DISCLAIMER_PAD_X}" y="${discY}" width="${discW}" height="${discH}" rx="12" ry="12" fill="#ffffff" stroke="#dc2626" stroke-width="3"/>
+      <text x="${CARD_W / 2}" y="${discY + 28}" text-anchor="middle" font-size="14" font-weight="700" fill="#dc2626">DISCLAIMER</text>
+      <line x1="${DISCLAIMER_PAD_X + 36}" y1="${discY + 36}" x2="${DISCLAIMER_PAD_X + discW - 36}" y2="${discY + 36}" stroke="#dc2626" stroke-width="1.5"/>
+      <text x="${CARD_W / 2}" y="${discY + 58}" text-anchor="middle" font-size="11" font-weight="400" fill="#000000">The views expressed are that of individuals.</text>
+      <text x="${CARD_W / 2}" y="${discY + 76}" text-anchor="middle" font-size="11" font-weight="400" fill="#000000">These products are not intended to diagnose, treat or cure any disease.</text>
     </svg>
   `);
 
