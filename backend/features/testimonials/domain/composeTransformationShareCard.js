@@ -1,12 +1,13 @@
 /**
  * Server-side Transformation share card (JPEG) for coach OTP emails.
  * Fallback when the client does not send a captured share card.
- * Uses embedded Noto Sans so text is not tofu boxes on Linux/Vercel.
+ * Text is drawn as SVG paths via opentype.js + bundled Noto Sans TTFs
+ * (sharp/librsvg cannot use @font-face → □ tofu on Linux/Vercel).
  */
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import opentype from 'opentype.js';
 import sharp from 'sharp';
 import { transformationWeightVerb } from './transformationWeightDirection.js';
 
@@ -33,52 +34,48 @@ const ISSUE_TITLE_H = 44;
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ASSETS_DIR = join(__dirname, '../assets');
-/** Real family name inside NotoSans-*.ttf (fc-query). */
-const CARD_FONT_FAMILY = 'Noto Sans';
 
-let fontconfigReady = false;
+let fontRegular = null;
+let fontBold = null;
 
-/**
- * sharp/librsvg ignores SVG @font-face. Point fontconfig at our bundled TTFs
- * so text is real glyphs instead of □ tofu boxes (esp. Linux/Vercel).
- */
-function ensureShareCardFontconfig() {
-  if (fontconfigReady) return;
-  try {
-    readFileSync(join(ASSETS_DIR, 'NotoSans-Regular.ttf'));
-    readFileSync(join(ASSETS_DIR, 'NotoSans-Bold.ttf'));
-    const cacheDir = join(tmpdir(), 'wv-fontconfig-cache');
-    mkdirSync(cacheDir, { recursive: true });
-    const confPath = join(tmpdir(), 'wv-testimonials-fonts.conf');
-    writeFileSync(
-      confPath,
-      `<?xml version="1.0"?>
-<!DOCTYPE fontconfig SYSTEM "urn:fontconfig:fonts.dtd">
-<fontconfig>
-  <dir>${ASSETS_DIR}</dir>
-  <cachedir>${cacheDir}</cachedir>
-</fontconfig>
-`,
-    );
-    process.env.FONTCONFIG_FILE = confPath;
-    process.env.FONTCONFIG_PATH = ASSETS_DIR;
-    // macOS Homebrew libvips may prefer CoreText unless fontconfig is forced.
-    if (!process.env.PANGOCAIRO_BACKEND) {
-      process.env.PANGOCAIRO_BACKEND = 'fontconfig';
-    }
-    fontconfigReady = true;
-  } catch {
-    fontconfigReady = false;
+function parseFontFile(fileName) {
+  const buf = readFileSync(join(ASSETS_DIR, fileName));
+  // Node Buffer → ArrayBuffer slice for opentype.parse (v1.3.x).
+  return opentype.parse(
+    buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength),
+  );
+}
+
+function loadCardFonts() {
+  if (fontRegular && fontBold) return;
+  fontRegular = parseFontFile('NotoSans-Regular.ttf');
+  fontBold = parseFontFile('NotoSans-Bold.ttf');
+  if (!fontRegular?.getPath || !fontBold?.getPath) {
+    throw new Error('Share-card Noto fonts failed to load');
   }
 }
 
-function escapeXml(value) {
-  return String(value ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&apos;');
+/**
+ * Render text as an SVG path (no host fonts required).
+ * @param {{ text: string, x: number, y: number, size: number, fill: string, bold?: boolean, anchor?: 'start'|'middle' }} opts
+ */
+function svgTextPath({ text, x, y, size, fill, bold = true, anchor = 'start' }) {
+  loadCardFonts();
+  const raw = String(text ?? '');
+  if (!raw) return '';
+  const font = bold ? fontBold : fontRegular;
+  let drawX = x;
+  if (anchor === 'middle') {
+    drawX = x - font.getAdvanceWidth(raw, size) / 2;
+  }
+  const path = font.getPath(raw, drawX, y, size);
+  return `<path d="${path.toPathData(1)}" fill="${fill}"/>`;
+}
+
+function measureTextWidth(text, size, bold = true) {
+  loadCardFonts();
+  const font = bold ? fontBold : fontRegular;
+  return font.getAdvanceWidth(String(text ?? ''), size);
 }
 
 function formatKg(value) {
@@ -135,13 +132,37 @@ function buildHealthIssuesSvg(issues, topY) {
     const textY = y + 21;
     chips += `
       <rect x="${x}" y="${y}" width="${chipW}" height="${chipH}" rx="8" ry="8" fill="#ffffff" stroke="#f9a8d4" stroke-width="1.5"/>
-      <text x="${x + chipW / 2}" y="${textY}" text-anchor="middle" font-family="${CARD_FONT_FAMILY}, sans-serif" font-size="${ISSUE_CHIP_FONT}" font-weight="700" fill="#4b5563">${escapeXml(label)}</text>`;
+      ${svgTextPath({
+        text: label,
+        x: x + chipW / 2,
+        y: textY,
+        size: ISSUE_CHIP_FONT,
+        fill: '#4b5563',
+        bold: true,
+        anchor: 'middle',
+      })}`;
   });
 
   const markup = `
     <rect x="${boxX}" y="${boxY}" width="${boxW}" height="${boxH}" rx="12" ry="12" fill="#fff1f2" stroke="#f9a8d4" stroke-width="1"/>
-    <text x="${CARD_W / 2}" y="${boxY + boxPad + 16}" text-anchor="middle" font-family="${CARD_FONT_FAMILY}, sans-serif" font-size="16" font-style="italic" font-weight="700" fill="#be185d">Health Issues</text>
-    <text x="${CARD_W / 2}" y="${boxY + boxPad + 30}" text-anchor="middle" font-family="${CARD_FONT_FAMILY}, sans-serif" font-size="9" font-style="italic" fill="#9ca3af">while joining the community</text>
+    ${svgTextPath({
+      text: 'Health Issues',
+      x: CARD_W / 2,
+      y: boxY + boxPad + 16,
+      size: 16,
+      fill: '#be185d',
+      bold: true,
+      anchor: 'middle',
+    })}
+    ${svgTextPath({
+      text: 'while joining the community',
+      x: CARD_W / 2,
+      y: boxY + boxPad + 30,
+      size: 9,
+      fill: '#9ca3af',
+      bold: false,
+      anchor: 'middle',
+    })}
     ${chips}`;
 
   return { markup, height: boxH + 8 };
@@ -227,9 +248,10 @@ export async function composeTransformationShareCardJpeg(opts) {
     throw new Error('After photo required for share card');
   }
 
-  const name = escapeXml(String(opts.memberName || 'Customer').trim() || 'Customer');
-  const beforeKg = escapeXml(formatKg(opts.beforeWeightKg));
-  const afterKg = escapeXml(formatKg(opts.afterWeightKg));
+  loadCardFonts();
+  const name = String(opts.memberName || 'Customer').trim() || 'Customer';
+  const beforeKg = formatKg(opts.beforeWeightKg);
+  const afterKg = formatKg(opts.afterWeightKg);
   const bw = Number(opts.beforeWeightKg);
   const aw = Number(opts.afterWeightKg);
   const hasDiff = Number.isFinite(bw) && Number.isFinite(aw) && bw > 0 && aw > 0 && bw !== aw;
@@ -239,10 +261,9 @@ export async function composeTransformationShareCardJpeg(opts) {
   const pillLabel = diff && verb
     ? `${verb} ${diff} kgs${duration ? ` in ${duration}` : ''}`
     : '';
-  const pill = pillLabel ? escapeXml(pillLabel) : '';
   const pillPadX = 18;
   const pillW = pillLabel
-    ? Math.min(CARD_W - 48, Math.max(140, Math.ceil(pillLabel.length * 9.2) + pillPadX * 2))
+    ? Math.min(CARD_W - 48, Math.max(140, Math.ceil(measureTextWidth(pillLabel, 15, true)) + pillPadX * 2))
     : 0;
   const pillH = 30;
   const issues = normalizeIssueList(opts.recoveredHealthIssues);
@@ -262,7 +283,8 @@ export async function composeTransformationShareCardJpeg(opts) {
   const afterSlot = await coverTopJpeg(afterBuffer, PHOTO_W, photoH);
 
   const pillX = pillW ? Math.round((CARD_W - pillW) / 2) : 0;
-  const version = escapeXml(String(opts.appVersionLabel || '').trim());
+  const version = String(opts.appVersionLabel || '').trim();
+  const headerTitle = version ? `Wellness Valley (${version})` : 'Wellness Valley';
 
   const beforeX = PHOTO_SIDE_PAD;
   const afterX = PHOTO_SIDE_PAD + PHOTO_W + PHOTO_GAP;
@@ -274,47 +296,39 @@ export async function composeTransformationShareCardJpeg(opts) {
   const discY = CARD_H - DISCLAIMER_H + 4;
   const discW = CARD_W - DISCLAIMER_PAD_X * 2;
   const discH = DISCLAIMER_H - 14;
-  ensureShareCardFontconfig();
   const burstY = pillY + 3;
   const burstLeftX = Math.max(8, pillX - 40);
   const burstRightX = Math.min(CARD_W - 40, pillX + pillW + 8);
-  const ff = CARD_FONT_FAMILY;
 
-  // Transparent overlay — no full-card white rect (that hid the photos).
-  // Fonts via fontconfig → Noto Sans (SVG @font-face is unsupported by sharp).
+  // Overlay uses glyph paths only — no <text> (avoids tofu on serverless).
   const overlaySvg = Buffer.from(`
     <svg width="${CARD_W}" height="${CARD_H}" xmlns="http://www.w3.org/2000/svg">
-      <defs>
-        <style type="text/css"><![CDATA[
-          text { font-family: '${ff}', sans-serif; }
-        ]]></style>
-      </defs>
       <rect x="0" y="0" width="${CARD_W}" height="${HEADER_H}" fill="#059669"/>
-      <text x="16" y="28" font-size="20" font-weight="700" fill="#ffffff">Wellness Valley${version ? ` (${version})` : ''}</text>
-      <text x="16" y="48" font-size="13" font-weight="400" fill="#a7f3d0">Transformation Results</text>
+      ${svgTextPath({ text: headerTitle, x: 16, y: 28, size: 20, fill: '#ffffff', bold: true })}
+      ${svgTextPath({ text: 'Transformation Results', x: 16, y: 48, size: 13, fill: '#a7f3d0', bold: false })}
       <rect x="0" y="${HEADER_H}" width="${CARD_W}" height="${NAME_H}" fill="#ffffff"/>
-      <text x="${CARD_W / 2}" y="${HEADER_H + 34}" text-anchor="middle" font-size="22" font-weight="700" fill="#111827">${name}</text>
+      ${svgTextPath({ text: name, x: CARD_W / 2, y: HEADER_H + 34, size: 22, fill: '#111827', bold: true, anchor: 'middle' })}
       <rect x="${beforeX}" y="${PHOTO_TOP + photoH - 36}" width="${PHOTO_W}" height="28" rx="6" fill="#e11d72"/>
-      <text x="${beforeX + PHOTO_W / 2}" y="${PHOTO_TOP + photoH - 16}" text-anchor="middle" font-size="16" font-weight="700" fill="#ffffff">Before</text>
+      ${svgTextPath({ text: 'Before', x: beforeX + PHOTO_W / 2, y: PHOTO_TOP + photoH - 16, size: 16, fill: '#ffffff', bold: true, anchor: 'middle' })}
       <rect x="${afterX}" y="${PHOTO_TOP + photoH - 36}" width="${PHOTO_W}" height="28" rx="6" fill="#16a34a"/>
-      <text x="${afterX + PHOTO_W / 2}" y="${PHOTO_TOP + photoH - 16}" text-anchor="middle" font-size="16" font-weight="700" fill="#ffffff">After</text>
+      ${svgTextPath({ text: 'After', x: afterX + PHOTO_W / 2, y: PHOTO_TOP + photoH - 16, size: 16, fill: '#ffffff', bold: true, anchor: 'middle' })}
       <rect x="0" y="${footerTop}" width="${CARD_W}" height="${CARD_H - footerTop}" fill="#ffffff"/>
-      <text x="${beforeX + PHOTO_W / 2}" y="${metaY + 14}" text-anchor="middle" font-size="11" font-weight="700" fill="#9ca3af">BEFORE</text>
-      <text x="${beforeX + PHOTO_W / 2}" y="${metaY + 36}" text-anchor="middle" font-size="17" font-weight="700" fill="#111827">${beforeKg} kg</text>
-      <text x="${afterX + PHOTO_W / 2}" y="${metaY + 14}" text-anchor="middle" font-size="11" font-weight="700" fill="#9ca3af">AFTER</text>
-      <text x="${afterX + PHOTO_W / 2}" y="${metaY + 36}" text-anchor="middle" font-size="17" font-weight="700" fill="#111827">${afterKg} kg</text>
-      ${pill ? `
+      ${svgTextPath({ text: 'BEFORE', x: beforeX + PHOTO_W / 2, y: metaY + 14, size: 11, fill: '#9ca3af', bold: true, anchor: 'middle' })}
+      ${svgTextPath({ text: `${beforeKg} kg`, x: beforeX + PHOTO_W / 2, y: metaY + 36, size: 17, fill: '#111827', bold: true, anchor: 'middle' })}
+      ${svgTextPath({ text: 'AFTER', x: afterX + PHOTO_W / 2, y: metaY + 14, size: 11, fill: '#9ca3af', bold: true, anchor: 'middle' })}
+      ${svgTextPath({ text: `${afterKg} kg`, x: afterX + PHOTO_W / 2, y: metaY + 36, size: 17, fill: '#111827', bold: true, anchor: 'middle' })}
+      ${pillLabel ? `
       <path d="M${burstLeftX + 34} ${burstY + 12}H${burstLeftX + 14}M${burstLeftX + 26} ${burstY + 4}L${burstLeftX + 8} ${burstY}M${burstLeftX + 26} ${burstY + 20}L${burstLeftX + 8} ${burstY + 24}" fill="none" stroke="#059669" stroke-width="3.5" stroke-linecap="round"/>
       <rect x="${pillX}" y="${pillY}" width="${pillW}" height="${pillH}" rx="15" ry="15" fill="#dbeafe"/>
-      <text x="${pillX + pillW / 2}" y="${pillY + 20}" text-anchor="middle" font-family="${ff}, sans-serif" font-size="15" font-weight="700" fill="#2563eb">${pill}</text>
+      ${svgTextPath({ text: pillLabel, x: pillX + pillW / 2, y: pillY + 20, size: 15, fill: '#2563eb', bold: true, anchor: 'middle' })}
       <path d="M${burstRightX} ${burstY + 12}h20M${burstRightX + 8} ${burstY + 4}l18 -4M${burstRightX + 8} ${burstY + 20}l18 4" fill="none" stroke="#059669" stroke-width="3.5" stroke-linecap="round"/>
       ` : ''}
       ${issuesMarkup}
       <rect x="${DISCLAIMER_PAD_X}" y="${discY}" width="${discW}" height="${discH}" rx="12" ry="12" fill="#ffffff" stroke="#dc2626" stroke-width="3"/>
-      <text x="${CARD_W / 2}" y="${discY + 28}" text-anchor="middle" font-size="14" font-weight="700" fill="#dc2626">DISCLAIMER</text>
+      ${svgTextPath({ text: 'DISCLAIMER', x: CARD_W / 2, y: discY + 28, size: 14, fill: '#dc2626', bold: true, anchor: 'middle' })}
       <line x1="${DISCLAIMER_PAD_X + 36}" y1="${discY + 36}" x2="${DISCLAIMER_PAD_X + discW - 36}" y2="${discY + 36}" stroke="#dc2626" stroke-width="1.5"/>
-      <text x="${CARD_W / 2}" y="${discY + 58}" text-anchor="middle" font-size="11" font-weight="400" fill="#000000">The views expressed are that of individuals.</text>
-      <text x="${CARD_W / 2}" y="${discY + 76}" text-anchor="middle" font-size="11" font-weight="400" fill="#000000">These products are not intended to diagnose, treat or cure any disease.</text>
+      ${svgTextPath({ text: 'The views expressed are that of individuals.', x: CARD_W / 2, y: discY + 58, size: 11, fill: '#000000', bold: false, anchor: 'middle' })}
+      ${svgTextPath({ text: 'These products are not intended to diagnose, treat or cure any disease.', x: CARD_W / 2, y: discY + 76, size: 11, fill: '#000000', bold: false, anchor: 'middle' })}
     </svg>
   `);
 

@@ -1564,9 +1564,8 @@ async function sendUnifiedCoachEmail({
     (slots.has('business') && businessVideoPath) ? repo.getEmailSignedUrl(businessVideoPath) : Promise.resolve(null),
   ]);
 
-  // Previous tap-preview: rebuild with latest copy (e.g. "while joining the community")
-  // when server compose is readable. Fall back to archived client JPEG if compose is tofu.
-  // Never link After-only as "full Transformation Card".
+  // Previous tap-preview: rebuild with path-based Noto glyphs (no □ tofu).
+  // Fall back to a readable archived client JPEG only if compose fails.
   let previousPreviewHref = null;
   if (userId && previousPairDistinct) {
     const prevSharePath = repo.previousShareCardStoragePath(userId);
@@ -1596,10 +1595,6 @@ async function sendUnifiedCoachEmail({
           if (prevJpeg?.length > 2000 && await shareCardJpegHasReadableText(prevJpeg)) {
             await repo.uploadBuffer(prevSharePath, prevJpeg, 'image/jpeg');
             previousPreviewHref = await repo.getEmailSignedUrl(prevSharePath);
-          } else {
-            logger.warn('[testimonials.service] Previous share card compose unreadable (tofu); keeping archive', {
-              userId,
-            });
           }
         }
       } catch (err) {
@@ -1609,7 +1604,11 @@ async function sendUnifiedCoachEmail({
         });
       }
     }
-    if (!previousPreviewHref && existingPrev?.length > 2000) {
+    if (
+      !previousPreviewHref
+      && existingPrev?.length > 2000
+      && await shareCardJpegHasReadableText(existingPrev)
+    ) {
       previousPreviewHref = await repo.getEmailSignedUrl(prevSharePath);
     }
   }
