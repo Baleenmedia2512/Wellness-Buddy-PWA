@@ -173,7 +173,10 @@ export async function createCustomFood({ name, unit, servingSize }) {
       httpStatus: 500,
       body: {
         ok: false,
-        error: { code: 'SAVE_FAILED', message: 'Could not save custom food' },
+        error: {
+          code: 'SAVE_FAILED',
+          message: result?.error || 'Could not save custom food',
+        },
       },
     };
   }

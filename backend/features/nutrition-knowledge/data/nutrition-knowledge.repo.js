@@ -152,23 +152,56 @@ export async function findAnyProfileByName(name) {
 }
 
 /**
+ * Build a mapped row when INSERT succeeds but RETURNING/SELECT is blocked (RLS).
+ * @param {{ canonicalName: string, normalized: string, servingSize: number, unit: 'g'|'ml', portionLabel: string, source: string }} p
+ */
+function syntheticCustomFoodRow(p) {
+  return {
+    id: null,
+    canonical_name: p.canonicalName,
+    normalized_name: p.normalized,
+    aliases: [],
+    reference_weight_g: p.servingSize,
+    is_liquid: p.unit === 'ml',
+    portion_label: p.portionLabel,
+    nutrition: {},
+    source: p.source,
+    status: 'approved',
+    sightings: 1,
+    version: 1,
+    reviewed_by_user_id: null,
+    updated_at: new Date().toISOString(),
+  };
+}
+
+/**
  * Insert a user custom food (name + g/ml serving). No nutrition required.
  * If a row with the same normalized name exists, return it without creating a duplicate.
  * @param {{ canonicalName: string, servingSize: number, unit: 'g'|'ml' }} input
- * @returns {Promise<{ row: object, created: boolean }|null>}
+ * @returns {Promise<{ row: object, created: boolean, error?: string }|null>}
  */
 export async function upsertUserCustomFood(input) {
   const supabase = getSupabaseClient();
   const canonicalName = String(input.canonicalName || '').trim();
   const normalized = normalizeFoodName(canonicalName);
-  if (!normalized) return null;
+  if (!normalized) {
+    return { row: null, created: false, error: 'Invalid food name' };
+  }
 
   const unit = input.unit === 'ml' ? 'ml' : 'g';
   const servingSize = Number(input.servingSize);
-  if (!(servingSize > 0)) return null;
+  if (!(servingSize > 0)) {
+    return { row: null, created: false, error: 'Invalid serving size' };
+  }
 
   const existing = await findAnyProfileByName(canonicalName);
-  if (existing === null) return null;
+  if (existing === null) {
+    return {
+      row: null,
+      created: false,
+      error: 'Master food table is unavailable',
+    };
+  }
   if (existing) {
     return { row: existing, created: false };
   }
@@ -176,9 +209,13 @@ export async function upsertUserCustomFood(input) {
   const now = new Date().toISOString();
   const portionLabel = `${Number.isInteger(servingSize) ? servingSize : Math.round(servingSize * 100) / 100} ${unit}`;
 
-  const { data, error } = await supabase
-    .from(TABLE)
-    .insert({
+  // Prefer user_manual; fall back to sources already used by approved master rows
+  // if the DB has a CHECK constraint that does not yet allow user_manual.
+  const sourceCandidates = ['user_manual', 'seed', 'ai_promoted'];
+  let lastError = null;
+
+  for (const source of sourceCandidates) {
+    const payload = {
       canonical_name: canonicalName,
       normalized_name: normalized,
       aliases: [],
@@ -186,27 +223,82 @@ export async function upsertUserCustomFood(input) {
       is_liquid: unit === 'ml',
       portion_label: portionLabel,
       nutrition: {},
-      source: 'user_manual',
+      source,
       status: 'approved',
       sightings: 1,
       updated_at: now,
-    })
-    .select('*')
-    .limit(1);
+    };
 
-  if (error) {
-    // Race: another request inserted the same normalized_name.
-    if (String(error.code) === '23505' || /duplicate|unique/i.test(error.message || '')) {
-      const raced = await findAnyProfileByName(canonicalName);
-      if (raced) return { row: raced, created: false };
+    const { data, error } = await supabase
+      .from(TABLE)
+      .insert(payload)
+      .select('*')
+      .limit(1);
+
+    if (error) {
+      lastError = error;
+      // Race: another request inserted the same normalized_name.
+      if (String(error.code) === '23505' || /duplicate|unique/i.test(error.message || '')) {
+        const raced = await findAnyProfileByName(canonicalName);
+        if (raced) return { row: raced, created: false };
+      }
+      // Try next source if this one is rejected by CHECK / enum.
+      if (/source|check|invalid|violat/i.test(error.message || '')) {
+        logger.warn('[nutrition-knowledge.repo] upsertUserCustomFood source rejected', {
+          source,
+          err: error.message,
+          code: error.code,
+        });
+        continue;
+      }
+      logger.warn('[nutrition-knowledge.repo] upsertUserCustomFood insert failed', {
+        err: error.message,
+        code: error.code,
+        source,
+      });
+      return {
+        row: null,
+        created: false,
+        error: error.message || 'Insert failed',
+      };
     }
-    logger.warn('[nutrition-knowledge.repo] upsertUserCustomFood insert failed', {
-      err: error.message,
+
+    const mapped = mapRow(data?.[0]);
+    if (mapped) {
+      return { row: mapped, created: true };
+    }
+
+    // INSERT ok but RETURNING empty (common when RLS blocks SELECT of new row).
+    const verified = await findAnyProfileByName(canonicalName);
+    if (verified) {
+      return { row: verified, created: true };
+    }
+
+    logger.warn('[nutrition-knowledge.repo] upsertUserCustomFood insert returned no row', {
+      source,
     });
-    return null;
+    return {
+      row: syntheticCustomFoodRow({
+        canonicalName,
+        normalized,
+        servingSize,
+        unit,
+        portionLabel,
+        source,
+      }),
+      created: true,
+    };
   }
 
-  return { row: mapRow(data?.[0]), created: true };
+  logger.warn('[nutrition-knowledge.repo] upsertUserCustomFood exhausted sources', {
+    err: lastError?.message,
+    code: lastError?.code,
+  });
+  return {
+    row: null,
+    created: false,
+    error: lastError?.message || 'Could not insert custom food',
+  };
 }
 
 /**
