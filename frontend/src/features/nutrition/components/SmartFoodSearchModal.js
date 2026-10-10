@@ -8,6 +8,7 @@ import { isFlagEnabled } from "../../../config/featureFlags";
 import FloatingMealTray from "./meal-builder/FloatingMealTray";
 import MealBuilderSheet from "./meal-builder/MealBuilderSheet";
 import MealBowlIcon from "./meal-builder/MealBowlIcon";
+import CustomFoodEntryForm from "./meal-builder/CustomFoodEntryForm";
 import {
   buildPlateSavePayload,
   computeMacroSummary,
@@ -16,6 +17,9 @@ import {
 import { toSelectableItem } from "./meal-builder/useMealSelection";
 import { fetchFoodSuggestions } from "../services/foodSuggestionsApi";
 import { fetchDrySaladSuggestions } from "../services/drySaladSuggestionsApi";
+import { createCustomFood } from "../services/nutritionKnowledge.api";
+import { clearFoodSearchCache } from "../services/foodCorrection/correctionApi";
+import { buildCustomMealItem } from "../domain/customFood";
 import {
   filterSuggestionsAgainstSelected,
   filterRegularFoodSearchItems,
@@ -83,6 +87,7 @@ const SmartFoodSearchModal = ({
   catalogMode = false,
 }) => {
   const mealBuilderEnabled = isFlagEnabled("ff.meal-builder");
+  const customFoodEnabled = isFlagEnabled("ff.nutrition-knowledge");
   const [showTypeSelect, setShowTypeSelect] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [masterItems, setMasterItems] = useState([]);
@@ -90,6 +95,8 @@ const SmartFoodSearchModal = ({
   const [communityItems, setCommunityItems] = useState([]);
   const [isSearching, setIsSearching] = useState(false);
   const [showManualForm, setShowManualForm] = useState(false);
+  const [showCustomForm, setShowCustomForm] = useState(false);
+  const [customSaving, setCustomSaving] = useState(false);
   const [error, setError] = useState("");
   const [selectedItems, setSelectedItems] = useState([]);
   const [mealSheetOpen, setMealSheetOpen] = useState(false);
@@ -159,6 +166,8 @@ const SmartFoodSearchModal = ({
     setMyItems([]);
     setCommunityItems([]);
     setShowManualForm(false);
+    setShowCustomForm(false);
+    setCustomSaving(false);
     setMealSheetOpen(false);
     setLatestFoods([]);
     setOftenWith([]);
@@ -371,6 +380,49 @@ const SmartFoodSearchModal = ({
     );
   };
 
+  const openCustomFoodForm = () => {
+    setError("");
+    setShowCustomForm(true);
+  };
+
+  const handleCustomFoodConfirm = async ({ name, unit, quantity, servingSize }) => {
+    if (!apiBaseUrl || customSaving) return;
+    setCustomSaving(true);
+    setError("");
+    try {
+      // API `servingSize` = reference amount in g/ml (one serving).
+      const data = await createCustomFood({
+        name,
+        unit,
+        servingSize: quantity,
+        userId,
+        apiBaseUrl,
+      });
+      clearFoodSearchCache();
+      const mealItem = buildCustomMealItem(
+        { ...(data?.item || {}), profileId: data?.profileId ?? data?.item?.profileId },
+        { name, unit, quantity, servingSize },
+      );
+      const prev = selectedItemsRef.current;
+      const exists = prev.some(
+        (s) => String(s.name || "").trim().toLowerCase() === name.toLowerCase(),
+      );
+      if (!exists) {
+        setSelectedItems([...prev, toSelectableItem(mealItem)]);
+      }
+      showAddToast(`Added ${name}`);
+      setShowCustomForm(false);
+      setSearchQuery("");
+      setMasterItems([]);
+      setMyItems([]);
+      setCommunityItems([]);
+    } catch (err) {
+      setError(err?.message || "Could not add custom food");
+    } finally {
+      setCustomSaving(false);
+    }
+  };
+
   const submitSave = (payload) => {
     if (saveStartedRef.current) return;
     saveStartedRef.current = true;
@@ -419,6 +471,7 @@ const SmartFoodSearchModal = ({
     setMyItems([]);
     setCommunityItems([]);
     setShowManualForm(false);
+    setShowCustomForm(false);
     setSelectedItems([]);
     setError("");
     resetManualForm();
@@ -426,6 +479,11 @@ const SmartFoodSearchModal = ({
   };
 
   const handleBackFromFoodEntry = () => {
+    if (showCustomForm) {
+      setShowCustomForm(false);
+      setError("");
+      return;
+    }
     if (skipTypeSelect) {
       handleClose();
       return;
@@ -433,6 +491,7 @@ const SmartFoodSearchModal = ({
     setShowTypeSelect(true);
     setSearchQuery("");
     setShowManualForm(false);
+    setShowCustomForm(false);
     setError("");
   };
 
@@ -457,10 +516,20 @@ const SmartFoodSearchModal = ({
   const catalogRows = catalogMode && !hasTypedQuery
     ? filterSuggestionsAgainstSelected(masterItems, selectedItems)
     : masterItems;
-  const showDrySaladSuggestions = catalogMode && !hasTypedQuery && !showManualForm;
-  const showRegularSuggestions = !catalogMode && !showManualForm && !searching && suggestionRows.length > 0;
+  const showDrySaladSuggestions = catalogMode && !hasTypedQuery && !showManualForm && !showCustomForm;
+  const showRegularSuggestions = !catalogMode && !showManualForm && !showCustomForm && !searching && suggestionRows.length > 0;
+  const noSearchHits = !isSearching
+    && catalogRows.length === 0
+    && !hasMyItems
+    && !hasCommunityItems;
+  const showAddCustomOption = customFoodEnabled
+    && !catalogMode
+    && !showManualForm
+    && !showCustomForm
+    && hasTypedQuery
+    && noSearchHits;
 
-  const searchBar = !showManualForm && (
+  const searchBar = !showManualForm && !showCustomForm && (
     <div className="relative">
       <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
       <input
@@ -508,7 +577,7 @@ const SmartFoodSearchModal = ({
 
   // When typing a name, pin search hits under the search bar (above selected/combo).
   const renderCatalogResults = (mealBuilder) =>
-    !showManualForm && showCatalogResults ? (
+    !showManualForm && !showCustomForm && showCatalogResults ? (
       <div className="space-y-4">
         {catalogRows.length > 0 && (
           <div>
@@ -532,10 +601,22 @@ const SmartFoodSearchModal = ({
             <div className="space-y-1.5">{renderFoodRows(communityItems, "community", mealBuilder)}</div>
           </div>
         )}
-        {!isSearching
-          && catalogRows.length === 0
-          && !hasMyItems
-          && !hasCommunityItems
+        {showAddCustomOption && (
+          <button
+            type="button"
+            onClick={openCustomFoodForm}
+            className="w-full flex items-center gap-3 rounded-xl px-3 py-3 border-2 border-green-200 bg-green-50/70 text-left hover:border-green-400"
+          >
+            <span className="flex-shrink-0 w-9 h-9 rounded-full bg-green-100 text-green-700 flex items-center justify-center font-bold text-lg">
+              +
+            </span>
+            <span className="text-sm font-semibold text-green-800">
+              Add &quot;{searchQuery.trim()}&quot;
+            </span>
+          </button>
+        )}
+        {noSearchHits
+          && !showAddCustomOption
           && (hasTypedQuery || !usualCombo.length) && (
           <p className="text-sm text-gray-400 text-center py-4">
             No food found — try a different name
@@ -574,6 +655,15 @@ const SmartFoodSearchModal = ({
             <p className="text-[11px] text-green-700 font-medium px-1" role="status">
               {addToast}
             </p>
+          )}
+
+          {showCustomForm && (
+            <CustomFoodEntryForm
+              foodName={searchQuery.trim()}
+              saving={customSaving}
+              onCancel={() => { setShowCustomForm(false); setError(""); }}
+              onConfirm={handleCustomFoodConfirm}
+            />
           )}
 
           {hasTypedQuery && renderCatalogResults(true)}
@@ -640,7 +730,7 @@ const SmartFoodSearchModal = ({
 
           {!hasTypedQuery && renderCatalogResults(true)}
 
-          {!showManualForm && !searching && !catalogMode && suggestionRows.length === 0 && !hasSelected && (
+          {!showManualForm && !showCustomForm && !searching && !catalogMode && suggestionRows.length === 0 && !hasSelected && (
             <div className="flex flex-col items-center justify-center py-14 text-center">
               <div className="w-14 h-14 rounded-2xl bg-green-50 flex items-center justify-center mb-3">
                 <MealBowlIcon size={36} />
@@ -684,7 +774,7 @@ const SmartFoodSearchModal = ({
           )}
         </div>
 
-        {showManualForm ? (
+        {showCustomForm ? null : showManualForm ? (
           <div className="flex gap-3 px-4 pb-4 pt-3 border-t border-gray-100 flex-shrink-0">
             <button
               type="button"

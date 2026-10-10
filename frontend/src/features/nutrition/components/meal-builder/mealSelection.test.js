@@ -64,6 +64,27 @@ describe('meal selection helpers', () => {
     expect(scaled.servings).toBe(2);
   });
 
+  test('scaleSelectedItem keeps ml volume and profile for custom foods', () => {
+    const custom = {
+      name: 'subja',
+      calories: 0,
+      servings: 2,
+      weight_g: 100,
+      refWeightG: 100,
+      unit: 'ml',
+      isLiquid: true,
+      customFood: true,
+      profileId: 42,
+      portion: '100 ml',
+    };
+    const scaled = scaleSelectedItem(custom);
+    expect(scaled.volume_ml).toBe(200);
+    expect(scaled.weight_g).toBe(200);
+    expect(scaled.unit).toBe('ml');
+    expect(scaled.profileId).toBe(42);
+    expect(scaled.customFood).toBe(true);
+  });
+
   test('buildPlateSavePayload keeps isPlate contract', () => {
     const payload = buildPlateSavePayload([rice, egg]);
     expect(payload.isPlate).toBe(true);

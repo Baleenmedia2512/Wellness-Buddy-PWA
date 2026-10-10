@@ -15,8 +15,11 @@ import {
   mergeSearchResults,
   shouldAutoPromote,
   AUTO_PROMOTE_SIGHTINGS,
+  buildCustomFoodPortionLabel,
 } from '../domain/nutrition.rules.js';
 import { findSeedProfile, searchSeedProfiles } from '../domain/seeds.js';
+import { validateCustomFood } from '../validation/resolve.schema.js';
+import { ValidationError } from '../../../shared/lib/ValidationError.js';
 
 describe('normalizeFoodName', () => {
   it('lowercases and collapses whitespace', () => {
@@ -100,6 +103,46 @@ describe('profileToSearchItem', () => {
     assert.equal(item.calories, 50);
     assert.equal(item.potassium, 200);
     assert.equal(item.source, 'master');
+    assert.equal(item.unit, 'g');
+  });
+
+  it('marks liquids with ml unit and empty nutrition as 0 macros', () => {
+    const item = profileToSearchItem({
+      id: 2,
+      canonical_name: 'subja',
+      reference_weight_g: 100,
+      nutrition: {},
+      portion_label: '100 ml',
+      is_liquid: true,
+    });
+    assert.equal(item.unit, 'ml');
+    assert.equal(item.volume_ml, 100);
+    assert.equal(item.calories, undefined);
+    assert.equal(item.portion, '100 ml');
+  });
+});
+
+describe('buildCustomFoodPortionLabel', () => {
+  it('formats g and ml labels', () => {
+    assert.equal(buildCustomFoodPortionLabel(100, 'g'), '100 g');
+    assert.equal(buildCustomFoodPortionLabel(250, 'ml'), '250 ml');
+  });
+});
+
+describe('validateCustomFood', () => {
+  it('accepts name + unit + positive serving', () => {
+    assert.deepEqual(validateCustomFood({ name: 'subja', unit: 'ml', servingSize: 100 }), {
+      name: 'subja',
+      unit: 'ml',
+      servingSize: 100,
+      userId: null,
+    });
+  });
+
+  it('rejects empty name and non-positive serving', () => {
+    assert.throws(() => validateCustomFood({ name: '  ', unit: 'g', servingSize: 100 }), ValidationError);
+    assert.throws(() => validateCustomFood({ name: 'subja', unit: 'oz', servingSize: 100 }), ValidationError);
+    assert.throws(() => validateCustomFood({ name: 'subja', unit: 'g', servingSize: 0 }), ValidationError);
   });
 });
 

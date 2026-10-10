@@ -13,6 +13,7 @@ import {
   shouldAutoPromote,
   AUTO_PROMOTE_SIGHTINGS,
   sortByFoodNameMatch,
+  buildCustomFoodPortionLabel,
 } from '../domain/nutrition.rules.js';
 
 async function loadApprovedProfile(name) {
@@ -146,4 +147,59 @@ export async function approveMasterProfile({ profileId, reviewedByUserId }) {
     };
   }
   return { httpStatus: 200, body: { ok: true, data: { profile: row } } };
+}
+
+/**
+ * Create (or return existing) a custom master food: name + g/ml + serving size.
+ * Nutrition macros are not required.
+ * @param {{ name: string, unit: 'g'|'ml', servingSize: number }} input
+ */
+export async function createCustomFood({ name, unit, servingSize }) {
+  if (!isEnabled('ff.nutrition-knowledge')) {
+    return {
+      httpStatus: 404,
+      body: { ok: false, error: { code: 'FLAG_OFF', message: 'Nutrition knowledge is disabled' } },
+    };
+  }
+
+  const result = await repo.upsertUserCustomFood({
+    canonicalName: name,
+    unit,
+    servingSize,
+  });
+
+  if (!result?.row) {
+    return {
+      httpStatus: 500,
+      body: {
+        ok: false,
+        error: { code: 'SAVE_FAILED', message: 'Could not save custom food' },
+      },
+    };
+  }
+
+  const item = profileToSearchItem(result.row, servingSize);
+  const portion = buildCustomFoodPortionLabel(servingSize, unit);
+  return {
+    httpStatus: result.created ? 201 : 200,
+    body: {
+      ok: true,
+      data: {
+        created: result.created,
+        item: {
+          ...item,
+          name: result.row.canonical_name || name,
+          unit,
+          is_liquid: unit === 'ml',
+          isLiquid: unit === 'ml',
+          weight_g: Math.round(servingSize),
+          volume_ml: unit === 'ml' ? Math.round(servingSize) : null,
+          portion,
+          calories: item.calories ?? 0,
+          nutrition: item.nutrition || {},
+        },
+        profileId: result.row.id ?? null,
+      },
+    },
+  };
 }

@@ -95,6 +95,14 @@ export default function MealBuilderSheet({
             const countSrv = Number(item.servings);
             const servings = Number.isFinite(countSrv) && countSrv > 0 ? countSrv : 1;
             const kcal = Math.round((item.calories ?? 0) * servings);
+            const refW = Number(item.refWeightG ?? item.weight_g);
+            const unit = item.unit || (item.isLiquid || item.is_liquid ? 'ml' : null);
+            const amount = Number.isFinite(refW) && refW > 0
+              ? Math.round(refW * servings * 100) / 100
+              : null;
+            const servingLabel = item.portion
+              ? (servings === 1 ? item.portion : `${servings} × ${item.portion}`)
+              : (amount != null && unit ? `${amount} ${unit}` : null);
             return (
               <div
                 key={item.name}
@@ -104,8 +112,13 @@ export default function MealBuilderSheet({
                 <div className="flex-1 min-w-0">
                   <p className="text-xs font-semibold text-gray-800 break-words leading-snug">
                     {item.name}
+                    {servingLabel ? (
+                      <span className="font-medium text-gray-500"> — {servingLabel}</span>
+                    ) : null}
                   </p>
-                  <p className="text-[11px] text-green-700 font-medium mt-0.5">{kcal} kcal</p>
+                  <p className="text-[11px] text-green-700 font-medium mt-0.5">
+                    {kcal > 0 ? `${kcal} kcal` : 'Custom serving'}
+                  </p>
                 </div>
                 <div
                   className="flex items-center flex-shrink-0 h-7 rounded-lg border border-green-200 bg-white overflow-hidden"

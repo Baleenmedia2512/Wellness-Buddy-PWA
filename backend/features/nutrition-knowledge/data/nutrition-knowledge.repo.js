@@ -128,6 +128,88 @@ export async function findProfileByName(name, { status = 'approved' } = {}) {
 }
 
 /**
+ * Find any master profile by normalized name (any status). Used for custom-food dedupe.
+ * @param {string} name
+ * @returns {Promise<object|null|undefined>} null = DB error; undefined = not found; object = hit
+ */
+export async function findAnyProfileByName(name) {
+  const key = normalizeFoodName(name);
+  if (!key) return undefined;
+  const supabase = getSupabaseClient();
+
+  const { data, error } = await supabase
+    .from(TABLE)
+    .select('*')
+    .eq('normalized_name', key)
+    .limit(1);
+
+  if (error) {
+    logger.warn('[nutrition-knowledge.repo] findAnyProfileByName failed', { err: error.message });
+    return null;
+  }
+  if (Array.isArray(data) && data.length > 0) return mapRow(data[0]);
+  return undefined;
+}
+
+/**
+ * Insert a user custom food (name + g/ml serving). No nutrition required.
+ * If a row with the same normalized name exists, return it without creating a duplicate.
+ * @param {{ canonicalName: string, servingSize: number, unit: 'g'|'ml' }} input
+ * @returns {Promise<{ row: object, created: boolean }|null>}
+ */
+export async function upsertUserCustomFood(input) {
+  const supabase = getSupabaseClient();
+  const canonicalName = String(input.canonicalName || '').trim();
+  const normalized = normalizeFoodName(canonicalName);
+  if (!normalized) return null;
+
+  const unit = input.unit === 'ml' ? 'ml' : 'g';
+  const servingSize = Number(input.servingSize);
+  if (!(servingSize > 0)) return null;
+
+  const existing = await findAnyProfileByName(canonicalName);
+  if (existing === null) return null;
+  if (existing) {
+    return { row: existing, created: false };
+  }
+
+  const now = new Date().toISOString();
+  const portionLabel = `${Number.isInteger(servingSize) ? servingSize : Math.round(servingSize * 100) / 100} ${unit}`;
+
+  const { data, error } = await supabase
+    .from(TABLE)
+    .insert({
+      canonical_name: canonicalName,
+      normalized_name: normalized,
+      aliases: [],
+      reference_weight_g: servingSize,
+      is_liquid: unit === 'ml',
+      portion_label: portionLabel,
+      nutrition: {},
+      source: 'user_manual',
+      status: 'approved',
+      sightings: 1,
+      updated_at: now,
+    })
+    .select('*')
+    .limit(1);
+
+  if (error) {
+    // Race: another request inserted the same normalized_name.
+    if (String(error.code) === '23505' || /duplicate|unique/i.test(error.message || '')) {
+      const raced = await findAnyProfileByName(canonicalName);
+      if (raced) return { row: raced, created: false };
+    }
+    logger.warn('[nutrition-knowledge.repo] upsertUserCustomFood insert failed', {
+      err: error.message,
+    });
+    return null;
+  }
+
+  return { row: mapRow(data?.[0]), created: true };
+}
+
+/**
  * Upsert a draft AI candidate by normalized name. Does not overwrite approved rows' nutrition.
  * @param {{ canonicalName: string, nutrition: object, referenceWeightG?: number, isLiquid?: boolean, portionLabel?: string }} input
  */
