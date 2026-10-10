@@ -41,8 +41,9 @@ describe('isTransformationWeightLoss', () => {
 });
 
 describe('canShareTransformationPhoto', () => {
-  it('allows share only after coach OTP verification', () => {
-    assert.equal(canShareTransformationPhoto({ status: 'verified' }), true);
+  it('allows share when the left (Before) image is present', () => {
+    assert.equal(canShareTransformationPhoto({ beforeImageUrl: 'https://cdn.example/before.jpg' }), true);
+    assert.equal(canShareTransformationPhoto({ status: 'verified', beforeImageUrl: 'https://cdn.example/b.jpg' }), true);
     assert.equal(canShareTransformationPhoto({ status: 'pending' }), false);
     assert.equal(canShareTransformationPhoto({ status: 'incomplete' }), false);
     assert.equal(canShareTransformationPhoto(null), false);

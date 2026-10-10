@@ -1025,8 +1025,9 @@ export default function TransformationShareCard({
 }
 
 /**
- * Single Share button. kind="photo" shares the Before vs After card.
+ * Single Share control. kind="photo" shares the Before vs After card.
  * kind="video" shares the real Health/Business result videos.
+ * variant="icon" — compact top-of-card share icon; "button" — full-width CTA.
  */
 export function TransformationShareActions({
   kind = 'photo',
@@ -1035,10 +1036,13 @@ export function TransformationShareActions({
   testimonial = null,
   disabled = false,
   onBeforeAction,
+  variant = 'button',
+  className = '',
 }) {
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState(null);
   const isVideo = kind === 'video';
+  const isIcon = variant === 'icon';
 
   useEffect(() => {
     if (!isVideo) void import('html2canvas');
@@ -1073,8 +1077,28 @@ export function TransformationShareActions({
     }
   }, [busy, cardRef, disabled, isVideo, onBeforeAction, testimonial, userName]);
 
+  if (isIcon) {
+    return (
+      <div className={`relative shrink-0 ${className}`}>
+        <TouchFeedbackButton
+          onClick={run}
+          disabled={disabled || busy}
+          className="p-2 rounded-full text-green-700 hover:bg-green-50 disabled:opacity-50 transition-colors"
+          aria-label={isVideo ? 'Share video' : 'Share transformation card'}
+        >
+          <Share2 className={`h-5 w-5 ${busy ? 'animate-pulse' : ''}`} />
+        </TouchFeedbackButton>
+        {status === 'error' && (
+          <p className="absolute right-0 top-full mt-1 whitespace-nowrap text-[10px] text-red-600">
+            Share failed
+          </p>
+        )}
+      </div>
+    );
+  }
+
   return (
-    <div className="space-y-1 pt-0.5">
+    <div className={`space-y-1 pt-0.5 ${className}`}>
       <TouchFeedbackButton
         onClick={run}
         disabled={disabled || busy}

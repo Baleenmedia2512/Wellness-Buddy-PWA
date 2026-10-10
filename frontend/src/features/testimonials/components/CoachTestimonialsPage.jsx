@@ -2,13 +2,13 @@
  * CoachTestimonialsPage.jsx
  * Unified testimonials card view for every user.
  *
- * Unified per-member card shows ALL 5 slots:
- *   • Before photo · After photo · Health video · Business video · Health issues
+ * Per-member card:
+ *   • Mine: edit slots + video upload → divider → branded card → Share Image → videos
+ *   • Direct/Full: header → divider → branded card → Share Image → videos → Share Video
+ *     (no duplicate video block above the branded card)
  *
  * With downline: Mine | Direct | Full + search + upload filters.
  * Without downline: own card only (no Direct/Full/search/filters).
- *
- * Video playback: Instagram-style tap-to-play inline modal.
  */
 import React, { useEffect, useCallback, useState, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
@@ -184,7 +184,54 @@ function VideoPlayerModal({ url, title, onClose }) {
   );
 }
 
-// â”€â”€ Video play button â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+/**
+ * On-screen branded Transformation Results card (scaled to card width).
+ * Share capture still uses a full-size hidden clone so html2canvas stays sharp.
+ */
+function VisibleTransformationCard({ testimonial, userName }) {
+  const wrapRef = useRef(null);
+  const [scale, setScale] = useState(0);
+
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return undefined;
+    const update = () => {
+      const w = el.clientWidth;
+      if (w > 0) setScale(w / CARD_W);
+    };
+    update();
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(update) : null;
+    ro?.observe(el);
+    window.addEventListener('resize', update);
+    return () => {
+      ro?.disconnect();
+      window.removeEventListener('resize', update);
+    };
+  }, []);
+
+  return (
+    <div
+      ref={wrapRef}
+      className="w-full overflow-hidden rounded-2xl border border-emerald-100 shadow-sm bg-white"
+      style={{
+        height: scale > 0 ? Math.round(CARD_H * scale) : undefined,
+        aspectRatio: scale > 0 ? undefined : `${CARD_W} / ${CARD_H}`,
+      }}
+      aria-label="Transformation results card"
+    >
+      <div
+        style={{
+          width: CARD_W,
+          height: CARD_H,
+          transform: scale > 0 ? `scale(${scale})` : undefined,
+          transformOrigin: 'top left',
+        }}
+      >
+        <TransformationCardContent testimonial={testimonial} userName={userName} />
+      </div>
+    </div>
+  );
+}
 
 // VideoThumbnailBtn replaced by VideoThumbnailCard (imported above)
 // â”€â”€ Upload completeness badge â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -1496,10 +1543,34 @@ function MemberCard({
     : level === UPLOAD_FILTERS.PARTIAL      ? 'bg-gradient-to-b from-amber-50/50 to-white'
     :                                          'bg-white';
 
+  const shareCardTestimonial = testimonial ? {
+    ...testimonial,
+    beforeImageUrl: beforeImageSrc,
+    afterImageUrl: afterImageSrc,
+    beforeWeightKg: displayBeforeKg || testimonial.beforeWeightKg,
+    afterWeightKg: displayAfterKg || testimonial.afterWeightKg,
+    goalType: draftBefore?.goalType || testimonial.goalType,
+    durationText: (
+      isUsableDurationText(draftBefore?.durationText)
+        ? draftBefore.durationText
+        : testimonial.durationText
+    ),
+    recoveredHealthIssues: draftIssues ?? testimonial.recoveredHealthIssues,
+  } : null;
+  const shareCardUserName = user?.userName || user?.displayName || user?.name || null;
+  const showBrandedCard = Boolean(shareCardTestimonial && (beforeImageSrc || afterImageSrc));
+  // Share whenever the left (Before) image is on screen (Mine + team).
+  // Do not hide on Mine for drafts/submit — Direct/Full already share without that gate.
+  const canSharePhoto = Boolean(beforeImageSrc || canShareTransformationPhoto(testimonial));
+  const canShareVideo = Boolean(
+    testimonial?.videoStatus === 'verified'
+    && Boolean(resultVideoUrl || testimonial?.healthVideoPath || testimonial?.businessVideoPath)
+  );
+
   return (
     <div className={`rounded-3xl border ${borderCls} ${bgCls} shadow-md overflow-visible`}>
       {coverCrop.overlay}
-      {/* Header strip */}
+      {/* Header strip — Direct/Full photo share top-right (Mine uses Transformation card row) */}
       <div className="flex items-center gap-3 px-4 pt-4 pb-3">
         <MemberAvatar user={user} />
         <div className="flex-1 min-w-0">
@@ -1508,11 +1579,21 @@ function MemberCard({
             <CompletenessBadge level={level} filledCount={filledCount} totalSlots={totalSlots} />
           </div>
         </div>
+        {!editable && canSharePhoto && (
+          <TransformationShareActions
+            variant="icon"
+            kind="photo"
+            cardRef={shareCardRef}
+            userName={user.userName}
+            testimonial={shareCardTestimonial}
+            onBeforeAction={prepareShareCard}
+          />
+        )}
       </div>
       <div className="px-4 pb-4 space-y-3">
 
-      {/* Photos — always show before/after slots when editable (Mine) */}
-      {(editable || (testimonial && (testimonial.beforeImageUrl || testimonial.afterImageUrl))) && (
+      {/* Photos — Mine always editable; team uses branded card when photos exist */}
+      {(editable || (!showBrandedCard && testimonial && (testimonial.beforeImageUrl || testimonial.afterImageUrl))) && (
         <div className="flex gap-2">
           <div className="flex-1 text-center">
             <div className="relative">
@@ -1863,8 +1944,8 @@ function MemberCard({
         />
       )}
 
-      {/* Stats — single summary line + status badge */}
-      {testimonial && (
+      {/* Stats — Mine always; team only when branded card is not shown (redundant with card) */}
+      {testimonial && (editable || !showBrandedCard) && (
         <div className="space-y-1.5">
           {/* "Lost X kgs in Y duration" — uses live draft weights, not persisted hasAfter */}
           {diff && (
@@ -1933,12 +2014,11 @@ function MemberCard({
         </div>
       )}
 
-      {/* Health Issues — below photos, above result video.
-          Mine only: editable. Direct/Full team: read-only chips (coach cannot edit downline). */}
-      {(editable || testimonial) && (
+      {/* Health Issues — Mine editable. Team chips only when branded card is hidden. */}
+      {(editable || (testimonial && !showBrandedCard)) && (
         <div className="space-y-1.5 overflow-visible relative z-20">
           <p className="text-[10px] font-bold text-gray-400 tracking-normal whitespace-normal">
-            Health Issues while joining this community
+            Health Issues while joining this community{editable ? ' (optional · up to 10)' : ''}
           </p>
           {editable ? (
             <HealthIssueCoachEditor
@@ -1975,25 +2055,28 @@ function MemberCard({
               </p>
             </div>
           )}
-          {testimonial && canShareTransformationPhoto(testimonial) && (testimonial.beforeImageUrl || hasAfter) &&
-            (editable ? (!hasDirtySlots && !submitDone) : true) && (
-            <TransformationShareActions
-              kind="photo"
-              cardRef={shareCardRef}
-              userName={user.userName}
-              testimonial={testimonial}
-            />
-          )}
         </div>
       )}
 
-      {/* Result Video — below recovery health issue */}
-      {(editable || testimonial) && (
+      {/* Result Video above divider — Mine upload only.
+          Direct/Full with branded card: videos live under the card (no duplicate). */}
+      {(editable || (testimonial && !showBrandedCard)) && (
         <div className="space-y-1.5">
-          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide flex items-center gap-1">
-            <Video className="h-3 w-3" /> Result Video
-            <span className="font-normal normal-case tracking-normal">· max {MAX_HEALTH_VIDEO_MB} MB each</span>
-          </p>
+          <div className="flex items-center gap-2">
+            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide flex items-center gap-1 flex-1 min-w-0">
+              <Video className="h-3 w-3 shrink-0" /> Result Video
+              <span className="font-normal normal-case tracking-normal">· max {MAX_HEALTH_VIDEO_MB} MB each</span>
+            </p>
+            {!showBrandedCard && canShareVideo && (
+              <TransformationShareActions
+                variant="icon"
+                kind="video"
+                userName={user.userName}
+                testimonial={testimonial}
+                onBeforeAction={prepareShareCard}
+              />
+            )}
+          </div>
           {editable && videoUploadError && (
             <div className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5 flex items-start gap-2">
               <ShieldCheck className="h-4 w-4 text-amber-500 mt-0.5 shrink-0" />
@@ -2132,15 +2215,86 @@ function MemberCard({
               <Clock className="h-3 w-3 shrink-0" /> Videos pending — share OTP with {user.userName}
             </p>
           )}
-          {testimonial?.videoStatus === 'verified' &&
-            (editable ? (!hasDirtySlots && !submitDone) : true) &&
-            Boolean(resultVideoUrl || testimonial?.healthVideoPath || testimonial?.businessVideoPath) && (
-            <TransformationShareActions
-              kind="video"
-              userName={user.userName}
-              testimonial={testimonial}
-              onBeforeAction={prepareShareCard}
-            />
+        </div>
+      )}
+
+      {/* Branded Transformation Results card + videos.
+          Mine: divider + share next to TRANSFORMATION CARD.
+          Direct/Full: no divider; photo share stays in the member header. */}
+      {showBrandedCard && (
+        <div className="space-y-3 pt-1">
+          {editable && (
+            <div className="flex items-center gap-2" role="separator" aria-label="Transformation card">
+              <div className="flex items-center gap-3 flex-1 min-w-0">
+                <div className="flex-1 border-t border-gray-200" />
+                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide whitespace-nowrap">
+                  Transformation card
+                </p>
+                <div className="flex-1 border-t border-gray-200" />
+              </div>
+              {canSharePhoto && (
+                <TransformationShareActions
+                  variant="icon"
+                  kind="photo"
+                  cardRef={shareCardRef}
+                  userName={user.userName}
+                  testimonial={shareCardTestimonial}
+                />
+              )}
+            </div>
+          )}
+          <VisibleTransformationCard
+            testimonial={shareCardTestimonial}
+            userName={shareCardUserName}
+          />
+
+          {/* Health + Business videos under the branded card (tap → preview) */}
+          {(draftHealthPreview || draftBusinessPreview
+            || testimonial?.healthVideoUrl || testimonial?.businessVideoUrl
+            || testimonial?.healthVideoPath || testimonial?.businessVideoPath) && (
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2">
+                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide flex items-center gap-1 flex-1 min-w-0">
+                  <Video className="h-3 w-3 shrink-0" /> Result Video
+                </p>
+                {canShareVideo && (
+                  <TransformationShareActions
+                    variant="icon"
+                    kind="video"
+                    userName={user.userName}
+                    testimonial={testimonial}
+                    onBeforeAction={prepareShareCard}
+                  />
+                )}
+              </div>
+              <div className="flex gap-3">
+                <div className="flex-1 space-y-1">
+                  <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wide">Health</p>
+                  <VideoThumbnailCard
+                    url={testimonial?.healthVideoUrl ?? null}
+                    localPreviewUrl={draftHealthPreview}
+                    label="Health Results"
+                    accentColor="bg-green-600"
+                    onNeedUrl={!testimonial?.healthVideoUrl && testimonial?.healthVideoPath ? loadHealthVideoUrl : undefined}
+                  />
+                </div>
+                <div className="flex-1 space-y-1">
+                  <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wide">Business</p>
+                  <VideoThumbnailCard
+                    url={testimonial?.businessVideoUrl ?? null}
+                    localPreviewUrl={draftBusinessPreview}
+                    label="Business Results"
+                    accentColor="bg-blue-600"
+                    onNeedUrl={!testimonial?.businessVideoUrl && testimonial?.businessVideoPath ? loadBusinessVideoUrl : undefined}
+                  />
+                </div>
+              </div>
+              {testimonial?.videoStatus === 'verified' && (
+                <p className="text-[11px] text-green-700 font-medium flex items-center gap-1">
+                  <CheckCircle className="h-3 w-3 shrink-0" /> Videos verified
+                </p>
+              )}
+            </div>
           )}
         </div>
       )}
@@ -2200,9 +2354,8 @@ function MemberCard({
         confirmText="OK"
       />
 
-      {/* Hidden share card — kept in the viewport (opacity 0) so photos are
-          already decoded when Share is tapped. Off-screen -9999px made html2canvas slow. */}
-      {testimonial && (
+      {/* Hidden full-size share card for sharp html2canvas capture (preview above is scaled). */}
+      {shareCardTestimonial && (
         <div
           aria-hidden="true"
           style={{
@@ -2218,21 +2371,8 @@ function MemberCard({
         >
           <TransformationCardContent
             ref={shareCardRef}
-            testimonial={{
-              ...testimonial,
-              beforeImageUrl: beforeImageSrc,
-              afterImageUrl: afterImageSrc,
-              beforeWeightKg: displayBeforeKg || testimonial.beforeWeightKg,
-              afterWeightKg: displayAfterKg || testimonial.afterWeightKg,
-              goalType: draftBefore?.goalType || testimonial.goalType,
-              durationText: (
-                isUsableDurationText(draftBefore?.durationText)
-                  ? draftBefore.durationText
-                  : testimonial.durationText
-              ),
-              recoveredHealthIssues: draftIssues ?? testimonial.recoveredHealthIssues,
-            }}
-            userName={user?.userName || user?.displayName || user?.name || null}
+            testimonial={shareCardTestimonial}
+            userName={shareCardUserName}
           />
         </div>
       )}
