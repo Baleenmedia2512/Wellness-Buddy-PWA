@@ -247,11 +247,16 @@ function buildCompactTransformationPreview({
       </tr>
       <tr>
         <td align="center" style="padding:0 6px 8px 6px;">
-          <p style="margin:0;color:#9ca3af;font-size:9px;font-family:Arial,Helvetica,sans-serif;">Tap for full Transformation Card</p>
+          <p style="margin:0;color:#9ca3af;font-size:9px;font-family:Arial,Helvetica,sans-serif;">${
+            (previewHref && /^https?:\/\//i.test(String(previewHref)))
+              ? 'Tap for full Transformation Card'
+              : 'Before &amp; After preview'
+          }</p>
         </td>
       </tr>
     </table>`;
 
+  // Only link when we have a real full-card JPEG — never a lone After photo.
   if (previewHref && /^https?:\/\//i.test(String(previewHref))) {
     return `
       <a href="${escapeHtml(previewHref)}" target="_blank" rel="noopener noreferrer"

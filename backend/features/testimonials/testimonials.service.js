@@ -1564,8 +1564,8 @@ async function sendUnifiedCoachEmail({
     (slots.has('business') && businessVideoPath) ? repo.getEmailSignedUrl(businessVideoPath) : Promise.resolve(null),
   ]);
 
-  // Rebuild Previous tap-preview so the result pill matches the New card
-  // (text-sized, centered). Fall back to an archived readable JPEG if compose fails.
+  // Rebuild Previous tap-preview as a FULL share-card JPEG.
+  // Never link "Tap for full Transformation Card" to a lone After photo.
   let previousPreviewHref = null;
   if (userId && previousPairDistinct) {
     const prevSharePath = repo.previousShareCardStoragePath(userId);
@@ -1592,8 +1592,13 @@ async function sendUnifiedCoachEmail({
             durationText: previousDurationText,
             recoveredHealthIssues: previousRecoveredHealthIssues,
           });
-          const composedReadable = await shareCardJpegHasReadableText(prevJpeg);
-          if (composedReadable) {
+          if (prevJpeg?.length > 2000) {
+            const composedReadable = await shareCardJpegHasReadableText(prevJpeg);
+            if (!composedReadable) {
+              logger.warn('[testimonials.service] Previous share card compose has weak text; still using full card JPEG', {
+                userId,
+              });
+            }
             await repo.uploadBuffer(prevSharePath, prevJpeg, 'image/jpeg');
             previousPreviewHref = await repo.getEmailSignedUrl(prevSharePath);
           }
@@ -1605,12 +1610,22 @@ async function sendUnifiedCoachEmail({
         });
       }
     }
-    if (!previousPreviewHref && existingPrev?.length
-      && await shareCardJpegHasReadableText(existingPrev)) {
+    if (!previousPreviewHref && existingPrev?.length > 2000) {
       previousPreviewHref = await repo.getEmailSignedUrl(prevSharePath);
     }
-    if (!previousPreviewHref) {
-      previousPreviewHref = previousAfterHref;
+  }
+
+  // New tap-preview: only the real share-card object (not After-only).
+  let currentPreviewHref = null;
+  if (userId && currentSharePreviewHref) {
+    try {
+      const currentSharePath = repo.shareCardStoragePath(userId);
+      const currentShareBuf = await repo.downloadBuffer(currentSharePath, { retries: 1 });
+      if (currentShareBuf?.length > 2000) {
+        currentPreviewHref = currentSharePreviewHref;
+      }
+    } catch {
+      currentPreviewHref = null;
     }
   }
 
@@ -1641,8 +1656,8 @@ async function sendUnifiedCoachEmail({
     // Outer thumbs = Before|After photos; full card only via tap-preview href.
     previousCardImageUrl: null,
     currentCardImageUrl: null,
-    previousPreviewHref: previousPreviewHref || previousAfterHref,
-    currentPreviewHref: currentSharePreviewHref || currentAfterHref,
+    previousPreviewHref,
+    currentPreviewHref,
     healthVideoUrl,
     businessVideoUrl,
     recoveredHealthIssues: recoveredHealthIssues ?? [],
@@ -1670,7 +1685,7 @@ async function sendUnifiedCoachEmail({
     memberName,
     changedSlots,
     hasPhotoCompare,
-    hasCurrentSharePreview: Boolean(currentSharePreviewHref),
+    hasCurrentSharePreview: Boolean(currentPreviewHref),
     hasPreviousSharePreview: Boolean(previousPreviewHref),
   });
 }
