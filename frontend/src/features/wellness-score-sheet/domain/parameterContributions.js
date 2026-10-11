@@ -149,8 +149,45 @@ export function extractNutrientContributions(meals, paramKey, options = {}) {
     }
   }
 
-  const total = foods.reduce((sum, f) => sum + f.amount, 0);
-  const breakdown = foods
+  // Same food across meals/days → one row with combined amount (% of period total).
+  const groupedByName = new Map();
+  for (const food of foods) {
+    const nameKey = String(food.foodName || 'Unknown food').trim().toLowerCase();
+    const existing = groupedByName.get(nameKey);
+    if (existing) {
+      existing.amount += food.amount;
+      existing.logCount += 1;
+      if (food.detail && !existing.dates.includes(food.detail)) {
+        existing.dates.push(food.detail);
+      }
+    } else {
+      groupedByName.set(nameKey, {
+        foodName: food.foodName,
+        amount: food.amount,
+        logCount: 1,
+        dates: food.detail ? [food.detail] : [],
+      });
+    }
+  }
+
+  const groupedFoods = [...groupedByName.values()].map((g) => {
+    let detail;
+    if (includeDateDetail) {
+      if (g.logCount > 1) {
+        detail = `${g.logCount} logs`;
+      } else if (g.dates[0]) {
+        detail = g.dates[0];
+      }
+    }
+    return {
+      foodName: g.foodName,
+      amount: g.amount,
+      detail,
+    };
+  });
+
+  const total = groupedFoods.reduce((sum, f) => sum + f.amount, 0);
+  const breakdown = groupedFoods
     .sort((a, b) => b.amount - a.amount)
     .map((f) => ({
       ...f,
