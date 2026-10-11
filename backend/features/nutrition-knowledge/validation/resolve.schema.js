@@ -2,6 +2,7 @@
  * backend/features/nutrition-knowledge/validation/resolve.schema.js
  */
 import { ValidationError } from '../../../shared/lib/ValidationError.js';
+import { NUTRITION_KEYS, pickNutrition } from '../domain/nutrition.rules.js';
 
 export function validateResolve(query = {}) {
   const name = String(query.name || query.foodName || '').trim();
@@ -87,5 +88,70 @@ export function validateCustomFood(body = {}) {
     unit,
     servingSize,
     userId: Number.isFinite(userId) && userId > 0 ? userId : null,
+  };
+}
+
+/**
+ * Developer Excel export of custom-food submissions.
+ * @param {object} query
+ */
+export function validateCustomFoodExport(query = {}) {
+  const userId = Number(query.userId);
+  if (!Number.isFinite(userId) || userId <= 0) {
+    throw new ValidationError(400, 'userId is required');
+  }
+  const pendingOnly = String(query.pendingOnly ?? query.pendingNutritionOnly ?? 'true') !== 'false';
+  const limit = query.limit != null ? Number(query.limit) : 5000;
+  return {
+    userId,
+    pendingOnly,
+    limit: Number.isFinite(limit) && limit > 0 ? limit : 5000,
+  };
+}
+
+/**
+ * Developer sets nutrition on a master custom food profile.
+ * Nutrition values are for the profile reference_weight_g (or referenceQuantity).
+ * @param {object} body
+ */
+export function validateSetCustomFoodNutrition(body = {}) {
+  const userId = Number(body.userId);
+  if (!Number.isFinite(userId) || userId <= 0) {
+    throw new ValidationError(400, 'userId is required');
+  }
+
+  const profileId = Number(body.profileId ?? body.id);
+  if (!Number.isFinite(profileId) || profileId <= 0) {
+    throw new ValidationError(400, 'profileId is required');
+  }
+
+  const nutritionIn = body.nutrition && typeof body.nutrition === 'object'
+    ? body.nutrition
+    : body;
+  for (const key of NUTRITION_KEYS) {
+    const v = nutritionIn[key];
+    if (v == null || v === '') continue;
+    const n = Number(v);
+    if (!Number.isFinite(n) || n < 0) {
+      throw new ValidationError(400, `${key} must be a non-negative number`);
+    }
+  }
+  // Macros + vitamins + minerals (ADR-0005 full set).
+  const nutrition = pickNutrition(nutritionIn);
+  if (nutrition.calories == null) {
+    throw new ValidationError(400, 'calories is required');
+  }
+
+  const referenceQuantity = body.referenceQuantity ?? body.referenceWeightG ?? body.reference_weight_g;
+  const referenceWeightG = referenceQuantity != null ? Number(referenceQuantity) : null;
+  if (referenceWeightG != null && (!Number.isFinite(referenceWeightG) || referenceWeightG <= 0)) {
+    throw new ValidationError(400, 'referenceQuantity must be a positive number');
+  }
+
+  return {
+    userId,
+    profileId,
+    nutrition,
+    referenceWeightG,
   };
 }

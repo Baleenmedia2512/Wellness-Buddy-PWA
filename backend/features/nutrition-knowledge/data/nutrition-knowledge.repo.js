@@ -6,6 +6,7 @@ import logger from '../../../shared/lib/logger.js';
 import { foodNameMatchesQuery, normalizeFoodName, sortByFoodNameMatch } from '../domain/nutrition.rules.js';
 
 const TABLE = 'nutrition_master_profiles_table';
+const SUBMISSIONS_TABLE = 'nutrition_custom_food_submissions_table';
 
 function mapRow(row) {
   if (!row) return null;
@@ -23,6 +24,7 @@ function mapRow(row) {
     sightings: Number(row.sightings) || 0,
     version: Number(row.version) || 1,
     reviewed_by_user_id: row.reviewed_by_user_id ?? null,
+    created_by_user_id: row.created_by_user_id ?? null,
     updated_at: row.updated_at,
   };
 }
@@ -175,9 +177,145 @@ function syntheticCustomFoodRow(p) {
 }
 
 /**
+ * Log a custom-food add for developer Excel export (every attempt, even duplicates).
+ * @param {{ userId: number, foodName: string, unit: 'g'|'ml', quantity: number, profileId?: number|null }} input
+ */
+export async function insertCustomFoodSubmission(input) {
+  const supabase = getSupabaseClient();
+  const userId = Number(input.userId);
+  const foodName = String(input.foodName || '').trim();
+  const normalized = normalizeFoodName(foodName);
+  const unit = input.unit === 'ml' ? 'ml' : 'g';
+  const quantity = Number(input.quantity);
+  if (!Number.isFinite(userId) || userId <= 0 || !normalized || !(quantity > 0)) {
+    return null;
+  }
+
+  const { data, error } = await supabase
+    .from(SUBMISSIONS_TABLE)
+    .insert({
+      user_id: userId,
+      food_name: foodName,
+      normalized_name: normalized,
+      unit,
+      quantity,
+      profile_id: input.profileId != null ? Number(input.profileId) : null,
+    })
+    .select('*')
+    .limit(1);
+
+  if (error) {
+    logger.warn('[nutrition-knowledge.repo] insertCustomFoodSubmission failed', {
+      err: error.message,
+    });
+    return null;
+  }
+  return data?.[0] || null;
+}
+
+/**
+ * Rows for Excel/CSV export — newest first.
+ * @param {{ limit?: number, pendingNutritionOnly?: boolean }} [opts]
+ */
+export async function listCustomFoodSubmissionsForExport({
+  limit = 5000,
+  pendingNutritionOnly = false,
+} = {}) {
+  const supabase = getSupabaseClient();
+  const fetchLimit = Math.min(Math.max(Number(limit) || 5000, 1), 20_000);
+
+  const { data, error } = await supabase
+    .from(SUBMISSIONS_TABLE)
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(fetchLimit);
+
+  if (error) {
+    logger.warn('[nutrition-knowledge.repo] listCustomFoodSubmissionsForExport failed', {
+      err: error.message,
+    });
+    return null;
+  }
+
+  const rows = data || [];
+  if (rows.length === 0) return rows;
+
+  const profileIds = [...new Set(rows.map((r) => r.profile_id).filter(Boolean))];
+  let nutritionById = new Map();
+  if (profileIds.length > 0) {
+    const { data: profiles, error: pErr } = await supabase
+      .from(TABLE)
+      .select('id, nutrition')
+      .in('id', profileIds);
+    if (pErr) {
+      logger.warn('[nutrition-knowledge.repo] list submissions profile join failed', {
+        err: pErr.message,
+      });
+    } else {
+      nutritionById = new Map(
+        (profiles || []).map((p) => [
+          p.id,
+          p.nutrition && typeof p.nutrition === 'object' ? p.nutrition : {},
+        ]),
+      );
+    }
+  }
+
+  const enriched = rows.map((r) => ({
+    ...r,
+    master_nutrition: r.profile_id ? (nutritionById.get(r.profile_id) || {}) : {},
+  }));
+
+  if (!pendingNutritionOnly) return enriched;
+
+  return enriched.filter((r) => {
+    const n = r.master_nutrition || {};
+    return n.calories == null || n.calories === '' || Number(n.calories) === 0;
+  });
+}
+
+/**
+ * Set / replace nutrition on a master profile (developer fill-in).
+ * @param {{ profileId: number, nutrition: object, referenceWeightG?: number|null, reviewedByUserId?: number|null }} input
+ */
+export async function updateProfileNutrition(input) {
+  const supabase = getSupabaseClient();
+  const profileId = Number(input.profileId);
+  if (!Number.isFinite(profileId) || profileId <= 0) return null;
+
+  const patch = {
+    nutrition: input.nutrition && typeof input.nutrition === 'object' ? input.nutrition : {},
+    updated_at: new Date().toISOString(),
+    status: 'approved',
+  };
+  if (input.referenceWeightG != null && Number(input.referenceWeightG) > 0) {
+    patch.reference_weight_g = Number(input.referenceWeightG);
+  }
+  if (input.reviewedByUserId != null) {
+    patch.reviewed_by_user_id = Number(input.reviewedByUserId);
+  }
+
+  const { data, error } = await supabase
+    .from(TABLE)
+    .update(patch)
+    .eq('id', profileId)
+    .select('*')
+    .limit(1);
+
+  if (error) {
+    logger.error('[nutrition-knowledge.repo] updateProfileNutrition failed', {
+      err: error.message,
+      profileId,
+    });
+    throw error;
+  }
+  return mapRow(data?.[0] || null);
+}
+
+/**
  * Insert a user custom food (name + g/ml serving). No nutrition required.
  * If a row with the same normalized name exists, return it without creating a duplicate.
- * @param {{ canonicalName: string, servingSize: number, unit: 'g'|'ml' }} input
+ * @param {{ canonicalName: string, servingSize: number, unit: 'g'|'ml', createdByUserId?: number|null }} input
  * @returns {Promise<{ row: object, created: boolean, error?: string }|null>}
  */
 export async function upsertUserCustomFood(input) {
@@ -208,6 +346,8 @@ export async function upsertUserCustomFood(input) {
 
   const now = new Date().toISOString();
   const portionLabel = `${Number.isInteger(servingSize) ? servingSize : Math.round(servingSize * 100) / 100} ${unit}`;
+  const createdByUserId = Number(input.createdByUserId);
+  const hasCreator = Number.isFinite(createdByUserId) && createdByUserId > 0;
 
   // Prefer user_manual; fall back to sources already used by approved master rows
   // if the DB has a CHECK constraint that does not yet allow user_manual.
@@ -227,6 +367,7 @@ export async function upsertUserCustomFood(input) {
       status: 'approved',
       sightings: 1,
       updated_at: now,
+      ...(hasCreator ? { created_by_user_id: createdByUserId } : {}),
     };
 
     const { data, error } = await supabase

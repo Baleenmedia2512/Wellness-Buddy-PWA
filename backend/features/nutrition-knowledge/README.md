@@ -10,6 +10,8 @@
  *   POST /api/nutrition-knowledge/enrich   (AI text enrich + credit gate)
  *   POST /api/nutrition-knowledge/approve  (promote draft → approved)
  *   POST /api/nutrition-knowledge/custom-food  (user name + g|ml + serving; no macros)
+ *   GET  /api/nutrition-knowledge/custom-food-export?userId=  (admin/dev CSV → Excel; macros+vitamins+minerals)
+ *   POST /api/nutrition-knowledge/custom-food-nutrition  (admin/dev fill full nutrition on profile)
  *
  * Migration: backend/migrations/create_nutrition_master_profiles_table.sql
  * In-code seeds (Banana, Apple, Idli, Herbalife Shake, Afresh, Omelette, Onion)
