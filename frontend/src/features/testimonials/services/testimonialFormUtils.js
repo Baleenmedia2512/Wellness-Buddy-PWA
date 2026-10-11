@@ -131,9 +131,9 @@ export function isTransformationWeightLoss(beforeKg, afterKg) {
   return after < before;
 }
 
-/** Photo share is allowed only after coach OTP verification. */
+/** Photo share when the left (Before) image is present — verification not required. */
 export function canShareTransformationPhoto(testimonial) {
-  return testimonial?.status === 'verified';
+  return Boolean(testimonial?.beforeImageUrl);
 }
 
 /**

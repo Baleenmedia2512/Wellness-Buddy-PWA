@@ -8,6 +8,7 @@ export {
   listMasterSearchItems,
   recordAiFoodCandidate,
   approveMasterProfile,
+  createCustomFood,
 } from './api/resolve.handler.js';
 
 export { enrichFoodText } from './api/enrich.handler.js';
@@ -24,6 +25,7 @@ export {
   profileToSearchItem,
   mergeSearchResults,
   shouldAutoPromote,
+  buildCustomFoodPortionLabel,
 } from './domain/nutrition.rules.js';
 
 export {
@@ -31,4 +33,5 @@ export {
   validateSearch,
   validateApprove,
   validateEnrich,
+  validateCustomFood,
 } from './validation/resolve.schema.js';

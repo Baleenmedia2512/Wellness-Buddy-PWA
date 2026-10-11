@@ -54,3 +54,38 @@ export function validateEnrich(body = {}) {
   const macros = body.macros && typeof body.macros === 'object' ? body.macros : null;
   return { userId, name, weightG, reservationId, macros };
 }
+
+/**
+ * Custom food create — name + unit (g|ml) + positive serving size. No macros required.
+ * @param {object} body
+ */
+export function validateCustomFood(body = {}) {
+  const name = String(body.name || body.foodName || '').trim();
+  if (!name) {
+    throw new ValidationError(400, 'Food name is required');
+  }
+  if (name.length > 120) {
+    throw new ValidationError(400, 'Food name is too long');
+  }
+
+  const unit = String(body.unit || '').toLowerCase().trim();
+  if (unit !== 'g' && unit !== 'ml') {
+    throw new ValidationError(400, 'unit must be g or ml');
+  }
+
+  const servingSize = Number(body.servingSize ?? body.serving_size ?? body.amount);
+  if (!Number.isFinite(servingSize) || servingSize <= 0) {
+    throw new ValidationError(400, 'serving size must be a positive number');
+  }
+  if (servingSize > 100_000) {
+    throw new ValidationError(400, 'serving size is too large');
+  }
+
+  const userId = body.userId != null ? Number(body.userId) : null;
+  return {
+    name,
+    unit,
+    servingSize,
+    userId: Number.isFinite(userId) && userId > 0 ? userId : null,
+  };
+}

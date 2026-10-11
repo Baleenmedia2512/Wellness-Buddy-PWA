@@ -1,11 +1,11 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Bundle Noto TTFs used by server-side Transformation share-card compose
-  // (opentype path text — without these, Vercel compose fails and Previous tap has no preview).
+  // Pack share-card assets into testimonials API functions (logo + Noto fonts).
   outputFileTracingIncludes: {
     '/api/testimonials/**/*': [
       './features/testimonials/assets/NotoSans-Regular.ttf',
       './features/testimonials/assets/NotoSans-Bold.ttf',
+      './features/testimonials/assets/logo.png',
     ],
   },
   async redirects() {

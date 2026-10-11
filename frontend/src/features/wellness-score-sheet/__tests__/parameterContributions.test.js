@@ -118,6 +118,54 @@ describe('parameterContributions', () => {
     expect(view.breakdown[1].detail).toBe('2026-07-20');
   });
 
+  test('multi-day nutrient view groups same food name and sums amounts', () => {
+    const shakeMeals = [
+      {
+        CreatedAt: '2026-10-01T08:00:00',
+        AnalysisData: {
+          foods: [{ name: 'Herbalife Shake', nutrition: { protein: 25 } }],
+        },
+      },
+      {
+        CreatedAt: '2026-10-02T08:00:00',
+        AnalysisData: {
+          foods: [{ name: 'Herbalife Shake', nutrition: { protein: 25 } }],
+        },
+      },
+      {
+        CreatedAt: '2026-10-03T08:00:00',
+        AnalysisData: {
+          foods: [{ name: 'herbalife shake', nutrition: { protein: 25 } }],
+        },
+      },
+      {
+        CreatedAt: '2026-10-03T13:00:00',
+        AnalysisData: {
+          foods: [{ name: 'Chicken', nutrition: { protein: 30 } }],
+        },
+      },
+    ];
+    const view = buildParameterContributionView({
+      parameter: {
+        key: 'protein',
+        label: 'Protein',
+        earnedPoints: 5.5,
+        maxPoints: 10,
+      },
+      meals: shakeMeals,
+      periodDayCount: 10,
+    });
+    expect(view.breakdown).toHaveLength(2);
+    expect(view.breakdown[0].foodName).toBe('Herbalife Shake');
+    expect(view.breakdown[0].amount).toBe(75);
+    expect(view.breakdown[0].detail).toBe('3 logs');
+    expect(view.breakdown[0].percentage).toBeCloseTo((75 / 105) * 100);
+    expect(view.breakdown[1].foodName).toBe('Chicken');
+    expect(view.breakdown[1].amount).toBe(30);
+    expect(view.breakdown[1].detail).toBe('2026-10-03');
+    expect(view.totalConsumed).toBe(105);
+  });
+
   test('extractNutrientContributions includeDateDetail attaches CreatedAt date', () => {
     const { breakdown } = extractNutrientContributions(
       [{

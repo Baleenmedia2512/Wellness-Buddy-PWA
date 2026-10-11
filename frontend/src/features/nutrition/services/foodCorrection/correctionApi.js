@@ -97,6 +97,11 @@ export async function searchFoods(query, userId) {
   return results;
 }
 
+/** Clear in-memory food search cache (e.g. after creating a custom master food). */
+export function clearFoodSearchCache() {
+  _foodSearchCache.clear();
+}
+
 
 export const saveFoodCorrection = async (userId, aiDetected, userCorrected, correctedData = {}) => {
   try {

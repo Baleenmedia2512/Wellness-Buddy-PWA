@@ -21,7 +21,7 @@ import { X, Download, Share2, CheckCircle } from 'lucide-react';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
 import { shareImageDirectly } from '../../../shared/utils/shareUtils';
 import { saveImageBlobToGallery } from '../../../shared/plugins/saveToGalleryPlugin';
-import { getVersionString } from '../../../config/version';
+import { APP_VERSION, getVersionString } from '../../../config/version';
 import {
   shareResultVideos,
 } from '../utils/downloadVideo.js';
@@ -139,21 +139,42 @@ function blobToDataUrl(blob) {
   });
 }
 
+/** Absolute logo URL — Capacitor often fails on bare `/logo.png` during capture. */
+function shareCardLogoFetchUrl() {
+  try {
+    return new URL('/logo.png', window.location.origin).href;
+  } catch {
+    return '/logo.png';
+  }
+}
+
+async function fetchImageAsDataUrl(src) {
+  const res = await fetch(src);
+  if (!res.ok) return null;
+  const blob = await res.blob();
+  if (!String(blob.type || '').startsWith('image/')) return null;
+  return blobToDataUrl(blob);
+}
+
 async function inlineImagesForCapture(el) {
   const imgs = Array.from(el.querySelectorAll('img'));
   await Promise.all(imgs.map(async (img) => {
+    const isLogo = img.hasAttribute('data-share-logo');
     const src = img.currentSrc || img.getAttribute('src') || '';
-    if (!src || src.startsWith('data:')) return;
-    try {
-      const res = await fetch(src);
-      if (!res.ok) return;
-      const blob = await res.blob();
-      if (!String(blob.type || '').startsWith('image/')) return;
-      const dataUrl = await blobToDataUrl(blob);
-      img.removeAttribute('crossorigin');
-      img.src = dataUrl;
-    } catch {
-      // keep original src — html2canvas may still capture it
+    if (src.startsWith('data:')) return;
+    const candidates = isLogo
+      ? [src, shareCardLogoFetchUrl(), '/logo.png'].filter(Boolean)
+      : [src].filter(Boolean);
+    for (const candidate of candidates) {
+      try {
+        const dataUrl = await fetchImageAsDataUrl(candidate);
+        if (!dataUrl) continue;
+        img.removeAttribute('crossorigin');
+        img.src = dataUrl;
+        return;
+      } catch {
+        // try next candidate
+      }
     }
   }));
 }
@@ -685,7 +706,8 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
                   }}
                 >
                   <img
-                    src="/logo.png"
+                    data-share-logo="1"
+                    src={shareCardLogoFetchUrl()}
                     alt="Wellness Valley"
                     style={{
                       display: 'inline-block',
@@ -699,10 +721,7 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
               </td>
               <td style={{ verticalAlign: 'middle', padding: 0, lineHeight: 0 }}>
                 <p style={{ margin: 0, color: '#ffffff', fontSize: 20, fontWeight: 800, lineHeight: '26px' }}>
-                  Wellness Valley
-                  <span style={{ fontWeight: 500, fontSize: 13, color: '#d1fae5' }}>
-                    {` (${getVersionString().replace(/\s+/g, '')})`}
-                  </span>
+                  {`Wellness Valley (${String(APP_VERSION.VERSION || getVersionString()).replace(/\s+/g, '')})`}
                 </p>
                 <p style={{
                   margin: '2px 0 0',
@@ -1006,8 +1025,9 @@ export default function TransformationShareCard({
 }
 
 /**
- * Single Share button. kind="photo" shares the Before vs After card.
+ * Single Share control. kind="photo" shares the Before vs After card.
  * kind="video" shares the real Health/Business result videos.
+ * variant="icon" — compact top-of-card share icon; "button" — full-width CTA.
  */
 export function TransformationShareActions({
   kind = 'photo',
@@ -1016,10 +1036,13 @@ export function TransformationShareActions({
   testimonial = null,
   disabled = false,
   onBeforeAction,
+  variant = 'button',
+  className = '',
 }) {
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState(null);
   const isVideo = kind === 'video';
+  const isIcon = variant === 'icon';
 
   useEffect(() => {
     if (!isVideo) void import('html2canvas');
@@ -1054,8 +1077,28 @@ export function TransformationShareActions({
     }
   }, [busy, cardRef, disabled, isVideo, onBeforeAction, testimonial, userName]);
 
+  if (isIcon) {
+    return (
+      <div className={`relative shrink-0 ${className}`}>
+        <TouchFeedbackButton
+          onClick={run}
+          disabled={disabled || busy}
+          className="p-2 rounded-full text-green-700 hover:bg-green-50 disabled:opacity-50 transition-colors"
+          aria-label={isVideo ? 'Share video' : 'Share transformation card'}
+        >
+          <Share2 className={`h-5 w-5 ${busy ? 'animate-pulse' : ''}`} />
+        </TouchFeedbackButton>
+        {status === 'error' && (
+          <p className="absolute right-0 top-full mt-1 whitespace-nowrap text-[10px] text-red-600">
+            Share failed
+          </p>
+        )}
+      </div>
+    );
+  }
+
   return (
-    <div className="space-y-1 pt-0.5">
+    <div className={`space-y-1 pt-0.5 ${className}`}>
       <TouchFeedbackButton
         onClick={run}
         disabled={disabled || busy}

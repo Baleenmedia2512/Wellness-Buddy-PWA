@@ -5,6 +5,7 @@ export {
   reverseLookupOriginalAiName,
   searchFoods,
   toFoodSearchItem,
+  clearFoodSearchCache,
 } from './correctionApi';
 
 export {

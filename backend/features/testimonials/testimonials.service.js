@@ -60,8 +60,8 @@ import { isInlineImageReference } from './domain/profileTransformationPhotos.see
 import {
   bufferFromOptionalBase64,
   composeTransformationShareCardJpeg,
-  shareCardJpegHasReadableText,
 } from './domain/composeTransformationShareCard.js';
+import { scheduleDeferredCoachDelivery } from './deferredCoachDelivery.js';
 import { nowUtc } from '../../shared/lib/datetime/index.js';
 import {
   buildTestimonialCoachEmailHtml,
@@ -371,7 +371,7 @@ async function sendHealthIssueOtpEmail({
 
     await repo.updateTestimonial(existing.id, saveUpdates);
 
-    await sendCoachEmail({
+    scheduleDeferredCoachDelivery('health-issue photo OTP email', () => sendCoachEmail({
       coachEmail:      coachInfo.email,
       memberName:      userInfo.userName,
       goalType:        existing.goal_type,
@@ -383,9 +383,9 @@ async function sendHealthIssueOtpEmail({
       afterImagePath:  existing.after_image_path,
       recoveredHealthIssues,
       userId:          existing.user_id ?? userInfo?.userId ?? null,
-    });
+    }));
 
-    return 'Health issues updated. Your coach received a new photo OTP by email with your latest images.';
+    return 'Health issues updated. Your coach will receive a new photo OTP by email with your latest images.';
   }
 
   await repo.updateTestimonial(existing.id, saveUpdates);
@@ -396,16 +396,16 @@ async function sendHealthIssueOtpEmail({
     videoVerifiedAt:   null,
   });
 
-  await sendVideoCoachEmail({
+  scheduleDeferredCoachDelivery('health-issue video OTP email', () => sendVideoCoachEmail({
     coachEmail:        coachInfo.email,
     memberName:        userInfo.userName,
     otp,
     healthVideoPath:   existing.health_video_path   ?? null,
     businessVideoPath: existing.business_video_path ?? null,
     recoveredHealthIssues,
-  });
+  }));
 
-  return 'Health issues updated. Your coach received a new video OTP by email with your latest videos.';
+  return 'Health issues updated. Your coach will receive a new video OTP by email with your latest videos.';
 }
 
 async function resolveDisplayImageUrl(path) {
@@ -608,37 +608,39 @@ export async function submitTestimonial(rawBody) {
     });
   }
 
-  // Only email coach (or co-coach fallback) when the testimonial is complete
+  // Share card + coach email must not block OTP UI — schedule after DB commit.
   if (payload.hasAfter) {
-    await uploadShareCardImage(payload.userId, payload.shareCardImageBase64, {
-      beforeImagePath: beforePath,
-      afterImagePath: afterPath,
-      beforeImageBase64: payload.beforeImageBase64,
-      afterImageBase64: payload.afterImageBase64,
-      memberName: userInfo.userName,
-      beforeWeightKg: payload.beforeWeightKg,
-      afterWeightKg: payload.afterWeightKg,
-      goalType: payload.goalType,
-      durationText: payload.durationText,
-      recoveredHealthIssues: payload.recoveredHealthIssues,
-    });
     const coachInfo = recipient.coachInfo;
-    if (coachInfo?.email) {
-      await sendCoachEmail({
-        coachEmail:    coachInfo.email,
-        coachName:     coachInfo.name,
-        memberName:    userInfo.userName,
-        goalType:      payload.goalType,
-        beforeWeight:  payload.beforeWeightKg,
-        afterWeight:   payload.afterWeightKg,
-        durationText:  payload.durationText,
-        otp,
+    scheduleDeferredCoachDelivery('submit share-card + coach email', async () => {
+      await uploadShareCardImage(payload.userId, payload.shareCardImageBase64, {
         beforeImagePath: beforePath,
-        afterImagePath:  afterPath,
+        afterImagePath: afterPath,
+        beforeImageBase64: payload.beforeImageBase64,
+        afterImageBase64: payload.afterImageBase64,
+        memberName: userInfo.userName,
+        beforeWeightKg: payload.beforeWeightKg,
+        afterWeightKg: payload.afterWeightKg,
+        goalType: payload.goalType,
+        durationText: payload.durationText,
         recoveredHealthIssues: payload.recoveredHealthIssues,
-        userId:          payload.userId,
       });
-    }
+      if (coachInfo?.email) {
+        await sendCoachEmail({
+          coachEmail:    coachInfo.email,
+          coachName:     coachInfo.name,
+          memberName:    userInfo.userName,
+          goalType:      payload.goalType,
+          beforeWeight:  payload.beforeWeightKg,
+          afterWeight:   payload.afterWeightKg,
+          durationText:  payload.durationText,
+          otp,
+          beforeImagePath: beforePath,
+          afterImagePath:  afterPath,
+          recoveredHealthIssues: payload.recoveredHealthIssues,
+          userId:          payload.userId,
+        });
+      }
+    });
   }
 
   const message = payload.hasAfter
@@ -647,7 +649,13 @@ export async function submitTestimonial(rawBody) {
 
   return {
     httpStatus: 200,
-    body: { success: true, message, testimonialId: row.id, status: newStatus },
+    body: {
+      success: true,
+      message,
+      testimonialId: row.id,
+      status: newStatus,
+      ...(payload.hasAfter ? { otpSent: true } : {}),
+    },
   };
 }
 
@@ -831,31 +839,33 @@ export async function editTestimonial(rawBody) {
 
     if (coachInfo?.email && userInfo?.userName) {
       const currentBeforePath = updates.beforeImagePath ?? existing.before_image_path;
-      await uploadShareCardImage(payload.userId, payload.shareCardImageBase64, {
-        beforeImagePath: currentBeforePath,
-        afterImagePath: afterPathNow,
-        beforeImageBase64: payload.beforeImageBase64,
-        afterImageBase64: payload.afterImageBase64,
-        memberName: userInfo.userName,
-        beforeWeightKg: updates.beforeWeightKg ?? existing.before_weight_kg,
-        afterWeightKg: afterWeightNow,
-        goalType: updates.goalType ?? existing.goal_type,
-        durationText: updates.durationText ?? existing.duration_text,
-        recoveredHealthIssues: resolvedHealthIssues,
-      });
-      await sendCoachEmail({
-        coachEmail:    coachInfo.email,
-        coachName:     coachInfo.name,
-        memberName:    userInfo.userName,
-        goalType:      updates.goalType    ?? existing.goal_type,
-        beforeWeight:  updates.beforeWeightKg ?? existing.before_weight_kg,
-        afterWeight:   afterWeightNow,
-        durationText:  updates.durationText ?? existing.duration_text,
-        otp,
-        beforeImagePath: currentBeforePath,
-        afterImagePath:  afterPathNow,
-        recoveredHealthIssues: resolvedHealthIssues,
-        userId:          payload.userId,
+      scheduleDeferredCoachDelivery('edit share-card + coach email', async () => {
+        await uploadShareCardImage(payload.userId, payload.shareCardImageBase64, {
+          beforeImagePath: currentBeforePath,
+          afterImagePath: afterPathNow,
+          beforeImageBase64: payload.beforeImageBase64,
+          afterImageBase64: payload.afterImageBase64,
+          memberName: userInfo.userName,
+          beforeWeightKg: updates.beforeWeightKg ?? existing.before_weight_kg,
+          afterWeightKg: afterWeightNow,
+          goalType: updates.goalType ?? existing.goal_type,
+          durationText: updates.durationText ?? existing.duration_text,
+          recoveredHealthIssues: resolvedHealthIssues,
+        });
+        await sendCoachEmail({
+          coachEmail:    coachInfo.email,
+          coachName:     coachInfo.name,
+          memberName:    userInfo.userName,
+          goalType:      updates.goalType    ?? existing.goal_type,
+          beforeWeight:  updates.beforeWeightKg ?? existing.before_weight_kg,
+          afterWeight:   afterWeightNow,
+          durationText:  updates.durationText ?? existing.duration_text,
+          otp,
+          beforeImagePath: currentBeforePath,
+          afterImagePath:  afterPathNow,
+          recoveredHealthIssues: resolvedHealthIssues,
+          userId:          payload.userId,
+        });
       });
     }
 
@@ -863,9 +873,10 @@ export async function editTestimonial(rawBody) {
       httpStatus: 200,
       body: {
         success: true,
-        message: 'Testimonial updated! A new verification email has been sent to your coach.',
+        message: 'Testimonial updated! A new verification email will be sent to your coach.',
         testimonialId: existing.id,
         status: 'pending',
+        otpSent: true,
       },
     };
   }
@@ -1354,14 +1365,14 @@ export async function submitVideo(rawBody) {
 
   const coachInfo = recipient.coachInfo;
   if (coachInfo?.email) {
-    await sendVideoCoachEmail({
+    scheduleDeferredCoachDelivery('video OTP email', () => sendVideoCoachEmail({
       coachEmail:        coachInfo.email,
       memberName:        userInfo.userName,
       otp,
       healthVideoPath:   uploads.healthVideoPath   ?? existing.health_video_path   ?? null,
       businessVideoPath: uploads.businessVideoPath ?? existing.business_video_path ?? null,
       recoveredHealthIssues: resolvedHealthIssues,
-    });
+    }));
   }
 
   return {
@@ -1563,8 +1574,9 @@ async function sendUnifiedCoachEmail({
   ]);
 
   // Previous tap-preview = full share-card JPEG (not the small Before|After thumbs).
-  // Prefer the archived card that uploadShareCardImage just rotated (client capture,
-  // same look as New). Only path-compose when that archive is missing or □ tofu.
+  // Prefer the archived card from uploadShareCardImage (client capture, same as New).
+  // Always link when a full-card JPEG exists — do not gate on pixel-readability
+  // (that check false-negatives client captures and left Previous untappable).
   let previousPreviewHref = null;
   if (userId && previousPairDistinct) {
     const prevSharePath = repo.previousShareCardStoragePath(userId);
@@ -1574,7 +1586,7 @@ async function sendUnifiedCoachEmail({
     } catch {
       existingPrev = null;
     }
-    if (existingPrev?.length > 2000 && await shareCardJpegHasReadableText(existingPrev)) {
+    if (existingPrev?.length > 2000) {
       previousPreviewHref = await repo.getEmailSignedUrl(prevSharePath);
     } else if (previousCardBeforePath && previousCardAfterPath) {
       try {
@@ -1593,11 +1605,11 @@ async function sendUnifiedCoachEmail({
             durationText: previousDurationText,
             recoveredHealthIssues: previousRecoveredHealthIssues,
           });
-          if (prevJpeg?.length > 2000 && await shareCardJpegHasReadableText(prevJpeg)) {
+          if (prevJpeg?.length > 2000) {
             await repo.uploadBuffer(prevSharePath, prevJpeg, 'image/jpeg');
             previousPreviewHref = await repo.getEmailSignedUrl(prevSharePath);
           } else {
-            logger.warn('[testimonials.service] Previous compose rejected (missing or □ text)', {
+            logger.warn('[testimonials.service] Previous compose produced empty JPEG', {
               userId,
               bytes: prevJpeg?.length || 0,
             });
@@ -1611,7 +1623,7 @@ async function sendUnifiedCoachEmail({
       }
     }
     if (!previousPreviewHref) {
-      logger.warn('[testimonials.service] Previous tap-preview unavailable (no readable full card)', {
+      logger.warn('[testimonials.service] Previous tap-preview unavailable (no full card archive or compose)', {
         userId,
         hadArchive: Boolean(existingPrev?.length),
       });
@@ -1958,7 +1970,7 @@ export async function submitAllEdits(rawBody) {
     await repo.updateTestimonialVideos(existing.id, { videoOtpHash: otpHash, videoOtpExpiresAt: otpExpiry });
   }
 
-  // Send unified coach email (coach, or co-coach when member has no CoachId)
+  // Share card + unified coach email after response — OTP UI must not wait on SMTP.
   const coachInfo = recipient.coachInfo;
   if (coachInfo?.email && userInfo?.userName) {
     const finalBeforePath    = photoUpdates.beforeImagePath   ?? existing.before_image_path;
@@ -1975,42 +1987,44 @@ export async function submitAllEdits(rawBody) {
       emailChangedSlots.push('duration');
     }
 
-    await uploadShareCardImage(payload.userId, payload.shareCardImageBase64, {
-      beforeImagePath: finalBeforePath,
-      afterImagePath: finalAfterPath,
-      beforeImageBase64: payload.beforeImageBase64,
-      afterImageBase64: payload.afterImageBase64,
-      memberName: userInfo.userName,
-      beforeWeightKg: photoUpdates.beforeWeightKg ?? existing.before_weight_kg,
-      afterWeightKg: photoUpdates.afterWeightKg ?? existing.after_weight_kg,
-      goalType: photoUpdates.goalType ?? existing.goal_type,
-      durationText: resolvedDuration,
-      recoveredHealthIssues: resolvedHealthIssues,
-    });
-    await sendUnifiedCoachEmail({
-      coachEmail:             coachInfo.email,
-      memberName:             userInfo.userName,
-      otp,
-      changedSlots:           emailChangedSlots,
-      goalType:               photoUpdates.goalType    ?? existing.goal_type,
-      beforeWeight:           photoUpdates.beforeWeightKg ?? existing.before_weight_kg,
-      afterWeight:            photoUpdates.afterWeightKg  ?? existing.after_weight_kg,
-      durationText:           resolvedDuration,
-      beforeImagePath:        finalBeforePath,
-      afterImagePath:         finalAfterPath,
-      // Keep previous paths for the Previous Transformation Card (even if first real After).
-      previousBeforeImagePath: prevBeforeImagePath,
-      previousAfterImagePath:  prevAfterImagePath,
-      previousBeforeWeight:    existing.before_weight_kg,
-      previousAfterWeight:     existing.after_weight_kg,
-      previousGoalType:        existing.goal_type,
-      previousDurationText:    existing.duration_text,
-      previousRecoveredHealthIssues: existing.recovered_health_issues ?? [],
-      healthVideoPath:        finalHealthVideo,
-      businessVideoPath:      finalBusinessVideo,
-      recoveredHealthIssues:  resolvedHealthIssues,
-      isComplete,
-      userId:                 payload.userId,
+    scheduleDeferredCoachDelivery('unified share-card + coach email', async () => {
+      await uploadShareCardImage(payload.userId, payload.shareCardImageBase64, {
+        beforeImagePath: finalBeforePath,
+        afterImagePath: finalAfterPath,
+        beforeImageBase64: payload.beforeImageBase64,
+        afterImageBase64: payload.afterImageBase64,
+        memberName: userInfo.userName,
+        beforeWeightKg: photoUpdates.beforeWeightKg ?? existing.before_weight_kg,
+        afterWeightKg: photoUpdates.afterWeightKg ?? existing.after_weight_kg,
+        goalType: photoUpdates.goalType ?? existing.goal_type,
+        durationText: resolvedDuration,
+        recoveredHealthIssues: resolvedHealthIssues,
+      });
+      await sendUnifiedCoachEmail({
+        coachEmail:             coachInfo.email,
+        memberName:             userInfo.userName,
+        otp,
+        changedSlots:           emailChangedSlots,
+        goalType:               photoUpdates.goalType    ?? existing.goal_type,
+        beforeWeight:           photoUpdates.beforeWeightKg ?? existing.before_weight_kg,
+        afterWeight:            photoUpdates.afterWeightKg  ?? existing.after_weight_kg,
+        durationText:           resolvedDuration,
+        beforeImagePath:        finalBeforePath,
+        afterImagePath:         finalAfterPath,
+        // Keep previous paths for the Previous Transformation Card (even if first real After).
+        previousBeforeImagePath: prevBeforeImagePath,
+        previousAfterImagePath:  prevAfterImagePath,
+        previousBeforeWeight:    existing.before_weight_kg,
+        previousAfterWeight:     existing.after_weight_kg,
+        previousGoalType:        existing.goal_type,
+        previousDurationText:    existing.duration_text,
+        previousRecoveredHealthIssues: existing.recovered_health_issues ?? [],
+        healthVideoPath:        finalHealthVideo,
+        businessVideoPath:      finalBusinessVideo,
+        recoveredHealthIssues:  resolvedHealthIssues,
+        isComplete,
+        userId:                 payload.userId,
+      });
     });
   }
 
