@@ -12,8 +12,8 @@ import { phonesMatch, canonicalPhoneForStorage } from './phone-identity.rules.js
 
 export const DEMO_EMAIL = 'testereasywork@gmail.com';
 /** Indian national digits; login sends E.164 +91… */
-export const DEMO_PHONE_NATIONAL = '9876543211';
-export const DEMO_LOGIN_OTP = '1234';
+export const DEMO_PHONE_NATIONAL = '9898989898';
+export const DEMO_LOGIN_OTP = '0000';
 export const DEMO_DELETE_OTP = '6543';
 
 export const DEMO_PHONE_DISPLAY_NAME = 'cashfree test';

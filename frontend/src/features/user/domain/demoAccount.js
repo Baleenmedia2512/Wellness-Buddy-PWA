@@ -6,8 +6,8 @@
 import { normalizePhone, DEFAULT_COUNTRY } from './contactIdentifier.js';
 
 export const DEMO_EMAIL = 'testereasywork@gmail.com';
-export const DEMO_PHONE_NATIONAL = '9876543211';
-export const DEMO_LOGIN_OTP = '1234';
+export const DEMO_PHONE_NATIONAL = '9898989898';
+export const DEMO_LOGIN_OTP = '0000';
 
 function nationalDigits(phone) {
   const digits = String(phone || '').replace(/\D/g, '');
