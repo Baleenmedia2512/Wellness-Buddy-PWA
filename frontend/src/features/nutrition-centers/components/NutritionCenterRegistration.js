@@ -7,7 +7,7 @@ import PhoneContactActions from '../../../shared/components/PhoneContactActions.
 import { Geolocation } from '@capacitor/geolocation';
 import { debugLog } from '../../../shared/utils/logger.js';
 import { loadGoogleMaps } from '../services/googleMapsLoader';
-import { apiFetch } from '../../../shared/services/apiFetch.js';
+import { getUserId } from '../../../shared/services/userIdentity';
 import { splitOwnerPhone } from '../domain/ownerPhone.js';
 
 const NutritionCenterRegistration = ({ user, onBack, onSaved, initialCenter }) => {
@@ -424,14 +424,13 @@ const NutritionCenterRegistration = ({ user, onBack, onSaved, initialCenter }) =
     setOwnerPhone(limitedValue);
   };
 
-  // Get user ID helper
-  const getUserId = async (email) => {
-    const response = await apiFetch(
-      `${apiBaseUrl}/api/user/lookup?email=${encodeURIComponent(email)}`
-    );
-    const data = await response.json();
-    if (!data.success) throw new Error('User not found');
-    return data.userId;
+  // Resolve DB UserId from session/user object (supports phone-login users without email)
+  const resolveOwnerUserId = async () => {
+    const userId = await getUserId(user);
+    if (!userId) {
+      throw new Error('Unable to verify your account. Please sign in again.');
+    }
+    return userId;
   };
 
   // Fetch user's centres
@@ -440,7 +439,7 @@ const NutritionCenterRegistration = ({ user, onBack, onSaved, initialCenter }) =
 
     setLoadingCenters(true);
     try {
-      const userId = await getUserId(user.email);
+      const userId = await resolveOwnerUserId();
       const response = await fetch(
         `${apiBaseUrl}/api/nutrition-centers?userId=${userId}&teamFilter=self&paginate=0`,
         {
@@ -528,7 +527,7 @@ const NutritionCenterRegistration = ({ user, onBack, onSaved, initialCenter }) =
       if (nameAvailable === false) {
         throw new Error('This centre name is already taken. Please choose a different name.');
       }
-      const userId = await getUserId(user.email);
+      const userId = await resolveOwnerUserId();
       const response = await fetch(`${apiBaseUrl}/api/nutrition-centers`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -598,7 +597,7 @@ const NutritionCenterRegistration = ({ user, onBack, onSaved, initialCenter }) =
         throw new Error('This centre name is already taken. Please choose a different name.');
       }
 
-      const userId = await getUserId(user.email);
+      const userId = await resolveOwnerUserId();
 
       const response = await fetch(`${apiBaseUrl}/api/nutrition-centers`, {
         method: 'POST',
@@ -670,7 +669,7 @@ const NutritionCenterRegistration = ({ user, onBack, onSaved, initialCenter }) =
   const confirmUnregister = async (centerId) => {
 
     try {
-      const userId = await getUserId(user.email);
+      const userId = await resolveOwnerUserId();
 
       const response = await fetch(`${apiBaseUrl}/api/nutrition-centers/unregister`, {
         method: 'POST',
