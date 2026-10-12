@@ -1,6 +1,7 @@
 /**
  * POST /api/testimonials/update-health-issues
- * Coach updates a reporting member's recovered health issues (no OTP).
+ * Disabled: coaches cannot edit downline health issues on Transformation.
+ * Always returns 403; members edit via Mine submit/edit flows instead.
  */
 import { applyCors, methodNotAllowed, runService } from '../../../shared/lib/handler.js';
 import { updateMemberHealthIssues } from '../../../features/testimonials/testimonials.service.js';

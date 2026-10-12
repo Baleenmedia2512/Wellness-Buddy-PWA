@@ -3,7 +3,7 @@
  * Fetches activity records and member details for downline users
  */
 import { getSupabaseClient } from '../../utils/supabaseClient.js';
-import { isExemptedBeverageOnly, isExemptedFood, extractFoodItemsFromAnalysis, getFoodItemName } from '../../utils/foodTypeDetection.js';
+import { isExemptedBeverageOnly, isNonMealNutritionOnly, isExemptedFood, extractFoodItemsFromAnalysis, getFoodItemName } from '../../utils/foodTypeDetection.js';
 import { applyDateRangeFilterWidened } from '../../shared/lib/datetime/applyDayFilter.js';
 import {
   IANA_IST,
@@ -302,6 +302,29 @@ export function isReportBeverageRecord(record) {
   return false;
 }
 
+/**
+ * True when a food row should not count as breakfast/lunch/dinner
+ * (beverages, Afresh, Target Nutrition, supplements). Meal shakes still count.
+ */
+export function isReportNonMealRecord(record) {
+  const by = String(record?.ProcessedBy || '').toLowerCase().trim();
+  if (by === 'shake_calculator') return false;
+  if (by === 'water_preset' || by === 'afresh_preset') return true;
+  if (record?.AnalysisData) {
+    try {
+      const parsed = typeof record.AnalysisData === 'string'
+        ? JSON.parse(record.AnalysisData) : record.AnalysisData;
+      const embedded = String(parsed?.processedBy || '').toLowerCase().trim();
+      if (embedded === 'shake_calculator') return false;
+      if (embedded === 'water_preset' || embedded === 'afresh_preset') return true;
+    } catch {
+      /* fall through */
+    }
+    return isNonMealNutritionOnly(record.AnalysisData);
+  }
+  return false;
+}
+
 export async function fetchStepRecords(userIds, startDate, endDate, timezoneIana = IANA_IST) {
   if (!userIds || userIds.length === 0) return [];
 
@@ -440,7 +463,7 @@ export function filterFoodByMealTime(
   if (!window) return [];
 
   return foodRecords.filter((record) => {
-    if (isReportBeverageRecord(record)) return false;
+    if (isReportNonMealRecord(record)) return false;
 
     try {
       const tz = resolveTimezoneFromMap(

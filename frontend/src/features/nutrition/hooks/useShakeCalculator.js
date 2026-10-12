@@ -2,16 +2,16 @@
  * frontend/src/features/nutrition/hooks/useShakeCalculator.js
  *
  * Shake Calculator state. Nutrition uses the same canonical Herbalife Shake
- * profile as the AI path (herbalifeShakeProfile.js), scaled by powder grams
- * from scoop counts — not the old incorrect per-scoop macros.
+ * profile as the AI path (herbalifeShakeProfile.js), scaled by base powder grams
+ * from F1 / Shakemate / Protein — plus optional Active Fibre Complex label macros.
  */
 
 import { useCallback, useMemo, useState } from 'react';
 import { SHAKE_PRODUCTS, SHAKE_PRODUCT_IDS } from '../domain/shakeProductProfiles';
 import {
   HERBALIFE_SHAKE_NAME,
+  combineShakeNutrition,
   powderGramsFromServings,
-  scaleHerbalifeShakeNutrition,
 } from '../domain/herbalifeShakeProfile';
 
 function buildDefaultServings() {
@@ -53,14 +53,19 @@ export function useShakeCalculator() {
     setServingsState(buildDefaultServings());
   }, []);
 
+  const basePowderGrams = useMemo(
+    () => powderGramsFromServings(servings, SHAKE_PRODUCTS, { includeAdditive: false }),
+    [servings],
+  );
+
   const powderGrams = useMemo(
-    () => powderGramsFromServings(servings, SHAKE_PRODUCTS),
+    () => powderGramsFromServings(servings, SHAKE_PRODUCTS, { includeAdditive: true }),
     [servings],
   );
 
   const shakeItem = useMemo(
-    () => (powderGrams > 0 ? scaleHerbalifeShakeNutrition(powderGrams) : null),
-    [powderGrams],
+    () => combineShakeNutrition(basePowderGrams, Number(servings.activeFibre) || 0),
+    [basePowderGrams, servings.activeFibre],
   );
 
   const totals = useMemo(() => {
@@ -93,6 +98,7 @@ export function useShakeCalculator() {
       formula1: Number(servings.formula1) || 0,
       shakemate: Number(servings.shakemate) || 0,
       protein: Number(servings.protein) || 0,
+      activeFibre: Number(servings.activeFibre) || 0,
     };
     return {
       nutrition: { ...n },

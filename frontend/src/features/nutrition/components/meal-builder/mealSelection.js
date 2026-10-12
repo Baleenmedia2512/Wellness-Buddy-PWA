@@ -41,14 +41,25 @@ export function scaleSelectedItem(item) {
   const servings = normalizeServings(item.servings);
   const nutrition = scaleNutritionFields(item, servings);
   const refW = item.refWeightG ?? referenceWeightG(item);
-  return {
+  const amount = Math.round(refW * servings);
+  const isLiquid = Boolean(item.isLiquid || item.is_liquid);
+  const unit = item.unit || (isLiquid ? 'ml' : 'g');
+  const out = {
     name: item.name,
-    weight_g: Math.round(refW * servings),
+    weight_g: amount,
     portion: formatServingPortion(item, servings),
     servings,
+    unit,
+    isLiquid,
     nutrition,
     ...nutrition,
   };
+  if (isLiquid || unit === 'ml') {
+    out.volume_ml = amount;
+  }
+  if (item.profileId != null) out.profileId = item.profileId;
+  if (item.customFood) out.customFood = true;
+  return out;
 }
 
 /**

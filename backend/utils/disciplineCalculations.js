@@ -4,7 +4,7 @@
  */
 
 import { formatDateForMySQL, getDaysBetween } from './disciplineHelpers.js';
-import { isExemptedBeverageOnly } from './foodTypeDetection.js';
+import { isNonMealNutritionOnly } from './foodTypeDetection.js';
 
 /**
  * Calculate discipline for a single team member
@@ -111,7 +111,7 @@ export async function calculateMemberDiscipline(connection, userId, startDate, e
     dinnerWindow.start, dinnerWindow.end
   ]);
   
-  // Organize meal data — filter out records that contain ONLY exempted beverages
+  // Organize meal data — skip beverages, Target Nutrition, supplements (not real meals)
   const mealData = {
     breakfast: { daysWithPosts: 0, daysWithOnTimePosts: 0 },
     lunch: { daysWithPosts: 0, daysWithOnTimePosts: 0 },
@@ -125,8 +125,8 @@ export async function calculateMemberDiscipline(connection, userId, startDate, e
   };
   
   (mealRecords || []).forEach(row => {
-    // Skip beverage-only entries (water, coffee, tea, afresh, etc.)
-    if (isExemptedBeverageOnly(row.AnalysisData)) return;
+    // Skip non-meals: water/tea/Afresh, Target Nutrition, supplements (Triphala, etc.)
+    if (isNonMealNutritionOnly(row.AnalysisData)) return;
     
     const timeMatch = String(row.CreatedAt).match(/(\d{2}:\d{2}:\d{2})/);
     if (!timeMatch) return;

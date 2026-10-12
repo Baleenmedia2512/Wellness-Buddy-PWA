@@ -33,12 +33,14 @@ describe('Wellness Score food timestamp — dinner leak regression', () => {
       foodRecords: jul24,
       window: DINNER_WIN,
       timezoneIana: IANA_IST,
+      goalMode: 'gain',
     });
     const score25 = calculateDinnerPost({
       maxPoints: 100,
       foodRecords: jul25,
       window: DINNER_WIN,
       timezoneIana: IANA_IST,
+      goalMode: 'gain',
     });
     assert.equal(score24.earnedPoints, 100);
     assert.equal(score25.earnedPoints, 0);
@@ -59,6 +61,7 @@ describe('Wellness Score food timestamp — dinner leak regression', () => {
       foodRecords: [row],
       window: DINNER_WIN,
       timezoneIana: IANA_IST,
+      goalMode: 'gain',
     });
     assert.equal(score.earnedPoints, 100);
   });
@@ -79,6 +82,7 @@ describe('Wellness Score food timestamp — dinner leak regression', () => {
       foodRecords: todayMeals,
       window: DINNER_WIN,
       timezoneIana: IANA_IST,
+      goalMode: 'gain',
     });
     assert.equal(scoreToday.earnedPoints, 0, 'must not earn dinner points on 2026-07-25');
 
@@ -90,12 +94,47 @@ describe('Wellness Score food timestamp — dinner leak regression', () => {
       foodRecords: yesterday,
       window: DINNER_WIN,
       timezoneIana: IANA_IST,
+      goalMode: 'gain',
     });
     assert.equal(scoreYesterday.earnedPoints, 100);
 
     // Nutrition aggregates for "today" stay empty
     const statsToday = aggregateDailyFoodStats(todayMeals);
     assert.equal(statsToday.totalCalories, 0);
+  });
+
+  it('Weight Loss: solid dinner food earns 0; shake dinner earns dinner_post', () => {
+    const foodRow = {
+      CreatedAt: '2026-07-24 19:45:00',
+      AnalysisData: { foods: [{ name: 'Chicken Curry' }] },
+    };
+    const shakeRow = {
+      CreatedAt: '2026-07-24 19:45:00',
+      AnalysisData: {
+        processedBy: 'shake_calculator',
+        foods: [{ name: 'Herbalife Shake' }],
+      },
+    };
+    assert.equal(
+      calculateDinnerPost({
+        maxPoints: 100,
+        foodRecords: [foodRow],
+        window: DINNER_WIN,
+        timezoneIana: IANA_IST,
+        goalMode: 'loss',
+      }).earnedPoints,
+      0,
+    );
+    assert.equal(
+      calculateDinnerPost({
+        maxPoints: 100,
+        foodRecords: [shakeRow],
+        window: DINNER_WIN,
+        timezoneIana: IANA_IST,
+        goalMode: 'loss',
+      }).earnedPoints,
+      100,
+    );
   });
 
   it('never awards meal windows from raw string digits when TZ-aware time differs', () => {

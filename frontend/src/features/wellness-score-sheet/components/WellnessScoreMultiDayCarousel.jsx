@@ -63,12 +63,12 @@ function computeParamAverages(historyDays, activeParams = []) {
     const { label, earnedSum, maxPoints } = totals[key];
     const earnedAvg = earnedSum / dayCount;
     const avgPct = maxPoints > 0 ? Math.min(100, Math.round((earnedAvg / maxPoints) * 100)) : 0;
-    result[key] = { label, earnedAvg: Math.round(earnedAvg * 10) / 10, maxPoints, avgPct };
+    result[key] = { key, label, earnedAvg: Math.round(earnedAvg * 10) / 10, maxPoints, avgPct };
   }
   return result;
 }
 
-function AverageScorePanel({ historyDays, sections }) {
+function AverageScorePanel({ historyDays, sections, onOpenContribution }) {
   const activeParams = useMemo(
     () => sections.flatMap((section) => section.parameters || []),
     [sections],
@@ -84,8 +84,20 @@ function AverageScorePanel({ historyDays, sections }) {
 
   const avgSections = sections
     .map((section) => {
-      const parameters = section.parameters
-        .map((p) => avgByKey[p.key])
+      const parameters = (section.parameters || [])
+        .map((param) => {
+          const avg = avgByKey[param.key];
+          if (!avg) return null;
+          return {
+            ...param,
+            ...avg,
+            earnedPoints: avg.earnedAvg,
+            percentage: avg.avgPct,
+            calculationReason:
+              param.calculationReason
+              || `Average ${avg.earnedAvg}/${avg.maxPoints} pts per day over ${dayAverage?.dayCount || historyDays.length} days`,
+          };
+        })
         .filter(Boolean);
       return { ...section, parameters };
     })
@@ -94,6 +106,7 @@ function AverageScorePanel({ historyDays, sections }) {
   if (!dayAverage || !avgSections.length) return null;
 
   const { avgEarned, avgPossible, avgPct, dayCount } = dayAverage;
+  const clickable = typeof onOpenContribution === 'function';
 
   return (
     <div className="space-y-3 p-3">
@@ -152,33 +165,66 @@ function AverageScorePanel({ historyDays, sections }) {
               </span>
             </div>
             <div className="space-y-2 p-2.5">
-              {section.parameters.map(({ label, earnedAvg, maxPoints, avgPct: paramPct }) => (
-                <div
-                  key={label}
-                  className="rounded-xl border border-emerald-100 bg-white px-3.5 py-3 shadow-sm"
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="truncate text-sm font-semibold text-gray-900">{label}</p>
-                    <p className="shrink-0 text-sm font-bold tabular-nums text-gray-900">
-                      {earnedAvg % 1 === 0 ? earnedAvg : earnedAvg.toFixed(1)}
-                      <span className="font-medium text-gray-400">/{maxPoints}</span>
-                      <span className="ml-1.5 text-[11px] font-medium text-emerald-700">{paramPct}%</span>
+              {section.parameters.map((param) => {
+                const {
+                  key,
+                  label,
+                  earnedAvg,
+                  maxPoints,
+                  avgPct: paramPct,
+                } = param;
+
+                const open = () => {
+                  if (clickable) onOpenContribution(param);
+                };
+
+                return (
+                  <div
+                    key={key || label}
+                    className={`rounded-xl border border-emerald-100 bg-white px-3.5 py-3 shadow-sm ${
+                      clickable
+                        ? 'cursor-pointer active:scale-[0.99] transition-transform hover:border-emerald-300 hover:shadow-md'
+                        : ''
+                    }`}
+                    data-testid={`score-category-avg-${key}`}
+                    onClick={open}
+                    onKeyDown={clickable ? (e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        open();
+                      }
+                    } : undefined}
+                    role={clickable ? 'button' : undefined}
+                    tabIndex={clickable ? 0 : undefined}
+                    aria-label={clickable ? `View ${label} contribution over ${dayCount} days` : undefined}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="truncate text-sm font-semibold text-gray-900">{label}</p>
+                      <p className="shrink-0 text-sm font-bold tabular-nums text-gray-900">
+                        {earnedAvg % 1 === 0 ? earnedAvg : earnedAvg.toFixed(1)}
+                        <span className="font-medium text-gray-400">/{maxPoints}</span>
+                        <span className="ml-1.5 text-[11px] font-medium text-emerald-700">{paramPct}%</span>
+                      </p>
+                    </div>
+                    <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-gray-100">
+                      <div
+                        className={`h-full rounded-full transition-all duration-500 ${avgBarTone(paramPct)}`}
+                        style={{ width: `${paramPct}%` }}
+                        role="progressbar"
+                        aria-valuenow={paramPct}
+                        aria-valuemin={0}
+                        aria-valuemax={100}
+                        aria-label={`${label} average progress`}
+                      />
+                    </div>
+                    <p className="mt-1 text-[10px] text-gray-400">
+                      {clickable
+                        ? `avg pts/day over ${dayCount} days · tap for foods`
+                        : `avg pts/day over ${dayCount} days`}
                     </p>
                   </div>
-                  <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-gray-100">
-                    <div
-                      className={`h-full rounded-full transition-all duration-500 ${avgBarTone(paramPct)}`}
-                      style={{ width: `${paramPct}%` }}
-                      role="progressbar"
-                      aria-valuenow={paramPct}
-                      aria-valuemin={0}
-                      aria-valuemax={100}
-                      aria-label={`${label} average progress`}
-                    />
-                  </div>
-                  <p className="mt-1 text-[10px] text-gray-400">avg pts/day over {dayCount} days</p>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </section>
         );
@@ -188,11 +234,12 @@ function AverageScorePanel({ historyDays, sections }) {
 }
 
 /**
- * Multi-day wellness score summary — period average only (no per-day picker).
+ * Multi-day wellness score summary — period average with optional food drill-down.
  */
 export default function WellnessScoreMultiDayCarousel({
   historyDays,
   sections,
+  onOpenContribution,
 }) {
   if (!historyDays.length || historyDays.length <= 1) return null;
 
@@ -211,7 +258,11 @@ export default function WellnessScoreMultiDayCarousel({
       </div>
 
       <div className="w-full overflow-hidden">
-        <AverageScorePanel historyDays={historyDays} sections={sections} />
+        <AverageScorePanel
+          historyDays={historyDays}
+          sections={sections}
+          onOpenContribution={onOpenContribution}
+        />
       </div>
     </section>
   );

@@ -21,7 +21,7 @@ import { X, Download, Share2, CheckCircle } from 'lucide-react';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
 import { shareImageDirectly } from '../../../shared/utils/shareUtils';
 import { saveImageBlobToGallery } from '../../../shared/plugins/saveToGalleryPlugin';
-import { getVersionString } from '../../../config/version';
+import { APP_VERSION, getVersionString } from '../../../config/version';
 import {
   shareResultVideos,
 } from '../utils/downloadVideo.js';
@@ -34,6 +34,7 @@ import {
   issueColumnsForCount,
   shareCardPhotoHeight,
 } from '../utils/shareCardLayout.js';
+import { isTransformationWeightLoss } from '../services/testimonialFormUtils.js';
 
 export { CARD_H, CARD_W };
 
@@ -82,30 +83,51 @@ const RESULT_BURST_RIGHT_SRC = svgDataUri(
   + '</svg>',
 );
 
+function escapeSvgText(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
+/**
+ * Result pill as SVG so html2canvas centers the label (DOM span padding was
+ * left-shifted — font metrics made the blue box wider than the glyphs).
+ */
+function buildResultPillSrc(label) {
+  const text = String(label || '').replace(/\s+/g, ' ').trim();
+  if (!text) return '';
+  const padX = 18;
+  // Bold 15px Arial advance ≈ 0.62em; keep a small safety margin.
+  const textW = Math.ceil(text.length * 9.2);
+  const w = Math.max(120, textW + padX * 2);
+  const h = 30;
+  const midY = 20;
+  return svgDataUri(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">`
+    + `<rect x="0" y="0" width="${w}" height="${h}" rx="15" ry="15" fill="${PILL_BG}"/>`
+    + `<text x="${w / 2}" y="${midY}" text-anchor="middle" `
+    + 'font-family="Arial, Helvetica, sans-serif" font-size="15" font-weight="800" '
+    + `fill="${PILL_BLUE}">${escapeSvgText(text)}</text>`
+    + '</svg>',
+  );
+}
+
 /**
  * Compact disclaimer footer as one SVG so html2canvas always paints the text
  * (nested DOM text inside yellow inline-block was blank in the share bitmap).
+ * Height must stay in sync with DISCLAIMER_H in shareCardLayout.js.
  */
 const DISCLAIMER_FOOTER_SRC = svgDataUri(
-  '<svg xmlns="http://www.w3.org/2000/svg" width="420" height="78" viewBox="0 0 420 78">'
-  // Compact red speech-bubble badge
-  + '<path d="M155 9h110a7 7 0 0 1 7 7v10a7 7 0 0 1-7 7h-48l-7 6-7-6h-48a7 7 0 0 1-7-7V16a7 7 0 0 1 7-7z"'
-  + ' fill="#ffffff" stroke="#dc2626" stroke-width="2.5"/>'
-  + '<circle cx="210" cy="9" r="8" fill="#ffffff"/>'
-  + '<circle cx="210" cy="9" r="7" fill="#facc15"/>'
-  + '<text x="210" y="12.5" text-anchor="middle" font-family="Arial Black, Arial, Helvetica, sans-serif"'
-  + ' font-size="10" font-weight="900" fill="#ffffff">!</text>'
-  + '<text x="210" y="26.5" text-anchor="middle" font-family="Arial Black, Arial, Helvetica, sans-serif"'
-  + ' font-size="10" font-weight="900" fill="#dc2626" letter-spacing="0.8">DISCLAIMER</text>'
-  // Compact yellow panel + black legal lines
-  + '<rect x="18" y="40" width="384" height="34" rx="6" ry="6" fill="#fde047"/>'
-  + '<text x="210" y="54" text-anchor="middle" font-family="Arial, Helvetica, sans-serif"'
-  + ' font-size="9.5" font-weight="600" fill="#000000">'
-  + 'The views expressed are that of individuals.</text>'
-  + '<text x="210" y="66" text-anchor="middle" font-family="Arial, Helvetica, sans-serif"'
-  + ' font-size="9.5" font-weight="600" fill="#000000">'
-  + 'These products are not intended to diagnose, treat or cure any disease.</text>'
-  + '</svg>',
+  '<svg xmlns="http://www.w3.org/2000/svg" width="420" height="88" viewBox="0 0 420 88">' +
+  '<rect x="8" y="4" width="404" height="80" rx="12" ry="12" fill="#fff" stroke="#dc2626" stroke-width="3"/>' +
+  '<text x="210" y="24" text-anchor="middle" font-family="Arial Black, Arial, Helvetica, sans-serif" font-size="14" font-weight="900" fill="#dc2626">DISCLAIMER</text>' +
+  '<line x1="45" y1="30" x2="375" y2="30" stroke="#dc2626" stroke-width="1.5"/>' +
+  '<text x="210" y="50" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="11" font-weight="600" fill="#000000">The views expressed are that of individuals.</text>' +
+  '<text x="210" y="68" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="11" font-weight="600" fill="#000000">These products are not intended to diagnose, treat or cure any disease.</text>' +
+  '</svg>'
 );
 
 function blobToDataUrl(blob) {
@@ -117,21 +139,42 @@ function blobToDataUrl(blob) {
   });
 }
 
+/** Absolute logo URL — Capacitor often fails on bare `/logo.png` during capture. */
+function shareCardLogoFetchUrl() {
+  try {
+    return new URL('/logo.png', window.location.origin).href;
+  } catch {
+    return '/logo.png';
+  }
+}
+
+async function fetchImageAsDataUrl(src) {
+  const res = await fetch(src);
+  if (!res.ok) return null;
+  const blob = await res.blob();
+  if (!String(blob.type || '').startsWith('image/')) return null;
+  return blobToDataUrl(blob);
+}
+
 async function inlineImagesForCapture(el) {
   const imgs = Array.from(el.querySelectorAll('img'));
   await Promise.all(imgs.map(async (img) => {
+    const isLogo = img.hasAttribute('data-share-logo');
     const src = img.currentSrc || img.getAttribute('src') || '';
-    if (!src || src.startsWith('data:')) return;
-    try {
-      const res = await fetch(src);
-      if (!res.ok) return;
-      const blob = await res.blob();
-      if (!String(blob.type || '').startsWith('image/')) return;
-      const dataUrl = await blobToDataUrl(blob);
-      img.removeAttribute('crossorigin');
-      img.src = dataUrl;
-    } catch {
-      // keep original src — html2canvas may still capture it
+    if (src.startsWith('data:')) return;
+    const candidates = isLogo
+      ? [src, shareCardLogoFetchUrl(), '/logo.png'].filter(Boolean)
+      : [src].filter(Boolean);
+    for (const candidate of candidates) {
+      try {
+        const dataUrl = await fetchImageAsDataUrl(candidate);
+        if (!dataUrl) continue;
+        img.removeAttribute('crossorigin');
+        img.src = dataUrl;
+        return;
+      } catch {
+        // try next candidate
+      }
     }
   }));
 }
@@ -189,7 +232,9 @@ export async function captureTransformationCardAsBlob(el) {
       await document.fonts.ready;
       if (document.fonts.load) {
         await Promise.all([
+          document.fonts.load('800 15px Poppins'),
           document.fonts.load('800 20px Poppins'),
+          document.fonts.load('700 14px Poppins'),
           document.fonts.load('40px Pacifico'),
         ]);
       }
@@ -219,6 +264,123 @@ export async function captureTransformationCardAsBlob(el) {
       else reject(new Error('Failed to create image from transformation card'));
     }, 'image/png');
   });
+}
+
+/**
+ * Resolve Before/After img nodes by slot (never by DOM order alone).
+ * @param {HTMLElement} el
+ */
+function photoSlotImages(el) {
+  const beforeImg = el.querySelector('img[data-photo-slot="before"]')
+    || el.querySelectorAll('img[data-keep-ratio]')[0]
+    || null;
+  const afterImg = el.querySelector('img[data-photo-slot="after"]')
+    || el.querySelectorAll('img[data-keep-ratio]')[1]
+    || null;
+  return { beforeImg, afterImg };
+}
+
+/**
+ * Ensure Before/After photos on the share card are painted before capture.
+ * Optionally swap in draft data-URLs so email matches the in-app pair.
+ * @param {HTMLElement} el
+ * @param {{ beforeSrc?: string|null, afterSrc?: string|null }} [photoSrc]
+ */
+export async function prepareTransformationCardPhotos(el, photoSrc = {}) {
+  if (!el) return;
+  const { beforeImg, afterImg } = photoSlotImages(el);
+  if (beforeImg && photoSrc.beforeSrc) {
+    beforeImg.removeAttribute('crossorigin');
+    beforeImg.src = photoSrc.beforeSrc;
+  }
+  if (afterImg && photoSrc.afterSrc) {
+    afterImg.removeAttribute('crossorigin');
+    afterImg.src = photoSrc.afterSrc;
+  }
+  const imgs = [beforeImg, afterImg].filter(Boolean);
+  await Promise.all(imgs.map(waitForImage));
+  // Reject captures where After never decoded (avoids baking wrong/blank pixels).
+  if (afterImg && !(afterImg.complete && afterImg.naturalWidth > 0)) {
+    throw new Error('After photo not ready for transformation card capture');
+  }
+  if (beforeImg && !(beforeImg.complete && beforeImg.naturalWidth > 0)) {
+    throw new Error('Before photo not ready for transformation card capture');
+  }
+}
+
+/**
+ * JPEG data URL of the share card for coach OTP email upload (keeps under API size limit).
+ * Captures a CLONE so the live share card is never mutated (prevents wrong After bake).
+ * @param {HTMLElement} el
+ * @param {{ quality?: number, maxBase64Chars?: number, beforeSrc?: string|null, afterSrc?: string|null }} [opts]
+ * @returns {Promise<string>}
+ */
+export async function captureTransformationCardAsJpegDataUrl(el, opts = {}) {
+  if (!el) throw new Error('Transformation card is not ready');
+  const quality = opts.quality ?? 0.82;
+  const maxBase64Chars = opts.maxBase64Chars ?? Math.floor(1.35 * 1024 * 1024);
+
+  const host = document.createElement('div');
+  host.setAttribute('aria-hidden', 'true');
+  host.style.cssText = [
+    'position:fixed',
+    'left:0',
+    'top:0',
+    `width:${CARD_W}px`,
+    `height:${CARD_H}px`,
+    'opacity:1',
+    'pointer-events:none',
+    'z-index:-1',
+    'overflow:hidden',
+  ].join(';');
+  const clone = el.cloneNode(true);
+  clone.removeAttribute('id');
+  host.appendChild(clone);
+  document.body.appendChild(host);
+
+  try {
+    await prepareTransformationCardPhotos(clone, {
+      beforeSrc: opts.beforeSrc,
+      afterSrc: opts.afterSrc,
+    });
+    const pngBlob = await captureTransformationCardAsBlob(clone);
+    const bitmap = typeof createImageBitmap === 'function'
+      ? await createImageBitmap(pngBlob)
+      : null;
+
+    const canvas = document.createElement('canvas');
+    if (bitmap) {
+      canvas.width = bitmap.width;
+      canvas.height = bitmap.height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('Could not encode transformation card');
+      ctx.drawImage(bitmap, 0, 0);
+      if (typeof bitmap.close === 'function') bitmap.close();
+    } else {
+      const pngUrl = await blobToDataUrl(pngBlob);
+      const img = await new Promise((resolve, reject) => {
+        const image = new Image();
+        image.onload = () => resolve(image);
+        image.onerror = () => reject(new Error('Could not encode transformation card'));
+        image.src = pngUrl;
+      });
+      canvas.width = img.naturalWidth || img.width;
+      canvas.height = img.naturalHeight || img.height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('Could not encode transformation card');
+      ctx.drawImage(img, 0, 0);
+    }
+
+    let q = quality;
+    let dataUrl = canvas.toDataURL('image/jpeg', q);
+    while (dataUrl.length > maxBase64Chars && q > 0.45) {
+      q = Math.max(0.45, q - 0.08);
+      dataUrl = canvas.toDataURL('image/jpeg', q);
+    }
+    return dataUrl;
+  } finally {
+    host.remove();
+  }
 }
 
 function transformationFileName(userName) {
@@ -385,6 +547,7 @@ function PhotoCell({ src, label, scriptLabel, weightKg, isVerified, side, photoH
               src={src}
               alt={label}
               data-keep-ratio="1"
+              data-photo-slot={side === 'left' ? 'before' : 'after'}
               crossOrigin="anonymous"
               style={{
                 display: 'block',
@@ -441,50 +604,38 @@ function PhotoCell({ src, label, scriptLabel, weightKg, isVerified, side, photoH
 }
 
 function HealthIssueChip({ label, widthPct }) {
-  const compact = widthPct <= 25;
-  const circle = 28;
   return (
     <div
       style={{
         display: 'inline-block',
         width: `${widthPct}%`,
         verticalAlign: 'top',
-        padding: '2px 4px 0',
+        padding: '3px 4px',
         boxSizing: 'border-box',
         textAlign: 'center',
       }}
     >
       <div
         style={{
-          width: circle,
-          height: circle,
-          margin: '0 auto',
-          borderRadius: circle / 2,
-          background: '#fce7f3',
-          lineHeight: `${circle}px`,
-          fontSize: 13,
-        }}
-      >
-        {healthIssueShareIcon(label)}
-      </div>
-      <p
-        style={{
-          margin: '3px 0 0',
-          padding: '0 2px',
-          fontSize: compact ? 9 : 10,
-          fontWeight: 700,
+          display: 'block',
+          width: '100%',
+          minHeight: 36,
+          padding: '8px 8px',
+          boxSizing: 'border-box',
+          border: '1.5px solid #f9a8d4',
+          borderRadius: 8,
+          background: '#ffffff',
           color: '#4b5563',
-          lineHeight: '12px',
-          height: 24,
-          overflow: 'hidden',
-          wordWrap: 'break-word',
-          overflowWrap: 'anywhere',
-          textAlign: 'center',
           fontFamily: CARD_FONT,
+          fontSize: 14,
+          fontWeight: 700,
+          lineHeight: '18px',
+          textAlign: 'center',
+          overflowWrap: 'anywhere',
         }}
       >
         {label}
-      </p>
+      </div>
     </div>
   );
 }
@@ -502,12 +653,12 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
   const beforeSrc = testimonial?.beforeImageUrl || null;
   const afterSrc = testimonial?.afterImageUrl || null;
   const showPhotoRow = Boolean(beforeSrc || afterSrc || bw > 0 || aw > 0);
-  const diff = (bw > 0 && aw > 0) ? Math.abs(aw - bw).toFixed(1) : null;
+  const isLoss = isTransformationWeightLoss(bw, aw);
+  const diff = isLoss == null ? null : Math.abs(aw - bw).toFixed(1);
   const isVerified = testimonial?.status === 'verified';
-  const isLoss = testimonial?.goalType !== 'gain';
-  const verb = isLoss ? 'Lost' : 'Gained';
+  const verb = isLoss === false ? 'Gained' : 'Lost';
   const issues = (testimonial?.recoveredHealthIssues ?? []).filter(Boolean).slice(0, MAX_VISIBLE_ISSUES);
-  const durationText = testimonial?.durationText || '';
+  const durationText = String(testimonial?.durationText || '').trim();
   const displayName = String(userName || 'Customer').trim() || 'Customer';
   const issuesPerRow = issueColumnsForCount(issues.length);
   const chipWidthPct = issuesPerRow > 0 ? 100 / issuesPerRow : 100;
@@ -515,6 +666,11 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
     issueCount: issues.length,
     hasResultPill: Boolean(diff),
   });
+  // Single trimmed label — SVG pill keeps it optically centered in the capture.
+  const resultPillLabel = diff
+    ? [verb, `${diff} kgs`, durationText ? `in ${durationText}` : null].filter(Boolean).join(' ')
+    : '';
+  const resultPillSrc = resultPillLabel ? buildResultPillSrc(resultPillLabel) : '';
 
   return (
     <div
@@ -550,7 +706,8 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
                   }}
                 >
                   <img
-                    src="/logo.png"
+                    data-share-logo="1"
+                    src={shareCardLogoFetchUrl()}
                     alt="Wellness Valley"
                     style={{
                       display: 'inline-block',
@@ -564,10 +721,7 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
               </td>
               <td style={{ verticalAlign: 'middle', padding: 0, lineHeight: 0 }}>
                 <p style={{ margin: 0, color: '#ffffff', fontSize: 20, fontWeight: 800, lineHeight: '26px' }}>
-                  Wellness Valley
-                  <span style={{ fontWeight: 500, fontSize: 13, color: '#d1fae5' }}>
-                    {` (${getVersionString().replace(/\s+/g, '')})`}
-                  </span>
+                  {`Wellness Valley (${String(APP_VERSION.VERSION || getVersionString()).replace(/\s+/g, '')})`}
                 </p>
                 <p style={{
                   margin: '2px 0 0',
@@ -640,50 +794,52 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
         cellSpacing={0}
       >
         <tbody>
-          {diff ? (
+          {diff && resultPillSrc ? (
             <tr>
-              <td style={{ textAlign: 'center', padding: '8px 16px 2px', verticalAlign: 'top' }}>
+              <td
+                align="center"
+                style={{
+                  padding: '8px 0 2px',
+                  verticalAlign: 'top',
+                  textAlign: 'center',
+                  fontSize: 0,
+                }}
+              >
                 <img
                   src={RESULT_BURST_LEFT_SRC}
                   alt=""
                   aria-hidden="true"
+                  width={32}
+                  height={24}
                   style={{
                     display: 'inline-block',
                     width: 32,
                     height: 24,
-                    marginRight: 3,
+                    marginRight: 6,
                     verticalAlign: 'middle',
                   }}
                 />
-                <span
+                <img
+                  src={resultPillSrc}
+                  alt={resultPillLabel}
                   style={{
                     display: 'inline-block',
-                    background: PILL_BG,
-                    borderRadius: 18,
-                    padding: '5px 16px',
-                    lineHeight: '18px',
-                    fontFamily: CARD_FONT,
-                    fontSize: 15,
-                    fontWeight: 800,
-                    color: PILL_BLUE,
+                    height: 30,
+                    width: 'auto',
                     verticalAlign: 'middle',
                   }}
-                >
-                  {verb}
-                  {' '}
-                  {diff}
-                  {' kgs'}
-                  {durationText ? ` in ${durationText}` : ''}
-                </span>
+                />
                 <img
                   src={RESULT_BURST_RIGHT_SRC}
                   alt=""
                   aria-hidden="true"
+                  width={32}
+                  height={24}
                   style={{
                     display: 'inline-block',
                     width: 32,
                     height: 24,
-                    marginLeft: 3,
+                    marginLeft: 6,
                     verticalAlign: 'middle',
                   }}
                 />
@@ -717,7 +873,7 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
                   </p>
                   <p
                     style={{
-                      margin: '0 0 2px',
+                      margin: '0 0 10px',
                       fontSize: 9,
                       fontWeight: 500,
                       fontStyle: 'italic',
@@ -726,9 +882,9 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
                       textAlign: 'center',
                     }}
                   >
-                    while joining in the community
+                    while joining the community
                   </p>
-                  <div style={{ textAlign: 'center', fontSize: 0 }}>
+                  <div style={{ textAlign: 'center', fontSize: 0, paddingBottom: 6 }}>
                     {issues.map((issue) => (
                       <HealthIssueChip
                         key={issue}
@@ -748,18 +904,29 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
         </tbody>
       </table>
 
-      <div style={{ marginTop: 0, padding: '2px 40px 6px', textAlign: 'center' }}>
+      
+      <div
+        style={{
+          marginTop: 8,
+          padding: '4px 18px 10px',
+          textAlign: 'center',
+          width: '100%',
+          boxSizing: 'border-box',
+        }}
+      >
         <img
           src={DISCLAIMER_FOOTER_SRC}
-          alt="Disclaimer: The views expressed are that of individuals. These products are not intended to diagnose, treat or cure any disease."
+          alt="Disclaimer: The views expressed are those of individuals. These products are not intended to diagnose, treat or cure any disease."
           style={{
             display: 'block',
-            width: 400,
-            height: 74,
+            width: 420,
+            maxWidth: '100%',
+            height: 88,
             margin: '0 auto',
           }}
         />
       </div>
+
     </div>
   );
 });
@@ -858,8 +1025,9 @@ export default function TransformationShareCard({
 }
 
 /**
- * Single Share button. kind="photo" shares the Before vs After card.
+ * Single Share control. kind="photo" shares the Before vs After card.
  * kind="video" shares the real Health/Business result videos.
+ * variant="icon" — compact top-of-card share icon; "button" — full-width CTA.
  */
 export function TransformationShareActions({
   kind = 'photo',
@@ -868,10 +1036,13 @@ export function TransformationShareActions({
   testimonial = null,
   disabled = false,
   onBeforeAction,
+  variant = 'button',
+  className = '',
 }) {
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState(null);
   const isVideo = kind === 'video';
+  const isIcon = variant === 'icon';
 
   useEffect(() => {
     if (!isVideo) void import('html2canvas');
@@ -906,8 +1077,28 @@ export function TransformationShareActions({
     }
   }, [busy, cardRef, disabled, isVideo, onBeforeAction, testimonial, userName]);
 
+  if (isIcon) {
+    return (
+      <div className={`relative shrink-0 ${className}`}>
+        <TouchFeedbackButton
+          onClick={run}
+          disabled={disabled || busy}
+          className="p-2 rounded-full text-green-700 hover:bg-green-50 disabled:opacity-50 transition-colors"
+          aria-label={isVideo ? 'Share video' : 'Share transformation card'}
+        >
+          <Share2 className={`h-5 w-5 ${busy ? 'animate-pulse' : ''}`} />
+        </TouchFeedbackButton>
+        {status === 'error' && (
+          <p className="absolute right-0 top-full mt-1 whitespace-nowrap text-[10px] text-red-600">
+            Share failed
+          </p>
+        )}
+      </div>
+    );
+  }
+
   return (
-    <div className="space-y-1 pt-0.5">
+    <div className={`space-y-1 pt-0.5 ${className}`}>
       <TouchFeedbackButton
         onClick={run}
         disabled={disabled || busy}

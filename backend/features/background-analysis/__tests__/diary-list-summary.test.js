@@ -91,6 +91,23 @@ describe('extractFoodListSummary', () => {
     assert.equal(summary.activityType, 'afresh');
     assert.equal(summary.scoops, 1);
   });
+
+  it('marks Target Nutrition Triphala as target_nutrition (no meal badge)', () => {
+    const summary = extractFoodListSummary({
+      mealKind: 'dry-salad',
+      foods: [{ name: '*Vritilife Triphala* (Digestive Health)', calories: 0 }],
+    }, null);
+    assert.equal(summary.activityType, 'target_nutrition');
+    assert.equal(summary.mealKind, 'dry-salad');
+  });
+
+  it('keeps Formula 1 in Target Nutrition as shake (meal badge)', () => {
+    const summary = extractFoodListSummary({
+      mealKind: 'dry-salad',
+      foods: [{ name: 'Formula 1 Nutritional Shake Mix', calories: 200 }],
+    }, null);
+    assert.equal(summary.activityType, 'shake');
+  });
 });
 
 describe('inferHasImage', () => {

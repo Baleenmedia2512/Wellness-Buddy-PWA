@@ -165,7 +165,7 @@ const LoginEmailEntry = ({
           onPointerDown={keepPhoneKeyboard}
           onTouchStart={keepPhoneKeyboard}
           onClick={() => handleTermsChange(!(termsAccepted === true))}
-          className={`mt-0.5 h-[18px] w-[18px] shrink-0 rounded border flex items-center justify-center ${
+          className={`compact-touch mt-0.5 h-[18px] w-[18px] min-h-0 min-w-0 shrink-0 rounded border flex items-center justify-center ${
             termsAccepted === true
               ? 'border-[#2563eb] bg-[#2563eb] text-white'
               : 'border-gray-300 bg-white'

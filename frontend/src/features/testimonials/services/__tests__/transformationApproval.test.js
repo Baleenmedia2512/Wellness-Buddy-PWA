@@ -7,6 +7,7 @@ import {
   isUsableDurationText,
   isPlaceholderDurationText,
   liveWeightDiffKg,
+  isTransformationWeightLoss,
   canShareTransformationPhoto,
   hasApprovalReadyBeforePhoto,
   hasStoredTransformationPhotoCard,
@@ -31,9 +32,18 @@ describe('liveWeightDiffKg', () => {
   });
 });
 
+describe('isTransformationWeightLoss', () => {
+  it('follows real delta even when goalType would say gain', () => {
+    assert.equal(isTransformationWeightLoss(90.9, 60.8), true);
+    assert.equal(isTransformationWeightLoss(60, 70), false);
+    assert.equal(isTransformationWeightLoss(75, 75), null);
+  });
+});
+
 describe('canShareTransformationPhoto', () => {
-  it('allows share only after coach OTP verification', () => {
-    assert.equal(canShareTransformationPhoto({ status: 'verified' }), true);
+  it('allows share when the left (Before) image is present', () => {
+    assert.equal(canShareTransformationPhoto({ beforeImageUrl: 'https://cdn.example/before.jpg' }), true);
+    assert.equal(canShareTransformationPhoto({ status: 'verified', beforeImageUrl: 'https://cdn.example/b.jpg' }), true);
     assert.equal(canShareTransformationPhoto({ status: 'pending' }), false);
     assert.equal(canShareTransformationPhoto({ status: 'incomplete' }), false);
     assert.equal(canShareTransformationPhoto(null), false);

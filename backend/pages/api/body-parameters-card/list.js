@@ -3,6 +3,7 @@
  * Lists all body parameter cards for a coach's team
  */
 import { handleListCards } from '../../../features/body-parameters-card/api/list.handler.js';
+import { applyCors, methodNotAllowed } from '../../../shared/lib/handler.js';
 
 export default async function handler(req, res) {
   // Prevent Vercel edge CDN and all intermediate caches from storing this
@@ -12,19 +13,9 @@ export default async function handler(req, res) {
   res.setHeader('Pragma', 'no-cache');
   res.setHeader('Expires', '0');
 
-  // Set CORS headers
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Cache-Control');
-
-  // Handle preflight
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  }
-
-  if (req.method !== 'GET') {
-    return res.status(405).json({ ok: false, error: { code: 'METHOD_NOT_ALLOWED', message: 'Only GET allowed' } });
-  }
+  // Must allow X-App-Version* + Cache-Control — otherwise browser blocks preflight (CORS).
+  if (applyCors(req, res, 'GET, OPTIONS')) return;
+  if (req.method !== 'GET') return methodNotAllowed(res);
 
   return handleListCards(req, res);
 }

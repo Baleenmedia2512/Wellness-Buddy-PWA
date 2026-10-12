@@ -7,6 +7,11 @@ import {
   foodNameMatchesQuery,
   sortByFoodNameMatch,
 } from '../../nutrition-knowledge/domain/nutrition.rules.js';
+import {
+  listBrandCatalogSeeds,
+  searchBrandCatalogSeeds,
+} from '../domain/brandCatalog.seeds.js';
+import { mergeCatalogRows, takeCatalogPage } from '../domain/mergeCatalog.rules.js';
 
 const TABLE = 'dry_salad_items_table';
 
@@ -36,19 +41,20 @@ function mapRow(row) {
  * @returns {Promise<object[]|null>}
  */
 export async function listApproved({ status = 'approved', limit = 50 } = {}) {
+  const seeds = status === 'approved' ? listBrandCatalogSeeds() : [];
   const supabase = getSupabaseClient();
   const { data, error } = await supabase
     .from(TABLE)
     .select('*')
     .eq('status', status)
     .order('canonical_name', { ascending: true })
-    .limit(limit);
+    .limit(Math.max(limit, 200));
 
   if (error) {
     logger.warn('[dry-salad.repo] listApproved failed', { err: error.message });
-    return null;
+    return takeCatalogPage(mergeCatalogRows([], seeds), seeds, limit);
   }
-  return (data || []).map(mapRow);
+  return takeCatalogPage(mergeCatalogRows((data || []).map(mapRow), seeds), seeds, limit);
 }
 
 /**
@@ -64,6 +70,7 @@ export async function searchItems(term, { status = 'approved', limit = 20 } = {}
   const safe = q.replace(/[%_,]/g, ' ').trim();
   if (safe.length < 1) return [];
 
+  const seeds = status === 'approved' ? searchBrandCatalogSeeds(safe) : [];
   const fetchLimit = Math.max(limit * 4, 80);
   const { data, error } = await supabase
     .from(TABLE)
@@ -75,7 +82,7 @@ export async function searchItems(term, { status = 'approved', limit = 20 } = {}
 
   if (error) {
     logger.warn('[dry-salad.repo] searchItems failed', { err: error.message });
-    return null;
+    return sortByFoodNameMatch(seeds, safe).slice(0, limit);
   }
 
   let rows = (data || []).map(mapRow);
@@ -102,7 +109,7 @@ export async function searchItems(term, { status = 'approved', limit = 20 } = {}
     }
   }
 
-  return sortByFoodNameMatch(rows, safe).slice(0, limit);
+  return sortByFoodNameMatch(mergeCatalogRows(rows, seeds), safe).slice(0, limit);
 }
 
 /**

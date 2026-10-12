@@ -122,13 +122,6 @@ const MEAL_BADGE_BY_CATEGORY = {
   'late-night': { label: 'Snack', cls: 'text-blue-600 bg-blue-50' },
 };
 
-/** Returns a meal-type badge based on capturedAt in the owner's business timezone. */
-function getMealLabel(iso, timezoneIana = DEFAULT_BUSINESS_TIMEZONE) {
-  if (!iso) return null;
-  const category = getMealCategory(iso, timezoneIana);
-  return MEAL_BADGE_BY_CATEGORY[category] || MEAL_BADGE_BY_CATEGORY['late-night'];
-}
-
 function Thumb({
   kind = 'unknown',
   imageUrl = null,
@@ -263,18 +256,37 @@ export function FoodRow({
       }
     : parseAnalysisData(p.analysisData);
   const mealName = foodData.name || listSummary?.name || 'Food';
-  const meal = getMealLabel(entry.capturedAt, timezoneIana);
+  const mealCategory = entry.capturedAt
+    ? getMealCategory(entry.capturedAt, timezoneIana)
+    : null;
+  const meal = mealCategory
+    ? (MEAL_BADGE_BY_CATEGORY[mealCategory] || MEAL_BADGE_BY_CATEGORY['late-night'])
+    : null;
   const processedByForType = p.processedBy
     || (listSummary?.activityType === 'water' ? 'water_preset'
       : listSummary?.activityType === 'afresh' ? 'afresh_preset'
         : listSummary?.activityType === 'shake' ? 'shake_calculator'
           : null);
+  // Lean list omits full AnalysisData — pass enough for meal-badge / subtype detection.
+  const analysisForType = listSummary
+    ? {
+      mealKind: listSummary.mealKind
+        || (listSummary.activityType === 'target_nutrition' ? 'dry-salad' : undefined),
+      foods: foodData.detailedItems,
+      processedBy: processedByForType,
+    }
+    : p.analysisData;
+  const weightGoalMode = shareUser?.weightGoalMode
+    || shareUser?.WeightGoalMode
+    || null;
   const presentation = resolveFoodRowPresentation({
     processedBy: processedByForType,
-    analysisData: listSummary ? null : p.analysisData,
+    analysisData: analysisForType,
     foodData,
     calories: cal,
     mealLabel: meal?.label || null,
+    mealCategory,
+    weightGoalMode,
     glycemicIndex: p.totals?.glycemicIndex ?? foodData?.nutrition?.glycemic_index ?? null,
   });
   const {

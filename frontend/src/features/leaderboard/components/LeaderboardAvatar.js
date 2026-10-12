@@ -18,7 +18,7 @@ const COLORS = [
 
 /**
  * Leaderboard strip avatar — always loads /api/user/avatar?userId=
- * (same source + My Profile fallback: ProfileImage / R2 → centre transform).
+ * (same order as My Profile / Home: ProfileImage / R2, then Centre fallback).
  * Falls back to letter when the endpoint 404s.
  *
  * `profileImage` is accepted for API compatibility but ignored so list payloads

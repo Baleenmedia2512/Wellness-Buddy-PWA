@@ -211,16 +211,36 @@ export function profileToSearchItem(row, targetWeightG = null) {
     ? Number(targetWeightG)
     : refW;
   const nutrition = scaleNutrition(pickNutrition(row.nutrition), refW, weight);
+  const isLiquid = Boolean(row.is_liquid);
+  const unit = isLiquid ? 'ml' : 'g';
+  const rounded = Math.round(weight);
   return {
     name: row.canonical_name,
-    weight_g: Math.round(weight),
+    weight_g: rounded,
     source: 'master',
     profileId: row.id ?? null,
-    is_liquid: Boolean(row.is_liquid),
-    portion: row.portion_label || `${Math.round(weight)}g`,
+    is_liquid: isLiquid,
+    isLiquid,
+    unit,
+    volume_ml: isLiquid ? rounded : null,
+    portion: row.portion_label || `${rounded} ${unit}`,
     ...nutrition,
     nutrition,
   };
+}
+
+/**
+ * Build portion label for a user-created custom food (no nutrition required).
+ * @param {number} servingSize
+ * @param {'g'|'ml'} unit
+ * @returns {string}
+ */
+export function buildCustomFoodPortionLabel(servingSize, unit) {
+  const size = Number(servingSize);
+  const u = unit === 'ml' ? 'ml' : 'g';
+  if (!(size > 0)) return `100 ${u}`;
+  const rounded = Number.isInteger(size) ? String(size) : String(Math.round(size * 100) / 100);
+  return `${rounded} ${u}`;
 }
 
 /**

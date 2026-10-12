@@ -92,11 +92,18 @@ export default function WellnessScoreSheet({
   const progressPct = activeScore?.percentage ?? 0;
   const earned = Math.round(activeScore?.totalEarned ?? 0);
   const possible = Math.round(activeScore?.totalPossible ?? 0);
-  const contributionEnabled = showDayDetailCards;
+  const contributionEnabled = Boolean(userId);
 
   const carouselSections = useMemo(
     () => (showMultiDayCarousel ? buildCarouselSections(historyDays) : []),
     [showMultiDayCarousel, historyDays],
+  );
+
+  const mealDates = useMemo(
+    () => (showMultiDayCarousel
+      ? historyDays.map((day) => day?.date).filter(Boolean)
+      : (dateStr ? [dateStr] : [])),
+    [showMultiDayCarousel, historyDays, dateStr],
   );
 
   const {
@@ -110,6 +117,8 @@ export default function WellnessScoreSheet({
   } = useParameterContribution({
     userId,
     dateStr,
+    mealDates,
+    periodDayCount: showMultiDayCarousel ? historyDays.length : 1,
     apiBaseUrl,
     nutritionRefreshKey,
     timeWindows,
@@ -190,6 +199,7 @@ export default function WellnessScoreSheet({
           <WellnessScoreMultiDayCarousel
             historyDays={historyDays}
             sections={carouselSections}
+            onOpenContribution={contributionEnabled ? handleOpenContribution : undefined}
           />
         )}
 
@@ -291,6 +301,7 @@ export default function WellnessScoreSheet({
         view={contributionView}
         loading={!!selectedParam && needsMeals && mealsLoading}
         error={selectedParam && needsMeals ? mealsError : null}
+        pointsAreAverage={showMultiDayCarousel}
       />
 
       {canManageTimeWindows && (

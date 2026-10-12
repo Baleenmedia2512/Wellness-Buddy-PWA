@@ -14,6 +14,35 @@ function parseAnalysisData(raw) {
   }
 }
 
+function nutrientKeyWithoutTotal(nutrient) {
+  if (!nutrient) return '';
+  return nutrient.startsWith('total')
+    ? nutrient.charAt(5).toLowerCase() + nutrient.slice(6)
+    : nutrient;
+}
+
+/**
+ * Decimal places for modal display. Sub-mg vitamins (B1 ~0.4mg) must keep
+ * fractions — whole-number rounding made them look like "0mg / No foods".
+ * Mirrors wellness-score NUTRIENT_CONTRIBUTION_MAP decimals.
+ */
+export function getNutrientDecimals(nutrient) {
+  const key = nutrientKeyWithoutTotal(nutrient).toLowerCase();
+  const decimalsByKey = {
+    vitaminb1: 2, vitaminb2: 2, vitaminb6: 2, vitaminb12: 2,
+    vitaminb3: 1, vitamind: 1, vitamine: 1, iron: 1, zinc: 1,
+  };
+  return decimalsByKey[key] ?? 0;
+}
+
+/** True when the amount would display as 0 with the nutrient's decimal places. */
+export function roundsToZeroDisplay(amount, decimals = 0) {
+  const n = Number(amount);
+  if (!Number.isFinite(n) || n <= 0) return true;
+  if (decimals > 0) return Number(n.toFixed(decimals)) === 0;
+  return Math.round(n) === 0;
+}
+
 /**
  * Extract foods and their nutrient contributions from analyses.
  * Supports: macros, micros, calories, sodium, cholesterol, sugar, fiber, vitamins, minerals.
@@ -23,14 +52,14 @@ export function extractFoodContributions(analyses, nutrientKey) {
   let total = 0;
 
   // Strip "total" prefix if present (e.g., totalVitaminA -> vitaminA)
-  const normalizedKey = nutrientKey.startsWith('total')
-    ? nutrientKey.charAt(5).toLowerCase() + nutrientKey.slice(6)
-    : nutrientKey;
+  const normalizedKey = nutrientKeyWithoutTotal(nutrientKey);
 
   // DB column name for meal-level fallback (e.g., totalVitaminA -> TotalVitaminA)
   const dbColKey = nutrientKey.startsWith('total')
     ? nutrientKey.charAt(0).toUpperCase() + nutrientKey.slice(1)
     : null;
+
+  const decimals = getNutrientDecimals(nutrientKey);
 
   (analyses || []).forEach((analysis) => {
     if (analysis.isUndoPlaceholder) return;
@@ -70,8 +99,8 @@ export function extractFoodContributions(analyses, nutrientKey) {
       else if (normalizedKey === 'zinc') amount = nutrition.zinc || 0;
       else if (normalizedKey === 'phosphorus') amount = nutrition.phosphorus || 0;
 
-      // Carousel modal shows amount.toFixed(0) — hide rows that would display as 0.
-      if (amount > 0 && Math.round(amount) !== 0) {
+      // Hide rows that would display as 0 at this nutrient's precision (not whole mg).
+      if (!roundsToZeroDisplay(amount, decimals)) {
         mealFoods.push({ foodName: food.name || 'Unknown food', amount });
         mealFoodTotal += amount;
       }
@@ -82,7 +111,7 @@ export function extractFoodContributions(analyses, nutrientKey) {
       total += mealFoodTotal;
     } else if (dbColKey) {
       const mealTotal = Number(analysis[dbColKey]) || 0;
-      if (mealTotal > 0 && Math.round(mealTotal) !== 0) {
+      if (!roundsToZeroDisplay(mealTotal, decimals)) {
         const mealName = (() => {
           const fl = data.foods || [];
           if (fl.length === 1) return fl[0].name || 'Meal';

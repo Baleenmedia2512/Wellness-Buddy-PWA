@@ -129,7 +129,7 @@ function buildSummaryCounts({
     const uid = parseInt(record.UserID, 10);
     if (!Number.isFinite(uid)) continue;
 
-    if (repo.isReportBeverageRecord(record)) continue;
+    if (repo.isReportNonMealRecord(record)) continue;
 
     try {
       const tz = resolveTimezoneFromMap(

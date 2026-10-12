@@ -8,6 +8,7 @@ import { isFlagEnabled } from "../../../config/featureFlags";
 import FloatingMealTray from "./meal-builder/FloatingMealTray";
 import MealBuilderSheet from "./meal-builder/MealBuilderSheet";
 import MealBowlIcon from "./meal-builder/MealBowlIcon";
+import CustomFoodEntryForm from "./meal-builder/CustomFoodEntryForm";
 import {
   buildPlateSavePayload,
   computeMacroSummary,
@@ -16,6 +17,9 @@ import {
 import { toSelectableItem } from "./meal-builder/useMealSelection";
 import { fetchFoodSuggestions } from "../services/foodSuggestionsApi";
 import { fetchDrySaladSuggestions } from "../services/drySaladSuggestionsApi";
+import { createCustomFood } from "../services/nutritionKnowledge.api";
+import { clearFoodSearchCache } from "../services/foodCorrection/correctionApi";
+import { buildCustomMealItem } from "../domain/customFood";
 import {
   filterSuggestionsAgainstSelected,
   filterRegularFoodSearchItems,
@@ -83,6 +87,7 @@ const SmartFoodSearchModal = ({
   catalogMode = false,
 }) => {
   const mealBuilderEnabled = isFlagEnabled("ff.meal-builder");
+  const customFoodEnabled = isFlagEnabled("ff.nutrition-knowledge");
   const [showTypeSelect, setShowTypeSelect] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [masterItems, setMasterItems] = useState([]);
@@ -90,6 +95,7 @@ const SmartFoodSearchModal = ({
   const [communityItems, setCommunityItems] = useState([]);
   const [isSearching, setIsSearching] = useState(false);
   const [showManualForm, setShowManualForm] = useState(false);
+  const [customSaving, setCustomSaving] = useState(false);
   const [error, setError] = useState("");
   const [selectedItems, setSelectedItems] = useState([]);
   const [mealSheetOpen, setMealSheetOpen] = useState(false);
@@ -159,6 +165,7 @@ const SmartFoodSearchModal = ({
     setMyItems([]);
     setCommunityItems([]);
     setShowManualForm(false);
+    setCustomSaving(false);
     setMealSheetOpen(false);
     setLatestFoods([]);
     setOftenWith([]);
@@ -371,6 +378,47 @@ const SmartFoodSearchModal = ({
     );
   };
 
+  const handleCustomFoodConfirm = async ({ name, unit, quantity, servingSize }) => {
+    if (!apiBaseUrl || customSaving) return;
+    setCustomSaving(true);
+    setError("");
+    try {
+      // API `servingSize` = reference amount in g/ml (one serving). UI servings always 1.
+      const data = await createCustomFood({
+        name,
+        unit,
+        servingSize: quantity,
+        userId,
+        apiBaseUrl,
+      });
+      clearFoodSearchCache();
+      const mealItem = buildCustomMealItem(
+        { ...(data?.item || {}), profileId: data?.profileId ?? data?.item?.profileId },
+        { name, unit, quantity, servingSize: servingSize > 0 ? servingSize : 1 },
+      );
+      const prev = selectedItemsRef.current;
+      const exists = prev.some(
+        (s) => String(s.name || "").trim().toLowerCase() === name.toLowerCase(),
+      );
+      if (!exists) {
+        setSelectedItems([...prev, toSelectableItem(mealItem)]);
+      }
+      showAddToast(`Added ${name} — search again to add more`);
+      setSearchQuery("");
+      setMasterItems([]);
+      setMyItems([]);
+      setCommunityItems([]);
+      // Stay on Add Food; focus search for the next item.
+      requestAnimationFrame(() => {
+        inputRef.current?.focus?.();
+      });
+    } catch (err) {
+      setError(err?.message || "Could not add custom food");
+    } finally {
+      setCustomSaving(false);
+    }
+  };
+
   const submitSave = (payload) => {
     if (saveStartedRef.current) return;
     saveStartedRef.current = true;
@@ -459,7 +507,17 @@ const SmartFoodSearchModal = ({
     : masterItems;
   const showDrySaladSuggestions = catalogMode && !hasTypedQuery && !showManualForm;
   const showRegularSuggestions = !catalogMode && !showManualForm && !searching && suggestionRows.length > 0;
+  const noSearchHits = !isSearching
+    && catalogRows.length === 0
+    && !hasMyItems
+    && !hasCommunityItems;
+  const showAddCustomOption = customFoodEnabled
+    && !catalogMode
+    && !showManualForm
+    && hasTypedQuery
+    && noSearchHits;
 
+  // Keep search on the same page while the inline custom-food panel is open.
   const searchBar = !showManualForm && (
     <div className="relative">
       <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
@@ -507,6 +565,7 @@ const SmartFoodSearchModal = ({
     ));
 
   // When typing a name, pin search hits under the search bar (above selected/combo).
+  // Custom food expands inline here — no separate page.
   const renderCatalogResults = (mealBuilder) =>
     !showManualForm && showCatalogResults ? (
       <div className="space-y-4">
@@ -532,10 +591,15 @@ const SmartFoodSearchModal = ({
             <div className="space-y-1.5">{renderFoodRows(communityItems, "community", mealBuilder)}</div>
           </div>
         )}
-        {!isSearching
-          && catalogRows.length === 0
-          && !hasMyItems
-          && !hasCommunityItems
+        {showAddCustomOption && (
+          <CustomFoodEntryForm
+            foodName={searchQuery.trim()}
+            saving={customSaving}
+            onConfirm={handleCustomFoodConfirm}
+          />
+        )}
+        {noSearchHits
+          && !showAddCustomOption
           && (hasTypedQuery || !usualCombo.length) && (
           <p className="text-sm text-gray-400 text-center py-4">
             No food found — try a different name

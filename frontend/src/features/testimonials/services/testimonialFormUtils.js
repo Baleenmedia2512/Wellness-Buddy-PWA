@@ -116,9 +116,24 @@ export function liveWeightDiffKg(beforeKg, afterKg) {
   return Math.abs(after - before).toFixed(1);
 }
 
-/** Photo share is allowed only after coach OTP verification. */
+/**
+ * Direction of the on-screen weight change (drafts included).
+ * Must not use goalType — a gain-program member can still lose kg on the card.
+ * @returns {boolean|null} true = loss, false = gain, null = not comparable / unchanged
+ */
+export function isTransformationWeightLoss(beforeKg, afterKg) {
+  const before = Number(beforeKg);
+  const after = Number(afterKg);
+  if (!Number.isFinite(before) || !Number.isFinite(after) || before <= 0 || after <= 0) {
+    return null;
+  }
+  if (before === after) return null;
+  return after < before;
+}
+
+/** Photo share when the left (Before) image is present — verification not required. */
 export function canShareTransformationPhoto(testimonial) {
-  return testimonial?.status === 'verified';
+  return Boolean(testimonial?.beforeImageUrl);
 }
 
 /**

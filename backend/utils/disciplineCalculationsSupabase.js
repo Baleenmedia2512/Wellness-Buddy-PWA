@@ -6,7 +6,13 @@
 import { getSupabaseClient } from './supabaseClient.js';
 import { normalizeTimestamp } from './timestampUtils.js';
 import { formatDateForMySQL, getDaysBetween } from './disciplineHelpers.js';
-import { isExemptedBeverageOnly, isExemptedFood, extractFoodItemsFromAnalysis, getFoodItemName } from './foodTypeDetection.js';
+import {
+  isExemptedBeverageOnly,
+  isNonMealNutritionOnly,
+  isExemptedFood,
+  extractFoodItemsFromAnalysis,
+  getFoodItemName,
+} from './foodTypeDetection.js';
 import { resolveCalorieTargetFromProfile } from './tdeeCalculations.js';
 import { applyDateRangeFilter } from '../shared/lib/datetime/applyDayFilter.js';
 import { IANA_IST, timestampToCalendarYmd, timeOfDayInTimezone } from '../shared/lib/datetime/index.js';
@@ -230,8 +236,15 @@ export async function calculateMemberDisciplineSupabase(userId, startDate, endDa
   nutritionQuery = applyDateRangeFilter(nutritionQuery, '"CreatedAt"', startDateStr, endDateStr, timezoneIana);
   const { data: nutritionRecordsRaw } = await nutritionQuery;
   
-  // Filter out records that contain ONLY exempted beverages (water, coffee, tea, afresh etc.)
-  const nutritionRecords = (nutritionRecordsRaw || []).filter(r => !isExemptedBeverageOnly(r.AnalysisData));
+  // Meal discipline: real food + meal shakes only (skip Target Nutrition / supplements / drinks)
+  const mealNutritionRecords = (nutritionRecordsRaw || []).filter(
+    (r) => !isNonMealNutritionOnly(r.AnalysisData),
+  );
+
+  // Calories: exclude beverage-only; Target Nutrition supplements may still contribute kcal
+  const nutritionRecords = (nutritionRecordsRaw || []).filter(
+    (r) => !isExemptedBeverageOnly(r.AnalysisData),
+  );
 
   // Get water intake records (food entries that are ONLY water/exempted beverages — opposite filter)
   const waterRecords = (nutritionRecordsRaw || []).filter(r => isExemptedBeverageOnly(r.AnalysisData));
@@ -304,14 +317,14 @@ export async function calculateMemberDisciplineSupabase(userId, startDate, endDa
     dinner: { totalDays: 0, onTimeDays: 0 }
   };
   
-  if (nutritionRecords && nutritionRecords.length > 0) {
+  if (mealNutritionRecords && mealNutritionRecords.length > 0) {
     const mealDates = {
       breakfast: new Set(),
       lunch: new Set(),
       dinner: new Set()
     };
     
-    nutritionRecords.forEach(r => {
+    mealNutritionRecords.forEach(r => {
       const mealType = getMealType(r.CreatedAt);
       if (mealType) {
         const normalizedDate = normalizeTimestamp(r.CreatedAt);

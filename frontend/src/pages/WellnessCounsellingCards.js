@@ -21,6 +21,7 @@ import {
   formatBcmListCardDateTime,
   resolveBcmDisplayTimezone,
 } from '../features/body-parameters-card/domain/bcmCardDateTime.rules.js';
+import { dismissNetworkFailure } from '../shared/services/networkNotice.js';
 
 const PAGE_SIZE = 20;
 
@@ -468,25 +469,31 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
   }, [loadMore, bodyParamsCards.length]);
 
   const handleEditCard = async (card) => {
+    // Open immediately with list data so Edit never waits on the network.
+    // Detail fields (fat%, BMR, etc.) merge in when the refresh succeeds —
+    // BodyParamsForm already re-hydrates from a late existingCard snapshot.
+    headerVenueInitializedRef.current = true;
+    setHeaderVenue(String(card.locationName || '').trim());
+    setSelectedCard(card);
+    setIsBodyParamsFormOpen(true);
+
     try {
       const userId = await resolveCoachId();
+      if (!userId || !card?.id) return;
       const fresh = await getBodyParamsCard(userId, card.id);
+      if (!fresh || typeof fresh !== 'object' || Array.isArray(fresh)) return;
       const merged = {
         ...card,
         ...fresh,
         phoneNumber: fresh.phoneNumber ?? card.phoneNumber ?? null,
         locationName: fresh.locationName ?? card.locationName ?? null,
       };
-      // Sync header to THIS card's venue so header doesn't force an old value.
-      headerVenueInitializedRef.current = true;
+      setSelectedCard((prev) => (prev?.id === card.id ? merged : prev));
       setHeaderVenue(String(merged.locationName || '').trim());
-      setSelectedCard(merged);
-      setIsBodyParamsFormOpen(true);
-    } catch {
-      headerVenueInitializedRef.current = true;
-      setHeaderVenue(String(card.locationName || '').trim());
-      setSelectedCard(card);
-      setIsBodyParamsFormOpen(true);
+    } catch (err) {
+      // List card is enough to edit; do not keep the global connection overlay up.
+      dismissNetworkFailure();
+      debugLog('[WellnessCounselling] edit using list card', err?.message);
     }
   };
 
@@ -511,6 +518,7 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
             };
           }
         } catch (err) {
+          dismissNetworkFailure();
           debugLog('[WellnessCounselling] share using list card', err?.message);
         }
       }

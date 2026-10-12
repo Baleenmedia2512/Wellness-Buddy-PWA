@@ -13,8 +13,14 @@ const FoodBreakdownModal = ({
   target = 0,
   foodBreakdown = [],
   foodsLoading = false,
+  decimals = 0,
 }) => {
   if (!isOpen) return null;
+
+  const formatAmount = (value) => {
+    const n = Number(value) || 0;
+    return decimals > 0 ? n.toFixed(decimals) : String(Math.round(n));
+  };
 
   const percentOfTarget = target > 0 ? Math.round((totalConsumed / target) * 100) : null;
   const excess = totalConsumed > target ? totalConsumed - target : 0;
@@ -40,7 +46,7 @@ const FoodBreakdownModal = ({
             <h2 className="text-lg font-bold text-gray-900">{nutrientName}</h2>
             <div className="flex items-baseline gap-2 mt-0.5">
               <span className="text-sm text-gray-600">
-                {totalConsumed.toFixed(0)}{unit} / {target.toFixed(0)}{unit}
+                {formatAmount(totalConsumed)}{unit} / {formatAmount(target)}{unit}
               </span>
               {percentOfTarget !== null && (
                 <span className={`text-xs font-semibold ${percentOfTarget > 100 ? 'text-orange-600' : 'text-emerald-600'}`}>
@@ -88,7 +94,7 @@ const FoodBreakdownModal = ({
                   </div>
                   <div className="flex items-center gap-3 text-sm">
                     <span className="font-semibold text-gray-900 whitespace-nowrap">
-                      {item.amount.toFixed(0)}{unit}
+                      {formatAmount(item.amount)}{unit}
                     </span>
                     <span className="text-gray-500 w-10 text-right">
                       {item.percentage.toFixed(0)}%
@@ -106,16 +112,16 @@ const FoodBreakdownModal = ({
             <div className="flex items-center justify-between text-xs">
               <div className="text-center">
                 <p className="text-gray-500 mb-0.5">Target</p>
-                <p className="font-semibold text-gray-900">{target.toFixed(0)}{unit}</p>
+                <p className="font-semibold text-gray-900">{formatAmount(target)}{unit}</p>
               </div>
               <div className="text-center">
                 <p className="text-gray-500 mb-0.5">Consumed</p>
-                <p className="font-semibold text-emerald-600">{totalConsumed.toFixed(0)}{unit}</p>
+                <p className="font-semibold text-emerald-600">{formatAmount(totalConsumed)}{unit}</p>
               </div>
               {excess > 0 && (
                 <div className="text-center">
                   <p className="text-gray-500 mb-0.5">Excess</p>
-                  <p className="font-semibold text-orange-600">{excess.toFixed(0)}{unit}</p>
+                  <p className="font-semibold text-orange-600">{formatAmount(excess)}{unit}</p>
                 </div>
               )}
             </div>

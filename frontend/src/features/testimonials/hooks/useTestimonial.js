@@ -186,11 +186,12 @@ export function useTestimonial({ userId, healthIssues = [] }) {
         payload.recoveredHealthIssues = healthIssues;
       }
 
+      let result;
       if (isCompleting) {
         // Add / update after photo + weight; backend upgrades/resets status to pending when image changes
         if (afterImage) payload.afterImageBase64 = afterImage.base64;
         payload.afterWeightKg = parseFloat(form.afterWeightKg);
-        await editTestimonial(payload);
+        result = await editTestimonial(payload);
       } else {
         // New or full edit
         if (beforeImage) payload.beforeImageBase64 = beforeImage.base64;
@@ -202,23 +203,44 @@ export function useTestimonial({ userId, healthIssues = [] }) {
           payload.afterWeightKg    = parseFloat(form.afterWeightKg);
         }
         const fn = isEditing ? editTestimonial : submitTestimonial;
-        await fn(payload);
+        result = await fn(payload);
       }
 
-      const updated = await getMyTestimonial(userId, { cacheBust: true });
-      setExisting(updated);
+      // Show OTP from the submit response — do not wait on signed-URL refetch.
+      const nextStatus = result?.status;
+      if (nextStatus === 'pending') {
+        setExisting((prev) => ({
+          ...(prev || {}),
+          id: result.testimonialId ?? prev?.id,
+          status: 'pending',
+          hasPendingOtp: true,
+          otpPending: true,
+        }));
+        setSuccess('Testimonial complete! Your sponsor will receive a verification email with the OTP.');
+      } else if (nextStatus === 'incomplete') {
+        setExisting((prev) => ({
+          ...(prev || {}),
+          id: result.testimonialId ?? prev?.id,
+          status: 'incomplete',
+        }));
+        setSuccess('Before photo saved! Add your after photo when you\'re ready.');
+      } else {
+        setSuccess('Testimonial updated.');
+      }
+
       setBeforeImage(null);
       setAfterImage(null);
       setIsEditMode(false);
       setIsCompletingMode(false);
 
-      if (updated?.status === 'pending') {
-        setSuccess('Testimonial complete! Your sponsor received a verification email with the OTP.');
-      } else if (updated?.status === 'incomplete') {
-        setSuccess('Before photo saved! Add your after photo when you\'re ready.');
-      } else {
-        setSuccess('Testimonial updated.');
-      }
+      void getMyTestimonial(userId, { cacheBust: true })
+        .then((updated) => {
+          if (updated) setExisting(updated);
+        })
+        .catch(() => {
+          // Non-fatal — OTP already shown from submit response when pending.
+        });
+
       return true;
     } catch (err) {
       const raw = err?.message || '';

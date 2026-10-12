@@ -132,6 +132,8 @@ export function validateSubmitTestimonial(body) {
   }
   const normalizedDuration = validateDurationText(durationText);
 
+  const shareCardImage = validateOptionalBase64Image(body.shareCardImageBase64, 'shareCardImageBase64');
+
   return {
     userId:                userIdN,
     beforeImageBase64,
@@ -142,6 +144,7 @@ export function validateSubmitTestimonial(body) {
     durationText:          normalizedDuration,
     hasAfter,
     recoveredHealthIssues: validateRecoveredHealthIssues(recoveredHealthIssues, { required: false }),
+    ...(shareCardImage !== undefined ? { shareCardImageBase64: shareCardImage } : {}),
   };
 }
 
@@ -200,6 +203,9 @@ export function validateEditTestimonial(body) {
   if (recoveredHealthIssues !== undefined) {
     result.recoveredHealthIssues = validateRecoveredHealthIssues(recoveredHealthIssues);
   }
+
+  const shareCardImage = validateOptionalBase64Image(body.shareCardImageBase64, 'shareCardImageBase64');
+  if (shareCardImage !== undefined) result.shareCardImageBase64 = shareCardImage;
 
   return result;
 }
@@ -552,12 +558,15 @@ const result = {
     result.durationText = validateDurationText(durationText);
   }
 
+  const shareCardImage = validateOptionalBase64Image(body.shareCardImageBase64, 'shareCardImageBase64');
+  if (shareCardImage !== undefined) result.shareCardImageBase64 = shareCardImage;
+
   return result;
 }
 
 /**
  * Validate payload for POST /api/testimonials/update-health-issues
- * Coach updates a reporting member's recovered health issues (no OTP).
+ * Payload shape kept for older clients; service always rejects with 403.
  */
 export function validateUpdateMemberHealthIssues(body) {
   if (!body) throw new ValidationError(400, 'Request body is missing');

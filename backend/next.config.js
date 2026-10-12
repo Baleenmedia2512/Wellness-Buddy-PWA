@@ -1,5 +1,13 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Pack share-card assets into testimonials API functions (logo + Noto fonts).
+  outputFileTracingIncludes: {
+    '/api/testimonials/**/*': [
+      './features/testimonials/assets/NotoSans-Regular.ttf',
+      './features/testimonials/assets/NotoSans-Bold.ttf',
+      './features/testimonials/assets/logo.png',
+    ],
+  },
   async redirects() {
     return [
       // Legacy body-params onboarding link — /app was never deployed to some envs.
