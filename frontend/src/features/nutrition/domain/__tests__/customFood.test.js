@@ -2,7 +2,44 @@
  * customFood.test.js
  * Run: npx react-scripts test --watchAll=false --testPathPattern=customFood
  */
-import { buildCustomMealItem, validateCustomFoodForm } from '../customFood';
+import {
+  buildCustomMealItem,
+  hasExactFoodNameMatch,
+  shouldOfferCustomFoodAdd,
+  validateCustomFoodForm,
+} from '../customFood';
+
+describe('shouldOfferCustomFoodAdd', () => {
+  test('offers Add when partial hits exist but typed name is not exact', () => {
+    expect(shouldOfferCustomFoodAdd({
+      query: 'dates shake',
+      results: [{ name: 'dates' }],
+      isSearching: false,
+    })).toBe(true);
+  });
+
+  test('hides Add on exact name match (case-insensitive)', () => {
+    expect(shouldOfferCustomFoodAdd({
+      query: 'Dates',
+      results: [{ name: 'dates' }],
+      isSearching: false,
+    })).toBe(false);
+  });
+
+  test('hides Add while search is in flight or query is empty', () => {
+    expect(shouldOfferCustomFoodAdd({
+      query: 'dates shake',
+      results: [],
+      isSearching: true,
+    })).toBe(false);
+    expect(shouldOfferCustomFoodAdd({ query: '  ', results: [], isSearching: false })).toBe(false);
+  });
+
+  test('hasExactFoodNameMatch ignores partial names', () => {
+    expect(hasExactFoodNameMatch('dates shake', [{ name: 'dates' }])).toBe(false);
+    expect(hasExactFoodNameMatch('dates shake', [{ name: 'Dates Shake' }])).toBe(true);
+  });
+});
 
 describe('validateCustomFoodForm', () => {
   test('accepts name + g/ml quantity + serving count', () => {

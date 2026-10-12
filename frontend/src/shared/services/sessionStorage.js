@@ -65,6 +65,7 @@ export const clearCurrentPage = () => safeRemove("currentPage");
 // Local copy lets us bypass the wizard before the API responds (faster cold start).
 export const isSetupSkipped = () => safeGet("setupSkipped") === "true";
 export const markSetupSkipped = () => safeSet("setupSkipped", "true");
+export const clearSetupSkipped = () => safeRemove("setupSkipped");
 
 // ─── coachOtpVerified ──────────────────────────────────────────────────────
 // "true" once the coach-upline OTP modal completed in this install.

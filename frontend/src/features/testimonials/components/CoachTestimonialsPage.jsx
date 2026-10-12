@@ -2218,6 +2218,33 @@ function MemberCard({
         </div>
       )}
 
+      {/* ── Submit for Approval (Mine, dirty edits) — above Transformation card so it is not buried under the preview ── */}
+      {editable && submitError && (
+        <p className="text-xs text-red-600 text-center bg-red-50 rounded-xl px-3 py-2">{submitError}</p>
+      )}
+      {editable && hasDirtySlots && !submitDone && (
+        <div className="space-y-2 pt-1">
+          <button
+            type="button"
+            onClick={handleSubmitAll}
+            disabled={isSubmitting || anyVideoUploading || anyPhotoCompressing}
+            className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl bg-green-600 hover:bg-green-700 text-white text-sm font-bold shadow-sm disabled:opacity-60 transition-colors"
+          >
+            {anyPhotoCompressing
+              ? <><div className="h-4 w-4 rounded-full border-2 border-white/40 border-t-white animate-spin" /> Preparing photo…</>
+              : isSubmitting
+              ? <><div className="h-4 w-4 rounded-full border-2 border-white/40 border-t-white animate-spin" /> Submitting…</>
+              : anyVideoUploading
+              ? <><Upload className="h-4 w-4 animate-bounce" /> Uploading video…</>
+              : <><Save className="h-4 w-4" /> Submit for Approval</>
+            }
+          </button>
+          <p className="text-[10px] text-gray-400 text-center">
+            {changedCount} item{changedCount === 1 ? '' : 's'} changed — your sponsor will receive one verification email
+          </p>
+        </div>
+      )}
+
       {/* Branded Transformation Results card + videos.
           Mine: divider + share next to TRANSFORMATION CARD.
           Direct/Full: no divider; photo share stays in the member header. */}
@@ -2296,33 +2323,6 @@ function MemberCard({
               )}
             </div>
           )}
-        </div>
-      )}
-
-      {/* ── Submit for Approval button (Mine, when any slot has draft changes) ── */}
-      {editable && submitError && (
-        <p className="text-xs text-red-600 text-center bg-red-50 rounded-xl px-3 py-2">{submitError}</p>
-      )}
-      {editable && hasDirtySlots && !submitDone && (
-        <div className="space-y-2 pt-1">
-          <button
-            type="button"
-            onClick={handleSubmitAll}
-            disabled={isSubmitting || anyVideoUploading || anyPhotoCompressing}
-            className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl bg-green-600 hover:bg-green-700 text-white text-sm font-bold shadow-sm disabled:opacity-60 transition-colors"
-          >
-            {anyPhotoCompressing
-              ? <><div className="h-4 w-4 rounded-full border-2 border-white/40 border-t-white animate-spin" /> Preparing photo…</>
-              : isSubmitting
-              ? <><div className="h-4 w-4 rounded-full border-2 border-white/40 border-t-white animate-spin" /> Submitting…</>
-              : anyVideoUploading
-              ? <><Upload className="h-4 w-4 animate-bounce" /> Uploading video…</>
-              : <><Save className="h-4 w-4" /> Submit for Approval</>
-            }
-          </button>
-          <p className="text-[10px] text-gray-400 text-center">
-            {changedCount} item{changedCount === 1 ? '' : 's'} changed — your sponsor will receive one verification email
-          </p>
         </div>
       )}
 

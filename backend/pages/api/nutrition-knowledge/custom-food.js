@@ -7,5 +7,8 @@ import {
 export default async function handler(req, res) {
   if (applyCors(req, res, 'POST, OPTIONS')) return;
   if (req.method !== 'POST') return methodNotAllowed(res);
-  return runService(res, () => createCustomFood(validateCustomFood(req.body || {})));
+  return runService(res, () => {
+    const input = validateCustomFood(req.body || {});
+    return createCustomFood(input);
+  });
 }

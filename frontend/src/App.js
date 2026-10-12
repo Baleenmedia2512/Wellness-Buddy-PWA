@@ -239,6 +239,7 @@ import {
   silentlyCompleteDemoSetup,
   DEMO_EMAIL,
 } from "./shared/services/auth/demoSetup";
+import { isDemoPhone } from "./features/user/domain/demoAccount";
 import { debugLog } from "./shared/utils/logger";
 import { setVisibilityAwareInterval } from "./shared/utils/visibilityAwareInterval";
 import { getDeviceTimezoneIana } from "./shared/utils/deviceTimezone";
@@ -4240,7 +4241,17 @@ function WellnessValleyApp() {
       });
     };
 
-    if (Session.isSetupSkipped()) {
+    // Demo phone must always re-check the server. A prior Cashfree login may
+    // have left localStorage setupSkipped=true and would otherwise skip coach UI.
+    const phoneHint =
+      user?.phoneNumber || user?.PhoneNumber || user?.phone || user?.Phone || "";
+    const demoPhoneNeedsCoach = isDemoPhone(phoneHint);
+    if (demoPhoneNeedsCoach) {
+      Session.clearSetupSkipped();
+      Session.clearCoachOtpVerified();
+    }
+
+    if (Session.isSetupSkipped() && !demoPhoneNeedsCoach) {
       Session.markSetupSkipped();
       await openRemaining();
       return;
@@ -4260,10 +4271,17 @@ function WellnessValleyApp() {
       });
 
       if (status.result === "skipped") {
-        Session.markSetupSkipped();
-        setShowSetupWizard(false);
-        setShowValidateOTP(false);
-        await openRemaining();
+        // Stale Cashfree skip in DB: force coach UI only until a coach is linked.
+        if (demoPhoneNeedsCoach && !status.raw?.hasUpline) {
+          Session.clearSetupSkipped();
+          setShowValidateOTP(false);
+          setShowSetupWizard(true);
+        } else {
+          Session.markSetupSkipped();
+          setShowSetupWizard(false);
+          setShowValidateOTP(false);
+          await openRemaining();
+        }
       } else if (status.result === "pendingOtp") {
         if (email.toLowerCase() === DEMO_EMAIL) {
           await silentlyCompleteDemoSetup(email);
@@ -7382,6 +7400,17 @@ function WellnessValleyApp() {
 
     // Get the OTP user from localStorage
     const otpUserRaw = Session.getOtpUserRaw();
+    try {
+      const preview = otpUserRaw ? JSON.parse(otpUserRaw) : null;
+      const phoneHint =
+        preview?.phoneNumber || preview?.PhoneNumber || preview?.phone || preview?.Phone || "";
+      if (isDemoPhone(phoneHint)) {
+        Session.clearSetupSkipped();
+        Session.clearCoachOtpVerified();
+      }
+    } catch {
+      /* ignore malformed otpUser */
+    }
 
     // Phase 3d-a: Observe in shadow FSM (no behaviour change).
     authFsm.send({

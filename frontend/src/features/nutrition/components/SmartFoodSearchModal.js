@@ -19,7 +19,7 @@ import { fetchFoodSuggestions } from "../services/foodSuggestionsApi";
 import { fetchDrySaladSuggestions } from "../services/drySaladSuggestionsApi";
 import { createCustomFood } from "../services/nutritionKnowledge.api";
 import { clearFoodSearchCache } from "../services/foodCorrection/correctionApi";
-import { buildCustomMealItem } from "../domain/customFood";
+import { buildCustomMealItem, shouldOfferCustomFoodAdd } from "../domain/customFood";
 import {
   filterSuggestionsAgainstSelected,
   filterRegularFoodSearchItems,
@@ -511,11 +511,17 @@ const SmartFoodSearchModal = ({
     && catalogRows.length === 0
     && !hasMyItems
     && !hasCommunityItems;
+  // Show Add even when partial hits exist (e.g. "dates" for "dates shake").
+  // Hide only when an exact name match is already in the results.
   const showAddCustomOption = customFoodEnabled
     && !catalogMode
     && !showManualForm
     && hasTypedQuery
-    && noSearchHits;
+    && shouldOfferCustomFoodAdd({
+      query: searchQuery,
+      results: [...catalogRows, ...myItems, ...communityItems],
+      isSearching,
+    });
 
   // Keep search on the same page while the inline custom-food panel is open.
   const searchBar = !showManualForm && (
