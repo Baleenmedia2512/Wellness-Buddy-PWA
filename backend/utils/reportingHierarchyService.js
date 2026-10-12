@@ -18,6 +18,7 @@ import {
   getUserCommunityTeamCode,
   resolveCommunityPeerCoachIds,
 } from './communityTeamVisibility.js';
+import { fetchAllSupabaseRows } from './supabasePaginate.js';
 
 const COACH_ROLES = new Set(['coach', 'admin']);
 
@@ -74,11 +75,18 @@ export function buildReportingContext(allUsers) {
  * @returns {Promise<ReportingContext>}
  */
 export async function loadReportingContext(supabase) {
-  const { data: allUsers, error } = await supabase
-    .from('team_table')
-    .select('UserId, UserName, Email, Role, CoachId, CoachTeamId, Status, PhoneNumber, Height, CommunityId');
-
-  if (error) throw new Error('Failed to fetch team data: ' + error.message);
+  // Page past Supabase's default 1000-row cap so large trees are complete.
+  let allUsers;
+  try {
+    allUsers = await fetchAllSupabaseRows(() =>
+      supabase
+        .from('team_table')
+        .select('UserId, UserName, Email, Role, CoachId, CoachTeamId, Status, PhoneNumber, Height, CommunityId')
+        .order('UserId', { ascending: true }),
+    );
+  } catch (error) {
+    throw new Error('Failed to fetch team data: ' + (error?.message || error));
+  }
   return buildReportingContext(allUsers || []);
 }
 
