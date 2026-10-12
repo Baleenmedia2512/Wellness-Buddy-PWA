@@ -13,6 +13,7 @@ import {
   resolveSearchClubName,
   coachIdByUser,
 } from '../../../features/nutrition-centers/domain/searchClub.rules.js';
+import { fetchAllSupabaseRows } from '../../../utils/supabasePaginate.js';
 
 /**
  * API: Get Hierarchical Team Structure
@@ -113,35 +114,48 @@ export default async function handler(req, res) {
     // Fetch all users in the hierarchy (omit ProfileImage base64 — ~16MB on large trees).
     // Leaderboard strips load avatars separately for top-N only.
     // Optional body-metric columns may be missing until migration — fall back.
+    // Page past Supabase's default 1000-row cap — large seed/downline trees
+    // otherwise drop the coach row and return 404 "Coach not found".
     const SELECT_FULL =
       "UserId, UserName, Email, Role, CoachId, CoachTeamId, Status, PhoneNumber, Height, Bmr, CommunityId, Gender, Age, VisceralFat, BodyAge, ChestCm, WaistCm, HipCm";
     const SELECT_BASIC =
       "UserId, UserName, Email, Role, CoachId, CoachTeamId, Status, PhoneNumber, Height, Bmr, CommunityId, Gender";
 
     let allUsers;
-    let usersError;
-    ({ data: allUsers, error: usersError } = await supabase
-      .from("team_table")
-      .select(SELECT_FULL)
-      .order("UserName"));
-
-    if (
-      usersError &&
-      /Age|VisceralFat|BodyAge|ChestCm|WaistCm|HipCm/i.test(String(usersError.message || "")) &&
-      /column/i.test(String(usersError.message || ""))
-    ) {
-      ({ data: allUsers, error: usersError } = await supabase
-        .from("team_table")
-        .select(SELECT_BASIC)
-        .order("UserName"));
-    }
-
-    if (usersError) {
-      console.error("Error fetching users:", usersError);
-      res
-        .status(500)
-        .json({ success: false, message: "Failed to fetch team data" });
-      return;
+    try {
+      allUsers = await fetchAllSupabaseRows(() =>
+        supabase
+          .from("team_table")
+          .select(SELECT_FULL)
+          .order("UserId", { ascending: true }),
+      );
+    } catch (usersError) {
+      const msg = String(usersError?.message || usersError || "");
+      if (
+        /Age|VisceralFat|BodyAge|ChestCm|WaistCm|HipCm/i.test(msg) &&
+        /column/i.test(msg)
+      ) {
+        try {
+          allUsers = await fetchAllSupabaseRows(() =>
+            supabase
+              .from("team_table")
+              .select(SELECT_BASIC)
+              .order("UserId", { ascending: true }),
+          );
+        } catch (fallbackError) {
+          console.error("Error fetching users:", fallbackError);
+          res
+            .status(500)
+            .json({ success: false, message: "Failed to fetch team data" });
+          return;
+        }
+      } else {
+        console.error("Error fetching users:", usersError);
+        res
+          .status(500)
+          .json({ success: false, message: "Failed to fetch team data" });
+        return;
+      }
     }
 
     logger.debug(
