@@ -13,12 +13,12 @@ import {
 describe('demoAccount', () => {
   it('recognises Cashfree demo phone forms', () => {
     assert.equal(isDemoPhone(DEMO_PHONE_NATIONAL), true);
-    assert.equal(isDemoPhone('+919898989898'), true);
+    assert.equal(isDemoPhone('+919876543211'), true);
     assert.equal(isDemoPhone('9876543210'), false);
   });
 
   it('exposes fixed login OTP', () => {
-    assert.equal(DEMO_LOGIN_OTP, '0000');
+    assert.equal(DEMO_LOGIN_OTP, '1234');
   });
 
   it('keeps email demo helper', () => {

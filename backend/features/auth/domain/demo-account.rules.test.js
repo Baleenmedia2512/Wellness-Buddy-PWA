@@ -24,21 +24,21 @@ describe('demo-account.rules', () => {
 
   it('matches Cashfree demo phone in E.164 and national forms', () => {
     assert.equal(isDemoPhone(DEMO_PHONE_NATIONAL), true);
-    assert.equal(isDemoPhone('+919898989898'), true);
-    assert.equal(isDemoPhone('919898989898'), true);
+    assert.equal(isDemoPhone('+919876543211'), true);
+    assert.equal(isDemoPhone('919876543211'), true);
     assert.equal(isDemoPhone('9876543210'), false);
   });
 
   it('routes isDemoRecipient by contactType', () => {
-    assert.equal(isDemoRecipient('+919898989898', 'phone'), true);
+    assert.equal(isDemoRecipient('+919876543211', 'phone'), true);
     assert.equal(isDemoRecipient(DEMO_EMAIL, 'email'), true);
     assert.equal(isDemoRecipient(DEMO_EMAIL, 'phone'), false);
-    assert.equal(isDemoRecipient('+919898989898', 'email'), false);
+    assert.equal(isDemoRecipient('+919876543211', 'email'), false);
   });
 
   it('accepts fixed login and delete OTPs', () => {
     assert.equal(isValidDemoLoginOtp(DEMO_LOGIN_OTP), true);
-    assert.equal(isValidDemoLoginOtp('1234'), false);
+    assert.equal(isValidDemoLoginOtp('0000'), false);
     assert.equal(isValidDemoDeleteOtp('6543'), true);
     assert.equal(isValidDemoDeleteOtp(DEMO_LOGIN_OTP), false);
   });
