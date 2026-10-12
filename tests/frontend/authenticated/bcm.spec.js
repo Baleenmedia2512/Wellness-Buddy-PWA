@@ -23,6 +23,15 @@
  * - BCM-017: Verify created and edited time update on BCM card
  * - BCM-018: Verify card date is updated based on created and edited date
  * - BCM-019: Verify transformation images (Left, Centre, Right) can be uploaded in BCM card modal
+ * - BCM-020: Verify Age field range boundaries (0, 1, 120, 121)
+ * - BCM-021: Verify Height field range boundaries (49, 50, 250, 251)
+ * - BCM-022: Verify Fat% field range validation & reference evaluation
+ * - BCM-023: Verify V-Fat field range validation & reference evaluation
+ * - BCM-024: Verify BMR field range values & manual entry
+ * - BCM-025: Verify Physical Activity selection options
+ * - BCM-026: Verify BMI field range validation & auto-compute override
+ * - BCM-027: Verify Body Age field range boundaries (0, 1, 120, 121)
+ * - BCM-028: Verify Chest, Waist, and Hip field range boundaries (19, 20, 250, 251)
  */
 
 const path = require('path');
@@ -1395,7 +1404,298 @@ test.describe('BCM Module (Body Composition Metrics)', () => {
 
     console.log('BCM-019: Successfully verified transformation images (Left, Centre, Right) uploaded using real fixture image (portrait.jpg)');
   });
+
+  test('BCM-020 Verify Age field range boundaries (0, 1, 120, 121)', async ({ page }) => {
+    // Intercept card create API
+    await page.route('**/api/body-parameters-card/create', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ success: true, data: { id: 99, name: 'AGE TEST USER' } })
+      });
+    });
+
+    const createButton = page.getByRole('button', { name: 'Create Body Parameters Card' });
+    await expect(createButton).toBeVisible({ timeout: 15000 });
+    await createButton.click();
+    await expect(page.getByRole('heading', { name: 'Your Body Parameters' })).toBeVisible({ timeout: 10000 });
+
+    const nameInput = page.getByPlaceholder('FULL NAME');
+    await nameInput.fill('AGE TEST USER');
+
+    const ageInput = page.locator('div').filter({ has: page.locator('> label').filter({ hasText: /^Age$/i }) }).locator('input');
+    await expect(ageInput).toBeVisible();
+
+    const saveButton = page.getByRole('button', { name: 'Save & Share' });
+
+    // Test 1: Age = 0 (Below valid range 1-120) -> save triggers validation error
+    await ageInput.fill('0');
+    await saveButton.click();
+    await expect(page.getByText('Age must be between 1 and 120')).toBeVisible({ timeout: 5000 });
+
+    // Test 2: Age = 121 (Above valid range 1-120) -> save triggers validation error
+    await ageInput.fill('121');
+    await saveButton.click();
+    await expect(page.getByText('Age must be between 1 and 120')).toBeVisible({ timeout: 5000 });
+
+    // Test 3: Age = 1 (Valid min boundary) -> value accepted, error message hidden
+    await ageInput.fill('1');
+    await expect(ageInput).toHaveValue('1');
+    await expect(page.getByText('Age must be between 1 and 120')).not.toBeVisible();
+
+    // Test 4: Age = 120 (Valid max boundary) -> value accepted, error message hidden
+    await ageInput.fill('120');
+    await expect(ageInput).toHaveValue('120');
+    await expect(page.getByText('Age must be between 1 and 120')).not.toBeVisible();
+  });
+
+  test('BCM-021 Verify Height field range boundaries (49, 50, 250, 251)', async ({ page }) => {
+    const createButton = page.getByRole('button', { name: 'Create Body Parameters Card' });
+    await expect(createButton).toBeVisible({ timeout: 15000 });
+    await createButton.click();
+    await expect(page.getByRole('heading', { name: 'Your Body Parameters' })).toBeVisible({ timeout: 10000 });
+
+    const heightInput = page.locator('div').filter({ has: page.locator('> label').filter({ hasText: /^Height/i }) }).locator('input');
+    await expect(heightInput).toBeVisible();
+
+    const weightInput = page.getByPlaceholder('kg').first();
+
+    // Test 1: Height = 49 cm (Below min 50 cm) -> dependent field focus shows prerequisite hint 'enter height'
+    await heightInput.fill('49');
+    await weightInput.focus();
+    await expect(page.getByText('enter height')).toBeVisible({ timeout: 5000 });
+
+    // Test 2: Height = 251 cm (Above max 250 cm) -> dependent field focus shows prerequisite hint 'enter height'
+    await heightInput.fill('251');
+    await weightInput.focus();
+    await expect(page.getByText('enter height')).toBeVisible({ timeout: 5000 });
+
+    // Test 3: Height = 50 cm (Valid min boundary) -> unlocks weight, 'enter height' hint hidden
+    await heightInput.fill('50');
+    await weightInput.focus();
+    await expect(page.getByText('enter height')).not.toBeVisible();
+
+    // Test 4: Height = 250 cm (Valid max boundary) -> unlocks weight, 'enter height' hint hidden
+    await heightInput.fill('250');
+    await weightInput.focus();
+    await expect(page.getByText('enter height')).not.toBeVisible();
+  });
+
+  test('BCM-022 Verify Fat% field range validation & reference evaluation', async ({ page }) => {
+    const createButton = page.getByRole('button', { name: 'Create Body Parameters Card' });
+    await expect(createButton).toBeVisible({ timeout: 15000 });
+    await createButton.click();
+    await expect(page.getByRole('heading', { name: 'Your Body Parameters' })).toBeVisible({ timeout: 10000 });
+
+    // Select Male gender (Ideal Fat%: 10 to 20%)
+    const genderSelect = page.locator('div:has(> label:has-text("Gender")) select');
+    await genderSelect.selectOption('Male');
+
+    const fatInput = page.getByPlaceholder('%').first();
+    await expect(fatInput).toBeVisible();
+
+    // Test 1: Fat% = 5% (Below Male normal 10-20%) -> shows "Below normal (10–20%)"
+    await fatInput.fill('5');
+    await expect(page.getByText('Below normal (10–20%)')).toBeVisible({ timeout: 5000 });
+
+    // Test 2: Fat% = 35% (Above Male normal 10-20%) -> shows "Above normal (10–20%)"
+    await fatInput.fill('35');
+    await expect(page.getByText('Above normal (10–20%)')).toBeVisible({ timeout: 5000 });
+
+    // Test 3: Switch to Female gender (Ideal Fat%: 20 to 30%) and enter valid 25%
+    await genderSelect.selectOption('Female');
+    await fatInput.fill('25');
+    await expect(page.getByText('Below normal')).not.toBeVisible();
+    await expect(page.getByText('Above normal')).not.toBeVisible();
+  });
+
+  test('BCM-023 Verify V-Fat field range validation & reference evaluation', async ({ page }) => {
+    const createButton = page.getByRole('button', { name: 'Create Body Parameters Card' });
+    await expect(createButton).toBeVisible({ timeout: 15000 });
+    await createButton.click();
+    await expect(page.getByRole('heading', { name: 'Your Body Parameters' })).toBeVisible({ timeout: 10000 });
+
+    const vfatInput = page.getByPlaceholder('Visceral fat').first();
+    await expect(vfatInput).toBeVisible();
+
+    // Test 1: V-Fat = 15 (Above ideal max 9) -> shows "Above expected (Ideal: ≤ 9)"
+    await vfatInput.fill('15');
+    await expect(page.getByText('Above expected (Ideal: ≤ 9)')).toBeVisible({ timeout: 5000 });
+
+    // Test 2: V-Fat = 5 (Within ideal range ≤ 9) -> no error
+    await vfatInput.fill('5');
+    await expect(page.getByText('Above expected')).not.toBeVisible();
+  });
+
+  test('BCM-024 Verify BMR field range values & manual entry', async ({ page }) => {
+    const createButton = page.getByRole('button', { name: 'Create Body Parameters Card' });
+    await expect(createButton).toBeVisible({ timeout: 15000 });
+    await createButton.click();
+    await expect(page.getByRole('heading', { name: 'Your Body Parameters' })).toBeVisible({ timeout: 10000 });
+
+    const bmrInput = page.getByPlaceholder('kcal').first();
+    await expect(bmrInput).toBeVisible();
+
+    // Fill manual BMR value (e.g. 1650 kcal)
+    await bmrInput.fill('1650');
+    await expect(bmrInput).toHaveValue('1650');
+  });
+
+  test('BCM-025 Verify Physical Activity selection options', async ({ page }) => {
+    const createButton = page.getByRole('button', { name: 'Create Body Parameters Card' });
+    await expect(createButton).toBeVisible({ timeout: 15000 });
+    await createButton.click();
+    await expect(page.getByRole('heading', { name: 'Your Body Parameters' })).toBeVisible({ timeout: 10000 });
+
+    const activitySelect = page.locator('select').filter({ hasText: /Sedentary|Lightly Active|Moderately Active|Very Active|Super Active/i }).first();
+    await expect(activitySelect).toBeVisible();
+
+    // Test selecting options
+    await activitySelect.selectOption({ label: 'Sedentary (little or no exercise)' });
+    await expect(activitySelect).toHaveValue('Sedentary');
+
+    await activitySelect.selectOption({ label: 'Moderately Active (moderate exercise 3-5 days/week)' });
+    await expect(activitySelect).toHaveValue('Moderately Active');
+  });
+
+  test('BCM-026 Verify BMI field range validation & auto-compute override', async ({ page }) => {
+    const createButton = page.getByRole('button', { name: 'Create Body Parameters Card' });
+    await expect(createButton).toBeVisible({ timeout: 15000 });
+    await createButton.click();
+    await expect(page.getByRole('heading', { name: 'Your Body Parameters' })).toBeVisible({ timeout: 10000 });
+
+    const bmiInput = page.getByPlaceholder('e.g. 21').first();
+    await expect(bmiInput).toBeVisible();
+
+    // Test 1: BMI = 15 (Below normal 19-23) -> shows "Below normal (19–23)"
+    await bmiInput.fill('15');
+    await expect(page.getByText('Below normal (19–23)')).toBeVisible({ timeout: 5000 });
+
+    // Test 2: BMI = 28 (Above normal 19-23) -> shows "Above normal (19–23)"
+    await bmiInput.fill('28');
+    await expect(page.getByText('Above normal (19–23)')).toBeVisible({ timeout: 5000 });
+
+    // Test 3: BMI = 21 (Within normal range 19-23) -> no error
+    await bmiInput.fill('21');
+    await expect(page.getByText('Below normal')).not.toBeVisible();
+    await expect(page.getByText('Above normal')).not.toBeVisible();
+  });
+
+  test('BCM-027 Verify Body Age field range boundaries (0, 1, 120, 121)', async ({ page }) => {
+    // Intercept card create API
+    await page.route('**/api/body-parameters-card/create', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ success: true, data: { id: 99, name: 'BODY AGE TEST USER' } })
+      });
+    });
+
+    const createButton = page.getByRole('button', { name: 'Create Body Parameters Card' });
+    await expect(createButton).toBeVisible({ timeout: 15000 });
+    await createButton.click();
+    await expect(page.getByRole('heading', { name: 'Your Body Parameters' })).toBeVisible({ timeout: 10000 });
+
+    const nameInput = page.getByPlaceholder('FULL NAME');
+    await nameInput.fill('BODY AGE TEST USER');
+
+    const bodyAgeInput = page.getByPlaceholder('yrs').first();
+    await expect(bodyAgeInput).toBeVisible();
+
+    const saveButton = page.getByRole('button', { name: 'Save & Share' });
+
+    // Test 1: Body Age = 0 (Below valid range 1-120) -> save triggers validation error
+    await bodyAgeInput.fill('0');
+    await saveButton.click();
+    await expect(page.getByText('Body Age must be between 1 and 120')).toBeVisible({ timeout: 5000 });
+
+    // Test 2: Body Age = 121 (Above valid range 1-120) -> save triggers validation error
+    await bodyAgeInput.fill('121');
+    await saveButton.click();
+    await expect(page.getByText('Body Age must be between 1 and 120')).toBeVisible({ timeout: 5000 });
+
+    // Test 3: Body Age = 1 (Valid min boundary) -> value accepted, error hidden
+    await bodyAgeInput.fill('1');
+    await expect(bodyAgeInput).toHaveValue('1');
+    await expect(page.getByText('Body Age must be between 1 and 120')).not.toBeVisible();
+
+    // Test 4: Body Age = 120 (Valid max boundary) -> value accepted, error hidden
+    await bodyAgeInput.fill('120');
+    await expect(bodyAgeInput).toHaveValue('120');
+    await expect(page.getByText('Body Age must be between 1 and 120')).not.toBeVisible();
+  });
+
+  test('BCM-028 Verify Chest, Waist, and Hip field range boundaries (19, 20, 250, 251)', async ({ page }) => {
+    // Intercept card create API
+    await page.route('**/api/body-parameters-card/create', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ success: true, data: { id: 99, name: 'CIRCUMFERENCE TEST USER' } })
+      });
+    });
+
+    const createButton = page.getByRole('button', { name: 'Create Body Parameters Card' });
+    await expect(createButton).toBeVisible({ timeout: 15000 });
+    await createButton.click();
+    await expect(page.getByRole('heading', { name: 'Your Body Parameters' })).toBeVisible({ timeout: 10000 });
+
+    const nameInput = page.getByPlaceholder('FULL NAME');
+    await nameInput.fill('CIRCUMFERENCE TEST USER');
+
+    // Select Male gender
+    const genderSelect = page.locator('div:has(> label:has-text("Gender")) select');
+    await genderSelect.selectOption('Male');
+
+    const saveButton = page.getByRole('button', { name: 'Save & Share' });
+
+    // Locate Chest, Waist, and Hip inputs by field labels
+    const chestInput = page.locator('div').filter({ has: page.locator('> label').filter({ hasText: /^Chest/i }) }).locator('input');
+    const waistInput = page.locator('div').filter({ has: page.locator('> label').filter({ hasText: /^Waist/i }) }).locator('input');
+    const hipInput = page.locator('div').filter({ has: page.locator('> label').filter({ hasText: /^Hip/i }) }).locator('input');
+
+    // Test 1: Chest = 19 cm (Below min 20 cm) -> save triggers validation error
+    await chestInput.fill('19');
+    await saveButton.click();
+    await expect(page.getByText('Chest must be between 20 and 250 cm')).toBeVisible({ timeout: 5000 });
+
+    // Test 2: Chest = 251 cm (Above max 250 cm) -> save triggers validation error
+    await chestInput.fill('251');
+    await saveButton.click();
+    await expect(page.getByText('Chest must be between 20 and 250 cm')).toBeVisible({ timeout: 5000 });
+
+    // Test 3: Chest = 20 cm (Valid min boundary) -> value filled, error clears
+    await chestInput.fill('20');
+    await expect(chestInput).toHaveValue('20');
+    await expect(page.getByText('Chest must be between 20 and 250 cm')).not.toBeVisible();
+
+    // Test 4: Chest = 250 cm (Valid max boundary) -> value filled, error clears
+    await chestInput.fill('250');
+    await expect(chestInput).toHaveValue('250');
+    await expect(page.getByText('Chest must be between 20 and 250 cm')).not.toBeVisible();
+
+    // Test 5: Waist = 19 cm (Below min 20 cm) -> save triggers validation error
+    await waistInput.fill('19');
+    await saveButton.click();
+    await expect(page.getByText('Waist must be between 20 and 250 cm')).toBeVisible({ timeout: 5000 });
+
+    // Test 6: Waist = 20 cm (Valid min boundary) -> value filled, error clears
+    await waistInput.fill('20');
+    await expect(waistInput).toHaveValue('20');
+    await expect(page.getByText('Waist must be between 20 and 250 cm')).not.toBeVisible();
+
+    // Test 7: Hip = 251 cm (Above max 250 cm) -> save triggers validation error
+    await hipInput.fill('251');
+    await saveButton.click();
+    await expect(page.getByText('Hip must be between 20 and 250 cm')).toBeVisible({ timeout: 5000 });
+
+    // Test 8: Hip = 250 cm (Valid max boundary) -> value filled, error clears
+    await hipInput.fill('250');
+    await expect(hipInput).toHaveValue('250');
+    await expect(page.getByText('Hip must be between 20 and 250 cm')).not.toBeVisible();
+  });
 });
+
 
 
 

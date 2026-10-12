@@ -8,6 +8,7 @@
  * - admin-002: in admin config setup, each activity_time option can be editable and savable
  * - admin-003: in admin config setup, AI config can be enabled/disabled, credits incremented/decremented, and breakfast, lunch, and dinner timings set
  * - admin-004: in page access, all checkboxes can be selected and unselected successfully
+ * - admin-005: developer can edit activity time window
  */
 
 import { test, expect } from '@playwright/test';
@@ -800,5 +801,117 @@ test.describe('Admin Page - Wellness Score & Activity Time Settings (ADMIN_001)'
     await expect(page.getByRole('button', { name: 'Saved' })).toBeVisible({ timeout: 5000 });
     expect(savedNavAccessMatrix).not.toBeNull();
   });
+
+  test('admin-005: developer can edit activity time window', async ({ page }) => {
+    // 1. Setup route mocks specifically for developer role
+    await setupMocks(page, 'developer');
+
+    let initialTimeWindows = [
+      { ActivityType: 'weight', WindowStartTime: '03:00:00', WindowEndTime: '06:30:00', isDefault: false },
+      { ActivityType: 'education', WindowStartTime: '07:15:00', WindowEndTime: '08:45:00', isDefault: false },
+      { ActivityType: 'breakfast', WindowStartTime: '08:00:00', WindowEndTime: '09:30:00', isDefault: false },
+      { ActivityType: 'lunch', WindowStartTime: '12:30:00', WindowEndTime: '14:30:00', isDefault: false },
+      { ActivityType: 'dinner', WindowStartTime: '19:30:00', WindowEndTime: '21:30:00', isDefault: false },
+    ];
+
+    const savedTimeWindowRequests = [];
+
+    await page.route('**/api/admin/time-windows*', async (route) => {
+      if (route.request().method() === 'GET') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            timeWindows: initialTimeWindows,
+          }),
+        });
+      } else if (route.request().method() === 'POST') {
+        const postData = route.request().postDataJSON();
+        savedTimeWindowRequests.push(postData);
+
+        initialTimeWindows = initialTimeWindows.map((tw) =>
+          tw.ActivityType === postData.activityType
+            ? {
+                ...tw,
+                WindowStartTime: `${postData.windowStartTime}:00`,
+                WindowEndTime: `${postData.windowEndTime}:00`,
+                LastUpdated: new Date().toISOString(),
+              }
+            : tw
+        );
+
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            message: 'Time window updated successfully',
+            timeWindow: {
+              activityType: postData.activityType,
+              windowStartTime: `${postData.windowStartTime}:00`,
+              windowEndTime: `${postData.windowEndTime}:00`,
+            },
+          }),
+        });
+      } else {
+        await route.continue();
+      }
+    });
+
+    // 2. Perform login as developer
+    await performAdminLogin(page);
+
+    // 3. Navigate into Wellness Score page by clicking Wellness Score tile on home page
+    const wellnessScoreTile = page.getByTestId('wellness-score-home-tile');
+    await expect(wellnessScoreTile).toBeVisible({ timeout: 10000 });
+    await wellnessScoreTile.click();
+
+    // Verify user is on Wellness Score page
+    await expect(page.getByRole('heading', { name: 'Wellness Score', exact: true })).toBeVisible({ timeout: 10000 });
+
+    // 4. Click settings icon on Wellness Score page to open Activity time window settings modal
+    const wellnessPageSettingsBtn = page.getByTestId('wellness-score-sheet-time-window-settings');
+    await expect(wellnessPageSettingsBtn).toBeVisible({ timeout: 10000 });
+    await wellnessPageSettingsBtn.click({ force: true });
+
+    // Verify modal heading
+    await expect(page.getByText('Activity Time Window Settings', { exact: false })).toBeVisible({ timeout: 10000 });
+
+    // 5. Test editing each activity time window option (Weight, Education, Breakfast, Lunch, Dinner)
+    const activitiesToTest = [
+      { type: 'weight', name: 'Weight' },
+      { type: 'education', name: 'Education' },
+      { type: 'breakfast', name: 'Breakfast' },
+      { type: 'lunch', name: 'Lunch' },
+      { type: 'dinner', name: 'Dinner' },
+    ];
+
+    for (const activity of activitiesToTest) {
+      // Find and click the activity item card
+      const card = page.getByRole('button', { name: new RegExp(`Edit ${activity.name} time window`, 'i') })
+        .or(page.getByText(activity.name, { exact: true }));
+      await expect(card.first()).toBeVisible({ timeout: 5000 });
+      await card.first().click();
+
+      // Enter optional reason note
+      const reasonInput = page.getByPlaceholder('Optional note...');
+      await expect(reasonInput).toBeVisible({ timeout: 5000 });
+      await reasonInput.fill(`Developer updating ${activity.name} time window note`);
+
+      // Click "Save Changes"
+      const saveChangesBtn = page.getByRole('button', { name: 'Save Changes' });
+      await expect(saveChangesBtn).toBeVisible({ timeout: 5000 });
+      await saveChangesBtn.click();
+
+      // Verify success message
+      await expect(page.getByText('Activity time windows updated successfully', { exact: false })).toBeVisible({ timeout: 5000 });
+    }
+
+    // Verify all 5 activity time window save POST requests were sent and recorded
+    expect(savedTimeWindowRequests.length).toBe(5);
+  });
 });
+
+
 

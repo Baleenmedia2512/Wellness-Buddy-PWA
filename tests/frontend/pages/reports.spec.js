@@ -1,4 +1,4 @@
-﻿/**
+/**
  * tests/frontend/pages/reports.spec.js
  * E2E test suite for Reports Module.
  * 
@@ -887,6 +887,9 @@ test.describe('Reports Module', () => {
     await expect(prevBtn).toBeEnabled();
   });
 });
+
+
+
 
 
 
