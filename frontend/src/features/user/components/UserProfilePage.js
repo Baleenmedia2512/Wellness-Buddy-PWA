@@ -4,9 +4,9 @@
 // Rendered as a first-class page route inside App.js (showProfilePage=true).
 //
 // Sections:
-//   1. Avatar (tap to change — Centre transform photo / ProfileImage)
+//   1. Avatar (tap to change — ProfileImage only; independent of Centre)
 //   2. Profile fields (name, height, phone, community ID / team code, email, diet, BMR, PAL)
-//   3. Transformation photos (Left / Centre / Right — same as onboarding)
+//   3. Transformation photos (Left / Centre / Right — same as onboarding; do not update avatar)
 //   4. Settings  (auto camera toggle)
 //   5. Account actions (sign out, delete account)
 //
@@ -136,7 +136,11 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
   );
   const sessionUserId = user?.id || user?.UserId || user?.userId || null;
 
-  const loadProfile = useCallback(async ({ cacheBust = false, userId: forceUserId = null, email: forceEmail = null } = {}) => {
+  const loadProfile = useCallback(async ({
+  userId: forceUserId = null,
+  email: forceEmail = null,
+  cacheBust = false,
+} = {}) => {
     const emailKey = forceEmail || sessionEmail;
     const uid = forceUserId || sessionUserId;
     if (!emailKey && !uid) {
@@ -217,12 +221,17 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
       setCommunityIdPair(data?.communityIdPair || null);
       setCommunityIdError('');
       transformationPhotos.loadFromProfile(data?.transformationPhotos);
-      if (data?.profileImage) {
-        setProfileImagePreview(data.profileImage);
-      } else if (data?.transformationPhotos?.front) {
-        // Centre transform photo is the profile avatar.
-        setProfileImagePreview(data.transformationPhotos.front);
-      }
+      
+      const savedProfileImage =
+        typeof data?.profileImage === 'string' && data.profileImage.trim()
+          ? data.profileImage
+          : typeof user?.photoURL === 'string' && user.photoURL.trim()
+            ? user.photoURL
+            : typeof user?.ProfileImage === 'string' && user.ProfileImage.trim()
+              ? user.ProfileImage
+              : null;
+
+      setProfileImagePreview(savedProfileImage);
       // Stop spinner as soon as core profile is ready — do not wait on counselling.
       setIsLoading(false);
       return profileData;
@@ -327,8 +336,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
         delete payload.email;
       }
       const photoExtras = transformationPhotos.payloadExtras();
-      // Centre (front) also becomes the profile avatar on the server.
-      const centrePhoto = photoExtras.transformationPhotos?.front || null;
+      // Centre/Left/Right are transformation slots only — never update ProfileImage/avatar.
       Object.assign(payload, photoExtras);
       if (user?.id && !payload.userId) {
         payload.userId = user.id;
@@ -355,18 +363,12 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
       if (user?.id) {
         invalidateHasTeamMembersCache(user.id);
       }
-      const nextPreview = centrePhoto || profileImagePreview || null;
-      if (centrePhoto) {
-        setProfileImagePreview(centrePhoto);
-        bumpAvatarDisplayVersion();
-      }
       onProfileUpdate?.({
         name: form.name,
         height: form.height ? parseFloat(form.height) : null,
         physicalActivityLevel: form.physicalActivityLevel || null,
         dietType: form.dietType || null,
         communityId: form.communityId || null,
-        profileImage: nextPreview,
         teamSearchRefresh: true,
       });
       if (user?.id) getUserContext(user.id).catch(() => {});
@@ -384,7 +386,6 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
     }
   }, [
     form,
-    profileImagePreview,
     user,
     accountEmail,
     loadProfile,
@@ -600,13 +601,12 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
           userId: user?.id || undefined,
           cacheBust: true,
         });
-        if (data?.success && data?.data?.profileImage) {
-          serverImage = data.data.profileImage;
-          setProfileImagePreview(serverImage);
-        } else if (data?.data?.transformationPhotos?.front) {
-          serverImage = data.data.transformationPhotos.front;
-          setProfileImagePreview(serverImage);
-        }
+        
+      if (data?.success && data?.data?.profileImage) {
+        serverImage = data.data.profileImage;
+        setProfileImagePreview(serverImage);
+      }
+
       } catch {
         // Non-fatal — optimistic preview already applied.
       }

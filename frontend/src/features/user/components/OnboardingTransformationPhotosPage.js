@@ -12,7 +12,6 @@ import TransformationPhotosSection from './profile/TransformationPhotosSection';
 import useTransformationPhotos from '../hooks/useTransformationPhotos';
 import { persistOnboardingTestimonialPhotos } from '../services/persistOnboardingTestimonialPhotos';
 import { deriveWeightGoalMode } from '../../weight/services/weightFormService';
-import { bumpAvatarDisplayVersion } from '../services/avatarDisplayVersion';
 import {
   DEFAULT_POSE_SLOT,
   POSE_SLOT_KEYS,
@@ -103,10 +102,9 @@ export default function OnboardingTransformationPhotosPage({
         throw new Error('Cannot save photos. Please sign in again.');
       }
       // Pending-only: existing DB photos stay via server-side merge (avoids huge re-POSTs).
+      // Centre is a transformation slot only — do not treat it as ProfileImage/avatar.
       const extras = transformationPhotos.payloadExtras();
-      const centrePending = extras.transformationPhotos?.front || null;
       const hasPhotoUpdates = Boolean(extras.transformationPhotos);
-      // Do not also POST centre as profileImage (duplicates ~100KB+). Server uses front for R2 avatar.
       if (hasPhotoUpdates) {
         await saveProfile({
           ...(email ? { email } : {}),
@@ -114,7 +112,6 @@ export default function OnboardingTransformationPhotosPage({
           ...extras,
         });
         transformationPhotos.clearPending();
-        bumpAvatarDisplayVersion();
       }
       const leftForTestimonial = extras.transformationPhotos?.left
         || transformationPhotos.leftImageBase64();
@@ -130,8 +127,7 @@ export default function OnboardingTransformationPhotosPage({
           recoveredHealthIssues: healthIssues,
         });
       }
-      const centreForUi = centrePending || transformationPhotos.frontImageBase64();
-      await onComplete?.({ profileImage: centreForUi || undefined });
+      await onComplete?.({});
     } catch (e) {
       setError(e.message || 'Failed to save photos. Please try again.');
     } finally {

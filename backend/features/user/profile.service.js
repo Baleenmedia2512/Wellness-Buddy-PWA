@@ -357,11 +357,13 @@ function buildProfileUpdate({
     const cleaned = String(phoneNumber).trim().replace(/[\s\-()]/g, '');
     if (/^\+?[0-9]{10,15}$/.test(cleaned)) { updateData.PhoneNumber = cleaned; cleanedPhoneNumber = cleaned; }
   }
-  // Explicit profileImage, or Centre (front) transform — both set the profile avatar.
-  const avatarIncoming = resolveIncomingAvatarDataUri({
-    profileImage,
-    transformationPhotos,
-  });
+  
+    // Only an explicit profileImage may update the profile avatar.
+    // Transformation photos are saved independently.
+    const avatarIncoming = resolveIncomingAvatarDataUri({
+      profileImage,
+    });
+
   if (avatarIncoming) {
     if (skipProfileImageBase64) {
       // 3.5.1+: R2 avatar only — do not write multi-MB ProfileImage base64.
