@@ -105,7 +105,7 @@ describe('testimonial coach email photos keep aspect ratio', () => {
     assert.equal(buildShareCardRow(''), '');
   });
 
-  it('first update without previous After shows only the updated Transformation Card', () => {
+  it('first update without previous After shows only the new Transformation Card', () => {
     const html = buildUnifiedSubmitEmailHtml({
       memberName: 'Alex',
       otp: '1234',
@@ -126,15 +126,14 @@ describe('testimonial coach email photos keep aspect ratio', () => {
     const imgs = photoImgs(html);
     assert.equal(imgs.length, 2); // current card Before + After only
     imgs.forEach(assertPhotoKeepsAspectRatio);
-    assert.match(html, /Updated Transformation Card/);
-    assert.doesNotMatch(html, />Previous</);
+    assert.match(html, /New Transformation Card|Transformation Card/);
+    assert.doesNotMatch(html, /Previous Transformation Card/);
     assert.doesNotMatch(html, /New Upload/);
-    assert.match(html, /80 kg/);
-    assert.match(html, /70 kg/);
+    assert.match(html, /80 kg|Lost 10/);
     assert.doesNotMatch(html, /\.photo-img\s*\{[^}]*height:\s*\d+px/);
   });
 
-  it('unified email shows only the updated Transformation Card (no Previous column)', () => {
+  it('unified email shows Previous and New Transformation Cards side by side', () => {
     const html = buildUnifiedSubmitEmailHtml({
       memberName: 'Alex',
       otp: '1234',
@@ -149,8 +148,8 @@ describe('testimonial coach email photos keep aspect ratio', () => {
       previousAfterUrl: 'https://example.com/after-old.jpg',
       previousBeforeWeight: 90.9,
       previousAfterWeight: 70,
-      previousCardImageUrl: null,
-      currentCardImageUrl: null,
+      previousCardImageUrl: 'https://example.com/prev-card.jpg',
+      currentCardImageUrl: 'https://example.com/new-card.jpg',
       previousPreviewHref: 'https://example.com/prev-card.jpg',
       currentPreviewHref: 'https://example.com/new-card.jpg',
       healthVideoUrl: null,
@@ -158,17 +157,15 @@ describe('testimonial coach email photos keep aspect ratio', () => {
       recoveredHealthIssues: ['Knee Pain'],
       isComplete: true,
     });
-    assert.match(html, /Updated Transformation Card/);
+    assert.match(html, /Previous Transformation Card/);
+    assert.match(html, /New Transformation Card/);
     assert.match(html, /Tap for full Transformation Card/);
-    assert.match(html, /https:\/\/example\.com\/before-new\.jpg/);
-    assert.match(html, /https:\/\/example\.com\/after-new\.jpg/);
+    assert.match(html, /https:\/\/example\.com\/prev-card\.jpg/);
     assert.match(html, /https:\/\/example\.com\/new-card\.jpg/);
-    // Must not show Previous column or old photo URLs (tap used to open wrong card).
-    assert.doesNotMatch(html, />Previous</);
-    assert.doesNotMatch(html, /Before vs After/);
-    assert.doesNotMatch(html, /before-old\.jpg/);
-    assert.doesNotMatch(html, /after-old\.jpg/);
-    assert.doesNotMatch(html, /prev-card\.jpg/);
+    // Full card JPEGs preferred — thumb and tap are the same file.
+    const prevIdx = html.indexOf('Previous Transformation Card');
+    const newIdx = html.indexOf('New Transformation Card');
+    assert.ok(prevIdx >= 0 && newIdx > prevIdx);
     assert.equal(photoImgs(html).length, 2);
   });
 

@@ -1618,31 +1618,85 @@ async function sendUnifiedCoachEmail({
 }) {
   const slots = new Set(changedSlots);
   void userId;
-  // Email shows only the updated card — previous pair args kept for call-site compat.
-  void previousBeforeImagePath;
-  void previousAfterImagePath;
-  void previousBeforeWeight;
-  void previousAfterWeight;
-  void previousGoalType;
-  void previousDurationText;
-  void previousRecoveredHealthIssues;
 
-  // Current Before|After thumbs + optional full-card tap-preview (no Previous column).
+  // Previous card = state before this submit (unchanged side keeps current path).
+  const previousCardBeforePath = (slots.has('before') && previousBeforeImagePath)
+    ? previousBeforeImagePath
+    : beforeImagePath;
+  const previousCardAfterPath = (slots.has('after') && previousAfterImagePath)
+    ? previousAfterImagePath
+    : ((slots.has('before') && previousBeforeImagePath && !previousAfterImagePath)
+      ? previousBeforeImagePath
+      : afterImagePath);
+  const photoSlotChanged = slots.has('before') || slots.has('after');
+  const previousPairDistinct = Boolean(
+    isComplete
+    && photoSlotChanged
+    && previousCardBeforePath
+    && previousCardAfterPath
+    && (
+      previousCardBeforePath !== beforeImagePath
+      || previousCardAfterPath !== afterImagePath
+    ),
+  );
+
   const [
     currentBeforeHref,
     currentAfterHref,
+    previousBeforeHref,
+    previousAfterHref,
     currentSharePreviewHref,
     healthVideoUrl,
     businessVideoUrl,
   ] = await Promise.all([
     (isComplete && beforeImagePath) ? repo.getEmailSignedUrl(beforeImagePath) : Promise.resolve(null),
     (isComplete && afterImagePath) ? repo.getEmailSignedUrl(afterImagePath) : Promise.resolve(null),
+    (previousPairDistinct && previousCardBeforePath)
+      ? repo.getEmailSignedUrl(previousCardBeforePath)
+      : Promise.resolve(null),
+    (previousPairDistinct && previousCardAfterPath)
+      ? repo.getEmailSignedUrl(previousCardAfterPath)
+      : Promise.resolve(null),
     userId ? repo.getEmailSignedUrl(repo.shareCardStoragePath(userId)) : Promise.resolve(null),
     (slots.has('health') && healthVideoPath) ? repo.getEmailSignedUrl(healthVideoPath) : Promise.resolve(null),
     (slots.has('business') && businessVideoPath) ? repo.getEmailSignedUrl(businessVideoPath) : Promise.resolve(null),
   ]);
 
-  // Tap-preview only when share_card.jpg was written for this email (not a stale leftover).
+  // Previous full card: always compose from the same previous Before|After paths used
+  // for the Previous column — never link a stale archive that can disagree with thumbs.
+  let previousPreviewHref = null;
+  if (userId && previousPairDistinct && previousCardBeforePath && previousCardAfterPath) {
+    const prevSharePath = repo.previousShareCardStoragePath(userId);
+    try {
+      const [prevBeforeBuf, prevAfterBuf] = await Promise.all([
+        repo.downloadBuffer(previousCardBeforePath, { retries: 2 }),
+        repo.downloadBuffer(previousCardAfterPath, { retries: 2 }),
+      ]);
+      if (prevBeforeBuf?.length && prevAfterBuf?.length) {
+        const prevJpeg = await composeTransformationShareCardJpeg({
+          beforeBuffer: prevBeforeBuf,
+          afterBuffer: prevAfterBuf,
+          memberName,
+          beforeWeightKg: previousBeforeWeight,
+          afterWeightKg: previousAfterWeight,
+          goalType: previousGoalType,
+          durationText: previousDurationText,
+          recoveredHealthIssues: previousRecoveredHealthIssues,
+        });
+        if (prevJpeg?.length > 2000) {
+          await repo.uploadBuffer(prevSharePath, prevJpeg, 'image/jpeg');
+          previousPreviewHref = await repo.getEmailSignedUrl(prevSharePath);
+        }
+      }
+    } catch (err) {
+      logger.warn('[testimonials.service] Could not compose Previous share card for email', {
+        userId,
+        message: err?.message || String(err),
+      });
+    }
+  }
+
+  // New full card: only when share_card.jpg was written for this email.
   let currentPreviewHref = null;
   if (userId && shareCardReady && currentSharePreviewHref) {
     try {
@@ -1655,6 +1709,12 @@ async function sendUnifiedCoachEmail({
       currentPreviewHref = null;
     }
   }
+
+  const hasPhotoCompare = Boolean(
+    previousPairDistinct
+    && (previousPreviewHref || (previousBeforeHref && previousAfterHref))
+    && (currentPreviewHref || (currentBeforeHref && currentAfterHref)),
+  );
 
   // No CID photo attachments — HTTPS only (no "4 Attachments" strip in Gmail).
   const attachments = [];
@@ -1669,16 +1729,17 @@ async function sendUnifiedCoachEmail({
     durationText,
     beforeUrl: currentBeforeHref,
     afterUrl: currentAfterHref,
-    previousBeforeUrl: null,
-    previousAfterUrl: null,
-    previousBeforeWeight: null,
-    previousAfterWeight: null,
-    previousGoalType: null,
-    previousDurationText: null,
-    previousRecoveredHealthIssues: null,
-    previousCardImageUrl: null,
-    currentCardImageUrl: null,
-    previousPreviewHref: null,
+    previousBeforeUrl: hasPhotoCompare ? previousBeforeHref : null,
+    previousAfterUrl: hasPhotoCompare ? previousAfterHref : null,
+    previousBeforeWeight: hasPhotoCompare ? previousBeforeWeight : null,
+    previousAfterWeight: hasPhotoCompare ? previousAfterWeight : null,
+    previousGoalType: hasPhotoCompare ? previousGoalType : null,
+    previousDurationText: hasPhotoCompare ? previousDurationText : null,
+    previousRecoveredHealthIssues: hasPhotoCompare ? previousRecoveredHealthIssues : null,
+    // Prefer full share-card JPEGs in Previous | New so thumb === tap target.
+    previousCardImageUrl: hasPhotoCompare ? previousPreviewHref : null,
+    currentCardImageUrl: currentPreviewHref,
+    previousPreviewHref: hasPhotoCompare ? previousPreviewHref : null,
     currentPreviewHref,
     healthVideoUrl,
     businessVideoUrl,
@@ -1706,7 +1767,8 @@ async function sendUnifiedCoachEmail({
     coachEmail,
     memberName,
     changedSlots,
-    hasUpdatedCard: Boolean(currentBeforeHref && currentAfterHref),
+    hasPhotoCompare,
+    hasPreviousSharePreview: Boolean(previousPreviewHref),
     hasCurrentSharePreview: Boolean(currentPreviewHref),
   });
 }

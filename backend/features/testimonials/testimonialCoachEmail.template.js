@@ -290,25 +290,27 @@ export function buildTransformationCardCompareRow({
   const hasCurrent = Boolean((beforeUrl && afterUrl) || currentCardImageUrl);
   if (!hasPrevious || !hasCurrent) return '';
 
+  // Prefer full share-card JPEGs when present so the thumb and tap target are the same file.
+  const previousUsesCard = Boolean(previousCardImageUrl || previousPreviewHref);
+  const newUsesCard = Boolean(currentCardImageUrl || currentPreviewHref);
   const previousCell = buildCompactTransformationPreview({
-    label: 'Previous',
-    beforeUrl: previousBeforeUrl,
-    afterUrl: previousAfterUrl,
+    label: 'Previous Transformation Card',
+    beforeUrl: previousUsesCard ? null : previousBeforeUrl,
+    afterUrl: previousUsesCard ? null : previousAfterUrl,
     beforeWeight: previousBeforeWeight,
     afterWeight: previousAfterWeight,
-    // Only use share-card image when the photo pair is missing.
-    cardImageUrl: (previousBeforeUrl && previousAfterUrl) ? null : previousCardImageUrl,
-    previewHref: previousPreviewHref,
+    cardImageUrl: previousCardImageUrl || previousPreviewHref,
+    previewHref: previousPreviewHref || previousCardImageUrl,
     tone: 'previous',
   });
   const newCell = buildCompactTransformationPreview({
-    label: 'New',
-    beforeUrl,
-    afterUrl,
+    label: 'New Transformation Card',
+    beforeUrl: newUsesCard ? null : beforeUrl,
+    afterUrl: newUsesCard ? null : afterUrl,
     beforeWeight,
     afterWeight,
-    cardImageUrl: (beforeUrl && afterUrl) ? null : currentCardImageUrl,
-    previewHref: currentPreviewHref,
+    cardImageUrl: currentCardImageUrl || currentPreviewHref,
+    previewHref: currentPreviewHref || currentCardImageUrl,
     tone: 'new',
   });
 
@@ -316,8 +318,8 @@ export function buildTransformationCardCompareRow({
     <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="margin:0 0 14px 0;">
       <tr>
         <td align="center" style="padding:0 0 8px 0;">
-          <p style="margin:0;color:#6b7280;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;font-family:Arial,Helvetica,sans-serif;">Before vs After</p>
-          <p style="margin:4px 0 0;color:#9ca3af;font-size:11px;font-family:Arial,Helvetica,sans-serif;">Previous and New — tap for the full Transformation Card preview</p>
+          <p style="margin:0;color:#6b7280;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;font-family:Arial,Helvetica,sans-serif;">Transformation Card</p>
+          <p style="margin:4px 0 0;color:#9ca3af;font-size:11px;font-family:Arial,Helvetica,sans-serif;">Previous (before change) &#8594; New (after change) — tap to open full card</p>
         </td>
       </tr>
       <tr>
@@ -1030,35 +1032,33 @@ export function buildUnifiedSubmitEmailHtml({
 
   const changedBlock = buildChangedSlotsBlock(changedSlots);
 
-  // Only the updated Transformation Card — no Previous | New compare.
-  // (Previous thumbs + tap used different files, so tap opened the wrong full card.)
-  void previousBeforeUrl;
-  void previousAfterUrl;
-  void previousBeforeWeight;
-  void previousAfterWeight;
-  void previousGoalType;
-  void previousDurationText;
-  void previousRecoveredHealthIssues;
-  void previousPreviewHref;
-  void previousCardImageUrl;
-
-  const changedCard = (isComplete && beforeUrl && afterUrl)
-    ? buildCompactTransformationPreview({
-      label: 'Updated Transformation Card',
+  // Previous (before change) | New (after change) — prefer full share-card JPEGs.
+  const compareCards = (
+    (previousCardImageUrl || previousPreviewHref || (previousBeforeUrl && previousAfterUrl))
+    && (currentCardImageUrl || currentPreviewHref || (beforeUrl && afterUrl))
+  )
+    ? buildTransformationCardCompareRow({
+      previousBeforeUrl,
+      previousAfterUrl,
+      previousBeforeWeight: previousBeforeWeight ?? beforeWeight,
+      previousAfterWeight: previousAfterWeight ?? afterWeight,
+      previousCardImageUrl,
+      previousPreviewHref,
       beforeUrl,
       afterUrl,
       beforeWeight,
       afterWeight,
-      previewHref: currentPreviewHref,
-      tone: 'new',
+      currentCardImageUrl,
+      currentPreviewHref,
     })
     : '';
 
-  const singleShareCard = (!changedCard && currentCardImageUrl)
-    ? buildShareCardRow(currentCardImageUrl, currentPreviewHref)
+  // New-only when Previous is missing.
+  const singleShareCard = (!compareCards && (currentCardImageUrl || currentPreviewHref))
+    ? buildShareCardRow(currentCardImageUrl || currentPreviewHref, currentPreviewHref)
     : '';
 
-  const currentCard = (!changedCard && !singleShareCard && isComplete && beforeUrl && afterUrl)
+  const currentCard = (!compareCards && !singleShareCard && isComplete && beforeUrl && afterUrl)
     ? buildTransformationCardEmailBlock({
       memberName,
       beforeUrl,
@@ -1068,13 +1068,12 @@ export function buildUnifiedSubmitEmailHtml({
       goalType,
       durationText,
       recoveredHealthIssues,
-      heading: 'Transformation Card',
+      heading: 'New Transformation Card',
     })
     : '';
 
-  const hasCard = Boolean(changedCard || singleShareCard || currentCard);
+  const hasCard = Boolean(compareCards || singleShareCard || currentCard);
 
-  const compareCards = '';
   const beforeDiff = '';
   const afterDiff = '';
   const previousCard = '';
@@ -1140,7 +1139,7 @@ export function buildUnifiedSubmitEmailHtml({
               ${changedBlock}
               ${beforeDiff}
               ${afterDiff}
-              ${changedCard}
+              ${compareCards}
               ${singleShareCard}
               ${previousCard}
               ${currentCard}

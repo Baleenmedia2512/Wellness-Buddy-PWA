@@ -1,48 +1,44 @@
 /**
- * Coach email updated-card thumbs vs tap-preview must use the same Before/After pair.
+ * Previous | New email cards: thumb and tap must be the same share-card JPEG.
  * Run: node --test backend/features/testimonials/__tests__/shareCardEmailConsistency.test.js
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildUnifiedSubmitEmailHtml } from '../testimonialCoachEmail.template.js';
+import {
+  buildUnifiedSubmitEmailHtml,
+  buildTransformationCardCompareRow,
+} from '../testimonialCoachEmail.template.js';
 
-describe('share card email consistency (updated card thumbs vs tap)', () => {
-  it('updated compact thumbs use before/after photo URLs, not the share-card JPEG', () => {
+describe('share card email consistency (Previous | New)', () => {
+  it('uses full share-card JPEGs for Previous and New when available', () => {
+    const html = buildTransformationCardCompareRow({
+      previousBeforeUrl: 'https://example.com/before-old.jpg',
+      previousAfterUrl: 'https://example.com/after-old.jpg',
+      previousBeforeWeight: 90.9,
+      previousAfterWeight: 70,
+      previousCardImageUrl: 'https://example.com/prev-card.jpg',
+      previousPreviewHref: 'https://example.com/prev-card.jpg',
+      beforeUrl: 'https://example.com/before-new.jpg',
+      afterUrl: 'https://example.com/after-new.jpg',
+      beforeWeight: 90.9,
+      afterWeight: 60.8,
+      currentCardImageUrl: 'https://example.com/new-card.jpg',
+      currentPreviewHref: 'https://example.com/new-card.jpg',
+    });
+    assert.match(html, /Previous Transformation Card/);
+    assert.match(html, /New Transformation Card/);
+    assert.match(html, /prev-card\.jpg/);
+    assert.match(html, /new-card\.jpg/);
+    // Prefer card JPEGs over raw Before|After photo URLs when card images exist.
+    assert.doesNotMatch(html, /before-old\.jpg/);
+    assert.doesNotMatch(html, /after-new\.jpg/);
+  });
+
+  it('unified email shows Previous → New cards from share-card URLs', () => {
     const html = buildUnifiedSubmitEmailHtml({
       memberName: 'Alex',
       otp: '1234',
       changedSlots: ['after'],
-      goalType: 'loss',
-      beforeWeight: 90.9,
-      afterWeight: 60.8,
-      durationText: '6 months',
-      beforeUrl: 'https://example.com/before-new.jpg',
-      afterUrl: 'https://example.com/after-new.jpg',
-      currentPreviewHref: 'https://example.com/new-card.jpg',
-      healthVideoUrl: null,
-      businessVideoUrl: null,
-      recoveredHealthIssues: [],
-      isComplete: true,
-    });
-    assert.match(html, /https:\/\/example\.com\/before-new\.jpg/);
-    assert.match(html, /https:\/\/example\.com\/after-new\.jpg/);
-    assert.match(html, /https:\/\/example\.com\/new-card\.jpg/);
-    assert.doesNotMatch(html, />Previous</);
-    // Outer thumbs must not embed the full share-card JPEG as a photo slot.
-    const cardSection = html.slice(html.indexOf('Updated Transformation Card'));
-    assert.match(cardSection, /before-new\.jpg/);
-    assert.match(cardSection, /after-new\.jpg/);
-    assert.doesNotMatch(
-      cardSection.replace(/href="https:\/\/example\.com\/new-card\.jpg"/, ''),
-      /new-card\.jpg/,
-    );
-  });
-
-  it('without shareCardReady-equivalent href, updated card still shows Before|After thumbs', () => {
-    const html = buildUnifiedSubmitEmailHtml({
-      memberName: 'Alex',
-      otp: '1234',
-      changedSlots: ['before', 'after'],
       goalType: 'loss',
       beforeWeight: 90.9,
       afterWeight: 60.8,
@@ -53,17 +49,18 @@ describe('share card email consistency (updated card thumbs vs tap)', () => {
       previousAfterUrl: 'https://example.com/after-old.jpg',
       previousBeforeWeight: 90.9,
       previousAfterWeight: 70,
-      currentPreviewHref: null,
-      previousPreviewHref: null,
+      previousCardImageUrl: 'https://example.com/prev-card.jpg',
+      currentCardImageUrl: 'https://example.com/new-card.jpg',
+      previousPreviewHref: 'https://example.com/prev-card.jpg',
+      currentPreviewHref: 'https://example.com/new-card.jpg',
       healthVideoUrl: null,
       businessVideoUrl: null,
       recoveredHealthIssues: [],
       isComplete: true,
     });
-    assert.match(html, /Updated Transformation Card/);
-    assert.match(html, /before-new\.jpg/);
-    assert.match(html, /after-new\.jpg/);
-    assert.doesNotMatch(html, />Previous</);
-    assert.doesNotMatch(html, /Tap for full Transformation Card/);
+    assert.match(html, /Previous Transformation Card/);
+    assert.match(html, /New Transformation Card/);
+    assert.match(html, /prev-card\.jpg/);
+    assert.match(html, /new-card\.jpg/);
   });
 });
