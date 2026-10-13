@@ -131,9 +131,15 @@ export function isTransformationWeightLoss(beforeKg, afterKg) {
   return after < before;
 }
 
-/** Photo share when the left (Before) image is present — verification not required. */
+/**
+ * Photo share only after coach approval.
+ * Pending / incomplete / unverified cards must not expose Share.
+ */
 export function canShareTransformationPhoto(testimonial) {
-  return Boolean(testimonial?.beforeImageUrl);
+  if (!testimonial?.beforeImageUrl) return false;
+  if (testimonial.status !== 'verified') return false;
+  if (testimonial.hasPendingOtp || testimonial.otpPending) return false;
+  return true;
 }
 
 /**

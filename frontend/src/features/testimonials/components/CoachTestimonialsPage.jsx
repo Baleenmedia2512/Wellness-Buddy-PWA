@@ -1559,9 +1559,10 @@ function MemberCard({
   } : null;
   const shareCardUserName = user?.userName || user?.displayName || user?.name || null;
   const showBrandedCard = Boolean(shareCardTestimonial && (beforeImageSrc || afterImageSrc));
-  // Share whenever the left (Before) image is on screen (Mine + team).
-  // Do not hide on Mine for drafts/submit — Direct/Full already share without that gate.
-  const canSharePhoto = Boolean(beforeImageSrc || canShareTransformationPhoto(testimonial));
+  // Share only after coach approval. Hide while Mine has unsaved edits or OTP in flight.
+  const canSharePhoto =
+    canShareTransformationPhoto(testimonial)
+    && !(editable && (hasDirtySlots || showUnifiedOtp));
   const canShareVideo = Boolean(
     testimonial?.videoStatus === 'verified'
     && Boolean(resultVideoUrl || testimonial?.healthVideoPath || testimonial?.businessVideoPath)

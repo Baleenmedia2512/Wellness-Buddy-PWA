@@ -796,6 +796,11 @@ export async function editTestimonial(rawBody) {
 
     if (!hasCompleteAfter) {
       updates.status = 'incomplete';
+      updates.verifiedAt = null;
+    } else if (existing.status === 'verified') {
+      // Content changed on an approved card — revoke share until coach re-approves.
+      updates.status = 'pending';
+      updates.verifiedAt = null;
     }
 
     await repo.updateTestimonial(existing.id, updates);
@@ -805,7 +810,9 @@ export async function editTestimonial(rawBody) {
       body: {
         success: true,
         message: hasCompleteAfter
-          ? 'Before photo details updated.'
+          ? (existing.status === 'verified'
+            ? 'Before photo details updated. Submit for coach approval before sharing again.'
+            : 'Before photo details updated.')
           : 'Before photo updated. Add your after photo when you\'re ready to complete your testimonial.',
         testimonialId: existing.id,
         status: updates.status ?? existing.status,
