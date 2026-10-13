@@ -41,11 +41,33 @@ describe('isTransformationWeightLoss', () => {
 });
 
 describe('canShareTransformationPhoto', () => {
-  it('allows share when the left (Before) image is present', () => {
-    assert.equal(canShareTransformationPhoto({ beforeImageUrl: 'https://cdn.example/before.jpg' }), true);
-    assert.equal(canShareTransformationPhoto({ status: 'verified', beforeImageUrl: 'https://cdn.example/b.jpg' }), true);
-    assert.equal(canShareTransformationPhoto({ status: 'pending' }), false);
-    assert.equal(canShareTransformationPhoto({ status: 'incomplete' }), false);
+  it('allows share only when coach-verified and Before image is present', () => {
+    assert.equal(canShareTransformationPhoto({
+      status: 'verified',
+      beforeImageUrl: 'https://cdn.example/b.jpg',
+    }), true);
+    assert.equal(canShareTransformationPhoto({
+      beforeImageUrl: 'https://cdn.example/before.jpg',
+    }), false);
+    assert.equal(canShareTransformationPhoto({
+      status: 'pending',
+      beforeImageUrl: 'https://cdn.example/before.jpg',
+    }), false);
+    assert.equal(canShareTransformationPhoto({
+      status: 'incomplete',
+      beforeImageUrl: 'https://cdn.example/before.jpg',
+    }), false);
+    assert.equal(canShareTransformationPhoto({
+      status: 'verified',
+      beforeImageUrl: 'https://cdn.example/b.jpg',
+      hasPendingOtp: true,
+    }), false);
+    assert.equal(canShareTransformationPhoto({
+      status: 'verified',
+      beforeImageUrl: 'https://cdn.example/b.jpg',
+      otpPending: true,
+    }), false);
+    assert.equal(canShareTransformationPhoto({ status: 'verified' }), false);
     assert.equal(canShareTransformationPhoto(null), false);
   });
 });

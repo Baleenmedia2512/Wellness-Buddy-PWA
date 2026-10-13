@@ -417,12 +417,12 @@ describe('buildDiaryShareSuffix', () => {
     expect(buildDiaryShareSuffix('education', {
       platform: 'Zoom',
       session: 'Academy',
-    })).toBe('*Academy · Zoom,*');
+    })).toBe('*Academy · Zoom*');
 
     expect(buildDiaryShareSuffix('education', {
       session: 'Daily Education',
       platform: 'Zoom',
-    })).toBe('*Daily Education · Zoom,*');
+    })).toBe('*Daily Education · Zoom*');
 
     expect(buildDiaryShareSuffix('education', {
       session: 'Academy',
