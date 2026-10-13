@@ -232,8 +232,10 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
               : null;
 
       setProfileImagePreview(savedProfileImage);
-      };
-
+      // Stop spinner as soon as core profile is ready — do not wait on counselling.
+      setIsLoading(false);
+      return profileData;
+    };
 
     // Instant paint from Home/Header cache — avoid Personal Details spinner on every open.
     // After save (cacheBust) keep current fields visible — no full-section reload flash.
