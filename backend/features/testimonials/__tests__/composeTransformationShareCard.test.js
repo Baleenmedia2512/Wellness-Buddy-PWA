@@ -23,7 +23,7 @@ async function solidJpeg(width, height, color) {
 }
 
 describe('composeTransformationShareCardJpeg', () => {
-  it('builds a 540×960 JPEG with visible Before/After photos (not covered by overlay)', async () => {
+  it('builds a 540px wide JPEG with dynamic height and visible Before/After photos', async () => {
     const beforeBuffer = await solidJpeg(200, 300, { r: 200, g: 80, b: 80 });
     const afterBuffer = await solidJpeg(200, 300, { r: 80, g: 160, b: 80 });
     const jpeg = await composeTransformationShareCardJpeg({
@@ -40,7 +40,7 @@ describe('composeTransformationShareCardJpeg', () => {
     const meta = await sharp(jpeg).metadata();
     assert.equal(meta.format, 'jpeg');
     assert.equal(meta.width, 540);
-    assert.equal(meta.height, 960);
+    assert.equal(meta.height, 794);
 
     // Sample centre of Before slot (must not be white — overlay used to hide photos).
     const { data, info } = await sharp(jpeg)
@@ -66,9 +66,9 @@ describe('composeTransformationShareCardJpeg', () => {
     }
     assert.ok(darkText > 30, 'Member name text should render with embedded font');
 
-    // Red DISCLAIMER border must be fully inside the 960px card (not clipped).
+    // Red DISCLAIMER border must be fully inside the card (not clipped).
     const discBand = await sharp(jpeg)
-      .extract({ left: 48, top: 850, width: 40, height: 12 })
+      .extract({ left: 48, top: 690, width: 40, height: 12 })
       .raw()
       .toBuffer({ resolveWithObject: true });
     let redBorder = 0;
@@ -95,7 +95,7 @@ describe('composeTransformationShareCardJpeg', () => {
     });
     const meta = await sharp(jpeg).metadata();
     assert.equal(meta.width, 540);
-    assert.equal(meta.height, 960);
+    assert.equal(meta.height, 956);
     // Pink issues box sits above the disclaimer — sample a mid-card band for pink fill.
     const issuesBand = await sharp(jpeg)
       .extract({ left: 40, top: 700, width: 40, height: 40 })

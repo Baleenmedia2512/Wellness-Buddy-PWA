@@ -1628,16 +1628,80 @@ async function sendUnifiedCoachEmail({
     : ((slots.has('before') && previousBeforeImagePath && !previousAfterImagePath)
       ? previousBeforeImagePath
       : afterImagePath);
-  const photoSlotChanged = slots.has('before') || slots.has('after');
-  const previousPairDistinct = Boolean(
+
+  // If the before photo was updated, a valid previous before photo must have existed.
+  const hasValidPreviousBefore = slots.has('before')
+    ? Boolean(previousBeforeImagePath && !repo.isVideoOnlyPlaceholder(previousBeforeImagePath))
+    : Boolean(beforeImagePath && !repo.isVideoOnlyPlaceholder(beforeImagePath));
+
+  // If the after photo was updated, a valid previous after photo must have existed (and not be a mirror clone).
+  const hasValidPreviousAfter = slots.has('after')
+    ? Boolean(
+        previousAfterImagePath
+        && !repo.isVideoOnlyPlaceholder(previousAfterImagePath)
+        && previousAfterImagePath !== previousBeforeImagePath,
+      )
+    : Boolean(
+        afterImagePath
+        && !repo.isVideoOnlyPlaceholder(afterImagePath)
+        && (previousAfterImagePath ? previousAfterImagePath !== previousBeforeImagePath : true),
+      );
+
+  const hadPreviousCompleteCard = Boolean(
     isComplete
-    && photoSlotChanged
-    && previousCardBeforePath
-    && previousCardAfterPath
+    && hasValidPreviousBefore
+    && hasValidPreviousAfter,
+  );
+
+  const photoSlotChanged = Boolean(
+    (slots.has('before') || slots.has('after'))
     && (
-      previousCardBeforePath !== beforeImagePath
-      || previousCardAfterPath !== afterImagePath
+      (previousCardBeforePath && previousCardBeforePath !== beforeImagePath)
+      || (previousCardAfterPath && previousCardAfterPath !== afterImagePath)
     ),
+  );
+
+  const prevBeforeWeightNum = previousBeforeWeight != null ? Number(previousBeforeWeight) : null;
+  const prevAfterWeightNum = previousAfterWeight != null ? Number(previousAfterWeight) : null;
+  const curBeforeWeightNum = beforeWeight != null ? Number(beforeWeight) : null;
+  const curAfterWeightNum = afterWeight != null ? Number(afterWeight) : null;
+
+  const weightChanged = Boolean(
+    slots.has('weight')
+    || (prevBeforeWeightNum !== null && curBeforeWeightNum !== null && prevBeforeWeightNum !== curBeforeWeightNum)
+    || (prevAfterWeightNum !== null && curAfterWeightNum !== null && prevAfterWeightNum !== curAfterWeightNum)
+    || (prevBeforeWeightNum === null && curBeforeWeightNum !== null)
+    || (prevAfterWeightNum === null && curAfterWeightNum !== null),
+  );
+
+  const prevDurationSafe = String(previousDurationText ?? '').trim();
+  const curDurationSafe = String(durationText ?? '').trim();
+  const durationChanged = Boolean(
+    slots.has('duration')
+    || (prevDurationSafe !== curDurationSafe && (prevDurationSafe !== '' || curDurationSafe !== '')),
+  );
+
+  const prevGoalSafe = String(previousGoalType ?? '').trim();
+  const curGoalSafe = String(goalType ?? '').trim();
+  const goalChanged = Boolean(
+    slots.has('goal')
+    || (prevGoalSafe !== curGoalSafe && prevGoalSafe !== '' && curGoalSafe !== ''),
+  );
+
+  const prevIssuesArr = Array.isArray(previousRecoveredHealthIssues) ? previousRecoveredHealthIssues : [];
+  const curIssuesArr = Array.isArray(recoveredHealthIssues) ? recoveredHealthIssues : [];
+  const issuesChanged = Boolean(
+    slots.has('issues')
+    || (
+      JSON.stringify([...prevIssuesArr].sort()) !== JSON.stringify([...curIssuesArr].sort())
+    ),
+  );
+
+  const cardDetailsChanged = photoSlotChanged || weightChanged || durationChanged || goalChanged || issuesChanged;
+
+  const previousPairDistinct = Boolean(
+    hadPreviousCompleteCard
+    && cardDetailsChanged,
   );
 
   const [
@@ -1677,11 +1741,11 @@ async function sendUnifiedCoachEmail({
           beforeBuffer: prevBeforeBuf,
           afterBuffer: prevAfterBuf,
           memberName,
-          beforeWeightKg: previousBeforeWeight,
-          afterWeightKg: previousAfterWeight,
-          goalType: previousGoalType,
-          durationText: previousDurationText,
-          recoveredHealthIssues: previousRecoveredHealthIssues,
+          beforeWeightKg: previousBeforeWeight ?? beforeWeight,
+          afterWeightKg: previousAfterWeight ?? afterWeight,
+          goalType: previousGoalType ?? goalType,
+          durationText: previousDurationText ?? durationText,
+          recoveredHealthIssues: previousRecoveredHealthIssues ?? recoveredHealthIssues,
         });
         if (prevJpeg?.length > 2000) {
           await repo.uploadBuffer(prevSharePath, prevJpeg, 'image/jpeg');
@@ -1731,11 +1795,11 @@ async function sendUnifiedCoachEmail({
     afterUrl: currentAfterHref,
     previousBeforeUrl: hasPhotoCompare ? previousBeforeHref : null,
     previousAfterUrl: hasPhotoCompare ? previousAfterHref : null,
-    previousBeforeWeight: hasPhotoCompare ? previousBeforeWeight : null,
-    previousAfterWeight: hasPhotoCompare ? previousAfterWeight : null,
-    previousGoalType: hasPhotoCompare ? previousGoalType : null,
-    previousDurationText: hasPhotoCompare ? previousDurationText : null,
-    previousRecoveredHealthIssues: hasPhotoCompare ? previousRecoveredHealthIssues : null,
+    previousBeforeWeight: hasPhotoCompare ? (previousBeforeWeight ?? beforeWeight) : null,
+    previousAfterWeight: hasPhotoCompare ? (previousAfterWeight ?? afterWeight) : null,
+    previousGoalType: hasPhotoCompare ? (previousGoalType ?? goalType) : null,
+    previousDurationText: hasPhotoCompare ? (previousDurationText ?? durationText) : null,
+    previousRecoveredHealthIssues: hasPhotoCompare ? (previousRecoveredHealthIssues ?? recoveredHealthIssues) : null,
     // Prefer full share-card JPEGs in Previous | New so thumb === tap target.
     previousCardImageUrl: hasPhotoCompare ? previousPreviewHref : null,
     currentCardImageUrl: currentPreviewHref,
@@ -2055,6 +2119,36 @@ export async function submitAllEdits(rawBody) {
       emailChangedSlots.push('duration');
     }
 
+    const prevBeforeWeight = existing.before_weight_kg != null ? Number(existing.before_weight_kg) : null;
+    const prevAfterWeight = existing.after_weight_kg != null ? Number(existing.after_weight_kg) : null;
+    const newBeforeWeight = photoUpdates.beforeWeightKg !== undefined
+      ? (photoUpdates.beforeWeightKg != null ? Number(photoUpdates.beforeWeightKg) : null)
+      : prevBeforeWeight;
+    const newAfterWeight = photoUpdates.afterWeightKg !== undefined
+      ? (photoUpdates.afterWeightKg != null ? Number(photoUpdates.afterWeightKg) : null)
+      : prevAfterWeight;
+
+    const beforeWeightDiffers = photoUpdates.beforeWeightKg !== undefined && (
+      (prevBeforeWeight === null && newBeforeWeight !== null)
+      || (prevBeforeWeight !== null && newBeforeWeight !== null && newBeforeWeight !== prevBeforeWeight)
+    );
+    const afterWeightDiffers = photoUpdates.afterWeightKg !== undefined && (
+      (prevAfterWeight === null && newAfterWeight !== null)
+      || (prevAfterWeight !== null && newAfterWeight !== null && newAfterWeight !== prevAfterWeight)
+    );
+
+    if ((beforeWeightDiffers || afterWeightDiffers) && !emailChangedSlots.includes('weight')) {
+      emailChangedSlots.push('weight');
+    }
+
+    if (
+      photoUpdates.goalType !== undefined
+      && String(photoUpdates.goalType).trim() !== String(existing.goal_type ?? '').trim()
+      && !emailChangedSlots.includes('goal')
+    ) {
+      emailChangedSlots.push('goal');
+    }
+
     scheduleDeferredCoachDelivery('unified share-card + coach email', async () => {
       const shareCardExtras = {
         beforeImagePath: finalBeforePath,
@@ -2094,8 +2188,8 @@ export async function submitAllEdits(rawBody) {
         beforeImagePath:        finalBeforePath,
         afterImagePath:         finalAfterPath,
         // Keep previous paths for the Previous Transformation Card (even if first real After).
-        previousBeforeImagePath: prevBeforeImagePath,
-        previousAfterImagePath:  prevAfterImagePath,
+        previousBeforeImagePath: existing.before_image_path ?? null,
+        previousAfterImagePath:  existing.after_image_path ?? null,
         previousBeforeWeight:    existing.before_weight_kg,
         previousAfterWeight:     existing.after_weight_kg,
         previousGoalType:        existing.goal_type,

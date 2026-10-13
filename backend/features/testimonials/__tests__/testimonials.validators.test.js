@@ -146,4 +146,17 @@ describe('validateSubmitAllEdits duration', () => {
     });
     assert.equal(result.submitForApproval, true);
   });
+
+  it('accepts duration, weight, and goal in dirtySlots', () => {
+    const result = validateSubmitAllEdits({
+      userId: 713,
+      dirtySlots: ['duration', 'weight', 'goal'],
+      afterWeightKg: 73,
+      durationText: '3 months',
+      goalType: 'loss',
+      submitForApproval: true,
+    });
+    assert.deepEqual(result.dirtySlots, ['duration', 'weight', 'goal']);
+    assert.equal(result.submitForApproval, true);
+  });
 });

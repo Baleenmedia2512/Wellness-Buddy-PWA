@@ -19,9 +19,8 @@ const PHOTO_TOP = HEADER_H + NAME_H;
 const PHOTO_GAP = 8;
 const PHOTO_SIDE_PAD = 12;
 const PHOTO_W = Math.floor((CARD_W - PHOTO_SIDE_PAD * 2 - PHOTO_GAP) / 2);
-/** Default photo height; shrinks when health-issue chips need space. */
-const PHOTO_H_MAX = 460;
-const PHOTO_H_MIN = 320;
+/** Standard portrait photo height (keeps photos in proportion without elongation). */
+const PHOTO_H = 460;
 const META_H = 52;
 const DISCLAIMER_H = 110;
 const DISCLAIMER_PAD_X = 40;
@@ -156,36 +155,36 @@ function buildHealthIssuesSvg(issues, topY) {
     chips += `
       <rect x="${x}" y="${y}" width="${chipW}" height="${chipH}" rx="8" ry="8" fill="#ffffff" stroke="#f9a8d4" stroke-width="1.5"/>
       ${svgTextPath({
-        text: label,
-        x: x + chipW / 2,
-        y: textY,
-        size: ISSUE_CHIP_FONT,
-        fill: '#4b5563',
-        bold: true,
-        anchor: 'middle',
-      })}`;
+      text: label,
+      x: x + chipW / 2,
+      y: textY,
+      size: ISSUE_CHIP_FONT,
+      fill: '#4b5563',
+      bold: true,
+      anchor: 'middle',
+    })}`;
   });
 
   const markup = `
     <rect x="${boxX}" y="${boxY}" width="${boxW}" height="${boxH}" rx="12" ry="12" fill="#fff1f2" stroke="#f9a8d4" stroke-width="1"/>
     ${svgTextPath({
-      text: 'Health Issues',
-      x: CARD_W / 2,
-      y: boxY + boxPad + 16,
-      size: 16,
-      fill: '#be185d',
-      bold: true,
-      anchor: 'middle',
-    })}
+    text: 'Health Issues',
+    x: CARD_W / 2,
+    y: boxY + boxPad + 16,
+    size: 16,
+    fill: '#be185d',
+    bold: true,
+    anchor: 'middle',
+  })}
     ${svgTextPath({
-      text: 'while joining the community',
-      x: CARD_W / 2,
-      y: boxY + boxPad + 30,
-      size: 9,
-      fill: '#9ca3af',
-      bold: false,
-      anchor: 'middle',
-    })}
+    text: 'while joining the community',
+    x: CARD_W / 2,
+    y: boxY + boxPad + 30,
+    size: 9,
+    fill: '#9ca3af',
+    bold: false,
+    anchor: 'middle',
+  })}
     ${chips}`;
 
   return { markup, height: boxH + 8 };
@@ -290,17 +289,7 @@ export async function composeTransformationShareCardJpeg(opts) {
     : 0;
   const pillH = 30;
   const issues = normalizeIssueList(opts.recoveredHealthIssues);
-  const issueCols = issueColumnsForCount(issues.length);
-  const issueRows = issueCols ? Math.ceil(issues.length / issueCols) : 0;
-  const issuesReserveH = issueRows === 0
-    ? 0
-    : 8 + 8 + ISSUE_TITLE_H + issueRows * ISSUE_CHIP_ROW_H + 8 + 8;
-  const pillReserveH = pillLabel ? 44 : 0;
-  const usedBelowPhotos = META_H + 8 + pillReserveH + issuesReserveH + DISCLAIMER_H + 8;
-  const photoH = Math.max(
-    PHOTO_H_MIN,
-    Math.min(PHOTO_H_MAX, CARD_H - PHOTO_TOP - usedBelowPhotos),
-  );
+  const photoH = PHOTO_H;
 
   const beforeSlot = await coverTopJpeg(beforeBuffer, PHOTO_W, photoH);
   const afterSlot = await coverTopJpeg(afterBuffer, PHOTO_W, photoH);
@@ -316,18 +305,25 @@ export async function composeTransformationShareCardJpeg(opts) {
   const metaY = PHOTO_TOP + photoH + 8;
   const pillY = metaY + META_H + 8;
   const footerTop = PHOTO_TOP + photoH;
-  const issuesTop = pillLabel ? pillY + pillH + 10 : metaY + META_H + 8;
-  const { markup: issuesMarkup } = buildHealthIssuesSvg(issues, issuesTop);
-  const discY = CARD_H - DISCLAIMER_H + 4;
+  const issuesTop = pillLabel ? pillY + pillH + 12 : metaY + META_H + 10;
+  const { markup: issuesMarkup, height: issuesHeight } = buildHealthIssuesSvg(issues, issuesTop);
+
+  // Position disclaimer directly beneath content to eliminate blank space
+  const discY = issuesMarkup
+    ? issuesTop + issuesHeight + 12
+    : (pillLabel ? pillY + pillH + 14 : metaY + META_H + 14);
   const discW = CARD_W - DISCLAIMER_PAD_X * 2;
   const discH = DISCLAIMER_H - 14;
+  const bottomPad = 12;
+  const cardH = discY + discH + bottomPad;
+
   const burstY = pillY + 3;
   const burstLeftX = Math.max(8, pillX - 40);
   const burstRightX = Math.min(CARD_W - 40, pillX + pillW + 8);
 
   // Overlay uses glyph paths only — no <text> (avoids tofu on serverless).
   const overlaySvg = Buffer.from(`
-    <svg width="${CARD_W}" height="${CARD_H}" xmlns="http://www.w3.org/2000/svg">
+    <svg width="${CARD_W}" height="${cardH}" xmlns="http://www.w3.org/2000/svg">
       <rect x="0" y="0" width="${CARD_W}" height="${HEADER_H}" fill="#059669"/>
       ${logoUri ? `
       <circle cx="31" cy="31" r="19" fill="#ffffff"/>
@@ -341,7 +337,7 @@ export async function composeTransformationShareCardJpeg(opts) {
       ${svgTextPath({ text: 'Before', x: beforeX + PHOTO_W / 2, y: PHOTO_TOP + photoH - 16, size: 16, fill: '#ffffff', bold: true, anchor: 'middle' })}
       <rect x="${afterX}" y="${PHOTO_TOP + photoH - 36}" width="${PHOTO_W}" height="28" rx="6" fill="#16a34a"/>
       ${svgTextPath({ text: 'After', x: afterX + PHOTO_W / 2, y: PHOTO_TOP + photoH - 16, size: 16, fill: '#ffffff', bold: true, anchor: 'middle' })}
-      <rect x="0" y="${footerTop}" width="${CARD_W}" height="${CARD_H - footerTop}" fill="#ffffff"/>
+      <rect x="0" y="${footerTop}" width="${CARD_W}" height="${cardH - footerTop}" fill="#ffffff"/>
       ${svgTextPath({ text: 'BEFORE', x: beforeX + PHOTO_W / 2, y: metaY + 14, size: 11, fill: '#9ca3af', bold: true, anchor: 'middle' })}
       ${svgTextPath({ text: `${beforeKg} kg`, x: beforeX + PHOTO_W / 2, y: metaY + 36, size: 17, fill: '#111827', bold: true, anchor: 'middle' })}
       ${svgTextPath({ text: 'AFTER', x: afterX + PHOTO_W / 2, y: metaY + 14, size: 11, fill: '#9ca3af', bold: true, anchor: 'middle' })}
@@ -362,14 +358,14 @@ export async function composeTransformationShareCardJpeg(opts) {
   `);
 
   const overlayPng = await sharp(overlaySvg, { density: 96 })
-    .resize(CARD_W, CARD_H, { fit: 'fill' })
+    .resize(CARD_W, cardH, { fit: 'fill' })
     .png()
     .toBuffer();
 
   return sharp({
     create: {
       width: CARD_W,
-      height: CARD_H,
+      height: cardH,
       channels: 3,
       background: { r: 255, g: 255, b: 255 },
     },
