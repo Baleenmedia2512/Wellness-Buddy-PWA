@@ -914,22 +914,68 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
           boxSizing: 'border-box',
         }}
       >
-        <img
-          src={DISCLAIMER_FOOTER_SRC}
-          alt="Disclaimer: The views expressed are those of individuals. These products are not intended to diagnose, treat or cure any disease."
-          style={{
-            display: 'block',
-            width: 420,
-            maxWidth: '100%',
-            height: 88,
-            margin: '0 auto',
-          }}
-        />
-      </div>
+        
+<div
+  style={{
+    width: 420,
+    maxWidth: '100%',
+    minHeight: 90,
+    margin: '0 auto',
+    padding: '8px 12px',
+    boxSizing: 'border-box',
+    backgroundColor: '#FFF2A6',
+    border: '2px solid #E52525',
+    borderRadius: 12,
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    textAlign: 'center',
+  }}
+>
+  <div
+    style={{
+      color: '#E52525',
+      fontSize: 12,
+      fontWeight: 800,
+      lineHeight: 1.2,
+      letterSpacing: '0.5px',
+    }}
+  >
+    DISCLAIMER
+  </div>
 
+  <div
+    style={{
+      width: '85%',
+      height: 1,
+      backgroundColor: '#E52525',
+      flexShrink: 0,
+    }}
+  />
+
+      <p
+        style={{
+          margin: 0,
+          color: '#171717',
+          fontSize: 12,
+          fontWeight: 700,
+          lineHeight: 1.4,
+          textAlign: 'center',
+        }}
+      >
+        The views expressed are those of individuals.
+        <br />
+        These products are not intended to diagnose, treat or cure any disease.
+      </p>
     </div>
-  );
-});
+
+          </div>
+
+        </div>
+      );
+    });
 
 /**
  * Optional preview modal — kept for callers that still open a preview.
