@@ -1,6 +1,6 @@
 // src/features/user/components/UserProfileModal.js
 // Modal: view/edit profile (name, height, phone, BMR, diet).
-// Avatar is Centre transformation photo (display only).
+// Avatar is ProfileImage only (Centre transformation photo is independent).
 import React, { useCallback, useEffect, useState } from 'react';
 import { getUserContext } from '../../../shared/services/userIdentity';
 import useProfileForm from '../hooks/useProfileForm';
@@ -61,11 +61,12 @@ const UserProfileModal = ({ isOpen, onClose, user, userRole = 'user', onProfileU
           setMarathonWeightComparison(resolved);
           syncMarathonWeightComparisonFromProfile({ marathonWeightComparison: resolved });
         });
-        if (data.profileImage) {
-          setProfileImagePreview(data.profileImage);
-        } else if (data.transformationPhotos?.front) {
-          setProfileImagePreview(data.transformationPhotos.front);
-        }
+      setProfileImagePreview(
+        data?.profileImage ||
+        user?.photoURL ||
+        user?.ProfileImage ||
+        null
+      );
       }
     } catch (e) { setError(e.message || 'Failed to load profile.'); }
     finally { setIsLoading(false); }

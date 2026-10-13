@@ -1,4 +1,4 @@
-// Header bar with avatar (Centre transform photo), role badge, name, email, close.
+// Header bar with avatar (ProfileImage), role badge, name, email, close.
 import React from 'react';
 import { X } from 'lucide-react';
 import TouchFeedbackButton from '../../../../shared/components/TouchFeedbackButton';

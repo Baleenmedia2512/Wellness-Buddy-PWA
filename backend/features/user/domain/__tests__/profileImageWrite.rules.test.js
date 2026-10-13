@@ -36,27 +36,26 @@ describe('resolveIncomingAvatarDataUri', () => {
     assert.equal(
       resolveIncomingAvatarDataUri({
         profileImage: 'data:image/jpeg;base64,AVATAR',
-        transformationPhotos: { front: 'data:image/jpeg;base64,FRONT' },
       }),
       'data:image/jpeg;base64,AVATAR',
     );
   });
 
-  it('uses Centre front when profileImage is absent', () => {
+  it('does not use Centre front when profileImage is absent', () => {
     assert.equal(
       resolveIncomingAvatarDataUri({
-        transformationPhotos: { front: 'data:image/jpeg;base64,FRONT' },
+        profileImage: null,
       }),
-      'data:image/jpeg;base64,FRONT',
+      null,
     );
   });
 
-  it('ignores https centre urls and left/right slots', () => {
+  it('ignores non-data-uri profileImage values', () => {
     assert.equal(resolveIncomingAvatarDataUri({
-      transformationPhotos: { front: 'https://cdn.example/front.jpg' },
+      profileImage: 'https://cdn.example/avatar.jpg',
     }), null);
     assert.equal(resolveIncomingAvatarDataUri({
-      transformationPhotos: { left: 'data:image/jpeg;base64,LEFT' },
+      profileImage: '',
     }), null);
   });
 });
