@@ -1,6 +1,6 @@
 // src/features/user/components/UserProfileModal.js
 // Modal: view/edit profile (name, height, phone, BMR, diet).
-// Avatar is Centre transformation photo (display only).
+// Avatar is ProfileImage only (Centre transformation photo is independent).
 import React, { useCallback, useEffect, useState } from 'react';
 import { getUserContext } from '../../../shared/services/userIdentity';
 import useProfileForm from '../hooks/useProfileForm';

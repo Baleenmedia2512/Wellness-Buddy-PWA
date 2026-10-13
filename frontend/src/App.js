@@ -3613,7 +3613,7 @@ function WellnessValleyApp() {
         snooze: result.snooze,
       });
 
-      // Never open MandatoryProfilePictureModal — Centre transform photo is the avatar.
+      // Never open MandatoryProfilePictureModal — profile photo is set separately from Centre.
       if (result.status === "valid" || result.status === "snoozed" || result.status === "missing") {
         return;
       }

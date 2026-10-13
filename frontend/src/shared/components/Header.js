@@ -44,7 +44,7 @@ const Header = ({
   const reportsEnabled = isFlagEnabled('ff.reports-module')
     && canAccessReportsModule(userRole);
 
-  // After Centre / profile photo save, App updates user.profileImage immediately —
+  // After profile photo save, App updates user.profileImage immediately —
   // apply it here so header does not keep a stale getProfile avatar until refetch.
   useEffect(() => {
     const fromUser = user?.profileImage || user?.ProfileImage || user?.photoURL;
@@ -78,7 +78,7 @@ const Header = ({
           } else {
             setSavedUserName(null);
           }
-          // Same order as /api/user/avatar + My Profile: profileImage, else Centre.
+          // Profile avatar only — Centre transformation photo is independent.
           const nextImage = data.data.profileImage || null;
           if (nextImage) setSavedProfileImage(nextImage);
           else if (shouldBust) setSavedProfileImage(null);
@@ -104,7 +104,7 @@ const Header = ({
       || userEmail
       || "User";
   })();
-  // Prefer fetched profile; fall back to session user after Centre photo save (before refetch lands).
+  // Prefer fetched profile; fall back to session user after profile photo save (before refetch lands).
   const headerAvatarSrc = savedProfileImage
     || user?.profileImage
     || user?.ProfileImage

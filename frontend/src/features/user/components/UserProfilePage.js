@@ -4,9 +4,9 @@
 // Rendered as a first-class page route inside App.js (showProfilePage=true).
 //
 // Sections:
-//   1. Avatar (tap to change — Centre transform photo / ProfileImage)
+//   1. Avatar (tap to change — ProfileImage only; independent of Centre)
 //   2. Profile fields (name, height, phone, community ID / team code, email, diet, BMR, PAL)
-//   3. Transformation photos (Left / Centre / Right — same as onboarding)
+//   3. Transformation photos (Left / Centre / Right — same as onboarding; do not update avatar)
 //   4. Settings  (auto camera toggle)
 //   5. Account actions (sign out, delete account)
 //
@@ -334,8 +334,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
         delete payload.email;
       }
       const photoExtras = transformationPhotos.payloadExtras();
-      // Centre (front) also becomes the profile avatar on the server.
-      const centrePhoto = photoExtras.transformationPhotos?.front || null;
+      // Centre/Left/Right are transformation slots only — never update ProfileImage/avatar.
       Object.assign(payload, photoExtras);
       if (user?.id && !payload.userId) {
         payload.userId = user.id;
@@ -362,11 +361,6 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
       if (user?.id) {
         invalidateHasTeamMembersCache(user.id);
       }
-      const nextPreview = centrePhoto || profileImagePreview || null;
-      if (centrePhoto) {
-        setProfileImagePreview(centrePhoto);
-        bumpAvatarDisplayVersion();
-      }
       onProfileUpdate?.({
         name: form.name,
         height: form.height ? parseFloat(form.height) : null,
@@ -390,7 +384,6 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
     }
   }, [
     form,
-    profileImagePreview,
     user,
     accountEmail,
     loadProfile,
