@@ -21,6 +21,7 @@ import {
   listPrimaryDirectReports,
 } from './teamHierarchyTree.js';
 import { resolveCommunityPeerCoachIds } from './communityTeamVisibility.js';
+import { fetchAllSupabaseRows } from './supabasePaginate.js';
 
 /** Case-insensitive active check for team_table.Status. */
 export function isActiveTeamStatus(status) {
@@ -39,12 +40,18 @@ export async function buildTeamHierarchy(supabase, coachIdInt, opts = {}) {
 
   // 1. Fetch all users (Active + Inactive) so inactive intermediate coaches
   // can be detected and their active members promoted upward.
-  const { data: allUsers, error: usersError } = await supabase
-    .from('team_table')
-    .select('UserId, UserName, Email, Role, CoachId, CoachTeamId, Status, ProfileImage')
-    .order('UserName');
-
-  if (usersError) throw new Error('Failed to fetch team data: ' + usersError.message);
+  // Page past Supabase's default 1000-row cap (large downlines / seed data).
+  let allUsers;
+  try {
+    allUsers = await fetchAllSupabaseRows(() =>
+      supabase
+        .from('team_table')
+        .select('UserId, UserName, Email, Role, CoachId, CoachTeamId, Status, ProfileImage')
+        .order('UserId', { ascending: true }),
+    );
+  } catch (usersError) {
+    throw new Error('Failed to fetch team data: ' + (usersError?.message || usersError));
+  }
   if (!allUsers || allUsers.length === 0) {
     return {
       hierarchy: null,
