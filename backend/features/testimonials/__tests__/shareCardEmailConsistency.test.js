@@ -63,4 +63,44 @@ describe('share card email consistency (Previous | New)', () => {
     assert.match(html, /prev-card\.jpg/);
     assert.match(html, /new-card\.jpg/);
   });
+
+  it('unified email shows Starting / Current Weight and Duration in WHAT CHANGED and compares cards when photos unchanged', () => {
+    const html = buildUnifiedSubmitEmailHtml({
+      memberName: 'John',
+      otp: '5729',
+      changedSlots: ['duration', 'weight'],
+      goalType: 'loss',
+      beforeWeight: 63,
+      afterWeight: 60,
+      durationText: '2 months',
+      beforeUrl: 'https://example.com/photos/before.jpg',
+      afterUrl: 'https://example.com/photos/after.jpg',
+      previousBeforeUrl: 'https://example.com/photos/before.jpg',
+      previousAfterUrl: 'https://example.com/photos/after.jpg',
+      previousBeforeWeight: 63,
+      previousAfterWeight: 62,
+      previousDurationText: '1 month',
+      previousCardImageUrl: 'https://example.com/prev-card.jpg',
+      currentCardImageUrl: 'https://example.com/new-card.jpg',
+      previousPreviewHref: 'https://example.com/prev-card.jpg',
+      currentPreviewHref: 'https://example.com/new-card.jpg',
+      healthVideoUrl: null,
+      businessVideoUrl: null,
+      recoveredHealthIssues: [],
+      isComplete: true,
+    });
+    // WHAT CHANGED block must include both Duration and Starting / Current Weight
+    assert.match(html, /WHAT CHANGED/);
+    assert.match(html, /Duration \(days \/ months\)/);
+    assert.match(html, /Starting \/ Current Weight/);
+
+    // Both Previous and New Transformation Cards must appear side by side
+    assert.match(html, /Previous Transformation Card/);
+    assert.match(html, /New Transformation Card/);
+    assert.match(html, /prev-card\.jpg/);
+    assert.match(html, /new-card\.jpg/);
+    assert.match(html, /63 kg &#8594; 62 kg/);
+    assert.match(html, /63 kg &#8594; 60 kg/);
+  });
 });
+

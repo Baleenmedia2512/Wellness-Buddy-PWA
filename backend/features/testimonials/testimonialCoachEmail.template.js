@@ -830,6 +830,8 @@ const SLOT_LABELS = {
   business: 'Business Results Video',
   issues:   'Recovered health issues',
   duration: 'Duration (days / months)',
+  weight:   'Starting / Current Weight',
+  goal:     'Goal (Weight Loss / Gain)',
 };
 
 /**
