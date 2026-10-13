@@ -480,6 +480,10 @@ const NutritionCenterRegistration = ({ user, onBack, onSaved, initialCenter }) =
     setOwnerPhone(nextPhone);
     setNameAvailable(null);
     setNameChecking(false);
+    setSearchAddress('');
+    if (searchBoxRef.current) {
+      searchBoxRef.current.value = '';
+    }
     setError(null);
     setSuccess(null);
     if (googleMapRef.current && window.google) {
@@ -503,6 +507,10 @@ const NutritionCenterRegistration = ({ user, onBack, onSaved, initialCenter }) =
     setCountryCode('+91');
     setNameAvailable(null);
     setNameChecking(false);
+    setSearchAddress('');
+    if (searchBoxRef.current) {
+      searchBoxRef.current.value = '';
+    }
     setError(null);
     if (markerRef.current) {
       markerRef.current.setMap(null);
@@ -558,6 +566,10 @@ const NutritionCenterRegistration = ({ user, onBack, onSaved, initialCenter }) =
         setCountryCode('+91');
         setNameAvailable(null);
         setNameChecking(false);
+        setSearchAddress('');
+        if (searchBoxRef.current) {
+          searchBoxRef.current.value = '';
+        }
         if (markerRef.current) {
           markerRef.current.setMap(null);
           markerRef.current = null;
@@ -630,6 +642,10 @@ const NutritionCenterRegistration = ({ user, onBack, onSaved, initialCenter }) =
       setCountryCode('+91');
       setNameAvailable(null);
       setNameChecking(false);
+      setSearchAddress('');
+      if (searchBoxRef.current) {
+        searchBoxRef.current.value = '';
+      }
       
       if (markerRef.current) {
         markerRef.current.setMap(null);

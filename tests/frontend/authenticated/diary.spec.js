@@ -1,4 +1,4 @@
-﻿/**
+/**
  * tests/frontend/authenticated/diary.spec.js
  * Comprehensive E2E test suite for Diary / Food Log Module (Single-file consolidated architecture).
  * 
@@ -31,6 +31,11 @@
  * - DIARY-024: Date Picker Month Navigation between months
  * - DIARY-025: Coach Viewing Member Diary via Team Search updates scope and restores via View Mine
  * - DIARY-026: Coach Searches Downline Member and Clicks Name to View Member Profile Details Modal
+ * - DIARY-027: Search Member in Diary via Community ID displays matching member
+ * - DIARY-028: Search Member in Diary via Club Name displays matching member
+ * - DIARY-029: Search Member in Diary via Phone Number displays matching member
+ * - DIARY-030: Infinite Scrolling loads additional diary entries on scroll
+ * - DIARY-031: Diary log cards (Food, Weight, Education, Good Habit) display an active Share button
  */
 
 const { test, expect } = require('@playwright/test');
@@ -827,4 +832,223 @@ test.describe('Diary / Food Log Module', () => {
     await expect(memberNameBtn).toBeVisible();
     await expect(page.getByText('Priya Salad Bowl')).toBeVisible({ timeout: 5000 });
   });
+
+  // ── DIARY-027 ─────────────────────────────────────────────────────────────
+  test('DIARY-027: Search Member in Diary via Community ID displays matching member', async ({ page }) => {
+    await diaryPage.gotoDiary();
+
+    // Verify search input is present
+    await expect(diaryPage.teamSearchInput).toBeVisible({ timeout: 10000 });
+
+    // Type Community ID "COMM-0099" into search input
+    await diaryPage.teamSearchInput.click();
+    await diaryPage.teamSearchInput.fill('COMM-0099');
+
+    // Select Priya Sharma suggestion
+    const priyaOption = page.locator('button').filter({ hasText: 'Priya Sharma' }).first();
+    await expect(priyaOption).toBeVisible({ timeout: 8000 });
+    await priyaOption.click();
+
+    // Verify header title updates to "Diary - Priya Sharma"
+    const headerTitle = page.locator('h1').filter({ hasText: 'Diary' });
+    await expect(headerTitle).toContainText('Priya Sharma');
+
+    // Verify Priya's meal appears in the scoped feed
+    await expect(page.getByText('Priya Salad Bowl')).toBeVisible({ timeout: 10000 });
+  });
+
+  // ── DIARY-028 ─────────────────────────────────────────────────────────────
+  test('DIARY-028: Search Member in Diary via Club Name displays matching member', async ({ page }) => {
+    await diaryPage.gotoDiary();
+
+    // Verify search input is present
+    await expect(diaryPage.teamSearchInput).toBeVisible({ timeout: 10000 });
+
+    // Type Club name "Chennai Wellness Club" into search input
+    await diaryPage.teamSearchInput.click();
+    await diaryPage.teamSearchInput.fill('Chennai Wellness Club');
+
+    // Select Priya Sharma suggestion
+    const priyaOption = page.locator('button').filter({ hasText: 'Priya Sharma' }).first();
+    await expect(priyaOption).toBeVisible({ timeout: 8000 });
+    await priyaOption.click();
+
+    // Verify header title updates to "Diary - Priya Sharma"
+    const headerTitle = page.locator('h1').filter({ hasText: 'Diary' });
+    await expect(headerTitle).toContainText('Priya Sharma');
+
+    // Verify Priya's meal appears in the scoped feed
+    await expect(page.getByText('Priya Salad Bowl')).toBeVisible({ timeout: 10000 });
+  });
+
+  // ── DIARY-029 ─────────────────────────────────────────────────────────────
+  test('DIARY-029: Search Member in Diary via Phone Number displays matching member', async ({ page }) => {
+    await diaryPage.gotoDiary();
+
+    // Verify search input is present
+    await expect(diaryPage.teamSearchInput).toBeVisible({ timeout: 10000 });
+
+    // Type Phone Number "9876543210" into search input
+    await diaryPage.teamSearchInput.click();
+    await diaryPage.teamSearchInput.fill('9876543210');
+
+    // Select Priya Sharma suggestion
+    const priyaOption = page.locator('button').filter({ hasText: 'Priya Sharma' }).first();
+    await expect(priyaOption).toBeVisible({ timeout: 8000 });
+    await priyaOption.click();
+
+    // Verify header title updates to "Diary - Priya Sharma"
+    const headerTitle = page.locator('h1').filter({ hasText: 'Diary' });
+    await expect(headerTitle).toContainText('Priya Sharma');
+
+    // Verify Priya's meal appears in the scoped feed
+    await expect(page.getByText('Priya Salad Bowl')).toBeVisible({ timeout: 10000 });
+  });
+
+  // ── DIARY-030 ─────────────────────────────────────────────────────────────
+  test('DIARY-030: Infinite Scrolling loads additional diary entries on scroll', async ({ page }) => {
+    let listCallCount = 0;
+
+    // Override GET /api/diary/list route to handle pagination (limit: 5, offset: 0 -> offset: 5)
+    await page.route('**/api/diary/list*', async (route) => {
+      const url = new URL(route.request().url());
+      const offset = parseInt(url.searchParams.get('offset') || '0', 10);
+      listCallCount++;
+
+      if (offset === 0) {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            ok: true,
+            data: {
+              date: MOCK_DIARY_DATE_PRIMARY,
+              ownerUserId: '99999',
+              isSelf: true,
+              includesUnknown: true,
+              pagination: { limit: 5, offset: 0, total: 10, hasMore: true, nextOffset: 5 },
+              entries: currentEntries.slice(0, 2),
+            },
+          }),
+        });
+        return;
+      }
+
+      // Page 2 response for next offset with multiple paginated items
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          ok: true,
+          data: {
+            date: MOCK_DIARY_DATE_PRIMARY,
+            ownerUserId: '99999',
+            isSelf: true,
+            includesUnknown: true,
+            pagination: { limit: 5, offset: 5, total: 10, hasMore: false, nextOffset: null },
+            entries: [
+              {
+                kind: 'food',
+                capturedAt: '2026-09-07T08:15:00.000Z',
+                payload: {
+                  id: 902,
+                  userId: 99999,
+                  name: 'Paginated Grilled Salmon',
+                  totals: { calories: 520, protein: 42, carbs: 10, fat: 22 },
+                  listSummary: {
+                    name: 'Paginated Grilled Salmon',
+                    activityType: 'food',
+                    items: [{ name: 'Grilled Salmon', calories: 520 }],
+                  },
+                },
+              },
+              {
+                kind: 'food',
+                capturedAt: '2026-09-07T09:30:00.000Z',
+                payload: {
+                  id: 903,
+                  userId: 99999,
+                  name: 'Avocado & Quinoa Bowl',
+                  totals: { calories: 380, protein: 12, carbs: 45, fat: 18 },
+                  listSummary: {
+                    name: 'Avocado & Quinoa Bowl',
+                    activityType: 'food',
+                    items: [{ name: 'Avocado Bowl', calories: 380 }],
+                  },
+                },
+              },
+              {
+                kind: 'food',
+                capturedAt: '2026-09-07T16:00:00.000Z',
+                payload: {
+                  id: 904,
+                  userId: 99999,
+                  name: 'Herbalife Berry Protein Shake',
+                  totals: { calories: 210, protein: 24, carbs: 18, fat: 3 },
+                  listSummary: {
+                    name: 'Herbalife Berry Protein Shake',
+                    activityType: 'food',
+                    items: [{ name: 'Berry Shake', calories: 210 }],
+                  },
+                },
+              },
+            ],
+          },
+        }),
+      });
+    });
+
+    await diaryPage.gotoDiary();
+
+    // 1. Verify initial entries from Page 1 are visible
+    await expect(diaryPage.getFoodCardByTitle('Chicken and Beef Noodles')).toBeVisible({ timeout: 15000 });
+
+    // 2. Scroll down to the bottom of the timeline feed to trigger infinite scroll
+    await page.evaluate(() => {
+      window.scrollTo(0, document.body.scrollHeight);
+    });
+
+    // 3. Verify all multiple paginated items from Page 2 fetch and render correctly in the feed
+    await expect(page.getByText('Paginated Grilled Salmon')).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText('Avocado & Quinoa Bowl')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('Herbalife Berry Protein Shake')).toBeVisible({ timeout: 10000 });
+
+    // 4. Verify API call count indicates pagination request succeeded
+    expect(listCallCount).toBeGreaterThanOrEqual(2);
+  });
+
+  // ── DIARY-031 ─────────────────────────────────────────────────────────────
+  test('DIARY-031: Diary log cards (Food, Weight, Education, Good Habit) display an active Share button', async ({ page }) => {
+    // Populate feed with entries of supported shareable log types
+    currentEntries = [
+      JSON.parse(JSON.stringify(MOCK_DIARY_ENTRIES_PRIMARY[0])), // Food card
+      JSON.parse(JSON.stringify(MOCK_DIARY_ENTRY_WEIGHT)),       // Weight card
+      JSON.parse(JSON.stringify(MOCK_DIARY_ENTRY_EDUCATION)),    // Education card
+      JSON.parse(JSON.stringify(MOCK_DIARY_ENTRY_GOOD_HABIT)),   // Good Habit card
+    ];
+
+    await diaryPage.gotoDiary();
+
+    // 1. Verify Share button on Food Card
+    const foodCard = diaryPage.getFoodCardByTitle('Chicken and Beef Noodles');
+    await expect(foodCard).toBeVisible({ timeout: 15000 });
+    const foodShareBtn = foodCard.locator('button[aria-label*="Share"]');
+    await expect(foodShareBtn.first()).toBeVisible();
+
+    // 2. Verify Share button on Weight Card
+    await expect(diaryPage.weightCard).toBeVisible({ timeout: 10000 });
+    const weightShareBtn = diaryPage.weightCard.locator('button[aria-label*="Share this weight"]');
+    await expect(weightShareBtn).toBeVisible();
+
+    // 3. Verify Share button on Education Card
+    await expect(diaryPage.educationCard).toBeVisible({ timeout: 10000 });
+    const eduShareBtn = diaryPage.educationCard.locator('button[aria-label*="Share this education"]');
+    await expect(eduShareBtn).toBeVisible();
+
+    // 4. Verify Share button on Good Habit Card
+    await expect(diaryPage.goodHabitCard).toBeVisible({ timeout: 10000 });
+    const habitShareBtn = diaryPage.goodHabitCard.locator('button[aria-label*="Share this Good Habit"]');
+    await expect(habitShareBtn).toBeVisible();
+  });
 });
+

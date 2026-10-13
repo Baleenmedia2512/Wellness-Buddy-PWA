@@ -1,4 +1,4 @@
-﻿/**
+/**
  * tests/frontend/pages/home.spec.js
  * E2E test suite for Home Module.
  * 
@@ -16,6 +16,9 @@
  * - HOME-010: upload image, select Target Nutrition, search Herbalife Beta Heart and Herbalife Niteworks, test multi-add with decimal rounding, save meal, and verify in diary
  * - HOME-011: Navigation bar displays only 4 tabs (Home, Diary, Programmes, Transformation) when page access is restricted, and all tabs when full access is granted
  * - HOME-012: User can select Today, Yesterday, Last 10 Days, and Custom Range date options on Home page
+ * - HOME-013: Home page offline indicator & network retry
+ * - HOME-014: Insufficient AI Credits handling on image upload
+ * - HOME-015: Home page refresh updates daily nutrition and activity summary
  */
 
 import { test, expect } from '@playwright/test';
@@ -1663,6 +1666,177 @@ test.describe('Homepage', () => {
     if (await doneBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
       await doneBtn.click();
     }
+  });
+
+  test('HOME-013 Home page offline indicator & network retry', async ({ page }) => {
+    await loginAndNavigateToHome(page);
+
+    // 1. Simulate device going offline
+    await page.context().setOffline(true);
+
+    // Dispatch offline browser event to ensure React state updates immediately
+    await page.evaluate(() => {
+      window.dispatchEvent(new Event('offline'));
+    });
+
+    // 2. Verify "You are offline" overlay indicator appears
+    const offlineNoticeTitle = page.getByRole('heading', { name: 'You are offline' }).or(page.getByText('You are offline'));
+    await expect(offlineNoticeTitle.first()).toBeVisible({ timeout: 10000 });
+
+    const offlineNoticeBody = page.getByText('Wellness Valley needs an internet connection', { exact: false });
+    await expect(offlineNoticeBody.first()).toBeVisible({ timeout: 5000 });
+
+    // 3. Restore network connectivity
+    await page.context().setOffline(false);
+
+    // Dispatch online browser event
+    await page.evaluate(() => {
+      window.dispatchEvent(new Event('online'));
+    });
+
+    // 4. Verify offline notice dismisses automatically when internet returns
+    await expect(offlineNoticeTitle.first()).not.toBeVisible({ timeout: 10000 });
+
+    // 5. Verify Home page features remain functional after network retry
+    const galleryButton = page.getByRole('button', { name: 'Choose from gallery' });
+    await expect(galleryButton).toBeVisible({ timeout: 10000 });
+  });
+
+  test('HOME-014 Insufficient AI Credits handling on image upload', async ({ page }) => {
+    // Enable AI credits feature flag
+    await page.addInitScript(() => {
+      localStorage.setItem('ff.ai-credits', 'true');
+    });
+
+    // Mock AI credits status endpoint returning zero remaining credits / exhausted status
+    await page.route('**/api/ai-credits/*', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          enabled: true,
+          available: false,
+          credits: 0,
+          dailyLimit: 3,
+          used: 3,
+          pending: 0,
+          remaining: 0,
+          availableInWindow: true,
+          eligibleForAiFoodAnalysis: true,
+          aiFoodAnalysisWindowOpen: true,
+        }),
+      });
+    });
+
+    // Mock AI credit reservation endpoint returning daily_exhausted reason
+    await page.route('**/api/ai-credits/reserve*', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: false,
+          allowed: false,
+          reason: 'daily_exhausted',
+        }),
+      });
+    });
+
+    await loginAndNavigateToHome(page, 'developer');
+
+    // Upload image from gallery
+    const galleryButton = page.getByRole('button', { name: 'Choose from gallery' });
+    await expect(galleryButton).toBeVisible({ timeout: 15000 });
+
+    const [fileChooser] = await Promise.all([
+      page.waitForEvent('filechooser'),
+      galleryButton.click(),
+    ]);
+
+    await fileChooser.setFiles({
+      name: 'insufficient_credits_test.png',
+      mimeType: 'image/png',
+      buffer: samplePngBuffer,
+    });
+
+    // Verify Classify page appears safely without crashing
+    const classifyHeading = page.getByRole('heading', { name: 'What is this image?' });
+    await expect(classifyHeading).toBeVisible({ timeout: 15000 });
+
+    // Verify manual category logging tiles are visible and functional
+    await expect(page.getByRole('button', { name: 'Food', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Weight', exact: true })).toBeVisible();
+
+    // Cancel classify screen to return to Homepage cleanly
+    const cancelButton = page.getByRole('button', { name: "Cancel, Don't Log" });
+    await expect(cancelButton).toBeVisible();
+    await cancelButton.click();
+    await expect(galleryButton).toBeVisible({ timeout: 10000 });
+  });
+
+  test('HOME-015 Home page refresh updates daily nutrition and activity summary', async ({ page }) => {
+    let waterTotalMl = 500;
+    let afreshTotalScoops = 1;
+
+    // Route mock for water intake returning dynamic initial vs updated values
+    await page.route('**/api/water/intake*', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          totalMl: waterTotalMl,
+          totalAfreshScoops: afreshTotalScoops,
+        }),
+      });
+    });
+
+    await page.route('**/api/water*', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          totalMl: waterTotalMl,
+          totalAfreshScoops: afreshTotalScoops,
+        }),
+      });
+    });
+
+    await loginAndNavigateToHome(page, 'developer');
+
+    // Verify initial water & afresh values are rendered
+    const galleryButton = page.getByRole('button', { name: 'Choose from gallery' });
+    await expect(galleryButton).toBeVisible({ timeout: 15000 });
+
+    // Update backend mock response to reflect new synced intake (e.g. 1500 ml water & 3 afresh scoops)
+    waterTotalMl = 1500;
+    afreshTotalScoops = 3;
+
+    // Reload page to simulate refresh/syncing data from backend
+    await page.reload();
+
+    // Verify page re-fetches updated summary values cleanly
+    await expect(galleryButton).toBeVisible({ timeout: 15000 });
+
+    // Open Water modal to verify updated synced intake amount (1500 ml)
+    const [fileChooser] = await Promise.all([
+      page.waitForEvent('filechooser'),
+      galleryButton.click(),
+    ]);
+
+    await fileChooser.setFiles({
+      name: 'refresh_sync_test.png',
+      mimeType: 'image/png',
+      buffer: samplePngBuffer,
+    });
+
+    await expect(page.getByRole('heading', { name: 'What is this image?' })).toBeVisible({ timeout: 15000 });
+    const waterCategoryBtn = page.getByRole('button', { name: 'Water', exact: true });
+    await waterCategoryBtn.click();
+
+    // Verify Water modal displays updated synced intake (1500 ml)
+    await expect(page.getByText('1500 ml', { exact: true })).toBeVisible({ timeout: 10000 });
   });
 
 });
