@@ -682,18 +682,25 @@ export async function submitTestimonial(rawBody) {
   if (payload.hasAfter) {
     const coachInfo = recipient.coachInfo;
     scheduleDeferredCoachDelivery('submit share-card + coach email', async () => {
-      await uploadShareCardImage(payload.userId, payload.shareCardImageBase64, {
-        beforeImagePath: beforePath,
-        afterImagePath: afterPath,
-        beforeImageBase64: payload.beforeImageBase64,
-        afterImageBase64: payload.afterImageBase64,
-        memberName: userInfo.userName,
-        beforeWeightKg: payload.beforeWeightKg,
-        afterWeightKg: payload.afterWeightKg,
-        goalType: payload.goalType,
-        durationText: payload.durationText,
-        recoveredHealthIssues: payload.recoveredHealthIssues,
-      });
+      try {
+        await uploadShareCardImage(payload.userId, payload.shareCardImageBase64, {
+          beforeImagePath: beforePath,
+          afterImagePath: afterPath,
+          beforeImageBase64: payload.beforeImageBase64,
+          afterImageBase64: payload.afterImageBase64,
+          memberName: userInfo.userName,
+          beforeWeightKg: payload.beforeWeightKg,
+          afterWeightKg: payload.afterWeightKg,
+          goalType: payload.goalType,
+          durationText: payload.durationText,
+          recoveredHealthIssues: payload.recoveredHealthIssues,
+        });
+      } catch (err) {
+        logger.warn('[testimonials.service] Submit share card failed; continuing with OTP email', {
+          userId: payload.userId,
+          message: err?.message || String(err),
+        });
+      }
       if (coachInfo?.email) {
         await sendCoachEmail({
           coachEmail:    coachInfo.email,
@@ -917,18 +924,25 @@ export async function editTestimonial(rawBody) {
     if (coachInfo?.email && userInfo?.userName) {
       const currentBeforePath = updates.beforeImagePath ?? existing.before_image_path;
       scheduleDeferredCoachDelivery('edit share-card + coach email', async () => {
-        await uploadShareCardImage(payload.userId, payload.shareCardImageBase64, {
-          beforeImagePath: currentBeforePath,
-          afterImagePath: afterPathNow,
-          beforeImageBase64: payload.beforeImageBase64,
-          afterImageBase64: payload.afterImageBase64,
-          memberName: userInfo.userName,
-          beforeWeightKg: updates.beforeWeightKg ?? existing.before_weight_kg,
-          afterWeightKg: afterWeightNow,
-          goalType: updates.goalType ?? existing.goal_type,
-          durationText: updates.durationText ?? existing.duration_text,
-          recoveredHealthIssues: resolvedHealthIssues,
-        });
+        try {
+          await uploadShareCardImage(payload.userId, payload.shareCardImageBase64, {
+            beforeImagePath: currentBeforePath,
+            afterImagePath: afterPathNow,
+            beforeImageBase64: payload.beforeImageBase64,
+            afterImageBase64: payload.afterImageBase64,
+            memberName: userInfo.userName,
+            beforeWeightKg: updates.beforeWeightKg ?? existing.before_weight_kg,
+            afterWeightKg: afterWeightNow,
+            goalType: updates.goalType ?? existing.goal_type,
+            durationText: updates.durationText ?? existing.duration_text,
+            recoveredHealthIssues: resolvedHealthIssues,
+          });
+        } catch (err) {
+          logger.warn('[testimonials.service] Edit share card failed; continuing with OTP email', {
+            userId: payload.userId,
+            message: err?.message || String(err),
+          });
+        }
         await sendCoachEmail({
           coachEmail:    coachInfo.email,
           coachName:     coachInfo.name,
@@ -2081,11 +2095,20 @@ export async function submitAllEdits(rawBody) {
         durationText: resolvedDuration,
         recoveredHealthIssues: resolvedHealthIssues,
       };
-      const shareCardPath = await uploadShareCardImage(
-        payload.userId,
-        payload.shareCardImageBase64,
-        shareCardExtras,
-      );
+      // Never let share-card compose/upload block the OTP email.
+      let shareCardPath = null;
+      try {
+        shareCardPath = await uploadShareCardImage(
+          payload.userId,
+          payload.shareCardImageBase64,
+          shareCardExtras,
+        );
+      } catch (err) {
+        logger.warn('[testimonials.service] Share card upload failed; sending OTP email without tap-preview', {
+          userId: payload.userId,
+          message: err?.message || String(err),
+        });
+      }
       await sendUnifiedCoachEmail({
         coachEmail:             coachInfo.email,
         memberName:             userInfo.userName,
@@ -2263,19 +2286,27 @@ export async function resendUnifiedOtp(rawBody) {
   });
 
   // Rebuild share card from current DB paths so Resend never links a stale JPEG.
+  // Failures must not block the OTP email.
   let shareCardReady = false;
   if (isComplete && row.before_image_path && row.after_image_path) {
-    const shareCardPath = await uploadShareCardImage(userId, null, {
-      beforeImagePath: row.before_image_path,
-      afterImagePath: row.after_image_path,
-      memberName: userInfo.userName,
-      beforeWeightKg: row.before_weight_kg,
-      afterWeightKg: row.after_weight_kg,
-      goalType: row.goal_type,
-      durationText: row.duration_text,
-      recoveredHealthIssues: row.recovered_health_issues ?? [],
-    });
-    shareCardReady = Boolean(shareCardPath);
+    try {
+      const shareCardPath = await uploadShareCardImage(userId, null, {
+        beforeImagePath: row.before_image_path,
+        afterImagePath: row.after_image_path,
+        memberName: userInfo.userName,
+        beforeWeightKg: row.before_weight_kg,
+        afterWeightKg: row.after_weight_kg,
+        goalType: row.goal_type,
+        durationText: row.duration_text,
+        recoveredHealthIssues: row.recovered_health_issues ?? [],
+      });
+      shareCardReady = Boolean(shareCardPath);
+    } catch (err) {
+      logger.warn('[testimonials.service] Resend share card failed; sending OTP email without tap-preview', {
+        userId,
+        message: err?.message || String(err),
+      });
+    }
   }
 
   await sendUnifiedCoachEmail({
