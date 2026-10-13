@@ -20,7 +20,7 @@ describe('composeQuickShareCaption', () => {
   it('puts WhatsApp-bold water consumed on the next line', () => {
     assert.equal(
       composeQuickShareCaption(BRAND, '*Consumed: 1.7 L* water so far today'),
-      `${BRAND},\n*Consumed: 1.7 L* water so far today`,
+      `${BRAND}\n*Consumed: 1.7 L* water so far today`,
     );
   });
 
