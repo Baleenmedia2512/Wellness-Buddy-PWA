@@ -23,12 +23,23 @@ const PHOTO_W = Math.floor((CARD_W - PHOTO_SIDE_PAD * 2 - PHOTO_GAP) / 2);
 const PHOTO_H_MAX = 460;
 const PHOTO_H_MIN = 320;
 const META_H = 52;
+const DISCLAIMER_H = 110;
+const DISCLAIMER_PAD_X = 40;
+const MAX_VISIBLE_ISSUES = 10;
+/** Match frontend share card — 14px issue chip labels. */
+const ISSUE_CHIP_FONT = 14;
+const ISSUE_CHIP_ROW_H = 40;
+/** Title + subtitle + gap before chips ("while joining the community"). */
+const ISSUE_TITLE_H = 44;
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const ASSETS_DIR = join(__dirname, '../assets');
+/** import.meta.url so Next/Vercel file tracing packs the TTFs with the function. */
+const FONT_REGULAR_URL = new URL('../assets/NotoSans-Regular.ttf', import.meta.url);
+const FONT_BOLD_URL = new URL('../assets/NotoSans-Bold.ttf', import.meta.url);
 const LOGO_URL = new URL('../assets/logo.png', import.meta.url);
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
-let cachedFontCss = null;
+let fontRegular = null;
+let fontBold = null;
 let cachedLogoDataUri = null;
 
 function cardLogoDataUri() {
@@ -50,30 +61,38 @@ function defaultAppVersionLabel() {
   }
 }
 
-function cardFontCss() {
-  if (cachedFontCss !== null) return cachedFontCss;
-  try {
-    const regular = readFileSync(join(ASSETS_DIR, 'NotoSans-Regular.ttf')).toString('base64');
-    const bold = readFileSync(join(ASSETS_DIR, 'NotoSans-Bold.ttf')).toString('base64');
-    cachedFontCss = `
-      @font-face {
-        font-family: 'CardSans';
-        src: url('data:font/ttf;base64,${regular}') format('truetype');
-        font-weight: 400;
-        font-style: normal;
-      }
-      @font-face {
-        font-family: 'CardSans';
-        src: url('data:font/ttf;base64,${bold}') format('truetype');
-        font-weight: 700;
-        font-style: normal;
-      }
-    `;
-  } catch {
-    // Fonts optional — compose still produces photos + labels without them.
-    cachedFontCss = '';
+function parseFontFile(fontUrl) {
+  const buf = readFileSync(fontUrl);
+  // Node Buffer → ArrayBuffer slice for opentype.parse (v1.3.x).
+  return opentype.parse(
+    buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength),
+  );
+}
+
+function loadCardFonts() {
+  if (fontRegular && fontBold) return;
+  fontRegular = parseFontFile(FONT_REGULAR_URL);
+  fontBold = parseFontFile(FONT_BOLD_URL);
+  if (!fontRegular?.getPath || !fontBold?.getPath) {
+    throw new Error('Share-card Noto fonts failed to load');
   }
-  return cachedFontCss;
+}
+
+/**
+ * Render text as an SVG path (no host fonts required).
+ * @param {{ text: string, x: number, y: number, size: number, fill: string, bold?: boolean, anchor?: 'start'|'middle' }} opts
+ */
+function svgTextPath({ text, x, y, size, fill, bold = true, anchor = 'start' }) {
+  loadCardFonts();
+  const raw = String(text ?? '');
+  if (!raw) return '';
+  const font = bold ? fontBold : fontRegular;
+  let drawX = x;
+  if (anchor === 'middle') {
+    drawX = x - font.getAdvanceWidth(raw, size) / 2;
+  }
+  const path = font.getPath(raw, drawX, y, size);
+  return `<path d="${path.toPathData(1)}" fill="${fill}"/>`;
 }
 
 function measureTextWidth(text, size, bold = true) {
@@ -265,9 +284,30 @@ export async function composeTransformationShareCardJpeg(opts) {
   const pillLabel = diff && verb
     ? `${verb} ${diff} kgs${duration ? ` in ${duration}` : ''}`
     : '';
-  const version = escapeXml(
-    String(opts.appVersionLabel || defaultAppVersionLabel() || '').trim(),
+  const pillPadX = 18;
+  const pillW = pillLabel
+    ? Math.min(CARD_W - 48, Math.max(140, Math.ceil(measureTextWidth(pillLabel, 15, true)) + pillPadX * 2))
+    : 0;
+  const pillH = 30;
+  const issues = normalizeIssueList(opts.recoveredHealthIssues);
+  const issueCols = issueColumnsForCount(issues.length);
+  const issueRows = issueCols ? Math.ceil(issues.length / issueCols) : 0;
+  const issuesReserveH = issueRows === 0
+    ? 0
+    : 8 + 8 + ISSUE_TITLE_H + issueRows * ISSUE_CHIP_ROW_H + 8 + 8;
+  const pillReserveH = pillLabel ? 44 : 0;
+  const usedBelowPhotos = META_H + 8 + pillReserveH + issuesReserveH + DISCLAIMER_H + 8;
+  const photoH = Math.max(
+    PHOTO_H_MIN,
+    Math.min(PHOTO_H_MAX, CARD_H - PHOTO_TOP - usedBelowPhotos),
   );
+
+  const beforeSlot = await coverTopJpeg(beforeBuffer, PHOTO_W, photoH);
+  const afterSlot = await coverTopJpeg(afterBuffer, PHOTO_W, photoH);
+
+  const pillX = pillW ? Math.round((CARD_W - pillW) / 2) : 0;
+  const version = String(opts.appVersionLabel || defaultAppVersionLabel() || '').trim();
+  const headerTitle = version ? `Wellness Valley (${version})` : 'Wellness Valley';
   const logoUri = cardLogoDataUri();
   const titleX = logoUri ? 62 : 16;
 
@@ -293,8 +333,8 @@ export async function composeTransformationShareCardJpeg(opts) {
       <circle cx="31" cy="31" r="19" fill="#ffffff"/>
       <image href="${logoUri}" x="16" y="16" width="30" height="30" preserveAspectRatio="xMidYMid meet"/>
       ` : ''}
-      <text x="${titleX}" y="28" font-size="20" font-weight="700" fill="#ffffff">Wellness Valley${version ? ` (${version})` : ''}</text>
-      <text x="${titleX}" y="48" font-size="13" font-weight="400" fill="#a7f3d0">Transformation Results</text>
+      ${svgTextPath({ text: headerTitle, x: titleX, y: 28, size: 20, fill: '#ffffff', bold: true })}
+      ${svgTextPath({ text: 'Transformation Results', x: titleX, y: 48, size: 13, fill: '#a7f3d0', bold: false })}
       <rect x="0" y="${HEADER_H}" width="${CARD_W}" height="${NAME_H}" fill="#ffffff"/>
       ${svgTextPath({ text: name, x: CARD_W / 2, y: HEADER_H + 34, size: 22, fill: '#111827', bold: true, anchor: 'middle' })}
       <rect x="${beforeX}" y="${PHOTO_TOP + photoH - 36}" width="${PHOTO_W}" height="28" rx="6" fill="#e11d72"/>

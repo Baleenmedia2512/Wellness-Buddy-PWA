@@ -36,7 +36,7 @@ export function composeQuickShareCaption(brandLine, activitySuffix = null) {
   // WhatsApp-formatted lines (`*bold*`) should sit under the brand line so the
   // brand itself stays plain while the activity copy renders bold in WhatsApp.
   if (suffix.startsWith('*')) {
-    return `${brand},\n${suffix}`;
+    return `${brand}\n${suffix}`;
   }
   if (suffix.includes('\n')) {
     const [first, ...rest] = suffix.split('\n');

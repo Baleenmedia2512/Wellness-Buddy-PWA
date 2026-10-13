@@ -62,7 +62,7 @@ export function buildDiaryShareSuffix(activityType, payload = {}) {
       // Session first, then platform — no "education" type prefix (redundant with session names like "Daily Education").
       const platform = (payload.platform || '').trim();
       const session = (payload.session || payload.topic || '').trim();
-      if (platform && session) return waBold(`${session} · ${platform},`);
+      if (platform && session) return waBold(`${session} · ${platform}`);
       if (session) return session;
       if (platform) return platform;
       return null;

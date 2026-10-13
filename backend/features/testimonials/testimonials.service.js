@@ -169,13 +169,48 @@ const SHARE_CARD_CID = 'transformation-card@wellnessvalley';
 const PREV_SHARE_CARD_CID = 'transformation-card-prev@wellnessvalley';
 
 /**
+ * Resolve Before/After photo buffers for share-card compose + email thumbs.
+ * Prefers submit base64, else downloads the storage path (same source for both).
+ */
+async function resolveShareCardPhotoBuffers(composeFromPhotos = null) {
+  const beforePath = composeFromPhotos?.beforeImagePath;
+  const afterPath = composeFromPhotos?.afterImagePath;
+  if (
+    (beforePath && repo.isVideoOnlyPlaceholder?.(beforePath))
+    || (afterPath && repo.isVideoOnlyPlaceholder?.(afterPath))
+  ) {
+    return { beforeBuffer: null, afterBuffer: null };
+  }
+
+  let beforeBuffer = bufferFromOptionalBase64(composeFromPhotos?.beforeImageBase64);
+  let afterBuffer = bufferFromOptionalBase64(composeFromPhotos?.afterImageBase64);
+  const downloads = [];
+  if (!beforeBuffer && beforePath) {
+    downloads.push(
+      repo.downloadBuffer(beforePath, { retries: 2 }).then((buf) => { beforeBuffer = buf; }),
+    );
+  }
+  if (!afterBuffer && afterPath) {
+    downloads.push(
+      repo.downloadBuffer(afterPath, { retries: 2 }).then((buf) => { afterBuffer = buf; }),
+    );
+  }
+  if (downloads.length) await Promise.all(downloads);
+  return {
+    beforeBuffer: beforeBuffer?.length ? beforeBuffer : null,
+    afterBuffer: afterBuffer?.length ? afterBuffer : null,
+  };
+}
+
+/**
  * Upload Transformation share card for coach email Previous | New compare.
- * Prefers the in-app client capture (same look as Previous). Falls back to a
- * server-composed card from Before/After photo bytes when capture is missing.
- * Rotates the prior card to share_card_prev.jpg only when it differs.
+ * Always composes from the same Before/After photo bytes the email thumbs use
+ * (submit base64 or storage paths). Client capture is fallback only — it can
+ * diverge from persisted paths and make "NEW" thumbs disagree with tap-preview.
+ * Rotates the prior card to share_card_prev.jpg when it differs.
  *
  * @param {number} userId
- * @param {string|null|undefined} shareCardImageBase64 - client capture (preferred)
+ * @param {string|null|undefined} shareCardImageBase64 - client capture (fallback)
  * @param {{
  *   beforeImagePath?: string|null,
  *   afterImagePath?: string|null,
@@ -191,9 +226,7 @@ const PREV_SHARE_CARD_CID = 'transformation-card-prev@wellnessvalley';
  * @returns {Promise<string|null>} storage path when uploaded
  */
 async function uploadShareCardImage(userId, shareCardImageBase64, composeFromPhotos = null) {
-  // Prefer polished client capture; always fall back to server compose so the
-  // email never ships without a Transformation Card when photos exist.
-  let newJpeg = bufferFromOptionalBase64(shareCardImageBase64);
+  let newJpeg = null;
 
   const beforePath = composeFromPhotos?.beforeImagePath;
   const afterPath = composeFromPhotos?.afterImagePath;
@@ -204,24 +237,11 @@ async function uploadShareCardImage(userId, shareCardImageBase64, composeFromPho
     && !(afterPath && repo.isVideoOnlyPlaceholder?.(afterPath)),
   );
 
-  if (!newJpeg && canCompose) {
+  // Prefer path/base64 compose so tap-preview matches NEW Before|After thumbs.
+  if (canCompose) {
     try {
-      let beforeBuffer = bufferFromOptionalBase64(composeFromPhotos.beforeImageBase64);
-      let afterBuffer = bufferFromOptionalBase64(composeFromPhotos.afterImageBase64);
-      const downloads = [];
-      if (!beforeBuffer && beforePath) {
-        downloads.push(
-          repo.downloadBuffer(beforePath, { retries: 2 }).then((buf) => { beforeBuffer = buf; }),
-        );
-      }
-      if (!afterBuffer && afterPath) {
-        downloads.push(
-          repo.downloadBuffer(afterPath, { retries: 2 }).then((buf) => { afterBuffer = buf; }),
-        );
-      }
-      if (downloads.length) await Promise.all(downloads);
-
-      if (beforeBuffer?.length && afterBuffer?.length) {
+      const { beforeBuffer, afterBuffer } = await resolveShareCardPhotoBuffers(composeFromPhotos);
+      if (beforeBuffer && afterBuffer) {
         newJpeg = await composeTransformationShareCardJpeg({
           beforeBuffer,
           afterBuffer,
@@ -242,7 +262,11 @@ async function uploadShareCardImage(userId, shareCardImageBase64, composeFromPho
   }
 
   if (!newJpeg?.length) {
-    logger.warn('[testimonials.service] No share card for email (client capture and compose both missing)', {
+    newJpeg = bufferFromOptionalBase64(shareCardImageBase64);
+  }
+
+  if (!newJpeg?.length) {
+    logger.warn('[testimonials.service] No share card for email (compose and client capture both missing)', {
       userId,
       hadClientCapture: Boolean(shareCardImageBase64),
       canCompose,
@@ -253,7 +277,7 @@ async function uploadShareCardImage(userId, shareCardImageBase64, composeFromPho
   const path = repo.shareCardStoragePath(userId);
   const prevPath = repo.previousShareCardStoragePath(userId);
   // Always rotate the prior full card → share_card_prev.jpg so Previous tap-preview
-  // can open the last client/server card (same quality as New).
+  // can open the last card, and cancel can restore it.
   try {
     const existing = await repo.downloadBuffer(path, { retries: 1 });
     if (existing?.length && !existing.equals(newJpeg)) {
@@ -264,6 +288,52 @@ async function uploadShareCardImage(userId, shareCardImageBase64, composeFromPho
   }
   await repo.uploadBuffer(path, newJpeg, 'image/jpeg');
   return path;
+}
+
+/**
+ * After cancel/revert, restore share_card.jpg to match restored Before/After paths.
+ * Prefer the archived previous card; otherwise recompose from restored photo paths.
+ * Does not rotate current → prev (that would wipe the archive we are restoring from).
+ */
+async function restoreShareCardAfterCancel(userId, composeFromPhotos = null) {
+  const path = repo.shareCardStoragePath(userId);
+  const prevPath = repo.previousShareCardStoragePath(userId);
+  try {
+    const prev = await repo.downloadBuffer(prevPath, { retries: 1 });
+    if (prev?.length > 2000) {
+      await repo.uploadBuffer(path, prev, 'image/jpeg');
+      return true;
+    }
+  } catch {
+    // No archive — try compose below.
+  }
+
+  if (!composeFromPhotos?.beforeImagePath || !composeFromPhotos?.afterImagePath) {
+    return false;
+  }
+  try {
+    const { beforeBuffer, afterBuffer } = await resolveShareCardPhotoBuffers(composeFromPhotos);
+    if (!beforeBuffer || !afterBuffer) return false;
+    const jpeg = await composeTransformationShareCardJpeg({
+      beforeBuffer,
+      afterBuffer,
+      memberName: composeFromPhotos.memberName,
+      beforeWeightKg: composeFromPhotos.beforeWeightKg,
+      afterWeightKg: composeFromPhotos.afterWeightKg,
+      goalType: composeFromPhotos.goalType,
+      durationText: composeFromPhotos.durationText,
+      recoveredHealthIssues: composeFromPhotos.recoveredHealthIssues,
+    });
+    if (!jpeg?.length) return false;
+    await repo.uploadBuffer(path, jpeg, 'image/jpeg');
+    return true;
+  } catch (err) {
+    logger.warn('[testimonials.service] Could not restore share card after cancel', {
+      userId,
+      message: err?.message || String(err),
+    });
+    return false;
+  }
 }
 
 /**
@@ -612,18 +682,25 @@ export async function submitTestimonial(rawBody) {
   if (payload.hasAfter) {
     const coachInfo = recipient.coachInfo;
     scheduleDeferredCoachDelivery('submit share-card + coach email', async () => {
-      await uploadShareCardImage(payload.userId, payload.shareCardImageBase64, {
-        beforeImagePath: beforePath,
-        afterImagePath: afterPath,
-        beforeImageBase64: payload.beforeImageBase64,
-        afterImageBase64: payload.afterImageBase64,
-        memberName: userInfo.userName,
-        beforeWeightKg: payload.beforeWeightKg,
-        afterWeightKg: payload.afterWeightKg,
-        goalType: payload.goalType,
-        durationText: payload.durationText,
-        recoveredHealthIssues: payload.recoveredHealthIssues,
-      });
+      try {
+        await uploadShareCardImage(payload.userId, payload.shareCardImageBase64, {
+          beforeImagePath: beforePath,
+          afterImagePath: afterPath,
+          beforeImageBase64: payload.beforeImageBase64,
+          afterImageBase64: payload.afterImageBase64,
+          memberName: userInfo.userName,
+          beforeWeightKg: payload.beforeWeightKg,
+          afterWeightKg: payload.afterWeightKg,
+          goalType: payload.goalType,
+          durationText: payload.durationText,
+          recoveredHealthIssues: payload.recoveredHealthIssues,
+        });
+      } catch (err) {
+        logger.warn('[testimonials.service] Submit share card failed; continuing with OTP email', {
+          userId: payload.userId,
+          message: err?.message || String(err),
+        });
+      }
       if (coachInfo?.email) {
         await sendCoachEmail({
           coachEmail:    coachInfo.email,
@@ -796,6 +873,11 @@ export async function editTestimonial(rawBody) {
 
     if (!hasCompleteAfter) {
       updates.status = 'incomplete';
+      updates.verifiedAt = null;
+    } else if (existing.status === 'verified') {
+      // Content changed on an approved card — revoke share until coach re-approves.
+      updates.status = 'pending';
+      updates.verifiedAt = null;
     }
 
     await repo.updateTestimonial(existing.id, updates);
@@ -805,7 +887,9 @@ export async function editTestimonial(rawBody) {
       body: {
         success: true,
         message: hasCompleteAfter
-          ? 'Before photo details updated.'
+          ? (existing.status === 'verified'
+            ? 'Before photo details updated. Submit for coach approval before sharing again.'
+            : 'Before photo details updated.')
           : 'Before photo updated. Add your after photo when you\'re ready to complete your testimonial.',
         testimonialId: existing.id,
         status: updates.status ?? existing.status,
@@ -840,18 +924,25 @@ export async function editTestimonial(rawBody) {
     if (coachInfo?.email && userInfo?.userName) {
       const currentBeforePath = updates.beforeImagePath ?? existing.before_image_path;
       scheduleDeferredCoachDelivery('edit share-card + coach email', async () => {
-        await uploadShareCardImage(payload.userId, payload.shareCardImageBase64, {
-          beforeImagePath: currentBeforePath,
-          afterImagePath: afterPathNow,
-          beforeImageBase64: payload.beforeImageBase64,
-          afterImageBase64: payload.afterImageBase64,
-          memberName: userInfo.userName,
-          beforeWeightKg: updates.beforeWeightKg ?? existing.before_weight_kg,
-          afterWeightKg: afterWeightNow,
-          goalType: updates.goalType ?? existing.goal_type,
-          durationText: updates.durationText ?? existing.duration_text,
-          recoveredHealthIssues: resolvedHealthIssues,
-        });
+        try {
+          await uploadShareCardImage(payload.userId, payload.shareCardImageBase64, {
+            beforeImagePath: currentBeforePath,
+            afterImagePath: afterPathNow,
+            beforeImageBase64: payload.beforeImageBase64,
+            afterImageBase64: payload.afterImageBase64,
+            memberName: userInfo.userName,
+            beforeWeightKg: updates.beforeWeightKg ?? existing.before_weight_kg,
+            afterWeightKg: afterWeightNow,
+            goalType: updates.goalType ?? existing.goal_type,
+            durationText: updates.durationText ?? existing.duration_text,
+            recoveredHealthIssues: resolvedHealthIssues,
+          });
+        } catch (err) {
+          logger.warn('[testimonials.service] Edit share card failed; continuing with OTP email', {
+            userId: payload.userId,
+            message: err?.message || String(err),
+          });
+        }
         await sendCoachEmail({
           coachEmail:    coachInfo.email,
           coachName:     coachInfo.name,
@@ -1522,19 +1613,20 @@ async function sendUnifiedCoachEmail({
   recoveredHealthIssues,
   isComplete,
   userId = null,
+  /** When false, do not link tap-preview to a possibly stale share_card.jpg. */
+  shareCardReady = false,
 }) {
   const slots = new Set(changedSlots);
   void userId;
 
-  // Previous Transformation Card = state before this submit.
-  // Unchanged side keeps the current path; changed side uses the previous storage path.
+  // Previous card = state before this submit (unchanged side keeps current path).
   const previousCardBeforePath = (slots.has('before') && previousBeforeImagePath)
     ? previousBeforeImagePath
     : beforeImagePath;
   const previousCardAfterPath = (slots.has('after') && previousAfterImagePath)
     ? previousAfterImagePath
     : ((slots.has('before') && previousBeforeImagePath && !previousAfterImagePath)
-      ? previousBeforeImagePath // seeded After mirrored Before before the change
+      ? previousBeforeImagePath
       : afterImagePath);
   const photoSlotChanged = slots.has('before') || slots.has('after');
   const previousPairDistinct = Boolean(
@@ -1548,9 +1640,6 @@ async function sendUnifiedCoachEmail({
     ),
   );
 
-  // Outer compare uses HTTPS Before|After photo URLs (clear in Gmail).
-  // Full Transformation Card is only for tap-preview — never as the outer thumb
-  // (share-card JPEGs can show nested/broken After in the small email view).
   const [
     currentBeforeHref,
     currentAfterHref,
@@ -1573,66 +1662,43 @@ async function sendUnifiedCoachEmail({
     (slots.has('business') && businessVideoPath) ? repo.getEmailSignedUrl(businessVideoPath) : Promise.resolve(null),
   ]);
 
-  // Previous tap-preview = full share-card JPEG (not the small Before|After thumbs).
-  // Prefer the archived card from uploadShareCardImage (client capture, same as New).
-  // Always link when a full-card JPEG exists — do not gate on pixel-readability
-  // (that check false-negatives client captures and left Previous untappable).
+  // Previous full card: always compose from the same previous Before|After paths used
+  // for the Previous column — never link a stale archive that can disagree with thumbs.
   let previousPreviewHref = null;
-  if (userId && previousPairDistinct) {
+  if (userId && previousPairDistinct && previousCardBeforePath && previousCardAfterPath) {
     const prevSharePath = repo.previousShareCardStoragePath(userId);
-    let existingPrev = null;
     try {
-      existingPrev = await repo.downloadBuffer(prevSharePath, { retries: 1 });
-    } catch {
-      existingPrev = null;
-    }
-    if (existingPrev?.length > 2000) {
-      previousPreviewHref = await repo.getEmailSignedUrl(prevSharePath);
-    } else if (previousCardBeforePath && previousCardAfterPath) {
-      try {
-        const [prevBeforeBuf, prevAfterBuf] = await Promise.all([
-          repo.downloadBuffer(previousCardBeforePath, { retries: 2 }),
-          repo.downloadBuffer(previousCardAfterPath, { retries: 2 }),
-        ]);
-        if (prevBeforeBuf?.length && prevAfterBuf?.length) {
-          const prevJpeg = await composeTransformationShareCardJpeg({
-            beforeBuffer: prevBeforeBuf,
-            afterBuffer: prevAfterBuf,
-            memberName,
-            beforeWeightKg: previousBeforeWeight,
-            afterWeightKg: previousAfterWeight,
-            goalType: previousGoalType,
-            durationText: previousDurationText,
-            recoveredHealthIssues: previousRecoveredHealthIssues,
-          });
-          if (prevJpeg?.length > 2000) {
-            await repo.uploadBuffer(prevSharePath, prevJpeg, 'image/jpeg');
-            previousPreviewHref = await repo.getEmailSignedUrl(prevSharePath);
-          } else {
-            logger.warn('[testimonials.service] Previous compose produced empty JPEG', {
-              userId,
-              bytes: prevJpeg?.length || 0,
-            });
-          }
-        }
-      } catch (err) {
-        logger.warn('[testimonials.service] Could not compose Previous share card for preview', {
-          userId,
-          message: err?.message || String(err),
+      const [prevBeforeBuf, prevAfterBuf] = await Promise.all([
+        repo.downloadBuffer(previousCardBeforePath, { retries: 2 }),
+        repo.downloadBuffer(previousCardAfterPath, { retries: 2 }),
+      ]);
+      if (prevBeforeBuf?.length && prevAfterBuf?.length) {
+        const prevJpeg = await composeTransformationShareCardJpeg({
+          beforeBuffer: prevBeforeBuf,
+          afterBuffer: prevAfterBuf,
+          memberName,
+          beforeWeightKg: previousBeforeWeight,
+          afterWeightKg: previousAfterWeight,
+          goalType: previousGoalType,
+          durationText: previousDurationText,
+          recoveredHealthIssues: previousRecoveredHealthIssues,
         });
+        if (prevJpeg?.length > 2000) {
+          await repo.uploadBuffer(prevSharePath, prevJpeg, 'image/jpeg');
+          previousPreviewHref = await repo.getEmailSignedUrl(prevSharePath);
+        }
       }
-    }
-    if (!previousPreviewHref) {
-      logger.warn('[testimonials.service] Previous tap-preview unavailable (no full card archive or compose)', {
+    } catch (err) {
+      logger.warn('[testimonials.service] Could not compose Previous share card for email', {
         userId,
-        hadArchive: Boolean(existingPrev?.length),
+        message: err?.message || String(err),
       });
     }
   }
 
-  // New tap-preview: only the real share-card object (not After-only).
+  // New full card: only when share_card.jpg was written for this email.
   let currentPreviewHref = null;
-  if (userId && currentSharePreviewHref) {
+  if (userId && shareCardReady && currentSharePreviewHref) {
     try {
       const currentSharePath = repo.shareCardStoragePath(userId);
       const currentShareBuf = await repo.downloadBuffer(currentSharePath, { retries: 1 });
@@ -1645,7 +1711,9 @@ async function sendUnifiedCoachEmail({
   }
 
   const hasPhotoCompare = Boolean(
-    previousBeforeHref && previousAfterHref && currentBeforeHref && currentAfterHref,
+    previousPairDistinct
+    && (previousPreviewHref || (previousBeforeHref && previousAfterHref))
+    && (currentPreviewHref || (currentBeforeHref && currentAfterHref)),
   );
 
   // No CID photo attachments — HTTPS only (no "4 Attachments" strip in Gmail).
@@ -1663,15 +1731,15 @@ async function sendUnifiedCoachEmail({
     afterUrl: currentAfterHref,
     previousBeforeUrl: hasPhotoCompare ? previousBeforeHref : null,
     previousAfterUrl: hasPhotoCompare ? previousAfterHref : null,
-    previousBeforeWeight,
-    previousAfterWeight,
-    previousGoalType,
-    previousDurationText,
-    previousRecoveredHealthIssues,
-    // Outer thumbs = Before|After photos; full card only via tap-preview href.
-    previousCardImageUrl: null,
-    currentCardImageUrl: null,
-    previousPreviewHref,
+    previousBeforeWeight: hasPhotoCompare ? previousBeforeWeight : null,
+    previousAfterWeight: hasPhotoCompare ? previousAfterWeight : null,
+    previousGoalType: hasPhotoCompare ? previousGoalType : null,
+    previousDurationText: hasPhotoCompare ? previousDurationText : null,
+    previousRecoveredHealthIssues: hasPhotoCompare ? previousRecoveredHealthIssues : null,
+    // Prefer full share-card JPEGs in Previous | New so thumb === tap target.
+    previousCardImageUrl: hasPhotoCompare ? previousPreviewHref : null,
+    currentCardImageUrl: currentPreviewHref,
+    previousPreviewHref: hasPhotoCompare ? previousPreviewHref : null,
     currentPreviewHref,
     healthVideoUrl,
     businessVideoUrl,
@@ -1700,8 +1768,8 @@ async function sendUnifiedCoachEmail({
     memberName,
     changedSlots,
     hasPhotoCompare,
-    hasCurrentSharePreview: Boolean(currentPreviewHref),
     hasPreviousSharePreview: Boolean(previousPreviewHref),
+    hasCurrentSharePreview: Boolean(currentPreviewHref),
   });
 }
 
@@ -1988,7 +2056,7 @@ export async function submitAllEdits(rawBody) {
     }
 
     scheduleDeferredCoachDelivery('unified share-card + coach email', async () => {
-      await uploadShareCardImage(payload.userId, payload.shareCardImageBase64, {
+      const shareCardExtras = {
         beforeImagePath: finalBeforePath,
         afterImagePath: finalAfterPath,
         beforeImageBase64: payload.beforeImageBase64,
@@ -1999,7 +2067,21 @@ export async function submitAllEdits(rawBody) {
         goalType: photoUpdates.goalType ?? existing.goal_type,
         durationText: resolvedDuration,
         recoveredHealthIssues: resolvedHealthIssues,
-      });
+      };
+      // Never let share-card compose/upload block the OTP email.
+      let shareCardPath = null;
+      try {
+        shareCardPath = await uploadShareCardImage(
+          payload.userId,
+          payload.shareCardImageBase64,
+          shareCardExtras,
+        );
+      } catch (err) {
+        logger.warn('[testimonials.service] Share card upload failed; sending OTP email without tap-preview', {
+          userId: payload.userId,
+          message: err?.message || String(err),
+        });
+      }
       await sendUnifiedCoachEmail({
         coachEmail:             coachInfo.email,
         memberName:             userInfo.userName,
@@ -2024,6 +2106,7 @@ export async function submitAllEdits(rawBody) {
         recoveredHealthIssues:  resolvedHealthIssues,
         isComplete,
         userId:                 payload.userId,
+        shareCardReady:         Boolean(shareCardPath),
       });
     });
   }
@@ -2175,6 +2258,30 @@ export async function resendUnifiedOtp(rawBody) {
     status: row.status,
   });
 
+  // Rebuild share card from current DB paths so Resend never links a stale JPEG.
+  // Failures must not block the OTP email.
+  let shareCardReady = false;
+  if (isComplete && row.before_image_path && row.after_image_path) {
+    try {
+      const shareCardPath = await uploadShareCardImage(userId, null, {
+        beforeImagePath: row.before_image_path,
+        afterImagePath: row.after_image_path,
+        memberName: userInfo.userName,
+        beforeWeightKg: row.before_weight_kg,
+        afterWeightKg: row.after_weight_kg,
+        goalType: row.goal_type,
+        durationText: row.duration_text,
+        recoveredHealthIssues: row.recovered_health_issues ?? [],
+      });
+      shareCardReady = Boolean(shareCardPath);
+    } catch (err) {
+      logger.warn('[testimonials.service] Resend share card failed; sending OTP email without tap-preview', {
+        userId,
+        message: err?.message || String(err),
+      });
+    }
+  }
+
   await sendUnifiedCoachEmail({
     coachEmail: coachInfo.email,
     memberName: userInfo.userName,
@@ -2193,6 +2300,7 @@ export async function resendUnifiedOtp(rawBody) {
     recoveredHealthIssues: row.recovered_health_issues ?? [],
     isComplete,
     userId,
+    shareCardReady,
   });
 
   const display = await enrichTestimonialForDisplay(await repo.findByUserId(userId));
@@ -2330,6 +2438,23 @@ export async function cancelUnifiedOtp(rawBody) {
   await repo.updateTestimonial(row.id, updates);
   await repo.updateTestimonialVideos(row.id, videoUpdates);
   await repo.clearBaselineSnapshot(userId);
+
+  // DB paths revert, but share_card.jpg was already overwritten on submit —
+  // restore the archived card (or recompose) so tap-preview matches Before/After.
+  const restoredBefore = updates.beforeImagePath ?? row.before_image_path;
+  const restoredAfter = updates.afterImagePath ?? row.after_image_path;
+  if (restoredBefore && restoredAfter && !repo.isVideoOnlyPlaceholder(restoredBefore)) {
+    await restoreShareCardAfterCancel(userId, {
+      beforeImagePath: restoredBefore,
+      afterImagePath: restoredAfter,
+      memberName: null,
+      beforeWeightKg: updates.beforeWeightKg ?? row.before_weight_kg,
+      afterWeightKg: updates.afterWeightKg ?? row.after_weight_kg,
+      goalType: updates.goalType ?? row.goal_type,
+      durationText: updates.durationText ?? row.duration_text,
+      recoveredHealthIssues: updates.recoveredHealthIssues ?? row.recovered_health_issues ?? [],
+    });
+  }
 
   const updatedRow = await repo.findByUserId(userId);
   const display = await enrichTestimonialForDisplay(updatedRow);

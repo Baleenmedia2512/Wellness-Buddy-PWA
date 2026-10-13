@@ -10,9 +10,9 @@ describe('composeQuickShareCaption', () => {
     assert.equal(
       composeQuickShareCaption(
         'Balaji Sekar · Wellness Valley v 3.4.5',
-        '*Daily Education · Zoom,*',
+        '*Daily Education · Zoom*',
       ),
-      'Balaji Sekar · Wellness Valley v 3.4.5,\n*Daily Education · Zoom,*',
+      'Balaji Sekar · Wellness Valley v 3.4.5\n*Daily Education · Zoom*',
     );
   });
 
