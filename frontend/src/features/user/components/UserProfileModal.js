@@ -61,11 +61,12 @@ const UserProfileModal = ({ isOpen, onClose, user, userRole = 'user', onProfileU
           setMarathonWeightComparison(resolved);
           syncMarathonWeightComparisonFromProfile({ marathonWeightComparison: resolved });
         });
-        if (data.profileImage) {
-          setProfileImagePreview(data.profileImage);
-        } else if (data.transformationPhotos?.front) {
-          setProfileImagePreview(data.transformationPhotos.front);
-        }
+      setProfileImagePreview(
+        data?.profileImage ||
+        user?.photoURL ||
+        user?.ProfileImage ||
+        null
+      );
       }
     } catch (e) { setError(e.message || 'Failed to load profile.'); }
     finally { setIsLoading(false); }
