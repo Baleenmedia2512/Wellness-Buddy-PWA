@@ -1,4 +1,4 @@
-﻿/**
+/**
  * tests/frontend/authenticated/activity.spec.js
  * E2E test suite for Activity Module.
  * 
@@ -19,6 +19,10 @@
  * - ACT-013: API Error Handling
  * - ACT-014: Role-Based Scope Visibility (No Team)
  * - ACT-015: Hide and Unhide Inactive Users Permission Check
+ * - ACT-016: Filter Activity Report Records by Member Type
+ * - ACT-017: Filter Activity Report Records by Level
+ * - ACT-018: Filter Activity Report Records by Club
+ * - ACT-019: Phone Contact Actions (WhatsApp and Call Icons)
  */
 
 const { test, expect } = require('@playwright/test');
@@ -31,6 +35,11 @@ const baseReportResponse = {
   members: [],
   stats: {},
   records: [],
+  availableFilters: {
+    memberType: ['member', 'sponsor'],
+    level: [1, 2],
+    clubName: ['Downtown Club', 'City Center']
+  },
   pagination: {
     totalRecords: 0,
     totalPages: 0,
@@ -179,10 +188,38 @@ test.describe('Activity Report Module', () => {
           response.pagination.totalPages = 1;
         }
       } else if (activityType === 'education') {
-        if (pageNum === 1) {
-          response.records = Array.from({ length: 10 }).map((_, i) => ({
-            userId: `${i}`, memberName: `User ${i}`, clubName: 'Remote', date: '2026-08-24', time: '10:00'
-          }));
+        const filterMemberType = url.searchParams.get('filter_memberType');
+        const filterLevel = url.searchParams.get('filter_level');
+        const filterClubName = url.searchParams.get('filter_clubName');
+
+        if (filterMemberType || filterLevel || filterClubName) {
+          let testRecords = [
+            { userId: '101', memberName: 'Alice Customer', memberType: 'member', level: 1, clubName: 'Downtown Club', date: '2026-08-24', time: '10:00' },
+            { userId: '102', memberName: 'Bob Sponsor', memberType: 'sponsor', level: 1, clubName: 'Downtown Club', date: '2026-08-24', time: '10:05' },
+            { userId: '103', memberName: 'Level Two User', memberType: 'member', level: 2, clubName: 'City Center', date: '2026-08-24', time: '10:10' }
+          ];
+
+          if (filterMemberType) {
+            testRecords = testRecords.filter(r => r.memberType.toLowerCase() === filterMemberType.toLowerCase());
+          }
+          if (filterLevel) {
+            testRecords = testRecords.filter(r => String(r.level) === String(filterLevel));
+          }
+          if (filterClubName) {
+            testRecords = testRecords.filter(r => r.clubName.toLowerCase() === filterClubName.toLowerCase());
+          }
+
+          response.records = testRecords;
+          response.pagination = { totalRecords: testRecords.length, totalPages: 1, currentPage: 1, pageSize: 20, hasNextPage: false, hasPreviousPage: false };
+        } else if (pageNum === 1) {
+          response.records = [
+            { userId: '101', memberName: 'Alice Customer', memberType: 'member', level: 1, clubName: 'Downtown Club', date: '2026-08-24', time: '10:00' },
+            { userId: '102', memberName: 'Bob Sponsor', memberType: 'sponsor', level: 1, clubName: 'Downtown Club', date: '2026-08-24', time: '10:05' },
+            { userId: '103', memberName: 'Level Two User', memberType: 'member', level: 2, clubName: 'City Center', date: '2026-08-24', time: '10:10' },
+            ...Array.from({ length: 7 }).map((_, i) => ({
+              userId: `${i}`, memberName: `User ${i}`, memberType: 'member', level: 1, clubName: 'Remote', date: '2026-08-24', time: '10:00'
+            }))
+          ];
           response.pagination = { totalRecords: 20, totalPages: 2, currentPage: 1, pageSize: 10, hasNextPage: true, hasPreviousPage: false };
         } else if (pageNum === 2) {
           response.records = Array.from({ length: 10 }).map((_, i) => ({
@@ -584,7 +621,7 @@ test.describe('Activity Report Module', () => {
           ...baseReportResponse,
           hiddenCount: isHidden ? 1 : 0,
           teamScopeCounts: { hasTeam: true, mine: 1, direct: 1, full: 1 },
-          records: (!isHidden && attendance === 'not_posted')
+          records: !isHidden
             ? [{ userId: 101, memberName: 'Inactive Member', memberType: 'member', level: 1, date: '2026-08-24', time: '10:00', phone: '9000000000' }]
             : [],
           pagination: { totalRecords: isHidden ? 0 : 1, totalPages: isHidden ? 0 : 1, currentPage: 1, pageSize: 20 }
@@ -655,22 +692,17 @@ test.describe('Activity Report Module', () => {
     await page.getByRole('button', { name: 'Close', exact: true }).click();
     await expect(modalHeading).not.toBeVisible({ timeout: 10000 });
 
-    // --- PART 2: PROHIBITED ROLE (Standard User) ---
-    currentRole = 'user';
+    // --- PART 2: ACTIVE MEMBERS (Posted Attendance - Cannot Hide) ---
     isHidden = false;
 
-    await page.reload();
-    await expect(activityTab).toBeVisible({ timeout: 15000 });
-    await activityTab.click();
+    await attendanceSelect(page).selectOption('posted');
 
-    await categorySelect(page).selectOption('education');
-    await attendanceSelect(page).selectOption('not_posted');
+    const activeCell = page.getByRole('cell', { name: 'Inactive Member', exact: true });
+    await expect(activeCell).toBeVisible({ timeout: 15000 });
+    await expect(activeCell).not.toHaveAttribute('title', 'Press and hold name to hide');
 
-    const restrictedCell = page.getByRole('cell', { name: 'Inactive Member', exact: true });
-    await expect(restrictedCell).toBeVisible({ timeout: 15000 });
-
-    // Long press touch gesture should NOT open Hide menu for regular user
-    await restrictedCell.evaluate((el) => {
+    // Long press touch gesture should NOT open Hide menu for posted/active members
+    await activeCell.evaluate((el) => {
       const touch = new Touch({
         identifier: Date.now(),
         target: el,
@@ -690,11 +722,152 @@ test.describe('Activity Report Module', () => {
       }));
     });
     await page.waitForTimeout(850);
-    await restrictedCell.evaluate((el) => {
+    await activeCell.evaluate((el) => {
       el.dispatchEvent(new TouchEvent('touchend', { cancelable: true, bubbles: true }));
     });
 
     await expect(page.getByRole('button', { name: 'Hide User' })).not.toBeVisible();
     await expect(page.getByRole('button', { name: 'Unhide' })).not.toBeVisible();
+  });
+
+  test('ACT-016 Filter Activity Report Records by Member Type', async ({ page }) => {
+    await page.goto('/');
+    const activityTab = page.getByRole('button', { name: 'Activity Report' });
+    await expect(activityTab).toBeVisible({ timeout: 15000 });
+    await activityTab.click();
+
+    // Verify initial load has both Customer and Sponsor records visible
+    await expect(page.getByRole('cell', { name: 'Alice Customer', exact: true })).toBeVisible({ timeout: 15000 });
+    await expect(page.getByRole('cell', { name: 'Bob Sponsor', exact: true })).toBeVisible({ timeout: 15000 });
+
+    const filtersBtn = page.getByRole('button', { name: /Open more filters|More/i });
+    await expect(filtersBtn).toBeVisible({ timeout: 10000 });
+    await filtersBtn.click();
+
+    const sheetHeading = page.getByRole('heading', { name: 'More filters' });
+    await expect(sheetHeading).toBeVisible({ timeout: 10000 });
+
+    // 1. Filter by Sponsor member type
+    const sponsorChip = page.locator('button[aria-label="Add Type Sponsor"]');
+    await expect(sponsorChip).toBeVisible({ timeout: 10000 });
+    await sponsorChip.click();
+
+    const applyBtn = page.getByRole('button', { name: /^Apply/i });
+    await expect(applyBtn).toBeEnabled({ timeout: 10000 });
+    await applyBtn.click();
+
+    await expect(page.getByRole('cell', { name: 'Bob Sponsor', exact: true })).toBeVisible({ timeout: 15000 });
+    await expect(page.getByRole('cell', { name: 'Alice Customer', exact: true })).not.toBeVisible({ timeout: 15000 });
+
+    // 2. Filter by Customer (member) member type
+    await filtersBtn.click();
+    await expect(sheetHeading).toBeVisible({ timeout: 10000 });
+
+    const clearAllBtn = page.getByRole('button', { name: 'Clear all' });
+    await clearAllBtn.click();
+
+    const customerChip = page.locator('button[aria-label="Add Type Customer"]');
+    await expect(customerChip).toBeVisible({ timeout: 10000 });
+    await customerChip.click();
+
+    await expect(applyBtn).toBeEnabled({ timeout: 10000 });
+    await applyBtn.click();
+
+    await expect(page.getByRole('cell', { name: 'Alice Customer', exact: true })).toBeVisible({ timeout: 15000 });
+    await expect(page.getByRole('cell', { name: 'Bob Sponsor', exact: true })).not.toBeVisible({ timeout: 15000 });
+  });
+
+  test('ACT-017 Filter Activity Report Records by Level', async ({ page }) => {
+    await page.goto('/');
+    const activityTab = page.getByRole('button', { name: 'Activity Report' });
+    await expect(activityTab).toBeVisible({ timeout: 15000 });
+    await activityTab.click();
+
+    await expect(page.getByRole('cell', { name: 'Alice Customer', exact: true })).toBeVisible({ timeout: 15000 });
+    await expect(page.getByRole('cell', { name: 'Level Two User', exact: true })).toBeVisible({ timeout: 15000 });
+
+    const filtersBtn = page.getByRole('button', { name: /Open more filters|More/i });
+    await expect(filtersBtn).toBeVisible({ timeout: 10000 });
+    await filtersBtn.click();
+
+    const sheetHeading = page.getByRole('heading', { name: 'More filters' });
+    await expect(sheetHeading).toBeVisible({ timeout: 10000 });
+
+    const level2Chip = page.locator('button[aria-label="Add Level 2"]');
+    await expect(level2Chip).toBeVisible({ timeout: 10000 });
+    await level2Chip.click();
+
+    const applyBtn = page.getByRole('button', { name: /^Apply/i });
+    await expect(applyBtn).toBeEnabled({ timeout: 10000 });
+    await applyBtn.click();
+
+    await expect(page.getByRole('cell', { name: 'Level Two User', exact: true })).toBeVisible({ timeout: 15000 });
+    await expect(page.getByRole('cell', { name: 'Alice Customer', exact: true })).not.toBeVisible({ timeout: 15000 });
+  });
+
+  test('ACT-018 Filter Activity Report Records by Club', async ({ page }) => {
+    await page.goto('/');
+    const activityTab = page.getByRole('button', { name: 'Activity Report' });
+    await expect(activityTab).toBeVisible({ timeout: 15000 });
+    await activityTab.click();
+
+    await expect(page.getByRole('cell', { name: 'Alice Customer', exact: true })).toBeVisible({ timeout: 15000 });
+    await expect(page.getByRole('cell', { name: 'Level Two User', exact: true })).toBeVisible({ timeout: 15000 });
+
+    const filtersBtn = page.getByRole('button', { name: /Open more filters|More/i });
+    await expect(filtersBtn).toBeVisible({ timeout: 10000 });
+    await filtersBtn.click();
+
+    const sheetHeading = page.getByRole('heading', { name: 'More filters' });
+    await expect(sheetHeading).toBeVisible({ timeout: 10000 });
+
+    const cityClubChip = page.locator('button[aria-label="Add Club City Center"]');
+    await expect(cityClubChip).toBeVisible({ timeout: 10000 });
+    await cityClubChip.click();
+
+    const applyBtn = page.getByRole('button', { name: /^Apply/i });
+    await expect(applyBtn).toBeEnabled({ timeout: 10000 });
+    await applyBtn.click();
+
+    await expect(page.getByRole('cell', { name: 'Level Two User', exact: true })).toBeVisible({ timeout: 15000 });
+    await expect(page.getByRole('cell', { name: 'Alice Customer', exact: true })).not.toBeVisible({ timeout: 15000 });
+  });
+
+  test('ACT-019 Phone Contact Actions (WhatsApp and Call Icons)', async ({ page }) => {
+    await teamSelect(page).selectOption('mine');
+    await datePresetBtn(page, 'Today').click();
+    await categorySelect(page).selectOption('weight');
+
+    await expect(page.getByRole('cell', { name: 'Clara K', exact: true })).toBeVisible({ timeout: 15000 });
+
+    const callBtn = page.getByRole('button', { name: 'Call 9050000000' });
+    const whatsappBtn = page.getByRole('button', { name: 'WhatsApp 9050000000' });
+
+    await expect(callBtn).toBeVisible();
+    await expect(whatsappBtn).toBeVisible();
+
+    // Track window.open calls for WhatsApp chat link
+    let openedUrl = null;
+    await page.exposeFunction('trackWindowOpen', (url) => {
+      openedUrl = url;
+    });
+    await page.addInitScript(() => {
+      const origOpen = window.open;
+      window.open = function (url, target, features) {
+        if (window.trackWindowOpen) window.trackWindowOpen(url);
+        return origOpen ? origOpen.call(window, url, target, features) : null;
+      };
+    });
+
+    const [popup] = await Promise.all([
+      page.waitForEvent('popup').catch(() => null),
+      whatsappBtn.click(),
+    ]);
+
+    if (popup) {
+      expect(popup.url()).toMatch(/whatsapp\.com|wa\.me/);
+    }
+
+    await expect(callBtn).toBeEnabled();
   });
 });

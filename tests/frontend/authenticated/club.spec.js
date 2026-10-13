@@ -1,4 +1,4 @@
-﻿/**
+/**
  * tests/frontend/authenticated/club.spec.js
  * E2E test suite for Club Module.
  * 
@@ -27,6 +27,7 @@
  * - CLUB-021: "My Centres" List Visibility
  * - CLUB-022: Attendee Modal Empty State Verification
  * - CLUB-023: Call Owner Link Validation
+ * - CLUB-024: Registered Center Call and WhatsApp Action Links Validation
  */
 
 const { test, expect } = require('@playwright/test');
@@ -604,7 +605,7 @@ test.describe('Club Module (Nutrition Centers)', () => {
     await expect(page.getByText('Database connection failed')).toBeVisible({ timeout: 5000 });
     
     // Verify the 'Try Again' button is present
-    await expect(page.getByRole('button', { name: /Try Again/i })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Try Again', exact: true })).toBeVisible();
   });
 
   test('CLUB-009 Unregister Button Authorization Check', async ({ page }) => {
@@ -1405,5 +1406,37 @@ test.describe('Club Module (Nutrition Centers)', () => {
     const callLink = firstCard.locator('a[href^="tel:"]').first();
     await expect(callLink).toBeVisible();
     await expect(callLink).toHaveAttribute('href', 'tel:+919876543210');
+  });
+
+  test('CLUB-024 Registered Center Call and WhatsApp Action Links Validation', async ({ page }) => {
+    await page.goto('/');
+    const clubTab = page.getByRole('button', { name: 'Physical Club' });
+    await expect(clubTab).toBeVisible();
+    await clubTab.evaluate((element) => element.dispatchEvent(new Event('click', { bubbles: true })));
+
+    // Locate the registered center card
+    const centerCard = page.getByRole('heading', { name: 'Super Wellness Club' }).locator('xpath=ancestor::div[contains(@class, "bg-white")]').first();
+    await expect(centerCard).toBeVisible({ timeout: 10000 });
+
+    // 1. Verify Call Owner Action (tel: link)
+    const callLink = centerCard.locator('a[href^="tel:"]').or(centerCard.locator('a[title*="Call"]')).first();
+    await expect(callLink).toBeVisible({ timeout: 5000 });
+    const telHref = await callLink.getAttribute('href');
+    expect(telHref).toMatch(/^tel:\+?\d+/);
+
+    // 2. Verify WhatsApp Owner Action (wa.me link or WhatsApp share button)
+    const whatsappLink = centerCard.locator('a[href*="wa.me"]').or(
+      centerCard.locator('a[href*="whatsapp"]').or(
+        centerCard.locator('button[aria-label*="WhatsApp"]').or(
+          centerCard.locator('a[title*="WhatsApp"]')
+        )
+      )
+    ).first();
+
+    await expect(whatsappLink).toBeVisible({ timeout: 5000 });
+    const waHref = await whatsappLink.getAttribute('href').catch(() => null);
+    if (waHref) {
+      expect(waHref).toMatch(/wa\.me|whatsapp/i);
+    }
   });
 });

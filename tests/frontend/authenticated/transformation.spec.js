@@ -1,4 +1,4 @@
-﻿/**
+/**
  * tests/frontend/authenticated/transformation.spec.js
  * Comprehensive E2E test suite for Transformation (Testimonials) Module.
  * 
@@ -20,6 +20,8 @@
  * - TR-013: Optional Health Issue - Photo Submission Allowed when Zero Issues Selected
  * - TR-014: Inline Weight Editing - Dynamically Recalculates Lost Weight Badge Live
  * - TR-015: Resend OTP Flow - Dispatches New OTP to Sponsor and Displays Confirmation
+ * - TR-016: OTP Close Action - Clicking Close button in OTP verification box cancels pending approval request and reverts edits
+ * - TR-017: Expired OTP Close Action - Close button in expired OTP box cancels pending request and restores verified share state
  */
 const path = require('path');
 const { test, expect } = require('@playwright/test');
@@ -111,7 +113,7 @@ test.describe('Transformation Module (Testimonials Hub)', () => {
       });
     });
 
-    // 5. Mock team performance report
+    // 5. Mock team performance report for Team Compliance stats (userId 99999 for Mine tab, 801 for Direct Team)
     await page.route('**/api/testimonials/team-report*', async (route) => {
       await route.fulfill({
         status: 200,
@@ -120,7 +122,30 @@ test.describe('Transformation Module (Testimonials Hub)', () => {
           success: true,
           photoReport: {},
           videoReport: {},
-          teamPerformanceByUserId: {},
+          teamPerformanceByUserId: {
+            99999: {
+              photo: {
+                directTeam: {
+                  totalMembers: 82,
+                  uploaded: 59,
+                  uploadPercentage: 72.0,
+                  uploadedMembers: [{ userId: 901, userName: 'Suresh Kumar' }],
+                  notUploadedMembers: [{ userId: 902, userName: 'Anish Kumar' }],
+                },
+              },
+            },
+            801: {
+              photo: {
+                directTeam: {
+                  totalMembers: 2,
+                  uploaded: 1,
+                  uploadPercentage: 50,
+                  uploadedMembers: [{ userId: 901, userName: 'Suresh Kumar' }],
+                  notUploadedMembers: [{ userId: 902, userName: 'Anish Kumar' }],
+                },
+              },
+            },
+          },
         }),
       });
     });
@@ -680,4 +705,167 @@ test.describe('Transformation Module (Testimonials Hub)', () => {
     await expect(transformationPage.unifiedOtpInput).toBeVisible({ timeout: 5000 });
     await expect(transformationPage.verifyWithOtpButton).toBeVisible();
   });
+
+  test('TR-016 OTP Close Action - Clicking Close button cancels pending approval request and reverts changes', async ({ page }) => {
+    let cancelApiCalled = false;
+    let submitApprovalCalled = false;
+
+    // 1. Route handler for Submit All Edits API
+    await page.route('**/api/testimonials/submit-all-edits', async (route) => {
+      submitApprovalCalled = true;
+      currentTestimonial = {
+        ...currentTestimonial,
+        status: 'pending',
+        hasPendingOtp: true,
+        otpPending: true,
+        durationText: '6 months',
+        otpExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+        otpValidityHours: 24,
+        otpExpired: false,
+      };
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          otpSent: true,
+          otpExpiresAt: currentTestimonial.otpExpiresAt,
+          data: currentTestimonial,
+          message: 'Changes submitted. An OTP has been sent to your coach.',
+          testimonial: currentTestimonial,
+        }),
+      });
+    });
+
+    // 2. Route handler for Cancel Unified OTP API
+    await page.route('**/api/testimonials/cancel-unified-otp', async (route) => {
+      cancelApiCalled = true;
+      currentTestimonial = {
+        ...currentTestimonial,
+        status: 'verified',
+        hasPendingOtp: false,
+        otpPending: false,
+        otpExpired: false,
+        otpExpiresAt: null,
+        durationText: '3 months', // Reverted to original baseline
+      };
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          message: 'Approval request cancelled and edits reverted.',
+          testimonial: currentTestimonial,
+        }),
+      });
+    });
+
+    const transformationPage = new TransformationPage(page);
+
+    // 3. Verify clean verified state initially
+    await expect(transformationPage.shareImageButton).toBeVisible({ timeout: 10000 });
+    await expect(transformationPage.submitForApprovalButton).not.toBeVisible();
+
+    // 4. Edit duration text to trigger dirty state
+    await transformationPage.editDurationButton.click();
+    const durationInput = page.getByPlaceholder('e.g. 3').or(page.getByPlaceholder('e.g. 3 months'));
+    await expect(durationInput.first()).toBeVisible({ timeout: 5000 });
+    await durationInput.first().fill('6');
+
+    const select = page.locator('select').filter({ hasText: /months|days/i });
+    if (await select.isVisible().catch(() => false)) {
+      await select.selectOption('months');
+    }
+
+    const saveBtn = page.getByRole('button', { name: 'Save', exact: true });
+    if (await saveBtn.isVisible().catch(() => false)) {
+      await saveBtn.click();
+    } else {
+      await durationInput.first().press('Enter');
+    }
+
+    // Verify Submit for Approval button appears
+    await expect(transformationPage.submitForApprovalButton).toBeVisible({ timeout: 5000 });
+
+    // 5. Click "Submit for Approval" -> Dispatches request & opens OTP verification box
+    await transformationPage.clickSubmitForApproval();
+    await expect.poll(() => submitApprovalCalled).toBe(true);
+
+    // Verify OTP input box and "Close" button are visible inside OTP verification box
+    await expect(transformationPage.unifiedOtpInput).toBeVisible({ timeout: 10000 });
+    const closeOtpBtn = page.getByRole('button', { name: /Close OTP verification|Close/i }).filter({ hasText: /^Close$/i });
+    await expect(closeOtpBtn.first()).toBeVisible({ timeout: 5000 });
+
+    // 6. Click Close button to cancel pending changes
+    await closeOtpBtn.first().click();
+
+    // Verify cancel API call was dispatched
+    await expect.poll(() => cancelApiCalled).toBe(true);
+
+    // 7. Verify OTP verification box disappears and verified Share Image state is restored
+    await expect(transformationPage.unifiedOtpInput).not.toBeVisible({ timeout: 10000 });
+    await expect(transformationPage.shareImageButton).toBeVisible({ timeout: 10000 });
+  });
+
+  test('TR-017 Expired OTP Close Action - Close button in expired OTP box cancels pending request and restores verified share state', async ({ page }) => {
+    let cancelApiCalled = false;
+
+    // 1. Intercept Cancel Unified OTP API
+    await page.route('**/api/testimonials/cancel-unified-otp', async (route) => {
+      cancelApiCalled = true;
+      currentTestimonial = {
+        ...currentTestimonial,
+        status: 'verified',
+        hasPendingOtp: false,
+        otpPending: false,
+        otpExpired: false,
+        otpExpiresAt: null,
+      };
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          message: 'Approval request cancelled and edits reverted.',
+          testimonial: currentTestimonial,
+        }),
+      });
+    });
+
+    // 2. Configure testimonial in expired OTP state
+    currentTestimonial = {
+      ...MOCK_MEMBER_TESTIMONIAL_PENDING,
+      otpExpired: true,
+      hasPendingOtp: true,
+      status: 'pending',
+    };
+
+    const transformationPage = new TransformationPage(page);
+    await transformationPage.clickRefresh();
+
+    // 3. Verify expired OTP warning and Resend OTP button are displayed
+    await expect(
+      page.getByText('This OTP has expired. Resend a new code to Master Coach.')
+    ).toBeVisible({ timeout: 10000 });
+
+    const resendBtn = page.getByRole('button', { name: /Resend OTP to Master Coach/i });
+    await expect(resendBtn).toBeVisible();
+
+    // 4. Verify Close button is also visible alongside Resend OTP in expired state
+    const closeExpiredOtpBtn = page.getByRole('button', { name: /Close OTP verification|Close/i }).filter({ hasText: /^Close$/i });
+    await expect(closeExpiredOtpBtn.first()).toBeVisible();
+
+    // 5. Click Close button in expired state
+    await closeExpiredOtpBtn.first().click();
+
+    // 6. Verify cancel API call was dispatched
+    await expect.poll(() => cancelApiCalled).toBe(true);
+
+    // 7. Verify expired OTP warning disappears and clean verified state with Share Image button is restored
+    await expect(resendBtn).not.toBeVisible({ timeout: 10000 });
+    await expect(transformationPage.shareImageButton).toBeVisible({ timeout: 10000 });
+  });
 });
+
+
+
