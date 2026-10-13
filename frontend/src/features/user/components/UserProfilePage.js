@@ -136,7 +136,11 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
   );
   const sessionUserId = user?.id || user?.UserId || user?.userId || null;
 
-  const loadProfile = useCallback(async ({ cacheBust = false, userId: forceUserId = null, email: forceEmail = null } = {}) => {
+  const loadProfile = useCallback(async ({
+  userId: forceUserId = null,
+  email: forceEmail = null,
+  cacheBust = false,
+} = {}) => {
     const emailKey = forceEmail || sessionEmail;
     const uid = forceUserId || sessionUserId;
     if (!emailKey && !uid) {
@@ -217,16 +221,19 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
       setCommunityIdPair(data?.communityIdPair || null);
       setCommunityIdError('');
       transformationPhotos.loadFromProfile(data?.transformationPhotos);
-      if (data?.profileImage) {
-        setProfileImagePreview(data.profileImage);
-      } else if (data?.transformationPhotos?.front) {
-        // Centre transform photo is the profile avatar.
-        setProfileImagePreview(data.transformationPhotos.front);
-      }
-      // Stop spinner as soon as core profile is ready — do not wait on counselling.
-      setIsLoading(false);
-      return profileData;
-    };
+      
+      const savedProfileImage =
+        typeof data?.profileImage === 'string' && data.profileImage.trim()
+          ? data.profileImage
+          : typeof user?.photoURL === 'string' && user.photoURL.trim()
+            ? user.photoURL
+            : typeof user?.ProfileImage === 'string' && user.ProfileImage.trim()
+              ? user.ProfileImage
+              : null;
+
+      setProfileImagePreview(savedProfileImage);
+      };
+
 
     // Instant paint from Home/Header cache — avoid Personal Details spinner on every open.
     // After save (cacheBust) keep current fields visible — no full-section reload flash.
@@ -366,7 +373,6 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
         physicalActivityLevel: form.physicalActivityLevel || null,
         dietType: form.dietType || null,
         communityId: form.communityId || null,
-        profileImage: nextPreview,
         teamSearchRefresh: true,
       });
       if (user?.id) getUserContext(user.id).catch(() => {});
@@ -600,13 +606,12 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
           userId: user?.id || undefined,
           cacheBust: true,
         });
-        if (data?.success && data?.data?.profileImage) {
-          serverImage = data.data.profileImage;
-          setProfileImagePreview(serverImage);
-        } else if (data?.data?.transformationPhotos?.front) {
-          serverImage = data.data.transformationPhotos.front;
-          setProfileImagePreview(serverImage);
-        }
+        
+      if (data?.success && data?.data?.profileImage) {
+        serverImage = data.data.profileImage;
+        setProfileImagePreview(serverImage);
+      }
+
       } catch {
         // Non-fatal — optimistic preview already applied.
       }

@@ -29,24 +29,23 @@ export function shouldSkipProfileImageBase64({
   return isAtLeastVersion(appVersion, minAppVersion) === true;
 }
 
+
 /**
- * Resolve the avatar data URI for a profile save.
- * Explicit profileImage wins; otherwise Centre (transformationPhotos.front).
- *
- * @param {{
- *   profileImage?: string|null,
- *   transformationPhotos?: { front?: string|null }|null,
- * }} [input]
- * @returns {string|null}
+ * Resolve the profile avatar for a profile save.
+ * Only an explicitly supplied profileImage may update the avatar.
+ * Transformation photos must remain independent.
  */
-export function resolveIncomingAvatarDataUri({
-  profileImage = null,
-  transformationPhotos = null,
-} = {}) {
-  if (typeof profileImage === 'string' && profileImage.trim().startsWith('data:image/')) {
-    return profileImage.trim();
-  }
-  const front = transformationPhotos?.front;
-  if (isDataTransformationPhoto(front)) return String(front).trim();
-  return null;
+  export function resolveIncomingAvatarDataUri({
+    profileImage = null,
+  } = {}) {
+    if (
+      typeof profileImage === 'string' &&
+      profileImage.trim().startsWith('data:image/')
+    ) {
+      return profileImage.trim();
+    }
+
+    return null;
 }
+
+

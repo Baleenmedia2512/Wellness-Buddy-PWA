@@ -4544,11 +4544,22 @@ function WellnessValleyApp() {
         ) {
           setShowConsentGate(true);
         }
-        if (data?.success && data?.data?.profileImage)
-          setSavedProfileImage(data.data.profileImage);
-        else if (data?.success && data?.data?.transformationPhotos?.front)
-          setSavedProfileImage(data.data.transformationPhotos.front);
-        else setSavedProfileImage(null);
+        
+        if (data?.success && data?.data) {
+          setSavedProfileImage(
+            data.data.profileImage
+              || user?.photoURL
+              || user?.ProfileImage
+              || null
+          );
+        } else {
+          setSavedProfileImage(
+            user?.photoURL
+              || user?.ProfileImage
+              || null
+          );
+        }
+
         const profileName = data?.success ? data?.data?.userName : null;
         const profilePhone = data?.data?.phoneNumber || phoneNumber;
         const profileEmail = data?.data?.email || email;

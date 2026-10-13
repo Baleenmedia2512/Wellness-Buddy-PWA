@@ -79,9 +79,7 @@ const Header = ({
             setSavedUserName(null);
           }
           // Same order as /api/user/avatar + My Profile: profileImage, else Centre.
-          const nextImage = data.data.profileImage
-            || data.data.transformationPhotos?.front
-            || null;
+          const nextImage = data.data.profileImage || null;
           if (nextImage) setSavedProfileImage(nextImage);
           else if (shouldBust) setSavedProfileImage(null);
         }
