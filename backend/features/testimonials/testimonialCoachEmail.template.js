@@ -1030,34 +1030,35 @@ export function buildUnifiedSubmitEmailHtml({
 
   const changedBlock = buildChangedSlotsBlock(changedSlots);
 
-  // Side-by-side small Previous | New cards (card image only) — tap opens full preview.
-  const compareCards = (
-    (previousCardImageUrl || (previousBeforeUrl && previousAfterUrl))
-    && (currentCardImageUrl || (beforeUrl && afterUrl))
-  )
-    ? buildTransformationCardCompareRow({
-      previousBeforeUrl,
-      previousAfterUrl,
-      previousBeforeWeight: previousBeforeWeight ?? beforeWeight,
-      previousAfterWeight: previousAfterWeight ?? afterWeight,
-      previousCardImageUrl,
-      previousPreviewHref,
+  // Only the updated Transformation Card — no Previous | New compare.
+  // (Previous thumbs + tap used different files, so tap opened the wrong full card.)
+  void previousBeforeUrl;
+  void previousAfterUrl;
+  void previousBeforeWeight;
+  void previousAfterWeight;
+  void previousGoalType;
+  void previousDurationText;
+  void previousRecoveredHealthIssues;
+  void previousPreviewHref;
+  void previousCardImageUrl;
+
+  const changedCard = (isComplete && beforeUrl && afterUrl)
+    ? buildCompactTransformationPreview({
+      label: 'Updated Transformation Card',
       beforeUrl,
       afterUrl,
       beforeWeight,
       afterWeight,
-      currentCardImageUrl,
-      currentPreviewHref,
+      previewHref: currentPreviewHref,
+      tone: 'new',
     })
     : '';
 
-  // New-only share card when Previous is missing — must still show (was a blank email bug).
-  const singleShareCard = (!compareCards && currentCardImageUrl)
+  const singleShareCard = (!changedCard && currentCardImageUrl)
     ? buildShareCardRow(currentCardImageUrl, currentPreviewHref)
     : '';
 
-  // HTML Before|After card when there is no share-card image at all.
-  const currentCard = (!compareCards && !singleShareCard && isComplete && beforeUrl && afterUrl)
+  const currentCard = (!changedCard && !singleShareCard && isComplete && beforeUrl && afterUrl)
     ? buildTransformationCardEmailBlock({
       memberName,
       beforeUrl,
@@ -1071,9 +1072,9 @@ export function buildUnifiedSubmitEmailHtml({
     })
     : '';
 
-  const hasCard = Boolean(compareCards || singleShareCard || currentCard);
+  const hasCard = Boolean(changedCard || singleShareCard || currentCard);
 
-  // Do not show single-photo PREVIOUS → NEW strips when Transformation Cards are present.
+  const compareCards = '';
   const beforeDiff = '';
   const afterDiff = '';
   const previousCard = '';
@@ -1139,7 +1140,7 @@ export function buildUnifiedSubmitEmailHtml({
               ${changedBlock}
               ${beforeDiff}
               ${afterDiff}
-              ${compareCards}
+              ${changedCard}
               ${singleShareCard}
               ${previousCard}
               ${currentCard}

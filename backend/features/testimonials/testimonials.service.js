@@ -1618,114 +1618,31 @@ async function sendUnifiedCoachEmail({
 }) {
   const slots = new Set(changedSlots);
   void userId;
+  // Email shows only the updated card — previous pair args kept for call-site compat.
+  void previousBeforeImagePath;
+  void previousAfterImagePath;
+  void previousBeforeWeight;
+  void previousAfterWeight;
+  void previousGoalType;
+  void previousDurationText;
+  void previousRecoveredHealthIssues;
 
-  // Previous Transformation Card = state before this submit.
-  // Unchanged side keeps the current path; changed side uses the previous storage path.
-  const previousCardBeforePath = (slots.has('before') && previousBeforeImagePath)
-    ? previousBeforeImagePath
-    : beforeImagePath;
-  const previousCardAfterPath = (slots.has('after') && previousAfterImagePath)
-    ? previousAfterImagePath
-    : ((slots.has('before') && previousBeforeImagePath && !previousAfterImagePath)
-      ? previousBeforeImagePath // seeded After mirrored Before before the change
-      : afterImagePath);
-  const photoSlotChanged = slots.has('before') || slots.has('after');
-  const previousPairDistinct = Boolean(
-    isComplete
-    && photoSlotChanged
-    && previousCardBeforePath
-    && previousCardAfterPath
-    && (
-      previousCardBeforePath !== beforeImagePath
-      || previousCardAfterPath !== afterImagePath
-    ),
-  );
-
-  // Outer compare uses HTTPS Before|After photo URLs (clear in Gmail).
-  // Full Transformation Card is only for tap-preview — never as the outer thumb
-  // (share-card JPEGs can show nested/broken After in the small email view).
+  // Current Before|After thumbs + optional full-card tap-preview (no Previous column).
   const [
     currentBeforeHref,
     currentAfterHref,
-    previousBeforeHref,
-    previousAfterHref,
     currentSharePreviewHref,
     healthVideoUrl,
     businessVideoUrl,
   ] = await Promise.all([
     (isComplete && beforeImagePath) ? repo.getEmailSignedUrl(beforeImagePath) : Promise.resolve(null),
     (isComplete && afterImagePath) ? repo.getEmailSignedUrl(afterImagePath) : Promise.resolve(null),
-    (previousPairDistinct && previousCardBeforePath)
-      ? repo.getEmailSignedUrl(previousCardBeforePath)
-      : Promise.resolve(null),
-    (previousPairDistinct && previousCardAfterPath)
-      ? repo.getEmailSignedUrl(previousCardAfterPath)
-      : Promise.resolve(null),
     userId ? repo.getEmailSignedUrl(repo.shareCardStoragePath(userId)) : Promise.resolve(null),
     (slots.has('health') && healthVideoPath) ? repo.getEmailSignedUrl(healthVideoPath) : Promise.resolve(null),
     (slots.has('business') && businessVideoPath) ? repo.getEmailSignedUrl(businessVideoPath) : Promise.resolve(null),
   ]);
 
-  // Previous tap-preview = full share-card JPEG (not the small Before|After thumbs).
-  // Prefer the archived card from uploadShareCardImage (client capture, same as New).
-  // Always link when a full-card JPEG exists — do not gate on pixel-readability
-  // (that check false-negatives client captures and left Previous untappable).
-  let previousPreviewHref = null;
-  if (userId && previousPairDistinct) {
-    const prevSharePath = repo.previousShareCardStoragePath(userId);
-    let existingPrev = null;
-    try {
-      existingPrev = await repo.downloadBuffer(prevSharePath, { retries: 1 });
-    } catch {
-      existingPrev = null;
-    }
-    if (existingPrev?.length > 2000) {
-      previousPreviewHref = await repo.getEmailSignedUrl(prevSharePath);
-    } else if (previousCardBeforePath && previousCardAfterPath) {
-      try {
-        const [prevBeforeBuf, prevAfterBuf] = await Promise.all([
-          repo.downloadBuffer(previousCardBeforePath, { retries: 2 }),
-          repo.downloadBuffer(previousCardAfterPath, { retries: 2 }),
-        ]);
-        if (prevBeforeBuf?.length && prevAfterBuf?.length) {
-          const prevJpeg = await composeTransformationShareCardJpeg({
-            beforeBuffer: prevBeforeBuf,
-            afterBuffer: prevAfterBuf,
-            memberName,
-            beforeWeightKg: previousBeforeWeight,
-            afterWeightKg: previousAfterWeight,
-            goalType: previousGoalType,
-            durationText: previousDurationText,
-            recoveredHealthIssues: previousRecoveredHealthIssues,
-          });
-          if (prevJpeg?.length > 2000) {
-            await repo.uploadBuffer(prevSharePath, prevJpeg, 'image/jpeg');
-            previousPreviewHref = await repo.getEmailSignedUrl(prevSharePath);
-          } else {
-            logger.warn('[testimonials.service] Previous compose produced empty JPEG', {
-              userId,
-              bytes: prevJpeg?.length || 0,
-            });
-          }
-        }
-      } catch (err) {
-        logger.warn('[testimonials.service] Could not compose Previous share card for preview', {
-          userId,
-          message: err?.message || String(err),
-        });
-      }
-    }
-    if (!previousPreviewHref) {
-      logger.warn('[testimonials.service] Previous tap-preview unavailable (no full card archive or compose)', {
-        userId,
-        hadArchive: Boolean(existingPrev?.length),
-      });
-    }
-  }
-
-  // New tap-preview: only a share card written for this email (not a stale leftover).
-  // Without shareCardReady, thumbs can show current Before|After while tap opens an
-  // older share_card.jpg from a prior submit (e.g. after cancel reverted DB paths).
+  // Tap-preview only when share_card.jpg was written for this email (not a stale leftover).
   let currentPreviewHref = null;
   if (userId && shareCardReady && currentSharePreviewHref) {
     try {
@@ -1738,10 +1655,6 @@ async function sendUnifiedCoachEmail({
       currentPreviewHref = null;
     }
   }
-
-  const hasPhotoCompare = Boolean(
-    previousBeforeHref && previousAfterHref && currentBeforeHref && currentAfterHref,
-  );
 
   // No CID photo attachments — HTTPS only (no "4 Attachments" strip in Gmail).
   const attachments = [];
@@ -1756,17 +1669,16 @@ async function sendUnifiedCoachEmail({
     durationText,
     beforeUrl: currentBeforeHref,
     afterUrl: currentAfterHref,
-    previousBeforeUrl: hasPhotoCompare ? previousBeforeHref : null,
-    previousAfterUrl: hasPhotoCompare ? previousAfterHref : null,
-    previousBeforeWeight,
-    previousAfterWeight,
-    previousGoalType,
-    previousDurationText,
-    previousRecoveredHealthIssues,
-    // Outer thumbs = Before|After photos; full card only via tap-preview href.
+    previousBeforeUrl: null,
+    previousAfterUrl: null,
+    previousBeforeWeight: null,
+    previousAfterWeight: null,
+    previousGoalType: null,
+    previousDurationText: null,
+    previousRecoveredHealthIssues: null,
     previousCardImageUrl: null,
     currentCardImageUrl: null,
-    previousPreviewHref,
+    previousPreviewHref: null,
     currentPreviewHref,
     healthVideoUrl,
     businessVideoUrl,
@@ -1794,9 +1706,8 @@ async function sendUnifiedCoachEmail({
     coachEmail,
     memberName,
     changedSlots,
-    hasPhotoCompare,
+    hasUpdatedCard: Boolean(currentBeforeHref && currentAfterHref),
     hasCurrentSharePreview: Boolean(currentPreviewHref),
-    hasPreviousSharePreview: Boolean(previousPreviewHref),
   });
 }
 
