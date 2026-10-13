@@ -36,7 +36,6 @@ const FONT_REGULAR_URL = new URL('../assets/NotoSans-Regular.ttf', import.meta.u
 const FONT_BOLD_URL = new URL('../assets/NotoSans-Bold.ttf', import.meta.url);
 const LOGO_URL = new URL('../assets/logo.png', import.meta.url);
 const __dirname = dirname(fileURLToPath(import.meta.url));
-
 let fontRegular = null;
 let fontBold = null;
 let cachedLogoDataUri = null;
