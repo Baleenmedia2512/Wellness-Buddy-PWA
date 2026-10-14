@@ -516,7 +516,7 @@ function BrushLabel({ label, side }) {
         style={{
           position: 'relative',
           margin: 0,
-          paddingTop: 2,
+          paddingTop: 12,
           fontFamily: SCRIPT_FONT,
           fontSize: 43,
           lineHeight: '58px',
