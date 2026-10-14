@@ -30,6 +30,10 @@ import {
  *
  * By default, allMembers (used by Diary / team search) contains Active users only.
  * Pass includeInactive=true to include Inactive users in the flat list.
+ *
+ * Pass purpose=search for Diary / Reports / team search: lighter select columns,
+ * skip latest-weight BCM enrichment, omit nested hierarchy from the JSON payload.
+ * BCM and Leadership Dashboard keep the default (full) purpose.
  */
 export default async function handler(req, res) {
   // Prevent caching
@@ -57,14 +61,22 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { coachId, email, includeInactive: includeInactiveRaw } = req.query;
+    const {
+      coachId,
+      email,
+      includeInactive: includeInactiveRaw,
+      purpose: purposeRaw,
+    } = req.query;
     const includeInactive =
       String(includeInactiveRaw || '').toLowerCase() === 'true';
+    const purposeSearch =
+      String(purposeRaw || '').toLowerCase() === 'search';
 
     logger.debug("📊 [team-hierarchy] Request:", {
       coachId,
       email,
       includeInactive,
+      purpose: purposeSearch ? 'search' : 'full',
     });
 
     const supabase = getSupabaseClient();
@@ -117,6 +129,9 @@ export default async function handler(req, res) {
     // Leaderboard strips load avatars separately for top-N only.
     // Optional body-metric columns may be missing until migration — fall back.
     // Indexed CoachId walks + pagination — no full team_table scan.
+    // purpose=search: skip BCM body columns (Diary / team search only needs identity + club).
+    const SELECT_SEARCH =
+      "UserId, UserName, Email, Role, CoachId, CoachTeamId, TeamId, Status, PhoneNumber, CommunityId";
     const SELECT_FULL =
       "UserId, UserName, Email, Role, CoachId, CoachTeamId, TeamId, Status, PhoneNumber, Height, Bmr, CommunityId, Gender, Age, VisceralFat, BodyAge, ChestCm, WaistCm, HipCm";
     const SELECT_BASIC =
@@ -125,11 +140,12 @@ export default async function handler(req, res) {
     let allUsers;
     try {
       allUsers = await loadCoachSubtreeTeamUsers(supabase, coachIdInt, {
-        select: SELECT_FULL,
+        select: purposeSearch ? SELECT_SEARCH : SELECT_FULL,
       });
     } catch (usersError) {
       const msg = String(usersError?.message || usersError || "");
       if (
+        !purposeSearch &&
         /Age|VisceralFat|BodyAge|ChestCm|WaistCm|HipCm/i.test(msg) &&
         /column/i.test(msg)
       ) {
@@ -681,26 +697,29 @@ export default async function handler(req, res) {
     const allMembers = Array.from(memberMap.values());
 
     // Attach latest weight / fat% / BMI for BCM phone prefill (best-effort).
-    try {
-      const weightByUser = await getLatestWeightMetricsByUserIds(
-        allMembers.map((m) => m.UserId),
-      );
-      for (const m of allMembers) {
-        const w = weightByUser.get(Number(m.UserId));
-        if (!w) continue;
-        m.weightKg = w.weightKg;
-        m.fatPercent = w.fatPercent;
-        let bmi = w.bmi;
-        if (bmi == null && w.weightKg != null && m.height != null) {
-          bmi = computeBmiFromHeightWeight(m.height, w.weightKg);
+    // Skip for purpose=search — Diary / team search does not need body metrics.
+    if (!purposeSearch) {
+      try {
+        const weightByUser = await getLatestWeightMetricsByUserIds(
+          allMembers.map((m) => m.UserId),
+        );
+        for (const m of allMembers) {
+          const w = weightByUser.get(Number(m.UserId));
+          if (!w) continue;
+          m.weightKg = w.weightKg;
+          m.fatPercent = w.fatPercent;
+          let bmi = w.bmi;
+          if (bmi == null && w.weightKg != null && m.height != null) {
+            bmi = computeBmiFromHeightWeight(m.height, w.weightKg);
+          }
+          m.bmi = bmi;
+          if (m.bmr == null && w.bmr != null) m.bmr = w.bmr;
         }
-        m.bmi = bmi;
-        if (m.bmr == null && w.bmr != null) m.bmr = w.bmr;
+      } catch (weightErr) {
+        logger.warn('[team-hierarchy] weight enrich failed', {
+          message: weightErr?.message || String(weightErr),
+        });
       }
-    } catch (weightErr) {
-      logger.warn('[team-hierarchy] weight enrich failed', {
-        message: weightErr?.message || String(weightErr),
-      });
     }
 
     let coachClubName = null;
@@ -769,6 +788,7 @@ export default async function handler(req, res) {
 
     res.status(200).json({
       success: true,
+      purpose: purposeSearch ? 'search' : 'full',
       loggedInCoach: {
         userId: hierarchy.userId,
         userName: hierarchy.userName,
@@ -780,7 +800,8 @@ export default async function handler(req, res) {
         clubName: coachClubName,
       },
       coachClubName,
-      hierarchy: hierarchy,
+      // Nested tree is large; search clients only need allMembers.
+      hierarchy: purposeSearch ? null : hierarchy,
       allMembers: allMembers, // Flat array of all unique team members
       stats: {
         totalCoaches: coaches.length,

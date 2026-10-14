@@ -550,19 +550,23 @@ async function fetchTeamUsersByCoachIds(supabase, coachIds, select = TEAM_USER_S
   )];
   if (ids.length === 0) return [];
 
-  const rows = [];
+  const chunks = [];
   for (let i = 0; i < ids.length; i += COACH_ID_IN_CHUNK) {
-    const chunk = ids.slice(i, i + COACH_ID_IN_CHUNK);
-    const page = await fetchAllSupabaseRows(() =>
-      supabase
-        .from('team_table')
-        .select(select)
-        .in('CoachId', chunk)
-        .order('UserId', { ascending: true }),
-    );
-    rows.push(...page);
+    chunks.push(ids.slice(i, i + COACH_ID_IN_CHUNK));
   }
-  return rows;
+
+  const pages = await Promise.all(
+    chunks.map((chunk) =>
+      fetchAllSupabaseRows(() =>
+        supabase
+          .from('team_table')
+          .select(select)
+          .in('CoachId', chunk)
+          .order('UserId', { ascending: true }),
+      ),
+    ),
+  );
+  return pages.flat();
 }
 
 /**

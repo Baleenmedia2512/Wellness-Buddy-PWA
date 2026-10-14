@@ -4,6 +4,7 @@ import {
   nowUtc,
   todayInTimezone,
   shiftDateYmd,
+  timestampToCalendarYmd,
   IANA_IST,
 } from '../../../shared/lib/datetime/index.js';
 import * as activityReportRepo from '../../../features/activity/activity-report.repository.js';
@@ -18,7 +19,7 @@ import { isActiveTeamStatus } from '../../../utils/teamHierarchyBuilder.js';
 import { resolveLeaderboardViewerId } from '../../../utils/leaderboardViewer.js';
 
 /** Server-side TTL — hierarchy-scoped; cache key includes viewerUserId. */
-const LEADERBOARD_CACHE_TTL_MS = 15 * 1000;
+const LEADERBOARD_CACHE_TTL_MS = 60 * 1000;
 
 
 /**
@@ -40,24 +41,6 @@ const LEADERBOARD_CACHE_TTL_MS = 15 * 1000;
  * - Returns: rank, profile (email for avatar), userName, coachName, weightLoss
  */
 const MAX_TODAY_VS_YESTERDAY_LOSS_KG = 3;
-/** PostgREST `.in()` limit — batch weight lookups for large allowed sets. */
-const WEIGHT_LOOKUP_CHUNK = 150;
-
-async function fetchWeightRecordsBatched(userIds, startDate, endDate, timezoneIana) {
-  if (!userIds?.length) return [];
-  const rows = [];
-  for (let i = 0; i < userIds.length; i += WEIGHT_LOOKUP_CHUNK) {
-    const chunk = userIds.slice(i, i + WEIGHT_LOOKUP_CHUNK);
-    const chunkRows = await activityReportRepo.fetchWeightRecords(
-      chunk,
-      startDate,
-      endDate,
-      timezoneIana,
-    );
-    rows.push(...chunkRows);
-  }
-  return rows;
-}
 
 export default async function handler(req, res) {
   // Set CORS headers for all requests
@@ -103,7 +86,7 @@ export default async function handler(req, res) {
       });
     }
 
-    const cacheKey = `lb:hierarchy:weight:v1:${viewerUserId}:${topN}`;
+    const cacheKey = `lb:hierarchy:weight:v2:${viewerUserId}:${topN}`;
     const cached = cache.get(cacheKey);
     if (cached) {
       res.setHeader("X-Cache", "HIT");
@@ -111,6 +94,7 @@ export default async function handler(req, res) {
     }
 
     const supabase = getSupabaseClient();
+    const startedAt = Date.now();
 
     logger.debug(
       `🏆 [LEADERBOARD] Hierarchy weight loss Top ${topN} viewer=${viewerUserId}`,
@@ -119,6 +103,7 @@ export default async function handler(req, res) {
     // Indexed subtree: viewer + ancestors (people only) + own downline + sibling peers.
     // Does not scan team_table and does not load peer-descendants / other upline branches.
     const context = await loadReportingContextForCoach(supabase, viewerUserId);
+    const contextMs = Date.now() - startedAt;
     const visibleUsers = collectVisibleHierarchyUsers(viewerUserId, context);
 
     // Only trust the hierarchy-scoped visible list.
@@ -150,33 +135,39 @@ export default async function handler(req, res) {
 
     logger.debug(`📅 [LEADERBOARD] Today: ${todayYmd}, Yesterday: ${yesterdayYmd}`);
 
-    // Fetch weight records via UTC-aware repository helpers
+    // One range fetch (yesterday→today); repository already parallel-chunks .in() lists.
+    // Avoids sequential outer batches + a second full scan for yesterday alone.
     const activeUserIds = activeUsers.map((u) => u.UserId);
     const activeMap = new Map(activeUsers.map((u) => [Number(u.UserId), u]));
+    const weightsStartedAt = Date.now();
+    const rangeWeights = await activityReportRepo.fetchWeightRecords(
+      activeUserIds,
+      yesterdayYmd,
+      todayYmd,
+      IANA_IST,
+    );
+    const weightsMs = Date.now() - weightsStartedAt;
 
-    const [todayWeights, yesterdayWeights] = await Promise.all([
-      fetchWeightRecordsBatched(activeUserIds, todayYmd, todayYmd, IANA_IST),
-      fetchWeightRecordsBatched(activeUserIds, yesterdayYmd, yesterdayYmd, IANA_IST),
-    ]);
-
-    // Create maps for quick lookup (get latest weight per user)
+    // Create maps for quick lookup (get latest weight per user per IST day)
     const todayWeightMap = new Map();
     const yesterdayWeightMap = new Map();
 
-    todayWeights?.forEach((record) => {
-      if (!todayWeightMap.has(record.UserId)) {
-        todayWeightMap.set(record.UserId, record);
+    for (const record of rangeWeights || []) {
+      const dayYmd = timestampToCalendarYmd(record.CreatedAt, IANA_IST);
+      if (!dayYmd) continue;
+      if (dayYmd === todayYmd) {
+        if (!todayWeightMap.has(record.UserId)) {
+          todayWeightMap.set(record.UserId, record);
+        }
+      } else if (dayYmd === yesterdayYmd) {
+        if (!yesterdayWeightMap.has(record.UserId)) {
+          yesterdayWeightMap.set(record.UserId, record);
+        }
       }
-    });
-
-    yesterdayWeights?.forEach((record) => {
-      if (!yesterdayWeightMap.has(record.UserId)) {
-        yesterdayWeightMap.set(record.UserId, record);
-      }
-    });
+    }
 
     logger.debug(
-      `📊 [LEADERBOARD] Found ${todayWeightMap.size} users with today's weight, ${yesterdayWeightMap.size} with yesterday's weight`,
+      `📊 [LEADERBOARD] Found ${todayWeightMap.size} users with today's weight, ${yesterdayWeightMap.size} with yesterday's weight (context=${contextMs}ms weights=${weightsMs}ms users=${activeUsers.length})`,
     );
 
     // Calculate weight loss for eligible users
@@ -269,7 +260,7 @@ export default async function handler(req, res) {
     // dominated TTFB. UI falls back to initial-letter avatars.
 
     logger.debug(
-      `🏆 [LEADERBOARD] Top ${withSponsors.length} weight losers calculated`,
+      `🏆 [LEADERBOARD] Top ${withSponsors.length} weight losers calculated total=${Date.now() - startedAt}ms`,
     );
 
     const payload = {
