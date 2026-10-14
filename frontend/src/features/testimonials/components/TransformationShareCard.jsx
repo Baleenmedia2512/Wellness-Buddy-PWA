@@ -19,7 +19,7 @@
 import React, { useRef, useState, useCallback, forwardRef, useEffect } from 'react';
 import { X, Download, Share2, CheckCircle } from 'lucide-react';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
-import { shareImageDirectly } from '../../../shared/utils/shareUtils';
+import { shareCachedDataUrl, shareImageDirectly } from '../../../shared/utils/shareUtils';
 import { saveImageBlobToGallery } from '../../../shared/plugins/saveToGalleryPlugin';
 import { APP_VERSION, getVersionString } from '../../../config/version';
 import {
@@ -40,7 +40,9 @@ export { CARD_H, CARD_W };
 
 const TICK_SIZE = 28;
 const FRAME_BG = '#f3f4f6';
-const CAPTURE_SCALE = 2;
+/** Output scale. 2× html2canvas on a 540×960 card blocked low-end phones for 20s+. */
+const CAPTURE_SCALE = 1.5;
+const SHARE_JPEG_QUALITY = 0.82;
 const CARD_FONT = "'Poppins', Arial, Helvetica, sans-serif";
 const SCRIPT_FONT = "'Pacifico', 'Segoe Script', 'Comic Sans MS', cursive";
 const BEFORE_BRUSH = '#e11d72';
@@ -161,7 +163,9 @@ async function inlineImagesForCapture(el) {
   await Promise.all(imgs.map(async (img) => {
     const isLogo = img.hasAttribute('data-share-logo');
     const src = img.currentSrc || img.getAttribute('src') || '';
-    if (src.startsWith('data:')) return;
+    if (src.startsWith('data:') || src.startsWith('blob:')) return;
+    // Already decoded — a second download is what made Share feel stuck.
+    if (img.complete && img.naturalWidth > 0) return;
     const candidates = isLogo
       ? [src, shareCardLogoFetchUrl(), '/logo.png'].filter(Boolean)
       : [src].filter(Boolean);
@@ -188,7 +192,7 @@ function waitForImage(img) {
     const done = () => resolve();
     img.addEventListener('load', done, { once: true });
     img.addEventListener('error', done, { once: true });
-    setTimeout(done, 8000);
+    setTimeout(done, 1500);
   });
 }
 
@@ -225,23 +229,17 @@ function bakeKeepRatioPhotos(el, scale = CAPTURE_SCALE) {
   });
 }
 
-export async function captureTransformationCardAsBlob(el) {
+function waitForPacifico(maxMs) {
+  if (!document.fonts?.load) return Promise.resolve();
+  return Promise.race([
+    document.fonts.load('40px Pacifico').catch(() => {}),
+    new Promise((resolve) => { setTimeout(resolve, maxMs); }),
+  ]);
+}
+
+async function renderTransformationCardCanvas(el) {
   ensureShareCardFonts();
-  if (document.fonts?.ready) {
-    try {
-      await document.fonts.ready;
-      if (document.fonts.load) {
-        await Promise.all([
-          document.fonts.load('800 15px Poppins'),
-          document.fonts.load('800 20px Poppins'),
-          document.fonts.load('700 14px Poppins'),
-          document.fonts.load('40px Pacifico'),
-        ]);
-      }
-    } catch {
-      // capture anyway — Arial / Segoe Script fallback still paints
-    }
-  }
+  await waitForPacifico(400);
   el.querySelectorAll('[data-brush-label]').forEach((node) => {
     const word = node.getAttribute('data-brush-label') || '';
     const img = node.querySelector('img[data-brush-word]');
@@ -259,21 +257,32 @@ export async function captureTransformationCardAsBlob(el) {
   bakeKeepRatioPhotos(el, CAPTURE_SCALE);
   await Promise.all(photos.map(waitForImage));
   const html2canvas = (await import('html2canvas')).default;
-  const canvas = await html2canvas(el, {
+  return html2canvas(el, {
     useCORS: true,
     allowTaint: false,
     scale: CAPTURE_SCALE,
     backgroundColor: '#ffffff',
     logging: false,
-    imageTimeout: 15000,
+    imageTimeout: 2000,
+    removeContainer: true,
     foreignObjectRendering: false,
   });
+}
+
+export async function captureTransformationCardAsBlob(el) {
+  const canvas = await renderTransformationCardCanvas(el);
   return new Promise((resolve, reject) => {
     canvas.toBlob((blob) => {
       if (blob) resolve(blob);
       else reject(new Error('Failed to create image from transformation card'));
     }, 'image/png');
   });
+}
+
+/** JPEG data URL used by the share sheet. One encode — no PNG round-trip. */
+export async function captureTransformationCardShareDataUrl(el) {
+  const canvas = await renderTransformationCardCanvas(el);
+  return canvas.toDataURL('image/jpeg', SHARE_JPEG_QUALITY);
 }
 
 /**
@@ -397,15 +406,49 @@ function transformationFileName(userName) {
   return `transformation-${String(userName || 'result').replace(/\s+/g, '-').toLowerCase()}.png`;
 }
 
-export async function shareTransformationCard(element, userName, _testimonial = null) {
-  if (!element) throw new Error('Transformation card is not ready');
-  const blob = await captureTransformationCardAsBlob(element);
-  const dataUrl = await blobToDataUrl(blob);
-  await shareImageDirectly(dataUrl, {
+function transformationShareOptions(userName) {
+  return {
     title: 'My Wellness Transformation',
     text: '',
     fileName: transformationFileName(userName),
-  });
+  };
+}
+
+export async function sharePreparedTransformationCard(dataUrl, userName) {
+  const opts = transformationShareOptions(userName);
+  const shared = await shareCachedDataUrl(dataUrl, opts);
+  if (!shared) await shareImageDirectly(dataUrl, opts);
+}
+
+export async function shareTransformationCard(element, userName, _testimonial = null) {
+  if (!element) throw new Error('Transformation card is not ready');
+  const dataUrl = await captureTransformationCardShareDataUrl(element);
+  await sharePreparedTransformationCard(dataUrl, userName);
+}
+
+let shareWarmChain = Promise.resolve();
+
+function enqueueShareWarm(task) {
+  const run = shareWarmChain.then(task, task);
+  shareWarmChain = run.then(() => {}, () => {});
+  return run;
+}
+
+function shareCardCacheKey(testimonial, userName) {
+  const issues = Array.isArray(testimonial?.recoveredHealthIssues)
+    ? testimonial.recoveredHealthIssues.join('|')
+    : '';
+  return [
+    userName || '',
+    testimonial?.beforeImageUrl || '',
+    testimonial?.afterImageUrl || '',
+    testimonial?.beforeWeightKg ?? '',
+    testimonial?.afterWeightKg ?? '',
+    testimonial?.durationText || '',
+    testimonial?.goalType || '',
+    testimonial?.status || '',
+    issues,
+  ].join('\u0001');
 }
 
 export async function downloadTransformationCardImage(element, userName) {
@@ -1161,16 +1204,55 @@ export function TransformationShareActions({
   const [status, setStatus] = useState(null);
   const isVideo = kind === 'video';
   const isIcon = variant === 'icon';
+  const readyShareRef = useRef({ key: '', dataUrl: null, pending: null });
+  const shareKey = isVideo ? '' : shareCardCacheKey(testimonial, userName);
 
   useEffect(() => {
-    if (!isVideo) void import('html2canvas');
-  }, [isVideo]);
+    if (isVideo) return undefined;
+    void import('html2canvas');
+    const key = shareKey;
+    if (
+      readyShareRef.current.key === key
+      && (readyShareRef.current.dataUrl || readyShareRef.current.pending)
+    ) {
+      return undefined;
+    }
+    let cancelled = false;
+    readyShareRef.current = { key, dataUrl: null, pending: null };
+    const timer = window.setTimeout(() => {
+      const el = cardRef?.current;
+      if (!el || cancelled) return;
+      const pending = enqueueShareWarm(() => captureTransformationCardShareDataUrl(el))
+        .then((dataUrl) => {
+          if (!cancelled && readyShareRef.current.key === key) {
+            readyShareRef.current.dataUrl = dataUrl;
+            readyShareRef.current.pending = null;
+          }
+          return dataUrl;
+        })
+        .catch(() => null);
+      readyShareRef.current.pending = pending;
+    }, 250);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [cardRef, isVideo, shareKey]);
 
   const run = useCallback(async () => {
     if (disabled || busy) return;
     setBusy(true);
     setStatus(null);
     try {
+      if (!isVideo) {
+        const slot = readyShareRef.current;
+        const ready = slot.key === shareKey ? slot.dataUrl : null;
+        if (ready) {
+          await sharePreparedTransformationCard(ready, userName);
+          setStatus('shared');
+          return;
+        }
+      }
       let resolved = testimonial;
       if (typeof onBeforeAction === 'function') {
         const detail = await onBeforeAction();
@@ -1179,7 +1261,19 @@ export function TransformationShareActions({
       if (isVideo) {
         await shareResultVideos(resolved);
       } else {
-        await shareTransformationCard(cardRef?.current, userName, resolved);
+        const slot = readyShareRef.current;
+        let dataUrl = slot.key === shareKey ? slot.dataUrl : null;
+        if (!dataUrl && slot.key === shareKey && slot.pending) {
+          dataUrl = await slot.pending;
+        }
+        if (!dataUrl && cardRef?.current) {
+          dataUrl = await captureTransformationCardShareDataUrl(cardRef.current);
+          if (readyShareRef.current.key === shareKey) {
+            readyShareRef.current.dataUrl = dataUrl;
+          }
+        }
+        if (dataUrl) await sharePreparedTransformationCard(dataUrl, userName);
+        else await shareTransformationCard(cardRef?.current, userName, resolved);
       }
       setStatus('shared');
     } catch (err) {
@@ -1193,7 +1287,7 @@ export function TransformationShareActions({
     } finally {
       setBusy(false);
     }
-  }, [busy, cardRef, disabled, isVideo, onBeforeAction, testimonial, userName]);
+  }, [busy, cardRef, disabled, isVideo, onBeforeAction, shareKey, testimonial, userName]);
 
   if (isIcon) {
     return (
