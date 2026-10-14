@@ -40,7 +40,7 @@ describe('composeTransformationShareCardJpeg', () => {
     const meta = await sharp(jpeg).metadata();
     assert.equal(meta.format, 'jpeg');
     assert.equal(meta.width, 540);
-    assert.equal(meta.height, 794);
+    assert.equal(meta.height, 782);
 
     // Sample centre of Before slot (must not be white — overlay used to hide photos).
     const { data, info } = await sharp(jpeg)
@@ -95,7 +95,7 @@ describe('composeTransformationShareCardJpeg', () => {
     });
     const meta = await sharp(jpeg).metadata();
     assert.equal(meta.width, 540);
-    assert.equal(meta.height, 956);
+    assert.equal(meta.height, 944);
     // Pink issues box sits above the disclaimer — sample a mid-card band for pink fill.
     const issuesBand = await sharp(jpeg)
       .extract({ left: 40, top: 700, width: 40, height: 40 })
@@ -109,6 +109,30 @@ describe('composeTransformationShareCardJpeg', () => {
     }
     assert.ok(pinkish > 10, 'Health issues pink box should paint above the disclaimer');
     assert.equal(await shareCardJpegHasReadableText(jpeg), true);
+  });
+
+  it('keeps a duration pill when before and after weight are the same', async () => {
+    const beforeBuffer = await solidJpeg(200, 300, { r: 200, g: 80, b: 80 });
+    const afterBuffer = await solidJpeg(200, 300, { r: 80, g: 160, b: 80 });
+    const withDuration = await composeTransformationShareCardJpeg({
+      beforeBuffer,
+      afterBuffer,
+      memberName: 'Kabilan',
+      beforeWeightKg: 70,
+      afterWeightKg: 70,
+      durationText: '4 months',
+    });
+    const withoutDuration = await composeTransformationShareCardJpeg({
+      beforeBuffer,
+      afterBuffer,
+      memberName: 'Kabilan',
+      beforeWeightKg: 70,
+      afterWeightKg: 70,
+      durationText: '—',
+    });
+    const withMeta = await sharp(withDuration).metadata();
+    const withoutMeta = await sharp(withoutDuration).metadata();
+    assert.ok(withMeta.height > withoutMeta.height, 'duration pill should add height when weight is unchanged');
   });
 
   it('rejects missing photo buffers', async () => {

@@ -9,7 +9,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import opentype from 'opentype.js';
 import sharp from 'sharp';
-import { transformationWeightVerb } from './transformationWeightDirection.js';
+import { shareCardResultPillLabel } from './transformationWeightDirection.js';
 
 const CARD_W = 540;
 const CARD_H = 960;
@@ -23,7 +23,6 @@ const PHOTO_W = Math.floor((CARD_W - PHOTO_SIDE_PAD * 2 - PHOTO_GAP) / 2);
 const PHOTO_H = 460;
 const META_H = 52;
 const DISCLAIMER_H = 110;
-const DISCLAIMER_PAD_X = 40;
 const MAX_VISIBLE_ISSUES = 10;
 /** Match frontend share card — 14px issue chip labels. */
 const ISSUE_CHIP_FONT = 14;
@@ -100,6 +99,23 @@ function svgTextPath({ text, x, y, size, fill, bold = true, script = false, anch
     drawX = x - font.getAdvanceWidth(raw, size) / 2;
   }
   const path = font.getPath(raw, drawX, y, size);
+  return `<path d="${path.toPathData(1)}" fill="${fill}"/>`;
+}
+
+/**
+ * Center script ink (not advance width) so "Before" and "After" share one slot.
+ * @param {{ text: string, centerX: number, centerY: number, size: number, fill: string }} opts
+ */
+function svgScriptCentered({ text, centerX, centerY, size, fill }) {
+  loadCardFonts();
+  const raw = String(text ?? '');
+  if (!raw) return '';
+  const font = fontPacifico || fontBold;
+  const probe = font.getPath(raw, 0, 0, size);
+  const box = probe.getBoundingBox();
+  const drawX = centerX - (box.x1 + box.x2) / 2;
+  const drawY = centerY - (box.y1 + box.y2) / 2;
+  const path = font.getPath(raw, drawX, drawY, size);
   return `<path d="${path.toPathData(1)}" fill="${fill}"/>`;
 }
 
@@ -262,12 +278,10 @@ export function bufferFromOptionalBase64(base64) {
  */
 function buildBrushBadgeSvg({ label, containerX, containerY, side }) {
   const color = side === 'left' ? '#e11d72' : '#16a34a';
-
-  // Span 4: Side bristle flick (left flick on Before, right flick on After)
-  const span4Path = side === 'left'
-    ? 'M 48 35 H 163 A 25 2 0 0 1 188 37 V 39 A 55 8 0 0 1 133 47 H 13 A 20 2 0 0 1 -7 45 V 43 A 55 8 0 0 1 48 35 Z'
-    : 'M 80 35 H 198 A 25 2 0 0 1 223 37 V 39 A 55 8 0 0 1 168 47 H 45 A 20 2 0 0 1 25 45 V 43 A 55 8 0 0 1 80 35 Z';
-  const span4Cx = side === 'left' ? 90.5 : 124;
+  // Same stroke and the same ink center for Before and After.
+  // Advance-width centering leaves the shorter word sitting off the brush.
+  const textCenterX = 109;
+  const textCenterY = 46;
 
   return `
     <g transform="translate(${containerX}, ${containerY})">
@@ -286,17 +300,17 @@ function buildBrushBadgeSvg({ label, containerX, containerY, side }) {
         fill="${color}" opacity="0.72"
         transform="rotate(1, 98, 67)"/>
 
-      <!-- Span 4: Side bristle flick -->
-      <path d="${span4Path}"
+      <!-- Span 4: Centered bristle flick (same on both photos) -->
+      <path d="M 64 35 H 180 A 25 2 0 0 1 205 37 V 39 A 55 8 0 0 1 150 47 H 29 A 20 2 0 0 1 9 45 V 43 A 55 8 0 0 1 64 35 Z"
         fill="${color}" opacity="0.65"
-        transform="rotate(-5, ${span4Cx}, 41)"/>
+        transform="rotate(-5, 107, 41)"/>
 
-      <!-- Pacifico cursive label with soft drop shadow -->
-      <g transform="rotate(-3, 109, 39)">
+      <!-- Pacifico cursive label, ink-centered so Before and After share one slot -->
+      <g transform="rotate(-3, ${textCenterX}, ${textCenterY})">
         <g opacity="0.36">
-          ${svgTextPath({ text: label, x: 109, y: 51, size: 43, fill: '#000000', script: true, anchor: 'middle' })}
+          ${svgScriptCentered({ text: label, centerX: textCenterX, centerY: textCenterY + 2, size: 40, fill: '#000000' })}
         </g>
-        ${svgTextPath({ text: label, x: 109, y: 49, size: 43, fill: '#ffffff', script: true, anchor: 'middle' })}
+        ${svgScriptCentered({ text: label, centerX: textCenterX, centerY: textCenterY, size: 40, fill: '#ffffff' })}
       </g>
     </g>
   `;
@@ -330,15 +344,11 @@ export async function composeTransformationShareCardJpeg(opts) {
   const name = String(opts.memberName || 'Customer').trim() || 'Customer';
   const beforeKg = formatKg(opts.beforeWeightKg);
   const afterKg = formatKg(opts.afterWeightKg);
-  const bw = Number(opts.beforeWeightKg);
-  const aw = Number(opts.afterWeightKg);
-  const hasDiff = Number.isFinite(bw) && Number.isFinite(aw) && bw > 0 && aw > 0 && bw !== aw;
-  const diff = hasDiff ? Math.abs(aw - bw).toFixed(1) : null;
-  const verb = transformationWeightVerb(bw, aw);
-  const duration = String(opts.durationText || '').replace(/\s+/g, ' ').trim();
-  const pillLabel = diff && verb
-    ? `${verb} ${diff} kgs${duration ? ` in ${duration}` : ''}`
-    : '';
+  const pillLabel = shareCardResultPillLabel(
+    opts.beforeWeightKg,
+    opts.afterWeightKg,
+    opts.durationText,
+  );
   const pillPadX = 18;
   const pillW = pillLabel
     ? Math.min(CARD_W - 48, Math.max(140, Math.ceil(measureTextWidth(pillLabel, 15, true)) + pillPadX * 2))
@@ -364,14 +374,13 @@ export async function composeTransformationShareCardJpeg(opts) {
   const issuesTop = pillLabel ? pillY + pillH + 12 : metaY + META_H + 10;
   const { markup: issuesMarkup, height: issuesHeight } = buildHealthIssuesSvg(issues, issuesTop);
 
-  // Position disclaimer directly beneath content to eliminate blank space
+  // Disclaimer sits on the bottom edge, full card width.
   const discY = issuesMarkup
     ? issuesTop + issuesHeight + 12
     : (pillLabel ? pillY + pillH + 14 : metaY + META_H + 14);
-  const discW = CARD_W - DISCLAIMER_PAD_X * 2;
   const discH = DISCLAIMER_H - 14;
-  const bottomPad = 12;
-  const cardH = discY + discH + bottomPad;
+  const discTextX = 16;
+  const cardH = discY + discH;
 
   const burstY = pillY + 3;
   const burstLeftX = Math.max(8, pillX - 40);
@@ -403,11 +412,11 @@ export async function composeTransformationShareCardJpeg(opts) {
       <path d="M${burstRightX} ${burstY + 12}h20M${burstRightX + 8} ${burstY + 4}l18 -4M${burstRightX + 8} ${burstY + 20}l18 4" fill="none" stroke="#059669" stroke-width="3.5" stroke-linecap="round"/>
       ` : ''}
       ${issuesMarkup}
-      <rect x="${DISCLAIMER_PAD_X}" y="${discY}" width="${discW}" height="${discH}" rx="12" ry="12" fill="#FFF2A6" stroke="#E52525" stroke-width="2"/>
-      ${svgTextPath({ text: 'DISCLAIMER', x: CARD_W / 2, y: discY + 26, size: 13, fill: '#E52525', bold: true, anchor: 'middle' })}
-      <line x1="${DISCLAIMER_PAD_X + 36}" y1="${discY + 34}" x2="${DISCLAIMER_PAD_X + discW - 36}" y2="${discY + 34}" stroke="#E52525" stroke-width="1.2"/>
-      ${svgTextPath({ text: 'The views expressed are those of individuals.', x: CARD_W / 2, y: discY + 56, size: 12, fill: '#171717', bold: true, anchor: 'middle' })}
-      ${svgTextPath({ text: 'These products are not intended to diagnose, treat or cure any disease.', x: CARD_W / 2, y: discY + 74, size: 12, fill: '#171717', bold: true, anchor: 'middle' })}
+      <rect x="0" y="${discY}" width="${CARD_W}" height="${discH}" fill="#FFF2A6" stroke="#E52525" stroke-width="2"/>
+      ${svgTextPath({ text: 'DISCLAIMER', x: CARD_W / 2, y: discY + 24, size: 13, fill: '#E52525', bold: true, anchor: 'middle' })}
+      <line x1="16" y1="${discY + 32}" x2="${CARD_W - 16}" y2="${discY + 32}" stroke="#E52525" stroke-width="1.2"/>
+      ${svgTextPath({ text: 'The views expressed are those of individuals.', x: discTextX, y: discY + 54, size: 12, fill: '#171717', bold: true, anchor: 'start' })}
+      ${svgTextPath({ text: 'These products are not intended to diagnose, treat or cure any disease.', x: discTextX, y: discY + 74, size: 12, fill: '#171717', bold: true, anchor: 'start' })}
     </svg>
   `);
 

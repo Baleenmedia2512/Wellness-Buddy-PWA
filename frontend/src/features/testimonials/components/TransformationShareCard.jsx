@@ -242,6 +242,16 @@ export async function captureTransformationCardAsBlob(el) {
       // capture anyway — Arial / Segoe Script fallback still paints
     }
   }
+  el.querySelectorAll('[data-brush-label]').forEach((node) => {
+    const word = node.getAttribute('data-brush-label') || '';
+    const img = node.querySelector('img[data-brush-word]');
+    if (!img || !word) return;
+    const width = node.clientWidth || BRUSH_LABEL_W;
+    img.width = width;
+    img.style.width = `${width}px`;
+    img.style.height = `${BRUSH_LABEL_H}px`;
+    img.src = paintCenteredBrushLabel(word, width);
+  });
   await inlineImagesForCapture(el);
   const cardImages = Array.from(el.querySelectorAll('img'));
   await Promise.all(cardImages.map(waitForImage));
@@ -439,10 +449,87 @@ function VerifiedTick() {
   );
 }
 
+const BRUSH_LABEL_W = 240;
+const BRUSH_LABEL_H = 48;
+
+/**
+ * Paint Before/After the same way the on-screen label is centered.
+ * html2canvas shifts CSS text-align + rotate, so WhatsApp and mail were
+ * getting an off-center word. A bitmap keeps the center.
+ */
+function paintCenteredBrushLabel(label, width = BRUSH_LABEL_W) {
+  const boxW = Math.max(120, Math.round(width) || BRUSH_LABEL_W);
+  const scale = 3;
+  const canvas = document.createElement('canvas');
+  canvas.width = boxW * scale;
+  canvas.height = BRUSH_LABEL_H * scale;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return '';
+  ctx.scale(scale, scale);
+  ctx.clearRect(0, 0, boxW, BRUSH_LABEL_H);
+  ctx.translate(boxW / 2, BRUSH_LABEL_H / 2);
+  ctx.rotate((-3 * Math.PI) / 180);
+  ctx.font = `40px ${SCRIPT_FONT}`;
+  ctx.fillStyle = '#ffffff';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.shadowColor = 'rgba(0,0,0,0.36)';
+  ctx.shadowBlur = 5;
+  ctx.shadowOffsetY = 2;
+  ctx.fillText(String(label || ''), 0, 1);
+  return canvas.toDataURL('image/png');
+}
+
+function BrushScriptLabel({ label }) {
+  const imgRef = useRef(null);
+  const [src, setSrc] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    const paint = () => {
+      if (cancelled) return;
+      const width = imgRef.current?.parentElement?.clientWidth || BRUSH_LABEL_W;
+      setSrc(paintCenteredBrushLabel(label, width));
+    };
+    const ready = document.fonts?.load
+      ? document.fonts.load('40px Pacifico').then(paint, paint)
+      : Promise.resolve().then(paint);
+    ready.catch(paint);
+    return () => {
+      cancelled = true;
+    };
+  }, [label]);
+
+  return (
+    <img
+      ref={imgRef}
+      data-brush-word="1"
+      alt={label}
+      src={src || undefined}
+      draggable={false}
+      width={BRUSH_LABEL_W}
+      height={BRUSH_LABEL_H}
+      style={{
+        position: 'absolute',
+        left: 0,
+        right: 0,
+        top: 20,
+        width: '100%',
+        height: BRUSH_LABEL_H,
+        margin: 0,
+        padding: 0,
+        border: 0,
+        pointerEvents: 'none',
+      }}
+    />
+  );
+}
+
 function BrushLabel({ label, side }) {
   const color = side === 'left' ? BEFORE_BRUSH : AFTER_BRUSH;
   return (
     <div
+      data-brush-label={label}
       style={{
         position: 'absolute',
         left: '7%',
@@ -501,8 +588,8 @@ function BrushLabel({ label, side }) {
         aria-hidden="true"
         style={{
           position: 'absolute',
-          left: side === 'left' ? -7 : 25,
-          right: side === 'left' ? 30 : -5,
+          left: 8,
+          right: 8,
           top: 35,
           height: 12,
           display: 'block',
@@ -512,21 +599,7 @@ function BrushLabel({ label, side }) {
           opacity: 0.65,
         }}
       />
-      <p
-        style={{
-          position: 'relative',
-          margin: 0,
-          paddingTop: 12,
-          fontFamily: SCRIPT_FONT,
-          fontSize: 43,
-          lineHeight: '58px',
-          color: '#ffffff',
-          textShadow: '0 2px 5px rgba(0,0,0,0.36)',
-          transform: 'rotate(-3deg)',
-        }}
-      >
-        {label}
-      </p>
+      <BrushScriptLabel label={label} />
     </div>
   );
 }
@@ -658,18 +731,20 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
   const isVerified = testimonial?.status === 'verified';
   const verb = isLoss === false ? 'Gained' : 'Lost';
   const issues = (testimonial?.recoveredHealthIssues ?? []).filter(Boolean).slice(0, MAX_VISIBLE_ISSUES);
-  const durationText = String(testimonial?.durationText || '').trim();
+  const durationRaw = String(testimonial?.durationText || '').trim();
+  const durationText = durationRaw && durationRaw !== '—' && durationRaw !== '-' ? durationRaw : '';
   const displayName = String(userName || 'Customer').trim() || 'Customer';
   const issuesPerRow = issueColumnsForCount(issues.length);
   const chipWidthPct = issuesPerRow > 0 ? 100 / issuesPerRow : 100;
-  const photoH = shareCardPhotoHeight({
-    issueCount: issues.length,
-    hasResultPill: Boolean(diff),
-  });
   // Single trimmed label — SVG pill keeps it optically centered in the capture.
+  // Equal before/after has no lost/gained line, so show duration on its own.
   const resultPillLabel = diff
     ? [verb, `${diff} kgs`, durationText ? `in ${durationText}` : null].filter(Boolean).join(' ')
-    : '';
+    : durationText;
+  const photoH = shareCardPhotoHeight({
+    issueCount: issues.length,
+    hasResultPill: Boolean(resultPillLabel),
+  });
   const resultPillSrc = resultPillLabel ? buildResultPillSrc(resultPillLabel) : '';
 
   return (
@@ -677,6 +752,7 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
       ref={ref}
       id="wv-transformation-share-card"
       style={{
+        position: 'relative',
         width: CARD_W,
         height: CARD_H,
         background: '#ffffff',
@@ -794,7 +870,7 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
         cellSpacing={0}
       >
         <tbody>
-          {diff && resultPillSrc ? (
+          {resultPillSrc ? (
             <tr>
               <td
                 align="center"
@@ -907,71 +983,67 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
       
       <div
         style={{
-          marginTop: 8,
-          padding: '4px 18px 10px',
-          textAlign: 'center',
+          position: 'absolute',
+          left: 0,
+          right: 0,
+          bottom: 0,
           width: '100%',
           boxSizing: 'border-box',
-        }}
-      >
-        
-<div
-  style={{
-    width: 420,
-    maxWidth: '100%',
-    minHeight: 90,
-    margin: '0 auto',
-    padding: '8px 12px',
-    boxSizing: 'border-box',
-    backgroundColor: '#FFF2A6',
-    border: '2px solid #E52525',
-    borderRadius: 12,
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 5,
-    textAlign: 'center',
-  }}
->
-  <div
-    style={{
-      color: '#E52525',
-      fontSize: 12,
-      fontWeight: 800,
-      lineHeight: 1.2,
-      letterSpacing: '0.5px',
-    }}
-  >
-    DISCLAIMER
-  </div>
-
-  <div
-    style={{
-      width: '85%',
-      height: 1,
-      backgroundColor: '#E52525',
-      flexShrink: 0,
-    }}
-  />
-
-      <p
-        style={{
           margin: 0,
-          color: '#171717',
-          fontSize: 12,
-          fontWeight: 700,
-          lineHeight: 1.4,
-          textAlign: 'center',
+          padding: '10px 16px 12px',
+          backgroundColor: '#FFF2A6',
+          borderTop: '2px solid #E52525',
+          borderLeft: '2px solid #E52525',
+          borderRight: '2px solid #E52525',
+          borderBottom: '2px solid #E52525',
+          textAlign: 'left',
         }}
       >
-        The views expressed are those of individuals.
-        <br />
-        These products are not intended to diagnose, treat or cure any disease.
-      </p>
-    </div>
-
-          </div>
+        <div
+          style={{
+            margin: 0,
+            color: '#E52525',
+            fontSize: 12,
+            fontWeight: 800,
+            lineHeight: '16px',
+            letterSpacing: '0.5px',
+            textAlign: 'center',
+          }}
+        >
+          DISCLAIMER
+        </div>
+        <div
+          style={{
+            height: 1,
+            margin: '6px 0 8px',
+            backgroundColor: '#E52525',
+          }}
+        />
+        <p
+          style={{
+            margin: 0,
+            color: '#171717',
+            fontSize: 12,
+            fontWeight: 700,
+            lineHeight: '18px',
+            textAlign: 'left',
+          }}
+        >
+          The views expressed are those of individuals.
+        </p>
+        <p
+          style={{
+            margin: '2px 0 0',
+            color: '#171717',
+            fontSize: 12,
+            fontWeight: 700,
+            lineHeight: '18px',
+            textAlign: 'left',
+          }}
+        >
+          These products are not intended to diagnose, treat or cure any disease.
+        </p>
+      </div>
 
         </div>
       );
