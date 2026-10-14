@@ -34,10 +34,12 @@ const ISSUE_TITLE_H = 44;
 /** import.meta.url so Next/Vercel file tracing packs the TTFs with the function. */
 const FONT_REGULAR_URL = new URL('../assets/NotoSans-Regular.ttf', import.meta.url);
 const FONT_BOLD_URL = new URL('../assets/NotoSans-Bold.ttf', import.meta.url);
+const FONT_PACIFICO_URL = new URL('../assets/Pacifico-Regular.ttf', import.meta.url);
 const LOGO_URL = new URL('../assets/logo.png', import.meta.url);
 const __dirname = dirname(fileURLToPath(import.meta.url));
 let fontRegular = null;
 let fontBold = null;
+let fontPacifico = null;
 let cachedLogoDataUri = null;
 
 function cardLogoDataUri() {
@@ -68,9 +70,14 @@ function parseFontFile(fontUrl) {
 }
 
 function loadCardFonts() {
-  if (fontRegular && fontBold) return;
+  if (fontRegular && fontBold && fontPacifico) return;
   fontRegular = parseFontFile(FONT_REGULAR_URL);
   fontBold = parseFontFile(FONT_BOLD_URL);
+  try {
+    fontPacifico = parseFontFile(FONT_PACIFICO_URL);
+  } catch {
+    fontPacifico = fontBold;
+  }
   if (!fontRegular?.getPath || !fontBold?.getPath) {
     throw new Error('Share-card Noto fonts failed to load');
   }
@@ -78,13 +85,16 @@ function loadCardFonts() {
 
 /**
  * Render text as an SVG path (no host fonts required).
- * @param {{ text: string, x: number, y: number, size: number, fill: string, bold?: boolean, anchor?: 'start'|'middle' }} opts
+ * @param {{ text: string, x: number, y: number, size: number, fill: string, bold?: boolean, script?: boolean, anchor?: 'start'|'middle' }} opts
  */
-function svgTextPath({ text, x, y, size, fill, bold = true, anchor = 'start' }) {
+function svgTextPath({ text, x, y, size, fill, bold = true, script = false, anchor = 'start' }) {
   loadCardFonts();
   const raw = String(text ?? '');
   if (!raw) return '';
-  const font = bold ? fontBold : fontRegular;
+  let font = bold ? fontBold : fontRegular;
+  if (script) {
+    font = fontPacifico || fontBold;
+  }
   let drawX = x;
   if (anchor === 'middle') {
     drawX = x - font.getAdvanceWidth(raw, size) / 2;
@@ -246,6 +256,53 @@ export function bufferFromOptionalBase64(base64) {
 }
 
 /**
+ * Organic brush-stroke badge matching the frontend BrushLabel component exactly.
+ * Directly replicates the 4 layered CSS spans and Pacifico cursive text from TransformationShareCard.jsx.
+ * @param {{ label: string, containerX: number, containerY: number, side: 'left'|'right' }} opts
+ */
+function buildBrushBadgeSvg({ label, containerX, containerY, side }) {
+  const color = side === 'left' ? '#e11d72' : '#16a34a';
+
+  // Span 4: Side bristle flick (left flick on Before, right flick on After)
+  const span4Path = side === 'left'
+    ? 'M 48 35 H 163 A 25 2 0 0 1 188 37 V 39 A 55 8 0 0 1 133 47 H 13 A 20 2 0 0 1 -7 45 V 43 A 55 8 0 0 1 48 35 Z'
+    : 'M 80 35 H 198 A 25 2 0 0 1 223 37 V 39 A 55 8 0 0 1 168 47 H 45 A 20 2 0 0 1 25 45 V 43 A 55 8 0 0 1 80 35 Z';
+  const span4Cx = side === 'left' ? 90.5 : 124;
+
+  return `
+    <g transform="translate(${containerX}, ${containerY})">
+      <!-- Span 1: Main organic body with asymmetrical rounded corners & slant -->
+      <path d="M 84 19 H 189 A 28 25 0 0 1 217 44 V 53 A 75 19 0 0 1 142 72 H 41 A 38 28 0 0 1 3 44 V 35 A 81 16 0 0 1 84 19 Z"
+        fill="${color}" opacity="0.96"
+        transform="translate(110, 45.5) rotate(-2) skewX(-7) translate(-110, -45.5)"/>
+
+      <!-- Span 2: Top paint streak accent -->
+      <path d="M 63 13 H 177 A 25 2 0 0 1 202 15 V 19 A 50 8 0 0 1 152 27 H 33 A 20 2 0 0 1 13 25 V 22 A 50 9 0 0 1 63 13 Z"
+        fill="${color}" opacity="0.76"
+        transform="rotate(2, 107.5, 20)"/>
+
+      <!-- Span 3: Bottom paint streak accent -->
+      <path d="M 35 62 H 136 A 60 7 0 0 1 196 69 V 70 A 30 2 0 0 1 166 72 H 60 A 60 7 0 0 1 0 65 V 64 A 35 2 0 0 1 35 62 Z"
+        fill="${color}" opacity="0.72"
+        transform="rotate(1, 98, 67)"/>
+
+      <!-- Span 4: Side bristle flick -->
+      <path d="${span4Path}"
+        fill="${color}" opacity="0.65"
+        transform="rotate(-5, ${span4Cx}, 41)"/>
+
+      <!-- Pacifico cursive label with soft drop shadow -->
+      <g transform="rotate(-3, 109, 39)">
+        <g opacity="0.36">
+          ${svgTextPath({ text: label, x: 109, y: 51, size: 43, fill: '#000000', script: true, anchor: 'middle' })}
+        </g>
+        ${svgTextPath({ text: label, x: 109, y: 49, size: 43, fill: '#ffffff', script: true, anchor: 'middle' })}
+      </g>
+    </g>
+  `;
+}
+
+/**
  * @param {{
  *   beforeBuffer: Buffer,
  *   afterBuffer: Buffer,
@@ -332,10 +389,8 @@ export async function composeTransformationShareCardJpeg(opts) {
       ${svgTextPath({ text: 'Transformation Results', x: titleX, y: 48, size: 13, fill: '#a7f3d0', bold: false })}
       <rect x="0" y="${HEADER_H}" width="${CARD_W}" height="${NAME_H}" fill="#ffffff"/>
       ${svgTextPath({ text: name, x: CARD_W / 2, y: HEADER_H + 34, size: 22, fill: '#111827', bold: true, anchor: 'middle' })}
-      <rect x="${beforeX}" y="${PHOTO_TOP + photoH - 36}" width="${PHOTO_W}" height="28" rx="6" fill="#e11d72"/>
-      ${svgTextPath({ text: 'Before', x: beforeX + PHOTO_W / 2, y: PHOTO_TOP + photoH - 16, size: 16, fill: '#ffffff', bold: true, anchor: 'middle' })}
-      <rect x="${afterX}" y="${PHOTO_TOP + photoH - 36}" width="${PHOTO_W}" height="28" rx="6" fill="#16a34a"/>
-      ${svgTextPath({ text: 'After', x: afterX + PHOTO_W / 2, y: PHOTO_TOP + photoH - 16, size: 16, fill: '#ffffff', bold: true, anchor: 'middle' })}
+      ${buildBrushBadgeSvg({ label: 'Before', containerX: beforeX + 18, containerY: PHOTO_TOP + photoH - 16 - 92, side: 'left' })}
+      ${buildBrushBadgeSvg({ label: 'After', containerX: afterX + 18, containerY: PHOTO_TOP + photoH - 16 - 92, side: 'right' })}
       <rect x="0" y="${footerTop}" width="${CARD_W}" height="${cardH - footerTop}" fill="#ffffff"/>
       ${svgTextPath({ text: 'BEFORE', x: beforeX + PHOTO_W / 2, y: metaY + 14, size: 11, fill: '#9ca3af', bold: true, anchor: 'middle' })}
       ${svgTextPath({ text: `${beforeKg} kg`, x: beforeX + PHOTO_W / 2, y: metaY + 36, size: 17, fill: '#111827', bold: true, anchor: 'middle' })}
@@ -348,11 +403,11 @@ export async function composeTransformationShareCardJpeg(opts) {
       <path d="M${burstRightX} ${burstY + 12}h20M${burstRightX + 8} ${burstY + 4}l18 -4M${burstRightX + 8} ${burstY + 20}l18 4" fill="none" stroke="#059669" stroke-width="3.5" stroke-linecap="round"/>
       ` : ''}
       ${issuesMarkup}
-      <rect x="${DISCLAIMER_PAD_X}" y="${discY}" width="${discW}" height="${discH}" rx="12" ry="12" fill="#ffffff" stroke="#dc2626" stroke-width="3"/>
-      ${svgTextPath({ text: 'DISCLAIMER', x: CARD_W / 2, y: discY + 28, size: 14, fill: '#dc2626', bold: true, anchor: 'middle' })}
-      <line x1="${DISCLAIMER_PAD_X + 36}" y1="${discY + 36}" x2="${DISCLAIMER_PAD_X + discW - 36}" y2="${discY + 36}" stroke="#dc2626" stroke-width="1.5"/>
-      ${svgTextPath({ text: 'The views expressed are that of individuals.', x: CARD_W / 2, y: discY + 58, size: 11, fill: '#000000', bold: false, anchor: 'middle' })}
-      ${svgTextPath({ text: 'These products are not intended to diagnose, treat or cure any disease.', x: CARD_W / 2, y: discY + 76, size: 11, fill: '#000000', bold: false, anchor: 'middle' })}
+      <rect x="${DISCLAIMER_PAD_X}" y="${discY}" width="${discW}" height="${discH}" rx="12" ry="12" fill="#FFF2A6" stroke="#E52525" stroke-width="2"/>
+      ${svgTextPath({ text: 'DISCLAIMER', x: CARD_W / 2, y: discY + 26, size: 13, fill: '#E52525', bold: true, anchor: 'middle' })}
+      <line x1="${DISCLAIMER_PAD_X + 36}" y1="${discY + 34}" x2="${DISCLAIMER_PAD_X + discW - 36}" y2="${discY + 34}" stroke="#E52525" stroke-width="1.2"/>
+      ${svgTextPath({ text: 'The views expressed are those of individuals.', x: CARD_W / 2, y: discY + 56, size: 12, fill: '#171717', bold: true, anchor: 'middle' })}
+      ${svgTextPath({ text: 'These products are not intended to diagnose, treat or cure any disease.', x: CARD_W / 2, y: discY + 74, size: 12, fill: '#171717', bold: true, anchor: 'middle' })}
     </svg>
   `);
 
