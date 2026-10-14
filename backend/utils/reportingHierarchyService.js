@@ -515,15 +515,19 @@ const SUBTREE_CONTEXT_CACHE = new Map();
 const SUBTREE_CONTEXT_TTL_MS = 60_000;
 const SUBTREE_CACHE_KEY_PREFIX = 'v8:'; // bump when select columns or rollup rules change
 
+/** Keep PostgREST `.in()` lists bounded (URL / planner safety). */
+const COACH_ID_IN_CHUNK = 100;
+
 /**
  * @param {object} supabase
  * @param {number} userId
+ * @param {string} [select]
  * @returns {Promise<TeamUser|null>}
  */
-async function fetchTeamUserById(supabase, userId) {
+async function fetchTeamUserById(supabase, userId, select = TEAM_USER_SELECT) {
   const { data, error } = await supabase
     .from('team_table')
-    .select(TEAM_USER_SELECT)
+    .select(select)
     .eq('UserId', userId)
     .maybeSingle();
   if (error) throw new Error('Failed to fetch team user: ' + error.message);
@@ -531,38 +535,76 @@ async function fetchTeamUserById(supabase, userId) {
 }
 
 /**
+ * All team_table children for the given CoachIds (pages past the ~1000-row cap).
+ *
  * @param {object} supabase
  * @param {number[]} coachIds
+ * @param {string} [select]
  * @returns {Promise<TeamUser[]>}
  */
-async function fetchTeamUsersByCoachIds(supabase, coachIds) {
-  const ids = [...new Set(coachIds.filter((id) => Number.isFinite(Number(id))))];
+async function fetchTeamUsersByCoachIds(supabase, coachIds, select = TEAM_USER_SELECT) {
+  const ids = [...new Set(
+    (coachIds || [])
+      .map((id) => Number(id))
+      .filter((id) => Number.isFinite(id)),
+  )];
   if (ids.length === 0) return [];
-  const { data, error } = await supabase
-    .from('team_table')
-    .select(TEAM_USER_SELECT)
-    .in('CoachId', ids);
-  if (error) throw new Error('Failed to fetch team children: ' + error.message);
-  return data || [];
+
+  const rows = [];
+  for (let i = 0; i < ids.length; i += COACH_ID_IN_CHUNK) {
+    const chunk = ids.slice(i, i + COACH_ID_IN_CHUNK);
+    const page = await fetchAllSupabaseRows(() =>
+      supabase
+        .from('team_table')
+        .select(select)
+        .in('CoachId', chunk)
+        .order('UserId', { ascending: true }),
+    );
+    rows.push(...page);
+  }
+  return rows;
 }
 
 /**
  * Users sharing a community / team code (CommunityId, CoachTeamId, or TeamId).
  * Used only for community-level Team visibility — not for CoachId edges.
+ * Pages past the ~1000-row cap.
  *
  * @param {object} supabase
  * @param {string} communityCode
+ * @param {string} [select]
  * @returns {Promise<TeamUser[]>}
  */
-async function fetchTeamUsersByCommunityCode(supabase, communityCode) {
+async function fetchTeamUsersByCommunityCode(supabase, communityCode, select = TEAM_USER_SELECT) {
   const code = String(communityCode || '').trim();
   if (!code) return [];
-  const { data, error } = await supabase
-    .from('team_table')
-    .select(TEAM_USER_SELECT)
-    .or(`CommunityId.eq.${code},CoachTeamId.eq.${code},TeamId.eq.${code}`);
-  if (error) throw new Error('Failed to fetch community team users: ' + error.message);
-  return data || [];
+  return fetchAllSupabaseRows(() =>
+    supabase
+      .from('team_table')
+      .select(select)
+      .or(`CommunityId.eq.${code},CoachTeamId.eq.${code},TeamId.eq.${code}`)
+      .order('UserId', { ascending: true }),
+  );
+}
+
+/**
+ * Test/support export: paginated CoachId children (no silent 1000-row truncation).
+ * @param {object} supabase
+ * @param {number[]} coachIds
+ * @param {string} [select]
+ */
+export async function fetchTeamUsersByCoachIdsPaged(supabase, coachIds, select = TEAM_USER_SELECT) {
+  return fetchTeamUsersByCoachIds(supabase, coachIds, select);
+}
+
+/**
+ * Test/support export: paginated community-code users.
+ * @param {object} supabase
+ * @param {string} communityCode
+ * @param {string} [select]
+ */
+export async function fetchTeamUsersByCommunityCodePaged(supabase, communityCode, select = TEAM_USER_SELECT) {
+  return fetchTeamUsersByCommunityCode(supabase, communityCode, select);
 }
 
 /**

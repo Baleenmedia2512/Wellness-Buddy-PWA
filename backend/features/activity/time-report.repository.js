@@ -1,15 +1,22 @@
 ﻿import { getSupabaseClient } from '../../utils/supabaseClient.js';
+import { fetchAllSupabaseRows } from '../../utils/supabasePaginate.js';
 import { applyDateRangeFilter } from '../../shared/lib/datetime/applyDayFilter.js';
 import { IANA_IST } from '../../shared/lib/datetime/index.js';
 
-export async function fetchAdminUsers() {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
-    .from('team_table')
-    .select('UserId, UserName, Email, Role, Bmr, PhysicalActivityLevel')
-    .eq('Status', 'Active');
-  if (error) throw error;
-  return data || [];
+/**
+ * All active users for admin time-report scope.
+ * Pages past Supabase's default ~1000-row cap.
+ * @param {object} [supabaseClient] — optional inject for tests
+ */
+export async function fetchAdminUsers(supabaseClient = null) {
+  const supabase = supabaseClient || getSupabaseClient();
+  return fetchAllSupabaseRows(() =>
+    supabase
+      .from('team_table')
+      .select('UserId, UserName, Email, Role, Bmr, PhysicalActivityLevel')
+      .eq('Status', 'Active')
+      .order('UserId', { ascending: true }),
+  );
 }
 
 export async function fetchSelfUser(userIdInt) {

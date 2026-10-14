@@ -1,6 +1,9 @@
 import { getSupabaseClient } from "../../../utils/supabaseClient.js";
 import logger from '../../../shared/lib/logger.js';
-import { isActiveTeamStatus } from '../../../utils/teamHierarchyBuilder.js';
+import {
+  isActiveTeamStatus,
+  loadCoachSubtreeTeamUsers,
+} from '../../../utils/teamHierarchyBuilder.js';
 import {
   buildLeadPartnerByUserId,
   listPrimaryDirectReports,
@@ -13,7 +16,6 @@ import {
   resolveSearchClubName,
   coachIdByUser,
 } from '../../../features/nutrition-centers/domain/searchClub.rules.js';
-import { fetchAllSupabaseRows } from '../../../utils/supabasePaginate.js';
 
 /**
  * API: Get Hierarchical Team Structure
@@ -111,24 +113,20 @@ export default async function handler(req, res) {
       return;
     }
 
-    // Fetch all users in the hierarchy (omit ProfileImage base64 — ~16MB on large trees).
+    // Subtree-only load (omit ProfileImage base64 — ~16MB on large trees).
     // Leaderboard strips load avatars separately for top-N only.
     // Optional body-metric columns may be missing until migration — fall back.
-    // Page past Supabase's default 1000-row cap — large seed/downline trees
-    // otherwise drop the coach row and return 404 "Coach not found".
+    // Indexed CoachId walks + pagination — no full team_table scan.
     const SELECT_FULL =
-      "UserId, UserName, Email, Role, CoachId, CoachTeamId, Status, PhoneNumber, Height, Bmr, CommunityId, Gender, Age, VisceralFat, BodyAge, ChestCm, WaistCm, HipCm";
+      "UserId, UserName, Email, Role, CoachId, CoachTeamId, TeamId, Status, PhoneNumber, Height, Bmr, CommunityId, Gender, Age, VisceralFat, BodyAge, ChestCm, WaistCm, HipCm";
     const SELECT_BASIC =
-      "UserId, UserName, Email, Role, CoachId, CoachTeamId, Status, PhoneNumber, Height, Bmr, CommunityId, Gender";
+      "UserId, UserName, Email, Role, CoachId, CoachTeamId, TeamId, Status, PhoneNumber, Height, Bmr, CommunityId, Gender";
 
     let allUsers;
     try {
-      allUsers = await fetchAllSupabaseRows(() =>
-        supabase
-          .from("team_table")
-          .select(SELECT_FULL)
-          .order("UserId", { ascending: true }),
-      );
+      allUsers = await loadCoachSubtreeTeamUsers(supabase, coachIdInt, {
+        select: SELECT_FULL,
+      });
     } catch (usersError) {
       const msg = String(usersError?.message || usersError || "");
       if (
@@ -136,12 +134,9 @@ export default async function handler(req, res) {
         /column/i.test(msg)
       ) {
         try {
-          allUsers = await fetchAllSupabaseRows(() =>
-            supabase
-              .from("team_table")
-              .select(SELECT_BASIC)
-              .order("UserId", { ascending: true }),
-          );
+          allUsers = await loadCoachSubtreeTeamUsers(supabase, coachIdInt, {
+            select: SELECT_BASIC,
+          });
         } catch (fallbackError) {
           console.error("Error fetching users:", fallbackError);
           res
@@ -159,7 +154,7 @@ export default async function handler(req, res) {
     }
 
     logger.debug(
-      `📊 [team-hierarchy] Fetched ${allUsers?.length || 0} total users from database`,
+      `📊 [team-hierarchy] Fetched ${allUsers?.length || 0} subtree users from database`,
     );
     logger.debug(
       `📊 [team-hierarchy] Users sample:`,

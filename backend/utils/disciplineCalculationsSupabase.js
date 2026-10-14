@@ -17,6 +17,14 @@ import { resolveCalorieTargetFromProfile } from './tdeeCalculations.js';
 import { applyDateRangeFilter } from '../shared/lib/datetime/applyDayFilter.js';
 import { IANA_IST, timestampToCalendarYmd, timeOfDayInTimezone } from '../shared/lib/datetime/index.js';
 import { mergeActivityTimeWindowsWithDefaults } from '../shared/lib/activity-time-windows.js';
+import { fetchAllSupabaseRows } from './supabasePaginate.js';
+
+/** Lean columns for dual-coaching hierarchy callers (time-report, counselling, reports). */
+const DUAL_COACHING_MEMBER_SELECT =
+  'UserId, UserName, Email, Role, CoachId, CoachTeamId, TeamId, Status, Bmr, PhysicalActivityLevel';
+
+/** Keep PostgREST `.in()` lists bounded. */
+const DUAL_COACHING_IN_CHUNK = 100;
 
 // Default required water when no weight is recorded (2.5 L)
 const DEFAULT_WATER_REQUIRED_ML = 2500;
@@ -565,26 +573,59 @@ export async function calculateAttendanceMetrics(userId, startDate, endDate, tim
 }
 
 /**
+ * Active CoachId children for one dual-coaching level (pages past ~1000-row cap).
+ * Exported for unit tests.
+ *
+ * @param {object} supabase
+ * @param {number[]} coachIds
+ * @returns {Promise<object[]>}
+ */
+export async function fetchDualCoachingLevelMembers(supabase, coachIds) {
+  const ids = [...new Set(
+    (coachIds || [])
+      .map((id) => Number(id))
+      .filter((id) => Number.isFinite(id)),
+  )];
+  if (ids.length === 0) return [];
+
+  const rows = [];
+  for (let i = 0; i < ids.length; i += DUAL_COACHING_IN_CHUNK) {
+    const chunk = ids.slice(i, i + DUAL_COACHING_IN_CHUNK);
+    const page = await fetchAllSupabaseRows(() =>
+      supabase
+        .from('team_table')
+        .select(DUAL_COACHING_MEMBER_SELECT)
+        .in('CoachId', chunk)
+        .eq('Status', 'Active')
+        .order('UserId', { ascending: true }),
+    );
+    rows.push(...page);
+  }
+  return rows;
+}
+
+/**
  * Get team hierarchy using DUAL COACHING MODEL (CoachId + CoCoachId)
  * This function properly tracks the hierarchy path to ensure correct parent-child relationships
  * when members can report to two coaches simultaneously.
- * 
+ *
  * @param {number} userId - User ID (coach, admin, or any member)
  * @param {boolean} enableLogging - Enable detailed console logging for debugging (default: false)
+ * @param {object} [supabaseClient] - optional inject for tests
  * @returns {Promise<Array>} Array of team members with hierarchy info including:
- *   - All fields from team_table
+ *   - Lean team_table fields used by callers
  *   - HierarchyLevel: number (0 = logged in user, 1 = direct, 2+ = nested)
  *   - IsLoggedInCoach: boolean (true only for the querying user)
  *   - HierarchyParent: UserId of parent in THIS specific hierarchy path
  */
-export async function getDualCoachingTeamHierarchy(userId, enableLogging = false) {
-  const supabase = getSupabaseClient();
+export async function getDualCoachingTeamHierarchy(userId, enableLogging = false, supabaseClient = null) {
+  const supabase = supabaseClient || getSupabaseClient();
   const userIdNum = parseInt(userId);
 
   // Step 1: Get the logged-in user
   const { data: user, error: userError } = await supabase
     .from('team_table')
-    .select('*')
+    .select(DUAL_COACHING_MEMBER_SELECT)
     .eq('UserId', userIdNum)
     .eq('Status', 'Active')
     .maybeSingle();
@@ -667,7 +708,7 @@ export async function getDualCoachingTeamHierarchy(userId, enableLogging = false
     if (partnerId) {
       const { data: partner } = await supabase
         .from('team_table')
-        .select('*')
+        .select(DUAL_COACHING_MEMBER_SELECT)
         .eq('UserId', partnerId)
         .eq('Status', 'Active')
         .maybeSingle();
@@ -686,20 +727,21 @@ export async function getDualCoachingTeamHierarchy(userId, enableLogging = false
     }
   }
 
-  // Iteratively fetch team members level by level
+  // Iteratively fetch team members level by level (paginated — no silent 1000-row drop)
   // Start with all co-coach partners (for shared downline)
   let currentLevelCoachIds = coachPartnerIds;
   let currentLevel = 1;
   const maxLevel = 10;
 
   while (currentLevelCoachIds.length > 0 && currentLevel <= maxLevel) {
-    // Fetch members where CoachId matches current level coaches
     // NOTE: We query ONLY by CoachId (not CoCoachId) because coachPartnerIds already includes both coaches
-    const { data: levelMembers, error: levelError } = await supabase
-      .from('team_table')
-      .select('*')
-      .in('CoachId', currentLevelCoachIds)
-      .eq('Status', 'Active');
+    let levelMembers;
+    try {
+      levelMembers = await fetchDualCoachingLevelMembers(supabase, currentLevelCoachIds);
+    } catch (levelError) {
+      console.error('❌ [getDualCoachingTeamHierarchy] Error fetching level members:', levelError);
+      break;
+    }
 
     if (enableLogging) {
       console.log(`📊 [getDualCoachingTeamHierarchy] Level ${currentLevel} query:`, {
@@ -707,11 +749,6 @@ export async function getDualCoachingTeamHierarchy(userId, enableLogging = false
         foundMembers: levelMembers?.length || 0,
         memberNames: levelMembers?.map(m => m.UserName) || []
       });
-    }
-
-    if (levelError) {
-      console.error('❌ [getDualCoachingTeamHierarchy] Error fetching level members:', levelError);
-      break;
     }
 
     if (!levelMembers || levelMembers.length === 0) break;

@@ -3,6 +3,7 @@
  * Fetches activity records and member details for downline users
  */
 import { getSupabaseClient } from '../../utils/supabaseClient.js';
+import { fetchAllSupabaseRows } from '../../utils/supabasePaginate.js';
 import { isExemptedBeverageOnly, isNonMealNutritionOnly, isExemptedFood, extractFoodItemsFromAnalysis, getFoodItemName } from '../../utils/foodTypeDetection.js';
 import { applyDateRangeFilterWidened } from '../../shared/lib/datetime/applyDayFilter.js';
 import {
@@ -60,16 +61,19 @@ async function fetchRowsInChunks(ids, runChunkQuery, { sequential = false } = {}
   return chunkResults.flat();
 }
 /**
- * Fetch ALL active members (used by admin role)
+ * Fetch ALL active members (used by admin role).
+ * Pages past Supabase's default ~1000-row cap.
+ * @param {object} [supabaseClient] — optional inject for tests
  */
-export async function fetchAllActiveMembers() {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
-    .from('team_table')
-    .select('UserId, UserName, PhoneNumber, Email, CoachId, Role')
-    .eq('Status', 'Active');
-  if (error) throw error;
-  return data || [];
+export async function fetchAllActiveMembers(supabaseClient = null) {
+  const supabase = supabaseClient || getSupabaseClient();
+  return fetchAllSupabaseRows(() =>
+    supabase
+      .from('team_table')
+      .select('UserId, UserName, PhoneNumber, Email, CoachId, Role')
+      .eq('Status', 'Active')
+      .order('UserId', { ascending: true }),
+  );
 }
 
 /**
