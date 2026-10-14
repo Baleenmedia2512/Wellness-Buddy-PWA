@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import sharp from 'sharp';
 import {
   composeTransformationShareCardJpeg,
+  layoutHealthIssueChips,
   shareCardJpegHasReadableText,
 } from '../domain/composeTransformationShareCard.js';
 
@@ -21,6 +22,37 @@ async function solidJpeg(width, height, color) {
     .jpeg()
     .toBuffer();
 }
+
+describe('layoutHealthIssueChips', () => {
+  const labels = [
+    'Pre-Diabetes',
+    'Diabetes Type 2',
+    'High Blood Pressure',
+    'High Cholesterol',
+    'Fatty Liver',
+    'PCOD / PCOS',
+    'Hypothyroidism',
+    'Hyperthyroidism',
+    'Knee Pain',
+    'Back Pain',
+  ];
+
+  it('keeps each label inside its own chip and wraps the row when the next chip does not fit', () => {
+    const { rows } = layoutHealthIssueChips(labels);
+    const chips = rows.flatMap((row) => row.chips);
+    assert.equal(chips.length, labels.length);
+    chips.forEach((chip) => {
+      assert.ok(chip.chipW >= chip.textW + 20, `${chip.label} chip is narrower than its text`);
+      assert.ok(chip.lines.join(' ') === chip.label);
+    });
+    rows.forEach((row) => {
+      assert.ok(row.width <= 540 - 24 - 20);
+    });
+    const pressure = chips.find((chip) => chip.label === 'High Blood Pressure');
+    assert.ok(pressure.chipW > 140);
+    assert.ok(rows.length >= 3);
+  });
+});
 
 describe('composeTransformationShareCardJpeg', () => {
   it('builds a 540px wide JPEG with dynamic height and visible Before/After photos', async () => {
@@ -68,7 +100,7 @@ describe('composeTransformationShareCardJpeg', () => {
 
     // Red DISCLAIMER border must be fully inside the card (not clipped).
     const discBand = await sharp(jpeg)
-      .extract({ left: 48, top: 690, width: 40, height: 12 })
+      .extract({ left: 0, top: 684, width: 8, height: 8 })
       .raw()
       .toBuffer({ resolveWithObject: true });
     let redBorder = 0;
@@ -95,7 +127,7 @@ describe('composeTransformationShareCardJpeg', () => {
     });
     const meta = await sharp(jpeg).metadata();
     assert.equal(meta.width, 540);
-    assert.equal(meta.height, 944);
+    assert.equal(meta.height, 896);
     // Pink issues box sits above the disclaimer — sample a mid-card band for pink fill.
     const issuesBand = await sharp(jpeg)
       .extract({ left: 40, top: 700, width: 40, height: 40 })

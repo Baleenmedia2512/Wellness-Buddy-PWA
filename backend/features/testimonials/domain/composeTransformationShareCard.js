@@ -26,7 +26,6 @@ const DISCLAIMER_H = 110;
 const MAX_VISIBLE_ISSUES = 10;
 /** Match frontend share card — 14px issue chip labels. */
 const ISSUE_CHIP_FONT = 14;
-const ISSUE_CHIP_ROW_H = 40;
 /** Title + subtitle + gap before chips ("while joining the community"). */
 const ISSUE_TITLE_H = 44;
 
@@ -138,16 +137,109 @@ function normalizeIssueList(list) {
     .slice(0, MAX_VISIBLE_ISSUES);
 }
 
-function issueColumnsForCount(count) {
-  const n = Math.max(0, Number(count) || 0);
-  if (n <= 0) return 0;
-  if (n <= 3) return n;
-  if (n <= 6) return 3;
-  return 4;
+const ISSUE_CHIP_PAD_X = 12;
+const ISSUE_CHIP_GAP = 8;
+const ISSUE_CHIP_H = 32;
+const ISSUE_CHIP_H_TWO = 48;
+const ISSUE_ROW_GAP = 8;
+const ISSUE_BOX_PAD = 10;
+
+/**
+ * Split a label onto two lines when it is wider than the chip text area.
+ * @param {string} label
+ * @param {number} maxTextW
+ * @param {number} size
+ * @returns {{ lines: string[], textW: number }}
+ */
+function issueLabelLines(label, maxTextW, size) {
+  const fullW = measureTextWidth(label, size, true);
+  if (fullW <= maxTextW) return { lines: [label], textW: fullW };
+  const words = String(label).split(' ').filter(Boolean);
+  if (words.length < 2) return { lines: [label], textW: fullW };
+  let best = null;
+  for (let i = 1; i < words.length; i += 1) {
+    const a = words.slice(0, i).join(' ');
+    const b = words.slice(i).join(' ');
+    const w = Math.max(measureTextWidth(a, size, true), measureTextWidth(b, size, true));
+    if (w > maxTextW) continue;
+    if (!best || w < best.textW) best = { lines: [a, b], textW: w };
+  }
+  if (best) return best;
+  const mid = Math.ceil(words.length / 2);
+  const a = words.slice(0, mid).join(' ');
+  const b = words.slice(mid).join(' ');
+  return {
+    lines: [a, b],
+    textW: Math.max(measureTextWidth(a, size, true), measureTextWidth(b, size, true)),
+  };
 }
 
 /**
- * Pink health-issues block (title + 14px chips) under the result pill.
+ * Chip wide enough for its label. Long names wrap inside the bubble
+ * instead of painting across the next chip.
+ * @param {string[]} labels
+ * @param {number} [innerW]
+ * @returns {{ rows: Array<{ chips: object[], width: number, height: number }>, blockH: number }}
+ */
+export function layoutHealthIssueChips(labels, innerW = CARD_W - 24 - ISSUE_BOX_PAD * 2) {
+  const maxTextW = Math.max(40, innerW - ISSUE_CHIP_PAD_X * 2);
+  const chips = (Array.isArray(labels) ? labels : []).map((label) => {
+    let fitted = null;
+    for (const size of [ISSUE_CHIP_FONT, 12, 11]) {
+      const attempt = issueLabelLines(label, maxTextW, size);
+      if (attempt.textW <= maxTextW) {
+        fitted = { ...attempt, size };
+        break;
+      }
+    }
+    if (!fitted) {
+      const attempt = issueLabelLines(label, maxTextW, 11);
+      fitted = { ...attempt, size: 11 };
+    }
+    const chipW = Math.min(
+      innerW,
+      Math.max(64, Math.ceil(fitted.textW + ISSUE_CHIP_PAD_X * 2)),
+    );
+    return {
+      label,
+      lines: fitted.lines,
+      size: fitted.size,
+      textW: fitted.textW,
+      chipW,
+      chipH: fitted.lines.length > 1 ? ISSUE_CHIP_H_TWO : ISSUE_CHIP_H,
+    };
+  });
+
+  const rows = [];
+  let current = [];
+  let rowW = 0;
+  const flush = () => {
+    if (!current.length) return;
+    rows.push({
+      chips: current,
+      width: rowW,
+      height: Math.max(...current.map((chip) => chip.chipH)),
+    });
+    current = [];
+    rowW = 0;
+  };
+  chips.forEach((chip) => {
+    const nextW = current.length ? rowW + ISSUE_CHIP_GAP + chip.chipW : chip.chipW;
+    if (current.length && nextW > innerW) flush();
+    current.push(chip);
+    rowW = current.length > 1 ? rowW + ISSUE_CHIP_GAP + chip.chipW : chip.chipW;
+  });
+  flush();
+
+  const blockH = rows.reduce(
+    (sum, row, index) => sum + row.height + (index > 0 ? ISSUE_ROW_GAP : 0),
+    0,
+  );
+  return { rows, blockH };
+}
+
+/**
+ * Pink health-issues block (title + chips) under the result pill.
  * @param {string[]} issues
  * @param {number} topY
  * @returns {{ markup: string, height: number }}
@@ -156,38 +248,41 @@ function buildHealthIssuesSvg(issues, topY) {
   const items = normalizeIssueList(issues);
   if (!items.length) return { markup: '', height: 0 };
 
-  const cols = issueColumnsForCount(items.length);
-  const rows = Math.ceil(items.length / cols);
   const boxX = 12;
   const boxW = CARD_W - 24;
-  const boxPad = 10;
-  const chipGap = 6;
+  const boxPad = ISSUE_BOX_PAD;
   const innerW = boxW - boxPad * 2;
-  const chipW = Math.floor((innerW - chipGap * (cols - 1)) / cols);
-  const chipH = 32;
   const titleBlockH = ISSUE_TITLE_H;
-  const chipsH = rows * ISSUE_CHIP_ROW_H;
-  const boxH = boxPad + titleBlockH + chipsH + boxPad;
+  const layout = layoutHealthIssueChips(items, innerW);
+  const boxH = boxPad + titleBlockH + layout.blockH + boxPad;
   const boxY = topY;
 
   let chips = '';
-  items.forEach((label, idx) => {
-    const col = idx % cols;
-    const row = Math.floor(idx / cols);
-    const x = boxX + boxPad + col * (chipW + chipGap);
-    const y = boxY + boxPad + titleBlockH + row * ISSUE_CHIP_ROW_H;
-    const textY = y + 21;
-    chips += `
-      <rect x="${x}" y="${y}" width="${chipW}" height="${chipH}" rx="8" ry="8" fill="#ffffff" stroke="#f9a8d4" stroke-width="1.5"/>
-      ${svgTextPath({
-      text: label,
-      x: x + chipW / 2,
-      y: textY,
-      size: ISSUE_CHIP_FONT,
-      fill: '#4b5563',
-      bold: true,
-      anchor: 'middle',
-    })}`;
+  let cursorY = boxY + boxPad + titleBlockH;
+  layout.rows.forEach((row) => {
+    let cursorX = boxX + boxPad + Math.max(0, (innerW - row.width) / 2);
+    row.chips.forEach((chip) => {
+      const textX = cursorX + chip.chipW / 2;
+      const lineStep = 16;
+      const firstBaseline = chip.lines.length > 1
+        ? cursorY + 18
+        : cursorY + Math.round(chip.chipH * 0.66);
+      chips += `
+      <rect x="${cursorX}" y="${cursorY}" width="${chip.chipW}" height="${chip.chipH}" rx="8" ry="8" fill="#ffffff" stroke="#f9a8d4" stroke-width="1.5"/>`;
+      chip.lines.forEach((line, lineIdx) => {
+        chips += svgTextPath({
+          text: line,
+          x: textX,
+          y: firstBaseline + lineIdx * lineStep,
+          size: chip.size,
+          fill: '#4b5563',
+          bold: true,
+          anchor: 'middle',
+        });
+      });
+      cursorX += chip.chipW + ISSUE_CHIP_GAP;
+    });
+    cursorY += row.height + ISSUE_ROW_GAP;
   });
 
   const markup = `
