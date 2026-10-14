@@ -9,12 +9,16 @@ import {
   listPrimaryDirectReports,
   collectPrimaryDownlineIds,
   collectSharedTeamMemberIds,
+  collectDownlinePartnerSearchIds,
 } from '../teamHierarchyTree.js';
 
 const You = 100;
 const Lawrence = 200;
 const Leena = 201;
 const LawrenceMember = 202;
+const LeenaMember = 203;
+const OutsidePartner = 204;
+const OutsideMember = 205;
 
 const Ravi = 300;
 const Priya = 301;
@@ -194,5 +198,44 @@ describe('Case 5/6 — no duplicates; partner merge does not invent CoachId edge
     const own = collectPrimaryDownlineIds(RAVI_PRIYA_USERS, Ravi, emptyPartners);
     const shared = collectSharedTeamMemberIds(RAVI_PRIYA_USERS, Ravi, null, emptyPartners);
     assert.deepEqual(shared, own);
+  });
+});
+
+describe('Diary search — downline co-coach and that co-coach teammates', () => {
+  const users = [
+    { UserId: You, UserName: 'You', CoachId: null },
+    { UserId: Lawrence, UserName: 'Lawrence', CoachId: You },
+    { UserId: LawrenceMember, UserName: 'LawrenceMember', CoachId: Lawrence },
+    { UserId: Leena, UserName: 'Leena', CoachId: null },
+    { UserId: LeenaMember, UserName: 'LeenaMember', CoachId: Leena },
+    { UserId: OutsidePartner, UserName: 'OutsidePartner', CoachId: null },
+    { UserId: OutsideMember, UserName: 'OutsideMember', CoachId: OutsidePartner },
+  ];
+  const partners = buildLeadPartnerByUserId([
+    { CoachId: Lawrence, CoCoachId: Leena },
+    { CoachId: LeenaMember, CoCoachId: OutsidePartner },
+  ]);
+
+  it('includes the downline coach co-coach and the co-coach CoachId teammates', () => {
+    const visible = [You, Lawrence, LawrenceMember];
+    const { ids, partnerIds } = collectDownlinePartnerSearchIds(users, visible, partners);
+    assert.deepEqual([...ids].sort((a, b) => a - b), [Leena, LeenaMember]);
+    assert.deepEqual(partnerIds, [Leena]);
+  });
+
+  it('does not pull a teammate co-coach who sits outside that CoachId tree', () => {
+    const visible = [You, Lawrence, LawrenceMember];
+    const { ids } = collectDownlinePartnerSearchIds(users, visible, partners);
+    assert.equal(ids.includes(OutsidePartner), false);
+    assert.equal(ids.includes(OutsideMember), false);
+  });
+
+  it('adds nothing when the partner and their teammates are already visible', () => {
+    const onlyLawrence = buildLeadPartnerByUserId([
+      { CoachId: Lawrence, CoCoachId: Leena },
+    ]);
+    const visible = [You, Lawrence, LawrenceMember, Leena, LeenaMember];
+    const { ids } = collectDownlinePartnerSearchIds(users, visible, onlyLawrence);
+    assert.deepEqual(ids, []);
   });
 });

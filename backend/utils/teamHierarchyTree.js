@@ -4,7 +4,10 @@
  * Three relationships must stay separate:
  * 1. Downline  — recursive CoachId only
  * 2. Peer      — same direct CoachId (sibling nodes; not used to build this tree)
- * 3. Co-Coach  — coach_teams Sponsor/Co-Sponsor partners (shared merge at root only)
+ * 3. Co-Coach  — coach_teams Sponsor/Co-Sponsor partners.
+ *    Tree edges stay CoachId-only. The viewer's own partner is merged at the
+ *    root. Diary search also lists each already-visible coach's partner and
+ *    that partner's CoachId teammates (see collectDownlinePartnerSearchIds).
  *
  * Never treat CoCoachId / derived co-coach as a recursive parent edge.
  */
@@ -147,4 +150,68 @@ export function collectSharedTeamMemberIds(
     merged.push(n);
   }
   return merged;
+}
+
+/**
+ * Extra people for Diary / team search.
+ *
+ * `visibleIds` is the viewer plus everyone already on the CoachId tree
+ * (including the viewer's own co-coach merge). For each of those people,
+ * also include their Sponsor/Co-Sponsor partner and that partner's CoachId
+ * downline (teammates and their CoachId descendants).
+ *
+ * Does not reparent anyone. Does not open a second partnership hop: a
+ * teammate's own co-coach is included only when they already sit in the
+ * partner's CoachId tree.
+ *
+ * Callers decide active/inactive filtering.
+ *
+ * @param {Array<object>} allUsers
+ * @param {Iterable<number|string>} visibleIds
+ * @param {Map<number, number>} [leadPartnerByUserId]
+ * @returns {{ ids: number[], partnerIds: number[] }}
+ */
+export function collectDownlinePartnerSearchIds(
+  allUsers,
+  visibleIds,
+  leadPartnerByUserId = new Map(),
+) {
+  const visible = new Set();
+  for (const raw of visibleIds || []) {
+    const id = Number(raw);
+    if (Number.isFinite(id) && id > 0) visible.add(id);
+  }
+
+  const seenPairs = new Set();
+  const extra = [];
+  const extraSet = new Set();
+  const partnerIds = [];
+  const partnerSet = new Set();
+
+  const add = (raw) => {
+    const id = Number(raw);
+    if (!Number.isFinite(id) || id <= 0) return;
+    if (visible.has(id) || extraSet.has(id)) return;
+    extraSet.add(id);
+    extra.push(id);
+  };
+
+  for (const id of visible) {
+    const partner = Number(leadPartnerByUserId.get(id));
+    if (!Number.isFinite(partner) || partner <= 0 || partner === id) continue;
+    const pairKey = id < partner ? `${id}:${partner}` : `${partner}:${id}`;
+    if (seenPairs.has(pairKey)) continue;
+    seenPairs.add(pairKey);
+
+    if (!partnerSet.has(partner)) {
+      partnerSet.add(partner);
+      partnerIds.push(partner);
+    }
+    add(partner);
+    for (const teammateId of collectPrimaryDownlineIds(allUsers, partner, leadPartnerByUserId)) {
+      add(teammateId);
+    }
+  }
+
+  return { ids: extra, partnerIds };
 }
