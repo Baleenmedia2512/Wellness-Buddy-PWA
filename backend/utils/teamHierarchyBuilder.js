@@ -4,6 +4,8 @@
  * Builds the CoachId primary tree for Reports / Results / Leadership Dashboard.
  * Co-coach partners are metadata + optional root-level shared merge of the
  * partner's CoachId tree — never recursive CoCoachId parent edges.
+ * allMembers also lists each visible coach's co-coach and that co-coach's
+ * CoachId teammates for Diary / team search.
  *
  * Inactive users are hidden by default; their active descendants are promoted
  * to the nearest active ancestor (same rules as team-hierarchy.js).
@@ -18,6 +20,7 @@ import {
 } from '../features/user/domain/aggregate-eligibility.rules.js';
 import {
   buildLeadPartnerByUserId,
+  collectDownlinePartnerSearchIds,
   listPrimaryDirectReports,
 } from './teamHierarchyTree.js';
 import { resolveCommunityPeerCoachIds } from './communityTeamVisibility.js';
@@ -406,6 +409,36 @@ export async function buildTeamHierarchy(supabase, coachIdInt, opts = {}) {
       isCoCoach: true,
     });
   }
+
+  // Diary / team search: co-coach + teammates of every coach already visible.
+  // Flat list only — nested tree edges stay CoachId-only.
+  const searchVisibleIds = new Set(memberMap.keys());
+  searchVisibleIds.add(coachIdInt);
+  const downlinePartners = collectDownlinePartnerSearchIds(
+    allUsers,
+    searchVisibleIds,
+    leadPartnerByUserId,
+  );
+  const downlinePartnerIds = new Set(downlinePartners.partnerIds.map((id) => Number(id)));
+  for (const extraId of downlinePartners.ids) {
+    const extraUser = userMap.get(extraId) || userMap.get(String(extraId));
+    if (!extraUser || memberMap.has(extraUser.userId)) continue;
+    if (!includeInactive && !isActiveTeamStatus(extraUser.status)) continue;
+    const entry = {
+      UserId: extraUser.userId,
+      UserName: extraUser.userName,
+      Email: extraUser.email,
+      Role: extraUser.role,
+      CoachId: extraUser.coachId,
+      CoCoachId: extraUser.coCoachId,
+      Status: extraUser.status,
+    };
+    if (downlinePartnerIds.has(Number(extraUser.userId))) entry.isCoCoach = true;
+    if (!shouldExcludeDeveloperFromAggregates(entry, { viewerUserId: coachIdInt })) {
+      memberMap.set(extraUser.userId, entry);
+    }
+  }
+
   const allMembers = filterPublicAggregateUsers(
     Array.from(memberMap.values()),
     { viewerUserId: coachIdInt },
