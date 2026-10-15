@@ -73,6 +73,36 @@ describe('extractFoodContributions', () => {
     expect(breakdown[0].amount).toBe(0.4);
   });
 
+  test('groups the same shake logged twice and sums its vitamin weight', () => {
+    const analyses = [
+      {
+        TotalVitaminB3: 10,
+        AnalysisData: {
+          foods: [{ name: 'Formula 1 - Strawberry', nutrition: { vitamin_b3: 10 } }],
+        },
+      },
+      {
+        TotalVitaminB3: 10,
+        AnalysisData: {
+          foods: [{ name: 'Formula 1 - Strawberry', nutrition: { vitamin_b3: 10 } }],
+        },
+      },
+      {
+        AnalysisData: {
+          foods: [{ name: '*Herbalife Formula 1 - Mango*', nutrition: { vitamin_b3: 5 } }],
+        },
+      },
+    ];
+    const { breakdown, total } = extractFoodContributions(analyses, 'totalVitaminB3');
+
+    expect(breakdown).toHaveLength(2);
+    expect(breakdown[0].foodName).toBe('Formula 1 - Strawberry');
+    expect(breakdown[0].amount).toBeCloseTo(20, 5);
+    expect(breakdown[1].foodName).toBe('*Herbalife Formula 1 - Mango*');
+    expect(breakdown[1].amount).toBeCloseTo(5, 5);
+    expect(total).toBeCloseTo(25, 5);
+  });
+
   test('falls back to meal-level TotalVitaminB1 when per-food B1 is missing', () => {
     const analyses = [{
       TotalVitaminB1: 0.4,
