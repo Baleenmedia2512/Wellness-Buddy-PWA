@@ -328,20 +328,24 @@ export function formatMarathonCrossMarathonWhatsAppLines(progress) {
 export function formatMarathonWeightWhatsAppNoticeLines(progress, state = {}) {
   if (!progress || typeof progress !== 'object') return [];
 
+  let lines = [];
   if (progress.mode === 'running' && state.inMarathon && Number.isInteger(state.marathonDay)) {
     if (state.marathonDay === 0) {
-      return formatMarathonCrossMarathonWhatsAppLines(progress);
+      lines = formatMarathonCrossMarathonWhatsAppLines(progress);
+    } else {
+      const dayEntry = progress.currentDay
+        ?? progress.days?.[state.marathonDay]
+        ?? null;
+      if (dayEntry?.displayLine) {
+        lines = [dayEntry.displayLine];
+      }
     }
-
-    const dayEntry = progress.currentDay
-      ?? progress.days?.[state.marathonDay]
-      ?? null;
-    if (!dayEntry?.displayLine) return [];
-    return [dayEntry.displayLine];
+  } else if (progress.mode === 'gap' && !state.inMarathon) {
+    lines = formatMarathonCrossMarathonWhatsAppLines(progress);
   }
 
-  if (progress.mode === 'gap' && !state.inMarathon) {
-    return formatMarathonCrossMarathonWhatsAppLines(progress);
+  if (lines.length > 0) {
+    return ['*Lap progress*', ...lines];
   }
 
   return [];
