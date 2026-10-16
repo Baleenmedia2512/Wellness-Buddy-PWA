@@ -2365,9 +2365,10 @@ function MemberCard({
             top: 0,
             width: CARD_W,
             height: CARD_H,
-            opacity: 0,
+            opacity: 0.02,
             pointerEvents: 'none',
             zIndex: -1,
+            overflow: 'hidden',
           }}
         >
           <TransformationCardContent

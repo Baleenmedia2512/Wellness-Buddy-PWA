@@ -351,6 +351,31 @@ export async function isCoCoachPaired(userIdA, userIdB) {
 }
 
 /**
+ * Active Sponsor/Co-Sponsor partner for a user, or null when none.
+ * @param {string|number} userId
+ * @returns {Promise<number|null>}
+ */
+export async function findCoCoachPartnerId(userId) {
+  const id = Number(userId);
+  if (!Number.isFinite(id) || id <= 0) return null;
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from('coach_teams_table')
+    .select('CoachId, CoCoachId')
+    .or(`CoachId.eq.${id},CoCoachId.eq.${id}`)
+    .eq('Status', 'active')
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return null;
+  const coachId = Number(data.CoachId);
+  const coCoachId = Number(data.CoCoachId);
+  if (coachId === id && Number.isFinite(coCoachId) && coCoachId > 0) return coCoachId;
+  if (coCoachId === id && Number.isFinite(coachId) && coachId > 0) return coachId;
+  return null;
+}
+
+/**
  * Fetch a user's display name. Returns null when not found.
  */
 export async function findUserName(userId) {

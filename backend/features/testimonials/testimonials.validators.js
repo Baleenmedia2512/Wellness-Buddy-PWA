@@ -450,7 +450,7 @@ export function validateTeamReport(query) {
 
 // ─── Unified edit + OTP validators ───────────────────────────────────────────
 
-const VALID_DIRTY_SLOTS = new Set(['before', 'after', 'health', 'business', 'issues']);
+const VALID_DIRTY_SLOTS = new Set(['before', 'after', 'health', 'business', 'issues', 'duration', 'weight', 'goal']);
 
 /**
  * Validate payload for POST /api/testimonials/submit-all-edits

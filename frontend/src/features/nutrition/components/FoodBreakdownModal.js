@@ -1,4 +1,5 @@
 import React from 'react';
+import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 
 /**
@@ -14,6 +15,7 @@ const FoodBreakdownModal = ({
   foodBreakdown = [],
   foodsLoading = false,
   decimals = 0,
+  amountsOnly = false,
 }) => {
   if (!isOpen) return null;
 
@@ -22,10 +24,12 @@ const FoodBreakdownModal = ({
     return decimals > 0 ? n.toFixed(decimals) : String(Math.round(n));
   };
 
-  const percentOfTarget = target > 0 ? Math.round((totalConsumed / target) * 100) : null;
-  const excess = totalConsumed > target ? totalConsumed - target : 0;
+  const percentOfTarget = !amountsOnly && target > 0
+    ? Math.round((totalConsumed / target) * 100)
+    : null;
+  const excess = !amountsOnly && totalConsumed > target ? totalConsumed - target : 0;
 
-  return (
+  const sheet = (
     <>
       {/* Backdrop */}
       <div
@@ -34,9 +38,9 @@ const FoodBreakdownModal = ({
         style={{ animation: 'fadeIn 0.2s ease-out' }}
       />
 
-      {/* Bottom Sheet */}
-      <div 
-        className="fixed bottom-0 left-0 right-0 z-[61] bg-white rounded-t-3xl shadow-2xl max-h-[75vh] flex flex-col"
+      {/* Bottom sheet, portaled so a scrolling parent cannot clip the food rows. */}
+      <div
+        className="fixed bottom-0 left-0 right-0 z-[61] bg-white rounded-t-3xl shadow-2xl max-h-[75vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
         style={{ animation: 'slideUp 0.3s ease-out' }}
       >
@@ -44,16 +48,18 @@ const FoodBreakdownModal = ({
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
           <div>
             <h2 className="text-lg font-bold text-gray-900">{nutrientName}</h2>
-            <div className="flex items-baseline gap-2 mt-0.5">
-              <span className="text-sm text-gray-600">
-                {formatAmount(totalConsumed)}{unit} / {formatAmount(target)}{unit}
-              </span>
-              {percentOfTarget !== null && (
-                <span className={`text-xs font-semibold ${percentOfTarget > 100 ? 'text-orange-600' : 'text-emerald-600'}`}>
-                  {percentOfTarget}% of target
+            {!amountsOnly && (
+              <div className="flex items-baseline gap-2 mt-0.5">
+                <span className="text-sm text-gray-600">
+                  {formatAmount(totalConsumed)}{unit} / {formatAmount(target)}{unit}
                 </span>
-              )}
-            </div>
+                {percentOfTarget !== null && (
+                  <span className={`text-xs font-semibold ${percentOfTarget > 100 ? 'text-orange-600' : 'text-emerald-600'}`}>
+                    {percentOfTarget}% of target
+                  </span>
+                )}
+              </div>
+            )}
           </div>
           <button
             onClick={onClose}
@@ -67,11 +73,13 @@ const FoodBreakdownModal = ({
         {/* Top Contributing Foods Header */}
         <div className="px-4 py-2 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
           <span className="text-xs font-semibold text-gray-700">Top Contributing Foods</span>
-          <span className="text-xs text-gray-500">% of total {nutrientName.toLowerCase()}</span>
+          {!amountsOnly && (
+            <span className="text-xs text-gray-500">% of total {nutrientName.toLowerCase()}</span>
+          )}
         </div>
 
         {/* Food List - Scrollable */}
-        <div className="flex-1 overflow-y-auto px-4 py-2">
+        <div className="px-4 py-2 pb-6">
           {foodsLoading ? (
             <div className="text-center py-8">
               <p className="text-sm text-gray-500">Loading foods…</p>
@@ -96,9 +104,11 @@ const FoodBreakdownModal = ({
                     <span className="font-semibold text-gray-900 whitespace-nowrap">
                       {formatAmount(item.amount)}{unit}
                     </span>
-                    <span className="text-gray-500 w-10 text-right">
-                      {item.percentage.toFixed(0)}%
-                    </span>
+                    {!amountsOnly && (
+                      <span className="text-gray-500 w-10 text-right">
+                        {item.percentage.toFixed(0)}%
+                      </span>
+                    )}
                   </div>
                 </div>
               ))}
@@ -107,7 +117,7 @@ const FoodBreakdownModal = ({
         </div>
 
         {/* Footer Summary */}
-        {target > 0 && (
+        {!amountsOnly && target > 0 && (
           <div className="px-4 py-3 bg-gray-50 border-t border-gray-200">
             <div className="flex items-center justify-between text-xs">
               <div className="text-center">
@@ -144,6 +154,8 @@ const FoodBreakdownModal = ({
       `}</style>
     </>
   );
+
+  return createPortal(sheet, document.body);
 };
 
 export default FoodBreakdownModal;

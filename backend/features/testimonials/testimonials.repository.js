@@ -199,9 +199,15 @@ function throwStorageError(operation, path, error) {
 export async function uploadBuffer(path, buffer, contentType = 'video/mp4') {
   const supabase = getSupabaseClient();
   const body = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
+  const isImage = String(contentType || '').startsWith('image/');
   const { error } = await supabase.storage
     .from(BUCKET)
-    .upload(path, body, { contentType, upsert: true });
+    .upload(path, body, {
+      contentType,
+      upsert: true,
+      // Share-card JPEGs reuse one path. A cached object kept the previous card in coach mail.
+      ...(isImage ? { cacheControl: '0' } : {}),
+    });
 
   if (error) throwStorageError('upload', path, error);
   return path;

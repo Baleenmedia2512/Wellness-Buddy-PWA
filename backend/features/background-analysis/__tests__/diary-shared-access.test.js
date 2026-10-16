@@ -3,7 +3,10 @@
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { canAccessDiaryViaSharedLead } from '../diary.service.js';
+import {
+  canAccessDiaryViaSharedLead,
+  canAccessDiaryViaDownlineCoCoach,
+} from '../diary.service.js';
 
 describe('canAccessDiaryViaSharedLead', () => {
   it('allows a viewer paired to an ancestor coach in the owner chain', async () => {
@@ -47,5 +50,55 @@ describe('canAccessDiaryViaSharedLead', () => {
 
     assert.equal(allowed, true);
     assert.deepEqual(seen, [['964', '339']]);
+  });
+});
+
+describe('canAccessDiaryViaDownlineCoCoach', () => {
+  const You = '100';
+  const Lawrence = '200';
+  const Leena = '201';
+  const LeenaMember = '203';
+
+  const findPartner = async (userId) => {
+    if (String(userId) === Leena) return Lawrence;
+    if (String(userId) === Lawrence) return Leena;
+    return null;
+  };
+
+  const getChain = async (userId) => {
+    if (String(userId) === Lawrence) return [Lawrence, You];
+    if (String(userId) === Leena) return [Leena];
+    if (String(userId) === LeenaMember) return [LeenaMember, Leena];
+    return [String(userId)];
+  };
+
+  it('lets an upline read a downline coach co-coach', async () => {
+    const allowed = await canAccessDiaryViaDownlineCoCoach(
+      You,
+      [Leena],
+      findPartner,
+      getChain,
+    );
+    assert.equal(allowed, true);
+  });
+
+  it('lets an upline read that co-coach teammate', async () => {
+    const allowed = await canAccessDiaryViaDownlineCoCoach(
+      You,
+      [LeenaMember, Leena],
+      findPartner,
+      getChain,
+    );
+    assert.equal(allowed, true);
+  });
+
+  it('rejects a diary whose chain has no partner under the viewer', async () => {
+    const allowed = await canAccessDiaryViaDownlineCoCoach(
+      You,
+      ['999', '998'],
+      async () => null,
+      getChain,
+    );
+    assert.equal(allowed, false);
   });
 });

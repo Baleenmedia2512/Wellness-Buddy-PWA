@@ -9,6 +9,7 @@
 
 import {
   isTransformationWeightLoss,
+  shareCardResultPillLabel,
   transformationWeightVerb,
 } from './domain/transformationWeightDirection.js';
 
@@ -363,14 +364,7 @@ export function buildTransformationCardEmailBlock({
   const beforeKg = formatWeight(beforeWeight);
   const afterKg = formatWeight(afterWeight);
   const durationSafe = String(durationText ?? '').trim();
-  const bw = Number(beforeWeight);
-  const aw = Number(afterWeight);
-  const verb = transformationWeightVerb(bw, aw);
-  const canProgress = Boolean(verb) && durationSafe && durationSafe !== '—';
-  const diffKg = canProgress ? formatWeight(Math.abs(aw - bw)) : '';
-  const progressText = canProgress
-    ? `${verb} ${diffKg} kgs${durationSafe ? ` in ${escapeHtml(durationSafe)}` : ''}`
-    : '';
+  const progressText = escapeHtml(shareCardResultPillLabel(beforeWeight, afterWeight, durationSafe));
   const issues = Array.isArray(recoveredHealthIssues)
     ? recoveredHealthIssues.map((i) => String(i ?? '').trim()).filter(Boolean).slice(0, 10)
     : [];
@@ -460,10 +454,11 @@ export function buildTransformationCardEmailBlock({
               </td>
             </tr>` : ''}
             <tr>
-              <td align="center" style="padding:0 12px 12px 12px;">
-                <p style="margin:0;padding:8px 10px;background-color:#fde047;border-radius:6px;color:#111827;font-size:9px;font-weight:600;font-family:Arial,Helvetica,sans-serif;line-height:1.35;">
-                  The views expressed are that of individuals. These products are not intended to diagnose, treat or cure any disease.
-                </p>
+              <td style="padding:0;background-color:#FFF2A6;border-top:2px solid #E52525;border-left:2px solid #E52525;border-right:2px solid #E52525;border-bottom:2px solid #E52525;">
+                <p style="margin:0;padding:10px 16px 0 16px;color:#E52525;font-size:12px;font-weight:800;letter-spacing:0.5px;font-family:Arial,Helvetica,sans-serif;line-height:16px;text-align:center;">DISCLAIMER</p>
+                <p style="margin:6px 16px 8px 16px;border-top:1px solid #E52525;font-size:0;line-height:0;">&nbsp;</p>
+                <p style="margin:0;padding:0 16px 0 16px;color:#171717;font-size:12px;font-weight:700;font-family:Arial,Helvetica,sans-serif;line-height:18px;text-align:left;">The views expressed are those of individuals.</p>
+                <p style="margin:2px 0 0;padding:0 16px 12px 16px;color:#171717;font-size:12px;font-weight:700;font-family:Arial,Helvetica,sans-serif;line-height:18px;text-align:left;">These products are not intended to diagnose, treat or cure any disease.</p>
               </td>
             </tr>
           </table>
@@ -830,6 +825,8 @@ const SLOT_LABELS = {
   business: 'Business Results Video',
   issues:   'Recovered health issues',
   duration: 'Duration (days / months)',
+  weight:   'Starting / Current Weight',
+  goal:     'Goal (Weight Loss / Gain)',
 };
 
 /**

@@ -19,7 +19,7 @@
 import React, { useRef, useState, useCallback, forwardRef, useEffect } from 'react';
 import { X, Download, Share2, CheckCircle } from 'lucide-react';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
-import { shareImageDirectly } from '../../../shared/utils/shareUtils';
+import { shareCachedDataUrl, shareImageDirectly } from '../../../shared/utils/shareUtils';
 import { saveImageBlobToGallery } from '../../../shared/plugins/saveToGalleryPlugin';
 import { APP_VERSION, getVersionString } from '../../../config/version';
 import {
@@ -40,7 +40,9 @@ export { CARD_H, CARD_W };
 
 const TICK_SIZE = 28;
 const FRAME_BG = '#f3f4f6';
-const CAPTURE_SCALE = 2;
+/** Output scale. 2× html2canvas on a 540×960 card blocked low-end phones for 20s+. */
+const CAPTURE_SCALE = 1.5;
+const SHARE_JPEG_QUALITY = 0.82;
 const CARD_FONT = "'Poppins', Arial, Helvetica, sans-serif";
 const SCRIPT_FONT = "'Pacifico', 'Segoe Script', 'Comic Sans MS', cursive";
 const BEFORE_BRUSH = '#e11d72';
@@ -161,7 +163,9 @@ async function inlineImagesForCapture(el) {
   await Promise.all(imgs.map(async (img) => {
     const isLogo = img.hasAttribute('data-share-logo');
     const src = img.currentSrc || img.getAttribute('src') || '';
-    if (src.startsWith('data:')) return;
+    if (src.startsWith('data:') || src.startsWith('blob:')) return;
+    // Already decoded — a second download is what made Share feel stuck.
+    if (img.complete && img.naturalWidth > 0) return;
     const candidates = isLogo
       ? [src, shareCardLogoFetchUrl(), '/logo.png'].filter(Boolean)
       : [src].filter(Boolean);
@@ -188,7 +192,7 @@ function waitForImage(img) {
     const done = () => resolve();
     img.addEventListener('load', done, { once: true });
     img.addEventListener('error', done, { once: true });
-    setTimeout(done, 8000);
+    setTimeout(done, 1500);
   });
 }
 
@@ -225,23 +229,27 @@ function bakeKeepRatioPhotos(el, scale = CAPTURE_SCALE) {
   });
 }
 
-export async function captureTransformationCardAsBlob(el) {
+function waitForPacifico(maxMs) {
+  if (!document.fonts?.load) return Promise.resolve();
+  return Promise.race([
+    document.fonts.load('40px Pacifico').catch(() => {}),
+    new Promise((resolve) => { setTimeout(resolve, maxMs); }),
+  ]);
+}
+
+async function renderTransformationCardCanvas(el) {
   ensureShareCardFonts();
-  if (document.fonts?.ready) {
-    try {
-      await document.fonts.ready;
-      if (document.fonts.load) {
-        await Promise.all([
-          document.fonts.load('800 15px Poppins'),
-          document.fonts.load('800 20px Poppins'),
-          document.fonts.load('700 14px Poppins'),
-          document.fonts.load('40px Pacifico'),
-        ]);
-      }
-    } catch {
-      // capture anyway — Arial / Segoe Script fallback still paints
-    }
-  }
+  await waitForPacifico(400);
+  el.querySelectorAll('[data-brush-label]').forEach((node) => {
+    const word = node.getAttribute('data-brush-label') || '';
+    const img = node.querySelector('img[data-brush-word]');
+    if (!img || !word) return;
+    const width = node.clientWidth || BRUSH_LABEL_W;
+    img.width = width;
+    img.style.width = `${width}px`;
+    img.style.height = `${BRUSH_LABEL_H}px`;
+    img.src = paintCenteredBrushLabel(word, width);
+  });
   await inlineImagesForCapture(el);
   const cardImages = Array.from(el.querySelectorAll('img'));
   await Promise.all(cardImages.map(waitForImage));
@@ -249,21 +257,32 @@ export async function captureTransformationCardAsBlob(el) {
   bakeKeepRatioPhotos(el, CAPTURE_SCALE);
   await Promise.all(photos.map(waitForImage));
   const html2canvas = (await import('html2canvas')).default;
-  const canvas = await html2canvas(el, {
+  return html2canvas(el, {
     useCORS: true,
     allowTaint: false,
     scale: CAPTURE_SCALE,
     backgroundColor: '#ffffff',
     logging: false,
-    imageTimeout: 15000,
+    imageTimeout: 2000,
+    removeContainer: true,
     foreignObjectRendering: false,
   });
+}
+
+export async function captureTransformationCardAsBlob(el) {
+  const canvas = await renderTransformationCardCanvas(el);
   return new Promise((resolve, reject) => {
     canvas.toBlob((blob) => {
       if (blob) resolve(blob);
       else reject(new Error('Failed to create image from transformation card'));
     }, 'image/png');
   });
+}
+
+/** JPEG data URL used by the share sheet. One encode — no PNG round-trip. */
+export async function captureTransformationCardShareDataUrl(el) {
+  const canvas = await renderTransformationCardCanvas(el);
+  return canvas.toDataURL('image/jpeg', SHARE_JPEG_QUALITY);
 }
 
 /**
@@ -387,15 +406,49 @@ function transformationFileName(userName) {
   return `transformation-${String(userName || 'result').replace(/\s+/g, '-').toLowerCase()}.png`;
 }
 
-export async function shareTransformationCard(element, userName, _testimonial = null) {
-  if (!element) throw new Error('Transformation card is not ready');
-  const blob = await captureTransformationCardAsBlob(element);
-  const dataUrl = await blobToDataUrl(blob);
-  await shareImageDirectly(dataUrl, {
+function transformationShareOptions(userName) {
+  return {
     title: 'My Wellness Transformation',
     text: '',
     fileName: transformationFileName(userName),
-  });
+  };
+}
+
+export async function sharePreparedTransformationCard(dataUrl, userName) {
+  const opts = transformationShareOptions(userName);
+  const shared = await shareCachedDataUrl(dataUrl, opts);
+  if (!shared) await shareImageDirectly(dataUrl, opts);
+}
+
+export async function shareTransformationCard(element, userName, _testimonial = null) {
+  if (!element) throw new Error('Transformation card is not ready');
+  const dataUrl = await captureTransformationCardShareDataUrl(element);
+  await sharePreparedTransformationCard(dataUrl, userName);
+}
+
+let shareWarmChain = Promise.resolve();
+
+function enqueueShareWarm(task) {
+  const run = shareWarmChain.then(task, task);
+  shareWarmChain = run.then(() => {}, () => {});
+  return run;
+}
+
+function shareCardCacheKey(testimonial, userName) {
+  const issues = Array.isArray(testimonial?.recoveredHealthIssues)
+    ? testimonial.recoveredHealthIssues.join('|')
+    : '';
+  return [
+    userName || '',
+    testimonial?.beforeImageUrl || '',
+    testimonial?.afterImageUrl || '',
+    testimonial?.beforeWeightKg ?? '',
+    testimonial?.afterWeightKg ?? '',
+    testimonial?.durationText || '',
+    testimonial?.goalType || '',
+    testimonial?.status || '',
+    issues,
+  ].join('\u0001');
 }
 
 export async function downloadTransformationCardImage(element, userName) {
@@ -439,10 +492,87 @@ function VerifiedTick() {
   );
 }
 
+const BRUSH_LABEL_W = 240;
+const BRUSH_LABEL_H = 48;
+
+/**
+ * Paint Before/After the same way the on-screen label is centered.
+ * html2canvas shifts CSS text-align + rotate, so WhatsApp and mail were
+ * getting an off-center word. A bitmap keeps the center.
+ */
+function paintCenteredBrushLabel(label, width = BRUSH_LABEL_W) {
+  const boxW = Math.max(120, Math.round(width) || BRUSH_LABEL_W);
+  const scale = 3;
+  const canvas = document.createElement('canvas');
+  canvas.width = boxW * scale;
+  canvas.height = BRUSH_LABEL_H * scale;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return '';
+  ctx.scale(scale, scale);
+  ctx.clearRect(0, 0, boxW, BRUSH_LABEL_H);
+  ctx.translate(boxW / 2, BRUSH_LABEL_H / 2);
+  ctx.rotate((-3 * Math.PI) / 180);
+  ctx.font = `40px ${SCRIPT_FONT}`;
+  ctx.fillStyle = '#ffffff';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.shadowColor = 'rgba(0,0,0,0.36)';
+  ctx.shadowBlur = 5;
+  ctx.shadowOffsetY = 2;
+  ctx.fillText(String(label || ''), 0, 1);
+  return canvas.toDataURL('image/png');
+}
+
+function BrushScriptLabel({ label }) {
+  const imgRef = useRef(null);
+  const [src, setSrc] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    const paint = () => {
+      if (cancelled) return;
+      const width = imgRef.current?.parentElement?.clientWidth || BRUSH_LABEL_W;
+      setSrc(paintCenteredBrushLabel(label, width));
+    };
+    const ready = document.fonts?.load
+      ? document.fonts.load('40px Pacifico').then(paint, paint)
+      : Promise.resolve().then(paint);
+    ready.catch(paint);
+    return () => {
+      cancelled = true;
+    };
+  }, [label]);
+
+  return (
+    <img
+      ref={imgRef}
+      data-brush-word="1"
+      alt={label}
+      src={src || undefined}
+      draggable={false}
+      width={BRUSH_LABEL_W}
+      height={BRUSH_LABEL_H}
+      style={{
+        position: 'absolute',
+        left: 0,
+        right: 0,
+        top: 20,
+        width: '100%',
+        height: BRUSH_LABEL_H,
+        margin: 0,
+        padding: 0,
+        border: 0,
+        pointerEvents: 'none',
+      }}
+    />
+  );
+}
+
 function BrushLabel({ label, side }) {
   const color = side === 'left' ? BEFORE_BRUSH : AFTER_BRUSH;
   return (
     <div
+      data-brush-label={label}
       style={{
         position: 'absolute',
         left: '7%',
@@ -501,8 +631,8 @@ function BrushLabel({ label, side }) {
         aria-hidden="true"
         style={{
           position: 'absolute',
-          left: side === 'left' ? -7 : 25,
-          right: side === 'left' ? 30 : -5,
+          left: 8,
+          right: 8,
           top: 35,
           height: 12,
           display: 'block',
@@ -512,21 +642,7 @@ function BrushLabel({ label, side }) {
           opacity: 0.65,
         }}
       />
-      <p
-        style={{
-          position: 'relative',
-          margin: 0,
-          paddingTop: 2,
-          fontFamily: SCRIPT_FONT,
-          fontSize: 43,
-          lineHeight: '58px',
-          color: '#ffffff',
-          textShadow: '0 2px 5px rgba(0,0,0,0.36)',
-          transform: 'rotate(-3deg)',
-        }}
-      >
-        {label}
-      </p>
+      <BrushScriptLabel label={label} />
     </div>
   );
 }
@@ -658,18 +774,20 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
   const isVerified = testimonial?.status === 'verified';
   const verb = isLoss === false ? 'Gained' : 'Lost';
   const issues = (testimonial?.recoveredHealthIssues ?? []).filter(Boolean).slice(0, MAX_VISIBLE_ISSUES);
-  const durationText = String(testimonial?.durationText || '').trim();
+  const durationRaw = String(testimonial?.durationText || '').trim();
+  const durationText = durationRaw && durationRaw !== '—' && durationRaw !== '-' ? durationRaw : '';
   const displayName = String(userName || 'Customer').trim() || 'Customer';
   const issuesPerRow = issueColumnsForCount(issues.length);
   const chipWidthPct = issuesPerRow > 0 ? 100 / issuesPerRow : 100;
-  const photoH = shareCardPhotoHeight({
-    issueCount: issues.length,
-    hasResultPill: Boolean(diff),
-  });
   // Single trimmed label — SVG pill keeps it optically centered in the capture.
+  // Equal before/after has no lost/gained line, so show duration on its own.
   const resultPillLabel = diff
     ? [verb, `${diff} kgs`, durationText ? `in ${durationText}` : null].filter(Boolean).join(' ')
-    : '';
+    : durationText;
+  const photoH = shareCardPhotoHeight({
+    issueCount: issues.length,
+    hasResultPill: Boolean(resultPillLabel),
+  });
   const resultPillSrc = resultPillLabel ? buildResultPillSrc(resultPillLabel) : '';
 
   return (
@@ -677,6 +795,7 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
       ref={ref}
       id="wv-transformation-share-card"
       style={{
+        position: 'relative',
         width: CARD_W,
         height: CARD_H,
         background: '#ffffff',
@@ -794,7 +913,7 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
         cellSpacing={0}
       >
         <tbody>
-          {diff && resultPillSrc ? (
+          {resultPillSrc ? (
             <tr>
               <td
                 align="center"
@@ -907,71 +1026,67 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
       
       <div
         style={{
-          marginTop: 8,
-          padding: '4px 18px 10px',
-          textAlign: 'center',
+          position: 'absolute',
+          left: 0,
+          right: 0,
+          bottom: 0,
           width: '100%',
           boxSizing: 'border-box',
-        }}
-      >
-        
-<div
-  style={{
-    width: 420,
-    maxWidth: '100%',
-    minHeight: 90,
-    margin: '0 auto',
-    padding: '8px 12px',
-    boxSizing: 'border-box',
-    backgroundColor: '#FFF2A6',
-    border: '2px solid #E52525',
-    borderRadius: 12,
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 5,
-    textAlign: 'center',
-  }}
->
-  <div
-    style={{
-      color: '#E52525',
-      fontSize: 12,
-      fontWeight: 800,
-      lineHeight: 1.2,
-      letterSpacing: '0.5px',
-    }}
-  >
-    DISCLAIMER
-  </div>
-
-  <div
-    style={{
-      width: '85%',
-      height: 1,
-      backgroundColor: '#E52525',
-      flexShrink: 0,
-    }}
-  />
-
-      <p
-        style={{
           margin: 0,
-          color: '#171717',
-          fontSize: 12,
-          fontWeight: 700,
-          lineHeight: 1.4,
-          textAlign: 'center',
+          padding: '10px 16px 12px',
+          backgroundColor: '#FFF2A6',
+          borderTop: '2px solid #E52525',
+          borderLeft: '2px solid #E52525',
+          borderRight: '2px solid #E52525',
+          borderBottom: '2px solid #E52525',
+          textAlign: 'left',
         }}
       >
-        The views expressed are those of individuals.
-        <br />
-        These products are not intended to diagnose, treat or cure any disease.
-      </p>
-    </div>
-
-          </div>
+        <div
+          style={{
+            margin: 0,
+            color: '#E52525',
+            fontSize: 12,
+            fontWeight: 800,
+            lineHeight: '16px',
+            letterSpacing: '0.5px',
+            textAlign: 'center',
+          }}
+        >
+          DISCLAIMER
+        </div>
+        <div
+          style={{
+            height: 1,
+            margin: '6px 0 8px',
+            backgroundColor: '#E52525',
+          }}
+        />
+        <p
+          style={{
+            margin: 0,
+            color: '#171717',
+            fontSize: 12,
+            fontWeight: 700,
+            lineHeight: '18px',
+            textAlign: 'left',
+          }}
+        >
+          The views expressed are those of individuals.
+        </p>
+        <p
+          style={{
+            margin: '2px 0 0',
+            color: '#171717',
+            fontSize: 12,
+            fontWeight: 700,
+            lineHeight: '18px',
+            textAlign: 'left',
+          }}
+        >
+          These products are not intended to diagnose, treat or cure any disease.
+        </p>
+      </div>
 
         </div>
       );
@@ -1089,16 +1204,55 @@ export function TransformationShareActions({
   const [status, setStatus] = useState(null);
   const isVideo = kind === 'video';
   const isIcon = variant === 'icon';
+  const readyShareRef = useRef({ key: '', dataUrl: null, pending: null });
+  const shareKey = isVideo ? '' : shareCardCacheKey(testimonial, userName);
 
   useEffect(() => {
-    if (!isVideo) void import('html2canvas');
-  }, [isVideo]);
+    if (isVideo) return undefined;
+    void import('html2canvas');
+    const key = shareKey;
+    if (
+      readyShareRef.current.key === key
+      && (readyShareRef.current.dataUrl || readyShareRef.current.pending)
+    ) {
+      return undefined;
+    }
+    let cancelled = false;
+    readyShareRef.current = { key, dataUrl: null, pending: null };
+    const timer = window.setTimeout(() => {
+      const el = cardRef?.current;
+      if (!el || cancelled) return;
+      const pending = enqueueShareWarm(() => captureTransformationCardShareDataUrl(el))
+        .then((dataUrl) => {
+          if (!cancelled && readyShareRef.current.key === key) {
+            readyShareRef.current.dataUrl = dataUrl;
+            readyShareRef.current.pending = null;
+          }
+          return dataUrl;
+        })
+        .catch(() => null);
+      readyShareRef.current.pending = pending;
+    }, 250);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [cardRef, isVideo, shareKey]);
 
   const run = useCallback(async () => {
     if (disabled || busy) return;
     setBusy(true);
     setStatus(null);
     try {
+      if (!isVideo) {
+        const slot = readyShareRef.current;
+        const ready = slot.key === shareKey ? slot.dataUrl : null;
+        if (ready) {
+          await sharePreparedTransformationCard(ready, userName);
+          setStatus('shared');
+          return;
+        }
+      }
       let resolved = testimonial;
       if (typeof onBeforeAction === 'function') {
         const detail = await onBeforeAction();
@@ -1107,7 +1261,19 @@ export function TransformationShareActions({
       if (isVideo) {
         await shareResultVideos(resolved);
       } else {
-        await shareTransformationCard(cardRef?.current, userName, resolved);
+        const slot = readyShareRef.current;
+        let dataUrl = slot.key === shareKey ? slot.dataUrl : null;
+        if (!dataUrl && slot.key === shareKey && slot.pending) {
+          dataUrl = await slot.pending;
+        }
+        if (!dataUrl && cardRef?.current) {
+          dataUrl = await captureTransformationCardShareDataUrl(cardRef.current);
+          if (readyShareRef.current.key === shareKey) {
+            readyShareRef.current.dataUrl = dataUrl;
+          }
+        }
+        if (dataUrl) await sharePreparedTransformationCard(dataUrl, userName);
+        else await shareTransformationCard(cardRef?.current, userName, resolved);
       }
       setStatus('shared');
     } catch (err) {
@@ -1121,7 +1287,7 @@ export function TransformationShareActions({
     } finally {
       setBusy(false);
     }
-  }, [busy, cardRef, disabled, isVideo, onBeforeAction, testimonial, userName]);
+  }, [busy, cardRef, disabled, isVideo, onBeforeAction, shareKey, testimonial, userName]);
 
   if (isIcon) {
     return (
