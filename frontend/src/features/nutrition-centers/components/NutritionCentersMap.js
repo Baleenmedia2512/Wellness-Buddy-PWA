@@ -13,6 +13,7 @@ import { resolveDiaryTimezone } from '../../diary/utils/diaryTimezone';
 import { getApiBaseUrl } from '../../../config/api.config.js';
 import { lookup as lookupUser } from '../../user/services/user.api.js';
 import { unregister as unregisterCenter } from '../services/centers.api.js';
+import { omitRemovedCenters } from '../domain/centerListRefresh.js';
 
 // --- Single Day Picker ---
 const SingleDayPicker = ({ selectedDate, onSelect, onClose }) => {
@@ -81,7 +82,15 @@ const SingleDayPicker = ({ selectedDate, onSelect, onClose }) => {
 
 const PAGE_SIZE = 20;
 
-const NutritionCentersMap = ({ user, onBack, onEditCenter, onRegisterCenter, embedded = false, tabVisitKey = 0 }) => {
+const NutritionCentersMap = ({
+  user,
+  onBack,
+  onEditCenter,
+  onRegisterCenter,
+  embedded = false,
+  tabVisitKey = 0,
+  mineFocusKey = 0,
+}) => {
   const [centers, setCenters] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -122,6 +131,10 @@ const NutritionCentersMap = ({ user, onBack, onEditCenter, onRegisterCenter, emb
   const pageCacheRef = useRef(new Map());
   const inFlightKeyRef = useRef(null);
   const listSentinelRef = useRef(null);
+  /** Clubs deleted in this visit. A stale refetch must not paint them again. */
+  const removedCenterIdsRef = useRef(new Set());
+  const seenVisitKeyRef = useRef(tabVisitKey);
+  const seenMineFocusRef = useRef(mineFocusKey);
 
   const apiBaseUrl = getApiBaseUrl();
   const GOOGLE_MAPS_API_KEY = process.env.REACT_APP_GOOGLE_MAPS_API_KEY || '';
@@ -270,18 +283,19 @@ const NutritionCentersMap = ({ user, onBack, onEditCenter, onRegisterCenter, emb
 
     if (!bustCache && pageCacheRef.current.has(cacheKey)) {
       const cached = pageCacheRef.current.get(cacheKey);
+      const cachedRows = omitRemovedCenters(cached.data, removedCenterIdsRef.current);
       setPagination(cached.pagination);
       setCenters((prev) => {
-        if (!append) return cached.data;
+        if (!append) return cachedRows;
         const seen = new Set(prev.map((c) => c.id));
-        return [...prev, ...cached.data.filter((c) => !seen.has(c.id))];
+        return [...prev, ...cachedRows.filter((c) => !seen.has(c.id))];
       });
       setLoading(false);
       setLoadingMore(false);
       return cached;
     }
 
-    if (inFlightKeyRef.current === cacheKey) return null;
+    if (!bustCache && inFlightKeyRef.current === cacheKey) return null;
     inFlightKeyRef.current = cacheKey;
 
     if (append) setLoadingMore(true);
@@ -317,8 +331,10 @@ const NutritionCentersMap = ({ user, onBack, onEditCenter, onRegisterCenter, emb
         throw new Error(result.message || 'Failed to fetch centers');
       }
 
-      const pageData = Array.isArray(result.data) ? result.data : [];
-      const meta = result.pagination || {
+      const rawRows = Array.isArray(result.data) ? result.data : [];
+      const pageData = omitRemovedCenters(rawRows, removedCenterIdsRef.current);
+      const hiddenCount = rawRows.length - pageData.length;
+      let meta = result.pagination || {
         totalRecords: pageData.length,
         currentPage: page,
         pageSize: PAGE_SIZE,
@@ -328,6 +344,12 @@ const NutritionCentersMap = ({ user, onBack, onEditCenter, onRegisterCenter, emb
           .filter((c) => (c.todayAttendance || 0) > 0)
           .map((c) => ({ id: c.id, center_name: c.center_name, todayAttendance: c.todayAttendance })),
       };
+      if (hiddenCount > 0) {
+        meta = {
+          ...meta,
+          totalRecords: Math.max(0, (meta.totalRecords || rawRows.length) - hiddenCount),
+        };
+      }
 
       pageCacheRef.current.set(cacheKey, { data: pageData, pagination: meta });
       setPagination(meta);
@@ -354,22 +376,37 @@ const NutritionCentersMap = ({ user, onBack, onEditCenter, onRegisterCenter, emb
   const confirmDeleteCenter = useCallback(async () => {
     const center = deleteModal.center;
     if (!center?.id) return;
+    setDeleteModal({ isOpen: false, center: null });
     setDeletingCenterId(center.id);
+    const dropDeletedClub = () => {
+      removedCenterIdsRef.current.add(center.id);
+      pageCacheRef.current.clear();
+      fetchAbortRef.current?.abort();
+      inFlightKeyRef.current = null;
+      setCenters((prev) => prev.filter((c) => c.id !== center.id));
+      setPagination((prev) => ({
+        ...prev,
+        totalRecords: Math.max(0, (prev.totalRecords || 1) - 1),
+      }));
+    };
     try {
       const userId = await resolveUserId();
       const result = await unregisterCenter({ centerId: center.id, userId });
       if (!result?.success) {
         throw new Error(result?.message || 'Failed to delete club');
       }
-      pageCacheRef.current.clear();
-      setCenters((prev) => prev.filter((c) => c.id !== center.id));
-      setPagination((prev) => ({
-        ...prev,
-        totalRecords: Math.max(0, (prev.totalRecords || 1) - 1),
-      }));
-      await fetchCenters({ page: 1, bustCache: true });
+      dropDeletedClub();
+      const controller = new AbortController();
+      fetchAbortRef.current = controller;
+      await fetchCenters({ signal: controller.signal, page: 1, bustCache: true });
     } catch (err) {
-      setError(err.message || 'Failed to delete club');
+      const msg = err?.message || 'Failed to delete club';
+      if (/center not found/i.test(msg)) {
+        dropDeletedClub();
+        setError(null);
+      } else {
+        setError(msg);
+      }
     } finally {
       setDeletingCenterId(null);
     }
@@ -602,9 +639,20 @@ const NutritionCentersMap = ({ user, onBack, onEditCenter, onRegisterCenter, emb
     renderMarkers(centers, dateLabel, { fitBounds: pagination.currentPage <= 1 });
   }, [centers, mapLoaded, dateRange, customDate, renderMarkers, pagination.currentPage]);
 
-  // Reset + fetch page 1 when filters change (uses cache when switching My/Direct/Full)
+  // Reset + fetch page 1 when filters change (uses cache when switching My/Direct/Full).
+  // A new club-tab visit or a fresh registration bypasses that cache.
   useEffect(() => {
     if (!mapLoaded || !user) return undefined;
+
+    const visitChanged = seenVisitKeyRef.current !== tabVisitKey;
+    const mineChanged = seenMineFocusRef.current !== mineFocusKey;
+    seenVisitKeyRef.current = tabVisitKey;
+    seenMineFocusRef.current = mineFocusKey;
+    if (mineChanged && mineFocusKey) setTeamFilter('self');
+    if (visitChanged || mineChanged) {
+      pageCacheRef.current.clear();
+      inFlightKeyRef.current = null;
+    }
 
     fetchAbortRef.current?.abort();
     const controller = new AbortController();
@@ -620,7 +668,12 @@ const NutritionCentersMap = ({ user, onBack, onEditCenter, onRegisterCenter, emb
     });
 
     const timer = setTimeout(() => {
-      fetchCenters({ signal: controller.signal, page: 1, append: false });
+      fetchCenters({
+        signal: controller.signal,
+        page: 1,
+        append: false,
+        bustCache: visitChanged || mineChanged,
+      });
     }, 50);
 
     return () => {
@@ -628,7 +681,7 @@ const NutritionCentersMap = ({ user, onBack, onEditCenter, onRegisterCenter, emb
       controller.abort();
       if (fetchAbortRef.current === controller) fetchAbortRef.current = null;
     };
-  }, [mapLoaded, user, teamFilter, dateRange, customDate, debouncedSearch, tabVisitKey, fetchCenters]);
+  }, [mapLoaded, user, teamFilter, dateRange, customDate, debouncedSearch, tabVisitKey, mineFocusKey, fetchCenters]);
 
   const handleRefresh = useCallback(() => {
     pageCacheRef.current.clear();
