@@ -1,3 +1,4 @@
+
 {
   "version": 2,
   "regions": ["sin1"],
@@ -109,24 +110,6 @@
           "value": "Content-Type, Authorization, Accept, Cache-Control, Pragma, X-App-Version, X-App-Version-Code, X-App-Platform"
         }
       ]
-    }
-  ],
-  "crons": [
-    {
-      "path": "/api/cron/deactivate-idle-users",
-      "schedule": "0 0 * * *"
-    },
-    {
-      "path": "/api/cron/tasks",
-      "schedule": "* * * * *"
-    },
-    {
-      "path": "/api/cron/water",
-      "schedule": "* * * * *"
-    },
-    {
-      "path": "/api/ai/worker",
-      "schedule": "* * * * *"
     }
   ],
   "env": {

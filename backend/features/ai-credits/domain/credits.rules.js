@@ -156,3 +156,30 @@ export function normalizeConfig({
     availabilityWindows: windows,
   };
 }
+
+/**
+ * Authoritative AI photo-analysis switch stored in ai_credits_config_table.
+ * Missing row matches admin defaults (mode on, default meal slots).
+ * A saved null/missing ai_mode_enabled value is indeterminate (fail closed).
+ * Every meal slot off forces the mode off, same as admin save.
+ *
+ * @param {object|null|undefined} row
+ * @returns {{ known: boolean, enabled: boolean }}
+ */
+export function aiPhotoAnalysisModeFromConfigRow(row) {
+  if (row == null) {
+    return { known: true, enabled: normalizeConfig({}).aiModeEnabled };
+  }
+  const raw = Object.prototype.hasOwnProperty.call(row, 'ai_mode_enabled')
+    ? row.ai_mode_enabled
+    : row.aiModeEnabled;
+  if (raw === undefined || raw === null) {
+    return { known: false, enabled: false };
+  }
+  const enabled = normalizeConfig({
+    dailyAiCredits: row.daily_ai_credits ?? row.dailyAiCredits,
+    aiModeEnabled: raw,
+    availabilityWindows: row.availability_windows ?? row.availabilityWindows ?? null,
+  }).aiModeEnabled;
+  return { known: true, enabled };
+}

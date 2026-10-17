@@ -4,6 +4,7 @@ import { nowUtc } from '../../../shared/lib/datetime/index.js';
 import {
   DEFAULT_DAILY_AI_CREDITS,
   DEFAULT_AI_MODE_ENABLED,
+  aiPhotoAnalysisModeFromConfigRow,
 } from '../domain/credits.rules.js';
 
 export async function getLatestConfig() {
@@ -72,6 +73,58 @@ export async function insertConfig({
     throw error;
   }
   return data;
+}
+
+/**
+ * Read the admin AI Mode switch. Throws when the database state cannot be read.
+ * Does not default a failed lookup to enabled.
+ *
+ * @param {object} [supabaseClient] Injected client. Defaults to this process's SUPABASE_URL.
+ * @returns {Promise<{ known: boolean, enabled: boolean }>}
+ */
+export async function readAiPhotoAnalysisMode(supabaseClient) {
+  let supabase;
+  try {
+    supabase = supabaseClient || getSupabaseClient();
+  } catch (err) {
+    logger.error('[ai-credits.repo] AI mode client unavailable', { err: err?.message });
+    const wrapped = new Error('AI photo analysis mode could not be determined');
+    wrapped.code = 'AI_MODE_UNKNOWN';
+    throw wrapped;
+  }
+
+  try {
+    let query = await supabase
+      .from('ai_credits_config_table')
+      .select('id, daily_ai_credits, ai_mode_enabled, availability_windows')
+      .order('id', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (query.error && /availability_windows/i.test(query.error.message || '')) {
+      query = await supabase
+        .from('ai_credits_config_table')
+        .select('id, daily_ai_credits, ai_mode_enabled')
+        .order('id', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+    }
+
+    if (query.error) {
+      logger.error('[ai-credits.repo] AI mode lookup failed', { err: query.error.message });
+      const wrapped = new Error('AI photo analysis mode could not be determined');
+      wrapped.code = 'AI_MODE_UNKNOWN';
+      throw wrapped;
+    }
+
+    return aiPhotoAnalysisModeFromConfigRow(query.data);
+  } catch (err) {
+    if (err?.code === 'AI_MODE_UNKNOWN') throw err;
+    logger.error('[ai-credits.repo] AI mode lookup failed', { err: err?.message });
+    const wrapped = new Error('AI photo analysis mode could not be determined');
+    wrapped.code = 'AI_MODE_UNKNOWN';
+    throw wrapped;
+  }
 }
 
 export function configOrDefault(row) {
