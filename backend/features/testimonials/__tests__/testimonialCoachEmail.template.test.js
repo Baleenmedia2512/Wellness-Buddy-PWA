@@ -100,6 +100,26 @@ describe('testimonial coach email photos keep aspect ratio', () => {
     assert.doesNotMatch(html, /Gained 30\.1/);
   });
 
+  it('shows duration when weight is unchanged and fills the disclaimer to the card edges', () => {
+    const html = buildTransformationCardEmailBlock({
+      memberName: 'Alex',
+      beforeUrl: 'https://example.com/before.jpg',
+      afterUrl: 'https://example.com/after.jpg',
+      beforeWeight: 70,
+      afterWeight: 70,
+      goalType: 'loss',
+      durationText: '4 months',
+      recoveredHealthIssues: [],
+    });
+    assert.match(html, /4 months/);
+    assert.doesNotMatch(html, /Lost /);
+    assert.match(html, />DISCLAIMER</);
+    assert.match(html, /text-align:left;">The views expressed are those of individuals\./);
+    assert.match(html, /text-align:left;">These products are not intended to diagnose, treat or cure any disease\./);
+    assert.doesNotMatch(html, /that of individuals/);
+    assert.doesNotMatch(html, /border-radius:6px;color:#111827/);
+  });
+
   it('buildShareCardRow returns empty when src missing', () => {
     assert.equal(buildShareCardRow(null), '');
     assert.equal(buildShareCardRow(''), '');
