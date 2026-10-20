@@ -45,4 +45,72 @@ describe('composeQuickShareCaption', () => {
       `${BRAND}, 1890 kcal\nMasala Dosa - GI 65 m\nRagi Dosa - GI 45 l\nPlain Ghee Dosa - GI 72 h\nTomorrow is Marathon Day 4 - Detox Day`,
     );
   });
+  it('formats transformation caption with DAY PROGRESS and LAP PROGRESS headings (Step 5 required test)', () => {
+    const brand = 'ALLAN · Wellness Valley v 3.5.2';
+    const suffix = [
+      'Ideal: 79.57 kg',
+      'Prev: 80 kg',
+      'Curr: 80 kg',
+      'Marathon Day 5',
+      'Day 0 : — → Curr: 80.00 kg',
+    ].join('\n');
+
+    const expected = [
+      'ALLAN · Wellness Valley v 3.5.2',
+      '',
+      'DAY PROGRESS',
+      '',
+      'Ideal: 79.57 kg',
+      'Prev: 80 kg',
+      'Curr: 80 kg',
+      '',
+      'LAP PROGRESS',
+      '',
+      'Marathon Day 5',
+      'Day 0 : — → Curr: 80.00 kg',
+    ].join('\n');
+
+    assert.equal(composeQuickShareCaption(brand, suffix), expected);
+  });
+
+  it('end-to-end integration: produces DAY PROGRESS and LAP PROGRESS when marathon notice appends to weight caption', () => {
+    const brand = 'ALLAN · Wellness Valley v 3.5.2';
+    const weightSuffix = 'Ideal: 79.57 kg\nPrev: 80 kg\nCurr: 80 kg';
+    // Step 1: App.js calls composeQuickShareCaption(brand, activityCaption)
+    const composed = composeQuickShareCaption(brand, weightSuffix);
+
+    // Step 2: withMarathonWhatsAppNotice calls appendMarathonWhatsAppNotice with weight comparison
+    const progress = {
+      mode: 'running',
+      marathonNumber: 1,
+      marathonDay: 5,
+      currentDay: { day: 5, displayLine: 'Day 0 : — → Curr: 80.00 kg' },
+    };
+
+    // Date inside marathon: 2026-08-05 (Marathon Day 5)
+    const finalCaption = appendMarathonWhatsAppNotice(
+      composed,
+      '2026-08-06',
+      progress,
+      { includeWeightComparison: true },
+    );
+
+    const expected = [
+      'ALLAN · Wellness Valley v 3.5.2',
+      '',
+      'DAY PROGRESS',
+      '',
+      'Ideal: 79.57 kg',
+      'Prev: 80 kg',
+      'Curr: 80 kg',
+      '',
+      'LAP PROGRESS',
+      '',
+      'Marathon Day 5',
+      'Day 0 : — → Curr: 80.00 kg',
+    ].join('\n');
+
+    assert.equal(finalCaption, expected);
+  });
+
 });

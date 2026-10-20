@@ -12,6 +12,7 @@ import {
   getMarathonCalendarState,
 } from './marathonCalendar.js';
 import { formatMarathonWeightWhatsAppNoticeLines } from './marathonWeightComparison.js';
+import { formatTransformationCaption } from '../../../shared/utils/shareCaption.js';
 
 export const MARATHON_START_WHATSAPP_LABEL = 'Marathon Starts';
 export const DETOX_DAY_WHATSAPP_LABEL = 'Detox Day';
@@ -141,5 +142,6 @@ export function appendMarathonWhatsAppNotice(
   if (!base) return additions.join('\n');
 
   const separator = base.includes('\n') ? '\n' : ', ';
-  return `${base}${separator}${additions.join(separator)}`;
+  const combined = `${base}${separator}${additions.join(separator)}`;
+  return formatTransformationCaption(combined);
 }
