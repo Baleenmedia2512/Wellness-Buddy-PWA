@@ -35,6 +35,11 @@ import {
   shareCardPhotoHeight,
 } from '../utils/shareCardLayout.js';
 import { isTransformationWeightLoss } from '../services/testimonialFormUtils.js';
+import {
+  corsReloadUrl,
+  isCanvasTaintError,
+  isInlineCaptureSrc,
+} from '../utils/shareCardCapture.js';
 
 export { CARD_H, CARD_W };
 
@@ -158,13 +163,66 @@ async function fetchImageAsDataUrl(src) {
   return blobToDataUrl(blob);
 }
 
+function decodeImageElement(src, { crossOrigin = null } = {}) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    if (crossOrigin) image.crossOrigin = crossOrigin;
+    const timer = setTimeout(() => {
+      image.onload = null;
+      image.onerror = null;
+      reject(new Error('Transformation photo took too long to load'));
+    }, 4000);
+    image.onload = () => {
+      clearTimeout(timer);
+      if (image.naturalWidth > 0) resolve(image);
+      else reject(new Error('Transformation photo is empty'));
+    };
+    image.onerror = () => {
+      clearTimeout(timer);
+      reject(new Error('Transformation photo failed to load'));
+    };
+    image.src = src;
+  });
+}
+
+/**
+ * Read photo pixels in CORS mode.
+ * A painted <img> can be tainted (displayed via a no-cors load) even when the
+ * bucket allows a real CORS fetch — that is the Full Team share failure.
+ */
+async function loadUntaintedPhoto(src) {
+  const attempts = [src];
+  const busted = corsReloadUrl(src);
+  if (busted !== src) attempts.push(busted);
+  let lastErr = null;
+  for (const candidate of attempts) {
+    try {
+      const dataUrl = await fetchImageAsDataUrl(candidate);
+      if (!dataUrl) continue;
+      return await decodeImageElement(dataUrl);
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+  for (const candidate of attempts) {
+    try {
+      return await decodeImageElement(candidate, { crossOrigin: 'anonymous' });
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+  throw lastErr || new Error('Could not read transformation photo');
+}
+
 async function inlineImagesForCapture(el) {
   const imgs = Array.from(el.querySelectorAll('img'));
   await Promise.all(imgs.map(async (img) => {
     const isLogo = img.hasAttribute('data-share-logo');
     const src = img.currentSrc || img.getAttribute('src') || '';
-    if (src.startsWith('data:') || src.startsWith('blob:')) return;
-    // Already decoded — a second download is what made Share feel stuck.
+    if (isInlineCaptureSrc(src)) return;
+    // Before/After are baked later. A decoded photo may be a no-cors bitmap;
+    // inlining it here used to skip the CORS refetch that Full Team needs.
+    if (img.hasAttribute('data-keep-ratio')) return;
     if (img.complete && img.naturalWidth > 0) return;
     const candidates = isLogo
       ? [src, shareCardLogoFetchUrl(), '/logo.png'].filter(Boolean)
@@ -196,37 +254,55 @@ function waitForImage(img) {
   });
 }
 
+function paintCoverPhoto(source, w, h, scale) {
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.round(w * scale));
+  canvas.height = Math.max(1, Math.round(h * scale));
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return null;
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.fillStyle = FRAME_BG;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  drawImageCoverTop(ctx, source, canvas.width, canvas.height);
+  return canvas.toDataURL('image/jpeg', 0.95);
+}
+
 /**
  * Paint each photo into a 2× canvas using cover + top crop.
  * Baking at CSS size made html2canvas upscale a small JPEG and the share looked blurry.
+ * Full Team photos are often already decoded as a no-cors bitmap; exporting that taints
+ * the canvas. On SecurityError, reload the same URL in CORS mode and bake that.
  */
-function bakeKeepRatioPhotos(el, scale = CAPTURE_SCALE) {
+async function bakeKeepRatioPhotos(el, scale = CAPTURE_SCALE) {
   const imgs = Array.from(el.querySelectorAll('img[data-keep-ratio]'));
-  imgs.forEach((img) => {
-    const nw = img.naturalWidth;
-    const nh = img.naturalHeight;
+  await Promise.all(imgs.map(async (img) => {
     const w = Math.round(img.clientWidth || img.width || 0);
     const h = Math.round(img.clientHeight || img.height || 0);
-    if (!nw || !nh || w < 2 || h < 2) return;
-
-    const canvas = document.createElement('canvas');
-    canvas.width = Math.max(1, Math.round(w * scale));
-    canvas.height = Math.max(1, Math.round(h * scale));
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = 'high';
-    ctx.fillStyle = FRAME_BG;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    drawImageCoverTop(ctx, img, canvas.width, canvas.height);
+    if (w < 2 || h < 2) return;
+    const src = img.currentSrc || img.getAttribute('src') || '';
+    let source = img;
+    if (!source.naturalWidth || !source.naturalHeight) {
+      if (isInlineCaptureSrc(src)) return;
+      source = await loadUntaintedPhoto(src);
+    }
+    let dataUrl;
+    try {
+      dataUrl = paintCoverPhoto(source, w, h, scale);
+    } catch (err) {
+      if (!isCanvasTaintError(err) || isInlineCaptureSrc(src)) throw err;
+      source = await loadUntaintedPhoto(src);
+      dataUrl = paintCoverPhoto(source, w, h, scale);
+    }
+    if (!dataUrl) return;
     img.removeAttribute('crossorigin');
-    img.src = canvas.toDataURL('image/jpeg', 0.95);
+    img.src = dataUrl;
     img.style.width = `${w}px`;
     img.style.height = `${h}px`;
     img.style.objectFit = 'fill';
     img.setAttribute('width', String(w));
     img.setAttribute('height', String(h));
-  });
+  }));
 }
 
 function waitForPacifico(maxMs) {
@@ -254,7 +330,7 @@ async function renderTransformationCardCanvas(el) {
   const cardImages = Array.from(el.querySelectorAll('img'));
   await Promise.all(cardImages.map(waitForImage));
   const photos = Array.from(el.querySelectorAll('img[data-keep-ratio]'));
-  bakeKeepRatioPhotos(el, CAPTURE_SCALE);
+  await bakeKeepRatioPhotos(el, CAPTURE_SCALE);
   await Promise.all(photos.map(waitForImage));
   const html2canvas = (await import('html2canvas')).default;
   return html2canvas(el, {
@@ -660,11 +736,11 @@ function PhotoCell({ src, label, scriptLabel, weightKg, isVerified, side, photoH
         <div style={{ position: 'relative', overflow: 'hidden', borderRadius: 14 }}>
           {src ? (
             <img
-              src={src}
               alt={label}
               data-keep-ratio="1"
               data-photo-slot={side === 'left' ? 'before' : 'after'}
               crossOrigin="anonymous"
+              src={src}
               style={{
                 display: 'block',
                 width: '100%',
@@ -1245,22 +1321,9 @@ export function TransformationShareActions({
     setStatus(null);
     try {
       if (!isVideo) {
-        const slot = readyShareRef.current;
-        const ready = slot.key === shareKey ? slot.dataUrl : null;
-        if (ready) {
-          await sharePreparedTransformationCard(ready, userName);
-          setStatus('shared');
-          return;
-        }
-      }
-      let resolved = testimonial;
-      if (typeof onBeforeAction === 'function') {
-        const detail = await onBeforeAction();
-        if (detail) resolved = detail;
-      }
-      if (isVideo) {
-        await shareResultVideos(resolved);
-      } else {
+        // Share the card already on screen. Direct and Full both have photo URLs
+        // on the list row. Refetching detail swaps those URLs and reloads the
+        // photos as a no-cors bitmap, which makes toDataURL throw on Full Team.
         const slot = readyShareRef.current;
         let dataUrl = slot.key === shareKey ? slot.dataUrl : null;
         if (!dataUrl && slot.key === shareKey && slot.pending) {
@@ -1273,8 +1336,16 @@ export function TransformationShareActions({
           }
         }
         if (dataUrl) await sharePreparedTransformationCard(dataUrl, userName);
-        else await shareTransformationCard(cardRef?.current, userName, resolved);
+        else await shareTransformationCard(cardRef?.current, userName, testimonial);
+        setStatus('shared');
+        return;
       }
+      let resolved = testimonial;
+      if (typeof onBeforeAction === 'function') {
+        const detail = await onBeforeAction();
+        if (detail) resolved = detail;
+      }
+      await shareResultVideos(resolved);
       setStatus('shared');
     } catch (err) {
       const msg = String(err?.message || err?.name || '').toLowerCase();

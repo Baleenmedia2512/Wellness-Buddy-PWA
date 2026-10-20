@@ -57,8 +57,7 @@ export async function register(input) {
     is_deleted: false,
   });
 
-  cache.delete(GEO_LIST_CACHE_KEY);
-  cache.deletePattern('nutrition-centers:list:');
+  invalidateNutritionCentersListCache();
 
   return {
     httpStatus: 201,
@@ -103,8 +102,7 @@ export async function unregister({ centerId, userId }) {
     return { httpStatus: guard.httpStatus, body: { success: false, message: guard.message } };
   }
   await repo.softDeleteCenter(centerId);
-  cache.delete(GEO_LIST_CACHE_KEY);
-  cache.deletePattern('nutrition-centers:list:');
+  invalidateNutritionCentersListCache();
   return {
     httpStatus: 200,
     body: { success: true, message: 'Nutrition center unregistered successfully' },
@@ -143,8 +141,7 @@ export async function updateCenter(input) {
   if (educationHour !== undefined) payload.education_hour = educationHour || null;
 
   const updated = await repo.updateCenter(centerId, payload);
-  cache.delete(GEO_LIST_CACHE_KEY);
-  cache.deletePattern('nutrition-centers:list:');
+  invalidateNutritionCentersListCache();
   return {
     httpStatus: 200,
     body: { success: true, data: updated, message: 'Nutrition center updated successfully' },
@@ -187,8 +184,24 @@ async function resolveTeamUserIds({ userIdNum, teamFilter }) {
 
 /** In-flight dedup — concurrent Full Team clicks share one hierarchy+metrics build. */
 const inflightListCenters = new Map();
+/** Bumped on create/update/delete so an older list query cannot repopulate the cache. */
+let centersListEpoch = 0;
 
-export async function listCenters(input) {
+export function getNutritionCentersListEpoch() {
+  return centersListEpoch;
+}
+
+export function invalidateNutritionCentersListCache() {
+  centersListEpoch += 1;
+  cache.delete(GEO_LIST_CACHE_KEY);
+  cache.deletePattern('nutrition-centers:list:');
+}
+
+function listCacheIsCurrent(epochAtStart) {
+  return epochAtStart === centersListEpoch;
+}
+
+export async function listCenters(input, attempt = 0) {
   const {
     userId, teamFilter, scope, includeMetrics = true, startDate, endDate,
     page, limit, search, paginate = true,
@@ -198,17 +211,26 @@ export async function listCenters(input) {
   const cacheKey = [
     userIdNum, teamFilter, scope, startDate || '', endDate || '', includeMetrics ? 1 : 0,
   ].join(':');
+  const epochAtStart = centersListEpoch;
 
-  if (inflightListCenters.has(cacheKey)) {
-    const shared = await inflightListCenters.get(cacheKey);
+  const inflight = inflightListCenters.get(cacheKey);
+  if (inflight && inflight.epoch === epochAtStart) {
+    const shared = await inflight.promise;
+    if (!listCacheIsCurrent(epochAtStart) && attempt < 2) {
+      return listCenters(input, attempt + 1);
+    }
     return applyCentersPagination(shared, { page, limit, search, paginate, includeMetrics });
   }
 
-  const promise = listCentersImpl(input).finally(() => {
-    inflightListCenters.delete(cacheKey);
+  const promise = listCentersImpl(input, epochAtStart).finally(() => {
+    const current = inflightListCenters.get(cacheKey);
+    if (current?.promise === promise) inflightListCenters.delete(cacheKey);
   });
-  inflightListCenters.set(cacheKey, promise);
+  inflightListCenters.set(cacheKey, { epoch: epochAtStart, promise });
   const result = await promise;
+  if (!listCacheIsCurrent(epochAtStart) && attempt < 2) {
+    return listCenters(input, attempt + 1);
+  }
   return applyCentersPagination(result, { page, limit, search, paginate, includeMetrics });
 }
 
@@ -231,7 +253,7 @@ function applyCentersPagination(result, { page, limit, search, paginate, include
   };
 }
 
-async function listCentersImpl(input) {
+async function listCentersImpl(input, epochAtStart = centersListEpoch) {
   const { userId, teamFilter, scope, includeMetrics = true } = input;
   let { startDate, endDate } = input;
   const userIdNum = parseInt(userId, 10);
@@ -257,7 +279,9 @@ async function listCentersImpl(input) {
       owner_user_id: c.owner_user_id,
       status: c.status,
     }));
-    cache.set(GEO_LIST_CACHE_KEY, geo, GEO_LIST_CACHE_TTL_MS);
+    if (listCacheIsCurrent(epochAtStart)) {
+      cache.set(GEO_LIST_CACHE_KEY, geo, GEO_LIST_CACHE_TTL_MS);
+    }
     return { httpStatus: 200, body: { success: true, data: geo } };
   }
 
@@ -329,7 +353,9 @@ async function listCentersImpl(input) {
     };
   });
 
-  cache.set(metricsCacheKey, centersWithMetrics, LIST_METRICS_CACHE_TTL_MS);
+  if (listCacheIsCurrent(epochAtStart)) {
+    cache.set(metricsCacheKey, centersWithMetrics, LIST_METRICS_CACHE_TTL_MS);
+  }
   return { httpStatus: 200, body: { success: true, data: centersWithMetrics } };
 }
 

@@ -633,30 +633,10 @@ const NutritionCenterRegistration = ({ user, onBack, onSaved, initialCenter }) =
       }
 
       setSuccess('Nutrition centre registered successfully!');
-      
-      // Reset form
-      setCenterName('');
-      setLatitude('');
-      setLongitude('');
-      setOwnerPhone('');
-      setCountryCode('+91');
-      setNameAvailable(null);
-      setNameChecking(false);
-      setSearchAddress('');
-      if (searchBoxRef.current) {
-        searchBoxRef.current.value = '';
-      }
-      
-      if (markerRef.current) {
-        markerRef.current.setMap(null);
-        markerRef.current = null;
-      }
 
-      // Refresh centres list
-      fetchMyCenters();
-
-      // Clear success message after 3 seconds
-      setTimeout(() => setSuccess(null), 3000);
+      // Leave the form and show Mine, including the club just registered.
+      if (typeof onSaved === 'function') onSaved(result.data);
+      if (typeof onBack === 'function') onBack();
     } catch (err) {
       console.error('Error registering centre:', err);
       setError(err.message);
@@ -706,7 +686,8 @@ const NutritionCenterRegistration = ({ user, onBack, onSaved, initialCenter }) =
 
       setSuccess('Centre unregistered successfully');
       setAlertModal(prev => ({ ...prev, isOpen: false }));
-      fetchMyCenters();
+      if (typeof onSaved === 'function') onSaved();
+      else fetchMyCenters();
 
       setTimeout(() => setSuccess(null), 3000);
     } catch (err) {
