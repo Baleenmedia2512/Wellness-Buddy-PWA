@@ -28,22 +28,60 @@ export function buildQuickShareText(displayName, versionString) {
  * Food suffixes put kcal on the brand line, then remaining lines under it.
  * Other multi-line suffixes (weight) sit under the brand with a blank line.
  */
+
+
 export function composeQuickShareCaption(brandLine, activitySuffix = null) {
   const brand = String(brandLine || '').trim();
-  const suffix = typeof activitySuffix === 'string' ? activitySuffix.trim() : '';
+  const suffix = typeof activitySuffix === 'string'
+    ? activitySuffix.trim()
+    : '';
+
   if (!brand) return suffix;
   if (!suffix) return brand;
-  // WhatsApp-formatted lines (`*bold*`) should sit under the brand line so the
-  // brand itself stays plain while the activity copy renders bold in WhatsApp.
+
+  // Keep bold WhatsApp captions unchanged.
   if (suffix.startsWith('*')) {
     return `${brand}\n${suffix}`;
   }
+
+  // Keep food captions unchanged.
   if (suffix.includes('\n')) {
     const [first, ...rest] = suffix.split('\n');
+
     if (FOOD_KCAL_FIRST_LINE.test(first.trim()) && rest.length > 0) {
       return `${brand}, ${first.trim()}\n${rest.join('\n')}`;
     }
+  }
+
+  // Apply headings to transformation captions.
+  const hasIdeal = /\bIdeal\s*:/i.test(suffix);
+  const hasCurrentWeight = /\bCurr\s*:/i.test(suffix);
+  const hasMarathon = /\bMarathon\s+Day\s+\d+/i.test(suffix);
+
+  if (hasIdeal && hasCurrentWeight && hasMarathon) {
+    const marathonIndex = suffix.search(/\bMarathon\s+Day\s+\d+/i);
+
+    const dayProgress = suffix.slice(0, marathonIndex).trim();
+    const lapProgress = suffix.slice(marathonIndex).trim();
+
+    return [
+      brand,
+      '',
+      'DAY PROGRESS',
+      '',
+      dayProgress,
+      '',
+      'LAP PROGRESS',
+      '',
+      lapProgress,
+    ].join('\n');
+  }
+
+  // Preserve the original behavior for all other captions.
+  if (suffix.includes('\n')) {
     return `${brand}\n\n${suffix}`;
   }
+
   return `${brand}, ${suffix}`;
 }
+
