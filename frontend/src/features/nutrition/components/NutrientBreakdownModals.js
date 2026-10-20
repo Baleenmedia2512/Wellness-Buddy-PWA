@@ -43,6 +43,7 @@ export default function NutrientBreakdownModals({
   calorieTarget,
   heartCard,
   lowCarbCard,
+  periodContext = null,
 }) {
   if (!isOpen || !nutrient) return null;
 
@@ -73,6 +74,7 @@ export default function NutrientBreakdownModals({
       foodsLoading={analysesLoading && analyses.length === 0}
       decimals={getNutrientDecimals(nutrient)}
       amountsOnly={ALL_MICRONUTRIENTS.some((spec) => spec.key === nutrient)}
+      periodContext={periodContext}
     />
   );
 }
