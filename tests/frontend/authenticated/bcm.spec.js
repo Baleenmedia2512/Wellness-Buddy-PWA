@@ -32,6 +32,7 @@
  * - BCM-026: Verify BMI field range validation & auto-compute override
  * - BCM-027: Verify Body Age field range boundaries (0, 1, 120, 121)
  * - BCM-028: Verify Chest, Waist, and Hip field range boundaries (19, 20, 250, 251)
+ * - BCM-029: Verify Checked At functionality works correctly
  */
 
 const path = require('path');
@@ -1693,6 +1694,184 @@ test.describe('BCM Module (Body Composition Metrics)', () => {
     await hipInput.fill('250');
     await expect(hipInput).toHaveValue('250');
     await expect(page.getByText('Hip must be between 20 and 250 cm')).not.toBeVisible();
+  });
+
+  test('BCM-029 Verify Checked At functionality works correctly', async ({ page }) => {
+    let listCards = JSON.parse(JSON.stringify(MOCK_CARDS));
+
+    // Dynamic list route to support listing cards after creation and update
+    await page.route('**/api/body-parameters-card/list*', async (route) => {
+      const url = new URL(route.request().url());
+      const cardId = url.searchParams.get('cardId');
+      if (cardId) {
+        const found = listCards.find((c) => String(c.id) === String(cardId));
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            ok: true,
+            data: found || listCards[0],
+          }),
+        });
+        return;
+      }
+
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          ok: true,
+          success: true,
+          data: listCards,
+          pagination: {
+            totalRecords: listCards.length,
+            totalPages: 1,
+            currentPage: 1,
+            pageSize: 20,
+            hasNextPage: false,
+            hasPreviousPage: false,
+          },
+        }),
+      });
+    });
+
+    let lastCreateBody = null;
+    await page.route('**/api/body-parameters-card/create', async (route) => {
+      try {
+        lastCreateBody = route.request().postDataJSON();
+      } catch {
+        lastCreateBody = null;
+      }
+      const newCard = {
+        id: 501,
+        name: lastCreateBody?.name || 'VENUE TEST USER',
+        phoneNumber: lastCreateBody?.phoneNumber || null,
+        locationName: lastCreateBody?.locationName || 'Camp Beta',
+        recordedDate: '2026-10-15',
+        createdAt: new Date().toISOString(),
+      };
+      listCards = [newCard, ...listCards];
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          data: newCard,
+        }),
+      });
+    });
+
+    let lastUpdateBody = null;
+    await page.route('**/api/body-parameters-card/update*', async (route) => {
+      try {
+        lastUpdateBody = route.request().postDataJSON();
+      } catch {
+        lastUpdateBody = null;
+      }
+      const updatedCard = {
+        id: 1,
+        name: 'VIKKEY',
+        phoneNumber: '8576794649',
+        heightCm: 167,
+        locationName: lastUpdateBody?.locationName || 'Voc Harbour',
+        recordedDate: '2026-08-24',
+        updatedAt: new Date().toISOString(),
+      };
+      listCards = listCards.map((c) => (c.id === 1 ? { ...c, ...updatedCard } : c));
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          data: updatedCard,
+        }),
+      });
+    });
+
+    // 1. Verify "Checked At:" label and input field are visible in the header
+    const checkedAtLabel = page.locator('label[for="bpc-header-venue"]');
+    await expect(checkedAtLabel).toBeVisible();
+    await expect(checkedAtLabel).toHaveText(/Checked At:/i);
+
+    const checkedAtInput = page.locator('#bpc-header-venue');
+    await expect(checkedAtInput).toBeVisible();
+    await expect(checkedAtInput).toHaveValue('');
+
+    // 2. Type initial venue into "Checked At" input
+    await checkedAtInput.fill('Camp Alpha');
+    await expect(checkedAtInput).toHaveValue('Camp Alpha');
+
+    // 3. Open Create modal and verify Venue is auto-prefilled from "Checked At"
+    const createButton = page.getByRole('button', { name: 'Create Body Parameters Card' });
+    await expect(createButton).toBeVisible();
+    await createButton.click();
+
+    await expect(page.getByRole('heading', { name: 'Your Body Parameters' })).toBeVisible();
+    const modalVenueInput = page.getByPlaceholder('e.g. Chennai');
+    await expect(modalVenueInput).toBeVisible();
+    await expect(modalVenueInput).toHaveValue('Camp Alpha');
+
+    // 4. Update Venue inside modal and verify live bi-directional sync to header "Checked At"
+    await modalVenueInput.fill('Camp Beta');
+    await expect(modalVenueInput).toHaveValue('Camp Beta');
+    await expect(checkedAtInput).toHaveValue('Camp Beta');
+
+    // 5. Save the card and verify locationName is sent in the create API payload
+    await page.getByPlaceholder('FULL NAME').fill('VENUE TEST USER');
+    const saveButton = page.getByRole('button', { name: 'Save & Share' });
+    await saveButton.click();
+
+    // Verify modal closes and creation payload contains the venue
+    await expect(page.getByRole('heading', { name: 'Your Body Parameters' })).not.toBeVisible({ timeout: 15000 });
+    expect(lastCreateBody).not.toBeNull();
+    expect(lastCreateBody.locationName).toBe('Camp Beta');
+
+    // Dismiss share sheet / overlay if opened
+    await page.keyboard.press('Escape').catch(() => {});
+
+    // Verify Checked At input in header retains the venue
+    await expect(checkedAtInput).toHaveValue('Camp Beta');
+
+    // Verify newly created card tile displays the venue
+    const newCardTile = page.locator('div.bg-white', { hasText: 'VENUE TEST USER' }).first();
+    await expect(newCardTile).toBeVisible({ timeout: 5000 });
+    await expect(newCardTile).toContainText('Venue: Camp Beta');
+
+    // 6. Verify Checked At updates when editing an existing card with a different venue
+    // VIKKEY has initial locationName: "Voc"
+    const vikkeyCard = page.locator('div.bg-white', { hasText: 'VIKKEY' }).first();
+    await vikkeyCard.getByRole('button', { name: 'Edit VIKKEY' }).click();
+
+    await expect(page.getByRole('heading', { name: 'Edit Body Parameters' })).toBeVisible({ timeout: 10000 });
+    await expect(modalVenueInput).toHaveValue('Voc');
+    await expect(checkedAtInput).toHaveValue('Voc');
+
+    // 7. Update Venue in edit modal, verify live sync, and save
+    await modalVenueInput.fill('Voc Harbour');
+    await expect(modalVenueInput).toHaveValue('Voc Harbour');
+    await expect(checkedAtInput).toHaveValue('Voc Harbour');
+
+    const updateButton = page.getByRole('button', { name: /Update & Share/i });
+    await updateButton.click();
+
+    await expect(page.getByRole('heading', { name: 'Edit Body Parameters' })).not.toBeVisible({ timeout: 15000 });
+    expect(lastUpdateBody).not.toBeNull();
+    expect(lastUpdateBody.locationName).toBe('Voc Harbour');
+
+    // Dismiss share sheet if opened
+    await page.keyboard.press('Escape').catch(() => {});
+
+    // Verify header "Checked At" retains edited venue
+    await expect(checkedAtInput).toHaveValue('Voc Harbour');
+
+    // Refresh list if needed and verify edited card displays the new venue
+    const refreshButton = page.locator('h1:has-text("Body Composition Metrics") + button');
+    if (await refreshButton.isVisible().catch(() => false)) {
+      await refreshButton.click();
+    }
+    await expect(vikkeyCard).toContainText('Venue: Voc Harbour');
+
+    console.log('BCM-029: Successfully verified Checked At functionality on header, modal synchronization, card creation, and card edit');
   });
 });
 
