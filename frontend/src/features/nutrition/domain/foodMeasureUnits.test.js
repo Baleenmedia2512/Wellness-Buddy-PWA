@@ -6,7 +6,10 @@ import {
   applyFoodMeasure,
   availableMeasureUnits,
   defaultMeasureForItem,
+  impliedPieceCount,
   isPieceCountableFood,
+  normalizePieceFoodToSingleServing,
+  previewMeasureNutrition,
 } from './foodMeasureUnits';
 
 describe('isPieceCountableFood', () => {
@@ -59,6 +62,74 @@ describe('availableMeasureUnits / defaultMeasureForItem', () => {
   });
 });
 
+describe('normalizePieceFoodToSingleServing', () => {
+  test('splits multi-piece Latest totals back to 1 piece (servings)', () => {
+    const multi = {
+      name: 'Dosa',
+      calories: 13500,
+      protein: 350,
+      weight_g: 2250,
+      servings: 25,
+      nutrition: { calories: 13500, protein: 350 },
+    };
+    expect(impliedPieceCount(multi)).toBe(25);
+    const one = normalizePieceFoodToSingleServing(multi);
+    expect(one.calories).toBe(540);
+    expect(one.protein).toBe(14);
+    expect(one.servings).toBe(1);
+    expect(one.weight_g).toBe(90);
+  });
+
+  test('splits multi-piece totals from weight when servings missing', () => {
+    const multi = {
+      name: 'Dosa',
+      calories: 13500,
+      protein: 350,
+      weight_g: 2250,
+      nutrition: { calories: 13500, protein: 350 },
+    };
+    const one = normalizePieceFoodToSingleServing(multi);
+    expect(one.calories).toBe(540);
+    expect(one.protein).toBe(14);
+  });
+
+  test('leaves a normal single dosa unchanged', () => {
+    const one = {
+      name: 'Dosa',
+      calories: 540,
+      protein: 14,
+      weight_g: 90,
+      nutrition: { calories: 540, protein: 14 },
+    };
+    expect(normalizePieceFoodToSingleServing(one).calories).toBe(540);
+  });
+
+  test('2 dosas @ 270 kcal → 1 piece base 135; preview scales with pcs', () => {
+    const loggedTwo = {
+      name: 'Dosa',
+      calories: 270,
+      protein: 8,
+      weight_g: 180,
+      servings: 2,
+      portion: '2 pieces',
+      nutrition: { calories: 270, protein: 8 },
+    };
+    expect(impliedPieceCount(loggedTwo)).toBe(2);
+    expect(normalizePieceFoodToSingleServing(loggedTwo).calories).toBe(135);
+    expect(previewMeasureNutrition(loggedTwo, { unit: 'pcs', quantity: 1 })).toEqual({
+      calories: 135,
+      protein: 4,
+      portionLabel: '1 piece',
+    });
+    expect(previewMeasureNutrition(loggedTwo, { unit: 'pcs', quantity: 2 })).toEqual({
+      calories: 270,
+      protein: 8,
+      portionLabel: '2 pieces',
+    });
+    expect(defaultMeasureForItem(loggedTwo)).toEqual({ unit: 'pcs', quantity: 1 });
+  });
+});
+
 describe('applyFoodMeasure', () => {
   const dosa = {
     name: 'Dosa',
@@ -76,6 +147,20 @@ describe('applyFoodMeasure', () => {
     expect(out.calories).toBe(540);
     expect(out.portion).toBe('2 pieces');
     expect(out.measureUnit).toBe('pcs');
+  });
+
+  test('pcs normalizes inflated Latest totals before adding', () => {
+    const multi = {
+      name: 'Dosa',
+      calories: 13500,
+      protein: 350,
+      weight_g: 2250,
+      servings: 25,
+      nutrition: { calories: 13500, protein: 350 },
+    };
+    const out = applyFoodMeasure(multi, { unit: 'pcs', quantity: 1 });
+    expect(out.calories).toBe(540);
+    expect(out.servings).toBe(1);
   });
 
   test('g scales nutrition to absolute grams', () => {

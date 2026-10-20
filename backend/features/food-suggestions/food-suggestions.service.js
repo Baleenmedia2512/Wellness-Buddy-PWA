@@ -42,11 +42,16 @@ function flattenFoodItem(name, nutritionSource, source = 'history') {
   const weight_g = nutritionSource?.weight_g != null
     ? Math.round(nutritionSource.weight_g)
     : 100;
+  const servingsRaw = Number(nutritionSource?.servings ?? nutritionSource?.servingCount);
+  const servings = Number.isFinite(servingsRaw) && servingsRaw > 0 ? servingsRaw : undefined;
+  const portion = nutritionSource?.portion || nutritionSource?.portion_label || undefined;
   return {
     name: display,
     weight_g,
     source,
     ...flat,
+    ...(servings != null ? { servings } : {}),
+    ...(portion ? { portion } : {}),
     nutrition: Object.keys(nutrition).length ? nutrition : {
       calories: flat.calories ?? null,
       protein: flat.protein ?? null,

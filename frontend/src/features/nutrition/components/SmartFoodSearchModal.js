@@ -8,6 +8,7 @@ import {
   applyFoodMeasure,
   availableMeasureUnits,
   defaultMeasureForItem,
+  previewMeasureNutrition,
 } from "../domain/foodMeasureUnits";
 import { isFlagEnabled } from "../../../config/featureFlags";
 import FloatingMealTray from "./meal-builder/FloatingMealTray";
@@ -1029,6 +1030,8 @@ const FoodItemRow = ({
 
   if (mealBuilder) {
     const unitLabel = unit === "pcs" ? "pcs" : unit;
+    // Live preview: 1 pcs → 135 kcal, 2 pcs → 270; always from 1-piece base.
+    const preview = previewMeasureNutrition(item, { unit, quantity });
     return (
       <div
         className={`w-full rounded-xl px-3 py-2.5 border-2 transition-colors ${
@@ -1041,9 +1044,11 @@ const FoodItemRow = ({
               {item.name}
             </p>
             <p className="text-xs text-gray-400 mt-0.5 leading-snug">
-              {portion ? <span>{portion} · </span> : null}
-              {item.calories ?? "?"} kcal
-              {item.protein ? ` · ${item.protein}g protein` : ""}
+              {preview.portionLabel ? <span>{preview.portionLabel} · </span> : null}
+              {preview.calories ?? item.calories ?? "?"} kcal
+              {preview.protein != null && preview.protein > 0
+                ? ` · ${preview.protein}g protein`
+                : (item.protein && unit !== "pcs" ? ` · ${item.protein}g protein` : "")}
             </p>
           </div>
           {selected && (
