@@ -1,0 +1,28 @@
+{
+    "enabled":  false,
+    "stagingBaseUrl":  "https://wellness-valley-pwa-backend-test.vercel.app",
+    "allowedHost":  "wellness-valley-pwa-backend-test.vercel.app",
+    "vus":  10,
+    "durationSeconds":  30,
+    "maxVus":  10,
+    "maxDurationSeconds":  30,
+    "maxFailureRate":  0.05,
+    "max5xxCount":  5,
+    "maxUnexpectedStatus":  10,
+    "stopOnRedirect":  true,
+    "testData":  {
+                     "appVersion":  "",
+                     "userId":  "",
+                     "viewerUserId":  "",
+                     "coachId":  "",
+                     "centerId":  "",
+                     "startDate":  "",
+                     "endDate":  "",
+                     "captureId":  "",
+                     "jobId":  "",
+                     "weightRecordId":  "",
+                     "shareToken":  "",
+                     "teamId":  "",
+                     "mealId":  ""
+                 }
+}
