@@ -99,7 +99,7 @@ export function resolveQuantityUnit(item) {
     return { unit: 'cups', shortLabel: 'cups' };
   }
   if (
-    /\b(piece|pieces|pcs|idli|idly|dosa|roti|chapati|paratha|vada|egg|biscuit|cookie|medium)\b/.test(blob)
+    /\b(piece|pieces|pcs|idli|idly|idaly|dosa|roti|chapati|chapathi|chappathi|paratha|porata|parotta|porotta|idiyappam|idyapam|idiappam|vada|egg|biscuit|cookie|medium)\b/.test(blob)
     || /\b1\s+(piece|idli|dosa|roti|medium)\b/.test(blob)
   ) {
     return { unit: 'pcs', shortLabel: 'pcs' };
