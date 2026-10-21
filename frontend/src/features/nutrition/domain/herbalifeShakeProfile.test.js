@@ -3,10 +3,13 @@
  */
 import {
   ACTIVE_FIBRE_COMPLEX,
+  combinePersonalizedProteinNutrition,
   combineShakeNutrition,
   powderGramsFromServings,
+  resolveLoggedShakeItem,
   scaleActiveFibreNutrition,
   HERBALIFE_SHAKE_STANDARD,
+  PERSONALIZED_PROTEIN_PER_SCOOP,
 } from './herbalifeShakeProfile';
 import { SHAKE_PRODUCTS } from './shakeProductProfiles';
 
@@ -63,6 +66,77 @@ describe('combineShakeNutrition', () => {
     expect(item.weight_g).toBe(6.7);
     expect(item.nutrition.calories).toBe(12.8);
     expect(item.nutrition.fiber).toBe(5);
+  });
+
+  test('6 g protein powder uses the canister label, not a scaled shake', () => {
+    const item = combineShakeNutrition(6, 0);
+    expect(item.name).toBe('Personalized Protein Powder');
+    expect(item.portion).toBe('1 scoop');
+    expect(item.isLiquid).toBe(false);
+    expect(item.nutrition.protein).toBe(4.96);
+    expect(item.nutrition.carbs).toBe(0.24);
+    expect(item.nutrition.fat).toBe(0.18);
+    expect(item.nutrition.sodium).toBe(68);
+    expect(item.nutrition.calories).toBe(22.96);
+    expect(item.nutrition.vitamin_a).toBeUndefined();
+  });
+});
+
+describe('personalized protein powder alone', () => {
+  test('1 scoop matches the canister label, not a scaled Herbalife Shake', () => {
+    const item = resolveLoggedShakeItem({
+      formula1: 0,
+      shakemate: 0,
+      protein: 1,
+      activeFibre: 0,
+    }, SHAKE_PRODUCTS);
+
+    expect(item.name).toBe('Personalized Protein Powder');
+    expect(item.portion).toBe('1 scoop');
+    expect(item.weight_g).toBe(6);
+    expect(item.isLiquid).toBe(false);
+    expect(item.volume_ml).toBeNull();
+    expect(item.nutrition).toEqual(PERSONALIZED_PROTEIN_PER_SCOOP);
+    expect(item.nutrition.protein).toBe(4.96);
+    expect(item.nutrition.carbs).toBe(0.24);
+    expect(item.nutrition.fat).toBe(0.18);
+    expect(item.nutrition.sugar).toBe(0);
+    expect(item.nutrition.sodium).toBe(68);
+    expect(item.nutrition.cholesterol).toBe(0);
+    expect(item.nutrition.vitamin_a).toBeUndefined();
+    expect(item.nutrition.glycemic_index).toBeUndefined();
+  });
+
+  test('2 scoops scale the label', () => {
+    const item = combinePersonalizedProteinNutrition(2, 0);
+    expect(item.portion).toBe('2 scoops');
+    expect(item.weight_g).toBe(12);
+    expect(item.nutrition.calories).toBe(45.92);
+    expect(item.nutrition.protein).toBe(9.92);
+    expect(item.nutrition.sodium).toBe(136);
+  });
+
+  test('Active Fibre adds its own label on top of the powder', () => {
+    const item = combinePersonalizedProteinNutrition(1, 1);
+    expect(item.name).toBe('Personalized Protein Powder');
+    expect(item.nutrition.calories).toBe(35.76);
+    expect(item.nutrition.protein).toBe(4.96);
+    expect(item.nutrition.carbs).toBe(5.94);
+    expect(item.nutrition.fiber).toBe(5);
+    expect(item.nutrition.sodium).toBe(84.45);
+    expect(item.weight_g).toBe(12.7);
+  });
+
+  test('Formula 1 or Shakemate still uses the prepared shake profile', () => {
+    const standard = resolveLoggedShakeItem({
+      formula1: 3,
+      shakemate: 2,
+      protein: 1,
+      activeFibre: 0,
+    }, SHAKE_PRODUCTS);
+    expect(standard.name).toBe('Herbalife Shake');
+    expect(standard.nutrition.calories).toBe(223);
+    expect(standard.portion).toBe('1 serving (300ml)');
   });
 });
 

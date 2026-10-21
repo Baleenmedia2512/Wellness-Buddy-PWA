@@ -2,9 +2,10 @@
  * frontend/src/features/nutrition/domain/shakeProductProfiles.js
  *
  * Scoop / powder-weight metadata for the Shake Calculator steppers.
- * Nutrition for the prepared shake comes from herbalifeShakeProfile.js
- * (same values as AI / backend HERBALIFE_SHAKE_NUTRITION) — not per-scoop macros.
- * Active Fibre Complex is additive (label per-scoop macros), not part of the 58 g base mix.
+ * A mix that includes Formula 1 or Shakemate uses herbalifeShakeProfile.js
+ * (same values as AI / backend HERBALIFE_SHAKE_NUTRITION).
+ * Personalized Protein alone uses the canister label, not a slice of that mix.
+ * Active Fibre Complex is additive (label per-scoop macros).
  *
  * Standard recipe: F1 3×25g + Shakemate 2×27g + PPP 1×6g = 58 g.
  * Optional add-on: Active Fibre Complex 1 scoop = 6.7 g (default 0).
