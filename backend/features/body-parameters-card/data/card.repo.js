@@ -13,6 +13,7 @@ import {
   isMemberActivatedForBcmExclusion,
   BCM_ACTIVATED_MEMBER_MESSAGE,
   canOverrideBcmForMember,
+  computeDefaultAppointmentDate,
 } from '../domain/card.rules.js';
 import { getLatestWeight, getLatestWeightBodyFat, getLatestWeightMetricsByUserIds } from '../../user/user.repository.js';
 import logger from '../../../shared/lib/logger.js';
@@ -50,6 +51,7 @@ export async function insertCard(payload) {
     waist_cm:      payload.waistCm,
     hip_cm:        payload.hipCm,
     location_name: locationName,
+    appointment_date: payload.appointmentDate || null,
     recovered_health_issues: Array.isArray(payload.recoveredHealthIssues)
       ? payload.recoveredHealthIssues
       : [],
@@ -60,6 +62,16 @@ export async function insertCard(payload) {
   }
 
   const { data, error } = await supabase.from(TABLE).insert(row).select().single();
+
+  if (error && /appointment_date/i.test(String(error.message || ''))) {
+    logger.warn('[body-params-card] appointment_date column missing — saving without it. Run migration add_appointment_date_to_body_parameters_cards.sql', {
+      message: error.message,
+    });
+    delete row.appointment_date;
+    const retry = await supabase.from(TABLE).insert(row).select().single();
+    if (retry.error) throw retry.error;
+    return { ...retry.data, appointment_date: payload.appointmentDate || null };
+  }
 
   if (error && /recovered_health_issues/i.test(String(error.message || ''))) {
     logger.error('[body-params-card] recovered_health_issues column missing — run migration add_health_issues_to_body_parameters_cards.sql', {
@@ -130,6 +142,7 @@ export async function updateCard(id, payload, opts = {}) {
     hip_cm:        payload.hipCm,
     recorded_date: payload.recordedDate,
     location_name: locationName,
+    appointment_date: payload.appointmentDate || null,
     recovered_health_issues: Array.isArray(payload.recoveredHealthIssues)
       ? payload.recoveredHealthIssues
       : [],
@@ -158,6 +171,21 @@ export async function updateCard(id, payload, opts = {}) {
       .eq('is_deleted', false)
       .select()
       .single();
+    if (retry.error && /appointment_date/i.test(String(retry.error.message || ''))) {
+      logger.warn('[body-params-card] appointment_date column missing — retrying update without it', {
+        message: retry.error.message,
+      });
+      delete patch.appointment_date;
+      const retry2 = await supabase
+        .from(TABLE)
+        .update(patch)
+        .eq('id', id)
+        .eq('is_deleted', false)
+        .select()
+        .single();
+      if (retry2.error) throw retry2.error;
+      return { ...retry2.data, appointment_date: payload.appointmentDate || null };
+    }
     if (retry.error && /recovered_health_issues/i.test(String(retry.error.message || ''))) {
       logger.error('[body-params-card] recovered_health_issues column missing — run migration add_health_issues_to_body_parameters_cards.sql', {
         message: retry.error.message,
@@ -178,6 +206,22 @@ export async function updateCard(id, payload, opts = {}) {
     }
     if (retry.error) throw retry.error;
     return retry.data;
+  }
+
+  if (error && /appointment_date/i.test(String(error.message || ''))) {
+    logger.warn('[body-params-card] appointment_date column missing — retrying update without it', {
+      message: error.message,
+    });
+    delete patch.appointment_date;
+    const retry = await supabase
+      .from(TABLE)
+      .update(patch)
+      .eq('id', id)
+      .eq('is_deleted', false)
+      .select()
+      .single();
+    if (retry.error) throw retry.error;
+    return { ...retry.data, appointment_date: payload.appointmentDate || null };
   }
 
   if (error && /recovered_health_issues/i.test(String(error.message || ''))) {
@@ -213,17 +257,32 @@ export async function updateCard(id, payload, opts = {}) {
  */
 export async function findCardByToken(token) {
   const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  let { data, error } = await supabase
     .from(TABLE)
     .select(
       'id, created_by, user_id, public_share_token, share_expires_at, ' +
       'name, age, gender, height_cm, weight_kg, bmi, fat_percent, bmr, ' +
-      'body_age, visceral_fat, chest_cm, waist_cm, hip_cm, recorded_date, location_name, ' +
+      'body_age, visceral_fat, chest_cm, waist_cm, hip_cm, recorded_date, location_name, appointment_date, ' +
       'recovered_health_issues, created_at, updated_at'
     )
     .eq('public_share_token', token)
     .eq('is_deleted', false)
     .maybeSingle();
+
+  if (error && /appointment_date/i.test(String(error.message || ''))) {
+    ({ data, error } = await supabase
+      .from(TABLE)
+      .select(
+        'id, created_by, user_id, public_share_token, share_expires_at, ' +
+        'name, age, gender, height_cm, weight_kg, bmi, fat_percent, bmr, ' +
+        'body_age, visceral_fat, chest_cm, waist_cm, hip_cm, recorded_date, location_name, ' +
+        'recovered_health_issues, created_at, updated_at'
+      )
+      .eq('public_share_token', token)
+      .eq('is_deleted', false)
+      .maybeSingle());
+  }
+
   if (error) throw error;
   return data || null;
 }
@@ -564,6 +623,7 @@ function mapFullCardRowToPrefill(card, phoneNumber) {
     hipCm: card.hip_cm ?? null,
     locationName: card.location_name ?? null,
     recordedDate: card.recorded_date ?? null,
+    appointmentDate: card.appointment_date ?? null,
     recoveredHealthIssues: issues,
   };
 }
@@ -1217,6 +1277,7 @@ const LIST_SUMMARY_COLS = [
   'bmi',
   'recorded_date',
   'location_name',
+  'appointment_date',
   'created_at',
   'updated_at',
   'created_by',
@@ -1241,6 +1302,7 @@ const LIST_DETAIL_COLS = [
   'hip_cm',
   'recorded_date',
   'location_name',
+  'appointment_date',
   'recovered_health_issues',
   'created_at',
   'updated_at',
@@ -1270,6 +1332,14 @@ function mapRecoveredHealthIssues(raw) {
   return [];
 }
 
+function resolveCardAppointmentDate(card) {
+  if (card?.appointment_date && String(card.appointment_date).trim()) {
+    return String(card.appointment_date).trim().slice(0, 10);
+  }
+  const baseDate = card?.created_at || card?.recorded_date || null;
+  return computeDefaultAppointmentDate(baseDate);
+}
+
 function mapCardSummary(card, memberMeta = null) {
   const phone = memberMeta?.phoneNumber || null;
   return {
@@ -1286,6 +1356,7 @@ function mapCardSummary(card, memberMeta = null) {
     bmi: card.bmi,
     recordedDate: card.recorded_date,
     locationName: card.location_name || null,
+    appointmentDate: resolveCardAppointmentDate(card),
     createdAt: card.created_at,
     updatedAt: card.updated_at ?? null,
     createdBy: card.created_by,
@@ -1303,6 +1374,7 @@ function mapCardDetail(card, memberMeta = null) {
     waistCm: card.waist_cm,
     hipCm: card.hip_cm,
     locationName: card.location_name,
+    appointmentDate: resolveCardAppointmentDate(card),
     recoveredHealthIssues: mapRecoveredHealthIssues(card.recovered_health_issues),
   };
 }
@@ -1426,25 +1498,43 @@ async function loadSlimCardsForCoach(coachId) {
     const supabase = getSupabaseClient();
     logger.info('[listCardsForCoach] querying slim columns', { coachId });
 
+    let selectCols = LIST_SUMMARY_COLS;
     let { data: cards, error: cardsError } = await supabase
       .from(TABLE)
-      .select(LIST_SUMMARY_COLS)
+      .select(selectCols)
       .eq('created_by', coachId)
       .eq('is_deleted', false)
       .order('created_at', { ascending: false });
+
+    if (cardsError && /appointment_date/i.test(String(cardsError.message || ''))) {
+      logger.error('[listCardsForCoach] appointment_date missing — retrying without it; run migration', {
+        message: cardsError.message,
+      });
+      selectCols = selectCols
+        .split(',')
+        .map((c) => c.trim())
+        .filter((c) => c !== 'appointment_date')
+        .join(', ');
+      ({ data: cards, error: cardsError } = await supabase
+        .from(TABLE)
+        .select(selectCols)
+        .eq('created_by', coachId)
+        .eq('is_deleted', false)
+        .order('created_at', { ascending: false }));
+    }
 
     if (cardsError && /location_name/i.test(String(cardsError.message || ''))) {
       logger.error('[listCardsForCoach] location_name missing — retrying without it; run migration', {
         message: cardsError.message,
       });
-      const colsWithoutVenue = LIST_SUMMARY_COLS
+      selectCols = selectCols
         .split(',')
         .map((c) => c.trim())
         .filter((c) => c !== 'location_name')
         .join(', ');
       ({ data: cards, error: cardsError } = await supabase
         .from(TABLE)
-        .select(colsWithoutVenue)
+        .select(selectCols)
         .eq('created_by', coachId)
         .eq('is_deleted', false)
         .order('created_at', { ascending: false }));
@@ -1513,13 +1603,44 @@ export async function listCardsForCoach(coachId, opts = {}) {
  */
 export async function getCardByIdForCoach(coachId, cardId) {
   const supabase = getSupabaseClient();
-  const { data: card, error } = await supabase
+  let selectCols = LIST_DETAIL_COLS;
+  let { data: card, error } = await supabase
     .from(TABLE)
-    .select(LIST_DETAIL_COLS)
+    .select(selectCols)
     .eq('id', cardId)
     .eq('created_by', coachId)
     .eq('is_deleted', false)
     .maybeSingle();
+
+  if (error && /appointment_date/i.test(String(error.message || ''))) {
+    selectCols = selectCols
+      .split(',')
+      .map((c) => c.trim())
+      .filter((c) => c !== 'appointment_date')
+      .join(', ');
+    ({ data: card, error } = await supabase
+      .from(TABLE)
+      .select(selectCols)
+      .eq('id', cardId)
+      .eq('created_by', coachId)
+      .eq('is_deleted', false)
+      .maybeSingle());
+  }
+
+  if (error && /location_name/i.test(String(error.message || ''))) {
+    selectCols = selectCols
+      .split(',')
+      .map((c) => c.trim())
+      .filter((c) => c !== 'location_name')
+      .join(', ');
+    ({ data: card, error } = await supabase
+      .from(TABLE)
+      .select(selectCols)
+      .eq('id', cardId)
+      .eq('created_by', coachId)
+      .eq('is_deleted', false)
+      .maybeSingle());
+  }
 
   if (error) throw error;
   if (!card) return null;

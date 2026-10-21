@@ -234,6 +234,7 @@ export async function handleCreateCard(body) {
         waistCm:          card.waist_cm,
         hipCm:            card.hip_cm,
         recordedDate:     card.recorded_date,
+        appointmentDate:  card.appointment_date ?? payload.appointmentDate ?? null,
         locationName:     card.location_name,
         createdAt:        card.created_at,
         updatedAt:        card.updated_at ?? null,

@@ -151,7 +151,7 @@ export function validateCreateCard(body) {
 
   const { createdBy, userId, name, age, gender, heightCm, weightKg,
           bmi, fatPercent, bmr, bodyAge, visceralFat, chestCm, waistCm, hipCm,
-          recordedDate, locationName, phoneNumber, bmrManualOverride,
+          recordedDate, appointmentDate, locationName, phoneNumber, bmrManualOverride,
           dietType, physicalActivityLevel, phoneConflictAction } = body;
 
   if (!createdBy) throw new ValidationError(400, 'createdBy is required');
@@ -183,6 +183,13 @@ export function validateCreateCard(body) {
     const d = new Date(recordedDate);
     if (isNaN(d.getTime())) throw new ValidationError(422, 'recordedDate must be a valid ISO date');
     recordedDateVal = d.toISOString().substring(0, 10);
+  }
+
+  let appointmentDateVal = null;
+  if (appointmentDate) {
+    const d = new Date(appointmentDate);
+    if (isNaN(d.getTime())) throw new ValidationError(422, 'appointmentDate must be a valid ISO date');
+    appointmentDateVal = d.toISOString().substring(0, 10);
   }
 
   const phoneVal = _optionalPhone(phoneNumber);
@@ -217,6 +224,7 @@ export function validateCreateCard(body) {
     waistCm:   waistN,
     hipCm:     hipN,
     recordedDate: recordedDateVal,
+    appointmentDate: appointmentDateVal,
     locationName: locationName ? String(locationName).trim().substring(0, 200) : null,
     phoneNumber: phoneVal,
     bmrManualOverride: bmrManualOverride === true || bmrManualOverride === 'true',
@@ -241,7 +249,7 @@ export function validateUpdateCard(body) {
 
   const { id, name, age, gender, heightCm, weightKg,
           bmi, fatPercent, bmr, bodyAge, visceralFat, chestCm, waistCm, hipCm,
-          recordedDate, locationName, phoneNumber, bmrManualOverride,
+          recordedDate, appointmentDate, locationName, phoneNumber, bmrManualOverride,
           dietType, physicalActivityLevel } = body;
 
   if (!id) throw new ValidationError(400, 'id is required');
@@ -274,6 +282,13 @@ export function validateUpdateCard(body) {
     recordedDateVal = d.toISOString().substring(0, 10);
   }
 
+  let appointmentDateVal = null;
+  if (appointmentDate) {
+    const d = new Date(appointmentDate);
+    if (isNaN(d.getTime())) throw new ValidationError(422, 'appointmentDate must be a valid ISO date');
+    appointmentDateVal = d.toISOString().substring(0, 10);
+  }
+
   const phoneVal = _optionalPhone(phoneNumber);
   const recoveredHealthIssues = normalizeRecoveredHealthIssues(body);
   const dietTypeVal = _optionalDietType(dietType);
@@ -296,6 +311,7 @@ export function validateUpdateCard(body) {
     waistCm:     waistN,
     hipCm:       hipN,
     recordedDate: recordedDateVal,
+    appointmentDate: appointmentDateVal,
     locationName: locationName ? String(locationName).trim().substring(0, 200) : null,
     phoneNumber: phoneVal,
     bmrManualOverride: bmrManualOverride === true || bmrManualOverride === 'true',

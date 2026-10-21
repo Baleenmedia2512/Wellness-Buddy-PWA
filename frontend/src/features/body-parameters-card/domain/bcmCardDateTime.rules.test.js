@@ -11,6 +11,8 @@ import {
   formatBcmListCardDateTime,
   formatBcmFormTime,
   bcmWallClockToIso,
+  computeDefaultAppointmentDate,
+  resolveBcmCardAppointmentDate,
 } from './bcmCardDateTime.rules.js';
 
 describe('resolveBcmDisplayTimezone', () => {
@@ -131,5 +133,66 @@ describe('formatBcmListCardDateTime', () => {
       'Asia/Kolkata',
     );
     assert.equal(text, '12 Sep 2026 1:44 PM');
+  });
+});
+
+describe('computeDefaultAppointmentDate', () => {
+  it('sets next day (+1 day) when next day is a weekday or Saturday', () => {
+    // 2026-10-19 is a Monday -> next day 2026-10-20 (Tuesday)
+    assert.equal(computeDefaultAppointmentDate('2026-10-19'), '2026-10-20');
+    // 2026-10-23 is a Friday -> next day 2026-10-24 (Saturday)
+    assert.equal(computeDefaultAppointmentDate('2026-10-23'), '2026-10-24');
+    // 2026-10-25 is a Sunday -> next day 2026-10-26 (Monday)
+    assert.equal(computeDefaultAppointmentDate('2026-10-25'), '2026-10-26');
+  });
+
+  it('rolls forward to Monday (+2 days) if the next day is a Sunday', () => {
+    // 2026-10-24 is Saturday -> next day would be Sunday 2026-10-25 -> rolls to Monday 2026-10-26
+    assert.equal(computeDefaultAppointmentDate('2026-10-24'), '2026-10-26');
+  });
+
+  it('handles month/year boundary correctly when rolling Sunday to Monday', () => {
+    // 2026-10-31 is Saturday -> next day Sunday 2026-11-01 -> rolls to Monday 2026-11-02
+    assert.equal(computeDefaultAppointmentDate('2026-10-31'), '2026-11-02');
+  });
+
+  it('handles ISO timestamps and Date objects', () => {
+    assert.equal(computeDefaultAppointmentDate('2026-10-24T10:00:00.000Z'), '2026-10-26');
+    assert.equal(computeDefaultAppointmentDate(new Date(2026, 9, 24)), '2026-10-26');
+  });
+
+  it('returns empty string for empty or invalid inputs', () => {
+    assert.equal(computeDefaultAppointmentDate(''), '');
+    assert.equal(computeDefaultAppointmentDate(null), '');
+    assert.equal(computeDefaultAppointmentDate(undefined), '');
+    assert.equal(computeDefaultAppointmentDate('invalid-date'), '');
+  });
+});
+
+describe('resolveBcmCardAppointmentDate', () => {
+  it('returns explicit appointmentDate if present', () => {
+    assert.equal(resolveBcmCardAppointmentDate({ appointmentDate: '2026-10-22' }), '2026-10-22');
+    assert.equal(resolveBcmCardAppointmentDate({ appointmentDate: '2026-10-22T08:00:00.000Z' }), '2026-10-22');
+  });
+
+  it('returns explicit appointment_date (snake_case) if present', () => {
+    assert.equal(resolveBcmCardAppointmentDate({ appointment_date: '2026-10-25' }), '2026-10-25');
+  });
+
+  it('computes default appointment date from createdAt when appointment date is null/missing', () => {
+    // 2026-10-21 (Wednesday) -> 2026-10-22 (Thursday)
+    assert.equal(resolveBcmCardAppointmentDate({ createdAt: '2026-10-21T05:48:00.000Z' }), '2026-10-22');
+    // 2026-10-24 (Saturday) -> rolls past Sunday to 2026-10-26 (Monday)
+    assert.equal(resolveBcmCardAppointmentDate({ created_at: '2026-10-24T12:00:00.000Z' }), '2026-10-26');
+  });
+
+  it('computes default appointment date from recordedDate when createdAt is missing', () => {
+    assert.equal(resolveBcmCardAppointmentDate({ recordedDate: '2026-10-19' }), '2026-10-20');
+    assert.equal(resolveBcmCardAppointmentDate({ recorded_date: '2026-10-24' }), '2026-10-26');
+  });
+
+  it('returns empty string when card is null or non-object', () => {
+    assert.equal(resolveBcmCardAppointmentDate(null), '');
+    assert.equal(resolveBcmCardAppointmentDate(undefined), '');
   });
 });
