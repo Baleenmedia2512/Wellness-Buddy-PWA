@@ -596,6 +596,7 @@ const SmartFoodSearchModal = ({
         onAddWithMeasure={handleAddWithMeasure}
         onRemove={handleRemoveItem}
         mealBuilder={mealBuilder}
+        targetNutrition={catalogMode}
       />
     ));
 
@@ -1015,6 +1016,7 @@ const FoodItemRow = ({
   onAddWithMeasure,
   onRemove,
   mealBuilder = false,
+  targetNutrition = false,
 }) => {
   const portion = item.portion || item.portion_label;
   const units = availableMeasureUnits(item);
@@ -1027,6 +1029,44 @@ const FoodItemRow = ({
     setUnit(next.unit);
     setQuantity(String(next.quantity));
   }, [item?.name, item?.weight_g, item?.unit, item?.isLiquid, item?.is_liquid]);
+
+  // Target Nutrition keeps the catalog amount under the name. No g/ml switch, no qty box.
+  if (mealBuilder && targetNutrition) {
+    const catalogPreview = previewMeasureNutrition(item, defaults);
+    return (
+      <button
+        type="button"
+        onClick={() => onToggle(item)}
+        aria-label={selected ? `Remove ${item.name}` : `Add ${item.name}`}
+        className={`w-full flex items-center gap-3 rounded-xl px-3 py-2.5 border-2 transition-colors text-left ${
+          selected ? "bg-green-50 border-green-500" : "bg-white border-gray-200 hover:border-green-300"
+        }`}
+      >
+        <div className="flex-1 min-w-0">
+          <p className={`text-sm font-medium leading-snug line-clamp-2 break-words ${selected ? "text-green-900" : "text-gray-800"}`}>
+            {item.name}
+          </p>
+          <p className="text-xs text-gray-400 mt-0.5 leading-snug">
+            {catalogPreview.portionLabel ? <span>{catalogPreview.portionLabel} · </span> : (portion ? <span>{portion} · </span> : null)}
+            {catalogPreview.calories ?? item.calories ?? "?"} kcal
+            {catalogPreview.protein != null && catalogPreview.protein > 0
+              ? ` · ${catalogPreview.protein}g protein`
+              : (item.protein ? ` · ${item.protein}g protein` : "")}
+          </p>
+        </div>
+        <span
+          aria-hidden="true"
+          className={`flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center font-bold text-lg ${
+            selected
+              ? "bg-green-600 text-white"
+              : "bg-green-50 text-green-700 border-2 border-green-300"
+          }`}
+        >
+          {selected ? <Check className="w-4 h-4" /> : "+"}
+        </span>
+      </button>
+    );
+  }
 
   if (mealBuilder) {
     const unitLabel = unit === "pcs" ? "pcs" : unit;
