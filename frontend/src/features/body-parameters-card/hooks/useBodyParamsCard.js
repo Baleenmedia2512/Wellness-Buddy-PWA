@@ -265,10 +265,10 @@ function cardToFormState(card, timezoneIana) {
 }
 
 /**
- * @param {{ user: object, selectedMember: object|null, onSaveSuccess: function, existingCard: object|null, onSaveStart: function|null, isOpen: boolean, externalVenue?: string|null }} opts
+ * @param {{ user: object, selectedMember: object|null, onSaveSuccess: function, existingCard: object|null, onSaveStart: function|null, onContactSaveState: function|null, isOpen: boolean, externalVenue?: string|null }} opts
  */
 export function useBodyParamsCard({
-  user, selectedMember, onSaveSuccess, existingCard = null, onSaveStart = null, isOpen = false,
+  user, selectedMember, onSaveSuccess, existingCard = null, onSaveStart = null, onContactSaveState = null, isOpen = false,
   externalVenue = null,
 } = {}) {
   const isEditMode = Boolean(existingCard?.id);
@@ -1259,6 +1259,11 @@ export function useBodyParamsCard({
       });
 
       // Open share immediately — Contacts must NOT block the share critical path.
+      // Mark contact-save in progress first so the list tile can show a loader
+      // beside Share as soon as the saved card appears.
+      if (fullCard.phoneNumber && fullCard.id) {
+        onContactSaveState?.({ cardId: fullCard.id, state: 'saving' });
+      }
       if (onSaveSuccess) onSaveSuccess(fullCard, url, prevCard);
 
       // Background: permission + upsert after share sheet starts presenting.
@@ -1270,15 +1275,20 @@ export function useBodyParamsCard({
           recordedDate: fullCard.recordedDate,
           phoneNumber: fullCard.phoneNumber,
         };
+        const finishContactSave = (state) => {
+          if (fullCard.id) onContactSaveState?.({ cardId: fullCard.id, state });
+        };
         setTimeout(() => {
           void upsertBcmMemberToDeviceContacts(contactPayload).then((result) => {
             if (result?.ok) {
+              finishContactSave('saved');
               console.warn('[BodyParamsCard] Contact saved', {
                 updated: result.updated,
                 name: contactPayload.name,
               });
               return;
             }
+            finishContactSave('idle');
             console.warn('[BodyParamsCard] Contact not saved', {
               reason: result?.reason || 'unknown',
               hasPhone: Boolean(contactPayload.phoneNumber),
@@ -1289,6 +1299,7 @@ export function useBodyParamsCard({
               console.warn('[BodyParamsCard] Contact not saved — enable Contacts in Settings');
             }
           }).catch((err) => {
+            finishContactSave('idle');
             console.warn('[BodyParamsCard] Contact save unexpected error', err?.message || err);
           });
         }, 500);
@@ -1315,7 +1326,7 @@ export function useBodyParamsCard({
     } finally {
       setIsSaving(false);
     }
-  }, [isValid, form, coachUserId, targetUserId, onSaveSuccess, onSaveStart, isEditMode, existingCard, user, bmrUserEdited, externalVenue, phoneFieldError, phoneExistsPrompt, clearDirty, transformationPhotos.payloadExtras, displayTimezone]);
+  }, [isValid, form, coachUserId, targetUserId, onSaveSuccess, onSaveStart, onContactSaveState, isEditMode, existingCard, user, bmrUserEdited, externalVenue, phoneFieldError, phoneExistsPrompt, clearDirty, transformationPhotos.payloadExtras, displayTimezone]);
 
   /** Edit with no field changes — open share for the saved card, do not PATCH. */
   const handleShareExisting = useCallback(() => {

@@ -1,6 +1,6 @@
 // src/pages/WellnessCounsellingCards.js
 import React, { useState, useEffect, useRef, useCallback, useMemo, memo } from "react";
-import { Plus, RefreshCw, FileHeart, Edit2, Trash2, Share2 } from "lucide-react";
+import { Plus, RefreshCw, FileHeart, Edit2, Trash2, Share2, Loader2, BadgeCheck } from "lucide-react";
 import {
   BodyParamsForm,
   BodyParamsShareSheet,
@@ -23,6 +23,7 @@ import {
   resolveBcmCardAppointmentDate,
 } from '../features/body-parameters-card/domain/bcmCardDateTime.rules.js';
 import { dismissNetworkFailure } from '../shared/services/networkNotice.js';
+import { isBcmDeviceContactSaved } from '../features/body-parameters-card/utils/bcmDeviceContact.js';
 
 const PAGE_SIZE = 20;
 
@@ -52,6 +53,7 @@ const BodyParamsCardTile = memo(function BodyParamsCardTile({
   onShare,
   isDeleting = false,
   isSharing = false,
+  contactStatus = 'idle',
   timezoneIana,
 }) {
   return (
@@ -75,6 +77,24 @@ const BodyParamsCardTile = memo(function BodyParamsCardTile({
             ) : null}
           </div>
           <div className="flex items-center gap-0.5 flex-shrink-0">
+            {contactStatus === 'saving' ? (
+              <span
+                className="p-1.5"
+                role="status"
+                aria-label="Saving contact"
+                title="Saving contact"
+              >
+                <Loader2 size={16} className="text-green-600 animate-spin" />
+              </span>
+            ) : contactStatus === 'saved' ? (
+              <span
+                className="p-1.5"
+                aria-label="Contact saved"
+                title="Contact saved"
+              >
+                <BadgeCheck size={16} className="text-green-600" />
+              </span>
+            ) : null}
             <button
               type="button"
               onClick={(e) => {
@@ -178,6 +198,10 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
   const [cardPendingDelete, setCardPendingDelete] = useState(null);
   const [deleteErrorMessage, setDeleteErrorMessage] = useState(null);
   const [sharingCardId, setSharingCardId] = useState(null);
+  /** Card ids whose phone contact write is in flight. */
+  const [contactSavingIds, setContactSavingIds] = useState(() => new Set());
+  /** Card ids whose phone contact was saved in this session. */
+  const [contactSavedIds, setContactSavedIds] = useState(() => new Set());
   const [shareErrorMessage, setShareErrorMessage] = useState(null);
   /** List-card share should not reload the grid when the sheet closes. */
   const skipRefreshOnShareCloseRef = useRef(false);
@@ -477,6 +501,25 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
     return () => observer.disconnect();
   }, [loadMore, bodyParamsCards.length]);
 
+  const handleContactSaveState = useCallback(({ cardId, state }) => {
+    if (cardId == null) return;
+    const id = String(cardId);
+    setContactSavingIds((prev) => {
+      const next = new Set(prev);
+      if (state === 'saving') next.add(id);
+      else next.delete(id);
+      return next;
+    });
+    if (state === 'saved') {
+      setContactSavedIds((prev) => {
+        if (prev.has(id)) return prev;
+        const next = new Set(prev);
+        next.add(id);
+        return next;
+      });
+    }
+  }, []);
+
   const handleEditCard = async (card) => {
     // Open immediately with list data so Edit never waits on the network.
     // Detail fields (fat%, BMR, etc.) merge in when the refresh succeeds —
@@ -700,6 +743,13 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
                   onShare={handleShareCard}
                   isDeleting={deletingCardId === card.id}
                   isSharing={sharingCardId === card.id}
+                  contactStatus={
+                    contactSavingIds.has(String(card.id))
+                      ? 'saving'
+                      : contactSavedIds.has(String(card.id)) || isBcmDeviceContactSaved(card.phoneNumber)
+                        ? 'saved'
+                        : 'idle'
+                  }
                   timezoneIana={displayTimezone}
                 />
               ))}
@@ -741,6 +791,7 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
           headerVenueInitializedRef.current = true;
           setHeaderVenue(venue);
         }}
+        onContactSaveState={handleContactSaveState}
         onSaveStart={(formData) => {
           const venue = String(formData.locationName || '').trim();
           if (venue) {

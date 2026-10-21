@@ -156,14 +156,15 @@ const SelectField = ({
 };
 
 /**
- * @param {{ isOpen, onClose, user, selectedMember, onSaveSuccess, existingCard, onSaveStart, externalVenue, onVenueChange, hideVenueField }} props
+ * @param {{ isOpen, onClose, user, selectedMember, onSaveSuccess, existingCard, onSaveStart, onContactSaveState, externalVenue, onVenueChange, hideVenueField }} props
  */
 const BodyParamsForm = ({
   isOpen, onClose, user, selectedMember, onSaveSuccess, existingCard = null, onSaveStart = null,
+  onContactSaveState = null,
   externalVenue = null, onVenueChange = null, hideVenueField = false,
 }) => {
   const vm = useBodyParamsCard({
-    user, selectedMember, onSaveSuccess, existingCard, onSaveStart, isOpen,
+    user, selectedMember, onSaveSuccess, existingCard, onSaveStart, onContactSaveState, isOpen,
     externalVenue,
   });
 
