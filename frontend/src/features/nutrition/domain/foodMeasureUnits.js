@@ -124,7 +124,7 @@ export function previewMeasureNutrition(item, measure = {}) {
   return {
     calories: nutrition.calories != null ? Math.round(nutrition.calories) : null,
     protein: nutrition.protein != null ? Math.round(nutrition.protein * 10) / 10 : null,
-    portionLabel: `${formatAmount(amount)} ${u}`,
+    portionLabel: formatMeasurePortion(amount, u),
   };
 }
 
@@ -209,6 +209,21 @@ export function defaultMeasureForItem(item) {
 function formatAmount(n) {
   const v = Math.round(Number(n) * 100) / 100;
   return Number.isInteger(v) ? String(v) : String(v);
+}
+
+/**
+ * Catalog subtitle amount. 1000 ml is shown as 1 L (Turbo Drink water).
+ * @param {number} amount
+ * @param {string} unit
+ * @returns {string}
+ */
+function formatMeasurePortion(amount, unit) {
+  if (unit === 'ml' && amount >= 1000) {
+    const liters = Math.round((amount / 1000) * 100) / 100;
+    const label = Number.isInteger(liters) ? String(liters) : String(liters);
+    return `${label} L`;
+  }
+  return `${formatAmount(amount)} ${unit}`;
 }
 
 /**

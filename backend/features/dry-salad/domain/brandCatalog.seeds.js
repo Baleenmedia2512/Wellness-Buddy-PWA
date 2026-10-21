@@ -1,10 +1,11 @@
 /**
- * Combined Target Nutrition brand seeds (Afresh + Protein + Shakemate).
+ * Combined Target Nutrition brand seeds (Afresh + Protein + Shakemate + Turbo Drink).
  * Pure — zero I/O.
  */
 import { listAfreshCatalogSeeds } from './afreshCatalog.seeds.js';
 import { listPersonalizedProteinCatalogSeeds } from './personalizedProteinCatalog.seeds.js';
 import { listShakemateCatalogSeeds } from './shakemateCatalog.seeds.js';
+import { listTurboDrinkCatalogSeeds } from './turboDrinkCatalog.seeds.js';
 import {
   foodNameMatchesQuery,
   normalizeFoodName,
@@ -17,6 +18,7 @@ export function listBrandCatalogSeeds() {
     ...listAfreshCatalogSeeds(),
     ...listPersonalizedProteinCatalogSeeds(),
     ...listShakemateCatalogSeeds(),
+    ...listTurboDrinkCatalogSeeds(),
   ];
 }
 

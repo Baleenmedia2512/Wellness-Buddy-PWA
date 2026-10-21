@@ -125,7 +125,7 @@ describe('afreshCatalog.seeds', () => {
 describe('brandCatalog.seeds', () => {
   it('includes Afresh, Protein, and Shakemate', () => {
     const all = listBrandCatalogSeeds();
-    assert.equal(all.length, 10);
+    assert.equal(all.length, 11);
     assert.ok(all.some((r) => r.canonical_name === 'Afresh - Ginger'));
     assert.ok(all.some((r) => r.canonical_name === 'Personalized Protein Powder'));
     assert.ok(all.some((r) => r.canonical_name === 'Shakemate'));

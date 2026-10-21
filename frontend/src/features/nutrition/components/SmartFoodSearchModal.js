@@ -1053,6 +1053,9 @@ const FoodItemRow = ({
               ? ` · ${catalogPreview.protein}g protein`
               : (item.protein ? ` · ${item.protein}g protein` : "")}
           </p>
+          {/1 L water/i.test(String(portion || "")) && (
+            <p className="text-[11px] text-gray-500 mt-0.5 leading-snug">{portion}</p>
+          )}
         </div>
         <span
           aria-hidden="true"

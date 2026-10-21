@@ -14,10 +14,31 @@
 import {
   isExemptedBeverageOnly,
   isExemptedFood,
+  isTurboDrink,
   isAfreshEnergyDrink,
   extractFoodItemsFromAnalysis,
   getFoodItemName,
 } from '../../../utils/foodTypeDetection.js';
+
+/** Prepared Turbo Drink water when the saved row has no volume. */
+export const TURBO_DRINK_WATER_ML = 1000;
+
+/**
+ * Millilitres to credit for one food row.
+ * Turbo Drink with a missing volume still counts as 1 L.
+ * @param {object} food
+ * @returns {number}
+ */
+function readBeverageMl(food) {
+  const ml =
+    parseFloat(food?.volume_ml) ||
+    parseFloat(food?.weight_g) ||
+    parseFloat(food?.estimatedWeight) ||
+    0;
+  if (ml > 0) return ml;
+  if (isTurboDrink(getFoodItemName(food))) return TURBO_DRINK_WATER_ML;
+  return 0;
+}
 
 /** Default daily requirement (ml) when user has no recorded weight. */
 export const DEFAULT_REQUIRED_ML = 2500;
@@ -73,11 +94,30 @@ export function extractWaterFromRecord(record) {
   const items = [];
   for (const food of foods) {
     if (!isExemptedFood(getFoodItemName(food))) continue;
-    const ml =
-      parseFloat(food.volume_ml) ||
-      parseFloat(food.weight_g) ||
-      parseFloat(food.estimatedWeight) ||
-      0;
+    const ml = readBeverageMl(food);
+    if (ml > 0) {
+      recordMl += ml;
+      items.push({ name: getFoodItemName(food), volumeMl: ml });
+    }
+  }
+  return { recordMl, items };
+}
+
+/**
+ * Water inside a Turbo Drink when the meal also has other foods.
+ * Beverage-only records are counted by extractWaterFromRecord instead.
+ *
+ * @param {{ AnalysisData: unknown }} record
+ * @returns {{ recordMl: number, items: Array<{ name: string, volumeMl: number }> }}
+ */
+export function extractTurboDrinkWaterFromRecord(record) {
+  const ad = parseAnalysisData(record?.AnalysisData);
+  const foods = extractFoodItemsFromAnalysis(ad || {});
+  let recordMl = 0;
+  const items = [];
+  for (const food of foods) {
+    if (!isTurboDrink(getFoodItemName(food))) continue;
+    const ml = readBeverageMl(food);
     if (ml > 0) {
       recordMl += ml;
       items.push({ name: getFoodItemName(food), volumeMl: ml });
@@ -142,23 +182,33 @@ export function extractAfreshScoopsFromRecord(record) {
 export function computeDailyIntake({ userId, date, latestWeightKg, foodRows }) {
   const { weightKg, defaultWeight, requiredMl } = computeRequiredMl(latestWeightKg);
 
-  const waterRecords = (foodRows || []).filter((r) =>
-    isExemptedBeverageOnly(r?.AnalysisData),
-  );
-
   let totalMl = 0;
   let totalAfreshScoops = 0;
   const logs = [];
-  for (const record of waterRecords) {
-    const { recordMl, items } = extractWaterFromRecord(record);
-    // Sibling summary only — totalMl path above is unchanged.
-    totalAfreshScoops += extractAfreshScoopsFromRecord(record);
-    if (recordMl > 0) {
-      totalMl += recordMl;
+  for (const record of foodRows || []) {
+    if (isExemptedBeverageOnly(record?.AnalysisData)) {
+      const { recordMl, items } = extractWaterFromRecord(record);
+      totalAfreshScoops += extractAfreshScoopsFromRecord(record);
+      if (recordMl > 0) {
+        totalMl += recordMl;
+        logs.push({
+          loggedAt: record.CreatedAt,
+          volumeMl: Math.round(recordMl),
+          items,
+        });
+      }
+      continue;
+    }
+
+    // Mixed Target Nutrition plates are not beverage-only, but Turbo Drink
+    // still contributes its prepared 1 L (or the saved volume).
+    const turbo = extractTurboDrinkWaterFromRecord(record);
+    if (turbo.recordMl > 0) {
+      totalMl += turbo.recordMl;
       logs.push({
         loggedAt: record.CreatedAt,
-        volumeMl: Math.round(recordMl),
-        items,
+        volumeMl: Math.round(turbo.recordMl),
+        items: turbo.items,
       });
     }
   }

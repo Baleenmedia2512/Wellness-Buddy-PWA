@@ -27,6 +27,7 @@ const REGULAR_FOOD_EXCLUDED_NAME_PATTERNS = [
   /xtra[- ]?cal/,
   /shakemate/,
   /personalized\s*protein/,
+  /turbo\s*drink/,
   // Third-party supplements / wellness products (not meals)
   /\bvriti\s*life\b/,
   /\bdino\s*shake\b/,
