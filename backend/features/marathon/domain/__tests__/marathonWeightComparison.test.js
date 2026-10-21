@@ -62,7 +62,7 @@ describe('backend marathon gap comparison dates', () => {
 
 describe('backend marathon day formatting', () => {
   it('formats Day 0 vs Day N against Day 0 baseline', () => {
-    assert.equal(formatMarathonDayComparisonLine(75, 74.5), 'Day 0 : 75.00 kg → Curr: 74.50 kg ⬇️ 0.50 kg');
+    assert.equal(formatMarathonDayComparisonLine(75, 74.5), 'Day 0 : 75.00 kg → Curr: 74.50 kg ⬇️ 500 g');
     assert.equal(formatMarathonDayComparisonLine(75, 76), 'Day 0 : 75.00 kg → Curr: 76.00 kg ⬆️ 1.00 kg');
     assert.equal(formatMarathonDayComparisonLine(75, 75), 'Day 0 : 75.00 kg → Curr: 75.00 kg');
     assert.equal(formatMarathonDayComparisonLine(75, null), 'Day 0 : 75.00 kg → Curr: —');

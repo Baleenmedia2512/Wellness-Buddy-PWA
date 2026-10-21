@@ -17,6 +17,7 @@ import {
   allowsActivatedBcmCreate,
   canOverrideBcmForMember,
   shouldForceNewBcmCard,
+  computeDefaultAppointmentDate,
 } from './card.rules.js';
 
 describe('buildTeamMemberInsert', () => {
@@ -270,5 +271,23 @@ describe('buildFormPrefillFromMember', () => {
     assert.equal(patch.age, undefined);
     assert.equal(patch.visceralFat, undefined);
     assert.equal(patch.chestCm, undefined);
+  });
+});
+
+describe('computeDefaultAppointmentDate', () => {
+  it('computes next day (+1 day)', () => {
+    assert.equal(computeDefaultAppointmentDate('2026-10-21'), '2026-10-22');
+    assert.equal(computeDefaultAppointmentDate('2026-10-23'), '2026-10-24');
+  });
+
+  it('rolls forward to Monday (+2 days) when next day is Sunday', () => {
+    // 2026-10-24 is Saturday -> next day Sunday 2026-10-25 -> rolls to Monday 2026-10-26
+    assert.equal(computeDefaultAppointmentDate('2026-10-24'), '2026-10-26');
+  });
+
+  it('handles null and invalid inputs gracefully', () => {
+    assert.equal(computeDefaultAppointmentDate(null), null);
+    assert.equal(computeDefaultAppointmentDate(''), null);
+    assert.equal(computeDefaultAppointmentDate('invalid'), null);
   });
 });

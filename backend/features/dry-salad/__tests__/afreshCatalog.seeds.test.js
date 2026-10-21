@@ -123,17 +123,16 @@ describe('afreshCatalog.seeds', () => {
 });
 
 describe('brandCatalog.seeds', () => {
-  it('includes Formula 1, Afresh, Protein, and Shakemate', () => {
+  it('includes Afresh, Protein, and Shakemate', () => {
     const all = listBrandCatalogSeeds();
-    assert.equal(all.length, 20);
-    assert.ok(all.some((r) => r.canonical_name === 'Formula 1 - Vanilla'));
+    assert.equal(all.length, 10);
     assert.ok(all.some((r) => r.canonical_name === 'Afresh - Ginger'));
     assert.ok(all.some((r) => r.canonical_name === 'Personalized Protein Powder'));
     assert.ok(all.some((r) => r.canonical_name === 'Shakemate'));
   });
 
-  it('searchBrandCatalogSeeds finds both product lines', () => {
-    assert.ok(searchBrandCatalogSeeds('formula 1').length >= 10);
+  it('searchBrandCatalogSeeds finds brand products and excludes formula 1', () => {
+    assert.equal(searchBrandCatalogSeeds('formula 1').length, 0);
     assert.ok(searchBrandCatalogSeeds('afresh').length >= 8);
     assert.equal(searchBrandCatalogSeeds('ginger').length, 1);
   });

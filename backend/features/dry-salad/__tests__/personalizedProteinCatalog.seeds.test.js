@@ -37,9 +37,9 @@ describe('personalizedProteinCatalog.seeds', () => {
 });
 
 describe('brandCatalog includes Personalized Protein', () => {
-  it('lists protein with Formula 1 and Afresh', () => {
+  it('lists protein with Afresh and Shakemate', () => {
     const all = listBrandCatalogSeeds();
-    assert.equal(all.length, 20);
+    assert.equal(all.length, 10);
     assert.ok(all.some((r) => r.canonical_name === 'Personalized Protein Powder'));
   });
 
