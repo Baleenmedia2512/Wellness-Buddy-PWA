@@ -382,7 +382,10 @@ export async function buildTeamHierarchy(supabase, coachIdInt, opts = {}) {
         Status: node.status,
       };
       if (node.isCoCoach) entry.isCoCoach = true;
-      if (!shouldExcludeDeveloperFromAggregates(entry, { viewerUserId: coachIdInt })) {
+      if (!shouldExcludeDeveloperFromAggregates(entry, {
+        viewerUserId: coachIdInt,
+        viewerRole: loggedInCoach.Role,
+      })) {
         result.set(node.userId, entry);
       }
     }
@@ -434,14 +437,17 @@ export async function buildTeamHierarchy(supabase, coachIdInt, opts = {}) {
       Status: extraUser.status,
     };
     if (downlinePartnerIds.has(Number(extraUser.userId))) entry.isCoCoach = true;
-    if (!shouldExcludeDeveloperFromAggregates(entry, { viewerUserId: coachIdInt })) {
+    if (!shouldExcludeDeveloperFromAggregates(entry, {
+      viewerUserId: coachIdInt,
+      viewerRole: loggedInCoach.Role,
+    })) {
       memberMap.set(extraUser.userId, entry);
     }
   }
 
   const allMembers = filterPublicAggregateUsers(
     Array.from(memberMap.values()),
-    { viewerUserId: coachIdInt },
+    { viewerUserId: coachIdInt, viewerRole: loggedInCoach.Role },
   );
 
   const uniqueUserIds = new Set(allUsers.map(u => u.UserId));

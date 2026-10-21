@@ -143,11 +143,16 @@ function extractMatchingItems(row, lowerTerm) {
             ? Math.round(Number(nutrition[key]))
             : Number(nutrition[key]);
         }
+        const servingsRaw = Number(f.servings ?? f.servingCount);
+        const servings = Number.isFinite(servingsRaw) && servingsRaw > 0 ? servingsRaw : undefined;
+        const portion = f.portion || f.portion_label || undefined;
         return {
           name: (f.name || '').trim(),
           weight_g,
           source: 'history',
           ...flat,
+          ...(servings != null ? { servings } : {}),
+          ...(portion ? { portion } : {}),
           nutrition: Object.keys(nutrition).length ? nutrition : {
             calories: flat.calories ?? null,
             protein: flat.protein ?? null,

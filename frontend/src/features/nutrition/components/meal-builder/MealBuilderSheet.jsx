@@ -96,6 +96,7 @@ export default function MealBuilderSheet({
             const servings = Number.isFinite(countSrv) && countSrv > 0 ? countSrv : 1;
             const kcal = Math.round((item.calories ?? 0) * servings);
             const refW = Number(item.refWeightG ?? item.weight_g);
+            const measureUnit = String(item.measureUnit || item.quantityUnit || '').toLowerCase();
             const unit = item.unit || (item.isLiquid || item.is_liquid ? 'ml' : null);
             const amount = Number.isFinite(refW) && refW > 0
               ? Math.round(refW * servings * 100) / 100
@@ -103,6 +104,9 @@ export default function MealBuilderSheet({
             const servingLabel = item.portion
               ? (servings === 1 ? item.portion : `${servings} × ${item.portion}`)
               : (amount != null && unit ? `${amount} ${unit}` : null);
+            const qtySuffix = measureUnit === 'pcs'
+              ? 'pcs'
+              : (unit === 'g' || unit === 'ml' ? unit : null);
             return (
               <div
                 key={item.name}
@@ -138,6 +142,9 @@ export default function MealBuilderSheet({
                   </button>
                   <span className="min-w-[1.5rem] px-0.5 text-center text-[11px] font-bold text-gray-800 tabular-nums leading-none">
                     {formatQtyDisplay(servings)}
+                    {qtySuffix ? (
+                      <span className="text-[9px] font-semibold text-gray-400 ml-0.5">{qtySuffix}</span>
+                    ) : null}
                   </span>
                   <button
                     type="button"
