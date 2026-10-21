@@ -78,6 +78,11 @@ const ROLE_LABELS = { admin: 'Admin', developer: 'Developer', coach: 'Coach', up
 
 const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfileUpdate }) => {
   const form = useProfileForm();
+  const resolvedUserId = user?.id ?? user?._id ?? form.userId;
+  console.log('DEBUG user:', user);
+  console.log('DEBUG form.userId:', form.userId);
+  console.log('DEBUG user.id:', user?.id);
+  console.log('DEBUG user._id:', user?._id);
   const transformationPhotos = useTransformationPhotos();
   const [profileImagePreview, setProfileImagePreview] = useState(null);
   const [latestWeight, setLatestWeight] = useState(null);
@@ -773,6 +778,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
                   email={form.email}
                   hideEmailField
                   hideCommunityIdField
+                  userId={resolvedUserId}
                   name={form.name} setName={form.setName}
                   height={form.height} setHeight={form.setHeight}
                   phone={form.phone} setPhone={form.setPhone}

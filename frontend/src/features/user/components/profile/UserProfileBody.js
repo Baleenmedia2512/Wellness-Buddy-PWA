@@ -31,7 +31,10 @@ const UserProfileBody = ({
           bmr={form.bmr} setBmr={form.setBmr}
           physicalActivityLevel={form.physicalActivityLevel}
           setPhysicalActivityLevel={form.setPhysicalActivityLevel}
+          workingPhysicalCentreId={form.workingPhysicalCentreId}
+          setWorkingPhysicalCentreId={form.setWorkingPhysicalCentreId}
         />
+        
         <DietDropdown value={form.dietType} onChange={form.setDietType} />
         <UserProfileBodyMetrics
           bodyMetrics={form.bodyMetrics}
