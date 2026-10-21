@@ -1,9 +1,10 @@
 /**
  * frontend/src/features/nutrition/hooks/useShakeCalculator.js
  *
- * Shake Calculator state. A mix that includes Formula 1 or Shakemate uses the
- * canonical Herbalife Shake profile. Personalized Protein alone uses the
- * canister label (resolveLoggedShakeItem).
+ * Shake Calculator state. A mix that includes Formula 1, or Shakemate with
+ * Personalized Protein, uses the canonical Herbalife Shake profile.
+ * Shakemate alone and Personalized Protein alone use their canister labels
+ * (resolveLoggedShakeItem).
  */
 
 import { useCallback, useMemo, useState } from 'react';

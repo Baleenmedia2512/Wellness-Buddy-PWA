@@ -2,8 +2,9 @@
  * frontend/src/features/nutrition/domain/shakeProductProfiles.js
  *
  * Scoop / powder-weight metadata for the Shake Calculator steppers.
- * A mix that includes Formula 1 or Shakemate uses herbalifeShakeProfile.js
- * (same values as AI / backend HERBALIFE_SHAKE_NUTRITION).
+ * A mix that includes Formula 1, or Shakemate with Personalized Protein,
+ * uses herbalifeShakeProfile.js (same values as AI / backend HERBALIFE_SHAKE_NUTRITION).
+ * Shakemate alone uses the canister label (Per 27 g).
  * Personalized Protein alone uses the canister label, not a slice of that mix.
  * Active Fibre Complex is additive (label per-scoop macros).
  *

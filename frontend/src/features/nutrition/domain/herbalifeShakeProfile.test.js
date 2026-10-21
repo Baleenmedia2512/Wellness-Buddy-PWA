@@ -10,6 +10,8 @@ import {
   scaleActiveFibreNutrition,
   HERBALIFE_SHAKE_STANDARD,
   PERSONALIZED_PROTEIN_PER_SCOOP,
+  SHAKEMATE_GLYCEMIC_INDEX,
+  SHAKEMATE_NUTRITION_PER_27G,
 } from './herbalifeShakeProfile';
 import { SHAKE_PRODUCTS } from './shakeProductProfiles';
 
@@ -127,7 +129,83 @@ describe('personalized protein powder alone', () => {
     expect(item.weight_g).toBe(12.7);
   });
 
-  test('Formula 1 or Shakemate still uses the prepared shake profile', () => {
+  test('2 scoops of Shakemate alone match the canister label, not a scaled shake', () => {
+    const item = resolveLoggedShakeItem({
+      formula1: 0,
+      shakemate: 2,
+      protein: 0,
+      activeFibre: 0,
+    }, SHAKE_PRODUCTS);
+
+    expect(item.name).toBe('Shakemate');
+    expect(item.portion).toBe('2 scoops');
+    expect(item.weight_g).toBe(27);
+    expect(item.isLiquid).toBe(false);
+    expect(item.volume_ml).toBeNull();
+    expect(item.nutrition).toEqual({
+      ...SHAKEMATE_NUTRITION_PER_27G,
+      glycemic_index: SHAKEMATE_GLYCEMIC_INDEX,
+    });
+    expect(item.nutrition.calories).toBe(106);
+    expect(item.nutrition.protein).toBe(10.75);
+    expect(item.nutrition.carbs).toBe(13.5);
+    expect(item.nutrition.fat).toBe(1);
+    expect(item.nutrition.sugar).toBe(4.5);
+    expect(item.nutrition.sodium).toBe(169);
+    expect(item.nutrition.cholesterol).toBe(4);
+    expect(item.nutrition.vitamin_d).toBe(1.65);
+    expect(item.nutrition.calcium).toBe(129);
+    expect(item.nutrition.vitamin_a).toBeUndefined();
+    expect(item.nutrition.glycemic_index).toBe(20);
+  });
+
+  test('1 scoop of Shakemate is half the 27 g label', () => {
+    const item = resolveLoggedShakeItem({
+      formula1: 0,
+      shakemate: 1,
+      protein: 0,
+      activeFibre: 0,
+    }, SHAKE_PRODUCTS);
+
+    expect(item.portion).toBe('1 scoop');
+    expect(item.weight_g).toBe(13.5);
+    expect(item.nutrition.calories).toBe(53);
+    expect(item.nutrition.protein).toBe(5.38);
+    expect(item.nutrition.calcium).toBe(64.5);
+    expect(item.nutrition.glycemic_index).toBe(20);
+  });
+
+  test('Active Fibre adds its own label on top of Shakemate', () => {
+    const item = resolveLoggedShakeItem({
+      formula1: 0,
+      shakemate: 2,
+      protein: 0,
+      activeFibre: 1,
+    }, SHAKE_PRODUCTS);
+
+    expect(item.name).toBe('Shakemate');
+    expect(item.nutrition.calories).toBe(118.8);
+    expect(item.nutrition.protein).toBe(10.75);
+    expect(item.nutrition.carbs).toBe(19.2);
+    expect(item.nutrition.fiber).toBe(5);
+    expect(item.nutrition.sodium).toBe(185.45);
+    expect(item.nutrition.glycemic_index).toBe(20);
+    expect(item.weight_g).toBe(33.7);
+  });
+
+  test('Shakemate mixed with Personalized Protein still uses the prepared shake', () => {
+    const item = resolveLoggedShakeItem({
+      formula1: 0,
+      shakemate: 2,
+      protein: 1,
+      activeFibre: 0,
+    }, SHAKE_PRODUCTS);
+    expect(item.name).toBe('Herbalife Shake');
+    expect(item.weight_g).toBe(33);
+    expect(item.nutrition.calories).not.toBe(106);
+  });
+
+  test('Formula 1 with Shakemate still uses the prepared shake profile', () => {
     const standard = resolveLoggedShakeItem({
       formula1: 3,
       shakemate: 2,
