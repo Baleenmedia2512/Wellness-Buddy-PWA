@@ -28,6 +28,7 @@ import { getAppVersionHeaders } from '../../../shared/services/apiFetch.js';
 import { todayBusinessDate } from '../../../shared/utils/datetimeUtils.js';
 import {
   bcmWallClockToIso,
+  computeDefaultAppointmentDate,
   formatBcmFormTime,
   resolveBcmCardDisplayTimestamp,
   resolveBcmDisplayTimezone,
@@ -200,6 +201,7 @@ function mergePrefillFields(member, prefill) {
 
 function buildEmptyForm(timezoneIana) {
   const tz = resolveBcmDisplayTimezone(timezoneIana);
+  const recordedDate = todayBusinessDate(tz);
   return {
     name: '',
     phoneNumber: '',
@@ -215,9 +217,10 @@ function buildEmptyForm(timezoneIana) {
     chestCm: '',
     waistCm: '',
     hipCm: '',
-    recordedDate: todayBusinessDate(tz),
+    recordedDate,
     recordedTime: formatBcmFormTime(null, tz),
     locationName: '',
+    appointmentDate: computeDefaultAppointmentDate(recordedDate),
     recoveredHealthIssues: [],
   };
 }
@@ -228,6 +231,10 @@ function cardToFormState(card, timezoneIana) {
   const issues = Array.isArray(card.recoveredHealthIssues)
     ? card.recoveredHealthIssues.filter(Boolean)
     : [];
+  const recDate = card.recordedDate
+    ? String(card.recordedDate).substring(0, 10)
+    : todayBusinessDate(tz);
+  const rawAppt = card.appointmentDate || card.appointment_date;
   return {
     name: card.name ? normalizeName(card.name) : '',
     phoneNumber: card.phoneNumber ?? '',
@@ -243,11 +250,12 @@ function cardToFormState(card, timezoneIana) {
     chestCm: card.chestCm != null ? String(card.chestCm) : '',
     waistCm: card.waistCm != null ? String(card.waistCm) : '',
     hipCm: card.hipCm != null ? String(card.hipCm) : '',
-    recordedDate: card.recordedDate
-      ? String(card.recordedDate).substring(0, 10)
-      : todayBusinessDate(tz),
+    recordedDate: recDate,
     recordedTime: formatBcmFormTime(resolveBcmCardDisplayTimestamp(card), tz),
-    locationName: card.locationName ?? '',
+    locationName: card.locationName ?? card.location_name ?? '',
+    appointmentDate: rawAppt
+      ? String(rawAppt).substring(0, 10)
+      : computeDefaultAppointmentDate(card.createdAt || recDate),
     recoveredHealthIssues: issues,
     dietType: card.dietType ? String(card.dietType).trim() : '',
     physicalActivityLevel: card.physicalActivityLevel
@@ -326,6 +334,8 @@ export function useBodyParamsCard({
   const [allTeamMembers, setAllTeamMembers] = useState([]);
   /** Always-current Venue string — avoids stale form state on Save. */
   const venueRef = useRef('');
+  /** Track whether user manually customized appointmentDate */
+  const appointmentDateUserEditedRef = useRef(Boolean(existingCard?.appointmentDate || existingCard?.appointment_date));
 
   const targetUserId = selectedMember?.userId || selectedMember?.id || null;
 
@@ -528,6 +538,7 @@ export function useBodyParamsCard({
     setForm(next);
     setBmiUserEdited(false);
     setBmrUserEdited(false);
+    appointmentDateUserEditedRef.current = Boolean(existingCard?.appointmentDate || existingCard?.appointment_date);
     setError('');
     setPhoneFieldError('');
     setAttemptedSubmit(false);
@@ -712,7 +723,16 @@ export function useBodyParamsCard({
     if (field === 'locationName') {
       venueRef.current = String(nextValue || '').trim();
     }
-    setForm((prev) => ({ ...prev, [field]: nextValue }));
+    if (field === 'appointmentDate') {
+      appointmentDateUserEditedRef.current = true;
+    }
+    setForm((prev) => {
+      const nextForm = { ...prev, [field]: nextValue };
+      if (field === 'recordedDate' && !appointmentDateUserEditedRef.current) {
+        nextForm.appointmentDate = computeDefaultAppointmentDate(nextValue);
+      }
+      return nextForm;
+    });
     markDirty();
     if (field === 'weightKg' || field === 'fatPercent') {
       setBmrUserEdited(false);
@@ -1120,6 +1140,7 @@ export function useBodyParamsCard({
         waistCm: toOptionalNum(form.waistCm),
         hipCm: toOptionalNum(form.hipCm),
         recordedDate: form.recordedDate,
+        appointmentDate: form.appointmentDate || undefined,
         // Create → createdAt; Update → stamp updatedAt as now (share/list prefer updatedAt).
         createdAt: isEditMode
           ? (existingCard?.createdAt || bcmWallClockToIso(form.recordedDate, form.recordedTime, displayTimezone))
@@ -1163,6 +1184,7 @@ export function useBodyParamsCard({
         waistCm: toOptionalNum(form.waistCm),
         hipCm: toOptionalNum(form.hipCm),
         recordedDate: form.recordedDate || undefined,
+        appointmentDate: form.appointmentDate || undefined,
         locationName: locationNameToSave,
         recoveredHealthIssues: Array.isArray(form.recoveredHealthIssues)
           ? form.recoveredHealthIssues
@@ -1203,6 +1225,7 @@ export function useBodyParamsCard({
         waistCm: pickSavedField(cardCore.waistCm, form.waistCm),
         hipCm: pickSavedField(cardCore.hipCm, form.hipCm),
         recordedDate: pickSavedField(cardCore.recordedDate, form.recordedDate),
+        appointmentDate: pickSavedField(cardCore.appointmentDate || cardCore.appointment_date, form.appointmentDate),
         createdAt: pickSavedField(cardCore.createdAt, undefined),
         updatedAt: pickSavedField(cardCore.updatedAt, undefined),
         // Prefer the Venue the user just entered so the share card updates immediately.

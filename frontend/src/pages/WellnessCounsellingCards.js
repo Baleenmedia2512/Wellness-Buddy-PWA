@@ -20,6 +20,7 @@ import PhoneContactActions from '../shared/components/PhoneContactActions.jsx';
 import {
   formatBcmListCardDateTime,
   resolveBcmDisplayTimezone,
+  resolveBcmCardAppointmentDate,
 } from '../features/body-parameters-card/domain/bcmCardDateTime.rules.js';
 import { dismissNetworkFailure } from '../shared/services/networkNotice.js';
 
@@ -144,6 +145,14 @@ const BodyParamsCardTile = memo(function BodyParamsCardTile({
               Venue: <span className="font-medium text-gray-800">{card.locationName}</span>
             </p>
           ) : null}
+          {(() => {
+            const appt = resolveBcmCardAppointmentDate(card);
+            return appt ? (
+              <p className="text-xs text-gray-600 truncate">
+                Appointment: <span className="font-medium text-gray-800">{appt}</span>
+              </p>
+            ) : null;
+          })()}
         </div>
       </div>
     </div>
@@ -487,6 +496,7 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
         ...fresh,
         phoneNumber: fresh.phoneNumber ?? card.phoneNumber ?? null,
         locationName: fresh.locationName ?? card.locationName ?? null,
+        appointmentDate: resolveBcmCardAppointmentDate(fresh) || resolveBcmCardAppointmentDate(card) || null,
       };
       setSelectedCard((prev) => (prev?.id === card.id ? merged : prev));
       setHeaderVenue(String(merged.locationName || '').trim());
@@ -515,6 +525,7 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
               ...fresh,
               phoneNumber: fresh.phoneNumber ?? card.phoneNumber ?? null,
               locationName: fresh.locationName ?? card.locationName ?? null,
+              appointmentDate: fresh.appointmentDate ?? fresh.appointment_date ?? card.appointmentDate ?? card.appointment_date ?? null,
             };
           }
         } catch (err) {
@@ -526,11 +537,13 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
       const creatorName = String(
         user?.userName || user?.name || user?.username || user?.displayName || ''
       ).trim();
+      const resolvedAppointment = resolveBcmCardAppointmentDate(full);
       skipRefreshOnShareCloseRef.current = true;
       setBodyParamsPreCapCard(null);
       setBodyParamsShareData({
         card: {
           ...cardCore,
+          appointmentDate: resolvedAppointment,
           creatorName: cardCore.creatorName || creatorName,
         },
         shareUrl: buildOnboardingShareUrl(getApiBaseUrl()),

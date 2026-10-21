@@ -16,6 +16,7 @@ const FoodBreakdownModal = ({
   foodsLoading = false,
   decimals = 0,
   amountsOnly = false,
+  periodContext = null,
 }) => {
   if (!isOpen) return null;
 
@@ -23,6 +24,17 @@ const FoodBreakdownModal = ({
     const n = Number(value) || 0;
     return decimals > 0 ? n.toFixed(decimals) : String(Math.round(n));
   };
+
+  const isMultiDay = Boolean(
+    periodContext?.isMultiDay ?? (typeof periodContext === 'string' && periodContext.length > 0)
+  );
+  const rawPeriodTitle = isMultiDay
+    ? (periodContext?.title || (typeof periodContext === 'string' ? periodContext : null))
+    : null;
+  const isSingleDay =
+    rawPeriodTitle?.toLowerCase() === 'today' ||
+    rawPeriodTitle?.toLowerCase() === 'yesterday';
+  const displayPeriodBadge = !isSingleDay ? rawPeriodTitle : null;
 
   const percentOfTarget = !amountsOnly && target > 0
     ? Math.round((totalConsumed / target) * 100)
@@ -47,7 +59,14 @@ const FoodBreakdownModal = ({
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
           <div>
-            <h2 className="text-lg font-bold text-gray-900">{nutrientName}</h2>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h2 className="text-lg font-bold text-gray-900">{nutrientName}</h2>
+              {displayPeriodBadge && (
+                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200/80">
+                  {displayPeriodBadge}
+                </span>
+              )}
+            </div>
             {!amountsOnly && (
               <div className="flex items-baseline gap-2 mt-0.5">
                 <span className="text-sm text-gray-600">

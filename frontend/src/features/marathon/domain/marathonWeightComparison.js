@@ -48,7 +48,10 @@ export function formatMarathonDayChangeSuffix(direction, weightDifference) {
   if (direction === 'unchanged' || weightDifference == null) return '';
   const abs = roundMarathonWeightKg(Math.abs(weightDifference));
   const arrow = direction === 'decrease' ? '⬇️' : '⬆️';
-  return ` ${arrow} ${abs.toFixed(2)} kg`;
+  const amount = abs < 1
+    ? `${Math.round(abs * 1000)} g`
+    : `${abs.toFixed(2)} kg`;
+  return ` ${arrow} ${amount}`;
 }
 
 /**

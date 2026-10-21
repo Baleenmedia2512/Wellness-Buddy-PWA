@@ -197,3 +197,72 @@ export function bcmWallClockToIso(
   }
   return new Date(utcMs).toISOString();
 }
+
+/**
+ * Compute the default appointment date based on a BCM card creation date.
+ * - Default: next day (+1 day)
+ * - Sunday rule: if the next day falls on Sunday, roll forward to Monday (+2 days)
+ *
+ * @param {string|Date|null|undefined} baseDate
+ * @returns {string} YYYY-MM-DD
+ */
+export function computeDefaultAppointmentDate(baseDate) {
+  if (!baseDate) return '';
+  let y;
+  let m;
+  let d;
+  if (typeof baseDate === 'string' && /^\d{4}-\d{2}-\d{2}/.test(baseDate)) {
+    const parts = baseDate.substring(0, 10).split('-');
+    y = parseInt(parts[0], 10);
+    m = parseInt(parts[1], 10) - 1;
+    d = parseInt(parts[2], 10);
+  } else {
+    const dt = baseDate instanceof Date ? baseDate : new Date(baseDate);
+    if (Number.isNaN(dt.getTime())) return '';
+    y = dt.getFullYear();
+    m = dt.getMonth();
+    d = dt.getDate();
+  }
+
+  // Next day (+1 day)
+  const target = new Date(y, m, d + 1);
+  // Sunday is 0: if target day falls on Sunday, roll forward to Monday (+1 more day)
+  if (target.getDay() === 0) {
+    target.setDate(target.getDate() + 1);
+  }
+
+  const resY = target.getFullYear();
+  const resM = String(target.getMonth() + 1).padStart(2, '0');
+  const resD = String(target.getDate()).padStart(2, '0');
+  return `${resY}-${resM}-${resD}`;
+}
+
+/**
+ * Resolve the appointment date for a BCM card.
+ * Priority:
+ * 1. card.appointmentDate or card.appointment_date if present.
+ * 2. Fall back to computing default appointment date from card.createdAt / card.created_at / card.recordedDate / card.recorded_date.
+ * 3. Default to next day (+1 day, or +2 days for Sunday->Monday) from today.
+ *
+ * @param {object|null|undefined} card
+ * @returns {string} YYYY-MM-DD
+ */
+export function resolveBcmCardAppointmentDate(card) {
+  if (!card || typeof card !== 'object') return '';
+  const direct = card.appointmentDate || card.appointment_date;
+  if (direct && typeof direct === 'string') {
+    const trimmed = direct.trim();
+    if (/^\d{4}-\d{2}-\d{2}/.test(trimmed)) {
+      return trimmed.slice(0, 10);
+    }
+    const d = new Date(trimmed);
+    if (!Number.isNaN(d.getTime())) {
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${y}-${m}-${day}`;
+    }
+  }
+  const base = card.createdAt || card.created_at || card.recordedDate || card.recorded_date;
+  return computeDefaultAppointmentDate(base || new Date());
+}
