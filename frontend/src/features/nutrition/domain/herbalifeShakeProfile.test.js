@@ -10,6 +10,8 @@ import {
   scaleActiveFibreNutrition,
   HERBALIFE_SHAKE_STANDARD,
   PERSONALIZED_PROTEIN_PER_SCOOP,
+  FORMULA1_GLYCEMIC_INDEX,
+  FORMULA1_NUTRITION_PER_25G,
   SHAKEMATE_GLYCEMIC_INDEX,
   SHAKEMATE_NUTRITION_PER_27G,
 } from './herbalifeShakeProfile';
@@ -205,7 +207,55 @@ describe('personalized protein powder alone', () => {
     expect(item.nutrition.calories).not.toBe(106);
   });
 
-  test('Formula 1 with Shakemate still uses the prepared shake profile', () => {
+  test('3 scoops of Formula 1 alone match the canister label, not a scaled shake', () => {
+    const item = resolveLoggedShakeItem({
+      formula1: 3,
+      shakemate: 0,
+      protein: 0,
+      activeFibre: 0,
+    }, SHAKE_PRODUCTS);
+
+    expect(item.name).toBe('Formula 1 Shake');
+    expect(item.portion).toBe('3 scoops');
+    expect(item.weight_g).toBe(25);
+    expect(item.isLiquid).toBe(false);
+    expect(item.volume_ml).toBeNull();
+    expect(item.nutrition).toEqual({
+      ...FORMULA1_NUTRITION_PER_25G,
+      glycemic_index: FORMULA1_GLYCEMIC_INDEX,
+    });
+    expect(item.nutrition.calories).toBe(94.2);
+    expect(item.nutrition.protein).toBe(9);
+    expect(item.nutrition.carbs).toBe(10.5);
+    expect(item.nutrition.fat).toBe(1.8);
+    expect(item.nutrition.fiber).toBe(3);
+    expect(item.nutrition.sugar).toBe(6.5);
+    expect(item.nutrition.sodium).toBe(123);
+    expect(item.nutrition.cholesterol).toBe(3);
+    expect(item.nutrition.vitamin_a).toBe(210);
+    expect(item.nutrition.vitamin_d).toBe(1.75);
+    expect(item.nutrition.calcium).toBe(45);
+    expect(item.nutrition.iron).toBe(3.5);
+    expect(item.nutrition.glycemic_index).toBe(20);
+  });
+
+  test('1 scoop of Formula 1 is one third of the 25 g label and keeps GI', () => {
+    const item = resolveLoggedShakeItem({
+      formula1: 1,
+      shakemate: 0,
+      protein: 0,
+      activeFibre: 0,
+    }, SHAKE_PRODUCTS);
+
+    expect(item.portion).toBe('1 scoop');
+    expect(item.weight_g).toBe(8.33);
+    expect(item.nutrition.calories).toBe(31.4);
+    expect(item.nutrition.sugar).toBe(2.17);
+    expect(item.nutrition.iron).toBe(1.17);
+    expect(item.nutrition.glycemic_index).toBe(20);
+  });
+
+  test('Formula 1 mixed with Shakemate still uses the prepared shake profile', () => {
     const standard = resolveLoggedShakeItem({
       formula1: 3,
       shakemate: 2,

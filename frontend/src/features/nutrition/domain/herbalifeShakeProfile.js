@@ -18,6 +18,13 @@
  *   22.96 kcal · protein 4.96 g · carbohydrate 0.24 g · fat 0.18 g
  *   sugar 0 g · sodium 68 mg · cholesterol 0 mg
  *
+ * Formula 1 logged alone is NOT a slice of the 58 g shake.
+ * Canister label per 25 g (3 scoops) — same numbers as
+ * formula1Catalog.seeds.js:
+ *   94.2 kcal · protein 9 g · carbohydrate 10.5 g · fat 1.8 g
+ *   fibre 3 g · sugar 6.5 g · sodium 123 mg · cholesterol 3 mg
+ *   glycemic index 20 (not scaled by scoops)
+ *
  * Shakemate logged alone is NOT a slice of the 58 g shake either.
  * Canister label per 27 g (2 scoops) — same numbers as
  * shakemateCatalog.seeds.js:
@@ -44,6 +51,39 @@ export const PERSONALIZED_PROTEIN_PER_SCOOP = Object.freeze({
 });
 
 export const HERBALIFE_SHAKE_NAME = 'Herbalife Shake';
+
+/** Formula 1 — canister label per 25 g (3 scoops). */
+export const FORMULA1_NAME = 'Formula 1 Shake';
+export const FORMULA1_LABEL_SCOOPS = 3;
+export const FORMULA1_LABEL_WEIGHT_G = 25;
+export const FORMULA1_NUTRITION_PER_25G = Object.freeze({
+  calories: 94.2,
+  protein: 9,
+  carbs: 10.5,
+  fat: 1.8,
+  fiber: 3,
+  sugar: 6.5,
+  sodium: 123, // mg
+  cholesterol: 3, // mg
+  vitamin_a: 210, // mcg
+  vitamin_c: 15, // mg
+  vitamin_d: 1.75, // mcg (D2)
+  vitamin_e: 5, // mg
+  vitamin_b1: 0.45, // mg
+  vitamin_b2: 0.45, // mg
+  vitamin_b3: 5, // mg
+  vitamin_b6: 0.8, // mg
+  vitamin_b9: 60, // mcg
+  vitamin_b12: 0.4, // mcg
+  calcium: 45, // mg
+  iron: 3.5, // mg
+  magnesium: 50, // mg
+  potassium: 260, // mg
+  zinc: 2.5, // mg
+});
+
+/** Product GI. Independent of scoop count — same value as the prepared shake. */
+export const FORMULA1_GLYCEMIC_INDEX = 20;
 
 /** Shakemate — canister label per 27 g (2 scoops). */
 export const SHAKEMATE_NAME = 'Shakemate';
@@ -261,6 +301,58 @@ export function scalePersonalizedProteinNutrition(scoops) {
 }
 
 /**
+ * Scale the Formula 1 canister label (Per 25 g = 3 scoops) by scoop count.
+ * Glycemic index is applied separately and is not scaled.
+ * @param {number} scoops
+ * @returns {Record<string, number>}
+ */
+export function scaleFormula1Nutrition(scoops) {
+  const n = Math.max(0, Number(scoops) || 0);
+  const ratio = n / FORMULA1_LABEL_SCOOPS;
+  const out = {};
+  for (const [key, value] of Object.entries(FORMULA1_NUTRITION_PER_25G)) {
+    out[key] = Math.round((Number(value) || 0) * ratio * 100) / 100;
+  }
+  return out;
+}
+
+/**
+ * Label nutrition for Formula 1, plus optional Active Fibre.
+ * Not a prepared Herbalife Shake.
+ * @param {number} scoops
+ * @param {number} [activeFibreScoops]
+ */
+export function combineFormula1Nutrition(scoops, activeFibreScoops = 0) {
+  const f1 = Math.max(0, Number(scoops) || 0);
+  const afc = Math.max(0, Number(activeFibreScoops) || 0);
+  if (f1 <= 0) return null;
+
+  const f1Grams = Math.round((f1 / FORMULA1_LABEL_SCOOPS) * FORMULA1_LABEL_WEIGHT_G * 100) / 100;
+  const afcGrams = afc * ACTIVE_FIBRE_COMPLEX.weightPerScoopG;
+  const totalGrams = Math.round((f1Grams + afcGrams) * 100) / 100;
+  const nutrition = sumNutrition(
+    scaleFormula1Nutrition(f1),
+    afc > 0 ? scaleActiveFibreNutrition(afc) : {},
+  );
+  nutrition.glycemic_index = FORMULA1_GLYCEMIC_INDEX;
+
+  const f1Label = `${f1} ${f1 === 1 ? 'scoop' : 'scoops'}`;
+  const portion = afc > 0
+    ? `${f1Label} + ${afc} ${afc === 1 ? 'scoop' : 'scoops'} Active Fibre Complex`
+    : f1Label;
+
+  return {
+    name: FORMULA1_NAME,
+    portion,
+    weight_g: totalGrams,
+    volume_ml: null,
+    unit: 'g',
+    isLiquid: false,
+    nutrition,
+  };
+}
+
+/**
  * Scale the Shakemate canister label (Per 27 g = 2 scoops) by scoop count.
  * @param {number} scoops
  * @returns {Record<string, number>}
@@ -347,8 +439,8 @@ export function combinePersonalizedProteinNutrition(scoops, activeFibreScoops = 
 }
 
 /**
- * Prepared shake when Formula 1 is included, or when Shakemate is mixed
- * with Personalized Protein. Shakemate alone and Personalized Protein alone
+ * Prepared shake only when more than one base powder is mixed.
+ * Formula 1 alone, Shakemate alone, and Personalized Protein alone
  * each use their canister label.
  * @param {Record<string, number>} servings
  * @param {Record<string, { scoopsPerPack: number, packWeightG: number, additive?: boolean }>} products
@@ -363,6 +455,9 @@ export function resolveLoggedShakeItem(servings, products) {
   }
   if (f1 === 0 && pp === 0 && sm > 0) {
     return combineShakemateNutrition(sm, afc);
+  }
+  if (sm === 0 && pp === 0 && f1 > 0) {
+    return combineFormula1Nutrition(f1, afc);
   }
   const baseG = powderGramsFromServings(servings, products, { includeAdditive: false });
   return combineShakeNutrition(baseG, afc);
