@@ -552,30 +552,10 @@ const NutritionCenterRegistration = ({ user, onBack, onSaved, initialCenter }) =
       if (!response.ok || !result.success) {
         throw new Error(result.message || 'Failed to update centre');
       }
-      setSuccess('Nutrition centre updated successfully!');
-      // Refresh club list so phone (and other fields) show the new value immediately.
+      // Leave as soon as the write succeeds. The club list paints this row
+      // immediately and refreshes attendance in the background.
       if (typeof onSaved === 'function') onSaved(result.data);
-      await fetchMyCenters();
-      setTimeout(() => {
-        setSuccess(null);
-        setEditingCenter(null);
-        setCenterName('');
-        setLatitude('');
-        setLongitude('');
-        setOwnerPhone('');
-        setCountryCode('+91');
-        setNameAvailable(null);
-        setNameChecking(false);
-        setSearchAddress('');
-        if (searchBoxRef.current) {
-          searchBoxRef.current.value = '';
-        }
-        if (markerRef.current) {
-          markerRef.current.setMap(null);
-          markerRef.current = null;
-        }
-        if (onBack) onBack();
-      }, 800);
+      if (typeof onBack === 'function') onBack();
     } catch (err) {
       debugLog('Error updating centre:', err);
       setError(err.message);
@@ -745,7 +725,7 @@ const NutritionCenterRegistration = ({ user, onBack, onSaved, initialCenter }) =
                 <TouchFeedbackButton
                   type="button"
                   onClick={handleUpdate}
-                  disabled={loading || nameAvailable === false || nameChecking}
+                  disabled={loading || nameAvailable === false}
                   className="px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center gap-2"
                 >
                   {loading ? (
@@ -913,7 +893,7 @@ const NutritionCenterRegistration = ({ user, onBack, onSaved, initialCenter }) =
             {!editingCenter && (
               <TouchFeedbackButton
                 type="submit"
-                disabled={loading || nameAvailable === false || nameChecking}
+                disabled={loading || nameAvailable === false}
                 className="w-full py-3 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
                 {loading ? (

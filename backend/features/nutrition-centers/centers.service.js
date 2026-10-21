@@ -26,12 +26,13 @@ export async function register(input) {
     centerName, latitude, longitude, educationHour, ownerUserId, ownerPhone,
   } = input;
 
-  const { data: user, error: userErr } = await repo.findUserById(ownerUserId);
+  const [{ data: user, error: userErr }, { data: existing, error: dupErr }] = await Promise.all([
+    repo.findUserById(ownerUserId),
+    repo.findByName(centerName.trim()),
+  ]);
   if (userErr || !user) {
     return { httpStatus: 500, body: { success: false, message: 'User not found' } };
   }
-
-  const { data: existing, error: dupErr } = await repo.findByName(centerName.trim());
   if (dupErr) {
     return { httpStatus: 500, body: { success: false, message: dupErr.message } };
   }
@@ -67,9 +68,11 @@ export async function register(input) {
 
 // ─── shared: ownership + role guard ─────────────────────────────────────────
 async function assertOwnerOrAdmin(centerId, userId) {
-  const { data: center, error: centerErr } = await repo.findCenterOwner(centerId);
+  const [{ data: center, error: centerErr }, { data: user }] = await Promise.all([
+    repo.findCenterOwner(centerId),
+    repo.findUserRole(userId),
+  ]);
   if (centerErr || !center) return { allowed: false, httpStatus: 404, message: 'Center not found' };
-  const { data: user } = await repo.findUserRole(userId);
   const isOwner = center.owner_user_id === parseInt(userId, 10);
   const isAdmin = user && (user.Role === 'admin' || user.Role === 'developer');
   if (!isOwner && !isAdmin) {
@@ -113,14 +116,19 @@ export async function unregister({ centerId, userId }) {
 export async function updateCenter(input) {
   const { centerId, userId, centerName, latitude, longitude, ownerPhone, educationHour } = input;
 
-  const guard = await assertOwnerOrAdmin(centerId, userId);
+  const nameLookup = centerName !== undefined
+    ? repo.findByName(centerName.trim())
+    : Promise.resolve({ data: null });
+  const [guard, { data: existing }] = await Promise.all([
+    assertOwnerOrAdmin(centerId, userId),
+    nameLookup,
+  ]);
   if (!guard.allowed) {
     return { httpStatus: guard.httpStatus, body: { success: false, message: guard.message } };
   }
 
   // Name uniqueness: only check if name is being changed; skip if it belongs to the same centre
   if (centerName !== undefined) {
-    const { data: existing } = await repo.findByName(centerName.trim());
     if (existing && existing.id !== parseInt(centerId, 10)) {
       return {
         httpStatus: 409,
