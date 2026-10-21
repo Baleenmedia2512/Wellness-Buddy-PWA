@@ -25,7 +25,6 @@ describe('foodSuggestionRank', () => {
     expect(isHerbalifeProductSuggestionName('Afresh')).toBe(true);
     expect(isHerbalifeProductSuggestionName('Fish Oil')).toBe(true);
     expect(isHerbalifeProductSuggestionName('Plain Water')).toBe(true);
-    expect(isHerbalifeProductSuggestionName('Turbo Drink')).toBe(true);
     expect(isHerbalifeProductSuggestionName('Vritilife Triphala (Digestive Health)')).toBe(true);
     expect(isHerbalifeProductSuggestionName('*Vritilife Brain Health')).toBe(true);
     expect(isHerbalifeProductSuggestionName('HN - Skin Booster - Orange')).toBe(true);

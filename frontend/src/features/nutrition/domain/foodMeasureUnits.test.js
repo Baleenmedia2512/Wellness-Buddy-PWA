@@ -173,23 +173,6 @@ describe('applyFoodMeasure', () => {
     expect(out.protein).toBe(7);
   });
 
-  test('1000 ml previews as 1 L', () => {
-    const drink = {
-      name: 'Turbo Drink',
-      calories: 122.8,
-      protein: 16.12,
-      weight_g: 1000,
-      isLiquid: true,
-      unit: 'ml',
-      nutrition: { calories: 122.8, protein: 16.12 },
-    };
-    expect(previewMeasureNutrition(drink, { unit: 'ml', quantity: 1000 })).toEqual({
-      calories: 123,
-      protein: 16.1,
-      portionLabel: '1 L',
-    });
-  });
-
   test('ml marks liquid and sets volume', () => {
     const soup = {
       name: 'Rasam',

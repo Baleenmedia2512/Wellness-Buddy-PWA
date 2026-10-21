@@ -305,20 +305,13 @@ const EXEMPTED_MEAL_FOODS = [
 ];
 
 /**
- * Prepared Turbo Drink (Formula 1 + Afresh + protein + 1 L water).
- * Counts as a drink for hydration, not as breakfast/lunch/dinner.
- * @param {string} name
+ * Check if a food name matches an exempted beverage
+ * @param {string} name - Food item name
  * @returns {boolean}
  */
-function isTurboDrink(name) {
-  const n = normalizeFoodName(name);
-  return n.includes('turbo drink');
-}
-
 function isExemptedFood(name) {
   if (!name) return false;
   if (isAfreshEnergyDrink(name)) return true;
-  if (isTurboDrink(name)) return true;
   const n = normalizeFoodName(name);
   return EXEMPTED_MEAL_FOODS.some((exempt) => {
     const e = exempt.toLowerCase();
@@ -509,7 +502,6 @@ module.exports = {
   isMealShakeNutrition,
   countsAsMealNutrition,
   isExemptedFood,
-  isTurboDrink,
   isAfreshEnergyDrink,
   extractFoodItemsFromAnalysis,
   getFoodItemName,

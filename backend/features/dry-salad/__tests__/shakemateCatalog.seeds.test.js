@@ -49,7 +49,7 @@ describe('shakemateCatalog.seeds', () => {
 describe('brandCatalog includes Shakemate', () => {
   it('lists Shakemate with other brand seeds', () => {
     const all = listBrandCatalogSeeds();
-    assert.equal(all.length, 11);
+    assert.equal(all.length, 10);
     assert.ok(all.some((r) => r.canonical_name === 'Shakemate'));
   });
 

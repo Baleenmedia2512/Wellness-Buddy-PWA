@@ -6,7 +6,6 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   isExemptedBeverageOnly,
-  isTurboDrink,
   isNonMealNutritionOnly,
   isNonMealSupplement,
   isMealShakeName,
@@ -104,25 +103,6 @@ describe('isNonMealNutritionOnly', () => {
     assert.equal(isNonMealNutritionOnly({
       processedBy: 'shake_calculator',
       foods: [{ name: 'Protein Shake' }],
-    }), false);
-  });
-
-  it('treats Turbo Drink as a drink, including inside Target Nutrition', () => {
-    assert.equal(isTurboDrink('Turbo Drink'), true);
-    assert.equal(isTurboDrink('Herbalife Turbo Drink'), true);
-    assert.equal(isNonMealNutritionOnly({
-      mealKind: 'dry-salad',
-      foods: [{ name: 'Turbo Drink', volume_ml: 1000 }],
-    }), true);
-    assert.equal(isExemptedBeverageOnly({
-      foods: [{ name: 'Turbo Drink', volume_ml: 1000 }],
-    }), true);
-    assert.equal(isExemptedBeverageOnly({
-      mealKind: 'dry-salad',
-      foods: [
-        { name: 'Turbo Drink', volume_ml: 1000 },
-        { name: 'Joint Support (Bone & Joint Health)' },
-      ],
     }), false);
   });
 
