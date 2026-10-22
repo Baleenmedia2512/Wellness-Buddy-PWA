@@ -1,104 +1,46 @@
+/**
+ * Working Physical Centre ID — free-text club ID typed by the user.
+ * Styled to match the Community ID field rendered next to it.
+ */
+import React from 'react';
+import { Hash } from 'lucide-react';
 
-import React, { useEffect, useState } from 'react';
+const inputCls =
+  'w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none';
 
-import { getCenters } from '../../../nutrition-centers/services/centers.api.js';
-
+const WORKING_PHYSICAL_CENTRE_ID_MAX_LENGTH = 100;
 
 const WorkingPhysicalCentreField = ({
   value = '',
   onChange,
-  userId,
 }) => {
-  
-  const [centres, setCentres] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function loadCentres() {
-      setLoading(true);
-      setError('');
-
-      try {
-        const response = await getCenters({
-          userId: String(userId ?? ''),
-          scope: 'all',
-          metrics: 'false',
-          paginate: 'false',
-        });
-
-        if (cancelled) return;
-
-        if (!response?.success || !Array.isArray(response.data)) {
-          throw new Error(
-            response?.error?.message ||
-              response?.message ||
-              'Unable to load physical centres.',
-          );
-        }
-
-        const validCentres = response.data
-          .filter((centre) => centre?.id != null && centre?.center_name)
-          .map((centre) => ({
-            id: String(centre.id),
-            name: centre.center_name,
-          }));
-
-        setCentres(validCentres);
-
-        if (validCentres.length === 0) {
-          setError('No physical centres were returned by the API.');
-        }
-      } catch (err) {
-        if (!cancelled) {
-          setCentres([]);
-          setError(err.message || 'Unable to load physical centres.');
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-
-    loadCentres();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [userId]);
-
   return (
     <div>
-        <p style={{ color: 'red', fontWeight: 'bold' }}>
-        
-        </p>
-
-        <label className="block text-sm font-medium text-gray-700 mb-1">
-        Working Physical Centre
-        </label>
-
-      <select
-        value={String(value ?? '')}
-        onChange={(event) => onChange?.(event.target.value)}
-        disabled={loading}
-        className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none disabled:bg-gray-100"
-        style={{ fontSize: '16px' }}
-      >
-        <option value="">
-          {loading ? 'Loading centres...' : 'Select physical centre'}
-        </option>
-
-        {centres.map((centre) => (
-      <option key={centre.id} value={String(centre.id)}>
-        {centre.center_name || centre.name}
-      </option>
-    ))}
-      </select>
-
-      {error && (
-        <p className="text-xs text-red-500 mt-1">{error}</p>
-      )}
+      <label className="block text-sm font-medium text-gray-700 mb-1">
+        Working Physical Centre ID
+      </label>
+      <div className="relative">
+        <Hash className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+        <input
+          type="text"
+          autoComplete="off"
+          autoCapitalize="characters"
+          spellCheck={false}
+          value={value ?? ''}
+          onChange={(e) => onChange?.(e.target.value)}
+          maxLength={WORKING_PHYSICAL_CENTRE_ID_MAX_LENGTH}
+          placeholder="Enter your club ID"
+          className={`${inputCls} pl-9 font-mono tracking-wide uppercase`}
+          style={{ fontSize: '16px' }}
+          aria-label="Working Physical Centre ID"
+        />
+      </div>
+      <p className="text-xs text-gray-500 mt-1">
+        Optional club ID of the physical centre you work from. Tap Save Profile after editing.
+      </p>
+      <p className="text-xs text-gray-400 mt-0.5">
+        {(value || '').length}/{WORKING_PHYSICAL_CENTRE_ID_MAX_LENGTH}
+      </p>
     </div>
   );
 };

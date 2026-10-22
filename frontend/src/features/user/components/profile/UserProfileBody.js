@@ -3,6 +3,7 @@ import React from 'react';
 import { CheckCircle, Mail } from 'lucide-react';
 import UserProfileFields from './UserProfileFields';
 import CommunityIdField from './CommunityIdField';
+import WorkingPhysicalCentreField from './WorkingPhysicalCentreField';
 import UserProfileBodyMetrics from './UserProfileBodyMetrics';
 import IdealWeightCards from './IdealWeightCards';
 import DietDropdown from './DietDropdown';
@@ -24,6 +25,7 @@ const UserProfileBody = ({
           email={email}
           hideEmailField
           hideCommunityIdField
+          hideWorkingPhysicalCentreField
           name={form.name} setName={form.setName}
           height={form.height} setHeight={form.setHeight}
           phone={form.phone} setPhone={form.setPhone}
@@ -68,6 +70,10 @@ const UserProfileBody = ({
         <CommunityIdField
           communityId={form.communityId}
           setCommunityId={form.setCommunityId}
+        />
+        <WorkingPhysicalCentreField
+          value={form.workingPhysicalCentreId}
+          onChange={form.setWorkingPhysicalCentreId}
         />
         <IdealWeightCards
           height={form.height}

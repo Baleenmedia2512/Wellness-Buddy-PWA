@@ -33,6 +33,7 @@ const UserProfileFields = ({
   teamSeat = null,
   hideEmailField = false,
   hideCommunityIdField = false,
+  hideWorkingPhysicalCentreField = false,
   communityIdOtpEnabled = false,
   communityIdRequest = null,
   communityIdPair = null,
@@ -138,21 +139,12 @@ heightOtpDestination = '',
         sponsorEmail={sponsorEmail}
       />
       )}
-      <div
-      style={{
-        border: '2px solid red',
-        backgroundColor: '#ffffffff',
-        padding: '10px',
-        borderRadius: '8px',
-        marginBottom: '10px',
-  }}
->
-  <WorkingPhysicalCentreField
-    value={workingPhysicalCentreId}
-    onChange={setWorkingPhysicalCentreId}
-    userId={userId}
-  />
-</div>
+    {!hideWorkingPhysicalCentreField && (
+      <WorkingPhysicalCentreField
+        value={workingPhysicalCentreId}
+        onChange={setWorkingPhysicalCentreId}
+      />
+    )}
       <div>
       <label className="flex items-center gap-1 text-sm font-medium text-gray-700 mb-1">
         <Flame className="w-4 h-4 text-orange-500" /> BMR (kcal)
