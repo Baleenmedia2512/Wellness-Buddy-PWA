@@ -113,64 +113,68 @@ export default function MealBuilderSheet({
             return (
               <div
                 key={item.name}
-                className="flex items-center gap-2 bg-green-50/60 border border-green-100 rounded-xl px-2 py-1.5"
+                className="relative bg-green-50/60 border border-green-100 rounded-xl p-2.5 pr-8"
               >
-                <FoodThumb name={item.name} size="sm" className="flex-shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-semibold text-gray-800 break-words leading-snug">
-                    {item.name}
-                    {servingLabel ? (
-                      <span className="font-medium text-gray-500"> — {servingLabel}</span>
-                    ) : null}
-                  </p>
-                  <p className="text-[11px] text-green-700 font-medium mt-0.5">
-                    {kcal > 0 ? `${kcal} kcal` : 'Custom serving'}
-                  </p>
-                </div>
-                <div
-                  className="flex items-center flex-shrink-0 h-7 rounded-lg border border-green-200 bg-white overflow-hidden"
-                  role="group"
-                  aria-label={`Quantity for ${item.name}`}
-                >
-                  <button
-                    type="button"
-                    aria-label={`Decrease ${item.name}`}
-                    className="w-6 h-7 flex items-center justify-center text-green-700 active:bg-green-50"
-                    onClick={() => {
-                      const next = Math.max(QTY_MIN, snapHalfServing(servings - QTY_STEP));
-                      onQuantityChange?.(item.name, String(next));
-                    }}
-                  >
-                    <Minus className="w-3 h-3" />
-                  </button>
-                  <span className="min-w-[1.5rem] px-0.5 text-center text-[11px] font-bold text-gray-800 tabular-nums leading-none">
-                    {formatQtyDisplay(servings)}
-                    {qtySuffix ? (
-                      <span className="text-[9px] font-semibold text-gray-400 ml-0.5">{qtySuffix}</span>
-                    ) : null}
-                  </span>
-                  <button
-                    type="button"
-                    aria-label={`Increase ${item.name}`}
-                    className="w-6 h-7 flex items-center justify-center text-green-700 active:bg-green-50"
-                    onClick={() => {
-                      onQuantityChange?.(
-                        item.name,
-                        String(snapHalfServing(servings + QTY_STEP)),
-                      );
-                    }}
-                  >
-                    <Plus className="w-3 h-3" />
-                  </button>
-                </div>
                 <button
                   type="button"
                   onClick={() => onRemove?.(item)}
-                  className="flex-shrink-0 p-0.5 text-gray-300 hover:text-red-400"
+                  className="absolute top-0.5 right-1 p-0.5 rounded-md text-gray-400 hover:text-red-500 hover:bg-red-50/80 active:scale-95 transition-all"
                   aria-label={`Remove ${item.name}`}
                 >
                   <X className="w-3.5 h-3.5" />
                 </button>
+                <div className="flex items-start gap-2.5">
+                  <FoodThumb name={item.name} size="sm" className="flex-shrink-0 mt-0.5" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-semibold text-gray-800 break-words leading-snug">
+                      {item.name}
+                      {servingLabel ? (
+                        <span className="font-medium text-gray-500"> — {servingLabel}</span>
+                      ) : null}
+                    </p>
+                    <div className="flex items-center justify-between gap-2 mt-1.5">
+                      <p className="text-[11px] text-green-700 font-medium">
+                        {kcal > 0 ? `${kcal} kcal` : 'Custom serving'}
+                      </p>
+                      <div
+                        className="flex items-center flex-shrink-0 h-6 rounded-lg border border-green-200 bg-white overflow-hidden shadow-xs"
+                        role="group"
+                        aria-label={`Quantity for ${item.name}`}
+                      >
+                        <button
+                          type="button"
+                          aria-label={`Decrease ${item.name}`}
+                          className="w-6 h-6 flex items-center justify-center text-green-700 active:bg-green-50"
+                          onClick={() => {
+                            const next = Math.max(QTY_MIN, snapHalfServing(servings - QTY_STEP));
+                            onQuantityChange?.(item.name, String(next));
+                          }}
+                        >
+                          <Minus className="w-3 h-3" />
+                        </button>
+                        <span className="min-w-[1.5rem] px-1 text-center text-[11px] font-bold text-gray-800 tabular-nums leading-none">
+                          {formatQtyDisplay(servings)}
+                          {qtySuffix ? (
+                            <span className="text-[9px] font-semibold text-gray-400 ml-0.5">{qtySuffix}</span>
+                          ) : null}
+                        </span>
+                        <button
+                          type="button"
+                          aria-label={`Increase ${item.name}`}
+                          className="w-6 h-6 flex items-center justify-center text-green-700 active:bg-green-50"
+                          onClick={() => {
+                            onQuantityChange?.(
+                              item.name,
+                              String(snapHalfServing(servings + QTY_STEP)),
+                            );
+                          }}
+                        >
+                          <Plus className="w-3 h-3" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
             );
           })}

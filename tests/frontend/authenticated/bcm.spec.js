@@ -33,6 +33,7 @@
  * - BCM-027: Verify Body Age field range boundaries (0, 1, 120, 121)
  * - BCM-028: Verify Chest, Waist, and Hip field range boundaries (19, 20, 250, 251)
  * - BCM-029: Verify Checked At functionality works correctly
+ * - BCM-030: Verify Appointment Date correctly fixes to next day date (including Sunday roll-forward and month/year boundaries)
  */
 
 const path = require('path');
@@ -1872,6 +1873,138 @@ test.describe('BCM Module (Body Composition Metrics)', () => {
     await expect(vikkeyCard).toContainText('Venue: Voc Harbour');
 
     console.log('BCM-029: Successfully verified Checked At functionality on header, modal synchronization, card creation, and card edit');
+  });
+
+  test('BCM-030: Verify Appointment Date correctly fixes to next day date', async ({ page }) => {
+    let listCards = JSON.parse(JSON.stringify(MOCK_CARDS));
+
+    // Setup list mock so new/updated cards remain present after refresh
+    await page.route('**/api/body-parameters-card/list*', async (route) => {
+      const url = new URL(route.request().url());
+      const cardId = url.searchParams.get('cardId');
+      if (cardId) {
+        const found = listCards.find((c) => String(c.id) === String(cardId));
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            ok: true,
+            data: found || listCards[0],
+          }),
+        });
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          ok: true,
+          success: true,
+          data: listCards,
+          pagination: {
+            totalRecords: listCards.length,
+            totalPages: 1,
+            currentPage: 1,
+            pageSize: 20,
+            hasNextPage: false,
+            hasPreviousPage: false,
+          },
+        }),
+      });
+    });
+
+    // Setup Mock for create
+    let createCalled = false;
+    let lastCreateBody = null;
+    await page.route('**/api/body-parameters-card/create', async (route) => {
+      createCalled = true;
+      try {
+        lastCreateBody = route.request().postDataJSON();
+      } catch {
+        lastCreateBody = null;
+      }
+      const newCard = {
+        id: 999,
+        name: lastCreateBody?.name || 'APPT TEST USER',
+        phoneNumber: lastCreateBody?.phoneNumber || '9123456789',
+        heightCm: 170,
+        weightKg: 65,
+        recordedDate: lastCreateBody?.recordedDate || '2026-10-21',
+        appointmentDate: lastCreateBody?.appointmentDate || '2026-10-22',
+        locationName: lastCreateBody?.locationName || 'Test Clinic',
+        createdAt: new Date().toISOString(),
+        publicShareToken: 'token-appt-123',
+      };
+      listCards = [newCard, ...listCards];
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          data: newCard,
+        }),
+      });
+    });
+
+    // 1. Open Create modal
+    const createButton = page.getByRole('button', { name: 'Create Body Parameters Card' });
+    await expect(createButton).toBeVisible();
+    await createButton.click();
+    await expect(page.getByRole('heading', { name: 'Your Body Parameters' })).toBeVisible();
+
+    // 2. Locate Recorded Date input and Appointment Date input
+    const recordedDateInput = page.locator('div:has(> label:has-text("Date")) input[type="date"]').first();
+    const appointmentDateInput = page.locator('div:has(> label:has-text("Appointment Date")) input[type="date"]');
+    await expect(recordedDateInput).toBeVisible();
+    await expect(appointmentDateInput).toBeVisible();
+
+    // 3. Test Weekday: When recordedDate is set to Monday (2026-10-19), appointmentDate automatically fixes to next day Tuesday (2026-10-20)
+    await recordedDateInput.fill('2026-10-19');
+    await expect(appointmentDateInput).toHaveValue('2026-10-20');
+
+    // 4. Test Weekday: When recordedDate is Wednesday (2026-10-21), appointmentDate fixes to Thursday (2026-10-22)
+    await recordedDateInput.fill('2026-10-21');
+    await expect(appointmentDateInput).toHaveValue('2026-10-22');
+
+    // 5. Test Friday: When recordedDate is Friday (2026-10-23), appointmentDate fixes to Saturday (2026-10-24)
+    await recordedDateInput.fill('2026-10-23');
+    await expect(appointmentDateInput).toHaveValue('2026-10-24');
+
+    // 6. Test Sunday Rule: When recordedDate is Saturday (2026-10-24), next day is Sunday so it rolls to Monday (2026-10-26)
+    await recordedDateInput.fill('2026-10-24');
+    await expect(appointmentDateInput).toHaveValue('2026-10-26');
+
+    // 7. Test Month boundary: When recordedDate is March 31 (2026-03-31), appointmentDate fixes to April 1 (2026-04-01)
+    await recordedDateInput.fill('2026-03-31');
+    await expect(appointmentDateInput).toHaveValue('2026-04-01');
+
+    // 8. Test Year boundary: When recordedDate is Dec 31 (2026-12-31), appointmentDate fixes to Jan 1 (2027-01-01)
+    await recordedDateInput.fill('2026-12-31');
+    await expect(appointmentDateInput).toHaveValue('2027-01-01');
+
+    // 9. Reset to Wednesday 2026-10-21 (next day 2026-10-22) and save
+    await recordedDateInput.fill('2026-10-21');
+    await expect(appointmentDateInput).toHaveValue('2026-10-22');
+
+    await page.getByPlaceholder('FULL NAME').fill('APPT TEST USER');
+    const saveButton = page.getByRole('button', { name: 'Save & Share' });
+    await saveButton.click();
+
+    // 10. Verify create payload contains the correctly fixed appointment date
+    await expect(page.getByRole('heading', { name: 'Your Body Parameters' })).not.toBeVisible({ timeout: 15000 });
+    expect(createCalled).toBe(true);
+    expect(lastCreateBody).not.toBeNull();
+    expect(lastCreateBody.appointmentDate).toBe('2026-10-22');
+
+    // Dismiss share sheet if opened
+    await page.keyboard.press('Escape').catch(() => {});
+
+    // 11. Verify card tile on the dashboard renders the appointment date correctly
+    const newCardTile = page.locator('div.bg-white', { hasText: 'APPT TEST USER' }).first();
+    await expect(newCardTile).toBeVisible({ timeout: 10000 });
+    await expect(newCardTile).toContainText('Appointment: 2026-10-22');
+
+    console.log('BCM-030: Successfully verified Appointment Date fixes correctly to next day date across weekdays, Sunday roll-forward, and month/year boundaries');
   });
 });
 

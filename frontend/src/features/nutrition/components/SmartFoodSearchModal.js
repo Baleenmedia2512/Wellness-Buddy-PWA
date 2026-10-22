@@ -917,8 +917,16 @@ const SmartFoodSearchModal = ({
                   const servings = Number.isFinite(count) && count > 0 ? count : 1;
                   const kcal = Math.round((item.calories ?? 0) * servings);
                   return (
-                    <div key={item.name} className="flex items-start gap-2 bg-white border border-orange-100 rounded-xl px-2.5 py-1.5">
-                      <div className="flex-1 min-w-0">
+                    <div key={item.name} className="relative bg-white border border-orange-100 rounded-xl px-2.5 py-2 pr-8">
+                      <button
+                        type="button"
+                        onClick={() => handleToggleItem(item)}
+                        className="absolute top-0.5 right-1 p-0.5 rounded-md text-gray-400 hover:text-red-500 hover:bg-red-50 active:scale-95 transition-all"
+                        aria-label={`Remove ${item.name}`}
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                      <div className="min-w-0">
                         <p className="text-xs font-medium text-gray-800 break-words leading-snug">{item.name}</p>
                         <div className="flex items-center justify-between gap-2 mt-1">
                           <p className="text-[11px] text-orange-600 font-semibold">{kcal} kcal</p>
@@ -933,9 +941,6 @@ const SmartFoodSearchModal = ({
                           />
                         </div>
                       </div>
-                      <button type="button" onClick={() => handleToggleItem(item)} className="text-gray-300 hover:text-red-400 flex-shrink-0">
-                        <X className="w-3.5 h-3.5" />
-                      </button>
                     </div>
                   );
                 })}
