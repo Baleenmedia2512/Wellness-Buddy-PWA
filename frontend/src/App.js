@@ -986,6 +986,7 @@ function WellnessValleyApp() {
   const [showRegisterCenter, setShowRegisterCenter] = useState(false);
   const [editCenterData, setEditCenterData] = useState(null); // centre to pre-load for editing
   const [clubMineFocusKey, setClubMineFocusKey] = useState(0);
+  const [savedClub, setSavedClub] = useState(null);
 
   // Setup wizard state
   const [showSetupWizard, setShowSetupWizard] = useState(false);
@@ -1168,9 +1169,13 @@ function WellnessValleyApp() {
       [pageId]: (prev[pageId] || 0) + 1,
     }));
   }, []);
-  const returnToMyClubs = useCallback(() => {
-    setClubMineFocusKey((n) => n + 1);
-    bumpTabVisitKey('physical-club');
+  const returnToMyClubs = useCallback((saved) => {
+    if (saved && saved.id != null) {
+      setSavedClub({ ...saved, savedToken: Date.now() });
+    } else {
+      setClubMineFocusKey((n) => n + 1);
+      bumpTabVisitKey('physical-club');
+    }
     setShowRegisterCenter(false);
     setEditCenterData(null);
     setShowNutritionCentersMap(true);
@@ -8251,6 +8256,8 @@ function WellnessValleyApp() {
                 user={user}
                 tabVisitKey={tabVisitKeys['physical-club'] ?? 0}
                 mineFocusKey={clubMineFocusKey}
+                savedCenter={savedClub}
+                onSavedCenterConsumed={() => setSavedClub(null)}
                 onBack={() => {
                   setShowNutritionCentersMap(false);
                   const currentWvPage = window.history.state?.wvPage;

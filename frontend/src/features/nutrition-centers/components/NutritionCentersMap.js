@@ -13,7 +13,12 @@ import { resolveDiaryTimezone } from '../../diary/utils/diaryTimezone';
 import { getApiBaseUrl } from '../../../config/api.config.js';
 import { lookup as lookupUser } from '../../user/services/user.api.js';
 import { unregister as unregisterCenter } from '../services/centers.api.js';
-import { omitRemovedCenters } from '../domain/centerListRefresh.js';
+import {
+  applySavedCenter,
+  omitRemovedCenters,
+  savedCenterTotalRecords,
+  toClubListRow,
+} from '../domain/centerListRefresh.js';
 
 // --- Single Day Picker ---
 const SingleDayPicker = ({ selectedDate, onSelect, onClose }) => {
@@ -90,6 +95,8 @@ const NutritionCentersMap = ({
   embedded = false,
   tabVisitKey = 0,
   mineFocusKey = 0,
+  savedCenter = null,
+  onSavedCenterConsumed,
 }) => {
   const [centers, setCenters] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -135,6 +142,21 @@ const NutritionCentersMap = ({
   const removedCenterIdsRef = useRef(new Set());
   const seenVisitKeyRef = useRef(tabVisitKey);
   const seenMineFocusRef = useRef(mineFocusKey);
+  const centersRef = useRef(centers);
+  const teamFilterRef = useRef(teamFilter);
+  const paginationRef = useRef(pagination);
+  const appliedSaveTokenRef = useRef(null);
+  /** Next filter refetch should keep the club we just painted. */
+  const preserveListOnNextFetchRef = useRef(false);
+  const mapLoadedRef = useRef(mapLoaded);
+  const fetchCentersRef = useRef(null);
+  const onSavedCenterConsumedRef = useRef(onSavedCenterConsumed);
+  const aliveRef = useRef(true);
+  centersRef.current = centers;
+  teamFilterRef.current = teamFilter;
+  paginationRef.current = pagination;
+  mapLoadedRef.current = mapLoaded;
+  onSavedCenterConsumedRef.current = onSavedCenterConsumed;
 
   const apiBaseUrl = getApiBaseUrl();
   const GOOGLE_MAPS_API_KEY = process.env.REACT_APP_GOOGLE_MAPS_API_KEY || '';
@@ -372,6 +394,7 @@ const NutritionCentersMap = ({
       }
     }
   }, [user, teamFilter, debouncedSearch, apiBaseUrl, resolveUserId, buildDateParams]);
+  fetchCentersRef.current = fetchCenters;
 
   const confirmDeleteCenter = useCallback(async () => {
     const center = deleteModal.center;
@@ -658,21 +681,26 @@ const NutritionCentersMap = ({
     const controller = new AbortController();
     fetchAbortRef.current = controller;
 
-    setCenters([]);
-    setPagination({
-      totalRecords: 0,
-      currentPage: 0,
-      hasNextPage: false,
-      totalAttendance: 0,
-      attendedCenters: [],
-    });
+    const preserveList = preserveListOnNextFetchRef.current;
+    if (preserveList) preserveListOnNextFetchRef.current = false;
+
+    if (!preserveList) {
+      setCenters([]);
+      setPagination({
+        totalRecords: 0,
+        currentPage: 0,
+        hasNextPage: false,
+        totalAttendance: 0,
+        attendedCenters: [],
+      });
+    }
 
     const timer = setTimeout(() => {
       fetchCenters({
         signal: controller.signal,
         page: 1,
         append: false,
-        bustCache: visitChanged || mineChanged,
+        bustCache: visitChanged || mineChanged || preserveList,
       });
     }, 50);
 
@@ -682,6 +710,77 @@ const NutritionCentersMap = ({
       if (fetchAbortRef.current === controller) fetchAbortRef.current = null;
     };
   }, [mapLoaded, user, teamFilter, dateRange, customDate, debouncedSearch, tabVisitKey, mineFocusKey, fetchCenters]);
+
+  // Paint a create/update on My Club as soon as the write returns.
+  // Attendance for the rest of the list refreshes behind that row.
+  useEffect(() => {
+    const token = savedCenter?.savedToken;
+    if (!savedCenter?.id || token == null) return undefined;
+    if (appliedSaveTokenRef.current === token) return undefined;
+    appliedSaveTokenRef.current = token;
+
+    const ownerName = user?.UserName
+      || user?.userName
+      || user?.name
+      || user?.displayName
+      || '';
+    const row = toClubListRow(savedCenter, ownerName);
+    if (!row) return undefined;
+
+    const onMine = teamFilterRef.current === 'self';
+    const base = onMine ? centersRef.current : [];
+    const next = applySavedCenter(base, row);
+    const totalRecords = savedCenterTotalRecords(
+      paginationRef.current.totalRecords,
+      base,
+      row,
+      !onMine,
+    );
+
+    pageCacheRef.current.clear();
+    inFlightKeyRef.current = null;
+    setCenters(next);
+    setPagination((prev) => ({
+      ...prev,
+      totalRecords,
+      currentPage: Math.max(prev.currentPage || 1, 1),
+      hasNextPage: onMine ? prev.hasNextPage : false,
+    }));
+    setLoading(false);
+    onSavedCenterConsumedRef.current?.();
+
+    // The list effect clears rows when the map becomes ready or the tab
+    // switches to My Club. Keep the row we just painted through that pass.
+    if (!onMine || !mapLoadedRef.current) {
+      preserveListOnNextFetchRef.current = true;
+    }
+    if (!onMine) {
+      setTeamFilter('self');
+      return undefined;
+    }
+
+    fetchAbortRef.current?.abort();
+    const controller = new AbortController();
+    fetchAbortRef.current = controller;
+    fetchCentersRef.current?.({
+      signal: controller.signal,
+      page: 1,
+      append: false,
+      bustCache: true,
+    });
+    return () => {
+      if (!aliveRef.current) {
+        controller.abort();
+        if (fetchAbortRef.current === controller) fetchAbortRef.current = null;
+      }
+    };
+    // Re-run only for a new save. user is the one from that render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [savedCenter]);
+
+  useEffect(() => () => {
+    aliveRef.current = false;
+  }, []);
 
   const handleRefresh = useCallback(() => {
     pageCacheRef.current.clear();

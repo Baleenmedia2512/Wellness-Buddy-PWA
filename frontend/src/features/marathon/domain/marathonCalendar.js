@@ -23,7 +23,7 @@ export const DETOX_REMINDER_MARATHON_DAYS = Object.freeze(
 );
 
 export const DETOX_REMINDER_TITLE = 'Tomorrow is Detox Day';
-export const DETOX_REMINDER_SUBTITLE = 'Prepare for your Detox Day tomorrow.';
+export const DETOX_REMINDER_SUBTITLE = 'Detox Day Drink Recipe';
 
 /** User-facing label for Marathon Day 0 (eve-of-start reminder). */
 export const MARATHON_START_REMINDER_TITLE = 'Tomorrow is Marathon Day 0';
