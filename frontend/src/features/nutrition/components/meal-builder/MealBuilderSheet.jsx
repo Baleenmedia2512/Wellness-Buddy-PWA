@@ -30,6 +30,7 @@ export default function MealBuilderSheet({
   onClear,
   onRemove,
   onQuantityChange,
+  plainQuantity = false,
 }) {
   useEffect(() => {
     if (!open) return undefined;
@@ -104,9 +105,11 @@ export default function MealBuilderSheet({
             const servingLabel = item.portion
               ? (servings === 1 ? item.portion : `${servings} × ${item.portion}`)
               : (amount != null && unit ? `${amount} ${unit}` : null);
-            const qtySuffix = measureUnit === 'pcs'
-              ? 'pcs'
-              : (unit === 'g' || unit === 'ml' ? unit : null);
+            const qtySuffix = plainQuantity
+              ? null
+              : measureUnit === 'pcs'
+                ? 'pcs'
+                : (unit === 'g' || unit === 'ml' ? unit : null);
             return (
               <div
                 key={item.name}

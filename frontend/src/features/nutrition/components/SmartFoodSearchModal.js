@@ -821,6 +821,7 @@ const SmartFoodSearchModal = ({
           onClear={clearMealSelection}
           onRemove={handleRemoveItem}
           onQuantityChange={handleQuantityChange}
+          plainQuantity={catalogMode}
         />
       </div>
     );
