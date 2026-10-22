@@ -835,6 +835,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
                   value={form.workingPhysicalCentreId}
                   onChange={form.setWorkingPhysicalCentreId}
                 />
+                
                 <IdealWeightCards
                   height={form.height}
                   latestWeight={latestWeight}
