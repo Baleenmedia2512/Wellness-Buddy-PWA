@@ -19,6 +19,7 @@ export function buildWeightShareText({
   const lines = [
     '⚖️ Weight Update',
     '',
+    '*Day progress*',
     `Prev: ${previous != null ? `${previous} kg` : '—'}`,
     `Curr: ${current != null ? `${current} kg` : '—'}`,
   ];

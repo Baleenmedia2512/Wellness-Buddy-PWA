@@ -3,6 +3,7 @@ import React from 'react';
 import { CheckCircle, Mail } from 'lucide-react';
 import UserProfileFields from './UserProfileFields';
 import CommunityIdField from './CommunityIdField';
+import WorkingPhysicalCentreField from './WorkingPhysicalCentreField';
 import UserProfileBodyMetrics from './UserProfileBodyMetrics';
 import IdealWeightCards from './IdealWeightCards';
 import DietDropdown from './DietDropdown';
@@ -12,6 +13,7 @@ const UserProfileBody = ({
   isLoading, form, email, latestWeight, initialWeight, initialWeightDate,
   marathonWeightComparison = null,
   error, successMessage,
+  workingPhysicalCentre = null,
 }) => (
   <div className="p-6 space-y-5">
     {isLoading ? (
@@ -66,6 +68,7 @@ const UserProfileBody = ({
           communityId={form.communityId}
           setCommunityId={form.setCommunityId}
         />
+        <WorkingPhysicalCentreField centre={workingPhysicalCentre} />
         <IdealWeightCards
           height={form.height}
           latestWeight={latestWeight}

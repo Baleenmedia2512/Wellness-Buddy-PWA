@@ -5,6 +5,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   MARATHON_WHATSAPP_ADVANCE_SPECIALS,
+  MARATHON_DAY_0_WHATSAPP_LABEL,
   formatMarathonWhatsAppAdvanceNotice,
   formatMarathonWhatsAppCurrentDayNotice,
   getMarathonWhatsAppCurrentDayNotice,
@@ -34,15 +35,15 @@ describe('MARATHON_WHATSAPP_ADVANCE_SPECIALS', () => {
     assert.deepEqual(days, [0, 4, 9]);
     assert.equal(
       formatMarathonWhatsAppAdvanceNotice(0, 'Marathon Starts'),
-      'Tomorrow is Marathon Day 0 - Marathon Starts',
+      '_Tomorrow is Marathon Day 0 - Marathon Starts_',
     );
     assert.equal(
-      formatMarathonWhatsAppCurrentDayNotice(0, 'Marathon Starts'),
-      'Marathon Day 0 - Marathon Starts',
+      formatMarathonWhatsAppCurrentDayNotice(0, MARATHON_DAY_0_WHATSAPP_LABEL),
+      '_Marathon Day 0 - Today Marathon_',
     );
     assert.equal(
       formatMarathonWhatsAppCurrentDayNotice(1),
-      'Marathon Day 1',
+      '_Marathon Day 1_',
     );
   });
 });
@@ -51,23 +52,23 @@ describe('getMarathonWhatsAppCurrentDayNotice', () => {
   it('returns the current marathon day on every in-marathon day', () => {
     assert.equal(
       getMarathonWhatsAppCurrentDayNotice('2026-08-01'),
-      'Marathon Day 0 - Marathon Starts',
+      '_Marathon Day 0 - Today Marathon_',
     );
     assert.equal(
       getMarathonWhatsAppCurrentDayNotice('2026-08-02'),
-      'Marathon Day 1',
+      '_Marathon Day 1_',
     );
     assert.equal(
       getMarathonWhatsAppCurrentDayNotice('2026-08-03'),
-      'Marathon Day 2',
+      '_Marathon Day 2_',
     );
     assert.equal(
       getMarathonWhatsAppCurrentDayNotice('2026-08-05'),
-      'Marathon Day 4 - Detox Day',
+      '_Marathon Day 4 - Detox Day_',
     );
     assert.equal(
       getMarathonWhatsAppCurrentDayNotice('2026-08-10'),
-      'Marathon Day 9 - Detox Day',
+      '_Marathon Day 9 - Detox Day_',
     );
   });
 
@@ -82,30 +83,30 @@ describe('getMarathonWhatsAppAdvanceNotice', () => {
   it('returns Day 0 marathon-start copy on Day -1 (eve of the 1st and 15th)', () => {
     assert.equal(
       getMarathonWhatsAppAdvanceNotice('2026-07-31'),
-      'Tomorrow is Marathon Day 0 - Marathon Starts',
+      '_Tomorrow is Marathon Day 0 - Marathon Starts_',
     );
     assert.equal(
       getMarathonWhatsAppAdvanceNotice('2026-08-14'),
-      'Tomorrow is Marathon Day 0 - Marathon Starts',
+      '_Tomorrow is Marathon Day 0 - Marathon Starts_',
     );
   });
 
   it('returns Detox copy one day before each Detox Day', () => {
     assert.equal(
       getMarathonWhatsAppAdvanceNotice('2026-08-04'),
-      'Tomorrow is Marathon Day 4 - Detox Day',
+      '_Tomorrow is Marathon Day 4 - Detox Day_',
     );
     assert.equal(
       getMarathonWhatsAppAdvanceNotice('2026-08-09'),
-      'Tomorrow is Marathon Day 9 - Detox Day',
+      '_Tomorrow is Marathon Day 9 - Detox Day_',
     );
     assert.equal(
       getMarathonWhatsAppAdvanceNotice('2026-08-18'),
-      'Tomorrow is Marathon Day 4 - Detox Day',
+      '_Tomorrow is Marathon Day 4 - Detox Day_',
     );
     assert.equal(
       getMarathonWhatsAppAdvanceNotice('2026-08-23'),
-      'Tomorrow is Marathon Day 9 - Detox Day',
+      '_Tomorrow is Marathon Day 9 - Detox Day_',
     );
   });
 
@@ -130,19 +131,19 @@ describe('appendMarathonWhatsAppNotice', () => {
   it('uses Tomorrow only for Marathon start and Detox; other days are Marathon Day N', () => {
     assert.equal(
       appendMarathonWhatsAppNotice(CURRENT_DAY_CAPTION, '2026-07-31'),
-      `${CURRENT_DAY_CAPTION}, Tomorrow is Marathon Day 0 - Marathon Starts`,
+      `${CURRENT_DAY_CAPTION}, _Tomorrow is Marathon Day 0 - Marathon Starts_`,
     );
     assert.equal(
       appendMarathonWhatsAppNotice(CURRENT_DAY_CAPTION, '2026-08-14'),
-      `${CURRENT_DAY_CAPTION}, Tomorrow is Marathon Day 0 - Marathon Starts`,
+      `${CURRENT_DAY_CAPTION}, _Tomorrow is Marathon Day 0 - Marathon Starts_`,
     );
     assert.equal(
       appendMarathonWhatsAppNotice(CURRENT_DAY_CAPTION, '2026-08-01'),
-      `${CURRENT_DAY_CAPTION}, Marathon Day 0 - Marathon Starts`,
+      `${CURRENT_DAY_CAPTION}, _Marathon Day 0 - Today Marathon_`,
     );
     assert.equal(
       appendMarathonWhatsAppNotice(CURRENT_DAY_CAPTION, '2026-08-02'),
-      `${CURRENT_DAY_CAPTION}, Marathon Day 1`,
+      `${CURRENT_DAY_CAPTION}, _Marathon Day 1_`,
     );
     assert.equal(
       appendMarathonWhatsAppNotice(CURRENT_DAY_CAPTION, '2026-08-12'),
@@ -158,7 +159,8 @@ describe('appendMarathonWhatsAppNotice', () => {
       progress,
       { includeWeightComparison: true },
     );
-    assert.match(result, /Marathon Day 0 - Marathon Starts/);
+    assert.match(result, /_Marathon Day 0 - Today Marathon_/);
+    assert.match(result, /\*Lap progress\*/);
     assert.match(result, /Previous Marathon End weight : 75\.00 kg/);
     assert.match(result, /Current Weight : 73\.00 kg ⬇️/);
   });
@@ -173,7 +175,7 @@ describe('appendMarathonWhatsAppNotice', () => {
     );
     assert.equal(
       result,
-      `${CURRENT_DAY_CAPTION}, Marathon Day 1, Day 0 : 75.00 kg → Curr: 74.50 kg ⬇️ 500 g`,
+      `${CURRENT_DAY_CAPTION}, _Marathon Day 1_, *Lap progress*, Day 0 : 75.00 kg → Curr: 74.50 kg ⬇️ 500 g`,
     );
   });
 
@@ -189,6 +191,7 @@ describe('appendMarathonWhatsAppNotice', () => {
       progress,
       { includeWeightComparison: true },
     );
+    assert.match(result, /\*Lap progress\*/);
     assert.match(result, /Previous Marathon End weight : 74\.00 kg/);
     assert.match(result, /Current Weight : 74\.20 kg ⬆️/);
   });
@@ -204,7 +207,8 @@ describe('appendMarathonWhatsAppNotice', () => {
       progress,
       { includeWeightComparison: true },
     );
-    assert.match(result, /Tomorrow is Marathon Day 0 - Marathon Starts/);
+    assert.match(result, /_Tomorrow is Marathon Day 0 - Marathon Starts_/);
+    assert.match(result, /\*Lap progress\*/);
     assert.match(result, /Previous Marathon End weight : 75\.00 kg/);
     assert.match(result, /Current Weight : 77\.30 kg ⬆️/);
   });
@@ -216,7 +220,7 @@ describe('appendMarathonWhatsAppNotice', () => {
       currentWeight: 74,
     });
     const result = appendMarathonWhatsAppNotice(food, '2026-08-31', progress);
-    assert.equal(result, `${food}\nTomorrow is Marathon Day 0 - Marathon Starts`);
+    assert.equal(result, `${food}\n_Tomorrow is Marathon Day 0 - Marathon Starts_`);
     assert.equal(result.includes('Previous Marathon End'), false);
     assert.equal(result.includes('Current Weight'), false);
   });
@@ -224,11 +228,11 @@ describe('appendMarathonWhatsAppNotice', () => {
   it('returns the day sequence when the caption is empty', () => {
     assert.equal(
       appendMarathonWhatsAppNotice('', '2026-08-14'),
-      'Tomorrow is Marathon Day 0 - Marathon Starts',
+      '_Tomorrow is Marathon Day 0 - Marathon Starts_',
     );
     assert.equal(
       appendMarathonWhatsAppNotice('', '2026-08-02'),
-      'Marathon Day 1',
+      '_Marathon Day 1_',
     );
   });
 });

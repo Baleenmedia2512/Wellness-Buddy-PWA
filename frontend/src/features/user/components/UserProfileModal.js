@@ -5,6 +5,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { getUserContext } from '../../../shared/services/userIdentity';
 import useProfileForm from '../hooks/useProfileForm';
 import { fetchProfile, saveProfile } from '../services/profileService';
+import { loadWorkingPhysicalCentre } from '../services/workingPhysicalCentreService';
 import { syncMarathonWeightComparisonFromProfile } from '../../marathon/marathonWeightComparisonCache';
 import { loadProfileMarathonWeightComparison } from '../../marathon';
 import UserProfileHeader from './profile/UserProfileHeader';
@@ -23,6 +24,7 @@ const UserProfileModal = ({ isOpen, onClose, user, userRole = 'user', onProfileU
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
   const [hasSaved, setHasSaved] = useState(false);
+  const [workingPhysicalCentre, setWorkingPhysicalCentre] = useState(null);
 
   const loadProfile = useCallback(async () => {
     setIsLoading(true); setError('');
@@ -46,6 +48,16 @@ const UserProfileModal = ({ isOpen, onClose, user, userRole = 'user', onProfileU
           communityId: data.communityId != null ? String(data.communityId) : '',
           bodyMetrics: data.bodyMetrics || null,
         });
+        const profileCentre = data.workingPhysicalCentre || null;
+        setWorkingPhysicalCentre(profileCentre);
+        const centreUserId = data.userId || user?.id || user?.UserId;
+        if (!profileCentre?.name && !(profileCentre?.options || []).length && centreUserId) {
+          loadWorkingPhysicalCentre({ userId: centreUserId, profileCentre })
+            .then((centre) => setWorkingPhysicalCentre(centre))
+            .catch((err) => {
+              console.warn('[profile] working physical centre', err?.message || err);
+            });
+        }
         setLatestWeight(data.latestWeight ? parseFloat(data.latestWeight) : null);
         setInitialWeight(data.initialWeight != null ? parseFloat(data.initialWeight) : null);
         setInitialWeightDate(data.initialWeightDate || null);
@@ -133,6 +145,7 @@ const UserProfileModal = ({ isOpen, onClose, user, userRole = 'user', onProfileU
           latestWeight={latestWeight} initialWeight={initialWeight}
           initialWeightDate={initialWeightDate}
           marathonWeightComparison={marathonWeightComparison}
+          workingPhysicalCentre={workingPhysicalCentre}
           error={error} successMessage={successMessage}
         />
         {!isLoading && (

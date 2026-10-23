@@ -66,6 +66,7 @@ import {
   HEIGHT_CHANGE_OTP_FLAG,
   shouldDeferHeightChangeToOtp,
 } from './domain/heightChange.rules.js';
+import { getWorkingPhysicalCentre } from '../nutrition-centers/workingPhysicalCentre.service.js';
 
 const notFound = () => ({ httpStatus: 404, body: { success: false, message: 'User not found' } });
 
@@ -242,6 +243,16 @@ export async function getProfile({ email, userId = null, appVersion = null }) {
     timezoneIana: profileTimezone,
   });
 
+  let workingPhysicalCentre = { id: null, name: null, options: [] };
+  try {
+    workingPhysicalCentre = await getWorkingPhysicalCentre(user.UserId);
+  } catch (err) {
+    logger.warn('[profile] working physical centre lookup failed', {
+      userId: user.UserId,
+      message: err?.message,
+    });
+  }
+
   // Onboarding identity uses team_table.UserName only. A BCM card name must
   // not skip the name gate for users who still have a placeholder login name.
   const persistedUserName = user.UserName;
@@ -300,6 +311,7 @@ export async function getProfile({ email, userId = null, appVersion = null }) {
         latestBmr,
         physicalActivityLevel,
         communityId: user.CommunityId ?? null,
+        workingPhysicalCentre,
         communityIdRequest: communityIdRequest || null,
         communityIdPair: communityIdPair || null,
         timezone: profileTimezone,
