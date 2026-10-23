@@ -6,6 +6,7 @@ import {
 } from '../../../utils/teamHierarchyBuilder.js';
 import {
   buildLeadPartnerByUserId,
+  collectDownlinePartnerSearchIds,
   listPrimaryDirectReports,
 } from '../../../utils/teamHierarchyTree.js';
 import { resolveCommunityPeerCoachIds } from '../../../utils/communityTeamVisibility.js';
@@ -24,6 +25,10 @@ import {
  * Primary tree edges use CoachId only. Co-coach partners are attached as
  * metadata and (for shared-team leads) their CoachId downline is merged at
  * the root — never via recursive CoCoachId parent relationships.
+ *
+ * Diary search (`allMembers`) also includes each already-visible coach's
+ * co-coach and that co-coach's CoachId teammates. Those people are not
+ * reparented into the nested tree.
  *
  * Same Community ID independent coaches are merged for Team visibility only
  * (their Direct/Full downlines) — never as Coach / Co-Coach of each other.
@@ -693,7 +698,45 @@ export default async function handler(req, res) {
         isCoCoach: true
       });
     }
-    
+
+    // Downline coaches' co-coaches and those co-coaches' CoachId teammates.
+    // Search-only: do not attach them as tree children.
+    const searchVisibleIds = new Set(memberMap.keys());
+    searchVisibleIds.add(coachIdInt);
+    const downlinePartners = collectDownlinePartnerSearchIds(
+      allUsers,
+      searchVisibleIds,
+      leadPartnerByUserId,
+    );
+    const downlinePartnerIds = new Set(downlinePartners.partnerIds.map((id) => Number(id)));
+    for (const extraId of downlinePartners.ids) {
+      const extraUser = userMap.get(extraId) || userMap.get(String(extraId));
+      if (!extraUser || memberMap.has(extraUser.userId)) continue;
+      if (!includeInactive && !isActiveTeamStatus(extraUser.status)) continue;
+      const entry = {
+        UserId: extraUser.userId,
+        UserName: extraUser.userName,
+        Email: extraUser.email,
+        CommunityId: extraUser.communityId || null,
+        Role: extraUser.role,
+        CoachId: extraUser.coachId,
+        CoCoachId: extraUser.coCoachId,
+        Status: extraUser.status,
+        phoneNumber: extraUser.phoneNumber || null,
+        height: extraUser.height != null ? extraUser.height : null,
+        bmr: extraUser.bmr != null ? extraUser.bmr : null,
+        gender: extraUser.gender || null,
+        age: extraUser.age != null ? extraUser.age : null,
+        visceralFat: extraUser.visceralFat != null ? extraUser.visceralFat : null,
+        bodyAge: extraUser.bodyAge != null ? extraUser.bodyAge : null,
+        chestCm: extraUser.chestCm != null ? extraUser.chestCm : null,
+        waistCm: extraUser.waistCm != null ? extraUser.waistCm : null,
+        hipCm: extraUser.hipCm != null ? extraUser.hipCm : null,
+      };
+      if (downlinePartnerIds.has(Number(extraUser.userId))) entry.isCoCoach = true;
+      memberMap.set(extraUser.userId, entry);
+    }
+
     const allMembers = Array.from(memberMap.values());
 
     // Attach latest weight / fat% / BMI for BCM phone prefill (best-effort).

@@ -68,7 +68,7 @@ describe('getMarathonGapComparisonDates', () => {
 
 describe('marathon day comparison formatting', () => {
   it('formats increase, decrease, unchanged, and missing weights', () => {
-    assert.equal(formatMarathonDayComparisonLine(75, 74.5), 'Day 0 : 75.00 kg → Curr: 74.50 kg ⬇️ 0.50 kg');
+    assert.equal(formatMarathonDayComparisonLine(75, 74.5), 'Day 0 : 75.00 kg → Curr: 74.50 kg ⬇️ 500 g');
     assert.equal(formatMarathonDayComparisonLine(75, 76), 'Day 0 : 75.00 kg → Curr: 76.00 kg ⬆️ 1.00 kg');
     assert.equal(formatMarathonDayComparisonLine(75, 75), 'Day 0 : 75.00 kg → Curr: 75.00 kg');
     assert.equal(formatMarathonDayComparisonLine(75, null), 'Day 0 : 75.00 kg → Curr: —');
@@ -102,11 +102,11 @@ describe('formatMarathonWeightWhatsAppNotice', () => {
       inMarathon: true,
       marathonDay: 2,
     });
-    assert.deepEqual(lines, ['Day 0 : 75.00 kg → Curr: 74.00 kg ⬇️ 1.00 kg']);
+    assert.deepEqual(lines, ['*Lap progress*', 'Day 0 : 75.00 kg → Curr: 74.00 kg ⬇️ 1.00 kg']);
     assert.equal(formatMarathonWeightWhatsAppNotice(progress, {
       inMarathon: true,
       marathonDay: 2,
-    }), 'Day 0 : 75.00 kg → Curr: 74.00 kg ⬇️ 1.00 kg');
+    }), '*Lap progress*\nDay 0 : 75.00 kg → Curr: 74.00 kg ⬇️ 1.00 kg');
   });
 
   it('formats gap-day previous end vs current weight', () => {
@@ -118,6 +118,7 @@ describe('formatMarathonWeightWhatsAppNotice', () => {
       inMarathon: false,
       showMarathonStartReminder: false,
     }), [
+      '*Lap progress*',
       'Previous Marathon End weight : 75.00 kg',
       'Current Weight : 74.20 kg ⬇️',
     ]);
@@ -137,6 +138,7 @@ describe('formatMarathonWeightWhatsAppNotice', () => {
       inMarathon: true,
       marathonDay: 0,
     }), [
+      '*Lap progress*',
       'Previous Marathon End weight : 75.00 kg',
       'Current Weight : 73.00 kg ⬇️',
     ]);
@@ -168,6 +170,7 @@ describe('mergeMarathonWeightComparisonForShare', () => {
       inMarathon: true,
       marathonDay: 0,
     }), [
+      '*Lap progress*',
       'Previous Marathon End weight : 76.00 kg',
       'Current Weight : 77.80 kg ⬆️',
     ]);

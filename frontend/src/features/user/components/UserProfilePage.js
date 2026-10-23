@@ -23,12 +23,14 @@ import {
 } from '../../../shared/utils/autoCameraPreference';
 import useProfileForm from '../hooks/useProfileForm';
 import { fetchProfile, saveProfile, requestCommunityId, verifyCommunityIdOtp, requestHeightChangeOtp, verifyHeightChangeOtp } from '../services/profileService';
+import { loadWorkingPhysicalCentre } from '../services/workingPhysicalCentreService';
 import { syncMarathonWeightComparisonFromProfile } from '../../marathon/marathonWeightComparisonCache';
 import { loadProfileMarathonWeightComparison } from '../../marathon';
 import { fetchMyAssessment, fetchLeadByPhone } from '../../counselling/services/counsellingApi';
 import UserProfileFields from './profile/UserProfileFields';
 import ProfileEmailKycSection from './profile/ProfileEmailKycSection';
 import CommunityIdField from './profile/CommunityIdField';
+import WorkingPhysicalCentreField from './profile/WorkingPhysicalCentreField';
 import UserProfileBodyMetrics from './profile/UserProfileBodyMetrics';
 import IdealWeightCards from './profile/IdealWeightCards';
 import DietDropdown from './profile/DietDropdown';
@@ -92,6 +94,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
   const [communityIdPair, setCommunityIdPair] = useState(null);
   const [communityIdBusy, setCommunityIdBusy] = useState(false);
   const [communityIdError, setCommunityIdError] = useState('');
+  const [workingPhysicalCentre, setWorkingPhysicalCentre] = useState(null);
   const [lockedHeight, setLockedHeight] = useState(null);
   const [heightOtpBusy, setHeightOtpBusy] = useState(false);
   const [heightOtpError, setHeightOtpError] = useState('');
@@ -219,6 +222,19 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
       setTeamSeat(data?.teamSeat || null);
       setCommunityIdRequest(data?.communityIdRequest || null);
       setCommunityIdPair(data?.communityIdPair || null);
+      const profileCentre = data?.workingPhysicalCentre || null;
+      setWorkingPhysicalCentre(profileCentre);
+      const centreUserId = data?.userId || uid;
+      if (!profileCentre?.name && !(profileCentre?.options || []).length && centreUserId) {
+        loadWorkingPhysicalCentre({ userId: centreUserId, profileCentre })
+          .then((centre) => {
+            if (loadGen !== profileLoadGenRef.current) return;
+            setWorkingPhysicalCentre(centre);
+          })
+          .catch((err) => {
+            console.warn('[profile] working physical centre', err?.message || err);
+          });
+      }
       setCommunityIdError('');
       transformationPhotos.loadFromProfile(data?.transformationPhotos);
       
@@ -827,6 +843,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
                   sponsorName={coachName}
                   sponsorEmail={sponsorEmail}
                 />
+                <WorkingPhysicalCentreField centre={workingPhysicalCentre} />
                 <IdealWeightCards
                   height={form.height}
                   latestWeight={latestWeight}

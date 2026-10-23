@@ -28,6 +28,7 @@
  * - CLUB-022: Attendee Modal Empty State Verification
  * - CLUB-023: Call Owner Link Validation
  * - CLUB-024: Registered Center Call and WhatsApp Action Links Validation
+ * - CLUB-025: Registered Center Street View and Edit Options Validation
  */
 
 const { test, expect } = require('@playwright/test');
@@ -1438,5 +1439,101 @@ test.describe('Club Module (Nutrition Centers)', () => {
     if (waHref) {
       expect(waHref).toMatch(/wa\.me|whatsapp/i);
     }
+  });
+
+  test('CLUB-025 Registered Center Street View and Edit Options Validation', async ({ page }) => {
+    await page.goto('/');
+    const clubTab = page.getByRole('button', { name: 'Physical Club' });
+    await expect(clubTab).toBeVisible({ timeout: 15000 });
+    await clubTab.evaluate((element) => element.dispatchEvent(new Event('click', { bubbles: true })));
+
+    // Ensure Google Maps mock is active so Street View doesn't trigger "Google Maps is not loaded yet" alert
+    await page.evaluate(() => {
+      window.google = window.google || {};
+      window.google.maps = window.google.maps || {};
+      if (!window.google.maps.StreetViewPanorama) {
+        window.google.maps.StreetViewPanorama = class {
+          constructor(el, opts) { this.el = el; this.opts = opts; }
+        };
+      }
+      if (!window.google.maps.Marker) {
+        window.google.maps.Marker = class {
+          constructor(opts) { this.opts = opts; }
+          addListener() {}
+        };
+      }
+      if (!window.google.maps.InfoWindow) {
+        window.google.maps.InfoWindow = class {
+          constructor(opts) { this.opts = opts; }
+          open() {}
+        };
+      }
+      if (!window.google.maps.SymbolPath) {
+        window.google.maps.SymbolPath = { CIRCLE: 0 };
+      }
+    });
+
+    await page.waitForTimeout(2000);
+
+    // 1. Switch to "My Club" to view registered centres owned by the current coach
+    const myClubTab = page.getByRole('button', { name: /My Club|Mine/i }).first();
+    await expect(myClubTab).toBeVisible({ timeout: 10000 });
+    await myClubTab.click({ force: true });
+    await page.waitForTimeout(1000);
+
+    // Locate the registered center card for "Super Wellness Club" (owned by user 99999)
+    const centerCard = page.getByRole('heading', { name: 'Super Wellness Club' })
+      .locator('xpath=ancestor::div[contains(@class, "bg-white")]')
+      .first();
+    await expect(centerCard).toBeVisible({ timeout: 10000 });
+
+    // 2. Verify Street View option on the registered center
+    const streetViewBtn = centerCard.getByRole('button', { name: /Street View/i });
+    await expect(streetViewBtn).toBeVisible({ timeout: 5000 });
+    await expect(streetViewBtn).toBeEnabled();
+
+    // Click Street View to open overlay
+    await streetViewBtn.click({ force: true });
+
+    // Verify Street View overlay content (heading with center name, close button)
+    const closeStreetViewBtn = page.getByRole('button', { name: 'Close Street View' });
+    await expect(closeStreetViewBtn).toBeVisible({ timeout: 5000 });
+
+    // Close Street View overlay
+    await closeStreetViewBtn.click({ force: true });
+    await expect(closeStreetViewBtn).not.toBeVisible();
+    await expect(centerCard).toBeVisible();
+
+    // 3. Verify Edit option on the registered center
+    const editBtn = centerCard.getByRole('button', { name: /Edit/i });
+    await expect(editBtn).toBeVisible({ timeout: 5000 });
+    await expect(editBtn).toBeEnabled();
+
+    // Click Edit to enter center edit view
+    await editBtn.click({ force: true });
+
+    // Verify navigation into Edit Centre Details
+    const editHeading = page.getByRole('heading', { name: /Edit Centre Details|Edit Nutrition Centre/i }).first();
+    await expect(editHeading).toBeVisible({ timeout: 5000 });
+
+    // Verify registered center name is pre-populated in the form
+    const centerNameInput = page.getByPlaceholder(/Downtown Wellness Hub/i).first();
+    if (await centerNameInput.isVisible().catch(() => false)) {
+      await expect(centerNameInput).toHaveValue('Super Wellness Club');
+    }
+
+    // Verify Save and Cancel action buttons are available
+    const saveBtn = page.getByRole('button', { name: 'Save' });
+    await expect(saveBtn).toBeVisible({ timeout: 5000 });
+
+    const cancelBtn = page.getByRole('button', { name: 'Cancel', exact: true });
+    await expect(cancelBtn).toBeVisible({ timeout: 5000 });
+
+    // Cancel edit and verify return to the club view
+    await cancelBtn.click({ force: true });
+    await expect(editHeading).not.toBeVisible();
+    await expect(centerCard).toBeVisible();
+
+    console.log('CLUB-025: Successfully verified Street View and Edit options on registered centres');
   });
 });

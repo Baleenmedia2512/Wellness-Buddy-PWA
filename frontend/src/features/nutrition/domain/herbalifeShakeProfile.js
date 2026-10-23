@@ -12,10 +12,98 @@
  * Optional add-on (not part of 58 g base scale):
  *   Active Fibre Complex  1 scoop = 6.7 g (label macros)
  *
+ * Personalized Protein Powder logged alone is NOT a slice of the 58 g shake.
+ * Canister label per 6 g (1 scoop) — same numbers as
+ * personalizedProteinCatalog.seeds.js:
+ *   22.96 kcal · protein 4.96 g · carbohydrate 0.24 g · fat 0.18 g
+ *   sugar 0 g · sodium 68 mg · cholesterol 0 mg
+ *
+ * Formula 1 logged alone is NOT a slice of the 58 g shake.
+ * Canister label per 25 g (3 scoops) — same numbers as
+ * formula1Catalog.seeds.js:
+ *   94.2 kcal · protein 9 g · carbohydrate 10.5 g · fat 1.8 g
+ *   fibre 3 g · sugar 6.5 g · sodium 123 mg · cholesterol 3 mg
+ *   glycemic index 20 (not scaled by scoops)
+ *
+ * Shakemate logged alone is NOT a slice of the 58 g shake either.
+ * Canister label per 27 g (2 scoops) — same numbers as
+ * shakemateCatalog.seeds.js:
+ *   106 kcal · protein 10.75 g · carbohydrate 13.5 g · fat 1 g
+ *   sugar 4.5 g · sodium 169 mg · cholesterol 4 mg
+ *   vitamin D 1.65 mcg · calcium 129 mg
+ *   glycemic index 20 (same Low band as the prepared shake; not scaled by scoops)
+ *
  * Pure constants — zero I/O.
  */
 
+/** Personalized Protein Powder — canister label per 6 g (1 scoop). */
+export const PERSONALIZED_PROTEIN_NAME = 'Personalized Protein Powder';
+export const PERSONALIZED_PROTEIN_SCOOP_G = 6;
+export const PERSONALIZED_PROTEIN_PER_SCOOP = Object.freeze({
+  calories: 22.96,
+  protein: 4.96,
+  carbs: 0.24,
+  fat: 0.18,
+  fiber: 0,
+  sugar: 0,
+  sodium: 68, // mg
+  cholesterol: 0,
+});
+
 export const HERBALIFE_SHAKE_NAME = 'Herbalife Shake';
+
+/** Formula 1 — canister label per 25 g (3 scoops). */
+export const FORMULA1_NAME = 'Formula 1 Shake';
+export const FORMULA1_LABEL_SCOOPS = 3;
+export const FORMULA1_LABEL_WEIGHT_G = 25;
+export const FORMULA1_NUTRITION_PER_25G = Object.freeze({
+  calories: 94.2,
+  protein: 9,
+  carbs: 10.5,
+  fat: 1.8,
+  fiber: 3,
+  sugar: 6.5,
+  sodium: 123, // mg
+  cholesterol: 3, // mg
+  vitamin_a: 210, // mcg
+  vitamin_c: 15, // mg
+  vitamin_d: 1.75, // mcg (D2)
+  vitamin_e: 5, // mg
+  vitamin_b1: 0.45, // mg
+  vitamin_b2: 0.45, // mg
+  vitamin_b3: 5, // mg
+  vitamin_b6: 0.8, // mg
+  vitamin_b9: 60, // mcg
+  vitamin_b12: 0.4, // mcg
+  calcium: 45, // mg
+  iron: 3.5, // mg
+  magnesium: 50, // mg
+  potassium: 260, // mg
+  zinc: 2.5, // mg
+});
+
+/** Product GI. Independent of scoop count — same value as the prepared shake. */
+export const FORMULA1_GLYCEMIC_INDEX = 20;
+
+/** Shakemate — canister label per 27 g (2 scoops). */
+export const SHAKEMATE_NAME = 'Shakemate';
+export const SHAKEMATE_LABEL_SCOOPS = 2;
+export const SHAKEMATE_LABEL_WEIGHT_G = 27;
+export const SHAKEMATE_NUTRITION_PER_27G = Object.freeze({
+  calories: 106,
+  protein: 10.75,
+  carbs: 13.5,
+  fat: 1,
+  fiber: 0,
+  sugar: 4.5,
+  sodium: 169, // mg
+  cholesterol: 4, // mg
+  vitamin_d: 1.65, // mcg
+  calcium: 129, // mg
+});
+
+/** Product GI. Independent of scoop count — same value as the prepared shake. */
+export const SHAKEMATE_GLYCEMIC_INDEX = 20;
 
 /** Standard recipe powder weight (g) and prepared drink volume (ml). */
 export const HERBALIFE_SHAKE_STANDARD = Object.freeze({
@@ -144,13 +232,34 @@ export function scaleHerbalifeShakeNutrition(powderGrams) {
 }
 
 /**
+ * 6 g, 12 g, … 36 g is Personalized Protein Powder scoops (1 scoop = 6 g).
+ * Mixed Formula 1 / Shakemate weights are not exact multiples of 6 g.
+ * @param {number} grams
+ * @returns {number|null} scoop count, 0 when there is no base powder, null when this is not protein powder
+ */
+function personalizedProteinScoopsFromGrams(grams) {
+  const g = Math.round((Number(grams) || 0) * 10) / 10;
+  if (g <= 0) return 0;
+  const scoops = g / PERSONALIZED_PROTEIN_SCOOP_G;
+  const rounded = Math.round(scoops);
+  if (rounded < 1 || rounded > 6) return null;
+  if (Math.abs(g - rounded * PERSONALIZED_PROTEIN_SCOOP_G) > 0.05) return null;
+  return rounded;
+}
+
+/**
  * Combine base-mix scale + optional Active Fibre Complex scoops.
+ * Protein powder alone (6 g per scoop) uses the canister label.
  * @param {number} basePowderGrams  F1 + Shakemate + Protein only
  * @param {number} activeFibreScoops
  */
 export function combineShakeNutrition(basePowderGrams, activeFibreScoops) {
   const baseG = Math.max(0, Number(basePowderGrams) || 0);
   const afcScoops = Math.max(0, Number(activeFibreScoops) || 0);
+  const proteinScoops = personalizedProteinScoopsFromGrams(baseG);
+  if (proteinScoops > 0) {
+    return combinePersonalizedProteinNutrition(proteinScoops, afcScoops);
+  }
   const afcGrams = afcScoops * ACTIVE_FIBRE_COMPLEX.weightPerScoopG;
   const totalGrams = Math.round((baseG + afcGrams) * 10) / 10;
 
@@ -176,4 +285,180 @@ export function combineShakeNutrition(basePowderGrams, activeFibreScoops) {
     isLiquid: true,
     nutrition,
   };
+}
+
+/**
+ * @param {number} scoops
+ * @returns {Record<string, number>}
+ */
+export function scalePersonalizedProteinNutrition(scoops) {
+  const n = Math.max(0, Number(scoops) || 0);
+  const out = {};
+  for (const [key, value] of Object.entries(PERSONALIZED_PROTEIN_PER_SCOOP)) {
+    out[key] = Math.round((Number(value) || 0) * n * 100) / 100;
+  }
+  return out;
+}
+
+/**
+ * Scale the Formula 1 canister label (Per 25 g = 3 scoops) by scoop count.
+ * Glycemic index is applied separately and is not scaled.
+ * @param {number} scoops
+ * @returns {Record<string, number>}
+ */
+export function scaleFormula1Nutrition(scoops) {
+  const n = Math.max(0, Number(scoops) || 0);
+  const ratio = n / FORMULA1_LABEL_SCOOPS;
+  const out = {};
+  for (const [key, value] of Object.entries(FORMULA1_NUTRITION_PER_25G)) {
+    out[key] = Math.round((Number(value) || 0) * ratio * 100) / 100;
+  }
+  return out;
+}
+
+/**
+ * Label nutrition for Formula 1, plus optional Active Fibre.
+ * Not a prepared Herbalife Shake.
+ * @param {number} scoops
+ * @param {number} [activeFibreScoops]
+ */
+export function combineFormula1Nutrition(scoops, activeFibreScoops = 0) {
+  const f1 = Math.max(0, Number(scoops) || 0);
+  const afc = Math.max(0, Number(activeFibreScoops) || 0);
+  if (f1 <= 0) return null;
+
+  const f1Grams = Math.round((f1 / FORMULA1_LABEL_SCOOPS) * FORMULA1_LABEL_WEIGHT_G * 100) / 100;
+  const afcGrams = afc * ACTIVE_FIBRE_COMPLEX.weightPerScoopG;
+  const totalGrams = Math.round((f1Grams + afcGrams) * 100) / 100;
+  const nutrition = sumNutrition(
+    scaleFormula1Nutrition(f1),
+    afc > 0 ? scaleActiveFibreNutrition(afc) : {},
+  );
+  nutrition.glycemic_index = FORMULA1_GLYCEMIC_INDEX;
+
+  const f1Label = `${f1} ${f1 === 1 ? 'scoop' : 'scoops'}`;
+  const portion = afc > 0
+    ? `${f1Label} + ${afc} ${afc === 1 ? 'scoop' : 'scoops'} Active Fibre Complex`
+    : f1Label;
+
+  return {
+    name: FORMULA1_NAME,
+    portion,
+    weight_g: totalGrams,
+    volume_ml: null,
+    unit: 'g',
+    isLiquid: false,
+    nutrition,
+  };
+}
+
+/**
+ * Scale the Shakemate canister label (Per 27 g = 2 scoops) by scoop count.
+ * @param {number} scoops
+ * @returns {Record<string, number>}
+ */
+export function scaleShakemateNutrition(scoops) {
+  const n = Math.max(0, Number(scoops) || 0);
+  const ratio = n / SHAKEMATE_LABEL_SCOOPS;
+  const out = {};
+  for (const [key, value] of Object.entries(SHAKEMATE_NUTRITION_PER_27G)) {
+    out[key] = Math.round((Number(value) || 0) * ratio * 100) / 100;
+  }
+  return out;
+}
+
+/**
+ * Label nutrition for Shakemate, plus optional Active Fibre.
+ * Not a prepared Herbalife Shake.
+ * @param {number} scoops
+ * @param {number} [activeFibreScoops]
+ */
+export function combineShakemateNutrition(scoops, activeFibreScoops = 0) {
+  const sm = Math.max(0, Number(scoops) || 0);
+  const afc = Math.max(0, Number(activeFibreScoops) || 0);
+  if (sm <= 0) return null;
+
+  const smGrams = Math.round((sm / SHAKEMATE_LABEL_SCOOPS) * SHAKEMATE_LABEL_WEIGHT_G * 10) / 10;
+  const afcGrams = afc * ACTIVE_FIBRE_COMPLEX.weightPerScoopG;
+  const totalGrams = Math.round((smGrams + afcGrams) * 10) / 10;
+  const nutrition = sumNutrition(
+    scaleShakemateNutrition(sm),
+    afc > 0 ? scaleActiveFibreNutrition(afc) : {},
+  );
+  nutrition.glycemic_index = SHAKEMATE_GLYCEMIC_INDEX;
+
+  const smLabel = `${sm} ${sm === 1 ? 'scoop' : 'scoops'}`;
+  const portion = afc > 0
+    ? `${smLabel} + ${afc} ${afc === 1 ? 'scoop' : 'scoops'} Active Fibre Complex`
+    : smLabel;
+
+  return {
+    name: SHAKEMATE_NAME,
+    portion,
+    weight_g: totalGrams,
+    volume_ml: null,
+    unit: 'g',
+    isLiquid: false,
+    nutrition,
+  };
+}
+
+/**
+ * Label nutrition for Personalized Protein Powder, plus optional Active Fibre.
+ * Not a prepared Herbalife Shake.
+ * @param {number} scoops
+ * @param {number} [activeFibreScoops]
+ */
+export function combinePersonalizedProteinNutrition(scoops, activeFibreScoops = 0) {
+  const pp = Math.max(0, Number(scoops) || 0);
+  const afc = Math.max(0, Number(activeFibreScoops) || 0);
+  if (pp <= 0) return null;
+
+  const ppGrams = Math.round(pp * PERSONALIZED_PROTEIN_SCOOP_G * 10) / 10;
+  const afcGrams = afc * ACTIVE_FIBRE_COMPLEX.weightPerScoopG;
+  const totalGrams = Math.round((ppGrams + afcGrams) * 10) / 10;
+  const nutrition = sumNutrition(
+    scalePersonalizedProteinNutrition(pp),
+    afc > 0 ? scaleActiveFibreNutrition(afc) : {},
+  );
+
+  const ppLabel = `${pp} ${pp === 1 ? 'scoop' : 'scoops'}`;
+  const portion = afc > 0
+    ? `${ppLabel} + ${afc} ${afc === 1 ? 'scoop' : 'scoops'} Active Fibre Complex`
+    : ppLabel;
+
+  return {
+    name: PERSONALIZED_PROTEIN_NAME,
+    portion,
+    weight_g: totalGrams,
+    volume_ml: null,
+    unit: 'g',
+    isLiquid: false,
+    nutrition,
+  };
+}
+
+/**
+ * Prepared shake only when more than one base powder is mixed.
+ * Formula 1 alone, Shakemate alone, and Personalized Protein alone
+ * each use their canister label.
+ * @param {Record<string, number>} servings
+ * @param {Record<string, { scoopsPerPack: number, packWeightG: number, additive?: boolean }>} products
+ */
+export function resolveLoggedShakeItem(servings, products) {
+  const f1 = Math.max(0, Number(servings?.formula1) || 0);
+  const sm = Math.max(0, Number(servings?.shakemate) || 0);
+  const pp = Math.max(0, Number(servings?.protein) || 0);
+  const afc = Math.max(0, Number(servings?.activeFibre) || 0);
+  if (f1 === 0 && sm === 0 && pp > 0) {
+    return combinePersonalizedProteinNutrition(pp, afc);
+  }
+  if (f1 === 0 && pp === 0 && sm > 0) {
+    return combineShakemateNutrition(sm, afc);
+  }
+  if (sm === 0 && pp === 0 && f1 > 0) {
+    return combineFormula1Nutrition(f1, afc);
+  }
+  const baseG = powderGramsFromServings(servings, products, { includeAdditive: false });
+  return combineShakeNutrition(baseG, afc);
 }

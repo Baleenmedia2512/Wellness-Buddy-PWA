@@ -985,6 +985,8 @@ function WellnessValleyApp() {
   // Register nutrition center state (for coaches)
   const [showRegisterCenter, setShowRegisterCenter] = useState(false);
   const [editCenterData, setEditCenterData] = useState(null); // centre to pre-load for editing
+  const [clubMineFocusKey, setClubMineFocusKey] = useState(0);
+  const [savedClub, setSavedClub] = useState(null);
 
   // Setup wizard state
   const [showSetupWizard, setShowSetupWizard] = useState(false);
@@ -1167,6 +1169,17 @@ function WellnessValleyApp() {
       [pageId]: (prev[pageId] || 0) + 1,
     }));
   }, []);
+  const returnToMyClubs = useCallback((saved) => {
+    if (saved && saved.id != null) {
+      setSavedClub({ ...saved, savedToken: Date.now() });
+    } else {
+      setClubMineFocusKey((n) => n + 1);
+      bumpTabVisitKey('physical-club');
+    }
+    setShowRegisterCenter(false);
+    setEditCenterData(null);
+    setShowNutritionCentersMap(true);
+  }, [bumpTabVisitKey]);
 
   // Navigation lock ref: prevents concurrent showDashboardPage() calls from
   // duplicate rapid taps while the async checkUserStatus is in-flight.
@@ -8242,6 +8255,9 @@ function WellnessValleyApp() {
                 embedded
                 user={user}
                 tabVisitKey={tabVisitKeys['physical-club'] ?? 0}
+                mineFocusKey={clubMineFocusKey}
+                savedCenter={savedClub}
+                onSavedCenterConsumed={() => setSavedClub(null)}
                 onBack={() => {
                   setShowNutritionCentersMap(false);
                   const currentWvPage = window.history.state?.wvPage;
@@ -8264,7 +8280,7 @@ function WellnessValleyApp() {
             <NutritionCenterRegistration
               user={user}
               initialCenter={editCenterData}
-              onSaved={() => bumpTabVisitKey('physical-club')}
+              onSaved={returnToMyClubs}
               onBack={() => {
                 setShowRegisterCenter(false);
                 setEditCenterData(null);
@@ -9871,14 +9887,11 @@ function WellnessValleyApp() {
             <NutritionCenterRegistration
               user={user}
               initialCenter={editCenterData}
-              onSaved={() => bumpTabVisitKey('physical-club')}
+              onSaved={returnToMyClubs}
               onBack={() => {
                 setShowRegisterCenter(false);
-                if (editCenterData) {
-                  // came from Physical Club Report via Edit — map already visible, just close form
-                  // No need to re-open map: setShowNutritionCentersMap(true);
-                }
                 setEditCenterData(null);
+                setShowNutritionCentersMap(true);
               }}
             />
           </Suspense>

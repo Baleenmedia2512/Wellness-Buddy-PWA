@@ -17,6 +17,8 @@
  * - RPT-010: Table pagination and member rows rendering in Wellness Score report tab
  * - RPT-011: Share Excel export button triggers export process in Wellness Score report tab
  * - RPT-012: Multi-page pagination navigation loads Page 2 members in Wellness Score report tab
+ * - RPT-013: Direct Team scope - Member search across Off Track, On Track, and No Data status filters
+ * - RPT-014: Full Team scope - Member search across Off Track, On Track, and No Data status filters
  */
 
 const { test, expect } = require('@playwright/test');
@@ -886,17 +888,234 @@ test.describe('Reports Module', () => {
     const prevBtn = wellnessPanel.getByRole('button', { name: 'Previous', exact: true });
     await expect(prevBtn).toBeEnabled();
   });
+
+  // ── RPT-013 ─────────────────────────────────────────────────────────────
+  test('RPT-013: Direct Team scope - Member search across Off Track, On Track, and No Data status filters', async ({ page }) => {
+    const directOfftrackMembers = [
+      { userId: 101, userName: 'Direct Offtrack User Alpha', name: 'Direct Offtrack User Alpha', currentWeight: 88, idealMin: 60, idealMax: 70, status: 'above_ideal' },
+      { userId: 102, userName: 'Direct Offtrack User Target', name: 'Direct Offtrack User Target', currentWeight: 92, idealMin: 60, idealMax: 70, status: 'above_ideal' },
+      { userId: 103, userName: 'Direct Offtrack User Beta', name: 'Direct Offtrack User Beta', currentWeight: 85, idealMin: 60, idealMax: 70, status: 'above_ideal' },
+    ];
+
+    const directOntrackMembers = [
+      { userId: 104, userName: 'Direct Ontrack User Alpha', name: 'Direct Ontrack User Alpha', currentWeight: 65, idealMin: 60, idealMax: 70, status: 'on_track' },
+      { userId: 105, userName: 'Direct Ontrack User Target', name: 'Direct Ontrack User Target', currentWeight: 68, idealMin: 60, idealMax: 70, status: 'on_track' },
+      { userId: 106, userName: 'Direct Ontrack User Beta', name: 'Direct Ontrack User Beta', currentWeight: 64, idealMin: 60, idealMax: 70, status: 'on_track' },
+    ];
+
+    const directNodataMembers = [
+      { userId: 107, userName: 'Direct Nodata User Alpha', name: 'Direct Nodata User Alpha', currentWeight: null, idealMin: 60, idealMax: 70, status: 'no_weight' },
+      { userId: 108, userName: 'Direct Nodata User Target', name: 'Direct Nodata User Target', currentWeight: null, idealMin: 60, idealMax: 70, status: 'no_height' },
+      { userId: 109, userName: 'Direct Nodata User Beta', name: 'Direct Nodata User Beta', currentWeight: null, idealMin: 60, idealMax: 70, status: 'no_weight' },
+    ];
+
+    await page.route('**/api/reports/downline-weight*', async (route) => {
+      const url = new URL(route.request().url());
+      const status = url.searchParams.get('statusFilter') || 'off_track';
+      const search = (url.searchParams.get('search') || '').toLowerCase().trim();
+
+      let pool = [];
+      if (status === 'off_track') pool = directOfftrackMembers;
+      else if (status === 'on_track') pool = directOntrackMembers;
+      else if (status === 'no_data') pool = directNodataMembers;
+      else pool = [...directOfftrackMembers, ...directOntrackMembers, ...directNodataMembers];
+
+      const filtered = search
+        ? pool.filter((m) => m.userName.toLowerCase().includes(search))
+        : pool;
+
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          data: {
+            self: null,
+            members: filtered,
+            pagination: { page: 1, limit: 20, totalRecords: filtered.length, totalPages: 1 },
+            statusCounts: { off_track: 3, on_track: 3, no_data: 3, all: 9 },
+            teamScopeCounts: { mine: 0, direct: 9, full: 9 },
+          },
+        }),
+      });
+    });
+
+    await page.goto('/');
+
+    const reportsNavBtn = page.locator('button[aria-label="Reports Dashboard"], button:has-text("Reports")').first();
+    await expect(reportsNavBtn).toBeVisible({ timeout: 15000 });
+    await reportsNavBtn.click();
+
+    // Select Direct Team scope filter
+    const teamScopeGroup = page.locator('[role="group"][aria-label="Team scope filter"]');
+    await expect(teamScopeGroup).toBeVisible({ timeout: 10000 });
+    const directBtn = teamScopeGroup.locator('button').filter({ hasText: /Direct/i });
+    await directBtn.click();
+    await expect(directBtn).toHaveAttribute('aria-pressed', 'true');
+
+    // Locate status filter chips and search bar
+    const statusGroup = page.locator('[role="group"][aria-label="Status filter"]');
+    await expect(statusGroup).toBeVisible({ timeout: 10000 });
+    const offTrackChip = statusGroup.locator('button').filter({ hasText: /Off Track/i });
+    const onTrackChip = statusGroup.locator('button').filter({ hasText: /On Track/i });
+    const noDataChip = statusGroup.locator('button').filter({ hasText: /No Data/i });
+    const searchInput = page.locator('input[placeholder*="Search"]').first();
+    await expect(searchInput).toBeVisible();
+
+    // 1. Off Track: Verify populated records and find specific user via search
+    await offTrackChip.click();
+    await expect(page.getByText('Direct Offtrack User Alpha', { exact: true })).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('Direct Offtrack User Target', { exact: true })).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('Direct Offtrack User Beta', { exact: true })).toBeVisible({ timeout: 10000 });
+
+    await searchInput.fill('Target');
+    await expect(page.getByText('Direct Offtrack User Target', { exact: true })).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('Direct Offtrack User Alpha', { exact: true })).not.toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('Direct Offtrack User Beta', { exact: true })).not.toBeVisible({ timeout: 10000 });
+
+    await searchInput.fill('');
+    await expect(page.getByText('Direct Offtrack User Alpha', { exact: true })).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('Direct Offtrack User Beta', { exact: true })).toBeVisible({ timeout: 10000 });
+
+    // 2. On Track: Verify populated records and find specific user via search
+    await onTrackChip.click();
+    await expect(page.getByText('Direct Ontrack User Alpha', { exact: true })).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('Direct Ontrack User Target', { exact: true })).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('Direct Ontrack User Beta', { exact: true })).toBeVisible({ timeout: 10000 });
+
+    await searchInput.fill('Target');
+    await expect(page.getByText('Direct Ontrack User Target', { exact: true })).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('Direct Ontrack User Alpha', { exact: true })).not.toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('Direct Ontrack User Beta', { exact: true })).not.toBeVisible({ timeout: 10000 });
+
+    await searchInput.fill('');
+    await expect(page.getByText('Direct Ontrack User Alpha', { exact: true })).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('Direct Ontrack User Beta', { exact: true })).toBeVisible({ timeout: 10000 });
+
+    // 3. No Data: Verify populated records and find specific user via search
+    await noDataChip.click();
+    await expect(page.getByText('Direct Nodata User Alpha', { exact: true })).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('Direct Nodata User Target', { exact: true })).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('Direct Nodata User Beta', { exact: true })).toBeVisible({ timeout: 10000 });
+
+    await searchInput.fill('Target');
+    await expect(page.getByText('Direct Nodata User Target', { exact: true })).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('Direct Nodata User Alpha', { exact: true })).not.toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('Direct Nodata User Beta', { exact: true })).not.toBeVisible({ timeout: 10000 });
+  });
+
+  // ── RPT-014 ─────────────────────────────────────────────────────────────
+  test('RPT-014: Full Team scope - Member search across Off Track, On Track, and No Data status filters', async ({ page }) => {
+    const fullOfftrackMembers = [
+      { userId: 201, userName: 'Full Offtrack User Alpha', name: 'Full Offtrack User Alpha', currentWeight: 95, idealMin: 65, idealMax: 75, status: 'above_ideal' },
+      { userId: 202, userName: 'Full Offtrack User Target', name: 'Full Offtrack User Target', currentWeight: 98, idealMin: 65, idealMax: 75, status: 'above_ideal' },
+      { userId: 203, userName: 'Full Offtrack User Beta', name: 'Full Offtrack User Beta', currentWeight: 90, idealMin: 65, idealMax: 75, status: 'above_ideal' },
+    ];
+
+    const fullOntrackMembers = [
+      { userId: 204, userName: 'Full Ontrack User Alpha', name: 'Full Ontrack User Alpha', currentWeight: 70, idealMin: 65, idealMax: 75, status: 'on_track' },
+      { userId: 205, userName: 'Full Ontrack User Target', name: 'Full Ontrack User Target', currentWeight: 72, idealMin: 65, idealMax: 75, status: 'on_track' },
+      { userId: 206, userName: 'Full Ontrack User Beta', name: 'Full Ontrack User Beta', currentWeight: 69, idealMin: 65, idealMax: 75, status: 'on_track' },
+    ];
+
+    const fullNodataMembers = [
+      { userId: 207, userName: 'Full Nodata User Alpha', name: 'Full Nodata User Alpha', currentWeight: null, idealMin: 65, idealMax: 75, status: 'no_height' },
+      { userId: 208, userName: 'Full Nodata User Target', name: 'Full Nodata User Target', currentWeight: null, idealMin: 65, idealMax: 75, status: 'no_weight' },
+      { userId: 209, userName: 'Full Nodata User Beta', name: 'Full Nodata User Beta', currentWeight: null, idealMin: 65, idealMax: 75, status: 'no_height' },
+    ];
+
+    await page.route('**/api/reports/downline-weight*', async (route) => {
+      const url = new URL(route.request().url());
+      const status = url.searchParams.get('statusFilter') || 'off_track';
+      const search = (url.searchParams.get('search') || '').toLowerCase().trim();
+
+      let pool = [];
+      if (status === 'off_track') pool = fullOfftrackMembers;
+      else if (status === 'on_track') pool = fullOntrackMembers;
+      else if (status === 'no_data') pool = fullNodataMembers;
+      else pool = [...fullOfftrackMembers, ...fullOntrackMembers, ...fullNodataMembers];
+
+      const filtered = search
+        ? pool.filter((m) => m.userName.toLowerCase().includes(search))
+        : pool;
+
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          data: {
+            self: null,
+            members: filtered,
+            pagination: { page: 1, limit: 20, totalRecords: filtered.length, totalPages: 1 },
+            statusCounts: { off_track: 3, on_track: 3, no_data: 3, all: 9 },
+            teamScopeCounts: { mine: 0, direct: 0, full: 9 },
+          },
+        }),
+      });
+    });
+
+    await page.goto('/');
+
+    const reportsNavBtn = page.locator('button[aria-label="Reports Dashboard"], button:has-text("Reports")').first();
+    await expect(reportsNavBtn).toBeVisible({ timeout: 15000 });
+    await reportsNavBtn.click();
+
+    // Select Full Team scope filter
+    const teamScopeGroup = page.locator('[role="group"][aria-label="Team scope filter"]');
+    await expect(teamScopeGroup).toBeVisible({ timeout: 10000 });
+    const fullBtn = teamScopeGroup.locator('button').filter({ hasText: /Full/i });
+    await fullBtn.click();
+    await expect(fullBtn).toHaveAttribute('aria-pressed', 'true');
+
+    // Locate status filter chips and search bar
+    const statusGroup = page.locator('[role="group"][aria-label="Status filter"]');
+    await expect(statusGroup).toBeVisible({ timeout: 10000 });
+    const offTrackChip = statusGroup.locator('button').filter({ hasText: /Off Track/i });
+    const onTrackChip = statusGroup.locator('button').filter({ hasText: /On Track/i });
+    const noDataChip = statusGroup.locator('button').filter({ hasText: /No Data/i });
+    const searchInput = page.locator('input[placeholder*="Search"]').first();
+    await expect(searchInput).toBeVisible();
+
+    // 1. Off Track: Verify populated records and find specific user via search
+    await offTrackChip.click();
+    await expect(page.getByText('Full Offtrack User Alpha', { exact: true })).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('Full Offtrack User Target', { exact: true })).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('Full Offtrack User Beta', { exact: true })).toBeVisible({ timeout: 10000 });
+
+    await searchInput.fill('Target');
+    await expect(page.getByText('Full Offtrack User Target', { exact: true })).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('Full Offtrack User Alpha', { exact: true })).not.toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('Full Offtrack User Beta', { exact: true })).not.toBeVisible({ timeout: 10000 });
+
+    await searchInput.fill('');
+    await expect(page.getByText('Full Offtrack User Alpha', { exact: true })).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('Full Offtrack User Beta', { exact: true })).toBeVisible({ timeout: 10000 });
+
+    // 2. On Track: Verify populated records and find specific user via search
+    await onTrackChip.click();
+    await expect(page.getByText('Full Ontrack User Alpha', { exact: true })).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('Full Ontrack User Target', { exact: true })).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('Full Ontrack User Beta', { exact: true })).toBeVisible({ timeout: 10000 });
+
+    await searchInput.fill('Target');
+    await expect(page.getByText('Full Ontrack User Target', { exact: true })).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('Full Ontrack User Alpha', { exact: true })).not.toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('Full Ontrack User Beta', { exact: true })).not.toBeVisible({ timeout: 10000 });
+
+    await searchInput.fill('');
+    await expect(page.getByText('Full Ontrack User Alpha', { exact: true })).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('Full Ontrack User Beta', { exact: true })).toBeVisible({ timeout: 10000 });
+
+    // 3. No Data: Verify populated records and find specific user via search
+    await noDataChip.click();
+    await expect(page.getByText('Full Nodata User Alpha', { exact: true })).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('Full Nodata User Target', { exact: true })).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('Full Nodata User Beta', { exact: true })).toBeVisible({ timeout: 10000 });
+
+    await searchInput.fill('Target');
+    await expect(page.getByText('Full Nodata User Target', { exact: true })).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('Full Nodata User Alpha', { exact: true })).not.toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('Full Nodata User Beta', { exact: true })).not.toBeVisible({ timeout: 10000 });
+  });
 });
-
-
-
-
-
-
-
-
-
-
-
-
-

@@ -261,7 +261,11 @@ export function getDirectReportingMembers(coachId, context) {
     }
   }
 
-  return filterPublicAggregateUsers([...result.values()], { viewerUserId: coachId });
+  const viewer = context.userById?.get(Number(coachId));
+  return filterPublicAggregateUsers([...result.values()], {
+    viewerUserId: coachId,
+    viewerRole: viewer?.Role,
+  });
 }
 
 /**
@@ -289,7 +293,11 @@ export function getFullReportingMembers(coachId, context) {
     }
   }
 
-  return filterPublicAggregateUsers([...result.values()], { viewerUserId: coachId });
+  const viewer = context.userById?.get(Number(coachId));
+  return filterPublicAggregateUsers([...result.values()], {
+    viewerUserId: coachId,
+    viewerRole: viewer?.Role,
+  });
 }
 
 /**

@@ -87,6 +87,86 @@ export async function canAccessDiaryViaSharedLead(
 }
 
 /**
+ * Upline of a downline coach may read that coach's co-coach, and anyone
+ * whose CoachId chain runs through that co-coach (the co-coach's teammates).
+ *
+ * ownerCoachChain is owner-first, matching getCoachChain. For each person
+ * on that chain, allow when their Sponsor/Co-Sponsor partner's upline
+ * includes the viewer.
+ *
+ * @param {string|number|null|undefined} viewerUserId
+ * @param {Array<string|number>} ownerCoachChain
+ * @param {(userId: string) => Promise<string|number|null>} findPartnerId
+ * @param {(userId: string) => Promise<Array<string|number>>} getChain
+ * @returns {Promise<boolean>}
+ */
+export async function canAccessDiaryViaDownlineCoCoach(
+  viewerUserId,
+  ownerCoachChain = [],
+  findPartnerId,
+  getChain,
+) {
+  if (viewerUserId == null || viewerUserId === '') return false;
+  if (typeof findPartnerId !== 'function' || typeof getChain !== 'function') return false;
+  const viewer = String(viewerUserId);
+  const seenPairs = new Set();
+
+  for (const chainId of ownerCoachChain || []) {
+    const person = chainId == null || chainId === '' ? '' : String(chainId);
+    if (!person) continue;
+    const partnerRaw = await findPartnerId(person);
+    if (partnerRaw == null || partnerRaw === '') continue;
+    const partner = String(partnerRaw);
+    if (!partner || partner === person) continue;
+
+    const a = Number(person);
+    const b = Number(partner);
+    const pairKey = Number.isFinite(a) && Number.isFinite(b)
+      ? (a < b ? `${a}:${b}` : `${b}:${a}`)
+      : (person < partner ? `${person}:${partner}` : `${partner}:${person}`);
+    if (seenPairs.has(pairKey)) continue;
+    seenPairs.add(pairKey);
+
+    const partnerChain = await getChain(partner);
+    if ((partnerChain || []).map((id) => String(id)).includes(viewer)) return true;
+  }
+  return false;
+}
+
+/**
+ * Diary read gate: owner, CoachId upline, the viewer's own co-coach team,
+ * or a downline coach's co-coach and that co-coach's teammates.
+ *
+ * @param {string|number} viewerUserId
+ * @param {string|number} ownerUserId
+ * @param {Array<string|number>} coachChain
+ * @returns {Promise<{ allowed: boolean, decision: object, via: string|null }>}
+ */
+async function viewerCanReadDiary(viewerUserId, ownerUserId, coachChain) {
+  const decision = canRetryCapture({
+    viewerId: viewerUserId,
+    ownerId: ownerUserId,
+    coachChain,
+  });
+  if (decision.allowed) return { allowed: true, decision, via: 'chain' };
+  if (decision.reason === 'NO_VIEWER' || decision.reason === 'NO_OWNER') {
+    return { allowed: false, decision, via: null };
+  }
+  if (await canAccessDiaryViaSharedLead(viewerUserId, coachChain)) {
+    return { allowed: true, decision, via: 'shared-lead' };
+  }
+  if (await canAccessDiaryViaDownlineCoCoach(
+    viewerUserId,
+    coachChain,
+    repo.findCoCoachPartnerId,
+    repo.getCoachChain,
+  )) {
+    return { allowed: true, decision, via: 'downline-co-coach' };
+  }
+  return { allowed: false, decision, via: null };
+}
+
+/**
  * Lazy capture photo for diary thumbs (unknown / pending).
  * Auth: owner or upline coach (same gate as listDiaryEntries).
  *
@@ -110,13 +190,9 @@ export async function getCaptureImageForDiary({ captureId, viewerUserId }) {
   }
 
   const coachChain = await repo.getCoachChain(ownerUserId);
-  const decision = canRetryCapture({
-    viewerId: viewerUserId,
-    ownerId: ownerUserId,
-    coachChain,
-  });
-  if (!decision.allowed) {
-    if (decision.reason === 'NO_VIEWER') {
+  const read = await viewerCanReadDiary(viewerUserId, ownerUserId, coachChain);
+  if (!read.allowed) {
+    if (read.decision.reason === 'NO_VIEWER') {
       const err = new Error('Authentication required');
       err.status = 401;
       err.code = 'UNAUTHENTICATED';
@@ -440,31 +516,27 @@ export async function listDiaryEntries(input) {
   // must cover all of them — same gate `canRetryCapture` uses for the
   // single-capture mutation path (ADR-0003 §"Pinned product answers").
   const coachChain = await repo.getCoachChain(ownerUserId);
-  const decision = canRetryCapture({
-    viewerId: viewerUserId,
-    ownerId:  ownerUserId,
-    coachChain,
-  });
-  if (!decision.allowed) {
-    const sharedLeadAllowed = await canAccessDiaryViaSharedLead(viewerUserId, coachChain);
-    if (sharedLeadAllowed) {
-      logger.info('listDiaryEntries: shared-team co-coach reading member diary', {
-        actorId: viewerUserId,
-        ownerId: ownerUserId,
-        date,
-      });
-    } else {
-      if (decision.reason === 'NO_VIEWER') {
-        const err = new Error('Authentication required');
-        err.status = 401; err.code = 'UNAUTHENTICATED';
-        throw err;
-      }
-      const err = new Error('You do not have access to this diary');
-      err.status = 403; err.code = 'FORBIDDEN_DIARY';
-      err.reason = decision.reason;
+  const read = await viewerCanReadDiary(viewerUserId, ownerUserId, coachChain);
+  if (!read.allowed) {
+    if (read.decision.reason === 'NO_VIEWER') {
+      const err = new Error('Authentication required');
+      err.status = 401; err.code = 'UNAUTHENTICATED';
       throw err;
     }
+    const err = new Error('You do not have access to this diary');
+    err.status = 403; err.code = 'FORBIDDEN_DIARY';
+    err.reason = read.decision.reason;
+    throw err;
   }
+  if (read.via === 'shared-lead' || read.via === 'downline-co-coach') {
+    logger.info('listDiaryEntries: shared-team co-coach reading member diary', {
+      actorId: viewerUserId,
+      ownerId: ownerUserId,
+      date,
+      via: read.via,
+    });
+  }
+  const decision = read.decision;
   const isSelf = decision.actorRole === 'OWNER';
 
   // 2. Audit-log coach-on-member reads, same posture as

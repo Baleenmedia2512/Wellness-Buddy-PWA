@@ -1,9 +1,15 @@
 // src/components/SmartFoodSearchModal.js
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { X, Search, Check, ShoppingCart } from "lucide-react";
+import { X, Search, Check, ShoppingCart, Minus, Plus } from "lucide-react";
 import {
   dedupeSearchBuckets,
 } from "../domain/nutritionFields";
+import {
+  applyFoodMeasure,
+  availableMeasureUnits,
+  defaultMeasureForItem,
+  previewMeasureNutrition,
+} from "../domain/foodMeasureUnits";
 import { isFlagEnabled } from "../../../config/featureFlags";
 import FloatingMealTray from "./meal-builder/FloatingMealTray";
 import MealBuilderSheet from "./meal-builder/MealBuilderSheet";
@@ -353,19 +359,40 @@ const SmartFoodSearchModal = ({
     }
   };
 
+  const handleRemoveItem = useCallback((item) => {
+    const prev = selectedItemsRef.current;
+    const next = prev.filter((s) => s.name !== item.name);
+    setSelectedItems(next);
+    if (next.length === 0) setMealSheetOpen(false);
+  }, []);
+
+  /** Legacy toggle (flag OFF): add/remove without measure UI. */
   const handleToggleItem = (item) => {
     const prev = selectedItemsRef.current;
     const exists = prev.some((s) => s.name === item.name);
     if (exists) {
-      const next = prev.filter((s) => s.name !== item.name);
-      setSelectedItems(next);
-      if (next.length === 0) setMealSheetOpen(false);
+      handleRemoveItem(item);
       return;
     }
-    // Stay on search / suggestions — do not open sheet (blocks multi-add).
     setSelectedItems([...prev, toSelectableItem(item)]);
     showAddToast(`Added ${item.name}`);
   };
+
+  /** Meal builder: add (or replace) with chosen g / ml / pcs quantity. */
+  const handleAddWithMeasure = useCallback((item, measure) => {
+    const measured = applyFoodMeasure(item, measure);
+    const selectable = toSelectableItem(measured);
+    const prev = selectedItemsRef.current;
+    const without = prev.filter((s) => s.name !== item.name);
+    setSelectedItems([...without, selectable]);
+    const unit = String(measure?.unit || selectable.measureUnit || "g");
+    const qty = measure?.quantity ?? selectable.servings ?? 1;
+    showAddToast(
+      unit === "pcs"
+        ? `Added ${qty} ${item.name}`
+        : `Added ${qty}${unit} ${item.name}`,
+    );
+  }, [showAddToast]);
 
   const handleQuantityChange = (name, rawValue) => {
     const qty = parseFloat(rawValue);
@@ -566,7 +593,10 @@ const SmartFoodSearchModal = ({
         item={item}
         selected={selectedItems.some((s) => s.name === item.name)}
         onToggle={handleToggleItem}
+        onAddWithMeasure={handleAddWithMeasure}
+        onRemove={handleRemoveItem}
         mealBuilder={mealBuilder}
+        targetNutrition={catalogMode}
       />
     ));
 
@@ -789,10 +819,9 @@ const SmartFoodSearchModal = ({
           onClose={() => setMealSheetOpen(false)}
           onSave={handleAddSelected}
           onClear={clearMealSelection}
-          onRemove={(item) => {
-            handleToggleItem(item);
-          }}
+          onRemove={handleRemoveItem}
           onQuantityChange={handleQuantityChange}
+          plainQuantity={catalogMode}
         />
       </div>
     );
@@ -888,8 +917,16 @@ const SmartFoodSearchModal = ({
                   const servings = Number.isFinite(count) && count > 0 ? count : 1;
                   const kcal = Math.round((item.calories ?? 0) * servings);
                   return (
-                    <div key={item.name} className="flex items-start gap-2 bg-white border border-orange-100 rounded-xl px-2.5 py-1.5">
-                      <div className="flex-1 min-w-0">
+                    <div key={item.name} className="relative bg-white border border-orange-100 rounded-xl px-2.5 py-2 pr-8">
+                      <button
+                        type="button"
+                        onClick={() => handleToggleItem(item)}
+                        className="absolute top-0.5 right-1 p-0.5 rounded-md text-gray-400 hover:text-red-500 hover:bg-red-50 active:scale-95 transition-all"
+                        aria-label={`Remove ${item.name}`}
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                      <div className="min-w-0">
                         <p className="text-xs font-medium text-gray-800 break-words leading-snug">{item.name}</p>
                         <div className="flex items-center justify-between gap-2 mt-1">
                           <p className="text-[11px] text-orange-600 font-semibold">{kcal} kcal</p>
@@ -904,9 +941,6 @@ const SmartFoodSearchModal = ({
                           />
                         </div>
                       </div>
-                      <button type="button" onClick={() => handleToggleItem(item)} className="text-gray-300 hover:text-red-400 flex-shrink-0">
-                        <X className="w-3.5 h-3.5" />
-                      </button>
                     </div>
                   );
                 })}
@@ -966,9 +1000,45 @@ const SmartFoodSearchModal = ({
   );
 };
 
-const FoodItemRow = ({ item, selected, onToggle, mealBuilder = false }) => {
+const QTY_STEP_G_ML = 10;
+const QTY_STEP_PCS = 1;
+const QTY_MIN_G_ML = 1;
+const QTY_MIN_PCS = 0.5;
+
+function bumpMeasureQuantity(unit, raw, delta) {
+  const n = Number(raw);
+  const isPcs = unit === "pcs";
+  const step = isPcs ? QTY_STEP_PCS : QTY_STEP_G_ML;
+  const min = isPcs ? QTY_MIN_PCS : QTY_MIN_G_ML;
+  const base = Number.isFinite(n) && n > 0 ? n : (isPcs ? 1 : 100);
+  const next = Math.round((base + (delta || step)) * 100) / 100;
+  return String(Math.max(min, next));
+}
+
+const FoodItemRow = ({
+  item,
+  selected,
+  onToggle,
+  onAddWithMeasure,
+  onRemove,
+  mealBuilder = false,
+  targetNutrition = false,
+}) => {
   const portion = item.portion || item.portion_label;
-  if (mealBuilder) {
+  const units = availableMeasureUnits(item);
+  const defaults = defaultMeasureForItem(item);
+  const [unit, setUnit] = useState(defaults.unit);
+  const [quantity, setQuantity] = useState(String(defaults.quantity));
+
+  useEffect(() => {
+    const next = defaultMeasureForItem(item);
+    setUnit(next.unit);
+    setQuantity(String(next.quantity));
+  }, [item?.name, item?.weight_g, item?.unit, item?.isLiquid, item?.is_liquid]);
+
+  // Target Nutrition keeps the catalog amount under the name. No g/ml switch, no qty box.
+  if (mealBuilder && targetNutrition) {
+    const catalogPreview = previewMeasureNutrition(item, defaults);
     return (
       <button
         type="button"
@@ -978,12 +1048,16 @@ const FoodItemRow = ({ item, selected, onToggle, mealBuilder = false }) => {
           selected ? "bg-green-50 border-green-500" : "bg-white border-gray-200 hover:border-green-300"
         }`}
       >
-        <div className="flex-1 min-w-0 pr-1">
-          <p className={`text-sm font-medium leading-snug line-clamp-2 break-words ${selected ? "text-green-900" : "text-gray-800"}`}>{item.name}</p>
+        <div className="flex-1 min-w-0">
+          <p className={`text-sm font-medium leading-snug line-clamp-2 break-words ${selected ? "text-green-900" : "text-gray-800"}`}>
+            {item.name}
+          </p>
           <p className="text-xs text-gray-400 mt-0.5 leading-snug">
-            {portion ? <span>{portion} · </span> : null}
-            {item.calories ?? "?"} kcal
-            {item.protein ? ` · ${item.protein}g protein` : ""}
+            {catalogPreview.portionLabel ? <span>{catalogPreview.portionLabel} · </span> : (portion ? <span>{portion} · </span> : null)}
+            {catalogPreview.calories ?? item.calories ?? "?"} kcal
+            {catalogPreview.protein != null && catalogPreview.protein > 0
+              ? ` · ${catalogPreview.protein}g protein`
+              : (item.protein ? ` · ${item.protein}g protein` : "")}
           </p>
         </div>
         <span
@@ -997,6 +1071,147 @@ const FoodItemRow = ({ item, selected, onToggle, mealBuilder = false }) => {
           {selected ? <Check className="w-4 h-4" /> : "+"}
         </span>
       </button>
+    );
+  }
+
+  if (mealBuilder) {
+    const unitLabel = unit === "pcs" ? "pcs" : unit;
+    // Live preview: 1 pcs → 135 kcal, 2 pcs → 270; always from 1-piece base.
+    const preview = previewMeasureNutrition(item, { unit, quantity });
+    return (
+      <div
+        className={`w-full rounded-xl px-3 py-2.5 border-2 transition-colors ${
+          selected ? "bg-green-50 border-green-500" : "bg-white border-gray-200"
+        }`}
+      >
+        <div className="flex items-start gap-2">
+          <div className="flex-1 min-w-0 pr-1">
+            <p className={`text-sm font-medium leading-snug line-clamp-2 break-words ${selected ? "text-green-900" : "text-gray-800"}`}>
+              {item.name}
+            </p>
+            <p className="text-xs text-gray-400 mt-0.5 leading-snug">
+              {preview.portionLabel ? <span>{preview.portionLabel} · </span> : null}
+              {preview.calories ?? item.calories ?? "?"} kcal
+              {preview.protein != null && preview.protein > 0
+                ? ` · ${preview.protein}g protein`
+                : (item.protein && unit !== "pcs" ? ` · ${item.protein}g protein` : "")}
+            </p>
+          </div>
+          {selected && (
+            <button
+              type="button"
+              onClick={() => onRemove?.(item)}
+              aria-label={`Remove ${item.name}`}
+              className="flex-shrink-0 w-8 h-8 rounded-full bg-green-600 text-white flex items-center justify-center"
+            >
+              <Check className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2 mt-2 w-full">
+          {/* Piece foods: pcs only — no g/ml radios. Others: g + ml. */}
+          {units.length > 1 && (
+            <div
+              className="flex items-center gap-2.5 flex-shrink-0"
+              role="radiogroup"
+              aria-label={`Unit for ${item.name}`}
+            >
+              {units.map((option) => {
+                const active = unit === option;
+                const label = option === "pcs" ? "pcs" : option;
+                return (
+                  <label
+                    key={option}
+                    className="inline-flex items-center gap-1 cursor-pointer select-none"
+                  >
+                    <input
+                      type="radio"
+                      name={`measure-unit-${item.name}`}
+                      value={option}
+                      checked={active}
+                      onChange={() => {
+                        setUnit(option);
+                        if (option === "pcs") setQuantity("1");
+                        else if (unit === "pcs") {
+                          setQuantity(String(defaultMeasureForItem({ ...item, unit: option }).quantity));
+                        }
+                      }}
+                      className="sr-only"
+                    />
+                    <span
+                      aria-hidden="true"
+                      className={`flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full border-2 ${
+                        active ? "border-green-600 bg-white" : "border-gray-300 bg-white"
+                      }`}
+                    >
+                      {active && <span className="h-1.5 w-1.5 rounded-full bg-green-600" />}
+                    </span>
+                    <span className={`text-xs font-medium ${active ? "text-gray-900" : "text-gray-600"}`}>
+                      {label}
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+          )}
+          {unit === "pcs" && units.length === 1 && (
+            <span className="text-xs font-semibold text-gray-600 flex-shrink-0">pcs</span>
+          )}
+
+          <div
+            className="flex items-center h-9 flex-1 min-w-[7.5rem] rounded-lg border border-green-200 bg-white overflow-hidden"
+            role="group"
+            aria-label={`Quantity in ${unitLabel}`}
+          >
+            <button
+              type="button"
+              aria-label="Decrease quantity"
+              className="w-9 h-9 flex items-center justify-center text-green-700 active:bg-green-50 flex-shrink-0"
+              onClick={() => setQuantity((q) => bumpMeasureQuantity(unit, q, unit === "pcs" ? -QTY_STEP_PCS : -QTY_STEP_G_ML))}
+            >
+              <Minus className="w-4 h-4" strokeWidth={2.5} />
+            </button>
+            <input
+              type="number"
+              inputMode="decimal"
+              min={unit === "pcs" ? QTY_MIN_PCS : QTY_MIN_G_ML}
+              step="any"
+              value={quantity}
+              onChange={(e) => setQuantity(e.target.value)}
+              className="flex-1 min-w-0 w-full text-center border-x border-green-100 outline-none text-sm bg-white py-1.5"
+              style={{ fontSize: "16px" }}
+              aria-label={`Quantity for ${item.name}`}
+            />
+            <span className="text-xs font-semibold text-gray-500 pr-1.5 flex-shrink-0">{unitLabel}</span>
+            <button
+              type="button"
+              aria-label="Increase quantity"
+              className="w-9 h-9 flex items-center justify-center text-green-700 active:bg-green-50 flex-shrink-0"
+              onClick={() => setQuantity((q) => bumpMeasureQuantity(unit, q, unit === "pcs" ? QTY_STEP_PCS : QTY_STEP_G_ML))}
+            >
+              <Plus className="w-4 h-4" strokeWidth={2.5} />
+            </button>
+          </div>
+
+          <button
+            type="button"
+            aria-label={
+              selected
+                ? `Update ${item.name} to ${quantity || "?"} ${unitLabel}`
+                : `Add ${quantity || "?"} ${unitLabel} ${item.name}`
+            }
+            onClick={() => onAddWithMeasure?.(item, { unit, quantity })}
+            className={`flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center font-bold text-lg ml-auto ${
+              selected
+                ? "bg-green-600 text-white"
+                : "bg-green-50 text-green-700 border-2 border-green-300"
+            }`}
+          >
+            +
+          </button>
+        </div>
+      </div>
     );
   }
 

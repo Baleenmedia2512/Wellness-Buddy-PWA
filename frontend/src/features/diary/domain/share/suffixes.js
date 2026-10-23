@@ -73,7 +73,7 @@ export function buildDiaryShareSuffix(activityType, payload = {}) {
       const ideal = formatShareKg(payload.idealWeight);
       if (current == null) return 'weight';
 
-      const lines = [];
+      const lines = [waBold('Day progress')];
       if (ideal != null) lines.push(`Ideal: ${ideal} kg`);
       if (previous != null) lines.push(`Prev: ${previous} kg`);
 

@@ -45,6 +45,11 @@ function readStoredContactId(phone) {
   }
 }
 
+/** True when this phone was written to the device address book on this device. */
+export function isBcmDeviceContactSaved(phone) {
+  return Boolean(readStoredContactId(phone));
+}
+
 function writeStoredContactId(phone, contactId) {
   try {
     const key = contactIdStorageKey(phone);

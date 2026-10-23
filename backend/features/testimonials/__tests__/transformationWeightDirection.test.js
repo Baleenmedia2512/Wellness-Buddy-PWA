@@ -5,6 +5,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   isTransformationWeightLoss,
+  shareCardResultPillLabel,
   transformationWeightVerb,
 } from '../domain/transformationWeightDirection.js';
 
@@ -21,5 +22,11 @@ describe('transformationWeightDirection', () => {
     assert.equal(isTransformationWeightLoss(75, 75), null);
     assert.equal(isTransformationWeightLoss(75, null), null);
     assert.equal(transformationWeightVerb(75, 75), null);
+  });
+
+  it('shows duration alone when before and after weight match', () => {
+    assert.equal(shareCardResultPillLabel(70, 70, '4 months'), '4 months');
+    assert.equal(shareCardResultPillLabel(70, 70, '—'), '');
+    assert.equal(shareCardResultPillLabel(90.9, 60.8, '6 months'), 'Lost 30.1 kgs in 6 months');
   });
 });

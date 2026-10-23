@@ -38,9 +38,10 @@ describe('formula1Catalog.seeds', () => {
     assert.equal(one.carbs, 3.5);
     assert.equal(one.fat, 0.6);
     assert.equal(one.fiber, 1);
-    assert.equal(one.sugar, 1.6);
+    assert.equal(one.sugar, 2.17);
     assert.equal(one.sodium, 41);
-    assert.equal(one.cholesterol, 0.5);
+    assert.equal(one.cholesterol, 1);
+    assert.equal(one.iron, 1.17);
     assert.equal(one.vitamin_a, 70);
     assert.ok(
       Math.abs((one.calories * FORMULA1_LABEL_SCOOPS) - FORMULA1_NUTRITION_PER_25G.calories) < 0.01,

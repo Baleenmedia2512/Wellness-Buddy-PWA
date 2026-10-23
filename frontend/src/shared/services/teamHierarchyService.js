@@ -20,15 +20,8 @@ export const teamHierarchyService = {
    *   purpose=search → lighter backend path for Diary / Reports search (no weight enrich)
    * @returns {Promise<Object>} - Hierarchical team data
    */
-  async getTeamHierarchy(coachId, includeInactive = false, options = {}) {
-    const purpose = options.purpose === "search" ? "search" : "full";
-    const cacheKey = cacheManager.generateKey(
-      "teamHierarchy",
-      TEAM_HIERARCHY_CACHE_VERSION,
-      coachId,
-      includeInactive,
-      purpose,
-    );
+  async getTeamHierarchy(coachId, includeInactive = false) {
+    const cacheKey = cacheManager.generateKey("teamHierarchy", "v6-downline-cocoach", coachId, includeInactive);
     return cacheManager.execute(
       cacheKey,
       async () => {

@@ -3,7 +3,7 @@
  *
  * Modal form for creating a Body Parameters Card.
  * Pure presentational — all logic in useBodyParamsCard hook.
- * Fields: Date, Time, Venue, Name, Age, Height, Phone, Gender, Weight, BMI, Fat%, BMR, Body Age, Chest, Waist, Hip.
+ * Fields: Date, Time, Venue, Appointment Date, Name, Age, Height, Phone, Gender, Weight, BMI, Fat%, BMR, Body Age, Chest, Waist, Hip.
  */
 import React, { useEffect, useRef, useState } from 'react';
 import { X, AlertCircle } from 'lucide-react';
@@ -156,14 +156,15 @@ const SelectField = ({
 };
 
 /**
- * @param {{ isOpen, onClose, user, selectedMember, onSaveSuccess, existingCard, onSaveStart, externalVenue, onVenueChange, hideVenueField }} props
+ * @param {{ isOpen, onClose, user, selectedMember, onSaveSuccess, existingCard, onSaveStart, onContactSaveState, externalVenue, onVenueChange, hideVenueField }} props
  */
 const BodyParamsForm = ({
   isOpen, onClose, user, selectedMember, onSaveSuccess, existingCard = null, onSaveStart = null,
+  onContactSaveState = null,
   externalVenue = null, onVenueChange = null, hideVenueField = false,
 }) => {
   const vm = useBodyParamsCard({
-    user, selectedMember, onSaveSuccess, existingCard, onSaveStart, isOpen,
+    user, selectedMember, onSaveSuccess, existingCard, onSaveStart, onContactSaveState, isOpen,
     externalVenue,
   });
 
@@ -171,6 +172,7 @@ const BodyParamsForm = ({
 
   // Refs for all input fields
   const venueRef = useRef(null);
+  const appointmentDateRef = useRef(null);
   const phoneRef = useRef(null);
   const nameRef = useRef(null);
   const ageRef = useRef(null);
@@ -330,7 +332,7 @@ const BodyParamsForm = ({
               value={vm.form.recordedDate}
               onChange={(v) => vm.setField('recordedDate', v)}
               type="date"
-              onEnter={() => focusNextField(hideVenueField ? nameRef : venueRef)}
+              onEnter={() => focusNextField(hideVenueField ? appointmentDateRef : venueRef)}
             />
             <InputField
               label="Time"
@@ -351,9 +353,35 @@ const BodyParamsForm = ({
               }}
               placeholder="e.g. Chennai"
               inputRef={venueRef}
-              onEnter={() => focusNextField(nameRef)}
+              onEnter={() => focusNextField(appointmentDateRef)}
             />
           )}
+
+          {/* Appointment Date */}
+          <InputField
+            label="Appointment Date"
+            value={vm.form.appointmentDate}
+            onChange={(v) => vm.setField('appointmentDate', v)}
+            type="date"
+            inputRef={appointmentDateRef}
+            onEnter={() => focusNextField(heightRef)}
+          />
+
+          {/* Height - Full Width */}
+          <InputField
+            label="Height (cm)"
+            value={vm.form.heightCm}
+            onChange={(v) => {
+              vm.setField('heightCm', v);
+              clearParentRequestIfFilled('heightCm', v);
+            }}
+            type="number"
+            placeholder="cm"
+            inputRef={heightRef}
+            onEnter={() => focusNextField(nameRef)}
+            needed={Boolean(heightNeededHint)}
+            hint={heightNeededHint}
+          />
 
           {/* Name */}
           <InputField
@@ -411,29 +439,13 @@ const BodyParamsForm = ({
             }}
             options={['Male', 'Female']}
             inputRef={genderRef}
-            onEnter={() => focusNextField(heightRef)}
+            onEnter={() => focusNextField(weightRef)}
             needed={Boolean(genderNeededHint)}
             hint={genderNeededHint}
           />
 
           {/* Divider */}
           <hr className="border-green-100" />
-
-          {/* Height - Full Width */}
-          <InputField
-            label="Height (cm)"
-            value={vm.form.heightCm}
-            onChange={(v) => {
-              vm.setField('heightCm', v);
-              clearParentRequestIfFilled('heightCm', v);
-            }}
-            type="number"
-            placeholder="cm"
-            inputRef={heightRef}
-            onEnter={() => focusNextField(weightRef)}
-            needed={Boolean(heightNeededHint)}
-            hint={heightNeededHint}
-          />
 
           {/* Weight - Full Width */}
           <div className="flex flex-col gap-1">
