@@ -23,6 +23,7 @@ const UserProfileModal = ({ isOpen, onClose, user, userRole = 'user', onProfileU
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
   const [hasSaved, setHasSaved] = useState(false);
+  const [workingPhysicalCentre, setWorkingPhysicalCentre] = useState(null);
 
   const loadProfile = useCallback(async () => {
     setIsLoading(true); setError('');
@@ -46,6 +47,7 @@ const UserProfileModal = ({ isOpen, onClose, user, userRole = 'user', onProfileU
           communityId: data.communityId != null ? String(data.communityId) : '',
           bodyMetrics: data.bodyMetrics || null,
         });
+        setWorkingPhysicalCentre(data.workingPhysicalCentre || null);
         setLatestWeight(data.latestWeight ? parseFloat(data.latestWeight) : null);
         setInitialWeight(data.initialWeight != null ? parseFloat(data.initialWeight) : null);
         setInitialWeightDate(data.initialWeightDate || null);
@@ -133,6 +135,7 @@ const UserProfileModal = ({ isOpen, onClose, user, userRole = 'user', onProfileU
           latestWeight={latestWeight} initialWeight={initialWeight}
           initialWeightDate={initialWeightDate}
           marathonWeightComparison={marathonWeightComparison}
+          workingPhysicalCentre={workingPhysicalCentre}
           error={error} successMessage={successMessage}
         />
         {!isLoading && (

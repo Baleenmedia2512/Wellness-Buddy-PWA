@@ -29,6 +29,7 @@ import { fetchMyAssessment, fetchLeadByPhone } from '../../counselling/services/
 import UserProfileFields from './profile/UserProfileFields';
 import ProfileEmailKycSection from './profile/ProfileEmailKycSection';
 import CommunityIdField from './profile/CommunityIdField';
+import WorkingPhysicalCentreField from './profile/WorkingPhysicalCentreField';
 import UserProfileBodyMetrics from './profile/UserProfileBodyMetrics';
 import IdealWeightCards from './profile/IdealWeightCards';
 import DietDropdown from './profile/DietDropdown';
@@ -92,6 +93,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
   const [communityIdPair, setCommunityIdPair] = useState(null);
   const [communityIdBusy, setCommunityIdBusy] = useState(false);
   const [communityIdError, setCommunityIdError] = useState('');
+  const [workingPhysicalCentre, setWorkingPhysicalCentre] = useState(null);
   const [lockedHeight, setLockedHeight] = useState(null);
   const [heightOtpBusy, setHeightOtpBusy] = useState(false);
   const [heightOtpError, setHeightOtpError] = useState('');
@@ -219,6 +221,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
       setTeamSeat(data?.teamSeat || null);
       setCommunityIdRequest(data?.communityIdRequest || null);
       setCommunityIdPair(data?.communityIdPair || null);
+      setWorkingPhysicalCentre(data?.workingPhysicalCentre || null);
       setCommunityIdError('');
       transformationPhotos.loadFromProfile(data?.transformationPhotos);
       
@@ -827,6 +830,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
                   sponsorName={coachName}
                   sponsorEmail={sponsorEmail}
                 />
+                <WorkingPhysicalCentreField centre={workingPhysicalCentre} />
                 <IdealWeightCards
                   height={form.height}
                   latestWeight={latestWeight}
