@@ -23,6 +23,7 @@ import {
 } from '../../../shared/utils/autoCameraPreference';
 import useProfileForm from '../hooks/useProfileForm';
 import { fetchProfile, saveProfile, requestCommunityId, verifyCommunityIdOtp, requestHeightChangeOtp, verifyHeightChangeOtp } from '../services/profileService';
+import { loadWorkingPhysicalCentre } from '../services/workingPhysicalCentreService';
 import { syncMarathonWeightComparisonFromProfile } from '../../marathon/marathonWeightComparisonCache';
 import { loadProfileMarathonWeightComparison } from '../../marathon';
 import { fetchMyAssessment, fetchLeadByPhone } from '../../counselling/services/counsellingApi';
@@ -221,7 +222,19 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
       setTeamSeat(data?.teamSeat || null);
       setCommunityIdRequest(data?.communityIdRequest || null);
       setCommunityIdPair(data?.communityIdPair || null);
-      setWorkingPhysicalCentre(data?.workingPhysicalCentre || null);
+      const profileCentre = data?.workingPhysicalCentre || null;
+      setWorkingPhysicalCentre(profileCentre);
+      const centreUserId = data?.userId || uid;
+      if (!profileCentre?.name && !(profileCentre?.options || []).length && centreUserId) {
+        loadWorkingPhysicalCentre({ userId: centreUserId, profileCentre })
+          .then((centre) => {
+            if (loadGen !== profileLoadGenRef.current) return;
+            setWorkingPhysicalCentre(centre);
+          })
+          .catch((err) => {
+            console.warn('[profile] working physical centre', err?.message || err);
+          });
+      }
       setCommunityIdError('');
       transformationPhotos.loadFromProfile(data?.transformationPhotos);
       

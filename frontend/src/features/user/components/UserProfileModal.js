@@ -5,6 +5,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { getUserContext } from '../../../shared/services/userIdentity';
 import useProfileForm from '../hooks/useProfileForm';
 import { fetchProfile, saveProfile } from '../services/profileService';
+import { loadWorkingPhysicalCentre } from '../services/workingPhysicalCentreService';
 import { syncMarathonWeightComparisonFromProfile } from '../../marathon/marathonWeightComparisonCache';
 import { loadProfileMarathonWeightComparison } from '../../marathon';
 import UserProfileHeader from './profile/UserProfileHeader';
@@ -47,7 +48,16 @@ const UserProfileModal = ({ isOpen, onClose, user, userRole = 'user', onProfileU
           communityId: data.communityId != null ? String(data.communityId) : '',
           bodyMetrics: data.bodyMetrics || null,
         });
-        setWorkingPhysicalCentre(data.workingPhysicalCentre || null);
+        const profileCentre = data.workingPhysicalCentre || null;
+        setWorkingPhysicalCentre(profileCentre);
+        const centreUserId = data.userId || user?.id || user?.UserId;
+        if (!profileCentre?.name && !(profileCentre?.options || []).length && centreUserId) {
+          loadWorkingPhysicalCentre({ userId: centreUserId, profileCentre })
+            .then((centre) => setWorkingPhysicalCentre(centre))
+            .catch((err) => {
+              console.warn('[profile] working physical centre', err?.message || err);
+            });
+        }
         setLatestWeight(data.latestWeight ? parseFloat(data.latestWeight) : null);
         setInitialWeight(data.initialWeight != null ? parseFloat(data.initialWeight) : null);
         setInitialWeightDate(data.initialWeightDate || null);
