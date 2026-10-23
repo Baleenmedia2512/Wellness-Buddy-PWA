@@ -277,3 +277,29 @@ export async function getAttendeeList(centerId, startDate, endDate, timezoneIana
     timestamp: log.CreatedAt,
   }));
 }
+
+export async function findCoachId(userId) {
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from('team_table')
+    .select('"CoachId"')
+    .eq('"UserId"', userId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  const coachId = Number(data?.CoachId);
+  return Number.isFinite(coachId) && coachId > 0 ? coachId : null;
+}
+
+export async function findActiveCentersByOwnerIds(ownerIds) {
+  const ids = [...new Set((ownerIds || []).map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0))];
+  if (ids.length === 0) return [];
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from('nutrition_centers_table')
+    .select('id, center_name, owner_user_id, registered_at')
+    .in('owner_user_id', ids)
+    .eq('status', 'active')
+    .eq('is_deleted', false);
+  if (error) throw new Error(error.message);
+  return data || [];
+}
