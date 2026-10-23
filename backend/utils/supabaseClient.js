@@ -45,9 +45,10 @@ function getOptionalSupabase() {
 
 if (process.env.MYSQL_DATABASE_URL) {
   const { createMysqlSupabaseClient } = await import('../shared/lib/mysql/mysqlSupabaseClient.js');
+  const { createLocalFileStorage } = await import('../shared/lib/testimonial-files/localFileStorage.js');
   const storageClient = getOptionalSupabase();
   mysqlAdapter = createMysqlSupabaseClient({
-    storage: storageClient?.storage || null,
+    storage: storageClient?.storage || createLocalFileStorage(),
     channel: storageClient ? (name, options) => storageClient.channel(name, options) : null,
   });
   console.log('MySQL Prisma client initialized for table queries');
