@@ -1,11 +1,13 @@
 /**
- * Supabase Client Singleton
- * Used for REST API queries (works through firewalls/NAT)
+ * Database client used by repositories.
+ * MYSQL_DATABASE_URL sends table reads and writes to local MySQL through Prisma.
+ * File storage and the live race channel still use Supabase when SUPABASE_URL is set.
  */
 
 import { createClient } from '@supabase/supabase-js';
 
 let supabaseInstance = null;
+let mysqlAdapter = null;
 
 function isSupabaseJwt(value) {
   return typeof value === 'string' && value.startsWith('eyJ') && value.length > 100;
@@ -32,11 +34,32 @@ function resolveSupabaseKey() {
   return { key: null, auth: null };
 }
 
+function getOptionalSupabase() {
+  const url = process.env.SUPABASE_URL;
+  if (!url || !/^https:\/\/.*\.supabase\.co\/?$/.test(url)) return null;
+  const { key } = resolveSupabaseKey();
+  if (!key) return null;
+  if (!supabaseInstance) supabaseInstance = createClient(url, key);
+  return supabaseInstance;
+}
+
+if (process.env.MYSQL_DATABASE_URL) {
+  const { createMysqlSupabaseClient } = await import('../shared/lib/mysql/mysqlSupabaseClient.js');
+  const storageClient = getOptionalSupabase();
+  mysqlAdapter = createMysqlSupabaseClient({
+    storage: storageClient?.storage || null,
+    channel: storageClient ? (name, options) => storageClient.channel(name, options) : null,
+  });
+  console.log('MySQL Prisma client initialized for table queries');
+}
+
 /**
- * Get or create Supabase client
- * @returns {Object} Supabase client instance
+ * Get the active table client.
+ * @returns {Object} Supabase-shaped client backed by MySQL or Supabase
  */
 export function getSupabaseClient() {
+  if (mysqlAdapter) return mysqlAdapter;
+
   if (!supabaseInstance) {
     const url = process.env.SUPABASE_URL;
     const { key, auth } = resolveSupabaseKey();
@@ -54,7 +77,6 @@ export function getSupabaseClient() {
     }
 
     supabaseInstance = createClient(url, key);
-
     console.log('✅ Supabase REST client initialized', { auth });
   }
 
