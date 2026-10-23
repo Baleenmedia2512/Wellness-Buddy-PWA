@@ -4,6 +4,7 @@
   "private": true,
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
+    "@prisma/client": "^6.19.3",
     "@supabase/supabase-js": "^2.90.1",
     "@vercel/functions": "^1.6.0",
     "ai-token-monitor": "^1.0.10",
@@ -42,10 +43,13 @@
     "backfill:good-habit-images": "node --env-file=.env scripts/backfill-activity-r2.js --kind=good-habit",
     "backfill:good-habit-images:write": "node --env-file=.env scripts/backfill-activity-r2.js --kind=good-habit --write",
     "backfill:captures": "node --env-file=.env scripts/backfill-captures-r2.js",
-    "backfill:captures:write": "node --env-file=.env scripts/backfill-captures-r2.js --write"
+    "backfill:captures:write": "node --env-file=.env scripts/backfill-captures-r2.js --write",
+    "prisma:generate": "prisma generate",
+    "prisma:pull": "prisma db pull"
   },
   "devDependencies": {
     "cross-env": "^10.1.0",
-    "eslint": "^10.5.0"
+    "eslint": "^10.5.0",
+    "prisma": "^6.19.3"
   }
 }
