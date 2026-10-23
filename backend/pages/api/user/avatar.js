@@ -19,6 +19,8 @@ import { applyCors, methodNotAllowed } from '../../../shared/lib/handler.js';
 import { cache, cacheKeys } from '../../../utils/cache.js';
 import { parseDataUri } from '../../../shared/lib/images/dataUri.js';
 import { avatarRedirectUrl } from '../../../shared/lib/r2/s3.js';
+import { isMileswebServedUrl } from '../../../shared/lib/milesweb/objectKey.js';
+import { resolveStoredImageUrl } from '../../../shared/lib/milesweb/storedImage.js';
 import { persistAvatarKey, r2AvatarsEnabled, avatarUrlForKey } from '../../../features/user/avatar-storage.service.js';
 import {
   r2TransformationPhotosEnabled,
@@ -97,6 +99,14 @@ export default async function handler(req, res) {
     if (!data) {
       cache.set(cacheKey, NONE, AVATAR_CACHE_TTL_MS);
       return res.status(404).end();
+    }
+
+    if (data.ProfileImageKey) {
+      const storedUrl = await resolveStoredImageUrl(data.ProfileImageKey);
+      if (isMileswebServedUrl(storedUrl)) {
+        cache.set(cacheKey, { kind: 'redirect', url: storedUrl }, AVATAR_CACHE_TTL_MS);
+        return sendAvatar(res, storedUrl, 'MISS', inline);
+      }
     }
 
     const resolved = resolveProfileDisplayAvatar({

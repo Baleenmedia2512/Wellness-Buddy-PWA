@@ -82,11 +82,10 @@ Do not return a bare string. Always JSON.
 
 ## 5. Database access
 
-- `pg` Pool via [utils/dbPool.js](utils/dbPool.js) — `getPool()` / `dbPool()`. Exposes a MySQL-compatible API (`execute`, `?`→`$1` conversion, IPv4-forced DNS). Used in `tasks`, `water`.
-- Supabase via [utils/supabaseClient.js](utils/supabaseClient.js) — `getSupabaseClient().from('table')`. Used in `activity`, `background-analysis`, `weight-progress-tips`, etc. Also exports IST helpers `getISTTimestamp`, `convertToIST`.
+- MilesWeb MariaDB through Prisma when `MYSQL_DATABASE_URL` is set. `getSupabaseClient()` in [utils/supabaseClient.js](utils/supabaseClient.js) returns that client for `.from('table')` queries.
+- Supabase REST remains the table client only when `MYSQL_DATABASE_URL` is absent.
 - **Always parameterise.** No string-built SQL in feature code.
 - Tables are `snake_case` (e.g. `weight_records_table`, `team_table`, `daily_step_activity`).
-- Pick `pg` **or** Supabase per feature and keep it consistent within that feature.
 
 ### Migrations (`backend/migrations/`)
 - New files: `NNNN_description.sql`, forward-only. To revert, write a new migration.

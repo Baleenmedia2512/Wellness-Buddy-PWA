@@ -21,6 +21,7 @@ import {
 import { buildAvatarObjectKey, isKeyInFolder, orphanedAvatarKeys, R2_FOLDERS } from '../../shared/lib/r2/objectKeys.js';
 import logger from '../../shared/lib/logger.js';
 import { cache, cacheKeys } from '../../utils/cache.js';
+import { isMileswebStorageEnabled } from '../../shared/lib/milesweb/config.js';
 import * as repo from './user.repository.js';
 
 export function r2AvatarsEnabled() {
@@ -38,7 +39,8 @@ export function avatarUrlForKey(key) {
  * @returns {Promise<string|null>} object key
  */
 export async function uploadAvatarDataUri(userId, profileImage) {
-  if (!r2AvatarsEnabled()) return null;
+  if (!isEnabled('ff.r2-avatars')) return null;
+  if (!isR2Configured() && !isMileswebStorageEnabled()) return null;
   if (!shouldStoreProfileImageInR2(profileImage)) return null;
   const parsed = parseDataUri(profileImage);
   if (!parsed) return null;

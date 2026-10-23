@@ -207,10 +207,8 @@ export async function getCaptureImageForDiary({ captureId, viewerUserId }) {
   let r2Url = null;
   if (row.ImageKey) {
     try {
-      const { r2CapturesEnabled, captureImageRedirectUrl } = await import(
-        '../captures/capture-image-storage.service.js'
-      );
-      if (r2CapturesEnabled()) r2Url = captureImageRedirectUrl(row.ImageKey);
+      const { redirectUrlForImageKey } = await import('../../shared/lib/milesweb/storedImage.js');
+      r2Url = await redirectUrlForImageKey(row.ImageKey, 'ff.r2-captures');
     } catch {
       r2Url = null;
     }
@@ -858,10 +856,8 @@ export async function resolveUnknownShare({ token, viewerUserId }) {
   let r2Url = null;
   if (capture.ImageKey) {
     try {
-      const { r2CapturesEnabled, captureImageRedirectUrl } = await import(
-        '../captures/capture-image-storage.service.js'
-      );
-      if (r2CapturesEnabled()) r2Url = captureImageRedirectUrl(capture.ImageKey);
+      const { redirectUrlForImageKey } = await import('../../shared/lib/milesweb/storedImage.js');
+      r2Url = await redirectUrlForImageKey(capture.ImageKey, 'ff.r2-captures');
     } catch {
       r2Url = null;
     }

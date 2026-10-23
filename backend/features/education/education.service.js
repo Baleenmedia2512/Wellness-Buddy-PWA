@@ -172,9 +172,8 @@ export async function getLogImage({ logId, userId }) {
   let r2Url = null;
   if (data.ImageKey) {
     try {
-      const { r2ActivityImagesEnabled } = await import('../../shared/lib/r2/activity-image-storage.service.js');
-      const { avatarRedirectUrl } = await import('../../shared/lib/r2/s3.js');
-      if (r2ActivityImagesEnabled()) r2Url = avatarRedirectUrl(data.ImageKey);
+      const { redirectUrlForImageKey } = await import('../../shared/lib/milesweb/storedImage.js');
+      r2Url = await redirectUrlForImageKey(data.ImageKey, 'ff.r2-activity-images');
     } catch {
       r2Url = null;
     }
