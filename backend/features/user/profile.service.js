@@ -167,9 +167,24 @@ export async function getProfile({ email, userId = null, appVersion = null }) {
   const gender = user.Gender
     || (bodyGender === 'Male' || bodyGender === 'Female' ? bodyGender : null)
     || null;
-  const avatarUrl = (r2AvatarsEnabled() && user.ProfileImageKey)
+  let avatarUrl = (r2AvatarsEnabled() && user.ProfileImageKey)
     ? avatarUrlForKey(user.ProfileImageKey)
     : null;
+  if (!avatarUrl && user.ProfileImageKey) {
+    try {
+      const { isMileswebStorageEnabled } = await import('../../shared/lib/milesweb/config.js');
+      if (isMileswebStorageEnabled()) {
+        const { resolveStoredImageUrl } = await import('../../shared/lib/milesweb/storedImage.js');
+        const { isMileswebServedUrl } = await import('../../shared/lib/milesweb/objectKey.js');
+        const stored = await resolveStoredImageUrl(user.ProfileImageKey);
+        if (isMileswebServedUrl(stored)) avatarUrl = stored;
+      }
+    } catch (err) {
+      logger.warn('[profile] avatar file lookup skipped', {
+        message: err?.message || String(err),
+      });
+    }
+  }
   const profileImage = avatarUrl
     || (isHttpsImageUrl(user.ProfileImage) ? user.ProfileImage : null);
   const resolvedBodyFatForBmr = hasValidBodyFatPercent(resolvedWeightBodyFat)
@@ -262,6 +277,21 @@ export async function getProfile({ email, userId = null, appVersion = null }) {
   });
   const resolvedUserName = persistedUserName;
 
+  let resolveTransformUrl = transformationPhotoUrlForKey;
+  if (preferTransformR2) {
+    try {
+      const { isMileswebStorageEnabled } = await import('../../shared/lib/milesweb/config.js');
+      if (isMileswebStorageEnabled()) {
+        const { resolveTransformationPhotoUrls } = await import('./transformation-photo-storage.service.js');
+        resolveTransformUrl = await resolveTransformationPhotoUrls(user.transformation_photos);
+      }
+    } catch (err) {
+      logger.warn('[profile] transformation photo url lookup skipped', {
+        message: err?.message || String(err),
+      });
+    }
+  }
+
   const result = {
     httpStatus: 200,
     body: {
@@ -326,7 +356,7 @@ export async function getProfile({ email, userId = null, appVersion = null }) {
         recoveredHealthIssues: mapTeamRecoveredHealthIssues(user.recovered_health_issues),
         transformationPhotos: mapTransformationPhotosForClient(user.transformation_photos, {
           preferR2: preferTransformR2,
-          resolveR2Url: transformationPhotoUrlForKey,
+          resolveR2Url: resolveTransformUrl,
         }),
         // Phone lead created from coach BCM — Complete Profile should open once for review.
         isBcmLead: String(entryUser || '') === 'Body Parameters Card'

@@ -25,7 +25,6 @@ import {
   injectGlycemicIndexIntoAnalysisData,
   resolveGlycemicIndexForUpdate,
 } from './glycemicIndex.helpers.js';
-import { r2FoodImagesEnabled, foodImageRedirectUrl } from './food-image-storage.service.js';
 import { waitUntil } from '@vercel/functions';
 import {
   emptyMealTotalsSeed,
@@ -591,9 +590,15 @@ export async function getMealImage({ userId, id }) {
       imageKey = null;
     }
   }
-  const r2Url = (imageKey && r2FoodImagesEnabled())
-    ? foodImageRedirectUrl(imageKey)
-    : null;
+  let r2Url = null;
+  if (imageKey) {
+    try {
+      const { redirectUrlForImageKey } = await import('../../shared/lib/milesweb/storedImage.js');
+      r2Url = await redirectUrlForImageKey(imageKey, 'ff.r2-food-images');
+    } catch {
+      r2Url = null;
+    }
+  }
   return {
     httpStatus: 200,
     body: {

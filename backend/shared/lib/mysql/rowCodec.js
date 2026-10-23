@@ -44,5 +44,15 @@ function normalizeReadValue(value, field) {
     const asNumber = Number(value.toString());
     return Number.isFinite(asNumber) ? asNumber : value.toString();
   }
+  if (field?.type === 'Json') {
+    const text = Buffer.isBuffer(value) ? value.toString('utf8') : value;
+    if (typeof text === 'string') {
+      try {
+        return JSON.parse(text);
+      } catch {
+        return text;
+      }
+    }
+  }
   return value;
 }

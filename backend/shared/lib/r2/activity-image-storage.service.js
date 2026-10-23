@@ -4,6 +4,7 @@
  */
 import { isEnabled } from '../feature-flags.js';
 import { isR2Configured } from './config.js';
+import { isMileswebStorageEnabled } from '../milesweb/config.js';
 import { uploadStoredImageToR2 } from './putCompressedJpeg.js';
 import {
   buildWeightObjectKey,
@@ -23,6 +24,10 @@ export function r2ActivityImagesEnabled() {
   return isEnabled('ff.r2-activity-images') && isR2Configured();
 }
 
+function activityUploadsEnabled() {
+  return isEnabled('ff.r2-activity-images') && (isR2Configured() || isMileswebStorageEnabled());
+}
+
 export async function persistWeightImageKey(userId, recordId, imageBase64, { captureId } = {}) {
   try {
     const { getStoredCaptureImageKey } = await import('../../../features/captures/capture-image-storage.service.js');
@@ -31,7 +36,7 @@ export async function persistWeightImageKey(userId, recordId, imageBase64, { cap
       await weightRepo.updateWeightImageKey(recordId, userId, reused);
       return reused;
     }
-    if (!r2ActivityImagesEnabled()) return null;
+    if (!activityUploadsEnabled()) return null;
     const key = await uploadStoredImageToR2({
       imageBase64,
       folder: R2_FOLDERS.weight,
@@ -58,7 +63,7 @@ export async function persistEducationImageKey(userId, logId, imageBase64, { cap
       await educationRepo.updateEducationImageKey(logId, userId, reused);
       return reused;
     }
-    if (!r2ActivityImagesEnabled()) return null;
+    if (!activityUploadsEnabled()) return null;
     const key = await uploadStoredImageToR2({
       imageBase64,
       folder: R2_FOLDERS.education,
@@ -79,14 +84,14 @@ export async function persistEducationImageKey(userId, logId, imageBase64, { cap
 
 export async function persistGoodHabitImageKeys(userId, habitId, images = {}, { captureId } = {}) {
   try {
-    if (!r2ActivityImagesEnabled() && !captureId) return null;
+    if (!activityUploadsEnabled() && !captureId) return null;
     const { getStoredCaptureImageKey } = await import('../../../features/captures/capture-image-storage.service.js');
     const reused = await getStoredCaptureImageKey(captureId);
     const patch = {};
     if (reused && (images.imageBase64 || images.afterImageBase64 || images.beforeImageBase64)) {
       patch.ImageKey = reused;
     }
-    if (!r2ActivityImagesEnabled()) {
+    if (!activityUploadsEnabled()) {
       if (!Object.keys(patch).length) return null;
       await habitRepo.updateGoodHabitImageKeys(habitId, userId, patch);
       return patch;

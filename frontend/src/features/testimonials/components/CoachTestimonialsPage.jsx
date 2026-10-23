@@ -2649,7 +2649,8 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
     const labels = [];
     const rows = [mineRow, ...directRows, ...fullRows].filter(Boolean);
     for (const row of rows) {
-      for (const issue of (row.testimonial?.recoveredHealthIssues ?? [])) {
+      const issueList = row.testimonial?.recoveredHealthIssues;
+      for (const issue of (Array.isArray(issueList) ? issueList : [])) {
         const label = String(issue || '').trim();
         if (!label) continue;
         const key = label.toLowerCase();
