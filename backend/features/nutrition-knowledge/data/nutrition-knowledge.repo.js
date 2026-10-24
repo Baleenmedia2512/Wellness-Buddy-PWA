@@ -379,7 +379,7 @@ export async function upsertUserCustomFood(input) {
     if (error) {
       lastError = error;
       // Race: another request inserted the same normalized_name.
-      if (String(error.code) === '23505' || /duplicate|unique/i.test(error.message || '')) {
+      if (String(error.code) === '1062' || /duplicate|unique/i.test(error.message || '')) {
         const raced = await findAnyProfileByName(canonicalName);
         if (raced) return { row: raced, created: false };
       }

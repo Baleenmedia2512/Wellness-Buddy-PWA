@@ -3,21 +3,21 @@ import assert from 'node:assert/strict';
 import { mapDriverError } from '../mysqlSupabaseClient.js';
 
 describe('mapDriverError', () => {
-  it('maps a Prisma raw MySQL duplicate to 23505', () => {
+  it('maps a Prisma raw MySQL duplicate to 1062', () => {
     const mapped = mapDriverError({
       code: 'P2010',
       message: 'Raw query failed. Code: `1062`. Message: Duplicate entry \'x\' for key \'team_table.idx_team_email\'',
       meta: { code: '1062' },
     });
-    assert.equal(mapped.code, '23505');
+    assert.equal(mapped.code, '1062');
   });
 
-  it('maps Prisma P2002 to 23505', () => {
+  it('maps Prisma P2002 to 1062', () => {
     const mapped = mapDriverError({
       code: 'P2002',
       message: 'Unique constraint failed',
     });
-    assert.equal(mapped.code, '23505');
+    assert.equal(mapped.code, '1062');
   });
 
   it('keeps a non-duplicate driver code', () => {

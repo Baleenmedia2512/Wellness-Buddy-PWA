@@ -233,7 +233,7 @@ export default async function handler(req, res) {
       console.error('Error updating TeamId:', updateError);
       
       // Handle potential race condition where TeamId was just claimed
-      if (updateError.code === '23505') { // Unique constraint violation in PostgreSQL
+      if (updateError.code === '1062') {
         res.status(409).json({
           success: false,
           error: 'This Team ID was just claimed by another user',

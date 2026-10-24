@@ -51,7 +51,7 @@ function generateShareCode(length = DEFAULT_SHARE_CODE_LENGTH) {
 
 function isDuplicateShareCodeError(err) {
   const msg = `${err?.message || ''} ${err?.details || ''} ${err?.hint || ''}`;
-  return msg.toLowerCase().includes('sharecode') && (msg.toLowerCase().includes('duplicate') || err?.code === '23505');
+  return msg.toLowerCase().includes('sharecode') && (msg.toLowerCase().includes('duplicate') || err?.code === '1062');
 }
 
 function extractNutrition(analysisResult, deviceInfo) {
@@ -355,7 +355,7 @@ export async function save(input) {
       errorMessage = 'Database connection was terminated. Retrying...';
     } else if (error.code === 'ECONNREFUSED') {
       errorMessage = 'Database connection refused. Please check if database is accessible.';
-    } else if (error.code === '23505') {
+    } else if (error.code === '1062') {
       errorMessage = 'Duplicate key error: The database sequence needs to be reset. Please contact support.';
     }
 

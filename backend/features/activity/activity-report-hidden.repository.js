@@ -20,7 +20,7 @@ export async function fetchHiddenUserIds() {
   if (error) {
     console.error('[activity-report-hidden] fetchHiddenUserIds failed:', error.message);
     // Soft-fail when the table is not migrated yet so Activity Report stays available.
-    if (/does not exist|PGRST205|42P01/i.test(String(error.message || error.code || ''))) {
+    if (/does not exist|doesn't exist|1146/i.test(String(error.message || error.code || ''))) {
       return [];
     }
     throw error;

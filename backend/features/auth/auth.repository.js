@@ -135,7 +135,7 @@ export async function updateUserConsent(userId, fields) {
  * requests for the same new number both find null, then both attempt to insert,
  * and the second insert hits the UNIQUE index on PhoneNumber (migration 0013).
  *
- * This function converts that constraint error (PostgreSQL code 23505) into a
+ * This function converts that constraint error (MySQL code 1062) into a
  * transparent re-fetch, so callers always receive a stable row regardless of
  * which request won the race.
  *
@@ -147,7 +147,7 @@ export async function findOrInsertUserByPhone(payload, phone) {
   if (!error) return { row: data, isNewUser: true };
 
   // Unique constraint violation — a concurrent request just created this row.
-  if (error.code === '23505') {
+  if (error.code === '1062') {
     const existing = await findUserByPhone(phone);
     if (existing) return { row: existing, isNewUser: false };
     // Extremely rare: constraint hit but row not found (e.g. partial index edge case).

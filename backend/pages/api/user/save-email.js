@@ -116,7 +116,7 @@ export default async function handler(req, res) {
       .eq('UserId', uid);
 
     if (writeErr) {
-      if (writeErr.code === '23505') {
+      if (writeErr.code === '1062') {
         return res.status(409).json({
           success: false,
           message: EMAIL_TAKEN_MESSAGE,

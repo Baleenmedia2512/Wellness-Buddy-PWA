@@ -363,9 +363,9 @@ export async function assignLeadSeat(supabase, teamId, userId) {
     // Unique conflict / race — another user created the row; try Co-Sponsor.
     const conflictCode = insertError.code || insertError?.details;
     const isConflict =
-      insertError.code === '23505' ||
+      insertError.code === '1062' ||
       /duplicate|unique/i.test(String(insertError.message || '')) ||
-      conflictCode === '23505';
+      conflictCode === '1062';
 
     if (!isConflict) {
       throw insertError;

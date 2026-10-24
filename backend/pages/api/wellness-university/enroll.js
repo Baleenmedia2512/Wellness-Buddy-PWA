@@ -126,7 +126,7 @@ export default async function handler(req, res) {
       .eq('"UserId"', user.UserId)
       .maybeSingle();
 
-    if (checkError && checkError.code !== 'PGRST116') {
+    if (checkError && checkError.code !== '1172') {
       console.error('❌ [enroll] Check enrollment error:', checkError);
       throw new Error(checkError.message);
     }

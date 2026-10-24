@@ -13,9 +13,16 @@ import {
 
 const DEFAULT_LIMIT = 1000;
 
+/** MySQL ER_DUP_ENTRY. */
+const MYSQL_DUP_ENTRY = '1062';
+/** MySQL ER_NO_SUCH_TABLE. */
+const MYSQL_NO_SUCH_TABLE = '1146';
+/** MySQL ER_TOO_MANY_ROWS. */
+const MYSQL_TOO_MANY_ROWS = '1172';
+
 /**
- * MySQL/Prisma unique violations surface as 1062, P2002, or P2010 with meta.code 1062.
- * Callers still branch on PostgreSQL 23505. Keep that code so those branches work on MySQL.
+ * Normalize Prisma/MySQL failures to MySQL error codes.
+ * Duplicate inserts and updates are ER_DUP_ENTRY (1062).
  * @param {unknown} err
  * @returns {{ message: string, code: string|null }}
  */
@@ -25,9 +32,17 @@ export function mapDriverError(err) {
   const isDuplicate = err?.code === 'P2002'
     || err?.code === 'ER_DUP_ENTRY'
     || metaCode === '1062'
+    || err?.code === '1062'
     || /duplicate entry/i.test(message);
-  if (isDuplicate) return { message, code: '23505' };
+  if (isDuplicate) return { message, code: MYSQL_DUP_ENTRY };
   return { message, code: err?.code || metaCode || null };
+}
+
+function notSingleRowError(rowCount) {
+  return {
+    message: 'JSON object requested, multiple (or no) rows returned',
+    code: rowCount > 1 ? MYSQL_TOO_MANY_ROWS : '1329',
+  };
 }
 
 function shapeRows(rows, mode) {
@@ -35,7 +50,7 @@ function shapeRows(rows, mode) {
     if (rows.length !== 1) {
       return {
         data: null,
-        error: { message: 'JSON object requested, multiple (or no) rows returned', code: 'PGRST116' },
+        error: notSingleRowError(rows.length),
         count: null,
       };
     }
@@ -45,7 +60,7 @@ function shapeRows(rows, mode) {
     if (rows.length > 1) {
       return {
         data: null,
-        error: { message: 'JSON object requested, multiple (or no) rows returned', code: 'PGRST116' },
+        error: notSingleRowError(rows.length),
         count: null,
       };
     }
@@ -186,7 +201,7 @@ class MysqlQuery {
     try {
       const table = getCatalog().get(this.table);
       if (!table) {
-        return { data: null, error: { message: `Unknown table ${this.table}`, code: '42P01' }, count: null };
+        return { data: null, error: { message: `Unknown table ${this.table}`, code: MYSQL_NO_SUCH_TABLE }, count: null };
       }
       if (this.action === 'insert') return await this._insert(table);
       if (this.action === 'update') return await this._update(table);

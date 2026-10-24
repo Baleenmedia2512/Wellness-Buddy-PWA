@@ -127,7 +127,7 @@ export async function ensureUsageRow(userId, usageDate, limitSnapshot) {
     .single();
   if (error) {
     // Race: another request inserted — re-fetch
-    if (String(error.code) === '23505' || /duplicate/i.test(error.message || '')) {
+    if (String(error.code) === '1062' || /duplicate/i.test(error.message || '')) {
       return getUsageRow(userId, usageDate);
     }
     throw error;
