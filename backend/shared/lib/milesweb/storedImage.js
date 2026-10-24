@@ -7,13 +7,13 @@ import { isEnabled } from '../feature-flags.js';
 import { isR2Configured } from '../r2/config.js';
 import { avatarRedirectUrl } from '../r2/s3.js';
 import { isMileswebStorageEnabled } from './config.js';
-import { mileswebObjectExists } from './ftpStorage.js';
 import { isAllowedUploadKey, mileswebRedirectUrl } from './objectKey.js';
 
 export async function resolveStoredImageUrl(key) {
   if (!isAllowedUploadKey(key)) return null;
   if (isMileswebStorageEnabled()) {
     try {
+      const { mileswebObjectExists } = await import('./ftpStorage.js');
       if (await mileswebObjectExists(key)) return mileswebRedirectUrl(key);
     } catch {
       /* keep the previous R2 or base64 path */
