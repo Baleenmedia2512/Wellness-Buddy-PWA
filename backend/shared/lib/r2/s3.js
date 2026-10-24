@@ -196,8 +196,21 @@ export function signedGetObjectUrl(key, opts = {}) {
   return `https://${config.endpointHost}${uri}?${qs}`;
 }
 
+function canSignR2Get(config) {
+  return Boolean(
+    config?.endpointHost
+    && config?.bucket
+    && config?.accessKeyId
+    && config?.secretAccessKey,
+  );
+}
+
 export function avatarRedirectUrl(key, config = readR2Config()) {
-  return publicObjectUrl(key, config) || signedGetObjectUrl(key, { config, expiresSeconds: 3600 });
+  if (!key) return null;
+  const pub = publicObjectUrl(key, config);
+  if (pub) return pub;
+  if (!canSignR2Get(config)) return null;
+  return signedGetObjectUrl(key, { config, expiresSeconds: 3600 });
 }
 
 export { buildAvatarObjectKey, R2_FOLDERS } from './objectKeys.js';
