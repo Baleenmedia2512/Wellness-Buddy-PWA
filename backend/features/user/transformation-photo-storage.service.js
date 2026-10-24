@@ -112,10 +112,10 @@ export async function persistTransformationPhotosR2Orphan(userId, existingRaw, i
   if (!hasIncomingSlots(incoming)) return null;
   const forUpload = mergeTransformationPhotos(existingRaw, incoming);
   if (!transformationUploadsEnabled()) {
-    logger.warn('[transformation-photo-storage] R2 off — skipping transformation photo persist', {
+    logger.info('[transformation-photo-storage] file storage off — keeping photos on the profile row', {
       userId,
     });
-    return null;
+    return forUpload;
   }
   const needing = slotsNeedingTransformationR2Upload(forUpload);
   const withKeys = await persistTransformationPhotoKeys(userId, forUpload);

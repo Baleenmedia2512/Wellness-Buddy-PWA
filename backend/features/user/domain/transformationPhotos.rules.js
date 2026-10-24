@@ -24,6 +24,19 @@ export const TRANSFORMATION_PHOTO_KEY_FIELDS = Object.freeze({
 const DATA_IMAGE_RE = /^data:image\/[a-zA-Z0-9+.-]+;base64,/;
 const HTTPS_RE = /^https:\/\//i;
 
+/** A file URL the browser can request. `https://transformation/...` uses the key folder as the host. */
+function isDisplayablePhotoUrl(url, key) {
+  if (typeof url !== 'string' || !HTTPS_RE.test(url.trim())) return false;
+  try {
+    const host = new URL(url.trim()).hostname;
+    if (!host) return false;
+    const keyRoot = String(key || '').split('/')[0];
+    return !keyRoot || host !== keyRoot;
+  } catch {
+    return false;
+  }
+}
+
 export function isStoredTransformationPhoto(value) {
   if (typeof value !== 'string') return false;
   const trimmed = value.trim();
@@ -130,7 +143,7 @@ export function mapTransformationPhotosForClient(raw, {
     const key = rec[keyField];
     if (preferR2 && key && typeof resolveR2Url === 'function') {
       const url = resolveR2Url(key);
-      if (url) {
+      if (isDisplayablePhotoUrl(url, key)) {
         out[slot] = url;
         return;
       }

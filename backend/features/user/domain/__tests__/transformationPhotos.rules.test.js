@@ -75,6 +75,17 @@ describe('mapTransformationPhotosForClient', () => {
     assert.equal(out.left, `https://cdn/${LEFT_KEY}`);
     assert.equal(out.front, FRONT);
   });
+
+  it('keeps the stored image when the file URL has no real host', () => {
+    const out = mapTransformationPhotosForClient(
+      { front: FRONT, frontKey: 'transformation/339/front/fd312dfa7c5fd415.jpg' },
+      {
+        preferR2: true,
+        resolveR2Url: () => 'https://transformation/339/front/fd312dfa7c5fd415.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256',
+      },
+    );
+    assert.equal(out.front, FRONT);
+  });
 });
 
 describe('mergeTransformationPhotos', () => {
