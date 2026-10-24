@@ -8,7 +8,7 @@
  *   1. R2 object (ProfileImageKey) → 302 to public or signed URL
  *   2. https://… ProfileImage (Google) → 302 redirect
  *   3. data:image/* ProfileImage still in DB → upload to R2 when configured, else binary
- *   4. Centre transformation R2 key / photo (fallback only)
+ *   4. Centre transformation key on MilesWeb or R2, then centre photo (fallback only)
  *   5. missing / invalid → 404 (frontend falls back to letter avatar)
  *
  * Optional `inline=1` streams bytes instead of 302 so the profile cropper can
@@ -28,6 +28,7 @@ import {
   transformationPhotoUrlForKey,
 } from '../../../features/user/transformation-photo-storage.service.js';
 import { resolveProfileDisplayAvatar } from '../../../features/user/domain/profileDisplayAvatar.rules.js';
+import { mapTransformationPhotosRecord } from '../../../features/user/domain/transformationPhotos.rules.js';
 import { wantsInlineAvatar } from '../../../features/user/domain/avatarInline.rules.js';
 import { getAvatarSource } from '../../../features/user/user.repository.js';
 import logger from '../../../shared/lib/logger.js';
@@ -144,6 +145,17 @@ export default async function handler(req, res) {
     if (resolved.kind === 'redirect') {
       cache.set(cacheKey, { kind: 'redirect', url: resolved.url }, AVATAR_CACHE_TTL_MS);
       return sendAvatar(res, resolved.url, 'MISS', inline);
+    }
+
+    if (resolved.kind === 'none') {
+      const frontKey = mapTransformationPhotosRecord(data.transformation_photos).frontKey;
+      if (frontKey) {
+        const storedUrl = await resolveStoredImageUrl(frontKey);
+        if (isMileswebServedUrl(storedUrl)) {
+          cache.set(cacheKey, { kind: 'redirect', url: storedUrl }, AVATAR_CACHE_TTL_MS);
+          return sendAvatar(res, storedUrl, 'MISS', inline);
+        }
+      }
     }
 
     if (resolved.kind === 'dataUri') {
