@@ -76,6 +76,17 @@ describe('mapTransformationPhotosForClient', () => {
     assert.equal(out.front, FRONT);
   });
 
+  it('new clients use the MilesWeb media path when the slot has no base64', () => {
+    const out = mapTransformationPhotosForClient(
+      { front: null, frontKey: 'transformation/1/front/abc.jpg' },
+      {
+        preferR2: true,
+        resolveR2Url: () => '/api/media/transformation/1/front/abc.jpg',
+      },
+    );
+    assert.equal(out.front, '/api/media/transformation/1/front/abc.jpg');
+  });
+
   it('keeps the stored image when the file URL has no real host', () => {
     const out = mapTransformationPhotosForClient(
       { front: FRONT, frontKey: 'transformation/339/front/fd312dfa7c5fd415.jpg' },

@@ -26,7 +26,10 @@ const HTTPS_RE = /^https:\/\//i;
 
 /** A file URL the browser can request. `https://transformation/...` uses the key folder as the host. */
 function isDisplayablePhotoUrl(url, key) {
-  if (typeof url !== 'string' || !HTTPS_RE.test(url.trim())) return false;
+  if (typeof url !== 'string') return false;
+  const trimmed = url.trim();
+  if (trimmed.startsWith('/api/media/')) return true;
+  if (!HTTPS_RE.test(trimmed)) return false;
   try {
     const host = new URL(url.trim()).hostname;
     if (!host) return false;

@@ -20,9 +20,21 @@ function browserImageUrl(url) {
 }
 
 function absolutizeProfileImage(data) {
-  const profileImage = data?.data?.profileImage;
-  if (typeof profileImage === 'string' && profileImage.startsWith('/api/')) {
-    data.data.profileImage = browserImageUrl(profileImage);
+  const payload = data?.data;
+  if (!payload) return data;
+  if (typeof payload.profileImage === 'string' && payload.profileImage.startsWith('/api/')) {
+    payload.profileImage = browserImageUrl(payload.profileImage);
+  }
+  if (typeof payload.avatarUrl === 'string' && payload.avatarUrl.startsWith('/api/')) {
+    payload.avatarUrl = browserImageUrl(payload.avatarUrl);
+  }
+  const photos = payload.transformationPhotos;
+  if (photos && typeof photos === 'object') {
+    ['front', 'left', 'right'].forEach((slot) => {
+      if (typeof photos[slot] === 'string' && photos[slot].startsWith('/api/')) {
+        photos[slot] = browserImageUrl(photos[slot]);
+      }
+    });
   }
   return data;
 }

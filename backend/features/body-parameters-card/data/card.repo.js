@@ -945,9 +945,10 @@ async function resolveMemberWeightMetrics(userId, heightCm) {
 /**
  * Full BCM form prefill for a team member (team_table + latest weight).
  * @param {number} userId
+ * @param {{ mapPhotos?: (raw: object|null) => Promise<object>|object }} [options]
  * @returns {Promise<object|null>}
  */
-export async function getMemberPrefillForCard(userId) {
+export async function getMemberPrefillForCard(userId, options = {}) {
   const uid = parseInt(userId, 10);
   if (!Number.isFinite(uid) || uid < 1) return null;
 
@@ -980,7 +981,9 @@ export async function getMemberPrefillForCard(userId) {
   const num = (v) => (v != null && Number.isFinite(Number(v)) ? Number(v) : null);
   const heightCm = data.Height != null ? Number(data.Height) : null;
   const w = await resolveMemberWeightMetrics(uid, heightCm);
-  const transformationPhotos = mapTransformationPhotos(data.transformation_photos);
+  const transformationPhotos = options.mapPhotos
+    ? await options.mapPhotos(data.transformation_photos)
+    : mapTransformationPhotos(data.transformation_photos);
   const hasAnyPhoto = Boolean(
     transformationPhotos.front || transformationPhotos.left || transformationPhotos.right,
   );
