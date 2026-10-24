@@ -314,8 +314,10 @@ class MysqlQuery {
     const columns = Object.keys(row || {}).filter((key) => row[key] !== undefined && table.fields.has(key));
     if (!columns.length) return { data: null, error: { message: 'Upsert payload has no known columns' }, count: null };
     const params = columns.map((column) => normalizeWriteValue(row[column], table.fields.get(column)));
-    const assignments = columns.map((column) => `${quoteIdent(column)} = incoming.${quoteIdent(column)}`);
-    const sql = `INSERT INTO ${quoteIdent(table.name)} (${columns.map(quoteIdent).join(', ')}) VALUES (${columns.map(() => '?').join(', ')}) AS incoming ON DUPLICATE KEY UPDATE ${assignments.join(', ')}`;
+    // VALUES(col) works on MariaDB and MySQL. The MySQL 8 row alias
+    // (`AS incoming`) is rejected by MariaDB, so daily scores never saved.
+    const assignments = columns.map((column) => `${quoteIdent(column)} = VALUES(${quoteIdent(column)})`);
+    const sql = `INSERT INTO ${quoteIdent(table.name)} (${columns.map(quoteIdent).join(', ')}) VALUES (${columns.map(() => '?').join(', ')}) ON DUPLICATE KEY UPDATE ${assignments.join(', ')}`;
     await withUtc((tx) => tx.$executeRawUnsafe(sql, ...params));
     const keys = (this.onConflict || table.pk.join(',')).split(',').map(cleanIdent).filter((column) => row[column] !== undefined);
     keys.forEach((column) => this.eq(column, row[column]));
