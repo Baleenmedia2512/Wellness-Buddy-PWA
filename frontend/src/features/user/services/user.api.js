@@ -11,6 +11,22 @@ import { syncMarathonWeightComparisonFromProfile } from '../../marathon/marathon
 
 const base = () => getApiBaseUrl();
 
+/** `/api/media/...` is served by the API host, not the web app host. */
+function browserImageUrl(url) {
+  if (typeof url !== 'string') return url;
+  const trimmed = url.trim();
+  if (!trimmed.startsWith('/api/')) return url;
+  return `${base()}${trimmed}`;
+}
+
+function absolutizeProfileImage(data) {
+  const profileImage = data?.data?.profileImage;
+  if (typeof profileImage === 'string' && profileImage.startsWith('/api/')) {
+    data.data.profileImage = browserImageUrl(profileImage);
+  }
+  return data;
+}
+
 function profileCacheKeyEmail(email) {
   if (!email) return null;
   return cacheManager.generateKey('userProfile', String(email).toLowerCase());
@@ -117,6 +133,7 @@ export async function getProfile(emailOrOpts, maybeOpts = {}) {
       const data = await res.json();
       handlePossibleAppUpdateRequired(res, data);
       if (data?.success && data?.data) {
+        absolutizeProfileImage(data);
         syncMarathonWeightComparisonFromProfile(data.data);
         mirrorProfileCache(data, { email, userId });
       }
@@ -138,7 +155,7 @@ export async function updateProfile(payload) {
   }
   const data = await res.json();
   handlePossibleAppUpdateRequired(res, data);
-  return data;
+  return absolutizeProfileImage(data);
 }
 
 export async function getContext(userId) {

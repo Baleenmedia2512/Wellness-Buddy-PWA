@@ -19,7 +19,8 @@ import { applyCors, methodNotAllowed } from '../../../shared/lib/handler.js';
 import { cache, cacheKeys } from '../../../utils/cache.js';
 import { parseDataUri } from '../../../shared/lib/images/dataUri.js';
 import { avatarRedirectUrl } from '../../../shared/lib/r2/s3.js';
-import { isMileswebServedUrl } from '../../../shared/lib/milesweb/objectKey.js';
+import { isMileswebServedUrl, mediaKeyFromServedUrl } from '../../../shared/lib/milesweb/objectKey.js';
+import { readMileswebObject } from '../../../shared/lib/milesweb/ftpStorage.js';
 import { resolveStoredImageUrl } from '../../../shared/lib/milesweb/storedImage.js';
 import { persistAvatarKey, r2AvatarsEnabled, avatarUrlForKey } from '../../../features/user/avatar-storage.service.js';
 import {
@@ -50,7 +51,26 @@ function sendBytes(res, parsed, cacheTag) {
   return res.status(200).send(parsed.bytes);
 }
 
+const INLINE_TYPES = {
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  png: 'image/png',
+  webp: 'image/webp',
+  gif: 'image/gif',
+};
+
 async function sendBytesFromUrl(res, url, cacheTag) {
+  const mediaKey = mediaKeyFromServedUrl(url);
+  if (mediaKey) {
+    const bytes = await readMileswebObject(mediaKey);
+    if (!bytes || bytes.length > MAX_INLINE_AVATAR_BYTES) return res.status(404).end();
+    const ext = mediaKey.slice(mediaKey.lastIndexOf('.') + 1).toLowerCase();
+    return sendBytes(res, {
+      contentType: INLINE_TYPES[ext] || 'image/jpeg',
+      bytes,
+    }, cacheTag);
+  }
+  if (typeof url !== 'string' || !/^https?:\/\//i.test(url)) return res.status(404).end();
   try {
     const imgRes = await fetch(url);
     if (!imgRes.ok) return res.status(404).end();
