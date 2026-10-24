@@ -103,7 +103,10 @@ export default async function handler(req, res) {
   }
 
   const inline = wantsInlineAvatar(req.query);
-  const cacheKey = cacheKeys.userAvatar(userId);
+  const profileOnly = String(req.query.profileOnly || '') === '1';
+  const cacheKey = profileOnly
+    ? `${cacheKeys.userAvatar(userId)}:profile`
+    : cacheKeys.userAvatar(userId);
   const cached = cache.get(cacheKey);
   if (cached?.kind === 'none') {
     return res.status(404).end();
@@ -133,7 +136,7 @@ export default async function handler(req, res) {
     const resolved = resolveProfileDisplayAvatar({
       profileImageKey: data.ProfileImageKey,
       profileImage: data.ProfileImage,
-      transformationPhotos: data.transformation_photos,
+      transformationPhotos: profileOnly ? null : data.transformation_photos,
       r2Enabled: r2AvatarsEnabled() || r2TransformationPhotosEnabled(),
       resolveR2Url: (key) => (
         transformationPhotoUrlForKey(key)
@@ -147,7 +150,7 @@ export default async function handler(req, res) {
       return sendAvatar(res, resolved.url, 'MISS', inline);
     }
 
-    if (resolved.kind === 'none') {
+    if (!profileOnly && resolved.kind === 'none') {
       const frontKey = mapTransformationPhotosRecord(data.transformation_photos).frontKey;
       if (frontKey) {
         const storedUrl = await resolveStoredImageUrl(frontKey);
