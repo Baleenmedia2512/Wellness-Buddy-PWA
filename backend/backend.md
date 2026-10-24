@@ -10,7 +10,7 @@
 ## 1. Stack
 
 - **Next.js 15.3.6** (API routes only — no SSR pages for app UI), **React 18.3**, JavaScript (no TS), `jsconfig.json` paths.
-- **Data:** Supabase JS client (`@supabase/supabase-js` ^2.90) **and** `pg` Pool (^8.16). `mysql2` has been fully removed.
+- **Data:** Prisma (`@prisma/client`) against MySQL/MariaDB when `MYSQL_DATABASE_URL` is set. `getSupabaseClient()` returns that adapter for `.from('table')` queries. Supabase JS is the table client only when `MYSQL_DATABASE_URL` is absent, and is still used for storage and realtime when `SUPABASE_URL` is set. `pg` is not a backend dependency. `mysql2` has been fully removed.
 - **Validation:** `joi@18` is installed but most validators are hand-written. See §6.
 - **Other deps:** `bcryptjs`, `@google/generative-ai`, `nodemailer`, `formidable` (multipart uploads). Dev: `cross-env`, `eslint`. No `date-fns`, `firebase-admin`, or Jest in backend deps.
 

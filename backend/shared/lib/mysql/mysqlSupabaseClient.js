@@ -13,6 +13,23 @@ import {
 
 const DEFAULT_LIMIT = 1000;
 
+/**
+ * MySQL/Prisma unique violations surface as 1062, P2002, or P2010 with meta.code 1062.
+ * Callers still branch on PostgreSQL 23505. Keep that code so those branches work on MySQL.
+ * @param {unknown} err
+ * @returns {{ message: string, code: string|null }}
+ */
+export function mapDriverError(err) {
+  const message = err?.message || String(err);
+  const metaCode = err?.meta?.code != null ? String(err.meta.code) : '';
+  const isDuplicate = err?.code === 'P2002'
+    || err?.code === 'ER_DUP_ENTRY'
+    || metaCode === '1062'
+    || /duplicate entry/i.test(message);
+  if (isDuplicate) return { message, code: '23505' };
+  return { message, code: err?.code || metaCode || null };
+}
+
 function shapeRows(rows, mode) {
   if (mode === 'single') {
     if (rows.length !== 1) {
@@ -177,7 +194,7 @@ class MysqlQuery {
       if (this.action === 'upsert') return await this._upsert(table);
       return await this._select(table);
     } catch (err) {
-      return { data: null, error: { message: err.message, code: err.code || null }, count: null };
+      return { data: null, error: mapDriverError(err), count: null };
     }
   }
 

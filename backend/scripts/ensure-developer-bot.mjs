@@ -11,7 +11,7 @@
 import { readFileSync, existsSync } from 'fs';
 import { dirname, resolve } from 'path';
 import { fileURLToPath } from 'url';
-import { createClient } from '@supabase/supabase-js';
+import { PrismaClient } from '@prisma/client';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const backendRoot = resolve(__dirname, '..');
@@ -19,6 +19,16 @@ const backendRoot = resolve(__dirname, '..');
 const DEVELOPER_BOT_EMAIL = 'easy2work.developer@gmail.com';
 const DEVELOPER_BOT_NAME = 'developer bot';
 const DEVELOPER_BOT_PHONE = '9000000001';
+
+const ROW_SELECT = {
+  UserId: true,
+  UserName: true,
+  Email: true,
+  PhoneNumber: true,
+  Role: true,
+  Status: true,
+  SetupSkipped: true,
+};
 
 function loadEnvFile(filePath) {
   if (!existsSync(filePath)) return;
@@ -43,33 +53,17 @@ function loadEnvFile(filePath) {
 loadEnvFile(resolve(backendRoot, '.env.local'));
 loadEnvFile(resolve(backendRoot, '.env'));
 
-function createSupabase() {
-  const url = process.env.SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_ANON_KEY;
-  if (!url || !key) {
-    throw new Error('SUPABASE_URL and SUPABASE_SERVICE_KEY (or SUPABASE_ANON_KEY) are required');
-  }
-  return createClient(url, key);
+function createPrisma() {
+  const url = process.env.MYSQL_DATABASE_URL;
+  if (!url) throw new Error('MYSQL_DATABASE_URL is required');
+  return new PrismaClient({ datasources: { db: { url } } });
 }
 
-async function findOne(supabase, column, value) {
-  const { data, error } = await supabase
-    .from('team_table')
-    .select('UserId, UserName, Email, PhoneNumber, Role, Status, SetupSkipped')
-    .ilike(column, value)
-    .limit(1);
-  if (error) throw error;
-  return data?.[0] || null;
-}
-
-async function findByPhone(supabase, phone) {
-  const { data, error } = await supabase
-    .from('team_table')
-    .select('UserId, UserName, Email, PhoneNumber, Role, Status, SetupSkipped')
-    .eq('PhoneNumber', phone)
-    .limit(1);
-  if (error) throw error;
-  return data?.[0] || null;
+function findOne(prisma, column, value) {
+  return prisma.team_table.findFirst({
+    where: { [column]: value },
+    select: ROW_SELECT,
+  });
 }
 
 function summarize(row) {
@@ -83,69 +77,77 @@ function summarize(row) {
   };
 }
 
+async function insertTeamRow(prisma, data) {
+  return prisma.$transaction(async (tx) => {
+    const max = await tx.team_table.aggregate({ _max: { UserId: true } });
+    const UserId = Number(max._max.UserId || 0) + 1;
+    return tx.team_table.create({
+      data: { ...data, UserId },
+      select: ROW_SELECT,
+    });
+  });
+}
+
 async function main() {
-  const supabase = createSupabase();
-  const now = new Date().toISOString();
-  const desired = {
-    UserName: DEVELOPER_BOT_NAME,
-    Email: DEVELOPER_BOT_EMAIL,
-    PhoneNumber: DEVELOPER_BOT_PHONE,
-    Role: 'developer',
-    Status: 'Active',
-    SetupSkipped: true,
-    CoachApproved: 1,
-    ConsentAcceptedAt: now,
-    ConsentVersion: '2026-07-31',
-    LastActiveAt: now,
-  };
+  const prisma = createPrisma();
+  try {
+    const now = new Date();
+    const desired = {
+      UserName: DEVELOPER_BOT_NAME,
+      Email: DEVELOPER_BOT_EMAIL,
+      PhoneNumber: DEVELOPER_BOT_PHONE,
+      Role: 'developer',
+      Status: 'Active',
+      SetupSkipped: true,
+      CoachApproved: 1,
+      ConsentAcceptedAt: now,
+      ConsentVersion: '2026-07-31',
+      LastActiveAt: now,
+    };
 
-  const byEmail = await findOne(supabase, 'Email', DEVELOPER_BOT_EMAIL);
-  const byPhone = await findByPhone(supabase, DEVELOPER_BOT_PHONE);
+    const byEmail = await findOne(prisma, 'Email', DEVELOPER_BOT_EMAIL);
+    const byPhone = await findOne(prisma, 'PhoneNumber', DEVELOPER_BOT_PHONE);
 
-  if (byPhone && (!byEmail || String(byPhone.UserId) !== String(byEmail.UserId))) {
-    const phoneEmail = String(byPhone.Email || '').trim().toLowerCase();
-    if (phoneEmail && phoneEmail !== DEVELOPER_BOT_EMAIL) {
-      throw new Error(
-        `Phone ${DEVELOPER_BOT_PHONE} already belongs to another user (UserId=${byPhone.UserId}). Pick a different test number.`,
-      );
+    if (byPhone && (!byEmail || String(byPhone.UserId) !== String(byEmail.UserId))) {
+      const phoneEmail = String(byPhone.Email || '').trim().toLowerCase();
+      if (phoneEmail && phoneEmail !== DEVELOPER_BOT_EMAIL) {
+        throw new Error(
+          `Phone ${DEVELOPER_BOT_PHONE} already belongs to another user (UserId=${byPhone.UserId}). Pick a different test number.`,
+        );
+      }
     }
-  }
 
-  if (byEmail) {
-    const { error } = await supabase
-      .from('team_table')
-      .update(desired)
-      .eq('UserId', byEmail.UserId);
-    if (error) throw error;
-    const updated = await findOne(supabase, 'Email', DEVELOPER_BOT_EMAIL);
-    console.log('Updated developer bot sponsor:', summarize(updated));
-    return;
-  }
+    if (byEmail) {
+      const updated = await prisma.team_table.update({
+        where: { UserId: byEmail.UserId },
+        data: desired,
+        select: ROW_SELECT,
+      });
+      console.log('Updated developer bot sponsor:', summarize(updated));
+      return;
+    }
 
-  if (byPhone && !String(byPhone.Email || '').trim()) {
-    const { error } = await supabase
-      .from('team_table')
-      .update(desired)
-      .eq('UserId', byPhone.UserId);
-    if (error) throw error;
-    const updated = await findByPhone(supabase, DEVELOPER_BOT_PHONE);
-    console.log('Updated existing phone row into developer bot sponsor:', summarize(updated));
-    return;
-  }
+    if (byPhone && !String(byPhone.Email || '').trim()) {
+      const updated = await prisma.team_table.update({
+        where: { UserId: byPhone.UserId },
+        data: desired,
+        select: ROW_SELECT,
+      });
+      console.log('Updated existing phone row into developer bot sponsor:', summarize(updated));
+      return;
+    }
 
-  const { data, error } = await supabase
-    .from('team_table')
-    .insert({
+    const created = await insertTeamRow(prisma, {
       ...desired,
       EntryDateTime: now,
       EntryUser: 'Developer Bot',
       Password: 'User@123#',
       TargetWeightInKg: 0,
-    })
-    .select('UserId, UserName, Email, PhoneNumber, Role, Status')
-    .single();
-  if (error) throw error;
-  console.log('Created developer bot sponsor:', summarize(data));
+    });
+    console.log('Created developer bot sponsor:', summarize(created));
+  } finally {
+    await prisma.$disconnect();
+  }
 }
 
 main().catch((err) => {

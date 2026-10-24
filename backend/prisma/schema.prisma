@@ -1,5 +1,5 @@
-// Local MySQL schema for wellness_schema_check.
-// Live API traffic still uses Supabase. Regenerate with: npm run prisma:pull
+// MySQL/MariaDB schema. Connection: MYSQL_DATABASE_URL.
+// Table queries go through Prisma. Regenerate with: npm run prisma:pull
 
 generator client {
   provider = "prisma-client-js"
