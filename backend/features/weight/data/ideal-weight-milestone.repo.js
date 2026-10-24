@@ -1,7 +1,7 @@
 /**
  * ideal-weight-milestone.repo.js — DB + mail for first ideal-weight reach.
  */
-import { getSupabaseClient } from '../../../utils/supabaseClient.js';
+import { getMysqlClient } from '../../../utils/mysqlClient.js';
 import { nowUtc } from '../../../shared/lib/datetime/index.js';
 import { sendTransactionalMail } from '../../../shared/lib/smtp-mail.js';
 import { buildLeadPartnerByUserId } from '../../../utils/teamHierarchyTree.js';
@@ -23,8 +23,8 @@ function isMissingColumnError(error, columnName) {
  */
 export async function getIdealWeightReachedAt(userId) {
   if (!userId) return null;
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from('team_table')
     .select('"IdealWeightReachedAt"')
     .eq('"UserId"', userId)
@@ -46,8 +46,8 @@ export async function getIdealWeightReachedAt(userId) {
  */
 export async function listActiveWeightsAsc(userId) {
   if (!userId) return [];
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from('weight_records_table')
     .select('"ID", "Weight", "CreatedAt"')
     .eq('"UserId"', userId)
@@ -66,8 +66,8 @@ export async function listActiveWeightsAsc(userId) {
  */
 export async function claimIdealWeightReachedAt(userId, reachedAtIso) {
   if (!userId || !reachedAtIso) return false;
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from('team_table')
     .update({ IdealWeightReachedAt: reachedAtIso })
     .eq('"UserId"', userId)
@@ -96,8 +96,8 @@ export async function claimIdealWeightReachedAt(userId, reachedAtIso) {
 export async function claimIdealWeightReachedNotify(userId) {
   if (!userId) return false;
   const stamped = nowUtc();
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from('team_table')
     .update({ IdealWeightReachedNotifiedAt: stamped })
     .eq('"UserId"', userId)
@@ -132,8 +132,8 @@ export async function backfillIdealWeightReachedAt(userId, reachedAtIso, { suppr
   if (suppressNotify) {
     patch.IdealWeightReachedNotifiedAt = reachedAtIso;
   }
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from('team_table')
     .update(patch)
     .eq('"UserId"', userId)
@@ -155,8 +155,8 @@ export async function backfillIdealWeightReachedAt(userId, reachedAtIso, { suppr
  * @returns {Promise<{ coachId: number|null, memberName: string|null, heightCm: number|null }>}
  */
 export async function findMemberCoachContext(userId) {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from('team_table')
     .select('"CoachId", "UserName", "Height"')
     .eq('"UserId"', userId)
@@ -222,9 +222,9 @@ export async function findLeadPartnersByUserIds(userIds) {
   )];
   if (ids.length === 0) return new Map();
 
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   const orFilter = ids.map((id) => `CoachId.eq.${id},CoCoachId.eq.${id}`).join(',');
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from('coach_teams_table')
     .select('CoachId, CoCoachId')
     .or(orFilter)
@@ -247,8 +247,8 @@ export async function findLeadPartnersByUserIds(userIds) {
  */
 export async function findCoachContact(coachId) {
   if (!coachId) return { email: null, name: null };
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from('team_table')
     .select('"Email", "UserName"')
     .eq('"UserId"', coachId)
@@ -291,8 +291,8 @@ export async function sendCoachEmail({ to, subject, text, html }) {
  * @returns {Promise<Array<{ UserId: number, Height: string|number|null }>>}
  */
 export async function listUsersPendingIdealReachedBackfill({ limit = 100, offset = 0 } = {}) {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from('team_table')
     .select('"UserId", "Height"')
     .is('"IdealWeightReachedAt"', null)

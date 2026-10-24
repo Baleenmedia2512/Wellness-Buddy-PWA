@@ -1,4 +1,4 @@
-import { getSupabaseClient } from "../../../utils/supabaseClient.js";
+import { getMysqlClient } from "../../../utils/mysqlClient.js";
 import logger from '../../../shared/lib/logger.js';
 import {
   isActiveTeamStatus,
@@ -84,13 +84,13 @@ export default async function handler(req, res) {
       purpose: purposeSearch ? 'search' : 'full',
     });
 
-    const supabase = getSupabaseClient();
+    const db = getMysqlClient();
     let coachIdInt;
 
     // If email is provided, look up the coach ID
     if (email) {
       logger.debug("🔍 [team-hierarchy] Looking up coach by email:", email);
-      const { data: coach, error: coachError } = await supabase
+      const { data: coach, error: coachError } = await db
         .from("team_table")
         .select("UserId")
         .eq("Email", email)
@@ -144,7 +144,7 @@ export default async function handler(req, res) {
 
     let allUsers;
     try {
-      allUsers = await loadCoachSubtreeTeamUsers(supabase, coachIdInt, {
+      allUsers = await loadCoachSubtreeTeamUsers(db, coachIdInt, {
         select: purposeSearch ? SELECT_SEARCH : SELECT_FULL,
       });
     } catch (usersError) {
@@ -155,7 +155,7 @@ export default async function handler(req, res) {
         /column/i.test(msg)
       ) {
         try {
-          allUsers = await loadCoachSubtreeTeamUsers(supabase, coachIdInt, {
+          allUsers = await loadCoachSubtreeTeamUsers(db, coachIdInt, {
             select: SELECT_BASIC,
           });
         } catch (fallbackError) {
@@ -206,7 +206,7 @@ export default async function handler(req, res) {
     const coachTeamsMap = {}; // Maps TeamId string -> {CoachId, CoCoachId}
     const coachTeamRows = [];
     if (coachTeamIds.length > 0) {
-      const { data: coachTeams, error: teamsError } = await supabase
+      const { data: coachTeams, error: teamsError } = await db
         .from("coach_teams_table")
         .select("Id, TeamId, CoachId, CoCoachId")
         .in("TeamId", coachTeamIds) // TEMPORARY: Query by TeamId string until schema migration
@@ -410,7 +410,7 @@ export default async function handler(req, res) {
     
     // Try multiple approaches to find the partnership:
     // 1. Check if user is Coach or CoCoach in coach_teams_table
-    const { data: teamByRole } = await supabase
+    const { data: teamByRole } = await db
       .from('coach_teams_table')
       .select('TeamId, CoachId, CoCoachId')
       .or(`CoachId.eq.${coachIdInt},CoCoachId.eq.${coachIdInt}`)
@@ -419,7 +419,7 @@ export default async function handler(req, res) {
     
     // 2. If user has CoachTeamId, also try looking up by TeamId
     if (!teamByRole && loggedInCoach.CoachTeamId) {
-      const { data: teamByTeamId } = await supabase
+      const { data: teamByTeamId } = await db
         .from('coach_teams_table')
         .select('TeamId, CoachId, CoCoachId')
         .eq('TeamId', loggedInCoach.CoachTeamId)
@@ -790,7 +790,7 @@ export default async function handler(req, res) {
       const ids = [...ownerIds];
       for (let i = 0; i < ids.length; i += 100) {
         const slice = ids.slice(i, i + 100);
-        const { data, error } = await supabase
+        const { data, error } = await db
           .from('nutrition_centers_table')
           .select('id, center_name, owner_user_id, registered_at')
           .in('owner_user_id', slice)

@@ -172,7 +172,7 @@ export async function getTestimonialDetail(userId, coachId) {
 }
 
 /**
- * Request signed Supabase Storage upload URLs for testimonial videos.
+ * Request signed MySQL Storage upload URLs for testimonial videos.
  * @param {{ userId, uploadHealth?: boolean, uploadBusiness?: boolean }} payload
  */
 export async function prepareTestimonialVideoUpload(payload) {
@@ -191,7 +191,7 @@ export async function prepareTestimonialVideoUpload(payload) {
 }
 
 /**
- * Upload a video file in chunks via the backend (Capacitor-safe, no direct Supabase fetch).
+ * Upload a video file in chunks via the backend (Capacitor-safe, no direct MySQL fetch).
  * @param {File} file
  * @param {{ path: string, sessionId: string }} uploadInfo
  * @param {'health'|'business'} slot

@@ -13,7 +13,7 @@ import { fetchAllActiveMembers } from '../../features/activity/activity-report.r
 import { fetchAdminUsers } from '../../features/activity/time-report.repository.js';
 
 /**
- * Minimal chainable Supabase mock that pages with .range() and supports .maybeSingle().
+ * Minimal chainable MySQL mock that pages with .range() and supports .maybeSingle().
  * Filters in-memory by eq / in / or / Status.
  */
 function createTeamTableMock(allRows, { pageSize = 1000 } = {}) {
@@ -79,7 +79,7 @@ function createTeamTableMock(allRows, { pageSize = 1000 } = {}) {
           if (maybeSingle) {
             resolve({ data: rows[0] || null, error: null });
           } else {
-            // Unpaged await would silently truncate in prod — tests use .range via fetchAllSupabaseRows
+            // Unpaged await would silently truncate in prod — tests use .range via fetchAllMysqlRows
             resolve({ data: rows.slice(0, 1000), error: null });
           }
         } catch (e) {
@@ -90,7 +90,7 @@ function createTeamTableMock(allRows, { pageSize = 1000 } = {}) {
     return builder;
   }
 
-  const supabase = {
+  const db = {
     from(table) {
       return makeBuilder(table);
     },
@@ -98,7 +98,7 @@ function createTeamTableMock(allRows, { pageSize = 1000 } = {}) {
       return lastRangeCalls;
     },
   };
-  return supabase;
+  return db;
 }
 
 function makeChildren(coachId, count, startId = 1) {
@@ -122,12 +122,12 @@ function makeChildren(coachId, count, startId = 1) {
 describe('hierarchy scale pagination — CoachId children', () => {
   it('returns all >1000 CoachId children (no silent truncation)', async () => {
     const children = makeChildren(42, 1105, 1000);
-    const supabase = createTeamTableMock(children);
-    const rows = await fetchTeamUsersByCoachIdsPaged(supabase, [42]);
+    const db = createTeamTableMock(children);
+    const rows = await fetchTeamUsersByCoachIdsPaged(db, [42]);
     assert.equal(rows.length, 1105);
     assert.equal(rows[0].UserId, 1000);
     assert.equal(rows[rows.length - 1].UserId, 2104);
-    assert.ok(supabase.rangeCallCount >= 2, 'must page more than once');
+    assert.ok(db.rangeCallCount >= 2, 'must page more than once');
   });
 });
 
@@ -154,11 +154,11 @@ describe('hierarchy scale pagination — community fetch', () => {
       TeamId: null,
       Status: 'Active',
     });
-    const supabase = createTeamTableMock(rows);
-    const fetched = await fetchTeamUsersByCommunityCodePaged(supabase, 'TEAM-A');
+    const db = createTeamTableMock(rows);
+    const fetched = await fetchTeamUsersByCommunityCodePaged(db, 'TEAM-A');
     assert.equal(fetched.length, 1003);
     assert.ok(!fetched.some((r) => r.UserId === 99999));
-    assert.ok(supabase.rangeCallCount >= 2);
+    assert.ok(db.rangeCallCount >= 2);
   });
 });
 
@@ -177,11 +177,11 @@ describe('hierarchy scale pagination — dual-coaching level fetch', () => {
       Bmr: null,
       PhysicalActivityLevel: null,
     });
-    const supabase = createTeamTableMock(children);
-    const fetched = await fetchDualCoachingLevelMembers(supabase, [7]);
+    const db = createTeamTableMock(children);
+    const fetched = await fetchDualCoachingLevelMembers(db, [7]);
     assert.equal(fetched.length, 1001);
     assert.ok(!fetched.some((r) => r.UserId === 99998));
-    assert.ok(supabase.rangeCallCount >= 2);
+    assert.ok(db.rangeCallCount >= 2);
   });
 });
 
@@ -197,8 +197,8 @@ describe('hierarchy scale pagination — admin all-active', () => {
       Email: null,
       PhoneNumber: null,
     });
-    const supabase = createTeamTableMock(rows);
-    const fetched = await fetchAllActiveMembers(supabase);
+    const db = createTeamTableMock(rows);
+    const fetched = await fetchAllActiveMembers(db);
     assert.equal(fetched.length, 1002);
     assert.ok(!fetched.some((r) => r.UserId === 99997));
   });
@@ -213,8 +213,8 @@ describe('hierarchy scale pagination — admin all-active', () => {
       Bmr: null,
       PhysicalActivityLevel: null,
     }));
-    const supabase = createTeamTableMock(rows);
-    const fetched = await fetchAdminUsers(supabase);
+    const db = createTeamTableMock(rows);
+    const fetched = await fetchAdminUsers(db);
     assert.equal(fetched.length, 1004);
   });
 });

@@ -1,4 +1,4 @@
-import { getSupabaseClient } from '../../../utils/supabaseClient.js';
+import { getMysqlClient } from '../../../utils/mysqlClient.js';
 import { isEnabled } from '../../../shared/lib/feature-flags.js';
 import {
   resolveRequestedDateYmd,
@@ -58,7 +58,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const supabase = getSupabaseClient();
+    const db = getMysqlClient();
     const topN = Math.min(parseInt(req.query.topN, 10) || 10, 10);
     const viewerUserId = await resolveLeaderboardViewerId({
       userId: req.query.userId,
@@ -89,7 +89,7 @@ export default async function handler(req, res) {
 
     // Indexed subtree: viewer + ancestors (people only) + own downline + co-coach peers.
     // Does not scan team_table and does not load other branches under an upline.
-    const context = await loadReportingContextForCoach(supabase, viewerUserId);
+    const context = await loadReportingContextForCoach(db, viewerUserId);
     const visibleUsers = collectVisibleHierarchyUsers(viewerUserId, context);
 
     // Only trust the hierarchy-scoped visible list.
@@ -118,7 +118,7 @@ export default async function handler(req, res) {
       });
     }
 
-    let scores = await fetchScoresForUsers(supabase, allowedIds, scoreDate);
+    let scores = await fetchScoresForUsers(db, allowedIds, scoreDate);
 
     // Keep the viewer's row in sync with Home (/daily). Missing OR stale
     // snapshots used to leave you off Top 10 while the card already showed
@@ -136,7 +136,7 @@ export default async function handler(req, res) {
       if (viewerStale) {
         try {
           await computeDailyScoreForDate({ userId: viewerUserId, date: scoreDate });
-          scores = await fetchScoresForUsers(supabase, allowedIds, scoreDate);
+          scores = await fetchScoresForUsers(db, allowedIds, scoreDate);
         } catch (computeErr) {
           logger.debug('[WELLNESS-LB] Viewer score compute skipped', {
             err: computeErr.message,
@@ -223,16 +223,16 @@ export default async function handler(req, res) {
 }
 
 /**
- * @param {object} supabase
+ * @param {object} db
  * @param {number[]} userIds
  * @param {string} scoreDate
  * @returns {Promise<Array<{ user_id: number, percentage: number, total_earned: number, total_possible: number }>>}
  */
-async function fetchScoresForUsers(supabase, userIds, scoreDate) {
+async function fetchScoresForUsers(db, userIds, scoreDate) {
   const rows = [];
   for (let i = 0; i < userIds.length; i += SCORE_LOOKUP_CHUNK) {
     const chunk = userIds.slice(i, i + SCORE_LOOKUP_CHUNK);
-    const { data, error } = await supabase
+    const { data, error } = await db
       .from('wellness_score_daily_table')
       .select('user_id, percentage, total_earned, total_possible, computed_at')
       .eq('score_date', scoreDate)

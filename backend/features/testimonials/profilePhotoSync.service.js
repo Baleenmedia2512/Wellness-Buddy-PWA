@@ -19,7 +19,7 @@ import {
   mapTransformationPhotos,
   isStoredTransformationPhoto,
 } from '../user/domain/transformationPhotos.rules.js';
-import { getSupabaseClient } from '../../utils/supabaseClient.js';
+import { getMysqlClient } from '../../utils/mysqlClient.js';
 import logger from '../../shared/lib/logger.js';
 import { shouldHydratePhotosFromProfile } from './domain/photoCompleteness.rules.js';
 
@@ -32,8 +32,8 @@ function storagePath(userId, side, timestamp) {
 const DATA_IMAGE_RE = /^data:image\/[a-zA-Z0-9+.-]+;base64,/;
 
 async function loadProfileLeftPhoto(userId) {
-  const supabase = getSupabaseClient();
-  const { data: row, error } = await supabase
+  const db = getMysqlClient();
+  const { data: row, error } = await db
     .from('team_table')
     .select('transformation_photos')
     .eq('UserId', userId)
@@ -285,8 +285,8 @@ export async function syncTestimonialPathsToProfile({
     return { skipped: true, reason: 'no_paths' };
   }
 
-  const supabase = getSupabaseClient();
-  const { data: row, error: readErr } = await supabase
+  const db = getMysqlClient();
+  const { data: row, error: readErr } = await db
     .from('team_table')
     .select('transformation_photos')
     .eq('UserId', uid)
@@ -294,7 +294,7 @@ export async function syncTestimonialPathsToProfile({
   if (readErr) throw readErr;
 
   const merged = mergeTransformationPhotos(row?.transformation_photos ?? null, slots);
-  const { error: writeErr } = await supabase
+  const { error: writeErr } = await db
     .from('team_table')
     .update({ transformation_photos: merged })
     .eq('UserId', uid);
@@ -329,8 +329,8 @@ export async function syncTestimonialPhotosToProfile({
     return { skipped: true, reason: 'no_images' };
   }
 
-  const supabase = getSupabaseClient();
-  const { data: row, error: readErr } = await supabase
+  const db = getMysqlClient();
+  const { data: row, error: readErr } = await db
     .from('team_table')
     .select('transformation_photos')
     .eq('UserId', uid)
@@ -338,7 +338,7 @@ export async function syncTestimonialPhotosToProfile({
   if (readErr) throw readErr;
 
   const merged = mergeTransformationPhotos(row?.transformation_photos ?? null, slots);
-  const { error: writeErr } = await supabase
+  const { error: writeErr } = await db
     .from('team_table')
     .update({ transformation_photos: merged })
     .eq('UserId', uid);

@@ -2,7 +2,7 @@
  * card.repo.js — Data layer for body_parameters_cards.
  * Table access uses Prisma against MySQL (MYSQL_DATABASE_URL).
  */
-import { getSupabaseClient } from '../../../utils/supabaseClient.js';
+import { getMysqlClient } from '../../../utils/mysqlClient.js';
 import { getPrisma } from '../../../shared/lib/prisma.js';
 import { assertViewerCanAccessMember } from '../../../utils/reportingHierarchyService.js';
 import { nowUtc } from '../../../shared/lib/datetime/index.js';
@@ -1281,7 +1281,7 @@ export async function listCardHistoryByUserId(userId) {
  * @returns {Promise<object[]>}
  */
 export async function listVisibleCardHistoryByUserId(userId, viewerUserId) {
-  await assertViewerCanAccessMember(getSupabaseClient(), viewerUserId, userId);
+  await assertViewerCanAccessMember(getMysqlClient(), viewerUserId, userId);
   return listCardHistoryByUserId(userId);
 }
 
@@ -1312,7 +1312,7 @@ async function fetchTeamMemberMetaByUserIds(userIds) {
 }
 
 /** @deprecated use fetchTeamMemberMetaByUserIds */
-async function fetchPhonesByUserIds(_supabase, userIds) {
+async function fetchPhonesByUserIds(_db, userIds) {
   return fetchTeamMemberMetaByUserIds(userIds);
 }
 

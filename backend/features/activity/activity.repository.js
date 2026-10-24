@@ -1,4 +1,4 @@
-import { getSupabaseClient } from '../../utils/supabaseClient.js';
+import { getMysqlClient } from '../../utils/mysqlClient.js';
 import { nowUtc } from '../../shared/lib/datetime/index.js';
 import {
   applyDayFilter,
@@ -10,8 +10,8 @@ import { IANA_IST } from '../../shared/lib/datetime/index.js';
 import { filterWatchCalorieRowsForDate } from './domain/watch-calories.helpers.js';
 
 export async function fetchDailyRows(userId, startDate, endDate, activityType = null, timezoneIana = IANA_IST) {
-  const supabase = getSupabaseClient();
-  let query = supabase
+  const db = getMysqlClient();
+  let query = db
     .from('daily_step_activity')
     .select('*')
     .eq('UserId', userId);
@@ -24,8 +24,8 @@ export async function fetchDailyRows(userId, startDate, endDate, activityType = 
 }
 
 export async function findExistingDailyRows(userId, activityDate, timezoneIana = IANA_IST) {
-  const supabase = getSupabaseClient();
-  let query = supabase
+  const db = getMysqlClient();
+  let query = db
     .from('daily_step_activity')
     .select('Id, Steps, CaloriesBurned')
     .eq('UserId', userId);
@@ -38,8 +38,8 @@ export async function findExistingDailyRows(userId, activityDate, timezoneIana =
 }
 
 export async function updateDailyRow(id, payload) {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from('daily_step_activity')
     .update(payload)
     .eq('Id', id)
@@ -50,8 +50,8 @@ export async function updateDailyRow(id, payload) {
 }
 
 export async function insertDailyRow(payload) {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from('daily_step_activity')
     .insert(payload)
     .select('*')
@@ -60,8 +60,8 @@ export async function insertDailyRow(payload) {
 }
 
 export async function fetchWatchCalorieRows(userId, targetDate, timezoneIana = IANA_IST) {
-  const supabase = getSupabaseClient();
-  let query = supabase
+  const db = getMysqlClient();
+  let query = db
     .from('education_logs_table')
     .select('"Id", "Topic", "CreatedAt"')
     .eq('"UserId"', String(userId))
@@ -80,8 +80,8 @@ export async function fetchWatchCalorieRows(userId, targetDate, timezoneIana = I
  * Widened SQL + caller groups/filters by calendar day.
  */
 export async function fetchWatchCalorieRowsForRange(userId, startDate, endDate, timezoneIana = IANA_IST) {
-  const supabase = getSupabaseClient();
-  let query = supabase
+  const db = getMysqlClient();
+  let query = db
     .from('education_logs_table')
     .select('"Id", "Topic", "CreatedAt"')
     .eq('"UserId"', String(userId))
@@ -96,7 +96,7 @@ export async function fetchWatchCalorieRowsForRange(userId, startDate, endDate, 
 export async function touchLastActive(userId) {
   if (!userId) return;
   try {
-    const supabase = getSupabaseClient();
-    await supabase.from('team_table').update({ LastActiveAt: nowUtc() }).eq('UserId', userId);
+    const db = getMysqlClient();
+    await db.from('team_table').update({ LastActiveAt: nowUtc() }).eq('UserId', userId);
   } catch (_) { /* ignore */ }
 }

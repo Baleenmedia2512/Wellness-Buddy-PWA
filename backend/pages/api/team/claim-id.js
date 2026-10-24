@@ -9,7 +9,7 @@
  * After setup (already has CoachId): assigns lead seat immediately and sets CoachTeamId.
  */
 
-import { getSupabaseClient } from '../../../utils/supabaseClient.js';
+import { getMysqlClient } from '../../../utils/mysqlClient.js';
 import { assignLeadSeat } from '../../../utils/coachTeamSeats.js';
 
 export default async function handler(req, res) {
@@ -69,11 +69,11 @@ export default async function handler(req, res) {
       return;
     }
 
-    // Connect to Supabase
-    const supabase = getSupabaseClient();
+    // Connect to MySQL
+    const db = getMysqlClient();
 
     // Check if user exists and get their current TeamId / activation state
-    let userQuery = supabase
+    let userQuery = db
       .from('team_table')
       .select('UserId, TeamId, Role, CoachId, Status');
     if (uid && Number.isFinite(uid)) {
@@ -101,7 +101,7 @@ export default async function handler(req, res) {
     if (user.TeamId && user.TeamId === teamId) {
       // Post-setup: ensure lead seat exists if they somehow have TeamId without a seat
       if (alreadyActivated) {
-        const seatResult = await assignLeadSeat(supabase, teamId, currentUserId);
+        const seatResult = await assignLeadSeat(db, teamId, currentUserId);
         if (!seatResult.ok) {
           res.status(409).json({
             success: false,
@@ -110,7 +110,7 @@ export default async function handler(req, res) {
           });
           return;
         }
-        await supabase
+        await db
           .from('team_table')
           .update({ CoachTeamId: teamId })
           .eq('UserId', currentUserId);
@@ -146,7 +146,7 @@ export default async function handler(req, res) {
     }
 
     // Check Team ID availability in coach_teams_table (both active and inactive)
-    const { data: allCoachTeams, error: coachTeamsError } = await supabase
+    const { data: allCoachTeams, error: coachTeamsError } = await db
       .from('coach_teams_table')
       .select('CoachId, CoCoachId, Status')
       .eq('TeamId', teamId);
@@ -157,7 +157,7 @@ export default async function handler(req, res) {
     const activeCoachTeams = allCoachTeams ? allCoachTeams.filter(team => team.Status === 'active') : [];
 
     // Check if Team ID is used by someone else in team_table
-    const { data: existingTeamId, error: existingError } = await supabase
+    const { data: existingTeamId, error: existingError } = await db
       .from('team_table')
       .select('UserId')
       .eq('TeamId', teamId)
@@ -204,7 +204,7 @@ export default async function handler(req, res) {
     // Post-setup claim: assign Sponsor/Co-Sponsor seat immediately (race-safe)
     let finalizedSeat = isJoiningExistingTeam ? 'co-sponsor' : 'sponsor';
     if (alreadyActivated) {
-      const seatResult = await assignLeadSeat(supabase, teamId, currentUserId);
+      const seatResult = await assignLeadSeat(db, teamId, currentUserId);
       if (!seatResult.ok) {
         res.status(409).json({
           success: false,
@@ -224,7 +224,7 @@ export default async function handler(req, res) {
       updatePayload.CoachTeamId = teamId;
     }
 
-    const { error: updateError } = await supabase
+    const { error: updateError } = await db
       .from('team_table')
       .update(updatePayload)
       .eq('UserId', currentUserId);

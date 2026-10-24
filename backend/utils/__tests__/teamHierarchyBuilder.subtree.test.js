@@ -10,7 +10,7 @@ import {
 } from '../teamHierarchyBuilder.js';
 
 /**
- * In-memory Supabase mock for team_table + coach_teams_table.
+ * In-memory MySQL mock for team_table + coach_teams_table.
  */
 function createSubtreeMock({ teamRows, coachTeams = [] }) {
   function applyFilters(rows, filters) {
@@ -183,8 +183,8 @@ function baseTree({ midStatus = 'Active' } = {}) {
 
 describe('loadCoachSubtreeTeamUsers', () => {
   it('includes nested downline and excludes users outside the subtree', async () => {
-    const supabase = createSubtreeMock({ teamRows: baseTree() });
-    const users = await loadCoachSubtreeTeamUsers(supabase, ROOT);
+    const db = createSubtreeMock({ teamRows: baseTree() });
+    const users = await loadCoachSubtreeTeamUsers(db, ROOT);
     const ids = users.map((u) => u.UserId).sort((a, b) => a - b);
     assert.deepEqual(ids, [ROOT, MID, LEAF, NESTED].sort((a, b) => a - b));
     assert.ok(!ids.includes(OUTSIDER));
@@ -194,8 +194,8 @@ describe('loadCoachSubtreeTeamUsers', () => {
 
 describe('buildTeamHierarchy — subtree correctness', () => {
   it('small team: hierarchy shape and allMembers stay correct', async () => {
-    const supabase = createSubtreeMock({ teamRows: baseTree() });
-    const result = await buildTeamHierarchy(supabase, ROOT);
+    const db = createSubtreeMock({ teamRows: baseTree() });
+    const result = await buildTeamHierarchy(db, ROOT);
 
     assert.ok(result.hierarchy);
     assert.equal(result.hierarchy.userId, ROOT);
@@ -213,8 +213,8 @@ describe('buildTeamHierarchy — subtree correctness', () => {
   });
 
   it('nested downline is included under the middle coach', async () => {
-    const supabase = createSubtreeMock({ teamRows: baseTree() });
-    const result = await buildTeamHierarchy(supabase, ROOT);
+    const db = createSubtreeMock({ teamRows: baseTree() });
+    const result = await buildTeamHierarchy(db, ROOT);
     const leaf = result.hierarchy.teamMembers[0].teamMembers[0];
     assert.equal(leaf.userId, LEAF);
     assert.equal(leaf.teamMembers.length, 1);
@@ -222,8 +222,8 @@ describe('buildTeamHierarchy — subtree correctness', () => {
   });
 
   it('inactive middle coach promotes active descendants', async () => {
-    const supabase = createSubtreeMock({ teamRows: baseTree({ midStatus: 'Inactive' }) });
-    const result = await buildTeamHierarchy(supabase, ROOT);
+    const db = createSubtreeMock({ teamRows: baseTree({ midStatus: 'Inactive' }) });
+    const result = await buildTeamHierarchy(db, ROOT);
 
     // Mid is hidden; Leaf (and Nested under Leaf) promote under Root
     assert.equal(result.hierarchy.teamMembers.length, 1);
@@ -236,8 +236,8 @@ describe('buildTeamHierarchy — subtree correctness', () => {
   });
 
   it('users outside subtree are not included', async () => {
-    const supabase = createSubtreeMock({ teamRows: baseTree() });
-    const result = await buildTeamHierarchy(supabase, ROOT);
+    const db = createSubtreeMock({ teamRows: baseTree() });
+    const result = await buildTeamHierarchy(db, ROOT);
     const allIds = [
       result.hierarchy.userId,
       ...result.allMembers.map((m) => m.UserId),

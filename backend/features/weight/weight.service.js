@@ -26,7 +26,7 @@ import { mergeLocationWithCapture } from '../captures/domain/location.fields.js'
 import logger from '../../shared/lib/logger.js';
 import { confirmPersisted, confirmFailed } from '../../shared/lib/ai-orchestration/AIAnalysisOrchestrator.js';
 import { getUserTimezoneIana } from '../user/domain/userTimezone.js';
-import { getSupabaseClient } from '../../utils/supabaseClient.js';
+import { getMysqlClient } from '../../utils/mysqlClient.js';
 import { assertViewerCanAccessMember } from '../../utils/reportingHierarchyService.js';
 import { resolveMarathonWeightComparison } from '../marathon/domain/marathonWeightComparison.service.js';
 
@@ -295,7 +295,7 @@ export async function saveWeight(input) {
 }
 
 export async function getHistory({ userId, includeImage, limit = null, offset = 0, viewerUserId = null }) {
-  await assertViewerCanAccessMember(getSupabaseClient(), viewerUserId, userId);
+  await assertViewerCanAccessMember(getMysqlClient(), viewerUserId, userId);
   const useLimit = Number.isFinite(limit) && limit > 0;
   const timezoneIana = await getUserTimezoneIana(userId);
 

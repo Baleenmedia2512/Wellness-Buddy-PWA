@@ -1,4 +1,4 @@
-import { getSupabaseClient } from '../../../utils/supabaseClient.js';
+import { getMysqlClient } from '../../../utils/mysqlClient.js';
 import logger from '../../../shared/lib/logger.js';
 import { nowUtc } from '../../../shared/lib/datetime/index.js';
 import { bustRaceLeaderboardCaches } from '../../../utils/cache.js';
@@ -15,8 +15,8 @@ function parseUserId(userId) {
 }
 
 export async function getLatestConfig() {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from('wellness_score_config_table')
     .select('id, parameters, updated_at, updated_by_user_id')
     .order('id', { ascending: false })
@@ -30,9 +30,9 @@ export async function getLatestConfig() {
 }
 
 export async function insertConfig({ parameters, updatedByUserId }) {
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   const now = nowUtc();
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from('wellness_score_config_table')
     .insert({
       parameters,
@@ -48,8 +48,8 @@ export async function insertConfig({ parameters, updatedByUserId }) {
 export async function getEducationLogsForDate(userId, date, timezoneIana = IANA_IST) {
   const uid = parseUserId(userId);
   if (!uid) return [];
-  const supabase = getSupabaseClient();
-  let query = supabase
+  const db = getMysqlClient();
+  let query = db
     .from('education_logs_table')
     .select('"CreatedAt", "Topic", "Platform"')
     .eq('"UserId"', uid)
@@ -67,8 +67,8 @@ export async function getEducationLogsForDate(userId, date, timezoneIana = IANA_
 export async function getWeightRecordsForDate(userId, date, timezoneIana = IANA_IST) {
   const uid = parseUserId(userId);
   if (!uid) return [];
-  const supabase = getSupabaseClient();
-  let query = supabase
+  const db = getMysqlClient();
+  let query = db
     .from('weight_records_table')
     .select('Weight, CreatedAt')
     .eq('UserId', uid)
@@ -85,8 +85,8 @@ export async function getWeightRecordsForDate(userId, date, timezoneIana = IANA_
 export async function getPreviousWeightBeforeDate(userId, date, timezoneIana = IANA_IST) {
   const uid = parseUserId(userId);
   if (!uid) return null;
-  const supabase = getSupabaseClient();
-  let query = supabase
+  const db = getMysqlClient();
+  let query = db
     .from('weight_records_table')
     .select('Weight, CreatedAt')
     .eq('UserId', uid)
@@ -113,7 +113,7 @@ export async function upsertDailyScore({
 }) {
   const uid = parseUserId(userId);
   if (!uid) return null;
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   const now = nowUtc();
   const row = {
     user_id: uid,
@@ -125,7 +125,7 @@ export async function upsertDailyScore({
     parameters: parameters || [],
     computed_at: now,
   };
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from('wellness_score_daily_table')
     .upsert(row, { onConflict: 'user_id,score_date' })
     .select('user_id, score_date, total_earned, total_possible, percentage, goal_mode, parameters, computed_at')
@@ -145,8 +145,8 @@ export async function upsertDailyScore({
 export async function getStoredScoresInRange(userId, startDate, endDate) {
   const uid = parseUserId(userId);
   if (!uid) return [];
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from('wellness_score_daily_table')
     .select('score_date, total_earned, total_possible, percentage, goal_mode, parameters, computed_at')
     .eq('user_id', uid)

@@ -289,7 +289,7 @@ export async function save(input) {
     // ImageType was dropped from food_nutrition_data_table by
     // drop_legacy_share_columns_from_food.sql (PR 5). The type discriminator
     // now lives on captures_table and is promoted via captures.updateTypeById
-    // below. Including it here would cause Supabase to reject the INSERT/UPDATE.
+    // below. Including it here would cause MySQL to reject the INSERT/UPDATE.
     ProcessedBy: processedBy,
     DeviceInfo: deviceInfo
       || (processedBy === 'background_service' ? 'Android Background Service' : 'Wellness Valley Web App'),

@@ -6,7 +6,7 @@
  */
 
 
-import { getSupabaseClient } from '../../../utils/supabaseClient.js';
+import { getMysqlClient } from '../../../utils/mysqlClient.js';
 import { nowUtc } from '../../../shared/lib/datetime/index.js';
 import nodemailer from 'nodemailer';
 import logger from '../../../shared/lib/logger.js';
@@ -98,10 +98,10 @@ export default async function handler(req, res) {
 
     logger.debug('✏️ [update-enrollment] Update request:', { email, userId, programCount: programs.length });
 
-    const supabase = getSupabaseClient();
+    const db = getMysqlClient();
 
     // Look up user by userId (preferred — works even when email is empty) or email.
-    const { data: user, error: userError } = await supabase
+    const { data: user, error: userError } = await db
       .from('team_table')
       .select('"UserId", "UserName", "Email", "CoachId"')
       .eq(userId ? '"UserId"' : '"Email"', userId || email)
@@ -125,7 +125,7 @@ export default async function handler(req, res) {
     const updateTime = nowUtc();
 
     // Fetch existing record to get current program dates
-    const { data: existing } = await supabase
+    const { data: existing } = await db
       .from('wellness_university_enrollments_table')
       .select('"EnrolledPrograms"')
       .eq('"UserId"', user.UserId)
@@ -135,7 +135,7 @@ export default async function handler(req, res) {
     let existingMap = {};
     if (existing?.EnrolledPrograms) {
       try {
-        // Supabase may return JSONB as already-parsed object, or as a JSON string
+        // MySQL may return JSONB as already-parsed object, or as a JSON string
         const parsed = typeof existing.EnrolledPrograms === 'string'
           ? JSON.parse(existing.EnrolledPrograms)
           : existing.EnrolledPrograms;
@@ -162,7 +162,7 @@ export default async function handler(req, res) {
     let enrollment;
     if (existing) {
       // Update existing record
-      const { data: updatedEnrollment, error: updateError } = await supabase
+      const { data: updatedEnrollment, error: updateError } = await db
         .from('wellness_university_enrollments_table')
         .update({
           EnrolledPrograms: programsJson,
@@ -180,7 +180,7 @@ export default async function handler(req, res) {
       enrollment = updatedEnrollment;
     } else {
       // Insert new record
-      const { data: newEnrollment, error: insertError } = await supabase
+      const { data: newEnrollment, error: insertError } = await db
         .from('wellness_university_enrollments_table')
         .insert({
           UserId: user.UserId,
@@ -219,7 +219,7 @@ export default async function handler(req, res) {
     if (user.CoachId) {
       void (async () => {
         try {
-          const { data: coachRow } = await supabase
+          const { data: coachRow } = await db
             .from('team_table')
             .select('"UserName", "Email", "CoachName"')
             .eq('UserId', user.CoachId)

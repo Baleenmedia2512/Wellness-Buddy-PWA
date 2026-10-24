@@ -36,7 +36,7 @@
 
 | Layer | File(s) | Query filters | Post-query date logic |
 |---|---|---|---|
-| Supabase impl | `utils/disciplineCalculationsSupabase.js` | **Non-compliant** — `.gte/.lte` with `` `${date}T00:00:00` `` / `` `T23:59:59` `` on 6 tables | `normalizeTimestamp().split('T')[0]`; `convertISTToUserLocalTime`; `getMealType` from string time |
+| MySQL impl | `utils/disciplineCalculationsSupabase.js` | **Non-compliant** — `.gte/.lte` with `` `${date}T00:00:00` `` / `` `T23:59:59` `` on 6 tables | `normalizeTimestamp().split('T')[0]`; `convertISTToUserLocalTime`; `getMealType` from string time |
 | MySQL impl | `utils/disciplineCalculations.js` | **Non-compliant** — `DATE(w.CreatedAt)`, `DATE(e.CreatedAt)`, `DATE(f.CreatedAt)` | `TIME()` comparisons in SQL |
 | Leaderboard API | `pages/api/leaderboard/get-discipline-leaderboard.js` | **Compliant** — delegates to `activity-report.repository` (`applyDateRangeFilter`) | **Risk** — `recordDateYmd = CreatedAt.slice(0,10)` for day bucketing |
 | Helpers | `utils/disciplineHelpers.js` | N/A | Deprecated `parseDateRange()` still uses `+05:30` offset math |

@@ -2,7 +2,7 @@
  * Fire-and-forget Realtime Broadcast so Home Top 10 clients refresh.
  * Topic: race-leaderboard / event: invalidate (no PII in payload).
  */
-import { getSupabaseClient } from '../../utils/supabaseClient.js';
+import { getMysqlClient } from '../../utils/mysqlClient.js';
 import logger from './logger.js';
 
 export const RACE_LEADERBOARD_CHANNEL = 'race-leaderboard';
@@ -16,9 +16,9 @@ export function publishRaceLeaderboardInvalidate(reason = 'update') {
   setTimeout(() => {
     void (async () => {
       let channel = null;
-      const supabase = getSupabaseClient();
+      const db = getMysqlClient();
       try {
-        channel = supabase.channel(RACE_LEADERBOARD_CHANNEL);
+        channel = db.channel(RACE_LEADERBOARD_CHANNEL);
         const status = await new Promise((resolve) => {
           const timer = setTimeout(() => resolve('TIMEOUT'), 2500);
           channel.subscribe((s) => {
@@ -45,7 +45,7 @@ export function publishRaceLeaderboardInvalidate(reason = 'update') {
       } finally {
         if (channel) {
           try {
-            await supabase.removeChannel(channel);
+            await db.removeChannel(channel);
           } catch {
             /* non-fatal */
           }

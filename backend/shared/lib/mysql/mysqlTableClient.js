@@ -327,7 +327,7 @@ class MysqlQuery {
 }
 
 function unavailableStorage() {
-  const fail = async () => ({ data: null, error: { message: 'SUPABASE_URL is required for file storage' } });
+  const fail = async () => ({ data: null, error: { message: 'File storage is not configured' } });
   return {
     from() {
       return {
@@ -353,7 +353,7 @@ function unavailableChannel() {
   };
 }
 
-export function createMysqlSupabaseClient(bridges = {}) {
+export function createMysqlTableClient(bridges = {}) {
   return {
     from(table) {
       return new MysqlQuery(table);

@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { mapDriverError } from '../mysqlSupabaseClient.js';
+import { mapDriverError } from '../mysqlTableClient.js';
 
 describe('mapDriverError', () => {
   it('maps a Prisma raw MySQL duplicate to 1062', () => {

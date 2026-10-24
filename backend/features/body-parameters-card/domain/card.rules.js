@@ -2,7 +2,7 @@ import { computeKatchMcArdleBmr, resolveBmrForSave } from '../../../utils/bmrCal
 
 /**
  * card.rules.js — Pure business logic for Body Parameters Card.
- * No I/O. No imports from axios, pg, supabase, or react.
+ * No I/O. No imports from axios, pg, db, or react.
  */
 
 export const SHARE_TTL_DAYS = 30;

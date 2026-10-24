@@ -166,7 +166,7 @@ export function bustRaceLeaderboardCaches(reason = 'update') {
     /* non-fatal */
   }
   try {
-    // Lazy import avoids circular init with supabaseClient in some routes.
+    // Lazy import avoids a circular init with the MySQL client in some routes.
     import('../shared/lib/race-leaderboard-realtime.js')
       .then((m) => m.publishRaceLeaderboardInvalidate(reason))
       .catch(() => {});

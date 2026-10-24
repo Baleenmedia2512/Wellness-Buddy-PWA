@@ -1344,7 +1344,7 @@ function assertAssembledVideoSize(buffer, slot) {
 }
 
 /**
- * Accept one chunk of a video upload, assemble on the final chunk, and store in Supabase.
+ * Accept one chunk of a video upload, assemble on the final chunk, and store in MySQL.
  */
 export async function uploadVideoChunk(rawBody) {
   const payload = validateUploadVideoChunk(rawBody);

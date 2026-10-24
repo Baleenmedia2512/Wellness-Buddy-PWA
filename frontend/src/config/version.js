@@ -234,7 +234,7 @@ export const APP_VERSION = {
  *   🎓 Wellness University - Per-program enrollment date/time stored and displayed in IST
  *   🗺️ Enrollment Map Format - EnrolledPrograms now stored as { programName: isoDate } map for individual timestamps
  *   🔒 Date Preservation - Re-saving enrollments preserves original enrollment dates per program
- *   🔧 JSONB Fix - Fixed Supabase JSONB auto-parse causing enrollment dates to reset on update
+ *   🔧 JSONB Fix - Fixed MySQL JSONB auto-parse causing enrollment dates to reset on update
  *   🚫 AI Unavailable Modal - Removed "LOG SOMETHING ELSE" alt buttons (Food/Education) from all modals
  *   🚫 Manual Weight Modal - Disabled ManualWeightEntryModal to prevent unwanted popups
  *   🧹 Code Cleanup - Removed unused altButtons logic from AI Unavailable handler

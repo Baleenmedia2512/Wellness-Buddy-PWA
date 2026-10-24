@@ -20,15 +20,15 @@
 
 | Removed | Replacement |
 |---|---|
-| `getISTTimestamp()` | `nowUtc()` — **removed from `utils/supabaseClient.js`**; ~25 call sites migrated |
-| `convertToIST()` | `parseClientTimestampToUtc()` — removed from `supabaseClient.js` |
+| `getISTTimestamp()` | `nowUtc()` — **removed from `utils/mysqlClient.js`**; ~25 call sites migrated |
+| `convertToIST()` | `parseClientTimestampToUtc()` — removed from `mysqlClient.js` |
 | `todayInIST()` / `todayDateInIST()` | Already gone; frontend uses `todayBusinessDate()` / `useBusinessToday()` |
 | `parseDateRange()` (+05:30) | **Deleted** from `disciplineHelpers.js` (unused) |
 | `getISTDateStr()` (+05:30) | **Deleted** from `weight.service.js` → `timestampToCalendarYmd` |
 
 ### Repository layer (`applyDayFilter` compliant)
 
-All date-scoped Supabase repositories now use shared filters (no manual `T00:00:00` / `T23:59:59`):
+All date-scoped MySQL repositories now use shared filters (no manual `T00:00:00` / `T23:59:59`):
 
 - `background-analysis/diary.repository.js`
 - `water/data/water.repo.js`
@@ -45,7 +45,7 @@ All date-scoped Supabase repositories now use shared filters (no manual `T00:00:
 
 | Module | Changes |
 |---|---|
-| **Discipline (Supabase)** | `disciplineCalculationsSupabase.js` — all 6 query blocks → `applyDateRangeFilter`; aggregation → `timestampToCalendarYmd` / `timeOfDayInTimezone` |
+| **Discipline (MySQL)** | `disciplineCalculationsSupabase.js` — all 6 query blocks → `applyDateRangeFilter`; aggregation → `timestampToCalendarYmd` / `timeOfDayInTimezone` |
 | **Weight** | Write path `nowUtc` + `parseClientTimestampToUtc`; stats use `timestampToCalendarYmd` + user TZ |
 | **Education** | Write path UTC; window checks via `timeOfDayInTimezone` |
 | **Food / analysis** | `analysis.service`, `food-corrections.service` weekly bucketing → `timestampToCalendarYmd` |
@@ -100,7 +100,7 @@ Diary, water, diary list, wellness-score daily/history, food-corrections stats, 
 
 ### Documentation / comments
 
-- `backend/backend.md` still mentions `getISTTimestamp` / `convertToIST` on supabaseClient — update on next docs pass
+- `backend/backend.md` still mentions `getISTTimestamp` / `convertToIST` on mysqlClient — update on next docs pass
 - `UnknownEntryFlow.jsx` comment references `getISTTimestamp`
 
 ---
@@ -119,7 +119,7 @@ Diary, water, diary list, wellness-score daily/history, food-corrections stats, 
 | Risk | Severity | Mitigation |
 |---|---|---|
 | **Write timestamp format change** (`IST naive` → `UTC ISO`) | High | Existing rows may mix formats until backfill; `applyDayFilter` assumes UTC-comparable strings. Monitor meal/weight window scores near migration boundary. |
-| **Legacy rows without `Z` suffix** | Medium | `parseClientTimestampToUtc` / `formatUtcForDisplay` normalize on read; verify Supabase comparison ordering on mixed data. |
+| **Legacy rows without `Z` suffix** | Medium | `parseClientTimestampToUtc` / `formatUtcForDisplay` normalize on read; verify MySQL comparison ordering on mixed data. |
 | **Global leaderboard uses `IANA_IST`** | Low | Documented product choice; not a bug. |
 | **Time report API `userTimezoneOffset` ignored** | Low | Param still accepted in validator but service uses profile IANA TZ — correct for migration; update API docs. |
 | **testimonials/auth OTP “IST day” math** | Low | Unrelated to activity queries; separate cleanup ticket. |
@@ -167,12 +167,12 @@ Diary, water, diary list, wellness-score daily/history, food-corrections stats, 
 
 | Check | Result |
 |---|---|
-| No `getISTTimestamp()` / `convertToIST()` in feature code | ✅ Removed from `supabaseClient.js`; call sites migrated |
+| No `getISTTimestamp()` / `convertToIST()` in feature code | ✅ Removed from `mysqlClient.js`; call sites migrated |
 | No `todayInIST()` / `todayDateInIST()` | ✅ Not present in codebase |
 | Repositories manual UTC bounds | ✅ None found (`T00:00:00` only in comments / idle-cleanup docs) |
 | Repositories use `applyDayFilter` / `applyDateRangeFilter` | ✅ All scoped domain repos |
 | `DATE(CreatedAt)` in active paths | ⚠️ Only `disciplineCalculations.js` (legacy MySQL, unused) |
-| `+05:30` in read/query paths | ✅ Removed from discipline Supabase + food weekly agg + time report |
+| `+05:30` in read/query paths | ✅ Removed from discipline MySQL + food weekly agg + time report |
 | `+05:30` remaining | ⚠️ auth OTP, testimonials OTP, deprecated `timeReportHelpers` dead code |
 
 ---

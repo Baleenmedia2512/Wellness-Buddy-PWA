@@ -1,4 +1,4 @@
-import { getSupabaseClient } from '../../utils/supabaseClient.js';
+import { getMysqlClient } from '../../utils/mysqlClient.js';
 import { nowUtc, utcInstantToLegacyIstWallStorage, IANA_IST } from '../../shared/lib/datetime/index.js';
 
 function legacyIstWallNow() {
@@ -12,8 +12,8 @@ async function findCaptureByShareIdentifier(identifier, columns) {
   const value = (identifier || '').toString().trim();
   if (!value) return null;
 
-  const supabase = getSupabaseClient();
-  const base = supabase
+  const db = getMysqlClient();
+  const base = db
     .from('captures_table')
     .select(columns)
     .eq('"IsDeleted"', 0)
@@ -35,8 +35,8 @@ async function findCaptureByShareIdentifier(identifier, columns) {
 }
 
 export async function insertAnalysis(payload) {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from('food_nutrition_data_table')
     .insert(payload)
     .select()
@@ -46,8 +46,8 @@ export async function insertAnalysis(payload) {
 }
 
 export async function listAnalyses({ userId, limit, offset }) {
-  const supabase = getSupabaseClient();
-  const { data, error, count } = await supabase
+  const db = getMysqlClient();
+  const { data, error, count } = await db
     .from('food_nutrition_data_table')
     .select('*', { count: 'exact' })
     .eq('"UserID"', userId)
@@ -68,9 +68,9 @@ export async function listAnalyses({ userId, limit, offset }) {
 }
 
 export async function softDeleteAnalysis(id, userId) {
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   const currentTime = legacyIstWallNow();
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from('food_nutrition_data_table')
     .update({ IsDeleted: 1, UpdatedAt: currentTime })
     .eq('"ID"', id)
@@ -81,8 +81,8 @@ export async function softDeleteAnalysis(id, userId) {
 }
 
 export async function checkOwnership(id, userId) {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from('food_nutrition_data_table')
     .select('"ID"')
     .eq('"ID"', id)
@@ -93,9 +93,9 @@ export async function checkOwnership(id, userId) {
 }
 
 export async function restoreAnalysis(id) {
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   const currentTime = legacyIstWallNow();
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from('food_nutrition_data_table')
     .update({ IsDeleted: 0, UpdatedAt: currentTime })
     .eq('"ID"', id)
@@ -107,8 +107,8 @@ export async function restoreAnalysis(id) {
 export async function touchLastActive(userId) {
   if (!userId) return;
   try {
-    const supabase = getSupabaseClient();
-    await supabase
+    const db = getMysqlClient();
+    await db
       .from('team_table')
       .update({ LastActiveAt: nowUtc() })
       .eq('UserId', userId);
@@ -130,8 +130,8 @@ export async function touchLastActive(userId) {
  */
 export async function findFoodByCaptureId(captureId, userId) {
   if (!captureId || !userId) return null;
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from('food_nutrition_data_table')
     .select('"ID"')
     .eq('"CaptureID"', captureId)
@@ -158,12 +158,12 @@ const IMMUTABLE_TIMESTAMP_KEYS = new Set([
  * Log only updates nutrition/content, never the original upload time.
  */
 export async function updateWithAnalysisResult(id, userId, analysisFields) {
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   const currentTime = legacyIstWallNow();
   const safeFields = Object.fromEntries(
     Object.entries(analysisFields).filter(([key]) => !IMMUTABLE_TIMESTAMP_KEYS.has(key)),
   );
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from('food_nutrition_data_table')
     .update({ ...safeFields, UpdatedAt: currentTime })
     .eq('ID', id)
@@ -191,7 +191,7 @@ export async function updateWithAnalysisResult(id, userId, analysisFields) {
  * migrations/drop_legacy_share_columns_from_food.sql.
  */
 export async function findPublicByToken(token) {
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   const cap = await findCaptureByShareIdentifier(
     token,
     '"ID", "UserID", "ShareExpiresAt", "ImageType", "ImageBase64", "CreatedAt"',
@@ -204,7 +204,7 @@ export async function findPublicByToken(token) {
   // a food row — in that case AnalysisData stays null and getPublicCapture
   // returns the pending shape, which is the correct UX for a typed capture
   // that the recipient should view via the feature tab, not the food viewer.
-  const { data: food, error: foodErr } = await supabase
+  const { data: food, error: foodErr } = await db
     .from('food_nutrition_data_table')
     .select('"ID", "AnalysisData", "TotalCalories", "TotalProtein", "TotalCarbs", "TotalFat", "TotalFiber", "TotalSugar", "TotalSodium", "TotalCholesterol", "GlycemicIndex"')
     .eq('"CaptureID"', cap.ID)
@@ -244,7 +244,7 @@ export async function findPublicByToken(token) {
  * just routes to the appropriate tab via `tabForImageType()`.
  */
 export async function findOwnerByToken(token) {
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   const cap = await findCaptureByShareIdentifier(
     token,
     '"ID", "UserID", "CreatedAt", "ShareExpiresAt", "ImageType"',
@@ -258,7 +258,7 @@ export async function findOwnerByToken(token) {
   let domainId = null;
 
   if (imageType === 'food') {
-    const { data: food, error: foodErr } = await supabase
+    const { data: food, error: foodErr } = await db
       .from('food_nutrition_data_table')
       .select('"ID"')
       .eq('"CaptureID"', cap.ID)
@@ -268,7 +268,7 @@ export async function findOwnerByToken(token) {
     if (foodErr) throw foodErr;
     domainId = food?.ID ?? null;
   } else if (imageType === 'weight') {
-    const { data: wt, error: wtErr } = await supabase
+    const { data: wt, error: wtErr } = await db
       .from('weight_records_table')
       .select('"ID"')
       .eq('"CaptureID"', cap.ID)
@@ -278,7 +278,7 @@ export async function findOwnerByToken(token) {
     domainId = wt?.ID ?? null;
   } else if (imageType === 'education' || imageType === 'smartwatch') {
     // Smartwatch entries are saved to education_logs_table (same as education).
-    const { data: edu, error: eduErr } = await supabase
+    const { data: edu, error: eduErr } = await db
       .from('education_logs_table')
       .select('"Id"')
       .eq('"CaptureID"', cap.ID)
@@ -309,13 +309,13 @@ export async function findOwnerByToken(token) {
  * prevent runaway queries on accidental cycles.
  */
 export async function getCoachChain(startUserId) {
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   const chain = [];
   let current = startUserId?.toString();
   let depth = 0;
   while (current && depth < 10) {
     chain.push(current);
-    const { data, error } = await supabase
+    const { data, error } = await db
       .from('team_table')
       .select('"CoachId"')
       .eq('"UserId"', current)
@@ -336,10 +336,10 @@ export async function getCoachChain(startUserId) {
  * is CoCoachId (either order). Used by the share-link permission check.
  */
 export async function isCoCoachPaired(userIdA, userIdB) {
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   const a = userIdA.toString();
   const b = userIdB.toString();
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from('coach_teams_table')
     .select('Id')
     .or(`and(CoachId.eq.${a},CoCoachId.eq.${b}),and(CoachId.eq.${b},CoCoachId.eq.${a})`)
@@ -358,8 +358,8 @@ export async function isCoCoachPaired(userIdA, userIdB) {
 export async function findCoCoachPartnerId(userId) {
   const id = Number(userId);
   if (!Number.isFinite(id) || id <= 0) return null;
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from('coach_teams_table')
     .select('CoachId, CoCoachId')
     .or(`CoachId.eq.${id},CoCoachId.eq.${id}`)
@@ -380,8 +380,8 @@ export async function findCoCoachPartnerId(userId) {
  */
 export async function findUserName(userId) {
   if (!userId) return null;
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from('team_table')
     .select('"UserName"')
     .eq('"UserId"', userId.toString())

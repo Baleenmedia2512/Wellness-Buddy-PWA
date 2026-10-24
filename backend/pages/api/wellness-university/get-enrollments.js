@@ -8,7 +8,7 @@
  * - Admins: All enrollments
  */
 
-import { getSupabaseClient } from '../../../utils/supabaseClient.js';
+import { getMysqlClient } from '../../../utils/mysqlClient.js';
 import logger from '../../../shared/lib/logger.js';
 
 export default async function handler(req, res) {
@@ -45,8 +45,8 @@ export default async function handler(req, res) {
     // This avoids failures when a team member's Email field is empty in the DB.
     if (userId && userOnly === 'true') {
       logger.debug('📊 [get-enrollments] userId fast path:', { userId });
-      const supabase = getSupabaseClient();
-      const { data: enrollment, error: enrollmentError } = await supabase
+      const db = getMysqlClient();
+      const { data: enrollment, error: enrollmentError } = await db
         .from('wellness_university_enrollments_table')
         .select('*')
         .eq('"UserId"', userId)
@@ -73,10 +73,10 @@ export default async function handler(req, res) {
 
     logger.debug('📊 [get-enrollments] Request:', { email, userOnly });
 
-    const supabase = getSupabaseClient();
+    const db = getMysqlClient();
 
     // Get requesting user info
-    const { data: requestingUser, error: userError } = await supabase
+    const { data: requestingUser, error: userError } = await db
       .from('team_table')
       .select('"UserId", "UserName", "Email", "Role"')
       .eq('"Email"', email)
@@ -101,7 +101,7 @@ export default async function handler(req, res) {
 
     // If userOnly is true, return only the user's own enrollment
     if (userOnly === 'true') {
-      const { data: enrollment, error: enrollmentError } = await supabase
+      const { data: enrollment, error: enrollmentError } = await db
         .from('wellness_university_enrollments_table')
         .select('*')
         .eq('"UserId"', requestingUser.UserId)
@@ -120,7 +120,7 @@ export default async function handler(req, res) {
     }
 
     // Build query based on user role
-    let query = supabase
+    let query = db
       .from('wellness_university_enrollments_table')
       .select(
         `
@@ -144,7 +144,7 @@ export default async function handler(req, res) {
 
       while (currentLevelCoachIds.length > 0 && currentLevel <= maxLevel) {
         // Derive co-coach relationships from coach_teams_table
-        const { data: coCoachTeamEntries } = await supabase
+        const { data: coCoachTeamEntries } = await db
           .from('coach_teams_table')
           .select('CoachId')
           .in('CoCoachId', currentLevelCoachIds)
@@ -157,7 +157,7 @@ export default async function handler(req, res) {
         ])];
 
         // Fetch members where CoachId matches any coach in expanded list
-        const { data: levelMembers, error: levelError } = await supabase
+        const { data: levelMembers, error: levelError } = await db
           .from('team_table')
           .select('"UserId", "Role", "CoachId"')
           .in('"CoachId"', expandedCoachIds)
@@ -201,7 +201,7 @@ export default async function handler(req, res) {
 
     // Fetch user details for each enrollment
     const userIds = enrollments.map((e) => e.UserId);
-    const { data: users, error: usersError } = await supabase
+    const { data: users, error: usersError } = await db
       .from('team_table')
       .select('"UserId", "UserName", "Email", "CoachId"')
       .in('"UserId"', userIds);
@@ -215,7 +215,7 @@ export default async function handler(req, res) {
     const coachIds = [...new Set(users.map((u) => u.CoachId).filter(Boolean))];
     let coaches = [];
     if (coachIds.length > 0) {
-      const { data: coachData, error: coachError } = await supabase
+      const { data: coachData, error: coachError } = await db
         .from('team_table')
         .select('"UserId", "UserName"')
         .in('"UserId"', coachIds);
@@ -228,7 +228,7 @@ export default async function handler(req, res) {
     // Derive CoCoachId from coach_teams_table (source of truth)
     const coCoachMap = {};
     if (coachIds.length > 0) {
-      const { data: coCoachEntries } = await supabase
+      const { data: coCoachEntries } = await db
         .from('coach_teams_table')
         .select('CoachId, CoCoachId')
         .in('CoachId', coachIds)

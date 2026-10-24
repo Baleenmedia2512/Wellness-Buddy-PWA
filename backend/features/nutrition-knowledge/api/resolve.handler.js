@@ -17,7 +17,7 @@ import {
 } from '../domain/nutrition.rules.js';
 import { buildCustomFoodExportCsv } from '../domain/customFoodExport.rules.js';
 import { assertNutritionKnowledgeAdmin } from '../domain/permissions/nutritionAdmin.policy.js';
-import { getSupabaseClient } from '../../../utils/supabaseClient.js';
+import { getMysqlClient } from '../../../utils/mysqlClient.js';
 
 async function loadApprovedProfile(name) {
   const dbRow = await repo.findProfileByName(name, { status: 'approved' });
@@ -153,8 +153,8 @@ export async function approveMasterProfile({ profileId, reviewedByUserId }) {
 }
 
 async function loadTeamRole(userId) {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from('team_table')
     .select('"Role"')
     .eq('UserId', userId)
