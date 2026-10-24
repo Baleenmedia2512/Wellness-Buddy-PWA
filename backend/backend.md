@@ -116,7 +116,7 @@ Do not return a bare string. Always JSON.
 
 `backend/utils/` central helpers:
 - [disciplineCalculations.js](utils/disciplineCalculations.js) — discipline %, MySQL-connection style.
-- [disciplineCalculationsSupabase.js](utils/disciplineCalculationsSupabase.js) — MySQL variant (second source — confirm which one the feature uses).
+- [disciplineCalculationsQuery.js](utils/disciplineCalculationsQuery.js) — discipline % through the MySQL table client.
 - [disciplineHelpers.js](utils/disciplineHelpers.js) — shared discipline helper functions.
 - [timezoneConverter.js](utils/timezoneConverter.js) — IST (UTC+5:30) ↔ user-local. Use for "today"; never raw `new Date()`.
 - [timestampUtils.js](utils/timestampUtils.js) — timestamp formatting helpers.

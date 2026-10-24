@@ -1,6 +1,6 @@
 /**
- * Discipline Calculations using MySQL REST API
- * Replacement for disciplineCalculations.js that works through firewalls
+ * Discipline calculations through the MySQL table client.
+ * Separate from disciplineCalculations.js, which takes a connection argument.
  */
 
 import { getMysqlClient } from './mysqlClient.js';
@@ -175,7 +175,7 @@ export async function getTimeWindows() {
  * @param {number} userTimezoneOffset - User's timezone offset in minutes (optional)
  * @returns {Object} Discipline data
  */
-export async function calculateMemberDisciplineSupabase(userId, startDate, endDate, timeWindows, userTimezoneOffset = null, timezoneIana = IANA_IST) {
+export async function calculateMemberDisciplineQuery(userId, startDate, endDate, timeWindows, userTimezoneOffset = null, timezoneIana = IANA_IST) {
   const db = getMysqlClient();
   const startDateStr = formatDateForMySQL(startDate);
   const endDateStr = formatDateForMySQL(endDate);
@@ -495,7 +495,7 @@ export async function calculateMemberDisciplineSupabase(userId, startDate, endDa
  * @param {Date} endDate - End date
  * @returns {Array} Discipline data for all members
  */
-export async function calculateTeamDisciplineSupabase(memberIds, startDate, endDate) {
+export async function calculateTeamDisciplineQuery(memberIds, startDate, endDate) {
   const results = [];
   
   // Fetch time windows once
@@ -504,7 +504,7 @@ export async function calculateTeamDisciplineSupabase(memberIds, startDate, endD
   // Process all members
   for (const memberId of memberIds) {
     try {
-      const disciplineData = await calculateMemberDisciplineSupabase(
+      const disciplineData = await calculateMemberDisciplineQuery(
         memberId,
         startDate,
         endDate,

@@ -36,12 +36,12 @@
 
 | Layer | File(s) | Query filters | Post-query date logic |
 |---|---|---|---|
-| MySQL impl | `utils/disciplineCalculationsSupabase.js` | **Non-compliant** — `.gte/.lte` with `` `${date}T00:00:00` `` / `` `T23:59:59` `` on 6 tables | `normalizeTimestamp().split('T')[0]`; `convertISTToUserLocalTime`; `getMealType` from string time |
+| MySQL impl | `utils/disciplineCalculationsQuery.js` | **Non-compliant** — `.gte/.lte` with `` `${date}T00:00:00` `` / `` `T23:59:59` `` on 6 tables | `normalizeTimestamp().split('T')[0]`; `convertISTToUserLocalTime`; `getMealType` from string time |
 | MySQL impl | `utils/disciplineCalculations.js` | **Non-compliant** — `DATE(w.CreatedAt)`, `DATE(e.CreatedAt)`, `DATE(f.CreatedAt)` | `TIME()` comparisons in SQL |
 | Leaderboard API | `pages/api/leaderboard/get-discipline-leaderboard.js` | **Compliant** — delegates to `activity-report.repository` (`applyDateRangeFilter`) | **Risk** — `recordDateYmd = CreatedAt.slice(0,10)` for day bucketing |
 | Helpers | `utils/disciplineHelpers.js` | N/A | Deprecated `parseDateRange()` still uses `+05:30` offset math |
 
-**Active call graph:** `calculateMemberDisciplineSupabase` is only invoked from `calculateTeamDisciplineSupabase` (no live API import found). Production discipline leaderboard reimplements discipline % inline in `get-discipline-leaderboard.js` using migrated repo queries.
+**Active call graph:** `calculateMemberDisciplineQuery` is only invoked from `calculateTeamDisciplineQuery` (no live API import found). Production discipline leaderboard reimplements discipline % inline in `get-discipline-leaderboard.js` using migrated repo queries.
 
 **Verdict:** Legacy discipline modules **non-compliant**. Live leaderboard query path **compliant**; aggregation logic **at risk** (string-prefix dates).
 
@@ -104,7 +104,7 @@ Reason: `disciplineCalculations*` is protected (`@principal-eng` required per `c
 
 Recommended follow-up PRs (query-layer only, no formula changes):
 
-1. `disciplineCalculationsSupabase.js` — replace `` `.gte/.lte` + `T00:00:00` `` with `applyDateRangeFilter` (+ optional `timezoneIana` param defaulting to `IANA_IST`).
+1. `disciplineCalculationsQuery.js` — replace `` `.gte/.lte` + `T00:00:00` `` with `applyDateRangeFilter` (+ optional `timezoneIana` param defaulting to `IANA_IST`).
 2. `get-discipline-leaderboard.js` — replace `recordDateYmd` string slice with `formatUtcForDisplay(ts, IANA_IST).slice(0,10)` or shared calendar helper.
 3. `activity-report.repository.dedupeFirstLogPerMemberPerDay` — bucket by business YMD in requesting timezone, not raw prefix.
 4. Deprecate/remove unused `disciplineCalculations.js` MySQL path if confirmed dead.
@@ -117,7 +117,7 @@ Recommended follow-up PRs (query-layer only, no formula changes):
 
 | Risk | Where | Impact |
 |---|---|---|
-| Manual `T00:00:00`/`T23:59:59` bounds | `disciplineCalculationsSupabase.js`, `calculateAttendanceMetrics` | Rows near midnight misclassified when DB stores UTC vs legacy IST strings; range endpoints not TZ-aware |
+| Manual `T00:00:00`/`T23:59:59` bounds | `disciplineCalculationsQuery.js`, `calculateAttendanceMetrics` | Rows near midnight misclassified when DB stores UTC vs legacy IST strings; range endpoints not TZ-aware |
 | `DATE()` in MySQL discipline SQL | `disciplineCalculations.js` | Server/connection TZ affects day boundaries if this path is ever invoked |
 | `recordDateYmd = CreatedAt.slice(0,10)` | Discipline leaderboard, activity dedupe | Assumes date prefix equals business calendar day; breaks for true UTC timestamps or users outside platform TZ |
 
@@ -162,7 +162,7 @@ backend/features/wellness-score/data/wellness-score.repo.js
 backend/features/wellness-score/domain/score.rules.js
 backend/features/wellness-score/domain/window.helpers.js
 backend/utils/disciplineCalculations.js
-backend/utils/disciplineCalculationsSupabase.js
+backend/utils/disciplineCalculationsQuery.js
 backend/utils/disciplineHelpers.js
 backend/pages/api/leaderboard/get-discipline-leaderboard.js
 backend/pages/api/leaderboard/get-wellness-score-leaderboard.js

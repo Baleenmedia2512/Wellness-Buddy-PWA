@@ -45,7 +45,7 @@ All date-scoped MySQL repositories now use shared filters (no manual `T00:00:00`
 
 | Module | Changes |
 |---|---|
-| **Discipline (MySQL)** | `disciplineCalculationsSupabase.js` — all 6 query blocks → `applyDateRangeFilter`; aggregation → `timestampToCalendarYmd` / `timeOfDayInTimezone` |
+| **Discipline (MySQL)** | `disciplineCalculationsQuery.js` — all 6 query blocks → `applyDateRangeFilter`; aggregation → `timestampToCalendarYmd` / `timeOfDayInTimezone` |
 | **Weight** | Write path `nowUtc` + `parseClientTimestampToUtc`; stats use `timestampToCalendarYmd` + user TZ |
 | **Education** | Write path UTC; window checks via `timeOfDayInTimezone` |
 | **Food / analysis** | `analysis.service`, `food-corrections.service` weekly bucketing → `timestampToCalendarYmd` |

@@ -8,7 +8,7 @@
  */
 
 import { getMysqlClient } from '../../../utils/mysqlClient.js';
-import { getDualCoachingTeamHierarchy } from '../../../utils/disciplineCalculationsSupabase.js';
+import { getDualCoachingTeamHierarchy } from '../../../utils/disciplineCalculationsQuery.js';
 import { buildHierarchyWithMetricCounts } from '../../../utils/hierarchyHelpers.js';
 import logger from '../../../shared/lib/logger.js';
 

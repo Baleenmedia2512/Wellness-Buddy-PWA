@@ -8,7 +8,7 @@ import {
   fetchTeamUsersByCoachIdsPaged,
   fetchTeamUsersByCommunityCodePaged,
 } from '../reportingHierarchyService.js';
-import { fetchDualCoachingLevelMembers } from '../disciplineCalculationsSupabase.js';
+import { fetchDualCoachingLevelMembers } from '../disciplineCalculationsQuery.js';
 import { fetchAllActiveMembers } from '../../features/activity/activity-report.repository.js';
 import { fetchAdminUsers } from '../../features/activity/time-report.repository.js';
 
