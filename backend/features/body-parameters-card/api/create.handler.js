@@ -125,6 +125,7 @@ export async function handleCreateCard(body) {
       waistCm:      payload.waistCm,
       hipCm:        payload.hipCm,
       recordedDate: payload.recordedDate,
+      appointmentDate: payload.appointmentDate,
       locationName: payload.locationName,
       recoveredHealthIssues: payload.recoveredHealthIssues,
     }, { allowActivated: false });
