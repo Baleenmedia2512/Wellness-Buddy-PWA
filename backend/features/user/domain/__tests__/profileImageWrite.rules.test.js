@@ -29,6 +29,10 @@ describe('shouldSkipProfileImageBase64', () => {
     assert.equal(shouldSkipProfileImageBase64({ r2Enabled: true, appVersion: '3.6.0' }), true);
     assert.equal(PROFILE_IMAGE_R2_ONLY_MIN_APP_VERSION, '3.5.1');
   });
+
+  it('skips base64 writes for 3.5.1+ when MilesWeb file storage is on', () => {
+    assert.equal(shouldSkipProfileImageBase64({ r2Enabled: true, appVersion: '3.5.3' }), true);
+  });
 });
 
 describe('resolveIncomingAvatarDataUri', () => {
