@@ -45,7 +45,7 @@ const config = {
       '*.wellnessvalley.app',
       'wellnessvalley.in'
     ],
-    cleartext: false
+    cleartext: true
   },
   
   // ✅ iOS configuration
