@@ -9,8 +9,8 @@ import logger from '../../../shared/lib/logger.js';
 import {
   mapTransformationPhotosForClient,
   shouldPreferTransformationR2Urls,
-  transformationPhotoUrlForKey,
 } from '../../user/domain/transformationPhotos.rules.js';
+import { transformationPhotoUrlForKey } from '../../user/transformation-photo-storage.service.js';
 
 /**
  * Same photo shape as profile: file URL for this app version, saved image data for older apps.
