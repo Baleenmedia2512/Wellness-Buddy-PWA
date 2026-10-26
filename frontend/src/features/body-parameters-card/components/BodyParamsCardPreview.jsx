@@ -10,11 +10,9 @@ import React from 'react';
 import {
   evaluateChestCm,
   evaluateHipCm,
-  evaluateVisceralFat,
   evaluateWaistCm,
   getChestCmReference,
   getHipCmReference,
-  getVisceralFatReference,
   getWaistCmReference,
 } from '../domain/bodyMetricReferences.js';
 import {
@@ -383,8 +381,6 @@ const BodyParamsCardPreview = React.forwardRef(({ card, previousCard = null, tim
     ? idealWeightRange.lo + ' to ' + idealWeightRange.hi + ' kg'
     : null;
 
-  const vFatEval = evaluateVisceralFat(card.visceralFat);
-  const vFatStatus = vFatEval?.isOutOfRange ? { isOutOfRange: true, bg: RED } : null;
   const waistEval = evaluateWaistCm(card.waistCm, card.gender);
   const waistStatus = waistEval?.isOutOfRange ? { isOutOfRange: true, bg: RED } : null;
   const chestEval = evaluateChestCm(card.chestCm, card.gender);
@@ -555,18 +551,6 @@ const BodyParamsCardPreview = React.forwardRef(({ card, previousCard = null, tim
               status={fatStatus}
               oval
               prevValue={previousCard?.fatPercent != null ? previousCard.fatPercent + '%' : '—'}
-              isExistingUser={isExistingUser}
-            />
-          )}
-          {card.visceralFat != null && card.visceralFat !== '' && (
-            <MetricRow
-              icon="🫀" iconBg="#fef9c3"
-              label="V-Fat"
-              value={String(card.visceralFat)}
-              rangeLabel={getVisceralFatReference()}
-              status={vFatStatus}
-              oval
-              prevValue={previousCard?.visceralFat != null ? String(previousCard.visceralFat) : '—'}
               isExistingUser={isExistingUser}
             />
           )}
