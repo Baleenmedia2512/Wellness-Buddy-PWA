@@ -62,9 +62,14 @@ export async function uploadAvatarDataUri(userId, profileImage) {
 
 /**
  * Upload (if needed) and persist ProfileImageKey. Never throws to the caller.
+ * clearProfileImage defaults true (R2 3.5.1+). Old supported apps keep
+ * ProfileImage base64 when the caller passes false.
+ * @param {string|number} userId
+ * @param {string} profileImage
+ * @param {{ clearProfileImage?: boolean }} [opts]
  * @returns {Promise<string|null>}
  */
-export async function persistAvatarKey(userId, profileImage) {
+export async function persistAvatarKey(userId, profileImage, { clearProfileImage = true } = {}) {
   try {
     if (!shouldStoreProfileImageInR2(profileImage)) return null;
 
@@ -77,7 +82,9 @@ export async function persistAvatarKey(userId, profileImage) {
 
     const key = await uploadAvatarDataUri(userId, profileImage);
     if (!key) return null;
-    await repo.updateUserById(userId, { ProfileImageKey: key, ProfileImage: null });
+    const patch = { ProfileImageKey: key };
+    if (clearProfileImage) patch.ProfileImage = null;
+    await repo.updateUserById(userId, patch);
     try {
       cache.delete(cacheKeys.userAvatar(userId));
     } catch { /* non-fatal */ }

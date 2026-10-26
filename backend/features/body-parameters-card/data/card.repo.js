@@ -5,6 +5,7 @@
 import { getMysqlClient } from '../../../utils/mysqlClient.js';
 import { getPrisma } from '../../../shared/lib/prisma.js';
 import { assertViewerCanAccessMember } from '../../../utils/reportingHierarchyService.js';
+import { randomUUID } from 'crypto';
 import { nowUtc } from '../../../shared/lib/datetime/index.js';
 import { canonicalPhoneForStorage, buildPhoneLookupVariants } from '../../auth/domain/phone-identity.rules.js';
 import {
@@ -15,6 +16,7 @@ import {
   BCM_ACTIVATED_MEMBER_MESSAGE,
   canOverrideBcmForMember,
   computeDefaultAppointmentDate,
+  buildNewCardShareDefaults,
 } from '../domain/card.rules.js';
 import { getLatestWeight, getLatestWeightBodyFat, getLatestWeightMetricsByUserIds } from '../../user/user.repository.js';
 import logger from '../../../shared/lib/logger.js';
@@ -90,9 +92,15 @@ export async function insertCard(payload) {
     ? String(payload.locationName).trim().substring(0, 200)
     : null;
 
+  const share = buildNewCardShareDefaults({
+    now: new Date(nowUtc()),
+    token: randomUUID(),
+  });
   const row = {
     created_by:    payload.createdBy,
     user_id:       payload.userId ?? null,
+    public_share_token: share.publicShareToken,
+    share_expires_at: share.shareExpiresAt,
     name:          payload.name,
     age:           payload.age ,
     gender:        payload.gender ,
