@@ -147,8 +147,9 @@ model body_parameters_cards {
   fat_percent             Decimal? @db.Decimal(5, 2)
   bmr                     Decimal? @db.Decimal(7, 2)
   body_age                Int?     @db.SmallInt
-  recorded_date           DateTime @default(dbgenerated("(curdate())")) @db.Date
-  location_name           String?  @db.LongText
+  recorded_date           DateTime  @default(dbgenerated("(curdate())")) @db.Date
+  appointment_date        DateTime? @db.Date
+  location_name           String?   @db.LongText
   is_deleted              Boolean  @default(false)
   created_at              DateTime @default(now())
   updated_at              DateTime @default(now())

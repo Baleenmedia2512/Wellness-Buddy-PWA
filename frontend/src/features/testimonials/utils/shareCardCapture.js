@@ -15,7 +15,7 @@ export function isCanvasTaintError(err) {
 
 /**
  * Extra query so a CORS read does not reuse a no-cors cached bitmap.
- * Signed Supabase URLs keep their token; the extra param is ignored.
+ * Signed MySQL URLs keep their token; the extra param is ignored.
  * @param {string} src
  * @returns {string}
  */

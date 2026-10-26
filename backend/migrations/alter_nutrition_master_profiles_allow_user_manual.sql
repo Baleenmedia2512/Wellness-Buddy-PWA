@@ -1,5 +1,5 @@
 -- Allow Manual Log custom foods (source = user_manual) on existing master table.
--- Run on test/prod Supabase if POST /api/nutrition-knowledge/custom-food returns SAVE_FAILED.
+-- Run on test/prod MySQL if POST /api/nutrition-knowledge/custom-food returns SAVE_FAILED.
 
 DO $$
 BEGIN

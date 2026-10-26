@@ -24,7 +24,7 @@
  *   │  JOB WORKER  (triggered by /api/ai/worker cron)                      │
  *   │  5. enrichNutrition  → 21 micronutrient fields (second Gemini call)  │
  *   │  6. Merge into food_nutrition_data_table                             │
- *   │  7. Notify client via Supabase Realtime / polling                   │
+ *   │  7. Notify client via MySQL Realtime / polling                   │
  *   └──────────────────────────────────────────────────────────────────────┘
  *
  * Observability per pipeline run:

@@ -27,7 +27,7 @@
  *   `isEnabled(name)` reads `process.env.FF_<UPPER_SNAKE>` first; if the
  *   env var is `'true'` or `'false'` (case-insensitive) that wins;
  *   otherwise the registered `defaultEnabled` is returned. Reads are
- *   pure — no caching, no Supabase calls — so tests can flip the env
+ *   pure — no caching, no MySQL calls — so tests can flip the env
  *   var between cases without bookkeeping.
  *
  *   `isEnabledForAppVersion(name, clientVersion)` applies the global flag

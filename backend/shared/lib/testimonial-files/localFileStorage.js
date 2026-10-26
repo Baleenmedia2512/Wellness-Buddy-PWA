@@ -1,5 +1,5 @@
 /**
- * Testimonial files (before/after photos, share cards, videos) when Supabase
+ * Testimonial files (before/after photos, share cards, videos) when MySQL
  * storage is not configured. Paths stay `{userId}/{file}` so existing rows
  * keep the same shape. MilesWeb FTP is a later copy; this disk is what the
  * local API can read immediately.

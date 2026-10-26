@@ -18,7 +18,7 @@ import {
   getUserCommunityTeamCode,
   resolveCommunityPeerCoachIds,
 } from './communityTeamVisibility.js';
-import { fetchAllSupabaseRows } from './supabasePaginate.js';
+import { fetchAllMysqlRows } from './mysqlPaginate.js';
 
 const COACH_ROLES = new Set(['coach', 'admin']);
 
@@ -71,15 +71,15 @@ export function buildReportingContext(allUsers) {
 
 /**
  * Load all team users once for a request (Active + Inactive).
- * @param {object} supabase
+ * @param {object} db
  * @returns {Promise<ReportingContext>}
  */
-export async function loadReportingContext(supabase) {
-  // Page past Supabase's default 1000-row cap so large trees are complete.
+export async function loadReportingContext(db) {
+  // Page past MySQL's default 1000-row cap so large trees are complete.
   let allUsers;
   try {
-    allUsers = await fetchAllSupabaseRows(() =>
-      supabase
+    allUsers = await fetchAllMysqlRows(() =>
+      db
         .from('team_table')
         .select('UserId, UserName, Email, Role, CoachId, CoachTeamId, Status, PhoneNumber, Height, CommunityId')
         .order('UserId', { ascending: true }),
@@ -431,16 +431,16 @@ export function isSharedCoachTeamAccessible(viewerUserId, memberRow, coachTeamRo
  * Shared CoachTeamId access — members linked by team code only (Community ID path).
  * Mirrors team-hierarchy `onSharedTeam` so search picks match Trend/Nutrition APIs.
  *
- * @param {object} supabase
+ * @param {object} db
  * @param {number|string} viewerUserId
  * @param {number|string} memberUserId
  * @returns {Promise<boolean>}
  */
-export async function isAccessibleViaSharedCoachTeamId(supabase, viewerUserId, memberUserId) {
+export async function isAccessibleViaSharedCoachTeamId(db, viewerUserId, memberUserId) {
   const memberId = Number(memberUserId);
   if (!Number.isFinite(memberId)) return false;
 
-  const { data: memberRow, error: memberError } = await supabase
+  const { data: memberRow, error: memberError } = await db
     .from('team_table')
     .select('UserId, Status, CoachTeamId')
     .eq('UserId', memberId)
@@ -450,7 +450,7 @@ export async function isAccessibleViaSharedCoachTeamId(supabase, viewerUserId, m
   const memberTeamId = normalizeCoachTeamId(memberRow.CoachTeamId);
   if (!memberTeamId) return false;
 
-  const { data: coachTeamRow, error: teamError } = await supabase
+  const { data: coachTeamRow, error: teamError } = await db
     .from('coach_teams_table')
     .select('TeamId, CoachId, CoCoachId')
     .eq('TeamId', memberTeamId)
@@ -465,15 +465,15 @@ export async function isAccessibleViaSharedCoachTeamId(supabase, viewerUserId, m
  * 403 when viewerUserId is set and memberUserId is outside the viewer's
  * recursive reporting downline. No-op when viewer is omitted (legacy callers).
  */
-export async function assertViewerCanAccessMember(supabase, viewerUserId, memberUserId) {
+export async function assertViewerCanAccessMember(db, viewerUserId, memberUserId) {
   if (viewerUserId == null || viewerUserId === '') return;
   if (memberUserId == null || memberUserId === '') return;
   if (Number(viewerUserId) === Number(memberUserId)) return;
 
-  const context = await loadReportingContextForCoach(supabase, viewerUserId);
+  const context = await loadReportingContextForCoach(db, viewerUserId);
   if (isReportingDownlineMember(viewerUserId, memberUserId, context, 'full')) return;
   if (isCoCoachPartnerDownlineMember(viewerUserId, memberUserId, context)) return;
-  if (await isAccessibleViaSharedCoachTeamId(supabase, viewerUserId, memberUserId)) return;
+  if (await isAccessibleViaSharedCoachTeamId(db, viewerUserId, memberUserId)) return;
 
   const err = new Error('You do not have permission to view this member');
   err.status = 403;
@@ -527,13 +527,13 @@ const SUBTREE_CACHE_KEY_PREFIX = 'v8:'; // bump when select columns or rollup ru
 const COACH_ID_IN_CHUNK = 100;
 
 /**
- * @param {object} supabase
+ * @param {object} db
  * @param {number} userId
  * @param {string} [select]
  * @returns {Promise<TeamUser|null>}
  */
-async function fetchTeamUserById(supabase, userId, select = TEAM_USER_SELECT) {
-  const { data, error } = await supabase
+async function fetchTeamUserById(db, userId, select = TEAM_USER_SELECT) {
+  const { data, error } = await db
     .from('team_table')
     .select(select)
     .eq('UserId', userId)
@@ -545,12 +545,12 @@ async function fetchTeamUserById(supabase, userId, select = TEAM_USER_SELECT) {
 /**
  * All team_table children for the given CoachIds (pages past the ~1000-row cap).
  *
- * @param {object} supabase
+ * @param {object} db
  * @param {number[]} coachIds
  * @param {string} [select]
  * @returns {Promise<TeamUser[]>}
  */
-async function fetchTeamUsersByCoachIds(supabase, coachIds, select = TEAM_USER_SELECT) {
+async function fetchTeamUsersByCoachIds(db, coachIds, select = TEAM_USER_SELECT) {
   const ids = [...new Set(
     (coachIds || [])
       .map((id) => Number(id))
@@ -565,8 +565,8 @@ async function fetchTeamUsersByCoachIds(supabase, coachIds, select = TEAM_USER_S
 
   const pages = await Promise.all(
     chunks.map((chunk) =>
-      fetchAllSupabaseRows(() =>
-        supabase
+      fetchAllMysqlRows(() =>
+        db
           .from('team_table')
           .select(select)
           .in('CoachId', chunk)
@@ -582,16 +582,16 @@ async function fetchTeamUsersByCoachIds(supabase, coachIds, select = TEAM_USER_S
  * Used only for community-level Team visibility — not for CoachId edges.
  * Pages past the ~1000-row cap.
  *
- * @param {object} supabase
+ * @param {object} db
  * @param {string} communityCode
  * @param {string} [select]
  * @returns {Promise<TeamUser[]>}
  */
-async function fetchTeamUsersByCommunityCode(supabase, communityCode, select = TEAM_USER_SELECT) {
+async function fetchTeamUsersByCommunityCode(db, communityCode, select = TEAM_USER_SELECT) {
   const code = String(communityCode || '').trim();
   if (!code) return [];
-  return fetchAllSupabaseRows(() =>
-    supabase
+  return fetchAllMysqlRows(() =>
+    db
       .from('team_table')
       .select(select)
       .or(`CommunityId.eq.${code},CoachTeamId.eq.${code},TeamId.eq.${code}`)
@@ -601,37 +601,37 @@ async function fetchTeamUsersByCommunityCode(supabase, communityCode, select = T
 
 /**
  * Test/support export: paginated CoachId children (no silent 1000-row truncation).
- * @param {object} supabase
+ * @param {object} db
  * @param {number[]} coachIds
  * @param {string} [select]
  */
-export async function fetchTeamUsersByCoachIdsPaged(supabase, coachIds, select = TEAM_USER_SELECT) {
-  return fetchTeamUsersByCoachIds(supabase, coachIds, select);
+export async function fetchTeamUsersByCoachIdsPaged(db, coachIds, select = TEAM_USER_SELECT) {
+  return fetchTeamUsersByCoachIds(db, coachIds, select);
 }
 
 /**
  * Test/support export: paginated community-code users.
- * @param {object} supabase
+ * @param {object} db
  * @param {string} communityCode
  * @param {string} [select]
  */
-export async function fetchTeamUsersByCommunityCodePaged(supabase, communityCode, select = TEAM_USER_SELECT) {
-  return fetchTeamUsersByCommunityCode(supabase, communityCode, select);
+export async function fetchTeamUsersByCommunityCodePaged(db, communityCode, select = TEAM_USER_SELECT) {
+  return fetchTeamUsersByCommunityCode(db, communityCode, select);
 }
 
 /**
  * Sponsor + Co-Sponsor share the same team downline (dual-lead model).
  * Resolves partnership from coach_teams_table when the viewer is a lead.
- * @param {object} supabase
+ * @param {object} db
  * @param {TeamUser} rootUser
  * @returns {Promise<number[]>}
  */
-async function resolveCoCoachRootCoachIds(supabase, rootUser) {
+async function resolveCoCoachRootCoachIds(db, rootUser) {
   const rootId = Number(rootUser?.UserId);
   if (!Number.isFinite(rootId)) return [];
 
   // Prefer: viewer is already a lead on an active coach_teams row.
-  const { data: byRole, error: byRoleError } = await supabase
+  const { data: byRole, error: byRoleError } = await db
     .from('coach_teams_table')
     .select('CoachId, CoCoachId')
     .or(`CoachId.eq.${rootId},CoCoachId.eq.${rootId}`)
@@ -645,7 +645,7 @@ async function resolveCoCoachRootCoachIds(supabase, rootUser) {
   const teamCode = rootUser.TeamId || rootUser.CoachTeamId;
   if (!teamCode) return [rootId];
 
-  const { data: coachTeam, error } = await supabase
+  const { data: coachTeam, error } = await db
     .from('coach_teams_table')
     .select('CoachId, CoCoachId')
     .eq('TeamId', teamCode)
@@ -669,11 +669,11 @@ async function resolveCoCoachRootCoachIds(supabase, rootUser) {
  * (no full team_table scan). Includes ancestor chain for inactive-coach rollup
  * and sibling peer nodes (same parent; not their downlines).
  *
- * @param {object} supabase
+ * @param {object} db
  * @param {number} rootCoachId
  * @returns {Promise<ReportingContext>}
  */
-export async function loadReportingContextForCoach(supabase, rootCoachId) {
+export async function loadReportingContextForCoach(db, rootCoachId) {
   const rootId = Number(rootCoachId);
   if (!Number.isFinite(rootId)) return buildReportingContext([]);
 
@@ -683,7 +683,7 @@ export async function loadReportingContextForCoach(supabase, rootCoachId) {
   if (cached && cached.expiresAt > now) return cached.value;
 
   const usersById = new Map();
-  const rootUser = await fetchTeamUserById(supabase, rootId);
+  const rootUser = await fetchTeamUserById(db, rootId);
   if (!rootUser) {
     const empty = buildReportingContext([]);
     SUBTREE_CONTEXT_CACHE.set(cacheKey, { value: empty, expiresAt: now + SUBTREE_CONTEXT_TTL_MS });
@@ -696,23 +696,23 @@ export async function loadReportingContextForCoach(supabase, rootCoachId) {
   const visitedUp = new Set([rootId]);
   while (Number.isFinite(walkId) && !visitedUp.has(walkId)) {
     visitedUp.add(walkId);
-    const ancestor = await fetchTeamUserById(supabase, walkId);
+    const ancestor = await fetchTeamUserById(db, walkId);
     if (!ancestor) break;
     usersById.set(ancestor.UserId, ancestor);
     walkId = Number(ancestor.CoachId);
   }
 
-  const rootCoachIds = await resolveCoCoachRootCoachIds(supabase, rootUser);
+  const rootCoachIds = await resolveCoCoachRootCoachIds(db, rootUser);
   for (const partnerId of rootCoachIds) {
     if (partnerId === rootId || usersById.has(partnerId)) continue;
-    const partner = await fetchTeamUserById(supabase, partnerId);
+    const partner = await fetchTeamUserById(db, partnerId);
     if (partner) usersById.set(partner.UserId, partner);
   }
 
   let currentCoachIds = rootCoachIds;
   let depth = 0;
   while (currentCoachIds.length > 0 && depth < MAX_SUBTREE_DEPTH) {
-    const children = await fetchTeamUsersByCoachIds(supabase, currentCoachIds);
+    const children = await fetchTeamUsersByCoachIds(db, currentCoachIds);
     const nextCoachIds = [];
     for (const child of children) {
       if (!usersById.has(child.UserId)) {
@@ -736,11 +736,11 @@ export async function loadReportingContextForCoach(supabase, rootCoachId) {
   if (Number.isFinite(parentId)) {
     let parentUser = usersById.get(parentId) || null;
     if (!parentUser) {
-      parentUser = await fetchTeamUserById(supabase, parentId);
+      parentUser = await fetchTeamUserById(db, parentId);
       if (parentUser) usersById.set(parentUser.UserId, parentUser);
     }
 
-    const siblings = await fetchTeamUsersByCoachIds(supabase, [parentId]);
+    const siblings = await fetchTeamUsersByCoachIds(db, [parentId]);
     for (const sibling of siblings) {
       const siblingId = Number(sibling?.UserId);
       if (!Number.isFinite(siblingId) || siblingId === rootId) continue;
@@ -750,18 +750,18 @@ export async function loadReportingContextForCoach(supabase, rootCoachId) {
     // Parent shared Direct Team: Partner lead directs (e.g. Leenah → Jasper)
     // belong in the parent's Direct Team when Sponsor/Co-Sponsor share a community.
     if (parentUser) {
-      const parentLeadIds = await resolveCoCoachRootCoachIds(supabase, parentUser);
+      const parentLeadIds = await resolveCoCoachRootCoachIds(db, parentUser);
       parentPartnerRootIds = parentLeadIds
         .map((id) => Number(id))
         .filter((id) => Number.isFinite(id) && id !== parentId);
 
       for (const partnerId of parentPartnerRootIds) {
         if (usersById.has(partnerId)) continue;
-        const partner = await fetchTeamUserById(supabase, partnerId);
+        const partner = await fetchTeamUserById(db, partnerId);
         if (partner) usersById.set(partner.UserId, partner);
       }
       if (parentPartnerRootIds.length > 0) {
-        const partnerDirects = await fetchTeamUsersByCoachIds(supabase, parentPartnerRootIds);
+        const partnerDirects = await fetchTeamUsersByCoachIds(db, parentPartnerRootIds);
         for (const child of partnerDirects) {
           if (!usersById.has(child.UserId)) usersById.set(child.UserId, child);
         }
@@ -770,7 +770,7 @@ export async function loadReportingContextForCoach(supabase, rootCoachId) {
       const parentCommunityCode = getUserCommunityTeamCode(parentUser);
       if (parentCommunityCode) {
         const parentCommunityRows = await fetchTeamUsersByCommunityCode(
-          supabase,
+          db,
           parentCommunityCode,
         );
         const parentCommunityIds = [];
@@ -782,7 +782,7 @@ export async function loadReportingContextForCoach(supabase, rootCoachId) {
         }
         if (parentCommunityIds.length > 0) {
           const parentCommunityChildren = await fetchTeamUsersByCoachIds(
-            supabase,
+            db,
             parentCommunityIds,
           );
           for (const child of parentCommunityChildren) {
@@ -796,7 +796,7 @@ export async function loadReportingContextForCoach(supabase, rootCoachId) {
         );
         if (parentCommunityPeerRootIds.length > 0) {
           const communityPeerDirects = await fetchTeamUsersByCoachIds(
-            supabase,
+            db,
             parentCommunityPeerRootIds,
           );
           for (const child of communityPeerDirects) {
@@ -814,7 +814,7 @@ export async function loadReportingContextForCoach(supabase, rootCoachId) {
   const partnerRootIds = partnershipLeadIds.filter((id) => id !== rootId);
   const communityCode = getUserCommunityTeamCode(rootUser);
   if (communityCode) {
-    const communityRows = await fetchTeamUsersByCommunityCode(supabase, communityCode);
+    const communityRows = await fetchTeamUsersByCommunityCode(db, communityCode);
     const communityUserIds = [];
     for (const row of communityRows) {
       const id = Number(row?.UserId);
@@ -825,7 +825,7 @@ export async function loadReportingContextForCoach(supabase, rootCoachId) {
     // Load one CoachId generation so peer discovery can detect own-downline coaches
     // even when nested members do not carry the community code themselves.
     if (communityUserIds.length > 0) {
-      const communityChildren = await fetchTeamUsersByCoachIds(supabase, communityUserIds);
+      const communityChildren = await fetchTeamUsersByCoachIds(db, communityUserIds);
       for (const child of communityChildren) {
         if (!usersById.has(child.UserId)) usersById.set(child.UserId, child);
       }
@@ -841,7 +841,7 @@ export async function loadReportingContextForCoach(supabase, rootCoachId) {
   let peerFrontier = communityPeerRootIds.filter((id) => Number.isFinite(id) && id !== rootId);
   let peerDepth = 0;
   while (peerFrontier.length > 0 && peerDepth < MAX_SUBTREE_DEPTH) {
-    const children = await fetchTeamUsersByCoachIds(supabase, peerFrontier);
+    const children = await fetchTeamUsersByCoachIds(db, peerFrontier);
     const nextIds = [];
     for (const child of children) {
       if (!usersById.has(child.UserId)) {
@@ -1026,13 +1026,13 @@ export function collectVisibleHierarchyUsers(viewerUserId, context, { partnerIds
 
 /**
  * Convenience: load context + return reporting members in one call.
- * @param {object} supabase
+ * @param {object} db
  * @param {number} coachId
  * @param {'direct'|'full'} [scope='direct']
  * @returns {Promise<TeamUser[]>}
  */
-export async function fetchReportingMembers(supabase, coachId, scope = 'direct') {
-  const context = await loadReportingContextForCoach(supabase, coachId);
+export async function fetchReportingMembers(db, coachId, scope = 'direct') {
+  const context = await loadReportingContextForCoach(db, coachId);
   return getReportingMembers(coachId, scope, context);
 }
 

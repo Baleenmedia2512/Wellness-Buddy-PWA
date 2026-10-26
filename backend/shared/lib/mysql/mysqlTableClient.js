@@ -13,9 +13,16 @@ import {
 
 const DEFAULT_LIMIT = 1000;
 
+/** MySQL ER_DUP_ENTRY. */
+const MYSQL_DUP_ENTRY = '1062';
+/** MySQL ER_NO_SUCH_TABLE. */
+const MYSQL_NO_SUCH_TABLE = '1146';
+/** MySQL ER_TOO_MANY_ROWS. */
+const MYSQL_TOO_MANY_ROWS = '1172';
+
 /**
- * MySQL/Prisma unique violations surface as 1062, P2002, or P2010 with meta.code 1062.
- * Callers still branch on PostgreSQL 23505. Keep that code so those branches work on MySQL.
+ * Normalize Prisma/MySQL failures to MySQL error codes.
+ * Duplicate inserts and updates are ER_DUP_ENTRY (1062).
  * @param {unknown} err
  * @returns {{ message: string, code: string|null }}
  */
@@ -25,9 +32,17 @@ export function mapDriverError(err) {
   const isDuplicate = err?.code === 'P2002'
     || err?.code === 'ER_DUP_ENTRY'
     || metaCode === '1062'
+    || err?.code === '1062'
     || /duplicate entry/i.test(message);
-  if (isDuplicate) return { message, code: '23505' };
+  if (isDuplicate) return { message, code: MYSQL_DUP_ENTRY };
   return { message, code: err?.code || metaCode || null };
+}
+
+function notSingleRowError(rowCount) {
+  return {
+    message: 'JSON object requested, multiple (or no) rows returned',
+    code: rowCount > 1 ? MYSQL_TOO_MANY_ROWS : '1329',
+  };
 }
 
 function shapeRows(rows, mode) {
@@ -35,7 +50,7 @@ function shapeRows(rows, mode) {
     if (rows.length !== 1) {
       return {
         data: null,
-        error: { message: 'JSON object requested, multiple (or no) rows returned', code: 'PGRST116' },
+        error: notSingleRowError(rows.length),
         count: null,
       };
     }
@@ -45,7 +60,7 @@ function shapeRows(rows, mode) {
     if (rows.length > 1) {
       return {
         data: null,
-        error: { message: 'JSON object requested, multiple (or no) rows returned', code: 'PGRST116' },
+        error: notSingleRowError(rows.length),
         count: null,
       };
     }
@@ -186,7 +201,7 @@ class MysqlQuery {
     try {
       const table = getCatalog().get(this.table);
       if (!table) {
-        return { data: null, error: { message: `Unknown table ${this.table}`, code: '42P01' }, count: null };
+        return { data: null, error: { message: `Unknown table ${this.table}`, code: MYSQL_NO_SUCH_TABLE }, count: null };
       }
       if (this.action === 'insert') return await this._insert(table);
       if (this.action === 'update') return await this._update(table);
@@ -299,8 +314,10 @@ class MysqlQuery {
     const columns = Object.keys(row || {}).filter((key) => row[key] !== undefined && table.fields.has(key));
     if (!columns.length) return { data: null, error: { message: 'Upsert payload has no known columns' }, count: null };
     const params = columns.map((column) => normalizeWriteValue(row[column], table.fields.get(column)));
-    const assignments = columns.map((column) => `${quoteIdent(column)} = incoming.${quoteIdent(column)}`);
-    const sql = `INSERT INTO ${quoteIdent(table.name)} (${columns.map(quoteIdent).join(', ')}) VALUES (${columns.map(() => '?').join(', ')}) AS incoming ON DUPLICATE KEY UPDATE ${assignments.join(', ')}`;
+    // VALUES(col) works on MariaDB and MySQL. The MySQL 8 row alias
+    // (`AS incoming`) is rejected by MariaDB, so daily scores never saved.
+    const assignments = columns.map((column) => `${quoteIdent(column)} = VALUES(${quoteIdent(column)})`);
+    const sql = `INSERT INTO ${quoteIdent(table.name)} (${columns.map(quoteIdent).join(', ')}) VALUES (${columns.map(() => '?').join(', ')}) ON DUPLICATE KEY UPDATE ${assignments.join(', ')}`;
     await withUtc((tx) => tx.$executeRawUnsafe(sql, ...params));
     const keys = (this.onConflict || table.pk.join(',')).split(',').map(cleanIdent).filter((column) => row[column] !== undefined);
     keys.forEach((column) => this.eq(column, row[column]));
@@ -312,7 +329,7 @@ class MysqlQuery {
 }
 
 function unavailableStorage() {
-  const fail = async () => ({ data: null, error: { message: 'SUPABASE_URL is required for file storage' } });
+  const fail = async () => ({ data: null, error: { message: 'File storage is not configured' } });
   return {
     from() {
       return {
@@ -338,7 +355,7 @@ function unavailableChannel() {
   };
 }
 
-export function createMysqlSupabaseClient(bridges = {}) {
+export function createMysqlTableClient(bridges = {}) {
   return {
     from(table) {
       return new MysqlQuery(table);

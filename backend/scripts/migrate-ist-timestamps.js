@@ -45,8 +45,8 @@ for (const file of walk(backendRoot)) {
 
   s = s.replace(/getISTTimestamp\(\)/g, 'nowUtc()');
   s = s.replace(/convertToIST\(([^)]+)\)\.istTimestamp/g, 'parseClientTimestampToUtc($1).utcIso');
-  s = s.replace(/import \{ getSupabaseClient, getISTTimestamp, convertToIST \} from ([^;]+);/g, 'import { getSupabaseClient } from $1;');
-  s = s.replace(/import \{ getSupabaseClient, getISTTimestamp \} from ([^;]+);/g, 'import { getSupabaseClient } from $1;');
+  s = s.replace(/import \{ getMysqlClient, getISTTimestamp, convertToIST \} from ([^;]+);/g, 'import { getMysqlClient } from $1;');
+  s = s.replace(/import \{ getMysqlClient, getISTTimestamp \} from ([^;]+);/g, 'import { getMysqlClient } from $1;');
   s = s.replace(/import \{ convertToIST, getISTTimestamp \} from ([^;]+);/g, '');
   s = s.replace(/import \{ getISTTimestamp \} from ([^;]+);/g, '');
   s = s.replace(/,\s*getISTTimestamp/g, '');
@@ -55,7 +55,7 @@ for (const file of walk(backendRoot)) {
   s = s.replace(/export \{ getISTTimestamp \};\r?\n?/g, '');
   s = s.replace(/const \{ getISTTimestamp, convertToIST \} = repo;\r?\n?/g, '');
   s = s.replace(/const \{ getISTTimestamp \} = repo;\r?\n?/g, '');
-  s = s.replace(/from '\.\.\/\.\.\/utils\/supabaseClient\.js';\r?\nimport \{\r?\n  getISTTimestamp,\r?\n  convertToIST,\r?\n\} from '\.\.\/\.\.\/utils\/supabaseClient\.js';/g, "from '../../utils/supabaseClient.js';");
+  s = s.replace(/from '\.\.\/\.\.\/utils\/mysqlClient\.js';\r?\nimport \{\r?\n  getISTTimestamp,\r?\n  convertToIST,\r?\n\} from '\.\.\/\.\.\/utils\/mysqlClient\.js';/g, "from '../../utils/mysqlClient.js';");
 
   if (s !== orig) {
     s = ensureImport(s, file, ['nowUtc', 'parseClientTimestampToUtc']);

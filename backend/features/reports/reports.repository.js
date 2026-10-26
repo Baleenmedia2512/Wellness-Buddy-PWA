@@ -2,7 +2,7 @@
  * reports.repository.js — Data layer for the Reports feature.
  * Owns: team_table (hierarchy lookup) + weight_records_table (latest weight).
  */
-import { getSupabaseClient } from '../../utils/supabaseClient.js';
+import { getMysqlClient } from '../../utils/mysqlClient.js';
 import logger from '../../shared/lib/logger.js';
 import {
   loadReportingContext,
@@ -28,8 +28,8 @@ export async function getUserNamesByIds(userIds) {
     .filter((id) => Number.isFinite(id) && id > 0))];
   if (ids.length === 0) return map;
 
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from('team_table')
     .select('"UserId", "UserName"')
     .in('"UserId"', ids);
@@ -44,7 +44,7 @@ export async function getUserNamesByIds(userIds) {
   return map;
 }
 
-/** Supabase `.in()` URL length safety — batch user id lookups. */
+/** MySQL `.in()` URL length safety — batch user id lookups. */
 const WEIGHT_USER_ID_CHUNK = 150;
 
 /**
@@ -149,8 +149,8 @@ function mapReportingMembersToRaw(reportingMembers, coachId, parentByUserId, dir
  * @returns {Promise<{ UserId: number, UserName: string, Height: string|null, CoachId?: number|null, Role?: string|null }|null>}
  */
 export async function getCoachMember(coachId) {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from('team_table')
     .select('"UserId", "UserName", "Email", "CommunityId", "Height", "CoachId", "Role", "Status"')
     .eq('"UserId"', coachId)
@@ -170,8 +170,8 @@ export async function getCoachMember(coachId) {
  * }>}
  */
 export async function getFullTeamMembersIndexed(coachId) {
-  const supabase = getSupabaseClient();
-  const context = await loadReportingContextForCoach(supabase, coachId);
+  const db = getMysqlClient();
+  const context = await loadReportingContextForCoach(db, coachId);
   const reportingMembers = collectReportTeamMembers(coachId, context);
   const { parentByUserId, childrenByParentId, directToRoot } = extractReportingHierarchyMeta(
     context,
@@ -213,8 +213,8 @@ export async function getFullTeamMembers(coachId) {
     });
   }
 
-  const supabase = getSupabaseClient();
-  const context = await loadReportingContext(supabase);
+  const db = getMysqlClient();
+  const context = await loadReportingContext(db);
   const reportingMembers = collectReportTeamMembers(coachId, context);
   const { parentByUserId, childrenByParentId, directToRoot } = extractReportingHierarchyMeta(
     context,
@@ -242,8 +242,8 @@ export async function getFullTeamMembers(coachId) {
  * @returns {Promise<Array<{ UserId: number, UserName: string, Height: string|null }>>}
  */
 export async function getDirectDownline(coachId) {
-  const supabase = getSupabaseClient();
-  const context = await loadReportingContextForCoach(supabase, coachId);
+  const db = getMysqlClient();
+  const context = await loadReportingContextForCoach(db, coachId);
   return getSharedTeamDirectMembers(coachId, context)
     .filter((member) => member.UserId !== coachId)
     .map((member) => ({
@@ -283,7 +283,7 @@ export async function getLatestWeightsForUsers(userIds) {
   const uniqueIds = [...new Set(userIds.filter((id) => Number.isFinite(Number(id))))];
   if (uniqueIds.length === 0) return map;
 
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   const chunks = [];
   for (let i = 0; i < uniqueIds.length; i += WEIGHT_USER_ID_CHUNK) {
     chunks.push(uniqueIds.slice(i, i + WEIGHT_USER_ID_CHUNK));
@@ -291,7 +291,7 @@ export async function getLatestWeightsForUsers(userIds) {
 
   const results = await Promise.all(
     chunks.map(async (chunk) => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from('weight_records_table')
         .select('"UserId", "Weight", "CreatedAt"')
         .in('"UserId"', chunk)
@@ -324,7 +324,7 @@ export async function getIdealWeightReachedAtForUsers(userIds) {
   )];
   if (uniqueIds.length === 0) return map;
 
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   const chunks = [];
   for (let i = 0; i < uniqueIds.length; i += WEIGHT_USER_ID_CHUNK) {
     chunks.push(uniqueIds.slice(i, i + WEIGHT_USER_ID_CHUNK));
@@ -333,7 +333,7 @@ export async function getIdealWeightReachedAtForUsers(userIds) {
   try {
     const results = await Promise.all(
       chunks.map(async (chunk) => {
-        const { data, error } = await supabase
+        const { data, error } = await db
           .from('team_table')
           .select('"UserId", "IdealWeightReachedAt"')
           .in('"UserId"', chunk);
@@ -419,10 +419,10 @@ export async function getLatestTwoWeightsForUsers(userIds, scoreDateYmd = null) 
 
   // Page-sized lookups: few rows/user only — avoids full history download.
   if (uniqueIds.length <= 40) {
-    const supabase = getSupabaseClient();
+    const db = getMysqlClient();
     const results = await Promise.all(
       uniqueIds.map(async (uid) => {
-        let query = supabase
+        let query = db
           .from('weight_records_table')
           .select('"UserId", "Weight", "CreatedAt"')
           .eq('"UserId"', uid)
@@ -443,7 +443,7 @@ export async function getLatestTwoWeightsForUsers(userIds, scoreDateYmd = null) 
     return normalizeWeightMapKeys(map);
   }
 
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   const chunks = [];
   for (let i = 0; i < uniqueIds.length; i += WEIGHT_USER_ID_CHUNK) {
     chunks.push(uniqueIds.slice(i, i + WEIGHT_USER_ID_CHUNK));
@@ -451,7 +451,7 @@ export async function getLatestTwoWeightsForUsers(userIds, scoreDateYmd = null) 
 
   const results = await Promise.all(
     chunks.map(async (chunk) => {
-      let query = supabase
+      let query = db
         .from('weight_records_table')
         .select('"UserId", "Weight", "CreatedAt"')
         .in('"UserId"', chunk)
@@ -501,7 +501,7 @@ export async function getWellnessScoresForUsers(userIds, scoreDate) {
   const uniqueIds = [...new Set(userIds.filter((id) => Number.isFinite(Number(id))))];
   if (uniqueIds.length === 0) return map;
 
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   const chunks = [];
   for (let i = 0; i < uniqueIds.length; i += WEIGHT_USER_ID_CHUNK) {
     chunks.push(uniqueIds.slice(i, i + WEIGHT_USER_ID_CHUNK));
@@ -509,7 +509,7 @@ export async function getWellnessScoresForUsers(userIds, scoreDate) {
 
   const results = await Promise.all(
     chunks.map(async (chunk) => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from('wellness_score_daily_table')
         .select('user_id, percentage, total_earned, total_possible, computed_at')
         .eq('score_date', scoreDate)

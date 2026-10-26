@@ -27,7 +27,7 @@ import {
 } from './domain/bcmProfileReview.rules.js';
 import { buildProfileCardSyncPayload } from '../body-parameters-card/domain/sync.rules.js';
 import { computeBmiFromHeightWeight } from '../body-parameters-card/domain/card.rules.js';
-import { getSupabaseClient } from '../../utils/supabaseClient.js';
+import { getMysqlClient } from '../../utils/mysqlClient.js';
 import { resolveLeadSeatForUser } from '../../utils/coachTeamSeats.js';
 import { syncProfileCommunityIdToTeamAssignment } from './communityIdTeamAssignment.service.js';
 import { buildTeamFieldsFromProfileCommunityId } from './domain/communityIdTeamAssignment.rules.js';
@@ -121,7 +121,7 @@ export async function getProfile({ email, userId = null, appVersion = null }) {
     bcmReviewFields?.BcmProfileReviewedAt,
   );
   const leadSeat = await resolveLeadSeatForUser(
-    getSupabaseClient(),
+    getMysqlClient(),
     user.UserId,
     user.CommunityId || teamCodeFields?.TeamId || null,
   );

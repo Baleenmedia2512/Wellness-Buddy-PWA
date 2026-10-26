@@ -1,9 +1,9 @@
 /**
- * Discipline Calculations using Supabase REST API
- * Replacement for disciplineCalculations.js that works through firewalls
+ * Discipline calculations through the MySQL table client.
+ * Separate from disciplineCalculations.js, which takes a connection argument.
  */
 
-import { getSupabaseClient } from './supabaseClient.js';
+import { getMysqlClient } from './mysqlClient.js';
 import { normalizeTimestamp } from './timestampUtils.js';
 import { formatDateForMySQL, getDaysBetween } from './disciplineHelpers.js';
 import {
@@ -17,7 +17,7 @@ import { resolveCalorieTargetFromProfile } from './tdeeCalculations.js';
 import { applyDateRangeFilter } from '../shared/lib/datetime/applyDayFilter.js';
 import { IANA_IST, timestampToCalendarYmd, timeOfDayInTimezone } from '../shared/lib/datetime/index.js';
 import { mergeActivityTimeWindowsWithDefaults } from '../shared/lib/activity-time-windows.js';
-import { fetchAllSupabaseRows } from './supabasePaginate.js';
+import { fetchAllMysqlRows } from './mysqlPaginate.js';
 
 /** Lean columns for dual-coaching hierarchy callers (time-report, counselling, reports). */
 const DUAL_COACHING_MEMBER_SELECT =
@@ -44,16 +44,16 @@ const addBufferToTime = (t) => {
 };
 
 /**
- * Get team hierarchy using Supabase REST API
+ * Get team hierarchy using MySQL REST API
  * Replaces the recursive CTE query
  * @param {number} coachId - Coach user ID
  * @returns {Array} Array of team members with hierarchy info
  */
 export async function getTeamHierarchy(coachId) {
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   
   // Get the logged-in coach first
-  const { data: coach, error: coachError } = await supabase
+  const { data: coach, error: coachError } = await db
     .from('team_table')
     .select('"UserId", "UserName", "Email", "Role", "EntryDateTime", "CoachId"')
     .eq('"UserId"', coachId)
@@ -82,7 +82,7 @@ export async function getTeamHierarchy(coachId) {
       return [];
     }
     
-    const { data: members, error } = await supabase
+    const { data: members, error } = await db
       .from('team_table')
       .select('"UserId", "UserName", "Email", "Role", "EntryDateTime", "CoachId"')
       .in('"CoachId"', parentIds)
@@ -141,9 +141,9 @@ export async function getTeamHierarchy(coachId) {
  * @returns {Object} Time windows map
  */
 export async function getTimeWindows() {
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from('activity_time_windows_table')
     .select('"ActivityType", "WindowStartTime", "WindowEndTime"')
     .is('"EffectiveToDate"', null);
@@ -167,7 +167,7 @@ export async function getTimeWindows() {
 }
 
 /**
- * Calculate discipline for a member using Supabase
+ * Calculate discipline for a member using MySQL
  * @param {number} userId - User ID
  * @param {Date} startDate - Start date
  * @param {Date} endDate - End date
@@ -175,14 +175,14 @@ export async function getTimeWindows() {
  * @param {number} userTimezoneOffset - User's timezone offset in minutes (optional)
  * @returns {Object} Discipline data
  */
-export async function calculateMemberDisciplineSupabase(userId, startDate, endDate, timeWindows, userTimezoneOffset = null, timezoneIana = IANA_IST) {
-  const supabase = getSupabaseClient();
+export async function calculateMemberDisciplineQuery(userId, startDate, endDate, timeWindows, userTimezoneOffset = null, timezoneIana = IANA_IST) {
+  const db = getMysqlClient();
   const startDateStr = formatDateForMySQL(startDate);
   const endDateStr = formatDateForMySQL(endDate);
   const daysInPeriod = getDaysBetween(startDate, endDate);
   
   // Get weight records (discipline check: logged weight today)
-  let weightQuery = supabase
+  let weightQuery = db
     .from('weight_records_table')
     .select('"CreatedAt"')
     .eq('"UserId"', userId)
@@ -192,7 +192,7 @@ export async function calculateMemberDisciplineSupabase(userId, startDate, endDa
 
   // Get user's latest body weight from weight_records_table (for water intake calculation)
   // BMR is now stored in team_table directly
-  const { data: latestWeightRows } = await supabase
+  const { data: latestWeightRows } = await db
     .from('weight_records_table')
     .select('UserId, Weight')
     .eq('UserId', userId)
@@ -212,7 +212,7 @@ export async function calculateMemberDisciplineSupabase(userId, startDate, endDa
   // that case and the calorie discipline silently becomes 0%. Fetch all rows
   // for the user and pick the highest non-null BMR in JS — avoids depending on
   // a sort column that may not exist on team_table.
-  const { data: teamRows } = await supabase
+  const { data: teamRows } = await db
     .from('team_table')
     .select('Bmr, PhysicalActivityLevel')
     .eq('UserId', userId)
@@ -228,7 +228,7 @@ export async function calculateMemberDisciplineSupabase(userId, startDate, endDa
     }
   });
   
-  let educationQuery = supabase
+  let educationQuery = db
     .from('education_logs_table')
     .select('"CreatedAt"')
     .eq('"UserId"', userId)
@@ -236,7 +236,7 @@ export async function calculateMemberDisciplineSupabase(userId, startDate, endDa
   educationQuery = applyDateRangeFilter(educationQuery, '"CreatedAt"', startDateStr, endDateStr, timezoneIana);
   const { data: educationLogs } = await educationQuery;
   
-  let nutritionQuery = supabase
+  let nutritionQuery = db
     .from('food_nutrition_data_table')
     .select('"CreatedAt", "AnalysisData", "TotalCalories"')
     .eq('"UserID"', String(userId))
@@ -257,14 +257,14 @@ export async function calculateMemberDisciplineSupabase(userId, startDate, endDa
   // Get water intake records (food entries that are ONLY water/exempted beverages — opposite filter)
   const waterRecords = (nutritionRecordsRaw || []).filter(r => isExemptedBeverageOnly(r.AnalysisData));
 
-  let stepQuery = supabase
+  let stepQuery = db
     .from('daily_step_activity')
     .select('"CreatedAt", "Steps", "CaloriesBurned"')
     .eq('"UserId"', userId);
   stepQuery = applyDateRangeFilter(stepQuery, '"CreatedAt"', startDateStr, endDateStr, timezoneIana);
   const { data: stepRecords } = await stepQuery;
 
-  let watchQuery = supabase
+  let watchQuery = db
     .from('education_logs_table')
     .select('"Topic", "CreatedAt"')
     .eq('"UserId"', userId)
@@ -489,13 +489,13 @@ export async function calculateMemberDisciplineSupabase(userId, startDate, endDa
 }
 
 /**
- * Calculate discipline for entire team using Supabase
+ * Calculate discipline for entire team using MySQL
  * @param {Array} memberIds - Array of user IDs
  * @param {Date} startDate - Start date
  * @param {Date} endDate - End date
  * @returns {Array} Discipline data for all members
  */
-export async function calculateTeamDisciplineSupabase(memberIds, startDate, endDate) {
+export async function calculateTeamDisciplineQuery(memberIds, startDate, endDate) {
   const results = [];
   
   // Fetch time windows once
@@ -504,7 +504,7 @@ export async function calculateTeamDisciplineSupabase(memberIds, startDate, endD
   // Process all members
   for (const memberId of memberIds) {
     try {
-      const disciplineData = await calculateMemberDisciplineSupabase(
+      const disciplineData = await calculateMemberDisciplineQuery(
         memberId,
         startDate,
         endDate,
@@ -531,12 +531,12 @@ export async function calculateTeamDisciplineSupabase(memberIds, startDate, endD
  * @returns {Object} Attendance metrics
  */
 export async function calculateAttendanceMetrics(userId, startDate, endDate, timezoneIana = IANA_IST) {
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   const startDateStr = formatDateForMySQL(startDate);
   const endDateStr = formatDateForMySQL(endDate);
   const daysInPeriod = getDaysBetween(startDate, endDate);
 
-  let clubQuery = supabase
+  let clubQuery = db
     .from('education_logs_table')
     .select('id', { count: 'exact', head: true })
     .eq('"UserId"', userId)
@@ -547,7 +547,7 @@ export async function calculateAttendanceMetrics(userId, startDate, endDate, tim
 
   const clubCount = clubError ? 0 : (clubLogs || 0);
 
-  let remoteQuery = supabase
+  let remoteQuery = db
     .from('education_logs_table')
     .select('id', { count: 'exact', head: true })
     .eq('"UserId"', userId)
@@ -576,11 +576,11 @@ export async function calculateAttendanceMetrics(userId, startDate, endDate, tim
  * Active CoachId children for one dual-coaching level (pages past ~1000-row cap).
  * Exported for unit tests.
  *
- * @param {object} supabase
+ * @param {object} db
  * @param {number[]} coachIds
  * @returns {Promise<object[]>}
  */
-export async function fetchDualCoachingLevelMembers(supabase, coachIds) {
+export async function fetchDualCoachingLevelMembers(db, coachIds) {
   const ids = [...new Set(
     (coachIds || [])
       .map((id) => Number(id))
@@ -591,8 +591,8 @@ export async function fetchDualCoachingLevelMembers(supabase, coachIds) {
   const rows = [];
   for (let i = 0; i < ids.length; i += DUAL_COACHING_IN_CHUNK) {
     const chunk = ids.slice(i, i + DUAL_COACHING_IN_CHUNK);
-    const page = await fetchAllSupabaseRows(() =>
-      supabase
+    const page = await fetchAllMysqlRows(() =>
+      db
         .from('team_table')
         .select(DUAL_COACHING_MEMBER_SELECT)
         .in('CoachId', chunk)
@@ -611,19 +611,19 @@ export async function fetchDualCoachingLevelMembers(supabase, coachIds) {
  *
  * @param {number} userId - User ID (coach, admin, or any member)
  * @param {boolean} enableLogging - Enable detailed console logging for debugging (default: false)
- * @param {object} [supabaseClient] - optional inject for tests
+ * @param {object} [mysqlClient] - optional inject for tests
  * @returns {Promise<Array>} Array of team members with hierarchy info including:
  *   - Lean team_table fields used by callers
  *   - HierarchyLevel: number (0 = logged in user, 1 = direct, 2+ = nested)
  *   - IsLoggedInCoach: boolean (true only for the querying user)
  *   - HierarchyParent: UserId of parent in THIS specific hierarchy path
  */
-export async function getDualCoachingTeamHierarchy(userId, enableLogging = false, supabaseClient = null) {
-  const supabase = supabaseClient || getSupabaseClient();
+export async function getDualCoachingTeamHierarchy(userId, enableLogging = false, mysqlClient = null) {
+  const db = mysqlClient || getMysqlClient();
   const userIdNum = parseInt(userId);
 
   // Step 1: Get the logged-in user
-  const { data: user, error: userError } = await supabase
+  const { data: user, error: userError } = await db
     .from('team_table')
     .select(DUAL_COACHING_MEMBER_SELECT)
     .eq('UserId', userIdNum)
@@ -647,7 +647,7 @@ export async function getDualCoachingTeamHierarchy(userId, enableLogging = false
   // each other's hierarchy (Community ID ≠ Co-Coach).
   let coachPartnerIds = [userIdNum];
   
-  const { data: teamByRole, error: teamByRoleError } = await supabase
+  const { data: teamByRole, error: teamByRoleError } = await db
     .from('coach_teams_table')
     .select('CoachId, CoCoachId')
     .or(`CoachId.eq.${userIdNum},CoCoachId.eq.${userIdNum}`)
@@ -663,7 +663,7 @@ export async function getDualCoachingTeamHierarchy(userId, enableLogging = false
     }
   } else if (user.TeamId || user.CoachTeamId) {
     const teamCode = user.TeamId || user.CoachTeamId;
-    const { data: coachTeam, error: coachTeamError } = await supabase
+    const { data: coachTeam, error: coachTeamError } = await db
       .from('coach_teams_table')
       .select('CoachId, CoCoachId')
       .eq('TeamId', teamCode)
@@ -706,7 +706,7 @@ export async function getDualCoachingTeamHierarchy(userId, enableLogging = false
   if (coachPartnerIds.length > 1) {
     const partnerId = coachPartnerIds.find(id => id !== userIdNum);
     if (partnerId) {
-      const { data: partner } = await supabase
+      const { data: partner } = await db
         .from('team_table')
         .select(DUAL_COACHING_MEMBER_SELECT)
         .eq('UserId', partnerId)
@@ -737,7 +737,7 @@ export async function getDualCoachingTeamHierarchy(userId, enableLogging = false
     // NOTE: We query ONLY by CoachId (not CoCoachId) because coachPartnerIds already includes both coaches
     let levelMembers;
     try {
-      levelMembers = await fetchDualCoachingLevelMembers(supabase, currentLevelCoachIds);
+      levelMembers = await fetchDualCoachingLevelMembers(db, currentLevelCoachIds);
     } catch (levelError) {
       console.error('❌ [getDualCoachingTeamHierarchy] Error fetching level members:', levelError);
       break;
@@ -798,7 +798,7 @@ export async function getDualCoachingTeamHierarchy(userId, enableLogging = false
   const coachTeamsMap = {};
   
   if (allCoachTeamIds.length > 0) {
-    const { data: coachTeams } = await supabase
+    const { data: coachTeams } = await db
       .from('coach_teams_table')
       .select('TeamId, CoachId, CoCoachId')
       .in('TeamId', allCoachTeamIds)
@@ -828,7 +828,7 @@ export async function getDualCoachingTeamHierarchy(userId, enableLogging = false
   const allCoachIds = [...new Set(allMembers.map(m => m.CoachId).filter(Boolean))];
   const coachNameMap = {};
   if (allCoachIds.length > 0) {
-    const { data: coachUsers } = await supabase
+    const { data: coachUsers } = await db
       .from('team_table')
       .select('UserId, UserName')
       .in('UserId', allCoachIds);
@@ -841,7 +841,7 @@ export async function getDualCoachingTeamHierarchy(userId, enableLogging = false
   const allCoCoachIds = [...new Set(allMembers.map(m => m.CoCoachId).filter(Boolean))];
   const coCoachNameMap = {};
   if (allCoCoachIds.length > 0) {
-    const { data: coCoachUsers } = await supabase
+    const { data: coCoachUsers } = await db
       .from('team_table')
       .select('UserId, UserName')
       .in('UserId', allCoCoachIds);

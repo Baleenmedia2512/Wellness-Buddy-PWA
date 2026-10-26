@@ -6,7 +6,7 @@ This file is a record of the chat. Passwords, API keys, and tokens are not inclu
 
 ## What you asked for
 
-1. Move the app off PostgreSQL / Supabase onto MySQL through Prisma.
+1. Move the app off PostgreSQL / MySQL onto MySQL through Prisma.
 2. Load the local MySQL data onto MilesWeb (cPanel MariaDB), structure first, then data, including the four large photo tables.
 3. Point the running app at the MilesWeb database.
 4. Save new image uploads in the cPanel folder `wellnessvalley/uploads`, in the folders that are already there: `avatars`, `captures`, `education`, `food`, `good-habits`, `transformation`, `weight`. Existing photos must keep working.
@@ -18,14 +18,14 @@ This file is a record of the chat. Passwords, API keys, and tokens are not inclu
 
 ```
 Before
-Phone → API → Supabase / PostgreSQL
+Phone → API → MySQL / PostgreSQL
 
 After
 Phone → API → MYSQL_DATABASE_URL → MilesWeb MariaDB
          (Prisma, same table query style the code already used)
 ```
 
-If `MYSQL_DATABASE_URL` is not set, the old Supabase table client is still used. With it set, table reads and writes go to MySQL. That is how already-working screens stay on one path.
+If `MYSQL_DATABASE_URL` is not set, the old MySQL table client is still used. With it set, table reads and writes go to MySQL. That is how already-working screens stay on one path.
 
 MilesWeb connection that is live in `backend/.env`:
 
@@ -68,7 +68,7 @@ Dump files were written under `C:\dumps\`. They were not committed.
 ```
 Before
 Phone → API → Cloudflare R2 file
-             MySQL / Supabase stores the key (avatars/…, food/…, …)
+             MySQL / MySQL stores the key (avatars/…, food/…, …)
 Phone loads the file from R2
 
 After (when FTP is turned on)
@@ -107,7 +107,7 @@ Those `DB_*` names are not the MilesWeb connection. Filling them with the MilesW
 
 ## PostgreSQL connection removed
 
-- Commented `DB_*`, `DATABASE_URL`, and Supabase URL lines were deleted from `backend/.env`.
+- Commented `DB_*`, `DATABASE_URL`, and MySQL URL lines were deleted from `backend/.env`.
 - `backend/utils/dbPool.js` was deleted. It was the only Postgres pool. The dashboard was the only caller.
 - The `pg` package was uninstalled.
 - `backend/services/dashboardService.js` now runs its query through Prisma on `MYSQL_DATABASE_URL`.
@@ -141,7 +141,7 @@ Refresh the page. Restart the backend so the labels load as a list again.
 - `backend/prisma/schema.prisma` — MySQL schema, 46 models, URL from `MYSQL_DATABASE_URL`
 - `backend/shared/lib/prisma.js` — Prisma client
 - `backend/shared/lib/mysql/` — query layer that accepts the same `.from().select().eq().insert()` calls the repositories already use
-- `backend/utils/supabaseClient.js` — when `MYSQL_DATABASE_URL` is set, `getSupabaseClient()` returns that MySQL layer
+- `backend/utils/mysqlClient.js` — when `MYSQL_DATABASE_URL` is set, `getMysqlClient()` returns that MySQL layer
 
 Unknown extra write columns are dropped (for example job fields that are not in the MySQL table) so those writes do not throw.
 
@@ -149,4 +149,4 @@ Unknown extra write columns are dropped (for example job fields that are not in 
 
 1. cPanel FTP username and password, so new images land in `wellnessvalley/uploads`.
 2. Restart the backend after the latest `.env` and code changes if it is still the old process.
-3. Testimonial video files and the race-leaderboard live channel still expect Supabase when those features are used. Table data does not.
+3. Testimonial video files and the race-leaderboard live channel still expect MySQL when those features are used. Table data does not.

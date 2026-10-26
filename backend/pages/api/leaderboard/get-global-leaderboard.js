@@ -1,4 +1,4 @@
-import { getSupabaseClient } from "../../../utils/supabaseClient.js";
+import { getMysqlClient } from "../../../utils/mysqlClient.js";
 import logger from '../../../shared/lib/logger.js';
 import {
   nowUtc,
@@ -93,7 +93,7 @@ export default async function handler(req, res) {
       return res.status(200).json(cached);
     }
 
-    const supabase = getSupabaseClient();
+    const db = getMysqlClient();
     const startedAt = Date.now();
 
     logger.debug(
@@ -102,7 +102,7 @@ export default async function handler(req, res) {
 
     // Indexed subtree: viewer + ancestors (people only) + own downline + sibling peers.
     // Does not scan team_table and does not load peer-descendants / other upline branches.
-    const context = await loadReportingContextForCoach(supabase, viewerUserId);
+    const context = await loadReportingContextForCoach(db, viewerUserId);
     const contextMs = Date.now() - startedAt;
     const visibleUsers = collectVisibleHierarchyUsers(viewerUserId, context);
 

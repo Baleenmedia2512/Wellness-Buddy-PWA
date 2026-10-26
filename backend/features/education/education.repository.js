@@ -1,4 +1,4 @@
-import { getSupabaseClient } from '../../utils/supabaseClient.js';
+import { getMysqlClient } from '../../utils/mysqlClient.js';
 import {
   nowUtc,
   IANA_IST,
@@ -12,8 +12,8 @@ function isMissingColumn(error, columnName) {
 }
 
 export async function insertLog(payload) {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from('education_logs_table')
     .insert(payload)
     .select()
@@ -23,11 +23,11 @@ export async function insertLog(payload) {
 }
 
 export async function listLogs(userId, { limit = null, offset = 0, includeImage = true } = {}) {
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   const selectFields = includeImage
     ? '"Id", "Platform", "Topic", "CreatedAt", "Confidence", "ImageBase64"'
     : '"Id", "Platform", "Topic", "CreatedAt", "Confidence"';
-  let query = supabase
+  let query = db
     .from('education_logs_table')
     .select(selectFields)
     .eq('UserId', userId)
@@ -46,8 +46,8 @@ export async function listLogs(userId, { limit = null, offset = 0, includeImage 
 }
 
 export async function countLogs(userId) {
-  const supabase = getSupabaseClient();
-  const { count, error } = await supabase
+  const db = getMysqlClient();
+  const { count, error } = await db
     .from('education_logs_table')
     .select('"Id"', { count: 'exact', head: true })
     .eq('UserId', userId)
@@ -58,8 +58,8 @@ export async function countLogs(userId) {
 
 export async function findEducationImageKeyByCaptureId(captureId) {
   if (captureId == null || String(captureId).trim() === '') return null;
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from('education_logs_table')
     .select('"ImageKey"')
     .eq('CaptureID', captureId)
@@ -75,8 +75,8 @@ export async function findEducationImageKeyByCaptureId(captureId) {
 
 export async function attachEducationImageKeyByCaptureId(captureId, userId, imageKey) {
   if (!captureId || !imageKey) return;
-  const supabase = getSupabaseClient();
-  const { error } = await supabase
+  const db = getMysqlClient();
+  const { error } = await db
     .from('education_logs_table')
     .update({ ImageKey: imageKey, ImageBase64: null })
     .eq('CaptureID', captureId)
@@ -89,8 +89,8 @@ export async function attachEducationImageKeyByCaptureId(captureId, userId, imag
 }
 
 export async function updateEducationImageKey(logId, userId, imageKey) {
-  const supabase = getSupabaseClient();
-  const { error } = await supabase
+  const db = getMysqlClient();
+  const { error } = await db
     .from('education_logs_table')
     .update({ ImageKey: imageKey, ImageBase64: null })
     .eq('"Id"', logId)
@@ -112,9 +112,9 @@ export async function listPendingEducationImageBackfill({
   startYmd,
   endYmd,
 } = {}) {
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   const endExclusiveYmd = shiftDateYmd(endYmd, 1, IANA_IST);
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from('education_logs_table')
     .select('"Id", "UserId", "CaptureID", "ImageBase64", "ImageKey", "CreatedAt"')
     .or('IsDeleted.is.null,IsDeleted.eq.0')
@@ -135,8 +135,8 @@ export async function listPendingEducationImageBackfill({
 }
 
 export async function getLogImage(logId, userId) {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from('education_logs_table')
     .select('"ImageKey"')
     .eq('"Id"', logId)
@@ -147,8 +147,8 @@ export async function getLogImage(logId, userId) {
 }
 
 export async function summaryLogs(userId) {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from('education_logs_table')
     .select('"CreatedAt", "Platform"')
     .eq('UserId', userId)
@@ -160,9 +160,9 @@ export async function summaryLogs(userId) {
 }
 
 export async function softDeleteLog(logId, userId) {
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   const currentTime = nowUtc();
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from('education_logs_table')
     .update({ IsDeleted: 1, UpdatedAt: currentTime })
     .eq('"Id"', logId)
@@ -173,8 +173,8 @@ export async function softDeleteLog(logId, userId) {
 }
 
 export async function checkOwnership(id, userId) {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from('education_logs_table')
     .select('"Id"')
     .eq('"Id"', id)
@@ -185,9 +185,9 @@ export async function checkOwnership(id, userId) {
 }
 
 export async function restoreLog(id) {
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   const currentTime = nowUtc();
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from('education_logs_table')
     .update({ IsDeleted: 0, UpdatedAt: currentTime })
     .eq('"Id"', id)
@@ -199,8 +199,8 @@ export async function restoreLog(id) {
 export async function touchLastActive(userId) {
   if (!userId) return;
   try {
-    const supabase = getSupabaseClient();
-    await supabase
+    const db = getMysqlClient();
+    await db
       .from('team_table')
       .update({ LastActiveAt: nowUtc() })
       .eq('UserId', userId);

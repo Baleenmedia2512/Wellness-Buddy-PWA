@@ -6,7 +6,7 @@
  * Stores enrollment with IST timezone
  */
 
-import { getSupabaseClient } from '../../../utils/supabaseClient.js';
+import { getMysqlClient } from '../../../utils/mysqlClient.js';
 import { nowUtc } from '../../../shared/lib/datetime/index.js';
 import nodemailer from 'nodemailer';
 import logger from '../../../shared/lib/logger.js';
@@ -96,10 +96,10 @@ export default async function handler(req, res) {
 
     logger.debug('🎓 [enroll] Enrollment request:', { email, userId, programCount: programs.length });
 
-    const supabase = getSupabaseClient();
+    const db = getMysqlClient();
 
     // Look up user by userId (preferred — works even when email is empty) or email.
-    const { data: user, error: userError } = await supabase
+    const { data: user, error: userError } = await db
       .from('team_table')
       .select('"UserId", "UserName", "Email", "CoachId"')
       .eq(userId ? '"UserId"' : '"Email"', userId || email)
@@ -120,13 +120,13 @@ export default async function handler(req, res) {
     logger.debug('✅ [enroll] User found:', { userId: user.UserId, userName: user.UserName });
 
     // Check if user is already enrolled
-    const { data: existingEnrollment, error: checkError } = await supabase
+    const { data: existingEnrollment, error: checkError } = await db
       .from('wellness_university_enrollments_table')
       .select('"Id"')
       .eq('"UserId"', user.UserId)
       .maybeSingle();
 
-    if (checkError && checkError.code !== 'PGRST116') {
+    if (checkError && checkError.code !== '1172') {
       console.error('❌ [enroll] Check enrollment error:', checkError);
       throw new Error(checkError.message);
     }
@@ -144,7 +144,7 @@ export default async function handler(req, res) {
     programs.forEach((p) => { programsMap[p] = enrollmentDate; });
     const programsJson = JSON.stringify(programsMap);
 
-    const { data: newEnrollment, error: insertError } = await supabase
+    const { data: newEnrollment, error: insertError } = await db
       .from('wellness_university_enrollments_table')
       .insert({
         UserId: user.UserId,
@@ -177,7 +177,7 @@ export default async function handler(req, res) {
     if (user.CoachId) {
       void (async () => {
         try {
-          const { data: coachRow } = await supabase
+          const { data: coachRow } = await db
             .from('team_table')
             .select('"UserName", "Email", "CoachName"')
             .eq('UserId', user.CoachId)

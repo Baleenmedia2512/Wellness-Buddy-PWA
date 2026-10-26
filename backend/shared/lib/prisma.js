@@ -3,9 +3,9 @@ import { PrismaClient } from '@prisma/client';
 const globalForPrisma = globalThis;
 
 /**
- * Prisma client for local MySQL database wellness_schema_check.
- * Used when MYSQL_DATABASE_URL is set. Table queries from getSupabaseClient()
- * go through this client. Supabase remains the table client when the variable is absent.
+ * Prisma client for MySQL/MariaDB.
+ * Table queries from getMysqlClient() go through this client.
+ * MYSQL_DATABASE_URL is required.
  * @returns {PrismaClient}
  */
 export function getPrisma() {

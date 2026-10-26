@@ -3,7 +3,7 @@
  * ---------------------------------------------------------------------------
  * PURE domain module. Single source of truth for the capture state machine.
  *
- * No I/O. No imports of axios/fetch/pg/supabase/react/next.
+ * No I/O. No imports of axios/fetch/pg/db/react/next.
  * Mirrors the CHECK constraint in `backend/migrations/create_captures_table.sql`
  * AND the constant frontend uses (added in PR 3:
  * `frontend/src/shared/constants/imageTypes.js`).

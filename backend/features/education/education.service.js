@@ -1,6 +1,6 @@
 import * as repo from './education.repository.js';
 import { cache, cacheKeys } from '../../utils/cache.js';
-import { getTimeWindows } from '../../utils/disciplineCalculationsSupabase.js';
+import { getTimeWindows } from '../../utils/disciplineCalculationsQuery.js';
 // PR 6 — captures_table is canonical for the at-capture-time write. The
 // education save endpoint promotes the linked capture pending → education
 // when `captureId` is supplied. Best-effort: a captures-side failure is

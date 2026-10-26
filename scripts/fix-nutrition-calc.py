@@ -98,10 +98,10 @@ repo_content = open(repo_file, encoding='utf-8').read()
 
 old_fetch = (
     'export async function fetchWatchCalorieRows(userId, targetDate) {\n'
-    '  const supabase = getSupabaseClient();\n'
+    '  const db = getMysqlClient();\n'
     '  const startOfDayUTC = `${targetDate}T00:00:00+05:30`;\n'
     '  const endOfDayUTC   = `${targetDate}T23:59:59+05:30`;\n'
-    '  const { data, error } = await supabase\n'
+    '  const { data, error } = await db\n'
     '    .from(\'education_logs_table\')\n'
     '    .select(\'"Id", "Topic", "CreatedAt"\')\n'
     '    .eq(\'"UserId"\', userId)\n'
@@ -126,11 +126,11 @@ if old_fetch not in repo_content:
 else:
     new_fetch = (
         'export async function fetchWatchCalorieRows(userId, targetDate) {\n'
-        '  const supabase = getSupabaseClient();\n'
+        '  const db = getMysqlClient();\n'
         '  // IST-offset day bounds: education_logs_table timestamps are stored in IST.\n'
         '  const startOfDayIST = `${targetDate}T00:00:00+05:30`;\n'
         '  const endOfDayIST   = `${targetDate}T23:59:59+05:30`;\n'
-        '  const { data, error } = await supabase\n'
+        '  const { data, error } = await db\n'
         '    .from(\'education_logs_table\')\n'
         '    .select(\'"Id", "Topic", "CreatedAt"\')\n'
         '    .eq(\'UserId\', userId)\n'

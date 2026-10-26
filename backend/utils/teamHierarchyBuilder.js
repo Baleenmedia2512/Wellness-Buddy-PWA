@@ -27,7 +27,7 @@ import {
   getUserCommunityTeamCode,
   resolveCommunityPeerCoachIds,
 } from './communityTeamVisibility.js';
-import { fetchAllSupabaseRows } from './supabasePaginate.js';
+import { fetchAllMysqlRows } from './mysqlPaginate.js';
 
 /** Case-insensitive active check for team_table.Status. */
 export function isActiveTeamStatus(status) {
@@ -40,13 +40,13 @@ const MAX_SUBTREE_DEPTH = 12;
 const COACH_ID_IN_CHUNK = 100;
 
 /**
- * @param {object} supabase
+ * @param {object} db
  * @param {number} userId
  * @param {string} select
  * @returns {Promise<object|null>}
  */
-async function fetchSubtreeUserById(supabase, userId, select) {
-  const { data, error } = await supabase
+async function fetchSubtreeUserById(db, userId, select) {
+  const { data, error } = await db
     .from('team_table')
     .select(select)
     .eq('UserId', userId)
@@ -57,12 +57,12 @@ async function fetchSubtreeUserById(supabase, userId, select) {
 
 /**
  * Paginated CoachId children (Active + Inactive) for subtree walks.
- * @param {object} supabase
+ * @param {object} db
  * @param {number[]} coachIds
  * @param {string} select
  * @returns {Promise<object[]>}
  */
-async function fetchSubtreeChildrenByCoachIds(supabase, coachIds, select) {
+async function fetchSubtreeChildrenByCoachIds(db, coachIds, select) {
   const ids = [...new Set(
     (coachIds || [])
       .map((id) => Number(id))
@@ -77,8 +77,8 @@ async function fetchSubtreeChildrenByCoachIds(supabase, coachIds, select) {
 
   const pages = await Promise.all(
     chunks.map((chunk) =>
-      fetchAllSupabaseRows(() =>
-        supabase
+      fetchAllMysqlRows(() =>
+        db
           .from('team_table')
           .select(select)
           .in('CoachId', chunk)
@@ -90,16 +90,16 @@ async function fetchSubtreeChildrenByCoachIds(supabase, coachIds, select) {
 }
 
 /**
- * @param {object} supabase
+ * @param {object} db
  * @param {string} communityCode
  * @param {string} select
  * @returns {Promise<object[]>}
  */
-async function fetchSubtreeUsersByCommunityCode(supabase, communityCode, select) {
+async function fetchSubtreeUsersByCommunityCode(db, communityCode, select) {
   const code = String(communityCode || '').trim();
   if (!code) return [];
-  return fetchAllSupabaseRows(() =>
-    supabase
+  return fetchAllMysqlRows(() =>
+    db
       .from('team_table')
       .select(select)
       .or(`CommunityId.eq.${code},CoachTeamId.eq.${code},TeamId.eq.${code}`)
@@ -109,15 +109,15 @@ async function fetchSubtreeUsersByCommunityCode(supabase, communityCode, select)
 
 /**
  * Resolve Sponsor/Co-Sponsor partner ids when the viewer is a lead.
- * @param {object} supabase
+ * @param {object} db
  * @param {object} rootUser
  * @returns {Promise<number[]>}
  */
-async function resolveSubtreeCoCoachRootIds(supabase, rootUser) {
+async function resolveSubtreeCoCoachRootIds(db, rootUser) {
   const rootId = Number(rootUser?.UserId);
   if (!Number.isFinite(rootId)) return [];
 
-  const { data: byRole, error: byRoleError } = await supabase
+  const { data: byRole, error: byRoleError } = await db
     .from('coach_teams_table')
     .select('CoachId, CoCoachId')
     .or(`CoachId.eq.${rootId},CoCoachId.eq.${rootId}`)
@@ -131,7 +131,7 @@ async function resolveSubtreeCoCoachRootIds(supabase, rootUser) {
   const teamCode = rootUser.TeamId || rootUser.CoachTeamId;
   if (!teamCode) return [rootId];
 
-  const { data: coachTeam, error } = await supabase
+  const { data: coachTeam, error } = await db
     .from('coach_teams_table')
     .select('CoachId, CoCoachId')
     .eq('TeamId', teamCode)
@@ -155,18 +155,18 @@ async function resolveSubtreeCoCoachRootIds(supabase, rootUser) {
  * rules still work. Same Community ID peer coaches + their downlines are included
  * for Team visibility parity with the previous full-scan builder.
  *
- * @param {object} supabase
+ * @param {object} db
  * @param {number} rootCoachId
  * @param {{ select?: string }} [options]
  * @returns {Promise<object[]>}
  */
-export async function loadCoachSubtreeTeamUsers(supabase, rootCoachId, options = {}) {
+export async function loadCoachSubtreeTeamUsers(db, rootCoachId, options = {}) {
   const select = options.select || DEFAULT_SUBTREE_SELECT;
   const rootId = Number(rootCoachId);
   if (!Number.isFinite(rootId)) return [];
 
   const usersById = new Map();
-  const rootUser = await fetchSubtreeUserById(supabase, rootId, select);
+  const rootUser = await fetchSubtreeUserById(db, rootId, select);
   if (!rootUser) return [];
   usersById.set(rootUser.UserId, rootUser);
 
@@ -175,23 +175,23 @@ export async function loadCoachSubtreeTeamUsers(supabase, rootCoachId, options =
   const visitedUp = new Set([rootId]);
   while (Number.isFinite(walkId) && !visitedUp.has(walkId)) {
     visitedUp.add(walkId);
-    const ancestor = await fetchSubtreeUserById(supabase, walkId, select);
+    const ancestor = await fetchSubtreeUserById(db, walkId, select);
     if (!ancestor) break;
     usersById.set(ancestor.UserId, ancestor);
     walkId = Number(ancestor.CoachId);
   }
 
-  const rootCoachIds = await resolveSubtreeCoCoachRootIds(supabase, rootUser);
+  const rootCoachIds = await resolveSubtreeCoCoachRootIds(db, rootUser);
   for (const partnerId of rootCoachIds) {
     if (partnerId === rootId || usersById.has(partnerId)) continue;
-    const partner = await fetchSubtreeUserById(supabase, partnerId, select);
+    const partner = await fetchSubtreeUserById(db, partnerId, select);
     if (partner) usersById.set(partner.UserId, partner);
   }
 
   let currentCoachIds = rootCoachIds;
   let depth = 0;
   while (currentCoachIds.length > 0 && depth < MAX_SUBTREE_DEPTH) {
-    const children = await fetchSubtreeChildrenByCoachIds(supabase, currentCoachIds, select);
+    const children = await fetchSubtreeChildrenByCoachIds(db, currentCoachIds, select);
     const nextCoachIds = [];
     for (const child of children) {
       if (!usersById.has(child.UserId)) {
@@ -208,7 +208,7 @@ export async function loadCoachSubtreeTeamUsers(supabase, rootCoachId, options =
     .filter((id) => Number.isFinite(id) && id !== rootId);
   const communityCode = getUserCommunityTeamCode(rootUser);
   if (communityCode) {
-    const communityRows = await fetchSubtreeUsersByCommunityCode(supabase, communityCode, select);
+    const communityRows = await fetchSubtreeUsersByCommunityCode(db, communityCode, select);
     const communityUserIds = [];
     for (const row of communityRows) {
       const id = Number(row?.UserId);
@@ -218,7 +218,7 @@ export async function loadCoachSubtreeTeamUsers(supabase, rootCoachId, options =
     }
     if (communityUserIds.length > 0) {
       const communityChildren = await fetchSubtreeChildrenByCoachIds(
-        supabase,
+        db,
         communityUserIds,
         select,
       );
@@ -237,7 +237,7 @@ export async function loadCoachSubtreeTeamUsers(supabase, rootCoachId, options =
   let peerFrontier = communityPeerRootIds.filter((id) => Number.isFinite(id) && id !== rootId);
   let peerDepth = 0;
   while (peerFrontier.length > 0 && peerDepth < MAX_SUBTREE_DEPTH) {
-    const children = await fetchSubtreeChildrenByCoachIds(supabase, peerFrontier, select);
+    const children = await fetchSubtreeChildrenByCoachIds(db, peerFrontier, select);
     const nextIds = [];
     for (const child of children) {
       if (!usersById.has(child.UserId)) {
@@ -253,20 +253,20 @@ export async function loadCoachSubtreeTeamUsers(supabase, rootCoachId, options =
 }
 
 /**
- * @param {object} supabase  Supabase client
+ * @param {object} db  MySQL client
  * @param {number} coachIdInt  Logged-in user id (already parsed to int)
  * @param {object} [opts]
  * @param {boolean} [opts.includeInactive=false] — include inactive users in allMembers
  * @returns {Promise<{ hierarchy: object|null, allMembers: object[], loggedInCoach: object|null, stats: object }>}
  */
-export async function buildTeamHierarchy(supabase, coachIdInt, opts = {}) {
+export async function buildTeamHierarchy(db, coachIdInt, opts = {}) {
   const { includeInactive = false } = opts;
 
   // 1. Subtree-only load (Active + Inactive) so inactive intermediate coaches
   // can be detected and their active members promoted upward — no full table scan.
   let allUsers;
   try {
-    allUsers = await loadCoachSubtreeTeamUsers(supabase, coachIdInt, {
+    allUsers = await loadCoachSubtreeTeamUsers(db, coachIdInt, {
       select: DEFAULT_SUBTREE_SELECT,
     });
   } catch (usersError) {
@@ -287,7 +287,7 @@ export async function buildTeamHierarchy(supabase, coachIdInt, opts = {}) {
   const coachTeamsMap = {};
   const coachTeamRows = [];
   if (coachTeamIds.length > 0) {
-    const { data: coachTeams } = await supabase
+    const { data: coachTeams } = await db
       .from('coach_teams_table')
       .select('Id, TeamId, CoachId, CoCoachId')
       .in('TeamId', coachTeamIds)
@@ -420,7 +420,7 @@ export async function buildTeamHierarchy(supabase, coachIdInt, opts = {}) {
   // 6. Look up partnership (covers both "by role" and "by team id" paths)
   let managedTeam = null;
 
-  const { data: teamByRole } = await supabase
+  const { data: teamByRole } = await db
     .from('coach_teams_table')
     .select('TeamId, CoachId, CoCoachId')
     .or(`CoachId.eq.${coachIdInt},CoCoachId.eq.${coachIdInt}`)
@@ -428,7 +428,7 @@ export async function buildTeamHierarchy(supabase, coachIdInt, opts = {}) {
     .maybeSingle();
 
   if (!teamByRole && loggedInCoach.CoachTeamId) {
-    const { data: teamByTeamId } = await supabase
+    const { data: teamByTeamId } = await db
       .from('coach_teams_table')
       .select('TeamId, CoachId, CoCoachId')
       .eq('TeamId', loggedInCoach.CoachTeamId)

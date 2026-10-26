@@ -19,7 +19,7 @@ import {
 } from '../nutrition-knowledge/index.js';
 import logger from '../../shared/lib/logger.js';
 import { ValidationError } from '../../shared/lib/ValidationError.js';
-import { getSupabaseClient } from '../../utils/supabaseClient.js';
+import { getMysqlClient } from '../../utils/mysqlClient.js';
 import { assertViewerCanAccessMember } from '../../utils/reportingHierarchyService.js';
 import {
   injectGlycemicIndexIntoAnalysisData,
@@ -394,7 +394,7 @@ export async function getStats({
     return { httpStatus: 200, body: demoStatsResponse() };
   }
 
-  await assertViewerCanAccessMember(getSupabaseClient(), viewerUserId, userId);
+  await assertViewerCanAccessMember(getMysqlClient(), viewerUserId, userId);
 
   const timezoneIana = await getUserTimezoneIana(userId);
 

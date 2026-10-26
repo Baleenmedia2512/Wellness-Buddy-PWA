@@ -54,6 +54,8 @@ export function useDiary({
   const hasMoreRef = useRef(false);
   const loadingMoreRef = useRef(false);
   const inFlightRef = useRef(false);
+  /** Latest full reload. A slower response from before the save must not replace it. */
+  const fetchGenRef = useRef(0);
   /** @type {React.MutableRefObject<Map<number, object>>} */
   const pageCacheRef = useRef(new Map());
   const cacheKeyRef = useRef('');
@@ -101,6 +103,7 @@ export function useDiary({
     }
 
     const currentOffset = reset ? 0 : offsetRef.current;
+    const gen = reset ? (fetchGenRef.current += 1) : fetchGenRef.current;
 
     // Serve cached pages without a network round-trip (scroll back / remount).
     if (!reset && pageCacheRef.current.has(currentOffset)) {
@@ -144,7 +147,7 @@ export function useDiary({
         offset: currentOffset,
         signal,
       });
-      if (signal?.aborted) return;
+      if (signal?.aborted || gen !== fetchGenRef.current) return;
 
       pageCacheRef.current.set(currentOffset, payload);
 
@@ -175,7 +178,7 @@ export function useDiary({
       setHasMore(!!pagination.hasMore);
       setError(null);
     } catch (err) {
-      if (isAbortError(err) || signal?.aborted) return;
+      if (isAbortError(err) || signal?.aborted || gen !== fetchGenRef.current) return;
       debugLog('[diary] useDiary error', err?.message);
       setError({
         status: err?.response?.status ?? null,
@@ -185,6 +188,7 @@ export function useDiary({
       });
       if (reset) setData(null);
     } finally {
+      if (gen !== fetchGenRef.current) return;
       inFlightRef.current = false;
       loadingMoreRef.current = false;
       setLoading(false);

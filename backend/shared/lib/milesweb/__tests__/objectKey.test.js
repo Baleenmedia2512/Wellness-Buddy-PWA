@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { isAllowedUploadKey, mileswebRedirectUrl } from '../objectKey.js';
+import { isAllowedUploadKey, mediaKeyFromServedUrl, mileswebRedirectUrl } from '../objectKey.js';
 
 describe('MilesWeb upload keys', () => {
   it('accepts the seven cPanel folders', () => {
@@ -15,6 +15,15 @@ describe('MilesWeb upload keys', () => {
     assert.equal(isAllowedUploadKey('avatars/../../x.jpg'), false);
     assert.equal(isAllowedUploadKey('/avatars/1/a.jpg'), false);
     assert.equal(isAllowedUploadKey('other/1/a.jpg'), false);
+  });
+
+  it('reads the file key back from a same-API media URL', () => {
+    assert.equal(
+      mediaKeyFromServedUrl('/api/media/avatars/339/ca9babca1dff5bdc.jpg'),
+      'avatars/339/ca9babca1dff5bdc.jpg',
+    );
+    assert.equal(mediaKeyFromServedUrl('https://cdn.example/avatars/1/a.jpg'), null);
+    assert.equal(mediaKeyFromServedUrl('/api/media/../etc/passwd'), null);
   });
 
   it('builds a same-API path when no public site URL is set', () => {

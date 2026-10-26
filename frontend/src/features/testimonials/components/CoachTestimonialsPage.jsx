@@ -358,7 +358,7 @@ function MemberAvatar({ user }) {
   let remote = null;
   try {
     if (userId != null && !failed && !inline) {
-      remote = buildUserAvatarUrl(getApiBaseUrl(), userId, avatarVersion);
+      remote = buildUserAvatarUrl(getApiBaseUrl(), userId, avatarVersion, { profileOnly: true });
     }
   } catch {
     remote = null;
