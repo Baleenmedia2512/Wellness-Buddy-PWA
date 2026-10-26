@@ -13,7 +13,7 @@ const UserProfileBody = ({
   isLoading, form, email, latestWeight, initialWeight, initialWeightDate,
   marathonWeightComparison = null,
   error, successMessage,
-  workingPhysicalCentre = null,
+  userId = null,
 }) => (
   <div className="p-6 space-y-5">
     {isLoading ? (
@@ -72,7 +72,11 @@ const UserProfileBody = ({
           communityId={form.communityId}
           setCommunityId={form.setCommunityId}
         />
-        <WorkingPhysicalCentreField centre={workingPhysicalCentre} />
+        <WorkingPhysicalCentreField
+          userId={userId}
+          value={form.workingPhysicalCentreId}
+          onChange={form.setWorkingPhysicalCentreId}
+        />
         <IdealWeightCards
           height={form.height}
           latestWeight={latestWeight}

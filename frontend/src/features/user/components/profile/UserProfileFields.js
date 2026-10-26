@@ -141,6 +141,7 @@ heightOtpDestination = '',
       )}
     {!hideWorkingPhysicalCentreField && (
       <WorkingPhysicalCentreField
+        userId={userId}
         value={workingPhysicalCentreId}
         onChange={setWorkingPhysicalCentreId}
       />

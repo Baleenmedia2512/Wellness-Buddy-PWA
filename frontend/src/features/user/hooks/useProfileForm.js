@@ -157,6 +157,10 @@ export default function useProfileForm(initial = {}) {
       body.communityId = normalizeCommunityId(communityId);
     }
 
+    if (workingPhysicalCentreId && String(workingPhysicalCentreId).trim() !== '') {
+      body.workingPhysicalCentreId = String(workingPhysicalCentreId).trim();
+    }
+
     if (fatPercentValid) {
       body.bodyFat = parseFloat(bodyMetrics.fatPercent);
     }
