@@ -137,6 +137,9 @@ function compileAtom(filter, params, known) {
       values.forEach((value) => params.push(coerceParam(value)));
       return `${columnSql} NOT IN (${values.map(() => '?').join(', ')})`;
     }
+    if (filter.op === 'like' || filter.op === 'ilike') {
+      return `NOT (${comparisonSql(filter.op, columnSql, filter.value, params)})`;
+    }
     return comparisonSql(filter.op === 'eq' ? 'neq' : filter.op, columnSql, filter.value, params);
   }
   return comparisonSql(filter.kind, columnSql, filter.value, params);
