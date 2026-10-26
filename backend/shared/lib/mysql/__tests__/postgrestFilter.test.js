@@ -66,4 +66,13 @@ describe('compileWhere', () => {
     const compiled = compileWhere([{ kind: 'not', column: 'Email', op: 'is', value: null }], known);
     assert.match(compiled.sql, /`Email` IS NOT NULL/);
   });
+
+  it('excludes an ilike pattern instead of matching it', () => {
+    const compiled = compileWhere(
+      [{ kind: 'not', column: 'Topic', op: 'ilike', value: 'Calories Burned:%' }],
+      new Map([['Topic', {}]]),
+    );
+    assert.match(compiled.sql, /NOT \(LOWER\(`Topic`\) LIKE LOWER\(\?\)\)/);
+    assert.deepEqual(compiled.params, ['Calories Burned:%']);
+  });
 });
