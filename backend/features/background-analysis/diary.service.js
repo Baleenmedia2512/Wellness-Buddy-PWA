@@ -637,6 +637,31 @@ export async function listDiaryEntries(input) {
 }
 
 /**
+ * Diary kinds whose CreatedAt column is timezone-less IST wall clock.
+ * The MySQL read path stamps a spurious `Z` on those digits. Captures
+ * (pending/unknown) stay real UTC and must not be rewritten.
+ */
+const IST_WALL_CLOCK_KINDS = new Set([
+  'food',
+  'weight',
+  'education',
+  'watch',
+  'good-habit',
+]);
+
+/**
+ * @param {string} kind
+ * @param {string|Date|null|undefined} raw
+ * @returns {string} UTC ISO
+ */
+function diaryCapturedAt(kind, raw) {
+  if (IST_WALL_CLOCK_KINDS.has(kind)) {
+    return normalizeFoodCreatedAt(raw);
+  }
+  return normalizeStoredTimestampToUtcIso(raw, IANA_IST);
+}
+
+/**
  * Pure projection — given a kind + row, build the diary envelope.
  * No DB, no I/O. Exported only for tests; production callers should
  * always go through `listDiaryEntries`.
@@ -651,13 +676,8 @@ export function toDiaryEntry(
   row,
   { isPendingAnalysis = false, timezoneIana = IANA_IST } = {},
 ) {
-  // Food rows use the canonical food CreatedAt helper (legacy IST wall +
-  // spurious driver Z). Weight/education use the same IST storage contract.
-  // Captures (pending/unknown) are timestamptz — offset-aware / Date paths.
   void timezoneIana;
-  const capturedAt = kind === 'food'
-    ? normalizeFoodCreatedAt(row.CreatedAt)
-    : normalizeStoredTimestampToUtcIso(row.CreatedAt, IANA_IST);
+  const capturedAt = diaryCapturedAt(kind, row.CreatedAt);
   switch (kind) {
     case 'food': {
       const listSummary = extractFoodListSummary(row.AnalysisData, row.ProcessedBy);
