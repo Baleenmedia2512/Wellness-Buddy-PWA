@@ -5,6 +5,70 @@ import { EmojiOrNative } from '../shared/components/icons/EmojiImage';
 import { getProfile } from '../features/user/services/user.api.js';
 import { getCachedProfileUserName } from '../shared/utils/shareUtils.js';
 import { getApiBaseUrl } from '../config/api.config.js';
+import { parseNumericDbUserId, readNumericDbUserId } from '../shared/services/numericDbUserId.js';
+
+const ENROLLMENT_MEMBER_KEY = 'wv.universityEnrollment.member';
+
+function readEnrolledProgramNames(raw) {
+  if (raw == null || raw === '') return [];
+  let parsed = raw;
+  if (typeof raw === 'string') {
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      return [];
+    }
+  }
+  if (Array.isArray(parsed)) {
+    return parsed.filter((name) => typeof name === 'string' && name.trim() !== '');
+  }
+  if (parsed && typeof parsed === 'object') return Object.keys(parsed);
+  return [];
+}
+
+function readStoredEnrollmentMember() {
+  try {
+    const raw = sessionStorage.getItem(ENROLLMENT_MEMBER_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    const id = parseNumericDbUserId(parsed?.id || parsed?.userId);
+    if (!id || parsed?.isSelf) return null;
+    return {
+      id,
+      userId: id,
+      name: typeof parsed.name === 'string' ? parsed.name : '',
+      userName: typeof parsed.userName === 'string' ? parsed.userName : '',
+      email: typeof parsed.email === 'string' ? parsed.email : '',
+      isSelf: false,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function rememberEnrollmentMember(member) {
+  try {
+    if (!member || member.isSelf) {
+      sessionStorage.removeItem(ENROLLMENT_MEMBER_KEY);
+      return;
+    }
+    const id = parseNumericDbUserId(member.id || member.userId);
+    if (!id) {
+      sessionStorage.removeItem(ENROLLMENT_MEMBER_KEY);
+      return;
+    }
+    sessionStorage.setItem(ENROLLMENT_MEMBER_KEY, JSON.stringify({
+      id,
+      userId: id,
+      name: member.name || member.userName || '',
+      userName: member.userName || member.name || '',
+      email: member.email || '',
+      isSelf: false,
+    }));
+  } catch {
+    // Private mode can block sessionStorage. The open visit still works.
+  }
+}
 
 const PROGRAMS = [
   {
@@ -66,14 +130,14 @@ const WellnessUniversityEnrollment = ({
   // onBack is the canonical prop name (matches App.js). Alias kept for clarity.
   const onClose = onBack;
 
-  const [selectedMember, setSelectedMember] = useState(null);
+  const [selectedMember, setSelectedMember] = useState(readStoredEnrollmentMember);
 
-  // Use userId as the primary key for enrollment lookups — more reliable than
-  // email, which can be an empty string when the team hierarchy API returns no
-  // Email for the user (mapped as `member.Email || ""` in getFlatTeamList).
+  // Numeric team_table id only. Firebase uid is not a database user, and
+  // user.id can be missing after the auth object is copied into React state.
+  const selfUserId = readNumericDbUserId(user);
   const viewedUserId = (selectedMember && !selectedMember.isSelf)
-    ? (selectedMember.id || selectedMember.userId)
-    : user?.id;
+    ? (parseNumericDbUserId(selectedMember.id) || parseNumericDbUserId(selectedMember.userId) || selfUserId)
+    : selfUserId;
   const isViewingOther = Boolean(selectedMember && !selectedMember.isSelf);
 
   const [selectedPrograms, setSelectedPrograms] = useState([]);
@@ -93,6 +157,10 @@ const WellnessUniversityEnrollment = ({
   );
   const loadGenRef = useRef(0);
 
+  useEffect(() => {
+    rememberEnrollmentMember(selectedMember);
+  }, [selectedMember]);
+
   const checkExistingEnrollment = useCallback(async () => {
     if (!viewedUserId) {
       setCheckingEnrollment(false);
@@ -110,10 +178,13 @@ const WellnessUniversityEnrollment = ({
         ? (viewedUserId ? getProfile({ userId: viewedUserId }).catch(() => null) : Promise.resolve(null))
         : (user?.email ? getProfile(user.email).catch(() => null) : Promise.resolve(null));
 
+      // Android WebView and iOS WKWebView replay the first GET after you leave
+      // this page. A fresh URL plus no-store loads the programmes just saved.
       const enrollmentPromise = fetch(
         `${apiBase}/api/wellness-university/get-enrollments?userId=${encodeURIComponent(
           viewedUserId,
-        )}&userOnly=true`,
+        )}&userOnly=true&_=${Date.now()}`,
+        { cache: 'no-store', headers: { 'Cache-Control': 'no-cache' } },
       ).then((res) => res.json());
 
       const [profileData, data] = await Promise.all([profilePromise, enrollmentPromise]);
@@ -145,16 +216,18 @@ const WellnessUniversityEnrollment = ({
       if (data.success && data.enrollments && data.enrollments.length > 0) {
         const enrollment = data.enrollments[0];
         setExistingEnrollment(enrollment);
-        const _parsed = JSON.parse(enrollment.EnrolledPrograms || "[]");
-        const enrolledPrograms = Array.isArray(_parsed) ? _parsed : Object.keys(_parsed);
-        setSelectedPrograms(enrolledPrograms);
-      } else {
+        setSelectedPrograms(readEnrolledProgramNames(enrollment.EnrolledPrograms));
+        setError("");
+      } else if (data.success) {
         setExistingEnrollment(null);
         setSelectedPrograms([]);
+      } else {
+        setError("Could not load programmes. Open this page again.");
       }
     } catch (err) {
       if (generation !== loadGenRef.current) return;
       console.error("Error checking enrollment:", err);
+      setError("Could not load programmes. Open this page again.");
     } finally {
       if (generation === loadGenRef.current) setCheckingEnrollment(false);
     }
