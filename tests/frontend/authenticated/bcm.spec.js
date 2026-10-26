@@ -26,7 +26,7 @@
  * - BCM-020: Verify Age field range boundaries (0, 1, 120, 121)
  * - BCM-021: Verify Height field range boundaries (49, 50, 250, 251)
  * - BCM-022: Verify Fat% field range validation & reference evaluation
- * - BCM-023: Verify V-Fat field range validation & reference evaluation
+ * - BCM-023: Verify V-Fat field is hidden on BCM form and WhatsApp share card
  * - BCM-024: Verify BMR field range values & manual entry
  * - BCM-025: Verify Physical Activity selection options
  * - BCM-026: Verify BMI field range validation & auto-compute override
@@ -895,10 +895,9 @@ test.describe('BCM Module (Body Composition Metrics)', () => {
     await fatInput.fill('18.5');
     await expect(fatInput).toHaveValue('18.5');
 
-    // 10. Visceral Fat (V-Fat)
-    const vFatInput = page.getByPlaceholder('Visceral fat').first();
-    await vFatInput.fill('5');
-    await expect(vFatInput).toHaveValue('5');
+    // 10. V-Fat is hidden on BCM form
+    await expect(page.getByPlaceholder('Visceral fat')).toHaveCount(0);
+    await expect(page.getByText(/V-Fat/i)).toHaveCount(0);
 
     // 11. BMR (kcal)
     const bmrInput = page.getByPlaceholder('kcal').first();
@@ -1511,22 +1510,15 @@ test.describe('BCM Module (Body Composition Metrics)', () => {
     await expect(page.getByText('Above normal')).not.toBeVisible();
   });
 
-  test('BCM-023 Verify V-Fat field range validation & reference evaluation', async ({ page }) => {
+  test('BCM-023 Verify V-Fat field is hidden on BCM form', async ({ page }) => {
     const createButton = page.getByRole('button', { name: 'Create Body Parameters Card' });
     await expect(createButton).toBeVisible({ timeout: 15000 });
     await createButton.click();
     await expect(page.getByRole('heading', { name: 'Your Body Parameters' })).toBeVisible({ timeout: 10000 });
 
-    const vfatInput = page.getByPlaceholder('Visceral fat').first();
-    await expect(vfatInput).toBeVisible();
-
-    // Test 1: V-Fat = 15 (Above ideal max 9) -> shows "Above expected (Ideal: ≤ 9)"
-    await vfatInput.fill('15');
-    await expect(page.getByText('Above expected (Ideal: ≤ 9)')).toBeVisible({ timeout: 5000 });
-
-    // Test 2: V-Fat = 5 (Within ideal range ≤ 9) -> no error
-    await vfatInput.fill('5');
-    await expect(page.getByText('Above expected')).not.toBeVisible();
+    await expect(page.getByPlaceholder('Visceral fat')).toHaveCount(0);
+    await expect(page.getByText(/V-Fat/i)).toHaveCount(0);
+    await expect(page.getByPlaceholder('kcal').first()).toBeVisible();
   });
 
   test('BCM-024 Verify BMR field range values & manual entry', async ({ page }) => {

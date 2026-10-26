@@ -11,6 +11,7 @@ export function readMileswebConfig(env = process.env) {
   const uploadRoot = String(env.MILESWEB_FTP_UPLOAD_ROOT || 'wellnessvalley/uploads')
     .trim()
     .replace(/^\/+|\/+$/g, '');
+  // "." means the FTP account home (cPanel chroot already points at uploads).
   const port = Number(env.MILESWEB_FTP_PORT || 21);
   const secure = String(env.MILESWEB_FTP_SECURE || 'true').toLowerCase() !== 'false';
   const publicBase = String(env.MILESWEB_PUBLIC_UPLOAD_BASE || '').trim().replace(/\/+$/, '');

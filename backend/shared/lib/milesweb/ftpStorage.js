@@ -1,9 +1,10 @@
 /**
  * Read and write image bytes on the MilesWeb account over FTP.
  * The API process runs on this machine, so it cannot use the server disk directly.
+ * basic-ftp is loaded only when a MilesWeb FTP account is configured, so API
+ * routes keep compiling on the existing R2 / MySQL-base64 path.
  */
 import { Readable, Writable } from 'stream';
-import { Client } from 'basic-ftp';
 import { isMileswebStorageEnabled, readMileswebConfig } from './config.js';
 import { isAllowedUploadKey } from './objectKey.js';
 
@@ -12,13 +13,16 @@ const HIT_MS = 5 * 60 * 1000;
 const MISS_MS = 20 * 1000;
 
 function remotePath(config, key) {
-  return `${config.uploadRoot}/${key}`;
+  const root = config.uploadRoot;
+  if (!root || root === '.') return key;
+  return `${root}/${key}`;
 }
 
 async function withClient(fn) {
   if (!isMileswebStorageEnabled()) {
     throw new Error('MilesWeb image storage is not configured');
   }
+  const { Client } = await import('basic-ftp');
   const config = readMileswebConfig();
   const client = new Client(20000);
   try {

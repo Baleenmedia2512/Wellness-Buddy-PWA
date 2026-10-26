@@ -1134,7 +1134,6 @@ export function useBodyParamsCard({
         bmi: form.bmi,
         fatPercent: form.fatPercent,
         bmr: form.bmr,
-        visceralFat: form.visceralFat,
         bodyAge: form.bodyAge,
         chestCm: toOptionalNum(form.chestCm),
         waistCm: toOptionalNum(form.waistCm),
@@ -1178,7 +1177,11 @@ export function useBodyParamsCard({
         fatPercent: form.fatPercent || undefined,
         bmr: form.bmr || undefined,
         bmrManualOverride: bmrUserEdited,
-        visceralFat: form.visceralFat || undefined,
+        // BCM no longer collects V-Fat. Omit on create; keep stored value on edit
+        // so updateCard does not wipe visceral_fat (reports still use it).
+        visceralFat: isEditMode
+          ? (toOptionalNum(existingCard?.visceralFat) ?? undefined)
+          : undefined,
         bodyAge: form.bodyAge || undefined,
         chestCm: toOptionalNum(form.chestCm),
         waistCm: toOptionalNum(form.waistCm),

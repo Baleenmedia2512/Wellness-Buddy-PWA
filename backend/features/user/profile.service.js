@@ -47,6 +47,7 @@ import { resolveSponsorAndIdealCoach } from '../../utils/sponsorCoachResolution.
 import * as weightRepo from '../weight/weight.repository.js';
 import { resolveMarathonWeightComparison } from '../marathon/domain/marathonWeightComparison.service.js';
 import { persistAvatarKey, avatarUrlForKey, r2AvatarsEnabled } from './avatar-storage.service.js';
+import { isMileswebStorageEnabled } from '../../shared/lib/milesweb/config.js';
 import {
   resolveIncomingAvatarDataUri,
   shouldSkipProfileImageBase64,
@@ -538,15 +539,16 @@ export async function updateProfile(input) {
     });
   }
 
+  const skipProfileImageBase64 = shouldSkipProfileImageBase64({
+    r2Enabled: r2AvatarsEnabled() || isMileswebStorageEnabled(),
+    appVersion,
+  });
   const { updateData, cleanedPhoneNumber, avatarDataUri } = buildProfileUpdate({
     ...input,
     height: appliedHeight,
     communityId: appliedCommunityId,
     existingTransformationPhotos: user.transformation_photos,
-    skipProfileImageBase64: shouldSkipProfileImageBase64({
-      r2Enabled: r2AvatarsEnabled(),
-      appVersion,
-    }),
+    skipProfileImageBase64,
   });
 
   const teamFieldsFromCommunityId = buildTeamFieldsFromProfileCommunityId(appliedCommunityId);
@@ -573,7 +575,7 @@ export async function updateProfile(input) {
     });
     const avatarSource = updateData.ProfileImage || avatarDataUri;
     if (avatarSource) {
-      await persistAvatarKey(userId, avatarSource);
+      await persistAvatarKey(userId, avatarSource, { clearProfileImage: skipProfileImageBase64 });
       try { cache.delete(cacheKeys.userAvatar(userId)); } catch { /* non-fatal */ }
     }
     try { await repo.updateUserById(userId, { LastActiveAt: nowUtc() }); } catch { /* non-fatal */ }
@@ -585,7 +587,7 @@ export async function updateProfile(input) {
     });
     if (appliedCommunityId !== undefined) savedCommunityId = appliedCommunityId;
   } else if (avatarDataUri) {
-    await persistAvatarKey(userId, avatarDataUri);
+    await persistAvatarKey(userId, avatarDataUri, { clearProfileImage: skipProfileImageBase64 });
     try { cache.delete(cacheKeys.userAvatar(userId)); } catch { /* non-fatal */ }
   }
 

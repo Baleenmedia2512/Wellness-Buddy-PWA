@@ -18,6 +18,9 @@ import {
   canOverrideBcmForMember,
   shouldForceNewBcmCard,
   computeDefaultAppointmentDate,
+  isCardShareValid,
+  buildNewCardShareDefaults,
+  SHARE_TTL_DAYS,
 } from './card.rules.js';
 
 describe('buildTeamMemberInsert', () => {
@@ -271,6 +274,24 @@ describe('buildFormPrefillFromMember', () => {
     assert.equal(patch.age, undefined);
     assert.equal(patch.visceralFat, undefined);
     assert.equal(patch.chestCm, undefined);
+  });
+});
+
+describe('buildNewCardShareDefaults', () => {
+  const TOKEN = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
+
+  it('sets a 36-character token and 30-day expiry', () => {
+    const now = new Date('2026-10-26T00:00:00.000Z');
+    const share = buildNewCardShareDefaults({ now, token: TOKEN });
+    assert.equal(share.publicShareToken, TOKEN);
+    assert.equal(SHARE_TTL_DAYS, 30);
+    assert.equal(share.shareExpiresAt.toISOString(), '2026-11-25T00:00:00.000Z');
+    assert.equal(isCardShareValid(share.shareExpiresAt, now), true);
+  });
+
+  it('rejects a missing or short token', () => {
+    assert.throws(() => buildNewCardShareDefaults({ token: '' }), /36-character/);
+    assert.throws(() => buildNewCardShareDefaults({}), /36-character/);
   });
 });
 
