@@ -1,33 +1,38 @@
 import React from 'react';
 
-const WorkingPhysicalCentreField = ({
-  value = '',
-  onChange,
-}) => {
-  const selectedValue = value || 'None';
-
+const WorkingPhysicalCentreField = ({ value = '', onChange }) => {
   return (
-    <div className="w-full">
+    <div>
       <label
-        htmlFor="workingPhysicalCentreId"
-        className="block text-sm font-medium text-gray-700 mb-2"
+        style={{
+          display: 'block',
+          marginBottom: '8px',
+          fontSize: '16px',
+          color: '#374151',
+        }}
       >
         Working Physical Centre ID
       </label>
 
       <select
-        id="workingPhysicalCentreId"
-        name="workingPhysicalCentreId"
-        value={selectedValue}
-        onChange={(event) => onChange(event.target.value === 'None' ? '' : event.target.value)}
-        className="w-full rounded-xl border border-gray-300 bg-white px-4 py-3 text-base text-gray-900 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
+        value={value || ''}
+        onChange={(e) => onChange(e.target.value)}
+        style={{
+          width: '100%',
+          height: '54px',
+          padding: '0 16px',
+          border: '1px solid #d1d5db',
+          borderRadius: '12px',
+          fontSize: '16px',
+          backgroundColor: '#fff',
+          color: value ? '#111827' : '#9ca3af',
+        }}
       >
+        <option value="" disabled>
+          Enter your club ID
+        </option>
         <option value="None">None</option>
       </select>
-
-      <p className="mt-2 text-sm text-gray-500">
-        Select your working physical centre ID, or choose None if you do not have one.
-      </p>
     </div>
   );
 };
