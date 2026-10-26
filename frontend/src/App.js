@@ -327,6 +327,18 @@ const ManualEntryPage = lazy(() =>
 const prefetchManualEntryPage = () => {
   void import("./shell/components/ManualEntryPage");
 };
+function createCaptureShareToken() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
 function WellnessValleyApp() {
   const apiBaseUrl = getApiBaseUrl();
   const versionPolicy = useAppVersionPolicy();
@@ -985,6 +997,8 @@ function WellnessValleyApp() {
   // Register nutrition center state (for coaches)
   const [showRegisterCenter, setShowRegisterCenter] = useState(false);
   const [editCenterData, setEditCenterData] = useState(null); // centre to pre-load for editing
+  const [clubMineFocusKey, setClubMineFocusKey] = useState(0);
+  const [savedClub, setSavedClub] = useState(null);
 
   // Setup wizard state
   const [showSetupWizard, setShowSetupWizard] = useState(false);
@@ -1167,6 +1181,17 @@ function WellnessValleyApp() {
       [pageId]: (prev[pageId] || 0) + 1,
     }));
   }, []);
+  const returnToMyClubs = useCallback((saved) => {
+    if (saved && saved.id != null) {
+      setSavedClub({ ...saved, savedToken: Date.now() });
+    } else {
+      setClubMineFocusKey((n) => n + 1);
+      bumpTabVisitKey('physical-club');
+    }
+    setShowRegisterCenter(false);
+    setEditCenterData(null);
+    setShowNutritionCentersMap(true);
+  }, [bumpTabVisitKey]);
 
   // Navigation lock ref: prevents concurrent showDashboardPage() calls from
   // duplicate rapid taps while the async checkUserStatus is in-flight.
@@ -6289,7 +6314,7 @@ function WellnessValleyApp() {
 
     // Pre-generate share token/code synchronously so POST /captures can persist
     // the row immediately. Share sheet opens only after Classify photo completes.
-    const instantToken = crypto.randomUUID();
+    const instantToken = createCaptureShareToken();
     const generateInstantShareCode = (length = 8) => {
       const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
       let out = "";
@@ -8242,6 +8267,9 @@ function WellnessValleyApp() {
                 embedded
                 user={user}
                 tabVisitKey={tabVisitKeys['physical-club'] ?? 0}
+                mineFocusKey={clubMineFocusKey}
+                savedCenter={savedClub}
+                onSavedCenterConsumed={() => setSavedClub(null)}
                 onBack={() => {
                   setShowNutritionCentersMap(false);
                   const currentWvPage = window.history.state?.wvPage;
@@ -8264,7 +8292,7 @@ function WellnessValleyApp() {
             <NutritionCenterRegistration
               user={user}
               initialCenter={editCenterData}
-              onSaved={() => bumpTabVisitKey('physical-club')}
+              onSaved={returnToMyClubs}
               onBack={() => {
                 setShowRegisterCenter(false);
                 setEditCenterData(null);
@@ -9871,14 +9899,11 @@ function WellnessValleyApp() {
             <NutritionCenterRegistration
               user={user}
               initialCenter={editCenterData}
-              onSaved={() => bumpTabVisitKey('physical-club')}
+              onSaved={returnToMyClubs}
               onBack={() => {
                 setShowRegisterCenter(false);
-                if (editCenterData) {
-                  // came from Physical Club Report via Edit — map already visible, just close form
-                  // No need to re-open map: setShowNutritionCentersMap(true);
-                }
                 setEditCenterData(null);
+                setShowNutritionCentersMap(true);
               }}
             />
           </Suspense>

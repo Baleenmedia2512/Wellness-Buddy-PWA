@@ -36,9 +36,15 @@ export function canUseTeamSearch(role, hasTeamMembers) {
 export function invalidateHasTeamMembersCache(userId) {
   if (userId == null || userId === '') return;
   cacheManager.clear(cacheManager.generateKey('hasTeamMembers', String(userId)));
-  // Keys match teamHierarchyService.getTeamHierarchy (service + version + coachId + includeInactive).
-  cacheManager.clear(cacheManager.generateKey('teamHierarchy', 'v2-bcm-weight', userId, false));
-  cacheManager.clear(cacheManager.generateKey('teamHierarchy', 'v2-bcm-weight', userId, true));
+  // Keys match teamHierarchyService.getTeamHierarchy (version + coachId + includeInactive + purpose).
+  const version = 'v6-purpose-search';
+  for (const includeInactive of [false, true]) {
+    for (const purpose of ['search', 'full']) {
+      cacheManager.clear(
+        cacheManager.generateKey('teamHierarchy', version, userId, includeInactive, purpose),
+      );
+    }
+  }
 }
 
 export async function fetchHasTeamMembers(userId) {
@@ -148,7 +154,9 @@ export function withDirectCoachCommunityIds(members) {
 export async function fetchTeamMembers({
   coachId, coachName, coachEmail, coachRole, coachCommunityId = null, coachPhone = null,
 }) {
-  const flatList = await teamHierarchyService.getFlatTeamList(coachId);
+  const flatList = await teamHierarchyService.getFlatTeamList(coachId, {
+    purpose: 'search',
+  });
   // Defense-in-depth: backend already returns Active-only; drop any Inactive rows.
   const activeOnly = flatList.filter((m) => {
     if (m.userId === coachId) return true;

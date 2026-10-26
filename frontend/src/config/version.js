@@ -74,32 +74,35 @@
 
 export const APP_VERSION = {
   // Current version number (displayed to users)
-  VERSION: '3.5.2',
+  VERSION: '3.5.3',
   
   // Version code (for Android builds - must match build.gradle)
   // Also used as CFBundleVersion for iOS builds - must match Info.plist
   // NOTE: versionCode must never decrease for Play Store compatibility.
-  VERSION_CODE: 73,
+  VERSION_CODE: 74,
   
   // iOS build number (CFBundleVersion in Info.plist) - must match Info.plist / pbxproj
-  IOS_BUILD_NUMBER: 75,
+  IOS_BUILD_NUMBER: 76,
   
   // Release name (for Play Store / App Store)
-  RELEASE_NAME: 'Version  3.5.2',
+  RELEASE_NAME: 'Version  3.5.3',
   
   // Build date
-  BUILD_DATE: '2026-10-04',
+  BUILD_DATE: '2026-10-21',
   
   // Platform release notes..
   PLATFORMS: {
-    ANDROID: { versionCode: 73, versionName: '3.5.2' },
-    IOS: { buildNumber: 75, versionName: '3.5.2' },
+    ANDROID: { versionCode: 74, versionName: '3.5.3' },
+    IOS: { buildNumber: 76, versionName: '3.5.3' },
   },
 };
 
 /**
  * 📋 CHANGE LOG
  * 
+ * Version 3.5.3 (Code 74 / iOS build 76) - 2026-10-21 [ANDROID + iOS — not yet released]
+ *   🐛 Patch release — bug fixes and stability improvements
+ *
  * Version 3.5.2 (Code 73 / iOS build 75) - 2026-10-04 [ANDROID + iOS — not yet released]
  *   🐛 Patch release — bug fixes and stability improvements
  *
@@ -231,7 +234,7 @@ export const APP_VERSION = {
  *   🎓 Wellness University - Per-program enrollment date/time stored and displayed in IST
  *   🗺️ Enrollment Map Format - EnrolledPrograms now stored as { programName: isoDate } map for individual timestamps
  *   🔒 Date Preservation - Re-saving enrollments preserves original enrollment dates per program
- *   🔧 JSONB Fix - Fixed Supabase JSONB auto-parse causing enrollment dates to reset on update
+ *   🔧 JSONB Fix - Fixed MySQL JSONB auto-parse causing enrollment dates to reset on update
  *   🚫 AI Unavailable Modal - Removed "LOG SOMETHING ELSE" alt buttons (Food/Education) from all modals
  *   🚫 Manual Weight Modal - Disabled ManualWeightEntryModal to prevent unwanted popups
  *   🧹 Code Cleanup - Removed unused altButtons logic from AI Unavailable handler

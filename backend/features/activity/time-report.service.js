@@ -13,7 +13,7 @@ import {
   computeAverageTime, extractLocalDateString,
   groupRecordsByDate, pickEarliestRecordPerActivity,
 } from '../../utils/timeReportHelpers.js';
-import { getDualCoachingTeamHierarchy } from '../../utils/disciplineCalculationsSupabase.js';
+import { getDualCoachingTeamHierarchy } from '../../utils/disciplineCalculationsQuery.js';
 import { isExemptedBeverageOnly, isNonMealNutritionOnly, isExemptedFood, extractFoodItemsFromAnalysis, getFoodItemName } from '../../utils/foodTypeDetection.js';
 
 const DEFAULT_WINDOWS = {

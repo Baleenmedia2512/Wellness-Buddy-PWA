@@ -237,6 +237,7 @@ const NutritionCarousel = ({
         calorieTarget={calCard.target}
         heartCard={heartCard}
         lowCarbCard={lowCarbCard}
+        periodContext={periodContext}
       />
     </div>
   );

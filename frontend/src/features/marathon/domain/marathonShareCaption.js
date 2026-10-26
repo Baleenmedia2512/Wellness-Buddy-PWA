@@ -15,6 +15,7 @@ import { formatMarathonWeightWhatsAppNoticeLines } from './marathonWeightCompari
 import { formatTransformationCaption } from '../../../shared/utils/shareCaption.js';
 
 export const MARATHON_START_WHATSAPP_LABEL = 'Marathon Starts';
+export const MARATHON_DAY_0_WHATSAPP_LABEL = 'Today Marathon';
 export const DETOX_DAY_WHATSAPP_LABEL = 'Detox Day';
 
 /**
@@ -31,6 +32,13 @@ export const MARATHON_WHATSAPP_ADVANCE_SPECIALS = Object.freeze([
   })),
 ]);
 
+function waItalic(text) {
+  const clean = String(text || '').trim();
+  if (!clean) return '';
+  if (clean.startsWith('_') && clean.endsWith('_')) return clean;
+  return `_${clean}_`;
+}
+
 /**
  * @param {number} day
  * @param {string} [label]
@@ -38,9 +46,10 @@ export const MARATHON_WHATSAPP_ADVANCE_SPECIALS = Object.freeze([
  */
 export function formatMarathonWhatsAppAdvanceNotice(day, label) {
   const cleanLabel = typeof label === 'string' ? label.trim() : '';
-  return cleanLabel
+  const text = cleanLabel
     ? `Tomorrow is Marathon Day ${day} - ${cleanLabel}`
     : `Tomorrow is Marathon Day ${day}`;
+  return waItalic(text);
 }
 
 /**
@@ -50,7 +59,8 @@ export function formatMarathonWhatsAppAdvanceNotice(day, label) {
  */
 export function formatMarathonWhatsAppCurrentDayNotice(day, label = null) {
   const cleanLabel = typeof label === 'string' ? label.trim() : '';
-  return cleanLabel ? `Marathon Day ${day} - ${cleanLabel}` : `Marathon Day ${day}`;
+  const text = cleanLabel ? `Marathon Day ${day} - ${cleanLabel}` : `Marathon Day ${day}`;
+  return waItalic(text);
 }
 
 /**
@@ -63,6 +73,13 @@ export function formatMarathonWhatsAppCurrentDayNotice(day, label = null) {
 export function getMarathonWhatsAppCurrentDayNotice(ymd) {
   const state = getMarathonCalendarState(ymd);
   if (!state.inMarathon || !Number.isInteger(state.marathonDay)) return null;
+
+  if (state.marathonDay === 0) {
+    return formatMarathonWhatsAppCurrentDayNotice(
+      0,
+      MARATHON_DAY_0_WHATSAPP_LABEL,
+    );
+  }
 
   const special = MARATHON_WHATSAPP_ADVANCE_SPECIALS.find(
     (item) => item.day === state.marathonDay,
@@ -142,6 +159,6 @@ export function appendMarathonWhatsAppNotice(
   if (!base) return additions.join('\n');
 
   const separator = base.includes('\n') ? '\n' : ', ';
-  const combined = `${base}${separator}${additions.join(separator)}`;
-  return formatTransformationCaption(combined);
+  const blockSeparator = base.includes('\n\n') ? '\n\n' : separator;
+  return `${base}${blockSeparator}${additions.join(separator)}`;
 }

@@ -60,9 +60,9 @@ module.exports = {
               'VSA: a feature must not import from another feature. Move shared code to backend/shared/.',
           },
           {
-            group: ['@supabase/supabase-js'],
+            group: ['mysql2', 'pg'],
             message:
-              'VSA: do not import supabase-js directly. Use backend/shared/lib/supabaseClient.js.',
+              'VSA: database access goes through backend/utils/mysqlClient.js.',
           },
         ],
       },
@@ -75,8 +75,8 @@ module.exports = {
       rules: { 'no-restricted-syntax': 'off' },
     },
     {
-      // Only the shared supabase client may import @supabase/supabase-js.
-      files: ['shared/lib/supabaseClient.js', 'utils/supabaseClient.js'],
+      // The MySQL table client is the only module that opens Prisma for .from() queries.
+      files: ['utils/mysqlClient.js', 'shared/lib/mysql/mysqlTableClient.js'],
       rules: { 'no-restricted-imports': 'off' },
     },
     {
@@ -114,9 +114,9 @@ module.exports = {
                   'VSA: a feature must not import from another feature. Move shared code to backend/shared/ or backend/utils/.',
               },
               {
-                group: ['@supabase/supabase-js'],
+                group: ['mysql2', 'pg'],
                 message:
-                  'VSA: do not import supabase-js directly. Use backend/shared/lib/supabaseClient.js.',
+                  'VSA: database access goes through backend/utils/mysqlClient.js.',
               },
             ],
           },
@@ -133,8 +133,7 @@ module.exports = {
             patterns: [
               {
                 group: [
-                  '@supabase/supabase-js',
-                  '**/supabaseClient*',
+                  '**/mysqlClient*',
                   'pg',
                   'mysql2',
                 ],

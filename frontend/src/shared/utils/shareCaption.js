@@ -145,33 +145,12 @@ export function composeQuickShareCaption(brandLine, activitySuffix = null) {
 
   if (!brand) return formatTransformationCaption(suffix);
   if (!suffix) return brand;
-
-  // Keep bold WhatsApp captions unchanged.
-  if (suffix.startsWith('*')) {
-    return `${brand}\n${suffix}`;
-  }
-
-  // Keep food captions unchanged.
-  const suffixLines = suffix.replace(/\\n/g, '\n').split('\n');
-  if (suffixLines.length > 1) {
-    const first = suffixLines[0].trim();
-    if (FOOD_KCAL_FIRST_LINE.test(first)) {
-      return `${brand}, ${first}\n${suffixLines.slice(1).map((l) => l.trim()).join('\n')}`;
-    }
-  }
-
-  // Check if suffix represents a transformation (weight + marathon details)
-  const hasWeight = WEIGHT_INDICATOR_PATTERN.test(suffix);
-  const hasMarathon = MARATHON_START_PATTERN.test(suffix);
-
-  if (hasWeight && hasMarathon) {
-    return formatTransformationCaption(`${brand}\n\n${suffix}`);
-  }
-
-  // Preserve existing formatting for other captions.
   if (suffix.includes('\n')) {
     return `${brand}\n\n${suffix}`;
   }
-
+  // Single-line WhatsApp-formatted items (`*bold*`) sit on a new line under the brand
+  if (suffix.startsWith('*')) {
+    return `${brand}\n${suffix}`;
+  }
   return `${brand}, ${suffix}`;
 }

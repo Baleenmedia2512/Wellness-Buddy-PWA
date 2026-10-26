@@ -125,6 +125,7 @@ export async function handleCreateCard(body) {
       waistCm:      payload.waistCm,
       hipCm:        payload.hipCm,
       recordedDate: payload.recordedDate,
+      appointmentDate: payload.appointmentDate,
       locationName: payload.locationName,
       recoveredHealthIssues: payload.recoveredHealthIssues,
     }, { allowActivated: false });
@@ -234,6 +235,7 @@ export async function handleCreateCard(body) {
         waistCm:          card.waist_cm,
         hipCm:            card.hip_cm,
         recordedDate:     card.recorded_date,
+        appointmentDate:  card.appointment_date ?? payload.appointmentDate ?? null,
         locationName:     card.location_name,
         createdAt:        card.created_at,
         updatedAt:        card.updated_at ?? null,

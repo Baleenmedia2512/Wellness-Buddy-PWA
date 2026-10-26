@@ -7,6 +7,7 @@ import {
   HERBALIFE_SHAKE_REPOST_WINDOW_MS,
   isHerbalifeShakeAnalysis,
   isWithinHerbalifeShakeRepostWindow,
+  shakeProductsArePreparedShake,
   latestHerbalifeShakeWithinWindow,
   mealRowIsHerbalifeShake,
 } from './herbalifeShakeRepost.rules.js';
@@ -24,6 +25,21 @@ describe('isHerbalifeShakeAnalysis', () => {
       isHerbalifeShakeAnalysis({ detailedItems: [{ name: 'Rice' }] }),
       false,
     );
+  });
+
+  it('does not treat personalized protein powder alone as a Herbalife Shake', () => {
+    assert.equal(shakeProductsArePreparedShake({
+      formula1: 0, shakemate: 0, protein: 1, activeFibre: 0,
+    }), false);
+    assert.equal(isHerbalifeShakeAnalysis({
+      processedBy: 'shake_calculator',
+      shakeProducts: { formula1: 0, shakemate: 0, protein: 1, activeFibre: 0 },
+      foods: [{ name: 'Personalized Protein Powder' }],
+    }), false);
+    assert.equal(isHerbalifeShakeAnalysis({
+      processedBy: 'shake_calculator',
+      shakeProducts: { formula1: 3, shakemate: 0, protein: 1, activeFibre: 0 },
+    }), true);
   });
 });
 
@@ -69,5 +85,16 @@ describe('mealRowIsHerbalifeShake', () => {
       mealRowIsHerbalifeShake({ AnalysisData: { foods: [{ name: 'Afresh' }] } }),
       false,
     );
+  });
+
+  it('ignores a protein-powder-only calculator save', () => {
+    assert.equal(mealRowIsHerbalifeShake({
+      ProcessedBy: 'shake_calculator',
+      AnalysisData: {
+        processedBy: 'shake_calculator',
+        shakeProducts: { formula1: 0, shakemate: 0, protein: 1, activeFibre: 0 },
+        foods: [{ name: 'Personalized Protein Powder' }],
+      },
+    }), false);
   });
 });

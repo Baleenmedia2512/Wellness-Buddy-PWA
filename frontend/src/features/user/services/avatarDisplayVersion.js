@@ -37,6 +37,7 @@ export function buildUserAvatarUrl(apiBaseUrl, userId, version = generation, opt
   params.set('userId', String(userId));
   if (Number(version) > 0) params.set('_v', String(version));
   if (options.inline) params.set('inline', '1');
+  if (options.profileOnly) params.set('profileOnly', '1');
   return `${apiBaseUrl}/api/user/avatar?${params.toString()}`;
 }
 

@@ -2,7 +2,7 @@
  * Shared UTC datetime utilities (Luxon-backed).
  *
  * Canonical source for new timestamp generation and timezone-aware day bounds.
- * Legacy IST helpers remain in utils/supabaseClient.js until repository migration.
+ * Legacy IST helpers remain in utils/mysqlClient.js until repository migration.
  */
 import { DateTime } from 'luxon';
 export const IANA_IST = 'Asia/Kolkata';

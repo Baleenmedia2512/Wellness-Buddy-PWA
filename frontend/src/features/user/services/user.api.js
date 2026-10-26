@@ -11,6 +11,34 @@ import { syncMarathonWeightComparisonFromProfile } from '../../marathon/marathon
 
 const base = () => getApiBaseUrl();
 
+/** `/api/media/...` is served by the API host, not the web app host. */
+function browserImageUrl(url) {
+  if (typeof url !== 'string') return url;
+  const trimmed = url.trim();
+  if (!trimmed.startsWith('/api/')) return url;
+  return `${base()}${trimmed}`;
+}
+
+function absolutizeProfileImage(data) {
+  const payload = data?.data;
+  if (!payload) return data;
+  if (typeof payload.profileImage === 'string' && payload.profileImage.startsWith('/api/')) {
+    payload.profileImage = browserImageUrl(payload.profileImage);
+  }
+  if (typeof payload.avatarUrl === 'string' && payload.avatarUrl.startsWith('/api/')) {
+    payload.avatarUrl = browserImageUrl(payload.avatarUrl);
+  }
+  const photos = payload.transformationPhotos;
+  if (photos && typeof photos === 'object') {
+    ['front', 'left', 'right'].forEach((slot) => {
+      if (typeof photos[slot] === 'string' && photos[slot].startsWith('/api/')) {
+        photos[slot] = browserImageUrl(photos[slot]);
+      }
+    });
+  }
+  return data;
+}
+
 function profileCacheKeyEmail(email) {
   if (!email) return null;
   return cacheManager.generateKey('userProfile', String(email).toLowerCase());
@@ -117,6 +145,7 @@ export async function getProfile(emailOrOpts, maybeOpts = {}) {
       const data = await res.json();
       handlePossibleAppUpdateRequired(res, data);
       if (data?.success && data?.data) {
+        absolutizeProfileImage(data);
         syncMarathonWeightComparisonFromProfile(data.data);
         mirrorProfileCache(data, { email, userId });
       }
@@ -138,7 +167,7 @@ export async function updateProfile(payload) {
   }
   const data = await res.json();
   handlePossibleAppUpdateRequired(res, data);
-  return data;
+  return absolutizeProfileImage(data);
 }
 
 export async function getContext(userId) {

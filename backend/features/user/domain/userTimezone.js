@@ -3,7 +3,7 @@
  */
 import { resolveProfileTimezone } from './profileTimezone.js';
 import * as userRepo from '../user.repository.js';
-import { getSupabaseClient } from '../../../utils/supabaseClient.js';
+import { getMysqlClient } from '../../../utils/mysqlClient.js';
 
 /**
  * @param {string|number} userId
@@ -34,8 +34,8 @@ export async function getUserTimezonesIanaMap(userIds) {
   )];
   if (ids.length === 0) return map;
 
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from('team_table')
     .select('"UserId", timezone_iana')
     .in('UserId', ids);

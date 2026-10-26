@@ -1,5 +1,5 @@
 -- Migration: add_consent_columns_to_team_table
--- Run in Supabase SQL editor before enabling ff.consent-gate in production.
+-- Run on MySQL before enabling ff.consent-gate in production.
 -- Stores binding acceptance of the Wellness Valley User Consent Form + audit meta.
 
 ALTER TABLE team_table

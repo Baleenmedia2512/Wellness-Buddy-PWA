@@ -1,0 +1,908 @@
+// MySQL/MariaDB schema. Connection: MYSQL_DATABASE_URL.
+// Table queries go through Prisma. Regenerate with: npm run prisma:pull
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("MYSQL_DATABASE_URL")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model activity_report_hidden_users_table {
+  Id           BigInt   @id @default(autoincrement())
+  ViewerUserId BigInt
+  HiddenUserId BigInt
+  IsHidden     Boolean  @default(true)
+  CreatedAt    DateTime @default(now())
+  UpdatedAt    DateTime @default(now())
+
+  @@unique([ViewerUserId, HiddenUserId], map: "activity_report_hidden_users_viewer_hidden_unique")
+}
+
+model activity_time_windows_table {
+  Id                Int       @id @default(autoincrement())
+  ActivityType      String    @db.VarChar(50)
+  WindowStartTime   DateTime  @db.Time(0)
+  WindowEndTime     DateTime  @db.Time(0)
+  EffectiveFromDate DateTime
+  EffectiveToDate   DateTime?
+  ChangedBy         String?   @db.VarChar(100)
+  ChangeReason      String?   @db.LongText
+  CreatedAt         DateTime? @default(now())
+
+  @@index([ActivityType, EffectiveFromDate, EffectiveToDate], map: "idx_activity_time_windows_activity_effective")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model ai_analysis_jobs_table {
+  JobId                     String                     @id @default(dbgenerated("(uuid())")) @db.Char(36)
+  CaptureId                 String                     @db.VarChar(64)
+  UserID                    Int?
+  TraceId                   String                     @db.Char(36)
+  MimeType                  String                     @default("image/jpeg") @db.VarChar(64)
+  FastNutrition             Json?
+  FoodRowId                 Int?
+  Status                    String                     @default("pending") @db.VarChar(20)
+  RetryCount                Int                        @default(0) @db.SmallInt
+  LastError                 String?                    @db.LongText
+  EnrichmentResult          Json?
+  CreatedAt                 DateTime                   @default(now())
+  UpdatedAt                 DateTime                   @default(now())
+  IsDeleted                 Int                        @default(0) @db.SmallInt
+  food_nutrition_data_table food_nutrition_data_table? @relation(fields: [FoodRowId], references: [ID], onUpdate: NoAction)
+  team_table                team_table?                @relation(fields: [UserID], references: [UserId], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([FoodRowId], map: "ai_analysis_jobs_table_FoodRowId_fkey")
+  @@index([UserID], map: "ai_analysis_jobs_table_UserID_fkey")
+  @@index([CaptureId], map: "idx_ai_jobs_capture")
+  @@index([Status, CreatedAt], map: "idx_ai_jobs_status_created")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model ai_credits_config_table {
+  id                   BigInt   @id @default(autoincrement())
+  daily_ai_credits     Int      @default(3)
+  ai_mode_enabled      Boolean  @default(true)
+  updated_at           DateTime @default(now())
+  updated_by_user_id   BigInt?
+  availability_windows Json     @default(dbgenerated("(cast(_utf8mb4\\'{\"lunch\":{\"end\":\"16:00:00\",\"start\":\"12:00:00\",\"enabled\":true},\"dinner\":{\"end\":\"20:30:00\",\"start\":\"17:30:00\",\"enabled\":true},\"breakfast\":{\"end\":\"08:30:00\",\"start\":\"05:30:00\",\"enabled\":true}}\\' as json))"))
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model ai_credits_daily_usage_table {
+  id                     BigInt   @id @default(autoincrement())
+  user_id                BigInt
+  usage_date             DateTime @db.Date
+  credits_used           Int      @default(0)
+  credits_limit_snapshot Int      @default(3)
+  updated_at             DateTime @default(now())
+
+  @@unique([user_id, usage_date])
+  @@index([user_id, usage_date], map: "idx_ai_credits_daily_usage_user_date")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model ai_credits_reservations_table {
+  id          String    @id @default(dbgenerated("(uuid())")) @db.Char(36)
+  user_id     BigInt
+  usage_date  DateTime  @db.Date
+  status      String    @default("pending") @db.VarChar(20)
+  created_at  DateTime  @default(now())
+  resolved_at DateTime?
+
+  @@index([user_id, usage_date, status], map: "idx_ai_credits_reservations_user_date_status")
+}
+
+model ai_token_usage_table {
+  ID                 Int       @id @default(autoincrement())
+  UserId             String    @db.VarChar(255)
+  Email              String    @db.VarChar(255)
+  InputTokens        Int?      @default(0)
+  OutputTokens       Int?      @default(0)
+  TotalTokens        Int?      @default(0)
+  OperationType      String    @db.VarChar(50)
+  ModelName          String    @db.VarChar(100)
+  CreatedAt          DateTime? @default(now())
+  InputTokenCost     Decimal?  @default(0.00000000) @db.Decimal(10, 8)
+  OutputTokenCost    Decimal?  @default(0.00000000) @db.Decimal(10, 8)
+  TotalTokenCost     Decimal?  @default(0.00000000) @db.Decimal(10, 8)
+  InputTokenCostUsd  Decimal?  @default(0.00000000) @db.Decimal(10, 8)
+  OutputTokenCostUsd Decimal?  @default(0.00000000) @db.Decimal(10, 8)
+
+  @@index([CreatedAt], map: "idx_ai_token_usage_created_at")
+  @@index([Email], map: "idx_ai_token_usage_email")
+  @@index([OperationType], map: "idx_ai_token_usage_operation_type")
+  @@index([UserId], map: "idx_ai_token_usage_user_id")
+}
+
+model approval_requests_table {
+  Id            Int       @id @default(autoincrement())
+  RequesterId   Int
+  Status        String?   @default("pending") @db.VarChar(20)
+  RequestedAt   DateTime? @default(now())
+  OtpExpiresAt  DateTime?
+  UplineCoachId Int?
+  OtpHash       String?   @db.VarChar(255)
+  OtpAttempts   Int?      @default(0)
+  OtpSentAt     DateTime?
+  ProcessedAt   DateTime?
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model body_parameters_cards {
+  id                      BigInt   @id @default(autoincrement())
+  created_by              Int
+  user_id                 Int?
+  public_share_token      String   @unique @default(dbgenerated("(uuid())")) @db.Char(36)
+  share_expires_at        DateTime @default(dbgenerated("(now() + interval 30 day)"))
+  name                    String   @db.LongText
+  age                     Int?     @db.SmallInt
+  gender                  String?  @db.VarChar(10)
+  height_cm               Decimal? @db.Decimal(5, 1)
+  weight_kg               Decimal? @db.Decimal(6, 2)
+  bmi                     Decimal? @db.Decimal(5, 2)
+  fat_percent             Decimal? @db.Decimal(5, 2)
+  bmr                     Decimal? @db.Decimal(7, 2)
+  body_age                Int?     @db.SmallInt
+  recorded_date           DateTime  @default(dbgenerated("(curdate())")) @db.Date
+  appointment_date        DateTime? @db.Date
+  location_name           String?   @db.LongText
+  is_deleted              Boolean  @default(false)
+  created_at              DateTime @default(now())
+  updated_at              DateTime @default(now())
+  visceral_fat            Decimal? @db.Decimal(4, 1)
+  chest_cm                Decimal? @db.Decimal(6, 2)
+  waist_cm                Decimal? @db.Decimal(6, 2)
+  hip_cm                  Decimal? @db.Decimal(6, 2)
+  recovered_health_issues Json     @default(dbgenerated("(cast(_utf8mb4\\'[]\\' as json))"))
+
+  @@index([created_by, created_at], map: "idx_bpc_created_by_active_created_at")
+  @@index([user_id, created_at], map: "idx_bpc_user_id_active")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model captures_table {
+  ID                        BigInt                      @id @default(autoincrement())
+  UserID                    String                      @db.VarChar(64)
+  PublicShareToken          String                      @unique @db.Char(36)
+  ShareExpiresAt            DateTime?
+  ImageBase64               String?                     @db.LongText
+  ImagePath                 String?                     @db.LongText
+  ImageType                 String                      @default("pending") @db.VarChar(20)
+  DeviceInfo                String?                     @db.LongText
+  ProcessedBy               String?                     @db.VarChar(50)
+  IsDeleted                 Int                         @default(0) @db.SmallInt
+  CreatedAt                 DateTime                    @default(now())
+  UpdatedAt                 DateTime                    @default(now())
+  ShareCode                 String                      @unique(map: "idx_captures_share_code_unique") @db.VarChar(10)
+  Latitude                  Float?
+  Longitude                 Float?
+  City                      String?                     @db.LongText
+  Village                   String?                     @db.LongText
+  AttendanceType            String?                     @db.LongText
+  NutritionCenterId         BigInt?
+  CenterName                String?                     @db.LongText
+  ImageKey                  String?                     @db.LongText
+  daily_step_activity       daily_step_activity[]
+  education_logs_table      education_logs_table[]
+  food_nutrition_data_table food_nutrition_data_table[]
+  weight_records_table      weight_records_table[]
+
+  @@index([ImageType], map: "idx_captures_image_type")
+  @@index([PublicShareToken], map: "idx_captures_public_share_token")
+  @@index([CreatedAt], map: "idx_captures_unknown_created")
+  @@index([UserID, CreatedAt], map: "idx_captures_user_created")
+}
+
+model coach_teams_table {
+  Id        Int       @id @default(autoincrement())
+  TeamId    String    @db.VarChar(50)
+  CoachId   Int
+  CoCoachId Int?
+  Status    String?   @default("active") @db.VarChar(50)
+  CreatedAt DateTime? @default(now())
+  UpdatedAt DateTime? @default(now())
+
+  @@index([TeamId], map: "idx_coach_teams_coach_id")
+  @@index([CoCoachId], map: "idx_coach_teams_member_id")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model community_id_requests_table {
+  Id              BigInt    @id @default(autoincrement())
+  RequesterId     BigInt
+  ApproverId      BigInt
+  CommunityId     String    @db.VarChar(100)
+  RequestKind     String    @db.VarChar(20)
+  MainSponsorId   BigInt?
+  MainSponsorName String?   @db.VarChar(255)
+  OtpHash         String    @db.VarChar(255)
+  OtpExpiresAt    DateTime
+  OtpSentAt       DateTime?
+  OtpAttempts     Int       @default(0)
+  Status          String    @default("pending") @db.VarChar(20)
+  RequestedAt     DateTime
+  ProcessedAt     DateTime?
+}
+
+model daily_step_activity {
+  Id             BigInt          @id @default(autoincrement())
+  UserId         BigInt
+  Steps          Int?            @default(0)
+  ActivityType   String?         @default("walking") @db.VarChar(32)
+  CaloriesBurned Decimal?        @default(0.00) @db.Decimal(10, 2)
+  CreatedAt      DateTime?       @default(now())
+  UpdatedAt      DateTime?       @default(now())
+  CaptureID      BigInt?
+  captures_table captures_table? @relation(fields: [CaptureID], references: [ID], onUpdate: NoAction)
+
+  @@index([CaptureID], map: "idx_daily_step_activity_capture_id")
+  @@index([UserId, CreatedAt], map: "idx_daily_step_user_created")
+}
+
+model discipline_table {
+  ID                 Int      @id @default(autoincrement())
+  EntryDate          DateTime @db.Date
+  EntryUser          String   @db.VarChar(60)
+  Activity           String   @db.VarChar(60)
+  ActivityStartTime  DateTime @db.Time(0)
+  ActivityEndTime    DateTime @db.Time(0)
+  ValidityStartDate  DateTime @db.Date
+  ValidityEndDate    DateTime @db.Date
+  TrackForDiscipline Boolean
+  DisciplineGroupID  Int?
+
+  @@index([EntryUser], map: "idx_discipline_entry_user")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model dry_salad_items_table {
+  id                  BigInt   @id @default(autoincrement())
+  canonical_name      String   @db.VarChar(512)
+  normalized_name     String   @unique @db.VarChar(512)
+  aliases             Json     @default(dbgenerated("(cast(_utf8mb4\\'[]\\' as json))"))
+  reference_weight_g  Decimal  @default(100.000000) @db.Decimal(20, 6)
+  is_liquid           Boolean  @default(false)
+  portion_label       String?  @db.VarChar(128)
+  nutrition           Json     @default(dbgenerated("(cast(_utf8mb4\\'{}\\' as json))"))
+  source              String   @default("seed") @db.VarChar(32)
+  status              String   @default("draft") @db.VarChar(20)
+  sightings           Int      @default(0)
+  version             Int      @default(1)
+  reviewed_by_user_id BigInt?
+  created_at          DateTime @default(now())
+  updated_at          DateTime @default(now())
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model education_logs_table {
+  Id                      Int                      @id @default(autoincrement())
+  UserId                  String                   @db.VarChar(255)
+  Platform                String                   @db.VarChar(50)
+  Topic                   String?                  @db.VarChar(500)
+  CreatedAt               DateTime?                @default(now())
+  UpdatedAt               DateTime?                @default(now())
+  Confidence              Decimal?                 @db.Decimal(5, 2)
+  DeviceInfo              String?                  @db.LongText
+  ImageBase64             String?                  @db.LongText
+  IsDeleted               Boolean?                 @default(false)
+  latitude                Decimal?                 @db.Decimal(10, 8)
+  longitude               Decimal?                 @db.Decimal(11, 8)
+  attendance_type         String?                  @db.VarChar(10)
+  nutrition_center_id     Int?
+  participant_count       Int?                     @default(0)
+  center_name             String?                  @db.VarChar(255)
+  City                    String?                  @db.VarChar(255)
+  Village                 String?                  @db.VarChar(255)
+  CaptureID               BigInt?
+  ImageKey                String?                  @db.LongText
+  captures_table          captures_table?          @relation(fields: [CaptureID], references: [ID], onUpdate: NoAction)
+  nutrition_centers_table nutrition_centers_table? @relation(fields: [nutrition_center_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([CreatedAt], map: "idx_education_created_at")
+  @@index([IsDeleted], map: "idx_education_is_deleted")
+  @@index([attendance_type], map: "idx_education_logs_attendance")
+  @@index([CaptureID], map: "idx_education_logs_capture_id")
+  @@index([nutrition_center_id], map: "idx_education_logs_center")
+  @@index([nutrition_center_id, CreatedAt], map: "idx_education_logs_center_created_active")
+  @@index([UserId, IsDeleted, CreatedAt], map: "idx_education_logs_user_created")
+  @@index([UserId], map: "idx_education_user_id")
+}
+
+model food_corrections_table {
+  Id                Int       @id @default(autoincrement())
+  UserId            String    @db.VarChar(255)
+  AiDetected        String    @db.VarChar(255)
+  UserCorrected     String    @db.VarChar(255)
+  TimesCorrected    Int?      @default(1)
+  CreatedAt         DateTime? @default(now())
+  LastCorrected     DateTime? @default(now())
+  CorrectedQuantity Decimal?  @db.Decimal(10, 2)
+  CorrectedUnit     String?   @db.VarChar(20)
+  CorrectedFoodType String?   @db.VarChar(10)
+  CorrectedCalories Decimal?  @db.Decimal(10, 2)
+  CorrectedCarbs    Decimal?  @db.Decimal(10, 2)
+  CorrectedProtein  Decimal?  @db.Decimal(10, 2)
+  CorrectedFat      Decimal?  @db.Decimal(10, 2)
+  CorrectedFiber    Decimal?  @db.Decimal(10, 2)
+
+  @@index([UserId], map: "idx_food_corrections_user_id")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model food_nutrition_data_table {
+  ID                     Int                      @id @default(autoincrement())
+  UserID                 String?                  @db.VarChar(64)
+  ImagePath              String?                  @db.LongText
+  AnalysisData           String?                  @db.LongText
+  ConfidenceScore        Decimal?                 @db.Decimal(20, 6)
+  TotalCalories          Decimal?                 @db.Decimal(20, 6)
+  TotalProtein           Decimal?                 @db.Decimal(20, 6)
+  TotalCarbs             Decimal?                 @db.Decimal(20, 6)
+  TotalFat               Decimal?                 @db.Decimal(20, 6)
+  TotalFiber             Decimal?                 @db.Decimal(20, 6)
+  ProcessedBy            String?                  @db.LongText
+  DeviceInfo             String?                  @db.LongText
+  CreatedAt              DateTime?                @default(now())
+  UpdatedAt              DateTime?                @default(now())
+  ImageBase64            String?                  @db.LongText
+  IsDeleted              Int                      @default(0)
+  CaptureID              BigInt?
+  TotalSugar             Decimal?                 @db.Decimal(8, 2)
+  TotalSodium            Decimal?                 @db.Decimal(8, 2)
+  TotalCholesterol       Decimal?                 @db.Decimal(8, 2)
+  City                   String?                  @db.VarChar(255)
+  Village                String?                  @db.VarChar(255)
+  CenterName             String?                  @db.VarChar(255)
+  NutritionCenterId      Int?
+  AttendanceType         String?                  @db.VarChar(50)
+  Latitude               Decimal?                 @db.Decimal(10, 8)
+  Longitude              Decimal?                 @db.Decimal(11, 8)
+  GlycemicIndex          Decimal?                 @db.Decimal(5, 2)
+  TotalVitaminA          Decimal?                 @db.Decimal(8, 2)
+  TotalVitaminC          Decimal?                 @db.Decimal(8, 2)
+  TotalVitaminD          Decimal?                 @db.Decimal(8, 2)
+  TotalVitaminE          Decimal?                 @db.Decimal(8, 2)
+  TotalVitaminK          Decimal?                 @db.Decimal(8, 2)
+  TotalVitaminB1         Decimal?                 @db.Decimal(8, 2)
+  TotalVitaminB2         Decimal?                 @db.Decimal(8, 2)
+  TotalVitaminB3         Decimal?                 @db.Decimal(8, 2)
+  TotalVitaminB6         Decimal?                 @db.Decimal(8, 2)
+  TotalVitaminB9         Decimal?                 @db.Decimal(8, 2)
+  TotalVitaminB12        Decimal?                 @db.Decimal(8, 2)
+  TotalCalcium           Decimal?                 @db.Decimal(8, 2)
+  TotalIron              Decimal?                 @db.Decimal(8, 2)
+  TotalMagnesium         Decimal?                 @db.Decimal(8, 2)
+  TotalPotassium         Decimal?                 @db.Decimal(8, 2)
+  TotalZinc              Decimal?                 @db.Decimal(8, 2)
+  TotalPhosphorus        Decimal?                 @db.Decimal(8, 2)
+  EnrichmentStatus       String                   @default("pending") @db.VarChar(20)
+  ImageKey               String?                  @db.LongText
+  Source                 String?                  @db.VarChar(20)
+  ai_analysis_jobs_table ai_analysis_jobs_table[]
+  captures_table         captures_table?          @relation(fields: [CaptureID], references: [ID], onUpdate: NoAction)
+
+  @@index([EnrichmentStatus], map: "idx_food_enrichment_status")
+  @@index([CaptureID], map: "idx_food_nutrition_capture_id")
+  @@index([NutritionCenterId, CreatedAt], map: "idx_food_nutrition_center_created_active")
+  @@index([UserID, IsDeleted, CreatedAt], map: "idx_food_nutrition_user_created")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model food_pair_stats_table {
+  id         BigInt   @id @default(autoincrement())
+  food_a     String   @db.VarChar(255)
+  food_b     String   @db.VarChar(255)
+  pair_count Int      @default(0)
+  updated_at DateTime @default(now())
+
+  @@unique([food_a, food_b], map: "food_pair_stats_unique")
+  @@index([food_a], map: "idx_food_pair_stats_a")
+  @@index([food_b], map: "idx_food_pair_stats_b")
+  @@index([pair_count], map: "idx_food_pair_stats_count")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model food_pair_stats_user_table {
+  id         BigInt   @id @default(autoincrement())
+  user_id    String   @db.VarChar(64)
+  food_a     String   @db.VarChar(255)
+  food_b     String   @db.VarChar(255)
+  pair_count Int      @default(0)
+  updated_at DateTime @default(now())
+
+  @@unique([user_id, food_a, food_b], map: "food_pair_stats_user_unique")
+  @@index([user_id, food_a], map: "idx_food_pair_stats_user_anchor")
+  @@index([user_id, food_b], map: "idx_food_pair_stats_user_anchor_b")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model good_habits_table {
+  ID                BigInt   @id @default(autoincrement())
+  UserId            String   @db.VarChar(64)
+  HabitType         String   @db.VarChar(32)
+  Notes             String?  @db.LongText
+  ImageBase64       String?  @db.LongText
+  BeforeImageBase64 String?  @db.LongText
+  AfterImageBase64  String?  @db.LongText
+  CaptureID         String?  @db.VarChar(64)
+  IsDeleted         Int      @default(0) @db.SmallInt
+  CreatedAt         DateTime
+  UpdatedAt         DateTime
+  ImageKey          String?  @db.LongText
+  BeforeImageKey    String?  @db.LongText
+  AfterImageKey     String?  @db.LongText
+
+  @@index([UserId, CreatedAt], map: "idx_good_habits_user_created")
+}
+
+model marathon_config {
+  id                    BigInt         @id @default(autoincrement())
+  marathon_id           BigInt         @unique(map: "marathon_config_marathon_unique")
+  discipline_start_time DateTime       @default(dbgenerated("'03:00:00'")) @db.Time(0)
+  discipline_end_time   DateTime       @default(dbgenerated("'07:30:00'")) @db.Time(0)
+  created_at            DateTime       @default(now())
+  updated_at            DateTime       @default(now())
+  marathon_table        marathon_table @relation(fields: [marathon_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([marathon_id], map: "idx_marathon_config_marathon")
+}
+
+model marathon_daily_results {
+  id                            BigInt         @id @default(autoincrement())
+  marathon_id                   BigInt
+  result_date                   DateTime       @db.Date
+  lap_number                    Int
+  day_number                    Int
+  day_leader_user_id            Int?
+  day_leader_reduction_kg       Decimal?       @db.Decimal(6, 2)
+  lap_leader_user_id            Int?
+  lap_leader_reduction_kg       Decimal?       @db.Decimal(6, 2)
+  community_leader_user_id      Int?
+  community_leader_reduction_kg Decimal?       @db.Decimal(6, 2)
+  eligible_count                Int            @default(0)
+  total_participants            Int            @default(0)
+  computed_at                   DateTime       @default(now())
+  marathon_table                marathon_table @relation(fields: [marathon_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([marathon_id, result_date], map: "marathon_daily_results_unique")
+  @@index([marathon_id, result_date], map: "idx_marathon_daily_results_marathon")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model marathon_participants {
+  id              BigInt         @id @default(autoincrement())
+  marathon_id     BigInt
+  user_id         Int
+  is_active       Boolean        @default(true)
+  joined_at       DateTime       @default(now())
+  lap_role        String         @default("member") @db.VarChar(20)
+  baseline_weight Decimal?       @db.Decimal(6, 2)
+  marathon_table  marathon_table @relation(fields: [marathon_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([marathon_id, user_id], map: "marathon_participants_unique")
+  @@index([marathon_id], map: "idx_marathon_participants_marathon")
+  @@index([user_id], map: "idx_marathon_participants_user")
+}
+
+model marathon_recognition_views {
+  id             BigInt         @id @default(autoincrement())
+  user_id        Int
+  marathon_id    BigInt
+  result_date    DateTime       @db.Date
+  viewed_at      DateTime       @default(now())
+  marathon_table marathon_table @relation(fields: [marathon_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([user_id, marathon_id, result_date], map: "marathon_recognition_views_unique")
+  @@index([user_id, result_date], map: "idx_marathon_recognition_user")
+  @@index([marathon_id], map: "marathon_recognition_views_marathon_id_fkey")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model marathon_share_cards {
+  id                 BigInt         @id @default(autoincrement())
+  marathon_id        BigInt
+  card_type          String         @db.VarChar(30)
+  lap_number         Int?
+  day_number         Int?
+  public_share_token String         @unique @default(dbgenerated("(uuid())")) @db.Char(36)
+  share_expires_at   DateTime       @default(dbgenerated("(now() + interval 7 day)"))
+  card_data          Json
+  created_by         Int
+  created_at         DateTime       @default(now())
+  marathon_table     marathon_table @relation(fields: [marathon_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([marathon_id, card_type, lap_number, day_number], map: "idx_marathon_share_marathon")
+  @@index([public_share_token], map: "idx_marathon_share_token")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model marathon_table {
+  id                         BigInt                       @id @default(autoincrement())
+  name                       String                       @db.VarChar(255)
+  coach_id                   Int
+  status                     String                       @default("active") @db.VarChar(20)
+  total_laps                 Int                          @default(10)
+  days_per_lap               Int                          @default(10)
+  started_at                 DateTime                     @db.Date
+  completed_at               DateTime?                    @db.Date
+  created_at                 DateTime                     @default(now())
+  updated_at                 DateTime                     @default(now())
+  team_name                  String?                      @db.VarChar(255)
+  lap_sequence               Int                          @default(1)
+  marathon_config            marathon_config?
+  marathon_daily_results     marathon_daily_results[]
+  marathon_participants      marathon_participants[]
+  marathon_recognition_views marathon_recognition_views[]
+  marathon_share_cards       marathon_share_cards[]
+
+  @@index([coach_id], map: "idx_marathon_coach_id")
+}
+
+model nav_page_access_config_table {
+  id                 BigInt   @id @default(autoincrement())
+  matrix             Json
+  updated_at         DateTime @default(now())
+  updated_by_user_id BigInt?
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model nutrition_centers_table {
+  id                   Int                    @id @default(autoincrement())
+  center_name          String                 @db.VarChar(255)
+  latitude             Decimal                @db.Decimal(10, 8)
+  longitude            Decimal                @db.Decimal(11, 8)
+  education_hour       DateTime?              @db.Time(0)
+  owner_user_id        Int?
+  owner_phone          String?                @db.VarChar(20)
+  registered_at        DateTime?              @default(now())
+  status               String?                @default("active") @db.VarChar(20)
+  is_deleted           Boolean?               @default(false)
+  active_center_name   String?                @unique(map: "nutrition_centers_name_unique") @db.VarChar(255)
+  education_logs_table education_logs_table[]
+  team_table           team_table?            @relation(fields: [owner_user_id], references: [UserId], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([latitude, longitude], map: "idx_nutrition_centers_location")
+  @@index([owner_user_id], map: "idx_nutrition_centers_owner")
+  @@index([owner_user_id, registered_at], map: "idx_nutrition_centers_owner_active_registered")
+  @@index([status, is_deleted], map: "idx_nutrition_centers_status")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model nutrition_custom_food_submissions_table {
+  id                              BigInt                           @id @default(autoincrement())
+  user_id                         BigInt
+  food_name                       String                           @db.VarChar(512)
+  normalized_name                 String                           @db.VarChar(512)
+  unit                            String                           @db.VarChar(8)
+  quantity                        Decimal                          @db.Decimal(20, 6)
+  profile_id                      BigInt?
+  created_at                      DateTime                         @default(now())
+  nutrition_master_profiles_table nutrition_master_profiles_table? @relation(fields: [profile_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([created_at], map: "idx_nutrition_custom_food_submissions_created")
+  @@index([normalized_name], map: "idx_nutrition_custom_food_submissions_normalized")
+  @@index([profile_id], map: "nutrition_custom_food_submissions_table_profile_id_fkey")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model nutrition_master_profiles_table {
+  id                                      BigInt                                    @id @default(autoincrement())
+  canonical_name                          String                                    @db.VarChar(512)
+  normalized_name                         String                                    @unique @db.VarChar(512)
+  aliases                                 Json                                      @default(dbgenerated("(cast(_utf8mb4\\'[]\\' as json))"))
+  reference_weight_g                      Decimal                                   @default(100.000000) @db.Decimal(20, 6)
+  is_liquid                               Boolean                                   @default(false)
+  portion_label                           String?                                   @db.VarChar(64)
+  nutrition                               Json                                      @default(dbgenerated("(cast(_utf8mb4\\'{}\\' as json))"))
+  source                                  String                                    @default("seed") @db.VarChar(32)
+  status                                  String                                    @default("draft") @db.VarChar(20)
+  sightings                               Int                                       @default(0)
+  version                                 Int                                       @default(1)
+  reviewed_by_user_id                     BigInt?
+  created_at                              DateTime                                  @default(now())
+  updated_at                              DateTime                                  @default(now())
+  created_by_user_id                      BigInt?
+  nutrition_custom_food_submissions_table nutrition_custom_food_submissions_table[]
+
+  @@index([normalized_name], map: "idx_nutrition_master_profiles_normalized")
+  @@index([status, canonical_name], map: "idx_nutrition_master_profiles_status_name")
+  @@index([status, normalized_name], map: "idx_nutrition_master_status_name")
+}
+
+model otp_tokens_table {
+  ID          Int       @id @default(autoincrement())
+  Recipient   String    @db.VarChar(255)
+  ContactType String?   @default("email") @db.VarChar(50)
+  OTPHash     String    @db.VarChar(255)
+  ExpiresAt   DateTime
+  Verified    Boolean?  @default(false)
+  IsActive    Boolean?  @default(false)
+  CreatedAt   DateTime? @default(now())
+}
+
+model screen_sessions_table {
+  Id                     Int       @id @default(autoincrement())
+  UserId                 Int
+  CreatedAt              DateTime  @default(now())
+  Date                   DateTime? @db.Date
+  TotalScreenTimeSeconds Int?      @default(0)
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model tasks_table {
+  TaskId                 Int       @id @default(autoincrement())
+  UserId                 Int
+  TaskType               String    @db.VarChar(50)
+  TaskDate               DateTime  @db.Date
+  Status                 String    @default("pending") @db.VarChar(20)
+  Priority               String    @default("medium") @db.VarChar(10)
+  WindowStart            DateTime  @db.Time(0)
+  WindowEnd              DateTime  @db.Time(0)
+  CreatedAt              DateTime  @default(now())
+  CompletedAt            DateTime?
+  TaskData               Json      @default(dbgenerated("(cast(_utf8mb4\\'{}\\' as json))"))
+  CompletionData         Json?
+  NotificationSent       Boolean   @default(false)
+  NotificationSentAt     DateTime?
+  ReminderCount          Int       @default(0)
+  SnoozedUntil           DateTime?
+  ReminderDismissedToday Boolean   @default(false)
+
+  @@unique([UserId, TaskType, TaskDate], map: "unique_user_task_date")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model team_table {
+  EntryDateTime                                                                               DateTime?
+  EntryUser                                                                                   String?                                 @db.VarChar(255)
+  UserId                                                                                      Int                                     @unique(map: "idx_team_table_userid_unique") @default(0)
+  UserName                                                                                    String                                  @db.VarChar(255)
+  Password                                                                                    String?                                 @db.VarChar(255)
+  TargetWeightInKg                                                                            Decimal?                                @db.Decimal(10, 4)
+  CoachName                                                                                   String?                                 @db.VarChar(255)
+  CoCoachName                                                                                 String?                                 @db.VarChar(255)
+  Status                                                                                      String?                                 @db.VarChar(50)
+  CoachApproved                                                                               Int?
+  Email                                                                                       String?                                 @db.VarChar(255)
+  Role                                                                                        String?                                 @db.VarChar(50)
+  DietType                                                                                    String?                                 @db.VarChar(100)
+  Height                                                                                      Decimal?                                @db.Decimal(10, 2)
+  TeamId                                                                                      String?                                 @db.VarChar(100)
+  UplineCoachId                                                                               Int?
+  SetupSkipped                                                                                Boolean?                                @default(false)
+  id                                                                                          Int                                     @id @default(autoincrement())
+  ProfileImage                                                                                String?                                 @db.LongText
+  CoachId                                                                                     Int?
+  CoCoachId                                                                                   Int?
+  PhoneNumber                                                                                 String?                                 @db.VarChar(20)
+  CoachTeamId                                                                                 String?                                 @db.VarChar(50)
+  LastActiveAt                                                                                DateTime?
+  Bmr                                                                                         Float?
+  profile_pic_snooze                                                                          Json?
+  PushToken                                                                                   String?                                 @db.LongText
+  PushTokenUpdatedAt                                                                          DateTime?
+  WeightGoalMode                                                                              String?                                 @default("loss") @db.VarChar(10)
+  PhysicalActivityLevel                                                                       String?                                 @db.VarChar(32)
+  CommunityId                                                                                 String?                                 @db.VarChar(100)
+  timezone_iana                                                                               String                                  @default("Asia/Kolkata") @db.VarChar(64)
+  Gender                                                                                      String?                                 @db.VarChar(32)
+  ConsentAcceptedAt                                                                           DateTime?
+  ConsentVersion                                                                              String?                                 @db.VarChar(64)
+  ConsentIpAddress                                                                            String?                                 @db.VarChar(64)
+  ConsentDeviceInfo                                                                           String?                                 @db.LongText
+  BodyFat                                                                                     Decimal?                                @db.Decimal(5, 2)
+  Age                                                                                         Int?
+  VisceralFat                                                                                 Decimal?                                @db.Decimal(20, 6)
+  BodyAge                                                                                     Decimal?                                @db.Decimal(20, 6)
+  ChestCm                                                                                     Decimal?                                @db.Decimal(20, 6)
+  WaistCm                                                                                     Decimal?                                @db.Decimal(20, 6)
+  HipCm                                                                                       Decimal?                                @db.Decimal(20, 6)
+  recovered_health_issues                                                                     Json                                    @default(dbgenerated("(cast(_utf8mb4\\'[]\\' as json))"))
+  transformation_photos                                                                       Json?
+  ProfileImageKey                                                                             String?                                 @db.LongText
+  IdealWeightReachedAt                                                                        DateTime?
+  IdealWeightReachedNotifiedAt                                                                DateTime?
+  BcmProfileReviewedAt                                                                        DateTime?
+  ai_analysis_jobs_table                                                                      ai_analysis_jobs_table[]
+  nutrition_centers_table                                                                     nutrition_centers_table[]
+  team_table_team_table_CoachIdToteam_table                                                   team_table?                             @relation("team_table_CoachIdToteam_table", fields: [CoachId], references: [UserId], onUpdate: NoAction, map: "fk_coach_id")
+  other_team_table_team_table_CoachIdToteam_table                                             team_table[]                            @relation("team_table_CoachIdToteam_table")
+  team_table_team_table_CoCoachIdToteam_table                                                 team_table?                             @relation("team_table_CoCoachIdToteam_table", fields: [CoCoachId], references: [UserId], onUpdate: NoAction, map: "fk_cocoach_id")
+  other_team_table_team_table_CoCoachIdToteam_table                                           team_table[]                            @relation("team_table_CoCoachIdToteam_table")
+  user_task_averages                                                                          user_task_averages[]
+  wellness_counselling_assessments_wellness_counselling_assessments_counsellor_idToteam_table wellness_counselling_assessments[]      @relation("wellness_counselling_assessments_counsellor_idToteam_table")
+  wellness_counselling_assessments_wellness_counselling_assessments_user_idToteam_table       wellness_counselling_assessments[]      @relation("wellness_counselling_assessments_user_idToteam_table")
+  wellness_university_enrollments_table                                                       wellness_university_enrollments_table[]
+
+  @@index([CoachName], map: "idx_team_coach_name")
+  @@index([Email], map: "idx_team_email")
+  @@index([IdealWeightReachedAt], map: "idx_team_ideal_weight_reached_at")
+  @@index([Status], map: "idx_team_status")
+  @@index([CoachId], map: "idx_team_table_coach_id")
+  @@index([CoCoachId], map: "idx_team_table_cocoach_id")
+  @@index([LastActiveAt], map: "idx_team_table_last_active_at")
+  @@index([Status, LastActiveAt], map: "idx_team_table_status_last_active")
+  @@index([UserName], map: "idx_team_user_name")
+}
+
+model team_userid_counter {
+  id       Int @id @db.TinyInt
+  next_val Int
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model testimonials_table {
+  id                      BigInt    @id @default(autoincrement())
+  user_id                 BigInt
+  coach_id                BigInt
+  before_image_path       String    @db.LongText
+  after_image_path        String    @db.LongText
+  before_weight_kg        Decimal   @db.Decimal(5, 2)
+  after_weight_kg         Decimal   @db.Decimal(5, 2)
+  goal_type               String    @db.VarChar(16)
+  duration_text           String    @db.VarChar(255)
+  status                  String    @default("incomplete") @db.VarChar(20)
+  otp_hash                String?   @db.VarChar(255)
+  otp_expires_at          DateTime?
+  verified_at             DateTime?
+  created_at              DateTime
+  updated_at              DateTime
+  is_deleted              Boolean   @default(false)
+  health_video_path       String?   @db.LongText
+  business_video_path     String?   @db.LongText
+  video_status            String    @default("none") @db.VarChar(20)
+  video_otp_hash          String?   @db.VarChar(255)
+  video_otp_expires_at    DateTime?
+  video_verified_at       DateTime?
+  recovered_health_issues Json      @default(dbgenerated("(cast(_utf8mb4\\'[]\\' as json))"))
+
+  @@index([coach_id], map: "idx_testimonials_coach_id")
+  @@index([updated_at], map: "idx_testimonials_updated_at")
+  @@index([user_id], map: "idx_testimonials_user_id")
+  @@index([user_id, id], map: "idx_testimonials_user_id_active_id_desc")
+}
+
+model token_correction_table {
+  ID              Int       @id @default(autoincrement())
+  UserId          String    @db.VarChar(255)
+  InputTokenCost  Decimal?  @default(0.0000) @db.Decimal(10, 4)
+  OutputTokenCost Decimal?  @default(0.0000) @db.Decimal(10, 4)
+  TotalTokenCost  Decimal?  @default(0.0000) @db.Decimal(10, 4)
+  CreatedAt       DateTime? @default(now())
+  TimeRange       String?   @default("all") @db.VarChar(50)
+  StartDate       DateTime? @db.Date
+  EndDate         DateTime? @db.Date
+}
+
+model token_pricing_table {
+  Id                Int       @id @default(autoincrement())
+  ModelName         String    @db.VarChar(100)
+  InputCostPer1M    Decimal   @db.Decimal(10, 6)
+  OutputCostPer1M   Decimal   @db.Decimal(10, 6)
+  Currency          String?   @default("USD") @db.VarChar(10)
+  IsActive          Boolean?  @default(true)
+  CreatedAt         DateTime? @default(now())
+  UpdatedAt         DateTime? @default(now())
+  active_model_name String?   @unique(map: "token_pricing_unique_active") @db.VarChar(100)
+}
+
+model user_reminders {
+  RemindersJson Json      @default(dbgenerated("(cast(_utf8mb4\\'{}\\' as json))"))
+  CreatedAt     DateTime? @default(now())
+  UpdatedAt     DateTime? @default(now())
+  Id            BigInt    @default(autoincrement())
+  UserId        BigInt
+
+  @@id([Id, UserId])
+}
+
+model user_task_averages {
+  AverageId             Int        @id @default(autoincrement())
+  UserId                Int
+  TaskType              String     @db.VarChar(50)
+  AverageCompletionTime DateTime   @db.Time(0)
+  SampleCount           Int        @default(1)
+  LastCalculatedAt      DateTime   @default(now())
+  CreatedAt             DateTime   @default(now())
+  CompletionHistory     Json       @default(dbgenerated("(cast(_utf8mb4\\'[]\\' as json))"))
+  team_table            team_table @relation(fields: [UserId], references: [UserId], onDelete: Cascade, onUpdate: NoAction, map: "fk_user_task_averages_user")
+
+  @@unique([UserId, TaskType], map: "uq_user_task_averages")
+}
+
+model weight_records_table {
+  ID                    Int             @id @default(autoincrement())
+  UserId                BigInt
+  Weight                Decimal         @db.Decimal(5, 2)
+  Bmi                   Decimal?        @db.Decimal(4, 2)
+  BodyFat               Decimal?        @db.Decimal(4, 2)
+  MuscleMass            Decimal?        @db.Decimal(5, 2)
+  Bmr                   Int?
+  WeightImageBase64     String?         @db.LongText
+  CreatedAt             DateTime?       @default(now())
+  UpdatedAt             DateTime?       @default(now())
+  IsDeleted             Boolean?        @default(false)
+  CaptureID             BigInt?
+  City                  String?         @db.VarChar(255)
+  Village               String?         @db.VarChar(255)
+  CenterName            String?         @db.VarChar(255)
+  NutritionCenterId     Int?
+  AttendanceType        String?         @db.VarChar(50)
+  Latitude              Decimal?        @db.Decimal(10, 8)
+  Longitude             Decimal?        @db.Decimal(11, 8)
+  ReverseProgressReview Json?
+  WeightImageKey        String?         @db.LongText
+  captures_table        captures_table? @relation(fields: [CaptureID], references: [ID], onUpdate: NoAction)
+
+  @@index([CreatedAt], map: "idx_weight_created_at")
+  @@index([IsDeleted], map: "idx_weight_is_deleted")
+  @@index([CaptureID], map: "idx_weight_records_capture_id")
+  @@index([NutritionCenterId, CreatedAt], map: "idx_weight_records_center_created_active")
+  @@index([UserId, CreatedAt, IsDeleted], map: "idx_weight_user_created")
+  @@index([UserId], map: "idx_weight_user_id")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model wellness_counselling_assessments {
+  id                                                                    Int         @id @default(autoincrement())
+  user_id                                                               Int?
+  counsellor_id                                                         Int?
+  health_problems                                                       Json
+  eating_habits                                                         Json?
+  sleep_data                                                            Json?
+  medication_details                                                    String?     @db.LongText
+  submitted_at                                                          DateTime?   @default(now())
+  created_at                                                            DateTime?   @default(now())
+  updated_at                                                            DateTime?   @default(now())
+  is_deleted                                                            Boolean?    @default(false)
+  lead_name                                                             String?     @db.VarChar(255)
+  lead_phone                                                            String?     @db.VarChar(32)
+  team_table_wellness_counselling_assessments_counsellor_idToteam_table team_table? @relation("wellness_counselling_assessments_counsellor_idToteam_table", fields: [counsellor_id], references: [UserId], onUpdate: NoAction, map: "fk_counsellor")
+  team_table_wellness_counselling_assessments_user_idToteam_table       team_table? @relation("wellness_counselling_assessments_user_idToteam_table", fields: [user_id], references: [UserId], onDelete: Cascade, onUpdate: NoAction, map: "fk_user")
+
+  @@index([lead_phone], map: "idx_counselling_lead_phone")
+  @@index([counsellor_id], map: "idx_wellness_counselling_counsellor_id")
+  @@index([submitted_at], map: "idx_wellness_counselling_submitted_at")
+  @@index([user_id], map: "idx_wellness_counselling_user_id")
+}
+
+model wellness_score_config_table {
+  id                 BigInt   @id @default(autoincrement())
+  parameters         Json
+  updated_at         DateTime
+  updated_by_user_id BigInt?
+
+  @@index([updated_at], map: "idx_wellness_score_config_updated")
+}
+
+model wellness_score_daily_table {
+  id             BigInt   @id @default(autoincrement())
+  user_id        BigInt
+  score_date     DateTime @db.Date
+  total_earned   Int      @default(0)
+  total_possible Int      @default(0)
+  percentage     Int      @default(0)
+  goal_mode      String?  @db.VarChar(16)
+  parameters     Json     @default(dbgenerated("(cast(_utf8mb4\\'[]\\' as json))"))
+  computed_at    DateTime
+
+  @@unique([user_id, score_date])
+  @@index([score_date, percentage, computed_at], map: "idx_wellness_score_daily_date_pct")
+  @@index([user_id, score_date], map: "idx_wellness_score_daily_user_date")
+}
+
+model wellness_university_enrollments_table {
+  Id               Int        @id @default(autoincrement())
+  UserId           Int
+  EnrolledPrograms String     @db.LongText
+  EnrollmentDate   DateTime?  @default(now())
+  CreatedAt        DateTime?  @default(now())
+  LastUpdated      DateTime?  @default(now())
+  team_table       team_table @relation(fields: [UserId], references: [UserId], onDelete: Cascade, onUpdate: NoAction, map: "fk_wellness_user_id")
+
+  @@index([UserId], map: "fk_wellness_user_id")
+}

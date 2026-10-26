@@ -8,7 +8,7 @@
  *   1. R2 object (ProfileImageKey) → 302 to public or signed URL
  *   2. https://… ProfileImage (Google) → 302 redirect
  *   3. data:image/* ProfileImage still in DB → upload to R2 when configured, else binary
- *   4. Centre transformation R2 key / photo (fallback only)
+ *   4. Centre transformation key on MilesWeb or R2, then centre photo (fallback only)
  *   5. missing / invalid → 404 (frontend falls back to letter avatar)
  *
  * Optional `inline=1` streams bytes instead of 302 so the profile cropper can
@@ -19,12 +19,16 @@ import { applyCors, methodNotAllowed } from '../../../shared/lib/handler.js';
 import { cache, cacheKeys } from '../../../utils/cache.js';
 import { parseDataUri } from '../../../shared/lib/images/dataUri.js';
 import { avatarRedirectUrl } from '../../../shared/lib/r2/s3.js';
+import { isMileswebServedUrl, mediaKeyFromServedUrl } from '../../../shared/lib/milesweb/objectKey.js';
+import { readMileswebObject } from '../../../shared/lib/milesweb/ftpStorage.js';
+import { resolveStoredImageUrl } from '../../../shared/lib/milesweb/storedImage.js';
 import { persistAvatarKey, r2AvatarsEnabled, avatarUrlForKey } from '../../../features/user/avatar-storage.service.js';
 import {
   r2TransformationPhotosEnabled,
   transformationPhotoUrlForKey,
 } from '../../../features/user/transformation-photo-storage.service.js';
 import { resolveProfileDisplayAvatar } from '../../../features/user/domain/profileDisplayAvatar.rules.js';
+import { mapTransformationPhotosRecord } from '../../../features/user/domain/transformationPhotos.rules.js';
 import { wantsInlineAvatar } from '../../../features/user/domain/avatarInline.rules.js';
 import { getAvatarSource } from '../../../features/user/user.repository.js';
 import logger from '../../../shared/lib/logger.js';
@@ -48,7 +52,26 @@ function sendBytes(res, parsed, cacheTag) {
   return res.status(200).send(parsed.bytes);
 }
 
+const INLINE_TYPES = {
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  png: 'image/png',
+  webp: 'image/webp',
+  gif: 'image/gif',
+};
+
 async function sendBytesFromUrl(res, url, cacheTag) {
+  const mediaKey = mediaKeyFromServedUrl(url);
+  if (mediaKey) {
+    const bytes = await readMileswebObject(mediaKey);
+    if (!bytes || bytes.length > MAX_INLINE_AVATAR_BYTES) return res.status(404).end();
+    const ext = mediaKey.slice(mediaKey.lastIndexOf('.') + 1).toLowerCase();
+    return sendBytes(res, {
+      contentType: INLINE_TYPES[ext] || 'image/jpeg',
+      bytes,
+    }, cacheTag);
+  }
+  if (typeof url !== 'string' || !/^https?:\/\//i.test(url)) return res.status(404).end();
   try {
     const imgRes = await fetch(url);
     if (!imgRes.ok) return res.status(404).end();
@@ -80,7 +103,10 @@ export default async function handler(req, res) {
   }
 
   const inline = wantsInlineAvatar(req.query);
-  const cacheKey = cacheKeys.userAvatar(userId);
+  const profileOnly = String(req.query.profileOnly || '') === '1';
+  const cacheKey = profileOnly
+    ? `${cacheKeys.userAvatar(userId)}:profile`
+    : cacheKeys.userAvatar(userId);
   const cached = cache.get(cacheKey);
   if (cached?.kind === 'none') {
     return res.status(404).end();
@@ -99,10 +125,18 @@ export default async function handler(req, res) {
       return res.status(404).end();
     }
 
+    if (data.ProfileImageKey) {
+      const storedUrl = await resolveStoredImageUrl(data.ProfileImageKey);
+      if (isMileswebServedUrl(storedUrl)) {
+        cache.set(cacheKey, { kind: 'redirect', url: storedUrl }, AVATAR_CACHE_TTL_MS);
+        return sendAvatar(res, storedUrl, 'MISS', inline);
+      }
+    }
+
     const resolved = resolveProfileDisplayAvatar({
       profileImageKey: data.ProfileImageKey,
       profileImage: data.ProfileImage,
-      transformationPhotos: data.transformation_photos,
+      transformationPhotos: profileOnly ? null : data.transformation_photos,
       r2Enabled: r2AvatarsEnabled() || r2TransformationPhotosEnabled(),
       resolveR2Url: (key) => (
         transformationPhotoUrlForKey(key)
@@ -114,6 +148,17 @@ export default async function handler(req, res) {
     if (resolved.kind === 'redirect') {
       cache.set(cacheKey, { kind: 'redirect', url: resolved.url }, AVATAR_CACHE_TTL_MS);
       return sendAvatar(res, resolved.url, 'MISS', inline);
+    }
+
+    if (!profileOnly && resolved.kind === 'none') {
+      const frontKey = mapTransformationPhotosRecord(data.transformation_photos).frontKey;
+      if (frontKey) {
+        const storedUrl = await resolveStoredImageUrl(frontKey);
+        if (isMileswebServedUrl(storedUrl)) {
+          cache.set(cacheKey, { kind: 'redirect', url: storedUrl }, AVATAR_CACHE_TTL_MS);
+          return sendAvatar(res, storedUrl, 'MISS', inline);
+        }
+      }
     }
 
     if (resolved.kind === 'dataUri') {

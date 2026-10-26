@@ -18,10 +18,16 @@ describe('resolveFoodTimestamp — calendar day contract', () => {
     assert.equal(r.timeOfDay, '19:45:00');
   });
 
-  it('B: true UTC 2026-07-24T14:15:00.000Z belongs to 2026-07-24 (19:45 IST)', () => {
+  it('B: driver Z on 14:15 wall digits stays 14:15 IST, not 19:45', () => {
     const r = resolveFoodTimestamp('2026-07-24T14:15:00.000Z', IANA_IST);
     assert.equal(r.calendarYmd, '2026-07-24');
-    assert.equal(r.timeOfDay, '19:45:00');
+    assert.equal(r.timeOfDay, '14:15:00');
+  });
+
+  it('afternoon driver Z stays lunch time, not dinner', () => {
+    const r = resolveFoodTimestamp('2026-10-25T14:49:56.453Z', IANA_IST);
+    assert.equal(r.calendarYmd, '2026-10-25');
+    assert.equal(r.timeOfDay, '14:49:56');
   });
 
   it('C: spurious Z on IST wall must not shift into 2026-07-25', () => {

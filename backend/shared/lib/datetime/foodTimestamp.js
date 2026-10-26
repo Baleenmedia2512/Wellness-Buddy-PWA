@@ -4,7 +4,7 @@
  * Storage contract: timezone-less CreatedAt digits are legacy IST (Asia/Kolkata)
  * wall-clock. Drivers / timestamptz sessions sometimes append a spurious
  * `Z` / `+00:00` while leaving IST digits intact — that must NOT shift the
- * meal into the next calendar day.
+ * meal by +5:30 (lunch into dinner) or into the next calendar day.
  *
  * Display contract: after converting storage → UTC instant (always via IST),
  * calendar day and local time-of-day are derived in the owner's
@@ -25,18 +25,8 @@ import {
 /** Legacy food/weight/education CreatedAt wall-clock zone (write path). */
 export const LEGACY_STORAGE_TIMEZONE = IANA_IST;
 
-const DATE_PREFIX_RE = /^(\d{4}-\d{2}-\d{2})/;
 const UTC_OR_ZERO_OFFSET_RE = /(?:Z|[+]00:?00)$/i;
 const NON_UTC_OFFSET_RE = /[+-]\d{2}:?\d{2}$/;
-
-/**
- * @param {string} raw
- * @returns {string|null}
- */
-function extractDatePrefix(raw) {
-  const match = String(raw).trim().match(DATE_PREFIX_RE);
-  return match ? match[1] : null;
-}
 
 /**
  * @param {string} raw
@@ -62,9 +52,10 @@ function hasNonUtcExplicitOffset(raw) {
  * Rules:
  * - Timezone-less → IST wall-clock (legacy storage), never the display zone
  * - Explicit non-UTC offset (e.g. +05:30) → absolute instant
- * - `Z` / `+00:00` → absolute UTC, unless the UTC→IST calendar day
- *   disagrees with the embedded date prefix (spurious driver Z on legacy
- *   IST wall) — then reinterpret wall digits as IST
+ * - `Z` / `+00:00` → MySQL DATETIME wall digits with a driver-added UTC
+ *   mark. The digits stay IST. Afternoon times stay on the same calendar
+ *   day, so a day-change check is not enough (14:49 must stay 2:49 PM
+ *   lunch, not 8:19 PM dinner).
  *
  * @param {string|Date} raw
  * @param {string} [_ignoredTimezoneIana] Kept for call-site compatibility; storage is always IST
@@ -89,16 +80,8 @@ export function normalizeFoodCreatedAt(raw, _ignoredTimezoneIana = IANA_IST) {
   }
 
   if (hasUtcOrZeroOffset(s)) {
-    const asUtc = normalizeStoredTimestampToUtcIso(s, storageTz);
-    // Spurious-Z detection must use IST calendar day (storage), not display TZ.
-    const istCalendarYmd = timestampToCalendarYmd(asUtc, storageTz);
-    const prefix = extractDatePrefix(s);
-    if (prefix && prefix !== istCalendarYmd) {
-      // Legacy IST wall digits with driver-added Z/+00:00
-      const stripped = s.replace(UTC_OR_ZERO_OFFSET_RE, '');
-      return normalizeStoredTimestampToUtcIso(stripped, storageTz);
-    }
-    return asUtc;
+    const stripped = s.replace(UTC_OR_ZERO_OFFSET_RE, '');
+    return normalizeStoredTimestampToUtcIso(stripped, storageTz);
   }
 
   return normalizeStoredTimestampToUtcIso(s, storageTz);

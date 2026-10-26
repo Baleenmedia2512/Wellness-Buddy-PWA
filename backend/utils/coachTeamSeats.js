@@ -116,12 +116,12 @@ export function buildLeadSeatReleaseUpdate({
  * Pass teamId when releasing a known previous seat after claiming a new one
  * (resolveLeadSeatForUser uses maybeSingle and breaks if the user is on two teams).
  *
- * @param {object} supabase
+ * @param {object} db
  * @param {number} userId
  * @param {string|null} [teamId] When omitted, resolves the user's current lead seat.
  * @returns {Promise<{ released: boolean, seat: 'sponsor'|'co-sponsor'|null, teamId: string|null }>}
  */
-export async function releaseLeadSeat(supabase, userId, teamId = null) {
+export async function releaseLeadSeat(db, userId, teamId = null) {
   const id = Number(userId);
   if (!Number.isFinite(id) || id <= 0) {
     return { released: false, seat: null, teamId: null };
@@ -131,7 +131,7 @@ export async function releaseLeadSeat(supabase, userId, teamId = null) {
   let targetTeamId = teamId && String(teamId).trim() ? String(teamId).trim() : null;
 
   if (!targetTeamId) {
-    const current = await resolveLeadSeatForUser(supabase, id);
+    const current = await resolveLeadSeatForUser(db, id);
     if (!current.seat || !current.teamId) {
       return { released: false, seat: null, teamId: null };
     }
@@ -139,7 +139,7 @@ export async function releaseLeadSeat(supabase, userId, teamId = null) {
     targetTeamId = current.teamId;
   }
 
-  const { data: rows, error } = await supabase
+  const { data: rows, error } = await db
     .from('coach_teams_table')
     .select('TeamId, CoachId, CoCoachId, Status')
     .eq('TeamId', targetTeamId)
@@ -167,7 +167,7 @@ export async function releaseLeadSeat(supabase, userId, teamId = null) {
     return { released: false, seat, teamId: targetTeamId };
   }
 
-  const { error: updateError } = await supabase
+  const { error: updateError } = await db
     .from('coach_teams_table')
     .update({ ...patch, UpdatedAt: nowUtc() })
     .eq('TeamId', targetTeamId)
@@ -187,12 +187,12 @@ export async function releaseLeadSeat(supabase, userId, teamId = null) {
  * When preferTeamId is set and the user sits on multiple teams, prefer that row
  * (Profile Community ID) over a stale seat on an old code.
  *
- * @param {object} supabase
+ * @param {object} db
  * @param {number} userId
  * @param {string|null} [preferTeamId]
  * @returns {Promise<{ seat: 'sponsor'|'co-sponsor'|null, teamId: string|null }>}
  */
-export async function resolveLeadSeatForUser(supabase, userId, preferTeamId = null) {
+export async function resolveLeadSeatForUser(db, userId, preferTeamId = null) {
   const id = Number(userId);
   if (!Number.isFinite(id)) return { seat: null, teamId: null };
 
@@ -201,7 +201,7 @@ export async function resolveLeadSeatForUser(supabase, userId, preferTeamId = nu
     : null;
 
   // Fetch all active seats — a user can briefly sit on 2 teams during a bad change.
-  const { data: rows, error } = await supabase
+  const { data: rows, error } = await db
     .from('coach_teams_table')
     .select('TeamId, CoachId, CoCoachId')
     .or(`CoachId.eq.${id},CoCoachId.eq.${id}`)
@@ -232,15 +232,15 @@ export async function resolveLeadSeatForUser(supabase, userId, preferTeamId = nu
 /**
  * Every active Sponsor / Co-Sponsor seat for this user.
  *
- * @param {object} supabase
+ * @param {object} db
  * @param {number} userId
  * @returns {Promise<Array<{ seat: 'sponsor'|'co-sponsor', teamId: string }>>}
  */
-export async function listLeadSeatsForUser(supabase, userId) {
+export async function listLeadSeatsForUser(db, userId) {
   const id = Number(userId);
   if (!Number.isFinite(id) || id <= 0) return [];
 
-  const { data: rows, error } = await supabase
+  const { data: rows, error } = await db
     .from('coach_teams_table')
     .select('TeamId, CoachId, CoCoachId')
     .or(`CoachId.eq.${id},CoCoachId.eq.${id}`)
@@ -261,21 +261,21 @@ export async function listLeadSeatsForUser(supabase, userId) {
 /**
  * Release every lead seat except keepTeamId (used when changing Community ID).
  *
- * @param {object} supabase
+ * @param {object} db
  * @param {number} userId
  * @param {string|null} [keepTeamId]
  * @returns {Promise<number>} how many seats were released
  */
-export async function releaseOtherLeadSeats(supabase, userId, keepTeamId = null) {
+export async function releaseOtherLeadSeats(db, userId, keepTeamId = null) {
   const keep = keepTeamId && String(keepTeamId).trim()
     ? String(keepTeamId).trim().toUpperCase()
     : null;
-  const seats = await listLeadSeatsForUser(supabase, userId);
+  const seats = await listLeadSeatsForUser(db, userId);
   let released = 0;
   for (const seat of seats) {
     const code = String(seat.teamId || '').trim().toUpperCase();
     if (keep && code === keep) continue;
-    const result = await releaseLeadSeat(supabase, userId, seat.teamId);
+    const result = await releaseLeadSeat(db, userId, seat.teamId);
     if (result.released) released += 1;
   }
   return released;
@@ -300,15 +300,15 @@ export function isSponsorTeamAccess({ hasOwnDownline = false } = {}) {
  * even if team_table.Role is still `user`.
  * Requires own downline — not merely a Community ID lead seat.
  *
- * @param {object} supabase
+ * @param {object} db
  * @param {number|string} userId
  * @returns {Promise<boolean>}
  */
-export async function userHasSponsorTeam(supabase, userId) {
+export async function userHasSponsorTeam(db, userId) {
   const id = Number(userId);
   if (!Number.isFinite(id) || id <= 0) return false;
 
-  const { count, error } = await supabase
+  const { count, error } = await db
     .from('team_table')
     .select('UserId', { count: 'exact', head: true })
     .eq('CoachId', id);
@@ -323,12 +323,12 @@ export async function userHasSponsorTeam(supabase, userId) {
 /**
  * Assign the current user to a Sponsor or Co-Sponsor seat for teamId.
  *
- * @param {object} supabase
+ * @param {object} db
  * @param {string} teamId
  * @param {number} userId
  * @returns {Promise<{ ok: boolean, seat: 'sponsor'|'co-sponsor'|'already'|null, error?: string }>}
  */
-export async function assignLeadSeat(supabase, teamId, userId) {
+export async function assignLeadSeat(db, teamId, userId) {
   if (!teamId || !String(teamId).trim()) {
     return { ok: false, seat: null, error: 'Team ID and user are required' };
   }
@@ -337,7 +337,7 @@ export async function assignLeadSeat(supabase, teamId, userId) {
     return { ok: false, seat: null, error: 'Team ID and user are required' };
   }
 
-  const { data: existingRows, error: existingError } = await supabase
+  const { data: existingRows, error: existingError } = await db
     .from('coach_teams_table')
     .select('TeamId, CoachId, CoCoachId, Status')
     .eq('TeamId', teamId);
@@ -347,7 +347,7 @@ export async function assignLeadSeat(supabase, teamId, userId) {
   const team = existingRows?.[0] || null;
 
   if (!team) {
-    const { error: insertError } = await supabase.from('coach_teams_table').insert([
+    const { error: insertError } = await db.from('coach_teams_table').insert([
       {
         TeamId: teamId,
         CoachId: uid,
@@ -363,16 +363,16 @@ export async function assignLeadSeat(supabase, teamId, userId) {
     // Unique conflict / race — another user created the row; try Co-Sponsor.
     const conflictCode = insertError.code || insertError?.details;
     const isConflict =
-      insertError.code === '23505' ||
+      insertError.code === '1062' ||
       /duplicate|unique/i.test(String(insertError.message || '')) ||
-      conflictCode === '23505';
+      conflictCode === '1062';
 
     if (!isConflict) {
       throw insertError;
     }
   }
 
-  const { data: freshRows, error: freshError } = await supabase
+  const { data: freshRows, error: freshError } = await db
     .from('coach_teams_table')
     .select('TeamId, CoachId, CoCoachId, Status')
     .eq('TeamId', teamId)
@@ -397,7 +397,7 @@ export async function assignLeadSeat(supabase, teamId, userId) {
       return { ok: false, seat: null, error: reactivation.error || 'Team is unavailable' };
     }
 
-    const { data: reactivated, error: reactivateError } = await supabase
+    const { data: reactivated, error: reactivateError } = await db
       .from('coach_teams_table')
       .update({ ...reactivation.update, UpdatedAt: updateTime })
       .eq('TeamId', teamId)
@@ -411,7 +411,7 @@ export async function assignLeadSeat(supabase, teamId, userId) {
     // Status flipped by a concurrent claim — fall through
   }
 
-  const { data: latestRows, error: latestError } = await supabase
+  const { data: latestRows, error: latestError } = await db
     .from('coach_teams_table')
     .select('TeamId, CoachId, CoCoachId, Status')
     .eq('TeamId', teamId)
@@ -434,7 +434,7 @@ export async function assignLeadSeat(supabase, teamId, userId) {
   }
 
   if (latest.CoachId && !latest.CoCoachId) {
-    const { data: coRows, error: coError } = await supabase
+    const { data: coRows, error: coError } = await db
       .from('coach_teams_table')
       .update({ CoCoachId: uid, UpdatedAt: updateTime })
       .eq('TeamId', teamId)
@@ -450,7 +450,7 @@ export async function assignLeadSeat(supabase, teamId, userId) {
   }
 
   // Active row with empty CoachId (unexpected) — claim Sponsor
-  const { data: sponsorRows, error: sponsorError } = await supabase
+  const { data: sponsorRows, error: sponsorError } = await db
     .from('coach_teams_table')
     .update({ CoachId: uid, UpdatedAt: updateTime })
     .eq('TeamId', teamId)

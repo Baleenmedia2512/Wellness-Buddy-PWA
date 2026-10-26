@@ -27,7 +27,7 @@ import {
 } from './domain/bcmProfileReview.rules.js';
 import { buildProfileCardSyncPayload } from '../body-parameters-card/domain/sync.rules.js';
 import { computeBmiFromHeightWeight } from '../body-parameters-card/domain/card.rules.js';
-import { getSupabaseClient } from '../../utils/supabaseClient.js';
+import { getMysqlClient } from '../../utils/mysqlClient.js';
 import { resolveLeadSeatForUser } from '../../utils/coachTeamSeats.js';
 import { syncProfileCommunityIdToTeamAssignment } from './communityIdTeamAssignment.service.js';
 import { buildTeamFieldsFromProfileCommunityId } from './domain/communityIdTeamAssignment.rules.js';
@@ -66,6 +66,7 @@ import {
   HEIGHT_CHANGE_OTP_FLAG,
   shouldDeferHeightChangeToOtp,
 } from './domain/heightChange.rules.js';
+import { getWorkingPhysicalCentre } from '../nutrition-centers/workingPhysicalCentre.service.js';
 
 const notFound = () => ({ httpStatus: 404, body: { success: false, message: 'User not found' } });
 
@@ -119,7 +120,7 @@ export async function getProfile({ email, userId = null, appVersion = null }) {
     bcmReviewFields?.BcmProfileReviewedAt,
   );
   const leadSeat = await resolveLeadSeatForUser(
-    getSupabaseClient(),
+    getMysqlClient(),
     user.UserId,
     user.CommunityId || teamCodeFields?.TeamId || null,
   );
@@ -166,9 +167,24 @@ export async function getProfile({ email, userId = null, appVersion = null }) {
   const gender = user.Gender
     || (bodyGender === 'Male' || bodyGender === 'Female' ? bodyGender : null)
     || null;
-  const avatarUrl = (r2AvatarsEnabled() && user.ProfileImageKey)
+  let avatarUrl = (r2AvatarsEnabled() && user.ProfileImageKey)
     ? avatarUrlForKey(user.ProfileImageKey)
     : null;
+  if (!avatarUrl && user.ProfileImageKey) {
+    try {
+      const { isMileswebStorageEnabled } = await import('../../shared/lib/milesweb/config.js');
+      if (isMileswebStorageEnabled()) {
+        const { resolveStoredImageUrl } = await import('../../shared/lib/milesweb/storedImage.js');
+        const { isMileswebServedUrl } = await import('../../shared/lib/milesweb/objectKey.js');
+        const stored = await resolveStoredImageUrl(user.ProfileImageKey);
+        if (isMileswebServedUrl(stored)) avatarUrl = stored;
+      }
+    } catch (err) {
+      logger.warn('[profile] avatar file lookup skipped', {
+        message: err?.message || String(err),
+      });
+    }
+  }
   const profileImage = avatarUrl
     || (isHttpsImageUrl(user.ProfileImage) ? user.ProfileImage : null);
   const resolvedBodyFatForBmr = hasValidBodyFatPercent(resolvedWeightBodyFat)
@@ -242,6 +258,16 @@ export async function getProfile({ email, userId = null, appVersion = null }) {
     timezoneIana: profileTimezone,
   });
 
+  let workingPhysicalCentre = { id: null, name: null, options: [] };
+  try {
+    workingPhysicalCentre = await getWorkingPhysicalCentre(user.UserId);
+  } catch (err) {
+    logger.warn('[profile] working physical centre lookup failed', {
+      userId: user.UserId,
+      message: err?.message,
+    });
+  }
+
   // Onboarding identity uses team_table.UserName only. A BCM card name must
   // not skip the name gate for users who still have a placeholder login name.
   const persistedUserName = user.UserName;
@@ -250,6 +276,21 @@ export async function getProfile({ email, userId = null, appVersion = null }) {
     phoneNumber,
   });
   const resolvedUserName = persistedUserName;
+
+  let resolveTransformUrl = transformationPhotoUrlForKey;
+  if (preferTransformR2) {
+    try {
+      const { isMileswebStorageEnabled } = await import('../../shared/lib/milesweb/config.js');
+      if (isMileswebStorageEnabled()) {
+        const { resolveTransformationPhotoUrls } = await import('./transformation-photo-storage.service.js');
+        resolveTransformUrl = await resolveTransformationPhotoUrls(user.transformation_photos);
+      }
+    } catch (err) {
+      logger.warn('[profile] transformation photo url lookup skipped', {
+        message: err?.message || String(err),
+      });
+    }
+  }
 
   const result = {
     httpStatus: 200,
@@ -300,6 +341,7 @@ export async function getProfile({ email, userId = null, appVersion = null }) {
         latestBmr,
         physicalActivityLevel,
         communityId: user.CommunityId ?? null,
+        workingPhysicalCentre,
         communityIdRequest: communityIdRequest || null,
         communityIdPair: communityIdPair || null,
         timezone: profileTimezone,
@@ -314,7 +356,7 @@ export async function getProfile({ email, userId = null, appVersion = null }) {
         recoveredHealthIssues: mapTeamRecoveredHealthIssues(user.recovered_health_issues),
         transformationPhotos: mapTransformationPhotosForClient(user.transformation_photos, {
           preferR2: preferTransformR2,
-          resolveR2Url: transformationPhotoUrlForKey,
+          resolveR2Url: resolveTransformUrl,
         }),
         // Phone lead created from coach BCM — Complete Profile should open once for review.
         isBcmLead: String(entryUser || '') === 'Body Parameters Card'

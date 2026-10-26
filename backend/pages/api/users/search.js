@@ -9,7 +9,7 @@
  * Returns the full email so the member can confirm they picked the right coach.
  */
 
-import { getSupabaseClient } from '../../../utils/supabaseClient.js';
+import { getMysqlClient } from '../../../utils/mysqlClient.js';
 import { filterPublicAggregateUsers } from '../../../features/user/domain/aggregate-eligibility.rules.js';
 import {
   rankSponsorSearchUsers,
@@ -74,8 +74,8 @@ export default async function handler(req, res) {
       return;
     }
 
-    // Connect to Supabase
-    const supabase = getSupabaseClient();
+    // Connect to MySQL
+    const db = getMysqlClient();
 
     // Search by name, email, phone, or Community ID (Herbalife ID), excluding current user.
     // Email and Community ID are both required on the sponsor row.
@@ -88,7 +88,7 @@ export default async function handler(req, res) {
       orParts.push(`PhoneNumber.ilike.%${searchDigits}%`);
     }
 
-    const { data: coaches, error } = await supabase
+    const { data: coaches, error } = await db
       .from('team_table')
       .select('UserId, UserName, Email, TeamId, Role, PhoneNumber, CommunityId')
       .eq('Status', 'Active')

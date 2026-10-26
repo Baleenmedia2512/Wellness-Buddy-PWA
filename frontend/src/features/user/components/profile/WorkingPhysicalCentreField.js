@@ -1,38 +1,47 @@
-import React from 'react';
+/**
+ * Profile dropdown under Community ID.
+ * Shows this person's club. With no club, the nearest upline club.
+ * None when nobody up the chain has a club.
+ * Several clubs for that person are listed; the latest registration stays selected.
+ */
+import React, { useEffect, useState } from 'react';
 
-const WorkingPhysicalCentreField = ({ value = '', onChange }) => {
+const selectCls =
+  'w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none bg-white text-gray-800';
+
+const WorkingPhysicalCentreField = ({ centre }) => {
+  const options = Array.isArray(centre?.options) ? centre.options : [];
+  const resolvedId = centre?.id != null ? String(centre.id) : '';
+  const [selectedId, setSelectedId] = useState(resolvedId);
+
+  useEffect(() => {
+    setSelectedId(resolvedId);
+  }, [resolvedId]);
+
   return (
     <div>
-      <label
-        style={{
-          display: 'block',
-          marginBottom: '8px',
-          fontSize: '16px',
-          color: '#374151',
-        }}
-      >
-        Working Physical Centre ID
+      <label className="block text-sm font-medium text-gray-700 mb-1">
+        Working Physical Centre
       </label>
-
       <select
-        value={value || ''}
-        onChange={(e) => onChange(e.target.value)}
-        style={{
-          width: '100%',
-          height: '54px',
-          padding: '0 16px',
-          border: '1px solid #d1d5db',
-          borderRadius: '12px',
-          fontSize: '16px',
-          backgroundColor: '#fff',
-          color: value ? '#111827' : '#9ca3af',
-        }}
+        value={options.length ? selectedId : ''}
+        onChange={(e) => setSelectedId(e.target.value)}
+        className={`${selectCls} ${options.length ? '' : 'text-gray-500'}`}
+        style={{ fontSize: '16px' }}
       >
-        <option value="" disabled>
-          Enter your club ID
-        </option>
-        <option value="None">None</option>
+        {options.length === 0 ? (
+          <option value="">None</option>
+        ) : (
+          options.map((opt) => (
+            <option key={opt.id} value={String(opt.id)}>
+              {opt.name}
+            </option>
+          ))
+        )}
       </select>
+      <p className="text-xs text-gray-500 mt-1">
+        Your club. When you have no club, this uses the nearest upline club.
+      </p>
     </div>
   );
 };

@@ -108,7 +108,7 @@ UPDATE team_table
   WHERE timezone_iana IS NULL;
 ```
 
-**Apply:** Run against Supabase before deploying the backend changes. Requires `@principal-eng` + `@dba` review per governance policy.
+**Apply:** Run against MySQL before deploying the backend changes. Requires `@principal-eng` + `@dba` review per governance policy.
 
 ---
 
@@ -142,7 +142,7 @@ Timezone is stored and returned on profile only. Downstream features will consum
 
 ## 6. Review Checklist
 
-- [ ] Approve migration SQL on production Supabase
+- [ ] Approve migration SQL on production MySQL
 - [ ] Confirm API field name `timezone` (camelCase) vs `timezone_iana` (snake_case) is acceptable to frontend
 - [ ] Confirm PUT alias on same route as POST is acceptable
 - [ ] Deploy migration before backend code

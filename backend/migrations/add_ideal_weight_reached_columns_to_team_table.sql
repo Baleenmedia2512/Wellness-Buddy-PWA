@@ -1,6 +1,6 @@
 -- Migration: add_ideal_weight_reached_columns_to_team_table
 -- First time a member's weight entered BMI 19–23 (ideal band), plus coach notify dedupe.
--- Run in Supabase SQL editor before relying on Ideal Weight "reached date" / coach email.
+-- Run on MySQL before relying on Ideal Weight "reached date" / coach email.
 -- After migrate, run: node --env-file=.env scripts/backfill-ideal-weight-reached.js --write
 -- (backfill stamps dates without emailing coaches for historical reaches).
 

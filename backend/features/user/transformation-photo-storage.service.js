@@ -13,6 +13,7 @@ import {
   R2_FOLDERS,
 } from '../../shared/lib/r2/objectKeys.js';
 import logger from '../../shared/lib/logger.js';
+import { isMileswebStorageEnabled } from '../../shared/lib/milesweb/config.js';
 import {
   TRANSFORMATION_PHOTO_KEY_FIELDS,
   TRANSFORMATION_PHOTO_SLOTS,
@@ -27,10 +28,32 @@ export function r2TransformationPhotosEnabled() {
   return isEnabled('ff.r2-transformation-photos') && isR2Configured();
 }
 
+function transformationUploadsEnabled() {
+  return isEnabled('ff.r2-transformation-photos')
+    && (isR2Configured() || isMileswebStorageEnabled());
+}
+
 /** Public (or signed) URL for a transformation object key. */
 export function transformationPhotoUrlForKey(key) {
   if (!key || !isKeyInFolder(key, R2_FOLDERS.transformation)) return null;
   return publicObjectUrl(key) || avatarRedirectUrl(key);
+}
+
+/**
+ * Profile reads for app versions that prefer file URLs.
+ * A key is turned into a URL only when that file is on MilesWeb, or R2 is configured.
+ * Otherwise the caller keeps the base64 already stored on the row.
+ */
+export async function resolveTransformationPhotoUrls(raw) {
+  const { resolveStoredImageUrl } = await import('../../shared/lib/milesweb/storedImage.js');
+  const rec = mapTransformationPhotosRecord(raw);
+  const urls = new Map();
+  for (const slot of TRANSFORMATION_PHOTO_SLOTS) {
+    const key = rec[TRANSFORMATION_PHOTO_KEY_FIELDS[slot]];
+    if (!key || urls.has(key)) continue;
+    urls.set(key, await resolveStoredImageUrl(key));
+  }
+  return (key) => (urls.has(key) ? urls.get(key) : null);
 }
 
 /**
@@ -42,7 +65,7 @@ export function transformationPhotoUrlForKey(key) {
  */
 export async function persistTransformationPhotoKeys(userId, photosRaw) {
   const record = mapTransformationPhotosRecord(photosRaw);
-  if (!r2TransformationPhotosEnabled()) return record;
+  if (!transformationUploadsEnabled()) return record;
 
   const needing = slotsNeedingTransformationR2Upload(record);
   if (!needing.length) return record;
@@ -88,11 +111,11 @@ function hasIncomingSlots(incoming) {
 export async function persistTransformationPhotosR2Orphan(userId, existingRaw, incoming) {
   if (!hasIncomingSlots(incoming)) return null;
   const forUpload = mergeTransformationPhotos(existingRaw, incoming);
-  if (!r2TransformationPhotosEnabled()) {
-    logger.warn('[transformation-photo-storage] R2 off — skipping transformation photo persist', {
+  if (!transformationUploadsEnabled()) {
+    logger.info('[transformation-photo-storage] file storage off — keeping photos on the profile row', {
       userId,
     });
-    return null;
+    return forUpload;
   }
   const needing = slotsNeedingTransformationR2Upload(forUpload);
   const withKeys = await persistTransformationPhotoKeys(userId, forUpload);

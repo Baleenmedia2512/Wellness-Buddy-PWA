@@ -1,17 +1,17 @@
 /**
  * frontend/src/features/nutrition/hooks/useShakeCalculator.js
  *
- * Shake Calculator state. Nutrition uses the same canonical Herbalife Shake
- * profile as the AI path (herbalifeShakeProfile.js), scaled by base powder grams
- * from F1 / Shakemate / Protein — plus optional Active Fibre Complex label macros.
+ * Shake Calculator state. A mix of Formula 1 with Shakemate or Personalized
+ * Protein uses the canonical Herbalife Shake profile. Formula 1 alone,
+ * Shakemate alone, and Personalized Protein alone use their canister labels
+ * (resolveLoggedShakeItem).
  */
 
 import { useCallback, useMemo, useState } from 'react';
 import { SHAKE_PRODUCTS, SHAKE_PRODUCT_IDS } from '../domain/shakeProductProfiles';
 import {
-  HERBALIFE_SHAKE_NAME,
-  combineShakeNutrition,
   powderGramsFromServings,
+  resolveLoggedShakeItem,
 } from '../domain/herbalifeShakeProfile';
 
 function buildDefaultServings() {
@@ -53,19 +53,14 @@ export function useShakeCalculator() {
     setServingsState(buildDefaultServings());
   }, []);
 
-  const basePowderGrams = useMemo(
-    () => powderGramsFromServings(servings, SHAKE_PRODUCTS, { includeAdditive: false }),
-    [servings],
-  );
-
   const powderGrams = useMemo(
     () => powderGramsFromServings(servings, SHAKE_PRODUCTS, { includeAdditive: true }),
     [servings],
   );
 
   const shakeItem = useMemo(
-    () => combineShakeNutrition(basePowderGrams, Number(servings.activeFibre) || 0),
-    [basePowderGrams, servings.activeFibre],
+    () => resolveLoggedShakeItem(servings, SHAKE_PRODUCTS),
+    [servings],
   );
 
   const totals = useMemo(() => {
@@ -104,13 +99,13 @@ export function useShakeCalculator() {
       nutrition: { ...n },
       shakeProducts,
       detailedItems: [{
-        name: HERBALIFE_SHAKE_NAME,
+        name: shakeItem.name,
         portionDescription: shakeItem.portion,
         weight_g: shakeItem.weight_g,
         volume_ml: shakeItem.volume_ml,
         estimatedWeight: shakeItem.weight_g,
         unit: shakeItem.unit,
-        isLiquid: true,
+        isLiquid: shakeItem.isLiquid === true,
         shakeProducts,
         calories: n.calories,
         protein: n.protein,

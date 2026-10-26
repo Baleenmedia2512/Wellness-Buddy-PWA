@@ -3,7 +3,7 @@
  * Hide is global: IsHidden=true for a member removes them from everyone's
  * Activity Report. ViewerUserId is who performed the hide (audit).
  */
-import { getSupabaseClient } from '../../utils/supabaseClient.js';
+import { getMysqlClient } from '../../utils/mysqlClient.js';
 import { nowUtc } from '../../shared/lib/datetime/index.js';
 
 /**
@@ -11,8 +11,8 @@ import { nowUtc } from '../../shared/lib/datetime/index.js';
  * @returns {Promise<number[]>}
  */
 export async function fetchHiddenUserIds() {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from('activity_report_hidden_users_table')
     .select('"HiddenUserId"')
     .eq('IsHidden', true);
@@ -20,7 +20,7 @@ export async function fetchHiddenUserIds() {
   if (error) {
     console.error('[activity-report-hidden] fetchHiddenUserIds failed:', error.message);
     // Soft-fail when the table is not migrated yet so Activity Report stays available.
-    if (/does not exist|PGRST205|42P01/i.test(String(error.message || error.code || ''))) {
+    if (/does not exist|doesn't exist|1146/i.test(String(error.message || error.code || ''))) {
       return [];
     }
     throw error;
@@ -52,8 +52,8 @@ export async function listHiddenMembers(scopeUserIds = null) {
   }
   if (hiddenIds.length === 0) return [];
 
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from('team_table')
     .select('UserId, UserName, CommunityId')
     .in('UserId', hiddenIds);
@@ -94,11 +94,11 @@ export async function setMemberHidden(viewerUserId, hiddenUserId) {
     throw new Error('Invalid viewer or hidden user id');
   }
 
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   const stamp = nowUtc();
 
   // Any existing rows for this member → flip all to hidden (global).
-  const { data: existingRows, error: lookupError } = await supabase
+  const { data: existingRows, error: lookupError } = await db
     .from('activity_report_hidden_users_table')
     .select('"Id"')
     .eq('HiddenUserId', targetId);
@@ -109,7 +109,7 @@ export async function setMemberHidden(viewerUserId, hiddenUserId) {
   }
 
   if (Array.isArray(existingRows) && existingRows.length > 0) {
-    const { error } = await supabase
+    const { error } = await db
       .from('activity_report_hidden_users_table')
       .update({ IsHidden: true, UpdatedAt: stamp })
       .eq('HiddenUserId', targetId);
@@ -120,7 +120,7 @@ export async function setMemberHidden(viewerUserId, hiddenUserId) {
     return;
   }
 
-  const { error } = await supabase
+  const { error } = await db
     .from('activity_report_hidden_users_table')
     .insert({
       ViewerUserId: viewerId,
@@ -148,8 +148,8 @@ export async function setMemberVisible(hiddenUserId) {
     throw new Error('Invalid hidden user id');
   }
 
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from('activity_report_hidden_users_table')
     .update({ IsHidden: false, UpdatedAt: nowUtc() })
     .eq('HiddenUserId', targetId)

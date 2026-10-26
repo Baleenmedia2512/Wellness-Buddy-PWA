@@ -1,6 +1,9 @@
-import { getSupabaseClient } from "../../../utils/supabaseClient.js";
+import { getMysqlClient } from "../../../utils/mysqlClient.js";
 import logger from '../../../shared/lib/logger.js';
-import { isActiveTeamStatus } from '../../../utils/teamHierarchyBuilder.js';
+import {
+  isActiveTeamStatus,
+  loadCoachSubtreeTeamUsers,
+} from '../../../utils/teamHierarchyBuilder.js';
 import {
   buildLeadPartnerByUserId,
   collectDownlinePartnerSearchIds,
@@ -14,7 +17,6 @@ import {
   resolveSearchClubName,
   coachIdByUser,
 } from '../../../features/nutrition-centers/domain/searchClub.rules.js';
-import { fetchAllSupabaseRows } from '../../../utils/supabasePaginate.js';
 
 /**
  * API: Get Hierarchical Team Structure
@@ -33,6 +35,10 @@ import { fetchAllSupabaseRows } from '../../../utils/supabasePaginate.js';
  *
  * By default, allMembers (used by Diary / team search) contains Active users only.
  * Pass includeInactive=true to include Inactive users in the flat list.
+ *
+ * Pass purpose=search for Diary / Reports / team search: lighter select columns,
+ * skip latest-weight BCM enrichment, omit nested hierarchy from the JSON payload.
+ * BCM and Leadership Dashboard keep the default (full) purpose.
  */
 export default async function handler(req, res) {
   // Prevent caching
@@ -60,23 +66,31 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { coachId, email, includeInactive: includeInactiveRaw } = req.query;
+    const {
+      coachId,
+      email,
+      includeInactive: includeInactiveRaw,
+      purpose: purposeRaw,
+    } = req.query;
     const includeInactive =
       String(includeInactiveRaw || '').toLowerCase() === 'true';
+    const purposeSearch =
+      String(purposeRaw || '').toLowerCase() === 'search';
 
     logger.debug("📊 [team-hierarchy] Request:", {
       coachId,
       email,
       includeInactive,
+      purpose: purposeSearch ? 'search' : 'full',
     });
 
-    const supabase = getSupabaseClient();
+    const db = getMysqlClient();
     let coachIdInt;
 
     // If email is provided, look up the coach ID
     if (email) {
       logger.debug("🔍 [team-hierarchy] Looking up coach by email:", email);
-      const { data: coach, error: coachError } = await supabase
+      const { data: coach, error: coachError } = await db
         .from("team_table")
         .select("UserId")
         .eq("Email", email)
@@ -116,37 +130,34 @@ export default async function handler(req, res) {
       return;
     }
 
-    // Fetch all users in the hierarchy (omit ProfileImage base64 — ~16MB on large trees).
+    // Subtree-only load (omit ProfileImage base64 — ~16MB on large trees).
     // Leaderboard strips load avatars separately for top-N only.
     // Optional body-metric columns may be missing until migration — fall back.
-    // Page past Supabase's default 1000-row cap — large seed/downline trees
-    // otherwise drop the coach row and return 404 "Coach not found".
+    // Indexed CoachId walks + pagination — no full team_table scan.
+    // purpose=search: skip BCM body columns (Diary / team search only needs identity + club).
+    const SELECT_SEARCH =
+      "UserId, UserName, Email, Role, CoachId, CoachTeamId, TeamId, Status, PhoneNumber, CommunityId";
     const SELECT_FULL =
-      "UserId, UserName, Email, Role, CoachId, CoachTeamId, Status, PhoneNumber, Height, Bmr, CommunityId, Gender, Age, VisceralFat, BodyAge, ChestCm, WaistCm, HipCm";
+      "UserId, UserName, Email, Role, CoachId, CoachTeamId, TeamId, Status, PhoneNumber, Height, Bmr, CommunityId, Gender, Age, VisceralFat, BodyAge, ChestCm, WaistCm, HipCm";
     const SELECT_BASIC =
-      "UserId, UserName, Email, Role, CoachId, CoachTeamId, Status, PhoneNumber, Height, Bmr, CommunityId, Gender";
+      "UserId, UserName, Email, Role, CoachId, CoachTeamId, TeamId, Status, PhoneNumber, Height, Bmr, CommunityId, Gender";
 
     let allUsers;
     try {
-      allUsers = await fetchAllSupabaseRows(() =>
-        supabase
-          .from("team_table")
-          .select(SELECT_FULL)
-          .order("UserId", { ascending: true }),
-      );
+      allUsers = await loadCoachSubtreeTeamUsers(db, coachIdInt, {
+        select: purposeSearch ? SELECT_SEARCH : SELECT_FULL,
+      });
     } catch (usersError) {
       const msg = String(usersError?.message || usersError || "");
       if (
+        !purposeSearch &&
         /Age|VisceralFat|BodyAge|ChestCm|WaistCm|HipCm/i.test(msg) &&
         /column/i.test(msg)
       ) {
         try {
-          allUsers = await fetchAllSupabaseRows(() =>
-            supabase
-              .from("team_table")
-              .select(SELECT_BASIC)
-              .order("UserId", { ascending: true }),
-          );
+          allUsers = await loadCoachSubtreeTeamUsers(db, coachIdInt, {
+            select: SELECT_BASIC,
+          });
         } catch (fallbackError) {
           console.error("Error fetching users:", fallbackError);
           res
@@ -164,7 +175,7 @@ export default async function handler(req, res) {
     }
 
     logger.debug(
-      `📊 [team-hierarchy] Fetched ${allUsers?.length || 0} total users from database`,
+      `📊 [team-hierarchy] Fetched ${allUsers?.length || 0} subtree users from database`,
     );
     logger.debug(
       `📊 [team-hierarchy] Users sample:`,
@@ -195,7 +206,7 @@ export default async function handler(req, res) {
     const coachTeamsMap = {}; // Maps TeamId string -> {CoachId, CoCoachId}
     const coachTeamRows = [];
     if (coachTeamIds.length > 0) {
-      const { data: coachTeams, error: teamsError } = await supabase
+      const { data: coachTeams, error: teamsError } = await db
         .from("coach_teams_table")
         .select("Id, TeamId, CoachId, CoCoachId")
         .in("TeamId", coachTeamIds) // TEMPORARY: Query by TeamId string until schema migration
@@ -399,7 +410,7 @@ export default async function handler(req, res) {
     
     // Try multiple approaches to find the partnership:
     // 1. Check if user is Coach or CoCoach in coach_teams_table
-    const { data: teamByRole } = await supabase
+    const { data: teamByRole } = await db
       .from('coach_teams_table')
       .select('TeamId, CoachId, CoCoachId')
       .or(`CoachId.eq.${coachIdInt},CoCoachId.eq.${coachIdInt}`)
@@ -408,7 +419,7 @@ export default async function handler(req, res) {
     
     // 2. If user has CoachTeamId, also try looking up by TeamId
     if (!teamByRole && loggedInCoach.CoachTeamId) {
-      const { data: teamByTeamId } = await supabase
+      const { data: teamByTeamId } = await db
         .from('coach_teams_table')
         .select('TeamId, CoachId, CoCoachId')
         .eq('TeamId', loggedInCoach.CoachTeamId)
@@ -729,26 +740,29 @@ export default async function handler(req, res) {
     const allMembers = Array.from(memberMap.values());
 
     // Attach latest weight / fat% / BMI for BCM phone prefill (best-effort).
-    try {
-      const weightByUser = await getLatestWeightMetricsByUserIds(
-        allMembers.map((m) => m.UserId),
-      );
-      for (const m of allMembers) {
-        const w = weightByUser.get(Number(m.UserId));
-        if (!w) continue;
-        m.weightKg = w.weightKg;
-        m.fatPercent = w.fatPercent;
-        let bmi = w.bmi;
-        if (bmi == null && w.weightKg != null && m.height != null) {
-          bmi = computeBmiFromHeightWeight(m.height, w.weightKg);
+    // Skip for purpose=search — Diary / team search does not need body metrics.
+    if (!purposeSearch) {
+      try {
+        const weightByUser = await getLatestWeightMetricsByUserIds(
+          allMembers.map((m) => m.UserId),
+        );
+        for (const m of allMembers) {
+          const w = weightByUser.get(Number(m.UserId));
+          if (!w) continue;
+          m.weightKg = w.weightKg;
+          m.fatPercent = w.fatPercent;
+          let bmi = w.bmi;
+          if (bmi == null && w.weightKg != null && m.height != null) {
+            bmi = computeBmiFromHeightWeight(m.height, w.weightKg);
+          }
+          m.bmi = bmi;
+          if (m.bmr == null && w.bmr != null) m.bmr = w.bmr;
         }
-        m.bmi = bmi;
-        if (m.bmr == null && w.bmr != null) m.bmr = w.bmr;
+      } catch (weightErr) {
+        logger.warn('[team-hierarchy] weight enrich failed', {
+          message: weightErr?.message || String(weightErr),
+        });
       }
-    } catch (weightErr) {
-      logger.warn('[team-hierarchy] weight enrich failed', {
-        message: weightErr?.message || String(weightErr),
-      });
     }
 
     let coachClubName = null;
@@ -776,7 +790,7 @@ export default async function handler(req, res) {
       const ids = [...ownerIds];
       for (let i = 0; i < ids.length; i += 100) {
         const slice = ids.slice(i, i + 100);
-        const { data, error } = await supabase
+        const { data, error } = await db
           .from('nutrition_centers_table')
           .select('id, center_name, owner_user_id, registered_at')
           .in('owner_user_id', slice)
@@ -817,6 +831,7 @@ export default async function handler(req, res) {
 
     res.status(200).json({
       success: true,
+      purpose: purposeSearch ? 'search' : 'full',
       loggedInCoach: {
         userId: hierarchy.userId,
         userName: hierarchy.userName,
@@ -828,7 +843,8 @@ export default async function handler(req, res) {
         clubName: coachClubName,
       },
       coachClubName,
-      hierarchy: hierarchy,
+      // Nested tree is large; search clients only need allMembers.
+      hierarchy: purposeSearch ? null : hierarchy,
       allMembers: allMembers, // Flat array of all unique team members
       stats: {
         totalCoaches: coaches.length,

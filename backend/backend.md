@@ -10,7 +10,7 @@
 ## 1. Stack
 
 - **Next.js 15.3.6** (API routes only — no SSR pages for app UI), **React 18.3**, JavaScript (no TS), `jsconfig.json` paths.
-- **Data:** Supabase JS client (`@supabase/supabase-js` ^2.90) **and** `pg` Pool (^8.16). `mysql2` has been fully removed.
+- **Data:** Prisma (`@prisma/client`) against MySQL/MariaDB. `MYSQL_DATABASE_URL` is required. `getMysqlClient()` is the MySQL table client for existing `.from('table')` queries. There is no MySQL table, storage, or realtime client. `pg` and `mysql2` are not backend dependencies.
 - **Validation:** `joi@18` is installed but most validators are hand-written. See §6.
 - **Other deps:** `bcryptjs`, `@google/generative-ai`, `nodemailer`, `formidable` (multipart uploads). Dev: `cross-env`, `eslint`. No `date-fns`, `firebase-admin`, or Jest in backend deps.
 
@@ -52,9 +52,9 @@ Used by: `weight`, `activity`, `nutrition-centers`, `education`, `food-correctio
 
 | Layer | May do | May NOT import |
 |---|---|---|
-| `api/` (handler) | orchestrate: validate → call domain → call data → shape response | `pg`, `supabase` directly |
-| `domain/` | pure functions only | `axios`, `fetch`, `pg`, `supabase`, `next/*`, `process.env`, `Date.now()` (inject a clock) |
-| `data/` | the **only** place that talks to Supabase / `pg` | another feature's internals |
+| `api/` (handler) | orchestrate: validate → call domain → call data → shape response | `pg`, `db` directly |
+| `domain/` | pure functions only | `axios`, `fetch`, `pg`, `db`, `next/*`, `process.env`, `Date.now()` (inject a clock) |
+| `data/` | the **only** place that talks to MySQL / `pg` | another feature's internals |
 | `validation/` | shape/type/range checks | I/O |
 
 - A feature may import its own layers + `shared/*` + `utils/*`. It may **not** import another `features/*` internals.
@@ -82,15 +82,13 @@ Do not return a bare string. Always JSON.
 
 ## 5. Database access
 
-- `pg` Pool via [utils/dbPool.js](utils/dbPool.js) — `getPool()` / `dbPool()`. Exposes a MySQL-compatible API (`execute`, `?`→`$1` conversion, IPv4-forced DNS). Used in `tasks`, `water`.
-- Supabase via [utils/supabaseClient.js](utils/supabaseClient.js) — `getSupabaseClient().from('table')`. Used in `activity`, `background-analysis`, `weight-progress-tips`, etc. Also exports IST helpers `getISTTimestamp`, `convertToIST`.
+- MilesWeb MariaDB through Prisma. `MYSQL_DATABASE_URL` is required. `getMysqlClient()` in [utils/mysqlClient.js](utils/mysqlClient.js) is that MySQL client for `.from('table')` queries.
 - **Always parameterise.** No string-built SQL in feature code.
 - Tables are `snake_case` (e.g. `weight_records_table`, `team_table`, `daily_step_activity`).
-- Pick `pg` **or** Supabase per feature and keep it consistent within that feature.
 
 ### Migrations (`backend/migrations/`)
 - New files: `NNNN_description.sql`, forward-only. To revert, write a new migration.
-- The folder currently holds only the testimonials migrations (`create_testimonials_table.sql`, `add_video_columns_to_testimonials.sql`); most schema lives directly in Supabase. Do **not** reuse a taken name; keep new files descriptive and forward-only.
+- The folder currently holds only the testimonials migrations (`create_testimonials_table.sql`, `add_video_columns_to_testimonials.sql`); most schema lives directly in MySQL. Do **not** reuse a taken name; keep new files descriptive and forward-only.
 - Add RLS policies for every new table. Never edit a merged migration.
 
 ---
@@ -118,7 +116,7 @@ Do not return a bare string. Always JSON.
 
 `backend/utils/` central helpers:
 - [disciplineCalculations.js](utils/disciplineCalculations.js) — discipline %, MySQL-connection style.
-- [disciplineCalculationsSupabase.js](utils/disciplineCalculationsSupabase.js) — Supabase variant (second source — confirm which one the feature uses).
+- [disciplineCalculationsQuery.js](utils/disciplineCalculationsQuery.js) — discipline % through the MySQL table client.
 - [disciplineHelpers.js](utils/disciplineHelpers.js) — shared discipline helper functions.
 - [timezoneConverter.js](utils/timezoneConverter.js) — IST (UTC+5:30) ↔ user-local. Use for "today"; never raw `new Date()`.
 - [timestampUtils.js](utils/timestampUtils.js) — timestamp formatting helpers.
@@ -138,7 +136,7 @@ Do not return a bare string. Always JSON.
 ## 8. Logging
 
 - Use the shared `logger`. **Target:** no `console.*` in shipped code.
-- Reality: `console.*` is still widespread (`supabaseClient.js`, `handler.js`, `weight-progress-tips`, `background-analysis`). Do not add more; migrate when you touch the file.
+- Reality: `console.*` is still widespread (`mysqlClient.js`, `handler.js`, `weight-progress-tips`, `background-analysis`). Do not add more; migrate when you touch the file.
 - Never log full request bodies, secrets, or PII (emails/phones/tokens).
 
 ---

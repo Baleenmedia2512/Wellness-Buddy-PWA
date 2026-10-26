@@ -44,7 +44,7 @@ EXCEPTION
     NULL;
 END $$;
 
--- Backend writes via Supabase REST (anon/service). API layer enforces auth.
+-- Backend writes through the MySQL client. API layer enforces auth.
 -- Match food_pair_stats / ai_credits: RLS off for server-managed tables.
 ALTER TABLE public.nutrition_master_profiles_table DISABLE ROW LEVEL SECURITY;
 

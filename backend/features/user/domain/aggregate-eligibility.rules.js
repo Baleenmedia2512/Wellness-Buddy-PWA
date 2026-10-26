@@ -20,6 +20,12 @@ export function isDeveloperRole(role) {
   return normalizeUserRole(role) === DEVELOPER_ROLE;
 }
 
+/** Admin / developer — internal operators allowed to see developer members in aggregates. */
+export function isInternalOperatorRole(role) {
+  const normalized = normalizeUserRole(role);
+  return normalized === 'admin' || normalized === DEVELOPER_ROLE;
+}
+
 /**
  * @param {{ Role?: string, role?: string, UserId?: string|number, userId?: string|number }|null|undefined} userRow
  */
@@ -29,15 +35,18 @@ export function isDeveloperUser(userRow) {
 }
 
 /**
- * In production, exclude developer accounts from public aggregates unless the
- * viewer is the developer (self-access for prod testing).
+ * In production, exclude developer accounts from public aggregates unless:
+ * - the viewer is that developer (self-access for prod testing), or
+ * - the viewer is an internal operator (admin / developer) so coach-facing
+ *   team lists (e.g. Transformation Direct) can include developer test accounts.
  *
  * @param {object} userRow
- * @param {{ viewerUserId?: string|number|null }} [options]
+ * @param {{ viewerUserId?: string|number|null, viewerRole?: string|null }} [options]
  */
-export function shouldExcludeDeveloperFromAggregates(userRow, { viewerUserId } = {}) {
+export function shouldExcludeDeveloperFromAggregates(userRow, { viewerUserId, viewerRole } = {}) {
   if (!isProductionEnvironment()) return false;
   if (!isDeveloperUser(userRow)) return false;
+  if (isInternalOperatorRole(viewerRole)) return false;
   const uid = userRow.UserId ?? userRow.userId;
   if (viewerUserId != null && uid != null && String(uid) === String(viewerUserId)) {
     return false;
@@ -47,7 +56,7 @@ export function shouldExcludeDeveloperFromAggregates(userRow, { viewerUserId } =
 
 /**
  * @param {object[]} users
- * @param {{ viewerUserId?: string|number|null }} [options]
+ * @param {{ viewerUserId?: string|number|null, viewerRole?: string|null }} [options]
  */
 export function filterPublicAggregateUsers(users, options = {}) {
   if (!Array.isArray(users)) return [];

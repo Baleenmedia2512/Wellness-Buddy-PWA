@@ -17,7 +17,11 @@ import {
   getVisceralFatReference,
   getWaistCmReference,
 } from '../domain/bodyMetricReferences.js';
-import { formatBcmShareCardDateTime, resolveBcmCardDisplayTimestamp } from '../domain/bcmCardDateTime.rules.js';
+import {
+  formatBcmShareCardDateTime,
+  resolveBcmCardDisplayTimestamp,
+  resolveBcmCardAppointmentDate,
+} from '../domain/bcmCardDateTime.rules.js';
 
 const G          = '#16a34a';
 const DARK_GREEN = '#166534';
@@ -131,15 +135,15 @@ const InfoRow = ({ icon, label, value, extra, extraColor }) => (
       {icon}
     </div>
     <div style={{
-      width: 105, fontSize: 16, fontWeight: 800, color: '#6b7280',
-      textTransform: 'uppercase', letterSpacing: 0.7, flexShrink: 0,
+      width: 140, fontSize: 16, fontWeight: 800, color: '#6b7280',
+      textTransform: 'uppercase', letterSpacing: 0.5, flexShrink: 0,
     }}>
       {label}
     </div>
-    <div style={{ width: 22, fontSize: 16, color: '#9ca3af', textAlign: 'center', flexShrink: 0 }}>
+    <div style={{ width: 18, fontSize: 16, color: '#9ca3af', textAlign: 'center', flexShrink: 0 }}>
       :
     </div>
-    <div style={{ flex: 1, fontSize: 18, fontWeight: 800, color: INK, lineHeight: 1.25 }}>
+    <div style={{ flex: 1, fontSize: 18, fontWeight: 800, color: INK, lineHeight: 1.25, paddingLeft: 4 }}>
       {value}
     </div>
     {extra ? (
@@ -326,6 +330,8 @@ const BodyParamsCardPreview = React.forwardRef(({ card, previousCard = null, tim
       timezoneIana,
     );
 
+  const appointmentDate = resolveBcmCardAppointmentDate(card);
+
   /* ── Status helpers ── */
   const bmiVal = parseFloat(card.bmi);
   const bmiStatus = !isNaN(bmiVal)
@@ -458,9 +464,12 @@ const BodyParamsCardPreview = React.forwardRef(({ card, previousCard = null, tim
           {card.locationName ? (
             <InfoRow icon="📍" label="Venue" value={card.locationName} />
           ) : null}
+          {appointmentDate ? (
+            <InfoRow icon="🗓️" label="Appointment" value={appointmentDate} />
+          ) : null}
+          <InfoRow icon={<HeightIcon />} label="Height"   value={fmt(card.heightCm, ' cm')} />
           <InfoRow icon="👤" label="Name"     value={(card.name || '—').toUpperCase()} />
           <InfoRow icon="🎂" label="Age"      value={card.age ? card.age + ' Yrs' : '—'} />
-          <InfoRow icon={<HeightIcon />} label="Height"   value={fmt(card.heightCm, ' cm')} />
           {card.phoneNumber ? (
             <InfoRow icon="📞" label="Phone" value={card.phoneNumber} />
           ) : null}

@@ -14,8 +14,7 @@
  */
 
 import { findByShareIdentifier } from '../../../../features/captures/data/captures.repository.js';
-import { isR2Configured } from '../../../../shared/lib/r2/config.js';
-import { avatarRedirectUrl } from '../../../../shared/lib/r2/s3.js';
+import { redirectUrlForImageKey } from '../../../../shared/lib/milesweb/storedImage.js';
 
 const SHARE_IDENTIFIER_RE = /^(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[A-Za-z0-9]{6,10})$/i;
 
@@ -48,8 +47,8 @@ export default async function handler(req, res) {
     }
   }
 
-  if (capture?.ImageKey && isR2Configured()) {
-    const r2Url = avatarRedirectUrl(capture.ImageKey);
+  if (capture?.ImageKey) {
+    const r2Url = await redirectUrlForImageKey(capture.ImageKey, 'ff.r2-captures');
     if (r2Url) {
       res.setHeader('Cache-Control', 'public, max-age=86400, immutable');
       return res.redirect(302, r2Url);

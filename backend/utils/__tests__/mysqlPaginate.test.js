@@ -1,9 +1,9 @@
 /**
- * Run: node --test backend/utils/__tests__/supabasePaginate.test.js
+ * Run: node --test backend/utils/__tests__/mysqlPaginate.test.js
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { fetchAllSupabaseRows } from '../supabasePaginate.js';
+import { fetchAllMysqlRows } from '../mysqlPaginate.js';
 
 function mockPagedQuery(pages) {
   let call = 0;
@@ -19,9 +19,9 @@ function mockPagedQuery(pages) {
   });
 }
 
-describe('fetchAllSupabaseRows', () => {
+describe('fetchAllMysqlRows', () => {
   it('concatenates pages until a short page', async () => {
-    const rows = await fetchAllSupabaseRows(
+    const rows = await fetchAllMysqlRows(
       mockPagedQuery([
         [{ id: 1 }, { id: 2 }, { id: 3 }],
         [{ id: 4 }, { id: 5 }],
@@ -32,13 +32,13 @@ describe('fetchAllSupabaseRows', () => {
   });
 
   it('stops on an empty first page', async () => {
-    const rows = await fetchAllSupabaseRows(mockPagedQuery([[]]), { pageSize: 3 });
+    const rows = await fetchAllMysqlRows(mockPagedQuery([[]]), { pageSize: 3 });
     assert.deepEqual(rows, []);
   });
 
   it('throws when a page returns an error', async () => {
     await assert.rejects(
-      () => fetchAllSupabaseRows(
+      () => fetchAllMysqlRows(
         () => ({
           range() {
             return Promise.resolve({ data: null, error: { message: 'boom' } });

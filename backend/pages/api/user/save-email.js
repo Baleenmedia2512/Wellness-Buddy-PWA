@@ -9,7 +9,7 @@
  * Body: { userId: number, name: string, email?: string }
  */
 import { applyCors, methodNotAllowed } from '../../../shared/lib/handler.js';
-import { getSupabaseClient } from '../../../utils/supabaseClient.js';
+import { getMysqlClient } from '../../../utils/mysqlClient.js';
 import {
   hasValidProfileName,
   isPlaceholderUserName,
@@ -54,9 +54,9 @@ export default async function handler(req, res) {
     });
   }
 
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
 
-  const { data: row, error: readErr } = await supabase
+  const { data: row, error: readErr } = await db
     .from(TEAM)
     .select('Email, UserName, PhoneNumber')
     .eq('UserId', uid)
@@ -110,13 +110,13 @@ export default async function handler(req, res) {
   }
 
   if (Object.keys(updateData).length > 0) {
-    const { error: writeErr } = await supabase
+    const { error: writeErr } = await db
       .from(TEAM)
       .update(updateData)
       .eq('UserId', uid);
 
     if (writeErr) {
-      if (writeErr.code === '23505') {
+      if (writeErr.code === '1062') {
         return res.status(409).json({
           success: false,
           message: EMAIL_TAKEN_MESSAGE,

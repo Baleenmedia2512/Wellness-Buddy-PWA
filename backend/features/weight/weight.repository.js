@@ -1,8 +1,8 @@
 /**
  * Weight feature — repository layer.
- * The ONLY place in this feature allowed to talk to Supabase / weight_records_table.
+ * The ONLY place in this feature allowed to talk to MySQL / weight_records_table.
  */
-import { getSupabaseClient } from '../../utils/supabaseClient.js';
+import { getMysqlClient } from '../../utils/mysqlClient.js';
 import {
   nowUtc,
   utcInstantToLegacyIstWallStorage,
@@ -43,9 +43,9 @@ async function withOptionalIsDeletedFilter(buildQuery) {
 }
 
 export async function findPreviousEntry(userId, excludeId = null) {
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   const run = (withDeletedFilter) => {
-    let q = supabase
+    let q = db
       .from(TABLE)
       .select('ID, Weight, CreatedAt')
       .eq('UserId', parseInt(userId));
@@ -59,8 +59,8 @@ export async function findPreviousEntry(userId, excludeId = null) {
 }
 
 export async function findEntryById(entryId) {
-  const supabase = getSupabaseClient();
-  const { data } = await supabase
+  const db = getMysqlClient();
+  const { data } = await db
     .from(TABLE)
     .select('ID, Weight, BodyFat, CreatedAt')
     .eq('ID', entryId)
@@ -74,9 +74,9 @@ export async function findEntryById(entryId) {
  * @returns {Promise<number|null>}
  */
 export async function findLatestBodyFat(userId) {
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   const run = (withDeletedFilter) => {
-    let q = supabase
+    let q = db
       .from(TABLE)
       .select('BodyFat')
       .eq('UserId', parseInt(userId))
@@ -103,9 +103,9 @@ export async function findLatestWeightOnCalendarDay(userId, dateYmd, timezoneIan
   const uid = Number.parseInt(String(userId), 10);
   if (!Number.isFinite(uid) || uid <= 0 || !dateYmd) return null;
 
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   const run = (withDeletedFilter) => {
-    let q = supabase
+    let q = db
       .from(TABLE)
       .select('Weight, CreatedAt')
       .eq('UserId', uid);
@@ -154,9 +154,9 @@ export async function findLatestWeightOnOrBeforeCalendarDay(userId, dateYmd, tim
     -MARATHON_ANCHOR_WEIGHT_LOOKBACK_DAYS,
     timezoneIana,
   );
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   const run = (withDeletedFilter) => {
-    let q = supabase
+    let q = db
       .from(TABLE)
       .select('Weight, CreatedAt')
       .eq('UserId', uid);
@@ -184,8 +184,8 @@ export async function findLatestWeightOnOrBeforeCalendarDay(userId, dateYmd, tim
 }
 
 export async function syncBmrToTeamTable(userId, bmrValue) {
-  const supabase = getSupabaseClient();
-  const { error } = await supabase
+  const db = getMysqlClient();
+  const { error } = await db
     .from('team_table')
     .update({ Bmr: bmrValue })
     .eq('UserId', parseInt(userId));
@@ -193,9 +193,9 @@ export async function syncBmrToTeamTable(userId, bmrValue) {
 }
 
 export async function insertEntry(payload) {
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   // Explicit column list avoids RETURNING IsDeleted when that column is absent in some envs.
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from(TABLE)
     .insert(payload)
     .select(WEIGHT_ROW_SELECT)
@@ -209,12 +209,12 @@ const IMMUTABLE_TIMESTAMP_FIELDS = new Set([
 ]);
 
 export async function updateEntry(entryId, userId, updates) {
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   const safeUpdates = Object.fromEntries(
     Object.entries(updates).filter(([key]) => !IMMUTABLE_TIMESTAMP_FIELDS.has(key)),
   );
   const run = (withDeletedFilter) => {
-    let q = supabase
+    let q = db
       .from(TABLE)
       .update({ ...safeUpdates, UpdatedAt: legacyIstWallNow() })
       .eq('ID', entryId)
@@ -228,12 +228,12 @@ export async function updateEntry(entryId, userId, updates) {
 }
 
 export async function listHistory(userId, includeImage, { limit = null, offset = 0 } = {}) {
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   const selectFields = includeImage
     ? 'ID, UserId, Weight, Bmi, BodyFat, MuscleMass, Bmr, WeightImageBase64, CreatedAt'
     : 'ID, UserId, Weight, Bmi, BodyFat, MuscleMass, Bmr, CreatedAt';
   const run = (withDeletedFilter) => {
-    let query = supabase
+    let query = db
       .from(TABLE)
       .select(selectFields)
       .eq('UserId', userId);
@@ -251,9 +251,9 @@ export async function listHistory(userId, includeImage, { limit = null, offset =
 }
 
 export async function listLatestImages(userId, count = 10) {
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   const run = (withDeletedFilter) => {
-    let q = supabase
+    let q = db
       .from(TABLE)
       .select('ID, WeightImageBase64')
       .eq('UserId', userId);
@@ -266,9 +266,9 @@ export async function listLatestImages(userId, count = 10) {
 }
 
 export async function listAllWeightsForStats(userId) {
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   const run = (withDeletedFilter) => {
-    let q = supabase
+    let q = db
       .from(TABLE)
       .select('Weight, CreatedAt')
       .eq('UserId', userId);
@@ -281,9 +281,9 @@ export async function listAllWeightsForStats(userId) {
 }
 
 export async function getImageById(userId, id) {
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   const run = (withDeletedFilter) => {
-    let q = supabase
+    let q = db
       .from(TABLE)
       .select('ID, WeightImageKey')
       .eq('UserId', userId)
@@ -297,8 +297,8 @@ export async function getImageById(userId, id) {
 }
 
 export async function softDelete(entryId, userId) {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from(TABLE)
     .update({ IsDeleted: 1, UpdatedAt: legacyIstWallNow() })
     .eq('ID', entryId)
@@ -309,8 +309,8 @@ export async function softDelete(entryId, userId) {
 }
 
 export async function checkOwnership(entryId, userId) {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from(TABLE)
     .select('"ID"')
     .eq('"ID"', entryId)
@@ -322,8 +322,8 @@ export async function checkOwnership(entryId, userId) {
 
 export async function findWeightImageKeyByCaptureId(captureId) {
   if (captureId == null || String(captureId).trim() === '') return null;
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from(TABLE)
     .select('WeightImageKey')
     .eq('CaptureID', captureId)
@@ -339,8 +339,8 @@ export async function findWeightImageKeyByCaptureId(captureId) {
 
 export async function attachWeightImageKeyByCaptureId(captureId, userId, imageKey) {
   if (!captureId || !imageKey) return;
-  const supabase = getSupabaseClient();
-  const { error } = await supabase
+  const db = getMysqlClient();
+  const { error } = await db
     .from(TABLE)
     .update({ WeightImageKey: imageKey, WeightImageBase64: null })
     .eq('CaptureID', captureId)
@@ -353,8 +353,8 @@ export async function attachWeightImageKeyByCaptureId(captureId, userId, imageKe
 }
 
 export async function updateWeightImageKey(recordId, userId, imageKey) {
-  const supabase = getSupabaseClient();
-  const { error } = await supabase
+  const db = getMysqlClient();
+  const { error } = await db
     .from(TABLE)
     .update({ WeightImageKey: imageKey, WeightImageBase64: null })
     .eq('ID', recordId)
@@ -376,10 +376,10 @@ export async function listPendingWeightImageBackfill({
   startYmd,
   endYmd,
 } = {}) {
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   const endExclusiveYmd = shiftDateYmd(endYmd, 1, IANA_IST);
   const run = (withDeletedFilter) => {
-    let q = supabase
+    let q = db
       .from(TABLE)
       .select('ID, UserId, CaptureID, WeightImageBase64, WeightImageKey, CreatedAt')
       .is('WeightImageKey', null)
@@ -403,8 +403,8 @@ export async function listPendingWeightImageBackfill({
 }
 
 export async function restoreEntry(entryId) {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from(TABLE)
     .update({ IsDeleted: 0, UpdatedAt: legacyIstWallNow() })
     .eq('"ID"', entryId)

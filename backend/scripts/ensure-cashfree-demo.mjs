@@ -10,13 +10,24 @@
 import { readFileSync, existsSync } from 'fs';
 import { dirname, resolve } from 'path';
 import { fileURLToPath } from 'url';
-import { createClient } from '@supabase/supabase-js';
+import { PrismaClient } from '@prisma/client';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const backendRoot = resolve(__dirname, '..');
 
 const DEMO_PHONE = '9876543211';
 const DEMO_NAME = 'cashfree test';
+
+const ROW_SELECT = {
+  UserId: true,
+  UserName: true,
+  Email: true,
+  PhoneNumber: true,
+  Role: true,
+  Status: true,
+  SetupSkipped: true,
+  CoachApproved: true,
+};
 
 function loadEnvFile(filePath) {
   if (!existsSync(filePath)) return;
@@ -41,23 +52,10 @@ function loadEnvFile(filePath) {
 loadEnvFile(resolve(backendRoot, '.env.local'));
 loadEnvFile(resolve(backendRoot, '.env'));
 
-function createSupabase() {
-  const url = process.env.SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_ANON_KEY;
-  if (!url || !key) {
-    throw new Error('SUPABASE_URL and SUPABASE_SERVICE_KEY (or SUPABASE_ANON_KEY) are required');
-  }
-  return createClient(url, key);
-}
-
-async function findByPhone(supabase, phone) {
-  const { data, error } = await supabase
-    .from('team_table')
-    .select('UserId, UserName, Email, PhoneNumber, Role, Status, SetupSkipped, CoachApproved')
-    .eq('PhoneNumber', phone)
-    .limit(1);
-  if (error) throw error;
-  return data?.[0] || null;
+function createPrisma() {
+  const url = process.env.MYSQL_DATABASE_URL;
+  if (!url) throw new Error('MYSQL_DATABASE_URL is required');
+  return new PrismaClient({ datasources: { db: { url } } });
 }
 
 function summarize(row) {
@@ -72,48 +70,60 @@ function summarize(row) {
   };
 }
 
+async function insertTeamRow(prisma, data) {
+  return prisma.$transaction(async (tx) => {
+    const max = await tx.team_table.aggregate({ _max: { UserId: true } });
+    const UserId = Number(max._max.UserId || 0) + 1;
+    return tx.team_table.create({
+      data: { ...data, UserId },
+      select: ROW_SELECT,
+    });
+  });
+}
+
 async function main() {
-  const supabase = createSupabase();
-  const now = new Date().toISOString();
-  const desired = {
-    UserName: DEMO_NAME,
-    PhoneNumber: DEMO_PHONE,
-    Role: 'user',
-    Status: 'Active',
-    SetupSkipped: true,
-    CoachApproved: 1,
-    ConsentAcceptedAt: now,
-    ConsentVersion: '2026-07-31',
-    LastActiveAt: now,
-  };
+  const prisma = createPrisma();
+  try {
+    const now = new Date();
+    const desired = {
+      UserName: DEMO_NAME,
+      PhoneNumber: DEMO_PHONE,
+      Role: 'user',
+      Status: 'Active',
+      SetupSkipped: true,
+      CoachApproved: 1,
+      ConsentAcceptedAt: now,
+      ConsentVersion: '2026-07-31',
+      LastActiveAt: now,
+    };
 
-  const existing = await findByPhone(supabase, DEMO_PHONE);
-  if (existing) {
-    const { error } = await supabase
-      .from('team_table')
-      .update(desired)
-      .eq('UserId', existing.UserId);
-    if (error) throw error;
-    const updated = await findByPhone(supabase, DEMO_PHONE);
-    console.log('Updated Cashfree demo account:', summarize(updated));
-    console.log('Login: phone', DEMO_PHONE, 'OTP 1234');
-    return;
-  }
+    const existing = await prisma.team_table.findFirst({
+      where: { PhoneNumber: DEMO_PHONE },
+      select: ROW_SELECT,
+    });
+    if (existing) {
+      const updated = await prisma.team_table.update({
+        where: { UserId: existing.UserId },
+        data: desired,
+        select: ROW_SELECT,
+      });
+      console.log('Updated Cashfree demo account:', summarize(updated));
+      console.log('Login: phone', DEMO_PHONE, 'OTP 1234');
+      return;
+    }
 
-  const { data, error } = await supabase
-    .from('team_table')
-    .insert({
+    const created = await insertTeamRow(prisma, {
       ...desired,
       EntryDateTime: now,
       EntryUser: 'Cashfree Demo',
       Password: 'User@123#',
       TargetWeightInKg: 0,
-    })
-    .select('UserId, UserName, PhoneNumber, Role, Status, SetupSkipped, CoachApproved')
-    .single();
-  if (error) throw error;
-  console.log('Created Cashfree demo account:', summarize(data));
-  console.log('Login: phone', DEMO_PHONE, 'OTP 1234');
+    });
+    console.log('Created Cashfree demo account:', summarize(created));
+    console.log('Login: phone', DEMO_PHONE, 'OTP 1234');
+  } finally {
+    await prisma.$disconnect();
+  }
 }
 
 main().catch((err) => {

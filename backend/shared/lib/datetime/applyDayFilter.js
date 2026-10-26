@@ -1,5 +1,5 @@
 /**
- * Repository query helpers — scope Supabase/PostgREST queries to calendar days.
+ * Repository query helpers — scope MySQL/PostgREST queries to calendar days.
  */
 import { shiftDateYmd, toUtcRange, toUtcRangeInclusive } from './datetime.js';
 
@@ -7,7 +7,7 @@ import { shiftDateYmd, toUtcRange, toUtcRangeInclusive } from './datetime.js';
  * Apply an inclusive day filter on `column` using UTC bounds derived from
  * `dateYmd` interpreted in `timezoneIana`.
  *
- * @param {object} query - Supabase query builder (must support `.gte` / `.lte`)
+ * @param {object} query - MySQL query builder (must support `.gte` / `.lte`)
  * @param {string} column - Column name to filter
  * @param {string} dateYmd - Calendar date `YYYY-MM-DD`
  * @param {string} timezoneIana - IANA timezone for the calendar day

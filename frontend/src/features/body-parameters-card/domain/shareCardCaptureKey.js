@@ -7,7 +7,10 @@ import {
   parseUtcTimestamp,
   resolveBusinessTimezone,
 } from '../../../shared/utils/datetimeUtils.js';
-import { resolveBcmCardDisplayTimestamp } from './bcmCardDateTime.rules.js';
+import {
+  resolveBcmCardDisplayTimestamp,
+  resolveBcmCardAppointmentDate,
+} from './bcmCardDateTime.rules.js';
 
 function normScalar(value) {
   if (value == null || value === '') return '';
@@ -78,6 +81,7 @@ export function getShareCardCaptureKey(
     normCreatedAtMinute(resolveBcmCardDisplayTimestamp(card), tz),
     normScalar(tz),
     normScalar(card.locationName),
+    normScalar(resolveBcmCardAppointmentDate(card)),
     normScalar(card.name),
     normScalar(card.age),
     normScalar(card.heightCm),

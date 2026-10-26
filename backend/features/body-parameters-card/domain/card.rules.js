@@ -2,7 +2,7 @@ import { computeKatchMcArdleBmr, resolveBmrForSave } from '../../../utils/bmrCal
 
 /**
  * card.rules.js — Pure business logic for Body Parameters Card.
- * No I/O. No imports from axios, pg, supabase, or react.
+ * No I/O. No imports from axios, pg, db, or react.
  */
 
 export const SHARE_TTL_DAYS = 30;
@@ -359,4 +359,43 @@ export function buildFormPrefillFromMember(member) {
       .map((x) => x.trim());
   }
   return patch;
+}
+
+/**
+ * Compute default appointment date for BCM card:
+ * - Next day (+1 day)
+ * - Sunday rule: if next day is Sunday, roll forward to Monday (+2 days)
+ *
+ * @param {string|Date|null|undefined} baseDate
+ * @returns {string|null} YYYY-MM-DD
+ */
+export function computeDefaultAppointmentDate(baseDate) {
+  if (!baseDate) return null;
+  let y;
+  let m;
+  let d;
+  if (typeof baseDate === 'string' && /^\d{4}-\d{2}-\d{2}/.test(baseDate)) {
+    const parts = baseDate.substring(0, 10).split('-');
+    y = parseInt(parts[0], 10);
+    m = parseInt(parts[1], 10) - 1;
+    d = parseInt(parts[2], 10);
+  } else {
+    const dt = baseDate instanceof Date ? baseDate : new Date(baseDate);
+    if (Number.isNaN(dt.getTime())) return null;
+    y = dt.getFullYear();
+    m = dt.getMonth();
+    d = dt.getDate();
+  }
+
+  // Next day (+1 day)
+  const target = new Date(y, m, d + 1);
+  // Sunday is 0: if target day falls on Sunday, roll forward to Monday (+1 more day)
+  if (target.getDay() === 0) {
+    target.setDate(target.getDate() + 1);
+  }
+
+  const resY = target.getFullYear();
+  const resM = String(target.getMonth() + 1).padStart(2, '0');
+  const resD = String(target.getDate()).padStart(2, '0');
+  return `${resY}-${resM}-${resD}`;
 }

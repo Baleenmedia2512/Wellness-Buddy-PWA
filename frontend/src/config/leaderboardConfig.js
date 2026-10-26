@@ -22,7 +22,8 @@ export const LEADERBOARD_CONFIG = {
   },
 
   // Race scoreboard: poll while Home is visible so ranks update for everyone.
-  REFRESH_INTERVAL: 15 * 1000,
+  // Keep ≥ server leaderboard cache TTL (60s) to avoid stacking slow requests.
+  REFRESH_INTERVAL: 60 * 1000,
   SLIDE_INTERVAL: 5 * 1000, // 5 seconds (deprecated - now using marquee)
   MARQUEE_DURATION: 20, // 20 seconds for smooth scroll
 };

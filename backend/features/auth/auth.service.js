@@ -346,18 +346,14 @@ export async function sendOtp({ recipient, contactType }) {
 }
 
 /**
- * Keep demo phone accounts usable for app testing:
- * Role=user (not admin), consent stamped.
- * Coach selection stays required until a real coach is approved.
+ * Keep Cashfree / demo phone accounts ready for main-app access:
+ * Role=user (not admin), setup skipped, coach approved, consent stamped.
  */
 async function ensureDemoPhoneAccess(userInfo) {
   if (!userInfo?.UserId) return userInfo;
   const patch = {};
-  const hasApprovedCoach = Number(userInfo.CoachApproved) === 1 && !!userInfo.CoachId;
-  if (!hasApprovedCoach) {
-    if (userInfo.SetupSkipped === true) patch.SetupSkipped = false;
-    if (Number(userInfo.CoachApproved) !== 0) patch.CoachApproved = 0;
-  }
+  if (userInfo.SetupSkipped !== true) patch.SetupSkipped = true;
+  if (Number(userInfo.CoachApproved) !== 1) patch.CoachApproved = 1;
   if (String(userInfo.Role || '').toLowerCase() === 'admin') patch.Role = 'user';
   if (!isConsentRecorded(userInfo)) {
     Object.assign(patch, consentInsertFields(nowUtc(), { version: CURRENT_CONSENT_VERSION }));
@@ -395,10 +391,10 @@ async function handleDemoVerify({ recipient, otp, purpose, consentInput, contact
           Password: 'User@123#',
           TargetWeightInKg: 0,
           Status: 'Active',
-          CoachApproved: 0,
+          CoachApproved: 1,
           Role: 'user',
           PhoneNumber: storedPhone,
-          SetupSkipped: false,
+          SetupSkipped: true,
           ...consentInsertFields(currentTime, { version: CURRENT_CONSENT_VERSION }),
         },
         recipient,

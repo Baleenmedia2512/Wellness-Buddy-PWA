@@ -1,8 +1,8 @@
 /**
- * testimonials.repository.js — Data layer for testimonials_table + Supabase Storage.
+ * testimonials.repository.js — Data layer for testimonials_table + MySQL Storage.
  * The ONLY place in this feature that talks to the database or storage.
  */
-import { getSupabaseClient } from '../../utils/supabaseClient.js';
+import { getMysqlClient } from '../../utils/mysqlClient.js';
 import { nowUtc } from '../../shared/lib/datetime/index.js';
 import logger from '../../shared/lib/logger.js';
 import {
@@ -40,19 +40,19 @@ export function previousShareCardStoragePath(userId) {
 // ─── Storage helpers ──────────────────────────────────────────────────────────
 
 /**
- * Upload a base64-encoded image to the testimonials Supabase Storage bucket.
+ * Upload a base64-encoded image to the testimonials MySQL Storage bucket.
  * @param {string} base64 - raw base64 string (no data URI prefix)
  * @param {string} path   - storage object path, e.g. "42/before_1720000000000.jpg"
  * @returns {string} path stored
  */
 export async function uploadImage(base64, path) {
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
 
   // Strip data-URI prefix if present (e.g. "data:image/jpeg;base64,...")
   const cleaned = base64.replace(/^data:[^;]+;base64,/, '');
   const buffer = Buffer.from(cleaned, 'base64');
 
-  const { error } = await supabase.storage
+  const { error } = await db.storage
     .from(BUCKET)
     .upload(path, buffer, { contentType: 'image/jpeg', upsert: true });
 
@@ -64,7 +64,7 @@ export async function uploadImage(base64, path) {
 }
 
 /**
- * Upload a base64-encoded video to the testimonials Supabase Storage bucket.
+ * Upload a base64-encoded video to the testimonials MySQL Storage bucket.
  * Supports mp4 / mov / quicktime — content-type is set based on the data-URI prefix
  * or defaults to video/mp4.
  * @param {string} base64 - raw base64 string (with or without data-URI prefix)
@@ -72,7 +72,7 @@ export async function uploadImage(base64, path) {
  * @returns {string} path stored
  */
 export async function uploadVideo(base64, path) {
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
 
   // Detect MIME type from data-URI prefix, fallback to video/mp4
   const mimeMatch = base64.match(/^data:([^;]+);base64,/);
@@ -81,7 +81,7 @@ export async function uploadVideo(base64, path) {
   const cleaned = base64.replace(/^data:[^;]+;base64,/, '');
   const buffer  = Buffer.from(cleaned, 'base64');
 
-  const { error } = await supabase.storage
+  const { error } = await db.storage
     .from(BUCKET)
     .upload(path, buffer, { contentType: mimeType, upsert: true });
 
@@ -98,8 +98,8 @@ export async function uploadVideo(base64, path) {
  * @returns {Promise<{ path: string, token: string, signedUrl: string }>}
  */
 export async function createSignedUploadUrl(path) {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase.storage
+  const db = getMysqlClient();
+  const { data, error } = await db.storage
     .from(BUCKET)
     .createSignedUploadUrl(path, { upsert: true });
 
@@ -116,9 +116,9 @@ export async function createSignedUploadUrl(path) {
 export async function saveBaselineSnapshot(userId, snapshot) {
   if (!userId || !snapshot) return;
   try {
-    const supabase = getSupabaseClient();
+    const db = getMysqlClient();
     const buffer = Buffer.from(JSON.stringify(snapshot));
-    await supabase.storage
+    await db.storage
       .from(BUCKET)
       .upload(`${userId}/baseline_snapshot.json`, buffer, { contentType: 'application/json', upsert: true });
   } catch (err) {
@@ -132,8 +132,8 @@ export async function saveBaselineSnapshot(userId, snapshot) {
 export async function getBaselineSnapshot(userId) {
   if (!userId) return null;
   try {
-    const supabase = getSupabaseClient();
-    const { data, error } = await supabase.storage
+    const db = getMysqlClient();
+    const { data, error } = await db.storage
       .from(BUCKET)
       .download(`${userId}/baseline_snapshot.json`);
     if (error || !data) return null;
@@ -150,8 +150,8 @@ export async function getBaselineSnapshot(userId) {
 export async function clearBaselineSnapshot(userId) {
   if (!userId) return;
   try {
-    const supabase = getSupabaseClient();
-    await supabase.storage
+    const db = getMysqlClient();
+    await db.storage
       .from(BUCKET)
       .remove([`${userId}/baseline_snapshot.json`]);
   } catch {}
@@ -168,8 +168,8 @@ export async function objectExists(path) {
   const folder = slash >= 0 ? path.slice(0, slash) : '';
   const filename = slash >= 0 ? path.slice(slash + 1) : path;
 
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase.storage
+  const db = getMysqlClient();
+  const { data, error } = await db.storage
     .from(BUCKET)
     .list(folder, { search: filename, limit: 1 });
 
@@ -197,11 +197,17 @@ function throwStorageError(operation, path, error) {
  * @param {string} [contentType='video/mp4']
  */
 export async function uploadBuffer(path, buffer, contentType = 'video/mp4') {
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   const body = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
-  const { error } = await supabase.storage
+  const isImage = String(contentType || '').startsWith('image/');
+  const { error } = await db.storage
     .from(BUCKET)
-    .upload(path, body, { contentType, upsert: true });
+    .upload(path, body, {
+      contentType,
+      upsert: true,
+      // Share-card JPEGs reuse one path. A cached object kept the previous card in coach mail.
+      ...(isImage ? { cacheControl: '0' } : {}),
+    });
 
   if (error) throwStorageError('upload', path, error);
   return path;
@@ -214,11 +220,11 @@ export async function uploadBuffer(path, buffer, contentType = 'video/mp4') {
  * @returns {Promise<Buffer>}
  */
 export async function downloadBuffer(path, { retries = 3 } = {}) {
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   let lastError;
 
   for (let attempt = 0; attempt < retries; attempt++) {
-    const { data, error } = await supabase.storage.from(BUCKET).download(path);
+    const { data, error } = await db.storage.from(BUCKET).download(path);
     if (!error && data) {
       return Buffer.from(await data.arrayBuffer());
     }
@@ -237,8 +243,8 @@ export async function downloadBuffer(path, { retries = 3 } = {}) {
  */
 export async function removePaths(paths) {
   if (!paths?.length) return;
-  const supabase = getSupabaseClient();
-  const { error } = await supabase.storage.from(BUCKET).remove(paths);
+  const db = getMysqlClient();
+  const { error } = await db.storage.from(BUCKET).remove(paths);
   if (error) {
     logger.warn('[testimonials.repo] Failed to remove storage paths', { paths, error });
   }
@@ -251,8 +257,8 @@ export async function removePaths(paths) {
  */
 export async function getSignedUrl(path) {
   if (!path) return null;
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase.storage
+  const db = getMysqlClient();
+  const { data, error } = await db.storage
     .from(BUCKET)
     .createSignedUrl(path, SIGNED_URL_EXPIRY_SECONDS);
   if (error) {
@@ -269,8 +275,8 @@ export async function getSignedUrl(path) {
  */
 export async function getEmailSignedUrl(path) {
   if (!path) return null;
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase.storage
+  const db = getMysqlClient();
+  const { data, error } = await db.storage
     .from(BUCKET)
     .createSignedUrl(path, EMAIL_SIGNED_URL_EXPIRY_SECONDS);
   if (error) {
@@ -288,8 +294,8 @@ export async function getEmailSignedUrl(path) {
  * @returns {object|null}
  */
 export async function findByUserId(userId) {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from(TABLE)
     .select('*')
     .eq('user_id', userId)
@@ -306,8 +312,8 @@ export async function findByUserId(userId) {
  * @returns {object|null}
  */
 export async function findById(id) {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from(TABLE)
     .select('*')
     .eq('id', id)
@@ -323,9 +329,9 @@ export async function findById(id) {
  * @returns {object} inserted row
  */
 export async function insertTestimonial(payload) {
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   const now = nowUtc();
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from(TABLE)
     .insert({
       user_id:                  payload.userId,
@@ -377,7 +383,7 @@ export async function insertVideoOnlyTestimonial({ userId, coachId }) {
  * @returns {object} updated row
  */
 export async function updateTestimonial(id, payload) {
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   const updates = { updated_at: nowUtc() };
   if (payload.beforeImagePath       !== undefined) updates.before_image_path        = payload.beforeImagePath;
   if (payload.afterImagePath         !== undefined) updates.after_image_path         = payload.afterImagePath;
@@ -391,7 +397,7 @@ export async function updateTestimonial(id, payload) {
   if (payload.verifiedAt             !== undefined) updates.verified_at              = payload.verifiedAt;
   if (payload.recoveredHealthIssues  !== undefined) updates.recovered_health_issues  = payload.recoveredHealthIssues;
 
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from(TABLE)
     .update(updates)
     .eq('id', id)
@@ -409,7 +415,7 @@ export async function updateTestimonial(id, payload) {
  * @returns {object} updated row
  */
 export async function updateTestimonialVideos(id, payload) {
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   const updates  = { updated_at: nowUtc() };
   if (payload.healthVideoPath    !== undefined) updates.health_video_path      = payload.healthVideoPath;
   if (payload.businessVideoPath  !== undefined) updates.business_video_path    = payload.businessVideoPath;
@@ -418,7 +424,7 @@ export async function updateTestimonialVideos(id, payload) {
   if (payload.videoOtpExpiresAt  !== undefined) updates.video_otp_expires_at   = payload.videoOtpExpiresAt;
   if (payload.videoVerifiedAt    !== undefined) updates.video_verified_at      = payload.videoVerifiedAt;
 
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from(TABLE)
     .update(updates)
     .eq('id', id)
@@ -453,7 +459,7 @@ export async function listForCoach(coachId, scope = 'direct') {
   if (!members || members.length === 0) return [];
 
   const memberIds = members.map((m) => m.UserId);
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
 
   // Narrow select — never pull otp_hash / unused columns into list payloads.
   const LIST_COLUMNS = [
@@ -476,7 +482,7 @@ export async function listForCoach(coachId, scope = 'direct') {
     'recovered_health_issues',
   ].join(', ');
 
-  const { data: testimonials, error: testErr } = await supabase
+  const { data: testimonials, error: testErr } = await db
     .from(TABLE)
     .select(LIST_COLUMNS)
     .in('user_id', memberIds)
@@ -514,8 +520,8 @@ export async function fetchTransformationPhotosByUserIds(userIds) {
   const ids = [...new Set((userIds || []).map((id) => Number(id)).filter(Number.isFinite))];
   if (!ids.length) return new Map();
 
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from('team_table')
     .select('"UserId", transformation_photos')
     .in('UserId', ids);
@@ -574,8 +580,8 @@ async function mergeProfileTransformationPhotosIntoRows(rows) {
  * @returns {string|null}
  */
 export async function findCoachEmail(coachId) {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from('team_table')
     .select('"Email", "UserName"')
     .eq('"UserId"', coachId)
@@ -592,8 +598,8 @@ export async function findCoachEmail(coachId) {
  * @returns {Promise<{ coachId: number|null, userName: string|null }|null>}
  */
 export async function findCoachIdForUser(userId) {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from('team_table')
     .select('"CoachId", "UserName"')
     .eq('"UserId"', userId)
@@ -613,8 +619,8 @@ export async function findCoCoachPartnerId(userId) {
   const id = Number(userId);
   if (!Number.isFinite(id) || id <= 0) return null;
 
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from('coach_teams_table')
     .select('CoachId, CoCoachId')
     .or(`CoachId.eq.${id},CoCoachId.eq.${id}`)
@@ -645,9 +651,9 @@ export async function listVideoReportForCoach(coachId, scope = 'direct') {
   if (!members || members.length === 0) return [];
 
   const memberIds = members.map((m) => m.UserId);
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
 
-  const { data: testimonials, error: testErr } = await supabase
+  const { data: testimonials, error: testErr } = await db
     .from(TABLE)
     .select('user_id, video_status, health_video_path, business_video_path, video_verified_at')
     .in('user_id', memberIds)
@@ -680,9 +686,9 @@ export async function listVideoReportForCoach(coachId, scope = 'direct') {
  * @returns {Promise<import('../../utils/reportingHierarchyService.js').ReportingContext>}
  */
 export async function loadTeamReportingContext(coachId) {
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   const { loadReportingContextForCoach } = await import('../../utils/reportingHierarchyService.js');
-  return loadReportingContextForCoach(supabase, coachId);
+  return loadReportingContextForCoach(db, coachId);
 }
 
 /**
@@ -758,8 +764,8 @@ export async function countPhotoUploadStatsForCoach(coachId, scope = 'direct', c
   if (!total) return { uploaded: 0, notUploaded: 0 };
 
   const memberIds = members.map((m) => m.UserId);
-  const supabase = getSupabaseClient();
-  const { data: testimonials, error } = await supabase
+  const db = getMysqlClient();
+  const { data: testimonials, error } = await db
     .from(TABLE)
     .select('user_id, before_image_path')
     .in('user_id', memberIds)
@@ -808,8 +814,8 @@ export async function countVideoUploadStatsForCoach(coachId, scope = 'direct', c
   if (!total) return { uploaded: 0, notUploaded: 0 };
 
   const memberIds = members.map((m) => m.UserId);
-  const supabase = getSupabaseClient();
-  const { data: testimonials, error } = await supabase
+  const db = getMysqlClient();
+  const { data: testimonials, error } = await db
     .from(TABLE)
     .select('user_id, video_status')
     .in('user_id', memberIds)
@@ -911,7 +917,7 @@ function collectDescendantUserIds(coachUserId, childrenIndex, activeMemberIds) {
  * @returns {Promise<Record<string, { photo: object, video: object }>>}
  */
 export async function buildTeamUploadPerformanceByUserId(rootCoachId, context = null) {
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   const {
     buildReportingChildrenIndex,
     isCoachRole,
@@ -938,7 +944,7 @@ export async function buildTeamUploadPerformanceByUserId(rootCoachId, context = 
     reportingMembers.map((member) => [member.UserId, member.UserName]),
   );
 
-  const { data: testimonials, error } = await supabase
+  const { data: testimonials, error } = await db
     .from(TABLE)
     .select('user_id, before_image_path, video_status')
     .in('user_id', memberIds)

@@ -70,7 +70,7 @@ These do **not** accept a client `date` filter, or are explicitly out of scope f
 
 | Area | Reason |
 |---|---|
-| `utils/disciplineCalculationsSupabase.js` | Protected business-logic owner — requires `@principal-eng` |
+| `utils/disciplineCalculationsQuery.js` | Protected business-logic owner — requires `@principal-eng` |
 | `utils/disciplineCalculations.js` | Legacy MySQL `DATE()` — not used by migrated API routes |
 | `utils/timeReportHelpers.js` | Deprecated IST helpers; still used for **display grouping** (`convertISTToLocalDate`) in time-report, not for DB date bounds |
 | `GET /api/misc/server-time` | Returns platform clock; uses `todayInTimezone('Asia/Kolkata')` intentionally |

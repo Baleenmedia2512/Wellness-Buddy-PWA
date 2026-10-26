@@ -31,7 +31,7 @@ const ANALYSIS_MODULES = {
 };
 import { GoogleGenerativeAI, SchemaType } from '@google/generative-ai';
 import logger from '../logger.js';
-import { getSupabaseClient } from '../../../utils/supabaseClient.js';
+import { getMysqlClient } from '../../../utils/mysqlClient.js';
 import sharp from 'sharp';
 
 /** Short-lived cache so telemetry in one request doesn't double-hit DB. */
@@ -83,12 +83,12 @@ async function resolveEndUserForMonitor(userId) {
   }
 
   try {
-    const supabase = getSupabaseClient();
+    const db = getMysqlClient();
     const uid = Number.parseInt(key, 10);
     if (!Number.isFinite(uid) || uid <= 0) {
       return { endUserName: null, endUserEmail: null };
     }
-    const { data, error } = await supabase
+    const { data, error } = await db
       .from('team_table')
       .select('"UserName", "Email"')
       .eq('"UserId"', uid)

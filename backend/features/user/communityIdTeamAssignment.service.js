@@ -4,7 +4,7 @@
  * existing users and backfill when CommunityId exists without CoachTeamId.
  */
 import logger from '../../shared/lib/logger.js';
-import { getSupabaseClient } from '../../utils/supabaseClient.js';
+import { getMysqlClient } from '../../utils/mysqlClient.js';
 import { assignLeadSeat, resolveLeadSeatForUser } from '../../utils/coachTeamSeats.js';
 import * as repo from './user.repository.js';
 import {
@@ -27,17 +27,17 @@ const TEAM_LINK_ERROR = 'This Community ID is not linked to a Sponsor/Co-Sponsor
 /**
  * Resolve input to the shared Sponsor/Co-Sponsor team code (coach_teams_table.TeamId).
  *
- * @param {object} supabase
+ * @param {object} db
  * @param {string|null|undefined} rawCode
  * @param {number|string|null} [excludeUserId]
  * @returns {Promise<{ found: boolean, teamCode: string|null }>}
  */
-export async function resolveSharedTeamCodeFromInput(supabase, rawCode, excludeUserId = null) {
+export async function resolveSharedTeamCodeFromInput(db, rawCode, excludeUserId = null) {
   const code = normalizeTeamCodeFromCommunityId(rawCode);
   if (!code) return { found: false, teamCode: null };
   const excludeId = excludeUserId != null ? Number(excludeUserId) : null;
 
-  const { data: activeTeam, error: activeErr } = await supabase
+  const { data: activeTeam, error: activeErr } = await db
     .from('coach_teams_table')
     .select('TeamId')
     .eq('TeamId', code)
@@ -48,7 +48,7 @@ export async function resolveSharedTeamCodeFromInput(supabase, rawCode, excludeU
     return { found: true, teamCode: normalizeStoredTeamCode(activeTeam.TeamId) };
   }
 
-  const { data: teamIdRows, error: teamIdErr } = await supabase
+  const { data: teamIdRows, error: teamIdErr } = await db
     .from('team_table')
     .select('UserId, TeamId, CoachTeamId')
     .eq('TeamId', code)
@@ -60,7 +60,7 @@ export async function resolveSharedTeamCodeFromInput(supabase, rawCode, excludeU
     if (shared) return { found: true, teamCode: shared };
   }
 
-  const { data: communityRows, error: communityErr } = await supabase
+  const { data: communityRows, error: communityErr } = await db
     .from('team_table')
     .select('UserId, TeamId, CoachTeamId, CommunityId')
     .eq('CommunityId', code)
@@ -90,12 +90,12 @@ async function syncCoachLeadTeamCodeFromCommunityId(userId, communityIdSource, t
   });
   if (!teamCode) return null;
 
-  const supabase = getSupabaseClient();
-  const resolved = await resolveSharedTeamCodeFromInput(supabase, teamCode, userId);
+  const db = getMysqlClient();
+  const resolved = await resolveSharedTeamCodeFromInput(db, teamCode, userId);
   let resolvedSeat = leadSeat.seat || null;
 
   if (!resolved.found) {
-    const seatResult = await assignLeadSeat(supabase, teamCode, Number(userId));
+    const seatResult = await assignLeadSeat(db, teamCode, Number(userId));
     if (!seatResult.ok) {
       throw new Error(seatResult.error || 'This Community ID is unavailable as a Team Code');
     }
@@ -143,8 +143,8 @@ async function syncSharedCoachTeamIdFromCommunityId(
   const inputCode = normalizeTeamCodeFromCommunityId(communityIdSource);
   if (!inputCode) return null;
 
-  const supabase = getSupabaseClient();
-  const resolved = await resolveSharedTeamCodeFromInput(supabase, inputCode, userId);
+  const db = getMysqlClient();
+  const resolved = await resolveSharedTeamCodeFromInput(db, inputCode, userId);
 
   if (!shouldApplySharedCoachTeamId({
     role: teamRow.Role,
@@ -203,8 +203,8 @@ async function syncAllTeamFieldsFromExplicitCommunityIdUpdate(
   leadSeat,
   { communityIdExplicitlyUpdated = false } = {},
 ) {
-  const supabase = getSupabaseClient();
-  const resolved = await resolveSharedTeamCodeFromInput(supabase, inputCode, userId);
+  const db = getMysqlClient();
+  const resolved = await resolveSharedTeamCodeFromInput(db, inputCode, userId);
   const targetCode = resolveTargetTeamCodeFromExplicitCommunityIdUpdate({
     inputCode,
     resolvedFound: resolved.found,
@@ -229,7 +229,7 @@ async function syncAllTeamFieldsFromExplicitCommunityIdUpdate(
   });
 
   if (ensureCoachTeamRow) {
-    const seatResult = await assignLeadSeat(supabase, targetCode, Number(userId));
+    const seatResult = await assignLeadSeat(db, targetCode, Number(userId));
     if (!seatResult.ok) {
       if (shouldTreatLeadSeatFailureAsMemberLinkOnly({ resolvedFound: resolved.found })) {
         logger.info('[profile/update] Co-Sponsor seat unavailable; linked as team member only', {
@@ -296,8 +296,8 @@ export async function syncProfileCommunityIdToTeamAssignment(
   const teamRow = await repo.getTeamCodeFields(userId);
   if (!teamRow) return null;
 
-  const supabase = getSupabaseClient();
-  const leadSeat = await resolveLeadSeatForUser(supabase, userId);
+  const db = getMysqlClient();
+  const leadSeat = await resolveLeadSeatForUser(db, userId);
 
   const code = normalizeTeamCodeFromCommunityId(communityIdSource);
   if (code && shouldAlignAllTeamFieldsFromCommunityId({
