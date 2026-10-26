@@ -211,6 +211,28 @@ export function isCardShareValid(shareExpiresAt, now = new Date()) {
 }
 
 /**
+ * Prisma/MySQL create cannot use MariaDB uuid() / interval defaults.
+ * Callers pass a 36-char token (crypto.randomUUID). Clock is injectable.
+ *
+ * @param {{ now?: Date, token: string }} input
+ * @returns {{ publicShareToken: string, shareExpiresAt: Date }}
+ */
+export function buildNewCardShareDefaults({ now = new Date(), token } = {}) {
+  const trimmed = typeof token === 'string' ? token.trim() : '';
+  if (trimmed.length !== 36) {
+    throw new Error('buildNewCardShareDefaults: 36-character token required');
+  }
+  const base = now instanceof Date ? now : new Date(now);
+  if (Number.isNaN(base.getTime())) {
+    throw new Error('buildNewCardShareDefaults: valid now required');
+  }
+  return {
+    publicShareToken: trimmed,
+    shareExpiresAt: new Date(base.getTime() + SHARE_TTL_DAYS * 24 * 60 * 60 * 1000),
+  };
+}
+
+/**
  * Build the profile fields that should be written to team_table when a
  * link recipient saves a card to their profile.
  * Age / measurements stay card-only; Gender syncs when Male/Female.
