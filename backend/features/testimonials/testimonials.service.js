@@ -17,6 +17,10 @@ import {
   shouldSendPhotoApprovalOtp,
 } from './domain/photoCompleteness.rules.js';
 import {
+  previousEmailCardPaths,
+  shouldShowPreviousNewEmailCards,
+} from './domain/emailPreviousCard.rules.js';
+import {
   resolveOtpRecipientIds,
   toPositiveUserId,
 } from './domain/otpRecipient.rules.js';
@@ -1597,39 +1601,13 @@ async function sendUnifiedCoachEmail({
   const slots = new Set(changedSlots);
   void userId;
 
-  // Previous card = state before this submit (unchanged side keeps current path).
-  const previousCardBeforePath = (slots.has('before') && previousBeforeImagePath)
-    ? previousBeforeImagePath
-    : beforeImagePath;
-  const previousCardAfterPath = (slots.has('after') && previousAfterImagePath)
-    ? previousAfterImagePath
-    : ((slots.has('before') && previousBeforeImagePath && !previousAfterImagePath)
-      ? previousBeforeImagePath
-      : afterImagePath);
-
-  // If the before photo was updated, a valid previous before photo must have existed.
-  const hasValidPreviousBefore = slots.has('before')
-    ? Boolean(previousBeforeImagePath && !repo.isVideoOnlyPlaceholder(previousBeforeImagePath))
-    : Boolean(beforeImagePath && !repo.isVideoOnlyPlaceholder(beforeImagePath));
-
-  // If the after photo was updated, a valid previous after photo must have existed (and not be a mirror clone).
-  const hasValidPreviousAfter = slots.has('after')
-    ? Boolean(
-        previousAfterImagePath
-        && !repo.isVideoOnlyPlaceholder(previousAfterImagePath)
-        && previousAfterImagePath !== previousBeforeImagePath,
-      )
-    : Boolean(
-        afterImagePath
-        && !repo.isVideoOnlyPlaceholder(afterImagePath)
-        && (previousAfterImagePath ? previousAfterImagePath !== previousBeforeImagePath : true),
-      );
-
-  const hadPreviousCompleteCard = Boolean(
-    isComplete
-    && hasValidPreviousBefore
-    && hasValidPreviousAfter,
-  );
+  // Previous card = DB state before this submit. Clone After (same path as Before) is kept.
+  const { beforePath: previousCardBeforePath, afterPath: previousCardAfterPath } = previousEmailCardPaths({
+    previousBeforePath: previousBeforeImagePath,
+    previousAfterPath: previousAfterImagePath,
+    currentBeforePath: beforeImagePath,
+    currentAfterPath: afterImagePath,
+  });
 
   const photoSlotChanged = Boolean(
     (slots.has('before') || slots.has('after'))
@@ -1677,10 +1655,11 @@ async function sendUnifiedCoachEmail({
 
   const cardDetailsChanged = photoSlotChanged || weightChanged || durationChanged || goalChanged || issuesChanged;
 
-  const previousPairDistinct = Boolean(
-    hadPreviousCompleteCard
-    && cardDetailsChanged,
-  );
+  const previousPairDistinct = shouldShowPreviousNewEmailCards({
+    previousBeforePath: previousBeforeImagePath,
+    previousAfterPath: previousAfterImagePath,
+    cardDetailsChanged,
+  });
 
   const [
     currentBeforeHref,
