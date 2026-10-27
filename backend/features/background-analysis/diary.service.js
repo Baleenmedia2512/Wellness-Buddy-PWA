@@ -62,6 +62,16 @@ import {
 export { dedupePendingDiaryEntries } from './domain/diary-feed-dedup.js';
 
 /**
+ * Platform roles that may read any diary. Looked up from team_table, not from the client.
+ * @param {string|null|undefined} role
+ * @returns {boolean}
+ */
+export function isPlatformDiaryReader(role) {
+  const value = String(role || '').trim().toLowerCase();
+  return value === 'admin' || value === 'developer';
+}
+
+/**
  * Shared-team diary access for Sponsor/Co-Sponsor partners.
  * Allows a viewer when they are an active co-coach partner of any coach
  * in the owner's chain (including the owner when the owner is a lead).
@@ -151,6 +161,14 @@ async function viewerCanReadDiary(viewerUserId, ownerUserId, coachChain) {
   if (decision.allowed) return { allowed: true, decision, via: 'chain' };
   if (decision.reason === 'NO_VIEWER' || decision.reason === 'NO_OWNER') {
     return { allowed: false, decision, via: null };
+  }
+  const viewerRole = await repo.findUserRole(viewerUserId);
+  if (isPlatformDiaryReader(viewerRole)) {
+    return {
+      allowed: true,
+      decision: { allowed: true, actorRole: 'ADMIN' },
+      via: 'admin',
+    };
   }
   if (await canAccessDiaryViaSharedLead(viewerUserId, coachChain)) {
     return { allowed: true, decision, via: 'shared-lead' };

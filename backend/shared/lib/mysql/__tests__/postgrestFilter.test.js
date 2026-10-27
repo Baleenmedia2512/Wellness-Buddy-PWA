@@ -62,6 +62,26 @@ describe('compileWhere', () => {
     assert.deepEqual(compiled.params, ['a@b.c', 5, 5]);
   });
 
+  it('compiles co-coach and() groups instead of treating and(CoachId as a column', () => {
+    const atoms = parseOrFilter(
+      'and(CoachId.eq.339,CoCoachId.eq.279),and(CoachId.eq.279,CoCoachId.eq.339)',
+    );
+    assert.equal(atoms[0].kind, 'and');
+    assert.equal(atoms[0].atoms[0].column, 'CoachId');
+    assert.equal(atoms[0].atoms[1].column, 'CoCoachId');
+
+    const compiled = compileWhere([
+      { kind: 'or', atoms },
+      { kind: 'eq', column: 'Status', value: 'active' },
+    ], new Map([...known, ['Status', {}]]));
+    assert.match(
+      compiled.sql,
+      /\(`CoachId` = \? AND `CoCoachId` = \?\) OR \(`CoachId` = \? AND `CoCoachId` = \?\)/,
+    );
+    assert.match(compiled.sql, /`Status` = \?/);
+    assert.deepEqual(compiled.params, [339, 279, 279, 339, 'active']);
+  });
+
   it('maps not-is-null to IS NOT NULL', () => {
     const compiled = compileWhere([{ kind: 'not', column: 'Email', op: 'is', value: null }], known);
     assert.match(compiled.sql, /`Email` IS NOT NULL/);
