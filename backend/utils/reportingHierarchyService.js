@@ -21,10 +21,20 @@ import {
 import { fetchAllMysqlRows } from './mysqlPaginate.js';
 
 const COACH_ROLES = new Set(['coach', 'admin']);
+const PLATFORM_READ_ROLES = new Set(['admin', 'developer']);
 
 /** @param {string|undefined} role */
 export function isCoachRole(role) {
   return COACH_ROLES.has(String(role || '').toLowerCase());
+}
+
+/**
+ * Admin and developer may read any member. Coach access stays on the reporting tree.
+ * @param {string|null|undefined} role
+ * @returns {boolean}
+ */
+export function isPlatformMemberReader(role) {
+  return PLATFORM_READ_ROLES.has(String(role || '').trim().toLowerCase());
 }
 
 /**
@@ -469,6 +479,15 @@ export async function assertViewerCanAccessMember(db, viewerUserId, memberUserId
   if (viewerUserId == null || viewerUserId === '') return;
   if (memberUserId == null || memberUserId === '') return;
   if (Number(viewerUserId) === Number(memberUserId)) return;
+
+  const viewerId = Number(viewerUserId);
+  const { data: viewerRow, error: viewerError } = await db
+    .from('team_table')
+    .select('Role')
+    .eq('UserId', viewerId)
+    .maybeSingle();
+  if (viewerError) throw viewerError;
+  if (isPlatformMemberReader(viewerRow?.Role)) return;
 
   const context = await loadReportingContextForCoach(db, viewerUserId);
   if (isReportingDownlineMember(viewerUserId, memberUserId, context, 'full')) return;

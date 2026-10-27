@@ -137,6 +137,37 @@ describe('toDiaryEntry spurious driver Z stays on the IST calendar day', () => {
     assertIstWall('good-habit', { ID: 5, HabitType: 'walk', Notes: '' });
   });
 
+  it('early-morning UTC digits show India time on food, weight, and education', () => {
+    const food = toDiaryEntry('food', {
+      ID: 22416,
+      CreatedAt: '2026-10-26T02:16:34.000Z',
+      AnalysisData: '{"foods":[]}',
+      TotalCalories: 0,
+      TotalProtein: 0,
+      TotalCarbs: 0,
+      TotalFat: 0,
+      TotalFiber: 0,
+    }, { timezoneIana: IANA_IST });
+    const weight = toDiaryEntry('weight', {
+      ID: 5684,
+      CreatedAt: '2026-10-26T00:12:00.000Z',
+      Weight: 59.6,
+    }, { timezoneIana: IANA_IST });
+    const education = toDiaryEntry('education', {
+      Id: 9,
+      Platform: 'zoom',
+      Topic: 'Daily Education',
+      Confidence: 1,
+      CreatedAt: '2026-10-26T02:17:00.000Z',
+    }, { timezoneIana: IANA_IST });
+
+    assert.equal(food.capturedAt, '2026-10-26T02:16:34.000Z');
+    assert.equal(weight.capturedAt, '2026-10-26T00:12:00.000Z');
+    assert.equal(education.capturedAt, '2026-10-26T02:17:00.000Z');
+    assert.equal(timestampToCalendarYmd(food.capturedAt, IANA_IST), '2026-10-26');
+    assert.equal(timestampToCalendarYmd(weight.capturedAt, IANA_IST), '2026-10-26');
+  });
+
   it('morning driver Z stays 10:46 AM IST on the same day', () => {
     const entry = toDiaryEntry('education', {
       Id: 9,

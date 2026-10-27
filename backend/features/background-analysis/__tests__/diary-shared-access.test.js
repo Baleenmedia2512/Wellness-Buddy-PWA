@@ -6,7 +6,22 @@ import assert from 'node:assert/strict';
 import {
   canAccessDiaryViaSharedLead,
   canAccessDiaryViaDownlineCoCoach,
+  isPlatformDiaryReader,
 } from '../diary.service.js';
+
+describe('isPlatformDiaryReader', () => {
+  it('allows admin and developer to read a diary outside their coach line', () => {
+    assert.equal(isPlatformDiaryReader('admin'), true);
+    assert.equal(isPlatformDiaryReader('developer'), true);
+    assert.equal(isPlatformDiaryReader('ADMIN'), true);
+  });
+
+  it('keeps coach, user, and missing roles on the coach-line rules', () => {
+    assert.equal(isPlatformDiaryReader('coach'), false);
+    assert.equal(isPlatformDiaryReader('user'), false);
+    assert.equal(isPlatformDiaryReader(null), false);
+  });
+});
 
 describe('canAccessDiaryViaSharedLead', () => {
   it('allows a viewer paired to an ancestor coach in the owner chain', async () => {

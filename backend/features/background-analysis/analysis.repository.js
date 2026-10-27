@@ -390,3 +390,21 @@ export async function findUserName(userId) {
   if (error) throw error;
   return data?.UserName || null;
 }
+
+/**
+ * Role stored on team_table for a user, or null when the row is missing.
+ * @param {string|number} userId
+ * @returns {Promise<string|null>}
+ */
+export async function findUserRole(userId) {
+  if (userId == null || userId === '') return null;
+  const db = getMysqlClient();
+  const { data, error } = await db
+    .from('team_table')
+    .select('"Role"')
+    .eq('"UserId"', userId.toString())
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  return data?.Role || null;
+}
