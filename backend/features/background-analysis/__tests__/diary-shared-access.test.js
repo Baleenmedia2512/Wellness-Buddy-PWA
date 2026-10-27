@@ -4,6 +4,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  allowDiaryViaReportingAccess,
   canAccessDiaryViaSharedLead,
   canAccessDiaryViaDownlineCoCoach,
   isPlatformDiaryReader,
@@ -114,6 +115,22 @@ describe('canAccessDiaryViaDownlineCoCoach', () => {
       async () => null,
       getChain,
     );
+    assert.equal(allowed, false);
+  });
+});
+
+describe('allowDiaryViaReportingAccess', () => {
+  it('allows when the reporting check does not throw', async () => {
+    const allowed = await allowDiaryViaReportingAccess('339', '279', async () => {});
+    assert.equal(allowed, true);
+  });
+
+  it('denies a 403 from the reporting check', async () => {
+    const allowed = await allowDiaryViaReportingAccess('3396', '279', async () => {
+      const err = new Error('You do not have permission to view this member');
+      err.status = 403;
+      throw err;
+    });
     assert.equal(allowed, false);
   });
 });

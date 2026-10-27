@@ -40,6 +40,8 @@ import {
 } from '../captures/domain/permissions/retry.policy.js';
 import { isEnabled } from '../../shared/lib/feature-flags.js';
 import logger from '../../shared/lib/logger.js';
+import { getMysqlClient } from '../../utils/mysqlClient.js';
+import { assertViewerCanAccessMember } from '../../utils/reportingHierarchyService.js';
 import { getUserTimezoneIana } from '../user/domain/userTimezone.js';
 import { dedupePendingDiaryEntries } from './domain/diary-feed-dedup.js';
 import {
@@ -181,7 +183,41 @@ async function viewerCanReadDiary(viewerUserId, ownerUserId, coachChain) {
   )) {
     return { allowed: true, decision, via: 'downline-co-coach' };
   }
+  // Same visibility as Diary search / team reports: reporting downline,
+  // co-coach partner downline, and shared coach-team id.
+  if (await allowDiaryViaReportingAccess(viewerUserId, ownerUserId)) {
+    return { allowed: true, decision, via: 'reporting' };
+  }
   return { allowed: false, decision, via: null };
+}
+
+/**
+ * @param {string|number} viewerUserId
+ * @param {string|number} ownerUserId
+ * @param {(viewerUserId: string|number, ownerUserId: string|number) => Promise<void>} [assertAccess]
+ * @returns {Promise<boolean>}
+ */
+export async function allowDiaryViaReportingAccess(
+  viewerUserId,
+  ownerUserId,
+  assertAccess = (viewerId, ownerId) => assertViewerCanAccessMember(
+    getMysqlClient(),
+    viewerId,
+    ownerId,
+  ),
+) {
+  try {
+    await assertAccess(viewerUserId, ownerUserId);
+    return true;
+  } catch (err) {
+    if (err?.status === 403) return false;
+    logger.warn('viewerCanReadDiary: reporting access check failed', {
+      actorId: viewerUserId,
+      ownerId: ownerUserId,
+      err: err?.message,
+    });
+    throw err;
+  }
 }
 
 /**
