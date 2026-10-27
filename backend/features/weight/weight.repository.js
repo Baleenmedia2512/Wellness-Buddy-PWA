@@ -285,7 +285,7 @@ export async function getImageById(userId, id) {
   const run = (withDeletedFilter) => {
     let q = db
       .from(TABLE)
-      .select('ID, WeightImageKey')
+      .select('ID, WeightImageKey, WeightImageBase64')
       .eq('UserId', userId)
       .eq('ID', id);
     if (withDeletedFilter) q = q.or(ACTIVE_WEIGHT_FILTER);

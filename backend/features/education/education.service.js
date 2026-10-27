@@ -178,12 +178,13 @@ export async function getLogImage({ logId, userId }) {
       r2Url = null;
     }
   }
-  if (!r2Url) {
-    return { httpStatus: 404, body: { success: false, message: 'No image' } };
-  }
   return {
     httpStatus: 200,
-    body: { success: true, r2Url },
+    body: {
+      success: true,
+      r2Url,
+      image: data.ImageBase64 || null,
+    },
   };
 }
 

@@ -389,12 +389,14 @@ export async function getImage({ userId, id }) {
       r2Url = null;
     }
   }
-  if (!r2Url) {
-    return { httpStatus: 404, body: { success: false, message: 'No image' } };
-  }
   return {
     httpStatus: 200,
-    body: { success: true, id: row.ID, r2Url },
+    body: {
+      success: true,
+      id: row.ID,
+      r2Url,
+      image: row.WeightImageBase64 || null,
+    },
   };
 }
 

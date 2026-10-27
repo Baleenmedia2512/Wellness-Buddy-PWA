@@ -77,9 +77,16 @@ export async function putMileswebObject({ key, body }) {
     const full = remotePath(config, key);
     const slash = full.lastIndexOf('/');
     const dir = full.slice(0, slash);
-    const name = full.slice(slash + 1);
-    await client.ensureDir(dir);
-    await client.uploadFrom(Readable.from(bytes), name);
+    // ensureDir changes the working directory. Upload and size-check from
+    // the account root so the file lands on the path later reads use.
+    await client.cd('/');
+    if (dir) await client.ensureDir(dir);
+    await client.cd('/');
+    await client.uploadFrom(Readable.from(bytes), full);
+    const size = await client.size(full);
+    if (!(Number(size) > 0)) {
+      throw new Error('MilesWeb upload did not store the image');
+    }
   });
   rememberMileswebObject(key);
   return { key };
