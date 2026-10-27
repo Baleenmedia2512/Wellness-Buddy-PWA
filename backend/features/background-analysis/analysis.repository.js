@@ -339,15 +339,23 @@ export async function isCoCoachPaired(userIdA, userIdB) {
   const db = getMysqlClient();
   const a = userIdA.toString();
   const b = userIdB.toString();
-  const { data, error } = await db
-    .from('coach_teams_table')
-    .select('Id')
-    .or(`and(CoachId.eq.${a},CoCoachId.eq.${b}),and(CoachId.eq.${b},CoCoachId.eq.${a})`)
-    .eq('Status', 'active')
-    .limit(1)
-    .maybeSingle();
-  if (error) throw error;
-  return !!data;
+  const idValue = (value) => (/^\d+$/.test(value) ? Number(value) : value);
+
+  async function pairExists(coachId, coCoachId) {
+    const { data, error } = await db
+      .from('coach_teams_table')
+      .select('Id')
+      .eq('CoachId', idValue(coachId))
+      .eq('CoCoachId', idValue(coCoachId))
+      .eq('Status', 'active')
+      .limit(1)
+      .maybeSingle();
+    if (error) throw error;
+    return !!data;
+  }
+
+  if (await pairExists(a, b)) return true;
+  return pairExists(b, a);
 }
 
 /**
