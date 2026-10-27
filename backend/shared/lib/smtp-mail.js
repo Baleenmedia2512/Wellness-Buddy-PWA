@@ -78,10 +78,11 @@ async function sendOnce(transporter, mail) {
 }
 
 /**
- * @param {{ to: string, subject: string, text: string, html?: string }} input
- * @returns {Promise<{ accepted: string[], response?: string }>}
+ * Mail payload for nodemailer. Optional attachments are omitted when empty so
+ * existing OTP callers stay byte-for-byte the same shape.
+ * @param {{ to: string, subject: string, text: string, html?: string, attachments?: object[] }} input
  */
-export async function sendTransactionalMail({ to, subject, text, html }) {
+export function buildTransactionalMail({ to, subject, text, html, attachments } = {}) {
   const { user } = smtpCredentials();
   const mail = {
     from: smtpFromAddress(),
@@ -95,6 +96,18 @@ export async function sendTransactionalMail({ to, subject, text, html }) {
       'Auto-Submitted': 'auto-generated',
     },
   };
+  if (Array.isArray(attachments) && attachments.length > 0) {
+    mail.attachments = attachments;
+  }
+  return mail;
+}
+
+/**
+ * @param {{ to: string, subject: string, text: string, html?: string, attachments?: object[] }} input
+ * @returns {Promise<{ accepted: string[], response?: string }>}
+ */
+export async function sendTransactionalMail({ to, subject, text, html, attachments }) {
+  const mail = buildTransactionalMail({ to, subject, text, html, attachments });
 
   const attempts = listSmtpTransportAttempts();
   let lastError = null;
