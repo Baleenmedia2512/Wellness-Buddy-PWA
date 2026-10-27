@@ -2,9 +2,13 @@
  * Canonical food_nutrition_data_table.CreatedAt interpretation.
  *
  * Storage contract: timezone-less CreatedAt digits are legacy IST (Asia/Kolkata)
- * wall-clock. Drivers / timestamptz sessions sometimes append a spurious
- * `Z` / `+00:00` while leaving IST digits intact — that must NOT shift the
- * meal by +5:30 (lunch into dinner) or into the next calendar day.
+ * wall-clock. Drivers sometimes append a spurious `Z` / `+00:00` while leaving
+ * IST digits intact — that must NOT shift a daytime meal by +5:30 (lunch into
+ * dinner) or into the next calendar day.
+ *
+ * A clock earlier than 05:30 with that UTC mark is different. Those digits
+ * were written as UTC (`now()` / a Date under `time_zone = '+00:00'`), so
+ * 02:16 is 7:46 AM in India, not 2:16 AM. 05:30 and later stay IST wall.
  *
  * Display contract: after converting storage → UTC instant (always via IST),
  * calendar day and local time-of-day are derived in the owner's
@@ -27,6 +31,28 @@ export const LEGACY_STORAGE_TIMEZONE = IANA_IST;
 
 const UTC_OR_ZERO_OFFSET_RE = /(?:Z|[+]00:?00)$/i;
 const NON_UTC_OFFSET_RE = /[+-]\d{2}:?\d{2}$/;
+const CLOCK_RE = /(?:T|\s)(\d{2}):(\d{2})(?::\d{2})?/;
+/** IST is UTC+5:30. A UTC mark on an earlier clock is a real UTC instant. */
+const IST_OFFSET_MINUTES = (5 * 60) + 30;
+
+/**
+ * @param {string} raw
+ * @returns {number|null} minutes since midnight of the clock digits
+ */
+function clockMinutes(raw) {
+  const match = CLOCK_RE.exec(String(raw));
+  if (!match) return null;
+  return (Number(match[1]) * 60) + Number(match[2]);
+}
+
+/**
+ * @param {string} raw
+ * @returns {boolean}
+ */
+function isUtcClockBeforeIstOffset(raw) {
+  const minutes = clockMinutes(raw);
+  return minutes != null && minutes < IST_OFFSET_MINUTES;
+}
 
 /**
  * @param {string} raw
@@ -52,10 +78,9 @@ function hasNonUtcExplicitOffset(raw) {
  * Rules:
  * - Timezone-less → IST wall-clock (legacy storage), never the display zone
  * - Explicit non-UTC offset (e.g. +05:30) → absolute instant
- * - `Z` / `+00:00` → MySQL DATETIME wall digits with a driver-added UTC
- *   mark. The digits stay IST. Afternoon times stay on the same calendar
- *   day, so a day-change check is not enough (14:49 must stay 2:49 PM
- *   lunch, not 8:19 PM dinner).
+ * - `Z` / `+00:00` before 05:30 → real UTC digits (02:16 is 7:46 AM IST).
+ * - `Z` / `+00:00` at 05:30 or later → driver-added mark on IST wall
+ *   digits. 14:49 stays 2:49 PM lunch, not 8:19 PM dinner.
  *
  * @param {string|Date} raw
  * @param {string} [_ignoredTimezoneIana] Kept for call-site compatibility; storage is always IST
@@ -66,20 +91,20 @@ export function normalizeFoodCreatedAt(raw, _ignoredTimezoneIana = IANA_IST) {
   const storageTz = LEGACY_STORAGE_TIMEZONE;
   assertIanaTimezone(storageTz);
 
-  if (raw instanceof Date) {
-    return normalizeStoredTimestampToUtcIso(raw, storageTz);
-  }
-  if (raw == null || String(raw).trim() === '') {
+  if (raw == null || (!(raw instanceof Date) && String(raw).trim() === '')) {
     throw new RangeError('Invalid food CreatedAt: empty');
   }
 
-  const s = String(raw).trim();
+  const s = raw instanceof Date ? raw.toISOString() : String(raw).trim();
 
   if (hasNonUtcExplicitOffset(s)) {
     return normalizeStoredTimestampToUtcIso(s, storageTz);
   }
 
   if (hasUtcOrZeroOffset(s)) {
+    if (isUtcClockBeforeIstOffset(s)) {
+      return normalizeStoredTimestampToUtcIso(s, 'UTC');
+    }
     const stripped = s.replace(UTC_OR_ZERO_OFFSET_RE, '');
     return normalizeStoredTimestampToUtcIso(stripped, storageTz);
   }

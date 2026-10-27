@@ -30,6 +30,36 @@ describe('resolveFoodTimestamp — calendar day contract', () => {
     assert.equal(r.timeOfDay, '14:49:56');
   });
 
+  it('UTC clock before 05:30 displays as India time', () => {
+    // 02:16 UTC stored by a UTC session is 7:46 AM IST, not 2:16 AM.
+    const morning = resolveFoodTimestamp('2026-10-26T02:16:34.000Z', IANA_IST);
+    assert.equal(morning.calendarYmd, '2026-10-26');
+    assert.equal(morning.timeOfDay, '07:46:34');
+    assert.equal(morning.utcIso, '2026-10-26T02:16:34.000Z');
+
+    const midnight = resolveFoodTimestamp('2026-10-26T00:48:34.000Z', IANA_IST);
+    assert.equal(midnight.timeOfDay, '06:18:34');
+
+    const justBeforeOffset = resolveFoodTimestamp('2026-10-26T05:29:59.000Z', IANA_IST);
+    assert.equal(justBeforeOffset.timeOfDay, '10:59:59');
+  });
+
+  it('05:30 and 13:01 with a driver Z stay IST wall clock', () => {
+    const boundary = resolveFoodTimestamp('2026-10-26T05:30:00.000Z', IANA_IST);
+    assert.equal(boundary.timeOfDay, '05:30:00');
+    assert.equal(boundary.calendarYmd, '2026-10-26');
+
+    const afternoon = resolveFoodTimestamp('2026-10-25T13:01:12.000Z', IANA_IST);
+    assert.equal(afternoon.timeOfDay, '13:01:12');
+    assert.equal(afternoon.calendarYmd, '2026-10-25');
+  });
+
+  it('naive early-morning digits stay IST wall clock', () => {
+    const r = resolveFoodTimestamp('2026-10-26 02:16:34', IANA_IST);
+    assert.equal(r.timeOfDay, '02:16:34');
+    assert.equal(r.calendarYmd, '2026-10-26');
+  });
+
   it('C: spurious Z on IST wall must not shift into 2026-07-25', () => {
     const r = resolveFoodTimestamp('2026-07-24T19:45:00.000Z', IANA_IST);
     assert.equal(r.calendarYmd, '2026-07-24');
