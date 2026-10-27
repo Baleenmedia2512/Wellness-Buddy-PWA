@@ -40,9 +40,6 @@ const NutritionCenterRegistration = ({ user, onBack, onSaved, initialCenter }) =
   const [nameChecking, setNameChecking] = useState(false);
   const nameCheckTimerRef = useRef(null);
   
-  const editingCenterRef = useRef(editingCenter);
-  editingCenterRef.current = editingCenter;
-
   const mapRef = useRef(null);
   const googleMapRef = useRef(null);
   const markerRef = useRef(null);
@@ -135,25 +132,6 @@ const NutritionCenterRegistration = ({ user, onBack, onSaved, initialCenter }) =
       initializeMap({ lat: 0, lng: 0 });
     }
   };
-
-  // Reverse geocode coordinates to a human-readable address
-  const reverseGeocode = useCallback((lat, lng) => {
-    if (!lat || !lng || !window.google || !window.google.maps || !window.google.maps.Geocoder) return;
-
-    const geocoder = new window.google.maps.Geocoder();
-    geocoder.geocode(
-      { location: { lat: Number(lat), lng: Number(lng) } },
-      (results, status) => {
-        if (status === 'OK' && results?.[0]?.formatted_address) {
-          const addr = results[0].formatted_address;
-          setSearchAddress(addr);
-          if (searchBoxRef.current) {
-            searchBoxRef.current.value = addr;
-          }
-        }
-      }
-    );
-  }, []);
 
   const initializeMap = (center) => {
     if (!window.google || !window.google.maps || !window.google.maps.Map) {
@@ -323,43 +301,11 @@ const NutritionCenterRegistration = ({ user, onBack, onSaved, initialCenter }) =
         debugLog('ðŸ“ Map clicked/tapped at:', event.latLng.lat(), event.latLng.lng());
         if (event.latLng) {
           placeMarker(event.latLng);
-          reverseGeocode(event.latLng.lat(), event.latLng.lng());
         }
       });
 
-      // Center map on user location if available, or prioritize editing center if set
-      const editTarget = editingCenterRef.current || initialCenter;
-      if (editTarget?.latitude && editTarget?.longitude) {
-        const editPos = { lat: Number(editTarget.latitude), lng: Number(editTarget.longitude) };
-        map.setCenter(editPos);
-        map.setZoom(15);
-        if (markerRef.current) markerRef.current.setMap(null);
-        markerRef.current = new window.google.maps.Marker({
-          position: editPos,
-          map: map,
-          draggable: true,
-          animation: window.google.maps.Animation.DROP,
-          icon: {
-            url: 'http://maps.google.com/mapfiles/ms/icons/red-dot.png',
-          },
-          title: 'Selected Centre Location',
-          zIndex: 2,
-        });
-        markerRef.current.addListener('dragend', (evt) => {
-          const newLat = evt.latLng.lat().toFixed(8);
-          const newLng = evt.latLng.lng().toFixed(8);
-          setLatitude(newLat);
-          setLongitude(newLng);
-          reverseGeocode(newLat, newLng);
-        });
-        const initialAddr = editTarget.address || editTarget.formatted_address;
-        if (initialAddr) {
-          setSearchAddress(initialAddr);
-          if (searchBoxRef.current) searchBoxRef.current.value = initialAddr;
-        } else {
-          reverseGeocode(editTarget.latitude, editTarget.longitude);
-        }
-      } else if (center.lat !== 0) {
+      // Center map on user location if available
+      if (center.lat !== 0) {
         map.setCenter(center);
       }
     } catch (err) {
@@ -409,7 +355,6 @@ const NutritionCenterRegistration = ({ user, onBack, onSaved, initialCenter }) =
       const newLng = event.latLng.lng().toFixed(8);
       setLatitude(newLat);
       setLongitude(newLng);
-      reverseGeocode(newLat, newLng);
       debugLog('ðŸ“ Marker dragged to:', newLat, newLng);
     });
   };
@@ -534,47 +479,22 @@ const NutritionCenterRegistration = ({ user, onBack, onSaved, initialCenter }) =
     setCountryCode(nextCode);
     setOwnerPhone(nextPhone);
     setNameAvailable(null);
-    // Pre-fill existing address or reverse-geocode from coordinates
-    const initialAddr = center.address || center.formatted_address || '';
-    if (initialAddr) {
-      setSearchAddress(initialAddr);
-      if (searchBoxRef.current) {
-        searchBoxRef.current.value = initialAddr;
-      }
-    } else if (center.latitude && center.longitude) {
-      reverseGeocode(center.latitude, center.longitude);
-    } else {
-      setSearchAddress('');
-      if (searchBoxRef.current) {
-        searchBoxRef.current.value = '';
-      }
+    setNameChecking(false);
+    setSearchAddress('');
+    if (searchBoxRef.current) {
+      searchBoxRef.current.value = '';
     }
-
     setError(null);
     setSuccess(null);
     if (googleMapRef.current && window.google) {
-      const pos = { lat: Number(center.latitude), lng: Number(center.longitude) };
+      const pos = { lat: center.latitude, lng: center.longitude };
       if (markerRef.current) markerRef.current.setMap(null);
       markerRef.current = new window.google.maps.Marker({
         position: pos,
         map: googleMapRef.current,
-        draggable: true,
-        animation: window.google.maps.Animation.DROP,
-        icon: {
-          url: 'http://maps.google.com/mapfiles/ms/icons/red-dot.png',
-        },
-        title: 'Selected Centre Location',
-        zIndex: 2,
-      });
-      markerRef.current.addListener('dragend', (evt) => {
-        const newLat = evt.latLng.lat().toFixed(8);
-        const newLng = evt.latLng.lng().toFixed(8);
-        setLatitude(newLat);
-        setLongitude(newLng);
-        reverseGeocode(newLat, newLng);
+        title: 'Selected Location',
       });
       googleMapRef.current.panTo(pos);
-      googleMapRef.current.setZoom(15);
     }
   };
 
