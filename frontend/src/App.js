@@ -64,6 +64,7 @@ import { WaitingForCoachModal } from "./shell/components/WaitingForCoachModal";
 import { WeightShareCard } from "./shell/components/WeightShareCard";
 import { WeightResultCard } from "./shell/components/WeightResultCard";
 import { Capacitor } from "@capacitor/core";
+import wellnessValleyIcon from "./assets/wellness-valley-icon.png";
 import { Bug, Share2, Pencil, Check, X as XIcon, Sparkles } from "lucide-react";
 import ImageUpload from "./shared/components/ImageUpload";
 import {
@@ -384,8 +385,12 @@ function WellnessValleyApp() {
   );
   // Skip the loading screen for returning OTP users (session pre-loaded from cache).
   const [authLoading, setAuthLoading] = useState(() => {
-    if (Session.isUserSignedOut()) return true;
-    if (Session.isOtpVerified() && Session.getOtpUser()) return false;
+    if (Session.isOtpVerified() && Session.getOtpUser() && !Session.isUserSignedOut()) {
+      return false;
+    }
+    // Signed-out Android/iOS must open Login. The white logo bridge used a
+    // missing /logo.png, so the splash logo was followed by a blank page.
+    if (Capacitor.isNativePlatform()) return false;
     return true;
   });
   const [isOtpVerified, setIsOtpVerified] = useState(Session.isOtpVerified());
@@ -459,9 +464,12 @@ function WellnessValleyApp() {
   // Starts visible on native so the home screen is never shown during the
   // ~100-300 ms between splash dismiss and native camera overlay appearing.
   // Dismissed right before openCamera() is called, or by safety effects below.
-  const [showLaunchOverlay, setShowLaunchOverlay] = useState(() =>
-    Capacitor.isNativePlatform() && !Session.getPendingClassifyCapture()?.captureId,
-  );
+  const [showLaunchOverlay, setShowLaunchOverlay] = useState(() => {
+    if (!Capacitor.isNativePlatform()) return false;
+    if (Session.getPendingClassifyCapture()?.captureId) return false;
+    if (Session.isUserSignedOut()) return false;
+    return Session.isOtpVerified() && !!Session.getOtpUser();
+  });
   const [manualModeActive, setManualModeActive] = useState(false); // always AI by default; auto-set by openBestManualModal on AI failure
   const [manualModeToast, setManualModeToast] = useState(""); // "enabled" | "disabled" | ""
   const [showManualWeightModal, setShowManualWeightModal] = useState(false);
@@ -1973,6 +1981,14 @@ function WellnessValleyApp() {
     isUserActive,
     showManualEntry,
   ]);
+
+  // Android 8 can fail to open the camera. Without this, the white launch
+  // cover stays up and the phone never reaches Login or Home.
+  useEffect(() => {
+    if (!showLaunchOverlay) return undefined;
+    const timer = setTimeout(() => setShowLaunchOverlay(false), 2500);
+    return () => clearTimeout(timer);
+  }, [showLaunchOverlay]);
 
   // Deep-link handler: open the app via Android App Link
   // (https://<host>/share/<id>) or the custom scheme
@@ -7678,7 +7694,7 @@ function WellnessValleyApp() {
         }}
       >
         <img
-          src="/logo.png"
+          src={wellnessValleyIcon}
           alt="Wellness Valley"
           style={{ width: 120, height: 120, objectFit: "contain" }}
         />
@@ -8642,7 +8658,7 @@ function WellnessValleyApp() {
             }}
           >
             <img
-              src="/logo.png"
+              src={wellnessValleyIcon}
               alt=""
               style={{ width: 120, height: 120, objectFit: "contain" }}
             />
