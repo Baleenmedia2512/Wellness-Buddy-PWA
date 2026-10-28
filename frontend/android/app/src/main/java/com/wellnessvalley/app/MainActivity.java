@@ -51,23 +51,30 @@ public class MainActivity extends BridgeActivity {
         // OEM-safe BCM address-book insert (OPPO/ColorOS rejects community Contacts plugin)
         registerPlugin(com.wellnessvalley.app.plugins.BcmContactsPlugin.class);
         
-        // ✅ ANDROID PERFORMANCE: Enable hardware acceleration for faster image rendering
-        getWindow().setFlags(
-            WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
-            WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED
-        );
+        // Android 7 and 8 draw the page with an old Chrome WebView. A hardware
+        // window makes that WebView fail eglChooseConfig and stay white.
+        // Android 9+ keeps hardware acceleration.
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.P) {
+            WebView.enableSlowWholeDocumentDraw();
+            getWindow().setFlags(0, WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED);
+        }
         
         super.onCreate(savedInstanceState);
+
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.P) {
+            getWindow().setFlags(0, WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED);
+        }
         
         // ✅ CRITICAL FIX: Ensure splash screen window is completely removed
         // This prevents the splash screen from appearing in text selection overlays
         splashScreen.setKeepOnScreenCondition(() -> false);
         
-        // Enable hardware acceleration for better animation performance
-        getWindow().setFlags(
-            WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
-            WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED
-        );
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+            getWindow().setFlags(
+                WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
+                WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED
+            );
+        }
         
         // ✅ ANDROID PERFORMANCE: Optimize WebView for fast image operations
         optimizeWebView();
@@ -289,8 +296,13 @@ public class MainActivity extends BridgeActivity {
         try {
             WebView webView = getBridge().getWebView();
             if (webView != null) {
-                // Enable hardware acceleration at view level
-                webView.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+                // Android 7 and 8 GPUs often leave a permanent white page when
+                // the WebView is forced onto a hardware layer. Android 9+ keeps it.
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+                    webView.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+                } else {
+                    webView.setLayerType(View.LAYER_TYPE_SOFTWARE, null);
+                }
                 
                 WebSettings settings = webView.getSettings();
                 

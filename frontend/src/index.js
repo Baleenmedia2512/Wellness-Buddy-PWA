@@ -44,9 +44,29 @@ if (process.env.NODE_ENV === 'production') {
   );
 }
 
-// ✅ PWA: Register service worker with update detection
-// Works in both web and Android (when built with 'npm run build')
-if ('serviceWorker' in navigator && process.env.NODE_ENV === 'production') {
+// Native WebView keeps one origin across APK updates. A service worker from
+// an older install serves cached JS and leaves a white page after the splash.
+// The website still registers the worker below.
+if (Capacitor.isNativePlatform() && 'serviceWorker' in navigator) {
+  const clearNativeServiceWorkers = async () => {
+    const registrations = await navigator.serviceWorker.getRegistrations();
+    await Promise.all(registrations.map((registration) => registration.unregister()));
+    if (window.caches) {
+      const keys = await caches.keys();
+      await Promise.all(keys.map((key) => caches.delete(key)));
+    }
+    if (
+      navigator.serviceWorker.controller &&
+      sessionStorage.getItem('wvNativeSwCleared') !== '1'
+    ) {
+      sessionStorage.setItem('wvNativeSwCleared', '1');
+      window.location.reload();
+    }
+  };
+  clearNativeServiceWorkers().catch((error) => {
+    console.error('Native service worker cleanup failed:', error);
+  });
+} else if ('serviceWorker' in navigator && process.env.NODE_ENV === 'production') {
   window.addEventListener('load', () => {
     debugLog('🔧 [PWA] Environment:', {
       isNative: Capacitor.isNativePlatform(),
