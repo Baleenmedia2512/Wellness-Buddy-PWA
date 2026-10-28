@@ -192,6 +192,14 @@ const REGISTRY = Object.freeze({
     defaultEnabled: true,
     description:    'BroadCast paid screen: how-to video and payment entry.',
   },
+
+  // Profile Go Premium — opens Cashfree checkout. Kill switch hides the row.
+  'ff.go-premium': {
+    envKey:         'REACT_APP_FF_GO_PREMIUM',
+    storageKey:     'ff.go-premium',
+    defaultEnabled: true,
+    description:    'Profile Go Premium opens Cashfree checkout.',
+  },
 });
 
 function readStorage(key) {

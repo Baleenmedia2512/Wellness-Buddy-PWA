@@ -1,7 +1,7 @@
 # `claude.md` — Wellness Valley PWA · Business Constitution
 
 > **Status:** MANDATORY · **Scope:** ALL contributors (humans + AI) · **Owner:** CTO / Principal Engineer
-> **Version:** 3.1.8 · **Purpose:** Business rules, domain ownership, governance, permissions, and policies.
+> **Version:** 3.1.9 · **Purpose:** Business rules, domain ownership, governance, permissions, and policies.
 >
 > **Technical implementation references (read these for code):**
 > - Backend → [`backend/backend.md`](backend/backend.md)
@@ -155,6 +155,7 @@ All work-in-progress is gated behind a feature flag. No exception.
 | `ff.community-id-otp` | ON | @principal-eng | 2027-03-18 | ADR-0013 — Profile Community ID create/co-sponsor via 24h sponsor OTP. Live 3.4.9 still saves Community ID on profile POST; 3.5.0+ uses OTP. |
 | `ff.height-change-otp` | ON | @principal-eng | 2027-03-25 | Profile height: first save free; later changes need email/phone OTP. Apps below 3.5.0 still change height on profile POST; 3.5.0+ uses OTP. |
 | `ff.broadcast` | ON | @principal-eng | 2027-03-29 | BroadCast paid screen: how-to video and payment entry. Upload and Burst stay locked until recharge is connected. |
+| `ff.go-premium` | ON | @principal-eng | 2027-04-28 | Profile Go Premium opens Cashfree checkout. Kill switch hides the row and the create-order API. |
 
 **Frontend-only UI flags (`frontend/src/config/featureFlags.js`, no backend mirror):** `ff.shake-calculator` (OFF), `ff.contact-picker` (OFF).
 
