@@ -18,6 +18,7 @@ import {
 import {
   ACTIVITY_REPORT_ATTENDANCE,
   activeActivityReportTableFilters,
+  activityReportCategoryCounts,
   activityReportFilterQuery,
   emptyActivityReportFilterOptions,
   emptyActivityReportTableFilterValues,
@@ -88,6 +89,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0, t
   const [customStartDate, setCustomStartDate] = useState(null);
   const [customEndDate, setCustomEndDate] = useState(null);
   const [summary, setSummary] = useState(null);
+  const [notPostedSummary, setNotPostedSummary] = useState(null);
   const [selectedActivity, setSelectedActivity] = useState('education');
   const [detailRecords, setDetailRecords] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -299,6 +301,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0, t
     }
 
     setSummary(summaryData.summary || null);
+    setNotPostedSummary(summaryData.notPostedSummary || null);
     applyReportMeta(summaryData);
     setMemberSummaries(memberData.members || []);
     setMemberStats(memberData.stats || null);
@@ -461,6 +464,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0, t
       }
 
       setSummary(bootstrapResult.data.summary || null);
+      setNotPostedSummary(bootstrapResult.data.notPostedSummary || null);
       applyReportMeta(bootstrapResult.data);
       setMemberSummaries(bootstrapResult.data.members || []);
       setMemberStats(bootstrapResult.data.stats || null);
@@ -1039,6 +1043,11 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0, t
   const pageSize = pagination.pageSize || itemsPerPage;
   const showingFrom = totalRecords === 0 ? 0 : ((pagination.currentPage || currentPage) - 1) * pageSize + 1;
   const showingTo = Math.min((pagination.currentPage || currentPage) * pageSize, totalRecords);
+  const categorySummary = activityReportCategoryCounts(
+    attendanceStatus,
+    summary,
+    notPostedSummary,
+  );
   const activeFilterChips = activeActivityReportTableFilters(tableFilters);
   const hasActiveTableFilters = Boolean(searchQuery.trim() || activeFilterChips.length > 0);
 
@@ -1078,7 +1087,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0, t
           onTeamScopeChange={handleTeamScopeChange}
           selectedActivity={selectedActivity}
           activityTypes={ACTIVITY_TYPES}
-          summary={summary}
+          summary={categorySummary}
           onActivityChange={handleActivityClick}
           attendanceStatus={attendanceStatus}
           onAttendanceChange={handleAttendanceChange}

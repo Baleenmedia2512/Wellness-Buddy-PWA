@@ -7,6 +7,7 @@ import * as repo from './activity-report.repository.js';
 import { resolveActivityReportUserIds } from './domain/activity-report.scope.js';
 import {
   ACTIVITY_REPORT_ATTENDANCE,
+  buildNotPostedSummaryCounts,
   isNotAttendedActivityReport,
   resolveActivityReportTableUserIds,
 } from './domain/activity-report.attendance.js';
@@ -888,6 +889,7 @@ async function getActivityReportBootstrapUncached({
       body: {
         ...baseBody,
         summary: EMPTY_SUMMARY,
+        notPostedSummary: EMPTY_SUMMARY,
         members: [],
         stats: EMPTY_STATS,
         records: [],
@@ -934,6 +936,7 @@ async function getActivityReportBootstrapUncached({
   const summary = buildSummaryCounts({
     weightRecords, educationRecords, foodRecords, stepRecords, watchRecords, timeWindows, timezoneIana, timezoneByUserId,
   });
+  const notPostedSummary = buildNotPostedSummaryCounts(summary, userIds);
   perf.mark('summary_counts');
 
   let records = [];
@@ -1019,6 +1022,7 @@ async function getActivityReportBootstrapUncached({
   const body = {
     ...baseBody,
     summary,
+    notPostedSummary,
     members: [],
     stats: EMPTY_STATS,
     records,
@@ -1058,15 +1062,8 @@ export async function getActivitySummary({ userId, role, teamScope, dateRange, s
         endDate: endStr,
         teamScope: resolvedScope,
         teamScopeCounts,
-        summary: {
-          weight: 0,
-          education: 0,
-          breakfast: 0,
-          lunch: 0,
-          dinner: 0,
-          water: 0,
-          calories: 0,
-        },
+        summary: EMPTY_SUMMARY,
+        notPostedSummary: EMPTY_SUMMARY,
       },
     };
   }
@@ -1091,6 +1088,7 @@ export async function getActivitySummary({ userId, role, teamScope, dateRange, s
   const counts = buildSummaryCounts({
     weightRecords, educationRecords, foodRecords, stepRecords, watchRecords, timeWindows, timezoneIana, timezoneByUserId,
   });
+  const notPostedSummary = buildNotPostedSummaryCounts(counts, userIds);
   
   return {
     httpStatus: 200,
@@ -1102,6 +1100,7 @@ export async function getActivitySummary({ userId, role, teamScope, dateRange, s
       teamScope: resolvedScope,
       teamScopeCounts,
       summary: counts,
+      notPostedSummary,
     },
   };
 }
