@@ -5,6 +5,7 @@ import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   mileswebObjectExists,
+  mileswebPathCandidates,
   readMileswebObject,
   rememberMileswebObject,
   forgetMileswebObject,
@@ -15,6 +16,20 @@ const KEYS = [
   'MILESWEB_FTP_USER',
   'MILESWEB_FTP_PASSWORD',
 ];
+
+describe('mileswebPathCandidates', () => {
+  it('checks the FTP home and the uploads folder for the same ImageKey', () => {
+    const key = 'captures/279/21128/e012c5adfa6a7fc4.jpg';
+    assert.deepEqual(
+      mileswebPathCandidates(key, { uploadRoot: '.' }),
+      [key, `wellnessvalley/uploads/${key}`],
+    );
+    assert.deepEqual(
+      mileswebPathCandidates(key, { uploadRoot: 'wellnessvalley/uploads' }),
+      [`wellnessvalley/uploads/${key}`, key],
+    );
+  });
+});
 
 describe('ftpStorage when MilesWeb FTP is off', () => {
   const prev = {};

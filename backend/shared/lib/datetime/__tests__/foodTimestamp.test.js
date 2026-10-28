@@ -54,10 +54,12 @@ describe('resolveFoodTimestamp — calendar day contract', () => {
     assert.equal(afternoon.calendarYmd, '2026-10-25');
   });
 
-  it('naive early-morning digits stay IST wall clock', () => {
+  it('naive early-morning digits are UTC when the driver drops Z', () => {
+    // Same 02:16 UTC instant as the Z form. 2:16 AM on the diary is 7:46 AM IST.
     const r = resolveFoodTimestamp('2026-10-26 02:16:34', IANA_IST);
-    assert.equal(r.timeOfDay, '02:16:34');
+    assert.equal(r.timeOfDay, '07:46:34');
     assert.equal(r.calendarYmd, '2026-10-26');
+    assert.equal(r.utcIso, '2026-10-26T02:16:34.000Z');
   });
 
   it('C: spurious Z on IST wall must not shift into 2026-07-25', () => {

@@ -6,9 +6,9 @@
  * IST digits intact — that must NOT shift a daytime meal by +5:30 (lunch into
  * dinner) or into the next calendar day.
  *
- * A clock earlier than 05:30 with that UTC mark is different. Those digits
- * were written as UTC (`now()` / a Date under `time_zone = '+00:00'`), so
- * 02:16 is 7:46 AM in India, not 2:16 AM. 05:30 and later stay IST wall.
+ * A clock earlier than 05:30 is a real UTC instant, with or without a `Z`.
+ * Those digits were written by `now()` / a Date under `time_zone = '+00:00'`,
+ * so 02:16 is 7:46 AM in India, not 2:16 AM. 05:30 and later stay IST wall.
  *
  * Display contract: after converting storage → UTC instant (always via IST),
  * calendar day and local time-of-day are derived in the owner's
@@ -76,9 +76,10 @@ function hasNonUtcExplicitOffset(raw) {
  * Normalize food CreatedAt to a UTC ISO instant.
  *
  * Rules:
- * - Timezone-less → IST wall-clock (legacy storage), never the display zone
+ * - Timezone-less at 05:30 or later → IST wall-clock, never the display zone
  * - Explicit non-UTC offset (e.g. +05:30) → absolute instant
- * - `Z` / `+00:00` before 05:30 → real UTC digits (02:16 is 7:46 AM IST).
+ * - Clock before 05:30 → real UTC digits, even when the driver dropped `Z`
+ *   (02:16 is 7:46 AM IST, not 2:16 AM).
  * - `Z` / `+00:00` at 05:30 or later → driver-added mark on IST wall
  *   digits. 14:49 stays 2:49 PM lunch, not 8:19 PM dinner.
  *
@@ -101,10 +102,12 @@ export function normalizeFoodCreatedAt(raw, _ignoredTimezoneIana = IANA_IST) {
     return normalizeStoredTimestampToUtcIso(s, storageTz);
   }
 
+  if (isUtcClockBeforeIstOffset(s)) {
+    const stripped = s.replace(UTC_OR_ZERO_OFFSET_RE, '');
+    return normalizeStoredTimestampToUtcIso(stripped, 'UTC');
+  }
+
   if (hasUtcOrZeroOffset(s)) {
-    if (isUtcClockBeforeIstOffset(s)) {
-      return normalizeStoredTimestampToUtcIso(s, 'UTC');
-    }
     const stripped = s.replace(UTC_OR_ZERO_OFFSET_RE, '');
     return normalizeStoredTimestampToUtcIso(stripped, storageTz);
   }

@@ -32,6 +32,17 @@ export function formatActivityReportAttendance(status) {
     : 'Posted';
 }
 
+/**
+ * Category dropdown counts follow the attendance filter.
+ * Posted uses the posted summary. Not Posted uses the complement counts.
+ */
+export function activityReportCategoryCounts(attendanceStatus, postedSummary, notPostedSummary) {
+  if (formatActivityReportAttendance(attendanceStatus) === 'Not Posted') {
+    return notPostedSummary || null;
+  }
+  return postedSummary || null;
+}
+
 export function emptyActivityReportFilterOptions() {
   return {
     memberType: [],
