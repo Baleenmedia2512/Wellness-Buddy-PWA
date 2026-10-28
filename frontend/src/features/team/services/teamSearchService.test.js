@@ -73,6 +73,25 @@ describe('formatDiarySearchDetails', () => {
       phoneNumber: '9360515518',
     }, { includeName: false })).toBe('WB12345 | 9360515518');
   });
+
+  it('inserts the member email between club name and phone', () => {
+    expect(formatDiarySearchDetails({
+      userName: 'Adithya',
+      communityId: 'WB12345',
+      clubName: 'Wellness Valley',
+      email: 'adithya@example.com',
+      phoneNumber: '9360515518',
+    }, { includeName: false })).toBe('WB12345 | WELLNESS VALLEY | adithya@example.com | 9360515518');
+  });
+
+  it('omits the email cleanly when the member has no email', () => {
+    expect(formatDiarySearchDetails({
+      userName: 'Adithya',
+      communityId: 'WB12345',
+      clubName: 'Wellness Valley',
+      phoneNumber: '9360515518',
+    }, { includeName: false })).toBe('WB12345 | WELLNESS VALLEY | 9360515518');
+  });
 });
 
 describe('subtitleCommunityId', () => {

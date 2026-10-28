@@ -226,8 +226,9 @@ export function formatMemberSubtitle(email, communityId) {
 }
 
 /**
- * Diary search row: Name | Community ID | Club name | Phone.
+ * Diary search row: Name | Community ID | Club name | Email | Phone.
  * Club name is uppercased. Empty parts are left out so the line never has a bare pipe.
+ * The email is the searched member's own email (never the logged-in user's).
  */
 export function formatDiarySearchDetails(member, { includeName = true } = {}) {
   const club = String(member?.clubName || '').trim().toUpperCase();
@@ -235,6 +236,7 @@ export function formatDiarySearchDetails(member, { includeName = true } = {}) {
     includeName ? String(member?.userName || member?.name || '').trim() : '',
     String(member?.communityId || '').trim(),
     club,
+    String(member?.email || '').trim(),
     String(member?.phoneNumber || member?.PhoneNumber || '').trim(),
   ].filter(Boolean);
   return parts.join(' | ');
