@@ -377,6 +377,7 @@ export default function DiaryFeed({
   } = useDiary({
     ownerUserId,
     viewerUserId,
+    viewerEmail: shareUser?.email || shareUser?.Email || null,
     date,
     timezoneSource: profileOwnerTimezone || fallbackTimezoneIana,
     refreshKey: externalRefreshKey,

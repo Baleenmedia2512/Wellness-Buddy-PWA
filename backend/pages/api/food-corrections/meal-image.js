@@ -1,8 +1,8 @@
 import { applyCors, methodNotAllowed } from '../../../shared/lib/handler.js';
 import { ValidationError } from '../../../shared/lib/ValidationError.js';
-import { parseStoredImage } from '../../../shared/lib/images/dataUri.js';
 import { validateMealImageInput } from '../../../features/food-corrections/food-corrections.validators.js';
 import { getMealImage } from '../../../features/food-corrections/food-corrections.service.js';
+import { sendStoredImage } from '../../../shared/lib/r2/sendImageRedirect.js';
 
 /**
  * GET /api/food-corrections/meal-image?userId=&id=
@@ -22,20 +22,7 @@ export default async function handler(req, res) {
       return res.status(result.httpStatus).json(result.body);
     }
 
-    if (result.body?.r2Url) {
-      const signed = /[?&]X-Amz-Signature=/i.test(result.body.r2Url);
-      res.setHeader(
-        'Cache-Control',
-        signed ? 'private, max-age=300' : 'private, max-age=3600',
-      );
-      return res.redirect(302, result.body.r2Url);
-    }
-    const stored = parseStoredImage(result.body?.image);
-    if (stored) {
-      res.setHeader('Content-Type', stored.contentType);
-      res.setHeader('Cache-Control', 'private, max-age=3600');
-      return res.status(200).send(stored.bytes);
-    }
+    if (sendStoredImage(res, { r2Url: result.body?.r2Url, image: result.body?.image })) return;
     return res.status(404).json({ success: false, message: 'No image' });
   } catch (err) {
     if (err instanceof ValidationError) {

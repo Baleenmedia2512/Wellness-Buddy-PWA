@@ -138,7 +138,7 @@ export async function getLogImage(logId, userId) {
   const db = getMysqlClient();
   const { data, error } = await db
     .from('education_logs_table')
-    .select('"ImageKey"')
+    .select('"ImageKey", "ImageBase64"')
     .eq('"Id"', logId)
     .eq('"UserId"', userId)
     .single();

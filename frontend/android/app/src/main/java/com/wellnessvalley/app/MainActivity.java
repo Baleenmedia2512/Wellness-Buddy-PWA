@@ -144,8 +144,12 @@ public class MainActivity extends BridgeActivity {
         
         android.util.Log.d("MainActivity", "✅ GalleryMonitorPlugin registered in MainActivity");
         
-        // ✅ Diagnose autofill configuration
-        diagnoseAutofillSetup();
+        // Diagnostic only. A missing autofill method must not stop launch.
+        try {
+            diagnoseAutofillSetup();
+        } catch (Throwable t) {
+            android.util.Log.e("MainActivity", "Autofill diagnostic skipped", t);
+        }
     }
     
     /**
@@ -161,8 +165,9 @@ public class MainActivity extends BridgeActivity {
         android.util.Log.d("MainActivity", "Android SDK: " + android.os.Build.VERSION.SDK_INT + 
             " (" + android.os.Build.VERSION.RELEASE + ")");
         
-        // Check AutofillManager availability (Android 8.0+)
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+        // AutofillManager.getAutofillServiceComponentName() is Android 9+ (API 28).
+        // Android 7 and 8 skip the autofill framework so startup can finish.
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
             android.view.autofill.AutofillManager afm = getSystemService(android.view.autofill.AutofillManager.class);
             if (afm != null) {
                 boolean isEnabled = afm.isEnabled();
@@ -183,8 +188,7 @@ public class MainActivity extends BridgeActivity {
                 android.util.Log.e("MainActivity", "AutofillManager: ❌ NOT AVAILABLE");
             }
         } else {
-            android.util.Log.w("MainActivity", "AutofillManager: ❌ NOT SUPPORTED (Android < 8.0)");
-            android.util.Log.w("MainActivity", "   Fallback: Using deprecated setSaveFormData()");
+            android.util.Log.w("MainActivity", "Autofill skipped (Android < 9). User types the SMS code.");
         }
         
         // Check WebView configuration
@@ -197,7 +201,7 @@ public class MainActivity extends BridgeActivity {
                 android.util.Log.d("MainActivity", "  - Database: " + (settings.getDatabaseEnabled() ? "✅" : "❌"));
                 android.util.Log.d("MainActivity", "  - JavaScript: " + (settings.getJavaScriptEnabled() ? "✅" : "❌"));
                 
-                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
                     int autofillMode = webView.getImportantForAutofill();
                     String modeStr = autofillMode == View.IMPORTANT_FOR_AUTOFILL_YES ? "✅ YES" :
                                     autofillMode == View.IMPORTANT_FOR_AUTOFILL_NO ? "❌ NO" :
@@ -327,12 +331,16 @@ public class MainActivity extends BridgeActivity {
                 
                 // ✅ CRITICAL FIX: Disable smart text selection that includes images
                 if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                    // Disable ALL smart selection features that capture images
-                    webView.getSettings().setDisabledActionModeMenuItems(
-                        WebSettings.MENU_ITEM_PROCESS_TEXT | 
-                        WebSettings.MENU_ITEM_WEB_SEARCH |
-                        WebSettings.MENU_ITEM_SHARE
-                    );
+                    try {
+                        // Disable ALL smart selection features that capture images
+                        webView.getSettings().setDisabledActionModeMenuItems(
+                            WebSettings.MENU_ITEM_PROCESS_TEXT |
+                            WebSettings.MENU_ITEM_WEB_SEARCH |
+                            WebSettings.MENU_ITEM_SHARE
+                        );
+                    } catch (Throwable t) {
+                        android.util.Log.w("MainActivity", "Smart selection menu skipped", t);
+                    }
                 }
                 
                 // ✅ ADDITIONAL FIX: Disable text classifier to prevent image capture in selection
@@ -340,8 +348,8 @@ public class MainActivity extends BridgeActivity {
                     try {
                         // Remove text classifier that includes images in selection context
                         webView.setTextClassifier(android.view.textclassifier.TextClassifier.NO_OP);
-                    } catch (Exception e) {
-                        android.util.Log.w("MainActivity", "Could not disable text classifier", e);
+                    } catch (Throwable t) {
+                        android.util.Log.w("MainActivity", "Could not disable text classifier", t);
                     }
                 }
 
@@ -363,20 +371,22 @@ public class MainActivity extends BridgeActivity {
                 // ═══════════════════════════════════════════════════════════════
                 // COMPLETE AUTOFILL CONFIGURATION FOR WEBVIEW
                 // ═══════════════════════════════════════════════════════════════
-                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
                     try {
-                        // Step 1: Enable autofill on the WebView
+                        // Android 9+: message autofill is available.
                         webView.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_YES);
                         
-                        // Step 2: Check AutofillManager status
                         android.view.autofill.AutofillManager afm = getSystemService(android.view.autofill.AutofillManager.class);
                         if (afm != null) {
                             boolean isEnabled = afm.isEnabled();
                             boolean hasService = afm.hasEnabledAutofillServices();
+                            String serviceName = hasService
+                                ? ", service=" + afm.getAutofillServiceComponentName()
+                                : "";
                             android.util.Log.d("MainActivity", 
                                 "Autofill Status: enabled=" + isEnabled + 
                                 ", hasService=" + hasService +
-                                (hasService ? ", service=" + afm.getAutofillServiceComponentName() : ""));
+                                serviceName);
                             
                             if (!isEnabled) {
                                 android.util.Log.w("MainActivity", 
@@ -384,16 +394,17 @@ public class MainActivity extends BridgeActivity {
                             }
                         }
                         
-                        // Step 3: Enable form data storage for older Android versions
-                        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.O) {
-                            settings.setSaveFormData(true);
-                            android.util.Log.d("MainActivity", "✅ Form data saving enabled (Android < 8)");
-                        }
-                        
                         android.util.Log.d("MainActivity", "✅ WebView autofill enabled for keyboard suggestions");
-                    } catch (Exception e) {
-                        android.util.Log.e("MainActivity", "❌ Could not enable autofill", e);
+                    } catch (Throwable t) {
+                        android.util.Log.e("MainActivity", "❌ Could not enable autofill", t);
                     }
+                } else {
+                    try {
+                        settings.setSaveFormData(true);
+                    } catch (Throwable t) {
+                        android.util.Log.w("MainActivity", "Form data save skipped", t);
+                    }
+                    android.util.Log.d("MainActivity", "Autofill skipped on Android < 9. OTP is typed by hand.");
                 }
                 
                 // ═══════════════════════════════════════════════════════════════
@@ -410,8 +421,8 @@ public class MainActivity extends BridgeActivity {
                 
                 android.util.Log.d("MainActivity", "✅ WebView optimized: images, text selection, autofill, storage");
             }
-        } catch (Exception e) {
-            android.util.Log.e("MainActivity", "Failed to optimize WebView", e);
+        } catch (Throwable t) {
+            android.util.Log.e("MainActivity", "Failed to optimize WebView", t);
         }
     }
 

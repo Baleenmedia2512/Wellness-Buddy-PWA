@@ -40,6 +40,8 @@ import {
 } from '../captures/domain/permissions/retry.policy.js';
 import { isEnabled } from '../../shared/lib/feature-flags.js';
 import logger from '../../shared/lib/logger.js';
+import { getMysqlClient } from '../../utils/mysqlClient.js';
+import { assertViewerCanAccessMember } from '../../utils/reportingHierarchyService.js';
 import { getUserTimezoneIana } from '../user/domain/userTimezone.js';
 import { dedupePendingDiaryEntries } from './domain/diary-feed-dedup.js';
 import {
@@ -60,6 +62,16 @@ import {
 } from '../../shared/lib/datetime/index.js';
 
 export { dedupePendingDiaryEntries } from './domain/diary-feed-dedup.js';
+
+/**
+ * Platform roles that may read any diary. Looked up from team_table, not from the client.
+ * @param {string|null|undefined} role
+ * @returns {boolean}
+ */
+export function isPlatformDiaryReader(role) {
+  const value = String(role || '').trim().toLowerCase();
+  return value === 'admin' || value === 'developer';
+}
 
 /**
  * Shared-team diary access for Sponsor/Co-Sponsor partners.
@@ -152,6 +164,14 @@ async function viewerCanReadDiary(viewerUserId, ownerUserId, coachChain) {
   if (decision.reason === 'NO_VIEWER' || decision.reason === 'NO_OWNER') {
     return { allowed: false, decision, via: null };
   }
+  const viewerRole = await repo.findUserRole(viewerUserId);
+  if (isPlatformDiaryReader(viewerRole)) {
+    return {
+      allowed: true,
+      decision: { allowed: true, actorRole: 'ADMIN' },
+      via: 'admin',
+    };
+  }
   if (await canAccessDiaryViaSharedLead(viewerUserId, coachChain)) {
     return { allowed: true, decision, via: 'shared-lead' };
   }
@@ -163,7 +183,41 @@ async function viewerCanReadDiary(viewerUserId, ownerUserId, coachChain) {
   )) {
     return { allowed: true, decision, via: 'downline-co-coach' };
   }
+  // Same visibility as Diary search / team reports: reporting downline,
+  // co-coach partner downline, and shared coach-team id.
+  if (await allowDiaryViaReportingAccess(viewerUserId, ownerUserId)) {
+    return { allowed: true, decision, via: 'reporting' };
+  }
   return { allowed: false, decision, via: null };
+}
+
+/**
+ * @param {string|number} viewerUserId
+ * @param {string|number} ownerUserId
+ * @param {(viewerUserId: string|number, ownerUserId: string|number) => Promise<void>} [assertAccess]
+ * @returns {Promise<boolean>}
+ */
+export async function allowDiaryViaReportingAccess(
+  viewerUserId,
+  ownerUserId,
+  assertAccess = (viewerId, ownerId) => assertViewerCanAccessMember(
+    getMysqlClient(),
+    viewerId,
+    ownerId,
+  ),
+) {
+  try {
+    await assertAccess(viewerUserId, ownerUserId);
+    return true;
+  } catch (err) {
+    if (err?.status === 403) return false;
+    logger.warn('viewerCanReadDiary: reporting access check failed', {
+      actorId: viewerUserId,
+      ownerId: ownerUserId,
+      err: err?.message,
+    });
+    throw err;
+  }
 }
 
 /**
@@ -637,6 +691,31 @@ export async function listDiaryEntries(input) {
 }
 
 /**
+ * Diary kinds whose CreatedAt column is timezone-less IST wall clock.
+ * The MySQL read path stamps a spurious `Z` on those digits. Captures
+ * (pending/unknown) stay real UTC and must not be rewritten.
+ */
+const IST_WALL_CLOCK_KINDS = new Set([
+  'food',
+  'weight',
+  'education',
+  'watch',
+  'good-habit',
+]);
+
+/**
+ * @param {string} kind
+ * @param {string|Date|null|undefined} raw
+ * @returns {string} UTC ISO
+ */
+function diaryCapturedAt(kind, raw) {
+  if (IST_WALL_CLOCK_KINDS.has(kind)) {
+    return normalizeFoodCreatedAt(raw);
+  }
+  return normalizeStoredTimestampToUtcIso(raw, IANA_IST);
+}
+
+/**
  * Pure projection — given a kind + row, build the diary envelope.
  * No DB, no I/O. Exported only for tests; production callers should
  * always go through `listDiaryEntries`.
@@ -651,13 +730,8 @@ export function toDiaryEntry(
   row,
   { isPendingAnalysis = false, timezoneIana = IANA_IST } = {},
 ) {
-  // Food rows use the canonical food CreatedAt helper (legacy IST wall +
-  // spurious driver Z). Weight/education use the same IST storage contract.
-  // Captures (pending/unknown) are timestamptz — offset-aware / Date paths.
   void timezoneIana;
-  const capturedAt = kind === 'food'
-    ? normalizeFoodCreatedAt(row.CreatedAt)
-    : normalizeStoredTimestampToUtcIso(row.CreatedAt, IANA_IST);
+  const capturedAt = diaryCapturedAt(kind, row.CreatedAt);
   switch (kind) {
     case 'food': {
       const listSummary = extractFoodListSummary(row.AnalysisData, row.ProcessedBy);

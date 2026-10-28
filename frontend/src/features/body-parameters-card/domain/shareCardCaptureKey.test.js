@@ -34,6 +34,12 @@ describe('shareCardCaptureKey', () => {
     expect(a).toBe(b);
   });
 
+  test('visceralFat is not painted so it does not change the key', () => {
+    const without = getShareCardCaptureKey(base);
+    const withVFat = getShareCardCaptureKey({ ...base, visceralFat: 8 });
+    expect(without).toBe(withVFat);
+  });
+
   test('previousCard changes layout key', () => {
     const alone = getShareCardCaptureKey(base, null);
     const withPrev = getShareCardCaptureKey(base, { id: 9, weightKg: 72 });

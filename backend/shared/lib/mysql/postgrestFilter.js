@@ -27,9 +27,12 @@ export function splitTopLevelCommas(input) {
   const parts = [];
   let current = '';
   let quoted = false;
+  let depth = 0;
   for (const ch of String(input)) {
     if (ch === '"') quoted = !quoted;
-    if (ch === ',' && !quoted) {
+    if (!quoted && ch === '(') depth += 1;
+    if (!quoted && ch === ')') depth = Math.max(0, depth - 1);
+    if (ch === ',' && !quoted && depth === 0) {
       parts.push(current);
       current = '';
     } else {
@@ -59,25 +62,45 @@ function coerceOrValue(op, raw) {
   return value;
 }
 
+function parseLogicGroup(text) {
+  const open = text.indexOf('(');
+  if (open <= 0 || !text.endsWith(')')) return null;
+  const keyword = text.slice(0, open).toLowerCase();
+  if (keyword !== 'and' && keyword !== 'or') return null;
+  let depth = 0;
+  for (let i = open; i < text.length; i += 1) {
+    const ch = text[i];
+    if (ch === '(') depth += 1;
+    else if (ch === ')') depth -= 1;
+    if (depth === 0 && i !== text.length - 1) return null;
+  }
+  if (depth !== 0) return null;
+  return { kind: keyword, atoms: parseOrFilter(text.slice(open + 1, -1)) };
+}
+
+function parseFilterPart(text) {
+  const grouped = parseLogicGroup(text);
+  if (grouped) return grouped;
+
+  let column = '';
+  let rest = text;
+  if (text.startsWith('"')) {
+    const end = text.indexOf('"', 1);
+    column = text.slice(1, end);
+    rest = text.slice(end + 1).replace(/^\./, '');
+  } else {
+    const dot = text.indexOf('.');
+    column = text.slice(0, dot);
+    rest = text.slice(dot + 1);
+  }
+  const opDot = rest.indexOf('.');
+  const op = rest.slice(0, opDot);
+  const raw = rest.slice(opDot + 1);
+  return { kind: op, column: cleanIdent(column), value: coerceOrValue(op, raw) };
+}
+
 export function parseOrFilter(input) {
-  return splitTopLevelCommas(input).map((part) => {
-    const text = part.trim();
-    let column = '';
-    let rest = text;
-    if (text.startsWith('"')) {
-      const end = text.indexOf('"', 1);
-      column = text.slice(1, end);
-      rest = text.slice(end + 1).replace(/^\./, '');
-    } else {
-      const dot = text.indexOf('.');
-      column = text.slice(0, dot);
-      rest = text.slice(dot + 1);
-    }
-    const opDot = rest.indexOf('.');
-    const op = rest.slice(0, opDot);
-    const raw = rest.slice(opDot + 1);
-    return { kind: op, column: cleanIdent(column), value: coerceOrValue(op, raw) };
-  });
+  return splitTopLevelCommas(input).map((part) => parseFilterPart(part.trim()));
 }
 
 function assertKnown(column, known) {
@@ -116,9 +139,10 @@ function comparisonSql(kind, columnSql, value, params) {
 }
 
 function compileAtom(filter, params, known) {
-  if (filter.kind === 'or') {
-    const parts = filter.atoms.map((atom) => compileAtom(atom, params, known));
-    return `(${parts.join(' OR ')})`;
+  if (filter.kind === 'or' || filter.kind === 'and') {
+    const parts = (filter.atoms || []).map((atom) => compileAtom(atom, params, known));
+    const joiner = filter.kind === 'or' ? ' OR ' : ' AND ';
+    return `(${parts.join(joiner)})`;
   }
   const columnSql = assertKnown(filter.column, known);
   if (filter.kind === 'in') {
@@ -136,6 +160,9 @@ function compileAtom(filter, params, known) {
       if (values.length === 0) return '1 = 1';
       values.forEach((value) => params.push(coerceParam(value)));
       return `${columnSql} NOT IN (${values.map(() => '?').join(', ')})`;
+    }
+    if (filter.op === 'like' || filter.op === 'ilike') {
+      return `NOT (${comparisonSql(filter.op, columnSql, filter.value, params)})`;
     }
     return comparisonSql(filter.op === 'eq' ? 'neq' : filter.op, columnSql, filter.value, params);
   }
