@@ -133,6 +133,18 @@ function DiaryMemberSubtitle({ member, onOpenProfile }) {
             >
               {part.value}
             </button>
+          ) : part.kind === 'email' ? (
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                window.location.href = `mailto:${part.value}`;
+              }}
+              className="text-blue-600 underline active:text-green-600 break-all"
+              aria-label={`Email ${part.value}`}
+            >
+              {part.value}
+            </button>
           ) : (
             <button
               type="button"
@@ -908,7 +920,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
                   </>
                 ) : ''}
               </h1>
-              <p className="text-xs text-gray-500">
+              <p className="text-xs text-gray-500 break-words">
                 {selectedMember && !selectedMember.isSelf
                   ? (
                     <DiaryMemberSubtitle

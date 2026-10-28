@@ -58,13 +58,14 @@ describe('formatMemberSubtitle', () => {
 });
 
 describe('formatDiarySearchDetails', () => {
-  it('lists name, community id, uppercase club name, and phone', () => {
+  it('lists name, community id, uppercase club name, email, and phone', () => {
     expect(formatDiarySearchDetails({
       userName: 'Adithya',
       communityId: 'WB12345',
       clubName: 'Wellness Valley',
       phoneNumber: '9360515518',
-    })).toBe('Adithya | WB12345 | WELLNESS VALLEY | 9360515518');
+      email: 'adithya@example.com',
+    })).toBe('Adithya | WB12345 | WELLNESS VALLEY | adithya@example.com | 9360515518');
   });
 
   it('drops empty parts and can hide the name', () => {
@@ -75,14 +76,16 @@ describe('formatDiarySearchDetails', () => {
     }, { includeName: false })).toBe('WB12345 | 9360515518');
   });
 
-  it('marks the phone so the diary header can call that number', () => {
+  it('marks the phone and email so the diary header can call or mail', () => {
     expect(diarySearchDetailParts({
       communityId: 'W112072823',
       clubName: 'RS02E02',
       phoneNumber: '9840869559',
+      Email: 'balaji@example.com',
     }, { includeName: false })).toEqual([
       { kind: 'text', value: 'W112072823' },
       { kind: 'text', value: 'RS02E02' },
+      { kind: 'email', value: 'balaji@example.com' },
       { kind: 'phone', value: '9840869559' },
     ]);
   });
