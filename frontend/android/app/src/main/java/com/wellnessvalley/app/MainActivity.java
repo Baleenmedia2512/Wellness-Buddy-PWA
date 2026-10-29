@@ -39,6 +39,8 @@ public class MainActivity extends BridgeActivity {
         // ✅ Register InAppUpdatePlugin for Play Store updates
         registerPlugin(InAppUpdatePlugin.class);
 
+        registerPlugin(com.wellnessvalley.app.plugins.CashfreeCheckoutPlugin.class);
+
         // ✅ Register WhatsAppSharePlugin for high-quality image sharing
         registerPlugin(WhatsAppSharePlugin.class);
         

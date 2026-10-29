@@ -3,6 +3,7 @@ import { Crown } from 'lucide-react';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
 import { isFlagEnabled } from '../../../config/featureFlags';
 import { openPremiumCheckout } from '../openPremiumCheckout';
+import { memberCheckoutErrorMessage } from '../domain/nativePremiumCheckout.rules';
 import PremiumPlanPage from './PremiumPlanPage';
 
 const CONFIRM_ATTEMPTS_AFTER_PAYMENT = 4;
@@ -60,7 +61,7 @@ export default function GoPremiumButton({ userId, isPremium = false, onPremiumCh
     } catch (error) {
       // The member may have paid and then closed the window, so check before showing an error.
       const confirmed = await checkPremium(1);
-      if (!confirmed) setMessage(error?.message || 'Payment could not start');
+      if (!confirmed) setMessage(memberCheckoutErrorMessage(error));
     } finally {
       setBusy(false);
     }
