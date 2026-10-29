@@ -545,7 +545,7 @@ test(
       page.getByRole(
         'heading',
         {
-          name: 'Programmers enrolled',
+          name: 'Programmes enrolled',
           exact: true,
         }
       );
@@ -1229,7 +1229,7 @@ test(
         'heading',
         {
           name:
-            'Programmers enrolled',
+            'Programmes enrolled',
 
           exact:
             true,
@@ -2711,7 +2711,7 @@ test(
           'heading',
           {
             name:
-              'Programmers enrolled',
+              'Programmes enrolled',
 
             exact:
               true,
@@ -3018,7 +3018,7 @@ test(
           'heading',
           {
             name:
-              'Programmers enrolled',
+              'Programmes enrolled',
 
             exact:
               true,
@@ -3418,7 +3418,7 @@ test(
 
     await expect(
       page.getByRole('heading', {
-        name: 'Programmers Enrollment',
+        name: 'Programmes Enrollment',
         exact: true,
       })
     ).toBeVisible({
@@ -3818,7 +3818,7 @@ test(
     await expect(
       page.getByRole('heading', {
         name:
-          'Programmers Enrollment',
+          'Programmes Enrollment',
         exact: true,
       })
     ).toBeVisible({
@@ -3922,7 +3922,7 @@ test(
     await expect(
       page.getByRole('heading', {
         name:
-          'Programmers enrolled',
+          'Programmes enrolled',
         exact: true,
       })
     ).toBeVisible({
@@ -4367,7 +4367,7 @@ test(
 
     await expect(
       page.getByRole('heading', {
-        name: 'Programmers enrolled',
+        name: 'Programmes enrolled',
         exact: true,
       })
     ).toBeVisible({
@@ -5016,7 +5016,7 @@ test(
 
     await expect(
       page.getByRole('heading', {
-        name: 'Programmers enrolled',
+        name: 'Programmes enrolled',
         exact: true,
       })
     ).toBeVisible({

@@ -352,7 +352,7 @@ const WellnessUniversityEnrollment = ({
             <div className="flex-1 min-w-0">
               <h2 className="text-base xs:text-lg sm:text-2xl font-bold text-white flex items-center gap-2 flex-wrap">
                 <EmojiOrNative emoji="🎓" className="w-5 h-5 xs:w-6 xs:h-6 sm:w-7 sm:h-7 flex-shrink-0" nativeClassName="text-base xs:text-lg sm:text-2xl" />
-                <span className="break-words">{existingEnrollment ? "Programmers enrolled" : " Programmers Enrollment"}</span>
+                <span className="break-words">{existingEnrollment ? "Programmes enrolled" : "Programmes Enrollment"}</span>
               </h2>
               {/* <p className="text-white text-[11px] xs:text-xs sm:text-sm mt-1">
                 {existingEnrollment

@@ -105,10 +105,14 @@ export default function NetworkStatusNotice() {
   const copy = COPY[kind];
   if (!copy || typeof document === 'undefined') return null;
 
-  if (kind === 'degraded' || kind === 'waiting') {
+  if (kind === 'degraded' || kind === 'waiting' || kind === 'server') {
+    const isDismissible = kind === 'server';
     return createPortal(
       <div
-        role="status"
+        role={isDismissible ? 'button' : 'status'}
+        tabIndex={isDismissible ? 0 : undefined}
+        onClick={isDismissible ? () => dismissNetworkFailure() : undefined}
+        onKeyDown={isDismissible ? (e) => (e.key === 'Enter' || e.key === ' ') && dismissNetworkFailure() : undefined}
         aria-live="polite"
         style={{
           position: 'fixed',
@@ -122,16 +126,21 @@ export default function NetworkStatusNotice() {
           padding: '12px 14px',
           borderRadius: 16,
           background: '#ffffff',
-          border: '1px solid rgba(16,185,129,0.35)',
-          boxShadow: '0 10px 28px rgba(6,78,59,0.12)',
-          pointerEvents: 'none',
+          border: kind === 'server' ? '1px solid rgba(239,68,68,0.25)' : '1px solid rgba(16,185,129,0.35)',
+          boxShadow: '0 10px 28px rgba(0,0,0,0.12)',
+          pointerEvents: isDismissible ? 'auto' : 'none',
+          cursor: isDismissible ? 'pointer' : 'default',
         }}
       >
         <style>{`@keyframes wv-net-spin { to { transform: rotate(360deg); } }`}</style>
         <StatusIcon kind={kind} compact />
-        <div style={{ textAlign: 'left' }}>
-          <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: '#064e3b' }}>{copy.title}</p>
-          <p style={{ margin: '2px 0 0', fontSize: 13, lineHeight: 1.4, color: '#64748b' }}>{copy.body}</p>
+        <div style={{ textAlign: 'left', flex: 1, minWidth: 0 }}>
+          <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: kind === 'server' ? '#991b1b' : '#064e3b' }}>
+            {copy.title}
+          </p>
+          <p style={{ margin: '2px 0 0', fontSize: 13, lineHeight: 1.4, color: '#64748b' }}>
+            {copy.body}
+          </p>
         </div>
       </div>,
       document.body,
