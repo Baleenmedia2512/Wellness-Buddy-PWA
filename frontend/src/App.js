@@ -196,7 +196,7 @@ import { fetchCityVillage } from "./shared/lib/reverseGeocode";
 import { ManualWatchEntryModal } from "./features/activity";
 import { DuplicateFoodModal } from "./features/nutrition";
 import { UserProfileModal } from "./features/user";
-import { UserProfilePage } from "./features/user";
+import { UserProfilePage, ProfilePageErrorBoundary } from "./features/user";
 import { CompleteProfilePage } from "./features/user";
 import { OnboardingIdentityPage } from "./features/user";
 import { OnboardingTransformationPhotosPage } from "./features/user";
@@ -7940,6 +7940,7 @@ function WellnessValleyApp() {
           onShowReports={() => navigateTo('reports')}
         />
         <div className="ios-scroll-body">
+          <ProfilePageErrorBoundary onBack={() => navigateTo('home')}>
           <UserProfilePage
             user={user}
             userRole={userRole}
@@ -8055,6 +8056,7 @@ function WellnessValleyApp() {
               setBodyParamsRefreshKey((k) => k + 1);
             }}
           />
+          </ProfilePageErrorBoundary>
         </div>
       </div>
     );

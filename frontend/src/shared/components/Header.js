@@ -135,10 +135,19 @@ const Header = ({
     <img
       src={headerAvatarSrc}
       alt="User Avatar"
-      className="h-9 w-9 sm:h-10 sm:w-10 rounded-full border border-gray-300 shadow-sm"
+      className="h-9 w-9 sm:h-10 sm:w-10 rounded-full border border-gray-300 shadow-sm pointer-events-none"
       loading="lazy"
       decoding="async"
+      draggable="false"
       referrerPolicy="no-referrer"
+      style={{
+        WebkitUserSelect: "none",
+        userSelect: "none",
+        WebkitTouchCallout: "none",
+        WebkitUserDrag: "none",
+        pointerEvents: "none",
+        WebkitTapHighlightColor: "transparent",
+      }}
     />
   ) : (
     <div
@@ -217,7 +226,11 @@ const Header = ({
         <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
           {isPremiumMember ? <PremiumHeaderTag /> : null}
           <TouchFeedbackButton
-            onClick={onOpenProfile}
+            type="button"
+            onClick={(e) => {
+              if (e && typeof e.preventDefault === 'function') e.preventDefault();
+              if (typeof onOpenProfile === 'function') onOpenProfile();
+            }}
             className="focus:outline-none rounded-full"
             title="My Profile"
             ariaLabel="My Profile"
