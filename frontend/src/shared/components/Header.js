@@ -8,6 +8,9 @@ import { getProfile } from "../../features/user/services/user.api";
 import { isFlagEnabled } from "../../config/featureFlags";
 import { canAccessReportsModule } from "../../features/reports/domain/reportsAccess.rules.js";
 import { hasValidProfileName } from "../../features/user/domain/profileCompleteness";
+import { PremiumCrownMark, PremiumHeaderTag } from "../../features/payments/components/PremiumBadge";
+import usePremiumStatus from "../../features/payments/hooks/usePremiumStatus";
+import * as Session from "../services/sessionStorage";
 
 const Header = ({
   user,
@@ -39,6 +42,12 @@ const Header = ({
   const [savedUserName, setSavedUserName] = useState(null);
   const [savedProfileImage, setSavedProfileImage] = useState(null);
   const prevProfileKeyRef = useRef(profileKey);
+
+  // Premium crown on the avatar. Tab-only headers skip the check.
+  const premiumUserId = navOnly
+    ? null
+    : (user?.id || user?.UserId || user?.userId || Session.getDbUserId() || null);
+  const { premium: isPremiumMember } = usePremiumStatus(premiumUserId);
 
   // Reports: common module for every signed-in user when the flag is on.
   const reportsEnabled = isFlagEnabled('ff.reports-module')
@@ -122,6 +131,23 @@ const Header = ({
     return colors[(userName || userEmail || "").length % colors.length];
   };
 
+  const avatarNode = headerAvatarSrc ? (
+    <img
+      src={headerAvatarSrc}
+      alt="User Avatar"
+      className="h-9 w-9 sm:h-10 sm:w-10 rounded-full border border-gray-300 shadow-sm"
+      loading="lazy"
+      decoding="async"
+      referrerPolicy="no-referrer"
+    />
+  ) : (
+    <div
+      className={`h-9 w-9 sm:h-10 sm:w-10 rounded-full ${getAvatarColor()} flex items-center justify-center text-white font-bold text-base shadow-sm`}
+    >
+      {getInitial()}
+    </div>
+  );
+
   // navOnly mode: render only the tab navigation row (Row 2).
   // Used by full-page sub-views so they display the full nav without
   // duplicating the logo/settings row on top.
@@ -189,28 +215,19 @@ const Header = ({
 
         {/* Profile avatar — tap to navigate to full profile page */}
         <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
+          {isPremiumMember ? <PremiumHeaderTag /> : null}
           <TouchFeedbackButton
             onClick={onOpenProfile}
             className="focus:outline-none rounded-full"
             title="My Profile"
             ariaLabel="My Profile"
           >
-            {headerAvatarSrc ? (
-              <img
-                src={headerAvatarSrc}
-                alt="User Avatar"
-                className="h-9 w-9 sm:h-10 sm:w-10 rounded-full border border-gray-300 shadow-sm"
-                loading="lazy"
-                decoding="async"
-                referrerPolicy="no-referrer"
-              />
-            ) : (
-              <div
-                className={`h-9 w-9 sm:h-10 sm:w-10 rounded-full ${getAvatarColor()} flex items-center justify-center text-white font-bold text-base shadow-sm`}
-              >
-                {getInitial()}
-              </div>
-            )}
+            {isPremiumMember ? (
+              <span className="relative inline-flex">
+                {avatarNode}
+                <PremiumCrownMark />
+              </span>
+            ) : avatarNode}
           </TouchFeedbackButton>
         </div>
       </div>

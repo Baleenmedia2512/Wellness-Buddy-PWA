@@ -53,6 +53,8 @@ import { COMMUNITY_ID_OTP_FLAG } from '../domain/communityId';
 import { HEIGHT_CHANGE_OTP_FLAG, isHeightLocked, validateHeightCm } from '../domain/heightChange';
 import { looksLikeEmail } from '../domain/onboardingEmail';
 import GoPremiumButton from '../../payments/components/GoPremiumButton';
+import PremiumBadge from '../../payments/components/PremiumBadge';
+import usePremiumStatus from '../../payments/hooks/usePremiumStatus';
 
 const COLORS = ['bg-blue-500', 'bg-green-500', 'bg-purple-500', 'bg-pink-500', 'bg-indigo-500', 'bg-yellow-500', 'bg-red-500', 'bg-teal-500'];
 const colorOf = (name, email) => COLORS[(name || email || '').length % COLORS.length];
@@ -80,7 +82,8 @@ const ROLE_LABELS = { admin: 'Admin', developer: 'Developer', coach: 'Coach', up
 
 const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfileUpdate }) => {
   const form = useProfileForm();
-  const resolvedUserId = user?.id ?? user?._id ?? form.userId;
+  const premiumUserId = user?.id || user?.UserId || user?.userId || Session.getDbUserId() || null;
+  const { premium: isPremiumMember, refresh: refreshPremium } = usePremiumStatus(premiumUserId);
   const transformationPhotos = useTransformationPhotos();
   const [profileImagePreview, setProfileImagePreview] = useState(null);
   const [latestWeight, setLatestWeight] = useState(null);
@@ -719,6 +722,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
               <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-green-100 text-green-900">
                 {role}
               </span>
+              {isPremiumMember ? <PremiumBadge /> : null}
               {displayWeightGoalMode && (
                 <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold border
                   ${displayWeightGoalMode === 'loss' ? 'bg-red-100 border-red-300 text-red-700' : displayWeightGoalMode === 'gain' ? 'bg-blue-100 border-blue-300 text-blue-700' : 'bg-green-100 border-green-300 text-green-700'}`}>
@@ -959,7 +963,9 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
           </div>
           <div className="divide-y divide-gray-100">
             <GoPremiumButton
-              userId={user?.id || user?.UserId || user?.userId || Session.getDbUserId() || null}
+              userId={premiumUserId}
+              isPremium={isPremiumMember}
+              onPremiumCheck={refreshPremium}
             />
             <TouchFeedbackButton
               onClick={() => {

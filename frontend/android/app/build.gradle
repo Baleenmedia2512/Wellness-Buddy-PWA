@@ -158,6 +158,9 @@ dependencies {
     
     // Material Components (for Snackbar)
     implementation 'com.google.android.material:material:1.9.0'
+
+    // Cashfree Android PG — UPI Intent list on APK only. Web checkout stays JS.
+    implementation 'com.cashfree.pg:api:2.6.1'
 }
 
 apply from: 'capacitor.build.gradle'
