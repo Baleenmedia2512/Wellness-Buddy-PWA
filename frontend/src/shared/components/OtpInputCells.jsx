@@ -44,12 +44,11 @@ export default function OtpInputCells({
   };
 
   const onCellBeforeInput = (e) => {
-    const data = e.data ?? '';
-    if (data.length > 1 || isOtpBulkInputType(e.inputType)) {
-      if (data) {
-        e.preventDefault();
-        dispatchMultiDigit(data);
-      }
+    const dtText = e.dataTransfer?.getData('text') ?? '';
+    const data = e.data || dtText;
+    if (data && (data.length > 1 || isOtpBulkInputType(e.inputType))) {
+      e.preventDefault();
+      dispatchMultiDigit(data);
     }
   };
 
@@ -84,6 +83,8 @@ export default function OtpInputCells({
         <NativeInput
           key={index}
           otp
+          id={index === 0 ? 'otp' : undefined}
+          name={index === 0 ? 'one-time-code' : undefined}
           data-no-select-all="true"
           ref={(el) => { refs.current[index] = el; }}
           type="text"
