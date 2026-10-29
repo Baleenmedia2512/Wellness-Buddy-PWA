@@ -17,6 +17,7 @@ import {
   resolveSearchClubName,
   coachIdByUser,
 } from '../../../features/nutrition-centers/domain/searchClub.rules.js';
+import { slimSearchAllMembers } from '../../../utils/teamHierarchySearchPayload.js';
 
 /**
  * API: Get Hierarchical Team Structure
@@ -177,15 +178,6 @@ export default async function handler(req, res) {
     logger.debug(
       `📊 [team-hierarchy] Fetched ${allUsers?.length || 0} subtree users from database`,
     );
-    logger.debug(
-      `📊 [team-hierarchy] Users sample:`,
-      allUsers?.slice(0, 5).map((u) => ({
-        UserId: u.UserId,
-        UserName: u.UserName,
-        CoachId: u.CoachId,
-        Status: u.Status,
-      })),
-    );
 
     if (!allUsers || allUsers.length === 0) {
       res.status(200).json({
@@ -343,15 +335,6 @@ export default async function handler(req, res) {
         userId,
         leadPartnerByUserId,
         newVisited,
-      );
-
-      logger.debug(
-        `🔍 [team-hierarchy] User ${user.userName} (${userId}) has ${directReports.length} direct reports:`,
-        directReports.map((r) => ({
-          UserId: r.UserId,
-          UserName: r.UserName,
-          CoachId: r.CoachId,
-        })),
       );
 
       directReports.forEach((report) => {
@@ -515,14 +498,7 @@ export default async function handler(req, res) {
           existingIds,
         );
 
-        logger.debug(`👥 [team-hierarchy] Merging ${partnerMembers.length} partner CoachId directs:`,
-          partnerMembers.map(m => ({ 
-            UserId: m.UserId, 
-            UserName: m.UserName, 
-            CoachId: m.CoachId,
-            CoachTeamId: m.CoachTeamId 
-          }))
-        );
+        logger.debug(`👥 [team-hierarchy] Merging ${partnerMembers.length} partner CoachId directs`);
 
         // Build hierarchy for each partner member and add to root.
         // Inactive members are hidden; their active descendants are promoted.
@@ -578,8 +554,7 @@ export default async function handler(req, res) {
       for (const pid of partnerIdsForCommunity) existingIds.add(Number(pid));
       for (const peerId of communityPeerIds) existingIds.add(Number(peerId));
 
-      logger.debug(`🏘️ [team-hierarchy] Merging ${communityPeerIds.length} community peer coach trees:`,
-        communityPeerIds);
+      logger.debug(`🏘️ [team-hierarchy] Merging ${communityPeerIds.length} community peer coach trees`);
 
       for (const peerId of communityPeerIds) {
         const peerMembers = listPrimaryDirectReports(
@@ -737,7 +712,7 @@ export default async function handler(req, res) {
       memberMap.set(extraUser.userId, entry);
     }
 
-    const allMembers = Array.from(memberMap.values());
+    let allMembers = Array.from(memberMap.values());
 
     // Attach latest weight / fat% / BMI for BCM phone prefill (best-effort).
     // Skip for purpose=search — Diary / team search does not need body metrics.
@@ -810,16 +785,12 @@ export default async function handler(req, res) {
       });
     }
 
+    if (purposeSearch) {
+      allMembers = slimSearchAllMembers(allMembers);
+    }
+
     logger.debug(
       `✅ [team-hierarchy] Team hierarchy built for coach ${coachIdInt}: ${allMembers.length} unique members`,
-    );
-    logger.debug(
-      `✅ [team-hierarchy] All members:`,
-      allMembers.map((m) => ({
-        UserId: m.UserId,
-        UserName: m.UserName,
-        CoachId: m.CoachId,
-      })),
     );
 
     // Count statistics (use unique users)

@@ -71,6 +71,9 @@ function shapeRows(rows, mode) {
 
 async function withUtc(fn) {
   const prisma = getPrisma();
+  // Keep SET time_zone inside the same transaction as the query. Prisma's pool
+  // cannot pin session timezone on every reused connection without a driver
+  // adapter, so removing this would shift stored timestamps.
   return prisma.$transaction(async (tx) => {
     await tx.$executeRawUnsafe("SET time_zone = '+00:00'");
     return fn(tx);

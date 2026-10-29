@@ -5,6 +5,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   activeActivityReportTableFilters,
+  activityReportCategoryCounts,
   activityReportFilterQuery,
   ACTIVITY_REPORT_ATTENDANCE,
   ACTIVITY_REPORT_ATTENDANCE_OPTIONS,
@@ -87,6 +88,24 @@ describe('activityReportTableFilters', () => {
     assert.equal(formatActivityReportAttendance('not_posted'), 'Not Posted');
     assert.equal(formatActivityReportAttendance('attended'), 'Posted');
     assert.equal(formatActivityReportAttendance('not_attended'), 'Not Posted');
+  });
+
+  it('switches category counts with the attendance filter', () => {
+    const posted = { education: 1, weight: 3 };
+    const notPosted = { education: 2, weight: 0 };
+    assert.equal(
+      activityReportCategoryCounts('posted', posted, notPosted).education,
+      1,
+    );
+    assert.equal(
+      activityReportCategoryCounts('not_posted', posted, notPosted).education,
+      2,
+    );
+    assert.equal(
+      activityReportCategoryCounts('not_attended', posted, notPosted).weight,
+      0,
+    );
+    assert.equal(activityReportCategoryCounts('posted', null, notPosted), null);
   });
 
   it('keeps Posted / Not Posted option ids aligned with the API', () => {

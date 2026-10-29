@@ -5,7 +5,7 @@
  *
  * Display:
  *   default — name, then email | Community ID
- *   diary   — Name | Community ID | CLUB NAME | Phone
+ *   diary   — Name | Community ID | CLUB NAME | Email | Phone
  */
 import React from 'react';
 import { User } from 'lucide-react';
