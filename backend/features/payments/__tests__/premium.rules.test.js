@@ -70,6 +70,7 @@ describe('buildPremiumOrderPayload', () => {
 
   it('drops a return url that is not http or https', () => {
     assert.equal(sanitizeReturnUrl('javascript:alert(1)'), null);
+    assert.equal(sanitizeReturnUrl('http://localhost:3001/profile'), null);
     const payload = buildPremiumOrderPayload({
       userId: 7,
       phone10: '9876543210',
