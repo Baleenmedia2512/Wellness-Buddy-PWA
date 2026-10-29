@@ -45,7 +45,11 @@ export default function useOtpInput(length = SMS_OTP_LENGTH) {
       next[idx] = v;
       return next;
     });
-    if (v && idx < length - 1) refs.current[idx + 1]?.focus();
+    if (v && idx < length - 1) {
+      setTimeout(() => {
+        refs.current[idx + 1]?.focus();
+      }, 10);
+    }
   };
 
   const handleKeyDown = (idx, e) => {
