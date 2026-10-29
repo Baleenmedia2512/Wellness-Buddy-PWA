@@ -54,6 +54,48 @@ async function postCreateOrder({ apiBase, clientId, clientSecret, payload }) {
 }
 
 /**
+ * Read one order back from Cashfree so payment is confirmed server to server.
+ * @param {{ apiBase: string, clientId: string, clientSecret: string, orderId: string }} input
+ * @returns {Promise<object>} Cashfree order body
+ */
+export async function fetchCashfreeOrder({ apiBase, clientId, clientSecret, orderId }) {
+  const response = await fetch(`${apiBase}/pg/orders/${encodeURIComponent(orderId)}`, {
+    method: 'GET',
+    cache: 'no-store',
+    headers: {
+      Accept: 'application/json',
+      'x-api-version': '2025-01-01',
+      'x-client-id': clientId,
+      'x-client-secret': clientSecret,
+    },
+  });
+
+  let data = {};
+  try {
+    data = await response.json();
+  } catch {
+    data = {};
+  }
+
+  if (!response.ok) {
+    logger.warn('Cashfree order read failed', {
+      status: response.status,
+      code: data.code || null,
+      message: data.message || null,
+    });
+    const error = new Error(
+      response.status === 404
+        ? 'Payment order not found'
+        : 'Cashfree could not confirm the payment',
+    );
+    error.status = response.status >= 400 && response.status < 500 ? 422 : 502;
+    throw error;
+  }
+
+  return data;
+}
+
+/**
  * @param {{ apiBase: string, clientId: string, clientSecret: string, payload: object }} input
  */
 export async function createCashfreeOrder(input) {

@@ -1,4 +1,5 @@
 import { apiFetch } from '../../shared/services/apiFetch.js';
+import { savePendingPremiumOrder } from './services/premiumApi.js';
 
 const SDK_SRC = 'https://sdk.cashfree.com/js/v3/cashfree.js';
 
@@ -43,6 +44,9 @@ export async function openPremiumCheckout({ userId }) {
     throw new Error(body?.message || 'Payment could not start');
   }
 
+  // Remember the order so a payment finished after the app closes is still confirmed.
+  savePendingPremiumOrder({ userId, orderId: body.data.orderId });
+
   await loadCashfreeScript();
   const cashfree = window.Cashfree({ mode: body.data.mode === 'production' ? 'production' : 'sandbox' });
   const result = await cashfree.checkout({
@@ -52,5 +56,5 @@ export async function openPremiumCheckout({ userId }) {
   if (result?.error) {
     throw new Error(result.error.message || 'Payment could not open');
   }
-  return result;
+  return { orderId: body.data.orderId, result };
 }

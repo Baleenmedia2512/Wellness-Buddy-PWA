@@ -5,15 +5,36 @@ import { isFlagEnabled } from '../../../config/featureFlags';
 import { openPremiumCheckout } from '../openPremiumCheckout';
 import PremiumPlanPage from './PremiumPlanPage';
 
+const CONFIRM_ATTEMPTS_AFTER_PAYMENT = 4;
+const CONFIRM_RETRY_DELAY_MS = 2000;
+
+const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
 /**
  * Profile row that opens the Premium plan page, then Cashfree on Pay Now.
+ * `onPremiumCheck` asks the server whether the payment went through.
+ * Members who already paid do not see this row again.
  */
-export default function GoPremiumButton({ userId }) {
+export default function GoPremiumButton({ userId, isPremium = false, onPremiumCheck }) {
   const [showPlan, setShowPlan] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
 
   if (!isFlagEnabled('ff.go-premium')) return null;
+  if (isPremium) return null;
+
+  const checkPremium = async (attempts) => {
+    if (typeof onPremiumCheck !== 'function') return false;
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      try {
+        if (await onPremiumCheck()) return true;
+      } catch {
+        // A failed check is not a failed payment.
+      }
+      if (attempt < attempts - 1) await wait(CONFIRM_RETRY_DELAY_MS);
+    }
+    return false;
+  };
 
   const onOpenPlan = () => {
     if (busy) return;
@@ -30,9 +51,16 @@ export default function GoPremiumButton({ userId }) {
     setBusy(true);
     setMessage('');
     try {
-      await openPremiumCheckout({ userId });
+      const { result } = await openPremiumCheckout({ userId });
+      const paidInCheckout = Boolean(result?.paymentDetails);
+      const confirmed = await checkPremium(paidInCheckout ? CONFIRM_ATTEMPTS_AFTER_PAYMENT : 1);
+      if (!confirmed && paidInCheckout) {
+        setMessage('Payment received. Premium will show on your profile shortly.');
+      }
     } catch (error) {
-      setMessage(error?.message || 'Payment could not start');
+      // The member may have paid and then closed the window, so check before showing an error.
+      const confirmed = await checkPremium(1);
+      if (!confirmed) setMessage(error?.message || 'Payment could not start');
     } finally {
       setBusy(false);
     }
