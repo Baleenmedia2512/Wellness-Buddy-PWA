@@ -16,6 +16,16 @@ const post = async (path, body) => {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
+  // Dev-mode trace for failed API calls (e.g. 404 on send-otp → API base URL/port points
+  // at the wrong host). NODE_ENV !== "production" only; no-op in production builds.
+  if (!res.ok) {
+    debugLog('[OTP/SMS] send-otp request failed', {
+      apiBase,
+      path,
+      httpStatus: res.status,
+      ok: res.ok,
+    });
+  }
   const rawText = await res.text();
   let data = {};
   try {

@@ -13,7 +13,7 @@ const UserProfileBody = ({
   isLoading, form, email, latestWeight, initialWeight, initialWeightDate,
   marathonWeightComparison = null,
   error, successMessage,
-  workingPhysicalCentre = null,
+  userId = null,
 }) => (
   <div className="p-6 space-y-5">
     {isLoading ? (
@@ -26,6 +26,7 @@ const UserProfileBody = ({
           email={email}
           hideEmailField
           hideCommunityIdField
+          hideWorkingPhysicalCentreField
           name={form.name} setName={form.setName}
           height={form.height} setHeight={form.setHeight}
           phone={form.phone} setPhone={form.setPhone}
@@ -33,7 +34,10 @@ const UserProfileBody = ({
           bmr={form.bmr} setBmr={form.setBmr}
           physicalActivityLevel={form.physicalActivityLevel}
           setPhysicalActivityLevel={form.setPhysicalActivityLevel}
+          workingPhysicalCentreId={form.workingPhysicalCentreId}
+          setWorkingPhysicalCentreId={form.setWorkingPhysicalCentreId}
         />
+        
         <DietDropdown value={form.dietType} onChange={form.setDietType} />
         <UserProfileBodyMetrics
           bodyMetrics={form.bodyMetrics}
@@ -68,7 +72,11 @@ const UserProfileBody = ({
           communityId={form.communityId}
           setCommunityId={form.setCommunityId}
         />
-        <WorkingPhysicalCentreField centre={workingPhysicalCentre} />
+        <WorkingPhysicalCentreField
+          userId={userId}
+          value={form.workingPhysicalCentreId}
+          onChange={form.setWorkingPhysicalCentreId}
+        />
         <IdealWeightCards
           height={form.height}
           latestWeight={latestWeight}
