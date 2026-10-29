@@ -44,11 +44,13 @@ export default function OtpInputCells({
   };
 
   const onCellBeforeInput = (e) => {
-    if (!isOtpBulkInputType(e.inputType)) return;
     const data = e.data ?? '';
-    if (!data) return;
-    e.preventDefault();
-    dispatchMultiDigit(data);
+    if (data.length > 1 || isOtpBulkInputType(e.inputType)) {
+      if (data) {
+        e.preventDefault();
+        dispatchMultiDigit(data);
+      }
+    }
   };
 
   const onCellPaste = (e) => {
