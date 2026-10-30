@@ -4,9 +4,12 @@
  */
 import { apiFetch } from '../../services/apiFetch.js';
 
-export async function fetchTeamMemberProfile(memberEmail, apiBaseUrl) {
+export async function fetchTeamMemberProfile(member, apiBaseUrl) {
+  const query = typeof member === 'string'
+    ? `email=${encodeURIComponent(member)}`
+    : `userId=${encodeURIComponent(String(member?.userId ?? ''))}`;
   const res = await apiFetch(
-    `/api/user/profile?email=${encodeURIComponent(memberEmail)}&_t=${Date.now()}`,
+    `/api/user/profile?${query}&_t=${Date.now()}`,
     {
       apiBaseUrl,
       cache: 'no-store',

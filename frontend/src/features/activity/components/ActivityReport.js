@@ -37,6 +37,7 @@ import ActivityReportFiltersBar from './ActivityReportFiltersBar';
 import ActivityReportHiddenUsersModal from './ActivityReportHiddenUsersModal';
 import ActivityReportHideUserMenu from './ActivityReportHideUserMenu';
 import ActivityReportMemberNameCell from './ActivityReportMemberNameCell';
+import TeamMemberProfileModal from '../../../shared/components/TeamMemberProfileModal';
 
 const DEFAULT_PAGE_SIZE = 20;
 const SEARCH_DEBOUNCE_MS = 300;
@@ -117,6 +118,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0, t
   const [showHiddenUsersModal, setShowHiddenUsersModal] = useState(false);
   const [hideMenu, setHideMenu] = useState(null);
   const [hideBusy, setHideBusy] = useState(false);
+  const [profileUserId, setProfileUserId] = useState(null);
   /** Unhide button only when at least one team member is currently hidden. */
   const [hiddenCount, setHiddenCount] = useState(0);
   const fetchAbortRef = useRef(null);
@@ -1251,6 +1253,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0, t
                         record={record}
                         canHide={canHideInactiveUsers}
                         onOpenHideMenu={setHideMenu}
+                        onOpenProfile={setProfileUserId}
                       />
                       <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">{formatActivityReportMemberType(record.memberType)}</td>
                       <td className="px-4 py-3 text-sm text-gray-900 whitespace-nowrap">{formatActivityReportLevel(record.level)}</td>
@@ -1344,6 +1347,12 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0, t
           </div>
         )}
       </div>
+      <TeamMemberProfileModal
+        isOpen={profileUserId != null}
+        onClose={() => setProfileUserId(null)}
+        memberUserId={profileUserId}
+        apiBaseUrl={apiBaseUrl}
+      />
     </div>
   );
 };

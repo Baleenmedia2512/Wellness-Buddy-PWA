@@ -9,6 +9,7 @@ import { telHref } from '../../../shared/domain/phoneContact.js';
 import { debugLog } from '../../../shared/utils/logger.js';
 import { loadGoogleMaps } from '../services/googleMapsLoader';
 import AttendeeListModal from './AttendeeListModal';
+import { TeamMemberProfileModal } from '../../../shared/components/TeamMemberProfileModal';
 import { resolveDiaryTimezone } from '../../diary/utils/diaryTimezone';
 import { getApiBaseUrl } from '../../../config/api.config.js';
 import { lookup as lookupUser } from '../../user/services/user.api.js';
@@ -115,6 +116,7 @@ const NutritionCentersMap = ({
   const [selectedCenter, setSelectedCenter] = useState(null);
   const [mapFullscreen, setMapFullscreen] = useState(false);
   const [attendeeModal, setAttendeeModal] = useState({ isOpen: false, center: null });
+  const [profileUserId, setProfileUserId] = useState(null);
   const [deleteModal, setDeleteModal] = useState({ isOpen: false, center: null });
   const [deletingCenterId, setDeletingCenterId] = useState(null);
   const [pagination, setPagination] = useState({
@@ -1090,7 +1092,20 @@ const NutritionCentersMap = ({
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex-1 min-w-0">
                           <h3 className="font-semibold text-gray-900 truncate text-[15px]">{center.center_name}</h3>
-                          <p className="text-xs text-gray-500 mt-0.5">{center.ownerName}</p>
+                          {center.owner_user_id != null ? (
+                            <button
+                              type="button"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                setProfileUserId(center.owner_user_id);
+                              }}
+                              className="text-xs text-gray-500 mt-0.5 text-left hover:underline"
+                            >
+                              {center.ownerName}
+                            </button>
+                          ) : (
+                            <p className="text-xs text-gray-500 mt-0.5">{center.ownerName}</p>
+                          )}
                           {center.owner_phone ? (
                             <p className="text-xs text-gray-500 mt-0.5">{center.owner_phone}</p>
                           ) : null}
@@ -1255,6 +1270,12 @@ const NutritionCentersMap = ({
         apiBaseUrl={apiBaseUrl}
         timezoneIana={resolveDiaryTimezone(user)}
         userId={currentUserId}
+      />
+      <TeamMemberProfileModal
+        isOpen={Boolean(profileUserId)}
+        onClose={() => setProfileUserId(null)}
+        memberUserId={profileUserId}
+        apiBaseUrl={apiBaseUrl}
       />
 
       <CustomAlertModal

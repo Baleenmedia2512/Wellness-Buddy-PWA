@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { ChevronDown, ChevronUp, Users } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import TouchFeedbackButton from "../TouchFeedbackButton";
+import ProfilePhotoThumbnail from "../ProfilePhotoThumbnail.jsx";
 
 /**
  * Common Hierarchical Node Component
@@ -145,41 +146,35 @@ const HierarchicalNode = ({
                 {/* Coach */}
                 <div className="flex items-start gap-2 flex-1">
                   <div className="relative w-9 h-9 flex-shrink-0">
-                    {node.profileImage || node.photoURL ? (
-                      <>
-                        <img
-                          src={node.profileImage || node.photoURL}
-                          alt={node.userName || node.name}
-                          className="w-9 h-9 rounded-full object-cover border-2 bg-amber-100 border-amber-400"
-                          style={{ display: "block" }}
-                          onError={(e) => {
-                            e.target.style.display = "none";
-                            if (e.target.nextSibling) {
-                              e.target.nextSibling.style.display = "flex";
-                            }
-                          }}
-                        />
-                        <div
-                          className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold border-2 bg-amber-100 border-amber-400 text-amber-700"
-                          style={{ display: "none" }}
-                        >
-                          {node.userName?.charAt(0).toUpperCase() ||
-                            node.name?.charAt(0).toUpperCase() ||
-                            "?"}
-                        </div>
-                      </>
-                    ) : (
-                      <div className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold border-2 bg-amber-100 border-amber-400 text-amber-700">
-                        {node.userName?.charAt(0).toUpperCase() ||
-                          node.name?.charAt(0).toUpperCase() ||
-                          "?"}
-                      </div>
-                    )}
+                    <ProfilePhotoThumbnail
+                      src={node.profileImage || node.photoURL}
+                      alt={node.userName || node.name}
+                      className="rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
+                      imageClassName="w-9 h-9 rounded-full object-cover border-2 bg-amber-100 border-amber-400"
+                      fallbackClassName="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold border-2 bg-amber-100 border-amber-400 text-amber-700"
+                      fallback={node.userName?.charAt(0).toUpperCase() || node.name?.charAt(0).toUpperCase() || "?"}
+                      onViewProfile={onProfileClick && !isCurrentUser && (node.userEmail || node.email)
+                        ? () => onProfileClick(node.userEmail || node.email)
+                        : undefined}
+                    />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="text-sm font-bold text-amber-900 break-words">
-                      {node.userName || node.name}
-                    </div>
+                    {onProfileClick && !isCurrentUser && (node.userEmail || node.email) ? (
+                      <button
+                        type="button"
+                        className="text-sm font-bold text-amber-900 break-words text-left hover:underline"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onProfileClick(node.userEmail || node.email);
+                        }}
+                      >
+                        {node.userName || node.name}
+                      </button>
+                    ) : (
+                      <div className="text-sm font-bold text-amber-900 break-words">
+                        {node.userName || node.name}
+                      </div>
+                    )}
                     <div className="text-[9px] text-amber-600 font-medium uppercase">
                       {node.isCoCoach ? "Co-Coach" : "Coach"}
                     </div>
@@ -199,41 +194,35 @@ const HierarchicalNode = ({
                 {/* Co-Coach/Partner */}
                 <div className="flex items-start gap-2 flex-1">
                   <div className="relative w-9 h-9 flex-shrink-0">
-                    {coCoach.profileImage || coCoach.photoURL ? (
-                      <>
-                        <img
-                          src={coCoach.profileImage || coCoach.photoURL}
-                          alt={coCoach.userName || coCoach.name}
-                          className="w-9 h-9 rounded-full object-cover border-2 bg-amber-100 border-amber-400"
-                          style={{ display: "block" }}
-                          onError={(e) => {
-                            e.target.style.display = "none";
-                            if (e.target.nextSibling) {
-                              e.target.nextSibling.style.display = "flex";
-                            }
-                          }}
-                        />
-                        <div
-                          className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold border-2 bg-amber-100 border-amber-400 text-amber-700"
-                          style={{ display: "none" }}
-                        >
-                          {coCoach.userName?.charAt(0).toUpperCase() ||
-                            coCoach.name?.charAt(0).toUpperCase() ||
-                            "?"}
-                        </div>
-                      </>
-                    ) : (
-                      <div className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold border-2 bg-amber-100 border-amber-400 text-amber-700">
-                        {coCoach.userName?.charAt(0).toUpperCase() ||
-                          coCoach.name?.charAt(0).toUpperCase() ||
-                          "?"}
-                      </div>
-                    )}
+                    <ProfilePhotoThumbnail
+                      src={coCoach.profileImage || coCoach.photoURL}
+                      alt={coCoach.userName || coCoach.name}
+                      className="rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
+                      imageClassName="w-9 h-9 rounded-full object-cover border-2 bg-amber-100 border-amber-400"
+                      fallbackClassName="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold border-2 bg-amber-100 border-amber-400 text-amber-700"
+                      fallback={coCoach.userName?.charAt(0).toUpperCase() || coCoach.name?.charAt(0).toUpperCase() || "?"}
+                      onViewProfile={onProfileClick && !isCurrentUser && (coCoach.userEmail || coCoach.email)
+                        ? () => onProfileClick(coCoach.userEmail || coCoach.email)
+                        : undefined}
+                    />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="text-sm font-bold text-amber-900 break-words">
-                      {coCoach.userName || coCoach.name}
-                    </div>
+                    {onProfileClick && !isCurrentUser && (coCoach.userEmail || coCoach.email) ? (
+                      <button
+                        type="button"
+                        className="text-sm font-bold text-amber-900 break-words text-left hover:underline"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onProfileClick(coCoach.userEmail || coCoach.email);
+                        }}
+                      >
+                        {coCoach.userName || coCoach.name}
+                      </button>
+                    ) : (
+                      <div className="text-sm font-bold text-amber-900 break-words">
+                        {coCoach.userName || coCoach.name}
+                      </div>
+                    )}
                     <div className="text-[9px] text-amber-600 font-medium uppercase">
                       {coCoach.isCoCoach ? "Co-Coach" : "Coach"}
                     </div>
@@ -284,41 +273,32 @@ const HierarchicalNode = ({
                     {/* Coach Header */}
                     <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 border-b border-amber-100">
                       <div className="relative w-7 h-7 flex-shrink-0">
-                        {node.profileImage || node.photoURL ? (
-                          <>
-                            <img
-                              src={node.profileImage || node.photoURL}
-                              alt={node.userName || node.name}
-                              className="w-7 h-7 rounded-full object-cover border-2 bg-amber-100 border-amber-400"
-                              style={{ display: "block" }}
-                              onError={(e) => {
-                                e.target.style.display = "none";
-                                if (e.target.nextSibling) {
-                                  e.target.nextSibling.style.display = "flex";
-                                }
-                              }}
-                            />
-                            <div
-                              className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 bg-amber-100 border-amber-400 text-amber-700"
-                              style={{ display: "none" }}
-                            >
-                              {node.userName?.charAt(0).toUpperCase() ||
-                                node.name?.charAt(0).toUpperCase() ||
-                                "?"}
-                            </div>
-                          </>
-                        ) : (
-                          <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 bg-amber-100 border-amber-400 text-amber-700">
-                            {node.userName?.charAt(0).toUpperCase() ||
-                              node.name?.charAt(0).toUpperCase() ||
-                              "?"}
-                          </div>
-                        )}
+                        <ProfilePhotoThumbnail
+                          src={node.profileImage || node.photoURL}
+                          alt={node.userName || node.name}
+                          className="rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
+                          imageClassName="w-7 h-7 rounded-full object-cover border-2 bg-amber-100 border-amber-400"
+                          fallbackClassName="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 bg-amber-100 border-amber-400 text-amber-700"
+                          fallback={node.userName?.charAt(0).toUpperCase() || node.name?.charAt(0).toUpperCase() || "?"}
+                          onViewProfile={onProfileClick && !isCurrentUser && (node.userEmail || node.email)
+                            ? () => onProfileClick(node.userEmail || node.email)
+                            : undefined}
+                        />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <span className="text-sm font-bold text-amber-900 break-words">
-                          {node.userName || node.name}
-                        </span>
+                        {onProfileClick && !isCurrentUser && (node.userEmail || node.email) ? (
+                          <button
+                            type="button"
+                            className="text-sm font-bold text-amber-900 break-words text-left hover:underline"
+                            onClick={() => onProfileClick(node.userEmail || node.email)}
+                          >
+                            {node.userName || node.name}
+                          </button>
+                        ) : (
+                          <span className="text-sm font-bold text-amber-900 break-words">
+                            {node.userName || node.name}
+                          </span>
+                        )}
                         <span className="text-[9px] text-amber-600 font-medium uppercase ml-2">
                           {node.isCoCoach ? "Co-Coach" : "Coach"}
                         </span>
@@ -338,41 +318,32 @@ const HierarchicalNode = ({
                     {/* Co-Coach Header */}
                     <div className="flex items-center gap-2 px-3 py-2 bg-purple-50 border-b border-purple-100">
                       <div className="relative w-7 h-7 flex-shrink-0">
-                        {coCoach.profileImage || coCoach.photoURL ? (
-                          <>
-                            <img
-                              src={coCoach.profileImage || coCoach.photoURL}
-                              alt={coCoach.userName || coCoach.name}
-                              className="w-7 h-7 rounded-full object-cover border-2 bg-purple-100 border-purple-400"
-                              style={{ display: "block" }}
-                              onError={(e) => {
-                                e.target.style.display = "none";
-                                if (e.target.nextSibling) {
-                                  e.target.nextSibling.style.display = "flex";
-                                }
-                              }}
-                            />
-                            <div
-                              className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 bg-purple-100 border-purple-400 text-purple-700"
-                              style={{ display: "none" }}
-                            >
-                              {coCoach.userName?.charAt(0).toUpperCase() ||
-                                coCoach.name?.charAt(0).toUpperCase() ||
-                                "?"}
-                            </div>
-                          </>
-                        ) : (
-                          <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 bg-purple-100 border-purple-400 text-purple-700">
-                            {coCoach.userName?.charAt(0).toUpperCase() ||
-                              coCoach.name?.charAt(0).toUpperCase() ||
-                              "?"}
-                          </div>
-                        )}
+                        <ProfilePhotoThumbnail
+                          src={coCoach.profileImage || coCoach.photoURL}
+                          alt={coCoach.userName || coCoach.name}
+                          className="rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-500"
+                          imageClassName="w-7 h-7 rounded-full object-cover border-2 bg-purple-100 border-purple-400"
+                          fallbackClassName="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 bg-purple-100 border-purple-400 text-purple-700"
+                          fallback={coCoach.userName?.charAt(0).toUpperCase() || coCoach.name?.charAt(0).toUpperCase() || "?"}
+                          onViewProfile={onProfileClick && !isCurrentUser && (coCoach.userEmail || coCoach.email)
+                            ? () => onProfileClick(coCoach.userEmail || coCoach.email)
+                            : undefined}
+                        />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <span className="text-sm font-bold text-purple-900 break-words">
-                          {coCoach.userName || coCoach.name}
-                        </span>
+                        {onProfileClick && !isCurrentUser && (coCoach.userEmail || coCoach.email) ? (
+                          <button
+                            type="button"
+                            className="text-sm font-bold text-purple-900 break-words text-left hover:underline"
+                            onClick={() => onProfileClick(coCoach.userEmail || coCoach.email)}
+                          >
+                            {coCoach.userName || coCoach.name}
+                          </button>
+                        ) : (
+                          <span className="text-sm font-bold text-purple-900 break-words">
+                            {coCoach.userName || coCoach.name}
+                          </span>
+                        )}
                         <span className="text-[9px] text-purple-600 font-medium uppercase ml-2">
                           {coCoach.isCoCoach ? "Co-Coach" : "Coach"}
                         </span>
@@ -491,38 +462,17 @@ const HierarchicalNode = ({
                 onClick={onProfileClick && !isCurrentUser ? (e) => { e.stopPropagation(); onProfileClick(node.userEmail || node.email); } : undefined}
                 title={onProfileClick && !isCurrentUser ? "View profile" : undefined}
               >
-                {node.profileImage || node.photoURL ? (
-                  <>
-                    <img
-                      src={node.profileImage || node.photoURL}
-                      alt={node.userName || node.name}
-                      className={`w-9 h-9 rounded-full object-cover border-2 ${avatarClass} ${onProfileClick && !isCurrentUser ? "hover:opacity-80 transition-opacity" : ""}`}
-                      style={{ display: "block" }}
-                      onError={(e) => {
-                        e.target.style.display = "none";
-                        if (e.target.nextSibling) {
-                          e.target.nextSibling.style.display = "flex";
-                        }
-                      }}
-                    />
-                    <div
-                      className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold border-2 ${avatarClass}`}
-                      style={{ display: "none" }}
-                    >
-                      {node.userName?.charAt(0).toUpperCase() ||
-                        node.name?.charAt(0).toUpperCase() ||
-                        "?"}
-                    </div>
-                  </>
-                ) : (
-                  <div
-                    className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold border-2 ${avatarClass} ${onProfileClick && !isCurrentUser ? "hover:opacity-80 transition-opacity" : ""}`}
-                  >
-                    {node.userName?.charAt(0).toUpperCase() ||
-                      node.name?.charAt(0).toUpperCase() ||
-                      "?"}
-                  </div>
-                )}
+                <ProfilePhotoThumbnail
+                  src={node.profileImage || node.photoURL}
+                  alt={node.userName || node.name}
+                  className="rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                  imageClassName={`w-9 h-9 rounded-full object-cover border-2 ${avatarClass} ${onProfileClick && !isCurrentUser ? "hover:opacity-80 transition-opacity" : ""}`}
+                  fallbackClassName={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold border-2 ${avatarClass} ${onProfileClick && !isCurrentUser ? "hover:opacity-80 transition-opacity" : ""}`}
+                  fallback={node.userName?.charAt(0).toUpperCase() || node.name?.charAt(0).toUpperCase() || "?"}
+                  onViewProfile={onProfileClick && !isCurrentUser && (node.userEmail || node.email)
+                    ? () => onProfileClick(node.userEmail || node.email)
+                    : undefined}
+                />
               </div>
 
               {/* Name + Info */}
@@ -532,7 +482,7 @@ const HierarchicalNode = ({
                   <div className="flex-1 min-w-0">
                     {/* Name and YOU badge */}
                     <div className="flex items-center gap-1.5 flex-wrap min-w-0">
-                      {onProfileClick && !isCurrentUser ? (
+                      {onProfileClick && !isCurrentUser && (node.userEmail || node.email) ? (
                         <button
                           onClick={(e) => { e.stopPropagation(); onProfileClick(node.userEmail || node.email); }}
                           className={`text-sm font-bold break-words text-left hover:underline hover:text-green-600 transition-colors ${nameClass}`}
@@ -745,23 +695,35 @@ const HierarchicalNode = ({
                       {/* Member Header */}
                       <div className="flex items-center justify-between mb-2">
                         <div className="flex items-center gap-2 min-w-0">
-                          {child.profileImage ? (
-                            <img
-                              src={child.profileImage}
-                              alt={child.userName || child.name}
-                              className="h-8 w-8 rounded-full object-cover border border-gray-200 flex-shrink-0"
-                            />
-                          ) : (
-                            <div className="h-8 w-8 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center flex-shrink-0">
+                          <ProfilePhotoThumbnail
+                            src={child.profileImage}
+                            alt={child.userName || child.name}
+                            className="flex-shrink-0 rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                            imageClassName="h-8 w-8 rounded-full object-cover border border-gray-200"
+                            fallbackClassName="h-8 w-8 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center flex-shrink-0"
+                            fallback={(
                               <span className="text-white font-semibold text-xs">
                                 {(child.userName || child.name || "?")[0].toUpperCase()}
                               </span>
-                            </div>
-                          )}
+                            )}
+                            onViewProfile={onProfileClick && (child.userEmail || child.email)
+                              ? () => onProfileClick(child.userEmail || child.email)
+                              : undefined}
+                          />
                           <div className="min-w-0">
-                            <span className="text-sm font-medium text-gray-900 block truncate">
-                              {child.userName || child.name}
-                            </span>
+                            {onProfileClick && (child.userEmail || child.email) ? (
+                              <button
+                                type="button"
+                                className="text-sm font-medium text-gray-900 block truncate text-left hover:underline"
+                                onClick={() => onProfileClick(child.userEmail || child.email)}
+                              >
+                                {child.userName || child.name}
+                              </button>
+                            ) : (
+                              <span className="text-sm font-medium text-gray-900 block truncate">
+                                {child.userName || child.name}
+                              </span>
+                            )}
                             {(() => {
                               const mail = String(child.userEmail || child.email || '').trim();
                               const cid = String(child.communityId || '').trim();

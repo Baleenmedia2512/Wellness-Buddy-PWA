@@ -1,9 +1,10 @@
 // Header bar with avatar (ProfileImage), role badge, name, email, close.
-import React from 'react';
+import React, { useState } from 'react';
 import { X } from 'lucide-react';
 import TouchFeedbackButton from '../../../../shared/components/TouchFeedbackButton';
 import { EmojiOrNative } from '../../../../shared/components/icons/EmojiImage';
 import BathroomScaleIcon from '../../../../shared/components/icons/BathroomScaleIcon';
+import ProfilePhotoViewer from '../picture/ProfilePhotoViewer';
 
 const COLORS = ['bg-blue-500', 'bg-green-500', 'bg-purple-500', 'bg-pink-500', 'bg-indigo-500', 'bg-yellow-500', 'bg-red-500', 'bg-teal-500'];
 
@@ -17,21 +18,27 @@ const UserProfileHeader = ({
   onClose, isSaving,
   weightGoalMode,
 }) => {
+  const [showPhotoViewer, setShowPhotoViewer] = useState(false);
   const displayName = name || user?.displayName || user?.name || 'User';
   const role = ROLE_LABELS[userRole] || 'Customer';
   return (
     <div className="flex items-center justify-between p-6 bg-gradient-to-r from-green-500 to-green-600 rounded-t-2xl">
       <div className="flex items-center space-x-3">
-        <div className="relative w-16 h-16 rounded-full border-2 border-white overflow-hidden">
-          {profileImagePreview ? (
+        {profileImagePreview ? (
+          <button
+            type="button"
+            className="relative w-16 h-16 rounded-full border-2 border-white overflow-hidden focus:outline-none focus-visible:ring-2 focus-visible:ring-white"
+            onClick={() => setShowPhotoViewer(true)}
+            aria-label={`View ${displayName}'s profile photo`}
+          >
             <img src={profileImagePreview} alt={displayName} className="w-full h-full object-cover"
               loading="lazy" decoding="async" referrerPolicy="no-referrer" />
-          ) : (
-            <div className={`w-full h-full flex items-center justify-center text-white font-bold text-2xl ${colorOf(name, user?.email)}`}>
-              {initialOf(name || user?.displayName || user?.name, user?.email)}
-            </div>
-          )}
-        </div>
+          </button>
+        ) : (
+          <div className={`relative w-16 h-16 rounded-full border-2 border-white overflow-hidden flex items-center justify-center text-white font-bold text-2xl ${colorOf(name, user?.email)}`}>
+            {initialOf(name || user?.displayName || user?.name, user?.email)}
+          </div>
+        )}
         <div>
           <div className="flex items-center gap-2 flex-wrap">
             <h2 className="text-xl font-bold text-white">{displayName}</h2>
@@ -72,6 +79,12 @@ const UserProfileHeader = ({
           <X className="w-5 h-5 text-white" />
         </TouchFeedbackButton>
       </div>
+      <ProfilePhotoViewer
+        isOpen={showPhotoViewer}
+        src={profileImagePreview}
+        alt={displayName}
+        onClose={() => setShowPhotoViewer(false)}
+      />
     </div>
   );
 };
