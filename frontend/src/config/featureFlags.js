@@ -200,6 +200,15 @@ const REGISTRY = Object.freeze({
     defaultEnabled: true,
     description:    'Profile Go Premium opens Cashfree checkout.',
   },
+
+  // Unique per-user wallet. Cash-in after OTP to a selected Wellness Valley person.
+  // Default ON. Set REACT_APP_FF_WALLET=false or localStorage 'ff.wallet'='false' to hide.
+  'ff.wallet': {
+    envKey:         'REACT_APP_FF_WALLET',
+    storageKey:     'ff.wallet',
+    defaultEnabled: true,
+    description:    'Profile Wallet: unique balance and OTP-approved cash-in.',
+  },
 });
 
 function readStorage(key) {

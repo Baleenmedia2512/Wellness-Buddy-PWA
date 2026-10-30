@@ -388,3 +388,12 @@ registerFlag({
   description:    'Profile Go Premium opens Cashfree checkout. Kill switch hides the row and the create-order API.',
   defaultEnabled: true,
 });
+
+registerFlag({
+  name:           'ff.wallet',
+  owner:          '@principal-eng',
+  createdAt:      '2026-10-30',
+  removeBy:       '2027-04-30',
+  description:    'Unique per-user wallet. Cash-in after OTP emailed to a selected Wellness Valley person. Kill switch hides the Profile row and wallet APIs.',
+  defaultEnabled: true,
+});
