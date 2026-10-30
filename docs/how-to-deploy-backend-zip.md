@@ -101,7 +101,6 @@ Delete **one item at a time**: click it → right-click **Delete** → **Yes**.
 - `controllers`
 - `models`
 - `services`
-- `data`
 - `migrations`
 - `public`
 
