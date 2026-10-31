@@ -1,9 +1,9 @@
 /**
  * When a Transformation card is complete enough to require sponsor OTP.
  *
- * Incomplete rows often clone the before photo into after_image_path (same path)
- * so the Mine card can show two slots. That clone is not a distinct after photo,
- * but an after-weight change or a visible before+after card still needs OTP.
+ * Photo approval requires a real Before file and a different real After file.
+ * A missing After, a video-only placeholder, or the same path in both columns
+ * is not an After photo and must not start coach OTP.
  */
 
 const VIDEO_ONLY_SUFFIX = '_video_only_placeholder.jpg';
@@ -62,27 +62,22 @@ export function hasCompletePhotoTestimonial(row = {}) {
 }
 
 /**
- * Member tapped Submit for Approval with a visible Before + After card
- * (including a Profile-seeded clone). That must email the coach and start OTP.
- * Distinct-after / weight-diff / pending still qualify via isPhotoPairComplete.
- *
- * Profile sync stays on its own path and must not call this.
+ * Coach photo approval requires two different Transformation files:
+ * a real Before and a real After. Profile display, a Before-only save,
+ * and a copied Before path do not qualify.
  *
  * @param {object} row
  * @param {object} [overlay]
  * @returns {boolean}
  */
 export function shouldSendPhotoApprovalOtp(row = {}, overlay = {}) {
-  if (isPhotoPairComplete(row, overlay)) return true;
   const beforePath = overlay.beforePath ?? row.before_image_path ?? row.beforeImagePath;
   const afterPath = overlay.afterPath ?? row.after_image_path ?? row.afterImagePath;
-  if (hasRealBeforePhoto({ before_image_path: beforePath })
-    && hasVisibleAfterCard({ after_image_path: afterPath })) {
-    return true;
-  }
-  // Mine always clones After from Before when after_image_path is empty.
-  // That visible card must still start coach OTP — do not silent-save.
-  return hasRealBeforePhoto({ before_image_path: beforePath });
+  return hasRealBeforePhoto({ before_image_path: beforePath })
+    && hasDistinctAfterPhoto({
+      before_image_path: beforePath,
+      after_image_path: afterPath,
+    });
 }
 
 /**

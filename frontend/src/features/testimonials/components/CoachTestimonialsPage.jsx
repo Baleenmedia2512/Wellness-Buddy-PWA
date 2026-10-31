@@ -76,7 +76,11 @@ import {
   liveWeightDiffKg,
   isTransformationWeightLoss,
   canShareTransformationPhoto,
+  
+  
   hasApprovalReadyBeforePhoto,
+  hasDistinctTransformationAfter,
+  hasStoredTransformationBefore,
   hasStoredTransformationPhotoCard,
 } from '../services/testimonialFormUtils.js';
 import { resolveRowTeamUploadPerformance } from '../utils/testimonialTeamPerformance.js';
@@ -775,9 +779,8 @@ function MemberCard({
   }, [testimonial?.healthVideoUrl, testimonial?.businessVideoUrl]);
 
   const [expandedPhoto, setExpandedPhoto] = useState(null);
-  // Seeded Left/Before clone still has afterImageUrl — show that image to coach/upline.
-  // hasAfter = "real" After (completeness / weight-diff / OTP), not merely a visible clone.
-  const hasAfterImage = Boolean(testimonial?.afterImageUrl);
+  // After is shown only when it is a different file from Before.
+  const hasAfterImage = hasDistinctTransformationAfter(testimonial);
   const hasAfter = hasAfterImage
     && (
       testimonial?.status !== 'incomplete'
@@ -952,12 +955,9 @@ function MemberCard({
   const beforeRaw = draftBefore?.previewUrl
     || withTestimonialMediaCacheBust(testimonial?.beforeImageUrl, mediaVersion);
   const afterRaw = draftAfter?.previewUrl
-    || withTestimonialMediaCacheBust(
-      hasAfterImage || editable
-        ? (testimonial?.afterImageUrl || (editable ? testimonial?.beforeImageUrl : null))
-        : null,
-      mediaVersion,
-    );
+    || (hasAfterImage
+      ? withTestimonialMediaCacheBust(testimonial?.afterImageUrl, mediaVersion)
+      : null);
   const beforeImageSrc = useRevocableImageSrc(beforeRaw);
   const afterImageSrc = useRevocableImageSrc(afterRaw);
 
@@ -1342,6 +1342,16 @@ function MemberCard({
           }
         : null;
       if (!isSilentSave && !otpSent) {
+        const saved = result?.testimonial;
+        const waitingForOtherPhoto = Boolean(saved) && !hasDistinctTransformationAfter(saved);
+        if (waitingForOtherPhoto && (hasStoredTransformationBefore(saved) || saved.beforeImageUrl || saved.afterImageUrl)) {
+          const cleared = hasStoredTransformationBefore(saved)
+            ? { ...patched, photosFromProfileSeed: false }
+            : patched;
+          clearDrafts();
+          void reloadMine(cleared);
+          return;
+        }
         const hasDuration = Boolean(usableDurationForSubmit);
         setSubmitError(
           hasDuration
@@ -2488,7 +2498,11 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
           profileImage,
           phoneNumber,
         },
-        testimonial: { ...(prev?.testimonial || {}), ...patchedTestimonial },
+        testimonial: (() => {
+          const merged = { ...(prev?.testimonial || {}), ...patchedTestimonial };
+          if (hasStoredTransformationBefore(merged)) merged.photosFromProfileSeed = false;
+          return merged;
+        })(),
       }));
       return;
     }

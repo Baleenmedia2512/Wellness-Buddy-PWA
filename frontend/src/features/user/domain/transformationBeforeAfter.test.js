@@ -120,7 +120,7 @@ describe('transformation Before vs After pairing', () => {
     assert.equal(seeded.beforeImageUrl, 'data:image/jpeg;base64,left');
     assert.equal(seeded.beforeWeightKg, 55);
     assert.equal(seeded.afterWeightKg, 55);
-    assert.equal(seeded.afterImageUrl, 'data:image/jpeg;base64,left');
+    assert.equal(seeded.afterImageUrl, null);
   });
 
   it('does not replace a verified After photo with Left', () => {
@@ -139,6 +139,20 @@ describe('transformation Before vs After pairing', () => {
     assert.equal(seeded.afterWeightKg, 72);
   });
 
+  it('clears the profile-seed flag when a Transformation Before file is already saved', () => {
+    const seeded = seedMineTestimonialFromProfileSlots({
+      id: 4,
+      photosFromProfileSeed: true,
+      beforeImagePath: '4/before_1700000000000.jpg',
+      beforeImageUrl: 'https://cdn.example/before.jpg',
+      afterImageUrl: null,
+    }, {
+      leftUrl: 'data:image/jpeg;base64,left',
+    });
+    assert.equal(seeded.photosFromProfileSeed, false);
+    assert.equal(seeded.beforeImageUrl, 'https://cdn.example/before.jpg');
+  });
+
   it('does not replace an existing Before photo with Profile Left (existing user)', () => {
     const seeded = seedMineTestimonialFromLeftSlot({
       beforeImageUrl: 'https://cdn.example/before.jpg',
@@ -151,7 +165,7 @@ describe('transformation Before vs After pairing', () => {
     assert.equal(seeded.beforeWeightKg, 48);
   });
 
-  it('seeds both Before and After from Left for a new user even when Profile Right exists', () => {
+  it('shows Profile Left only as Before and does not copy it into After', () => {
     const seeded = seedMineTestimonialFromProfileSlots({
       status: 'incomplete',
       beforeImageUrl: null,
@@ -161,7 +175,7 @@ describe('transformation Before vs After pairing', () => {
       rightUrl: 'data:image/jpeg;base64,right',
     });
     assert.equal(seeded.beforeImageUrl, 'data:image/jpeg;base64,left');
-    assert.equal(seeded.afterImageUrl, 'data:image/jpeg;base64,left');
+    assert.equal(seeded.afterImageUrl, null);
     assert.equal(seeded.photosFromProfileSeed, true);
   });
 

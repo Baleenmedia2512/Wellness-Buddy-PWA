@@ -142,12 +142,46 @@ export function canShareTransformationPhoto(testimonial) {
   return true;
 }
 
+const VIDEO_ONLY_SUFFIX = '_video_only_placeholder.jpg';
+
 /**
- * Profile Left may paint Before/After on Mine, but those URLs are not stored on
- * the testimonial row (profile ↔ Transformation sync is disabled).
+ * Profile Left may paint Before on Mine. That display is not a Transformation upload.
  */
 export function isProfileSeededTransformation(testimonial) {
   return Boolean(testimonial?.photosFromProfileSeed);
+}
+
+export function isRealTransformationImagePath(path) {
+  return typeof path === 'string' && path.trim().length > 0 && !path.endsWith(VIDEO_ONLY_SUFFIX);
+}
+
+/** A Before file saved on the testimonial row, including when a stale profile flag remains. */
+export function hasStoredTransformationBefore(testimonial) {
+  return isRealTransformationImagePath(
+    testimonial?.beforeImagePath ?? testimonial?.before_image_path,
+  );
+}
+
+/**
+ * After counts only when it is a different file from Before.
+ * The same path, the same URL, or a profile-only paint does not count.
+ */
+export function hasDistinctTransformationAfter(testimonial) {
+  if (!testimonial) return false;
+  if (isProfileSeededTransformation(testimonial) && !hasStoredTransformationBefore(testimonial)) {
+    return false;
+  }
+  const beforePath = testimonial.beforeImagePath ?? testimonial.before_image_path ?? null;
+  const afterPath = testimonial.afterImagePath ?? testimonial.after_image_path ?? null;
+  if (isRealTransformationImagePath(afterPath)) {
+    if (isRealTransformationImagePath(beforePath) && afterPath === beforePath) return false;
+    return true;
+  }
+  if (typeof afterPath === 'string' && afterPath.endsWith(VIDEO_ONLY_SUFFIX)) return false;
+  const afterUrl = testimonial.afterImageUrl;
+  if (!afterUrl) return false;
+  if (testimonial.beforeImageUrl && afterUrl === testimonial.beforeImageUrl) return false;
+  return true;
 }
 
 /**
@@ -156,17 +190,21 @@ export function isProfileSeededTransformation(testimonial) {
  */
 export function hasApprovalReadyBeforePhoto({ testimonial, draftBefore } = {}) {
   if (draftBefore?.imageBase64) return true;
+  if (hasStoredTransformationBefore(testimonial)) return true;
   if (isProfileSeededTransformation(testimonial)) return false;
   return Boolean(testimonial?.id && testimonial?.beforeImageUrl);
 }
 
 /**
  * Visible Before+After that can start sponsor OTP without re-uploading.
- * Profile-seeded clones do not count.
+ * Profile-seeded clones and a Before file reused as After do not count.
  */
 export function hasStoredTransformationPhotoCard(testimonial) {
-  if (isProfileSeededTransformation(testimonial)) return false;
-  return Boolean(testimonial?.beforeImageUrl && testimonial?.afterImageUrl);
+  if (!testimonial?.beforeImageUrl || !hasDistinctTransformationAfter(testimonial)) return false;
+  if (isProfileSeededTransformation(testimonial) && !hasStoredTransformationBefore(testimonial)) {
+    return false;
+  }
+  return true;
 }
 
 /** CSS class for portrait testimonial thumbnails — cover fills the frame; top-anchored so faces stay visible. */

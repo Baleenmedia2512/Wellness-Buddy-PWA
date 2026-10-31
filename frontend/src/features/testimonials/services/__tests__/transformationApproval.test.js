@@ -10,6 +10,8 @@ import {
   isTransformationWeightLoss,
   canShareTransformationPhoto,
   hasApprovalReadyBeforePhoto,
+  hasDistinctTransformationAfter,
+  hasStoredTransformationBefore,
   hasStoredTransformationPhotoCard,
 } from '../testimonialFormUtils.js';
 
@@ -106,5 +108,45 @@ describe('approval-ready Transformation photos', () => {
         beforeImageUrl: 'https://cdn.example/before.jpg',
       },
     }), true);
+  });
+
+  it('accepts a saved Before even when the profile-seed flag is still set', () => {
+    const saved = {
+      id: 4,
+      photosFromProfileSeed: true,
+      beforeImagePath: '4/before_1700000000000.jpg',
+      beforeImageUrl: 'https://cdn.example/before.jpg',
+      afterImagePath: '4/4_video_only_placeholder.jpg',
+      afterImageUrl: null,
+    };
+    assert.equal(hasStoredTransformationBefore(saved), true);
+    assert.equal(hasApprovalReadyBeforePhoto({ testimonial: saved }), true);
+    assert.equal(hasDistinctTransformationAfter(saved), false);
+    assert.equal(hasStoredTransformationPhotoCard(saved), false);
+  });
+
+  it('does not treat the same file as both Before and After', () => {
+    const cloned = {
+      id: 5,
+      beforeImagePath: '5/before_1700000000000.jpg',
+      afterImagePath: '5/before_1700000000000.jpg',
+      beforeImageUrl: 'https://cdn.example/before.jpg',
+      afterImageUrl: 'https://cdn.example/before.jpg',
+    };
+    assert.equal(hasDistinctTransformationAfter(cloned), false);
+    assert.equal(hasStoredTransformationPhotoCard(cloned), false);
+  });
+
+  it('accepts two different Transformation files loaded from the database', () => {
+    const pair = {
+      id: 6,
+      beforeImagePath: '6/before_1700000000000.jpg',
+      afterImagePath: '6/after_1700000001000.jpg',
+      beforeImageUrl: 'https://cdn.example/before.jpg',
+      afterImageUrl: 'https://cdn.example/after.jpg',
+    };
+    assert.equal(hasDistinctTransformationAfter(pair), true);
+    assert.equal(hasStoredTransformationPhotoCard(pair), true);
+    assert.equal(hasApprovalReadyBeforePhoto({ testimonial: pair }), true);
   });
 });

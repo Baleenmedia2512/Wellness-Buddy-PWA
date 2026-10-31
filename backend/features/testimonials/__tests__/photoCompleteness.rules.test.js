@@ -48,8 +48,8 @@ describe('seeded incomplete before/after clone', () => {
     assert.equal(resolveHealthIssueOtpChannel(seeded), 'photo');
   });
 
-  it('sends approval OTP on a visible seeded card even when after weight matches', () => {
-    assert.equal(shouldSendPhotoApprovalOtp(seeded), true);
+  it('does not send photo approval OTP when After is a copy of Before', () => {
+    assert.equal(shouldSendPhotoApprovalOtp(seeded), false);
   });
 });
 
@@ -61,14 +61,30 @@ describe('shouldSendPhotoApprovalOtp', () => {
     }), false);
   });
 
-  it('sends OTP when After is only a UI clone (empty after path)', () => {
+  it('does not send OTP for Transformation Before only', () => {
     const beforeOnly = {
       status: 'incomplete',
       before_image_path: '42/before_1700000000000.jpg',
       after_image_path: null,
     };
-    assert.equal(shouldSendPhotoApprovalOtp(beforeOnly), true);
+    assert.equal(shouldSendPhotoApprovalOtp(beforeOnly), false);
     assert.equal(resolveHealthIssueOtpChannel(beforeOnly), 'photo');
+  });
+
+  it('does not send OTP for Transformation After only', () => {
+    assert.equal(shouldSendPhotoApprovalOtp({
+      status: 'incomplete',
+      before_image_path: '42/42_video_only_placeholder.jpg',
+      after_image_path: '42/after_1700000001000.jpg',
+    }), false);
+  });
+
+  it('sends OTP only when Before and After are different files', () => {
+    assert.equal(shouldSendPhotoApprovalOtp({
+      status: 'incomplete',
+      before_image_path: '42/before_1700000000000.jpg',
+      after_image_path: '42/after_1700000001000.jpg',
+    }), true);
   });
 });
 
