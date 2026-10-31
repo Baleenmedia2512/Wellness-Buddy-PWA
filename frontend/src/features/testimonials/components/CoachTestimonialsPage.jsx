@@ -954,10 +954,13 @@ function MemberCard({
   const mediaVersion = `${testimonial?.updatedAt ?? testimonial?.id ?? ''}-${mediaEpoch}`;
   const beforeRaw = draftBefore?.previewUrl
     || withTestimonialMediaCacheBust(testimonial?.beforeImageUrl, mediaVersion);
+  // No separate After file yet: show the Before photo in that column.
+  // This is display only. It is not saved as After and does not start coach approval.
   const afterRaw = draftAfter?.previewUrl
     || (hasAfterImage
       ? withTestimonialMediaCacheBust(testimonial?.afterImageUrl, mediaVersion)
-      : null);
+      : null)
+    || beforeRaw;
   const beforeImageSrc = useRevocableImageSrc(beforeRaw);
   const afterImageSrc = useRevocableImageSrc(afterRaw);
 
