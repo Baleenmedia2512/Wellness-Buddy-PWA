@@ -9,8 +9,6 @@ import crypto from 'node:crypto';
 import * as repo from './testimonials.repository.js';
 import {
   hasCompletePhotoTestimonial,
-  hasRealBeforePhoto,
-  hasVisibleAfterCard,
   isPhotoPairComplete,
   resolveHealthIssueOtpChannel,
   shouldHydratePhotosFromProfile,
@@ -660,8 +658,8 @@ export async function submitTestimonial(rawBody) {
     row = await repo.insertTestimonial({
       userId:  payload.userId,
       coachId: userInfo.coachId,
-      // Placeholder paths for incomplete â€” will be replaced on completion
-      afterImagePath: afterPath ?? beforePath,
+      // After stays empty until a separate Transformation After is uploaded.
+      afterImagePath: afterPath ?? repo.videoOnlyPlaceholderPath(payload.userId),
       afterWeightKg:  payload.afterWeightKg ?? payload.beforeWeightKg,
       ...rowData,
     });
@@ -1937,9 +1935,7 @@ export async function submitAllEdits(rawBody) {
     afterWeightKg: photoUpdates.afterWeightKg ?? existing.after_weight_kg,
   });
 
-  // Visible Before+After (including a seeded clone) + Submit for Approval → OTP.
-  // Do not wait for a distinct after path or a weight change — that left
-  // seeded cards on silent save with no coach email.
+  // OTP only when Before and After are two different stored files.
   const photoNeedsOtp = (hasPhotoDirty || payload.submitForApproval)
     && shouldSendPhotoApprovalOtp(existing, {
     beforePath: newBeforePath,
@@ -1948,15 +1944,6 @@ export async function submitAllEdits(rawBody) {
     afterWeightKg: photoUpdates.afterWeightKg ?? existing.after_weight_kg,
     status: existing.status,
   });
-
-  // Persist the UI After clone so the pair exists when coach reviews the email.
-  if (
-    photoNeedsOtp
-    && !hasVisibleAfterCard({ after_image_path: newAfterPath })
-    && hasRealBeforePhoto({ before_image_path: newBeforePath })
-  ) {
-    photoUpdates.afterImagePath = newBeforePath;
-  }
 
   // Health issues are optional — empty list is allowed on photo submit.
   const resolvedHealthIssues = mergedIssues;
@@ -1973,9 +1960,9 @@ export async function submitAllEdits(rawBody) {
 
   const needsOtp = photoNeedsOtp || Boolean(issuesOtpChannel) || hasVideoDirty;
 
-  // Member asked for coach approval — never silent-save with otpSent:false
-  // (that surfaces as "Coach approval did not start" in the app).
-  if (payload.submitForApproval && !needsOtp) {
+  // A Before-only or After-only edit is saved below without OTP.
+  // Reject approval only when nothing was uploaded and the pair is still incomplete.
+  if (payload.submitForApproval && !needsOtp && !hasPhotoDirty && !hasVideoDirty && !hasIssuesDirty) {
     throw new ValidationError(
       422,
       'Add before and after photos on Transformation, then submit for coach approval.',

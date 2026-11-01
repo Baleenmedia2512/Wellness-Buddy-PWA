@@ -169,14 +169,19 @@ function isIncompleteProfileMappedAfter(testimonial, afterValue) {
 
 /**
  * Transformation Before/After from Profile slots:
- * Left → Before always when present (new users with Left/Centre/Right uploads).
- * After defaults to Left only when no After is stored yet.
- * Profile Right never maps to After. A later Left change updates Before only.
+ * Left → Before only, as a display fallback when Transformation has no Before.
+ * Profile never fills After and never replaces a saved Transformation photo.
  */
 export function seedMineTestimonialFromProfileSlots(testimonial, { leftUrl, weightKg } = {}) {
   // Existing user: keep Transformation photos as stored — do not overlay Profile.
   if (isStoredPhoto(testimonial?.beforeImageUrl)) {
-    return { ...testimonial };
+    const path = testimonial.beforeImagePath ?? testimonial.before_image_path;
+    const savedBefore = typeof path === 'string'
+      && path.trim()
+      && !path.endsWith('_video_only_placeholder.jpg');
+    return savedBefore
+      ? { ...testimonial, photosFromProfileSeed: false }
+      : { ...testimonial };
   }
 
   const hasLeft = isStoredPhoto(leftUrl);
@@ -196,8 +201,8 @@ export function seedMineTestimonialFromProfileSlots(testimonial, { leftUrl, weig
 
   if (hasLeft) {
     next.beforeImageUrl = String(leftUrl).trim();
-    // Profile Left is display-only — Transformation submit must upload real photos
-    // (profile ↔ Transformation sync is disabled).
+    // Profile Left is display-only. It is not a Transformation Before upload,
+    // and it is never copied into After.
     if (!hadStoredBefore) {
       next.photosFromProfileSeed = true;
     }
@@ -205,13 +210,8 @@ export function seedMineTestimonialFromProfileSlots(testimonial, { leftUrl, weig
   const beforeW = firstPositiveKg(next.beforeWeightKg, weight);
   if (beforeW != null) next.beforeWeightKg = beforeW;
 
-  if (!realAfter && !storedAfter) {
-    if (hasLeft) {
-      next.afterImageUrl = String(leftUrl).trim();
-      if (!hadStoredBefore) next.photosFromProfileSeed = true;
-    } else if (isStoredPhoto(next.beforeImageUrl)) {
-      next.afterImageUrl = next.beforeImageUrl;
-    }
+  if (!realAfter && !storedAfter && next.afterImageUrl && next.afterImageUrl === next.beforeImageUrl) {
+    next.afterImageUrl = null;
   }
 
   if (!realAfter) {
