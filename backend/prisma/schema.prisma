@@ -906,3 +906,21 @@ model wellness_university_enrollments_table {
 
   @@index([UserId], map: "fk_wellness_user_id")
 }
+
+model events_table {
+  Id                  Int      @id @default(autoincrement())
+  CreatedByUserId     Int
+  EventName           String   @db.VarChar(200)
+  HostName            String   @db.VarChar(200)
+  Place               String   @db.VarChar(300)
+  EventDate           DateTime @db.Date
+  TicketPrice         Decimal  @db.Decimal(10, 2)
+  SeatCount           Int
+  DesignatedPersons   Json
+  Status              String   @default("scheduled") @db.VarChar(20)
+  IsDeleted           Int      @default(0) @db.SmallInt
+  CreatedAt           DateTime @default(now())
+  UpdatedAt           DateTime @default(now()) @updatedAt
+
+  @@index([CreatedByUserId, IsDeleted], map: "idx_events_owner_deleted")
+}

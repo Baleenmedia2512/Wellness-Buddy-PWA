@@ -24,6 +24,7 @@ const Header = ({
   onShowActivityReport,
   onShowTestimonials,
   onShowBroadcast,
+  onShowCreateEvent,
   onShowReports,
   onShowWellnessScoreSetup,
   wellnessScoreSetupEnabled = false,
@@ -176,6 +177,7 @@ const Header = ({
           onShowNutritionCentersMap={onShowNutritionCentersMap}
           onShowTestimonials={onShowTestimonials}
           onShowBroadcast={onShowBroadcast}
+          onShowCreateEvent={onShowCreateEvent}
           onShowReports={onShowReports}
           reportsEnabled={reportsEnabled}
           allowedPages={allowedPages}
@@ -257,6 +259,7 @@ const Header = ({
           onShowNutritionCentersMap={onShowNutritionCentersMap}
           onShowTestimonials={onShowTestimonials}
           onShowBroadcast={onShowBroadcast}
+          onShowCreateEvent={onShowCreateEvent}
           onShowReports={onShowReports}
           reportsEnabled={reportsEnabled}
           allowedPages={allowedPages}
