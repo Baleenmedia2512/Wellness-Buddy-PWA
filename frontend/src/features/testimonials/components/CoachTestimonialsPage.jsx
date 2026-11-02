@@ -801,6 +801,7 @@ function MemberCard({
   }, [testimonial?.healthVideoUrl, testimonial?.businessVideoUrl]);
 
   const [expandedPhoto, setExpandedPhoto] = useState(null);
+  const [profileOpen, setProfileOpen] = useState(false);
   // After is shown only when it is a different file from Before.
   const hasAfterImage = hasDistinctTransformationAfter(testimonial);
   const hasAfter = hasAfterImage
