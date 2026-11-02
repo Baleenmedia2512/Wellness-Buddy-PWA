@@ -3,7 +3,7 @@ import { act } from 'react';
 import { Simulate } from 'react-dom/test-utils';
 import { createRoot } from 'react-dom/client';
 import { getUserId } from '../../../../shared/services/getUserId.js';
-import { listEvents } from '../../services/events.api.js';
+import { EVENTS_UPDATED_EVENT, listEvents } from '../../services/events.api.js';
 import EventsPage from '../EventsPage';
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
@@ -13,6 +13,7 @@ jest.mock('../../../../shared/services/getUserId.js', () => ({
 }));
 
 jest.mock('../../services/events.api.js', () => ({
+  EVENTS_UPDATED_EVENT: 'wellness-events-updated',
   listEvents: jest.fn(),
 }));
 
@@ -103,6 +104,23 @@ describe('EventsPage', () => {
     expect(container.querySelectorAll('article')).toHaveLength(0);
     expect(container.textContent).toContain('No events have been created yet.');
     expect(container.textContent).not.toContain('Wellness Workshop');
+  });
+
+  it('refreshes the home event list after an event is changed', async () => {
+    listEvents
+      .mockResolvedValueOnce({ events: [event] })
+      .mockResolvedValueOnce({ events: [] });
+    await renderPage();
+
+    await act(async () => {
+      window.dispatchEvent(new Event(EVENTS_UPDATED_EVENT));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(listEvents).toHaveBeenCalledTimes(2);
+    expect(container.querySelectorAll('article')).toHaveLength(0);
+    expect(container.textContent).toContain('No events have been created yet.');
   });
 
 });

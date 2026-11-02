@@ -9418,16 +9418,20 @@ function WellnessValleyApp() {
                 <button
                   type="button"
                   onClick={() => navigateTo('events')}
-                  className="flex w-full items-center gap-3 rounded-2xl border border-emerald-100 bg-white p-4 text-left shadow-sm transition hover:border-emerald-300 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-2"
+                  className="group relative flex w-full items-center gap-3 overflow-hidden rounded-2xl border border-violet-300 bg-gradient-to-r from-violet-700 via-purple-600 to-fuchsia-500 p-4 text-left shadow-md transition hover:-translate-y-0.5 hover:shadow-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:ring-offset-2"
                 >
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-100">
-                    <CalendarDays className="h-5 w-5 text-emerald-800" aria-hidden="true" />
+                  <span aria-hidden="true" className="pointer-events-none absolute -right-4 -top-8 h-24 w-24 rounded-full bg-white/15 blur-sm" />
+                  <span className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/30 bg-white/20 shadow-inner">
+                    <CalendarDays className="h-5 w-5 text-white" aria-hidden="true" />
                   </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-sm font-bold text-gray-900">Wellness events</span>
-                    <span className="block text-xs text-gray-600">Explore activities and register</span>
+                  <span className="relative min-w-0 flex-1">
+                    <span className="block text-base font-extrabold tracking-wide text-white">Wellness Events</span>
+                    <span className="mt-0.5 block text-xs font-medium text-white/90">Discover events and register</span>
                   </span>
-                  <ArrowRight className="h-5 w-5 shrink-0 text-emerald-700" aria-hidden="true" />
+                  <span className="relative inline-flex shrink-0 items-center gap-1 rounded-full bg-white px-3 py-1.5 text-xs font-bold text-violet-800 shadow-sm transition group-hover:bg-violet-50">
+                    Show events
+                    <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+                  </span>
                 </button>
               )}
               {isFlagEnabled('ff.wellness-score-sheet') && (

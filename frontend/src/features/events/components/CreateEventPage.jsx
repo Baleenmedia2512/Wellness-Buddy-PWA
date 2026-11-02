@@ -1,6 +1,12 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { getUserId } from '../../../shared/services/getUserId.js';
-import { createEvent, deleteEvent, listEvents, updateEvent } from '../services/events.api.js';
+import {
+  createEvent,
+  deleteEvent,
+  listEvents,
+  notifyEventsUpdated,
+  updateEvent,
+} from '../services/events.api.js';
 import DesignatedPersonPicker from './DesignatedPersonPicker.jsx';
 import HostPersonPicker from './HostPersonPicker.jsx';
 
@@ -100,6 +106,7 @@ export default function CreateEventPage({ user }) {
       } else {
         await createEvent(payload);
       }
+      notifyEventsUpdated();
       resetForm();
       await loadEvents(userId);
     } catch (err) {
@@ -129,6 +136,7 @@ export default function CreateEventPage({ user }) {
     setError('');
     try {
       await updateEvent({ userId, id: item.id, status });
+      notifyEventsUpdated();
       await loadEvents(userId);
     } catch (err) {
       setError(err?.message || 'Could not update the event.');
@@ -143,6 +151,7 @@ export default function CreateEventPage({ user }) {
     setError('');
     try {
       await deleteEvent({ userId, id: item.id });
+      notifyEventsUpdated();
       if (editingId === item.id) resetForm();
       setPendingDeleteId(null);
       await loadEvents(userId);
