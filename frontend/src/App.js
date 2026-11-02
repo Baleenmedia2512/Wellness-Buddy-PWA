@@ -8465,6 +8465,7 @@ function WellnessValleyApp() {
           onShowActivityReport={() => navigateTo('activity-report')}
           onShowTestimonials={() => navigateTo('testimonials')}
           onShowBroadcast={() => navigateTo('broadcast')}
+          onShowCreateEvent={() => navigateTo('create-event')}
           onShowReports={() => navigateTo('reports')}
           onOpenProfile={() => navigateTo('profile')}
           profileKey={headerProfileKey}
