@@ -44,6 +44,7 @@ export default function LeaderboardAvatarViewer({
   if (!isOpen) return null;
 
   const shownName = String(name || '').trim() || 'Unknown';
+  
   const showImage = Boolean(src) && !imageFailed;
   const initial = shownName.charAt(0).toUpperCase() || '?';
   const colorIndex = shownName.length % COLORS.length;
