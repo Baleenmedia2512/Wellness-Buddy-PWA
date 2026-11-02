@@ -201,6 +201,14 @@ const REGISTRY = Object.freeze({
     description:    'Profile Go Premium opens Cashfree checkout.',
   },
 
+  // Create Event — event form plus update, delete, postpone, and cancel.
+  'ff.create-event': {
+    envKey:         'REACT_APP_FF_CREATE_EVENT',
+    storageKey:     'ff.create-event',
+    defaultEnabled: true,
+    description:    'Create Event page in the main navigation.',
+  },
+
   // Unique per-user wallet. Cash-in after OTP to a selected Wellness Valley person.
   // Default ON. Set REACT_APP_FF_WALLET=false or localStorage 'ff.wallet'='false' to hide.
   'ff.wallet': {

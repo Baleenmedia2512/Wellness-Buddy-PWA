@@ -1,6 +1,7 @@
 /**
  * Sync Profile / BCM Left slot onto testimonial Before.
- * After stays a Left copy on create; later Left changes update Before only.
+ * After is never a copy of Before. Later Left changes update Before only when
+ * Transformation does not already have its own Before photo.
  * Keeps status incomplete and skips OTP — direct Transformation submit still owns approval.
  */
 import * as repo from './testimonials.repository.js';
@@ -9,7 +10,6 @@ import {
   buildProfileSlotsFromTestimonialImages,
   canSyncProfileAfterToTestimonial,
   hasPositiveWeight,
-  isIncompleteProfileMappedAfter,
   testimonialHasRealAfter,
 } from './domain/profilePhotoSync.rules.js';
 import { resolveOtpRecipientIds, toPositiveUserId } from './domain/otpRecipient.rules.js';
@@ -21,7 +21,7 @@ import {
 } from '../user/domain/transformationPhotos.rules.js';
 import { getMysqlClient } from '../../utils/mysqlClient.js';
 import logger from '../../shared/lib/logger.js';
-import { shouldHydratePhotosFromProfile } from './domain/photoCompleteness.rules.js';
+import { hasRealBeforePhoto, shouldHydratePhotosFromProfile } from './domain/photoCompleteness.rules.js';
 
 const FALLBACK_DURATION = '1 days';
 
@@ -79,7 +79,7 @@ export async function hydrateTestimonialPhotosFromProfile({ userId, existing = n
       userId,
       coachId,
       beforeImagePath: beforePath,
-      afterImagePath: beforePath,
+      afterImagePath: repo.videoOnlyPlaceholderPath(userId),
       beforeWeightKg: weight,
       afterWeightKg: weight,
       goalType: 'loss',
@@ -97,7 +97,6 @@ export async function hydrateTestimonialPhotosFromProfile({ userId, existing = n
 
   await repo.updateTestimonial(existing.id, {
     beforeImagePath: beforePath,
-    afterImagePath: beforePath,
     status: 'incomplete',
   });
   logger.info('[profilePhotoSync] hydrated placeholder testimonial from profile Left', {
@@ -156,9 +155,8 @@ export async function syncProfilePhotosToTestimonial(rawBody) {
 
     const beforePath = storagePath(userId, 'before', ts);
     await repo.uploadImage(beforeImageBase64, beforePath);
-    // New users: After starts as the same Left/Before image. Distinct After is
-    // set later from the Transformation tab, not from Profile Right.
-    const afterPath = beforePath;
+    // After stays empty until the member uploads a Transformation After photo.
+    const afterPath = repo.videoOnlyPlaceholderPath(userId);
 
     const row = await repo.insertTestimonial({
       userId,
@@ -184,17 +182,8 @@ export async function syncProfilePhotosToTestimonial(rawBody) {
 
   const updates = {};
   const hasCompleteAfter = testimonialHasRealAfter(existing, repo.isVideoOnlyPlaceholder);
-  if (
-    !hasCompleteAfter
-    && isIncompleteProfileMappedAfter(existing, existing.after_image_path)
-    && existing.before_image_path
-  ) {
-    // Snap After back to the current Left/Before clone, then leave After alone
-    // on later Left updates (new before_* paths do not match after_*).
-    updates.afterImagePath = existing.before_image_path;
-  }
-
-  if (beforeImageBase64) {
+  // A saved Transformation Before is not replaced by a later Profile Left upload.
+  if (beforeImageBase64 && !hasRealBeforePhoto(existing)) {
     const beforePath = storagePath(userId, 'before', ts);
     await repo.uploadImage(beforeImageBase64, beforePath);
     updates.beforeImagePath = beforePath;

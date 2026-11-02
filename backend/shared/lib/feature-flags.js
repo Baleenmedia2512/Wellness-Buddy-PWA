@@ -390,6 +390,15 @@ registerFlag({
 });
 
 registerFlag({
+  name:           'ff.create-event',
+  owner:          '@principal-eng',
+  createdAt:      '2026-10-30',
+  removeBy:       '2027-04-30',
+  description:    'Create Event page: name, organizer, place, seating, plus update, delete, postpone, and cancel.',
+  defaultEnabled: true,
+});
+
+registerFlag({
   name:           'ff.wallet',
   owner:          '@principal-eng',
   createdAt:      '2026-10-30',

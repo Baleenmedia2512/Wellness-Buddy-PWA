@@ -13,6 +13,7 @@ export const NAV_PAGE_KEYS = Object.freeze([
   'testimonials',
   'reports',
   'broadcast',
+  'create-event',
 ]);
 
 export const MATRIX_ROLES = Object.freeze(['user', 'coach', 'admin', 'developer']);
@@ -27,6 +28,7 @@ export const NAV_PAGE_LABELS = Object.freeze({
   testimonials: 'Transformation',
   reports: 'Reports',
   broadcast: 'BroadCast',
+  'create-event': 'Create Event',
 });
 
 export const MATRIX_ROLE_LABELS = Object.freeze({

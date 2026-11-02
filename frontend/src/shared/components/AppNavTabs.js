@@ -11,6 +11,7 @@ import {
   Trophy,
   FileBarChart,
   Megaphone,
+  CalendarPlus,
 } from 'lucide-react';
 import NavTabButton from './NavTabButton';
 import { isFlagEnabled } from '../../config/featureFlags';
@@ -26,6 +27,7 @@ export default function AppNavTabs({
   onShowNutritionCentersMap,
   onShowTestimonials,
   onShowBroadcast,
+  onShowCreateEvent,
   onShowReports,
   reportsEnabled = false,
   /** null = fail-open (all tabs); object = role page map from DB */
@@ -33,6 +35,7 @@ export default function AppNavTabs({
 }) {
   const allow = (pageKey) => canAccessNavPage(allowedPages, pageKey);
   const broadcastEnabled = isFlagEnabled('ff.broadcast');
+  const createEventEnabled = isFlagEnabled('ff.create-event');
 
   return (
     <div
@@ -158,6 +161,21 @@ export default function AppNavTabs({
           labelClass="text-emerald-800"
           label="BroadCast"
           ariaLabel="BroadCast"
+        />
+      )}
+      {createEventEnabled && allow('create-event') && (
+        <NavTabButton
+          onClick={onShowCreateEvent ?? (() => {})}
+          active={activePage === 'create-event'}
+          activeBg="bg-emerald-100"
+          hoverBg="hover:bg-emerald-50"
+          icon={CalendarPlus}
+          iconActiveClass="text-emerald-800"
+          iconClass="text-emerald-700"
+          labelActiveClass="text-emerald-900"
+          labelClass="text-emerald-800"
+          label="Create Event"
+          ariaLabel="Create Event"
         />
       )}
     </div>

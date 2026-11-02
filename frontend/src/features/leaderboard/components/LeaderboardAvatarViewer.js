@@ -1,7 +1,7 @@
 // WhatsApp-style full-screen profile photo — used by Top 10 Wellness Score.
 import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, UserRound } from 'lucide-react';
 
 const COLORS = [
   'bg-blue-500',
@@ -14,7 +14,13 @@ const COLORS = [
   'bg-teal-500',
 ];
 
-export default function LeaderboardAvatarViewer({ isOpen, src, name, onClose }) {
+export default function LeaderboardAvatarViewer({
+  isOpen,
+  src,
+  name,
+  onClose,
+  onViewProfile,
+}) {
   const [imageFailed, setImageFailed] = useState(false);
 
   useEffect(() => {
@@ -67,9 +73,20 @@ export default function LeaderboardAvatarViewer({ isOpen, src, name, onClose }) 
         >
           <ArrowLeft className="w-6 h-6" strokeWidth={2.5} />
         </button>
-        <h2 className="min-w-0 truncate text-white text-lg font-medium pr-3">
+        <h2 className="min-w-0 flex-1 truncate text-white text-lg font-medium pr-3">
           {shownName}
         </h2>
+        {onViewProfile && (
+          <button
+            type="button"
+            onClick={onViewProfile}
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-white/15 px-3 py-2 text-sm font-semibold text-white hover:bg-white/25"
+            aria-label={`View ${shownName}'s profile`}
+          >
+            <UserRound className="h-5 w-5" />
+            <span>View profile</span>
+          </button>
+        )}
       </header>
 
       <div className="relative flex-1 min-h-0 flex items-center justify-center">
