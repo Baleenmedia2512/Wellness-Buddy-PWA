@@ -19,6 +19,7 @@ export {
 } from './datetime.js';
 
 export {
+  normalizeActivityCreatedAt,
   normalizeFoodCreatedAt,
   resolveFoodTimestamp,
   filterFoodRowsByCalendarDay,
