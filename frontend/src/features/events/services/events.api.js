@@ -43,3 +43,16 @@ export function deleteEvent(payload) {
     body: JSON.stringify(payload),
   }).then(readJson);
 }
+
+export async function searchEventPeople({ userId, q }) {
+  const params = new URLSearchParams({ userId: String(userId) });
+  if (q) params.set('q', q);
+  const res = await apiFetch(`${endpoint()}/people?${params.toString()}`, { cache: 'no-store' });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || data?.success === false) {
+    const error = new Error(data?.message || 'Could not load people.');
+    error.status = res.status;
+    throw error;
+  }
+  return Array.isArray(data.people) ? data.people : [];
+}

@@ -8,6 +8,7 @@ import {
   normalizeEventStatus,
   parseEventId,
   parseEventUserId,
+  sanitizeEventPeopleQuery,
 } from '../event.rules.js';
 
 const validDraft = {
@@ -87,5 +88,12 @@ describe('id parsers', () => {
     assert.equal(parseEventUserId(0), null);
     assert.equal(parseEventId('3.2'), null);
     assert.equal(parseEventId(8), 8);
+  });
+});
+
+describe('sanitizeEventPeopleQuery', () => {
+  it('trims and strips filter-breaking characters', () => {
+    assert.equal(sanitizeEventPeopleQuery('  Balaji,Sekar  '), 'Balaji Sekar');
+    assert.equal(sanitizeEventPeopleQuery(''), '');
   });
 });
