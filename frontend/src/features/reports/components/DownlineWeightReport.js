@@ -9,8 +9,9 @@
  *   user      — { id } from App.js session
  *   onBack    — navigate back handler
  */
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { RefreshCw, CheckCircle } from 'lucide-react';
+import TeamMemberProfileModal from '../../../shared/components/TeamMemberProfileModal';
 import { useDownlineWeightReport } from '../hooks/useDownlineWeightReport';
 import WeightStatusRow from './WeightStatusRow';
 import ReportSearchBar from './ReportSearchBar';
@@ -80,6 +81,7 @@ export default function DownlineWeightReport({
   }, [onRefreshRegister, refresh, loading]);
 
   const listSentinelRef = useRef(null);
+  const [profileMember, setProfileMember] = useState(null);
 
   useEffect(() => {
     const sentinel = listSentinelRef.current;
@@ -231,6 +233,7 @@ export default function DownlineWeightReport({
           <WeightStatusRow
             key={row.userId}
             row={row}
+            onViewProfile={setProfileMember}
             teamPerformance={resolveRowTeamPerformance({
               row,
               teamScope,
@@ -254,6 +257,12 @@ export default function DownlineWeightReport({
         )}
         </div>
       </div>
+      <TeamMemberProfileModal
+        isOpen={Boolean(profileMember)}
+        onClose={() => setProfileMember(null)}
+        memberEmail={profileMember?.email}
+        memberUserId={profileMember?.userId}
+      />
     </div>
   );
 }

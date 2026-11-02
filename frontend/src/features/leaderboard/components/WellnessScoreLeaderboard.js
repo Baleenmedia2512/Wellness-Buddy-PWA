@@ -11,6 +11,7 @@ import { debugLog } from '../../../shared/utils/logger.js';
 import { resolveSponsorCoachNames } from '../../../shared/utils/sponsorCoachLabels.js';
 import { setVisibilityAwareInterval } from '../../../shared/utils/visibilityAwareInterval.js';
 import { useAutoScrollStrip } from '../../../shared/hooks/useAutoScrollStrip.js';
+import TeamMemberProfileModal from '../../../shared/components/TeamMemberProfileModal';
 import LeaderboardAvatar from './LeaderboardAvatar.js';
 import LeaderboardAvatarViewer from './LeaderboardAvatarViewer.js';
 import LeaderboardRankBadge from './LeaderboardRankBadge.js';
@@ -93,6 +94,7 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, vi
   const [isVisible, setIsVisible] = useState(() => (readCache(userId)?.length ?? 0) > 0);
   const [hasEntered, setHasEntered] = useState(() => (readCache(userId)?.length ?? 0) > 0);
   const [expandedAvatar, setExpandedAvatar] = useState(null);
+  const [profileMember, setProfileMember] = useState(null);
   const isTile = variant === 'tile';
   const { viewportRef, trackRef, interactionHandlers } = useAutoScrollStrip({
     enabled: !isTile && isVisible && leaderboardData.length > 0,
@@ -203,7 +205,17 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, vi
     setExpandedAvatar({
       src: buildUserAvatarUrl(apiBaseUrl, user.userId, getAvatarDisplayVersion()),
       name: shownName,
+      email: user.email,
+      userId: user.userId,
     });
+  };
+
+  const openProfile = (user) => {
+    const memberEmail = String(user?.email || '').trim();
+    const memberUserId = user?.userId ?? user?.UserId;
+    if (memberEmail || memberUserId != null) {
+      setProfileMember({ email: memberEmail || null, userId: memberUserId ?? null });
+    }
   };
 
   const renderTappableAvatar = (user, shownName) => (
@@ -222,6 +234,7 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, vi
         email={user.email}
         userName={shownName}
         profileImage={user.profileImage}
+        interactive={false}
       />
     </button>
   );
@@ -232,6 +245,20 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, vi
       src={expandedAvatar?.src}
       name={expandedAvatar?.name}
       onClose={() => setExpandedAvatar(null)}
+      onViewProfile={(expandedAvatar?.email || expandedAvatar?.userId != null) ? () => {
+        setExpandedAvatar(null);
+        openProfile(expandedAvatar);
+      } : undefined}
+    />
+  );
+
+  const profileViewer = (
+    <TeamMemberProfileModal
+      isOpen={Boolean(profileMember)}
+      onClose={() => setProfileMember(null)}
+      memberEmail={profileMember?.email}
+      memberUserId={profileMember?.userId}
+      apiBaseUrl={apiBaseUrl}
     />
   );
 
@@ -252,9 +279,18 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, vi
       </div>
 
       <div className="flex flex-col justify-center flex-shrink-0 min-w-0 max-w-[120px] sm:max-w-[150px] md:max-w-[180px]">
-        <span className="font-bold text-gray-800 text-xs sm:text-sm md:text-base truncate leading-tight">
+        <button
+          type="button"
+          className="truncate text-left font-bold text-gray-800 text-xs sm:text-sm md:text-base leading-tight hover:underline focus:outline-none focus-visible:underline"
+          onClick={(event) => {
+            event.stopPropagation();
+            openProfile(user);
+          }}
+          disabled={!user.email && user.userId == null}
+          aria-label={`View ${shownName}'s profile`}
+        >
           {shownName}
-        </span>
+        </button>
         {(() => {
           const { sponsorName, idealCoachName } = resolveSponsorCoachNames(user);
           if (!sponsorName && !idealCoachName) return null;
@@ -290,7 +326,15 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, vi
         />
         {renderTappableAvatar(user, shownName)}
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold text-gray-800">{shownName}</p>
+          <button
+            type="button"
+            className="block max-w-full truncate text-left text-sm font-semibold text-gray-800 hover:underline focus:outline-none focus-visible:underline"
+            onClick={() => openProfile(user)}
+            disabled={!user.email && user.userId == null}
+            aria-label={`View ${shownName}'s profile`}
+          >
+            {shownName}
+          </button>
           {(() => {
             const { sponsorName, idealCoachName } = resolveSponsorCoachNames(user);
             if (!sponsorName && !idealCoachName) return null;
@@ -331,6 +375,7 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, vi
           {leaderboardData.map(renderTileRow)}
         </ul>
         {avatarViewer}
+        {profileViewer}
       </section>
     );
   }
@@ -374,6 +419,7 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, vi
         </div>
       </div>
       {avatarViewer}
+      {profileViewer}
     </div>
   );
 });
