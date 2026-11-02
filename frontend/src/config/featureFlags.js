@@ -200,6 +200,14 @@ const REGISTRY = Object.freeze({
     defaultEnabled: true,
     description:    'Profile Go Premium opens Cashfree checkout.',
   },
+
+  // Create Event — event form plus update, delete, postpone, and cancel.
+  'ff.create-event': {
+    envKey:         'REACT_APP_FF_CREATE_EVENT',
+    storageKey:     'ff.create-event',
+    defaultEnabled: true,
+    description:    'Create Event page in the main navigation.',
+  },
 });
 
 function readStorage(key) {
