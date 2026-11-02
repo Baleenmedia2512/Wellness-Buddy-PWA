@@ -13,10 +13,11 @@ event information, and let a visitor enter their name to see a confirmation.
 
 ## Decision
 
-1. Add an Events feature page with explicitly identified sample wellness event
-   listings and informational event fields.
-2. Provide a Register action beside each listing. Its form asks for a name only
-   and displays a demo confirmation; it does not persist or transmit the name.
+1. Add an Events feature page with clearly labeled sample wellness event cards
+   until actual event data is provided. Sample dates, times, and venues must be
+   labeled as unconfirmed examples.
+2. Provide a Register action that opens a form asking for a name only and
+   displays a demo confirmation; it does not persist or transmit the name.
 3. Gate the page with the frontend-only `ff.events` flag, enabled by default.
 4. Link the page from Home and integrate it with the existing app history and
    back-button navigation.
@@ -26,7 +27,7 @@ event information, and let a visitor enter their name to see a confirmation.
 ## Consequences
 
 - The page is usable without backend or database changes.
-- The displayed events are examples, not current or scheduled events.
+- Sample details are illustrative only and are not confirmed scheduled events.
 - Registration is not a real reservation and must not be presented as saved.
 - The feature flag should be removed after the listing is connected to its
   production data source or the page is withdrawn.

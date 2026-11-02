@@ -3,34 +3,34 @@ import { ArrowLeft, ArrowRight, CalendarDays, CheckCircle2 } from 'lucide-react'
 
 const SAMPLE_EVENTS = [
   {
-    id: 'community-wellness-walk',
-    category: 'Community activity',
-    title: 'Community Wellness Walk',
-    description: 'Enjoy a relaxed group walk and build healthy daily habits together.',
-    details: 'Date and venue to be announced. Contact your coach for updates.',
-    cardClass: 'border-emerald-200 bg-gradient-to-br from-emerald-50 via-green-50 to-teal-100',
-    badgeClass: 'bg-emerald-100 text-emerald-900',
-    buttonClass: 'bg-emerald-700 hover:bg-emerald-800 focus-visible:ring-emerald-600',
+    id: 'wellness-workshop',
+    category: 'Sample event · Learning',
+    title: 'Wellness Workshop',
+    description: 'A friendly session with practical ideas for building healthy everyday habits.',
+    details: 'Sample date: March 14, 2027 · Sample time: 10:00 AM · Sample venue: Community Wellness Center',
+    cardClass: 'border-teal-300 bg-gradient-to-br from-emerald-500 via-teal-600 to-cyan-700',
+    badgeClass: 'bg-white/20 text-white',
+    buttonClass: 'bg-white text-teal-800 hover:bg-teal-50 focus-visible:ring-white',
   },
   {
-    id: 'healthy-habits-workshop',
-    category: 'Learning session',
-    title: 'Healthy Habits Workshop',
-    description: 'Explore practical ideas for balanced meals and routines that last.',
-    details: 'Date and venue to be announced. Contact your coach for updates.',
-    cardClass: 'border-sky-200 bg-gradient-to-br from-sky-50 via-blue-50 to-indigo-100',
-    badgeClass: 'bg-sky-100 text-sky-900',
-    buttonClass: 'bg-blue-700 hover:bg-blue-800 focus-visible:ring-blue-600',
+    id: 'healthy-cooking-demo',
+    category: 'Sample event · Nutrition',
+    title: 'Healthy Cooking Demo',
+    description: 'Discover simple meal-preparation ideas and take home inspiration for your weekly menu.',
+    details: 'Sample date: March 21, 2027 · Sample time: 11:30 AM · Sample venue: Valley Community Kitchen',
+    cardClass: 'border-amber-300 bg-gradient-to-br from-orange-500 via-amber-500 to-rose-500',
+    badgeClass: 'bg-white/20 text-white',
+    buttonClass: 'bg-white text-orange-800 hover:bg-orange-50 focus-visible:ring-white',
   },
   {
-    id: 'wellness-challenge-kickoff',
-    category: 'Wellness challenge',
-    title: 'Wellness Challenge Kick-off',
-    description: 'Set a personal goal and meet others in the wellness community.',
-    details: 'Date and venue to be announced. Contact your coach for updates.',
-    cardClass: 'border-violet-200 bg-gradient-to-br from-violet-50 via-purple-50 to-fuchsia-100',
-    badgeClass: 'bg-violet-100 text-violet-900',
-    buttonClass: 'bg-violet-700 hover:bg-violet-800 focus-visible:ring-violet-600',
+    id: 'community-fitness-meetup',
+    category: 'Sample event · Community',
+    title: 'Community Fitness Meetup',
+    description: 'Move, connect, and enjoy an upbeat group activity for a range of fitness levels.',
+    details: 'Sample date: March 28, 2027 · Sample time: 7:00 AM · Sample venue: Green Valley Park',
+    cardClass: 'border-violet-300 bg-gradient-to-br from-violet-600 via-purple-600 to-fuchsia-600',
+    badgeClass: 'bg-white/20 text-white',
+    buttonClass: 'bg-white text-violet-800 hover:bg-violet-50 focus-visible:ring-white',
   },
 ];
 
@@ -76,10 +76,10 @@ function EventsPage() {
               <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${selectedEvent.badgeClass}`}>
                 {selectedEvent.category}
               </span>
-              <h1 id="event-registration-title" className="mt-3 text-xl font-bold text-gray-900">
+              <h1 id="event-registration-title" className="mt-3 text-xl font-bold text-white">
                 Register for {selectedEvent.title}
               </h1>
-              <p className="mt-1 text-sm leading-6 text-gray-700">
+              <p className="mt-1 text-sm leading-6 text-white/95">
                 {selectedEvent.description}
               </p>
 
@@ -132,47 +132,49 @@ function EventsPage() {
                 </span>
                 <div>
                   <h1 className="text-2xl font-bold text-gray-900">Events</h1>
-                  <p className="text-sm text-gray-600">Find your next wellness activity.</p>
+                  <p className="text-sm text-gray-600">Explore activities and register your interest.</p>
                 </div>
               </div>
               <p className="mt-3 text-xs leading-5 text-gray-600">
-                Sample events only. Dates and venues are not confirmed; contact your coach for updates.
+                Sample events for preview only. Dates, times, and venues are examples and are not confirmed.
               </p>
             </header>
 
-            <section aria-label="All events" className="space-y-3">
+            <section aria-label="Sample events" className="mx-auto max-w-lg space-y-2.5">
               {SAMPLE_EVENTS.map((event) => (
                 <article
                   key={event.id}
-                  className={`overflow-hidden rounded-2xl border p-4 shadow-sm transition-shadow hover:shadow-md sm:p-5 ${event.cardClass}`}
+                  className={`relative isolate overflow-hidden rounded-xl border p-3 shadow-sm transition duration-200 hover:-translate-y-0.5 hover:shadow-md sm:p-4 ${event.cardClass}`}
                 >
-                  <div className="flex items-start gap-3">
-                    <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${event.badgeClass}`}>
-                      <CalendarDays className="h-5 w-5" aria-hidden="true" />
+                  <div aria-hidden="true" className="pointer-events-none absolute -right-5 -top-6 -z-10 h-24 w-24 rounded-full bg-white/10 blur-sm" />
+                  <div aria-hidden="true" className="pointer-events-none absolute -bottom-10 right-12 -z-10 h-20 w-20 rounded-full bg-cyan-200/20 blur-sm" />
+                  <div className="flex items-start gap-2.5">
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-white/30 bg-white/15 text-white shadow-inner">
+                      <CalendarDays className="h-4 w-4" aria-hidden="true" />
                     </span>
                     <div className="min-w-0 flex-1">
-                      <span className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-semibold ${event.badgeClass}`}>
+                      <span className={`inline-flex rounded-full px-1.5 py-0.5 text-[9px] font-semibold backdrop-blur-sm ${event.badgeClass}`}>
                         {event.category}
                       </span>
-                      <h2 className="mt-2 text-base font-bold text-gray-900 sm:text-lg">
+                      <h2 className="mt-1 truncate text-sm font-bold text-white sm:text-base">
                         {event.title}
                       </h2>
-                      <p className="mt-1 text-sm leading-5 text-gray-700">
+                      <p className="mt-0.5 truncate text-[11px] leading-4 text-white/95 sm:text-xs">
                         {event.description}
                       </p>
-                      <p className="mt-2 text-xs leading-5 text-gray-600">
+                      <p className="mt-1 truncate text-[10px] leading-4 text-white/80">
                         {event.details}
                       </p>
                     </div>
                   </div>
-                  <div className="mt-4 flex justify-end">
+                  <div className="mt-2 flex justify-end border-t border-white/20 pt-2">
                     <button
                       type="button"
                       onClick={() => openRegistration(event)}
-                      className={`inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold text-white shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${event.buttonClass}`}
+                      className={`inline-flex items-center gap-1 rounded-md px-3 py-1.5 text-[11px] font-bold shadow-sm transition hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${event.buttonClass}`}
                     >
-                      Register
-                      <ArrowRight className="h-4 w-4" aria-hidden="true" />
+                      Register now
+                      <ArrowRight className="h-3 w-3" aria-hidden="true" />
                     </button>
                   </div>
                 </article>

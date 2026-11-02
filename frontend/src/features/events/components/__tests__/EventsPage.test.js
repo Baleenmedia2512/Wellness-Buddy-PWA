@@ -22,13 +22,17 @@ describe('EventsPage', () => {
     container.remove();
   });
 
-  it('lists sample events and confirms a name-only registration without saving it', () => {
+  it('shows colorful sample event cards and confirms a name-only registration without saving it', () => {
     const eventCards = Array.from(container.querySelectorAll('article'));
     expect(eventCards).toHaveLength(3);
     expect(new Set(eventCards.map((card) => card.className)).size).toBe(3);
+    expect(container.textContent).toContain('Wellness Workshop');
+    expect(container.textContent).toContain('Healthy Cooking Demo');
+    expect(container.textContent).toContain('Community Fitness Meetup');
+    expect(container.textContent).toContain('Sample events for preview only');
 
     const registerButton = Array.from(container.querySelectorAll('button'))
-      .find((button) => button.textContent.includes('Register'));
+      .find((button) => button.textContent.trim() === 'Register now');
     act(() => registerButton.click());
 
     const nameInput = container.querySelector('input[name="name"]');
@@ -55,4 +59,5 @@ describe('EventsPage', () => {
     expect(container.querySelectorAll('article')).toHaveLength(3);
     expect(container.querySelector('input[name="name"]')).toBeNull();
   });
+
 });
