@@ -12,6 +12,7 @@ import {
   getMarathonCalendarState,
 } from './marathonCalendar.js';
 import { formatMarathonWeightWhatsAppNoticeLines } from './marathonWeightComparison.js';
+import { formatTransformationCaption } from '../../../shared/utils/shareCaption.js';
 
 export const MARATHON_START_WHATSAPP_LABEL = 'Marathon Starts';
 export const MARATHON_DAY_0_WHATSAPP_LABEL = 'Today Marathon';

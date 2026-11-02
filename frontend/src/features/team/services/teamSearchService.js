@@ -248,6 +248,7 @@ export function diarySearchDetailParts(member, { includeName = true } = {}) {
 /**
  * Diary search row: Name | Community ID | Club name | Email | Phone.
  * Club name is uppercased. Empty parts are left out so the line never has a bare pipe.
+ * The email is the searched member's own email (never the logged-in user's).
  */
 export function formatDiarySearchDetails(member, options) {
   return diarySearchDetailParts(member, options).map((part) => part.value).join(' | ');

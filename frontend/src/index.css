@@ -445,6 +445,12 @@ header img,
   -webkit-user-drag: none !important;
 }
 
+/* Home header avatar is inside a button. If the <img> keeps pointer events,
+   Android WebView navigates to the photo URL and the app goes blank white. */
+header img {
+  pointer-events: none !important;
+}
+
 /* Weight Loss Leaderboard Marquee Animation */
 @keyframes marquee {
   0% {

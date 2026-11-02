@@ -1,15 +1,12 @@
 // OTP entry step — 4 input cells (SMS OTP length).
 // Auto-verifies when all digits are filled: no explicit Verify button required.
 //
-// Android + iOS: first cell uses autoComplete="one-time-code" so the OS can
-//          show an SMS OTP suggestion; tap fills all cells via fillAll().
-// Android: WebOTP API also listens when the SMS includes @domain #code.
-// Web:     paste / manual typing — same auto-verify on completion.
-//
-// Important: ALL platform branches use real focusable inputs with
-// inputMode="numeric". The custom InlineNumericKeypad is NOT used here because
-// it sets readOnly + onFocus→blur() which prevents the OS from recognising OTP
-// fields for autofill.
+// Android (Native): @capawesome/capacitor-android-sms-retriever automatically
+//          prompts the Google Play Services SMS User Consent bottom sheet.
+//          Tapping 'Allow' automatically fills all cells and verifies.
+// Android + iOS: first cell uses autoComplete="one-time-code" so keyboard
+//          autofill can also fill all cells via fillAll().
+// Web:     WebOTP API / paste / manual typing — same auto-verify on completion.
 import React, { useCallback, useEffect, useRef } from 'react';
 import useWebOtp from '../../hooks/useWebOtp';
 import OtpInputCells from '../../../../shared/components/OtpInputCells.jsx';
@@ -31,11 +28,13 @@ const LoginOtpEntry = ({
     [],
   ); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // WebOTP API: Android Chrome auto-reads the OTP from the SMS and populates
-  // all cells + triggers verify without any user interaction.
+  // Native SMS Retriever / WebOTP API: auto-reads OTP from incoming SMS and verifies
   const handleWebOtp = useCallback((code) => {
-    fillAll(code);
-  }, [fillAll]);
+    if (code) {
+      fillAll(code);
+      onVerify(code);
+    }
+  }, [fillAll, onVerify]);
 
   useWebOtp(handleWebOtp, !verified && !loading);
 
@@ -58,6 +57,7 @@ const LoginOtpEntry = ({
       <OtpInputCells
         otpCtl={otpCtl}
         length={otp.length}
+        onComplete={(code) => onVerify(code)}
         className="flex justify-center gap-2 xs:gap-3"
         cellClassName="w-11 h-12 xs:w-12 xs:h-12 text-center text-xl xs:text-2xl font-bold border-2 rounded-lg focus:outline-none transition-all duration-300 hover:border-green-300 focus:border-green-400"
         cellStyle={(digit) => (digit

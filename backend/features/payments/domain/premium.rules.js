@@ -71,6 +71,13 @@ export function sanitizeReturnUrl(raw) {
   const value = raw.trim();
   if (!/^https?:\/\//i.test(value)) return null;
   if (value.length > 400) return null;
+  let host = '';
+  try {
+    host = new URL(value).hostname.toLowerCase();
+  } catch {
+    return null;
+  }
+  if (host === 'localhost' || host === '127.0.0.1' || host === '[::1]') return null;
   return value;
 }
 

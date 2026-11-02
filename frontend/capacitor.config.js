@@ -43,7 +43,8 @@ const config = {
       '*.firebaseio.com',
       'share.wellnessvalley.app',
       '*.wellnessvalley.app',
-      'wellnessvalley.in'
+      'wellnessvalley.in',
+      'test.wellnessvalley.in',
     ],
     cleartext: true
   },

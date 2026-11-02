@@ -20,7 +20,7 @@ export const NETWORK_FAILURE_MESSAGE =
 export const NETWORK_SERVER_MESSAGE =
   'Something went wrong on our side. Please try again.';
 
-const SLOW_AFTER_MS = 8000;
+const SLOW_AFTER_MS = 20_000;
 const FAILURE_VISIBLE_MS = 6000;
 const QUALITY_TTL_MS = 30_000;
 /** Round-trip above this on the tiny server-time check counts as a slow link. */
@@ -319,11 +319,21 @@ export function installNetworkMonitoring({
     }
   }
 
+  const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
   window.fetch = async function networkAwareFetch(input, init) {
     const tracked = isApiRequest(requestUrl(input)) === true;
     const done = tracked ? trackApiRequest() : () => {};
     try {
-      const response = await originalFetch(input, init);
+      let response = await originalFetch(input, init);
+      if (tracked && isServerErrorStatus(response?.status)) {
+        await delay(1000);
+        try {
+          response = await originalFetch(input, init);
+        } catch {
+          // Keep first response if retry throws
+        }
+      }
       if (tracked && isServerErrorStatus(response?.status)) reportServerFailure();
       return response;
     } catch (err) {
@@ -341,8 +351,17 @@ export function installNetworkMonitoring({
     http[method] = async function networkAwareHttp(options, ...rest) {
       const done = trackApiRequest();
       try {
-        const response = await original.call(http, options, ...rest);
-        const status = Number(response?.status) || 0;
+        let response = await original.call(http, options, ...rest);
+        let status = Number(response?.status) || 0;
+        if (isServerErrorStatus(status)) {
+          await delay(1000);
+          try {
+            response = await original.call(http, options, ...rest);
+            status = Number(response?.status) || 0;
+          } catch {
+            // Keep first response if retry throws
+          }
+        }
         if (status === 0) reportNetworkFailure();
         else if (isServerErrorStatus(status)) reportServerFailure();
         return response;
