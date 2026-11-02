@@ -8469,7 +8469,7 @@ function WellnessValleyApp() {
           profileKey={headerProfileKey}
         />
         <div className="ios-scroll-body">
-          <EventsPage />
+          <EventsPage user={user} />
         </div>
       </div>
     );
