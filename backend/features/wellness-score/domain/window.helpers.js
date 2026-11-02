@@ -3,15 +3,15 @@
  *
  * Meal / activity on-time checks NEVER parse HH:mm:ss from raw CreatedAt strings.
  * Food timestamps go through {@link resolveFoodTimestamp}. Education and weight
- * use the same legacy IST wall-clock reading as the Diary
- * ({@link normalizeFoodCreatedAt}): a driver-added `Z` on 07:33 stays 7:33 AM.
+ * use {@link normalizeActivityCreatedAt}: the clock digits stay IST, including
+ * 3:00–5:29 AM. A driver-added `Z` must not add 5h30.
  */
 import {
   IANA_IST,
   timeOfDayInTimezone,
 } from '../../../shared/lib/datetime/index.js';
 import {
-  normalizeFoodCreatedAt,
+  normalizeActivityCreatedAt,
   resolveFoodTimestamp,
 } from '../../../shared/lib/datetime/foodTimestamp.js';
 
@@ -47,9 +47,9 @@ export function resolveCreatedAtTimeOfDay(
     if (kind === 'food') {
       return resolveFoodTimestamp(createdAt, timezoneIana).timeOfDay;
     }
-    // Education and weight rows are IST wall-clock, same as the Diary.
-    // Trusting a driver-added Z turned 07:33 into 1:03 PM and scored it late.
-    const utcIso = normalizeFoodCreatedAt(createdAt);
+    // Education and weight rows are IST wall-clock for every hour.
+    // normalizeFoodCreatedAt would treat a clock before 05:30 as UTC and add 5h30.
+    const utcIso = normalizeActivityCreatedAt(createdAt);
     return timeOfDayInTimezone(utcIso, timezoneIana);
   } catch {
     return null;
