@@ -1,4 +1,5 @@
 import * as repo from './data/events.repo.js';
+import { searchActivePeople } from './data/people.repo.js';
 
 const STORAGE_MESSAGE = 'Events storage is not ready. Run backend/migrations/create_events_table.sql, then npm run prisma:generate in backend, and restart the API.';
 
@@ -57,4 +58,9 @@ export function deleteEvent(input) {
     }
     return { httpStatus: 200, body: { success: true } };
   });
+}
+
+export async function searchEventPeople(input) {
+  const people = await searchActivePeople(input.q);
+  return { httpStatus: 200, body: { success: true, people } };
 }

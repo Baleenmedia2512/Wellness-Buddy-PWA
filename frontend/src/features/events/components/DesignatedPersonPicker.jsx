@@ -1,57 +1,88 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { apiFetch } from '../../../shared/services/apiFetch.js';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Check, Search, User, X } from 'lucide-react';
 import { getApiBaseUrl } from '../../../config/api.config.js';
-import { teamHierarchyService } from '../../../shared/services/teamHierarchyService.js';
+import { searchEventPeople } from '../services/events.api.js';
+import { buildUserAvatarUrl } from '../../user/services/avatarDisplayVersion.js';
+
+const PERSON_MAX = 30;
+const AVATAR_TONES = [
+  'bg-green-600',
+  'bg-emerald-600',
+  'bg-teal-600',
+  'bg-lime-700',
+  'bg-green-700',
+];
 
 function personKey(person) {
   return Number(person?.userId);
 }
 
-async function searchPeople(query, email) {
-  const params = new URLSearchParams({ q: query });
-  if (email) params.set('email', email);
-  const res = await apiFetch(`${getApiBaseUrl()}/api/users/search?${params.toString()}`, {
-    cache: 'no-store',
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok || data?.success === false) return [];
-  return (data.coaches || [])
-    .map((person) => ({
-      userId: Number(person.userId),
-      name: String(person.userName || person.displayName || '').trim(),
-    }))
-    .filter((person) => Number.isInteger(person.userId) && person.userId > 0 && person.name);
+function personInitials(name) {
+  const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return '?';
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
 }
 
-export default function DesignatedPersonPicker({ userId, userEmail, selected, onChange }) {
-  const [team, setTeam] = useState([]);
+function avatarTone(userId) {
+  return AVATAR_TONES[Math.abs(Number(userId) || 0) % AVATAR_TONES.length];
+}
+
+function avatarSrc(userId) {
+  try {
+    return buildUserAvatarUrl(getApiBaseUrl(), userId);
+  } catch {
+    return null;
+  }
+}
+
+function PersonAvatar({ userId, name, size = 'md' }) {
+  const [failed, setFailed] = useState(false);
+  const src = !failed ? avatarSrc(userId) : null;
+  const box = size === 'sm' ? 'h-7 w-7 text-[11px]' : 'h-9 w-9 text-sm';
+
+  if (src) {
+    return (
+      <img
+        src={src}
+        alt=""
+        className={`${box} shrink-0 rounded-full object-cover ring-2 ring-white`}
+        onError={() => setFailed(true)}
+      />
+    );
+  }
+
+  return (
+    <span
+      aria-hidden
+      className={`${box} ${avatarTone(userId)} inline-flex shrink-0 items-center justify-center rounded-full font-bold text-white ring-2 ring-white`}
+    >
+      {personInitials(name)}
+    </span>
+  );
+}
+
+function toPickerPerson(person) {
+  return {
+    userId: Number(person.userId),
+    name: String(person.name || person.userName || '').trim(),
+    email: String(person.email || '').trim(),
+  };
+}
+
+function isPickerPerson(person) {
+  return Number.isInteger(person.userId) && person.userId > 0 && person.name;
+}
+
+export default function DesignatedPersonPicker({ userId, selected, onChange }) {
   const [query, setQuery] = useState('');
   const [matches, setMatches] = useState([]);
   const [searching, setSearching] = useState(false);
-
-  useEffect(() => {
-    let live = true;
-    if (!userId) return undefined;
-    teamHierarchyService.getFlatTeamList(userId, { purpose: 'search' })
-      .then((list) => {
-        if (!live) return;
-        const people = (list || [])
-          .map((person) => ({
-            userId: Number(person.userId),
-            name: String(person.userName || '').trim(),
-          }))
-          .filter((person) => Number.isInteger(person.userId) && person.userId > 0 && person.name);
-        setTeam(people);
-      })
-      .catch(() => {
-        if (live) setTeam([]);
-      });
-    return () => { live = false; };
-  }, [userId]);
+  const inputRef = useRef(null);
 
   useEffect(() => {
     const text = query.trim();
-    if (text.length < 2) {
+    if (!userId || text.length < 2) {
       setMatches([]);
       setSearching(false);
       return undefined;
@@ -59,9 +90,9 @@ export default function DesignatedPersonPicker({ userId, userEmail, selected, on
     let live = true;
     setSearching(true);
     const timer = setTimeout(() => {
-      searchPeople(text, userEmail)
+      searchEventPeople({ userId, q: text })
         .then((people) => {
-          if (live) setMatches(people);
+          if (live) setMatches((people || []).map(toPickerPerson).filter(isPickerPerson));
         })
         .catch(() => {
           if (live) setMatches([]);
@@ -74,7 +105,7 @@ export default function DesignatedPersonPicker({ userId, userEmail, selected, on
       live = false;
       clearTimeout(timer);
     };
-  }, [query, userEmail]);
+  }, [query, userId]);
 
   const selectedIds = useMemo(
     () => new Set((selected || []).map(personKey)),
@@ -82,73 +113,168 @@ export default function DesignatedPersonPicker({ userId, userEmail, selected, on
   );
 
   const options = useMemo(() => {
-    const text = query.trim().toLowerCase();
-    const pool = text.length >= 2 ? [...team, ...matches] : team;
     const unique = [];
     const seen = new Set();
-    pool.forEach((person) => {
+    matches.forEach((person) => {
       if (seen.has(person.userId)) return;
-      if (text && !person.name.toLowerCase().includes(text)) return;
       seen.add(person.userId);
       unique.push(person);
     });
-    return unique.slice(0, 8);
-  }, [team, matches, query]);
+    return unique;
+  }, [matches]);
+
+  const selectedCount = (selected || []).length;
+  const atMax = selectedCount >= PERSON_MAX;
+  const searchingNow = query.trim().length >= 2;
 
   const toggle = (person) => {
     if (selectedIds.has(person.userId)) {
       onChange((selected || []).filter((item) => personKey(item) !== person.userId));
       return;
     }
+    if (atMax) return;
     onChange([...(selected || []), { userId: person.userId, name: person.name }]);
+    setQuery('');
+    setMatches([]);
+    setSearching(false);
+    requestAnimationFrame(() => inputRef.current?.focus());
+  };
+
+  const remove = (person) => {
+    onChange((selected || []).filter((item) => personKey(item) !== person.userId));
   };
 
   return (
-    <fieldset className="block text-sm font-medium text-gray-700">
-      <legend>Designated persons</legend>
-      <input
-        value={query}
-        onChange={(event) => setQuery(event.target.value)}
-        placeholder="Search people"
-        className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2 text-base font-normal outline-none focus:border-green-600"
-      />
+    <div className="block text-sm font-medium text-gray-700" role="group" aria-labelledby="designated-persons-label">
+      <div className="flex items-baseline justify-between gap-2">
+        <p id="designated-persons-label">Designated persons</p>
+        {selectedCount > 0 ? (
+          <span className="text-xs font-semibold text-green-700">
+            {selectedCount} selected
+          </span>
+        ) : null}
+      </div>
+
       {(selected || []).length > 0 ? (
-        <ul className="mt-2 flex flex-wrap gap-2">
+        <ul className="mt-2 flex flex-wrap gap-1.5">
           {selected.map((person) => (
             <li key={person.userId}>
-              <button
-                type="button"
-                onClick={() => toggle(person)}
-                className="rounded-full bg-green-100 px-3 py-1 text-xs font-semibold text-green-900"
-              >
-                {person.name} ×
-              </button>
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-green-50 py-0.5 pl-0.5 pr-1.5 text-xs font-semibold text-green-900 ring-1 ring-green-200">
+                <PersonAvatar userId={person.userId} name={person.name} size="sm" />
+                <span className="max-w-[9rem] truncate">{person.name}</span>
+                <button
+                  type="button"
+                  onClick={() => remove(person)}
+                  className="rounded-full p-0.5 text-green-700 hover:bg-green-200"
+                  aria-label={`Remove ${person.name}`}
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </span>
             </li>
           ))}
         </ul>
       ) : (
-        <p className="mt-2 text-xs font-normal text-gray-500">Select one or more people.</p>
+        <p className="mt-1 text-xs font-normal text-gray-500">
+          Select who will look after this event.
+        </p>
       )}
-      {searching ? <p className="mt-2 text-xs font-normal text-gray-500">Searching…</p> : null}
-      {options.length > 0 ? (
-        <ul className="mt-2 max-h-40 overflow-y-auto rounded-xl border border-gray-100">
-          {options.map((person) => {
-            const on = selectedIds.has(person.userId);
-            return (
-              <li key={person.userId}>
-                <button
-                  type="button"
-                  onClick={() => toggle(person)}
-                  className={`flex w-full items-center justify-between px-3 py-2 text-left text-sm ${on ? 'bg-green-50 text-green-900' : 'text-gray-800'}`}
-                >
-                  <span>{person.name}</span>
-                  <span className="text-xs font-semibold">{on ? 'Selected' : 'Add'}</span>
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-      ) : null}
-    </fieldset>
+
+      <div className="mt-2 overflow-hidden rounded-2xl border border-gray-200 bg-white">
+        <div className={`relative p-2 ${searchingNow ? 'border-b border-gray-100' : ''}`}>
+          <User className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+          <input
+            ref={inputRef}
+            value={query}
+            onChange={(event) => {
+              const value = event.target.value;
+              setQuery(value);
+              if (value.trim().length >= 2) setSearching(true);
+            }}
+            placeholder="Search people"
+            className="w-full rounded-xl bg-gray-50 py-2.5 pl-9 pr-9 text-base font-normal text-gray-900 outline-none placeholder:text-gray-400 focus:bg-white focus:ring-2 focus:ring-green-500/20"
+            autoComplete="off"
+          />
+          {query ? (
+            <button
+              type="button"
+              onClick={() => {
+                setQuery('');
+                inputRef.current?.focus();
+              }}
+              className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-1 text-gray-400 hover:bg-gray-200 hover:text-gray-600"
+              aria-label="Clear search"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          ) : (
+            <Search className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+          )}
+        </div>
+        {searchingNow ? (
+          <>
+            <p className="border-b border-gray-100 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-gray-400">
+              Matching people
+            </p>
+            {searching ? (
+              <p className="flex items-center gap-2 px-3 py-3 text-xs font-normal text-gray-500">
+                <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-green-500 border-t-transparent" />
+                Searching…
+              </p>
+            ) : options.length > 0 ? (
+              <ul className="max-h-56 divide-y divide-gray-50 overflow-y-auto">
+                {options.map((person) => {
+                  const on = selectedIds.has(person.userId);
+                  const blocked = atMax && !on;
+                  return (
+                    <li key={person.userId}>
+                      <button
+                        type="button"
+                        disabled={blocked}
+                        onClick={() => toggle(person)}
+                        className={`flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors ${
+                          on ? 'bg-green-50' : 'hover:bg-gray-50'
+                        } ${blocked ? 'cursor-not-allowed opacity-50' : ''}`}
+                      >
+                        <PersonAvatar userId={person.userId} name={person.name} />
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm font-semibold text-gray-900">{person.name}</span>
+                          {person.email ? (
+                            <span className="block truncate text-xs font-normal text-gray-500">{person.email}</span>
+                          ) : null}
+                        </span>
+                        {on ? (
+                          <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-green-600 px-2.5 py-1 text-[11px] font-bold text-white">
+                            <Check className="h-3 w-3" />
+                            Added
+                          </span>
+                        ) : (
+                          <span className="inline-flex shrink-0 rounded-full border border-green-200 bg-white px-2.5 py-1 text-[11px] font-bold text-green-700">
+                            Add
+                          </span>
+                        )}
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : (
+              <p className="px-3 py-3 text-xs font-normal text-gray-500">
+                No people match that name. Try another search.
+              </p>
+            )}
+          </>
+        ) : (
+          <p className="px-3 pb-3 text-xs font-normal text-gray-500">
+            Type a name to find people.
+          </p>
+        )}
+        {atMax ? (
+          <p className="border-t border-gray-100 px-3 py-2 text-xs font-normal text-amber-700">
+            You can add up to {PERSON_MAX} people.
+          </p>
+        ) : null}
+      </div>
+    </div>
   );
 }
